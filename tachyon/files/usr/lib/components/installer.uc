@@ -3,7 +3,7 @@
 // Package-manager transactions for component updates (apk/opkg).
 //
 // Owns lock-aware package transactions, index refreshes, name/file installs
-// and sing-box dependency bootstrap. Sits on components/helpers.uc.
+// and tachyon-core dependency bootstrap. Sits on components/helpers.uc.
 //
 
 let fs = require("fs");
@@ -473,7 +473,7 @@ function pkg_install_files(files, force_reinstall) {
 // Conflict removal and dependency bootstrap
 // ============================================================================
 
-function pkg_remove_sing_box_conflict(package_name) {
+function pkg_remove_conflict(package_name) {
     package_name = as_string(package_name);
     if (is_apk()) {
         if (file_exists("/etc/apk/world"))
@@ -487,7 +487,7 @@ function pkg_remove_sing_box_conflict(package_name) {
     return command_success(command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null");
 }
 
-function run_logged_pkg_remove_sing_box_conflict(package_name, description) {
+function run_logged_pkg_remove_conflict(package_name, description) {
     if (is_apk() && file_exists("/etc/apk/world"))
         command_success("sed -i -E " + shell_quote("/^" + package_name + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
 
@@ -509,7 +509,7 @@ function ensure_package_tool(tool_name, package_name, component, action) {
     return run_logged("Installing bootstrap package " + as_string(package_name), pkg_install_name_command(package_name), 60);
 }
 
-function ensure_sing_box_dependencies() {
+function ensure_core_dependencies() {
     let kmods = [ "kmod-inet-diag", "kmod-netlink-diag", "kmod-tun", "kmod-nft-tproxy", "kmod-nft-nat", "ca-bundle" ];
     let missing = [];
     for (let kmod in kmods) {
@@ -563,10 +563,10 @@ function module_exports() {
         pkg_tx_install_files,
         pkg_tx_install_name,
         pkg_install_files,
-        pkg_remove_sing_box_conflict,
-        run_logged_pkg_remove_sing_box_conflict,
+        pkg_remove_conflict,
+        run_logged_pkg_remove_conflict,
         ensure_package_tool,
-        ensure_sing_box_dependencies
+        ensure_core_dependencies
     };
 }
 

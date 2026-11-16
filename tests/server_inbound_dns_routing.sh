@@ -30,10 +30,11 @@ fixture() {
   ],
   "section": [
     {
-      ".name": "youtube_zapret",
+      ".name": "youtube_desync",
       ".type": "section",
       "enabled": "1",
-      "action": "zapret",
+      "action": "desync",
+      "desync_preset": "auto",
       "domain": ["youtube.com", "googlevideo.com"]
     },
     {
@@ -50,14 +51,14 @@ JSON
 
 generate() {
   mkdir -p "$WORK_DIR/out.section-cache"
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-    "$WORK_DIR/fixture.json" "$WORK_DIR/singbox.json" "127.0.0.1" 0 0
+  TACHYON_CORE_VERSION_OVERRIDE="0.5.7" ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
+    "$WORK_DIR/fixture.json" "$WORK_DIR/tachyon-core.json" "127.0.0.1" 0 0
 }
 
 fixture
 generate
 
-CONFIG="$WORK_DIR/singbox.json"
+CONFIG="$WORK_DIR/tachyon-core.json"
 
 # 1. Verify hijack-dns rules exist for server-home_node-in on port 53 and protocol dns
 node -e '

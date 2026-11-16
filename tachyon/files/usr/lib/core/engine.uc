@@ -14,11 +14,8 @@ let file_exists = common.file_exists;
 
 const DEFAULT_ENGINE = "tachyon-core";
 
-// Engine ids. These are stored in UCI (settings.engine) and must stay stable.
+// Engine id. Stored in UCI (settings.engine).
 const ENGINE_TACHYON_CORE = "tachyon-core";
-// A config written before the rename still says "sing-box"; it is normalized to
-// the new id instead of falling back to the default.
-const ENGINE_SING_BOX_LEGACY = "sing-box";
 
 // UCI option names. Kept in one place so migrations and the frontend agree.
 const OPT_ENGINE = "engine";
@@ -66,10 +63,8 @@ const CAPABILITIES = {
         "routing.torrserver_direct",
         "inbound.tproxy",
         "inbound.mixed",
-        "outbound.extended_variants",
         "outbound.vless_reality",
-        "outbound.zapret",
-        "outbound.zapret_lua",
+        "outbound.desync",
         "obs.custom_service_script",
     ],
 };
@@ -146,11 +141,7 @@ function engine_config_path(engine) {
 
 function binary_present(engine) {
     let bin = engine_binary(engine);
-    if (bin != "" && file_exists(bin))
-        return true;
-    if (as_string(engine) == ENGINE_TACHYON_CORE && file_exists("/usr/bin/sing-box"))
-        return true;
-    return false;
+    return bin != "" && file_exists(bin);
 }
 
 function init_script_present(engine) {
@@ -185,13 +176,8 @@ function detect_all() {
 // Active engine state (UCI)
 // ============================================================================
 
-function normalize_engine(value) {
-    value = as_string(value);
-    if (value == ENGINE_SING_BOX_LEGACY)
-        return ENGINE_TACHYON_CORE;
-    if (!engine_is_known(value))
-        return DEFAULT_ENGINE;
-    return value;
+function normalize_engine(_value) {
+    return DEFAULT_ENGINE;
 }
 
 function get_active() {
@@ -239,7 +225,6 @@ function plan_switch(target, features) {
 function module_exports() {
     return {
         ENGINE_TACHYON_CORE,
-        ENGINE_SING_BOX_LEGACY,
         DEFAULT_ENGINE,
         known_engines,
         engine_is_known,

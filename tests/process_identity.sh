@@ -8,7 +8,7 @@
 #   - process_age_seconds (age calculation)
 #   - pid_alive_raw (kill -0 check)
 #   - is_tachyon_process (PID + cmdline check)
-#   - is_sing_box (exe/comm check)
+#   - is_tachyon_core (exe/comm check)
 #   - make_identity (identity object creation)
 #   - identity_matches (PID recycling guard)
 #   - identity_alive (combined check)
@@ -194,25 +194,25 @@ else
 assert_eq "age calculation test" "PASS" "$RESULT"
 
 # ---------------------------------------------------------------------------
-# Runtime: is_sing_box
+# Runtime: is_tachyon_core
 # ---------------------------------------------------------------------------
 
-printf '%s\n' '--- runtime: is_sing_box ---'
+printf '%s\n' '--- runtime: is_tachyon_core ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 let fs = require("fs");
 let self_stat = trim("" + fs.readfile("/proc/self/stat"));
 let self_pid = substr(self_stat, 0, index(self_stat, " "));
-// Nonexistent PID should not be sing-box
-let r1 = proc.is_sing_box("999999");
-// Current process is not sing-box
-let r2 = proc.is_sing_box(self_pid);
+// Nonexistent PID should not be tachyon-core
+let r1 = proc.is_tachyon_core("999999");
+// Current process is not tachyon-core
+let r2 = proc.is_tachyon_core(self_pid);
 if (!r1 && !r2)
     print("PASS\n");
 else
     print("FAIL: r1=" + r1 + " r2=" + r2 + "\n");
 ' 2>&1)
-assert_eq "is_sing_box test" "PASS" "$RESULT"
+assert_eq "is_tachyon_core test" "PASS" "$RESULT"
 
 # ---------------------------------------------------------------------------
 # Runtime: is_tachyon_process

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
+import { showToast } from '../../../../helpers/showToast';
 import {
   renderAlertTriangleIcon,
   renderCheckIcon,
@@ -847,6 +848,10 @@ export interface RenderDashboardSectionsAndNodesProps {
   ) => HTMLElement;
   showHidden?: boolean;
   onToggleShowHidden?: () => void;
+  onMovePolicySectionsAbove?: (
+    moves: PolicySectionMove[],
+  ) => Promise<void> | void;
+  isMovingPolicySections?: boolean;
 }
 
 export interface SectionEngineMeta {
@@ -1581,12 +1586,7 @@ export function resolveSectionEngineMeta(
   ).toLowerCase();
 
   const dpiTypes = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
     'desync',
-    'wdtt',
-    'olcrtc',
     'block',
     'reject',
     'bypass',
@@ -1598,15 +1598,9 @@ export function resolveSectionEngineMeta(
   const sourceTypes: string[] = [];
   const uciSourceLinks: string[] = [];
   let desyncPreset = 'auto';
-  let directNfqws = false;
-  let byedpiOpts = '';
-  let condSuggestsZapret2 = false;
 
   if (uciObj && typeof uciObj.get === 'function' && secName) {
     try {
-      if (uciObj.get('tachyon', secName, 'direct_nfqws') === '1') {
-        directNfqws = true;
-      }
       const presetOnSec = uciObj.get('tachyon', secName, 'desync_preset');
       if (presetOnSec) desyncPreset = String(presetOnSec);
 
@@ -1621,13 +1615,6 @@ export function resolveSectionEngineMeta(
         if (st === 'desync') {
           const sp = uciObj.get('tachyon', sid, 'desync_preset');
           if (sp) desyncPreset = String(sp);
-        } else if (st === 'zapret2' || st === 'zapret') {
-          if (uciObj.get('tachyon', sid, 'direct_nfqws') === '1') {
-            directNfqws = true;
-          }
-        } else if (st === 'byedpi') {
-          const bo = uciObj.get('tachyon', sid, 'byedpi_cmd_opts');
-          if (bo) byedpiOpts = String(bo);
         }
         const rawUrl = uciObj.get('tachyon', sid, 'url');
         if (typeof rawUrl === 'string' && rawUrl.includes('://')) {
@@ -1636,18 +1623,6 @@ export function resolveSectionEngineMeta(
         const rawLinks = toStringArray(uciObj.get('tachyon', sid, 'links'));
         for (const lnk of rawLinks) {
           if (lnk.includes('://')) uciSourceLinks.push(lnk);
-        }
-      }
-
-      const condRefs = toStringArray(
-        uciObj.get('tachyon', secName, 'condition_refs'),
-      );
-      for (const cid of condRefs) {
-        const cname = String(
-          uciObj.get('tachyon', cid, 'name') || cid,
-        ).toLowerCase();
-        if (cname.includes('zapret2')) {
-          condSuggestsZapret2 = true;
         }
       }
     } catch {
@@ -1673,12 +1648,6 @@ export function resolveSectionEngineMeta(
       !isInterfaceSelected
     ) {
       primaryEngine = sourceTypes[0];
-    } else if (
-      (!section.outbounds || section.outbounds.length === 0) &&
-      sourceTypes.length === 0 &&
-      condSuggestsZapret2
-    ) {
-      primaryEngine = 'zapret2';
     }
   }
 
@@ -1707,47 +1676,6 @@ export function resolveSectionEngineMeta(
             'Native packet desynchronization inside Tachyon Core',
           ),
           () => renderZapIcon(11),
-        );
-        break;
-      case 'zapret2':
-        pushBadge(
-          'Zapret2',
-          'dpi',
-          tr(
-            'Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)',
-            'Packet desync via Zapret2 (nfqws2 + Lua strategies)',
-          ),
-          () => renderZapIcon(11),
-        );
-        break;
-      case 'zapret':
-        pushBadge(
-          'Zapret',
-          'dpi',
-          tr(
-            'Десинхронизация через Zapret (nfqws)',
-            'Packet desync via Zapret (nfqws)',
-          ),
-          () => renderZapIcon(11),
-        );
-        break;
-      case 'byedpi':
-        pushBadge(
-          'ByeDPI',
-          'dpi',
-          tr(
-            'Десинхронизация через ByeDPI (ciadpi SOCKS5)',
-            'Packet desync via ByeDPI (ciadpi SOCKS5)',
-          ),
-          () => renderZapIcon(11),
-        );
-        break;
-      case 'wdtt':
-        pushBadge('WDTT', 'dpi', 'WDTT Anti-DPI', () => renderZapIcon(11));
-        break;
-      case 'olcrtc':
-        pushBadge('OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass', () =>
-          renderZapIcon(11),
         );
         break;
       case 'block':
@@ -1799,7 +1727,7 @@ export function resolveSectionEngineMeta(
     'PRIORITY',
     'GROUP',
     'CONNECTION',
-    'SING_BOX',
+    'TACHYON_CORE',
   ]);
 
   // Also add Proxy/Tunnel protocol badge and transport badges (e.g. VLESS + GRPC / XHTTP)
@@ -1871,6 +1799,14 @@ export function resolveSectionEngineMeta(
     ) {
       pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () =>
         renderLockIcon(11),
+      );
+    } else if (
+      protoRaw.includes('CSQTT') ||
+      protoRaw === 'WDTT' ||
+      (!protoRaw && (rawAction === 'csqtt' || singleSourceType === 'csqtt'))
+    ) {
+      pushBadge('CSQTT / WDTT', 'proxy', 'CSQTT / WDTT v3', () =>
+        renderShieldIcon(11),
       );
     } else if (
       protoRaw.includes('TAILSCALE') ||
@@ -2003,30 +1939,6 @@ export function resolveSectionEngineMeta(
       dpiServerLabel = 'Tachyon Core (Desync)';
       dpiSelectorLabel = `Desync • ${presetText}`;
       dpiSubtitlePrefix = `Core Desync (${presetText})`;
-    } else if (primaryEngine === 'zapret2') {
-      dpiServerLabel = 'Zapret2 (nfqws2)';
-      dpiSelectorLabel = directNfqws
-        ? 'Direct NFQUEUE • Lua'
-        : 'NFQUEUE • Lua Desync';
-      dpiSubtitlePrefix = 'Zapret2 (nfqws2 Lua)';
-    } else if (primaryEngine === 'zapret') {
-      dpiServerLabel = 'Zapret (nfqws)';
-      dpiSelectorLabel = directNfqws ? 'Direct NFQUEUE' : 'NFQUEUE Desync';
-      dpiSubtitlePrefix = 'Zapret (nfqws)';
-    } else if (primaryEngine === 'byedpi') {
-      dpiServerLabel = 'ByeDPI (ciadpi)';
-      dpiSelectorLabel = byedpiOpts
-        ? `SOCKS5 • ${byedpiOpts.slice(0, 22)}`
-        : 'SOCKS5 Desync';
-      dpiSubtitlePrefix = 'ByeDPI (ciadpi)';
-    } else if (primaryEngine === 'wdtt') {
-      dpiServerLabel = 'WDTT Anti-DPI';
-      dpiSelectorLabel = 'DPI Bypass';
-      dpiSubtitlePrefix = 'WDTT Anti-DPI';
-    } else if (primaryEngine === 'olcrtc') {
-      dpiServerLabel = 'OLCRTC Bypass';
-      dpiSelectorLabel = 'WebRTC Bypass';
-      dpiSubtitlePrefix = 'OLCRTC';
     } else if (primaryEngine === 'block' || primaryEngine === 'reject') {
       col2Label = tr('Действие', 'Action');
       col3Label = tr('Правило', 'Rule');
@@ -2236,12 +2148,7 @@ function getSectionVisualMeta(section: Tachyon.OutboundGroup): {
     };
   }
 
-  if (
-    ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-      section.action || '',
-    ) ||
-    Boolean(section.serviceStatus)
-  ) {
+  if (section.action === 'desync' || Boolean(section.serviceStatus)) {
     return {
       color: calmColor,
       bg: calmBg,
@@ -2295,7 +2202,7 @@ function resolveSectionActiveInfo(
 
   if (meta.isDpiOnly && meta.dpiServerLabel) {
     serverName = meta.dpiServerLabel;
-    selectorLabel = meta.dpiSelectorLabel || 'DPI Bypass';
+    selectorLabel = meta.dpiSelectorLabel || 'Desync';
     activeMemberCode = selectedOutbound?.code;
     return {
       serverName,
@@ -2370,9 +2277,9 @@ function resolveSectionActiveInfo(
       activeMemberCode = selectedOutbound.code;
     }
   } else if (section.serviceStatus) {
-    const st = section.serviceStatus.serviceType || section.action || 'DPI';
+    const st = section.serviceStatus.serviceType || section.action || 'Desync';
     serverName = st.toUpperCase();
-    selectorLabel = 'DPI Bypass';
+    selectorLabel = 'Desync';
   }
 
   return {
@@ -2387,14 +2294,7 @@ function resolveSectionActiveInfo(
   };
 }
 
-export const DPI_ENGINES = new Set([
-  'zapret',
-  'zapret2',
-  'byedpi',
-  'desync',
-  'wdtt',
-  'olcrtc',
-]);
+export const DPI_ENGINES = new Set(['desync']);
 
 export const SYSTEM_NON_PROXY_ENGINES = new Set([
   'block',
@@ -2447,16 +2347,14 @@ export function resolveSectionCategory(
   if (
     action === 'dns' ||
     primaryEngine === 'dns' ||
-    (!name.includes('zapret') &&
-      !displayName.includes('zapret') &&
-      (name === 'dns' ||
-        displayName === 'dns' ||
-        name.startsWith('dns-') ||
-        displayName.startsWith('dns-') ||
-        name.endsWith('-dns-server') ||
-        displayName.endsWith('-dns-server') ||
-        name.includes('dns') ||
-        displayName.includes('dns')))
+    name === 'dns' ||
+    displayName === 'dns' ||
+    name.startsWith('dns-') ||
+    displayName.startsWith('dns-') ||
+    name.endsWith('-dns-server') ||
+    displayName.endsWith('-dns-server') ||
+    name.includes('dns') ||
+    displayName.includes('dns')
   ) {
     return 'dns';
   }
@@ -2469,16 +2367,8 @@ export function resolveSectionCategory(
       meta.isDpiOnly &&
         DPI_ENGINES.has(meta.primaryEngine?.toLowerCase() || ''),
     ) ||
-    name.includes('zapret') ||
-    displayName.includes('zapret') ||
-    name.includes('byedpi') ||
-    displayName.includes('byedpi') ||
     name.includes('desync') ||
-    displayName.includes('desync') ||
-    name.includes('wdtt') ||
-    displayName.includes('wdtt') ||
-    name.includes('olcrtc') ||
-    displayName.includes('olcrtc');
+    displayName.includes('desync');
 
   if (isDpi) {
     return 'dpi';
@@ -2517,23 +2407,59 @@ export interface MisorderedPolicySectionIssue {
   displayName: string;
   kind: 'block' | 'bypass';
   precedingSections: string[];
+  targetBeforeSectionName: string;
 }
 
-export function detectMisorderedPolicySections(
+export interface PolicySectionMove {
+  from: string;
+  to: string;
+}
+
+export interface PolicySectionPriorityAnalysis {
+  issues: MisorderedPolicySectionIssue[];
+  misplacedLabels: string[];
+  precedingLabels: string[];
+  firstRoutingSectionName: string;
+  moves: PolicySectionMove[];
+}
+
+/**
+ * Analyze top-to-bottom UCI section priority (first-match-wins).
+ * Disabled sections are ignored. When enabled block/bypass filter sections
+ * appear after at least one enabled routing section, returns structured issue
+ * details and an ordered move plan placing them before the first routing section.
+ */
+export function analyzePolicySectionPriority(
   sections: Tachyon.OutboundGroup[],
-): MisorderedPolicySectionIssue[] {
+): PolicySectionPriorityAnalysis {
+  const empty: PolicySectionPriorityAnalysis = {
+    issues: [],
+    misplacedLabels: [],
+    precedingLabels: [],
+    firstRoutingSectionName: '',
+    moves: [],
+  };
+
   if (!Array.isArray(sections) || sections.length < 2) {
-    return [];
+    return empty;
   }
 
-  const precedingRoutingSections: string[] = [];
+  const precedingRoutingLabels: string[] = [];
+  let firstRoutingSectionName = '';
   const issues: MisorderedPolicySectionIssue[] = [];
 
   for (const section of sections) {
     if (!section) continue;
+    const enabled = (section as { enabled?: unknown }).enabled;
+    if (enabled === '0' || enabled === 0 || enabled === false) {
+      continue;
+    }
+
     const action = `${section.action || ''}`.trim().toLowerCase();
     const label =
       `${section.displayName || section.sectionName || section.code || ''}`.trim();
+    const sectionName =
+      `${section.sectionName || section.code || label}`.trim();
 
     const isBlockAction = action === 'block' || action === 'reject';
     const isBypassAction = action === 'bypass' || action === 'direct';
@@ -2544,24 +2470,26 @@ export function detectMisorderedPolicySections(
         : undefined;
 
     if (isBlockAction || category === 'block') {
-      if (precedingRoutingSections.length > 0) {
+      if (precedingRoutingLabels.length > 0 && firstRoutingSectionName) {
         issues.push({
-          sectionName: section.sectionName || section.code || label,
+          sectionName,
           displayName: label || section.sectionName || 'block',
           kind: 'block',
-          precedingSections: [...precedingRoutingSections],
+          precedingSections: [...precedingRoutingLabels],
+          targetBeforeSectionName: firstRoutingSectionName,
         });
       }
       continue;
     }
 
     if (isBypassAction || category === 'direct') {
-      if (precedingRoutingSections.length > 0) {
+      if (precedingRoutingLabels.length > 0 && firstRoutingSectionName) {
         issues.push({
-          sectionName: section.sectionName || section.code || label,
+          sectionName,
           displayName: label || section.sectionName || 'bypass',
           kind: 'bypass',
-          precedingSections: [...precedingRoutingSections],
+          precedingSections: [...precedingRoutingLabels],
+          targetBeforeSectionName: firstRoutingSectionName,
         });
       }
       continue;
@@ -2571,10 +2499,177 @@ export function detectMisorderedPolicySections(
       continue;
     }
 
-    precedingRoutingSections.push(label || section.sectionName || section.code);
+    if (!firstRoutingSectionName && sectionName) {
+      firstRoutingSectionName = sectionName;
+    }
+    precedingRoutingLabels.push(label || sectionName);
   }
 
-  return issues;
+  const precedingLabels = Array.from(
+    new Set(issues.flatMap((issue) => issue.precedingSections).filter(Boolean)),
+  );
+  const misplacedLabels = issues.map((issue) => issue.displayName);
+  const moves: PolicySectionMove[] = issues
+    .filter(
+      (issue) =>
+        Boolean(issue.sectionName) &&
+        Boolean(issue.targetBeforeSectionName) &&
+        issue.sectionName !== issue.targetBeforeSectionName,
+    )
+    .map((issue) => ({
+      from: issue.sectionName,
+      to: issue.targetBeforeSectionName,
+    }));
+
+  return {
+    issues,
+    misplacedLabels,
+    precedingLabels,
+    firstRoutingSectionName,
+    moves,
+  };
+}
+
+export function detectMisorderedPolicySections(
+  sections: Tachyon.OutboundGroup[],
+): MisorderedPolicySectionIssue[] {
+  return analyzePolicySectionPriority(sections).issues;
+}
+
+export function formatPolicySectionOrderWarningDescription(
+  analysis: PolicySectionPriorityAnalysis,
+): string {
+  const quotedNames = analysis.misplacedLabels
+    .map((name) => `«${name}»`)
+    .join(', ');
+  const quotedPreceding = analysis.precedingLabels
+    .map((name) => `«${name}»`)
+    .join(', ');
+
+  if (analysis.issues.length === 1) {
+    if (analysis.precedingLabels.length <= 1) {
+      return tr(
+        `Секция ${quotedNames} расположена ниже маршрутной секции ${quotedPreceding}. Правила проверяются сверху вниз — трафик может перехватываться туннелем до срабатывания блокировки или прямого обхода.`,
+        `Section ${quotedNames} is placed below routing section ${quotedPreceding}. Rules are evaluated top-to-bottom — traffic may be intercepted by a tunnel before block or bypass rules match.`,
+      );
+    }
+    return tr(
+      `Секция ${quotedNames} расположена ниже маршрутных секций (${quotedPreceding}). Правила проверяются сверху вниз — трафик может перехватываться туннелем до срабатывания блокировки или прямого обхода.`,
+      `Section ${quotedNames} is placed below routing sections (${quotedPreceding}). Rules are evaluated top-to-bottom — traffic may be intercepted by a tunnel before block or bypass rules match.`,
+    );
+  }
+
+  return tr(
+    `Секции ${quotedNames} расположены ниже маршрутных секций (${quotedPreceding}). Правила проверяются сверху вниз — трафик может перехватываться туннелем до срабатывания блокировки или прямого обхода.`,
+    `Sections ${quotedNames} are placed below routing sections (${quotedPreceding}). Rules are evaluated top-to-bottom — traffic may be intercepted by a tunnel before block or bypass rules match.`,
+  );
+}
+
+/**
+ * Reorder misplaced UCI `@section` entries above the first enabled routing
+ * section via `uci.move`, then persist, apply, and refresh the dashboard.
+ */
+export async function applyPolicySectionPriorityMoves(
+  moves: PolicySectionMove[],
+  deps?: {
+    uciObj?: any;
+    uiObj?: any;
+    onSuccess?: () => Promise<void> | void;
+    onNotify?: (message: string, kind: 'success' | 'error') => void;
+  },
+): Promise<boolean> {
+  if (!Array.isArray(moves) || moves.length === 0) {
+    return false;
+  }
+
+  const g = globalThis as any;
+  const uciObj = deps?.uciObj ?? (typeof uci !== 'undefined' ? uci : g.uci);
+  const uiObj = deps?.uiObj ?? (typeof ui !== 'undefined' ? ui : g.ui);
+  const notify =
+    deps?.onNotify ??
+    ((msg: string, kind: 'success' | 'error') => showToast(msg, kind));
+
+  if (!uciObj || typeof uciObj.move !== 'function') {
+    notify(
+      tr(
+        'Не удалось изменить порядок секций: UCI API недоступен',
+        'Failed to reorder sections: UCI API unavailable',
+      ),
+      'error',
+    );
+    return false;
+  }
+
+  try {
+    const initialSections =
+      typeof uciObj.sections === 'function'
+        ? uciObj.sections('tachyon', 'section') || []
+        : [];
+    if (initialSections.length === 0 && typeof uciObj.load === 'function') {
+      await Promise.resolve(uciObj.load('tachyon'));
+    }
+
+    const existingIds = new Set(
+      (typeof uciObj.sections === 'function'
+        ? uciObj.sections('tachyon', 'section') || []
+        : []
+      )
+        .map((s: any) => s?.['.name'])
+        .filter(Boolean),
+    );
+
+    let movedCount = 0;
+    for (const move of moves) {
+      if (!move?.from || !move?.to || move.from === move.to) continue;
+      if (
+        existingIds.size > 0 &&
+        (!existingIds.has(move.from) || !existingIds.has(move.to))
+      ) {
+        continue;
+      }
+      uciObj.move('tachyon', move.from, move.to);
+      movedCount += 1;
+    }
+
+    if (movedCount === 0) {
+      return false;
+    }
+
+    if (typeof uciObj.save === 'function') {
+      await Promise.resolve(uciObj.save());
+    }
+    if (uiObj?.changes && typeof uiObj.changes.init === 'function') {
+      await Promise.resolve(uiObj.changes.init());
+    }
+    if (uiObj?.changes && typeof uiObj.changes.apply === 'function') {
+      await Promise.resolve(uiObj.changes.apply(true));
+    }
+
+    if (deps?.onSuccess) {
+      await deps.onSuccess();
+    }
+
+    notify(
+      tr(
+        'Секции Block / Bypass подняты выше маршрутных секций',
+        'Block / Bypass sections moved above routing sections',
+      ),
+      'success',
+    );
+    return true;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err || '');
+    notify(
+      detail
+        ? `${tr('Не удалось изменить порядок секций', 'Failed to reorder sections')}: ${detail}`
+        : tr(
+            'Не удалось изменить порядок секций',
+            'Failed to reorder sections',
+          ),
+      'error',
+    );
+    return false;
+  }
 }
 
 function navigateToRoutingSectionsTab() {
@@ -2691,6 +2786,8 @@ export function renderDashboardSectionsAndNodes(
     renderSectionAccordionContent,
     showHidden = false,
     onToggleShowHidden,
+    onMovePolicySectionsAbove,
+    isMovingPolicySections = false,
   } = props;
 
   if (!sections || sections.length === 0) {
@@ -2725,7 +2822,8 @@ export function renderDashboardSectionsAndNodes(
     }
   });
 
-  const misorderedPolicyIssues = detectMisorderedPolicySections(sections);
+  const policyPriority = analyzePolicySectionPriority(sections);
+  const misorderedPolicyIssues = policyPriority.issues;
 
   if (
     (!routingSections || routingSections.length === 0) &&
@@ -2739,12 +2837,7 @@ export function renderDashboardSectionsAndNodes(
 
   // Separate proxy sections (which have selectable outbounds) and service-only sections
   const nonProxyActions = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
     'desync',
-    'wdtt',
-    'olcrtc',
     'block',
     'reject',
     'bypass',
@@ -3489,24 +3582,8 @@ export function renderDashboardSectionsAndNodes(
   const policyOrderWarningBanner =
     misorderedPolicyIssues.length > 0
       ? (() => {
-          const quotedNames = misorderedPolicyIssues
-            .map(
-              (item) =>
-                `«${item.displayName}» (${item.kind === 'block' ? 'Block' : 'Bypass'})`,
-            )
-            .join(', ');
-          const firstPreceding =
-            misorderedPolicyIssues[0]?.precedingSections[0] || '';
           const warningText =
-            misorderedPolicyIssues.length === 1
-              ? tr(
-                  `Секция ${quotedNames} расположена ниже секции «${firstPreceding}». Правила проверяются сверху вниз: домены и подсети из этой секции могут перехватываться вышестоящими секциями и вызывать проблемы с маршрутизацией. Переместите Block / Bypass в начало списка.`,
-                  `Section ${quotedNames} is placed below "${firstPreceding}". Rules are evaluated top-to-bottom: overlapping domains and subnets may be matched by earlier sections and cause routing issues. Move Block / Bypass sections to the top of the list.`,
-                )
-              : tr(
-                  `Секции ${quotedNames} расположены ниже других секций маршрутизации (например, «${firstPreceding}»). Правила проверяются сверху вниз: пересекающиеся домены и подсети могут перехватываться вышестоящими секциями и вызывать проблемы с маршрутизацией. Переместите Block / Bypass в начало списка.`,
-                  `Sections ${quotedNames} are placed below other routing sections (e.g. "${firstPreceding}"). Rules are evaluated top-to-bottom: overlapping domains and subnets may be matched by earlier sections and cause routing issues. Move Block / Bypass sections to the top of the list.`,
-                );
+            formatPolicySectionOrderWarningDescription(policyPriority);
 
           return E(
             'div',
@@ -3523,8 +3600,8 @@ export function renderDashboardSectionsAndNodes(
                   'div',
                   { class: 'tachyon-section-order-warning__title' },
                   tr(
-                    'Обратите внимание на порядок секций',
-                    'Check routing section order',
+                    'Нарушен приоритет секций Block / Bypass',
+                    'Block / Bypass section priority violated',
                   ),
                 ),
                 E(
@@ -3533,19 +3610,50 @@ export function renderDashboardSectionsAndNodes(
                   warningText,
                 ),
               ]),
-              E(
-                'button',
-                {
-                  type: 'button',
-                  class: 'tachyon-section-order-warning__btn',
-                  click: (ev: MouseEvent) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    navigateToRoutingSectionsTab();
-                  },
-                } as any,
-                tr('Изменить порядок →', 'Reorder sections →'),
-              ),
+              E('div', { class: 'tachyon-section-order-warning__actions' }, [
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class:
+                      'tachyon-section-order-warning__btn tachyon-section-order-warning__btn--primary',
+                    'data-section-order-move-above': '1',
+                    disabled: isMovingPolicySections ? true : undefined,
+                    'aria-busy': isMovingPolicySections ? 'true' : undefined,
+                    click: (ev: MouseEvent) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (isMovingPolicySections) {
+                        return;
+                      }
+                      if (onMovePolicySectionsAbove) {
+                        void onMovePolicySectionsAbove(policyPriority.moves);
+                      } else {
+                        void applyPolicySectionPriorityMoves(
+                          policyPriority.moves,
+                        );
+                      }
+                    },
+                  } as any,
+                  isMovingPolicySections
+                    ? tr('Перемещение...', 'Moving...')
+                    : tr('Поднять выше', 'Move above'),
+                ),
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'tachyon-section-order-warning__btn',
+                    'data-section-order-to-sections': '1',
+                    click: (ev: MouseEvent) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      navigateToRoutingSectionsTab();
+                    },
+                  } as any,
+                  tr('К секциям', 'To sections'),
+                ),
+              ]),
             ],
           );
         })()

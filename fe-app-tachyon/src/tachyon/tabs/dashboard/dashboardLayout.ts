@@ -342,8 +342,8 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
     icon: '',
     titleRu: 'Службы роутера',
     titleEn: 'Router Services',
-    descRu: 'Статус процессов Tachyon, Sing-box, Dnsmasq и Zapret2',
-    descEn: 'Process health, RAM and uptime for Tachyon, Sing-box, Dnsmasq',
+    descRu: 'Статус процессов Tachyon, Tachyon Core и Dnsmasq',
+    descEn: 'Process health, RAM and uptime for Tachyon, Tachyon Core, Dnsmasq',
     defaultView: 'strip',
     defaultWidth: 'full',
     views: [
@@ -408,8 +408,8 @@ export const DASHBOARD_WIDGET_CATALOG: DashboardWidgetCatalogEntry[] = [
         labelRu: 'Витрина доменов + чипы клиентов',
         labelEn: 'Top Domains + Client Chips',
         descRu:
-          'Акцент на популярных доменах в обходе и компактных чипах устройств',
-        descEn: 'Focus on top bypassed domains and compact client chips',
+          'Акцент на популярных доменах в маршрутах и компактных чипах устройств',
+        descEn: 'Focus on top routed domains and compact client chips',
       },
       {
         id: 'client_cards',
@@ -1870,10 +1870,8 @@ export const SECTION_TYPE_DEFINITIONS: SectionTypeDefinition[] = [
     id: 'dpi',
     titleRu: 'Десинхронизация пакетов (Desync)',
     titleEn: 'Packet Desync (Desync)',
-    descRu:
-      'Секции десинхронизации и модификации пакетов: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
-    descEn:
-      'Packet desync engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
+    descRu: 'Секции десинхронизации пакетов в ядре Tachyon Core (Desync).',
+    descEn: 'Native packet desync sections in Tachyon Core (Desync).',
     icon: () => renderZapIcon(15),
   },
   {

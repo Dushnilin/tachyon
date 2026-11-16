@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getConfigSections: vi.fn(),
   getClashApiProxies: vi.fn(),
-  getWdttStatus: vi.fn(),
   canUseDirectClashApi: vi.fn(),
   fsRead: vi.fn(),
 }));
@@ -15,7 +14,6 @@ vi.mock('../getConfigSections', () => ({
 vi.mock('../../shell', () => ({
   TachyonShellMethods: {
     getClashApiProxies: mocks.getClashApiProxies,
-    getWdttStatus: mocks.getWdttStatus,
   },
 }));
 
@@ -146,7 +144,6 @@ describe('getDashboardSections', () => {
     resetDirectClashApiState();
     mocks.getConfigSections.mockReset();
     mocks.getClashApiProxies.mockReset();
-    mocks.getWdttStatus.mockReset();
     mocks.canUseDirectClashApi.mockReset();
     mocks.fsRead.mockReset();
     mocks.fsRead.mockRejectedValue(new Error('cache miss'));
@@ -454,7 +451,7 @@ describe('getDashboardSections', () => {
     expect(urltest?.urlTestInfo?.selectedName).toBe('Third server');
   });
 
-  it('keeps an empty configured URLTest visible when sing-box skipped the group', async () => {
+  it('keeps an empty configured URLTest visible when tachyon-core skipped the group', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({
         urltest_settings: urlTestSettings('urltest', {
@@ -630,7 +627,7 @@ describe('getDashboardSections', () => {
     ]);
   });
 
-  it('keeps an empty Priority group visible when sing-box skipped the selector', async () => {
+  it('keeps an empty Priority group visible when tachyon-core skipped the selector', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({
         selector_proxy_links: [],
@@ -1203,14 +1200,14 @@ describe('getDashboardSections', () => {
     });
   });
 
-  it('exposes ByeDPI sections on the dashboard as service cards', async () => {
+  it('exposes Desync sections on the dashboard as service cards', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection(),
       {
         '.name': 'dpi',
         '.type': 'section',
         enabled: '1',
-        action: 'byedpi',
+        action: 'desync',
       },
     ]);
     mocks.getClashApiProxies.mockResolvedValue({
@@ -1573,8 +1570,8 @@ describe('getDashboardSections', () => {
       proxySection(),
       proxySection({ '.name': 'other' }),
     ]);
-    // The runtime writes a flat { section: reason } map when sing-box rejects a
-    // section and init-config quarantines it; a missing file means every
+    // The runtime writes a flat { section: reason } map when tachyon-core rejects
+    // a section and init-config quarantines it; a missing file means every
     // section loaded fine.
     mocks.fsRead.mockImplementation((path: string) =>
       path.includes('section-errors')
@@ -1830,7 +1827,7 @@ describe('getDashboardSections', () => {
         dns_server: 'https://dns.dns-ai.ru/dns-query',
       },
       {
-        '.name': 'Zapret2',
+        '.name': 'Youtube_Desync',
         '.type': 'section',
         enabled: '1',
         label: 'Youtube',
@@ -1860,7 +1857,7 @@ describe('getDashboardSections', () => {
       'ByPass',
       'YandexDns',
       'XboxDns',
-      'Zapret2',
+      'Youtube_Desync',
       'Discord',
       'Main',
     ]);
@@ -2427,7 +2424,7 @@ describe('getDashboardSections', () => {
     ).toBeUndefined();
   });
 
-  it('hydrates connection sections with source_type=csqtt and native source_type=wdtt, and renders standalone action=csqtt', async () => {
+  it('hydrates connection sections with source_type=csqtt and native source_type=wdtt, and renders standalone action=csqtt / action=wdtt', async () => {
     mocks.getConfigSections.mockResolvedValue([
       {
         '.name': 'Main_Route',
@@ -2436,15 +2433,15 @@ describe('getDashboardSections', () => {
         action: 'connection',
         label: 'Main Route',
         section_selection_mode: 'priority_failover',
-        outbound_source_refs: ['src_csqtt', 'src_wdtt_native', 'src_tt'],
+        outbound_source_refs: ['src_csqtt', 'src_wdtt', 'src_tt'],
       },
       {
-        '.name': 'Legacy_WDTT_Pool',
+        '.name': 'Direct_WDTT',
         '.type': 'section',
         enabled: '1',
-        action: 'connection',
-        label: 'Legacy WDTT',
-        outbound_source_refs: ['src_wdtt_legacy'],
+        action: 'wdtt',
+        label: 'Direct WDTT',
+        warp_flow_uri: 'wdtt://example',
       },
       {
         '.name': 'Direct_CSQTT',
@@ -2464,21 +2461,12 @@ describe('getDashboardSections', () => {
         csqtt_server: 'vk.example.com',
       },
       {
-        '.name': 'src_wdtt_native',
+        '.name': 'src_wdtt',
         '.type': 'outbound_source',
         enabled: '1',
         name: 'WDTT Native',
         source_type: 'wdtt',
-        wdtt_native: '1',
         warp_flow_uri: 'csqtt://connect?v=2&host=example.com',
-      },
-      {
-        '.name': 'src_wdtt_legacy',
-        '.type': 'outbound_source',
-        enabled: '1',
-        name: 'WDTT Legacy',
-        source_type: 'wdtt',
-        peer: 'example.com:46000',
       },
       {
         '.name': 'src_tt',
@@ -2489,15 +2477,6 @@ describe('getDashboardSections', () => {
         server: 'tt.example.com',
       },
     ]);
-
-    mocks.getWdttStatus.mockResolvedValue({
-      success: true,
-      data: {
-        configured: true,
-        ready: true,
-        conflict: false,
-      },
-    });
 
     mocks.getClashApiProxies.mockResolvedValue({
       success: true,
@@ -2523,6 +2502,10 @@ describe('getDashboardSections', () => {
           'Direct_CSQTT-out': proxy('wdtt', {
             name: 'Direct_CSQTT-out',
             history: [{ time: '2026-11-16T00:00:00Z', delay: 33 }],
+          }),
+          'Direct_WDTT-out': proxy('wdtt', {
+            name: 'Direct_WDTT-out',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 44 }],
           }),
         },
       },
@@ -2552,12 +2535,12 @@ describe('getDashboardSections', () => {
     expect(fallbackMain?.outbounds[0]?.displayName).toBe('CSQTT Primary');
     expect(fallbackMain?.outbounds[0]?.type).toBe('CSQTT');
 
-    const legacyWdtt = result.data.find(
-      (s) => s.sectionName === 'Legacy_WDTT_Pool',
-    );
-    expect(legacyWdtt).toBeDefined();
-    expect(legacyWdtt?.action).toBe('wdtt');
-    expect(legacyWdtt?.serviceStatus?.serviceType).toBe('wdtt');
+    const directWdtt = result.data.find((s) => s.sectionName === 'Direct_WDTT');
+    expect(directWdtt).toBeDefined();
+    expect(directWdtt?.action).toBe('wdtt');
+    expect(directWdtt?.outbounds[0]?.displayName).toBe('Direct WDTT');
+    expect(directWdtt?.outbounds[0]?.type).toBe('WDTT');
+    expect(directWdtt?.outbounds[0]?.latency).toBe(44);
 
     const directCsqtt = result.data.find(
       (s) => s.sectionName === 'Direct_CSQTT',

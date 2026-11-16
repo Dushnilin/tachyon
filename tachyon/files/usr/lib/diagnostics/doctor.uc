@@ -23,32 +23,22 @@ const TACHYON_CONFIG = getenv("TACHYON_CONFIG") || constants.TACHYON_CONFIG || "
 const TACHYON_SERVICE_NAME = getenv("TACHYON_SERVICE_NAME") || constants.TACHYON_SERVICE_NAME || "tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const LOGREAD_LINE_LIMIT = "500";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/tachyon-core";
-const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
+const TMP_TACHYON_CORE_FOLDER = getenv("TMP_TACHYON_CORE_FOLDER") || constants.TMP_TACHYON_CORE_FOLDER || "/tmp/tachyon-core";
+const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_TACHYON_CORE_FOLDER + "/rulesets";
 const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK_PROXY_IP_DOMAIN || "ip.podkop.fyi";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
-const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
-const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
-const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
-const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
+const CORE_DNS_INBOUND_ADDRESS = getenv("TACHYON_CORE_DNS_INBOUND_ADDRESS") || getenv("CORE_DNS_INBOUND_ADDRESS") || constants.TACHYON_CORE_DNS_INBOUND_ADDRESS || constants.CORE_DNS_INBOUND_ADDRESS || "127.0.0.42";
+const CORE_TPROXY_INBOUND6_ADDRESS = getenv("TACHYON_CORE_TPROXY_INBOUND6_ADDRESS") || getenv("CORE_TPROXY_INBOUND6_ADDRESS") || constants.TACHYON_CORE_TPROXY_INBOUND6_ADDRESS || constants.CORE_TPROXY_INBOUND6_ADDRESS || "::1";
+const CORE_TPROXY_INBOUND_PORT = getenv("TACHYON_CORE_TPROXY_INBOUND_PORT") || getenv("CORE_TPROXY_INBOUND_PORT") || constants.TACHYON_CORE_TPROXY_INBOUND_PORT || constants.CORE_TPROXY_INBOUND_PORT || "1602";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
-const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
-const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
-const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
-const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
-const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
-const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
-const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
-const BYEDPI_VALIDATOR_UC = LIB_DIR + "/providers/byedpi/validator.uc";
+const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const NFT_APPLY_UC = LIB_DIR + "/nft/apply.uc";
@@ -102,20 +92,11 @@ function settings() { return uci_core.get_all(CONFIG_NAME, "settings") || {}; }
 function uci_sections(type_name) { return uci_core.section_objects(CONFIG_NAME, type_name); }
 
 function is_tachyon_core_active() {
-    let marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
-    if (marker == "tachyon-core")
-        return true;
-    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
-        return false;
-    return sysinfo_mod.sing_box_marker_is("tachyon-core") ||
-        (type(sysinfo_mod.is_tachyon_core_selected) == "function" && sysinfo_mod.is_tachyon_core_selected());
+    return true;
 }
 
 function active_engine_name() {
-    if (is_tachyon_core_active())
-        return "tachyon-core";
-    let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
+    return "tachyon-core";
 }
 
 function status_capture(args, input) { return status_bridge.status_capture(args, input); }
@@ -176,18 +157,18 @@ function module_passthrough(module_path, args) {
 function build_system_info() { return sysinfo_mod.build_system_info(); }
 function show_config(visibility) { return sysinfo_mod.show_config(visibility); }
 function provider_installed(runtime_uc) { return sysinfo_mod.provider_installed(runtime_uc); }
-function sing_box_resolved_version() { return sysinfo_mod.sing_box_resolved_version(); }
-// Caller at2219 passes (version, version_output); system_info reads the banner
+function tachyon_core_resolved_version() { return sysinfo_mod.tachyon_core_resolved_version(); }
+// Caller passes (version, version_output); system_info reads the banner
 // from the second argument, so dropping it here silently forced the empty-banner
 // branch (and its component-action tailscale guess) on every doctor run.
-function sing_box_capability_flags(version, version_output) { return sysinfo_mod.sing_box_capability_flags(version, version_output); }
+function tachyon_core_capability_flags(version, version_output) { return sysinfo_mod.tachyon_core_capability_flags(version, version_output); }
 function dns_check_router_resolver_available(router_ip) { return dns_mod.dns_check_router_resolver_available(router_ip); }
 function clash_api_url() { return routing_mod.clash_api_url(); }
-function singbox_config_path() { return common.singbox_config_path(); }
+function tachyon_core_config_path() { return common.core_config_path(); }
 function clash_auth_args() { return routing_mod.clash_auth_args(); }
 // The Clash API answers 401 on /version whenever a secret is configured, so the
 // old unauthenticated curl reported a healthy router as "unreachable" and then
-// restarted sing-box. Build the probe with the same auth args the rest of the
+// restarted tachyon-core. Build the probe with the same auth args the rest of the
 // codebase uses.
 function clash_probe_cmd(clash_addr) {
     let args = [ "-s", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}" ];
@@ -318,8 +299,8 @@ function dns_check_resolve_host(host, resolver, timeout_seconds) {
     return dns_mod.dns_check_resolve_host(host, resolver, timeout_seconds);
 }
 
-function dns_check_through_singbox(domain) {
-    return dns_mod.dns_check_through_singbox(domain);
+function dns_check_through_core(domain) {
+    return dns_mod.dns_check_through_core(domain);
 }
 
 function get_all_dns_servers(cfg, key) {
@@ -330,8 +311,8 @@ function get_server_capabilities() {
     return sysinfo_mod.get_server_capabilities();
 }
 
-function check_sing_box() {
-    return sysinfo_mod.check_sing_box();
+function check_tachyon_core() {
+    return sysinfo_mod.check_tachyon_core();
 }
 
 function check_dns_available() {
@@ -419,13 +400,13 @@ function global_check(arg1, arg2) {
     else
         print_global("❌ Failed to get DNS info");
 
-    let core_title = is_tachyon_core_active() ? "Tachyon Core" : "Sing-box";
-    let core_lc = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let core_title = "Tachyon Core";
+    let core_lc = "tachyon-core";
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print_global("═══ " + core_title + " status");
-    let singbox_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-sing-box" ]))).output;
-    if (singbox_check_json != "")
-        render_or_fail([ "global-sing-box-check" ], singbox_check_json, "❌ Failed to parse " + core_lc + " info", [ 0 ]);
+    let core_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-tachyon-core" ]))).output;
+    if (core_check_json != "")
+        render_or_fail([ "global-tachyon-core-check" ], core_check_json, "❌ Failed to parse " + core_lc + " info", [ 0 ]);
     else
         print_global("❌ Failed to get " + core_lc + " info");
 
@@ -490,24 +471,6 @@ function global_check(arg1, arg2) {
         }
     }
 
-    if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "status" ])) {
-        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
-    }
-    else if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "enabled" ])) {
-        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret autostart is enabled. Tachyon will not modify /etc/config/zapret.");
-    }
-
-    if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "status" ])) {
-        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret2 service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
-    }
-    else if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "enabled" ])) {
-        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret2 autostart is enabled. Tachyon will not modify /etc/config/zapret2.");
-    }
-
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print_global("═══ FakeIP status");
     let fakeip_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-fakeip" ]))).output;
@@ -524,10 +487,8 @@ function find_process_pid(name) {
     return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
 }
 
-// The core binary may be named tachyon-core or sing-box depending on which
-// package is installed; every "is the core running" probe must accept both,
-// otherwise the doctor reports a running core as stopped and proposes
-// killing the very process that is serving traffic.
+// Every "is the core running" probe checks tachyon-core, otherwise the doctor
+// reports a running core as stopped and proposes killing the active process.
 function find_core_process_pid() {
     let proc = require("core.process");
     for (let name in proc.core_contract().comm_names) {
@@ -539,11 +500,8 @@ function find_core_process_pid() {
     return "";
 }
 
-// ss and log lines name the core process however the binary is installed;
-// match both spellings or a tachyon-core instance is invisible here.
 function line_names_core(line) {
-    return index(line, "tachyon-core") >= 0 ||
-        index(line, "sing-box") >= 0 || index(line, "sing_box") >= 0;
+    return index(line, "tachyon-core") >= 0;
 }
 
 function is_container_process(pid) {
@@ -578,7 +536,7 @@ function is_adguardhome_primary_dns(cfg) {
 }
 
 // The main service loop writes its pid file on start (start_runtime in
-// watchdog.uc). With enable_watchdog='0' the loop is not spawned but sing-box
+// watchdog.uc). With enable_watchdog='0' the loop is not spawned but tachyon-core
 // keeps running as its own procd service — that state still counts as running:
 // the doctor must never treat a live Tachyon as a stopped one.
 function tachyon_is_running() {
@@ -758,7 +716,7 @@ function run_recovery_checks() {
             module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
         else
             doc_plan("dns/apply.uc failsafe-restore");
-        let rec_core = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+        let rec_core = "tachyon-core";
         if (!DOCTOR_REPAIR_MODE || module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) != 0) {
             mark_fixed("dnsmasq DNS", "redirected to " + rec_core, "возвращён на прямые upstream");
         } else {
@@ -939,7 +897,7 @@ function subscription_probe_command(sub_url) {
 
 // When a community list has no local .trs/.srs file the generator emits a
 // *remote* rule-set instead (tachyon_core/generator_routes.uc: local tmp file,
-// then /etc copy, then a remote url) and sing-box downloads it on its own. Those
+// then /etc copy, then a remote url) and tachyon-core downloads it on its own. Those
 // lists work fine without anything in TMP_RULESET_FOLDER, so the presence check
 // below used to report a healthy setup as "N missing" — and the repair loop kept
 // re-testing the same missing file, so `doctor --fix` could never clear it.
@@ -947,7 +905,7 @@ function subscription_probe_command(sub_url) {
 // rule-set and treat them as present.
 function remote_community_lists() {
     let served = {};
-    let raw = fs.readfile(singbox_config_path());
+    let raw = fs.readfile(tachyon_core_config_path());
     if (raw == null || raw == "")
         return served;
 
@@ -996,7 +954,7 @@ function run_doctor_checks_impl(repair) {
     // With the service stopped the doctor switches to recovery mode: it must
     // restore the stock internet (DNS back to direct upstream, no leftover
     // rules) instead of "repairing" the stopped state by re-hijacking dnsmasq
-    // onto a dead sing-box DNS listener — the exact way a user ends up with no
+    // onto a dead tachyon-core DNS listener — the exact way a user ends up with no
     // internet after disabling Tachyon (issue #31).
     if (!tachyon_is_running()) {
         return run_recovery_checks();
@@ -1034,7 +992,7 @@ function run_doctor_checks_impl(repair) {
             wd_running = true;
         }
 
-        let core_disp = cfg.core || (is_tachyon_core_active() ? "tachyon-core" : "sing-box");
+        let core_disp = cfg.core || "tachyon-core";
         doc_check("⚫", core_disp, "bypassed (stopped)", "");
         doc_check("⚫", "nftables rules", "bypassed (flushed)", "");
         doc_check("⚫", "routing rules (ip rule)", "bypassed (removed)", "");
@@ -1060,12 +1018,7 @@ function run_doctor_checks_impl(repair) {
     }
 
     let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    } catch (e) {}
-    let is_tachyon_core = is_tachyon_core_active();
-
-    let binary_name = is_tachyon_core ? "tachyon-core" : "sing-box";
+    let binary_name = "tachyon-core";
     let init_script = "/etc/init.d/tachyon-core";
     let config_file_path = "/etc/tachyon-core/config.json";
 
@@ -1117,7 +1070,7 @@ function run_doctor_checks_impl(repair) {
                 doc_plan("regenerate " + binary_name + " config (configure-service) + restart");
                 doc_check("⚠️", binary_name + " config", "invalid", "→ WILL FIX (doctor --fix): пересоздание конфига");
             } else {
-                let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                let regen_status = command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
                 if (regen_status == 0) {
                     let check_res2 = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
                     if (check_res2 == 0) {
@@ -1141,7 +1094,7 @@ function run_doctor_checks_impl(repair) {
                 doc_plan("regenerate " + binary_name + " config (configure-service)");
                 doc_check("⚠️", binary_name + " config", "missing", "→ WILL FIX (doctor --fix): генерация конфига");
             } else {
-                let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                let regen_status = command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
                 if (regen_status == 0 && fs.stat(config_file_path) != null) {
                     doc_check("❌", binary_name + " config", "missing", "→ FIXED: пересоздан");
                     fixed++;
@@ -1274,7 +1227,7 @@ function run_doctor_checks_impl(repair) {
     if (agh_primary) {
         doc_check("✅", "dnsmasq server (Direct)", "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)", "");
     } else if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
-        doc_check("✅", "dnsmasq server (Direct)", SB_DNS_INBOUND_ADDRESS, "");
+        doc_check("✅", "dnsmasq server (Direct)", CORE_DNS_INBOUND_ADDRESS, "");
     } else {
         if (is_degraded_flag) {
             doc_check("⚠️", "dnsmasq server (Direct)", "direct", "→ GRACEFUL DEGRADATION: Proxy offline");
@@ -1282,12 +1235,12 @@ function run_doctor_checks_impl(repair) {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
                 doc_plan("dns/apply.uc configure force");
-                doc_check("⚠️", "dnsmasq server (Direct)", "incorrect", "→ WILL FIX (doctor --fix): перенаправление на " + binary_name + " (" + SB_DNS_INBOUND_ADDRESS + ")");
+                doc_check("⚠️", "dnsmasq server (Direct)", "incorrect", "→ WILL FIX (doctor --fix): перенаправление на " + binary_name + " (" + CORE_DNS_INBOUND_ADDRESS + ")");
             } else {
                 module_status(DNS_APPLY_UC, [ "configure", "force" ]);
                 command_status("sleep 1");
                 if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
-                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на " + binary_name + " (" + SB_DNS_INBOUND_ADDRESS + ")");
+                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на " + binary_name + " (" + CORE_DNS_INBOUND_ADDRESS + ")");
                     fixed++;
                 } else {
                     doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ не удалось перенаправить");
@@ -1341,7 +1294,7 @@ function run_doctor_checks_impl(repair) {
     // 4b2. Dnsmasq dns_redirect — when dhcp.@dnsmasq[0].dns_redirect='1',
     // firewall4 creates DNAT rules that redirect external DNS queries to the
     // router's :53. If Tachyon TProxy has already marked those packets, the
-    // DNAT rewrites destination to 192.168.1.1:53 and sing-box hijack-dns
+    // DNAT rewrites destination to 192.168.1.1:53 and tachyon-core hijack-dns
     // creates transparent sockets that collide with dnsmasq.
     if (!agh_primary) {
         let dns_redirect = uci_core.get("dhcp.@dnsmasq[0].dns_redirect");
@@ -1575,8 +1528,8 @@ function run_doctor_checks_impl(repair) {
 
     // 5b. DNS Resolution through proxy core
     if (has_sections) {
-        if (dns_check_through_singbox("google.com")) {
-            doc_check("✅", binary_name + " DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
+        if (dns_check_through_core("google.com")) {
+            doc_check("✅", binary_name + " DNS", "resolving via " + CORE_DNS_INBOUND_ADDRESS, "");
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
@@ -1587,13 +1540,13 @@ function run_doctor_checks_impl(repair) {
                     module_status(DNS_APPLY_UC, [ "configure", "force" ]);
                     command_status("sleep 1");
                 }
-                if (dns_check_through_singbox("google.com")) {
+                if (dns_check_through_core("google.com")) {
                     doc_check("❌", binary_name + " DNS", "not resolving", "→ FIXED: " + (agh_primary ? (binary_name + " DNS доступен") : ("dnsmasq перенаправлен на " + binary_name)));
                     fixed++;
                 } else {
                     command_status(init_script + " restart >/dev/null 2>&1");
                     command_status("sleep 3");
-                    if (dns_check_through_singbox("google.com")) {
+                    if (dns_check_through_core("google.com")) {
                         doc_check("❌", binary_name + " DNS", "not resolving", "→ FIXED: " + binary_name + " перезапущен");
                         fixed++;
                     } else {
@@ -1610,7 +1563,7 @@ function run_doctor_checks_impl(repair) {
         if (eff_v6_dns.ipv6_active && eff_v6_dns.fakeip_enabled) {
             let fake6_ans = "";
             let d6 = command_capture(command_from_args([
-                "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+                "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
             ]));
             for (let ln in split(as_string(d6.output), "\n")) {
                 ln = lc(trim(as_string(ln)));
@@ -1624,15 +1577,15 @@ function run_doctor_checks_impl(repair) {
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service; /etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change");
+                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service; /etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change");
                     doc_check("⚠️", binary_name + " FakeIPv6", "AAAA query did not return FakeIPv6 in fc00::/18",
                         "→ WILL FIX (doctor --fix): перегенерировать конфиг и применить IPv6 правила");
                 } else {
-                    command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                    command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
                     command_status("/etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change >/dev/null 2>&1");
                     command_status("sleep 1");
                     let d6b = command_capture(command_from_args([
-                        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+                        "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
                     ]));
                     let fixed_v6 = "";
                     for (let ln in split(as_string(d6b.output), "\n")) {
@@ -1650,10 +1603,10 @@ function run_doctor_checks_impl(repair) {
                     }
                 }
             }
-        } else if (!eff_v6_dns.ipv6_active && dns_check_through_singbox("google.com")) {
+        } else if (!eff_v6_dns.ipv6_active && dns_check_through_core("google.com")) {
             let aaaa_leak = "";
             let d6n = command_capture(command_from_args([
-                "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
+                "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
             ]));
             for (let ln in split(as_string(d6n.output), "\n")) {
                 ln = trim(as_string(ln));
@@ -1667,15 +1620,15 @@ function run_doctor_checks_impl(repair) {
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service; " + init_script + " restart");
+                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service; " + init_script + " restart");
                     doc_check("⚠️", "IPv6 AAAA suppression", "unexpected AAAA response (" + aaaa_leak + ") in " + eff_v6_dns.effective,
                         "→ WILL FIX (doctor --fix): перегенерировать DNS-правила NOERROR для AAAA");
                 } else {
-                    command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                    command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
                     command_status(init_script + " restart >/dev/null 2>&1");
                     command_status("sleep 2");
                     let d6n2 = command_capture(command_from_args([
-                        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
+                        "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
                     ]));
                     let still_leak = "";
                     for (let ln in split(as_string(d6n2.output), "\n")) {
@@ -1763,72 +1716,6 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 6d. Packet desynchronization / tunnel provider health (Zapret, Zapret2,
-    // ByeDPI, WDTT, OLCRTC). Two readiness shapes share this loop: worker-based
-    // engines report running/expected process counts, while service-based
-    // tunnels (WDTT/OLCRTC) report a single service state plus a
-    // human-readable status_message. Both shapes expose "ready" and accept
-    // "start-runtime", so one loop covers all of them.
-    let providers_to_check = [
-        { name: "Zapret", kind: "zapret", runtime: ZAPRET_RUNTIME_UC, style: "workers" },
-        { name: "Zapret2", kind: "zapret2", runtime: ZAPRET2_RUNTIME_UC, style: "workers" },
-        { name: "ByeDPI", kind: "byedpi", runtime: BYEDPI_RUNTIME_UC, style: "workers" },
-        { name: "WDTT", kind: "wdtt", runtime: WDTT_RUNTIME_UC, style: "service" },
-        { name: "OLCRTC", kind: "olcrtc", runtime: OLCRTC_RUNTIME_UC, style: "service" }
-    ];
-
-    for (let p in providers_to_check) {
-        let raw_st = trim(command_capture("ucode -L " + LIB_DIR + " " + p.runtime + " status 2>/dev/null").output);
-        let st = null;
-        if (raw_st != "") {
-            try { st = json(raw_st); } catch (e) {}
-        }
-
-        // Every provider is always listed so the report shows the full
-        // Zapret/Zapret2/ByeDPI/WDTT/OLCRTC picture. Providers that are
-        // absent or unused are informational, not failures.
-        if (!st || st.installed != true) {
-            doc_check("➖", p.name + " runtime", "not installed", "");
-            continue;
-        }
-        if (st.configured != true) {
-            doc_check("➖", p.name + " runtime", "installed, not configured", "");
-            continue;
-        }
-
-        // Service-style providers carry their own status text (it names the
-        // degraded reason: tun down, route missing, service stopped); the
-        // worker-style engines only expose counts.
-        let is_service = (p.style == "service");
-        let detail = is_service
-            ? as_string(st.status_message || (st.ready ? "ready" : "not ready"))
-            : sprintf("%d/%d workers", st.running_process_count || 0, st.expected_process_count || 0);
-        let unit = is_service ? "служба" : "воркеры";
-
-        // Check if Tachyon-managed runtime is ready
-        if (st.ready == true) {
-            doc_check("✅", p.name + " runtime", "ready (" + detail + ")", "");
-        } else {
-            issues++;
-            if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("ucode -L " + LIB_DIR + " " + p.runtime + " start-runtime");
-                doc_check("⚠️", p.name + " runtime", "not ready (" + detail + ")", "→ WILL FIX: запуск " + unit + " Tachyon " + p.name);
-            } else {
-                command_status("ucode -L " + LIB_DIR + " " + p.runtime + " start-runtime >/dev/null 2>&1");
-                command_status("sleep 1");
-                let raw_st2 = trim(command_capture("ucode -L " + LIB_DIR + " " + p.runtime + " status 2>/dev/null").output);
-                let st2 = null;
-                try { st2 = json(raw_st2); } catch (e) {}
-                if (st2 && st2.ready == true) {
-                    doc_check("❌", p.name + " runtime", "not ready (" + detail + ")", "→ FIXED: " + unit + " " + p.name + " запущены");
-                    fixed++;
-                } else {
-                    doc_check("❌", p.name + " runtime", "failed to start", "→ не удалось запустить " + unit + " " + p.name);
-                }
-            }
-        }
-    }
-
     // 7. Free RAM Check
     let free_mb = -1;
     let mem_info = fs.readfile("/proc/meminfo") || "";
@@ -1886,24 +1773,6 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // Tailscale native runtime check (skipped entirely without native sections
-    // so sing-box-mode users never see the node).
-    let ts_status_raw = trim(module_output(TAILSCALE_RUNTIME_UC, [ "status" ]));
-    if (ts_status_raw != "") {
-        let ts = object_or_empty(json(ts_status_raw));
-        if (ts.configured == true) {
-            if (ts.installed != true) {
-                issues++;
-                doc_check("⚠️", "Tailscale", "package missing", "→ install the Tailscale component on the Updates tab");
-            } else if (ts.ready == true) {
-                doc_check("✅", "Tailscale", "running (" + as_string(ts.version || "") + ")", "");
-            } else {
-                issues++;
-                doc_check("❌", "Tailscale", as_string(ts.status_message || "not ready"), "→ run: tachyon tailscale_restart");
-            }
-        }
-    }
-
     // 11. MSS Clamping Check
     if (routing_mode == "nftables") {
         let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
@@ -1947,7 +1816,7 @@ function run_doctor_checks_impl(repair) {
     if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
         issues++;
         let oom_victim_core = index(lc(logread_out), "killed process") >= 0 &&
-            match(lc(logread_out), /killed process[^\n]*(sing-box|tachyon-core)/) != null;
+            match(lc(logread_out), /killed process[^\n]*tachyon-core/) != null;
         if (!DOCTOR_REPAIR_MODE) {
             doc_plan("clear system log + drop OS caches");
             doc_check("❌", "System OOM checks",
@@ -2067,7 +1936,7 @@ function run_doctor_checks_impl(repair) {
     // 15b. Community Lists Presence Check
     // For every enabled section that declares community_lists, verify the
     // corresponding .srs files have been downloaded into TMP_RULESET_FOLDER.
-    // Missing or empty files mean sing-box is running without the expected
+    // Missing or empty files mean tachyon-core is running without the expected
     // routing data — this is the silent green-screen failure the user reported.
     {
         let missing_lists = [];
@@ -2290,7 +2159,7 @@ function run_doctor_checks_impl(repair) {
                 continue;
             let pid_info = as_string(fields[6]);
             let owner = index(pid_info, "/") >= 0 ? substr(pid_info, index(pid_info, "/") + 1) : pid_info;
-            if (owner == "" || owner == "dnsmasq" || owner == "sing-box" || owner == "tachyon-core" || owner == "AdGuardHome" || lc(owner) == "adguardhome")
+            if (owner == "" || owner == "dnsmasq" || owner == "tachyon-core" || owner == "AdGuardHome" || lc(owner) == "adguardhome")
                 continue;
             let already = false;
             for (let o in dns53_owners) {
@@ -2308,9 +2177,9 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 20b. Port 53 Socket Collision — sing-box hijack-dns on tproxy-in creates
+    // 20b. Port 53 Socket Collision — tachyon-core hijack-dns on tproxy-in creates
     // transparent write-only sockets that collide with dnsmasq on :53 via
-    // SO_REUSEADDR.  Diagnostic: find sing-box UNCONN sockets on :53 with
+    // SO_REUSEADDR.  Diagnostic: find tachyon-core UNCONN sockets on :53 with
     // non-zero Recv-Q (parasitic write-back sockets that steal UDP packets
     // from dnsmasq).
     {
@@ -2363,7 +2232,7 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 21. Subscription Cache Age — sing-box can route through days-old node
+    // 21. Subscription Cache Age — tachyon-core can route through days-old node
     // lists while the subscription URL itself is reachable.
     if (has_sections && length(active_sub_urls) > 0) {
         let newest_mtime = 0;
@@ -2387,15 +2256,14 @@ function run_doctor_checks_impl(repair) {
 
     // 22. TLS Certificate Pinning Capability Check
     if (has_sections && has_certificate_pins_configured()) {
-        let sb_ver = sing_box_resolved_version();
-        let flags = sing_box_capability_flags(sb_ver.version, sb_ver.output);
+        let core_ver = tachyon_core_resolved_version();
+        let flags = tachyon_core_capability_flags(core_ver.version, core_ver.output);
         if (flags.cert_pin == 1) {
-            doc_check("✅", "TLS certificate pinning", "supported & active (" + (is_tachyon_core ? "tachyon-core" : "sing-box >= 1.15") + ")", "");
+            doc_check("✅", "TLS certificate pinning", "supported & active (tachyon-core)", "");
         } else {
             issues++;
-            doc_check("⚠️", "TLS certificate pinning", "ignored (installed " + binary_name + " predates 1.15)",
+            doc_check("⚠️", "TLS certificate pinning", "not supported by installed " + binary_name,
                 "→ обновите " + binary_name + " до версии с поддержкой pin сертификата");
-            push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
         }
     }
 
@@ -3259,7 +3127,7 @@ function diagnose_json() {
         try { ai_status_data = redact_obj_for_ai(json(ai_status_raw)); } catch(e) {}
     }
 
-    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal|byedpi|zapret|nftables' | tail -n 50 2>/dev/null")) || "No recent system errors logged.";
+    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|dnsmasq|oom|error|fatal|nftables' | tail -n 50 2>/dev/null")) || "No recent system errors logged.";
     let log_snippet = redact_for_ai(compress_log_snippet(raw_log_snippet));
 
     print(sprintf("%J\n", {
@@ -3321,7 +3189,7 @@ function verify_system() {
     let checks = [];
     let stability = {
         wan_flaps: 0,
-        singbox_restarts: 0,
+        tachyon_core_restarts: 0,
         dnsmasq_restarts: 0,
         tachyon_restarts: 0
     };
@@ -3331,7 +3199,7 @@ function verify_system() {
     }
 
     // Live checks — what a client on the LAN experiences right now.
-    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let core_name = "tachyon-core";
     let sb_pid = find_core_process_pid();
     add(core_name + " process", sb_pid != "" ? "pass" : "fail",
         sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
@@ -3348,15 +3216,15 @@ function verify_system() {
     add("Upstream DNS", up_dns != "" ? "pass" : "fail",
         up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
 
-    let sb_dns = dns_check_through_singbox("google.com");
-    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
+    let sb_dns = dns_check_through_core("google.com");
+    if (!sb_dns) sb_dns = dns_check_through_core("cloudflare.com");
     add("Proxy DNS via " + core_name, sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
-        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : core_name + " not running"));
+        sb_dns ? "resolved via " + CORE_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : core_name + " not running"));
 
     // HTTP through the service mixed proxy — only present when download_via_proxy
     // is enabled; otherwise the tproxy/tun path is covered by the checks above.
     let mixed_port_num = common.get_mixed_port();
-    let sb_cfg = fs.readfile(singbox_config_path()) || "";
+    let sb_cfg = fs.readfile(tachyon_core_config_path()) || "";
     let has_mixed = index(sb_cfg, '"mixed"') >= 0;
     if (has_mixed && sb_pid != "") {
         let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:" + mixed_port_num + " -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
@@ -3388,7 +3256,7 @@ function verify_system() {
             stability.wan_flaps++;
         if (line_names_core(l) &&
             (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
-            stability.singbox_restarts++;
+            stability.tachyon_core_restarts++;
         if (index(l, "dnsmasq") >= 0 &&
             (index(l, "failed to create listening socket") >= 0 || index(l, "address already in use") >= 0 || index(l, "failed to start") >= 0))
             stability.dnsmasq_restarts++;
@@ -3436,15 +3304,12 @@ const DOCTOR_FIX_PRIORITIES = {
     "fix_bootstrap_dns": 38,
     "switch_to_doh": 40,
     "clear_dns_cache": 45,
-    "restart_singbox_dns": 48,
-    "start_singbox": 50,
+    "restart_tachyon_core_dns": 48,
+    "start_tachyon_core": 50,
     "start_watchdog": 52,
-    "restart_zapret": 60,
-    "restart_providers": 62,
     "optimize_mtu": 65,
     "rebuild_rules": 70,
     "reset_firewall": 72,
-    "upgrade_to_singbox_extended": 75,
     "update_subscriptions": 80,
     "flush_conntrack": 85,
     "optimize_memory": 90,
@@ -3483,19 +3348,17 @@ function diagnose_dpi_and_censorship(cfg, lang, causes, fn_add_fix) {
         fn_add_fix("switch_to_doh");
     }
 
-    let zap_mode = trim(as_string(cfg.zapret_mode || "disabled"));
-    let bd_mode = trim(as_string(cfg.byedpi_mode || "disabled"));
-    if (zap_mode == "disabled" && bd_mode == "disabled" && upstream_ip != "") {
+    if (upstream_ip != "") {
         let tls_check = command_capture("curl -k -sS --connect-timeout 2 -m 3 https://rutracker.org -o /dev/null -w %{http_code} 2>&1");
         let tls_out = tls_check.output || "";
         if (tls_check.status != 0 && (index(tls_out, "Connection reset") >= 0 || index(tls_out, "SSL_ERROR") >= 0 || index(tls_out, "OpenSSL SSL_connect") >= 0)) {
             push(causes, {
                 probability: 88,
-                cause: lang == "en" ? "Upstream network middlebox is resetting TLS ClientHello handshakes (Connection Reset / SNI filtering)"
-                                    : "Обнаружен сброс рукопожатий TLS ClientHello на промежуточном сетевом узле провайдера (фильтрация по SNI)",
-                fix: "restart_zapret"
+                cause: lang == "en" ? "Upstream network middlebox is resetting TLS ClientHello handshakes (Connection Reset / SNI filtering); consider enabling native tachyon-core desync or proxy routing for affected domains"
+                                    : "Обнаружен сброс рукопожатий TLS ClientHello на промежуточном сетевом узле провайдера (фильтрация по SNI); рекомендуется включить встроенный desync в tachyon-core или прокси-маршрутизацию",
+                fix: "start_tachyon_core"
             });
-            fn_add_fix("restart_zapret");
+            fn_add_fix("start_tachyon_core");
         }
     }
 }
@@ -3668,7 +3531,7 @@ function diagnose_dns_deadlock_and_mtu(cfg, lang, causes, fn_add_fix) {
     if (raw_sb_log != "" && index(raw_sb_log, "lookup") >= 0) {
         let b_dns = cfg.bootstrap_dns_server || "";
         if (b_dns == "127.0.0.1" || b_dns == "127.0.0.42") {
-            let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+            let core_name = "tachyon-core";
             push(causes, {
                 probability: 93,
                 cause: lang == "en" ? "DNS Deadlock: Bootstrap DNS resolver points to local loopback (resolver loop)"
@@ -3702,7 +3565,7 @@ function local_rule_doctor(pre_res, pre_verify) {
     }
 
     // ── 1. End-to-end live verification & root-cause correlation ──
-    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let core_name = "tachyon-core";
     let engine_label = core_name;
     let engine_proc_name = engine_label + " process";
     let wan_failed = false;
@@ -3729,7 +3592,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         push(causes, wan_cause);
         add_fix("fix_wan_interface");
     } else if (engine_failed) {
-        let engine_fix = "start_singbox";
+        let engine_fix = "start_tachyon_core";
         engine_cause = {
             probability: 95,
             cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
@@ -3744,7 +3607,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         if (c.status != "fail") continue;
         if (c.name == engine_proc_name) {
             if (!engine_cause && !wan_cause) {
-                let engine_fix = "start_singbox";
+                let engine_fix = "start_tachyon_core";
                 push(causes, {
                     probability: 95,
                     cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
@@ -3759,7 +3622,7 @@ function local_rule_doctor(pre_res, pre_verify) {
                 fix: "fix_dnsmasq"
             });
             add_fix("fix_dnsmasq");
-        } else if (c.name == "Proxy DNS via sing-box" || c.name == "Proxy DNS via tachyon-core") {
+        } else if (c.name == "Proxy DNS via tachyon-core") {
             if (wan_cause) {
                 push(wan_cause.symptoms, lang == "en" ? "Proxy DNS unavailable (WAN down)" : "Прокси-DNS недоступен (нет связи с WAN)");
             } else if (engine_cause) {
@@ -3790,7 +3653,6 @@ function local_rule_doctor(pre_res, pre_verify) {
                     fix: "update_subscriptions"
                 });
                 add_fix("update_subscriptions");
-                add_fix("restart_zapret");
             }
         }
     }
@@ -3845,41 +3707,14 @@ function local_rule_doctor(pre_res, pre_verify) {
         } else if (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0) {
             push(causes, {
                 probability: 90,
-                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but the installed sing-box predates the certificate_sha256 field (added in sing-box 1.15.0)" : "Указан TLS pin сертификата для прокси, но установленный sing-box не поддерживает certificate_sha256 (поле появилось в sing-box 1.15.0)",
-                fix: "upgrade_to_singbox_extended"
+                cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but the installed tachyon-core does not support certificate_sha256" : "Указан TLS pin сертификата для прокси, но установленный tachyon-core не поддерживает certificate_sha256",
+                fix: "heal_network_stack"
             });
-            add_fix("upgrade_to_singbox_extended");
+            add_fix("heal_network_stack");
         }
     }
 
-    // ── 4. DPI circumvention check (Zapret / ByeDPI) ──
-    let zapret_mode = trim(as_string(cfg.zapret_mode || "disabled"));
-    let byedpi_mode = trim(as_string(cfg.byedpi_mode || "disabled"));
-    if (zapret_mode != "disabled" && zapret_mode != "") {
-        let zap_pid = find_process_pid("nfqws");
-        if (zap_pid == "") zap_pid = find_process_pid("nfqws2");
-        if (zap_pid == "") {
-            push(causes, {
-                probability: 84,
-                cause: lang == "en" ? "Zapret (nfqws) engine is stopped" : "Служба обхода DPI (Zapret/nfqws) остановлена",
-                fix: "restart_zapret"
-            });
-            add_fix("restart_zapret");
-        }
-    }
-    if (byedpi_mode != "disabled" && byedpi_mode != "") {
-        let bd_pid = find_process_pid("ciadpi");
-        if (bd_pid == "") {
-            push(causes, {
-                probability: 84,
-                cause: lang == "en" ? "ByeDPI (ciadpi) engine is stopped" : "Служба обхода DPI (ByeDPI/ciadpi) остановлена",
-                fix: "restart_zapret"
-            });
-            add_fix("restart_zapret");
-        }
-    }
-
-    // ── 5. Advanced DPI & Censorship Checks ──
+    // ── 4. Advanced Connection & Filtering Checks ──
     try { diagnose_dpi_and_censorship(cfg, lang, causes, add_fix); } catch(e) { warn("DPI diag error: " + as_string(e) + "\n"); }
 
     // ── 6. Proxy Nodes & Subscriptions Health ──
@@ -3913,7 +3748,7 @@ function local_rule_doctor(pre_res, pre_verify) {
             push(report_lines, "- DNS resolution is healthy (LAN dnsmasq, upstream, proxy resolver).");
             push(report_lines, "- " + engine_label + " and nftables firewall redirection rules are active.");
             push(report_lines, "- No active DPI drops or RAM pressure detected.");
-            if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
+            if (verify.stability.wan_flaps > 0 || verify.stability.tachyon_core_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
                 push(report_lines, "\nℹ️ Notice: Recent logs show historical component recovery; current live state is stable.");
             }
         } else {
@@ -3933,7 +3768,7 @@ function local_rule_doctor(pre_res, pre_verify) {
             push(report_lines, "- DNS-резолверы отвечают корректно (LAN dnsmasq, upstream, прокси-резолвер).");
             push(report_lines, "- " + engine_label + " и правила файрвола nftables функционируют штатно.");
             push(report_lines, "- Блокировок DPI и нехватки оперативной памяти не обнаружено.");
-            if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
+            if (verify.stability.wan_flaps > 0 || verify.stability.tachyon_core_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
                 push(report_lines, "\nℹ️ Справка: В журнале зафиксировано восстановление компонентов после перезапуска, сейчас всё стабильно.");
             }
         } else {
@@ -4016,13 +3851,9 @@ function compute_ai_doctor_result(user_query) {
     let local_report_sanitized = redact_for_ai(local_res.report);
 
     let dns_type = cfg.dns_type || "doh";
-    let active_engine = is_tachyon_core_active() ? "tachyon-core" : ((cfg.engine && cfg.engine != "sing-box") ? cfg.engine : "tachyon-core");
+    let active_engine = "tachyon-core";
     let version = trim(command_output("cat /etc/tachyon/version 2>/dev/null")) || "unknown";
-    // busybox pgrep has no -x, so the old check reported "not running" on OpenWrt
-    // even when sing-box was up. pidof matches the process name exactly and
-    // works on busybox, and unlike pgrep -f it cannot pick up an unrelated
-    // command line that merely mentions sing-box.
-    let singbox_running = trim(command_output("pidof tachyon-core sing-box 2>/dev/null")) != "";
+    let core_running = trim(command_output("pidof tachyon-core 2>/dev/null")) != "";
     let uptime_out = trim(command_output("cat /proc/uptime 2>/dev/null"));
     let uptime_min = uptime_out != "" ? int(split(uptime_out, ".")[0]) / 60 : 0;
 
@@ -4042,19 +3873,19 @@ function compute_ai_doctor_result(user_query) {
         }
     }
 
-    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 25 2>/dev/null")) || "No recent system errors logged.";
+    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|dnsmasq|oom|error|fatal' | tail -n 25 2>/dev/null")) || "No recent system errors logged.";
     let log_snippet = redact_for_ai(compress_log_snippet(raw_log_snippet));
 
     // Live end-to-end verification — the part that catches "all OK on paper,
     // broken in practice": DNS through each layer, HTTP through the proxy, and
     // the recent flap/restart history a snapshot cannot see.
-    let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let core_name = "tachyon-core";
     let verify_lines = [ "Live Verification:" ];
     for (let c in verify.checks) {
         push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, redact_for_ai(c.detail)));
     }
     push(verify_lines, sprintf("Stability (recent log): WAN flaps: %d, %s restarts: %d, dnsmasq restarts: %d, tachyon reloads: %d",
-        verify.stability.wan_flaps, core_name, verify.stability.singbox_restarts,
+        verify.stability.wan_flaps, core_name, verify.stability.tachyon_core_restarts,
         verify.stability.dnsmasq_restarts, verify.stability.tachyon_restarts));
     let verify_info = join("\n", verify_lines);
 
@@ -4070,7 +3901,7 @@ function compute_ai_doctor_result(user_query) {
         "%s\n\n" +
         "%s\n\n" +
         "Recent Critical System Logs:\n%s\n",
-        report, local_report_sanitized, version, active_engine, dns_type, core_name, singbox_running ? "yes" : "no", uptime_min,
+        report, local_report_sanitized, version, active_engine, dns_type, core_name, core_running ? "yes" : "no", uptime_min,
         watchdog_info, verify_info, log_snippet
     );
 
@@ -4104,13 +3935,13 @@ function compute_ai_doctor_result(user_query) {
 
     let arch_ref_en =
         "Tachyon Architecture Reference:\n" +
-        "- Routing Engine (`settings.engine`): `tachyon-core` (default pure-Rust routing core, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, config `/etc/tachyon-core/config.json`); optional `sing-box` variants (`stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Routing Engine (`settings.engine`): `tachyon-core` (pure-Rust routing core, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, config `/etc/tachyon-core/config.json`).\n" +
         "- Packet & DNS Path (CRITICAL — DO NOT CONFUSE Direct vs Proxy):\n" +
         "  1) DIRECT (`action='bypass'`) & UNMATCHED TRAFFIC (in `split` mode): `dnsmasq` forwards DNS to `127.0.0.42:53` (`tachyon-core`), which resolves Direct/unmatched domains via `dns-server` to REAL IP addresses (NOT FakeIP). In `nftables` (`inet TachyonTable`), Direct rules (`action='bypass'`) immediately `accept`/`return` with `fwmark = 0`. Unmarked packets bypass `ip rule` table `tachyon` (205) and bypass `TProxy :1602`. Direct traffic NEVER enters `tachyon-core` (`0ms` native Linux kernel forwarding directly to WAN; MSS clamping in `mangle_forward` applies ONLY to `tcp flags syn`, NEVER to UDP).\n" +
         "  2) PROXIED TRAFFIC (`action='connection'` / proxy sections): DNS returns FakeIP `198.18.0.0/15` (or real IP matched by `@tachyon_subnets` / priority proxy sets) -> `nftables` `inet TachyonTable` sets `fwmark 0x04000000` -> `ip rule` table `tachyon` (205) -> `TProxy :1602` -> `tachyon-core` outbound tunnel (Clash API `127.0.0.1:9090`).\n" +
         "- Route Explain CLI syntax: ALWAYS pass both `<client_ip>` AND `<target_domain_or_ip>`: `tachyon route_explain <client_ip> <target_domain_or_ip> [port] [tcp|udp]` (e.g. `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Never omit `<target_domain_or_ip>`.\n" +
         "- Modular UCI Schema (`/etc/config/tachyon`): `settings`, `section` (routing rule orchestrator), `condition` (traffic matchers: domains, lists, CIDRs, GeoIP/GeoSite, ports, client IPs/MACs), `outbound_source` (subscriptions, proxy links, JSON, providers), `balancer` (`balancer_type` `urltest`/`priority`, `mode` `least_test`/`passive`/`round_robin`/`sticky`, `check_interval`, `active_check_interval`), `outbound_group` (primary/backup failover & `fail_policy`), `server` (inbound server nodes), `telegram`, `guest_mode`.\n" +
-        "- Local Providers: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua scripts in `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `tailscale`, `torrserver`.\n" +
+        "- Native Core Capabilities (`tachyon-core`): built-in `desync` (Adaptive 2.0 packet desynchronization), native `wdtt` / `csqtt` (WebRTC/VK/TURN transport), native `tailscale` endpoint, `fptn`, plus standalone `torrserver`.\n" +
         "- Self-Healing & Tools: `watchdog.uc`, `reconciler.uc` (targeted drift repair without core restart), `known_good.uc` (Last Known Good rollback), `transaction.uc` (atomic LIFO rollback), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
         "PRIVACY & SECURITY RULES:\n" +
         "- All diagnostic inputs are pre-redacted (`[REDACTED_*]`).\n" +
@@ -4119,13 +3950,13 @@ function compute_ai_doctor_result(user_query) {
 
     let arch_ref_ru =
         "Архитектурная справка Tachyon:\n" +
-        "- Движок маршрутизации (`settings.engine`): `tachyon-core` (основное Rust-ядро по умолчанию, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, конфиг `/etc/tachyon-core/config.json`); опционально сборки `sing-box` (`stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Движок маршрутизации (`settings.engine`): `tachyon-core` (основное Rust-ядро, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, конфиг `/etc/tachyon-core/config.json`).\n" +
         "- Тракт пакетов и DNS (КРИТИЧЕСКИ ВАЖНО — НЕ ПУТАТЬ Direct и Proxy):\n" +
         "  1) ПРЯМОЙ МАРШРУТ (`Direct` / `action='bypass'`) и трафик вне правил (в режиме `split`): `dnsmasq` -> `127.0.0.42:53` (`tachyon-core` разрешает домены Direct через `dns-server` в РЕАЛЬНЫЕ IP, БЕЗ FakeIP). В `nftables` (`inet TachyonTable`) правила Direct завершаются без метки (`fwmark = 0`), пакеты НЕ попадают в `ip rule` таблицу `tachyon` (205), НЕ попадают в `TProxy :1602` и ВООБЩЕ НЕ ЗАХОДЯТ в ядро `tachyon-core` — они маршрутизируются напрямую ядром Linux в WAN (`0ms` накладных расходов). Правило MSS Clamping (`tcp flags syn`) работает только для TCP SYN и вообще не затрагивает UDP.\n" +
         "  2) ПРОКСИРУЕМЫЙ ТРАФИК (`Proxy` / `action='connection'`): получает FakeIP `198.18.0.0/15` (или попадает в `@tachyon_subnets` / прокси-сеты) -> в `inet TachyonTable` получает `fwmark 0x04000000` -> `ip rule` таблица `tachyon` (205) -> `TProxy :1602` -> обрабатывается ядром `tachyon-core` (Clash API `127.0.0.1:9090`).\n" +
         "- Синтаксис проверки маршрута: ВСЕГДА указывайте и IP клиента, и целевой домен/IP: `tachyon route_explain <ip_клиента> <домен_или_ip> [порт] [tcp|udp]` (например: `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Вызов без целевого домена/IP некорректен.\n" +
         "- Модульная схема UCI (`/etc/config/tachyon`): `settings`, `section` (оркестратор правила), `condition` (условия: домены, списки, CIDR, GeoIP/GeoSite, порты, IP/MAC клиентов), `outbound_source` (подписки, ссылки, JSON, провайдеры), `balancer` (`balancer_type` `urltest`/`priority`, `mode` `least_test`/`passive`/`round_robin`/`sticky`, `check_interval`, `active_check_interval`), `outbound_group` (цепочка отказоустойчивости primary/backup и `fail_policy`), `server` (серверные инбаунды), `telegram`, `guest_mode`.\n" +
-        "- Локальные провайдеры: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua-скрипты `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `tailscale`, `torrserver`.\n" +
+        "- Встроенные модули ядра (`tachyon-core`): нативный `desync` (адаптивная десинхронизация пакетов 2.0), нативный `wdtt` / `csqtt` (WebRTC/VK/TURN транспорт), нативный `tailscale` эндпоинт, `fptn`, а также `torrserver`.\n" +
         "- Контур надёжности и инструменты: `watchdog.uc`, `reconciler.uc` (точечный ремонт без перезапуска ядра), `known_good.uc` (откат к эталону Last Known Good), `transaction.uc` (атомарные транзакции с LIFO-откатом), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
         "ПРАВИЛА КОНФИДЕНЦИАЛЬНОСТИ И БЕЗОПАСНОСТИ:\n" +
         "- Все входные данные обезличены системой защиты Tachyon (`[REDACTED_*]`).\n" +
@@ -4145,12 +3976,12 @@ function compute_ai_doctor_result(user_query) {
             "FIX: code1, code2\n\n" +
             "IMPORTANT: do NOT report \"everything is fine\" when the Live Verification or Stability section shows any FAIL check, WAN flaps, or repeated service restarts — those are real problems even if the point-in-time checks passed.\n\n" +
             "Available quick fix codes:\n" +
-            "- start_singbox (sing-box / tachyon-core process is stopped or missing)\n" +
+            "- start_tachyon_core (tachyon-core process is stopped or missing)\n" +
             "- rebuild_rules (nftables or ip rules damaged)\n" +
             "- fix_dnsmasq (dnsmasq service not responding)\n" +
             "- fix_resolv_symlink (resolv.conf symlink broken)\n" +
             "- start_watchdog (watchdog daemon stopped)\n" +
-            "- restart_singbox_dns (sing-box / tachyon-core DNS failed)\n" +
+            "- restart_tachyon_core_dns (tachyon-core DNS failed)\n" +
             "- fix_uci_config (Tachyon UCI config corrupted)\n" +
             "- fix_wan_interface (WAN interface down)\n" +
             "- fix_gateway (default gateway missing)\n" +
@@ -4158,8 +3989,6 @@ function compute_ai_doctor_result(user_query) {
             "- update_subscriptions (force update proxy subscriptions)\n" +
             "- reset_firewall (restart router firewall)\n" +
             "- restart_network (restart network service)\n" +
-            "- restart_zapret (restart Zapret/ByeDPI engines)\n" +
-            "- restart_providers (restart WDTT/OLCRTC provider runtimes)\n" +
             "- fix_system_time (system time is out of sync, breaking TLS)\n" +
             "- flush_conntrack (conntrack table is full)\n" +
             "- fix_bootstrap_dns (bootstrap DNS resolver is unreachable)\n" +
@@ -4168,8 +3997,7 @@ function compute_ai_doctor_result(user_query) {
             "- enable_safe_bypass (enable safe Direct WAN bypass fallback)\n" +
             "- restore_native_internet (restore native direct internet without Tachyon)\n" +
             "- optimize_memory (flush memory caches)\n" +
-            "- switch_to_doh (switch DNS interception to DoH)\n" +
-            "- upgrade_to_singbox_extended (upgrade sing-box to extended fork for AmneziaWG/advanced protocols)\n\n" +
+            "- switch_to_doh (switch DNS interception to DoH)\n\n" +
             "If no quick fix applies, do NOT output any FIX tag.", arch_ref_en, sys_context);
     } else {
         prompt = sprintf(
@@ -4182,12 +4010,12 @@ function compute_ai_doctor_result(user_query) {
             "FIX: код1, код2\n\n" +
             "ВАЖНО: не пишите «всё в порядке», если в секции Live Verification или Stability есть хоть один провал, флапы WAN или повторные перезапуски сервисов — это реальные проблемы, даже если мгновенные проверки прошли.\n\n" +
             "Доступные коды быстрого исправления:\n" +
-            "- start_singbox (sing-box / tachyon-core упал или остановлен)\n" +
+            "- start_tachyon_core (tachyon-core упал или остановлен)\n" +
             "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
             "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +
             "- fix_resolv_symlink (resolv.conf повреждён)\n" +
             "- start_watchdog (watchdog остановлен)\n" +
-            "- restart_singbox_dns (sing-box / tachyon-core DNS не отвечает)\n" +
+            "- restart_tachyon_core_dns (tachyon-core DNS не отвечает)\n" +
             "- fix_uci_config (конфиг Tachyon повреждён)\n" +
             "- fix_wan_interface (WAN интерфейс не работает)\n" +
             "- fix_gateway (шлюз отсутствует)\n" +
@@ -4195,8 +4023,6 @@ function compute_ai_doctor_result(user_query) {
             "- update_subscriptions (принудительно обновить прокси подписки)\n" +
             "- reset_firewall (перезапустить файрвол роутера)\n" +
             "- restart_network (перезапустить сетевой стек)\n" +
-            "- restart_zapret (перезапустить службы Zapret/ByeDPI)\n" +
-            "- restart_providers (перезапустить провайдеры WDTT/OLCRTC)\n" +
             "- fix_system_time (системное время сбито, ломает TLS)\n" +
             "- flush_conntrack (таблица conntrack переполнена)\n" +
             "- fix_bootstrap_dns (bootstrap DNS недоступен)\n" +
@@ -4205,8 +4031,7 @@ function compute_ai_doctor_result(user_query) {
             "- enable_safe_bypass (включить безопасный обход через WAN напрямую)\n" +
             "- restore_native_internet (вернуть прямой интернет без Tachyon)\n" +
             "- optimize_memory (очистить оперативно память)\n" +
-            "- switch_to_doh (переключить DNS на DoH)\n" +
-            "- upgrade_to_singbox_extended (установить расширенную сборку sing-box-extended для AmneziaWG и доп. протоколов)\n\n" +
+            "- switch_to_doh (переключить DNS на DoH)\n\n" +
             "Если авто-исправление не применимо, не пишите тег FIX.", arch_ref_ru, sys_context);
     }
 

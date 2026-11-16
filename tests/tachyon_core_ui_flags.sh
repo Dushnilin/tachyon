@@ -2,11 +2,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-# tachyon-core is an engine variant in its own right: system-info, the ui
-# capability flags and the sing-box check must all name it as such instead of
-# guessing "tiny" or "stable" from a version number that is not in sing-box's
-# series at all. The flags drive the updates dropdown and the diagnostics tab,
-# so a wrong answer there is a wrong variant shown to the user.
+# system-info, ui capabilities, and check-tachyon-core must report
+# tachyon-core version, repo URL, cert_pin, tailscale, and fptn flags cleanly.
 
 SYSINFO_UC="$TACHYON_LIB/diagnostics/runtime.uc"
 UI_UC="$TACHYON_LIB/service/ui.uc"
@@ -14,7 +11,7 @@ UI_UC="$TACHYON_LIB/service/ui.uc"
 make_binary() {
   cat >"$WORK_DIR/tachyon-core" <<SH
 #!/bin/sh
-printf 'sing-box version $1\n\n'
+printf 'tachyon-core version $1\n\n'
 printf 'Tags: with_quic,with_tailscale\n'
 SH
   chmod 0755 "$WORK_DIR/tachyon-core"
@@ -30,31 +27,30 @@ json_str() {
 
 system_info() {
   TACHYON_LIB="$TACHYON_LIB" \
-  SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
-  SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version" \
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
+  TACHYON_CORE_VERSION_FILE="$WORK_DIR/tachyon-core-version" \
+  TACHYON_CORE_BIN="$WORK_DIR/tachyon-core" \
+  TACHYON_DIAGNOSTICS_CORE_BIN_PATH="$WORK_DIR/tachyon-core" \
   TACHYON_SYSTEM_INFO_CACHE_FILE="$WORK_DIR/system-info.json" \
   TACHYON_SYSTEM_INFO_CACHE_TTL=0 \
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
     ucode -L "$TACHYON_LIB" "$SYSINFO_UC" get-system-info
 }
 
-check_sing_box_json() {
+check_tachyon_core_json() {
   TACHYON_LIB="$TACHYON_LIB" \
-  SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
-  SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version" \
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
+  TACHYON_CORE_VERSION_FILE="$WORK_DIR/tachyon-core-version" \
+  TACHYON_CORE_BIN="$WORK_DIR/tachyon-core" \
+  TACHYON_DIAGNOSTICS_CORE_BIN_PATH="$WORK_DIR/tachyon-core" \
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
-    ucode -L "$TACHYON_LIB" "$SYSINFO_UC" check-sing-box
+    ucode -L "$TACHYON_LIB" "$SYSINFO_UC" check-tachyon-core
 }
 
 ui_capabilities() {
   PATH="$WORK_DIR:$PATH" \
   TACHYON_CONFIG_NAME=tachyon-tachyon-core-flags-test \
   TACHYON_UI_STATE_DIR="$WORK_DIR/state" \
-  TACHYON_UI_SING_BOX_VERSION_CACHE_FILE="$WORK_DIR/sb-version-cache" \
-  TACHYON_UI_SING_BOX_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant" \
-  TACHYON_UI_SING_BOX_BIN_PATH="$WORK_DIR/tachyon-core" \
+  TACHYON_UI_CORE_VERSION_CACHE_FILE="$WORK_DIR/core-version-cache" \
+  TACHYON_UI_CORE_BIN_PATH="$WORK_DIR/tachyon-core" \
   ZAPRET_PROVIDER_NFQWS_BIN="$WORK_DIR/missing-nfqws" \
   ZAPRET2_PROVIDER_NFQWS2_BIN="$WORK_DIR/missing-nfqws2" \
   BYEDPI_BIN="$WORK_DIR/missing-ciadpi" \
@@ -63,129 +59,53 @@ ui_capabilities() {
 
 rm -f "$WORK_DIR/tachyon-core-version"
 
-# 1. Manual copy without a marker, stale "tiny" marker from a replaced binary:
-#    the version suffix must win and the binary must not be labeled tiny.
-printf 'tiny\n' >"$WORK_DIR/tachyon-core-variant"
-make_binary 'v0.0.1-tachyon.0'
+# 1. Version suffix + repo URL + cert_pin + tailscale + fptn in system-info.
+make_binary 'v0.5.7-tachyon.0'
 info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
-  fail "system-info must flag a tachyon-core version suffix as tachyon_core"
-[ "$(json_int "$info" sing_box_tiny)" = "0" ] ||
-  fail "a stale tiny marker must not reclassify tachyon-core as tiny"
-[ "$(json_int "$info" sing_box_extended)" = "0" ] ||
-  fail "tachyon-core must not be flagged as an extended fork"
-[ "$(json_int "$info" sing_box_cert_pin)" = "1" ] ||
-  fail "tachyon-core answers certificate_sha256 in the capability model"
-url="$(json_str "$info" sing_box_repo_url)"
+[ "$(json_str "$info" active_engine)" = "tachyon-core" ] ||
+  fail "system-info must report active_engine=tachyon-core"
+[ "$(json_int "$info" tachyon_core_cert_pin)" = "1" ] ||
+  fail "tachyon-core must report tachyon_core_cert_pin=1"
+[ "$(json_int "$info" tachyon_core_tailscale)" = "1" ] ||
+  fail "system-info must flag tailscale for tachyon-core"
+[ "$(json_int "$info" tachyon_core_fptn)" = "1" ] ||
+  fail "system-info must flag fptn for tachyon-core"
+url="$(json_str "$info" tachyon_core_repo_url)"
 case "$url" in
   *Dushnilin/tachyon-core*) ;;
   *) fail "tachyon-core system-info must point at Dushnilin/tachyon-core, got '$url'" ;;
 esac
 
-# 2. Tailscale and FPTN are compiled into the core itself, so both flags
-#    follow it without any build-tag probing.
-rm -f "$WORK_DIR/tachyon-core-variant"
-make_binary 'v0.0.1-tachyon.0'
-rm -f "$WORK_DIR/system-info.json"
-info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_tailscale)" = "1" ] ||
-  fail "system-info must flag tailscale for tachyon-core without a build tag"
-[ "$(json_int "$info" sing_box_fptn)" = "1" ] ||
-  fail "system-info must flag fptn for tachyon-core"
-
-# 3. The installer-written marker is the authority even over a version string
-#    that has no suffix.
-printf 'tachyon-core\n' >"$WORK_DIR/tachyon-core-variant"
-make_binary 'v0.0.1-tachyon.0'
-rm -f "$WORK_DIR/system-info.json"
-info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
-  fail "the tachyon-core variant marker must flag tachyon_core"
-
-# 4. The check must not run tachyon-core's own 0.x number through the upstream
-#    1.12.4 gate - that gate used to mark a healthy core as incompatible.
-rm -f "$WORK_DIR/tachyon-core-variant"
-check="$(PATH="$WORK_DIR:$PATH" check_sing_box_json)"
-[ "$(json_int "$check" sing_box_version_ok)" = "1" ] ||
+# 2. check-tachyon-core accepts 0.x versions cleanly.
+check="$(PATH="$WORK_DIR:$PATH" check_tachyon_core_json)"
+[ "$(json_int "$check" tachyon_core_version_ok)" = "1" ] ||
   fail "tachyon-core version must pass the compatibility check"
-[ "$(json_int "$check" sing_box_cert_pin)" = "1" ] ||
+[ "$(json_int "$check" tachyon_core_cert_pin)" = "1" ] ||
   fail "tachyon-core must report certificate pinning support in the check"
-[ "$(json_int "$check" sing_box_extended)" = "0" ] ||
-  fail "the check must not flag tachyon-core as an extended fork"
 
-# 5. The ui capabilities feed the diagnostics tab and must agree.
-printf 'tiny\n' >"$WORK_DIR/tachyon-core-variant"
-make_binary 'v0.0.1-tachyon.0'
+# 3. ui capabilities agree.
 caps="$(ui_capabilities)"
-[ "$(json_int "$caps" sing_box_tachyon_core)" = "1" ] ||
-  fail "ui capabilities must flag tachyon_core"
-[ "$(json_int "$caps" sing_box_tiny)" = "0" ] ||
-  fail "ui capabilities must not flag tachyon-core as tiny despite the stale marker"
-[ "$(json_int "$caps" sing_box_tailscale)" = "1" ] ||
+[ "$(json_int "$caps" tachyon_core_tailscale)" = "1" ] ||
   fail "ui capabilities must keep tailscale available for tachyon-core"
-[ "$(json_int "$caps" sing_box_fptn)" = "1" ] ||
+[ "$(json_int "$caps" tachyon_core_fptn)" = "1" ] ||
   fail "ui capabilities must flag fptn for tachyon-core"
+[ "$(json_int "$caps" tachyon_core_cert_pin)" = "1" ] ||
+  fail "ui capabilities must flag cert_pin for tachyon-core"
 
-# 6. A stock stable build must never pick up the new flags.
-rm -f "$WORK_DIR/tachyon-core-variant"
-make_binary '1.13.21'
-rm -f "$WORK_DIR/system-info.json"
-info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_tachyon_core)" = "0" ] ||
-  fail "a stock sing-box must not be flagged as tachyon_core"
-[ "$(json_int "$info" sing_box_fptn)" = "0" ] ||
-  fail "a stock sing-box must not be flagged as fptn-capable"
-[ "$(json_int "$info" sing_box_tiny)" = "0" ] ||
-  fail "a stock sing-box with tags must not be flagged as tiny"
-
-# 7. Real tachyon-core 0.1.x banner ("tachyon-core 0.1.4 (pure-Rust routing core)")
-#    without a "-tachyon." suffix or marker file must be recognized by both
-#    system-info and ui capabilities, and report version "0.1.4".
-rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
+# 4. Real tachyon-core banner ("tachyon-core 0.5.7 (pure-Rust routing core)")
+rm -f "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/core-version-cache"
 cat >"$WORK_DIR/tachyon-core" <<'SH'
 #!/bin/sh
-printf 'tachyon-core 0.1.4 (pure-Rust routing core)\n'
+printf 'tachyon-core 0.5.7 (pure-Rust routing core)\n'
 printf 'Environment: linux/aarch64 (tachyon-core/rust)\n'
 printf 'Tags: with_quic,with_tailscale,with_fptn\n'
 SH
 chmod 0755 "$WORK_DIR/tachyon-core"
 info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_tachyon_core)" = "1" ] ||
-  fail "system-info must flag tachyon-core 0.1.4 banner as tachyon_core"
-[ "$(json_str "$info" sing_box_version)" = "0.1.4" ] ||
-  fail "system-info must extract 0.1.4 from tachyon-core banner, got '$(json_str "$info" sing_box_version)'"
+[ "$(json_str "$info" tachyon_core_version)" = "0.5.7" ] ||
+  fail "system-info must extract 0.5.7 from tachyon-core banner, got '$(json_str "$info" tachyon_core_version)'"
 caps="$(ui_capabilities)"
-[ "$(json_int "$caps" sing_box_tachyon_core)" = "1" ] ||
-  fail "ui capabilities must flag tachyon-core 0.1.4 banner as tachyon_core"
-[ "$(json_str "$caps" sing_box_profile)" = "tachyon-core" ] ||
-  fail "ui capabilities must set sing_box_profile=tachyon-core for 0.1.4 banner, got '$(json_str "$caps" sing_box_profile)'"
-
-# 8. Upgrade from 1.5.14 with sing-box 1.14.3-extended-2.7.3 installed (no tachyon-core):
-#    must report sing_box_extended=1, sing_box_tachyon_core=0, profile=extended,
-#    and frontend Routing Engine card must label it "sing-box" (not "tachyon-core")
-#    and bind Check/Update to the selected engine family.
-rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
-printf 'extended\n' >"$WORK_DIR/tachyon-core-variant"
-make_binary '1.14.3-extended-2.7.3'
-info="$(PATH="$WORK_DIR:$PATH" system_info)"
-[ "$(json_int "$info" sing_box_extended)" = "1" ] ||
-  fail "system-info must flag sing-box 1.14.3-extended-2.7.3 as sing_box_extended=1"
-[ "$(json_int "$info" sing_box_tachyon_core)" = "0" ] ||
-  fail "system-info must NOT flag sing-box 1.14.3-extended-2.7.3 as tachyon_core"
-[ "$(json_str "$info" sing_box_version)" = "1.14.3-extended-2.7.3" ] ||
-  fail "system-info must report 1.14.3-extended-2.7.3, got '$(json_str "$info" sing_box_version)'"
-caps="$(ui_capabilities)"
-[ "$(json_int "$caps" sing_box_extended)" = "1" ] ||
-  fail "ui capabilities must flag sing-box 1.14.3-extended-2.7.3 as sing_box_extended=1"
-[ "$(json_int "$caps" sing_box_tachyon_core)" = "0" ] ||
-  fail "ui capabilities must NOT flag sing-box 1.14.3-extended-2.7.3 as tachyon_core"
-[ "$(json_str "$caps" sing_box_profile)" = "extended" ] ||
-  fail "ui capabilities must set sing_box_profile=extended, got '$(json_str "$caps" sing_box_profile)'"
-
-FE_CARD="$ROOT_DIR/fe-app-tachyon/src/tachyon/tabs/updates/initController.ts"
-grep -qF "if (!isSelectedInstalled || isSingBoxActive)" "$FE_CARD" ||
-  fail "renderEngineCard must run runComponentAction when switching between sing-box variants"
-grep -qF "const selectedCheckComponent: Tachyon.ComponentName = 'sing_box'" "$FE_CARD" ||
-  fail "renderEngineCard must bind Check update / Update to sing_box"
+[ "$(json_int "$caps" tachyon_core_fptn)" = "1" ] ||
+  fail "ui capabilities must flag fptn for tachyon-core banner"
 
 printf 'tachyon-core ui flag checks passed\n'

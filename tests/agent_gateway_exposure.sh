@@ -23,7 +23,7 @@ config settings 'settings'
 	option masque_access_token 'masque-access-token'
 	option openvpn_password 'openvpn-pass'
 	option yacd_secret_key 'yacd-secret'
-	option engine 'sing-box'
+	option log_level 'warn'
 
 config server 'srv'
 	option protocol 'vless'
@@ -40,7 +40,7 @@ for secret in SUPERSECRET-BOT-TOKEN agent-secret-value warp-secret-key \
 done
 
 # Non-secret options must survive, otherwise the endpoint is useless.
-for keep in "option engine 'sing-box'" "option enable_telegram '1'"; do
+for keep in "option log_level 'warn'" "option enable_telegram '1'"; do
   printf '%s' "$masked" | grep -qF "$keep" || fail "masked config dropped a harmless option: $keep"
 done
 

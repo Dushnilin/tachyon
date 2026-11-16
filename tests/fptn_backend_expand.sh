@@ -14,13 +14,8 @@ set -eo pipefail
 
 GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 
-# fptn_transport_mode() reports "native" only on tachyon-core, keyed off the
-# variant marker file - never off a version string, both families ship a
-# sing-box binary. The test image has no fptn-client component, so with the
-# marker in place the mode resolves to native deterministically.
-printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant"
-# A saved selector default must not be able to move the assertions.
+# fptn_transport_mode() resolves to native on tachyon-core.
+# The test image has no fptn-client component; native mode resolves deterministically.
 export TACHYON_PERSISTENT_SELECTOR_STATE_FILE="$WORK_DIR/selector_state.json"
 
 generate_fixture() {

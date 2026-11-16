@@ -19,7 +19,7 @@ uci_core.get_all = function(pkg, section) { return cfg; };
 uci_core.get = function(pkg, section, key) { return core_enabled; };
 require("service.firewall_health").manual_bypass_active = function(s) { return s.bypass == true; };
 updates_log = function(msg, level) {};
-prepare_sing_box_service_disabled = function() { disabled++; };
+prepare_core_service_disabled = function() { disabled++; };
 run_logged = function(label, cmd, timeout) { push(starts, cmd); return true; };
 command_success_from_args = function(args) { push(starts, join(" ", args)); return true; };
 function check(ok, message) { if (!ok) die(message + "\n"); }
@@ -29,11 +29,11 @@ check(tachyon_was_running, "Missing nft during failsafe lost restart intent");
 // The component update temporarily disables/stops the service after capture.
 cfg.shutdown_correctly = "1";
 core_enabled = "0";
-tachyon_stopped_for_sing_box_change = true;
+tachyon_stopped_for_core_change = true;
 check(restart_tachyon_after_successful_change(), "Success path failed");
 check(length(starts) == 1 && index(starts[0], "start") >= 0 && disabled == 0,
     "Success path did not preserve pre-update intent");
-restart_tachyon_after_failed_sing_box_change();
+restart_tachyon_after_failed_core_change();
 check(length(starts) == 2, "Failed core update did not restore the prior running state");
 
 starts = [];
@@ -41,7 +41,7 @@ core_enabled = "1"; // manual stop does not necessarily clear this flag
 capture_tachyon_running_state();
 check(!tachyon_was_running, "Manual stop was mistaken for failed runtime");
 restart_tachyon_after_successful_change();
-restart_tachyon_after_failed_sing_box_change();
+restart_tachyon_after_failed_core_change();
 check(length(starts) == 0 && disabled == 1, "Update restarted a manually stopped service");
 
 cfg.shutdown_correctly = "0";

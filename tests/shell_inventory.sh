@@ -18,7 +18,7 @@ runtime_shell_files="$(find "$TACHYON_LIB" -type f -name '*.sh' -print)"
 [ -z "$runtime_shell_files" ] ||
   fail "runtime library must not contain shell owners: $runtime_shell_files"
 
-legacy_shell_owners='runtime_state\.sh|rules_nft_runtime\.sh|config_validation\.sh|sing_box_runtime\.sh|updates_runtime\.sh|updater\.sh|status_diagnostics\.sh|helpers\.sh|constants\.sh|subscription_runtime\.sh|byedpi\.sh|zapret\.sh|zapret2\.sh'
+legacy_shell_owners='runtime_state\.sh|rules_nft_runtime\.sh|config_validation\.sh|core_runtime\.sh|updates_runtime\.sh|updater\.sh|status_diagnostics\.sh|helpers\.sh|constants\.sh|subscription_runtime\.sh|byedpi\.sh|zapret\.sh|zapret2\.sh'
 if find "$TACHYON_FILES" -type f -print | grep -E "$legacy_shell_owners" >/dev/null 2>&1; then
   fail "legacy runtime shell owner file returned under tachyon/files"
 fi
@@ -75,8 +75,8 @@ grep -Fq 'initd_ucode reload-service' "$TACHYON_INIT" ||
 grep -Fq 'initd_ucode trigger-plan' "$TACHYON_INIT" ||
   fail "init.d trigger decisions must be produced by ucode"
 
-if grep -n -E '(^|[^[:alnum:]_])(uci|config_load|config_get|config_foreach|jsonfilter|nft|iptables|ip6?tables|sing-box|dnsmasq|curl|wget|opkg|apk)([[:space:]]|$)' "$TACHYON_INIT" >/dev/null 2>&1; then
-  fail "init.d must not own UCI, routing, download, package, dnsmasq, nft, or sing-box decisions"
+if grep -n -E '(^|[^[:alnum:]_])(uci|config_load|config_get|config_foreach|jsonfilter|nft|iptables|ip6?tables|tachyon-core|dnsmasq|curl|wget|opkg|apk)([[:space:]]|$)' "$TACHYON_INIT" >/dev/null 2>&1; then
+  fail "init.d must not own UCI, routing, download, package, dnsmasq, nft, or tachyon-core decisions"
 fi
 if grep -n -E 'TACHYON_RELOAD_LOCK|TACHYON_URLTEST_SELECTOR_SWITCHES|capture_reload_state|populate_nft_runtime_sets|rebuild_nft_runtime|apply_pending_urltest_selector_switches' "$TACHYON_INIT" >/dev/null 2>&1; then
   fail "init.d must not own runtime state or reload decisions"

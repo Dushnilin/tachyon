@@ -45,7 +45,7 @@ The following are considered in scope:
 
 The following are **out of scope**:
 
-- Vulnerabilities in upstream projects (sing-box, zapret, OpenWrt itself) — report those to the respective maintainers.
+- Vulnerabilities in upstream third-party projects (such as OpenWrt itself or third-party core upstreams) — report those to the respective maintainers.
 - Issues that require physical access to the router.
 - Denial of service through resource exhaustion from the local network only.
 

@@ -112,7 +112,7 @@ vi.mock('../../../services/stabilityClient', () => ({
       uptimes: {
         system: { seconds: 344625, pretty: '3d 23h 43m' },
         daemons: {
-          'sing-box': {
+          'tachyon-core': {
             running: true,
             pid: 8914,
             uptime_seconds: 2053,
@@ -145,13 +145,13 @@ vi.mock('../../../services/stabilityClient', () => ({
           swap_total_kb: 0,
           swap_free_kb: 0,
           swap_used_kb: 0,
-          daemons_rss_kb: { 'sing-box': 104416, watchdog: 3944 },
+          daemons_rss_kb: { 'tachyon-core': 104416, watchdog: 3944 },
         },
         file_descriptors: {
           system_allocated: 736,
           system_max: 70768,
           system_used_pct: 1,
-          daemons: { 'sing-box': 113, watchdog: 27 },
+          daemons: { 'tachyon-core': 113, watchdog: 27 },
         },
         orphans: { count: 0, orphans: [] },
       },

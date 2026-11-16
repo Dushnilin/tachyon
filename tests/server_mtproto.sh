@@ -3,8 +3,9 @@
 set -eo pipefail
 
 # Canonical serialized secret for key 367a189aee18fa31c190054efd4a8e95 with
-# faketls host google.com.
+# faketls host google.com. tachyon-core takes the 32-hex key part directly.
 CANONICAL='ee367a189aee18fa31c190054efd4a8e95676f6f676c652e636f6d'
+CORE_KEY='367a189aee18fa31c190054efd4a8e95'
 
 fixture_with_secret() {
   cat >"$WORK_DIR/mtproto_fixture.json" <<JSON
@@ -40,16 +41,16 @@ JSON
 generate() {
   mkdir -p "$WORK_DIR/out.section-cache"
   ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-    "$WORK_DIR/mtproto_fixture.json" "$WORK_DIR/singbox_mtproto.json" "127.0.0.1" 0 0
+    "$WORK_DIR/mtproto_fixture.json" "$WORK_DIR/tachyon_core_mtproto.json" "127.0.0.1" 0 0
 }
 
 assert_canonical_user_password() {
-  grep -q '"type": "mtproxy"' "$WORK_DIR/singbox_mtproto.json" ||
-    fail "mtproto server must emit an mtproxy inbound, never a shadowsocks fallback"
-  grep -q '"secret": "'"$CANONICAL"'"' "$WORK_DIR/singbox_mtproto.json" ||
-    fail "sing-box config must carry the canonical serialized secret as MTProxyUser.secret"
-  if grep -q '"method": "2022' "$WORK_DIR/singbox_mtproto.json"; then
-    fail "mtproxy inbound must not carry a shadowsocks-2022 method"
+  grep -q '"type": "mtproto"' "$WORK_DIR/tachyon_core_mtproto.json" ||
+    fail "mtproto server must emit an mtproto inbound, never a shadowsocks fallback"
+  grep -q '"secret": "'"$CORE_KEY"'"' "$WORK_DIR/tachyon_core_mtproto.json" ||
+    fail "tachyon-core config must carry the 32-hex secret key"
+  if grep -q '"method": "2022' "$WORK_DIR/tachyon_core_mtproto.json"; then
+    fail "mtproto inbound must not carry a shadowsocks-2022 method"
   fi
 }
 
@@ -84,7 +85,7 @@ generate
 assert_canonical_user_password
 
 # 7. The validator accepts a canonical secret and rejects garbage with a
-# clear message instead of a sing-box FATAL at start time.
+# clear message instead of a tachyon-core FATAL at start time.
 cat >"$WORK_DIR/validate_secret.uc" <<'UC'
 let common = require("core.common");
 let secret = ARGV[1];

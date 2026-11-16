@@ -3,5 +3,4 @@
 /etc/tachyon-core/
 /etc/init.d/tachyon-core
 /usr/bin/tachyon-core
-/usr/bin/sing-box
 /usr/lib/libcronet.so

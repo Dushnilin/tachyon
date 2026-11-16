@@ -30,7 +30,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# 1. Test singbox/route.uc rules for wifi_calling_direct and bittorrent_policy (off / direct / block + legacy isolate_p2p)
+# 1. Test tachyon_core/route.uc rules for wifi_calling_direct and bittorrent_policy (off / direct / block + legacy isolate_p2p)
 ucode -L "$TACHYON_LIB" -e '
 let route = require("tachyon_core.route");
 
@@ -76,7 +76,7 @@ if (!found_bt_reject || !found_port_reject || !found_range_reject || !found_vowi
     warn("cfg_block assertions failed: " + sprintf("%J", cfg_block.rules) + "\n");
     exit(1);
 }
-' || fail "singbox/route.uc wifi_calling_direct and bittorrent_policy test failed"
+' || fail "tachyon_core/route.uc wifi_calling_direct and bittorrent_policy test failed"
 
 # 2. Test nft/apply.uc and service/state.uc signatures change when wifi_calling_direct or bittorrent_policy changes
 cat >"$WORK_DIR/fixture-base.json" <<'EOF'

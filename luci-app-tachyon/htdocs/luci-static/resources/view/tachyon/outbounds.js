@@ -61,9 +61,6 @@ const PROTOCOL_CHOICES = [
   "tailscale",
   "tor",
   "desync",
-  "zapret2",
-  "zapret",
-  "byedpi",
   "socks",
   "http",
   "direct",
@@ -92,15 +89,7 @@ const PORT_CHOICES = [
   "8080",
 ];
 
-const DPI_SOURCE_TYPES = new Set(["zapret", "zapret2", "byedpi", "desync"]);
-
-const ZAPRET_DEFAULT_NFQWS_OPT =
-  "--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin";
-
-const ZAPRET2_DEFAULT_NFQWS2_OPT =
-  "--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6";
-
-const BYEDPI_DEFAULT_CMD_OPTS = "-o 2 --auto=t,r,a,s -d 2";
+const DPI_SOURCE_TYPES = new Set(["desync"]);
 
 function isoToFlagEmoji(iso) {
   const code = String(iso || "")
@@ -1289,34 +1278,6 @@ function shortenMiddle(str, maxLen) {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-function isNativeTailscaleOutboundSection(sectionId) {
-  const rawMode = String(
-    uci.get(UCI_PACKAGE, sectionId, "tailscale_mode") || "",
-  )
-    .trim()
-    .toLowerCase();
-  if (rawMode === "native") {
-    return true;
-  }
-  if (rawMode === "embedded") {
-    return false;
-  }
-  const iface = String(
-    uci.get(UCI_PACKAGE, sectionId, "interface_name") || "",
-  ).trim();
-  const hasEmbeddedFields = Boolean(
-    uci.get(UCI_PACKAGE, sectionId, "tailscale_auth_key") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_control_url") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_hostname") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_exit_node") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_accept_routes") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_accept_dns") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_exit_node_allow_lan_access") ||
-      uci.get(UCI_PACKAGE, sectionId, "tailscale_ephemeral"),
-  );
-  return Boolean(iface) && !hasEmbeddedFields;
-}
-
 function summarizeOutboundSource(sectionId) {
   const stype = (
     uci.get(UCI_PACKAGE, sectionId, "source_type") || "subscription"
@@ -1363,13 +1324,6 @@ function summarizeOutboundSource(sectionId) {
     return `Tor SOCKS5 (127.0.0.1:${port})${prefixTag}`;
   }
   if (stype === "tailscale") {
-    if (isNativeTailscaleOutboundSection(sectionId)) {
-      const iface =
-        String(
-          uci.get(UCI_PACKAGE, sectionId, "interface_name") || "",
-        ).trim() || "tailscale0";
-      return `Tailscale Mesh (${iface})${prefixTag}`;
-    }
     const hostname = String(
       uci.get(UCI_PACKAGE, sectionId, "tailscale_hostname") || "",
     ).trim();
@@ -1384,7 +1338,7 @@ function summarizeOutboundSource(sectionId) {
       hostPart &&
       controlUrl !== "https://controlplane.tailscale.com"
         ? `${hostname} @ ${hostPart}`
-        : hostname || hostPart || _("Embedded");
+        : hostname || hostPart || _("Tailscale");
     return `Tailscale Mesh (${detail})${prefixTag}`;
   }
   if (stype === "interface") {
@@ -1398,26 +1352,6 @@ function summarizeOutboundSource(sectionId) {
     const jsons = asRawList(uci.get(UCI_PACKAGE, sectionId, "outbound_jsons"));
     return `${_("JSON Outbounds")}: ${jsons.length || 1}${prefixTag}`;
   }
-  if (stype === "zapret2") {
-    const direct =
-      uci.get(UCI_PACKAGE, sectionId, "direct_nfqws") === "1"
-        ? " [Direct NFQUEUE]"
-        : "";
-    return `Zapret2 (nfqws2)${direct}`;
-  }
-  if (stype === "zapret") {
-    const direct =
-      uci.get(UCI_PACKAGE, sectionId, "direct_nfqws") === "1"
-        ? " [Direct NFQUEUE]"
-        : "";
-    return `Zapret (nfqws)${direct}`;
-  }
-  if (stype === "byedpi") {
-    const opts =
-      uci.get(UCI_PACKAGE, sectionId, "byedpi_cmd_opts") ||
-      BYEDPI_DEFAULT_CMD_OPTS;
-    return `ByeDPI: ${shortenMiddle(opts, 42)}`;
-  }
   if (stype === "desync") {
     const preset = uci.get(UCI_PACKAGE, sectionId, "desync_preset") || "auto";
     const fooling = uci.get(UCI_PACKAGE, sectionId, "desync_fooling") || "";
@@ -1425,15 +1359,18 @@ function summarizeOutboundSource(sectionId) {
     return `Desync (${label}${fooling ? ", " + fooling : ""})`;
   }
   if (stype === "wdtt") {
-    const peer = String(uci.get(UCI_PACKAGE, sectionId, "peer") || "").trim();
-    const nativeFlag =
-      uci.get(UCI_PACKAGE, sectionId, "wdtt_native") === "1" ? " [Native]" : "";
-    const detail = peer
-      ? `: ${peer}`
-      : uci.get(UCI_PACKAGE, sectionId, "warp_flow_uri")
-        ? " (URI)"
-        : "";
-    return `WDTT${nativeFlag}${detail}${prefixTag}`;
+    const uri = String(
+      uci.get(UCI_PACKAGE, sectionId, "warp_flow_uri") ||
+        uci.get(UCI_PACKAGE, sectionId, "csqtt_uri") ||
+        "",
+    ).trim();
+    const srv = String(
+      uci.get(UCI_PACKAGE, sectionId, "server") ||
+        uci.get(UCI_PACKAGE, sectionId, "csqtt_server") ||
+        "",
+    ).trim();
+    const detail = srv ? `: ${srv}` : uri ? " (URI)" : "";
+    return `WDTT${detail}${prefixTag}`;
   }
   const srv =
     uci.get(UCI_PACKAGE, sectionId, "server") ||
@@ -3383,9 +3320,6 @@ const PREFIX_COLOR_PRESETS = [
   { label: _("Dark"), bg: "#1e293b", color: "#f8fafc" },
 ];
 
-const OLCRTC_DEFAULT_NFQWS2_OPT =
-  "--filter-udp=50000-65535 --filter-l7=stun,discord --lua-desync=fake:repeats=6 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multidisorder:pos=1,midsld";
-
 function getOutboundOptionSourceType(optionInstance, sectionId) {
   let raw = "";
   try {
@@ -3477,10 +3411,7 @@ function resolveOutboundScannerEngines() {
       : null;
   if (sysInfo && (sysInfo.providerInfoLoaded || sysInfo.loaded)) {
     return Promise.resolve({
-      zapret2: Boolean(sysInfo.zapret2_installed),
-      zapret: Boolean(sysInfo.zapret_installed),
-      byedpi: Boolean(sysInfo.byedpi_installed),
-      desync: Boolean(sysInfo.sing_box_tachyon_core),
+      desync: true,
     });
   }
   if (
@@ -3493,52 +3424,26 @@ function resolveOutboundScannerEngines() {
         .then((res) => {
           const av = res && res.success ? res.data?.available_engines : null;
           return {
-            zapret2: Boolean(av?.zapret2),
-            zapret: Boolean(av?.zapret),
-            byedpi: Boolean(av?.byedpi),
             desync: Boolean(av?.desync),
           };
         })
         .catch(() => ({
-          zapret2: false,
-          zapret: false,
-          byedpi: false,
           desync: false,
         }));
   }
   return (
     outboundScannerEnginesPromise ||
     Promise.resolve({
-      zapret2: false,
-      zapret: false,
-      byedpi: false,
       desync: false,
     })
   );
-}
-
-function getModalSourceType(sectionId) {
-  if (typeof document !== "undefined") {
-    const modalRoot = document.querySelector(".cbi-modal") || document;
-    const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
-    const el =
-      modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
-      modalRoot.querySelector(`select[id="${fieldId}"]`) ||
-      modalRoot.querySelector(`[data-field="${fieldId}"] select`);
-    if (el && "value" in el && el.value) {
-      return String(el.value).trim().toLowerCase();
-    }
-  }
-  return String(uci.get(UCI_PACKAGE, sectionId, "source_type") || "")
-    .trim()
-    .toLowerCase();
 }
 
 function attachOutboundStrategyScannerButton(
   sectionRef,
   option,
   engineKey,
-  optName,
+  _optName,
 ) {
   const origRender = option.renderWidget;
   option.renderWidget = function (sectionId, optionIndex, cfgvalue) {
@@ -3562,34 +3467,12 @@ function attachOutboundStrategyScannerButton(
         scanBtn.style.display = "none";
         return;
       }
-      if (optName === "nfqws2_opt") {
-        scanBtn.style.display =
-          getModalSourceType(sectionId) === "zapret2" ? "inline-flex" : "none";
-        return;
-      }
       scanBtn.style.display = "inline-flex";
     };
 
-    let cachedEngines = null;
     resolveOutboundScannerEngines()
       .then((av) => {
-        cachedEngines = av;
         updateBtnVisibility(av);
-        if (optName === "nfqws2_opt" && typeof document !== "undefined") {
-          setTimeout(() => {
-            const modalRoot = document.querySelector(".cbi-modal") || document;
-            const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
-            const sourceSel =
-              modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
-              modalRoot.querySelector(`select[id="${fieldId}"]`) ||
-              modalRoot.querySelector(`[data-field="${fieldId}"] select`);
-            if (sourceSel) {
-              sourceSel.addEventListener("change", () => {
-                updateBtnVisibility(cachedEngines);
-              });
-            }
-          }, 0);
-        }
       })
       .catch(() => {});
 
@@ -3602,17 +3485,13 @@ function attachOutboundStrategyScannerButton(
           availableEngines,
           nestedModal: true,
           onApplyStrategy: (_eng, args) => {
-            if (engineKey === "desync") {
-              setModalFieldValue(
-                sectionRef,
-                sectionId,
-                "desync_preset",
-                "custom",
-              );
-              setModalFieldValue(sectionRef, sectionId, "desync_opts", args);
-            } else {
-              setModalFieldValue(sectionRef, sectionId, optName, args);
-            }
+            setModalFieldValue(
+              sectionRef,
+              sectionId,
+              "desync_preset",
+              "custom",
+            );
+            setModalFieldValue(sectionRef, sectionId, "desync_opts", args);
           },
         });
       });
@@ -3665,7 +3544,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.rmempty = false;
-  o.placeholder = _("e.g. Main Subscription, YouTube Zapret2, EU AWG");
+  o.placeholder = _("e.g. Main Subscription, YouTube Desync, EU AWG");
 
   o = section.taboption(
     "general",
@@ -3699,16 +3578,12 @@ function createOutboundsContent(section) {
   o.value("trusttunnel", "TrustTunnel");
   o.value("tewfai", "TewFai");
   o.value("csqtt", "CSQTT / WDTT v3");
-  o.value("zapret2", _("Zapret2 (nfqws2 DPI Desync)"));
-  o.value("zapret", _("Zapret (nfqws DPI Desync)"));
-  o.value("byedpi", _("ByeDPI (ciadpi SOCKS5 Desync)"));
-  o.value("desync", _("Desync (Built-in TCP/UDP DPI Fragmentation)"));
-  o.value("wdtt", _("WDTT (Native / qwdtt)"));
-  o.value("olcrtc", _("OlcRTC (Discord / WebRTC nfqws2)"));
+  o.value("desync", _("Desync (Built-in TCP/UDP Fragmentation)"));
+  o.value("wdtt", _("WDTT (tachyon-core native)"));
   o.value("tor", _("Tor Network (SOCKS5)"));
   o.value("tailscale", _("Tailscale Mesh VPN"));
   o.value("interface", _("Network Interface (WireGuard / OpenVPN / TUN)"));
-  o.value("outbound_json", _("Sing-box Outbound JSON"));
+  o.value("outbound_json", _("Tachyon Core Outbound JSON"));
   o.write = function (sectionId, value) {
     const st = String(value || "subscription")
       .trim()
@@ -3746,7 +3621,7 @@ function createOutboundsContent(section) {
       uci.unset(UCI_PACKAGE, sectionId, "tailscale_exit_node_allow_lan_access");
       uci.unset(UCI_PACKAGE, sectionId, "tailscale_ephemeral");
     }
-    if (st !== "interface" && st !== "tailscale") {
+    if (st !== "interface") {
       uci.unset(UCI_PACKAGE, sectionId, "interface_name");
       uci.unset(UCI_PACKAGE, sectionId, "interface");
     }
@@ -4089,7 +3964,7 @@ function createOutboundsContent(section) {
     form.Value,
     "subscription_update_interval",
     _("Update Interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.modalonly = true;
   o.default = "1h";
@@ -6492,20 +6367,7 @@ function createOutboundsContent(section) {
   o.placeholder = "csqtt://... or qwdtt://...";
   o.depends("source_type", "csqtt");
 
-  // WDTT (Native tachyon-core or qwdtt client)
-  o = section.taboption(
-    "general",
-    form.Flag,
-    "wdtt_native",
-    _("Use Native Core Engine (tachyon-core)"),
-    _(
-      "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client.",
-    ),
-  );
-  o.modalonly = true;
-  o.default = "0";
-  o.depends("source_type", "wdtt");
-
+  // WDTT (Native tachyon-core)
   o = section.taboption(
     "general",
     form.Value,
@@ -6515,31 +6377,6 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.placeholder = "wdtt://... or csqtt://...";
-  o.depends("source_type", "wdtt");
-
-  o = section.taboption(
-    "general",
-    form.Value,
-    "peer",
-    _("Peer (host:port)"),
-    _("Remote endpoint in HOST:PORT format for qwdtt client."),
-  );
-  o.modalonly = true;
-  o.placeholder = "example.com:46000";
-  o.depends("source_type", "wdtt");
-
-  o = section.taboption(
-    "general",
-    form.ListValue,
-    "qwdtt_mode",
-    _("QWDTT Mode"),
-  );
-  o.modalonly = true;
-  o.default = "socks";
-  o.value("", _("Default"));
-  o.value("socks", "socks (SOCKS5)");
-  o.value("rawtun", "rawtun");
-  o.value("vpn", "vpn");
   o.depends("source_type", "wdtt");
 
   // ── 9. Network Interface / Tailscale / Tor / JSON ─────────────────────────
@@ -6619,33 +6456,6 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     "general",
-    form.ListValue,
-    "tailscale_mode",
-    _("Tailscale mode"),
-    _(
-      "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface.",
-    ),
-  );
-  o.value("embedded", _("Embedded (tachyon-core / sing-box, default)"));
-  o.value("native", _("Native (system tailscaled / tailscale0)"));
-  o.default = "embedded";
-  o.modalonly = true;
-  o.rmempty = false;
-  o.depends("source_type", "tailscale");
-  o.cfgvalue = function (sectionId) {
-    return isNativeTailscaleOutboundSection(sectionId) ? "native" : "embedded";
-  };
-  o.write = function (sectionId, value) {
-    const mode = value === "native" ? "native" : "embedded";
-    uci.set(UCI_PACKAGE, sectionId, "tailscale_mode", mode);
-    if (mode !== "native") {
-      uci.unset(UCI_PACKAGE, sectionId, "interface_name");
-      uci.unset(UCI_PACKAGE, sectionId, "interface");
-    }
-  };
-
-  o = section.taboption(
-    "general",
     form.Value,
     "tailscale_auth_key",
     _("Tailscale auth key (optional)"),
@@ -6659,7 +6469,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = "tskey-auth-...";
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6678,7 +6488,7 @@ function createOutboundsContent(section) {
       ? true
       : _("Control URL must start with http:// or https://");
   };
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6690,7 +6500,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = "tachyon-router";
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6702,7 +6512,7 @@ function createOutboundsContent(section) {
   o.default = "1";
   o.modalonly = true;
   o.rmempty = false;
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6714,7 +6524,7 @@ function createOutboundsContent(section) {
   o.default = "1";
   o.modalonly = true;
   o.rmempty = false;
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6728,7 +6538,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = "100.64.0.10";
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6742,7 +6552,7 @@ function createOutboundsContent(section) {
   o.default = "0";
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6756,7 +6566,7 @@ function createOutboundsContent(section) {
   o.default = "0";
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ source_type: "tailscale", tailscale_mode: "embedded" });
+  o.depends("source_type", "tailscale");
 
   o = section.taboption(
     "general",
@@ -6764,14 +6574,13 @@ function createOutboundsContent(section) {
     "interface_name",
     _("Network Interface Name"),
     _(
-      "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan).",
+      "Select any existing router interface or preset (e.g. wg0, awg0, tun0, wan, eth0, br-lan).",
     ),
   );
   o.modalonly = true;
   o.rmempty = false;
   o.placeholder = "wg0";
   o.depends("source_type", "interface");
-  o.depends({ source_type: "tailscale", tailscale_mode: "native" });
   o.validate = function (sectionId, value) {
     const st = String(
       this.section.formvalue(sectionId, "source_type") ||
@@ -6780,16 +6589,7 @@ function createOutboundsContent(section) {
     )
       .trim()
       .toLowerCase();
-    const mode = String(
-      this.section.formvalue(sectionId, "tailscale_mode") ||
-        uci.get(UCI_PACKAGE, sectionId, "tailscale_mode") ||
-        "embedded",
-    )
-      .trim()
-      .toLowerCase();
-    const needsInterface =
-      st === "interface" || (st === "tailscale" && mode === "native");
-    if (needsInterface && !String(value || "").trim()) {
+    if (st === "interface" && !String(value || "").trim()) {
       return _("Network Interface Name is required");
     }
     return true;
@@ -6914,125 +6714,12 @@ function createOutboundsContent(section) {
     form.DynamicList,
     "outbound_jsons",
     _("Outbound JSON Objects"),
-    _("Raw sing-box outbound JSON objects."),
+    _("Raw Tachyon Core outbound JSON objects."),
   );
   o.modalonly = true;
   o.depends("source_type", "outbound_json");
 
-  // ── 10. DPI Desync Sources (Zapret2, Zapret, ByeDPI, Native Desync, OlcRTC)
-  o = section.taboption(
-    "general",
-    form.TextValue,
-    "nfqws2_opt",
-    _("NFQWS2 Strategy"),
-    _("Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."),
-  );
-  o.modalonly = true;
-  o.rows = 6;
-  o.wrap = "soft";
-  o.default = ZAPRET2_DEFAULT_NFQWS2_OPT;
-  o.depends("source_type", "zapret2");
-  o.depends("source_type", "olcrtc");
-  function syncStrategyToReferencingSections(sourceId, optionKey, val) {
-    const sections = uci.sections(UCI_PACKAGE, "section") || [];
-    for (const sec of sections) {
-      const secId = sec[".name"];
-      if (!secId) continue;
-      const refs = sec.outbound_source_refs;
-      const refList = Array.isArray(refs) ? refs : refs ? [String(refs)] : [];
-      if (refList.includes(sourceId) && sec[optionKey] !== undefined) {
-        uci.set(UCI_PACKAGE, secId, optionKey, val);
-      }
-    }
-  }
-
-  o.load = function (sectionId) {
-    const existing = uci.get(UCI_PACKAGE, sectionId, "nfqws2_opt");
-    if (existing) return existing;
-    const stype = uci.get(UCI_PACKAGE, sectionId, "source_type");
-    if (stype === "olcrtc") return OLCRTC_DEFAULT_NFQWS2_OPT;
-    return ZAPRET2_DEFAULT_NFQWS2_OPT;
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || "").trim() || ZAPRET2_DEFAULT_NFQWS2_OPT;
-    uci.set(UCI_PACKAGE, sectionId, "nfqws2_opt", nextVal);
-    syncStrategyToReferencingSections(sectionId, "nfqws2_opt", nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, "zapret2", "nfqws2_opt");
-
-  o = section.taboption(
-    "general",
-    form.TextValue,
-    "nfqws_opt",
-    _("NFQWS Strategy"),
-    _("Command-line strategy arguments for nfqws (zapret)."),
-  );
-  o.modalonly = true;
-  o.rows = 6;
-  o.wrap = "soft";
-  o.default = ZAPRET_DEFAULT_NFQWS_OPT;
-  o.depends("source_type", "zapret");
-  o.load = function (sectionId) {
-    return (
-      uci.get(UCI_PACKAGE, sectionId, "nfqws_opt") || ZAPRET_DEFAULT_NFQWS_OPT
-    );
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || "").trim() || ZAPRET_DEFAULT_NFQWS_OPT;
-    uci.set(UCI_PACKAGE, sectionId, "nfqws_opt", nextVal);
-    syncStrategyToReferencingSections(sectionId, "nfqws_opt", nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, "zapret", "nfqws_opt");
-
-  o = section.taboption(
-    "general",
-    form.Flag,
-    "direct_nfqws",
-    _("Direct NFQUEUE Mode (Bypass Proxy Core)"),
-    _(
-      "Route matched traffic directly into kernel NFQUEUE via nftables without passing through sing-box/tachyon-core.",
-    ),
-  );
-  o.modalonly = true;
-  o.default = "0";
-  o.depends("source_type", "zapret2");
-  o.depends("source_type", "zapret");
-  o.depends("source_type", "olcrtc");
-
-  o = section.taboption(
-    "general",
-    form.TextValue,
-    "byedpi_cmd_opts",
-    _("ByeDPI Strategy"),
-    _("Command-line strategy arguments for ciadpi (ByeDPI)."),
-  );
-  o.modalonly = true;
-  o.rows = 5;
-  o.wrap = "soft";
-  o.default = BYEDPI_DEFAULT_CMD_OPTS;
-  o.depends("source_type", "byedpi");
-  o.load = function (sectionId) {
-    return (
-      uci.get(UCI_PACKAGE, sectionId, "byedpi_cmd_opts") ||
-      BYEDPI_DEFAULT_CMD_OPTS
-    );
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || "").trim() || BYEDPI_DEFAULT_CMD_OPTS;
-    uci.set(UCI_PACKAGE, sectionId, "byedpi_cmd_opts", nextVal);
-    syncStrategyToReferencingSections(sectionId, "byedpi_cmd_opts", nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, "byedpi", "byedpi_cmd_opts");
-
+  // ── 10. Native Desync Sources
   o = section.taboption(
     "general",
     form.ListValue,
@@ -7429,7 +7116,7 @@ function createOutboundsContent(section) {
     _("Select a common client profile or enter a custom User-Agent"),
   );
   o.modalonly = true;
-  o.value("sing-box", "sing-box (Default)");
+  o.value("tachyon-core", "Tachyon Core (Default)");
   o.value("Happ/3.7.1", "Happ (Happ/3.7.1)");
   o.value("v2rayN/7.12", "v2rayN (v2rayN/7.12)");
   o.value(
@@ -7610,7 +7297,7 @@ function createOutboundsContent(section) {
     "tls_fingerprint",
     _("TLS Fingerprint Override (uTLS)"),
     _(
-      "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it.",
+      "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes (for example, switching to Chrome if another fingerprint fails verification with REALITY + ML-KEM).",
     ),
   );
   o.modalonly = true;

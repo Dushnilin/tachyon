@@ -18,6 +18,9 @@ LOCK_DIR="/tmp/tachyon.install.lock.d"
 TMP_DIR=""
 SNAPSHOT_DIR=""
 FETCHER=""
+INSTALLER_USER_AGENT="Tachyon-Installer/1.0"
+GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://gh.llkk.cc/ https://ghproxy.net/ https://mirror.ghproxy.com/ https://github.moeyy.xyz/"
+_WORKING_GH_MIRROR=""
 PKG_MANAGER=""
 PKG_IS_APK=0
 # Indirected so the rollback contract can be tested without touching a real
@@ -43,17 +46,15 @@ TACHYON_WAS_RUNNING=0
 TACHYON_WAS_ENABLED=0
 INSTALLER_LANG="en"
 TACHYON_I18N_REQUESTED=0
-SING_BOX_INSTALL_VARIANT=""
-ENGINE_INSTALL_CHOICE=""
-ENGINE_INSTALL_REQUESTED=""
-SING_BOX_VARIANT_REQUESTED=""
+CORE_INSTALL_CHOICE=""
+CORE_INSTALL_REQUESTED=""
 ZRAM_INSTALL_REQUESTED=0
 
 ASSUME_YES=0
 DRY_RUN=0
 VERBOSE=0
 QUIET=0
-SKIP_SING_BOX=0
+SKIP_ENGINE=0
 ZRAM_INSTALL_OVERRIDE=""
 REPAIR_MODE=0
 REINSTALL_MODE=0
@@ -143,11 +144,9 @@ Usage: $0 [options]
       --reinstall       Force reinstall of the selected release
       --tag X.Y.Z       Install an exact published release
       --channel NAME    stable (default) or beta
-      --engine NAME     Routing engine: tachyon-core (default), sing-box, none
-      --tachyon-core    Install tachyon-core engine build
-      --sing-box-variant VAR  sing-box build: stable, tiny, extended, extended-compressed, lx, tachyon-core
-      --skip-sing-box   Do not install routing engine when none is present
-      --skip-engine     Alias for --skip-sing-box
+      --engine NAME     Routing core: tachyon-core (default), none
+      --tachyon-core    Install tachyon-core routing core
+      --skip-engine     Do not install tachyon-core when none is present
       --zram            Install zram-swap
       --no-zram         Never install zram-swap
       --version         Print installer version
@@ -168,25 +167,17 @@ parse_args() {
             --reinstall) REINSTALL_MODE=1 ;;
             --engine)
                 shift
-                [ "$#" -gt 0 ] || { err "--engine requires name (sing-box, tachyon-core, none)"; return 2; }
+                [ "$#" -gt 0 ] || { err "--engine requires name (tachyon-core, none)"; return 2; }
                 case "$1" in
-                    sing-box|sing_box) ENGINE_INSTALL_REQUESTED="sing-box" ;;
-                    tachyon-core|tachyon_core) ENGINE_INSTALL_REQUESTED="sing-box"; SING_BOX_VARIANT_REQUESTED="tachyon-core" ;;
-                    none|skip) SKIP_SING_BOX=1 ;;
-                    *) err "Unsupported engine: $1 (allowed: sing-box, tachyon-core, none)"; return 2 ;;
+                    tachyon-core|tachyon_core) CORE_INSTALL_REQUESTED="tachyon-core" ;;
+                    none|skip) SKIP_ENGINE=1 ;;
+                    *) err "Unsupported engine: $1 (allowed: tachyon-core, none)"; return 2 ;;
                 esac
                 ;;
             --tachyon-core)
-                ENGINE_INSTALL_REQUESTED="sing-box"
-                SING_BOX_VARIANT_REQUESTED="tachyon-core"
+                CORE_INSTALL_REQUESTED="tachyon-core"
                 ;;
-            --sing-box-variant)
-                shift
-                [ "$#" -gt 0 ] || { err "--sing-box-variant requires variant name"; return 2; }
-                ENGINE_INSTALL_REQUESTED="sing-box"
-                SING_BOX_VARIANT_REQUESTED="$1"
-                ;;
-            --skip-engine|--skip-sing-box|--no-sing-box) SKIP_SING_BOX=1 ;;
+            --skip-engine) SKIP_ENGINE=1 ;;
             --zram) ZRAM_INSTALL_OVERRIDE="yes" ;;
             --no-zram) ZRAM_INSTALL_OVERRIDE="no" ;;
             --tag)
@@ -425,18 +416,101 @@ detect_fetcher() {
     return 1
 }
 
+curl_supports_doh() {
+    curl --help all 2>/dev/null | grep -q -- '--doh-url' && return 0
+    curl --help 2>/dev/null | grep -q -- '--doh-url' && return 0
+    return 1
+}
+
+_curl_is_network_retryable_rc() {
+    case "$1" in
+        6|28|35|60) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_get_working_gh_mirror() {
+    if [ -n "${_WORKING_GH_MIRROR:-}" ]; then
+        printf '%s' "$_WORKING_GH_MIRROR"
+    elif [ -n "${TMP_DIR:-}" ] && [ -r "$TMP_DIR/working_gh_mirror" ]; then
+        cat "$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+    fi
+}
+
+_set_working_gh_mirror() {
+    _WORKING_GH_MIRROR="$1"
+    if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+        if [ -n "$1" ]; then
+            printf '%s' "$1" >"$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+        else
+            rm -f "$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+        fi
+    fi
+}
+
+_file_looks_like_html() {
+    _flh_head="$(head -c 512 "$1" 2>/dev/null | tr -d '\000' | tr 'A-Z' 'a-z')"
+    case "$_flh_head" in
+        *'<!doctype'*|*'<html'*|*'<head'*|*'error code:'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_validate_downloaded_payload() {
+    _vdp_file="$1"
+    _vdp_kind="${2:-generic}"
+    [ -s "$_vdp_file" ] || return 1
+    if _file_looks_like_html "$_vdp_file"; then
+        return 1
+    fi
+    case "$_vdp_kind" in
+        sha256)
+            _vdp_tab="$(printf '\t')"
+            grep -qE "^[0-9a-fA-F]{64}[ ${_vdp_tab}]+" "$_vdp_file" 2>/dev/null || return 1
+            ;;
+        pkg)
+            _vdp_sz="$(wc -c < "$_vdp_file" 2>/dev/null | tr -d ' \t\r\n' || echo 0)"
+            case "$_vdp_sz" in ''|*[!0-9]*) _vdp_sz=0 ;; esac
+            [ "$_vdp_sz" -gt 1024 ] 2>/dev/null || return 1
+            _vdp_magic4="$(head -c 4 "$_vdp_file" 2>/dev/null | tr -d '\000' || true)"
+            _vdp_magic2="$(head -c 2 "$_vdp_file" 2>/dev/null | tr -d '\000' || true)"
+            _vdp_gz="$(printf '\037\213')"
+            case "$_vdp_magic4" in
+                ADBd*|"!<ar"*) return 0 ;;
+            esac
+            [ "$_vdp_magic2" = "$_vdp_gz" ] && return 0
+            tar -ztf "$_vdp_file" >/dev/null 2>&1 && return 0
+            return 1
+            ;;
+    esac
+    return 0
+}
+
 http_get() {
     _hg_url="$1"
     case "$FETCHER" in
         wget)
-            _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+            _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
             if [ -z "$_hg_res" ]; then
-                _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+                _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
             fi
             [ -n "$_hg_res" ] || return 1
             printf '%s' "$_hg_res"
             ;;
-        curl) curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" ;;
+        curl)
+            _hg_rc=0
+            _hg_res="$(curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+            if [ "$_hg_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hg_rc" && curl_supports_doh; then
+                for _hg_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
+                    _hg_rc=0
+                    _hg_res="$(curl -A "$INSTALLER_USER_AGENT" --doh-url "$_hg_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+                    [ "$_hg_rc" -eq 0 ] && break
+                    _curl_is_network_retryable_rc "$_hg_rc" || break
+                done
+            fi
+            [ "$_hg_rc" -eq 0 ] || return "$_hg_rc"
+            printf '%s' "$_hg_res"
+            ;;
         *) return 1 ;;
     esac
 }
@@ -445,33 +519,70 @@ download_file_once() {
     _dfo_url="$1"; _dfo_dst="$2"
     case "$FETCHER" in
         wget)
-            if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ]; then
+            if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ]; then
                 return 0
             fi
-            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url"
+            rm -f "$_dfo_dst"
+            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url"
             ;;
-        curl) run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" ;;
+        curl)
+            _dfo_rc=0
+            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+            if [ "$_dfo_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_dfo_rc" && curl_supports_doh; then
+                for _dfo_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
+                    rm -f "$_dfo_dst"
+                    _dfo_rc=0
+                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -A "$INSTALLER_USER_AGENT" --doh-url "$_dfo_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                    [ "$_dfo_rc" -eq 0 ] && return 0
+                    _curl_is_network_retryable_rc "$_dfo_rc" || break
+                done
+            fi
+            return "$_dfo_rc"
+            ;;
         *) return 1 ;;
     esac
 }
 
 download_with_retry() {
-    _dwr_url="$1"; _dwr_dst="$2"; _dwr_label="$3"
-    _dwr_attempt=1
-    while [ "$_dwr_attempt" -le 5 ]; do
-        _dwr_try_url="$_dwr_url"
-        case "$_dwr_attempt" in
-            1) _dwr_try_url="$_dwr_url" ;;
-            2) _dwr_try_url="https://ghfast.top/$_dwr_url" ;;
-            3) _dwr_try_url="https://gh-proxy.com/$_dwr_url" ;;
-            4) _dwr_try_url="https://gh.llkk.cc/$_dwr_url" ;;
-            5) _dwr_try_url="$_dwr_url" ;;
+    _dwr_url="$1"; _dwr_dst="$2"; _dwr_label="$3"; _dwr_kind="${4:-}"
+    if [ -z "$_dwr_kind" ]; then
+        case "$_dwr_dst:$_dwr_label" in
+            *sha256sums.txt*) _dwr_kind="sha256" ;;
+            *.apk*|*.ipk*) _dwr_kind="pkg" ;;
+            *) _dwr_kind="generic" ;;
         esac
-        msg "Downloading $_dwr_label (attempt $_dwr_attempt/5)"
-        if download_file_once "$_dwr_try_url" "$_dwr_dst" && [ -s "$_dwr_dst" ]; then return 0; fi
+    fi
+    _dwr_pref="$(_get_working_gh_mirror)"
+    _dwr_candidates="direct"
+    if [ -n "$_dwr_pref" ]; then
+        _dwr_candidates="$_dwr_candidates $_dwr_pref"
+    fi
+    for _dwr_m in $GH_MIRRORS; do
+        [ "$_dwr_m" = "$_dwr_pref" ] && continue
+        _dwr_candidates="$_dwr_candidates $_dwr_m"
+    done
+    _dwr_total=0
+    for _dwr_c in $_dwr_candidates; do _dwr_total=$((_dwr_total + 1)); done
+    _dwr_attempt=1
+    for _dwr_c in $_dwr_candidates; do
+        if [ "$_dwr_c" = "direct" ]; then
+            _dwr_try_url="$_dwr_url"
+        else
+            _dwr_try_url="${_dwr_c}${_dwr_url}"
+        fi
+        msg "Downloading $_dwr_label (attempt $_dwr_attempt/$_dwr_total)"
+        rm -f "$_dwr_dst"
+        if download_file_once "$_dwr_try_url" "$_dwr_dst" && _validate_downloaded_payload "$_dwr_dst" "$_dwr_kind"; then
+            if [ "$_dwr_c" = "direct" ]; then
+                _set_working_gh_mirror ""
+            else
+                _set_working_gh_mirror "$_dwr_c"
+            fi
+            return 0
+        fi
         rm -f "$_dwr_dst"
         _dwr_attempt=$((_dwr_attempt + 1))
-        sleep 2
+        [ "$_dwr_attempt" -le "$_dwr_total" ] && sleep 1
     done
     return 1
 }
@@ -873,6 +984,56 @@ release_helper() {
     ucode "$(install_release_helper)" "$@"
 }
 
+_is_valid_release_json() {
+    _vrj_body="$1"
+    [ -n "$_vrj_body" ] || return 1
+    _vrj_head="$(printf '%s' "$_vrj_body" | head -c 512 2>/dev/null | tr -d '\000' | tr 'A-Z' 'a-z')"
+    case "$_vrj_head" in
+        *'<!doctype'*|*'<html'*|*'<head'*|*'error code:'*) return 1 ;;
+    esac
+    case "$_vrj_body" in
+        *'"tag_name"'*|*'"assets"'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_fetch_github_api_json() {
+    _fga_url="$1"
+    _fga_warn="${2:-0}"
+    _fga_pref="$(_get_working_gh_mirror)"
+    _fga_candidates="direct"
+    if [ -n "$_fga_pref" ]; then
+        _fga_candidates="$_fga_candidates $_fga_pref"
+    fi
+    for _fga_m in $GH_MIRRORS; do
+        [ "$_fga_m" = "$_fga_pref" ] && continue
+        _fga_candidates="$_fga_candidates $_fga_m"
+    done
+    _fga_warned=0
+    for _fga_c in $_fga_candidates; do
+        if [ "$_fga_c" = "direct" ]; then
+            _fga_try_url="$_fga_url"
+        else
+            if [ "$_fga_warn" -eq 1 ] && [ "$_fga_warned" -eq 0 ]; then
+                warn "GitHub release API failed; trying mirror"
+                _fga_warned=1
+            fi
+            _fga_try_url="${_fga_c}${_fga_url}"
+        fi
+        _fga_json="$(http_get "$_fga_try_url" 2>/dev/null || true)"
+        if _is_valid_release_json "$_fga_json"; then
+            if [ "$_fga_c" = "direct" ]; then
+                _set_working_gh_mirror ""
+            else
+                _set_working_gh_mirror "$_fga_c"
+            fi
+            printf '%s' "$_fga_json"
+            return 0
+        fi
+    done
+    return 1
+}
+
 fetch_release_json() {
     _fr_url=""
     if [ -n "$RELEASE_TAG_REQUESTED" ]; then
@@ -882,28 +1043,12 @@ fetch_release_json() {
     else
         _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
     fi
-    _fr_json="$(http_get "$_fr_url" 2>/dev/null || true)"
-    if [ -z "$_fr_json" ]; then
-        warn "GitHub release API failed; trying mirror"
-        for _fr_m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
-            _fr_json="$(http_get "${_fr_m}${_fr_url}" 2>/dev/null || true)"
-            [ -n "$_fr_json" ] && break
-        done
-    fi
-    [ -n "$_fr_json" ] || return 1
-    printf '%s' "$_fr_json"
+    _fetch_github_api_json "$_fr_url" 1
 }
 
 fetch_release_tag_list() {
     _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
-    _fr_json="$(http_get "$_fr_url" 2>/dev/null || true)"
-    if [ -z "$_fr_json" ]; then
-        for _fr_m in "https://ghfast.top/" "https://gh-proxy.com/" "https://gh.llkk.cc/"; do
-            _fr_json="$(http_get "${_fr_m}${_fr_url}" 2>/dev/null || true)"
-            [ -n "$_fr_json" ] && break
-        done
-    fi
-    [ -n "$_fr_json" ] || return 1
+    _fr_json="$(_fetch_github_api_json "$_fr_url" 0)" || return 1
     printf '%s' "$_fr_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null
 }
 
@@ -1049,44 +1194,29 @@ detect_language_and_i18n() {
     case "$_answer" in y|Y|yes|YES) TACHYON_I18N_REQUESTED=1; INSTALLER_LANG="ru" ;; esac
 }
 
-sing_box_is_present() {
-    command_exists sing-box || command_exists tachyon-core || pkg_is_installed sing-box || pkg_is_installed sing-box-extended || pkg_is_installed sing-box-tiny || pkg_is_installed sing-box-lx
+core_is_present() {
+    command_exists tachyon-core || [ -x /usr/bin/tachyon-core ]
 }
 
 engine_is_present() {
-    sing_box_is_present
+    core_is_present
 }
 
-select_sing_box_installation() {
-    SING_BOX_INSTALL_VARIANT=""
-    ENGINE_INSTALL_CHOICE=""
-    [ "$SKIP_SING_BOX" -eq 1 ] && return 0
-    if [ -n "$ENGINE_INSTALL_REQUESTED" ]; then
-        case "$ENGINE_INSTALL_REQUESTED" in
-            sing-box) ENGINE_INSTALL_CHOICE="sing-box"; SING_BOX_INSTALL_VARIANT="${SING_BOX_VARIANT_REQUESTED:-stable}"; return 0 ;;
-        esac
+select_core_installation() {
+    CORE_INSTALL_CHOICE=""
+    [ "$SKIP_ENGINE" -eq 1 ] && return 0
+    if [ -n "$CORE_INSTALL_REQUESTED" ]; then
+        CORE_INSTALL_CHOICE="$CORE_INSTALL_REQUESTED"
+        return 0
     fi
     engine_is_present && return 0
-    if ! installer_is_interactive; then ENGINE_INSTALL_CHOICE="sing-box"; SING_BOX_INSTALL_VARIANT="stable"; return 0; fi
-    printf '\nSelect proxy / routing engine build:\n'
-    printf '  1) sing-box stable (recommended)\n'
-    printf '  2) sing-box tiny (low memory)\n'
-    printf '  3) sing-box extended (xHTTP)\n'
-    printf '  4) sing-box extended-compressed (xHTTP, smaller)\n'
-    printf '  5) sing-box lx\n'
-    printf '  6) tachyon-core (Rust core for sing-box configs)\n'
-    printf '  7) skip\n'
-    printf 'Choice [1]: '
+    if ! installer_is_interactive; then CORE_INSTALL_CHOICE="tachyon-core"; return 0; fi
+    printf '\ntachyon-core routing core is not installed.\n'
+    printf 'Install tachyon-core? [Y/n]: '
     read -r _answer || _answer=""
-    case "${_answer:-1}" in
-        1) SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        2) SING_BOX_INSTALL_VARIANT="tiny"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        3) SING_BOX_INSTALL_VARIANT="extended"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        4) SING_BOX_INSTALL_VARIANT="extended-compressed"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        5) SING_BOX_INSTALL_VARIANT="lx"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        6) SING_BOX_INSTALL_VARIANT="tachyon-core"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        7) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
-        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+    case "${_answer:-y}" in
+        n|N|no|NO) CORE_INSTALL_CHOICE="" ;;
+        *) CORE_INSTALL_CHOICE="tachyon-core" ;;
     esac
 }
 
@@ -1290,7 +1420,7 @@ remove_legacy_packages() {
         # which also lists tachyon and luci-app-tachyon - the packages this
         # installer has just installed. Scrubbing them here drops them out of
         # /etc/apk/world while they are installed, and apk's next transaction
-        # (a zapret2 component update, say) sees two orphans and purges them,
+        # (a tachyon-core component update, say) sees two orphans and purges them,
         # taking the LuCI menu with them (issue #120). The full scrub still
         # runs before the next install, where it belongs: it exists to release
         # stale pinned entries before apk selects anything.
@@ -1397,13 +1527,13 @@ download_release() {
     [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would download and verify $TACHYON_RELEASE_TAG"; return 0; }
 
     # Phase 1: Download manifest
-    download_with_retry "$TACHYON_SHA256_URL" "$TACHYON_SHA256_FILE" sha256sums.txt || return 1
+    download_with_retry "$TACHYON_SHA256_URL" "$TACHYON_SHA256_FILE" sha256sums.txt sha256 || return 1
     # Phase 2: Download package payloads after manifest integrity is proven
-    download_with_retry "$TACHYON_BACKEND_URL" "$TACHYON_BACKEND_FILE" "$TACHYON_BACKEND_NAME" || return 1
-    download_with_retry "$TACHYON_APP_URL" "$TACHYON_APP_FILE" "$TACHYON_APP_NAME" || return 1
+    download_with_retry "$TACHYON_BACKEND_URL" "$TACHYON_BACKEND_FILE" "$TACHYON_BACKEND_NAME" pkg || return 1
+    download_with_retry "$TACHYON_APP_URL" "$TACHYON_APP_FILE" "$TACHYON_APP_NAME" pkg || return 1
     if [ "$TACHYON_I18N_REQUESTED" -eq 1 ]; then
         TACHYON_I18N_FILE="$TMP_DIR/$TACHYON_I18N_NAME"
-        download_with_retry "$TACHYON_I18N_URL" "$TACHYON_I18N_FILE" "$TACHYON_I18N_NAME" || return 1
+        download_with_retry "$TACHYON_I18N_URL" "$TACHYON_I18N_FILE" "$TACHYON_I18N_NAME" pkg || return 1
     fi
 
     # Phase 3: SHA256 checksum verification
@@ -1560,33 +1690,103 @@ ensure_tcp_bbr_best_effort() {
     return 0
 }
 
-install_selected_sing_box() {
-    [ -n "$ENGINE_INSTALL_CHOICE" ] || [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
+migrate_legacy_engine_files() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+
+    # Silently stop/remove legacy sing-box init, binary, and state files on upgrade
+    if [ -f /etc/init.d/sing-box ]; then
+        /etc/init.d/sing-box stop >/dev/null 2>&1 || true
+        /etc/init.d/sing-box disable >/dev/null 2>&1 || true
+        rm -f /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
+    fi
+    killall -9 sing-box >/dev/null 2>&1 || true
+
+    for _legacy_pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
+        if [ "$PKG_IS_APK" -eq 1 ]; then
+            if grep -q "^P:${_legacy_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
+                scrub_apk_world "$_legacy_pkg"
+                apk del --no-network --repositories-file /dev/null "$_legacy_pkg" >/dev/null 2>&1 || true
+            fi
+        else
+            if opkg status "$_legacy_pkg" 2>/dev/null | grep -q '^Status:'; then
+                opkg remove --force-depends "$_legacy_pkg" >/dev/null 2>&1 || true
+            fi
+        fi
+    done
+
+    if [ -d /etc/sing-box ]; then
+        mkdir -p /etc/tachyon-core 2>/dev/null || true
+        for _legacy_item in /etc/sing-box/*; do
+            [ -e "$_legacy_item" ] || continue
+            _base="$(basename "$_legacy_item")"
+            if [ ! -e "/etc/tachyon-core/$_base" ]; then
+                cp -a "$_legacy_item" "/etc/tachyon-core/$_base" 2>/dev/null || true
+            fi
+        done
+        rm -rf /etc/sing-box 2>/dev/null || true
+    fi
+
+    rm -f /usr/bin/sing-box /etc/tachyon/sing-box-variant /etc/tachyon/sing-box-version 2>/dev/null || true
+    rm -rf /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
+
+    # Silently stop/remove legacy standalone external provider services, binaries, and packages on upgrade
+    for _legacy_svc in tachyon-steer-zapret steer zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
+        if [ -f "/etc/init.d/${_legacy_svc}" ]; then
+            "/etc/init.d/${_legacy_svc}" stop >/dev/null 2>&1 || true
+            "/etc/init.d/${_legacy_svc}" disable >/dev/null 2>&1 || true
+            rm -f "/etc/init.d/${_legacy_svc}" 2>/dev/null || true
+        fi
+    done
+
+    _managed_tailscale=0
+    if [ -f /etc/init.d/tailscale ] && grep -q "Tachyon managed" /etc/init.d/tailscale 2>/dev/null; then
+        _managed_tailscale=1
+        /etc/init.d/tailscale stop >/dev/null 2>&1 || true
+        /etc/init.d/tailscale disable >/dev/null 2>&1 || true
+        rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true
+    fi
+
+    killall -9 nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc steer >/dev/null 2>&1 || true
+
+    _legacy_provider_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
+    [ "$_managed_tailscale" -eq 1 ] && _legacy_provider_pkgs="$_legacy_provider_pkgs tailscale"
+    for _legacy_pkg in $_legacy_provider_pkgs; do
+        if [ "$PKG_IS_APK" -eq 1 ]; then
+            if grep -q "^P:${_legacy_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
+                scrub_apk_world "$_legacy_pkg"
+                apk del --no-network --repositories-file /dev/null "$_legacy_pkg" >/dev/null 2>&1 || true
+            fi
+        else
+            if opkg status "$_legacy_pkg" 2>/dev/null | grep -q '^Status:'; then
+                opkg remove --force-depends "$_legacy_pkg" >/dev/null 2>&1 || true
+            fi
+        fi
+    done
+
+    rm -f /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* 2>/dev/null || true
+    rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true
+    rm -rf /var/run/tachyon/zapret* /var/run/tachyon/byedpi /var/run/tachyon/wdtt /var/run/tachyon/olcrtc /var/run/tachyon/tailscale /var/run/qwdtt /etc/tachyon/tailscale/*/native 2>/dev/null || true
+    rm -rf /etc/tachyon/component-backups/zapret /etc/tachyon/component-backups/zapret2 /etc/tachyon/component-backups/byedpi /etc/tachyon/component-backups/wdtt /etc/tachyon/component-backups/olcrtc /etc/tachyon/component-backups/tailscale 2>/dev/null || true
+    rm -f /var/run/tachyon/component-update-checks/zapret.json /var/run/tachyon/component-update-checks/zapret2.json /var/run/tachyon/component-update-checks/byedpi.json /var/run/tachyon/component-update-checks/wdtt.json /var/run/tachyon/component-update-checks/olcrtc.json 2>/dev/null || true
+    rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true
+    if command_exists nft; then
+        for _legacy_tbl in steer zapret zapret2 tachyon_tailscale; do
+            nft delete table inet "$_legacy_tbl" >/dev/null 2>&1 || true
+        done
+        for _legacy_tbl in zapret zapret2; do
+            nft delete table ip "$_legacy_tbl" >/dev/null 2>&1 || true
+            nft delete table ip6 "$_legacy_tbl" >/dev/null 2>&1 || true
+        done
+    fi
+    return 0
+}
+
+install_selected_core() {
+    [ -n "$CORE_INSTALL_CHOICE" ] || return 0
     [ -x /usr/bin/tachyon ] || return 1
-    [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
-    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install sing-box variant $SING_BOX_INSTALL_VARIANT"; return 0; }
-    case "$SING_BOX_INSTALL_VARIANT" in
-        stable) _action="install_stable" ;;
-        tiny) _action="install_tiny" ;;
-        extended) _action="install_extended" ;;
-        extended-compressed) _action="install_extended_compressed" ;;
-        lx) _action="install_lx" ;;
-        tachyon-core|tachyon_core) _action="install_tachyon_core" ;;
-        *) return 1 ;;
-    esac
-    case "$SING_BOX_INSTALL_VARIANT" in
-        tachyon-core|tachyon_core)
-            msg "Installing tachyon-core"
-            _uci_engine="tachyon-core"
-            ;;
-        *)
-            msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
-            _uci_engine="sing-box"
-            ;;
-    esac
-    run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action" || return 1
-    uci set "tachyon.settings.engine=$_uci_engine" 2>/dev/null || true
-    uci commit tachyon 2>/dev/null || true
+    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install tachyon-core"; return 0; }
+    msg "Installing tachyon-core"
+    run_logged_timeout tachyon-core "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action tachyon-core install || return 1
     return 0
 }
 
@@ -1704,11 +1904,11 @@ system_preflight() {
 print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
-    case "$SING_BOX_INSTALL_VARIANT" in
-        tachyon-core|tachyon_core) msg "Engine: tachyon-core" ;;
-        ?*) msg "sing-box: $SING_BOX_INSTALL_VARIANT" ;;
-        *) msg "Engine: keep existing / skip" ;;
-    esac
+    if [ -n "$CORE_INSTALL_CHOICE" ]; then
+        msg "Routing core: $CORE_INSTALL_CHOICE"
+    else
+        msg "Routing core: keep existing / skip"
+    fi
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
 
@@ -1738,7 +1938,7 @@ main() {
     ensure_bootstrap_ucode_runtime || fail "Could not bootstrap ucode runtime"
     msg "Detecting language and engine configuration"
     detect_language_and_i18n
-    select_sing_box_installation
+    select_core_installation
     decide_zram
     record_service_state
     select_release_version
@@ -1759,13 +1959,14 @@ main() {
     prepare_transaction || fail "Could not prepare package transaction"
     resolve_legacy_conflicts_before_install
     install_core_transaction || fail "Tachyon package transaction failed"
+    migrate_legacy_engine_files
     install_zram_if_requested
     ensure_tcp_bbr_best_effort
-    install_selected_sing_box || fail "sing-box installation failed"
+    install_selected_core || fail "tachyon-core installation failed"
     msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
-    # Only now. Podkop binds sing-box's DNS to 127.0.0.42:53 and users point
+    # Only now. Podkop binds its local DNS to 127.0.0.42:53 and users point
     # dnsmasq at it by hand, so removing it first kills the resolver while
     # Tachy's own DNS is not up yet - everything after that point fails to
     # resolve and the install dies somewhere unrelated (issue #85). Tachyon's

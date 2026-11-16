@@ -88,9 +88,9 @@ describe('renderUpdateProgressModal', () => {
 
     const onInstall = vi.fn();
     const controller = showUpdateProgressModal({
-      component: 'sing_box',
+      component: 'tachyon-core',
       action: 'check_update',
-      componentTitle: 'sing-box',
+      componentTitle: 'Tachyon Core',
     });
 
     controller.completeSuccess('Update is available', {
@@ -121,9 +121,9 @@ describe('renderUpdateProgressModal', () => {
     );
 
     const controller = showUpdateProgressModal({
-      component: 'sing_box',
+      component: 'tachyon-core',
       action: 'install',
-      componentTitle: 'sing-box',
+      componentTitle: 'Tachyon Core',
     });
 
     controller.completeSuccess('Update completed successfully!');
@@ -156,9 +156,9 @@ describe('renderUpdateProgressModal', () => {
 
     // A check modal with no install button auto-closes 1200ms after success.
     const controller = showUpdateProgressModal({
-      component: 'sing_box',
+      component: 'tachyon-core',
       action: 'check_update',
-      componentTitle: 'sing-box',
+      componentTitle: 'Tachyon Core',
     });
     controller.completeSuccess('Update is available');
 
@@ -195,9 +195,9 @@ describe('renderUpdateProgressModal', () => {
       });
 
     const controller = showUpdateProgressModal({
-      component: 'sing_box',
+      component: 'tachyon-core',
       action: 'install',
-      componentTitle: 'sing-box',
+      componentTitle: 'Tachyon Core',
     });
 
     // The first poll runs immediately, the following ones on the 1500ms timer.
@@ -243,9 +243,9 @@ describe('renderUpdateProgressModal', () => {
       } as never);
 
     const controller = showUpdateProgressModal({
-      component: 'sing_box',
+      component: 'tachyon-core',
       action: 'install',
-      componentTitle: 'sing-box',
+      componentTitle: 'Tachyon Core',
     });
 
     controller.startLogTracking('');

@@ -55,7 +55,7 @@ normalize "$masked_input" "$masked_output"
 
 if ! grep -Fq '"type": "hysteria2"' "$masked_output"; then
   cat "$masked_output" >&2
-  fail "Xray hysteria v2 must normalize to a sing-box hysteria2 outbound"
+  fail "Xray hysteria v2 must normalize to a core hysteria2 outbound"
 fi
 if ! grep -Fq '"obfs": { "type": "salamander", "password": "salamander-itx-2096" }' "$masked_output"; then
   cat "$masked_output" >&2
@@ -140,7 +140,7 @@ normalize "$flat_vless_input" "$flat_vless_output"
 
 if ! grep -Fq '"type": "vless"' "$flat_vless_output"; then
   cat "$flat_vless_output" >&2
-  fail "Xray flat VLESS settings must normalize to a sing-box vless outbound"
+  fail "Xray flat VLESS settings must normalize to a core vless outbound"
 fi
 if ! grep -Fq '"flow": "xtls-rprx-vision"' "$flat_vless_output"; then
   cat "$flat_vless_output" >&2

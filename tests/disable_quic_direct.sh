@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# disable_quic has to reach traffic that never reaches sing-box, and since the
+# disable_quic has to reach traffic that never reaches tachyon-core, and since the
 # option became three modes (off/tunneled/all) every layer has to agree on them.
 #
-# singbox/route.uc rejects UDP/443 inside the engine, which only helps for
+# tachyon_core/route.uc rejects UDP/443 inside the engine, which only helps for
 # connections the tproxy rules handed over. A client whose destination is not
 # marked keeps using HTTP/3 straight out of br-lan, where the local DPI mangles
 # it - the measured symptom was the VK app loading nothing while Telegram, which

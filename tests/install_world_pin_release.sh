@@ -54,7 +54,7 @@ busybox
 luci-app-tachyon><Q1WPZ/U5n85WC30B3i9JglYX5QFxw=
 tachyon><Q1xQUnmiOp+e0PiSxLsLXIOp3Cq/Y=
 luci-i18n-tachyon-ru><Q1ztNcPp2thKHC5nHJ5yipyXAedgo=
-zapret2
+fptn
 WORLD
 
 scrub_apk_world
@@ -67,7 +67,7 @@ for entry in 'tachyon>' 'luci-app-tachyon>'; do
 done
 
 # --- 2. unrelated packages must survive ------------------------------------
-for keep in apk-mbedtls busybox zapret2; do
+for keep in apk-mbedtls busybox fptn; do
   grep -qx "$keep" "$APK_WORLD_FILE" ||
     fail "scrub removed unrelated package '$keep': $(cat "$APK_WORLD_FILE")"
   ok
@@ -90,7 +90,7 @@ ok
 # --- 4. a clean world is left byte-identical -------------------------------
 # Guards the opposite failure: a scrub that rewrites unconditionally would churn
 # /etc/apk/world on flash for no reason.
-printf 'apk-mbedtls\nbusybox\nzapret2\n' >"$APK_WORLD_FILE"
+printf 'apk-mbedtls\nbusybox\nfptn\n' >"$APK_WORLD_FILE"
 cp "$APK_WORLD_FILE" "$SANDBOX/clean.before"
 scrub_apk_world
 cmp -s "$SANDBOX/clean.before" "$APK_WORLD_FILE" ||

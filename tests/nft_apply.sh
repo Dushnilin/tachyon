@@ -297,36 +297,6 @@ fi
   fail "missing nft table predicate must suppress nft stderr"
 assert_contains "$NFT_LOG" $'nft\tlist\ttable\tinet\tTachyonTable' "nft table presence check"
 
-cat >"$WORK_DIR/provider-rules.json" <<'JSON'
-{
-  "section": [
-    { ".name": "direct", "enabled": "1", "action": "bypass" },
-    { ".name": "zapret_one", "enabled": "1", "action": "zapret", "domain_suffix": [ "example.org" ] },
-    { ".name": "zapret_disabled", "enabled": "0", "action": "zapret", "domain_suffix": [ "example.org" ] },
-    { ".name": "zapret_two", "enabled": "1", "action": "zapret", "domain_suffix": [ "example.com" ] },
-    { ".name": "zapret2_one", "enabled": "1", "action": "zapret2", "domain_suffix": [ "example.net" ] }
-  ]
-}
-JSON
-provider_bin="$WORK_DIR/bin/provider"
-printf '#!/usr/bin/env sh\nexit 0\n' >"$provider_bin"
-chmod 0755 "$provider_bin"
-
-: > "$NFT_LOG"
-nft_ucode nft-create-provider-output-rules-fixture "$WORK_DIR/provider-rules.json" TachyonTable zapret "$provider_bin" 0x01000000 4000 0x40000000 0x20000000
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tmeta\tmark\t&\t0x40000000\t==\t0x40000000\treturn' "zapret desync return"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tmeta\tmark\t0x01000001\tmeta\tl4proto\ttcp\tcounter\tqueue\tnum\t4000\tbypass' "zapret first tcp queue rule"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tmeta\tmark\t0x01000002\tmeta\tl4proto\tudp\tcounter\tqueue\tnum\t4001\tbypass' "zapret second udp queue rule"
-if grep -Fq 'zapret_disabled' "$NFT_LOG"; then
-  fail "disabled provider section should not create nft rule"
-fi
-
-: > "$NFT_LOG"
-nft_ucode nft-create-provider-output-rules-fixture "$WORK_DIR/provider-rules.json" TachyonTable zapret "$WORK_DIR/bin/missing-provider" 0x01000000 4000 0x40000000 0x20000000
-if [ -s "$NFT_LOG" ]; then
-  fail "missing provider binary should skip provider nft output rules"
-fi
-
 cat >"$WORK_DIR/priority-rules.json" <<'JSON'
 {
   "section": [

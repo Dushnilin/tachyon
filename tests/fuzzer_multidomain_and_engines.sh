@@ -24,28 +24,28 @@ chmod +x "$WORK_DIR/bin/tachyon"
 
 export PATH="$WORK_DIR/bin:$PATH"
 
-# 1. binaries.get_desync_bin() must NOT fall back to /usr/bin/sing-box
+# 1. binaries.get_desync_bin() must NOT fall back to non-tachyon-core binaries
 env -u TACHYON_CORE_BIN ucode -L "$TACHYON_LIB" - <<'UCODE'
 let fs_mod = require("fs");
 let orig_stat = fs_mod.stat;
 let orig_access = fs_mod.access;
 fs_mod.stat = function(p) {
-    if (p == "/usr/bin/sing-box") return { type: "file", size: 1024 };
+    if (p == "/usr/bin/ciadpi" || p == "/usr/sbin/tachyon-core") return { type: "file", size: 1024 };
     if (p == "/usr/bin/tachyon-core") return null;
     return orig_stat(p);
 };
 fs_mod.access = function(p, m) {
-    if (p == "/usr/bin/sing-box") return true;
+    if (p == "/usr/bin/ciadpi" || p == "/usr/sbin/tachyon-core") return true;
     if (p == "/usr/bin/tachyon-core") return false;
     return orig_access(p, m);
 };
 let binaries = require("diagnostics.fuzzer.binaries");
 let bin = binaries.get_desync_bin();
 if (bin != null) {
-    warn(sprintf("FAIL: get_desync_bin() fell back to %J when only sing-box existed\n", bin));
+    warn(sprintf("FAIL: get_desync_bin() fell back to %J when /usr/bin/tachyon-core was absent\n", bin));
     exit(1);
 }
-print("OK: get_desync_bin rejects sing-box fallback\n");
+print("OK: get_desync_bin rejects fallback when /usr/bin/tachyon-core is missing\n");
 UCODE
 
 printf '#!/bin/sh\nexit 0\n' >"$WORK_DIR/tachyon-core"
@@ -138,7 +138,7 @@ UCODE
 cat >"$TACHYON_UCI_STATE_FILE" <<'STATE'
 tachyon.global_sec=section
 tachyon.global_sec.name=Global Rule
-tachyon.global_sec.action=zapret2
+tachyon.global_sec.action=desync
 tachyon.global_sec.match_all=1
 tachyon.proxy_sec=section
 tachyon.proxy_sec.name=Proxy Rule
@@ -147,12 +147,12 @@ tachyon.proxy_sec.outbound_source_refs=sub_main
 tachyon.sub_main=outbound_source
 tachyon.sub_main.source_type=subscription
 tachyon.dpi_src=outbound_source
-tachyon.dpi_src.source_type=zapret2
+tachyon.dpi_src.source_type=desync
 tachyon.mod_dpi_sec=section
 tachyon.mod_dpi_sec.action=connection
 tachyon.mod_dpi_sec.outbound_source_refs=dpi_src
-tachyon.direct_z2_sec=section
-tachyon.direct_z2_sec.action=zapret2
+tachyon.direct_ds_sec=section
+tachyon.direct_ds_sec.action=desync
 STATE
 
 start_all="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" start all youtube_suite 2>/dev/null || true)"
@@ -164,7 +164,16 @@ if (val.success !== false) {
 }
 NODE
 
-apply_global_sec="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake:blob=fake_default_tls:tcp_md5" global_sec 2>/dev/null || true)"
+apply_removed_eng="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake" direct_ds_sec 2>/dev/null || true)"
+JSON_VALUE="$apply_removed_eng" node - <<'NODE'
+const val = JSON.parse(process.env.JSON_VALUE);
+if (val.success !== false) {
+  console.error("FAIL: apply with removed zapret2 engine must fail, got:", val);
+  process.exit(1);
+}
+NODE
+
+apply_global_sec="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "mode=fake_split split_pos=midsld" global_sec 2>/dev/null || true)"
 JSON_VALUE="$apply_global_sec" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== false) {
@@ -173,7 +182,7 @@ if (val.success !== false) {
 }
 NODE
 
-apply_proxy_sec="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake:blob=fake_default_tls:tcp_md5" proxy_sec 2>/dev/null || true)"
+apply_proxy_sec="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "mode=fake_split split_pos=midsld" proxy_sec 2>/dev/null || true)"
 JSON_VALUE="$apply_proxy_sec" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== false) {
@@ -182,11 +191,11 @@ if (val.success !== false) {
 }
 NODE
 
-if grep -q 'src_zapret2_proxy_sec' "$TACHYON_UCI_STATE_FILE"; then
-  fail "apply created unexpected src_zapret2_proxy_sec on proxy connection section"
+if grep -q 'src_desync_proxy_sec' "$TACHYON_UCI_STATE_FILE"; then
+  fail "apply created unexpected src_desync_proxy_sec on proxy connection section"
 fi
 
-apply_mod_dpi="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake:blob=fake_default_tls:tcp_md5" mod_dpi_sec 2>/dev/null)"
+apply_mod_dpi="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "mode=fake_split split_pos=midsld" mod_dpi_sec 2>/dev/null)"
 JSON_VALUE="$apply_mod_dpi" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== true) {
@@ -195,21 +204,21 @@ if (val.success !== true) {
 }
 NODE
 
-if ! grep -q '^tachyon\.dpi_src\.nfqws2_opt=' "$TACHYON_UCI_STATE_FILE" || ! grep -q '^tachyon\.mod_dpi_sec\.nfqws2_opt=' "$TACHYON_UCI_STATE_FILE"; then
-  fail "apply to modular DPI connection section did not persist nfqws2_opt to both source and section"
+if ! grep -q '^tachyon\.dpi_src\.desync_opts=' "$TACHYON_UCI_STATE_FILE" || ! grep -q '^tachyon\.mod_dpi_sec\.desync_opts=' "$TACHYON_UCI_STATE_FILE"; then
+  fail "apply to modular desync connection section did not persist desync_opts to both source and section"
 fi
 
-apply_direct_z2="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake:blob=fake_default_tls:tcp_md5" direct_z2_sec 2>/dev/null)"
-JSON_VALUE="$apply_direct_z2" node - <<'NODE'
+apply_direct_ds="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "mode=fake_split split_pos=midsld" direct_ds_sec 2>/dev/null)"
+JSON_VALUE="$apply_direct_ds" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== true) {
-  console.error("FAIL: apply to direct zapret2 section should succeed, got:", val);
+  console.error("FAIL: apply to direct desync section should succeed, got:", val);
   process.exit(1);
 }
 NODE
 
-if ! grep -q '^tachyon\.direct_z2_sec\.nfqws2_opt=' "$TACHYON_UCI_STATE_FILE"; then
-  fail "apply to direct zapret2 section did not persist nfqws2_opt"
+if ! grep -q '^tachyon\.direct_ds_sec\.desync_opts=' "$TACHYON_UCI_STATE_FILE"; then
+  fail "apply to direct desync section did not persist desync_opts"
 fi
 
 # 5. Preserve compact per-domain sub_probes and endpoint counts in status output
@@ -217,7 +226,7 @@ cat >"$TACHYON_FUZZER_STATE_DIR/fuzzer-state.json" <<'JSON'
 {
   "running": false,
   "job_id": "job_test_multi",
-  "engine": "zapret2",
+  "engine": "desync",
   "target": "custom",
   "mode": "presets",
   "progress_pct": 100,
@@ -225,10 +234,10 @@ cat >"$TACHYON_FUZZER_STATE_DIR/fuzzer-state.json" <<'JSON'
   "total_strategies": 1,
   "results": [
     {
-      "id": "z2_test",
+      "id": "ds_test",
       "name": "TLS Fake + Split",
-      "engine": "zapret2",
-      "args": "--lua-desync=fake:blob=fake_default_tls:tcp_md5",
+      "engine": "desync",
+      "args": "mode=fake_split split_pos=midsld",
       "success": false,
       "http_code": 200,
       "handshake_ms": 40,

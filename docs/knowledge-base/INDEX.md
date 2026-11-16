@@ -4,15 +4,15 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 
 ---
 
-## 📚 Knowledge Base Table of Contents
+## Knowledge Base Table of Contents
 
 | Document | Description | Key Topics Covered |
 |---|---|---|
 | [**01. System Architecture**](01_SYSTEM_ARCHITECTURE.md) | High-level system architecture & control plane | ucode runtime, atomic writes, repository layout, daemon lifecycle |
-| [**02. ucode Module Reference**](02_UCODE_MODULE_REFERENCE.md) | Comprehensive reference for all 60+ `.uc` files | `core/`, `service/`, `diagnostics/`, `singbox/`, `providers/`, `nft/`, `dns/` |
+| [**02. ucode Module Reference**](02_UCODE_MODULE_REFERENCE.md) | Comprehensive reference for all 60+ `.uc` files | `core/`, `service/`, `diagnostics/`, `tachyon_core/`, `providers/`, `nft/`, `dns/` |
 | [**03. Networking & nftables**](03_NETWORKING_NFTABLES_AND_ROUTING.md) | Packet lifecycle, firewall tables & DNS routing | `inet TachyonTable`, fwmark bitmasks, TProxy, bootstrap DNS loops |
-| [**04. DPI Bypass Engines**](04_DPI_BYPASS_ENGINES.md) | Local packet desynchronization deep dive | Zapret v1 (`nfqws`), Zapret v2 (`nfqws2`), ByeDPI (`ciadpi`), multisplit, seqovl |
-| [**05. AI Stack & AI Doctor**](05_AI_STACK_AND_AUTONOMOUS_DOCTOR.md) | AI Doctor v3.0, Watchdog & REST Agent API | 25 quick-fix codes in `diagnostics/repairs.uc`, Local Rule Doctor, Gemini, OpenAPI 3.0.3, REST API |
+| [**04. Packet Desync Engines**](04_PACKET_DESYNC_ENGINES.md) | Нативная пакетная десинхронизация | Встроенный `desync` (Adaptive 2.0) в `tachyon-core`, профили CSQTT/WDTT, нативный Tailscale, FPTN, TorrServer, AmneziaWG, Strategy Fuzzer |
+| [**05. AI Stack & AI Doctor**](05_AI_STACK_AND_AUTONOMOUS_DOCTOR.md) | AI Doctor v3.0, Watchdog & REST Agent API | 24 quick-fix codes in `diagnostics/repairs.uc`, Local Rule Doctor, Gemini, OpenAPI 3.0.3, REST API |
 | [**06. Frontend LuCI Architecture**](06_FRONTEND_LUCI_TYPESCRIPT.md) | TypeScript SPA & LuCI view integration | `baseclass.extend` patch, reactive stores, live log streaming modal |
 | [**07. Build & Testing Pipeline**](07_BUILD_TESTS_AND_DEPLOYMENT.md) | Compilation, testing & release workflows | `build.sh` (ipk/apk), `install.sh`, Docker CI container, vitest tests |
 | [**08. UCI Configuration Schema**](08_UCI_CONFIGURATION_SCHEMA.md) | Complete `/etc/config/tachyon` reference | All UCI sections, options, validators, default values, ready recipes |
@@ -21,10 +21,6 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 | [**11. Troubleshooting Manual**](11_TROUBLESHOOTING_AND_FIELD_MANUAL.md) | Field diagnostics & emergency recovery | Symptom resolution matrix, diagnostic commands, log inspection paths |
 | [**12. ucode Programming Patterns**](12_UCODE_PROGRAMMING_PATTERNS.md) | Developer guidelines for OpenWrt ucode | Atomic file writes, shell quoting, libuci bindings, RAM efficiency |
 | [**13. REST API & MCP Specification**](13_REST_API_AND_MCP_SPECIFICATION.md) | REST Agent API & MCP tool definitions | OpenAPI 3.0.3, Bearer Auth, OpenAI Function Calling, MCP JSON schema |
-| [**14. Zapret v2 (nfqws2) Deep Dive**](14_ZAPRET2_DEEP_DIVE_MANUAL.md) | Comprehensive Zapret v2 Lua manual | Lua desync functions, multisplit, seqovl, wsize, fooling, multi-profiles |
-| [**15. Zapret v1 (nfqws) Field Guide**](15_ZAPRET1_NFQWS_FIELD_GUIDE.md) | Complete Zapret v1 CLI specification | NFQUEUE desync modes, split-pos, seqovl, syndata, ipfrag, fooling |
-| [**16. ByeDPI (ciadpi) Reference**](16_BYEDPI_CIADPI_REFERENCE.md) | Complete ByeDPI SOCKS5/TProxy manual | Split, disorder, fake, ttl, auto-mode, oob, tlsrec, ip-frag |
-| [**17. TSPU / DPI Signatures & Counters**](17_TSPU_DPI_SIGNATURES_AND_COUNTERS.md) | TSPU filtering mechanics and counters | GoogleVideo 4K, Discord WebRTC, TLS 1.3 RST, TTL distance calculation |
 | [**18. Job Engine**](18_JOB_ENGINE.md) | Task lifecycle, cooperative cancellation, LIFO compensation | 10 phases, process identity, critical sections, heartbeat, `jobClient` |
 | [**19. Transaction Engine**](19_TRANSACTION_ENGINE.md) | All-or-nothing changes with rollback | PLAN→COMMIT phases, built-in compensators, snapshots, stale detection |
 | [**20. Event Journal & Bus**](20_EVENTS.md) | In-memory bus plus on-disk ring journal | Fact types, subscribers, secret redaction, `correlation_id`, query API |
@@ -33,7 +29,7 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 
 ---
 
-## ⚡ Quick Operational Cheat Sheet
+## Quick Operational Cheat Sheet
 
 ### Common CLI Commands
 ```sh

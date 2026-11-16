@@ -224,7 +224,7 @@ let res = tx.run(\"failing_verify\", {
     validate: function(t) { return true; },
     activate: function(t) { return true; },
     verify: function(t) {
-        // Health check fails (e.g. sing-box didn not answer)
+        // Health check fails (e.g. tachyon-core did not answer)
         return false;
     }
 });

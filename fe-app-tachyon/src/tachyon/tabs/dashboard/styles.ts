@@ -386,7 +386,7 @@ export const styles = `
     margin-top: 0;
 }
 
-/* The runtime quarantined this section: sing-box refused the config it
+/* The runtime quarantined this section: tachyon-core refused the config it
    produced, so the section is not loaded while everything else runs. */
 .tachyon_dashboard-page__outbound-section--error {
     border-color: var(--error-color-medium, red);
@@ -3247,6 +3247,36 @@ body.dark-theme .tachyon_proto-popover__desc {
 .btn.tachyon-sec-accordion__action-btn[disabled] {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.tachyon-section-order-warning__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    align-self: center;
+    flex-wrap: wrap;
+}
+
+.tachyon-section-order-warning__btn--primary {
+    border-color: rgba(217, 119, 6, 0.58);
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.tachyon-section-order-warning__btn--primary:hover:not([disabled]) {
+    border-color: rgba(217, 119, 6, 0.78);
+    background: rgba(217, 119, 6, 0.3);
+}
+
+.tachyon-section-order-warning__btn[disabled] {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+@media (max-width: 640px) {
+    .tachyon-section-order-warning__actions {
+        margin-left: 25px;
+    }
 }
 
 `;

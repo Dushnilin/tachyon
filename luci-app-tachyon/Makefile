@@ -23,7 +23,7 @@ LUCI_PKGARCH:=all
 LUCI_LANG.ru:=Русский (Russian)
 LUCI_LANG.en:=English
 LUCI_MAINTAINER:=Dushnilin <dushnilin@gmail.com>
-LUCI_DESCRIPTION:=Rule-based Tachyon LuCI app with hybrid sing-box + zapret orchestration
+LUCI_DESCRIPTION:=Rule-based Tachyon LuCI app with hybrid tachyon-core + zapret orchestration
 LUCI_MINIFY_JS:=0
 
 PKG_LICENSE:=GPL-2.0-or-later

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Section quarantine: a config that sing-box refuses to load must not take the
+# Section quarantine: a config that tachyon-core refuses to load must not take the
 # whole proxy down. The runtime isolates the offending section, regenerates
 # without it and records the error per section in /var/run/tachyon/section-errors.json
 # (overridable via TACHYON_SECTION_ERRORS_FILE) so the UI can mark the section.
@@ -9,9 +9,9 @@
 #      (outbounds, routes, failover) and drops detours pointing at it;
 #   2. the generator names the failing section in a tachyon-section-error marker
 #      when generation itself dies inside a section;
-#   3. the runtime maps a sing-box check failure back to the owning section
+#   3. the runtime maps a tachyon-core check failure back to the owning section
 #      by tag prefix (outbounds[N], rule_set[N], missing outbound tag).
-# The full init-config loop needs a live sing-box binary and UCI; its wiring is
+# The full init-config loop needs a live tachyon-core binary and UCI; its wiring is
 # asserted by grep at the end of this file.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
@@ -19,10 +19,8 @@ set -eo pipefail
 GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
 
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/version"
-printf 'tachyon-core' >"$SB_VARIANT_STATE_FILE"
-printf '0.0.9' >"$SB_VERSION_STATE_FILE"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
+printf '0.5.7' >"$TACHYON_CORE_VERSION_FILE"
 
 # section_exists() consults UCI; the attribution fixture needs a section that
 # really exists there.

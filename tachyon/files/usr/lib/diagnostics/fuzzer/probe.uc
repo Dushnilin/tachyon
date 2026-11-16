@@ -20,7 +20,6 @@ let command_from_args = common.command_from_args;
 let command_success = common.command_success;
 
 const STATE_DIR = history.STATE_DIR;
-const BYEDPI_PORT = 11089;
 const DESYNC_PORT = 11090;
 const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
 
@@ -41,35 +40,10 @@ function cleanup_temp_daemons(job_id) {
             kill_pid_file(job_dir + "/probe.pid");
         }
     }
-    kill_pid_file(STATE_DIR + "/fuzzer_byedpi.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_desync.pid");
-    kill_pid_file(STATE_DIR + "/fuzzer_zapret.pid");
-    kill_pid_file(STATE_DIR + "/fuzzer_zapret2.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_probe.pid");
 
-    // Directly parse /proc/net/netfilter/nfnetlink_queue to terminate any process bound to fuzzer queues
-    for (let w = 0; w < 5; w++) {
-        let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
-        let found = false;
-        if (nfq) {
-            let lines = split(trim(nfq), "\n");
-            for (let line in lines) {
-                let cols = split(trim(line), /[ \t]+/);
-                if (length(cols) >= 2) {
-                    let q = int(cols[0]);
-                    let p = int(cols[1]);
-                    if ((q == binaries.NFQUEUE_QNUM_ZAPRET || q == binaries.NFQUEUE_QNUM_ZAPRET2) && p > 0) {
-                        found = true;
-                        system(sprintf("kill -9 %d >/dev/null 2>&1", p));
-                    }
-                }
-            }
-        }
-        if (!found) break;
-        system("sleep 0.1");
-    }
-
-    // Terminate any stray nfqws / nfqws2 / ciadpi / fuzzer_desync daemons
+    // Terminate any stray fuzzer_desync daemons
     let self_pid = fs.readlink("/proc/self");
     let procs = fs.glob("/proc/[0-9]*");
     if (procs) {
@@ -77,26 +51,18 @@ function cleanup_temp_daemons(job_id) {
             let p_id = replace(p_dir, "/proc/", "");
             if (p_id != self_pid) {
                 let cmdline = fs.readfile(p_dir + "/cmdline");
-                if (cmdline && (index(cmdline, "nfqws") >= 0 || index(cmdline, "ciadpi") >= 0 || index(cmdline, "fuzzer_desync_config.json") >= 0)) {
-                    if (index(cmdline, "qnum=298") >= 0 || index(cmdline, "qnum=299") >= 0 || index(cmdline, "11089") >= 0 || index(cmdline, "fuzzer_desync_config.json") >= 0) {
-                        system(sprintf("kill -9 %s >/dev/null 2>&1", p_id));
-                    }
+                if (cmdline && index(cmdline, "fuzzer_desync_config.json") >= 0) {
+                    system(sprintf("kill -9 %s >/dev/null 2>&1", p_id));
                 }
             }
         }
     }
 
-    // Ensure ByeDPI and Desync ports are released (hard-bounded to avoid hangs)
+    // Ensure Desync port is released (hard-bounded to avoid hangs)
     if (command_success("command -v fuser >/dev/null 2>&1")) {
-        binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT), 3);
         binaries.run_bounded(sprintf("fuser -k %d/tcp >/dev/null 2>&1", DESYNC_PORT), 3);
     }
 
-    // Notice: global kill of curl processes removed to avoid killing external curl operations
-
-    // nft delete can block in-kernel on an orphaned nfqueue binding left by a killed
-    // daemon; without the bound it wedges the ucode interpreter permanently.
-    // 10s is generous enough for slow ARM routers to flush orphaned queue bindings.
     if (command_success("nft list table inet tachyon_fuzzer >/dev/null 2>&1")) {
         binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     }
@@ -121,7 +87,7 @@ function parse_curl_output(output, result, opts) {
         result.error = "Probe timeout or connection refused";
         return result;
     }
-    
+
     // In case there are multiple lines (e.g. warnings or messages), find the tab-delimited metrics line
     let lines = split(output, "\n");
     let target_line = "";
@@ -145,7 +111,7 @@ function parse_curl_output(output, result, opts) {
         result.error = "Malformed probe metrics output";
         return result;
     }
-    
+
     let http_code = int(parts[0]);
     let appconnect = 1.0 * parts[1];
     let starttransfer = 1.0 * parts[2];
@@ -264,7 +230,7 @@ function parse_curl_output(output, result, opts) {
         result.error = sprintf("Data transfer aborted after %d B (curl exit %d)", size_download, exit_code);
         return result;
     }
-    
+
     // Any valid HTTP response from origin (including 401/403/404/405/421/429 when hitting endpoints without auth headers / session tokens)
     if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421 || http_code == 429) {
         result.success = true;
@@ -289,36 +255,13 @@ function parse_curl_output(output, result, opts) {
         result.dpi_verdict = "failed";
         result.error = http_code > 0 ? sprintf("HTTP Status %d", http_code) : "Connection dropped by DPI";
     }
-    
+
     return result;
 }
 
 // opts.l4_unreachable: { url: true } for targets whose TCP handshake already failed
 // in the no-bypass baseline. They cannot discriminate between strategies, so they
 // are still probed and reported but no longer veto the whole strategy.
-/**
- * Why a UDP strategy cannot be scored, or null when it can.
- *
- * The fuzzer probes with curl over HTTPS, so it only ever puts TCP on the wire.
- * A strategy whose filter is UDP therefore has nothing acting on it: nfqws accepts
- * the TCP packets untouched because --filter-udp does not apply to them, the probe
- * succeeds, and the strategy collects a full score for a path nobody exercised.
- * Since the winner is what the user ends up applying, "unmeasured" has to be a
- * failure - but a *reported* one, distinct from a DPI verdict.
- *
- * probes_attempted keeps this away from the QUIC target when router curl has no
- * HTTP/3: there the honest answer is "unsupported_proto", not "no UDP traffic".
- */
-function udp_probe_verdict(is_udp, counters, probes_attempted) {
-    if (!is_udp || probes_attempted <= 0 || counters.udp > 0)
-        return null;
-
-    return sprintf(
-        "Strategy filters UDP, but the probe sent no UDP traffic (%d TCP packets through the queue): its UDP filter never ran, so this result says nothing about the strategy. Not a DPI verdict.",
-        counters.tcp
-    );
-}
-
 function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
     let l4_unreachable = (opts && type(opts.l4_unreachable) == "object") ? opts.l4_unreachable : {};
     cleanup_temp_daemons(job_id);
@@ -328,11 +271,11 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
     let job_dir = history.get_job_dir(job_id);
     let probe_pid_path = job_dir ? (job_dir + "/probe.pid") : (STATE_DIR + "/fuzzer_probe.pid");
     try { fs.unlink(probe_pid_path); } catch (e) {}
-    
+
     let urls_list = binaries.resolve_target_urls_list(target_key, custom_url);
     let total_urls = length(urls_list);
     let caps = fuzzer_runner.get_system_capabilities();
-    
+
     let result = {
         success: false,
         http_code: 0,
@@ -341,15 +284,14 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         speed_kbps: 0,
         score: 0,
         error: "",
-        nfqueue_packets: -1,
-        nfqueue_tcp_packets: 0,
-        nfqueue_udp_packets: 0,
         passed_endpoints: 0,
         total_endpoints: total_urls,
         sub_probes: []
     };
-    
-    engine = lc(as_string(engine));
+
+    engine = lc(as_string(engine || "desync"));
+    if (engine == "")
+        engine = "desync";
     let has_udp_target = false;
     for (let u_item in urls_list) {
         let pk = as_string(u_item.probe_kind || "");
@@ -358,284 +300,157 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             break;
         }
     }
-    let target_tokens = split(as_string(target_key || ""), ",");
-    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || ("quic_http3" in target_tokens) || ("gaming_udp_suite" in target_tokens) || has_udp_target;
-    
+
     let tok_res = fuzzer_runner.tokenize_strategy_args(args_str);
     if (!tok_res.valid) {
         result.error = "Invalid strategy arguments: " + tok_res.error;
         return result;
     }
 
-    if (engine == "byedpi" || engine == "desync") {
-        let is_desync = (engine == "desync");
-        let bin = is_desync ? binaries.get_desync_bin() : binaries.get_byedpi_bin();
-        if (!bin) {
-            result.error = (is_desync ? "tachyon-core" : "ByeDPI") + " binary not found";
-            return result;
+    if (engine != "desync") {
+        result.error = "Unsupported engine: " + engine;
+        return result;
+    }
+
+    let bin = binaries.get_desync_bin();
+    if (!bin) {
+        result.error = "tachyon-core binary not found";
+        return result;
+    }
+
+    let listen_port = DESYNC_PORT;
+    let pid_path = job_dir ? (job_dir + "/engine.pid") : (STATE_DIR + "/fuzzer_desync.pid");
+    let stderr_log = job_dir ? (job_dir + "/daemon_err.log") : (STATE_DIR + "/fuzzer_daemon_err.log");
+    let cfg_path = job_dir ? (job_dir + "/fuzzer_desync_config.json") : (STATE_DIR + "/fuzzer_desync_config.json");
+    try { fs.unlink(pid_path); } catch (e) {}
+    try { fs.unlink(stderr_log); } catch (e) {}
+
+    let desync_out = fuzzer_runner.parse_desync_outbound(args_str, "desync-out");
+    if (!desync_out) {
+        result.error = "Invalid desync strategy arguments";
+        return result;
+    }
+    let desync_inbounds = [
+        {
+            type: "mixed",
+            tag: "fuzzer-in",
+            listen: "127.0.0.1",
+            listen_port: listen_port
         }
-        
-        let listen_port = is_desync ? DESYNC_PORT : BYEDPI_PORT;
-        let pid_path = job_dir ? (job_dir + "/engine.pid") : (STATE_DIR + (is_desync ? "/fuzzer_desync.pid" : "/fuzzer_byedpi.pid"));
-        let stderr_log = job_dir ? (job_dir + "/daemon_err.log") : (STATE_DIR + "/fuzzer_daemon_err.log");
-        let cfg_path = job_dir ? (job_dir + "/fuzzer_desync_config.json") : (STATE_DIR + "/fuzzer_desync_config.json");
-        try { fs.unlink(pid_path); } catch (e) {}
-        try { fs.unlink(stderr_log); } catch (e) {}
-        
-        let spawn_cmd = "";
-        if (is_desync) {
-            let desync_out = fuzzer_runner.parse_desync_outbound(args_str, "desync-out");
-            if (!desync_out) {
-                result.error = "Invalid desync strategy arguments";
-                return result;
-            }
-            let desync_inbounds = [
-                {
-                    type: "mixed",
-                    tag: "fuzzer-in",
+    ];
+    let udp_idx = 0;
+    for (let u_item in urls_list) {
+        if ((u_item.probe_kind || "") == "udp_stun" || index(as_string(u_item.url || ""), "udp://") == 0) {
+            let udp_info = binaries.parse_udp_target_url(u_item.url);
+            if (udp_info && udp_info.ip) {
+                udp_idx++;
+                let u_port = listen_port + udp_idx;
+                u_item._local_udp_port = u_port;
+                push(desync_inbounds, {
+                    type: "direct",
+                    tag: sprintf("fuzzer-udp-in-%d", udp_idx),
                     listen: "127.0.0.1",
-                    listen_port: listen_port
-                }
-            ];
-            let udp_idx = 0;
-            for (let u_item in urls_list) {
-                if ((u_item.probe_kind || "") == "udp_stun" || index(as_string(u_item.url || ""), "udp://") == 0) {
-                    let udp_info = binaries.parse_udp_target_url(u_item.url);
-                    if (udp_info && udp_info.ip) {
-                        udp_idx++;
-                        let u_port = listen_port + udp_idx;
-                        u_item._local_udp_port = u_port;
-                        push(desync_inbounds, {
-                            type: "direct",
-                            tag: sprintf("fuzzer-udp-in-%d", udp_idx),
-                            listen: "127.0.0.1",
-                            listen_port: u_port,
-                            network: "udp",
-                            override_address: udp_info.ip,
-                            override_port: udp_info.port
-                        });
-                    }
-                }
+                    listen_port: u_port,
+                    network: "udp",
+                    override_address: udp_info.ip,
+                    override_port: udp_info.port
+                });
             }
-            let desync_cfg = {
-                log: { level: "error" },
-                dns: {
-                    servers: [
-                        { type: "udp", tag: "dns-direct", server: "77.88.8.8" }
-                    ],
-                    final: "dns-direct"
-                },
-                inbounds: desync_inbounds,
-                outbounds: [ desync_out ],
-                route: {
-                    final: "desync-out"
-                }
-            };
-            common.write_json_file(cfg_path, desync_cfg);
-            spawn_cmd = "GOMEMLIMIT=24MiB " + common.command_from_args([ bin, "run", "-c", cfg_path ]) + " 2>" + shell_quote(stderr_log);
-        } else {
-            let argv = fuzzer_runner.build_byedpi_argv(bin, listen_port, tok_res.tokens);
-            spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
         }
-        system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
-        
-        let pid_running = false;
-        let daemon_pid = 0;
-        for (let wait_i = 0; wait_i < 15; wait_i++) {
-            sleep(100);
-            let pid_str = fs.readfile(pid_path);
-            if (pid_str) {
-                let pid = trim(as_string(pid_str));
-                if (pid != "" && match(pid, /^[0-9]+$/) != null && exec.is_alive(pid)) {
-                    if (is_desync) {
-                        // A desync engine can bind and die within the same
-                        // tick, so give it a moment and re-check before the
-                        // probe claims the port.
-                        sleep(150);
-                        if (!exec.is_alive(pid))
-                            break;
-                    }
-                    pid_running = true;
-                    daemon_pid = int(pid);
+    }
+    let desync_cfg = {
+        log: { level: "error" },
+        dns: {
+            servers: [
+                { type: "udp", tag: "dns-direct", server: "77.88.8.8" }
+            ],
+            final: "dns-direct"
+        },
+        inbounds: desync_inbounds,
+        outbounds: [ desync_out ],
+        route: {
+            final: "desync-out"
+        }
+    };
+    common.write_json_file(cfg_path, desync_cfg);
+    let spawn_cmd = common.command_from_args([ bin, "run", "-c", cfg_path ]) + " 2>" + shell_quote(stderr_log);
+    system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
+
+    let pid_running = false;
+    let daemon_pid = 0;
+    for (let wait_i = 0; wait_i < 15; wait_i++) {
+        sleep(100);
+        let pid_str = fs.readfile(pid_path);
+        if (pid_str) {
+            let pid = trim(as_string(pid_str));
+            if (pid != "" && match(pid, /^[0-9]+$/) != null && exec.is_alive(pid)) {
+                // Give tachyon-core a moment to bind and verify it did not exit immediately on config error.
+                sleep(150);
+                if (!exec.is_alive(pid))
                     break;
-                }
+                pid_running = true;
+                daemon_pid = int(pid);
+                break;
             }
         }
-        
-        if (!pid_running) {
-            let err_content = fs.readfile(stderr_log);
-            let err_msg = err_content ? trim(as_string(err_content)) : "";
-            if (err_msg != "") {
-                let first_line = split(err_msg, "\n")[0];
-                result.error = sprintf("Daemon failed to start: %s", first_line);
-            } else {
-                result.error = (is_desync ? "tachyon-core desync" : "ByeDPI") + " daemon failed to start (invalid arguments)";
-            }
-            cleanup_temp_daemons(job_id);
-            return result;
+    }
+
+    if (!pid_running) {
+        let err_content = fs.readfile(stderr_log);
+        let err_msg = err_content ? trim(as_string(err_content)) : "";
+        if (err_msg != "") {
+            let first_line = split(err_msg, "\n")[0];
+            result.error = sprintf("Daemon failed to start: %s", first_line);
+        } else {
+            result.error = "tachyon-core desync daemon failed to start (invalid arguments)";
         }
-        
-        // Ensure direct outbound connections bypass proxy TProxy (scoped to probe target IPs)
-        exec.command_status_from_args([ "nft", "add table inet tachyon_fuzzer" ]);
-        binaries.add_bypass_singbox_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), has_udp_target);
-        
-        let passed_count = 0;
-        let max_speed = 0;
-        let sum_data_bytes = 0;
-        let any_data_verified = false;
-        let any_verified_256k = false;
-        let last_http = 0;
-        let last_dpi_verdict = "available";
-        let required_failed = false;
-        
-        for (let target_item in urls_list) {
-            let baseline_unreachable = l4_unreachable[target_item.url] ? true : false;
-            let is_req = (target_item.required !== false) && !baseline_unreachable;
-            let p_kind = target_item.probe_kind || "tls_http";
-            let extra_flags = "";
+        cleanup_temp_daemons(job_id);
+        return result;
+    }
 
-            if (p_kind == "udp_stun" || index(as_string(target_item.url || ""), "udp://") == 0) {
-                if (!is_desync) {
-                    if (!is_req)
-                        continue;
-                    let single_res = {
-                        target_name: target_item.name,
-                        url: target_item.url,
-                        required: is_req,
-                        weight: target_item.weight || 100,
-                        http_code: 0,
-                        handshake_ms: 0,
-                        ttfb_ms: 0,
-                        speed_kbps: 0,
-                        data_bytes: 0,
-                        data_verified: false,
-                        dpi_verdict: "unsupported_proto",
-                        score: 0,
-                        success: false,
-                        error: "UDP game/voice probing is not supported by ByeDPI (TCP-only engine)"
-                    };
-                    push(result.sub_probes, single_res);
-                    if (!required_failed) {
-                        required_failed = true;
-                        result.error = single_res.error;
-                    }
-                    if (passed_count == 0 || total_urls > 6)
-                        break;
-                    continue;
-                }
-                let udp_cmd = binaries.wrap_probe_cmd(
-                    binaries.probe_udp_stun_cmd("127.0.0.1", target_item._local_udp_port || (listen_port + 1), STATE_DIR + "/fuzzer_udp_res.bin"),
-                    4,
-                    probe_pid_path
-                );
-                let udp_out = common.command_output(udp_cmd);
-                try { fs.unlink(probe_pid_path); } catch (e) {}
-                let single_res = parse_curl_output(udp_out, {});
-                if (!single_res.success && single_res.error)
-                    single_res.error = "UDP STUN/Game probe timed out or dropped";
-                single_res.target_name = target_item.name;
-                single_res.url = target_item.url;
-                single_res.required = is_req;
-                single_res.baseline_unreachable = baseline_unreachable;
-                single_res.weight = target_item.weight || 100;
-                push(result.sub_probes, single_res);
-                if (single_res.success) {
-                    passed_count++;
-                    sum_data_bytes += single_res.data_bytes || 0;
-                    if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
-                    last_http = single_res.http_code;
-                    last_dpi_verdict = single_res.dpi_verdict || "available";
-                } else {
-                    let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
-                    if (is_req) {
-                        if (!required_failed) {
-                            if (labeled_error != "") result.error = labeled_error;
-                            last_dpi_verdict = single_res.dpi_verdict || "failed";
-                            required_failed = true;
-                        }
-                        if (passed_count == 0 || total_urls > 6)
-                            break;
-                    }
-                    if (labeled_error != "" && result.error == "") result.error = labeled_error;
-                }
-                continue;
-            }
+    // Ensure direct outbound connections bypass proxy TProxy (scoped to probe target IPs)
+    exec.command_status_from_args([ "nft", "add table inet tachyon_fuzzer" ]);
+    binaries.add_bypass_core_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), has_udp_target);
 
-            if (p_kind == "quic" || target_key == "quic_http3") {
-                if (!caps.http3) {
-                    let single_res = {
-                        target_name: target_item.name,
-                        url: target_item.url,
-                        required: is_req,
-                        weight: target_item.weight || 100,
-                        http_code: 0,
-                        handshake_ms: 0,
-                        ttfb_ms: 0,
-                        speed_kbps: 0,
-                        data_bytes: 0,
-                        data_verified: false,
-                        dpi_verdict: "unsupported_proto",
-                        score: 0,
-                        success: false,
-                        error: "HTTP/3 (QUIC) not supported by router curl binary"
-                    };
-                    push(result.sub_probes, single_res);
-                    if (is_req && !required_failed) {
-                        required_failed = true;
-                        result.error = single_res.error;
-                    }
-                    if (passed_count == 0 || total_urls > 6)
-                        break;
-                    continue;
-                }
-                extra_flags = "--http3-only ";
-            } else if (p_kind == "streaming") {
-                extra_flags = "-r 0-262143 ";
-            }
+    let passed_count = 0;
+    let max_speed = 0;
+    let sum_data_bytes = 0;
+    let any_data_verified = false;
+    let any_verified_256k = false;
+    let last_http = 0;
+    let last_dpi_verdict = "available";
+    let required_failed = false;
 
-            let target_flags = binaries.get_resolved_host_flags(target_item.url);
-            let proxy_scheme = target_flags != "" ? "socks5" : "socks5h";
-            let cto = total_urls >= 3 ? 3 : 4;
-            let mto = (p_kind == "streaming") ? 6 : (total_urls >= 3 ? 4 : 6);
-            let watchdog_sec = (p_kind == "streaming") ? 8 : (total_urls >= 3 ? 6 : 8);
+    for (let target_item in urls_list) {
+        let baseline_unreachable = l4_unreachable[target_item.url] ? true : false;
+        let is_req = (target_item.required !== false) && !baseline_unreachable;
+        let p_kind = target_item.probe_kind || "tls_http";
+        let extra_flags = "";
 
-            let curl_cmd = binaries.wrap_probe_cmd(
-                sprintf(
-                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' --connect-timeout %d --max-time %d %s 2>/dev/null; printf '\\t%%d\\n' $?",
-                    extra_flags,
-                    target_flags,
-                    proxy_scheme,
-                    listen_port,
-                    cto,
-                    mto,
-                    shell_quote(target_item.url)
-                ),
-                watchdog_sec,
+        if (p_kind == "udp_stun" || index(as_string(target_item.url || ""), "udp://") == 0) {
+            let udp_cmd = binaries.wrap_probe_cmd(
+                binaries.probe_udp_stun_cmd("127.0.0.1", target_item._local_udp_port || (listen_port + 1), STATE_DIR + "/fuzzer_udp_res.bin"),
+                4,
                 probe_pid_path
             );
-            let pipe = fs.popen(curl_cmd, "r");
-            let output = pipe ? pipe.read("all") : "";
-            if (pipe) pipe.close();
+            let udp_out = common.command_output(udp_cmd);
             try { fs.unlink(probe_pid_path); } catch (e) {}
-            
-            let single_res = parse_curl_output(output, {}, { streaming: (p_kind == "streaming") });
+            let single_res = parse_curl_output(udp_out, {});
+            if (!single_res.success && single_res.error)
+                single_res.error = "UDP STUN/Game probe timed out or dropped";
             single_res.target_name = target_item.name;
             single_res.url = target_item.url;
             single_res.required = is_req;
             single_res.baseline_unreachable = baseline_unreachable;
             single_res.weight = target_item.weight || 100;
             push(result.sub_probes, single_res);
-            
             if (single_res.success) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
-                if (single_res.data_verified) any_data_verified = true;
-                if (single_res.dpi_verdict == "verified_256k") any_verified_256k = true;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
                 last_dpi_verdict = single_res.dpi_verdict || "available";
             } else {
-                if (last_http == 0) last_http = single_res.http_code;
                 let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                 if (is_req) {
                     if (!required_failed) {
@@ -648,409 +463,161 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 }
                 if (labeled_error != "" && result.error == "") result.error = labeled_error;
             }
-        }
-        
-        result.passed_endpoints = passed_count;
-        let daemon_alive_at_end = is_pid_alive(daemon_pid);
-        cleanup_temp_daemons(job_id);
-
-        if (!daemon_alive_at_end) {
-            result.success = false;
-            result.score = 0;
-            result.data_verified = false;
-            result.dpi_verdict = "daemon_crashed";
-            result.error = sprintf("Fuzzer test daemon %s crashed or exited prematurely", is_desync ? "tachyon-core" : "ciadpi");
-            return result;
-        }
-        
-        if (required_failed || passed_count == 0) {
-            result.success = false;
-            result.http_code = last_http;
-            result.data_bytes = sum_data_bytes;
-            result.data_verified = false;
-            result.dpi_verdict = last_dpi_verdict;
-            result.score = 0;
-            if (result.error == "") {
-                result.error = sprintf("Required endpoint failed (%d of %d endpoints passed)", passed_count, total_urls);
-            }
-        } else {
-            let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
-            let is_verified_256k = (total_urls == 1)
-                ? (result.sub_probes[0] && result.sub_probes[0].dpi_verdict == "verified_256k")
-                : any_verified_256k;
-            result.success = true;
-            result.http_code = last_http > 0 ? last_http : 200;
-            result.speed_kbps = max_speed;
-            result.data_bytes = sum_data_bytes;
-            result.data_verified = is_data_verified;
-            result.dpi_verdict = is_verified_256k ? "verified_256k" : (is_data_verified ? "verified_32k" : last_dpi_verdict);
-            result.error = "";
-
-            let total_w = 0;
-            let weighted_score = 0.0;
-            let weighted_ttfb = 0.0;
-            let weighted_hs = 0.0;
-            for (let sp in result.sub_probes) {
-                let w = sp.weight || 10;
-                total_w += w;
-                weighted_score += (sp.score * w);
-                weighted_ttfb += (sp.ttfb_ms * w);
-                weighted_hs += (sp.handshake_ms * w);
-            }
-            result.score = total_w > 0 ? int(weighted_score / (1.0 * total_w)) : 0;
-            result.ttfb_ms = total_w > 0 ? int(weighted_ttfb / (1.0 * total_w)) : 0;
-            result.handshake_ms = total_w > 0 ? int(weighted_hs / (1.0 * total_w)) : 0;
-        }
-        
-        return result;
-    }
-    
-    if (engine == "zapret" || engine == "zapret2") {
-        cleanup_temp_daemons(job_id);
-        let is_z2 = engine == "zapret2";
-        let bin = is_z2 ? binaries.get_zapret2_bin() : binaries.get_zapret_bin();
-        let qnum = is_z2 ? binaries.NFQUEUE_QNUM_ZAPRET2 : binaries.NFQUEUE_QNUM_ZAPRET;
-        let pid_path = job_dir ? (job_dir + "/engine.pid") : (is_z2 ? (STATE_DIR + "/fuzzer_zapret2.pid") : (STATE_DIR + "/fuzzer_zapret.pid"));
-        let stderr_log = job_dir ? (job_dir + "/daemon_err.log") : (STATE_DIR + "/fuzzer_daemon_err.log");
-        try { fs.unlink(pid_path); } catch (e) {}
-        try { fs.unlink(stderr_log); } catch (e) {}
-        
-        if (!bin) {
-            result.error = (is_z2 ? "Zapret v2" : "Zapret v1") + " binary not found";
-            return result;
-        }
-        
-        let lua_init_flags = "";
-        let blob_flags = "";
-        if (is_z2) {
-            lua_init_flags = binaries.get_zapret2_lua_flags(args_str);
-            blob_flags = binaries.resolve_zapret2_blobs(args_str);
-            if (index(args_str, "--lua-desync") >= 0 && lua_init_flags == "" && index(args_str, "--lua-init") < 0) {
-                result.error = "Missing Zapret2 Lua library: zapret-antidpi.lua not found in /opt/zapret2/lua or system paths";
-                cleanup_temp_daemons(job_id);
-                return result;
-            }
-        }
-        
-        let filter_prefix = "";
-        if (is_z2 && index(args_str, "--filter-tcp") < 0 && index(args_str, "--filter-l7") < 0) {
-            filter_prefix = "--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello ";
-        }
-        if (is_z2 && is_udp && index(args_str, "--filter-udp") < 0) {
-            filter_prefix += "--filter-udp=443 --payload=quic_initial ";
-        }
-        
-        let fwmark_flag = "";
-        if (is_z2) {
-            if (index(args_str, "--fwmark") < 0)
-                fwmark_flag = sprintf("--fwmark=%s ", binaries.FUZZER_FWMARK);
-        } else {
-            if (index(args_str, "--dpi-desync-fwmark") < 0)
-                fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", binaries.FUZZER_FWMARK);
-        }
-        
-        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp || has_udp_target, binaries.probe_target_ips(urls_list))) {
-            result.error = "nftables setup failed: fuzzer queue rule could not be installed";
-            cleanup_temp_daemons(job_id);
-            return result;
+            continue;
         }
 
-        let argv = fuzzer_runner.build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, filter_prefix, tok_res.tokens);
-        let spawn_cmd = common.command_from_args(argv) + " 2>" + shell_quote(stderr_log);
-        system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
-        
-        let pid_running = false;
-        let daemon_pid = 0;
-        for (let wait_i = 0; wait_i < 15; wait_i++) {
-            system("sleep 0.1");
-            let pid_str = fs.readfile(pid_path);
-            if (pid_str) {
-                let pid = trim(as_string(pid_str));
-                if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
-                    pid_running = true;
-                    daemon_pid = int(pid);
-                    break;
-                }
-            }
-        }
-        
-        if (!pid_running) {
-            let err_content = fs.readfile(stderr_log);
-            let err_msg = err_content ? trim(as_string(err_content)) : "";
-            if (err_msg != "") {
-                let lines = split(err_msg, "\n");
-                let err_line = "";
-                for (let i = length(lines) - 1; i >= 0; i--) {
-                    let l = trim(lines[i]);
-                    if (l == "") continue;
-                    if (index(l, "version") < 0 && index(l, "Running as") < 0 && index(l, "LUA v") < 0 && index(l, "JIT:") < 0 && index(l, "we have") < 0 && index(l, "initializing") < 0 && index(l, "opening nfq") < 0 && index(l, "unbinding") < 0 && index(l, "binding") < 0 && index(l, "setting copy") < 0 && index(l, "chdir") < 0) {
-                        err_line = l;
-                        break;
-                    }
-                }
-                if (err_line == "") err_line = split(err_msg, "\n")[0];
-                result.error = sprintf("Daemon failed to start: %s", err_line);
-            } else {
-                result.error = sprintf("Daemon %s failed to start (invalid arguments or missing Lua library)", is_z2 ? "nfqws2" : "nfqws");
-            }
-            cleanup_temp_daemons(job_id);
-            return result;
-        }
-
-        // The queue rule has no bypass flag: until nfqws binds the queue every
-        // matching packet is dropped. A live PID does not mean the queue is bound.
-        if (!binaries.wait_nfqueue_bound(qnum, 20)) {
-            result.dpi_verdict = "nfqueue_unbound";
-            result.error = sprintf("%s started but did not bind NFQUEUE %d", is_z2 ? "nfqws2" : "nfqws", qnum);
-            cleanup_temp_daemons(job_id);
-            return result;
-        }
-
-        let passed_count = 0;
-        let max_speed = 0;
-        let sum_data_bytes = 0;
-        let any_data_verified = false;
-        let any_verified_256k = false;
-        let last_http = 0;
-        let last_dpi_verdict = "available";
-        let probes_attempted = 0;
-        let dns_flags = binaries.get_fuzzer_curl_dns_flags();
-        let required_failed = false;
-
-        for (let target_item in urls_list) {
-            let baseline_unreachable = l4_unreachable[target_item.url] ? true : false;
-            let is_req = (target_item.required !== false) && !baseline_unreachable;
-            let p_kind = target_item.probe_kind || "tls_http";
-            let extra_flags = "";
-
-            if (p_kind == "udp_stun" || index(as_string(target_item.url || ""), "udp://") == 0) {
-                probes_attempted++;
-                let udp_info = binaries.parse_udp_target_url(target_item.url);
-                let udp_cmd = binaries.wrap_probe_cmd(
-                    binaries.probe_udp_stun_cmd(udp_info ? udp_info.ip : "74.125.250.129", udp_info ? udp_info.port : 19302, STATE_DIR + "/fuzzer_udp_res.bin"),
-                    4,
-                    probe_pid_path
-                );
-                let udp_out = common.command_output(udp_cmd);
-                try { fs.unlink(probe_pid_path); } catch (e) {}
-                let single_res = parse_curl_output(udp_out, {});
-                if (!single_res.success && single_res.error)
-                    single_res.error = "UDP STUN/Game probe timed out or dropped";
-                single_res.target_name = target_item.name;
-                single_res.url = target_item.url;
-                single_res.required = is_req;
-                single_res.baseline_unreachable = baseline_unreachable;
-                single_res.weight = target_item.weight || 100;
+        if (p_kind == "quic" || target_key == "quic_http3") {
+            if (!caps.http3) {
+                let single_res = {
+                    target_name: target_item.name,
+                    url: target_item.url,
+                    required: is_req,
+                    weight: target_item.weight || 100,
+                    http_code: 0,
+                    handshake_ms: 0,
+                    ttfb_ms: 0,
+                    speed_kbps: 0,
+                    data_bytes: 0,
+                    data_verified: false,
+                    dpi_verdict: "unsupported_proto",
+                    score: 0,
+                    success: false,
+                    error: "HTTP/3 (QUIC) not supported by router curl binary"
+                };
                 push(result.sub_probes, single_res);
-                if (single_res.success) {
-                    passed_count++;
-                    sum_data_bytes += single_res.data_bytes || 0;
-                    if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
-                    last_http = single_res.http_code;
-                    last_dpi_verdict = single_res.dpi_verdict || "available";
-                } else {
-                    let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
-                    if (is_req) {
-                        if (!required_failed) {
-                            if (labeled_error != "") result.error = labeled_error;
-                            last_dpi_verdict = single_res.dpi_verdict || "failed";
-                            required_failed = true;
-                        }
-                        if (passed_count == 0 || total_urls > 6)
-                            break;
-                    }
-                    if (labeled_error != "" && result.error == "") result.error = labeled_error;
+                if (is_req && !required_failed) {
+                    required_failed = true;
+                    result.error = single_res.error;
                 }
+                if (passed_count == 0 || total_urls > 6)
+                    break;
                 continue;
             }
-
-            if (p_kind == "quic" || target_key == "quic_http3") {
-                if (!caps.http3) {
-                    let single_res = {
-                        target_name: target_item.name,
-                        url: target_item.url,
-                        required: is_req,
-                        weight: target_item.weight || 100,
-                        http_code: 0,
-                        handshake_ms: 0,
-                        ttfb_ms: 0,
-                        speed_kbps: 0,
-                        data_bytes: 0,
-                        data_verified: false,
-                        dpi_verdict: "unsupported_proto",
-                        score: 0,
-                        success: false,
-                        error: "HTTP/3 (QUIC) not supported by router curl binary"
-                    };
-                    push(result.sub_probes, single_res);
-                    if (is_req && !required_failed) {
-                        required_failed = true;
-                        result.error = single_res.error;
-                    }
-                    if (passed_count == 0 || total_urls > 6)
-                        break;
-                    continue;
-                }
-                extra_flags = "--http3-only ";
-            } else if (p_kind == "streaming") {
-                extra_flags = "-r 0-262143 ";
-            }
-
-            probes_attempted++;
-
-            let target_flags = binaries.get_resolved_host_flags(target_item.url);
-            if (target_flags == "") target_flags = dns_flags;
-            let cto = total_urls >= 3 ? 3 : 4;
-            let mto = (p_kind == "streaming") ? 6 : (total_urls >= 3 ? 4 : 6);
-            let watchdog_sec = (p_kind == "streaming") ? 8 : (total_urls >= 3 ? 6 : 8);
-
-            let curl_cmd = binaries.wrap_probe_cmd(
-                binaries.probe_curl_cmd(extra_flags, target_flags, target_item.url, STATE_DIR + "/fuzzer_curl_err.log", cto, mto),
-                watchdog_sec,
-                probe_pid_path
-            );
-            let pipe = fs.popen(curl_cmd, "r");
-            let output = pipe ? pipe.read("all") : "";
-            if (pipe) pipe.close();
-            try { fs.unlink(probe_pid_path); } catch (e) {}
-
-            let single_res = parse_curl_output(output, {}, { streaming: (p_kind == "streaming") });
-            single_res.target_name = target_item.name;
-            single_res.url = target_item.url;
-            single_res.required = is_req;
-            single_res.baseline_unreachable = baseline_unreachable;
-            single_res.resolve_flags = trim(target_flags);
-            single_res.weight = target_item.weight || 100;
-            push(result.sub_probes, single_res);
-
-            if (single_res.success) {
-                passed_count++;
-                sum_data_bytes += single_res.data_bytes || 0;
-                if (single_res.data_verified) any_data_verified = true;
-                if (single_res.dpi_verdict == "verified_256k") any_verified_256k = true;
-                if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
-                last_http = single_res.http_code;
-                last_dpi_verdict = single_res.dpi_verdict || "available";
-            } else {
-                if (last_http == 0) last_http = single_res.http_code;
-                let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
-                if (is_req) {
-                    // The required failure is what vetoes the strategy, so report it
-                    // even when an optional target failed earlier.
-                    if (!required_failed) {
-                        if (labeled_error != "") result.error = labeled_error;
-                        last_dpi_verdict = single_res.dpi_verdict || "failed";
-                        required_failed = true;
-                    }
-                    if (passed_count == 0 || total_urls > 6)
-                        break;
-                }
-                if (labeled_error != "" && result.error == "") result.error = labeled_error;
-            }
+            extra_flags = "--http3-only ";
+        } else if (p_kind == "streaming") {
+            extra_flags = "-r 0-262143 ";
         }
 
-        result.passed_endpoints = passed_count;
-        let nfq_stats = binaries.read_nfqueue_stats(qnum);
-        result.nfqueue_packets = nfq_stats ? nfq_stats.packets : -1;
+        let target_flags = binaries.get_resolved_host_flags(target_item.url);
+        let proxy_scheme = target_flags != "" ? "socks5" : "socks5h";
+        let cto = total_urls >= 3 ? 3 : 4;
+        let mto = (p_kind == "streaming") ? 6 : (total_urls >= 3 ? 4 : 6);
+        let watchdog_sec = (p_kind == "streaming") ? 8 : (total_urls >= 3 ? 6 : 8);
 
-        // Whether the packets this strategy filters actually arrived. Without it a
-        // UDP strategy is scored on TCP traffic its filter never sees and wins on
-        // a result that means nothing: nfqws accepts the TCP packets untouched
-        // because --filter-udp does not apply to them.
-        let proto_counters = binaries.read_fuzzer_proto_counters();
-        result.nfqueue_tcp_packets = proto_counters.tcp;
-        result.nfqueue_udp_packets = proto_counters.udp;
+        let curl_cmd = binaries.wrap_probe_cmd(
+            sprintf(
+                "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' --connect-timeout %d --max-time %d %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                extra_flags,
+                target_flags,
+                proxy_scheme,
+                listen_port,
+                cto,
+                mto,
+                shell_quote(target_item.url)
+            ),
+            watchdog_sec,
+            probe_pid_path
+        );
+        let pipe = fs.popen(curl_cmd, "r");
+        let output = pipe ? pipe.read("all") : "";
+        if (pipe) pipe.close();
+        try { fs.unlink(probe_pid_path); } catch (e) {}
 
-        let daemon_alive_at_end = is_pid_alive(daemon_pid);
-        cleanup_temp_daemons(job_id);
+        let single_res = parse_curl_output(output, {}, { streaming: (p_kind == "streaming") });
+        single_res.target_name = target_item.name;
+        single_res.url = target_item.url;
+        single_res.required = is_req;
+        single_res.baseline_unreachable = baseline_unreachable;
+        single_res.weight = target_item.weight || 100;
+        push(result.sub_probes, single_res);
 
-        // Nothing reached the test daemon: the failure says nothing about DPI.
-        if (nfq_stats && nfq_stats.packets == 0 && passed_count == 0) {
-            result.success = false;
-            result.score = 0;
-            result.data_verified = false;
-            result.dpi_verdict = "nfqueue_miss";
-            result.error = sprintf("Probe traffic never reached NFQUEUE %d (0 packets): test path problem, not DPI. %s", qnum, result.error);
-            return result;
-        }
-
-        if (!daemon_alive_at_end) {
-            result.success = false;
-            result.score = 0;
-            result.data_verified = false;
-            result.dpi_verdict = "daemon_crashed";
-            result.error = sprintf("Fuzzer test daemon %s crashed or exited prematurely", is_z2 ? "nfqws2" : "nfqws");
-            return result;
-        }
-
-        // The strategy filters UDP and no UDP packet was ever queued, so nothing
-        // it does was exercised. Reported as unmeasured rather than as a pass: a
-        // win here would be pure noise from the TCP path.
-        let udp_verdict = udp_probe_verdict(is_udp, proto_counters, probes_attempted);
-        if (udp_verdict != null) {
-            result.success = false;
-            result.score = 0;
-            result.data_verified = false;
-            result.dpi_verdict = "udp_not_probed";
-            result.error = udp_verdict;
-            return result;
-        }
-        
-        if (required_failed || passed_count == 0) {
-            result.success = false;
-            result.http_code = last_http;
-            result.data_bytes = sum_data_bytes;
-            result.data_verified = false;
-            result.dpi_verdict = last_dpi_verdict;
-            result.score = 0;
-            if (result.error == "") {
-                result.error = sprintf("Required endpoint failed (%d of %d endpoints passed)", passed_count, total_urls);
-            }
+        if (single_res.success) {
+            passed_count++;
+            sum_data_bytes += single_res.data_bytes || 0;
+            if (single_res.data_verified) any_data_verified = true;
+            if (single_res.dpi_verdict == "verified_256k") any_verified_256k = true;
+            if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
+            last_http = single_res.http_code;
+            last_dpi_verdict = single_res.dpi_verdict || "available";
         } else {
-            let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
-            let is_verified_256k = (total_urls == 1)
-                ? (result.sub_probes[0] && result.sub_probes[0].dpi_verdict == "verified_256k")
-                : any_verified_256k;
-            result.success = true;
-            result.http_code = last_http > 0 ? last_http : 200;
-            result.speed_kbps = max_speed;
-            result.data_bytes = sum_data_bytes;
-            result.data_verified = is_data_verified;
-            result.dpi_verdict = is_verified_256k ? "verified_256k" : (is_data_verified ? "verified_32k" : last_dpi_verdict);
-            result.error = "";
-
-            let total_w = 0;
-            let weighted_score = 0.0;
-            let weighted_ttfb = 0.0;
-            let weighted_hs = 0.0;
-            for (let sp in result.sub_probes) {
-                let w = sp.weight || 10;
-                total_w += w;
-                weighted_score += (sp.score * w);
-                weighted_ttfb += (sp.ttfb_ms * w);
-                weighted_hs += (sp.handshake_ms * w);
+            if (last_http == 0) last_http = single_res.http_code;
+            let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
+            if (is_req) {
+                if (!required_failed) {
+                    if (labeled_error != "") result.error = labeled_error;
+                    last_dpi_verdict = single_res.dpi_verdict || "failed";
+                    required_failed = true;
+                }
+                if (passed_count == 0 || total_urls > 6)
+                    break;
             }
-            result.score = total_w > 0 ? int(weighted_score / (1.0 * total_w)) : 0;
-            result.ttfb_ms = total_w > 0 ? int(weighted_ttfb / (1.0 * total_w)) : 0;
-            result.handshake_ms = total_w > 0 ? int(weighted_hs / (1.0 * total_w)) : 0;
+            if (labeled_error != "" && result.error == "") result.error = labeled_error;
         }
-        
+    }
+
+    result.passed_endpoints = passed_count;
+    let daemon_alive_at_end = is_pid_alive(daemon_pid);
+    cleanup_temp_daemons(job_id);
+
+    if (!daemon_alive_at_end) {
+        result.success = false;
+        result.score = 0;
+        result.data_verified = false;
+        result.dpi_verdict = "daemon_crashed";
+        result.error = "Fuzzer test daemon tachyon-core crashed or exited prematurely";
         return result;
     }
-    
-    result.error = "Unknown engine: " + engine;
+
+    if (required_failed || passed_count == 0) {
+        result.success = false;
+        result.http_code = last_http;
+        result.data_bytes = sum_data_bytes;
+        result.data_verified = false;
+        result.dpi_verdict = last_dpi_verdict;
+        result.score = 0;
+        if (result.error == "") {
+            result.error = sprintf("Required endpoint failed (%d of %d endpoints passed)", passed_count, total_urls);
+        }
+    } else {
+        let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
+        let is_verified_256k = (total_urls == 1)
+            ? (result.sub_probes[0] && result.sub_probes[0].dpi_verdict == "verified_256k")
+            : any_verified_256k;
+        result.success = true;
+        result.http_code = last_http > 0 ? last_http : 200;
+        result.speed_kbps = max_speed;
+        result.data_bytes = sum_data_bytes;
+        result.data_verified = is_data_verified;
+        result.dpi_verdict = is_verified_256k ? "verified_256k" : (is_data_verified ? "verified_32k" : last_dpi_verdict);
+        result.error = "";
+
+        let total_w = 0;
+        let weighted_score = 0.0;
+        let weighted_ttfb = 0.0;
+        let weighted_hs = 0.0;
+        for (let sp in result.sub_probes) {
+            let w = sp.weight || 10;
+            total_w += w;
+            weighted_score += (sp.score * w);
+            weighted_ttfb += (sp.ttfb_ms * w);
+            weighted_hs += (sp.handshake_ms * w);
+        }
+        result.score = total_w > 0 ? int(weighted_score / (1.0 * total_w)) : 0;
+        result.ttfb_ms = total_w > 0 ? int(weighted_ttfb / (1.0 * total_w)) : 0;
+        result.handshake_ms = total_w > 0 ? int(weighted_hs / (1.0 * total_w)) : 0;
+    }
+
     return result;
 }
 
 function module_exports() {
     return {
-        BYEDPI_PORT,
+        DESYNC_PORT,
         JOB_HARD_DEADLINE_SECONDS,
         kill_pid_file,
         cleanup_temp_daemons,
-parse_curl_output,
-    udp_probe_verdict,
-    run_probe
+        parse_curl_output,
+        run_probe
     };
 }
 

@@ -23,19 +23,9 @@ const LOG_WATCHER_START_DELAY_MS = 5000;
 let watcherStartTimer: number | null = null;
 
 function componentDisplayName(component: string) {
-  const sys = store.get().diagnosticsSystemInfo;
-  const isSingBoxFork =
-    Boolean(sys?.sing_box_extended || sys?.sing_box_lx || sys?.sing_box_tiny) &&
-    !sys?.sing_box_tachyon_core;
   const names: Record<string, string> = {
     tachyon: 'Tachyon',
-    sing_box: isSingBoxFork ? 'sing-box' : 'tachyon-core',
-    'tachyon-core': 'tachyon-core',
-    zapret: 'Zapret',
-    zapret2: 'Zapret2',
-    byedpi: 'ByeDPI',
-    wdtt: 'WDTT',
-    olcrtc: 'OlcRTC',
+    'tachyon-core': 'Tachyon Core',
   };
 
   return names[component] || component;

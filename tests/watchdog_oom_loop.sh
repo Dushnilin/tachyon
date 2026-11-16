@@ -44,7 +44,7 @@ let errors = [];
 let note = function(m) { push(errors, m); };
 
 // Shrinking walks down in 20% steps and must stop above the floor, because past it
-// sing-box is starved into not working at all. The walk ends on the last value that
+// tachyon-core is starved into not working at all. The walk ends on the last value that
 // already counts as "at the floor" - one more step would clamp, and the healer must
 // not take it.
 let scale = 1.0;

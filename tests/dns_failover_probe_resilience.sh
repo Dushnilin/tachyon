@@ -2,13 +2,13 @@
 # DNS health probe must survive a slow path and must say why it failed (issue #84).
 #
 # The reporter sees "all configured bootstrap/main DNS servers are unavailable"
-# 21 and 40 minutes after a sing-box restart, with the two warnings 8 seconds
+# 21 and 40 minutes after a tachyon-core restart, with the two warnings 8 seconds
 # apart in both cases, while WAN stays up and a manual nslookup works right
 # after. Two servers from different providers cannot fail in sync, so those two
 # warnings are consecutive probe cycles hitting one common stall rather than two
 # independent outages.
 #
-# The probe is a single `dig` with +tries=1 and a 2s timeout against sing-box's
+# The probe is a single `dig` with +tries=1 and a 2s timeout against tachyon-core's
 # own health inbound. For a DoH server that inbound resolves through the proxy
 # transport, so "resolver is down" is measured as "the transport answered within
 # two seconds". A degraded proxy path therefore reads as a dead resolver.

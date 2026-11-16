@@ -129,9 +129,9 @@ assert_eq "Subscription source 1 for rule 'proxy' is unchanged: 2 proxy entries,
   "subscription source unchanged summary"
 
 runtime_env() {
-  TMP_SING_BOX_FOLDER="$WORK_DIR/runtime/tmp-sing-box" \
-    TMP_RULESET_FOLDER="$WORK_DIR/runtime/tmp-sing-box/rulesets" \
-    TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime/tmp-sing-box/subscriptions" \
+  TMP_TACHYON_CORE_FOLDER="$WORK_DIR/runtime/tmp-tachyon-core" \
+    TMP_RULESET_FOLDER="$WORK_DIR/runtime/tmp-tachyon-core/rulesets" \
+    TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime/tmp-tachyon-core/subscriptions" \
     TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime/run" \
     TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/runtime/run/subscription-update" \
     TACHYON_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/runtime/run/subscription-links" \
@@ -148,9 +148,9 @@ runtime_env() {
 
 runtime_env cache_ucode ensure-runtime-dirs
 for dir in \
-  "$WORK_DIR/runtime/tmp-sing-box" \
-  "$WORK_DIR/runtime/tmp-sing-box/rulesets" \
-  "$WORK_DIR/runtime/tmp-sing-box/subscriptions" \
+  "$WORK_DIR/runtime/tmp-tachyon-core" \
+  "$WORK_DIR/runtime/tmp-tachyon-core/rulesets" \
+  "$WORK_DIR/runtime/tmp-tachyon-core/subscriptions" \
   "$WORK_DIR/runtime/run" \
   "$WORK_DIR/runtime/run/subscription-update" \
   "$WORK_DIR/runtime/run/subscription-metadata" \
@@ -171,7 +171,7 @@ printf '8\n' >"$WORK_DIR/runtime/persistent/cache-format"
 cat >"$WORK_DIR/runtime/persistent/proxy-subscription-1.json" <<'JSON'
 {
   "version": 1,
-  "format": "sing-box-json",
+  "format": "tachyon-core-json",
   "outbounds": [
     {
       "type": "socks",
@@ -347,12 +347,12 @@ printf '%s' 'https://example.com/one.txt' >"$WORK_DIR/runtime-cache/proxy-subscr
 printf '%s' 'v2rayN' >"$WORK_DIR/runtime-cache/proxy-subscription-1.user_agent"
 
 cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null ||
+  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null ||
   fail "runtime cache should be current and usable"
 
 printf '%s' 'stale-hwid' >"$WORK_DIR/runtime-cache/proxy-subscription-1.hwid"
 if cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >"$WORK_DIR/hwid.out" 2>"$WORK_DIR/hwid.err"; then
+  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >"$WORK_DIR/hwid.out" 2>"$WORK_DIR/hwid.err"; then
   fail "mismatched generated HWID cache should not be current"
 fi
 if grep -Fq "left-hand side is not a function" "$WORK_DIR/hwid.err"; then
@@ -381,7 +381,7 @@ printf '%s' 'https://example.com/custom.txt' >"$WORK_DIR/custom-header-cache/cus
 printf '%s' 'v2rayN' >"$WORK_DIR/custom-header-cache/custom-subscription-1.user_agent"
 
 if cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-custom-headers.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null 2>&1; then
+  "$WORK_DIR/cache-custom-headers.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null 2>&1; then
   fail "custom device headers should invalidate a cache without their signature"
 fi
 
@@ -393,19 +393,19 @@ printf '%s' 'v2rayN' >"$WORK_DIR/custom-header-cache/custom-subscription-1.user_
 printf '%s' '{ "enabled": "1", "device_os": "iOS", "ver_os": "26.4", "device_model": "iPhone 17 Pro Max", "device_locale": "ru", "app_version": "4.6.0", "accept_language": "ru-RU,ru;q=0.9" }' >"$WORK_DIR/custom-header-cache/custom-subscription-1.device_headers"
 
 cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-custom-headers.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null ||
+  "$WORK_DIR/cache-custom-headers.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null ||
   fail "matching custom device headers signature should keep the cache current"
 
 sed 's/\\"device_os\\":\\"iOS\\"/\\"device_os\\":\\"Android\\"/' \
   "$WORK_DIR/cache-custom-headers.json" >"$WORK_DIR/cache-custom-headers-changed.json"
 if cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-custom-headers-changed.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null 2>&1; then
+  "$WORK_DIR/cache-custom-headers-changed.json" custom "$WORK_DIR/custom-header-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null 2>&1; then
   fail "changed custom device headers should invalidate cache"
 fi
 
 printf '%s' 'https://example.com/stale.txt' >"$WORK_DIR/runtime-cache/proxy-subscription-1.url"
 if cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null 2>&1; then
+  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null 2>&1; then
   fail "stale runtime cache URL should not be current"
 fi
 
@@ -414,10 +414,10 @@ cat >"$WORK_DIR/persistent-cache/proxy-subscription-2.json" <<'JSON'
 {"outbounds":[{"type":"direct","tag":"two"}]}
 JSON
 printf '%s' 'https://example.com/two.txt' >"$WORK_DIR/persistent-cache/proxy-subscription-2.url"
-printf '%s' 'sing-box/default' >"$WORK_DIR/persistent-cache/proxy-subscription-2.user_agent"
+printf '%s' 'tachyon-core/default' >"$WORK_DIR/persistent-cache/proxy-subscription-2.user_agent"
 
 cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null ||
+  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null ||
   fail "persistent cache should restore and satisfy current cache"
 test -s "$WORK_DIR/runtime-cache/proxy-subscription-2.json" ||
   fail "persistent cache restore should write runtime json"
@@ -426,7 +426,7 @@ assert_eq 'https://example.com/two.txt' \
   "restored subscription URL"
 
 if cache_ucode section-current-usable-cache-fixture \
-  "$WORK_DIR/cache-current.json" manual "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null 2>&1; then
+  "$WORK_DIR/cache-current.json" manual "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "tachyon-core/default" >/dev/null 2>&1; then
   fail "section without subscription URLs should not have usable subscription cache"
 fi
 

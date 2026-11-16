@@ -156,7 +156,7 @@ cmp -s "$REPOS_D/distfeeds.list" "$WORK_DIR/distfeeds.orig" ||
 REMOTE_OUT="$(
   PATH="$BIN_DIR:$PATH" command ucode -L "$TACHYON_LIB" -e '
     let inst = require("components.installer");
-    inst.pkg_remove_sing_box_conflict("sing-box");
+    inst.pkg_remove_conflict("sing-box");
     print(inst.pkg_list_update_command() + "\n" + inst.pkg_install_name_command("kmod-nft-tproxy"));
   '
 )"

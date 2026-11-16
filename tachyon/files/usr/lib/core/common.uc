@@ -68,8 +68,8 @@ function csv_to_json_array(value) {
 // On a router the flash is the scarcest resource that actually dies. NAND wears
 // out long before the CPU does, and nearly everything Tachyon regenerates is
 // derived data that comes back byte-identical most of the time: the per-channel
-// domain lists, the zapret opts files, the compiled .srs rulesets,
-// the subscription cache, the sing-box config.
+// domain lists, the compiled .srs/.trs rulesets,
+// the subscription cache, the tachyon-core config.
 //
 // Measured on 192.168.1.1: one list update rewrote all 33 .srs rulesets - 2.5 MB
 // - inside four minutes, with identical content, because the copy was
@@ -176,7 +176,7 @@ function bool_value(value) {
 }
 
 // disable_quic has grown from a flag into three modes: "off" (no rule at all),
-// "tunneled" (reject QUIC that never reaches sing-box, sing-box still decides
+// "tunneled" (reject QUIC that never reaches tachyon-core, tachyon-core still decides
 // what it is handed) and "all" (reject every UDP/443 outright). One
 // normalizer for every reader — bool_value() would call both new modes false.
 function disable_quic_mode(value) {
@@ -241,7 +241,7 @@ function ipv6_supported() {
 
 // Normalize a custom-signature-packet value (AmneziaWG i1-i5 / j1-j3) into
 // the tag-chain format understood by the userspace WireGuard shipped with
-// sing-box-extended and sing-box-lx ("<b 0x..>", "<r N>", "<rd N>", "<rc N>",
+// tachyon-core ("<b 0x..>", "<r N>", "<rd N>", "<rc N>",
 // "<c>", "<t>"). Existing tag chains pass through verbatim; classic
 // AmneziaWG plain-hex payloads are wrapped into a static-bytes tag, because
 // the userspace parser silently ignores bare hex and the handshake then
@@ -276,45 +276,6 @@ function awg_tag_chain(value) {
     return "";
 }
 
-
-// The j1/j2/j3/itime WireGuardAmnezia fields exist only up to
-// sing-box-extended v1.13.16-extended-2.6.0; starting with 2.6.1 (Amnezia 3.0
-// integration) they were removed from the schema and sing-box aborts on
-// unknown JSON fields.
-function extended_awg_schema_has_junk_signatures(version) {
-    let m = match(lc(as_string(version)), /extended-([0-9]+)\.([0-9]+)\.([0-9]+)/);
-    if (m == null)
-        return false;
-
-    let major = int(m[1], 10);
-    let minor = int(m[2], 10);
-    let patch = int(m[3], 10);
-
-    if (major < 2) return true;
-    if (major > 2) return false;
-    if (minor < 6) return true;
-    if (minor > 6) return false;
-    return patch <= 0;
-}
-
-// OpenVPN endpoint support was added in sing-box 1.14.0 (upstream, and
-// sing-box-extended that tracks it). Versions below 1.14.0 abort with
-// "unknown endpoint type: openvpn" when they encounter the endpoint.
-function sing_box_supports_openvpn(version) {
-    // Version string examples:
-    //   "1.14.1-extended-2.7.2"  ->  core 1.14.1  -> supported
-    //   "1.13.16-extended-2.6.0" ->  core 1.13.16 -> NOT supported
-    //   "1.14.0"                 ->  core 1.14.0  -> supported
-    let m = match(as_string(version), /^([0-9]+)\.([0-9]+)\./);
-    if (m == null)
-        return false; // unknown format - assume not supported
-    let major = int(m[1], 10);
-    let minor = int(m[2], 10);
-    if (major > 1) return true;
-    if (major < 1) return false;
-    return minor >= 14;
-}
-
 // Providers hand out the fingerprint in the OpenSSL shape - hex byte pairs joined
 // by colons - and in subscription links the colons arrive percent-encoded, so
 // parse_query() has already decoded them back to "28:6A:02:...". Accepting only
@@ -344,8 +305,8 @@ function bytes_to_hex(value) {
 }
 
 // Normalize a stored MTProto secret into the canonical serialized hex form
-// ("ee" + 16-byte key + faketls host) that sing-box-extended (mtg-multi)
-// accepts. Users paste the key or full secret in hex or base64; mtg-multi
+// ("ee" + 16-byte key + faketls host) accepted by tachyon-core.
+// Users paste the key or full secret in hex or base64; the parser
 // tries hex first and then raw-url base64, so mirror that precedence.
 // Returns null when the value cannot be interpreted as a valid secret.
 function mtproto_secret_canonical(secret, faketls) {
@@ -517,13 +478,9 @@ function command_success_from_args(args) {
     return command_success(command_from_args(args));
 }
 
-// The core binary ships under two names depending on the package installed:
-// tachyon-core (current) or sing-box (legacy/unmigrated installs). Every
-// "is the core alive" probe must accept both, or a running core reads as
-// stopped and the service/bot/doctor start issuing bogus kills.
+// The core binary runs as `tachyon-core`.
 function core_binary_running() {
-    return command_success_from_args([ "pidof", "tachyon-core" ])
-        || command_success_from_args([ "pidof", "sing-box" ]);
+    return command_success_from_args([ "pidof", "tachyon-core" ]);
 }
 
 function command_capture(command) {
@@ -541,32 +498,6 @@ function command_output(command) {
 
 function command_output_from_args(args) {
     return command_output(command_from_args(args) + " 2>/dev/null");
-}
-
-let nfqws_blob_probe_cache = {};
-
-// zapret2 1.0.5+ compiles fake_default_http/tls/quic into nfqws2 itself, so a
-// --blob= for those is a fatal "duplicate blob name" and the daemon never
-// starts. Ask the binary instead of guessing from a version string: --dry-run
-// verifies parameters and exits before touching any queue. The complaint goes to
-// stderr, hence 2>&1 rather than the usual 2>/dev/null.
-function nfqws_blob_is_builtin(bin, name, probe_file) {
-    if (!bin || !name || !probe_file) return false;
-    let key = as_string(bin) + "\t" + as_string(name);
-    if (key in nfqws_blob_probe_cache)
-        return nfqws_blob_probe_cache[key];
-
-    let builtin = false;
-    let out = command_output(command_from_args([
-        as_string(bin), "--dry-run", "--qnum=65535",
-        "--blob=" + as_string(name) + ":@" + as_string(probe_file),
-        "--filter-tcp=443", "--filter-l7=tls", "--payload=tls_client_hello"
-    ]) + " 2>&1");
-    if (index(as_string(out), "duplicate blob name") >= 0)
-        builtin = true;
-
-    nfqws_blob_probe_cache[key] = builtin;
-    return builtin;
 }
 
 let timeout_prefix_cache = null;
@@ -650,7 +581,7 @@ function copy_file(source, target) {
 
 // The copy that never holds the payload in the ucode heap. copy_file() reads
 // the whole file with fs.readfile to compare and rewrite it, which is fine for
-// a ruleset and fatal for a sing-box binary: on the 256 MB router from issue
+// a ruleset and fatal for a core binary: on the 256 MB router from issue
 // #124 the installer was OOM-killed at 70-77 MB RSS backing up the old core.
 // cp streams through the kernel instead. There is deliberately no
 // unchanged-content guard here: comparing would need the very read this
@@ -728,12 +659,12 @@ function remove_tree(path) {
 
 // Override point for tests, same idea as TACHYON_LIB/TACHYON_CONFIG elsewhere:
 // the suite runs unprivileged and cannot write /etc.
-function singbox_config_path() {
-    return getenv("TACHYON_SINGBOX_CONFIG") || "/etc/tachyon-core/config.json";
+function core_config_path() {
+    return getenv("TACHYON_CORE_CONFIG") || "/etc/tachyon-core/config.json";
 }
 
 function get_mixed_inbound_info() {
-    let data = fs.readfile(singbox_config_path());
+    let data = fs.readfile(core_config_path());
     if (data == null) return null;
     let parsed;
     try { parsed = json(data); } catch (e) { return null; }
@@ -837,38 +768,26 @@ function file_first_line(path) {
     return trim(newline >= 0 ? substr(data, 0, newline) : data);
 }
 
-// Reads the version out of `sing-box version` output.
+// Reads the version out of `tachyon-core version` output.
 //
-// Taking the last whitespace-separated token of the first line assumed the
-// banner ends in the version. That held for 1.13 ("sing-box version 1.13.0")
-// and stopped holding once 1.14 added trailing detail:
-//     sing-box 1.14.5 linux-amd64                         -> "linux-amd64"
-//     sing-box version 1.14.5 (with_quic, with_tailscale) -> "with_tailscale)"
-// Both then failed the caller's /^[vV]?[0-9]+/ gate and produced "". An empty
-// version is not a cosmetic status problem: check_runtime_requirements() turns
-// it into a fatal "Aborted.", so the apply dies and the user is left with a
-// config that refuses to generate and no stated cause (TCH-1046).
-//
-// So match the token that follows the word "version" wherever it appears, and
-// fall back to the first version-shaped token of the banner when the keyword is
-// absent - never to the last token, which on a banner that puts the platform
-// after the version is the platform.
+// Matches the token that follows `tachyon-core` / `version` wherever it
+// appears, and falls back to the first version-shaped token of the banner when
+// the keyword is absent - never to the last token, which on a banner that puts
+// the platform after the version is the platform.
 // The character class is an explicit list rather than a negated one: \s includes
 // \n in this regex engine, so "[^\s...]" runs past the end of the line and
 // swallows the rest of the banner.
-function parse_sing_box_version(output) {
+function parse_core_version(output) {
     let text = as_string(output);
-    let m = match(text, /sing-box[ \t]+version[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
+    let m = match(text, /tachyon-core[ \t]+version[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
     if (m != null)
         return as_string(m[1]);
     m = match(text, /tachyon-core[ \t]+(v?[0-9][0-9A-Za-z._+-]*)/);
     if (m != null)
         return as_string(m[1]);
-    // No "version" keyword anywhere. Take the first token of the banner that
-    // is actually version-shaped rather than blindly the last one: on
-    // "sing-box 1.14.5 linux-amd64" the last token is the platform, and handing
-    // that back would be worse than returning nothing, because the caller's
-    // /^[vV]?[0-9]+/ gate would let it through.
+    // No keyword anywhere. Take the first token of the banner that is actually
+    // version-shaped rather than blindly the last one, so platform tokens are
+    // never returned as versions.
     let newline = index(text, "\n");
     let line = trim(newline >= 0 ? substr(text, 0, newline) : text);
     for (let token in split(line, /[ \t\r\n]+/)) {
@@ -1274,7 +1193,7 @@ return {
     hex_digit_value,
     parse_number,
     file_first_line,
-    parse_sing_box_version,
+    parse_core_version,
     print_file_first_line,
     section_name,
     contains,
@@ -1298,8 +1217,6 @@ return {
     int_option,
     int_or_range_option,
     bytes_to_hex,
-    extended_awg_schema_has_junk_signatures,
-    sing_box_supports_openvpn,
     certificate_pin_base64,
     awg_tag_chain,
     mtproto_secret_canonical,
@@ -1318,7 +1235,6 @@ return {
     command_capture,
     command_output,
     command_output_from_args,
-    nfqws_blob_is_builtin,
     ensure_dir,
     remove_file,
     copy_file,
@@ -1330,7 +1246,7 @@ return {
     remove_tree,
     parent_dir,
     path_basename,
-    singbox_config_path,
+    core_config_path,
     get_mixed_inbound_info,
     get_mixed_port,
     get_lan_ip,

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/Dushnilin/tachyon/releases"><img src="https://img.shields.io/github/v/release/Dushnilin/tachyon?color=38bdf8&labelColor=19191b" alt="Latest Release"></a>
   <a href="https://openwrt.org/"><img src="https://img.shields.io/badge/openwrt-23.05%20%7C%2024.10%20%7C%2025.x%20%7C%20snapshot-232325?labelColor=19191b" alt="OpenWrt Compatibility"></a>
-  <a href="https://github.com/Dushnilin/tachyon-core"><img src="https://img.shields.io/badge/engines-tachyon--core%20%C2%B7%20sing--box-232325?labelColor=19191b" alt="Routing Engines"></a>
+  <a href="https://github.com/Dushnilin/tachyon-core"><img src="https://img.shields.io/badge/core-tachyon--core%20(Rust)-232325?labelColor=19191b" alt="Routing Core"></a>
   <a href="https://github.com/Dushnilin/tachyon-lists"><img src="https://img.shields.io/badge/lists-tachyon--lists%20(143)-232325?labelColor=19191b" alt="Tachyon Lists"></a>
   <a href="https://t.me/tachyon_proxy"><img src="https://img.shields.io/badge/telegram-%40tachyon__proxy-232325?labelColor=19191b" alt="Telegram Channel"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/Dushnilin/tachyon?color=232325&labelColor=19191b" alt="License"></a>
@@ -19,7 +19,7 @@
 
 **Tachyon** — пакет оркестрации сетевого трафика, селективной маршрутизации и защищённого туннелирования для роутеров под управлением **OpenWrt** (`23.05`, `24.10`, `25.x` и `SNAPSHOT`). Проект развивает архитектуру **[Forkop (@ushan0v)](https://github.com/ushan0v/forkop)** и оригинального **[Podkop (@itdoginfo)](https://github.com/itdoginfo/podkop)**.
 
-Система объединяет в едином контуре управления мульти-движковую маршрутизацию (**[tachyon-core](https://github.com/Dushnilin/tachyon-core)** на Rust и **sing-box**), туннели **AmneziaWG / WireGuard**, **OpenVPN (`.ovpn`)** и **FPTN**, локальную сегментацию пакетов L3/L4 (**Zapret v2 / Zapret v1 / ByeDPI**) с комбинаторным фаззером параметров соединения, а также подсистему самодиагностики **AI Doctor v3.0**, **Telegram-бота**, **HTTP REST Agent API (OpenAPI 3.0)** и **MCP-сервер**. Вся серверная логика написана на **ucode** — штатном C-интерпретаторе OpenWrt, что позволяет работать на устройствах от 128 МБ ОЗУ без внешних рантаймов.
+Система объединяет в едином контуре управления нативное прокси-ядро **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** на Rust (включая встроенный режим пакетной десинхронизации **Desync Adaptive 2.0**, транспорт **CSQTT/WDTT** и нативный **Tailscale**), туннели **AmneziaWG / WireGuard**, **OpenVPN (`.ovpn`)** и **FPTN** с комбинаторным фаззером параметров соединения, а также подсистему самодиагностики **AI Doctor v3.0**, **Telegram-бота**, **HTTP REST Agent API (OpenAPI 3.0)** и **MCP-сервер**. Вся серверная логика написана на **ucode** — штатном C-интерпретаторе OpenWrt, что позволяет работать на устройствах от 128 МБ ОЗУ без внешних рантаймов.
 
 ---
 
@@ -37,16 +37,16 @@
 wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 ```
 
-Для автоматической установки сразу с нативным Rust-ядром `tachyon-core` без интерактивных вопросов:
+Для автоматической установки без интерактивных вопросов с нативным Rust-ядром `tachyon-core`:
 
 ```bash
-sh /tmp/tachyon-setup.sh -y --tachyon-core
+sh /tmp/tachyon-setup.sh -y
 ```
 
 | Параметр или механизм | Назначение и поведение |
 |:---|:---|
-| `--tachyon-core` | Установка нативного прокси-ядра `tachyon-core` (Rust, ~4.2 MiB RAM в простое) вместо Go-сборки `sing-box` |
-| Интерактивный выбор | При запуске без флагов скрипт предлагает выбрать целевой движок (`tachyon-core`, `sing-box` `stable`/`extended`/`tiny`/`lx`) и версию релиза |
+| `--tachyon-core` / `--skip-engine` | Установка нативного прокси-ядра `tachyon-core` (Rust, ~4.2 MiB RAM в простое) по умолчанию либо пропуск установки ядра при `--skip-engine` |
+| Интерактивный выбор | При запуске без флагов скрипт проверяет наличие `tachyon-core`, при необходимости предлагает его установку и выбор версии релиза |
 | Транзакционные снимки | До внесения изменений сохраняется резервная копия в `/etc/tachyon/installer-backups/` и состояние `apk-world`; при сбое связи изменения автоматически откатываются |
 | Защита памяти (`zram-swap`) | На роутерах с объёмом ОЗУ ≤ 256 МБ установщик проверяет конфигурацию памяти и предлагает активировать `zram-swap` |
 | Миграция конфигурации | Автоматический перенос существующих правил и секций из пакетов `forkop`, `podkop-plus` и `podkop` в `/etc/config/tachyon` |
@@ -86,9 +86,9 @@ Tachyon классифицирует трафик через таблицы яд
 | Контур обработки | Механизм в ядре и демоне | Назначение |
 |:---|:---|:---|
 | **1. Direct WAN** | Прямая маршрутизация мимо TPROXY/TUN (`0 ms overhead`) | Банковские сервисы, государственные порталы, локальные CDN и доверенные российские подсети |
-| **2. Zapret v1 / v2** | Перехват первых пакетов в очередь Netfilter (`nfqws` / `nfqws2`) | Аппаратная десинхронизация TCP/UDP (`multisplit`, `seqovl`, `wsize`, `syndata`, PAWS `tcp_ts`, бинарные `blobs`, `fake`/`disorder`) непосредственно на роутере без VPS |
-| **3. ByeDPI (`ciadpi`)** | Локальный SOCKS5-прокси десинхронизации | Фрагментация заголовков HTTP и записей TLS ClientHello / SNI |
-| **4. Прокси-ядра** | `tachyon-core` / `sing-box` | Селективное туннелирование по доменам, спискам `.trs`/`.srs`/`.lst`, подсетям и устройствам LAN через VLESS Reality/XHTTP, Hysteria2, Trojan, VMess, Shadowsocks |
+| **2. Native Desync** | Встроенный модуль `desync` (Adaptive 2.0) в `tachyon-core` | Сегментация TCP/TLS/HTTP и настройка профиля соединения (`auto`, `multisplit`, `fake`, `disorder`) непосредственно в ядре без внешних демонов и очередей NFQUEUE |
+| **3. Прокси-ядро** | `tachyon-core` (Rust) | Селективное туннелирование по доменам, спискам `.trs` (приоритетно) и `.srs`/`.lst`, подсетям и устройствам LAN через VLESS Reality/XHTTP, Hysteria2, Trojan, VMess, Shadowsocks |
+| **4. CSQTT и Tailscale** | Встроенные транспорты и ячеистая сеть в `tachyon-core` | Профили CSQTT/WDTT с пулами и отказоустойчивостью, а также нативные endpoint-подключения Tailscale (MagicDNS) без внешнего демона `tailscaled` |
 | **5. L3-туннели** | Сетевые интерфейсы `tun` / WireGuard (таблица `4249` для FPTN) | Пакетное туннелирование через AmneziaWG (`AWG 2.0/3.0/3.1`), WireGuard, встроенный клиент OpenVPN (`.ovpn`) и `fptn-client-cli` поверх WebSocket/TLS |
 | **6. Smart DNS** | FakeIP (`198.18.0.0/15`) + перехват UDP/TCP 53 в nftables | Изолированное разрешение имён по DoH, DoT, DoQ и HTTP/3 с непрерывным мониторингом апстримов (`dns_failover.uc`) и защитой от подмены провайдером |
 
@@ -98,21 +98,20 @@ Tachyon классифицирует трафик через таблицы яд
   <img src="./assets/readme/section-subsystems.svg" width="100%" alt="03 — Подсистемы и функциональные модули">
 </p>
 
-### 1. Мульти-движковая архитектура маршрутизации
+### 1. Ядро маршрутизации `tachyon-core`
 
-Система поддерживает переключение между независимыми движками маршрутизации через веб-интерфейс LuCI или CLI (`tachyon engine_set <name>`) с автоматической перестройкой таблиц `nftables`, сетевых интерфейсов и конфигурации DNS:
+Вся селективная маршрутизация, туннелирование и изоляция DNS выполняются единым нативным ядром **`tachyon-core`** с автоматическим управлением таблицами `nftables`, сетевыми интерфейсами и конфигурацией DNS:
 
-| Движок | Исполняемый стек | Ключевые технические характеристики |
+| Компонент | Исполняемый стек | Ключевые технические характеристики |
 |:---|:---|:---|
-| **`tachyon-core`** | Нативный Rust (Zero-C-Crypto, без Go runtime и GC) | Около **4.2 MiB RAM** в простое; 100% совместимость с JSON-конфигурацией и CLI `sing-box`; zero-copy `mmap` для наборов правил `.trs`; встроенный Outbound Desync (TCP/TLS/HTTP split) в сетевом стеке без внешних демонов; асинхронный транспорт XHTTP (`packet-up`, `auto`); контроллер перегрузки Brutal CC для Hysteria2; встроенный L3-туннель FPTN; откат на `fallback.json` при сбое валидации; сборки под `aarch64`, `armv7`, `armv6`, `x86-64` и `MIPS/MIPSEL soft-float` (MT7620/MT7621/MT7628) без риска `SIGILL` |
-| **`sing-box`** | Go (`stable`, `tiny`, `extended`, `extended-compressed`, `lx`) | Поддержка версий `1.11–1.14+`; все современные прокси-протоколы, группы `urltest` (включая `mode`, `balancer`, `passive_check` на сборках `lx`/`extended`), FakeIP и встроенный OpenVPN-клиент (с `1.14.0`) |
+| **`tachyon-core`** | Нативный Rust (Zero-C-Crypto, без сборщика мусора) | Около **4.2 MiB RAM** в простое; zero-copy `mmap` для наборов правил `.trs` (приоритетный формат) и поддержка бинарных списков `.srs`; встроенный Outbound Desync (TCP/TLS/HTTP split) в сетевом стеке без внешних демонов; асинхронный транспорт XHTTP (`packet-up`, `auto`); контроллер перегрузки Brutal CC для Hysteria2; встроенный L3-туннель FPTN и клиент OpenVPN; откат на `fallback.json` при сбое валидации; сборки под `aarch64`, `armv7`, `armv6`, `x86-64` и `MIPS/MIPSEL soft-float` (MT7620/MT7621/MT7628) без риска `SIGILL` |
 
 ---
 
 ### 2. Протоколы, подписки и правила селективной маршрутизации
 
-* **Импорт конфигураций AmneziaWG `2.0 / 3.0 / 3.1` (`.conf`)**: отдельный именованный список между полями URL и текстовых ссылок в настройках секции. Загрузка, редактирование и удаление доступны на ядрах `tachyon-core` и `sing-box lx`. Исходный профиль сохраняется в UCI-опции `selector_amnezia_configs` (до 64 КиБ с именем, один `Interface` и один `Peer`; поля DNS и командные хуки из файла игнорируются). При переключении на ядро без поддержки AWG сохранённые записи не удаляются, но скрываются из активной генерации.
-* **Нативный клиент OpenVPN (`.ovpn`)**: прямая загрузка и валидация `.ovpn`-файлов через интерфейс LuCI для ядер `sing-box >= 1.14.0` и `tachyon-core`.
+* **Импорт конфигураций AmneziaWG `2.0 / 3.0 / 3.1` (`.conf`)**: отдельный именованный список между полями URL и текстовых ссылок в настройках секции. Исходный профиль сохраняется в UCI-опции `selector_amnezia_configs` (до 64 КиБ с именем, один `Interface` и один `Peer`; поля DNS и командные хуки из файла игнорируются).
+* **Нативный клиент OpenVPN (`.ovpn`)**: прямая загрузка и валидация `.ovpn`-файлов через интерфейс LuCI для `tachyon-core`.
 * **Туннель FPTN (`fptn-client-cli`)**: L3-туннелирование IP-пакетов поверх WebSocket/TLS с маскировкой под стандартный HTTPS-трафик (интерфейс `tun-fptn`, таблица маршрутизации `4249`).
 * **Обработка провайдерских подписок**:
   * Дешифрование закрытых подписок формата **Happ (`crypt2`–`crypt5`)**.
@@ -120,7 +119,7 @@ Tachyon классифицирует трафик через таблицы яд
   * Проверка отпечатков сертификатов узлов (**TLS Certificate SHA-256 Pinning**, параметр `pcs`).
   * Защита кэша рабочих узлов (**Anti-Collapse Shrink Guard**) при пустых или ошибочных ответах сервера подписки.
 * **Генератор профилей Cloudflare WARP / AmneziaWG**: встроенная команда `tachyon generate_warp`.
-* **Исключения Smart Detect (`smart_detect_exclude_lists`)**: в разделе «Настройки → Сервисы и доступ» ручные домены объединяются с пресетами сервисов для исключения из автообнаружения (режимы Default и Plus). Декодированный кэш хранится в `/etc/tachyon/smart-detect-exclusions/` и обновляется штатным планировщиком через `sing-box rule-set decompile` или `tachyon-core`. Если автоматическое расширение до корневого домена захватывает исключённый поддомен, правило создаётся только для конкретного обнаруженного хоста.
+* **Исключения Smart Detect (`smart_detect_exclude_lists`)**: в разделе «Настройки → Сервисы и доступ» ручные домены объединяются с пресетами сервисов для исключения из автообнаружения (режимы Default и Plus). Декодированный кэш хранится в `/etc/tachyon/smart-detect-exclusions/` и обновляется штатным планировщиком через `tachyon-core`. Если автоматическое расширение до корневого домена захватывает исключённый поддомен, правило создаётся только для конкретного обнаруженного хоста.
 
 ---
 
@@ -138,14 +137,10 @@ Tachyon классифицирует трафик через таблицы яд
 
 ### 4. Фаззер и генератор профилей сегментации трафика (Packet Fuzzer v2)
 
-* **Модульная структура (`fuzzer/*`)**: раздельные компоненты профилирования сети, запуска проб, оценки стабильности и генерации аргументов.
+* **Модульная структура (`fuzzer/*`)**: раздельные компоненты профилирования сети, запуска проб, оценки стабильности и генерации параметров для нативного движка `desync`.
 * **Двухэтапная верификация (Probe v2 & Stable Scoring)**: отсеивание ложноположительных стратегий на соединениях с потерями пакетов.
-* **База из 480+ стратегий**: **286+** пресетов для `Zapret v2 (nfqws2)`, **130** для `Zapret v1 (nfqws)` и **65** для `ByeDPI (ciadpi)`, включая проверенные конфигурации из `zapret4rocket`, `homeproxy-hiddify` и паттерны `Flowseal`.
-* **Современные техники десинхронизации**:
-  * Подмена временных меток TCP (**PAWS TCP Timestamp Spoofing**, `tcp_ts=-600000:tcp_ts_up` по RFC 7323).
-  * Точное перекрытие последовательностей (**SeqOvl Pattern Overlap**) и передача данных в пакетах синхронизации (**TCP SYN Data**, `syndata`).
-  * Аутентичные бинарные слепки протоколов (**Blobs**): `tls_max`, `tls_google`, `tls_gosuslugi`, `tls_sber`, `quic_google`, `discord_udp`.
-* **Изолированное тестирование**: проверка стратегий выполняется в отдельной очереди Netfilter (`mark 0x00200000`) одновременно по списку пользовательских доменов без остановки основного трафика роутера.
+* **30 курируемых пресетов и комбинаторная матрица `desync`**: встроенный профиль `Adaptive 2.0` (`preset=auto`), пресеты `fake_split`, `fake_disorder`, `multi_disorder`, `multi_split`, `tlsrec`, `oob`, а также настраиваемые параметры `split_pos`, `fooling`, `fake_ttl`, `fake_sni` и `repeats`.
+* **Изолированное тестирование**: проверка стратегий выполняется во временной изолированной конфигурации `tachyon-core` одновременно по списку пользовательских доменов без остановки основного трафика роутера.
 
 ---
 
@@ -164,13 +159,13 @@ Tachyon классифицирует трафик через таблицы яд
 * **HTTP REST Agent API (`/cgi-bin/tachyon-api`)**: спецификация OpenAPI 3.0.3, авторизация по Bearer-токену с разделением прав чтения/записи и асинхронная перезагрузка служб без разрыва HTTP-соединения.
 
 <details>
-<summary><b>Полный перечень 25 кодов быстрого ремонта в <code>diagnostics/repairs.uc</code> (<code>tachyon apply_quick_fix &lt;code&gt;</code>)</b></summary>
+<summary><b>Полный перечень 22 кодов быстрого ремонта в <code>diagnostics/repairs.uc</code> (<code>tachyon apply_quick_fix &lt;code&gt;</code>)</b></summary>
 
 <br>
 
 | Категория | Коды автоматического восстановления |
 |:---|:---|
-| **Службы и память (7)** | `start_singbox`, `restart_singbox_dns`, `start_watchdog`, `restart_providers`, `restart_zapret`, `optimize_memory`, `upgrade_to_singbox_extended` |
+| **Службы и память (4)** | `start_tachyon_core`, `restart_tachyon_core_dns`, `start_watchdog`, `optimize_memory` |
 | **Сеть и DNS (13)** | `rebuild_rules`, `fix_dnsmasq`, `fix_resolv_symlink`, `clear_dns_cache`, `fix_wan_interface`, `fix_gateway`, `reset_firewall`, `restart_network`, `switch_to_doh`, `fix_bootstrap_dns`, `heal_network_stack`, `enable_safe_bypass`, `restore_native_internet` |
 | **Конфигурация и система (5)** | `fix_uci_config`, `update_subscriptions`, `fix_system_time`, `flush_conntrack`, `optimize_mtu` |
 
@@ -201,7 +196,7 @@ Tachyon классифицирует трафик через таблицы яд
 * **Верификация происхождения процессов (`core/process.uc`)**: перед отправкой сигналов модуль сверяет `pid`, `starttime` и `boot_id`, исключая завершение чужих системных процессов при переиспользовании PID ядром. Этот же модуль формирует контракт службы `procd` и скрипт `/etc/init.d/tachyon-core`, останавливая демон строго по пути исполняемого файла без вызова `killall` по имени процесса.
 * **Транзакционный менеджер пакетов (`core/packages.uc`)**: очистка зависших lock-файлов, проверка заголовков ELF у сжатых через UPX бинарников и автоматическая правка `/etc/apk/world` для устранения конфликтов `PROVIDES/REPLACES` при обновлении пакетов.
 * **Защита NAND-памяти от износа (`core/common.uc`)**: все операции записи конфигурации и правил (`write_file`, `write_json_file`, `copy_file`) предварительно сверяют содержимое через `content_unchanged()` и пропускают перезапись идентичных данных на флеш-накопитель; оперативное состояние хранится в `tmpfs` (`/tmp`, `/var/run`).
-* **Предотвращение циклов перезапуска**: ограничение до 3 перезапусков за 10 минут под защитой мьютекса `PROXY_RESTART_LOCK`, динамическое управление `GOMEMLIMIT` для Go-процессов и поддержка именованных снимков конфигурации (`snapshot_save` / `snapshot_restore`).
+* **Предотвращение циклов перезапуска**: ограничение до 3 перезапусков за 10 минут под защитой мьютекса `PROXY_RESTART_LOCK`, динамическое масштабирование памяти и поддержка именованных снимков конфигурации (`snapshot_save` / `snapshot_restore`).
 
 ---
 
@@ -222,7 +217,7 @@ Tachyon классифицирует трафик через таблицы яд
 * **Телеметрия памяти на дашборде**: отображение фактического потребления ОЗУ процессами Tachyon и расчётного объёма DNS-кэша `dnsmasq`.
 * **Пошаговый индикатор обновлений**: визуализация этапов загрузки и компиляции списков вместо неструктурированного текстового лога.
 * **Клонирование секций в один клик (`Copy`)**: быстрое создание копий сложных правил маршрутизации.
-* **Встроенные модальные инструменты**: панель переключения движков маршрутизации, интерактивное окно фаззера стратегий с кодами HTTP-ответов и потоковый терминал установки/отката версий компонентов.
+* **Встроенные модальные инструменты**: управление состоянием `tachyon-core`, интерактивное окно фаззера стратегий с кодами HTTP-ответов и потоковый терминал установки/отката версий компонентов.
 
 ---
 
@@ -235,17 +230,17 @@ Tachyon классифицирует трафик через таблицы яд
 </p>
 
 ```bash
-# Управление движками маршрутизации (Multi-Engine)
-tachyon engine_list                             # Список доступных движков (tachyon-core, sing-box)
-tachyon engine_get                              # Текущий активный движок
-tachyon engine_set <tachyon-core|sing-box>      # Переключение движка с автоматической реконфигурацией
-tachyon engine_status                           # Статус активного движка в формате JSON
+# Управление ядром маршрутизации (tachyon-core)
+tachyon engine_status                           # Статус ядра tachyon-core в формате JSON
+tachyon engine_info                             # Возможности и метаданные tachyon-core
+tachyon engine_reload                           # Пересборка конфигурации и перезапуск ядра
+tachyon get_tachyon_core_status                 # Проверка состояния сервиса tachyon-core
 
 # Фаззер и подбор профилей сегментации трафика
-tachyon fuzzer_start youtube_suite zapret2      # Запуск тестирования профилей для YouTube на Zapret2
-tachyon fuzzer_start discord_suite zapret2      # Запуск тестирования для Discord (голос + UDP)
+tachyon fuzzer_start youtube_suite desync       # Запуск тестирования профилей для YouTube на desync
+tachyon fuzzer_start discord_suite desync       # Запуск тестирования для Discord (голос + UDP)
 tachyon fuzzer_status                           # Прогресс и результаты фаззера (JSON)
-tachyon fuzzer_stop                             # Остановка фаззера и очистка тестовой очереди Netfilter
+tachyon fuzzer_stop                             # Остановка фаззера и очистка временного стенда
 tachyon fuzzer_apply <strategy_id>              # Применение выбранной стратегии в UCI
 
 # Тестирование DNS и трассировка маршрутов
@@ -299,7 +294,7 @@ wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/ta
 |:---|:---|
 | `-y`, `--yes` | Неинтерактивное удаление без запроса подтверждения |
 | `-p`, `--purge` | Полное удаление пакета вместе с конфигурационными файлами и резервными копиями |
-| `--keep-binaries` | Сохранить установленные бинарные файлы (`tachyon-core`, `sing-box`, `zapret`, `byedpi`) в системе |
+| `--keep-binaries` | Сохранить установленные бинарные файлы (`tachyon-core` и вспомогательные утилиты) в системе |
 
 <details>
 <summary><b>Команды удаления через резервные зеркала</b></summary>
@@ -322,11 +317,8 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 
 * **[Forkop (@ushan0v)](https://github.com/ushan0v/forkop)** — родительский проект (ранее Podkop Plus).
 * **[Podkop (@itdoginfo)](https://github.com/itdoginfo/podkop)** — оригинальный проект, заложивший базовую архитектуру маршрутизации.
-* **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — нативное прокси-ядро на чистом Rust (~4.2 MiB RAM в простое, без рантайма Go и C-зависимостей).
+* **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — нативное прокси-ядро на чистом Rust (~4.2 MiB RAM в простое, без внешних рантаймов и C-зависимостей).
 * **[tachyon-lists](https://github.com/Dushnilin/tachyon-lists)** — автоматический компилятор и дедупликатор 143 категорий доменов и подсетей в форматах `.trs`, `.srs`, `.json` и `.lst`.
-* **[sing-box (SagerNet)](https://github.com/SagerNet/sing-box)** — универсальная прокси-платформа.
-* **[zapret / zapret2 (@bol-van)](https://github.com/bol-van/zapret2)** — пакетные анализаторы и десинхронизаторы DPI (`nfqws` / `nfqws2`).
-* **[ByeDPI (@hrbrmstr)](https://github.com/hrbrmstr/byedpi)** — локальный SOCKS-прокси десинхронизации (`ciadpi`).
 * **[FPTN (@fptn-project)](https://github.com/fptn-project/fptn)** — клиент L3-туннелирования поверх WebSocket/TLS.
 
 ---
@@ -336,6 +328,7 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 Если Tachyon помогает в работе, вы можете поддержать развитие проекта:
 
 * **Boosty:** [boosty.to/tachyon](https://boosty.to/tachyon)
+* **СБП (Ozon Банк):** [finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5](https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5)
 * **Карты РФ и СБП (CloudTips):** [pay.cloudtips.ru/p/449c5ef9](https://pay.cloudtips.ru/p/449c5ef9)
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`
 * **Ethereum (ETH / ERC-20):** `0x6CB7a4547eD62EF64990D5C6B5D9fdA58EB223E6`

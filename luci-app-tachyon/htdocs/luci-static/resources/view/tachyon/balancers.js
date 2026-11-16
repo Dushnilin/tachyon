@@ -60,9 +60,6 @@ const PROTOCOL_CHOICES = [
   ["tailscale", "Tailscale"],
   ["tor", "Tor"],
   ["desync", "Native Desync"],
-  ["zapret2", "Zapret2 (nfqws2)"],
-  ["zapret", "Zapret (nfqws)"],
-  ["byedpi", "ByeDPI (ciadpi)"],
   ["socks", "SOCKS5 / Tor"],
   ["http", "HTTP"],
   ["direct", "Direct"],
@@ -102,7 +99,7 @@ const URLTEST_URL_CHOICES = [
   "https://captive.apple.com/hotspot-detect.html",
 ];
 
-const DPI_SOURCE_TYPES = new Set(["zapret", "zapret2", "byedpi", "desync"]);
+const DPI_SOURCE_TYPES = new Set(["desync"]);
 
 let cachedPoolChoices = null;
 let cachedPoolFetchedAt = 0;
@@ -903,7 +900,7 @@ function createBalancersContent(section) {
     form.Value,
     "fastest_check_interval",
     _("Faster server search interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.modalonly = true;
   o.default = "3m";

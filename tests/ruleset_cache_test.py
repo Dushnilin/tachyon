@@ -84,7 +84,7 @@ class CacheTest(unittest.TestCase):
 
     def extract(self, reference=None, success=True, cli=False):
         self.config.write_text(json.dumps(self.settings))
-        env = dict(os.environ, TACHYON_SINGBOX_CONFIG=str(self.config),
+        env = dict(os.environ, TACHYON_CORE_CONFIG=str(self.config),
                    TMP_RULESET_FOLDER=str(self.root / 'snapshots'))
         library = Path(__file__).resolve().parents[1] / 'tachyon/files/usr/lib'
         entrypoint = ([str(library / 'diagnostics/ruleset_inspect.uc'), 'extract-ruleset']

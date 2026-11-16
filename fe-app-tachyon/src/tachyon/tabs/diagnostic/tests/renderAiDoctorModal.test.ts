@@ -146,14 +146,13 @@ describe('renderAiDoctorModal helpers', () => {
   });
 
   it('has readable labels for common fixes', () => {
-    expect(FIX_LABELS.start_singbox).toBeDefined();
+    expect(FIX_LABELS.start_tachyon_core).toBeDefined();
     expect(FIX_LABELS.rebuild_rules).toBeDefined();
     expect(FIX_LABELS.restore_native_internet).toBeDefined();
-    expect(getFixLabel('start_singbox', true)).toBe('Start Tachyon Core');
-    expect(getFixLabel('restart_singbox_dns', true)).toBe(
+    expect(getFixLabel('start_tachyon_core')).toBe('Start Tachyon Core');
+    expect(getFixLabel('restart_tachyon_core_dns')).toBe(
       'Restart Tachyon Core DNS',
     );
-    expect(getFixLabel('start_singbox', false)).toBe(FIX_LABELS.start_singbox);
   });
 
   it('renders modal with root cause nodes and report', () => {
@@ -165,11 +164,11 @@ describe('renderAiDoctorModal helpers', () => {
 
     renderAiDoctorModal({
       report: 'All subsystems operational. No issues detected.',
-      quickFixes: ['start_singbox'],
+      quickFixes: ['start_tachyon_core'],
       backendNodes: [
         { name: 'WAN', status: 'OK' },
         { name: 'DNS', status: 'OK' },
-        { name: 'sing-box', status: 'OK' },
+        { name: 'Tachyon Core', status: 'OK' },
         { name: 'nftables', status: 'OK' },
       ],
     });

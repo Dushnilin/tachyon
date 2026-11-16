@@ -34,9 +34,8 @@ console.log('PASS: zero [\\s] character classes in active .uc code');
 JS
 
 # 2. Verify space-separated WARP local addresses and reserved bytes split cleanly in full generator.
-printf 'tachyon-core' >"$WORK_DIR/variant"
-printf '0.0.7' >"$WORK_DIR/version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant" SB_VERSION_STATE_FILE="$WORK_DIR/version"
+printf '0.5.7' >"$WORK_DIR/version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
 
 node - "$WORK_DIR" <<'JS'
 const fs = require('fs');

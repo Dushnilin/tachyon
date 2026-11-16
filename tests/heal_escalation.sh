@@ -3,11 +3,11 @@
 set -eo pipefail
 
 # Pins the escalation ladder: a reason's first repair attempt restarts only the
-# sing-box service, and only a demonstrated failure earns the full
+# tachyon-core service, and only a demonstrated failure earns the full
 # `/etc/init.d/tachyon restart` that drops every live TCP/RDP session.
 #
 # Before this, four different diagnoses — stalled DNS, unresponsive proxy, a
-# failed health check, a dead sing-box — all ended in that same full restart.
+# failed health check, a dead tachyon-core — all ended in that same full restart.
 # Losing the light rung would silently restore that behaviour: the repair still
 # "works", it just costs every connection through the router. No other test
 # would notice.
@@ -20,13 +20,13 @@ grep -q 'const ESCALATION_LIGHT = "light";' "$WATCHDOG_UC" \
 grep -q 'const ESCALATION_HEAVY = "heavy";' "$WATCHDOG_UC" \
   || fail "ESCALATION_HEAVY is gone"
 
-# The light rung must drive the sing-box init script, not the tachyon one.
+# The light rung must drive the tachyon-core init script, not the tachyon one.
 grep -qE '(/etc/init\.d/tachyon-core|core_init_script\(\).*init_script \+) stop' "$WATCHDOG_UC" \
   || grep -q 'init_script + " stop >/dev/null 2>&1;' "$WATCHDOG_UC" \
-  || fail "the light rung no longer stops the sing-box service"
+  || fail "the light rung no longer stops the tachyon-core service"
 grep -qE '(/etc/init\.d/tachyon-core|core_init_script\(\).*init_script \+) start' "$WATCHDOG_UC" \
   || grep -q 'init_script + " start >/dev/null 2>&1;' "$WATCHDOG_UC" \
-  || fail "the light rung no longer starts the sing-box service"
+  || fail "the light rung no longer starts the tachyon-core service"
 grep -q 'core_contract().init_script' "$WATCHDOG_UC" \
   || fail "watchdog no longer resolves the core init script from core_contract"
 grep -q 'init-config 1 1 1' "$WATCHDOG_UC" \
@@ -64,7 +64,7 @@ lock_line="$(grep -n 'write_state_file(PROXY_RESTART_LOCK, as_string(now)' "$WAT
 [ "$lock_line" -lt "$level_line" ] \
   || fail "the lock is taken after the rung is chosen; light restarts would bypass it"
 
-# ── a stopped sing-box is started, never escalated over ───────────────────────
+# ── a stopped tachyon-core is started, never escalated over ───────────────────────
 # There is no stack to tear down when the process simply is not running.
 grep -q 'safe_proxy_restart("core_stopped", ESCALATION_LIGHT)' "$WATCHDOG_UC" \
   || fail "heal_core_stopped no longer pins the light rung; a missing process would trigger a full restart"

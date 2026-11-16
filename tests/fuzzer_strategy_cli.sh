@@ -3,40 +3,36 @@
 set -eo pipefail
 
 FUZZER="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/fuzzer.uc"
-BYEDPI_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/validator.uc"
-ZAPRET_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/zapret/validator.uc"
-ZAPRET2_VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/zapret2/validator.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 
 # 1. Check strategies JSON output
 strategies_json="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" strategies)"
 [ -n "$strategies_json" ] || fail "fuzzer strategies returned empty output"
 
-# Validate JSON structure using node
+# Validate JSON structure using node: desync only, no removed engines
 JSON_VALUE="$strategies_json" node <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
-if (typeof val.available_engines !== 'object') {
-  console.error("Missing available_engines");
+if (typeof val.available_engines !== 'object' || val.available_engines.desync == null) {
+  console.error("Missing available_engines.desync:", val.available_engines);
   process.exit(1);
 }
-if (!Array.isArray(val.zapret2) || val.zapret2.length === 0) {
-  console.error("Missing zapret2 strategies");
-  process.exit(1);
+for (const oldEng of ['zapret2', 'zapret', 'byedpi']) {
+  if (Object.prototype.hasOwnProperty.call(val.available_engines, oldEng) ||
+      Object.prototype.hasOwnProperty.call(val, oldEng)) {
+    console.error(`Removed engine ${oldEng} leaked into strategies response`);
+    process.exit(1);
+  }
 }
-if (!Array.isArray(val.zapret) || val.zapret.length === 0) {
-  console.error("Missing zapret strategies");
-  process.exit(1);
-}
-if (!Array.isArray(val.byedpi) || val.byedpi.length === 0) {
-  console.error("Missing byedpi strategies");
+if (!Array.isArray(val.desync) || val.desync.length === 0) {
+  console.error("Missing desync strategies");
   process.exit(1);
 }
 NODE
 
-# 2. Check each strategy passes its respective engine validator
-byedpi_args="$(JSON_VALUE="$strategies_json" node - <<'NODE'
+# 2. Check each desync strategy passes desync validator and parser
+desync_args="$(JSON_VALUE="$strategies_json" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
-for (const s of val.byedpi) {
+for (const s of val.desync) {
   console.log(s.args);
 }
 NODE
@@ -44,55 +40,20 @@ NODE
 
 while IFS= read -r args; do
   [ -n "$args" ] || continue
-  check="$(ucode -L "$TACHYON_LIB" -- "$BYEDPI_VALIDATOR" validate-json "$args")"
-  JSON_VALUE="$check" node - <<'NODE'
-const val = JSON.parse(process.env.JSON_VALUE);
-if (!val.valid) {
-  console.error("ByeDPI strategy invalid:", val);
-  process.exit(1);
+  TACHYON_LIB="$TACHYON_LIB" ARG_STR="$args" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let r = require("diagnostics.fuzzer_runner");
+let s = getenv("ARG_STR");
+if (!r.validate_strategy_args("desync", s)) {
+    warn("Desync strategy failed validate_strategy_args: " + s + "\n");
+    exit(1);
 }
-NODE
-done <<< "$byedpi_args"
-
-zapret_args="$(JSON_VALUE="$strategies_json" node - <<'NODE'
-const val = JSON.parse(process.env.JSON_VALUE);
-for (const s of val.zapret) {
-  console.log(s.args);
+let ob = r.parse_desync_outbound(s, "ds-test");
+if (!ob || ob.type != "desync") {
+    warn("Desync strategy failed parse_desync_outbound: " + s + "\n");
+    exit(1);
 }
-NODE
-)"
-
-while IFS= read -r args; do
-  [ -n "$args" ] || continue
-  check="$(ucode -L "$TACHYON_LIB" -- "$ZAPRET_VALIDATOR" validate-json nfqws "$args")"
-  JSON_VALUE="$check" node - <<'NODE'
-const val = JSON.parse(process.env.JSON_VALUE);
-if (!val.valid) {
-  console.error("Zapret strategy invalid:", val);
-  process.exit(1);
-}
-NODE
-done <<< "$zapret_args"
-
-zapret2_args="$(JSON_VALUE="$strategies_json" node - <<'NODE'
-const val = JSON.parse(process.env.JSON_VALUE);
-for (const s of val.zapret2) {
-  console.log(s.args);
-}
-NODE
-)"
-
-while IFS= read -r args; do
-  [ -n "$args" ] || continue
-  check="$(ucode -L "$TACHYON_LIB" -- "$ZAPRET2_VALIDATOR" validate-json nfqws2 "$args")"
-  JSON_VALUE="$check" node - <<'NODE'
-const val = JSON.parse(process.env.JSON_VALUE);
-if (!val.valid) {
-  console.error("Zapret2 strategy invalid:", val);
-  process.exit(1);
-}
-NODE
-done <<< "$zapret2_args"
+UCODE
+done <<< "$desync_args"
 
 # 3. Check status returns clean default state
 status_json="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" status)"
@@ -125,75 +86,54 @@ COMBO_FILE="$combo_tmp" node <<'NODE'
 const fs = require('fs');
 const raw = fs.readFileSync(process.env.COMBO_FILE, 'utf8');
 const val = JSON.parse(raw);
-if (!Array.isArray(val.zapret2) || val.zapret2.length < 30) {
-  console.error("Combinatorial zapret2 should have >= 30 strategies, got:", val.zapret2 ? val.zapret2.length : 0);
+if (!Array.isArray(val.desync) || val.desync.length < 30) {
+  console.error("Combinatorial desync should have >= 30 strategies, got:", val.desync ? val.desync.length : 0);
   process.exit(1);
 }
-if (!Array.isArray(val.zapret) || val.zapret.length < 20) {
-  console.error("Combinatorial zapret should have >= 20 strategies, got:", val.zapret ? val.zapret.length : 0);
-  process.exit(1);
-}
-if (!Array.isArray(val.byedpi) || val.byedpi.length < 20) {
-  console.error("Combinatorial byedpi should have >= 20 strategies, got:", val.byedpi ? val.byedpi.length : 0);
-  process.exit(1);
-}
-console.log("Generated matrix: Zapret2=" + val.zapret2.length + ", Zapret=" + val.zapret.length + ", ByeDPI=" + val.byedpi.length);
+console.log("Generated matrix: Desync=" + val.desync.length);
 NODE
 
-# 6. Check zapret2 Lua library resolution from LIB_DIR
-lua_res="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
-let fs = require("fs");
-let LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-let candidate_dirs = [
-    getenv("ZAPRET2_PROVIDER_LUA_DIR"),
-    LIB_DIR + "/providers/zapret2/lua",
-    "/usr/lib/tachyon/providers/zapret2/lua"
-];
-let lua_scripts = [ "zapret-lib.lua", "zapret-antidpi.lua", "zapret-auto.lua" ];
-let flags = "";
-for (let script in lua_scripts) {
-    let found = null;
-    for (let d in candidate_dirs) {
-        if (!d || fs.stat(d) == null) continue;
-        let p = d + "/" + script;
-        if (fs.stat(p) != null) { found = p; break; }
-        if (fs.stat(p + ".gz") != null) { found = p + ".gz"; break; }
-    }
-    if (found != null) flags += sprintf("--lua-init=@%s ", found);
-}
-print(flags);
-')"
-echo "$lua_res" | grep -q 'zapret-lib.lua' || fail "missing zapret-lib.lua in resolved lua flags"
-echo "$lua_res" | grep -q 'zapret-antidpi.lua' || fail "missing zapret-antidpi.lua in resolved lua flags"
-echo "$lua_res" | grep -q 'zapret-auto.lua' || fail "missing zapret-auto.lua in resolved lua flags"
-
-# 7. Check hardened runner, fail-closed validation, and absence of global killall curl
+# 6. Check hardcoded runner, fail-closed validation, and absence of global killall curl
 grep -q 'killall -9 curl' "$FUZZER" && fail "killall -9 curl must not be present in fuzzer.uc" || true
 
 ucode -L "$TACHYON_LIB" -e '
 let r = require("diagnostics.fuzzer_runner");
+let probe = require("diagnostics.fuzzer.probe");
 
-// 1. Fail-closed: unknown engine rejected
-if (r.validate_strategy_args("unknown_engine", "--split-pos=1") !== false) {
-    warn("Failed: unknown engine was not rejected\n");
-    exit(1);
+// 1. Fail-closed: unknown/removed/empty engines rejected by runner validator
+for (let bad_eng in ["", "unknown_engine", "zapret2", "zapret", "byedpi"]) {
+    if (r.validate_strategy_args(bad_eng, "preset=auto") !== false) {
+        warn("Failed: non-desync engine was not rejected: " + bad_eng + "\n");
+        exit(1);
+    }
 }
 
 // 2. Fail-closed: shell metacharacters rejected
-if (r.validate_strategy_args("zapret2", "--split-pos=1; rm -rf /") !== false) {
+if (r.validate_strategy_args("desync", "split_pos=1; rm -rf /") !== false) {
     warn("Failed: semicolon command injection was not rejected\n");
     exit(1);
 }
-if (r.validate_strategy_args("byedpi", "-s1 | reboot") !== false) {
+if (r.validate_strategy_args("desync", "mode=split | reboot") !== false) {
     warn("Failed: pipe command injection was not rejected\n");
     exit(1);
 }
-if (r.validate_strategy_args("zapret", "--dpi-desync=split2 `reboot`") !== false) {
+if (r.validate_strategy_args("desync", "mode=split `reboot`") !== false) {
     warn("Failed: backtick command injection was not rejected\n");
     exit(1);
 }
-if (r.validate_strategy_args("zapret2", "--dpi-desync-split-pos=$(cat /etc/passwd)") !== false) {
+if (r.validate_strategy_args("desync", "split_pos=$(cat /etc/passwd)") !== false) {
     warn("Failed: command substitution was not rejected\n");
+    exit(1);
+}
+if (r.validate_strategy_args("desync", "preset=auto") !== true) {
+    warn("Failed: desync preset=auto should validate\n");
+    exit(1);
+}
+
+// HTTP 421 probe parsing and scoring
+let res421 = probe.parse_curl_output("421\t0.120\t2.450\t128\t156\t0.040\t1\t0", {});
+if (!res421.success || res421.ttfb_ms != 120 || res421.score < 1000) {
+    warn(sprintf("unexpected 421 parse result: %J\n", res421));
     exit(1);
 }
 
@@ -303,23 +243,15 @@ ucode -L "$TACHYON_LIB" -- "$FUZZER" strategies adaptive > "$adaptive_tmp"
 ADAPTIVE_FILE="$adaptive_tmp" node <<'NODE'
 const fs = require('fs');
 const val = JSON.parse(fs.readFileSync(process.env.ADAPTIVE_FILE, 'utf8'));
-if (!Array.isArray(val.zapret2) || val.zapret2.length < 5) {
-  console.error("Adaptive zapret2 should have >= 5 strategies, got:", val.zapret2 ? val.zapret2.length : 0);
+if (!Array.isArray(val.desync) || val.desync.length < 5) {
+  console.error("Adaptive desync should have >= 5 strategies, got:", val.desync ? val.desync.length : 0);
   process.exit(1);
 }
-if (!Array.isArray(val.zapret) || val.zapret.length < 5) {
-  console.error("Adaptive zapret should have >= 5 strategies, got:", val.zapret ? val.zapret.length : 0);
-  process.exit(1);
-}
-if (!Array.isArray(val.byedpi) || val.byedpi.length < 5) {
-  console.error("Adaptive byedpi should have >= 5 strategies, got:", val.byedpi ? val.byedpi.length : 0);
-  process.exit(1);
-}
-console.log("Adaptive strategies generated: Zapret2=" + val.zapret2.length + ", Zapret=" + val.zapret.length + ", ByeDPI=" + val.byedpi.length);
+console.log("Adaptive strategies generated: Desync=" + val.desync.length);
 NODE
 
-# 10. Check that apply rejects global provider and requires valid target section
-apply_empty="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake" "" 2>/dev/null || true)"
+# 10. Check that apply rejects global provider, removed engines, and requires valid target section
+apply_empty="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "preset=auto" "" 2>/dev/null || true)"
 JSON_VALUE="$apply_empty" node <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== false) {
@@ -328,7 +260,7 @@ if (val.success !== false) {
 }
 NODE
 
-apply_global="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply zapret2 "--lua-desync=fake" "global" 2>/dev/null || true)"
+apply_global="$(ucode -L "$TACHYON_LIB" -- "$FUZZER" apply desync "preset=auto" "global" 2>/dev/null || true)"
 JSON_VALUE="$apply_global" node <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
 if (val.success !== false) {
@@ -337,29 +269,17 @@ if (val.success !== false) {
 }
 NODE
 
-# 11. Discord UDP strategies must cover the STUN port range.
-# A field report: Discord voice failed with "no route" while text worked. The
-# running strategy came from the fuzzer and filtered only 19294-19344 and
-# 50000-65535, so the STUN binding on 3478 went out un-desynced, the DPI broke
-# it, and ICE never completed. Tachyon's own shipped preset
-# (z2r_discord_voice_multi_profile) already listed 3478-3481 — the fuzzer
-# strategy had simply drifted away from it.
+# 11. Built-in presets include UDP-capable adaptive/discord strategies
 JSON_VALUE="$strategies_json" node <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);
-const list = (val.zapret2 || []).filter(
-  (s) => /discord/i.test(s.id || '') && (s.args || '').includes('--filter-udp='),
+const list = (val.desync || []).filter(
+  (s) => /discord|adaptive|auto|udp/i.test((s.id || '') + ' ' + (s.name || '')),
 );
 if (list.length === 0) {
-  console.error('No Discord UDP strategy found to verify');
+  console.error('No Discord/UDP-capable desync strategy found to verify');
   process.exit(1);
 }
-for (const s of list) {
-  if (!s.args.includes('3478')) {
-    console.error(`Strategy ${s.id} filters UDP without the STUN port 3478: ${s.args}`);
-    process.exit(1);
-  }
-}
-console.log(`Verified STUN coverage in ${list.length} Discord UDP strategies.`);
+console.log(`Verified ${list.length} Discord/UDP-capable desync strategies.`);
 NODE
 
 # 12. Multi-URL custom targets resolution and validation (Issue #195)

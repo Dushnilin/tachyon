@@ -25,22 +25,18 @@ print("OK");
 ' 2>&1 || echo "FAIL")"
 [ "$json_check" = "OK" ] || fail "parse_llm_json with <think> failed: $json_check"
 
-# 3. Strategy args sanitization (strip binary name, strip Tachyon-managed flags, convert zapret1 -> zapret2 if hallucinated)
+# 3. Strategy args sanitization (strip markdown backticks/quotes/whitespace)
 sanitize_check="$(ucode -L "$TACHYON_LIB" -e '
 let ai = require("diagnostics.fuzzer.ai");
-let s = require("diagnostics.fuzzer.strategies");
+let r = require("diagnostics.fuzzer_runner");
 
-let z2_clean = ai.sanitize_strategy_args("zapret2", "nfqws2 --qnum=200 --fwmark=0x40000000 --lua-desync=multisplit:pos=1,midsld");
-assert(z2_clean == "--lua-desync=multisplit:pos=1,midsld", "z2_clean: " + z2_clean);
-assert(s.validate_strategy_args("zapret2", z2_clean) === true, "z2_clean must validate");
+let ds_clean = ai.sanitize_strategy_args("desync", "`mode=fake_split split_pos=midsld fake_ttl=6`");
+assert(ds_clean == "mode=fake_split split_pos=midsld fake_ttl=6", "ds_clean: " + ds_clean);
+assert(r.validate_strategy_args("desync", ds_clean) === true, "ds_clean must validate");
 
-let z2_converted = ai.sanitize_strategy_args("zapret2", "--dpi-desync=fake,disorder2 --dpi-desync-split-pos=1,midsld --dpi-desync-ttl=5 --dpi-desync-fooling=badseq");
-assert(index(z2_converted, "--lua-desync=") >= 0, "zapret1 flags must convert to --lua-desync for zapret2: " + z2_converted);
-assert(s.validate_strategy_args("zapret2", z2_converted) === true, "converted zapret2 strategy must validate: " + z2_converted);
-
-let bd_clean = ai.sanitize_strategy_args("byedpi", "ciadpi -i 127.0.0.1 -p 1080 -s 1 -d 1 --auto=t,r,s");
-assert(bd_clean == "-s 1 -d 1 --auto=t,r,s", "bd_clean: " + bd_clean);
-assert(s.validate_strategy_args("byedpi", bd_clean) === true, "bd_clean must validate");
+let ds_preset = ai.sanitize_strategy_args("", "\"preset=auto\"");
+assert(ds_preset == "preset=auto", "ds_preset: " + ds_preset);
+assert(r.validate_strategy_args("desync", ds_preset) === true, "ds_preset must validate");
 print("OK");
 ' 2>&1 || echo "FAIL")"
 [ "$sanitize_check" = "OK" ] || fail "sanitize_strategy_args failed: $sanitize_check"
@@ -50,7 +46,7 @@ rag_check="$(ucode -L "$TACHYON_LIB" -e '
 let rag = require("diagnostics.rag");
 assert(rag.get_embedding_model("openai", "gpt-4o-mini") == "text-embedding-3-small", "chat model override must not replace embedding model");
 assert(rag.get_embedding_model("openai", "text-embedding-3-large") == "text-embedding-3-large", "explicit embedding model override must be honored");
-let docs = rag.retrieve("zapret2 youtube multisplit", "lmstudio", "", "http://127.0.0.1:59999", "qwen2.5-coder", 3);
+let docs = rag.retrieve("desync youtube multisplit", "lmstudio", "", "http://127.0.0.1:59999", "qwen2.5-coder", 3);
 assert(length(docs) > 0, "lexical fallback must return relevant knowledge base chunks offline without calling embedding API");
 print("OK");
 ' 2>&1 || echo "FAIL")"

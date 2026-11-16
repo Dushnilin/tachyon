@@ -44,9 +44,9 @@ function setup(
   const sections = [
     { '.name': 'proxy', enabled: '1', action: 'connection' },
     {
-      '.name': 'zapret',
+      '.name': 'desync',
       enabled: '1',
-      action: 'zapret2',
+      action: 'desync',
       community_lists: ['youtube'],
       rule_set: options.references || [],
       rule_set_with_subnets: options.subnetReferences || [],
@@ -95,8 +95,8 @@ describe('routing section tracer community caches', () => {
     const tracer = setup([file]);
     await expect(tracer.performTrace('YouTube.com')).resolves.toMatchObject({
       matched: true,
-      sectionName: 'zapret',
-      action: 'zapret2',
+      sectionName: 'desync',
+      action: 'desync',
       ruleType: 'Community List (youtube)',
     });
     expect(tracer.fs.exec).toHaveBeenCalledWith('/usr/bin/tachyon-core', [
@@ -121,17 +121,18 @@ describe('routing section tracer community caches', () => {
     );
   });
 
-  it('preserves legacy SRS matching when tachyon-core is not installed', async () => {
-    const file = '/tmp/sing-box/rulesets/community-youtube.srs';
+  it('supports SRS matching with tachyon-core', async () => {
+    const file = '/tmp/tachyon-core/rulesets/community-youtube.srs';
     const tracer = setup([file], async (bin) => {
-      if (bin === '/usr/bin/tachyon-core') throw new Error('not installed');
-      return { code: 0, stdout: '[0] match\n' };
+      if (bin === '/usr/sbin/tachyon-core')
+        return { code: 0, stdout: '[0] match\n' };
+      throw new Error('not found');
     });
     await expect(tracer.performTrace('youtube.com')).resolves.toMatchObject({
       matched: true,
     });
     expect(tracer.fs.exec).toHaveBeenCalledWith(
-      '/usr/bin/sing-box',
+      '/usr/sbin/tachyon-core',
       expect.arrayContaining([file]),
     );
   });
@@ -146,11 +147,7 @@ describe('routing section tracer community caches', () => {
     ).resolves.toMatchObject({ matched: false });
     expect(
       tracer.fs.exec.mock.calls.filter(([bin]) =>
-        [
-          '/usr/bin/tachyon-core',
-          '/usr/bin/sing-box',
-          '/usr/sbin/sing-box',
-        ].includes(bin),
+        ['/usr/bin/tachyon-core', '/usr/sbin/tachyon-core'].includes(bin),
       ),
     ).toHaveLength(1);
   });
@@ -159,7 +156,7 @@ describe('routing section tracer community caches', () => {
     const tracer = setup([], undefined, { resolvedIps: ['192.0.2.42'] });
     await tracer.performTrace('unlisted.example');
 
-    for (const section of ['proxy', 'zapret']) {
+    for (const section of ['proxy', 'desync']) {
       for (const file of [
         `${section}-lists-ruleset.json`,
         `${section}-remote-domain-ruleset.json`,
@@ -168,11 +165,10 @@ describe('routing section tracer community caches', () => {
         const reads = tracer.fs.read.mock.calls.filter(([path]) =>
           path.endsWith(`/${file}`),
         );
-        expect(reads).toHaveLength(3);
+        expect(reads).toHaveLength(2);
         expect(reads.map(([path]) => path)).toEqual([
           `/tmp/tachyon-core/rulesets/${file}`,
           `/etc/tachyon/rulesets/${file}`,
-          `/tmp/sing-box/rulesets/${file}`,
         ]);
       }
     }
@@ -200,7 +196,7 @@ describe('routing section tracer community caches', () => {
       '/bin/cat',
       expect.anything(),
     );
-    expect(tracer.fs.list).toHaveBeenCalledTimes(4);
+    expect(tracer.fs.list).toHaveBeenCalledTimes(3);
   });
 
   it('reads a listed alternate JSON path and falls back to stat when list is denied', async () => {
@@ -210,11 +206,11 @@ describe('routing section tracer community caches', () => {
       undefined,
       {
         list: async (directory) =>
-          directory === '/tmp/sing-box/rulesets'
+          directory === '/etc/tachyon/rulesets'
             ? [{ name: 'listed.json', type: 'file' }]
             : [],
         read: async (file) =>
-          file === '/tmp/sing-box/rulesets/listed.json' ? contents : null,
+          file === '/etc/tachyon/rulesets/listed.json' ? contents : null,
       },
     );
     const snapshots = {
@@ -230,7 +226,7 @@ describe('routing section tracer community caches', () => {
     ).resolves.toEqual({ rules: [] });
     expect(tracer.fs.read).toHaveBeenCalledTimes(1);
     expect(tracer.fs.read).toHaveBeenCalledWith(
-      '/tmp/sing-box/rulesets/listed.json',
+      '/etc/tachyon/rulesets/listed.json',
     );
 
     const denied = setup(
@@ -243,7 +239,7 @@ describe('routing section tracer community caches', () => {
       },
     );
     await expect(
-      denied.findCachedRulesetFile('zapret', 'youtube', [], {
+      denied.findCachedRulesetFile('desync', 'youtube', [], {
         directoryEntries: new Map(),
       }),
     ).resolves.toBe('/tmp/tachyon-core/rulesets/community-youtube.trs');
@@ -260,7 +256,7 @@ describe('routing section tracer community caches', () => {
       },
     );
     await expect(
-      symlink.findCachedRulesetFile('zapret', 'youtube', [], {
+      symlink.findCachedRulesetFile('desync', 'youtube', [], {
         directoryEntries: new Map(),
       }),
     ).resolves.toBe('/tmp/tachyon-core/rulesets/community-youtube.trs');
@@ -278,7 +274,7 @@ describe('routing section tracer community caches', () => {
     const snapshots = { directoryEntries: new Map() };
 
     await expect(
-      tracer.findCachedRulesetFile('zapret', 'youtube', [], snapshots),
+      tracer.findCachedRulesetFile('desync', 'youtube', [], snapshots),
     ).resolves.toBeNull();
     expect(tracer.fs.stat).not.toHaveBeenCalled();
   });
@@ -314,14 +310,14 @@ describe('routing section tracer community caches', () => {
       tracer.fs.stat.mock.calls.filter(([file]) =>
         file.endsWith('/community-youtube.trs'),
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
 
     await tracer.performTrace('unlisted.example');
     expect(
       tracer.fs.stat.mock.calls.filter(([file]) =>
         file.endsWith('/community-youtube.trs'),
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(4);
   });
 
   it('keeps community match results separate for domain and resolved IP queries', async () => {
@@ -361,9 +357,9 @@ describe('routing section tracer community caches', () => {
     );
   });
 
-  it('falls back to SRS if a leftover TRS cache cannot be read by installed binaries', async () => {
+  it('falls back to SRS if a leftover TRS cache cannot be read by the primary binary path', async () => {
     const trs = '/tmp/tachyon-core/rulesets/community-youtube.trs';
-    const srs = '/tmp/sing-box/rulesets/community-youtube.srs';
+    const srs = '/tmp/tachyon-core/rulesets/community-youtube.srs';
     const tracer = setup([trs, srs], async (bin, args) => {
       if (bin === '/usr/bin/tachyon-core') throw new Error('not installed');
       return args.includes(trs)
@@ -374,7 +370,7 @@ describe('routing section tracer community caches', () => {
       matched: true,
     });
     expect(tracer.fs.exec).toHaveBeenCalledWith(
-      '/usr/bin/sing-box',
+      '/usr/sbin/tachyon-core',
       expect.arrayContaining([srs]),
     );
   });
@@ -393,7 +389,7 @@ describe('routing section tracer community caches', () => {
     const file = '/tmp/tachyon-core/rulesets/community-telegram.trs';
     const tracer = setup([file]);
     await expect(
-      tracer.matchCommunityList('zapret', 'telegram', '149.154.160.1', 'ip'),
+      tracer.matchCommunityList('desync', 'telegram', '149.154.160.1', 'ip'),
     ).resolves.toBe(true);
     expect(tracer.fs.exec).toHaveBeenCalledWith('/usr/bin/tachyon-core', [
       'rule-set',
@@ -406,7 +402,7 @@ describe('routing section tracer community caches', () => {
 });
 
 describe('routing section tracer configured rule sets', () => {
-  const url = 'https://lists.example/zapret.srs?rev=2';
+  const url = 'https://lists.example/desync.srs?rev=2';
   const snapshot = '/tmp/tachyon-core/rulesets/trace-custom.srs';
   const matchingExec = async (bin) =>
     bin === '/usr/bin/tachyon-read'
@@ -419,8 +415,8 @@ describe('routing section tracer configured rule sets', () => {
       tracer.performTrace('R2.Cloudflarestorage.com'),
     ).resolves.toMatchObject({
       matched: true,
-      sectionName: 'zapret',
-      action: 'zapret2',
+      sectionName: 'desync',
+      action: 'desync',
       ruleType: 'Rule Set',
       sourceUrls: [url],
       priority: 2,
@@ -463,7 +459,7 @@ describe('routing section tracer configured rule sets', () => {
       const tracer = setup([], matchingExec, { subnetReferences: [url] });
       await expect(tracer.performTrace(ip)).resolves.toMatchObject({
         matched: true,
-        sectionName: 'zapret',
+        sectionName: 'desync',
       });
       expect(tracer.fs.exec).toHaveBeenCalledWith('/usr/bin/tachyon-core', [
         'rule-set',
@@ -489,7 +485,7 @@ describe('routing section tracer configured rule sets', () => {
     );
     await expect(tracer.performTrace('cdn.example')).resolves.toMatchObject({
       matched: true,
-      sectionName: 'zapret',
+      sectionName: 'desync',
       ruleType: 'Resolved IP -> Rule Set',
       matchedIp: '192.0.2.42',
     });
@@ -540,7 +536,7 @@ describe('routing section tracer configured rule sets', () => {
       tracer.performTrace('r2.cloudflarestorage.com'),
     ).resolves.toMatchObject({
       matched: true,
-      sectionName: 'zapret',
+      sectionName: 'desync',
       ruleType: 'Domains (UCI)',
     });
     expect(tracer.fs.exec).not.toHaveBeenCalledWith(

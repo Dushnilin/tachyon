@@ -326,12 +326,12 @@ function apply_selections(state, selections) {
     return true;
 }
 
-// Seconds since the sing-box process started, or null if it is not running.
+// Seconds since the tachyon-core process started, or null if it is not running.
 // Probing a core that is still loading rule sets and 60 outbounds counts its
 // silence as a dead resolver; three such strikes switch the DNS server, which
 // rewrites the config, which restarts the core, which is silent again.
 function core_age_seconds() {
-    let pid = split(trim(as_string(common.command_output("pidof tachyon-core sing-box 2>/dev/null"))), " ")[0];
+    let pid = split(trim(as_string(common.command_output("pidof tachyon-core 2>/dev/null"))), " ")[0];
     if (match(as_string(pid), /^[0-9]+$/) == null)
         return null;
     let stat = fs.readfile("/proc/" + pid + "/stat");
@@ -343,7 +343,7 @@ function core_age_seconds() {
     let started = int(tail[19]) / 100;
     let proc_age = int(split(uptime, " ")[0]) - started;
 
-    // SIGHUP in-place reload protection: sing-box or tachyon-core reloads its
+    // SIGHUP in-place reload protection: tachyon-core reloads its
     // configuration in-place without restarting the process (PID and stat
     // starttime remain unchanged). During ruleset loading and outbound
     // re-initialization (which takes 2-8 seconds on router CPU), DNS probes
@@ -362,7 +362,6 @@ function core_age_seconds() {
     }
 
     for (let stamp_file in [
-        RUNTIME_STATE_DIR + "/sing-box-reload.timestamp",
         RUNTIME_STATE_DIR + "/tachyon-core-reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.hash",
@@ -428,7 +427,6 @@ const CORE_GRACE_SECONDS = 90;
 
 const TMPFS_LOG_MAX_BYTES = 524288;
 const TMPFS_LOG_KEEP_BYTES = 102400;
-const TMPFS_LOG_PROVIDER_DIRS = [ "zapret", "zapret2", "byedpi", "tailscale" ];
 
 function trim_tmpfs_log(path) {
     let st = fs.stat(path);
@@ -449,12 +447,7 @@ function trim_tmpfs_log(path) {
 }
 
 function trim_runtime_logs() {
-    let paths = [ "/tmp/tachyon-core/tachyon-core.log", "/tmp/tachyon-core/sing-box.log" ];
-    for (let dir in TMPFS_LOG_PROVIDER_DIRS)
-        for (let path in (fs.glob("/var/run/tachyon/" + dir + "/*.log") || []))
-            push(paths, path);
-    for (let path in paths)
-        trim_tmpfs_log(path);
+    trim_tmpfs_log("/tmp/tachyon-core/tachyon-core.log");
 }
 
 function record_all_down_status(kind, alive, all_down) {
@@ -682,6 +675,6 @@ else if (mode == "select-fixture")
 else if (mode == "verification-plan-fixture")
     common.write_json(verification_plan(common.read_json_file(ARGV[1]), common.read_json_file(ARGV[2])));
 else {
-    warn("Usage: singbox/dns_failover.uc <start-runtime|stop-runtime|worker|verify-state|commit-state|select-fixture|verification-plan-fixture> ...\n");
+    warn("Usage: tachyon_core/dns_failover.uc <start-runtime|stop-runtime|worker|verify-state|commit-state|select-fixture|verification-plan-fixture> ...\n");
     exit(1);
 }

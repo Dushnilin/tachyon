@@ -42,7 +42,7 @@ assert_eq server-edge-tailscale-dns \
   "$(ucode "$HELPERS_UC" tailscale-dns-tag edge)" \
   "tailscale DNS tag"
 assert_eq dns-server-out-1 \
-  "$(SB_DIRECT_OUTBOUND_TAG=dns-server-out ucode "$HELPERS_UC" outbound-tag dns-server)" \
+  "$(TACHYON_CORE_DIRECT_OUTBOUND_TAG=dns-server-out ucode "$HELPERS_UC" outbound-tag dns-server)" \
   "reserved outbound tag"
 assert_eq direct-out-1 \
   "$(ucode "$HELPERS_UC" outbound-tag direct)" \

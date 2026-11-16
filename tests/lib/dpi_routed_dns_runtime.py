@@ -1,6 +1,6 @@
 """Optional real-engine regression, using only loopback DNS and TCP servers.
 
-Run with: python3 dpi_routed_dns_runtime.py /path/to/sing-box generated.json
+Run with: python3 dpi_routed_dns_runtime.py /path/to/tachyon-core generated.json
 The config comes from dpi_routed_dns.sh; no binary is downloaded by this test.
 """
 import argparse

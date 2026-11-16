@@ -44,21 +44,6 @@ const ENGINE_CATALOG: Array<{
   shortLabel: () => string;
 }> = [
   {
-    value: 'zapret2',
-    label: () => _('Zapret v2 (nfqws2)'),
-    shortLabel: () => _('Zapret v2'),
-  },
-  {
-    value: 'zapret',
-    label: () => _('Zapret v1 (nfqws)'),
-    shortLabel: () => _('Zapret v1'),
-  },
-  {
-    value: 'byedpi',
-    label: () => _('ByeDPI (ciadpi)'),
-    shortLabel: () => _('ByeDPI'),
-  },
-  {
     value: 'desync',
     label: () => _('Native Desync (tachyon-core)'),
     shortLabel: () => _('Native Desync'),
@@ -167,18 +152,6 @@ export function renderStrategyFuzzerModal(
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
   let isPolling = false;
   let availableEngines: Record<Tachyon.FuzzerEngine, boolean> = {
-    zapret2:
-      typeof options.availableEngines?.zapret2 === 'boolean'
-        ? options.availableEngines.zapret2
-        : true,
-    zapret:
-      typeof options.availableEngines?.zapret === 'boolean'
-        ? options.availableEngines.zapret
-        : true,
-    byedpi:
-      typeof options.availableEngines?.byedpi === 'boolean'
-        ? options.availableEngines.byedpi
-        : true,
     desync:
       typeof options.availableEngines?.desync === 'boolean'
         ? options.availableEngines.desync
@@ -193,7 +166,7 @@ export function renderStrategyFuzzerModal(
   let selectedEngine: Tachyon.FuzzerEngine =
     options.initialEngine && availableEngines[options.initialEngine]
       ? options.initialEngine
-      : getFirstInstalledEngine() || 'zapret2';
+      : getFirstInstalledEngine() || 'desync';
   const initialCustomList = (options.initialCustomDomains || [])
     .map((d) => String(d || '').trim())
     .filter(Boolean);
@@ -217,35 +190,6 @@ export function renderStrategyFuzzerModal(
 
   // Patterns Config State
   let patternsConfig: Tachyon.FuzzerPatternsConfig = {
-    zapret2: {
-      splits: ['1', '2', '3', 'midsld', 'sniext+4', '1,midsld', '1,sniext+2'],
-      foolings: [
-        'tcp_seq=1000000',
-        'tcp_md5',
-        'tcp_ack=-66000',
-        'tcp_flags_unset=ack',
-        'badsum',
-      ],
-      ttls: [2, 3, 4, 5, 6, 8],
-      seqovls: ['1', '2'],
-      wsizes: ['1'],
-      payloads: ['tls_client_hello', 'http_req', 'quic_initial'],
-    },
-    zapret: {
-      splits: ['1', '2', 'midsld', 'sniext+4', '1,midsld'],
-      foolings: ['badseq', 'md5sig', 'badack', 'datanoack'],
-      ttls: [2, 3, 4, 6, 8],
-      split_modes: ['split2', 'disorder2', 'fake,split2', 'fake,disorder2'],
-    },
-    byedpi: {
-      splits: ['1', '2', '1+sniext', 'midsld'],
-      disorders: ['1', '2'],
-      ttls: [2, 3, 4, 6, 8],
-      oobs: ['1', '2'],
-      autos: ['t,r,a,s', 'r,s', 't,a'],
-      tlsrecs: ['1+sniext'],
-      ipfrags: ['24'],
-    },
     desync: {
       modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
       split_poses: ['midsld', 'sni', 1, 2],
@@ -359,7 +303,7 @@ export function renderStrategyFuzzerModal(
     style: selectStyle,
   });
 
-  const dpiActions = ['zapret2', 'zapret', 'byedpi', 'desync'];
+  const dpiActions = ['desync'];
 
   const getApplicableRules = (engine: Tachyon.FuzzerEngine) => {
     const eligible = normalizedRules.filter((r) => {
@@ -1274,165 +1218,6 @@ export function renderStrategyFuzzerModal(
     tabContentPatterns.replaceChildren();
 
     const cardsToShow: HTMLElement[] = [];
-
-    if (availableEngines.zapret2 && patternsConfig.zapret2) {
-      const z2 = patternsConfig.zapret2;
-      cardsToShow.push(
-        E(
-          'div',
-          {
-            style:
-              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-          },
-          [
-            E(
-              'div',
-              {
-                style:
-                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-              },
-              [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
-            ),
-            renderChipGroup(
-              _('Split Positions (pos)'),
-              z2.splits,
-              (v) => z2.splits.push(v),
-              (i) => z2.splits.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Fooling Methods (fooling)'),
-              z2.foolings,
-              (v) => z2.foolings.push(v),
-              (i) => z2.foolings.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('TTL Values (ttl)'),
-              z2.ttls,
-              (v) => z2.ttls.push(Number(v) || 4),
-              (i) => z2.ttls.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Sequence Overlaps (seqovl)'),
-              z2.seqovls,
-              (v) => z2.seqovls.push(v),
-              (i) => z2.seqovls.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('TCP Window Sizes (wsize)'),
-              z2.wsizes,
-              (v) => z2.wsizes.push(v),
-              (i) => z2.wsizes.splice(i, 1),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (availableEngines.zapret && patternsConfig.zapret) {
-      const z1 = patternsConfig.zapret;
-      cardsToShow.push(
-        E(
-          'div',
-          {
-            style:
-              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-          },
-          [
-            E(
-              'div',
-              {
-                style:
-                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-              },
-              [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
-            ),
-            renderChipGroup(
-              _('Split Modes (dpi-desync)'),
-              z1.split_modes,
-              (v) => z1.split_modes.push(v),
-              (i) => z1.split_modes.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Split Positions (dpi-desync-split-pos)'),
-              z1.splits,
-              (v) => z1.splits.push(v),
-              (i) => z1.splits.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Fooling Methods (dpi-desync-fooling)'),
-              z1.foolings,
-              (v) => z1.foolings.push(v),
-              (i) => z1.foolings.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('TTL Values (dpi-desync-ttl)'),
-              z1.ttls,
-              (v) => z1.ttls.push(Number(v) || 4),
-              (i) => z1.ttls.splice(i, 1),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (availableEngines.byedpi && patternsConfig.byedpi) {
-      const bd = patternsConfig.byedpi;
-      cardsToShow.push(
-        E(
-          'div',
-          {
-            style:
-              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-          },
-          [
-            E(
-              'div',
-              {
-                style:
-                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-              },
-              [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
-            ),
-            renderChipGroup(
-              _('Split Values (-s)'),
-              bd.splits,
-              (v) => bd.splits.push(v),
-              (i) => bd.splits.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Disorder Values (-d)'),
-              bd.disorders,
-              (v) => bd.disorders.push(v),
-              (i) => bd.disorders.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('OOB Values (-o)'),
-              bd.oobs,
-              (v) => bd.oobs.push(v),
-              (i) => bd.oobs.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('Auto Modes (--auto)'),
-              bd.autos,
-              (v) => bd.autos.push(v),
-              (i) => bd.autos.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('TLS-Rec Bounds (--tlsrec)'),
-              bd.tlsrecs,
-              (v) => bd.tlsrecs.push(v),
-              (i) => bd.tlsrecs.splice(i, 1),
-            ),
-            renderChipGroup(
-              _('IP Frag Bounds (--ip-frag)'),
-              bd.ipfrags,
-              (v) => bd.ipfrags.push(v),
-              (i) => bd.ipfrags.splice(i, 1),
-            ),
-          ],
-        ),
-      );
-    }
 
     if (availableEngines.desync) {
       if (!patternsConfig.desync) {
@@ -2800,7 +2585,7 @@ export function renderStrategyFuzzerModal(
             'span',
             {},
             _(
-              'IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain.',
+              'IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization (Native Desync) cannot traverse an IP-level limit — configure proxy/VPN routing for this domain.',
             ),
           ),
         ],
@@ -3139,10 +2924,7 @@ export function renderStrategyFuzzerModal(
       if (res.success && res.data?.available_engines) {
         const av = res.data.available_engines;
         availableEngines = {
-          zapret2: Boolean(av.zapret2),
-          zapret: Boolean(av.zapret),
-          byedpi: Boolean(av.byedpi),
-          desync: Boolean(av.desync),
+          desync: Boolean(av.desync ?? true),
         };
         syncEngineOptions();
         if (activeTab === 'patterns') renderPatternsTab();

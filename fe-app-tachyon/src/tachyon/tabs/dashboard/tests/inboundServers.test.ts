@@ -125,7 +125,6 @@ let resetInboundTrafficStateForTests: any;
 let renderCollapsibleInboundsBlock: any;
 let formatActiveServersCount: any;
 let showInboundClientsModal: any;
-let hasEnabledNativeTailscaleServer: any;
 
 describe('inboundServers', () => {
   beforeAll(async () => {
@@ -137,7 +136,6 @@ describe('inboundServers', () => {
     renderCollapsibleInboundsBlock = mod.renderCollapsibleInboundsBlock;
     formatActiveServersCount = mod.formatActiveServersCount;
     showInboundClientsModal = mod.showInboundClientsModal;
-    hasEnabledNativeTailscaleServer = mod.hasEnabledNativeTailscaleServer;
   });
 
   beforeEach(() => {
@@ -150,7 +148,7 @@ describe('inboundServers', () => {
   });
 
   describe('extractServerInboundSectionId', () => {
-    it('extracts sectionId from metadata.type (sing-box / tachyon-core format)', () => {
+    it('extracts sectionId from metadata.type (tachyon-core format)', () => {
       expect(
         extractServerInboundSectionId({
           metadata: {
@@ -695,111 +693,7 @@ describe('inboundServers', () => {
       }
     });
 
-    it('merges native Tailscale online peers into inbound summary, card chip, and clients modal', () => {
-      const inbounds = getConfiguredServerInbounds([
-        {
-          '.name': 'tailscale_srv',
-          enabled: '1',
-          label: 'tailscale',
-          server_country: 'RU',
-          protocol: 'tailscale',
-          tailscale_mode: 'native',
-          routing_mode: 'rules',
-        },
-      ]);
-
-      expect(inbounds).toHaveLength(1);
-      expect(inbounds[0].tailscaleMode).toBe('native');
-      expect(inbounds[0].port).toBe('Mesh');
-
-      const summary = computeInboundsRuntimeSummary(
-        inbounds,
-        [],
-        new Map(),
-        Date.now(),
-        {
-          configured: true,
-          backend_state: 'Running',
-          self: {
-            name: 'router',
-            dns_name: 'router.tailnet.ts.net.',
-            ips: ['100.75.187.73'],
-            online: true,
-          },
-          peers: [
-            {
-              name: 'PCHOME2',
-              dns_name: 'pchome2.tailnet.ts.net.',
-              ips: ['100.75.187.10'],
-              online: true,
-              rx_bytes: 2048,
-              tx_bytes: 4096,
-            },
-            {
-              name: 'OnePlus 12',
-              dns_name: 'oneplus12.tailnet.ts.net.',
-              ips: ['100.75.187.11'],
-              online: false,
-              rx_bytes: 0,
-              tx_bytes: 0,
-            },
-            {
-              name: 'papa4',
-              dns_name: 'papa4.tailnet.ts.net.',
-              ips: ['100.75.187.12'],
-              online: true,
-              rx_bytes: 1024,
-              tx_bytes: 2048,
-            },
-          ],
-        },
-      );
-
-      expect(summary.totalActiveClients).toBe(2);
-      expect(summary.totalActiveConns).toBe(0);
-      expect(summary.activeInboundsCount).toBe(1);
-      expect(summary.totalUpload).toBe(3072);
-      expect(summary.totalDownload).toBe(6144);
-
-      const secStats = summary.bySection.get('tailscale_srv');
-      expect(secStats?.meshRunning).toBe(true);
-      expect(secStats?.meshOnlinePeers).toBe(2);
-      expect(secStats?.meshTotalPeers).toBe(3);
-      expect(secStats?.activeClientsCount).toBe(2);
-      expect(secStats?.clients.map((c: any) => c.name)).toEqual([
-        'PCHOME2',
-        'papa4',
-        'OnePlus 12',
-      ]);
-
-      const container = new MockElement('div') as any;
-      renderCollapsibleInboundsBlock({
-        container,
-        servers: inbounds,
-        summary,
-        isTachyonRunning: true,
-        storageKey: 'tachyon_test_ts_collapse',
-        showGoToServersLink: true,
-        onRerender: vi.fn(),
-        viewMode: 'expanded_cards',
-      });
-
-      expect(container.textContent).toContain('2 устр. • 0 соед.');
-      expect(container.textContent).toContain('2 в сети');
-      expect(container.textContent).not.toContain('Ожидание');
-
-      const showModalMock = vi.fn();
-      (globalThis as any).ui = { showModal: showModalMock, hideModal: vi.fn() };
-      showInboundClientsModal(inbounds[0], summary, true);
-      expect(showModalMock).toHaveBeenCalledTimes(1);
-      const modalEl = showModalMock.mock.calls[0][1];
-      expect(modalEl.textContent).toContain('PCHOME2');
-      expect(modalEl.textContent).toContain('papa4');
-      expect(modalEl.textContent).toContain('OnePlus 12');
-      expect(modalEl.textContent).toContain('Не в сети');
-    });
-
-    it('shows Running badge for embedded Tailscale from core state without meshOnlinePeers and checks native helper', () => {
+    it('shows Running badge for native tachyon-core Tailscale from core state', () => {
       const inbounds = getConfiguredServerInbounds([
         {
           '.name': 'tailscale_emb',
@@ -807,35 +701,20 @@ describe('inboundServers', () => {
           label: 'ts-embedded',
           server_country: 'DE',
           protocol: 'tailscale',
-          tailscale_mode: 'singbox',
           routing_mode: 'rules',
         },
       ]);
 
       expect(inbounds).toHaveLength(1);
-      expect(inbounds[0].tailscaleMode).toBe('singbox');
-      expect(hasEnabledNativeTailscaleServer(inbounds)).toBe(false);
-      expect(
-        hasEnabledNativeTailscaleServer([
-          { ...inbounds[0], tailscaleMode: 'native', enabled: false },
-        ]),
-      ).toBe(false);
-      expect(
-        hasEnabledNativeTailscaleServer([
-          { ...inbounds[0], tailscaleMode: 'native', enabled: true },
-        ]),
-      ).toBe(true);
+      expect(inbounds[0].port).toBe('Mesh');
 
       const summary = computeInboundsRuntimeSummary(
         inbounds,
         [],
         new Map(),
         Date.now(),
-        null,
       );
-      expect(
-        summary.bySection.get('tailscale_emb')?.meshOnlinePeers,
-      ).toBeUndefined();
+      expect(summary.bySection.get('tailscale_emb')).toBeDefined();
 
       const runningContainer = new MockElement('div') as any;
       renderCollapsibleInboundsBlock({

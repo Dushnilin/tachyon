@@ -56,28 +56,16 @@ function emit_reload_plan(previous, current, context) {
     let changed = {
         service_triggers: current.service_trigger != previous.service_trigger,
         dnsmasq: current.dnsmasq != previous.dnsmasq,
-        sing_box: current.sing_box != previous.sing_box,
+        tachyon_core: current.tachyon_core != previous.tachyon_core,
         nft: current.nft != previous.nft,
-        zapret_queue: current.zapret_queue != previous.zapret_queue,
-        zapret_runtime: current.zapret_runtime != previous.zapret_runtime,
-        zapret2_queue: current.zapret2_queue != previous.zapret2_queue,
-        zapret2_runtime: current.zapret2_runtime != previous.zapret2_runtime,
-        byedpi_runtime: current.byedpi_runtime != previous.byedpi_runtime,
-        wdtt_runtime: current.wdtt_runtime != previous.wdtt_runtime,
-        olcrtc_runtime: current.olcrtc_runtime != previous.olcrtc_runtime,
         list: current.list != previous.list,
         hosts_list: current.hosts_list != previous.hosts_list,
         cron: current.cron != previous.cron
     };
 
     let needs = {
-        sing_box_reload: false,
+        tachyon_core_reload: false,
         nft_rebuild: false,
-        zapret_restart: false,
-        zapret2_restart: false,
-        byedpi_restart: false,
-        wdtt_restart: false,
-        olcrtc_restart: false,
         dnsmasq_configure: false,
         dnsmasq_restore: false,
         cron_refresh: false,
@@ -85,42 +73,11 @@ function emit_reload_plan(previous, current, context) {
         hosts_update: false
     };
 
-    if (changed.sing_box)
-        needs.sing_box_reload = true;
+    if (changed.tachyon_core)
+        needs.tachyon_core_reload = true;
 
     if (changed.nft)
         needs.nft_rebuild = true;
-
-    if (changed.zapret_queue) {
-        needs.zapret_restart = true;
-        needs.nft_rebuild = true;
-        needs.sing_box_reload = true;
-    }
-
-    if (changed.zapret_runtime) {
-        needs.zapret_restart = true;
-        needs.nft_rebuild = true;
-    }
-
-    if (changed.zapret2_queue) {
-        needs.zapret2_restart = true;
-        needs.nft_rebuild = true;
-        needs.sing_box_reload = true;
-    }
-
-    if (changed.zapret2_runtime) {
-        needs.zapret2_restart = true;
-        needs.nft_rebuild = true;
-    }
-
-    if (changed.byedpi_runtime)
-        needs.byedpi_restart = true;
-
-    if (changed.wdtt_runtime)
-        needs.wdtt_restart = true;
-
-    if (changed.olcrtc_runtime)
-        needs.olcrtc_restart = true;
 
     if (changed.dnsmasq) {
         if (!current.dont_touch_dhcp)
@@ -137,37 +94,27 @@ function emit_reload_plan(previous, current, context) {
 
     if (changed.hosts_list) {
         needs.hosts_update = true;
-        needs.sing_box_reload = true;
+        needs.tachyon_core_reload = true;
     }
 
     if (needs.nft_rebuild && context.has_nft_list_update_sources)
         needs.list_update = true;
 
     if (context.runtime_cache_needs_rebuild) {
-        changed.sing_box = true;
-        needs.sing_box_reload = true;
+        changed.tachyon_core = true;
+        needs.tachyon_core_reload = true;
     }
 
     if (context.force_runtime_reload &&
-        !needs.sing_box_reload &&
+        !needs.tachyon_core_reload &&
         !needs.nft_rebuild &&
-        !needs.zapret_restart &&
-        !needs.zapret2_restart &&
-        !needs.byedpi_restart &&
-        !needs.wdtt_restart &&
-        !needs.olcrtc_restart &&
         !needs.dnsmasq_configure &&
         !needs.dnsmasq_restore)
-        needs.sing_box_reload = true;
+        needs.tachyon_core_reload = true;
 
     let has_work =
-        needs.sing_box_reload ||
+        needs.tachyon_core_reload ||
         needs.nft_rebuild ||
-        needs.zapret_restart ||
-        needs.zapret2_restart ||
-        needs.byedpi_restart ||
-        needs.wdtt_restart ||
-        needs.olcrtc_restart ||
         needs.dnsmasq_configure ||
         needs.dnsmasq_restore ||
         needs.cron_refresh ||
@@ -182,26 +129,14 @@ function emit_reload_plan(previous, current, context) {
 
     emit_bool("changed_service_triggers", changed.service_triggers);
     emit_bool("changed_dnsmasq", changed.dnsmasq);
-    emit_bool("changed_sing_box", changed.sing_box);
+    emit_bool("changed_tachyon_core", changed.tachyon_core);
     emit_bool("changed_nft", changed.nft);
-    emit_bool("changed_zapret_queue", changed.zapret_queue);
-    emit_bool("changed_zapret_runtime", changed.zapret_runtime);
-    emit_bool("changed_zapret2_queue", changed.zapret2_queue);
-    emit_bool("changed_zapret2_runtime", changed.zapret2_runtime);
-    emit_bool("changed_byedpi_runtime", changed.byedpi_runtime);
-    emit_bool("changed_wdtt_runtime", changed.wdtt_runtime);
-    emit_bool("changed_olcrtc_runtime", changed.olcrtc_runtime);
     emit_bool("changed_cron", changed.cron);
     emit_bool("changed_list", changed.list);
     emit_bool("changed_hosts_list", changed.hosts_list);
 
-    emit_bool("needs_sing_box_reload", needs.sing_box_reload);
+    emit_bool("needs_tachyon_core_reload", needs.tachyon_core_reload);
     emit_bool("needs_nft_rebuild", needs.nft_rebuild);
-    emit_bool("needs_zapret_restart", needs.zapret_restart);
-    emit_bool("needs_zapret2_restart", needs.zapret2_restart);
-    emit_bool("needs_byedpi_restart", needs.byedpi_restart);
-    emit_bool("needs_wdtt_restart", needs.wdtt_restart);
-    emit_bool("needs_olcrtc_restart", needs.olcrtc_restart);
     emit_bool("needs_dnsmasq_configure", needs.dnsmasq_configure);
     emit_bool("needs_dnsmasq_restore", needs.dnsmasq_restore);
     emit_bool("needs_cron_refresh", needs.cron_refresh);
@@ -214,41 +149,31 @@ function reload_plan() {
     let previous = {
         service_trigger: as_string(ARGV[1]),
         dnsmasq: as_string(ARGV[2]),
-        sing_box: as_string(ARGV[3]),
+        tachyon_core: as_string(ARGV[3]),
         nft: as_string(ARGV[4]),
-        zapret_queue: as_string(ARGV[5]),
-        zapret_runtime: as_string(ARGV[6]),
-        zapret2_queue: as_string(ARGV[7]),
-        zapret2_runtime: as_string(ARGV[8]),
-        byedpi_runtime: as_string(ARGV[9]),
-        list: as_string(ARGV[10]),
-        cron: as_string(ARGV[11]),
-        urltest_sections_known: arg_bool(ARGV[12]),
-        urltest_sections: as_string(ARGV[13])
+        list: as_string(ARGV[5]),
+        cron: as_string(ARGV[6]),
+        urltest_sections_known: arg_bool(ARGV[7]),
+        urltest_sections: as_string(ARGV[8])
     };
 
     let current = {
-        service_trigger: as_string(ARGV[14]),
-        dnsmasq: as_string(ARGV[15]),
-        sing_box: as_string(ARGV[16]),
-        nft: as_string(ARGV[17]),
-        zapret_queue: as_string(ARGV[18]),
-        zapret_runtime: as_string(ARGV[19]),
-        zapret2_queue: as_string(ARGV[20]),
-        zapret2_runtime: as_string(ARGV[21]),
-        byedpi_runtime: as_string(ARGV[22]),
-        list: as_string(ARGV[23]),
-        cron: as_string(ARGV[24]),
-        urltest_sections: as_string(ARGV[25]),
-        dont_touch_dhcp: arg_bool(ARGV[26])
+        service_trigger: as_string(ARGV[9]),
+        dnsmasq: as_string(ARGV[10]),
+        tachyon_core: as_string(ARGV[11]),
+        nft: as_string(ARGV[12]),
+        list: as_string(ARGV[13]),
+        cron: as_string(ARGV[14]),
+        urltest_sections: as_string(ARGV[15]),
+        dont_touch_dhcp: arg_bool(ARGV[16])
     };
 
     let context = {
-        force_runtime_reload: arg_bool(ARGV[27]),
-        dnsmasq_managed_state: arg_bool(ARGV[28]),
-        has_list_update_sources: arg_bool(ARGV[29]),
-        has_nft_list_update_sources: arg_bool(ARGV[30]),
-        runtime_cache_needs_rebuild: arg_bool(ARGV[31])
+        force_runtime_reload: arg_bool(ARGV[17]),
+        dnsmasq_managed_state: arg_bool(ARGV[18]),
+        has_list_update_sources: arg_bool(ARGV[19]),
+        has_nft_list_update_sources: arg_bool(ARGV[20]),
+        runtime_cache_needs_rebuild: arg_bool(ARGV[21])
     };
 
     emit_reload_plan(previous, current, context);
@@ -288,15 +213,8 @@ function plan_state_from_file(path) {
         format: as_string(state.format),
         service_trigger: as_string(state.service_trigger_signature || state.restart_signature),
         dnsmasq: as_string(state.dnsmasq_signature),
-        sing_box: as_string(state.sing_box_signature),
+        tachyon_core: as_string(state.tachyon_core_signature),
         nft: as_string(state.nft_signature),
-        zapret_queue: as_string(state.zapret_queue_signature),
-        zapret_runtime: as_string(state.zapret_runtime_signature),
-        zapret2_queue: as_string(state.zapret2_queue_signature),
-        zapret2_runtime: as_string(state.zapret2_runtime_signature),
-        byedpi_runtime: as_string(state.byedpi_runtime_signature),
-        wdtt_runtime: as_string(state.wdtt_runtime_signature),
-        olcrtc_runtime: as_string(state.olcrtc_runtime_signature),
         list: as_string(state.list_signature),
         hosts_list: as_string(state.hosts_list_signature),
         cron: as_string(state.cron_signature),

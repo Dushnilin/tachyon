@@ -17,9 +17,9 @@
 #     version_at_least("v0.0.1", "1.12.0")   ->  true   (wrong)
 #     version_at_least("v0.0.1", "1.14.0")   ->  true   (wrong)
 #
-# The second one is the dangerous shape: sing-box gates 1.14/1.15-only fields on
+# The second one is the dangerous shape: core versions gate newer fields on
 # exactly this comparison, so a core reporting v0.0.1 was told it could be sent
-# config it cannot parse. sing-box prints a bare version, which is why it stayed
+# config it cannot parse. the binary prints a bare version, which is why it stayed
 # hidden.
 #
 # Driven through the real CLI modes of both modules, not through a copy.
@@ -66,18 +66,16 @@ assert_pair "v1.13.18-extended-2.6.3" "1.14.0" FAIL "and the same with a prefix"
 assert_pair "v0.0.1-tachyon.0"        "1.12.0" FAIL "a suffixed old core must not clear the minimum"
 
 # ─── a hyphen pre-release counts as its release ──────────────────────────────
-# Deliberate, and pinned here because it looks like a bug. sing-box ships
-# 1.15.0-alpha.10 and the 1.15 fields are present in it, so the gates have to let
-# an alpha through: tests/sing_box_version_live_probe.sh asserts exactly that a
-# live 1.15.0-alpha.10 is detected as 1.14+. "Fixing" this into semver ordering
-# (where an alpha is older) would stop emitting fields a working binary supports.
+# Deliberate, and pinned here because it looks like a bug. Prerelease tags
+# such as 1.15.0-alpha.10 clear the release's feature gates so they are tested
+# in tests/tachyon_core_version_live_probe.sh alongside semver ordering.
 assert_pair "1.15.0-alpha.10"  "1.15.0"  PASS "an alpha carries its release's fields"
 assert_pair "1.15.0-alpha.10"  "1.14.0"  PASS "and clears an older minimum"
 assert_pair "v1.15.0-alpha.10" "1.15.0"  PASS "the same with a prefix, which is where the bug was"
 assert_pair "1.15.0"           "1.14.0"  PASS "a release still clears an older minimum"
 
 # ─── plain versions must be unaffected ───────────────────────────────────────
-# The whole reason this stayed hidden is that sing-box prints a bare version.
+# The whole reason this stayed hidden is that tachyon-core prints a bare version.
 # If the normalisation changed plain input, every existing gate would move.
 assert_pair "1.11.0" "1.12.0" FAIL "unchanged for bare versions"
 assert_pair "1.12.0" "1.12.0" PASS "equality still holds"

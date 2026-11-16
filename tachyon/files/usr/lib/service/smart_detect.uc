@@ -1,7 +1,7 @@
 // DNS outages, resolver transitions and local curl failures are not evidence
 // that one destination needs a proxy. Shared with regression tests.
 let common = require("core.common");
-let sb_constants = require("tachyon_core.constants");
+let core_constants = require("tachyon_core.constants");
 
 // Codebase convention: as_string lives in core/common, not in ucode itself.
 let as_string = common.as_string;
@@ -51,16 +51,15 @@ function probe_status(args) {
     return status == null ? 255 : (status < 0 ? 128 - int(status) : int(status));
 }
 
-// ─── sing-box log shapes ──────────────────────────────────────────────────────
-// Captured from a router running sing-box 1.14.2-lx.2. Two facts about that
-// format drive everything below:
+// ─── tachyon-core log shapes ──────────────────────────────────────────────────
+// Captured from runtime logs. Two facts about that format drive everything below:
 //
 //   * the connection's open line carries the hostname unquoted
 //     ("outbound connection to www.google.com:443"), while the failure line
 //     carries only the resolved IP ("dial tcp 173.194.221.84:7"). The
 //     hostname is therefore only recoverable by correlating the two lines;
 //   * "direct" is the outbound TYPE, not a routing decision. A section backed
-//     by a local DPI bypass logs outbound/direct[<section>-out], so reading
+//     by a local desync outbound logs outbound/direct[<section>-out], so reading
 //     the word as "the bypass path failed" inverted its meaning and turned
 //     every broken section into a blocked-destination report.
 
@@ -164,9 +163,9 @@ function verdict(domain, observation, streak) {
 // destination is blocked. Everything else belongs to a section and its
 // failure says something about the section, not about the destination.
 const BYPASS_OUTBOUND_TAGS = {
-    [sb_constants.DIRECT_OUTBOUND_TAG]: true,
-    [sb_constants.BYPASS_OUTBOUND_TAG]: true,
-    [sb_constants.DIRECT_BYPASS_OUTBOUND_TAG]: true
+    [core_constants.DIRECT_OUTBOUND_TAG]: true,
+    [core_constants.BYPASS_OUTBOUND_TAG]: true,
+    [core_constants.DIRECT_BYPASS_OUTBOUND_TAG]: true
 };
 
 function is_bypass_outbound_tag(tag) {

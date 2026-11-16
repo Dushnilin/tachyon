@@ -13,10 +13,10 @@ fail() {
   exit 1
 }
 
-# Test that a section with DSCP configuration does NOT emit "dscp" in sing-box route rules.
-# sing-box does not support DSCP in route rules and aborts with:
+# Test that a section with DSCP configuration does NOT emit "dscp" in tachyon-core route rules.
+# tachyon-core does not support DSCP in route rules and aborts with:
 # decode config ... route.rules[...].dscp: json: unknown field "dscp"
-# DSCP matching is handled at the nftables layer (nft/apply.uc), not inside sing-box.
+# DSCP matching is handled at the nftables layer (nft/apply.uc), not inside tachyon-core.
 
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
@@ -89,4 +89,4 @@ if (!found_domain) {
 print("OK\n");
 ' || fail "DSCP route rule check failed"
 
-printf "PASS: dscp route config (no dscp in sing-box route rules)\n"
+printf "PASS: dscp route config (no dscp in tachyon-core route rules)\n"

@@ -320,7 +320,6 @@ if (length(direct_cfg.outbounds) != 1 || direct_cfg.outbounds[0].server_port != 
 let captured_state = null;
 generator.init({
     runtime_settings: function() { return {}; },
-    is_sb_1_14_plus: function() { return true; },
     atomic_write_json_file: function(_path, state) { captured_state = state; return true; },
     routes: {
         section_needs_country_is: function() { return false; },

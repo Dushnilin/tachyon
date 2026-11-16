@@ -580,12 +580,8 @@ TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - <<'UCODE'
 let core_profile = require("tachyon_core.core_profile");
 let connections = require("config.connections");
 
-if (!core_profile.supports_unified_delay("1.14.3-extended-2.7.3", "extended")) {
-    warn("Expected extended profile to support unified_delay\n");
-    exit(1);
-}
-if (core_profile.supports_unified_delay("0.1.7", "tachyon-core") || core_profile.supports_unified_delay("1.14.3", "")) {
-    warn("Expected tachyon-core and upstream profiles to NOT claim unified_delay\n");
+if (core_profile.supports_unified_delay("0.5.7", "tachyon-core")) {
+    warn("Expected tachyon-core profile to NOT claim unified_delay\n");
     exit(1);
 }
 
@@ -952,7 +948,6 @@ connections.set_item_sections_from_data({
 let gen_routes_mod = require("tachyon_core.generator_routes");
 gen_routes_mod.init({
     runtime_settings: function() { return {}; },
-    is_sb_1_14_plus: function() { return true; },
     runtime_generate_unsupported: function(msg) { warn(msg + "\n"); exit(1); }
 });
 let udp_cfg = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };

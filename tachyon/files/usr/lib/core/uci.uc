@@ -713,9 +713,8 @@ function rename(p1, p2, p3) {
     }
 }
 
-/// Move a whole package under a new name. Used once: the engine's own
-/// settings lived in a `sing-box` package and now live in `tachyon-core`, so
-/// an upgrade renames the package instead of leaving the settings behind.
+/// Move a whole package under a new name during one-shot legacy upgrade
+/// migration to `tachyon-core`, instead of leaving settings behind.
 function rename_package(old_name, new_name) {
     old_name = as_string(old_name);
     new_name = as_string(new_name);

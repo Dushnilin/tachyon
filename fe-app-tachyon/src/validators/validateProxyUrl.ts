@@ -11,7 +11,7 @@ import { validateHttpProxyUrl } from './validateHttpProxyUrl';
 import { validateFptnUrl } from './validateFptnUrl';
 import { isValidPort, parseHostPort } from './hostPort';
 
-function validateExtendedShareLink(url: string): ValidationResult {
+function validateProtocolShareLink(url: string): ValidationResult {
   if (!url || /\s/.test(url)) {
     return {
       valid: false,
@@ -371,7 +371,7 @@ const DISPATCH: {
       'amneziawg://',
       'awg://',
     ],
-    validate: validateExtendedShareLink,
+    validate: validateProtocolShareLink,
   },
 ];
 
@@ -389,7 +389,7 @@ export function validateProxyUrl(url: string): ValidationResult {
     if (!supportsVpnUrl())
       return {
         valid: false,
-        message: _('vpn:// is available only with Tachyon Core or sing-box LX'),
+        message: _('vpn:// is available only with Tachyon Core'),
       };
     return validateVpnUrl(trimmedUrl);
   }
@@ -407,6 +407,6 @@ export function validateProxyUrl(url: string): ValidationResult {
     message:
       _(
         'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:',
-      ) + (supportsVpnUrl() ? '; vpn:// (Tachyon Core / LX)' : ''),
+      ) + (supportsVpnUrl() ? '; vpn:// (Tachyon Core)' : ''),
   };
 }

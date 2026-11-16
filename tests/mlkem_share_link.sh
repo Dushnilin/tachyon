@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Issue #245: the hybrid key share flag has to survive a share link.
 #
-# Three spellings are in the wild - the sing-box snake_case one, the camelCase
+# Three spellings are in the wild - the snake_case one, the camelCase
 # one some panels emit and the kebab-case one a share link carries. All three
 # have to be understood, the priority order has to be kept, an explicit false
 # must never turn into true, and the flag must survive a round trip through

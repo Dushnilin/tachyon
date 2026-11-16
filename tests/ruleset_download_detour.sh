@@ -13,11 +13,8 @@ fail() {
   exit 1
 }
 
-# Which download transport a rule-set ends up with depends on the installed
-# core: sing-box 1.14.0 deprecated `download_detour` for `http_client`. These
-# checks are about WHICH outbound the download rides on, so they accept either
-# field; the version matrix itself is covered by
-# tests/singbox_ruleset_download_transport.sh.
+# Remote rule-set downloads ride on the section outbound or global download proxy
+# via http_clients (default_http_client: "ruleset-http") on tachyon-core.
 assert_downloads_via() {
   local output="$1" outbound="$2" label="$3"
   grep -Fq "\"download_detour\": \"$outbound\"" "$output" && return 0
@@ -140,64 +137,34 @@ ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
 assert_downloads_via "$output2" "first_proxy-out" \
   "global download_lists_via_proxy without explicit section must default to first enabled proxy section"
 
-# 3. Verify http_clients and default_http_client handling:
-# Omitted on sing-box < 1.14 (1.12, 1.13, Leadaxe, Extended) to avoid unknown field crash
-output_v13="$WORK_DIR/out_v13.json"
-mkdir -p "$output_v13.section-cache" "$output_v13.rulesets"
-printf 'v1.13.5\n' > "$WORK_DIR/sb_v13"
-SB_VERSION_STATE_FILE="$WORK_DIR/sb_v13" \
-ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
-  "$WORK_DIR/fixture.json" "$output_v13" "127.0.0.1" "0" "1"
-
-if grep -q '"http_clients"' "$output_v13"; then
-  fail "sing-box < 1.14 must not have http_clients (causes fatal unknown field crash)"
-fi
-if grep -q '"default_http_client"' "$output_v13"; then
-  fail "sing-box < 1.14 must not have default_http_client (causes fatal unknown field crash)"
-fi
-
-# Included on sing-box 1.14+
+# 3. Verify http_clients and default_http_client handling on tachyon-core
 output_v14="$WORK_DIR/out_v14.json"
 mkdir -p "$output_v14.section-cache" "$output_v14.rulesets"
-printf 'v1.14.0\n' > "$WORK_DIR/sb_v14"
-SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture.json" "$output_v14" "127.0.0.1" "0" "1"
 
 grep -q '"http_clients"' "$output_v14" || \
-  fail "sing-box 1.14+ must include http_clients"
+  fail "tachyon-core must include http_clients"
 grep -q '"default_http_client": "ruleset-http"' "$output_v14" || \
-  fail "sing-box 1.14+ must configure default_http_client"
+  fail "tachyon-core must configure default_http_client"
 if grep -q '"dial_detour"' "$output_v14"; then
-  fail "sing-box 1.14+ must NEVER contain 'dial_detour' in http_clients (causes fatal unknown field crash)"
-fi
-if command -v sing-box >/dev/null 2>&1; then
-  INSTALLED_SB_VER="$(sing-box version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo '0.0')"
-  if [ "$(printf '%s\n1.14\n' "$INSTALLED_SB_VER" | sort -V | head -n1)" = "1.14" ]; then
-    sing-box check -c "$output_v14" || fail "sing-box 1.14+ config check failed"
-  fi
+  fail "tachyon-core must NEVER contain 'dial_detour' in http_clients"
 fi
 
 output_detour_v14="$WORK_DIR/out_detour_v14.json"
 mkdir -p "$output_detour_v14.section-cache" "$output_detour_v14.rulesets"
-SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture-detour-enabled.json" "$output_detour_v14" "127.0.0.1" "0" "1"
 
 if grep -q '"dial_detour"' "$output_detour_v14"; then
-  fail "sing-box 1.14+ must NEVER contain 'dial_detour' with proxy enabled"
+  fail "tachyon-core must NEVER contain 'dial_detour' with proxy enabled"
 fi
 grep -q '"detour": "first_proxy-out"' "$output_detour_v14" || \
-  fail "sing-box 1.14+ http_clients must configure 'detour' field when download_lists_via_proxy is enabled"
-if command -v sing-box >/dev/null 2>&1; then
-  INSTALLED_SB_VER="$(sing-box version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo '0.0')"
-  if [ "$(printf '%s\n1.14\n' "$INSTALLED_SB_VER" | sort -V | head -n1)" = "1.14" ]; then
-    sing-box check -c "$output_detour_v14" || fail "sing-box 1.14+ detour config check failed"
-  fi
-fi
+  fail "tachyon-core http_clients must configure 'detour' field when download_lists_via_proxy is enabled"
 
-# 4. Verify zapret section with community_lists does NOT use zapret-out as download_detour
-cat >"$WORK_DIR/fixture_zapret.json" <<'JSON'
+# 4. Verify global download_lists_via_proxy skips desync-only sections in favor of proxy sections,
+# and is_valid_detour rejects routing_mark / loopback socks / mieru outbounds
+cat >"$WORK_DIR/fixture_desync_skip.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -205,27 +172,63 @@ cat >"$WORK_DIR/fixture_zapret.json" <<'JSON'
     "enabled": "1",
     "dns_type": "udp",
     "dns_server": "1.1.1.1",
+    "download_lists_via_proxy": "1",
     "service_listen_address": "127.0.0.1"
   },
   "section": [
     {
-      ".name": "zapret_sec",
+      ".name": "desync_first",
       ".type": "section",
       "enabled": "1",
-      "action": "zapret",
+      "action": "desync",
+      "desync_preset": "auto",
       "community_lists": [ "youtube" ]
+    },
+    {
+      ".name": "fallback_proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "community_lists": [ "google_ai" ]
     }
   ]
 }
 JSON
 
-output_zapret="$WORK_DIR/out_zapret.json"
-mkdir -p "$output_zapret.section-cache" "$output_zapret.rulesets"
-ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
-  "$WORK_DIR/fixture_zapret.json" "$output_zapret" "127.0.0.1" "0" "1"
+output_desync_skip="$WORK_DIR/out_desync_skip.json"
+mkdir -p "$output_desync_skip.section-cache" "$output_desync_skip.rulesets"
+TACHYON_CORE_VERSION_OVERRIDE="0.5.7" ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_desync_skip.json" "$output_desync_skip" "127.0.0.1" "0" "1"
 
-refuses_download_via "$output_zapret" "zapret_sec-out" \
-  "zapret-out must never be selected as download transport due to routing_mark"
+refuses_download_via "$output_desync_skip" "desync_first-out" \
+  "global download_lists_via_proxy must skip desync-only sections"
+assert_downloads_via "$output_desync_skip" "fallback_proxy-out" \
+  "global download_lists_via_proxy must select fallback_proxy-out after skipping desync section"
+
+ucode -L "$TACHYON_LIB" - <<'UCODE'
+let gr = require("tachyon_core.generator_routes");
+let cfg = {
+    outbounds: [
+        { type: "vless", tag: "proxy-ok", server: "1.2.3.4", server_port: 443 },
+        { type: "socks", tag: "loopback-socks", server: "127.0.0.1", server_port: 1080 },
+        { type: "direct", tag: "dpi-out-legacy" },
+        { type: "direct", tag: "marked-out", routing_mark: 255 },
+        { type: "mieru", tag: "mieru-out", server: "1.2.3.4", server_port: 443 }
+    ],
+    endpoints: [
+        { type: "wireguard", tag: "wg-marked", routing_mark: 255 },
+        { type: "wireguard", tag: "wg-clean" }
+    ]
+};
+cfg.outbounds[2].tag = "DPI-out";
+if (!gr.is_valid_detour(cfg, "proxy-ok")) die("proxy-ok must be valid detour\n");
+if (!gr.is_valid_detour(cfg, "wg-clean")) die("wg-clean must be valid detour\n");
+for (let bad in [ "loopback-socks", "DPI-out", "marked-out", "mieru-out", "wg-marked" ]) {
+    if (gr.is_valid_detour(cfg, bad))
+        die(bad + " must not be valid download detour\n");
+}
+UCODE
 
 # 5. Verify mieru outbound is rejected as download_detour and http_clients detour
 cat >"$WORK_DIR/fixture_mieru.json" <<'JSON'
@@ -261,7 +264,6 @@ refuses_download_via "$output_mieru" "mieru_sec-out" \
 
 output_mieru_v14="$WORK_DIR/out_mieru_v14.json"
 mkdir -p "$output_mieru_v14.section-cache" "$output_mieru_v14.rulesets"
-SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture_mieru.json" "$output_mieru_v14" "127.0.0.1" "0" "1"
 

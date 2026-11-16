@@ -90,17 +90,7 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tudp\tdport\t123\treturn' "enable: exclude_ntp bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t0x00100000\treturn' "enable: outbound_mark bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tnfproto\tipv4\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "enable: tcp redirect to 1604"
-
-# A DPI section claims router-originated traffic in mangle_output (route output,
-# priority -150) and hands it to the provider queue there. This chain is nat
-# output at priority -100, so it runs after that. Without a bypass the very same
-# packet is both queued to nfqws2 and redirected into sing-box, and the section
-# stops bypassing anything: ticking "route router's own traffic" breaks zapret
-# and zapret2 sections.
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t&\t0x01000000\t==\t0x01000000\treturn' "enable: zapret section mark bypass"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t&\t0x02000000\t==\t0x02000000\treturn' "enable: zapret2 section mark bypass"
-assert_before "$NFT_LOG" $'meta\tmark\t&\t0x01000000\t==\t0x01000000\treturn' $'counter\tredirect\tto\t:1604' "enable: zapret bypass must precede the redirect"
-assert_before "$NFT_LOG" $'ip\tdaddr\t@localv4\treturn' $'meta\tmark\t&\t0x02000000\t==\t0x02000000\treturn' "enable: bypasses stay in one chain, local first"
+assert_before "$NFT_LOG" $'ip\tdaddr\t@localv4\treturn' $'counter\tredirect\tto\t:1604' "enable: local bypass must precede the redirect"
 
 # Test 2: Direct disable call
 : > "$NFT_LOG"

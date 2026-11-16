@@ -1,10 +1,9 @@
 #!/usr/bin/env ucode
 //
-// Fuzzer binaries, command bounding and nftables setup.
+// Fuzzer binaries, command bounding and probe bypass nftables setup.
 //
-// Extracted from diagnostics/fuzzer.uc (branch 6 god-module split). Everything
-// here is about talking to the host: locating nfqws/ciadpi, bounding blocking
-// shell calls, caching DoH capability and setting up the probe nftables table.
+// Extracted from diagnostics/fuzzer.uc. Locates tachyon-core, bounds blocking
+// shell calls, caches DoH capability and sets up the direct-bypass nftables chain.
 //
 
 let fs = require("fs");
@@ -20,8 +19,6 @@ let shell_quote = common.shell_quote;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const STATE_DIR = getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon";
-const NFQUEUE_QNUM_ZAPRET = 298;
-const NFQUEUE_QNUM_ZAPRET2 = 299;
 const FUZZER_FWMARK = "0x40000000";
 const FUZZER_OUTBOUND_MARK = getenv("NFT_OUTBOUND_MARK") || "0x08000000";
 
@@ -42,88 +39,11 @@ function resolve_binary(paths) {
     return null;
 }
 
-function get_zapret2_bin() {
-    return resolve_binary([
-        getenv("ZAPRET2_NFQWS2_BIN"),
-        "/opt/zapret2/nfq2/nfqws2",
-        "/opt/zapret2/nfq/nfqws2",
-        "/opt/zapret2/nfqws2",
-        "/usr/bin/nfqws2"
-    ]);
-}
-
-function get_zapret_bin() {
-    return resolve_binary([
-        getenv("ZAPRET_NFQWS_BIN"),
-        "/opt/zapret/nfq/nfqws",
-        "/opt/zapret/nfqws",
-        "/usr/bin/nfqws"
-    ]);
-}
-
-function get_byedpi_bin() {
-    return resolve_binary([
-        getenv("BYEDPI_BIN"),
-        "/opt/byedpi/ciadpi",
-        "/usr/bin/ciadpi"
-    ]);
-}
-
 function get_desync_bin() {
     return resolve_binary([
         getenv("TACHYON_CORE_BIN"),
         "/usr/bin/tachyon-core"
     ]);
-}
-
-function get_zapret2_lua_flags(args_str) {
-    if (index(args_str, "--lua-init") >= 0)
-        return "";
-
-    let candidate_dirs = [
-        getenv("ZAPRET2_PROVIDER_LUA_DIR"),
-        LIB_DIR + "/providers/zapret2/lua",
-        "/usr/lib/tachyon/providers/zapret2/lua",
-        "/opt/zapret2/lua",
-        "/opt/zapret2/files/lua",
-        "/opt/zapret2/share/zapret/lua",
-        "/opt/zapret2/init.d/sysv/lua",
-        "/opt/zapret/lua",
-        "/opt/zapret/files/lua",
-        "/usr/share/zapret2/lua",
-        "/usr/share/zapret/lua",
-        "/etc/zapret2/lua",
-        "/etc/zapret/lua",
-        "/usr/lib/zapret2/lua",
-        "/usr/lib/zapret/lua"
-    ];
-
-    let lua_scripts = [
-        "zapret-lib.lua",
-        "zapret-antidpi.lua",
-        "zapret-auto.lua"
-    ];
-
-    let flags = "";
-    for (let script in lua_scripts) {
-        let found = null;
-        for (let d in candidate_dirs) {
-            if (!d || fs.stat(d) == null)
-                continue;
-            let p = d + "/" + script;
-            if (fs.stat(p) != null) {
-                found = p;
-                break;
-            }
-            if (fs.stat(p + ".gz") != null) {
-                found = p + ".gz";
-                break;
-            }
-        }
-        if (found != null)
-            flags += sprintf("--lua-init=@%s ", found);
-    }
-    return flags;
 }
 
 function has_timeout() {
@@ -422,72 +342,6 @@ function probe_udp_stun_cmd(host_ip, port, res_file) {
     );
 }
 
-const KNOWN_BLOB_FILES = {
-    tls_max: { file: "tls_clienthello_max_ru.bin", size: 654, desc: "Max.ru authentic ClientHello" },
-    tls_google: { file: "tls_clienthello_www_google_com.bin", size: 681, desc: "Google authentic ClientHello" },
-    tls_gosuslugi: { file: "tls_clienthello_gosuslugi_ru.bin", size: 517, desc: "Gosuslugi Russian Government ClientHello" },
-    tls_sber: { file: "tls_clienthello_sberbank_ru.bin", size: 517, desc: "Sberbank authentic ClientHello" },
-    tls_iana: { file: "tls_clienthello_iana_org.bin", size: 517, desc: "IANA root authority ClientHello" },
-    tls_vk: { file: "tls_clienthello_vk_com.bin", size: 517, desc: "VK authentic ClientHello" },
-    tls_onetrust: { file: "tls_clienthello_www_onetrust_com.bin", size: 664, desc: "OneTrust CDN ClientHello" },
-    quic_google: { file: "quic_initial_www_google_com.bin", size: 1200, desc: "Google QUIC Initial" },
-    quic_yt1: { file: "quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_1.bin", size: 1230, desc: "GoogleVideo Kyber QUIC Initial" },
-    quic_vk: { file: "quic_initial_vk_com.bin", size: 1357, desc: "VK QUIC Initial" },
-    stun_fake: { file: "stun.bin", size: 100, desc: "STUN discovery packet" },
-    discord_udp: { file: "stun.bin", size: 100, desc: "Discord Voice UDP fake packet" },
-    fake_discord: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery payload" },
-    discord_ip_discovery: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery payload" },
-    discord_ip_discovery_with_port: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery with port" },
-    discord_ip_discovery_without_port: { file: "discord-ip-discovery-without-port.bin", size: 100, desc: "Discord IP discovery without port" },
-    fake_default_quic: { file: "quic_initial_www_google_com.bin", size: 1200, desc: "Default QUIC Initial" }
-};
-
-function blob_candidate_dirs() {
-    return [
-        getenv("ZAPRET2_PROVIDER_FILES_DIR") ? (getenv("ZAPRET2_PROVIDER_FILES_DIR") + "/fake") : null,
-        "/opt/zapret2/files/fake",
-        "/opt/zapret/files/fake",
-        "/usr/share/zapret2/files/fake",
-        "/usr/share/zapret/files/fake",
-        "/etc/zapret2/files/fake",
-        "/etc/zapret/files/fake",
-        LIB_DIR + "/providers/zapret2/files/fake",
-        "/usr/lib/tachyon/providers/zapret2/files/fake"
-    ];
-}
-
-function get_zapret2_blob_dir() {
-    for (let d in blob_candidate_dirs()) {
-        if (d && fs.stat(d) != null) return d;
-    }
-    return "/opt/zapret2/files/fake";
-}
-
-function resolve_zapret2_blobs(args_str) {
-    if (!args_str || args_str == "") return "";
-    let candidate_dirs = blob_candidate_dirs();
-    let nfqws_bin = get_zapret2_bin();
-    let blob_flags = "";
-    for (let name, info in KNOWN_BLOB_FILES) {
-        if ((index(args_str, "blob=" + name) >= 0 || index(args_str, "seqovl_pattern=" + name) >= 0) &&
-            index(args_str, "--blob=" + name + ":") < 0) {
-            let actual_path = null;
-            for (let d in candidate_dirs) {
-                if (!d || fs.stat(d) == null) continue;
-                let p = d + "/" + info.file;
-                if (fs.stat(p) != null) {
-                    actual_path = p;
-                    break;
-                }
-            }
-            if (actual_path != null && !common.nfqws_blob_is_builtin(nfqws_bin, name, actual_path)) {
-                blob_flags += sprintf("--blob=%s:@%s ", name, actual_path);
-            }
-        }
-    }
-    return blob_flags;
-}
-
 let _probe_port_seeded = false;
 
 // Builds the probe curl command. Output: http_code, appconnect, starttransfer,
@@ -521,253 +375,19 @@ function probe_curl_cmd(extra_flags, target_flags, url, err_file, connect_timeou
     );
 }
 
-// Reads one queue line from /proc/net/netfilter/nfnetlink_queue:
-// queue_number peer_portid queue_total copy_mode copy_range queue_dropped user_dropped id_sequence 1
-// id_sequence counts packets handed to the listener since it bound the queue, so it
-// proves whether probe traffic actually reached the test daemon.
-function read_nfqueue_stats(qnum) {
-    let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
-    if (!nfq)
-        return null;
-    for (let line in split(trim(nfq), "\n")) {
-        let cols = split(trim(line), /[ \t]+/);
-        if (length(cols) < 8 || int(cols[0]) != int(qnum))
-            continue;
-        return {
-            portid: int(cols[1]),
-            queue_dropped: int(cols[5]),
-            user_dropped: int(cols[6]),
-            packets: int(cols[7])
-        };
-    }
-    return null;
-}
-
-function wait_nfqueue_bound(qnum, tries) {
-    tries = tries || 20;
-    for (let i = 0; i < tries; i++) {
-        let st = read_nfqueue_stats(qnum);
-        if (st && st.portid > 0)
-            return true;
-        system("sleep 0.1");
-    }
-    return false;
-}
-
-// "ip daddr { a, b } " for the known IPv4 probe targets, or "" when unknown
-// (then the rules fall back to all router traffic on the probe ports).
-function target_scope_match(target_ips) {
-    let ips = [];
-    let seen = {};
-    for (let ip in (type(target_ips) == "array" ? target_ips : [])) {
-        ip = as_string(ip);
-        if (is_valid_public_ip(ip) && !seen[ip]) {
-            seen[ip] = true;
-            push(ips, ip);
-        }
-    }
-    return length(ips) > 0 ? sprintf("ip daddr { %s } ", join(", ", ips)) : "";
-}
-
-// IPv4 addresses the probe will pin with --resolve for these targets.
-function probe_target_ips(urls_list) {
-    let ips = [];
-    for (let item in (type(urls_list) == "array" ? urls_list : [])) {
-        let u = as_string(item.url || "");
-        if (index(u, "udp://") == 0) {
-            let udp_info = parse_udp_target_url(u);
-            if (udp_info && is_valid_public_ip(udp_info.ip))
-                push(ips, udp_info.ip);
-            continue;
-        }
-        let flags = get_resolved_host_flags(u);
-        for (let m in match(flags, /:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) /g) || [])
-            push(ips, m[1]);
-    }
-    return ips;
-}
-
 // Marks probe traffic with FUZZER_OUTBOUND_MARK so TachyonTable's mangle_output
 // returns and it goes DIRECT to WAN. Only unmarked packets are touched: OR-ing
 // the bypass bit onto a section mark would pull that traffic out of its
 // production queue.
-function add_bypass_singbox_chain(scope, with_udp) {
+function add_bypass_core_chain(scope, with_udp) {
     scope = as_string(scope || "");
-    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
-    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
+    system("nft 'add chain inet tachyon_fuzzer bypass_core { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_core meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_core %smeta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
     if (with_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto udp udp dport { 80, 443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_core %smeta mark 0 meta l4proto udp udp dport { 80, 443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
     }
 }
-
-// Ports the fuzzer queue rule matches. Split per protocol so each rule can carry
-// its own counter.
-const FUZZER_QUEUE_PORTS_TCP = "80, 443, 2053, 2083, 2087, 2096, 8443";
-const FUZZER_QUEUE_PORTS_UDP = "443, 2053, 2083, 2087, 2096, 8443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535";
-
-/**
- * One nft rule for the fuzzer queue, with a per-protocol counter comment.
- *
- * The comment has to come AFTER the verdict. nft parses counter, comment and queue
- * as rule statements and rejects the comment in the middle: "syntax error,
- * unexpected queue". The fuzzer builds this table with stderr discarded, so the
- * only thing the user saw was "nftables setup failed: fuzzer queue rule could not
- * be installed" on every single strategy - the whole tool dead, with no reason.
- *
- * Built in one place so the ordering cannot drift between the UDP and TCP paths,
- * and so a test can assert it against this function instead of against the source
- * text.
- */
-function fuzzer_queue_rule_spec(scope, protocol, qnum, ports_csv) {
-    return sprintf(
-        "add rule inet tachyon_fuzzer postnat %smeta mark & %s == %s meta l4proto %s %s dport { %s } counter queue num %d comment \"%s-proto\"",
-        as_string(scope || ""),
-        FUZZER_OUTBOUND_MARK,
-        FUZZER_OUTBOUND_MARK,
-        protocol,
-        protocol,
-        ports_csv,
-        int(qnum),
-        protocol
-    );
-}
-
-function verify_fuzzer_queue_rule(qnum) {
-    // ── Verify the queue rule actually landed ─────────────────────────────
-    // Without it probes silently test a direct connection, defeating the purpose.
-    // nft output format varies by version: "queue num N bypass" (older) vs
-    // "queue flags bypass to N" (newer).  Match any qnum near the keyword.
-    let verified = command_success(sprintf("nft list table inet tachyon_fuzzer 2>/dev/null | grep -q 'queue.*%d'", qnum));
-    if (!verified) {
-        log_fuzzer_message(sprintf("nftables queue rule verification failed for qnum=%d; rules may not have been applied", qnum));
-    }
-    return verified;
-}
-
-// Packets each protocol put through the fuzzer queue.
-//
-// /proc/net/netfilter/nfnetlink_queue only knows the queue total, and the total is
-// exactly what hides a UDP strategy: curl sends TCP, the queue rule matches both
-// protocols, nfqws passes the TCP packets through because its --filter-udp does
-// not apply to them, and the strategy looks like a clean win while its filter
-// never saw a single packet. Per-rule counters answer the only question that
-// matters - did the packets the strategy filters actually arrive.
-function parse_proto_counters(listing) {
-    let result = { tcp: 0, udp: 0 };
-
-    for (let line in split(as_string(listing), "\n")) {
-        for (let proto in [ "tcp", "udp" ]) {
-            if (index(line, sprintf("comment \"%s-proto\"", proto)) < 0)
-                continue;
-            let m = match(line, /packets[ \t]+([0-9]+)/);
-            if (m && m[1])
-                result[proto] += int(m[1]);
-        }
-    }
-
-    return result;
-}
-
-function read_fuzzer_proto_counters() {
-    return parse_proto_counters(
-        command_output_from_args([ "nft", "list", "table", "inet", "tachyon_fuzzer" ])
-    );
-}
-
-function setup_fuzzer_direct_nftables(qnum, is_udp, target_ips) {
-    // ── Pre-cleanup: kill any orphaned fuzzer processes bound to our queues ──
-    // An orphaned nfqueue binding wedges the kernel nft subsystem; nft delete
-    // blocks forever and the subsequent add silently fails (2>/dev/null), so
-    // every strategy reports a false failure.  Kill the binding first.
-    for (let w = 0; w < 3; w++) {
-        let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
-        let found = false;
-        if (nfq) {
-            let lines = split(trim(nfq), "\n");
-            for (let line in lines) {
-                let cols = split(trim(line), /[ \t]+/);
-                if (length(cols) >= 2) {
-                    let q = int(cols[0]);
-                    let p = int(cols[1]);
-                    if ((q == qnum || q == NFQUEUE_QNUM_ZAPRET || q == NFQUEUE_QNUM_ZAPRET2) && p > 0) {
-                        found = true;
-                        system(sprintf("kill -9 %d >/dev/null 2>&1", p));
-                    }
-                }
-            }
-        }
-        if (!found) break;
-        run_bounded("sleep 0.5", 2);
-    }
-
-    // ── Clean slate: delete any stale table ──────────────────────────────────
-    // 10s timeout — on slow ARM routers nft delete can block on orphaned
-    // in-kernel nfqueue bindings; 5s was not enough in some reports.
-    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
-
-    // ── Create table with retry + backoff ────────────────────────────────────
-    let nft_err_file = STATE_DIR + "/fuzzer_nft_err.log";
-    try { fs.unlink(nft_err_file); } catch (e) {}
-    let table_created = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-        if (system(sprintf("nft add table inet tachyon_fuzzer 2>%s", shell_quote(nft_err_file))) == 0) {
-            table_created = true;
-            break;
-        }
-        // Backoff: wait for orphaned bindings to release
-        run_bounded("sleep 0.5", 2);
-        run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
-    }
-    if (!table_created) {
-        let nft_err = trim(as_string(fs.readfile(nft_err_file)) || "");
-        log_fuzzer_message(sprintf("nftables table creation failed after 3 attempts (qnum=%d): %s", qnum, nft_err != "" ? nft_err : "unknown error"));
-        try { fs.unlink(nft_err_file); } catch (e) {}
-        return false;
-    }
-    try { fs.unlink(nft_err_file); } catch (e) {}
-
-    // ── Build ruleset ────────────────────────────────────────────────────────
-    // Priority -401: notrack before defrag/conntrack so desync packets (0x40000000 / 0x20000000)
-    // are not marked 'ct state invalid' and dropped by OpenWrt fw4 !fw4: Prevent NAT leakage
-    system("nft 'add chain inet tachyon_fuzzer predefrag { type filter hook output priority -401 ; policy accept; }' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer predefrag meta mark & 0x60000000 != 0 notrack counter' 2>/dev/null");
-    system("nft 'add chain inet tachyon_fuzzer predefrag_pre { type filter hook prerouting priority -401 ; policy accept; }' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer predefrag_pre meta mark & 0x60000000 != 0 notrack counter' 2>/dev/null");
-
-    // Queue in postrouting after routing/NAT (priority 101), like upstream zapret's
-    // postnat chain and blockcheck. Queuing in the output hook at priority -200
-    // made every strategy fail: an A/B test on a real router with the same nfqws
-    // and strategy gave curl exit 35/28 with output -200 and HTTP 200 with
-    // postrouting 101 for both YouTube and Discord.
-    // Scope every fuzzer rule to the probe targets when their addresses are known.
-    // Matching all router TCP 443 also captured sing-box's own outbound
-    // connections (same 0x08000000 mark): while a benchmark ran, every proxy
-    // dial went through the test strategy and timed out, and OR-ing the bypass
-    // mark onto zapret section marks (0x01000001 -> 0x09000001) took that
-    // traffic out of its production queue.
-    let scope = target_scope_match(target_ips);
-
-    system("nft 'add chain inet tachyon_fuzzer postnat { type filter hook postrouting priority 101 ; policy accept; }' 2>/dev/null");
-    system(sprintf("nft 'add rule inet tachyon_fuzzer postnat meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
-    system("nft 'add rule inet tachyon_fuzzer postnat oifname \"lo\" return' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer postnat ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer postnat ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
-if (is_udp) {
-        // Two rules, not one "l4proto { tcp, udp }" rule: each carries its own
-        // counter so a UDP strategy can be told apart from one that was never
-        // exercised. See read_fuzzer_proto_counters().
-        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "tcp", qnum, FUZZER_QUEUE_PORTS_TCP) ]);
-        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "udp", qnum, FUZZER_QUEUE_PORTS_UDP) ]);
-    } else {
-        command_output_from_args([ "nft", fuzzer_queue_rule_spec(scope, "tcp", qnum, FUZZER_QUEUE_PORTS_TCP) ]);
-    }
-    // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
-    // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
-    add_bypass_singbox_chain(scope, is_udp);
-    return verify_fuzzer_queue_rule(qnum);
-}
-
 
 const TARGET_SUITES = {
     youtube_suite: {
@@ -966,18 +586,11 @@ function resolve_target_urls_list(target_key, custom_url) {
 
 function module_exports() {
     return {
-        NFQUEUE_QNUM_ZAPRET,
-        NFQUEUE_QNUM_ZAPRET2,
         FUZZER_FWMARK,
         FUZZER_OUTBOUND_MARK,
-        KNOWN_BLOB_FILES,
         log_fuzzer_message,
         resolve_binary,
-        get_zapret2_bin,
-        get_zapret_bin,
-        get_byedpi_bin,
         get_desync_bin,
-        get_zapret2_lua_flags,
         has_timeout,
         get_timeout_prefix,
         wrap_cmd_timeout,
@@ -990,18 +603,10 @@ function module_exports() {
         resolve_host_ipv4,
         parse_udp_target_url,
         probe_udp_stun_cmd,
-        get_zapret2_blob_dir,
-        resolve_zapret2_blobs,
-        setup_fuzzer_direct_nftables,
         probe_target_ips,
         target_scope_match,
-        add_bypass_singbox_chain,
+        add_bypass_core_chain,
         probe_curl_cmd,
-        read_nfqueue_stats,
-        read_fuzzer_proto_counters,
-        parse_proto_counters,
-        fuzzer_queue_rule_spec,
-        wait_nfqueue_bound,
         TARGET_SUITES,
         TARGET_URLS,
         resolve_target_url,

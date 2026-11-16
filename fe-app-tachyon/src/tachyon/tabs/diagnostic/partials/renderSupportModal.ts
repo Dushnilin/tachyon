@@ -6,10 +6,12 @@ import {
   renderHeartIcon24,
   renderSparklesIcon,
   renderCreditCardIcon,
+  renderQrCodeIcon,
   renderCoinsIcon,
   renderGemIcon,
 } from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
+import { tr } from '../../../helpers/i18n';
 
 interface CryptoItem {
   name: string;
@@ -51,6 +53,8 @@ const CRYPTO_LIST: CryptoItem[] = [
 ];
 
 const CLOUDTIPS_URL = 'https://pay.cloudtips.ru/p/449c5ef9';
+const OZON_SBP_URL =
+  'https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5';
 const BOOSTY_URL = 'https://boosty.to/tachyon';
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -225,13 +229,74 @@ export function renderSupportModal(): void {
     ],
   );
 
+  // Ozon Bank SBP card (primary Bento tile)
+  const ozonSbpCard = E(
+    'div',
+    {
+      style:
+        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 10px; background: var(--tachyon-bg-card-elevated, rgba(148, 163, 184, 0.05)); border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2));',
+    },
+    [
+      E(
+        'div',
+        { style: 'display: flex; align-items: flex-start; gap: 12px;' },
+        [
+          E(
+            'div',
+            {
+              style:
+                'width: 36px; height: 36px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.26); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #3b82f6;',
+            },
+            [renderQrCodeIcon(18)],
+          ),
+          E(
+            'div',
+            {
+              style:
+                'display: flex; flex-direction: column; gap: 3px; min-width: 0;',
+            },
+            [
+              E(
+                'div',
+                {
+                  style:
+                    'font-weight: 600; font-size: 14px; color: var(--tachyon-text-main, inherit);',
+                },
+                tr('СБП (Ozon Банк)', 'SBP (Ozon Bank)'),
+              ),
+              E(
+                'div',
+                {
+                  style:
+                    'font-size: 12px; line-height: 1.4; color: var(--tachyon-text-muted, var(--text-color-medium, #94a3b8));',
+                },
+                tr(
+                  'Мгновенный перевод по СБП без комиссии',
+                  'Instant SBP transfer without fees',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      renderButton({
+        classNames: ['cbi-button-save'],
+        icon: renderLinkIcon24,
+        text: tr('Поддержать через СБП', 'Support via SBP'),
+        onClick: () => {
+          window.open(OZON_SBP_URL, '_blank', 'noopener,noreferrer');
+        },
+      }),
+    ],
+  );
+
   const primaryBentoRow = E(
     'div',
     {
       style:
-        'display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;',
+        'display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 12px;',
     },
-    [boostyCard, cloudTipsCard],
+    [boostyCard, ozonSbpCard, cloudTipsCard],
   );
 
   // Crypto 2x2 Bento grid

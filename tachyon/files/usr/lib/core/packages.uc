@@ -87,14 +87,8 @@ function detect_arch() {
 // ---------------------------------------------------------------------------
 
 function binary_installed(package_name) {
-    if (package_name == "zapret2")
-        return fs.stat("/opt/zapret2/nfq2/nfqws2") != null || fs.stat("/opt/zapret2/nfqws2") != null || fs.stat("/usr/bin/nfqws2") != null;
-    if (package_name == "zapret")
-        return fs.stat("/opt/zapret/nfq/nfqws") != null || fs.stat("/opt/zapret/nfqws") != null;
-    if (package_name == "byedpi")
-        return fs.stat("/usr/bin/ciadpi") != null;
-    if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx")
-        return fs.stat("/usr/bin/tachyon-core") != null || fs.stat("/usr/bin/sing-box") != null;
+    if (package_name == "tachyon-core")
+        return fs.stat("/usr/bin/tachyon-core") != null;
     return false;
 }
 
@@ -183,36 +177,14 @@ function apk_query_version(package_name, output) {
 }
 
 function binary_version(package_name) {
-    if (package_name == "zapret2") {
-        for (let p in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]) {
-            if (fs.stat(p) != null) {
-                let out = command_output_args([ p, "--version" ]);
-                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
-                if (m) return m[1];
-            }
-        }
-    }
-    if (package_name == "zapret") {
-        for (let p in [ "/opt/zapret/nfq/nfqws", "/opt/zapret/nfqws" ]) {
-            if (fs.stat(p) != null) {
-                let out = command_output_args([ p, "--version" ]);
-                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
-                if (m) return m[1];
-            }
-        }
-    }
-    if (package_name == "byedpi" && fs.stat("/usr/bin/ciadpi") != null) {
-        let out = command_output_args([ "/usr/bin/ciadpi", "--version" ]);
-        let m = match(out, /([0-9a-zA-Z._-]+)/);
-        if (m) return m[1];
-    }
-    if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx") {
-        for (let p in [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ]) {
-            if (fs.stat(p) != null) {
-                let out = command_output_args([ p, "version" ]);
-                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
-                if (m) return m[1];
-            }
+    if (package_name == "tachyon-core") {
+        let p = "/usr/bin/tachyon-core";
+        if (fs.stat(p) != null) {
+            let out = command_output_args([ p, "version" ]);
+            let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
+            if (m) return m[1];
+            m = match(out, /tachyon-core[ \t]+(v?[0-9a-zA-Z._-]+)/i);
+            if (m) return m[1];
         }
     }
     return "";

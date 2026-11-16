@@ -32,8 +32,8 @@ if ucode -L "$TACHYON_LIB" "$PARSER_UC" normalize-content-validated "$WORK_DIR/s
   fail "normalize-content-validated should reject English unsupported client notice"
 fi
 
-# 3. Test sing-box JSON with only stub outbound
-cat >"$WORK_DIR/stub_singbox.json" <<'EOF'
+# 3. Test core JSON with only stub outbound
+cat >"$WORK_DIR/stub_core.json" <<'EOF'
 {
   "outbounds": [
     {
@@ -47,8 +47,8 @@ cat >"$WORK_DIR/stub_singbox.json" <<'EOF'
 }
 EOF
 
-if ucode -L "$TACHYON_LIB" "$PARSER_UC" normalize-content-validated "$WORK_DIR/stub_singbox.json" "$WORK_DIR/out_stub_sb.json" >/dev/null 2>&1; then
-  fail "normalize-content-validated should reject singbox JSON with stub outbound"
+if ucode -L "$TACHYON_LIB" "$PARSER_UC" normalize-content-validated "$WORK_DIR/stub_core.json" "$WORK_DIR/out_stub_core.json" >/dev/null 2>&1; then
+  fail "normalize-content-validated should reject core JSON with stub outbound"
 fi
 
 # 4. Test Clash YAML with only stub outbound
@@ -89,7 +89,7 @@ if (list[0].tag != "Valid-Server-DE" || list[0].server != "vpn.example.com") {
 ' || fail "Failed to filter out stub node from mixed subscription"
 
 # 6. Test validate-subscription CLI mode directly
-if ucode -L "$TACHYON_LIB" "$PARSER_UC" validate-subscription "$WORK_DIR/stub_singbox.json" >/dev/null 2>&1; then
+if ucode -L "$TACHYON_LIB" "$PARSER_UC" validate-subscription "$WORK_DIR/stub_core.json" >/dev/null 2>&1; then
   fail "validate-subscription CLI should return error for stub-only JSON"
 fi
 
@@ -113,7 +113,7 @@ if (!parser.validate_subscription(valid_file)) {
 exit(0);
 EOF
 
-ucode -L "$TACHYON_LIB" "$WORK_DIR/test_validate.uc" "$WORK_DIR/stub_singbox.json" "$WORK_DIR/out_mixed.json" ||
+ucode -L "$TACHYON_LIB" "$WORK_DIR/test_validate.uc" "$WORK_DIR/stub_core.json" "$WORK_DIR/out_mixed.json" ||
   fail "subscription validation cache checks failed"
 
 echo "subscription unsupported stub checks passed"

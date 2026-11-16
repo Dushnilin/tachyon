@@ -88,60 +88,6 @@ function restart_tachyon_service() {
     return { ok: status == 0, status };
 }
 
-function switch_engine(target, opts) {
-    opts = type(opts) == "object" ? opts : {};
-    let before = engine.get_active();
-    let normalized = engine.normalize_engine(target);
-
-    if (normalized == before &&
-        engine.engine_binary(normalized) == engine.engine_binary(before) &&
-        engine.init_script_present(normalized) == engine.init_script_present(before) &&
-        !(opts.replace_build === true || opts.replace_build === "1")) {
-        let info = engine.detect(normalized);
-        return {
-            ok: true,
-            no_op: true,
-            reason: "already_active",
-            from_engine: before,
-            to_engine: normalized,
-            build: info.build,
-            message: "Already running on " + normalized + "; nothing to switch"
-        };
-    }
-
-    let plan = engine_state.apply_switch(normalized, {
-        allow_install: opts.allow_install == "1" || opts.allow_install === true,
-        dry_run: opts.dry_run == "1" || opts.dry_run === true
-    });
-
-    if (!plan.ok)
-        return plan;
-
-    if (opts.dry_run == "1" || opts.dry_run === true)
-        return plan;
-
-    let new_engine = engine.get_active();
-    let restarted = restart_tachyon_service();
-    if (!restarted.ok) {
-        engine_state.apply_switch(before, {});
-        restart_tachyon_service();
-        return {
-            ok: false,
-            reason: "start_failed_rolled_back",
-            from_engine: before,
-            to_engine: new_engine,
-            service_status: restarted.status
-        };
-    }
-
-    return {
-        ok: true,
-        from_engine: before,
-        to_engine: new_engine,
-        plan
-    };
-}
-
 function sync_tun_firewall_zone(settings) {
     if (as_string(option(settings, "proxy_mode", "tproxy")) != "tun")
         return;
@@ -192,7 +138,6 @@ function main() {
         let active = engine.get_active();
         print_json({
             active,
-            previous: engine.get_previous(),
             engines: engine.detect_all(),
             capabilities: engine.capabilities(active)
         });
@@ -205,41 +150,6 @@ function main() {
             features: engine_state.current_features()
         });
         return 0;
-    }
-
-    if (mode == "engine-plan") {
-        let target = ARGV[1] || engine.get_active();
-        print_json(engine_state.apply_switch(target, { dry_run: true }));
-        return 0;
-    }
-
-    if (mode == "engine-switch") {
-        let target = ARGV[1] || "";
-        if (target == "") {
-            warn("Usage: service/engine_runtime.uc engine-switch <engine> [--allow-install] [--dry-run]\n");
-            return 2;
-        }
-        let opts = {};
-        for (let i = 2; i < length(ARGV); i++) {
-            if (ARGV[i] == "--allow-install")
-                opts.allow_install = true;
-            else if (ARGV[i] == "--dry-run")
-                opts.dry_run = true;
-        }
-        let result = switch_engine(target, opts);
-        print_json(result);
-        return result.ok ? 0 : 1;
-    }
-
-    if (mode == "engine-switch-back") {
-        let previous = engine.get_previous();
-        if (previous == "") {
-            print_json({ ok: false, reason: "no_previous_engine" });
-            return 1;
-        }
-        let result = switch_engine(previous, {});
-        print_json(result);
-        return result.ok ? 0 : 1;
     }
 
     if (mode == "engine-start") {
@@ -262,7 +172,7 @@ function main() {
 
     if (mode == "engine-status") {
         let active = engine.get_active();
-        print_json({ engine: active, note: "tachyon-core status is exposed through get_sing_box_status" });
+        print_json({ engine: active, note: "tachyon-core status is exposed through get_tachyon_core_status" });
         return 0;
     }
 
@@ -271,7 +181,7 @@ function main() {
         return 0;
     }
 
-    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-plan|engine-switch|engine-switch-back|engine-start|engine-stop|engine-reload|engine-status|engine-apply> ...\n");
+    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-start|engine-stop|engine-reload|engine-status|engine-apply> ...\n");
     return 2;
 }
 
@@ -285,7 +195,6 @@ function module_exports() {
         start_active,
         stop_active,
         reload_active,
-        switch_engine,
         restart_tachyon_service,
         sync_tun_firewall_zone
     };

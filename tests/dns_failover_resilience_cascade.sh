@@ -11,7 +11,7 @@ WATCHDOG_UC="$ROOT_DIR/tachyon/files/usr/lib/service/watchdog.uc"
 
 [ -f "$STATE_UC" ] || fail "service/state.uc not found"
 [ -f "$LIFECYCLE_UC" ] || fail "service/lifecycle.uc not found"
-[ -f "$FAILOVER_UC" ] || fail "singbox/dns_failover.uc not found"
+[ -f "$FAILOVER_UC" ] || fail "tachyon_core/dns_failover.uc not found"
 [ -f "$WATCHDOG_UC" ] || fail "service/watchdog.uc not found"
 
 # 1. try_sighup_reload must have at least 10s (>= 20 * 0.5s ticks) deadline
@@ -23,7 +23,7 @@ fi
 
 # 2. apply_selections timeout must be >= 30s so dns_failover_apply is not SIGKILLed
 apply_timeout="$(grep -E 'timeout.*SERVICE_BIN.*dns_failover_apply' "$FAILOVER_UC" | grep -oE '"timeout", "[0-9]+"' | grep -oE '[0-9]+')"
-[ -n "$apply_timeout" ] || fail "could not find timeout for dns_failover_apply in singbox/dns_failover.uc"
+[ -n "$apply_timeout" ] || fail "could not find timeout for dns_failover_apply in tachyon_core/dns_failover.uc"
 if [ "$apply_timeout" -lt 30 ]; then
   fail "apply_selections timeout is only ${apply_timeout}s (< 30s), killing dns_failover_apply mid-reload"
 fi
@@ -34,7 +34,7 @@ if grep -E 'next_active = now_seconds\(\) \+ .*1 : active_interval' "$FAILOVER_U
 fi
 
 # 4. wait_dns_failover_state in dns_failover_apply must give at least 10 attempts
-attempts="$(grep -A8 'sing_box_pid_before = sing_box_runtime_pid' "$LIFECYCLE_UC" | grep -oE 'wait_dns_failover_state\(candidate_state_path, [0-9]+\)' | head -1 | grep -oE '[0-9]+')"
+attempts="$(grep -A8 'core_pid_before = tachyon_core_runtime_pid' "$LIFECYCLE_UC" | grep -oE 'wait_dns_failover_state\(candidate_state_path, [0-9]+\)' | head -1 | grep -oE '[0-9]+')"
 [ -n "$attempts" ] || fail "could not find wait_dns_failover_state attempts in lifecycle.uc"
 if [ "$attempts" -lt 10 ]; then
   fail "wait_dns_failover_state has only $attempts attempts (< 10), timing out before DNS inbounds are ready"
@@ -54,9 +54,9 @@ grep -Fq 'check_watchdog_outdated' "$WATCHDOG_UC" ||
 grep -A25 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'config_stat' ||
   fail "core_age_seconds in dns_failover.uc must check config mtime to protect in-place SIGHUP reloads from premature failover"
 
-# 8. core_age_seconds in dns_failover.uc must inspect sing-box-reload.timestamp
-grep -A35 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'sing-box-reload.timestamp' ||
-  fail "core_age_seconds in dns_failover.uc must check sing-box-reload.timestamp for SIGHUP in-place reload grace period"
+# 8. core_age_seconds in dns_failover.uc must inspect tachyon-core-reload.timestamp
+grep -A35 'function core_age_seconds' "$FAILOVER_UC" | grep -Fq 'tachyon-core-reload.timestamp' ||
+  fail "core_age_seconds in dns_failover.uc must check tachyon-core-reload.timestamp for SIGHUP in-place reload grace period"
 
 # 9. dns_failover must not hardcode failure_threshold to 2 and ignore user settings in parallel mode
 if grep -Eq 'failure_threshold = is_parallel \? 2 :' "$FAILOVER_UC"; then

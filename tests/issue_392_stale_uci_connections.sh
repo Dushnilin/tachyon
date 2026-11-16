@@ -128,7 +128,7 @@ mkdir -p "$WORK_DIR/sub_cache"
 cat >"$WORK_DIR/sub_cache_node.json" <<'JSON'
 {
   "version": 1,
-  "format": "sing-box-json",
+  "format": "tachyon-core-json",
   "outbounds": [
     {
       "type": "vless",

@@ -92,8 +92,6 @@ if grep -Fq "tun-fptn" "$NFT_LOG"; then
 fi
 
 # Verify generator forwards sni, bypass_method, and preferred_server ordering
-printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant"
 export TACHYON_PERSISTENT_SELECTOR_STATE_FILE="$WORK_DIR/selector_state.json"
 
 cat >"$WORK_DIR/fixture_fptn_opts.json" <<EOF_JSON

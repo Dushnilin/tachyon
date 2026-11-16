@@ -92,7 +92,7 @@ cat >"$WORK_DIR/bin/tachyon" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TACHYON_TEST_TACHYON_LOG"
 if [ "$1" = "component_update_check_cache" ]; then
-  printf '{"results":[{"component":"sing_box","success":true,"status":"outdated","current_version":"1.0.0","latest_version":"1.1.0"}]}'
+  printf '{"results":[{"component":"tachyon_core","success":true,"status":"outdated","current_version":"1.0.0","latest_version":"1.1.0"}]}'
 fi
 exit 0
 STUB

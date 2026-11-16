@@ -114,8 +114,8 @@ function loadLuciView(tsPath, uciMock, extraExports = []) {
       getProxyUrlName: (l) => (l.includes('#') ? l.split('#')[1] : ''),
       DNS_SERVERS_BY_PROTOCOL: { udp: { '1.1.1.1': 'Cloudflare' } },
       validateUrlTestUrl: () => true,
-      validateRequiredSingBoxDuration: () => true,
-      validateOptionalSingBoxDuration: () => true,
+      validateRequiredCoreDuration: () => true,
+      validateOptionalCoreDuration: () => true,
       validateUrlTestTolerance: () => true,
       urlTestUrlChoices: () => ['https://www.gstatic.com/generate_204'],
       formatDnsServerDisplay: (v) => v,
@@ -201,7 +201,6 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
         enabled: '1',
         name: 'WDTT Node',
         source_type: 'wdtt',
-        wdtt_native: '1',
       },
       src_tt: {
         '.type': 'outbound_source',
@@ -209,11 +208,11 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
         name: 'TrustTunnel Node',
         source_type: 'trusttunnel',
       },
-      src_zapret2: {
+      src_desync: {
         '.type': 'outbound_source',
         enabled: '1',
-        name: 'Zapret2 DPI',
-        source_type: 'zapret2',
+        name: 'Adaptive Desync',
+        source_type: 'desync',
       },
     });
 
@@ -236,7 +235,7 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
     expect(tierValues).toContain('src_csqtt');
     expect(tierValues).toContain('src_wdtt');
     expect(tierValues).toContain('src_tt');
-    expect(tierValues).not.toContain('src_zapret2');
+    expect(tierValues).not.toContain('src_desync');
 
     const { options, sectionMock } = createOptionRecorder();
     loaded.__extra.createSectionContent(sectionMock, {}, { save: () => {} });
@@ -299,11 +298,9 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
         '.type': 'outbound_source',
         enabled: '1',
         source_type: 'wdtt',
-        wdtt_native: '1',
         warp_flow_uri: 'wdtt://example',
-        peer: 'example.com:46000',
+        wdtt_workers: '4',
         password: 'pw',
-        qwdtt_mode: 'socks',
       },
     });
 
@@ -372,18 +369,13 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
       expect(opt?.deps).toContainEqual({ source_type: 'csqtt' });
     }
 
-    const nfqws2Opt = byName('nfqws2_opt');
-    const directNfqwsOpt = byName('direct_nfqws');
-    expect(nfqws2Opt?.deps).not.toContainEqual({ source_type: 'wdtt' });
-    expect(directNfqwsOpt?.deps).not.toContainEqual({ source_type: 'wdtt' });
+    expect(byName('nfqws2_opt')).toBeUndefined();
+    expect(byName('direct_nfqws')).toBeUndefined();
+    expect(byName('wdtt_native')).toBeUndefined();
+    expect(byName('peer')).toBeUndefined();
+    expect(byName('qwdtt_mode')).toBeUndefined();
 
-    for (const wdttField of [
-      'wdtt_native',
-      'warp_flow_uri',
-      'peer',
-      'password',
-      'qwdtt_mode',
-    ]) {
+    for (const wdttField of ['warp_flow_uri', 'password']) {
       const opt = byName(wdttField);
       expect(opt, `missing wdtt option ${wdttField}`).toBeDefined();
       expect(opt?.deps).toContainEqual({ source_type: 'wdtt' });
@@ -400,10 +392,8 @@ describe('WDTT / CSQTT frontend schema & pool visibility', () => {
     expect(uciMock.store.src_migrated_csqtt.csqtt_server_port).toBeUndefined();
 
     sourceTypeOpt.write?.('src_wdtt', 'subscription');
-    expect(uciMock.store.src_wdtt.wdtt_native).toBeUndefined();
     expect(uciMock.store.src_wdtt.warp_flow_uri).toBeUndefined();
-    expect(uciMock.store.src_wdtt.peer).toBeUndefined();
-    expect(uciMock.store.src_wdtt.qwdtt_mode).toBeUndefined();
+    expect(uciMock.store.src_wdtt.wdtt_workers).toBeUndefined();
   });
 
   it('exposes csqtt_vk_cookie, TURN, and WG fields in connectionWizard.ts', () => {

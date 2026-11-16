@@ -2,14 +2,13 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-# Issue #81: the subscription parser read only the sing-box spellings of a few
+# Issue #81: the subscription parser read only the camelCase spellings of a few
 # xHTTP settings, so Remnawave/Xray profiles lost them. A node needing
 # `SessionIDPlacement` / `SessionIDKey` / `uplinkHTTPMethod` /
 # `scMaxBufferedPosts` was still created, but without its session config, and
 # timed out.
 #
-# Target field names are taken from the extended core option struct
-# (shtorm-7/sing-box-extended, option/v2ray_transport.go).
+# Target field names follow the core v2ray_transport option struct.
 #
 # All assertions live in one node script: the fixtures are long
 # percent-encoded URIs and shell-quoting them through helper functions is
@@ -31,15 +30,15 @@ base_uri() {
 }
 
 XRAY_EXTRA='extra=%7B%22uplinkHTTPMethod%22%3A%22GET%22%2C%22SessionIDPlacement%22%3A%22query%22%2C%22SessionIDKey%22%3A%22auth%22%2C%22sessionIDTable%22%3A%22Base62%22%2C%22sessionIDLength%22%3A%226-8%22%2C%22seqPlacement%22%3A%22query%22%2C%22seqKey%22%3A%22chunk_id%22%2C%22scMaxBufferedPosts%22%3A160%7D'
-SB_EXTRA='extra=%7B%22uplinkHttpMethod%22%3A%22GET%22%2C%22sessionPlacement%22%3A%22query%22%2C%22sessionKey%22%3A%22auth%22%2C%22scMaxBufferedPosts%22%3A77%7D'
+CORE_EXTRA='extra=%7B%22uplinkHttpMethod%22%3A%22GET%22%2C%22sessionPlacement%22%3A%22query%22%2C%22sessionKey%22%3A%22auth%22%2C%22scMaxBufferedPosts%22%3A77%7D'
 FLAT='uplinkHTTPMethod=GET&sessionIDPlacement=query&sessionIDKey=auth&scMaxBufferedPosts=99'
 
 parse "$(base_uri 1 "$XRAY_EXTRA")" >"$WORK_DIR/xray.json"
-parse "$(base_uri 2 "$SB_EXTRA")"    >"$WORK_DIR/singbox.json"
+parse "$(base_uri 2 "$CORE_EXTRA")"  >"$WORK_DIR/core.json"
 parse "$(base_uri 3 "$FLAT")"        >"$WORK_DIR/flat.json"
 parse "$(base_uri 4 "")"             >"$WORK_DIR/bare.json"
 
-for f in xray singbox flat bare; do
+for f in xray core flat bare; do
   grep -q '"transport"' "$WORK_DIR/$f.json" ||
     fail "$f fixture did not yield an xhttp outbound: $(cat "$WORK_DIR/$f.json")"
 done
@@ -64,11 +63,11 @@ want("seq_placement", "xray.json", "query");
 want("seq_key", "xray.json", "chunk_id");
 want("sc_max_buffered_posts", "xray.json", 160);
 
-// The sing-box camelCase spellings must keep working exactly as before.
-want("uplink_http_method", "singbox.json", "GET");
-want("session_placement", "singbox.json", "query");
-want("session_key", "singbox.json", "auth");
-want("sc_max_buffered_posts", "singbox.json", 77);
+// The camelCase spellings must keep working exactly as before.
+want("uplink_http_method", "core.json", "GET");
+want("session_placement", "core.json", "query");
+want("session_key", "core.json", "auth");
+want("sc_max_buffered_posts", "core.json", 77);
 
 // Same behaviour for the flat query form, not just the encoded extra blob.
 want("uplink_http_method", "flat.json", "GET");
@@ -84,7 +83,7 @@ if (problems.length) {
   for (const p of problems) console.error("FAIL: " + p);
   process.exit(1);
 }
-console.log("xHTTP alias mapping verified for Xray, sing-box and flat-query spellings");
+console.log("xHTTP alias mapping verified for Xray, camelCase and flat-query spellings");
 ' "$WORK_DIR" || fail "xHTTP alias mapping regression"
 
 printf 'subscription xhttp alias checks passed\n'

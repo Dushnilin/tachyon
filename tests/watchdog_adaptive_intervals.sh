@@ -129,8 +129,8 @@ let ctx = {
     now: now,
     settings: { ai_proxy_health_interval: "30" },
     reload_in_progress: false,
-    singbox_pid: "99999",
-    singbox_running: true,
+    tachyon_core_pid: "99999",
+    tachyon_core_running: true,
     proxy_port: "4534",
     proxy_host: "127.0.0.1"
 };
@@ -164,8 +164,8 @@ let ctx = {
     now: now,
     settings: { ai_dns_interval: "60" },
     reload_in_progress: false,
-    singbox_pid: "99999",
-    singbox_running: true,
+    tachyon_core_pid: "99999",
+    tachyon_core_running: true,
     proxy_port: "4534",
     proxy_host: "127.0.0.1"
 };

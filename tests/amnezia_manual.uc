@@ -11,12 +11,6 @@ let key = b64enc(bytes);
 let conf = '[Interface]\nPrivateKey = ' + key + '\nAddress = 10.77.0.2/32\n' +
     '[Peer]\nPublicKey = ' + key + '\nEndpoint = [2001:db8::1]:51820\nPersistentKeepalive = 25\n';
 let vpn = 'vpn://' + replace(replace(replace(b64enc(conf), /\+/g, '-'), /\//g, '_'), /=+$/, '');
-if (ARGV[0] == '--reject-non-lx') {
-    let failed = false;
-    try { generator.manual_link_outbound(vpn, 'invalid'); } catch (e) { failed = true; }
-    check(failed, 'vpn:// rejected without LX even for a plain WG payload');
-    print('PASS: vpn:// requires LX\n'); exit(0);
-}
 for (let link in [vpn]) {
     let endpoint = generator.manual_link_outbound(link, 'manual-test');
     check(endpoint.type == 'wireguard' && endpoint.tag == 'manual-test', 'endpoint type and generated tag');

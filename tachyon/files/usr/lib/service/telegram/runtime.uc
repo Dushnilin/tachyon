@@ -181,8 +181,8 @@ function send_daily_digest(token, admin_ids) {
 
 function normalize_component_name(component) {
     component = as_string(component);
-    if (component == "sing-box" || component == "singbox" || component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
-        return "sing_box";
+    if (component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
+        return "tachyon-core";
     if (component == "torrserver_direct" || component == "torrserver-direct" || component == "torrserver")
         return "torrserver_direct";
     return component;
@@ -313,16 +313,7 @@ function notify_auto_update_cli(component, old_ver, new_ver) {
     new_ver = as_string(new_ver || "");
 
     let title = component;
-    if (component == "sing_box" || component == "sing-box" || component == "singbox") {
-        let sb_variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
-        if (sb_variant == "tachyon-core" || index(sb_variant, "tachyon") >= 0) {
-            title = "tachyon-core";
-        } else if (sb_variant != "") {
-            title = sb_variant;
-        } else {
-            title = "sing-box";
-        }
-    } else if (component == "tachyon-core" || component == "tachyon_core") {
+    if (component == "tachyon-core" || component == "tachyon_core") {
         title = "tachyon-core";
     }
 
@@ -371,16 +362,7 @@ function notify_auto_update_failed_cli(component, old_ver, error_msg) {
     error_msg = as_string(error_msg || "");
 
     let title = component;
-    if (component == "sing_box" || component == "sing-box" || component == "singbox") {
-        let sb_variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
-        if (sb_variant == "tachyon-core" || index(sb_variant, "tachyon") >= 0) {
-            title = "tachyon-core";
-        } else if (sb_variant != "") {
-            title = sb_variant;
-        } else {
-            title = "sing-box";
-        }
-    } else if (component == "tachyon-core" || component == "tachyon_core") {
+    if (component == "tachyon-core" || component == "tachyon_core") {
         title = "tachyon-core";
     }
 
@@ -1159,12 +1141,11 @@ function diagnose() {
 
     // 3. Routing engine running
     let engine_name = "tachyon-core";
-    try { engine_name = require("core.engine").get_active(); } catch (e) {}
-    let sb_running = core_binary_running();
+    let core_running = core_binary_running();
     push(checks, {
-        name: "sing_box",
-        ok: sb_running,
-        message: sb_running ? (engine_name + " is running") : (engine_name + " is NOT running — proxy routing unavailable")
+        name: "tachyon_core",
+        ok: core_running,
+        message: core_running ? (engine_name + " is running") : (engine_name + " is NOT running — proxy routing unavailable")
     });
 
     // 4. Mixed proxy port
@@ -1190,7 +1171,7 @@ function diagnose() {
     // 5. DNS resolution
     let dns_check = command_capture("nslookup api.telegram.org 2>/dev/null");
     let dns_out = (dns_check && dns_check.output) || "";
-    // Accept real IPs (149.154/91.108) or sing-box FakeIP range (198.18.x.x/198.19.x.x)
+    // Accept real IPs (149.154/91.108) or tachyon-core FakeIP range (198.18.x.x/198.19.x.x)
     let dns_ok = dns_check && dns_check.status === 0 && index(dns_out, "Address") >= 0
         && (index(dns_out, "149.154") >= 0 || index(dns_out, "91.108") >= 0
             || index(dns_out, "198.18.") >= 0 || index(dns_out, "198.19.") >= 0);
@@ -1219,7 +1200,7 @@ function diagnose() {
 
     // 7. Proxy API test
     let p_ok = false;
-    if (cfg.bot_token && sb_running && proxy_info && port_ok) {
+    if (cfg.bot_token && core_running && proxy_info && port_ok) {
         let proxied = command_capture(command_from_args([
             "curl", "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
             "--proxy", "http://" + proxy_ep,

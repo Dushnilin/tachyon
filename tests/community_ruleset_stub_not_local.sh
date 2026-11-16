@@ -6,7 +6,7 @@
 #
 #   { "type": "local", "format": "binary", "path": ".../community-ads_hagezi_pro.srs" }
 #
-# No url, no update_interval. sing-box loads the empty list happily, the block
+# No url, no update_interval. tachyon-core loads the empty list happily, the block
 # rule matches nothing, and the ads keep coming. The only recovery was a manual
 # list update, because nothing in the config could ever fetch the real file.
 #
@@ -31,8 +31,8 @@ fi
 
 RULESETS_UC="$TACHYON_LIB/tachyon_core/rulesets.uc"
 GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator_routes.uc"
-[ -f "$RULESETS_UC" ] || fail "singbox/rulesets.uc not found at $RULESETS_UC"
-[ -f "$GENERATOR_UC" ] || fail "singbox/generator_routes.uc not found at $GENERATOR_UC"
+[ -f "$RULESETS_UC" ] || fail "tachyon_core/rulesets.uc not found at $RULESETS_UC"
+[ -f "$GENERATOR_UC" ] || fail "tachyon_core/generator_routes.uc not found at $GENERATOR_UC"
 
 pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
@@ -90,7 +90,7 @@ HAS_POPULATED="$(val HAS_POPULATED)"
 
 # --- 0. the module must offer the predicate at all -------------------------
 [ "$HAS_POPULATED" = "1" ] ||
-  fail "singbox/rulesets.uc exports no is_populated_srs_file(): callers asking whether a real list is present can only ask is_valid_srs_file, which the ${STUB_SIZE}-byte placeholder satisfies"
+  fail "tachyon_core/rulesets.uc exports no is_populated_srs_file(): callers asking whether a real list is present can only ask is_valid_srs_file, which the ${STUB_SIZE}-byte placeholder satisfies"
 ok
 
 # --- 1. the placeholder is a valid SRS: this is the trap, not the bug --------

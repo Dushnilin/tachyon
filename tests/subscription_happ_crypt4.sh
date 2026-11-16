@@ -115,7 +115,7 @@ DOCTOR_OUT="$(ucode_run "$RUNTIME" ai-doctor 2>/dev/null)" || fail "ai-doctor fa
 echo "$DOCTOR_OUT" | grep -Fq '"success": true' || fail "ai-doctor report missing success flag"
 echo "$DOCTOR_OUT" | grep -Fq '"model": "rule_engine_v2"' || fail "ai-doctor report missing rule_engine_v2 model"
 
-# Verify symptom collapsing: when WAN or sing-box fails, downstream proxy updates are collapsed/suppressed
+# Verify symptom collapsing: when WAN or tachyon-core fails, downstream proxy updates are collapsed/suppressed
 if echo "$DOCTOR_OUT" | grep -Fq '"update_subscriptions"'; then
   fail "update_subscriptions should be suppressed when WAN/core service is unreachable"
 fi

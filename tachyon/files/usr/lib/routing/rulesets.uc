@@ -687,7 +687,7 @@ function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
 
     if (rules_exist) {
         let compile_ok = common.command_success_from_args([
-            "sing-box", "rule-set", "compile", ruleset_json_path, "-o", ruleset_srs_path
+            "tachyon-core", "rule-set", "compile", ruleset_json_path, "-o", ruleset_srs_path
         ]);
         if (!compile_ok && fs.stat("/usr/bin/tachyon-core") != null) {
             compile_ok = common.command_success_from_args([

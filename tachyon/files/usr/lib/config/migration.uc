@@ -7,8 +7,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let core_url = require("core.url");
-let constants_module = require("core.constants");
-let singbox_constants_module = require("tachyon_core.constants");
+let core_constants_module = require("tachyon_core.constants");
 let domain_config = require("config.domain");
 let rule_config = require("config.rule");
 let subscription_share_link = require("subscription.share_link");
@@ -72,11 +71,8 @@ function run(command) {
 }
 
 function constants_context() {
-    let constants = object_or_empty(constants_module);
     return {
-        zapret_legacy_default_nfqws_opt: as_string(constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT),
-        zapret_default_nfqws_opt: as_string(constants.ZAPRET_DEFAULT_NFQWS_OPT),
-        urltest_default_idle_timeout: as_string(object_or_empty(singbox_constants_module).URLTEST_DEFAULT_IDLE_TIMEOUT || "30m")
+        urltest_default_idle_timeout: as_string(object_or_empty(core_constants_module).URLTEST_DEFAULT_IDLE_TIMEOUT || "30m")
     };
 }
 
@@ -124,7 +120,8 @@ function model_from_fixture(path) {
     let model = {
         settings: clone_section(object_or_empty(data.settings)),
         rules: [],
-        sections: []
+        sections: [],
+        server: []
     };
     for (let type_name in CHILD_ITEM_TYPES)
         model[type_name] = [];
@@ -138,6 +135,8 @@ function model_from_fixture(path) {
         push(model.rules, clone_section(section));
     for (let section in fixture_section_list(data, "section"))
         push(model.sections, clone_section(section));
+    for (let section in fixture_section_list(data, "server"))
+        push(model.server, clone_section(section));
     for (let type_name in CHILD_ITEM_TYPES)
         for (let section in fixture_section_list(data, type_name))
             push(model[type_name], clone_section(section));
@@ -149,7 +148,8 @@ function model_from_uci(cursor) {
     let model = {
         settings: clone_section(object_or_empty(cursor.get_all(CONFIG_NAME, "settings"))),
         rules: [],
-        sections: []
+        sections: [],
+        server: []
     };
     for (let type_name in CHILD_ITEM_TYPES)
         model[type_name] = [];
@@ -159,6 +159,9 @@ function model_from_uci(cursor) {
     });
     cursor.foreach(CONFIG_NAME, "section", function(section) {
         push(model.sections, clone_section(section));
+    });
+    cursor.foreach(CONFIG_NAME, "server", function(section) {
+        push(model.server, clone_section(section));
     });
     for (let type_name in CHILD_ITEM_TYPES) {
         cursor.foreach(CONFIG_NAME, type_name, function(section) {
@@ -176,6 +179,8 @@ function export_model(model) {
     };
     if (length(model.rules) > 0)
         result.rule = model.rules;
+    if (length(model.server || []) > 0)
+        result.server = model.server;
     for (let type_name in CHILD_ITEM_TYPES)
         if (length(model[type_name] || []) > 0)
             result[type_name] = model[type_name];
@@ -707,51 +712,6 @@ function legacy_rule_connection_kind(section) {
     return "proxy";
 }
 
-function migrate_byedpi_cmd_opts(ctx, section) {
-    let cmd_opts = option(section, "cmd_opts", "");
-    if (cmd_opts == "")
-        return;
-
-    if (option(section, "byedpi_cmd_opts", "") == "")
-        set_option(ctx, section, "byedpi_cmd_opts", cmd_opts);
-    delete_option(ctx, section, "cmd_opts");
-}
-
-function migrate_ctrack_timeouts(ctx, section) {
-    let action = migrated_rule_action(section);
-    let opt_name = action == "zapret2" ? "nfqws2_opt" : (action == "zapret" ? "nfqws_opt" : "");
-    if (opt_name == "")
-        return;
-    let opt = option(section, opt_name, "");
-    if (opt == "" || index(opt, "--ctrack-timeouts=") < 0)
-        return;
-    let normalized = replace(opt, /--ctrack-timeouts=([0-9,]+)/g, function(full, numbers) {
-        if (index(numbers, ",") < 0)
-            return full;
-        let parts = split(numbers, ",");
-        if (length(parts) >= 8 && parts[0] == "30" && parts[2] == "600")
-            return "--ctrack-timeouts=30:600:30:30";
-        if (length(parts) >= 4)
-            return "--ctrack-timeouts=" + parts[0] + ":" + parts[1] + ":" + parts[2] + ":" + parts[3];
-        if (length(parts) >= 3)
-            return "--ctrack-timeouts=" + parts[0] + ":" + parts[1] + ":" + parts[2];
-        return "--ctrack-timeouts=30:600:30:30";
-    });
-    if (normalized != opt)
-        set_option(ctx, section, opt_name, normalized);
-}
-
-function migrate_zapret_nfqws_default(ctx, section, constants) {
-    if (migrated_rule_action(section) != "zapret")
-        return;
-
-    let nfqws_opt = option(section, "nfqws_opt", "");
-    if (nfqws_opt == "" || nfqws_opt != constants.zapret_legacy_default_nfqws_opt)
-        return;
-
-    set_option(ctx, section, "nfqws_opt", constants.zapret_default_nfqws_opt);
-}
-
 function migrate_subscription_url_item_settings(ctx, section) {
     let values = whitespace_list_values(section, "subscription_urls");
     let seen_values = {};
@@ -903,7 +863,7 @@ function migrate_legacy_outbound_json_detour(ctx, section, legacy_connection_kin
         return;
 
     if (as_string(outbound.detour || "") == "")
-        outbound.detour = singbox_constants_module.outbound_tag(detour_section);
+        outbound.detour = core_constants_module.outbound_tag(detour_section);
     set_option(ctx, section, "outbound_json", sprintf("%J", outbound));
     delete_option(ctx, section, "outbound_detour_enabled");
     delete_option(ctx, section, "outbound_detour_section");
@@ -939,7 +899,7 @@ function migrate_outbound_json_list(ctx, section, legacy_connection_kind) {
                 }
             }
 
-            let base = singbox_constants_module.outbound_tag(
+            let base = core_constants_module.outbound_tag(
                 section_name(section) + "-json-" + (length(existing) + 1)
             );
             let tag_name = base;
@@ -1221,7 +1181,7 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
             delete_subscription_cache(ctx, section_name(section));
     }
     else if (action == "block" ||
-        action == "bypass" || action == "zapret" || action == "zapret2" || action == "byedpi") {
+        action == "bypass" || action == "desync" || action == "zapret" || action == "zapret2" || action == "byedpi") {
         delete_option(ctx, section, "proxy_config_type");
         delete_option(ctx, section, "proxy_string");
         delete_option(ctx, section, "urltest_proxy_links");
@@ -1233,10 +1193,6 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
 
     if (action != "connection")
         delete_legacy_urltest_options(ctx, section);
-
-    migrate_byedpi_cmd_opts(ctx, section);
-    migrate_zapret_nfqws_default(ctx, section, constants);
-    migrate_ctrack_timeouts(ctx, section);
 }
 
 function migrate_rule_section(ctx, section, constants) {
@@ -1507,7 +1463,7 @@ function migrate_http_connection_urls(ctx) {
 // Ensure both main and bootstrap DNS server lists have at least one entry.
 // forkop/podkop did not require bootstrap_dns_server, so it is often absent after
 // migration. The validator refuses to start Tachyon when either list is empty.
-// The default "77.88.8.8" matches the runtime fallback in singbox/dns.uc.
+// The default "77.88.8.8" matches the runtime fallback in tachyon_core/dns.uc.
 function migrate_ensure_dns_server_defaults(ctx) {
     let settings = ctx.model.settings;
     let dns_server = list_option(settings, "dns_server");
@@ -1701,12 +1657,155 @@ function migrate_normalize_domain_lists(ctx) {
     }
 }
 
+function migrate_tailscale_entity_to_tachyon_core(ctx, obj, is_server) {
+    let ts_mode = lc(trim(option(obj, "tailscale_mode", "")));
+    let has_native_fields = trim(option(obj, "tailscale_auth_key", "")) != "" ||
+        trim(option(obj, "tailscale_control_url", "")) != "" ||
+        trim(option(obj, "tailscale_exit_node", "")) != "";
+    let has_iface_only = !has_native_fields && trim(option(obj, "interface_name", "")) != "";
+
+    if (ts_mode == "native" || (ts_mode != "tachyon-core" && ts_mode != "embedded" && ts_mode != "singbox" && has_iface_only)) {
+        set_option(ctx, obj, "enabled", "0");
+        return;
+    }
+
+    if (is_server || ts_mode == "tachyon-core" || ts_mode == "embedded" || ts_mode == "singbox" || has_native_fields) {
+        if (ts_mode != "tachyon-core")
+            set_option(ctx, obj, "tailscale_mode", "tachyon-core");
+    }
+}
+
+function migrate_wdtt_entity_to_tachyon_core(ctx, obj, kind_key) {
+    let cur_kind = lc(trim(option(obj, kind_key, "")));
+    if (cur_kind == "csqtt") {
+        delete_option(ctx, obj, "wdtt_native");
+        return;
+    }
+    if (cur_kind != "wdtt")
+        return;
+
+    let is_native = bool_option(obj, "wdtt_native", false);
+    let has_csqtt_target = trim(option(obj, "csqtt_server", "")) != "" || trim(option(obj, "csqtt_uri", "")) != "";
+    let warp_uri = trim(option(obj, "warp_flow_uri", ""));
+
+    if (is_native || has_csqtt_target) {
+        set_option(ctx, obj, kind_key, "csqtt");
+        if (trim(option(obj, "csqtt_uri", "")) == "" && warp_uri != "")
+            set_option(ctx, obj, "csqtt_uri", warp_uri);
+        if (kind_key == "action") {
+            let w_workers = trim(option(obj, "wdtt_workers", ""));
+            if (trim(option(obj, "csqtt_workers", "")) == "" && w_workers != "")
+                set_option(ctx, obj, "csqtt_workers", w_workers);
+            let w_mtu = trim(option(obj, "wdtt_mtu", ""));
+            if (trim(option(obj, "csqtt_mtu", "")) == "" && w_mtu != "")
+                set_option(ctx, obj, "csqtt_mtu", w_mtu);
+            let w_dev = trim(option(obj, "warp_flow_device_id", ""));
+            if (trim(option(obj, "csqtt_device_id", "")) == "" && w_dev != "")
+                set_option(ctx, obj, "csqtt_device_id", w_dev);
+        }
+        delete_option(ctx, obj, "wdtt_native");
+    } else {
+        set_option(ctx, obj, "enabled", "0");
+        delete_option(ctx, obj, "wdtt_native");
+    }
+}
+
+function migrate_unify_tachyon_core_providers(ctx) {
+    let model = object_or_empty(ctx.model);
+    let removed_strategy_keys = [ "nfqws_opt", "nfqws2_opt", "byedpi_cmd_opts", "byedpi_opts", "cmd_opts" ];
+
+    for (let sec in (model.sections || [])) {
+        let act = lc(trim(option(sec, "action", "")));
+        if (act == "byedpi" || act == "zapret" || act == "zapret2") {
+            set_option(ctx, sec, "action", "desync");
+            set_option(ctx, sec, "desync_preset", "auto");
+            for (let k in removed_strategy_keys)
+                delete_option(ctx, sec, k);
+        } else if (act == "olcrtc") {
+            set_option(ctx, sec, "enabled", "0");
+        } else if (act == "wdtt" || act == "csqtt") {
+            migrate_wdtt_entity_to_tachyon_core(ctx, sec, "action");
+        } else if (act == "tailscale") {
+            migrate_tailscale_entity_to_tachyon_core(ctx, sec, false);
+        }
+    }
+
+    for (let src in (model.outbound_source || [])) {
+        let st = lc(trim(option(src, "source_type", "")));
+        if (st == "byedpi" || st == "zapret" || st == "zapret2") {
+            set_option(ctx, src, "source_type", "desync");
+            set_option(ctx, src, "desync_preset", "auto");
+            for (let k in removed_strategy_keys)
+                delete_option(ctx, src, k);
+        } else if (st == "olcrtc") {
+            set_option(ctx, src, "enabled", "0");
+        } else if (st == "wdtt" || st == "csqtt") {
+            migrate_wdtt_entity_to_tachyon_core(ctx, src, "source_type");
+        } else if (st == "tailscale") {
+            migrate_tailscale_entity_to_tachyon_core(ctx, src, false);
+        }
+    }
+
+    for (let srv in (model.server || [])) {
+        let proto = lc(trim(option(srv, "protocol", "")));
+        if (proto == "olcrtc") {
+            set_option(ctx, srv, "enabled", "0");
+        } else if (proto == "tailscale") {
+            migrate_tailscale_entity_to_tachyon_core(ctx, srv, true);
+        }
+    }
+}
+
+/// Silently normalize any legacy engine / component / tailscale_mode values
+/// to `tachyon-core` in the UCI model.
+function normalize_tachyon_core_uci(ctx) {
+    let settings = object_or_empty(object_or_empty(ctx.model).settings);
+    let cur_engine = option(settings, "engine", "");
+    if (cur_engine != "" && cur_engine != "tachyon-core")
+        set_option(ctx, settings, "engine", "tachyon-core");
+    if (option_exists(settings, "engine_previous"))
+        delete_option(ctx, settings, "engine_previous");
+
+    let targets = list_option(settings, "component_auto_update_targets");
+    if (length(targets) > 0) {
+        let next_targets = [];
+        let changed_targets = false;
+        let seen_targets = {};
+        let removed_targets = {
+            zapret: true, zapret2: true, byedpi: true,
+            wdtt: true, olcrtc: true, tailscale: true
+        };
+        for (let t in targets) {
+            let item = as_string(t);
+            if (removed_targets[item]) {
+                changed_targets = true;
+                continue;
+            }
+            let mapped = (item == "sing_box" || item == "sing-box") ? "tachyon-core" : item;
+            if (mapped != item)
+                changed_targets = true;
+            if (mapped != "" && !seen_targets[mapped]) {
+                seen_targets[mapped] = true;
+                push(next_targets, mapped);
+            } else if (mapped != "" && seen_targets[mapped]) {
+                changed_targets = true;
+            }
+        }
+        if (changed_targets) {
+            if (length(next_targets) == 0)
+                next_targets = [ "all" ];
+            set_list_option(ctx, settings, "component_auto_update_targets", next_targets);
+        }
+    }
+
+    migrate_unify_tachyon_core_providers(ctx);
+}
+
 /// The engine became a product of its own: binary, service, config directory
 /// and UCI package all carry `tachyon-core` now. An upgrade from the previous
 /// release has to land on the new names without losing the running config, so
 /// this migration rewrites what UCI stores, moves the config file when the new
-/// path is still empty, and leaves the old file in place — a downgrade still
-/// finds a working setup.
+/// path is still empty, and cleans legacy files silently.
 function migrate_engine_identity(ctx) {
     let settings = object_or_empty(object_or_empty(ctx.model).settings);
     const OLD_CONFIG_DIR = "/etc/sing-box";
@@ -1716,12 +1815,7 @@ function migrate_engine_identity(ctx) {
     const OLD_SHARE_DIR = "/usr/share/sing-box";
     const NEW_SHARE_DIR = "/usr/share/tachyon-core";
 
-    let cur_engine = option(settings, "engine", "");
-    if (cur_engine != "" && cur_engine != "tachyon-core")
-        set_option(ctx, settings, "engine", "tachyon-core");
-    let prev_engine = option(settings, "engine_previous", "");
-    if (prev_engine != "" && prev_engine != "tachyon-core")
-        set_option(ctx, settings, "engine_previous", "tachyon-core");
+    normalize_tachyon_core_uci(ctx);
 
     for (let key in [ "config_path", "cache_path" ]) {
         if (!option_exists(settings, key))
@@ -1792,31 +1886,13 @@ function migrate_engine_identity(ctx) {
         uci_core.commit("tachyon-core");
     }
 
-    // the variant and version markers decide what the UI shows and which
-    // engine the config generator targets; losing them would make a working
-    // install look like it has no core at all
-    for (let pair in [
-        [ "/etc/tachyon/sing-box-variant", "/etc/tachyon/tachyon-core-variant" ],
-        [ "/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version" ]
-    ]) {
-        if (fs.stat(pair[1]) == null && fs.stat(pair[0]) != null) {
-            try {
-                fs.rename(pair[0], pair[1]);
-            }
-            catch (e) {
-            }
+    // preserve version state across upgrade
+    if (fs.stat("/etc/tachyon/tachyon-core-version") == null && fs.stat("/etc/tachyon/sing-box-version") != null) {
+        try {
+            fs.rename("/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version");
         }
-    }
-
-    // create compatibility symlink if sing-box exists and tachyon-core does not
-    // (or when the active variant marker explicitly points to a package-installed sing-box variant)
-    let active_variant = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-    let prefer_sing_box = (active_variant == "extended" || active_variant == "tiny" || active_variant == "stable");
-    if (fs.stat("/usr/bin/sing-box") != null && (fs.stat("/usr/bin/tachyon-core") == null || prefer_sing_box)) {
-        try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
-        try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
-        if (fs.stat("/usr/bin/tachyon-core") == null)
-            run("ln -sf /usr/bin/sing-box /usr/bin/tachyon-core >/dev/null 2>&1");
+        catch (e) {
+        }
     }
 }
 
@@ -2119,8 +2195,7 @@ function cleanup_modular_entities_v1(ctx) {
     ];
     let single_proto_actions = [
         "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai", "csqtt",
-        "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
-        "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
+        "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync"
     ];
 
     // 1. Sync inline protocol sections (e.g. action='awg') into outbound_source and
@@ -2179,7 +2254,7 @@ function cleanup_modular_entities_v1(ctx) {
                 add_list_unique(ctx, section, "outbound_source_refs", fptn_src_id);
             }
         } else {
-            let dpi_inline_actions = [ "desync", "zapret2", "zapret", "byedpi", "wdtt", "olcrtc" ];
+            let dpi_inline_actions = [ "desync" ];
             let eff_proto = (index(single_proto_actions, sec_action) >= 0 && index(dpi_inline_actions, sec_action) < 0) ? sec_action : "";
             if (eff_proto == "" && sec_action == "connection" &&
                 length(list_option(section, "outbound_source_refs")) == 0 &&
@@ -2188,29 +2263,18 @@ function cleanup_modular_entities_v1(ctx) {
                 length(list_option(section, "selector_proxy_links")) == 0 &&
                 trim(option(section, "selector_proxy_links_text", "")) == "" &&
                 length(sec_amnezia) == 0 && sec_amnezia_text == "") {
-                if (trim(option(section, "nfqws2_opt", "")) != "")
-                    eff_proto = "zapret2";
-                else if (trim(option(section, "nfqws_opt", "")) != "")
-                    eff_proto = "zapret";
-                else if (trim(option(section, "byedpi_cmd_opts", option(section, "byedpi_opts", ""))) != "")
-                    eff_proto = "byedpi";
-                else if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
+                if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
                     eff_proto = "desync";
-                else if (trim(option(section, "wdtt_mode", "")) != "")
-                    eff_proto = "wdtt";
-                else if (trim(option(section, "olcrtc_stun_host", "")) != "")
-                    eff_proto = "olcrtc";
             }
             if (eff_proto != "") {
                 let proto_src_id = "src_" + sanitize_uci_id(eff_proto) + "_" + safe_sname;
                 let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
-                set_option_if_missing(ctx, proto_src, "enabled", "1");
+                set_option_if_missing(ctx, proto_src, "enabled", option(section, "enabled", "1") == "0" ? "0" : "1");
                 set_option_if_missing(ctx, proto_src, "name", sec_display_name);
                 set_option_if_missing(ctx, proto_src, "source_type", eff_proto);
                 for (let pk, pval in section) {
                     if (index(pk, eff_proto + "_") != 0 &&
-                        !(eff_proto == "warp" && index(pk, "awg_") == 0) &&
-                        pk != "nfqws_opt" && pk != "nfqws2_opt" && pk != "byedpi_opts" && pk != "byedpi_cmd_opts")
+                        !(eff_proto == "warp" && index(pk, "awg_") == 0))
                         continue;
                     if (type(pval) == "array") {
                         if (length(pval) > 0)
@@ -3130,10 +3194,9 @@ function migrate_modular_entities_v1(ctx) {
 
         let single_proto_actions = [
             "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai", "csqtt",
-            "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
-            "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
+            "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync"
         ];
-        if (index(single_proto_actions, sec_action) >= 0) {
+        if (index(single_proto_actions, sec_action) >= 0 && option(section, "enabled", "1") != "0") {
             let proto_src_id = "src_" + sanitize_uci_id(sec_action) + "_" + safe_sname;
             let proto_src = create_named_section(ctx, "outbound_source", proto_src_id);
             set_option_if_missing(ctx, proto_src, "enabled", "1");
@@ -3242,7 +3305,7 @@ function migrate_modular_entities_v1(ctx) {
 
         let preserve_actions = [
             "connection", "bypass", "block", "dns", "hosts",
-            "desync", "zapret", "zapret2", "byedpi", "wdtt", "olcrtc"
+            "desync", "wdtt", "olcrtc"
         ];
         if (sec_action != "" && index(preserve_actions, sec_action) < 0) {
             set_option(ctx, section, "action", "connection");
@@ -3502,6 +3565,7 @@ function migrate_podkop_model(model, constants) {
     migrate_subscription_download_via_proxy_settings(ctx);
     migrate_download_via_proxy_flags(ctx);
     apply_migrations(ctx);
+    normalize_tachyon_core_uci(ctx);
 
     return ctx;
 }
@@ -3659,23 +3723,15 @@ function migrate_tachyon_model(model) {
         }
     }
     migrate_normalize_domain_lists(ctx);
+    // Unify engine identity, auto-update targets, and native tachyon-core providers
+    // before modular extraction/deduplication so a single migration pass is idempotent.
+    normalize_tachyon_core_uci(ctx);
     apply_migrations(ctx);
     if (converted_any_rules)
         migrate_modular_entities_v1(ctx);
     cleanup_modular_entities_v1(ctx);
     migrate_balancer_levels_to_sections(ctx);
     migrate_numeric_wizard_ids(ctx);
-    // How client traffic reaches the proxy. Defaulted rather than left absent:
-    // the generator has to be able to express a legal config for a router that
-    // predates this option, and "no proxy_mode" would have to be read as tproxy
-    // in every caller - one of them forgetting is a silent mode switch.
-    let cur_engine = option(ctx.model.settings, "engine", "");
-    if (cur_engine != "" && cur_engine != "tachyon-core" && cur_engine != "sing-box")
-        set_option(ctx, ctx.model.settings, "engine", "tachyon-core");
-    if (option_exists(ctx.model.settings, "engine_previous") &&
-        option(ctx.model.settings, "engine_previous", "") != "tachyon-core" &&
-        option(ctx.model.settings, "engine_previous", "") != "sing-box")
-        delete_option(ctx, ctx.model.settings, "engine_previous");
     set_option_if_missing(ctx, ctx.model.settings, "proxy_mode", "tproxy");
     set_option_if_missing(ctx, ctx.model.settings, "tun_interface", "tun0");
     set_option_if_missing(ctx, ctx.model.settings, "tun_inet4", "172.19.0.1/30");
@@ -3868,12 +3924,68 @@ function migrate_model(model, source) {
         : migrate_tachyon_model(model);
 }
 
+function cleanup_legacy_core_artifacts() {
+    if (TARGET_CONFIG != "/etc/config/" + CONFIG_NAME || getenv("TACHYON_CONFIG_FILE") != null)
+        return;
+
+    // Migrate legacy config/cache/state files if new paths are absent, then remove old paths silently.
+    for (let pair in [
+        [ "/etc/sing-box/config.json", "/etc/tachyon-core/config.json" ],
+        [ "/usr/share/sing-box/cache.db", "/usr/share/tachyon-core/cache.db" ],
+        [ "/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version" ]
+    ]) {
+        if (fs.stat(pair[1]) == null && fs.stat(pair[0]) != null) {
+            let dir = common.parent_dir(pair[1]);
+            if (dir != "")
+                common.ensure_dir(dir);
+            let moved = false;
+            try { moved = fs.rename(pair[0], pair[1]) == true; } catch (e) {}
+            if (!moved)
+                common.copy_file_stream(pair[0], pair[1]);
+        }
+    }
+
+    let old_bkp = "/etc/tachyon/component-backups/sing_box";
+    let new_bkp = "/etc/tachyon/component-backups/tachyon_core";
+    if (fs.stat(new_bkp) == null && fs.stat(old_bkp) != null) {
+        try { fs.rename(old_bkp, new_bkp); } catch (e) {}
+    }
+
+    if (fs.stat("/etc/init.d/sing-box") != null) {
+        let init_txt = as_string(fs.readfile("/etc/init.d/sing-box") || "");
+        if (index(init_txt, "Tachyon managed") >= 0) {
+            common.command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+            common.command_status_from_args([ "/etc/init.d/sing-box", "disable" ]);
+            try { fs.unlink("/etc/init.d/sing-box"); } catch (e) {}
+            for (let rc_entry in (fs.glob("/etc/rc.d/*sing-box*") || []))
+                try { fs.unlink(rc_entry); } catch (e) {}
+        }
+    }
+
+    for (let stale_file in [
+        "/usr/bin/sing-box",
+        "/etc/tachyon/sing-box-variant",
+        "/etc/tachyon/sing-box-version",
+        "/etc/tachyon/tachyon-core-variant"
+    ]) {
+        if (fs.stat(stale_file) != null)
+            try { fs.unlink(stale_file); } catch (e) {}
+    }
+
+    for (let stale_dir in [ "/etc/sing-box", "/usr/share/sing-box", "/tmp/sing-box", old_bkp ]) {
+        if (fs.stat(stale_dir) != null)
+            common.remove_tree(stale_dir);
+    }
+}
+
 function migrate_runtime(source) {
     ensure_runtime_cache_format();
     remove_legacy_server_country_cache();
+    cleanup_legacy_core_artifacts();
 
     let cursor = runtime_cursor();
     cursor.load(CONFIG_NAME);
+
     let ctx = migrate_model(model_from_uci(cursor), source);
     if (!ctx.changed)
         return true;

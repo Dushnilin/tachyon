@@ -16,10 +16,7 @@ echo "$output" | grep -Fq '"provider": "local_heuristic"' ||
   fail "ai-doctor in offline mode must report provider local_heuristic"
 
 # 3. Test apply-quick-fix for new codes
-fix_out="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "restart_zapret,optimize_memory,restore_native_internet,fix_system_time,flush_conntrack,fix_bootstrap_dns,optimize_mtu" 2>/dev/null || true)"
-
-echo "$fix_out" | grep -Fq '"code": "restart_zapret"' ||
-  fail "apply_quick_fix must handle restart_zapret"
+fix_out="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "optimize_memory,restore_native_internet,fix_system_time,flush_conntrack,fix_bootstrap_dns,optimize_mtu" 2>/dev/null || true)"
 
 echo "$fix_out" | grep -Fq '"code": "optimize_memory"' ||
   fail "apply_quick_fix must handle optimize_memory"
@@ -63,13 +60,14 @@ grep -Fq 'wan_fail_streak: int(st.wan_fail_streak || 0)' "$TACHYON_LIB/service/w
 #    applied 3+ times within the hour must be withheld from recommendations
 #    (issue #31: doctor proposing the same repairs forever).
 #    Use fix_resolv_symlink (ln -sf works without system services in Docker).
-rm -f /tmp/tachyon_doctor_fixes.json
+export TACHYON_DOCTOR_FIXES_FILE="$WORK_DIR/doctor_fixes.json"
+rm -f "$TACHYON_DOCTOR_FIXES_FILE"
 for i in 1 2 3; do
   ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "fix_resolv_symlink" >/dev/null 2>&1 || true
 done
-grep -Fq '"fix_resolv_symlink"' /tmp/tachyon_doctor_fixes.json ||
+grep -Fq '"fix_resolv_symlink"' "$TACHYON_DOCTOR_FIXES_FILE" ||
   fail "apply_quick_fix must record applied fixes in the doctor usage tracker"
-grep -Eq '"count": ?3' /tmp/tachyon_doctor_fixes.json ||
+grep -Eq '"count": ?3' "$TACHYON_DOCTOR_FIXES_FILE" ||
   fail "doctor usage tracker must count repeated applications"
 grep -Fq 'function doctor_fix_overused(' "$TACHYON_LIB/diagnostics/runtime.uc" ||
   fail "runtime.uc must define doctor_fix_overused()"

@@ -2,19 +2,19 @@
 
 let fs = require("fs");
 
-const SB_DNS_SERVER_TAG = getenv("SB_DNS_SERVER_TAG") || "dns-server";
-const SB_FAKEIP_DNS_SERVER_TAG = getenv("SB_FAKEIP_DNS_SERVER_TAG") || "fakeip-server";
-const SB_BOOTSTRAP_SERVER_TAG = getenv("SB_BOOTSTRAP_SERVER_TAG") || "bootstrap-dns-server";
-const SB_FAKEIP_DNS_RULE_TAG = getenv("SB_FAKEIP_DNS_RULE_TAG") || "fakeip-dns-rule-tag";
-const SB_FAKEIP_RULESET_DNS_RULE_TAG = getenv("SB_FAKEIP_RULESET_DNS_RULE_TAG") || "fakeip-ruleset-dns-rule-tag";
-const SB_SERVICE_FAKEIP_DNS_RULE_TAG = getenv("SB_SERVICE_FAKEIP_DNS_RULE_TAG") || "service-fakeip-dns-rule-tag";
-const SB_TPROXY_INBOUND_TAG = getenv("SB_TPROXY_INBOUND_TAG") || "tproxy-in";
-const SB_TPROXY_INBOUND6_TAG = getenv("SB_TPROXY_INBOUND6_TAG") || "tproxy6-in";
-const SB_DNS_INBOUND_TAG = getenv("SB_DNS_INBOUND_TAG") || "dns-in";
-const SB_DNS_BLOCK_INBOUND_TAG = getenv("SB_DNS_BLOCK_INBOUND_TAG") || "dns-block-in";
-const SB_SERVICE_MIXED_INBOUND_TAG = getenv("SB_SERVICE_MIXED_INBOUND_TAG") || "service-mixed-in";
-const SB_DIRECT_OUTBOUND_TAG = getenv("SB_DIRECT_OUTBOUND_TAG") || "direct-out";
-const SB_BYPASS_OUTBOUND_TAG = getenv("SB_BYPASS_OUTBOUND_TAG") || "bypass-out";
+const CORE_DNS_SERVER_TAG = getenv("TACHYON_CORE_DNS_SERVER_TAG") || "dns-server";
+const CORE_FAKEIP_DNS_SERVER_TAG = getenv("TACHYON_CORE_FAKEIP_DNS_SERVER_TAG") || "fakeip-server";
+const CORE_BOOTSTRAP_SERVER_TAG = getenv("TACHYON_CORE_BOOTSTRAP_SERVER_TAG") || "bootstrap-dns-server";
+const CORE_FAKEIP_DNS_RULE_TAG = getenv("TACHYON_CORE_FAKEIP_DNS_RULE_TAG") || "fakeip-dns-rule-tag";
+const CORE_FAKEIP_RULESET_DNS_RULE_TAG = getenv("TACHYON_CORE_FAKEIP_RULESET_DNS_RULE_TAG") || "fakeip-ruleset-dns-rule-tag";
+const CORE_SERVICE_FAKEIP_DNS_RULE_TAG = getenv("TACHYON_CORE_SERVICE_FAKEIP_DNS_RULE_TAG") || "service-fakeip-dns-rule-tag";
+const CORE_TPROXY_INBOUND_TAG = getenv("TACHYON_CORE_TPROXY_INBOUND_TAG") || "tproxy-in";
+const CORE_TPROXY_INBOUND6_TAG = getenv("TACHYON_CORE_TPROXY_INBOUND6_TAG") || "tproxy6-in";
+const CORE_DNS_INBOUND_TAG = getenv("TACHYON_CORE_DNS_INBOUND_TAG") || "dns-in";
+const CORE_DNS_BLOCK_INBOUND_TAG = getenv("TACHYON_CORE_DNS_BLOCK_INBOUND_TAG") || "dns-block-in";
+const CORE_SERVICE_MIXED_INBOUND_TAG = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_TAG") || "service-mixed-in";
+const CORE_DIRECT_OUTBOUND_TAG = getenv("TACHYON_CORE_DIRECT_OUTBOUND_TAG") || "direct-out";
+const CORE_BYPASS_OUTBOUND_TAG = getenv("TACHYON_CORE_BYPASS_OUTBOUND_TAG") || "bypass-out";
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -90,8 +90,6 @@ function is_process_name_running(pid, expected_name) {
     if (comm == null)
         return false;
     let name = trim(comm);
-    if (expected_name == "sing-box" || expected_name == "tachyon-core")
-        return name == "sing-box" || name == "tachyon-core";
     return name == expected_name;
 }
 
@@ -199,10 +197,10 @@ function strip_leading_zeroes(value) {
 // prefix decide the result: "v" sorts above every digit, so "v0.0.1" came out
 // newer than "1.12.0" and passed every version gate it was given.
 //
-// That is how it stayed hidden: sing-box prints a bare "1.12.0", so the prefix
-// only shows up from an implementation that spells its banner differently - and
-// it fails in the dangerous direction, reporting an old core as new enough to
-// receive fields it cannot parse.
+// That is how it stayed hidden: a bare numeric banner skips the prefix, so
+// only a build that prints "v..." hits the string-sort bug - and it fails in
+// the dangerous direction, reporting an old core as new enough to receive
+// fields it cannot parse.
 function strip_version_prefix(value) {
     value = trim(as_string(value));
     if (substr(value, 0, 1) == "v" || substr(value, 0, 1) == "V")
@@ -532,19 +530,19 @@ function allocate_runtime_tag_value(base, postfix, reserved) {
 
 function default_reserved_runtime_tags() {
     return [
-        SB_DNS_SERVER_TAG,
-        SB_FAKEIP_DNS_SERVER_TAG,
-        SB_BOOTSTRAP_SERVER_TAG,
-        SB_FAKEIP_DNS_RULE_TAG,
-        SB_FAKEIP_RULESET_DNS_RULE_TAG,
-        SB_SERVICE_FAKEIP_DNS_RULE_TAG,
-        SB_TPROXY_INBOUND_TAG,
-        SB_TPROXY_INBOUND6_TAG,
-        SB_DNS_INBOUND_TAG,
-        SB_DNS_BLOCK_INBOUND_TAG,
-        SB_SERVICE_MIXED_INBOUND_TAG,
-        SB_DIRECT_OUTBOUND_TAG,
-        SB_BYPASS_OUTBOUND_TAG
+        CORE_DNS_SERVER_TAG,
+        CORE_FAKEIP_DNS_SERVER_TAG,
+        CORE_BOOTSTRAP_SERVER_TAG,
+        CORE_FAKEIP_DNS_RULE_TAG,
+        CORE_FAKEIP_RULESET_DNS_RULE_TAG,
+        CORE_SERVICE_FAKEIP_DNS_RULE_TAG,
+        CORE_TPROXY_INBOUND_TAG,
+        CORE_TPROXY_INBOUND6_TAG,
+        CORE_DNS_INBOUND_TAG,
+        CORE_DNS_BLOCK_INBOUND_TAG,
+        CORE_SERVICE_MIXED_INBOUND_TAG,
+        CORE_DIRECT_OUTBOUND_TAG,
+        CORE_BYPASS_OUTBOUND_TAG
     ];
 }
 
@@ -554,10 +552,6 @@ function print_runtime_tag(base, postfix, reserved) {
 
 function allocate_runtime_tag(base, postfix) {
     print_runtime_tag(base, postfix, slice(ARGV, 3));
-}
-
-function sing_box_version_is_extended(value) {
-    return index(as_string(value), "extended") >= 0 || index(as_string(value), "-lx") >= 0;
 }
 
 function file_size_value(path) {
@@ -629,8 +623,6 @@ else if (mode == "outbound-tag")
     print_runtime_tag(ARGV[1], "out", default_reserved_runtime_tags());
 else if (mode == "domain-resolver-tag")
     print_runtime_tag(ARGV[1], "domain-resolver", default_reserved_runtime_tags());
-else if (mode == "sing-box-version-is-extended")
-    exit(sing_box_version_is_extended(ARGV[1]) ? 0 : 1);
 else if (mode == "url-get-scheme")
     url_get_scheme(ARGV[1]);
 else if (mode == "url-get-userinfo")

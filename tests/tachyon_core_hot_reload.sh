@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Verifies tachyon-core hot reload integration:
-# 1. SIGHUP hot reload is gated exclusively on tachyon-core (disabled for sing-box variants).
-# 2. save_config_file runs `tachyon-core reload-preview` and writes reload-preview.json.
-# 3. try_sighup_reload aborts when reload-preview reports `in_place: false`.
-# 4. try_sighup_reload verifies GET /tachyon/config-state and triggers POST /tachyon/route-recheck.
-# 5. managed_core_init_script includes reload_service() so `/etc/init.d/tachyon-core reload` uses SIGHUP.
+# 1. save_config_file runs `tachyon-core reload-preview` and writes reload-preview.json.
+# 2. try_sighup_reload aborts when reload-preview reports `in_place: false`.
+# 3. try_sighup_reload verifies GET /tachyon/config-state and triggers POST /tachyon/route-recheck.
+# 4. managed_core_init_script includes reload_service() so `/etc/init.d/tachyon-core reload` uses SIGHUP.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
@@ -19,7 +18,7 @@ UCODE_BIN="$(command -v ucode)"
 
 cleanup_extra() {
   [ -n "${FAKE_PID:-}" ] && kill "$FAKE_PID" 2>/dev/null || true
-  [ -n "${SINGBOX_PID:-}" ] && kill "$SINGBOX_PID" 2>/dev/null || true
+  [ -n "${OTHER_PID:-}" ] && kill "$OTHER_PID" 2>/dev/null || true
   [ -n "${HTTP_PID:-}" ] && kill "$HTTP_PID" 2>/dev/null || true
   release_core_proc_lock
   return 0
@@ -38,13 +37,11 @@ printf '%s\n' "$init_script" | grep -Fq 'sighup-core-runtime' ||
 # --- 2. save_config_file writes reload-preview.json for tachyon-core ---------
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run"
 PREVIEW_FILE="$WORK_DIR/run/reload-preview.json"
-VARIANT_FILE="$WORK_DIR/tachyon-core-variant"
-printf 'tachyon-core\n' >"$VARIANT_FILE"
 
 cat >"$WORK_DIR/bin/tachyon-core" <<'EOF_CORE'
 #!/bin/sh
 if [ "$1" = "version" ]; then
-  printf 'tachyon-core 0.0.1\n'
+  printf 'tachyon-core 0.5.7\n'
   exit 0
 fi
 if [ "$1" = "reload-preview" ]; then
@@ -60,13 +57,12 @@ printf '{"version":1}\n' >"$WORK_DIR/current.json"
 printf '{"version":2}\n' >"$WORK_DIR/candidate.json"
 
 PATH="$WORK_DIR/bin:$PATH" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
   TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
   "$UCODE_BIN" -L "$TACHYON_LIB" "$RUNTIME_UC" save-config-file-fixture \
   "$WORK_DIR/candidate.json" "$WORK_DIR/current.json" ||
   fail "save-config-file-fixture failed"
 
-[ -f "$PREVIEW_FILE" ] || fail "save_config_file must write reload-preview.json when tachyon-core is active"
+[ -f "$PREVIEW_FILE" ] || fail "save_config_file must write reload-preview.json for tachyon-core"
 grep -Fq '"candidate_digest": "bbb222"' "$PREVIEW_FILE" ||
   fail "reload-preview.json must record candidate_digest"
 grep -Fq '"subsystems":' "$PREVIEW_FILE" ||
@@ -74,25 +70,14 @@ grep -Fq '"subsystems":' "$PREVIEW_FILE" ||
 grep -Fq '"changed_subsystems":' "$PREVIEW_FILE" ||
   fail "reload-preview.json must record changed_subsystems list"
 
-# When sing-box (e.g. lx) is active, save_config_file must NOT leave a reload-preview.json
-printf 'lx\n' >"$VARIANT_FILE"
-printf '{"version":3}\n' >"$WORK_DIR/candidate2.json"
-PATH="$WORK_DIR/bin:$PATH" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
-  TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
-  "$UCODE_BIN" -L "$TACHYON_LIB" "$RUNTIME_UC" save-config-file-fixture \
-  "$WORK_DIR/candidate2.json" "$WORK_DIR/current.json" ||
-  fail "save-config-file-fixture failed for lx"
-[ ! -f "$PREVIEW_FILE" ] || fail "save_config_file must remove reload-preview.json when sing-box variant is active"
-
 # --- 3. SIGHUP gating: only tachyon-core is allowed --------------------------
 cp /bin/sleep "$WORK_DIR/bin/tachyon-core"
-cp /bin/sleep "$WORK_DIR/bin/sing-box"
+cp /bin/sleep "$WORK_DIR/bin/other-proc"
 
 ( trap '' HUP; exec "$WORK_DIR/bin/tachyon-core" 120 ) &
 FAKE_PID=$!
-( trap '' HUP; exec "$WORK_DIR/bin/sing-box" 120 ) &
-SINGBOX_PID=$!
+( trap '' HUP; exec "$WORK_DIR/bin/other-proc" 120 ) &
+OTHER_PID=$!
 sleep 0.5
 
 cat >"$WORK_DIR/config.json" <<'JSON'
@@ -103,30 +88,15 @@ cat >"$WORK_DIR/config.json" <<'JSON'
 JSON
 printf 'tachyon.settings.config_path=%s\n' "$WORK_DIR/config.json" >"$WORK_DIR/uci.state"
 
-# 3a. sing-box executable must be rejected by try_sighup_reload
-rm -f "$VARIANT_FILE"
+# 3a. Non-tachyon-core executable must be rejected by try_sighup_reload
 if TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
   TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
-  "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$SINGBOX_PID" >/dev/null 2>&1; then
-  fail "try_sighup_reload must reject sing-box process"
+  "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$OTHER_PID" >/dev/null 2>&1; then
+  fail "try_sighup_reload must reject non-tachyon-core process"
 fi
 
-# 3b. sing-box variant marker (lx/extended/stable) must reject SIGHUP even on tachyon-core binary path
-for marker in lx extended extended-compressed tiny stable; do
-  printf '%s\n' "$marker" >"$VARIANT_FILE"
-  if TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-    SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
-    TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
-    "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" >/dev/null 2>&1; then
-    fail "try_sighup_reload must reject SIGHUP when marker is $marker"
-  fi
-done
-
-# 3c. tachyon-core marker succeeds
-printf 'tachyon-core\n' >"$VARIANT_FILE"
+# 3b. tachyon-core process succeeds
 TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
   TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
   "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" >/dev/null 2>&1 ||
   fail "try_sighup_reload must succeed for tachyon-core"
@@ -134,7 +104,6 @@ TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
 # --- 4. reload-preview in_place: false aborts SIGHUP -------------------------
 printf '{"in_place":false,"current_digest":"aaa","candidate_digest":"bbb"}\n' >"$PREVIEW_FILE"
 if TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
   TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
   "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" >/dev/null 2>&1; then
   fail "try_sighup_reload must return false when reload-preview reports in_place: false"
@@ -202,7 +171,6 @@ printf '{"in_place":true,"current_digest":"aaa111","candidate_digest":"bbb222"}\
 
 PATH="$WORK_DIR/bin:$PATH" \
   TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
-  SB_VARIANT_STATE_FILE="$VARIANT_FILE" \
   TACHYON_RELOAD_PREVIEW_FILE="$PREVIEW_FILE" \
   "$UCODE_BIN" -L "$TACHYON_LIB" "$STATE_UC" sighup-core-runtime "$FAKE_PID" >/dev/null 2>&1 ||
   fail "try_sighup_reload must succeed when /tachyon/config-state matches candidate_digest"

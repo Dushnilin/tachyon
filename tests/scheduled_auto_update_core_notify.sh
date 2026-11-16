@@ -21,11 +21,11 @@ SETTINGS_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyo
 [ -f "$CONFIG_FILE" ] || fail "etc/config/tachyon not found"
 [ -f "$SETTINGS_JS" ] || fail "settings.js not found"
 
-# 1. normalize_component_name must map tachyon-core to sing_box in BOTH updates.uc AND action.uc
+# 1. normalize_component_name must map tachyon-core in BOTH updates.uc AND action.uc
 grep -Fq 'component == "tachyon-core"' "$UPDATES_UC" ||
-  fail "updates.uc normalize_component_name must map tachyon-core to sing_box"
+  fail "updates.uc normalize_component_name must recognize tachyon-core"
 grep -Fq 'component == "tachyon-core"' "$ACTION_UC" ||
-  fail "action.uc normalize_component_name must map tachyon-core to sing_box"
+  fail "action.uc normalize_component_name must recognize tachyon-core"
 
 # 2. updates.uc must define continue_component_auto_update and notify_component_auto_updated
 grep -Fq 'function continue_component_auto_update' "$UPDATES_UC" ||

@@ -18,7 +18,7 @@ Smart Detect remains a local watchdog function, independent of LLM/RAG. Its `sma
 ```mermaid
 graph TD
     subgraph Data Collection
-        R1[Process Probes: singbox/zapret/dnsmasq]
+        R1[Process Probes: tachyon-core/fptn/dnsmasq]
         R2[Kernel Metrics: conntrack, mem, uptime]
         R3[Watchdog History: failure streaks, OOM events]
         R4[System Logs: 15 most recent critical lines]
@@ -41,18 +41,18 @@ graph TD
 
 ---
 
-## 3. Local Rule Doctor & 25 Quick Fix Codes
+## 3. Local Rule Doctor & 22 Quick Fix Codes
 
 `diagnostics/runtime.uc` delegates to `apply_quick_fix()` in `diagnostics/repairs.uc`.
 
 | Code | Target Subsystem | Action Performed |
 |---|---|---|
-| `start_singbox` | Core | Runs `restore_dnsmasq` and restarts `/etc/init.d/tachyon-core`. |
+| `start_tachyon_core` | Core | Runs `restore_dnsmasq` and restarts `/etc/init.d/tachyon-core`. |
 | `rebuild_rules` | nftables | `/etc/init.d/tachyon reload`. |
 | `fix_dnsmasq` | dnsmasq | Restarts dnsmasq. |
 | `fix_resolv_symlink` | DNS | Points `/etc/resolv.conf` at an existing `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, otherwise `/tmp/resolv.conf.auto`). |
 | `start_watchdog` | Watchdog | Restarts `/etc/init.d/tachyon`. |
-| `restart_singbox_dns` | Core DNS | Restarts `/etc/init.d/tachyon-core` and reloads dnsmasq. |
+| `restart_tachyon_core_dns` | Core DNS | Restarts `/etc/init.d/tachyon-core` and reloads dnsmasq. |
 | `fix_uci_config` | UCI | Restores `/etc/backup/tachyon_config`, otherwise `/etc/config/tachyon.bak`. |
 | `fix_wan_interface` | Networking | `ubus call network.interface.wan up`, `ifup wan`, and a route-cache flush. |
 | `fix_gateway` | Networking | `/etc/init.d/network restart`. |
@@ -60,7 +60,6 @@ graph TD
 | `update_subscriptions` | Subscriptions | `tachyon subscription_update_async`. |
 | `reset_firewall` | Firewall | `/etc/init.d/firewall restart`, then `/etc/init.d/tachyon reload`. |
 | `restart_network` | Network | `/etc/init.d/network restart`. |
-| `restart_zapret` | DPI providers | Stops and disables standalone zapret, zapret2 and byedpi, then starts the Tachyon provider runtimes. |
 | `optimize_memory` | Memory | Drops the page cache, removes `/tmp/tachyon-core/*.tmp`, restarts tachyon-core. |
 | `switch_to_doh` | DNS | Sets `dns_type=doh`, commits, and reloads Tachyon. |
 | `heal_network_stack` | Network | Relinks `/etc/resolv.conf`, restarts dnsmasq and Tachyon, brings WAN up. |
@@ -69,9 +68,7 @@ graph TD
 | `fix_system_time` | NTP | `ntpd -q` against the built-in servers, then restarts sysntpd. |
 | `flush_conntrack` | Kernel | Sets `nf_conntrack_max=65536` and runs `conntrack -F`. |
 | `fix_bootstrap_dns` | Resolver | Sets `bootstrap_dns_server=77.88.8.8`, commits, and reloads Tachyon. |
-| `restart_providers` | Providers | Starts the WDTT, OlcRTC and FPTN runtimes. |
 | `optimize_mtu` | Tunnels | Runs `tachyon discover-awg-mtu`, then reloads Tachyon. |
-| `upgrade_to_singbox_extended` | Core package | `component_action_async sing_box install_extended`. |
 
 ---
 
@@ -79,7 +76,7 @@ graph TD
 
 Both AI Doctor (`diagnostics/doctor.uc`) and the Strategy Fuzzer AI generator (`diagnostics/fuzzer/ai.uc`) enrich their prompts using `/usr/lib/tachyon/rag_index.json` (compiled from `docs/knowledge-base/*.md` via `tools/rag_build_index.sh`):
 - **Vector Similarity (`embed_query`):** When an OpenAI-compatible embedding provider (`openai`, `openrouter`, `gemini`, `ollama`, `lmstudio`, `custom`) is configured, computes cosine similarity against pre-computed 6-decimal float vectors.
-- **Domain-Boosted Lexical Search (`lexical_search`):** Filters out English and Russian stop-words, weights Tachyon domain terms (`zapret2`, `nfqws2`, `multisplit`, `seqovl`, `tachyontable`, `fakeip`, `reconciler`, `known_good`, `outbound_source`, `outbound_group`, etc.), applies multi-term coverage bonuses, and merges the top chunks with vector results.
+- **Domain-Boosted Lexical Search (`lexical_search`):** Filters out English and Russian stop-words, weights Tachyon domain terms (`desync`, `adaptive`, `multisplit`, `seqovl`, `tachyontable`, `fakeip`, `reconciler`, `known_good`, `outbound_source`, `outbound_group`, etc.), applies multi-term coverage bonuses, and merges the top chunks with vector results.
 - **Direct Documentation Search (`search_docs`):** Exposed as `GET /tachyon/agent/v1/docs/search?q=<query>&limit=<k>` and MCP tool `tachyon_docs_search` so connected LLM agents can query the full knowledge base on demand.
 
 ---
@@ -99,7 +96,7 @@ Tachyon enforces multi-layer privacy redaction so that no private credentials, t
    - `diagnostics/fuzzer/ai.uc` sanitizes `user_prompt`, `target_url`, and `baseline.error` before invoking the LLM.
    - `diagnostics/rag.uc` sanitizes every `query` via `sanitize_query()` before sending it to external embedding endpoints.
 3. **Masked Config & Redacted Diffs:**
-   - `diagnostics/status.uc` (`tachyon-config-masked`) masks all sensitive UCI options (`ai_doctor_api_key`, `agent_api_token`, `telegram_token`, `clash_api_secret`, `fptn_*`, `olcrtc_*`, `wdtt_*`, `url`, `urls`, `proxy_url`, `custom_json`, `uuid`, `pbk`, `sid`, etc.).
+   - `diagnostics/status.uc` (`tachyon-config-masked`) masks all sensitive UCI options (`ai_doctor_api_key`, `agent_api_token`, `telegram_token`, `clash_api_secret`, `fptn_*`, `csqtt_*`, `wdtt_*`, `url`, `urls`, `proxy_url`, `custom_json`, `uuid`, `pbk`, `sid`, etc.).
    - `service/config_plan.uc` masks `old_value` and `new_value` as `"[REDACTED]"` for sensitive keys in UCI dry-run diffs.
 4. **System Prompt Guardrails:**
    - Embedded instructions in `doctor.uc`, `fuzzer/ai.uc`, and `tachyon://knowledge/privacy-rules` explicitly forbid the LLM from asking users for plaintext keys, tokens, passwords, UUIDs, or unmasked `/etc/config/tachyon` dumps.
@@ -118,7 +115,7 @@ Tachyon exposes a standardized REST API (`/cgi-bin/tachyon-agent/` and `/tachyon
   Authorization: Bearer <agent_api_token>
   Content-Type: application/json
 
-  {"fix": "clear_dns_cache,start_singbox"}
+  {"fix": "clear_dns_cache,start_tachyon_core"}
   ```
 
 ### 4.2. OpenAPI 3.0.3 Specification
@@ -145,7 +142,7 @@ Tachyon exposes a standardized REST API (`/cgi-bin/tachyon-agent/` and `/tachyon
 | `POST`| `/ai-doctor` | **Bearer** | Triggers live LLM AI Doctor analysis (`{"query": "..."}`). |
 | `POST`| `/ai-doctor/fix` | **Bearer** | Applies one or more quick-fix codes (`{"fix": "code1,code2"}`). |
 | `POST`| `/heal` | **Bearer** | Triggers manual Watchdog self-healing cycle. |
-| `POST`| `/restart` | **Bearer** | Restarts specified service (`singbox`, `watchdog`, `dnsmasq`). |
+| `POST`| `/restart` | **Bearer** | Restarts specified service (`tachyon-core`, `watchdog`, `dnsmasq`). |
 | `POST`| `/reload` | **Bearer** | Soft-reloads configuration and routing tables. |
 | `POST`| `/config/plan` | **Bearer** | Dry-run validation, redacted diff, and impact analysis for candidate UCI changes. |
 | `POST`| `/config/set` | **Bearer** | Updates specific UCI options (`section`, `option`, `value`). |

@@ -18,7 +18,8 @@ exit 0
 EOF
 chmod +x "$STUB"
 
-rm -f /tmp/tachyon_doctor_fixes.json
+export TACHYON_DOCTOR_FIXES_FILE="$WORK_DIR/doctor_fixes.json"
+rm -f "$TACHYON_DOCTOR_FIXES_FILE"
 
 TACHYON_BIN="$STUB" ucode -L "$TACHYON_LIB" "$RUNTIME" apply-quick-fix "update_subscriptions" >/dev/null 2>&1 || true
 

@@ -3,7 +3,6 @@
 let common = require("core.common");
 let fs = require("fs");
 let gomemlimit = require("core.gomemlimit");
-let variant_state = require("tachyon_core.variant_state");
 let command_from_args = common.command_from_args;
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
@@ -322,16 +321,16 @@ const COMMUNITY_SERVICES = {
 // - SUBNET_SERVICES (meta, twitter, telegram, roblox, google_meet, zoom_teams, discord_voice, callofduty, game_backends, cs2_dota2, doh_dot_dns)
 //   as mixed containing both domain_suffix and ip_cidr ("mixed");
 // - infrastructure / CDN provider lists (cloudflare, cloudfront, hetzner, ovh, digitalocean, vps_clouds) as IP subnets ("subnets").
-//   In sing-box 1.14+, these must NOT be placed into DNS response rules (match_response: true) because doing so
+//   In tachyon-core, these must NOT be placed into DNS response rules (match_response: true) because doing so
 //   causes arbitrary third-party domains hosted behind these CDNs/providers (e.g. mtpro.xyz) to be issued a FakeIP,
 //   discarding the real IP and breaking routing to direct. They are routed purely by destination IP in route.rules.
 // - discord is also treated as subnets: its voice endpoints use Cloudflare Anycast with UDP QUIC (port 443).
-//   FakeIP-ing Discord IP-in-DNS-response causes sing-box to dial tcp for UDP QUIC sessions → i/o timeout.
+//   FakeIP-ing Discord IP-in-DNS-response causes tachyon-core to dial tcp for UDP QUIC sessions → i/o timeout.
 // - geoip_* lists from MetaCubeX/meta-rules-dat contain only ip_cidr ("subnets");
 // - geosite_* lists from MetaCubeX/meta-rules-dat contain only domains ("domains");
 // - external lists (github, twitch, ads_hagezi_pro, supercell) are domain-only ("domains").
 //
-// In sing-box 1.14+, referencing a rule-set with ip_cidr in a DNS rule without match_response: true
+// Referencing a rule-set with ip_cidr in a DNS rule without match_response: true
 // is treated as a deprecated legacy address filter and rejected if query_type is present in DNS configuration.
 const COMMUNITY_SUBNET_SERVICES = {
     meta: true,
@@ -614,9 +613,7 @@ function community_trs_urls(name) {
 function supports_trs() {
     if (getenv("TACHYON_DISABLE_TRS") == "1")
         return false;
-    if (getenv("TACHYON_ALLOW_TRS") == "1")
-        return true;
-    return variant_state.is_tachyon_core();
+    return true;
 }
 
 function fallback_community_url(name) {
@@ -772,7 +769,7 @@ function is_referenceable_trs_file(path) {
 // syntactically valid SRS of exactly 17 bytes, so is_valid_srs_file() accepts
 // it. Callers that mean "a real list is present locally" therefore treat the
 // placeholder as downloaded: the generator emits `type: local` with no url, so
-// sing-box can never fetch the real list again and the rule silently matches
+// tachyon-core can never fetch the real list again and the rule silently matches
 // nothing. A block rule over an empty list is indistinguishable from no rule at
 // all (TCH-1043), and the only recovery was a manual list update.
 //
@@ -780,14 +777,14 @@ function is_referenceable_trs_file(path) {
 // magic bytes say. Callers that only need "not corrupt" keep using
 // is_valid_srs_file; callers that need "actually populated" use this.
 // Every cheap measure of an .srs passes on a truncated one: the magic sits at the
-// front and a partial file is still larger than the placeholder. sing-box then dies
+// front and a partial file is still larger than the placeholder. tachyon-core then dies
 // with "parse rule-set: read rule: unexpected EOF" and takes the whole generated
 // config down with it, which leaves the router unapplyable - a red check that no
 // list update can clear, reported on 1.4.9.
 //
 // The payload is a zlib stream, so its real length cannot be read off the header
 // and a size comparison cannot tell a whole file from a prefix of one. Ask
-// sing-box, which is already a dependency, to parse it. One process per list, only
+// tachyon-core, which is already a dependency, to parse it. One process per list, only
 // on the paths that adopt a file, never per generate.
 function srs_file_parses(path) {
     let p = as_string(path);
@@ -801,12 +798,10 @@ function srs_file_parses(path) {
             return true;
     }
 
-    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
+    let bin = getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(bin) == null)
         return true;
 
-    // rule-set match is a second Go runtime next to the running daemon; without
-    // a ceiling it is free to balloon exactly like `check` does.
     return common.command_status(
         gomemlimit.gomemlimit_env() +
         command_from_args([ bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid" ]) +
@@ -829,7 +824,7 @@ function is_usable_srs_file(path) {
     return is_populated_srs_file(path) && srs_file_parses(path);
 }
 
-// Verifying means spawning sing-box, so remember what has already been verified
+// Verifying means spawning tachyon-core, so remember what has already been verified
 // and skip the spawn while the file is the same one we checked. The marker sits in
 // tmpfs next to the files it describes, so it cannot outlive them and no verdict
 // survives the file changing underneath it - which is also why the stamp carries
@@ -867,7 +862,7 @@ function remember_srs_file_verified(path) {
 
 // The check for a file we are about to keep but have maybe already checked. The
 // /tmp copy used to be trusted outright, which left a file downloaded by an older
-// Tachyon in place forever: it passed the cheap test, sing-box died on it, and no
+// Tachyon in place forever: it passed the cheap test, tachyon-core died on it, and no
 // apply could recover because the copy that was broken was the one believed.
 function is_adoptable_srs_file(path) {
     if (!is_populated_srs_file(path))
@@ -880,17 +875,17 @@ function is_adoptable_srs_file(path) {
     return true;
 }
 
-// Whether a generated config may point at this file. That needs sing-box to be
+// Whether a generated config may point at this file. That needs tachyon-core to be
 // able to read it, and it is not the same question as "is a real list here": the
 // placeholder is a valid, parseable SRS that simply matches nothing, and it exists
 // so a cold boot without a network still applies. Referencing it locally is right;
-// emitting a remote rule-set instead puts the fetch back into sing-box's startup,
+// emitting a remote rule-set instead puts the fetch back into tachyon-core's startup,
 // and a GitHub hiccup then kills the core with "initialize rule-set: context
 // deadline exceeded" - the failure prepare_community_rulesets() exists to avoid.
 //
 // A truncated list is the opposite case: valid magic, larger than the placeholder,
 // and unreadable. It must never be referenced, so the generator falls through to
-// the remote branch and sing-box fetches a whole list itself.
+// the remote branch and tachyon-core fetches a whole list itself.
 function is_referenceable_srs_file(path) {
     let p = as_string(path);
     if (!is_valid_srs_file(p))
@@ -989,6 +984,6 @@ else if (mode == "is-referenceable-srs-file")
 else if (mode == "ensure-empty-srs-stub")
     exit(ensure_empty_srs_stub(ARGV[1]) ? 0 : 1);
 else {
-    warn("Usage: singbox/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|is-adoptable-srs-file|is-referenceable-srs-file|ensure-empty-srs-stub> ...\n");
+    warn("Usage: tachyon_core/rulesets.uc <file-extension|is-community|community-kind|kind-from-reference-hint|remote-format|is-valid-srs-file|is-usable-srs-file|is-adoptable-srs-file|is-referenceable-srs-file|ensure-empty-srs-stub> ...\n");
     exit(1);
 }

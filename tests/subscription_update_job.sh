@@ -80,7 +80,7 @@ chmod +x "$WORK_DIR/bin/tachyon"
 ASYNC_ENV=(
   "TACHYON_LIB=$ROOT_DIR/tachyon/files/usr/lib"
   "TACHYON_BIN=$WORK_DIR/bin/tachyon"
-  "TMP_SING_BOX_FOLDER=$WORK_DIR/tmp/tachyon-core"
+  "TMP_TACHYON_CORE_FOLDER=$WORK_DIR/tmp/tachyon-core"
   "TMP_RULESET_FOLDER=$WORK_DIR/tmp/tachyon-core/rulesets"
   "TMP_SUBSCRIPTION_FOLDER=$WORK_DIR/tmp/tachyon-core/subscriptions"
   "TACHYON_RUNTIME_STATE_DIR=$WORK_DIR/run"

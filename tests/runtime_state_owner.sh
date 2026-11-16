@@ -20,7 +20,7 @@ NFT_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
 grep -Fq 'runtime_state.sh' "$TACHYON_BIN" &&
   fail "tachyon must not source runtime_state.sh"
 
-service_predicates='process_age_seconds|sing_box_service_pid|pid_is_sing_box|sing_box_service_is_running|sing_box_service_is_stable|tachyon_runtime_network_is_configured|tachyon_is_running|tachyon_is_stably_running|wait_for_tachyon_stable_start'
+service_predicates='process_age_seconds|tachyon_core_service_pid|pid_is_tachyon_core|tachyon_core_service_is_running|tachyon_core_service_is_stable|tachyon_runtime_network_is_configured|tachyon_is_running|tachyon_is_stably_running|wait_for_tachyon_stable_start'
 if grep -R -n -E "$service_predicates" "$TACHYON_BIN" "$ROOT_DIR/tachyon/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
   fail "service running/stability predicates must not remain in shell"
 fi
@@ -30,7 +30,7 @@ if grep -R -n -E "$pending_state" "$TACHYON_BIN" "$TACHYON_INIT" "$ROOT_DIR/tach
   fail "pending reload/time-sync ownership must not remain in shell"
 fi
 
-runtime_state_shell_symbols='runtime_state_ucode|acquire_runtime_dir_lock|release_runtime_dir_lock|capture_reload_state|write_reload_state_file|write_reload_state|clear_reload_state|populate_nft_runtime_sets|rebuild_nft_runtime|reload_sing_box_runtime|apply_pending_urltest_selector_switches|close_inherited_service_lock_fd|TACHYON_URLTEST_SELECTOR_SWITCHES'
+runtime_state_shell_symbols='runtime_state_ucode|acquire_runtime_dir_lock|release_runtime_dir_lock|capture_reload_state|write_reload_state_file|write_reload_state|clear_reload_state|populate_nft_runtime_sets|rebuild_nft_runtime|reload_core_runtime|apply_pending_urltest_selector_switches|close_inherited_service_lock_fd|TACHYON_URLTEST_SELECTOR_SWITCHES'
 if grep -R -n -E "$runtime_state_shell_symbols" "$TACHYON_BIN" "$TACHYON_INIT" "$ROOT_DIR/tachyon/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
   fail "runtime_state.sh symbols must not remain in shell"
 fi
@@ -65,7 +65,7 @@ grep -Fq 'mode == "subscription-update"' "$UPDATES_UC" ||
 grep -Fq 'mode == "tachyon-running"' "$STATE_UC" ||
   fail "service/state.uc must own Tachyon running predicate"
 grep -Fq 'mode == "tachyon-core-service-stable"' "$STATE_UC" ||
-  fail "service/state.uc must expose stable sing-box predicate"
+  fail "service/state.uc must expose stable tachyon-core predicate"
 grep -Fq 'mode == "wait-tachyon-stable-start"' "$STATE_UC" ||
   fail "service/state.uc must own stable-start waiting"
 grep -Fq 'mode == "mark-pending-reload"' "$STATE_UC" ||
@@ -77,33 +77,33 @@ grep -Fq 'mode == "acquire-runtime-dir-lock"' "$STATE_UC" ||
 grep -Fq 'mode == "write-captured-reload-state"' "$STATE_UC" ||
   fail "service/state.uc must own captured reload state writes"
 grep -Fq 'mode == "reload-core-runtime"' "$STATE_UC" ||
-  fail "service/state.uc must own sing-box runtime reload"
+  fail "service/state.uc must own tachyon-core runtime reload"
 grep -Fq '"wait-tachyon-stable-start"' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must verify stable runtime after core start/reload"
-grep -Fq 'SING_BOX_START_STABLE_MIN_AGE' "$LIFECYCLE_UC" ||
+grep -Fq 'TACHYON_CORE_START_STABLE_MIN_AGE' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must use a dedicated core start stability window"
-sing_box_start_line="$(awk '/tachyon-core", "start"/ { print NR; exit }' "$LIFECYCLE_UC")"
-early_stable_line="$(awk -v start="$sing_box_start_line" 'NR > start && /"wait-tachyon-stable-start"/ { print NR; exit }' "$LIFECYCLE_UC")"
-start_stable_min_age_line="$(awk -v start="$sing_box_start_line" 'NR > start && /SING_BOX_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
+core_start_line="$(awk '/tachyon-core", "start"/ { print NR; exit }' "$LIFECYCLE_UC")"
+early_stable_line="$(awk -v start="$core_start_line" 'NR > start && /"wait-tachyon-stable-start"/ { print NR; exit }' "$LIFECYCLE_UC")"
+start_stable_min_age_line="$(awk -v start="$core_start_line" 'NR > start && /TACHYON_CORE_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
 deferred_bootstrap_line="$(awk '/"run-deferred-bootstrap"/ { print NR; exit }' "$LIFECYCLE_UC")"
-[ -n "$sing_box_start_line" ] ||
+[ -n "$core_start_line" ] ||
   fail "service/lifecycle.uc must start the core through init.d"
 [ -n "$early_stable_line" ] ||
   fail "service/lifecycle.uc must verify stable runtime immediately after core start"
 [ "$early_stable_line" -lt "$deferred_bootstrap_line" ] ||
-  fail "service/lifecycle.uc must verify sing-box stability before deferred bootstrap work"
+  fail "service/lifecycle.uc must verify tachyon-core stability before deferred bootstrap work"
 [ -n "$start_stable_min_age_line" ] && [ "$start_stable_min_age_line" -lt "$deferred_bootstrap_line" ] ||
   fail "service/lifecycle.uc must use the dedicated core start stability window before deferred bootstrap work"
-sing_box_reload_line="$(awk '/"reload-core-runtime"/ { print NR; exit }' "$LIFECYCLE_UC")"
-reload_stable_min_age_line="$(awk -v start="$sing_box_reload_line" 'NR > start && /SING_BOX_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
-[ -n "$sing_box_reload_line" ] ||
-  fail "service/lifecycle.uc must reload sing-box through service/state.uc"
+core_reload_line="$(awk '/"reload-core-runtime"/ { print NR; exit }' "$LIFECYCLE_UC")"
+reload_stable_min_age_line="$(awk -v start="$core_reload_line" 'NR > start && /TACHYON_CORE_START_STABLE_MIN_AGE/ { print NR; exit }' "$LIFECYCLE_UC")"
+[ -n "$core_reload_line" ] ||
+  fail "service/lifecycle.uc must reload tachyon-core through service/state.uc"
 [ -n "$reload_stable_min_age_line" ] ||
-  fail "service/lifecycle.uc must use the dedicated core start stability window after sing-box reload"
+  fail "service/lifecycle.uc must use the dedicated core start stability window after tachyon-core reload"
 grep -Fq 'Reload verification failed after tachyon-core was reloaded; stopping Tachyon runtime' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must fail reload when tachyon-core does not stay stable"
 grep -Fq 'Reload runtime restart verification failed after Tachyon was started; rolling back DNS changes' "$LIFECYCLE_UC" ||
-  fail "service/lifecycle.uc must fail full runtime restart when sing-box does not stay stable"
+  fail "service/lifecycle.uc must fail full runtime restart when tachyon-core does not stay stable"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|uci_get_cli|uci_exists_cli|mwan3_has_enabled_interface_from_uci_show' "$STATE_UC" >/dev/null 2>&1; then
   fail "service/state.uc must not own direct UCI CLI/cursor access"
 fi

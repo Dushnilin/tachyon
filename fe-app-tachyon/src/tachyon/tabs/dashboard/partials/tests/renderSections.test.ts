@@ -129,7 +129,7 @@ describe('renderSections', () => {
       code: 'discord',
       sectionName: 'discord',
       displayName: 'Discord',
-      action: 'zapret2',
+      action: 'desync',
       withTagSelect: false,
       serviceStatus: undefined,
       outbounds: [
@@ -137,7 +137,7 @@ describe('renderSections', () => {
           code: 'discord',
           displayName: 'Unknown',
           latency: 0,
-          type: 'ZAPRET2',
+          type: 'DESYNC',
           selected: true,
           canCopyLink: false,
         },
@@ -182,10 +182,10 @@ describe('renderSections', () => {
       code: 'youtube',
       sectionName: 'youtube',
       displayName: 'Youtube',
-      action: 'zapret2',
+      action: 'desync',
       withTagSelect: false,
       serviceStatus: {
-        serviceType: 'zapret2',
+        serviceType: 'desync',
         configured: true,
         ready: true,
         conflict: false,
@@ -193,7 +193,7 @@ describe('renderSections', () => {
         expectedProcesses: 1,
         restartCount: 0,
         unstable: false,
-        statusMessage: 'zapret2 provider status is normal',
+        statusMessage: 'desync status is normal',
       },
       outbounds: [],
     };
@@ -221,8 +221,8 @@ describe('renderSections', () => {
     expect(buttons).toHaveLength(0);
   });
 
-  it('renders zapret and byedpi service sections without latency button', () => {
-    for (const action of ['zapret', 'byedpi']) {
+  it('renders desync and fptn service sections without latency button', () => {
+    for (const action of ['desync', 'fptn']) {
       const section: any = {
         code: action,
         sectionName: action,

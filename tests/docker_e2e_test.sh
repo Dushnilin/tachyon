@@ -96,26 +96,23 @@ if ! "$DOCKER_BIN" image inspect "$TEST_IMAGE:latest" >/dev/null 2>&1; then
     "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg update && break || sleep 5
   done
   for i in 1 2 3 4 5; do
-    "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg install ucode ucode-mod-fs ucode-mod-uci curl ca-bundle bind-dig nftables ip-full coreutils-base64 coreutils-timeout sing-box bash node git git-http openssl-util && break || sleep 5
+    "$DOCKER_BIN" exec "$TEMP_CONTAINER" opkg install ucode ucode-mod-fs ucode-mod-uci curl ca-bundle bind-dig nftables ip-full coreutils-base64 coreutils-timeout bash node git git-http openssl-util && break || sleep 5
   done
   "$DOCKER_BIN" exec "$TEMP_CONTAINER" git config --global --add safe.directory '*' || true
 
-  echo "=== Installing official sing-box 1.12.0 binary ==="
+  echo "=== Installing tachyon-core binary ==="
   # The container's route to github.com is flaky; fetch the tarball on the
   # host once, keep it in .wsl-build, and copy it into the container.
-  SB_TGZ="$ROOT_DIR/.wsl-build/sing-box-1.12.0-linux-amd64.tar.gz"
+  TCORE_TGZ="$ROOT_DIR/.wsl-build/tachyon-core-linux-amd64-v0.0.1.tar.gz"
   mkdir -p "$ROOT_DIR/.wsl-build"
-  if [ ! -s "$SB_TGZ" ]; then
+  if [ ! -s "$TCORE_TGZ" ]; then
     for i in $(seq 1 10); do
-      curl.exe -sSL -o "$SB_TGZ" https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz && break || { rm -f "$SB_TGZ"; sleep 15; }
+      curl.exe -sSL -o "$TCORE_TGZ" https://github.com/Dushnilin/tachyon-core/releases/download/v0.0.1/tachyon-core-linux-amd64-v0.0.1.tar.gz && break || { rm -f "$TCORE_TGZ"; sleep 15; }
     done
   fi
-  "$DOCKER_BIN" cp "$SB_TGZ" "$TEMP_CONTAINER:/tmp/tachyon-core.tar.gz"
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" tar -zxf /tmp/tachyon-core.tar.gz -C /tmp
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/sbin/sing-box
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" cp /tmp/tachyon-core-1.12.0-linux-amd64/sing-box /usr/bin/tachyon-core
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" chmod +x /usr/sbin/sing-box /usr/bin/tachyon-core
-  "$DOCKER_BIN" exec "$TEMP_CONTAINER" rm -rf /tmp/tachyon-core.tar.gz /tmp/tachyon-core-1.12.0-linux-amd64
+  "$DOCKER_BIN" cp "$TCORE_TGZ" "$TEMP_CONTAINER:/tmp/tachyon-core.tar.gz"
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" sh -c 'tar -zxf /tmp/tachyon-core.tar.gz -C /tmp && bin=$(find /tmp -maxdepth 2 -type f -name "tachyon-core*" ! -name "*.tar.gz" ! -name "*.sha256" | head -n 1) && cp "$bin" /usr/bin/tachyon-core && chmod +x /usr/bin/tachyon-core'
+  "$DOCKER_BIN" exec "$TEMP_CONTAINER" rm -rf /tmp/tachyon-core.tar.gz /tmp/tachyon-core-*
 
   "$DOCKER_BIN" commit "$TEMP_CONTAINER" "$TEST_IMAGE:latest"
   "$DOCKER_BIN" rm -f "$TEMP_CONTAINER"
@@ -137,8 +134,6 @@ echo "=== Starting OpenWrt Container from Cached Image ==="
 "$DOCKER_BIN" run -d \
   --name "$CONTAINER_NAME" \
   --privileged \
-  -e SB_REQUIRED_VERSION="1.11.0" \
-  -e ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS="true" \
   -v "$ROOT_DIR:/work" \
   "$TEST_IMAGE:latest" \
   /bin/sh /work/tests/container_entrypoint.sh
@@ -184,7 +179,7 @@ sleep 5
 
 echo "=== Checking running services ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon status || echo "Tachyon status non-zero, continuing..."
-"$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -l sing-box || echo "sing-box process not found"
+"$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -l tachyon-core || echo "tachyon-core process not found"
 
 echo "=== Running connection test via mixed port ==="
 # Test routing of the proxy port
@@ -206,11 +201,11 @@ echo "=== Checking nftables rules ==="
 if echo "$LOGS" | grep -Fiq "ip.podkop.fyi"; then
   echo "SUCCESS: Traffic to ip.podkop.fyi was intercepted/processed!"
 else
-  echo "WARNING: Domain ip.podkop.fyi not found in system logs. Checking sing-box status."
-  if "$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -f sing-box >/dev/null; then
-    echo "sing-box is running, routing table was loaded."
+  echo "WARNING: Domain ip.podkop.fyi not found in system logs. Checking tachyon-core status."
+  if "$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -f tachyon-core >/dev/null; then
+    echo "tachyon-core is running, routing table was loaded."
   else
-    echo "FAIL: sing-box is not running."
+    echo "FAIL: tachyon-core is not running."
     exit 1
   fi
 fi
@@ -221,10 +216,10 @@ echo "=== Verifying Tachyon CLI inside OpenWrt ==="
 echo "=== Verifying Service Lifecycle (restart) ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon restart
 sleep 2
-if "$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -f sing-box >/dev/null; then
-  echo "SUCCESS: sing-box is running after service restart."
+if "$DOCKER_BIN" exec "$CONTAINER_NAME" pgrep -f tachyon-core >/dev/null; then
+  echo "SUCCESS: tachyon-core is running after service restart."
 else
-  echo "FAIL: sing-box failed to restart."
+  echo "FAIL: tachyon-core failed to restart."
   exit 1
 fi
 

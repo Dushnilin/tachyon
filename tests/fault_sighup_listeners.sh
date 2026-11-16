@@ -2,7 +2,7 @@
 # FAULT: a SIGHUP that comes back deaf must not be reported as a successful reload.
 #
 # Observed on a live router running tachyon-core: DNS failover rewrote config.json
-# and sent SIGHUP; sing-box accepted it, kept the same pid, and kept answering the
+# and sent SIGHUP; tachyon-core accepted it, kept the same pid, and kept answering the
 # clash API - while the mixed inbound simply never came back. Port 4534 vanished,
 # every LAN client proxy and the Telegram bot dead-ended, and try_sighup_reload()
 # logged "graceful reload succeeded" because it only asked whether the process was
@@ -73,7 +73,7 @@ write_config '[]'
 sighup_rc ||
   fail "SIGHUP must succeed when the config declares no mixed inbound (harness cannot see the process, or the pid check is broken)"
 kill -0 "$FAKE_PID" 2>/dev/null ||
-  fail "fake sing-box must survive SIGHUP; without that the next case proves nothing"
+  fail "fake tachyon-core must survive SIGHUP; without that the next case proves nothing"
 
 # --- the regression: mixed inbound declared, nothing listening on it ---------
 write_config "[ { \"type\": \"mixed\", \"listen_port\": $DEAD_PORT } ]"
@@ -81,7 +81,7 @@ if sighup_rc; then
   fail "SIGHUP reported success while the declared mixed port $DEAD_PORT was not listening - that is the silent proxy loss from this bug"
 fi
 kill -0 "$FAKE_PID" 2>/dev/null ||
-  fail "fake sing-box died during the port check; the failure came from the pid check, not the listener check, so the case proves nothing"
+  fail "fake tachyon-core died during the port check; the failure came from the pid check, not the listener check, so the case proves nothing"
 
 # --- the positive contract: mixed inbound declared and port is actually listening
 LIVE_PORT=45998
@@ -99,7 +99,7 @@ kill "$NODE_PID" 2>/dev/null || true
 # --- the success path has to consult the listeners too, not just the loop exit
 awk '/^function try_sighup_reload\(/,/^}/' "$STATE_UC" >"$WORK_DIR/sighup.uc"
 [ -s "$WORK_DIR/sighup.uc" ] || fail "try_sighup_reload not found in service/state.uc"
-[ "$(grep -c 'sing_box_mixed_ports_listening' "$WORK_DIR/sighup.uc")" -ge 2 ] ||
+[ "$(grep -c 'tachyon_core_mixed_ports_listening' "$WORK_DIR/sighup.uc")" -ge 2 ] ||
   fail "try_sighup_reload must check the listeners on both the poll-success and the timeout path; a deaf core would otherwise still pass the timeout branch"
 
 # Reading the ports out of the generated config rather than hardcoding 4534 is

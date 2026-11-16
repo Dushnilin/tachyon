@@ -207,8 +207,8 @@ rm -rf /tmp/tachyon-core/rulesets/sec_compiled-lists-ruleset.json
 # and loaded into nftables sets from the cached remote list file.
 REMOTE_URL="https://example.com/custom-subnets.lst"
 REMOTE_HASH="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - <<UCODE
-let singbox_rulesets = require("tachyon_core.rulesets");
-print(singbox_rulesets.hash12("$REMOTE_URL"));
+let core_rulesets = require("tachyon_core.rulesets");
+print(core_rulesets.hash12("$REMOTE_URL"));
 UCODE
 )"
 mkdir -p /tmp/tachyon-core/rulesets

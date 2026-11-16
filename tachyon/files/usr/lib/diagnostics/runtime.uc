@@ -27,12 +27,6 @@ const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK |
 const RUNTIME_STABLE_MIN_AGE = getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2";
 
 const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
-const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
-const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
-const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
-const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
-const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 
 let as_string = common.as_string;
 let command_from_args = common.command_from_args;
@@ -72,15 +66,6 @@ function uci_backup_restore() {
 
 function doctor_fix_overused(code) {
     return repairs_mod().doctor_fix_overused(code);
-}
-
-function sing_box_marker_is(expected) {
-    return sysinfo_mod().sing_box_marker_is(expected);
-}
-
-function sing_box_live_probe_disabled() {
-    return sing_box_marker_is("extended-compressed") ||
-        sing_box_marker_is("lx");
 }
 
 function get_engine_status() {
@@ -127,23 +112,22 @@ function extract_ruleset(arg1) { return doctor_mod().extract_ruleset(arg1); }
 function check_proxy() { return routing_mod().check_proxy(); }
 function check_nft() { return routing_mod().check_nft(); }
 function check_nft_rules() { return routing_mod().check_nft_rules(); }
-function check_sing_box() { return sysinfo_mod().check_sing_box(); }
-function sing_box_standard_ports_listening_fixture() { return network_mod().sing_box_standard_ports_listening_fixture(); }
+function check_tachyon_core() { return sysinfo_mod().check_tachyon_core(); }
+function tachyon_core_standard_ports_listening_fixture() { return network_mod().tachyon_core_standard_ports_listening_fixture(); }
 function check_inbounds_config() { return routing_mod().check_inbounds_config(); }
 function check_inbounds() { return routing_mod().check_inbounds(); }
 function check_logs() { return sysinfo_mod().check_logs(); }
-function check_sing_box_logs() { return sysinfo_mod().check_sing_box_logs(); }
+function check_tachyon_core_logs() { return sysinfo_mod().check_tachyon_core_logs(); }
 function tachyon_logs_fixture() { return sysinfo_mod().tachyon_logs_fixture(); }
 function check_fakeip(dom) { return dns_mod().check_fakeip(dom); }
-function neutralize_zapret_defaults() { return repairs_mod().neutralize_zapret_defaults(); }
 function clash_api(a1, a2, a3, a4) { return routing_mod().clash_api(a1, a2, a3, a4); }
 function show_config(v) { return sysinfo_mod().show_config(v); }
 function show_version() { return sysinfo_mod().show_version(); }
-function show_sing_box_config(v) { return sysinfo_mod().show_sing_box_config(v); }
-function show_sing_box_version() { return sysinfo_mod().show_sing_box_version(); }
+function show_tachyon_core_config(v) { return sysinfo_mod().show_tachyon_core_config(v); }
+function show_tachyon_core_version() { return sysinfo_mod().show_tachyon_core_version(); }
 function get_outbound_metadata(sec) { return sysinfo_mod().get_outbound_metadata(sec); }
 function get_subscription_metadata(sec) { return sysinfo_mod().get_subscription_metadata(sec); }
-function get_sing_box_status() { return sysinfo_mod().get_sing_box_status(); }
+function get_tachyon_core_status() { return sysinfo_mod().get_tachyon_core_status(); }
 function get_system_info() { return sysinfo_mod().get_system_info(); }
 function get_server_capabilities() { return sysinfo_mod().get_server_capabilities(); }
 function check_dns_available() { return dns_mod().check_dns_available(); }
@@ -169,9 +153,6 @@ function apply_quick_fix(codes_str) {
 }
 function lan_clients() { return network_mod().lan_clients(); }
 function toggle_client_bypass(ip) { return network_mod().toggle_client_bypass(ip); }
-function validate_nfqws_strategy_json(opt) { return sysinfo_mod().validate_nfqws_strategy_json(opt); }
-function validate_nfqws2_strategy_json(opt) { return sysinfo_mod().validate_nfqws2_strategy_json(opt); }
-function validate_byedpi_strategy_json(opt) { return sysinfo_mod().validate_byedpi_strategy_json(opt); }
 function resolve_domain_cli(dom) { return dns_mod().resolve_domain_cli(dom); }
 function route_explain(client, target, port, proto, format) {
     let route_explain_mod = require("diagnostics.route_explain");
@@ -195,68 +176,46 @@ else if (mode == "check-nft")
     exit(check_nft());
 else if (mode == "check-nft-rules")
     exit(check_nft_rules());
-else if (mode == "check-sing-box")
-    exit(check_sing_box());
-else if (mode == "sing-box-standard-ports-listening-fixture")
-    sing_box_standard_ports_listening_fixture();
+else if (mode == "check-tachyon-core")
+    exit(check_tachyon_core());
+else if (mode == "tachyon-core-standard-ports-listening-fixture")
+    tachyon_core_standard_ports_listening_fixture();
 else if (mode == "check-inbounds-config")
     exit(check_inbounds_config());
 else if (mode == "check-inbounds")
     exit(check_inbounds());
 else if (mode == "check-logs")
     exit(check_logs());
-else if (mode == "check-sing-box-logs")
-    exit(check_sing_box_logs());
+else if (mode == "check-tachyon-core-logs")
+    exit(check_tachyon_core_logs());
 else if (mode == "tachyon-logs-fixture")
     exit(tachyon_logs_fixture());
 else if (mode == "check-fakeip")
     exit(check_fakeip(ARGV[1] || ""));
-else if (mode == "check-zapret-runtime")
-    exit(module_passthrough(ZAPRET_RUNTIME_UC, [ "check" ]));
-else if (mode == "check-zapret2-runtime")
-    exit(module_passthrough(ZAPRET2_RUNTIME_UC, [ "check" ]));
-else if (mode == "check-byedpi-runtime")
-    exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "check" ]));
 else if (mode == "check-tor-runtime") {
     print(sprintf("%J", { success: true, data: { tor_installed: 0 } }));
     exit(0);
 }
-else if (mode == "neutralize-zapret-defaults")
-    exit(neutralize_zapret_defaults());
 else if (mode == "clash-api")
     exit(clash_api(ARGV[1], ARGV[2], ARGV[3], ARGV[4]));
 else if (mode == "show-config")
     exit(show_config(ARGV[1] || "masked"));
 else if (mode == "show-version")
     exit(show_version());
-else if (mode == "show-sing-box-config")
-    exit(show_sing_box_config(ARGV[1] || "masked"));
-else if (mode == "show-sing-box-version")
-    exit(show_sing_box_version());
+else if (mode == "show-tachyon-core-config")
+    exit(show_tachyon_core_config(ARGV[1] || "masked"));
+else if (mode == "show-tachyon-core-version")
+    exit(show_tachyon_core_version());
 else if (mode == "get-status")
     exit(get_status());
 else if (mode == "get-outbound-metadata")
     exit(get_outbound_metadata(ARGV[1]));
 else if (mode == "get-subscription-metadata")
     exit(get_subscription_metadata(ARGV[1]));
-else if (mode == "get-sing-box-status")
-    exit(get_sing_box_status());
+else if (mode == "get-tachyon-core-status")
+    exit(get_tachyon_core_status());
 else if (mode == "get-engine-status")
     exit(get_engine_status());
-else if (mode == "get-zapret-status")
-    exit(module_passthrough(ZAPRET_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-zapret2-status")
-    exit(module_passthrough(ZAPRET2_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-byedpi-status")
-    exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-wdtt-status")
-    exit(module_passthrough(WDTT_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-olcrtc-status")
-    exit(module_passthrough(OLCRTC_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-tailscale-status")
-    exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-tailscale-peers")
-    exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "peers" ]));
 else if (mode == "get-system-info")
     exit(get_system_info());
 else if (mode == "get-server-capabilities")
@@ -295,12 +254,6 @@ else if (mode == "service-health-check") {
     }
     exit(module_passthrough(LIB_DIR + "/diagnostics/service_check.uc", args));
 }
-else if (mode == "validate-nfqws-strategy-json")
-    exit(validate_nfqws_strategy_json(ARGV[1] || ""));
-else if (mode == "validate-nfqws2-strategy-json")
-    exit(validate_nfqws2_strategy_json(ARGV[1] || ""));
-else if (mode == "validate-byedpi-strategy-json")
-    exit(validate_byedpi_strategy_json(ARGV[1] || ""));
 else if (mode == "resolve-domain")
     exit(resolve_domain_cli(ARGV[1] || ""));
 else if (mode == "route-explain" || mode == "route_explain")

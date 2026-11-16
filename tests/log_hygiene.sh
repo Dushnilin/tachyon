@@ -22,22 +22,22 @@ reject_runtime_regex() {
   fi
 }
 
-reject_runtime_pattern "ucode sing-box runtime generator" \
-  "sing-box logs must not expose the implementation language"
+reject_runtime_pattern "ucode tachyon-core runtime generator" \
+  "tachyon-core logs must not expose the implementation language"
 reject_runtime_pattern "runtime generator" \
-  "sing-box generator errors must describe config generation, not the internal generator"
+  "tachyon-core generator errors must describe config generation, not the internal generator"
 reject_runtime_pattern "Reload signature changes:" \
   "reload logs must not dump internal signature vectors"
-reject_runtime_pattern "Reload plan: sing-box=" \
+reject_runtime_pattern "Reload plan: tachyon-core=" \
   "reload logs must not dump boolean plan internals"
 reject_runtime_pattern "Trying subscription User-Agent" \
   "subscription logs must not expose automatic User-Agent fallback attempts"
 reject_runtime_pattern "Selected subscription User-Agent" \
   "subscription logs must not expose automatic User-Agent fallback selection"
-reject_runtime_pattern "Current sing-box config hash:" \
-  "sing-box config logs must not emit duplicate hash lines"
-reject_runtime_pattern "Temporary sing-box config hash:" \
-  "sing-box config logs must not emit duplicate hash lines"
+reject_runtime_pattern "Current tachyon-core config hash:" \
+  "tachyon-core config logs must not emit duplicate hash lines"
+reject_runtime_pattern "Temporary tachyon-core config hash:" \
+  "tachyon-core config logs must not emit duplicate hash lines"
 reject_runtime_pattern "Tachyon did not reach a stable running state after start" \
   "startup rollback logs must not be fatal secondary errors"
 reject_runtime_pattern "Flush nft" \
@@ -57,7 +57,7 @@ reject_runtime_pattern "br_netfilter enabled detected. Disabling" \
 
 reject_runtime_regex 'log_message\("subscription/cache\.uc: ' \
   "runtime logs must not expose subscription/cache.uc as a user-facing prefix"
-reject_runtime_regex 'log_message\("singbox/runtime\.uc: ' \
+reject_runtime_regex 'log_message\("tachyon_core/runtime\.uc: ' \
   "runtime logs must not expose tachyon_core/runtime.uc as a user-facing prefix"
 
 printf 'log hygiene checks passed\n'

@@ -2,7 +2,7 @@
      width="1200" height="176" viewBox="0 0 1200 176"
      role="img" aria-labelledby="title desc">
   <title id="title">Подсистема диагностики AI Doctor v3.0, REST Agent API и MCP Server</title>
-  <desc id="desc">Модульная диагностика сетевого стека OpenWrt, схлопывание каскадных симптомов в первопричины, 25 кодов быстрого ремонта и интеграция по протоколам OpenAPI 3.0 и MCP.</desc>
+  <desc id="desc">Модульная диагностика сетевого стека OpenWrt, схлопывание каскадных симптомов в первопричины, 22 кода быстрого ремонта и интеграция по протоколам OpenAPI 3.0 и MCP.</desc>
 
   <rect width="1200" height="176" rx="16" fill="#141415"/>
   <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
@@ -20,10 +20,10 @@
     <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">LLM (OpenAI, Claude, Ollama)</text>
   </g>
 
-  <!-- Card 2: 25 Quick Fixes (280px) -->
+  <!-- Card 2: 24 Quick Fixes (280px) -->
   <g transform="translate(316, 52)">
     <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">25 кодов ремонта</text>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">22 кода ремонта</text>
     <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Быстрое исправление</text>
     <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Восстановление DNS и таблиц</text>
     <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon apply_quick_fix &lt;id&gt;</text>

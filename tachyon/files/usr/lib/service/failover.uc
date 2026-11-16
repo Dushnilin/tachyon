@@ -5,7 +5,7 @@
 // threshold in a row, switch the tachyon-failover selector to a healthy one,
 // persist the choice and notify Telegram.
 //
-// The runtime switch only works when sing-box was generated with
+// The runtime switch only works when tachyon-core config was generated with
 // section_failover_enabled=1 (the catch-all route then points at the
 // tachyon-failover selector group).
 //
@@ -72,8 +72,7 @@ function candidates() {
             push(proxies, as_string(section[".name"]));
             push(all, as_string(section[".name"]));
         } else if (connections.is_remote_proxy_action(action) ||
-            action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "olcrtc") {
+            action == "wdtt" || action == "csqtt" || action == "desync") {
             push(all, as_string(section[".name"]));
         }
     }

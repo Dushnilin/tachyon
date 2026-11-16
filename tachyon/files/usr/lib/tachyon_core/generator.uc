@@ -37,7 +37,7 @@ let read_stdin_json = common.read_stdin_json;
 let write_json = common.write_json;
 let csv_to_json_array = common.csv_to_json_array;
 
-// Same logger shape as the other singbox modules: syslog only, so generating a
+// Same logger shape as the other tachyon_core modules: syslog only, so generating a
 // config never depends on the logging stack coming up. Declared after the
 // imports above because ucode binds a name when the statement runs.
 function generator_log(message, level) {
@@ -83,7 +83,7 @@ function parse_deferred_sections(deferred_sections) {
 }
 
 // UCI stores values written as '<b 0x...>' strings as binary, which when
-// serialized back to JSON appear as '<b 0x...>' — invalid for sing-box.
+// serialized back to JSON appear as '<b 0x...>' — invalid for tachyon-core.
 function uci_bin_to_hex(val) {
     if (val == null || val == "") return "";
     let s = as_string(val);
@@ -577,7 +577,7 @@ function download_detour_tag(settings, purpose) {
 // connection section routes a suffix that also covers the endpoint (section
 // domain_suffix "example.net" plus outbound server "cdn.example.net"), the
 // internal DNS lookup for that endpoint matched the section rule, got a
-// 198.18.0.0/15 address, and sing-box then dialled the FakeIP and timed out.
+// 198.18.0.0/15 address, and tachyon-core then dialled the FakeIP and timed out.
 // The list is rebuilt from the generated config on every run, so it follows
 // endpoint changes in the subscription without a manual exclusion.
 function collect_proxy_endpoint_domains(config, sections) {
@@ -648,7 +648,7 @@ function add_proxy_endpoint_dns_rule(config, sections) {
         config.dns.rules = [];
 
     // Prepended, not appended: a section's FakeIP rule must never win for the
-    // hostname sing-box is about to dial. Built with an explicit loop because
+    // hostname tachyon-core is about to dial. Built with an explicit loop because
     // `+` coerces two arrays into a string in ucode.
     let eff_state = effective_ipv6_state(runtime_settings());
     let bootstrap_rule = {
@@ -707,152 +707,58 @@ function cli_bool(value) {
     return value === true || value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-let cached_sb_version = null;
-let cached_sb_version_banner = null;
-
-// The version state file is written by the component action alone. Treating it as
-// the source of truth meant a sing-box replaced by hand - install.sh, opkg, a
-// dropped-in binary - kept whatever the last component action wrote, and the
-// generator then configured for a version that was no longer installed: stock
-// 1.13.21 answered "1.15.0-alpha.10" on the wire, the file still said 1.13.21, so
-// the generator emitted cache_file.store_rdrc and 1.15 refused to start.
-//
-// So the file is a fallback for the variants whose binary cannot be executed for a
-// version string, and nothing else: extended-compressed is a self-extracting stub
-// and lx needs a runtime that may be absent. Everyone else is asked directly, and
-// the file is refreshed from the answer so it stops being stale.
-function sing_box_live_version_probe_disabled() {
-    let marker = variant_state.read_variant_marker();
-    return marker == "extended-compressed" || marker == "lx";
-}
+let cached_core_version = null;
+let cached_core_version_banner = null;
 
 function core_binary_probe_bases() {
-    let marker = variant_state.read_variant_marker();
-    let prefer_sing_box = (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable");
-    return prefer_sing_box
-        ? [ "sing-box", "tachyon-core", "/usr/bin/tachyon-core" ]
-        : [ "tachyon-core", "/usr/bin/tachyon-core", "sing-box" ];
+    return [ "tachyon-core", "/usr/bin/tachyon-core" ];
 }
 
-function detect_sing_box_version() {
-    if (cached_sb_version != null)
-        return cached_sb_version;
+function detect_core_version() {
+    if (cached_core_version != null)
+        return cached_core_version;
 
-    let override = getenv("SB_VERSION_OVERRIDE");
+    let override = getenv("TACHYON_CORE_VERSION_OVERRIDE");
     if (override != null && trim(override) != "") {
-        cached_sb_version = trim(override);
-        return cached_sb_version;
+        cached_core_version = trim(override);
+        return cached_core_version;
     }
 
-    let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
+    let state_file = getenv("TACHYON_CORE_VERSION_FILE") || "/etc/tachyon/tachyon-core-version";
 
-    if (sing_box_live_version_probe_disabled()) {
-        let recorded = variant_state.read_version_state();
-        if (recorded != "") {
-            cached_sb_version = recorded;
-            return recorded;
-        }
-    }
-
-    // Bounded on purpose. This runs while a configuration is being generated, and a
-// binary that never answers must not take the start with it: a stub that unpacks,
-// a wrapper script that waits, a half-written file after a failed upgrade. Before
-// the live probe became the default path this code was unreachable whenever the
-// state file existed, which is why it could carry an unbounded pop(.
-//
-// Six seconds is generous for printing a version string and short enough that a
-// router is not left waiting. Two prefixes are tried because an earlier one may be
-// absent from PATH.
-try {
-    let bases = core_binary_probe_bases();
-    let preflight = getenv("SB_PREFLIGHT_BINARY");
-    if (preflight && preflight != "")
-        unshift(bases, preflight);
-    for (let base in bases) {
-        let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
-        if (pipe) {
-            let out = pipe.read("all");
-            pipe.close();
-            // The shared parser, not a second ad-hoc regex: "\s" inside a
-            // character class is not whitespace in this engine, so
-            // /sing-box version ([^\s]+)/ swallowed the newline and came back
-            // as "1.15.0-alpha.10\n\nTag" - which then got written to the
-            // state file. common.parse_sing_box_version() documents why.
-            let found = common.parse_sing_box_version(out);
-            if (found != "") {
-                cached_sb_version = found;
-                cached_sb_version_banner = as_string(out);
-                try {
-                    let cur_disk = trim(fs.readfile(state_file) || "");
-                    if (cur_disk != cached_sb_version)
-                        fs.writefile(state_file, cached_sb_version + "\n");
-                } catch (e) {}
-                return cached_sb_version;
-            }
+    // Bounded on purpose: a binary that never answers must not hang config generation.
+    try {
+        let bases = core_binary_probe_bases();
+        let preflight = getenv("TACHYON_CORE_PREFLIGHT_BINARY");
+        if (preflight && preflight != "")
+            unshift(bases, preflight);
+        for (let base in bases) {
+            let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
+            if (pipe) {
+                let out = pipe.read("all");
+                pipe.close();
+                let found = common.parse_core_version ? common.parse_core_version(out) : "";
+                if (found != "") {
+                    cached_core_version = found;
+                    cached_core_version_banner = as_string(out);
+                    try {
+                        let cur_disk = trim(fs.readfile(state_file) || "");
+                        if (cur_disk != cached_core_version)
+                            fs.writefile(state_file, cached_core_version + "\n");
+                    } catch (e) {}
+                    return cached_core_version;
+                }
             }
         }
     } catch (e) {}
 
-    let sb_version_val = variant_state.read_version_state();
-    if (sb_version_val == "") {
-        let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
-        sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
+    let core_version_val = variant_state.read_version_state();
+    if (core_version_val == "") {
+        let ui_cache = getenv("TACHYON_UI_CORE_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/tachyon-core-version";
+        core_version_val = trim(fs.readfile(ui_cache) || "");
     }
-    cached_sb_version = sb_version_val;
-    return cached_sb_version;
-}
-
-// Tachyon's own core is not in sing-box's version series: it reports
-// "0.0.1-tachyon.0", and no numeric comparison against 1.14/1.15 says anything
-// about it. What does say something is the schema it implements, checked field
-// by field against the core's own validator (crates/core-config/src/validate.rs):
-// http_clients, route.default_http_client, dns.optimistic, store_dns,
-// buffer_size, flush_interval and certificate_sha256 are all present, so every
-// gate below opens. That is the opposite mistake to the one this gate exists to
-// prevent - the failure is a config carrying a field the core rejects, and
-// `sing-box check` refuses the whole file over one of them.
-// Does the binary on disk name itself as our core?
-//
-// Installed as /usr/bin/tachyon-core the core answers in the legacy shape, "sing-box
-// version v0.0.1-tachyon.0", and the suffix alone settles it. Run under its own
-// name it answers "tachyon-core 0.0.1" instead - a bare number carrying no fork
-// suffix, indistinguishable from a stock build of the same version - and then the
-// name in the banner is the only thing left to go on.
-function sing_box_banner_names_tachyon_core() {
-    let preflight = getenv("SB_PREFLIGHT_BINARY");
-    if (preflight && preflight != "") {
-        let pipe = fs.popen(common.bounded_command(preflight + " version 2>/dev/null", "6"), "r");
-        if (pipe) {
-            let banner = as_string(pipe.read("all"));
-            pipe.close();
-            let newline = index(banner, "\n");
-            let line = trim(newline >= 0 ? substr(banner, 0, newline) : banner);
-            if (line != "") {
-                let token = split(line, /[ \t\r\n]+/)[0];
-                return token == "tachyon-core";
-            }
-        }
-        return false;
-    }
-    if (cached_sb_version_banner == null) {
-        let banner = "";
-        for (let base in core_binary_probe_bases()) {
-            let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
-            if (pipe) {
-                banner = as_string(pipe.read("all"));
-                pipe.close();
-                if (banner != "")
-                    break;
-            }
-        }
-        cached_sb_version_banner = banner;
-    }
-    let newline = index(cached_sb_version_banner, "\n");
-    let line = trim(newline >= 0 ? substr(cached_sb_version_banner, 0, newline) : cached_sb_version_banner);
-    if (line == "")
-        return false;
-    let token = split(line, /[ \t\r\n]+/)[0];
-    return token == "tachyon-core";
+    cached_core_version = core_version_val;
+    return cached_core_version;
 }
 
 // How client traffic reaches the proxy.
@@ -942,7 +848,7 @@ function tun_inbound(settings, service_address, eff_state) {
     if (proxy_mode(settings) != "tun")
         return null;
 
-    if (!core_profile.supports_inbound("tun", detect_sing_box_version(), null)) {
+    if (!core_profile.supports_inbound("tun", detect_core_version(), null)) {
         warn("proxy_mode is 'tun' but this core has no tun inbound; falling back to tproxy\n");
         return null;
     }
@@ -1023,7 +929,7 @@ function tun_inbound(settings, service_address, eff_state) {
 function tproxy_inbound_matcher() {
     let settings = runtime_settings();
     let mode = proxy_mode(settings);
-    if (mode == "tun" && core_profile.supports_inbound("tun", detect_sing_box_version(), null))
+    if (mode == "tun" && core_profile.supports_inbound("tun", detect_core_version(), null))
         return [ runtime_constants.TUN_INBOUND_TAG ];
     if (mode == "socks")
         return [ runtime_constants.CLIENT_MIXED_INBOUND_TAG ];
@@ -1036,153 +942,34 @@ function section_enabled(section) {
     return bool_option(section, "enabled", true);
 }
 
-function is_tachyon_core_version(sb_version_val) {
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-    // The suffix is decisive when it is there.
-    if (core_profile.profile_by_version(as_string(sb_version_val)) != "")
-        return true;
-
-    // A recorded variant in state file (including SB_VARIANT_STATE_FILE during pre-flight)
-    // is explicit evidence: if set to anything other than tachyon-core (e.g. lx, extended),
-    // this is not tachyon-core.
-    let recorded_variant = variant_state.read_variant_marker();
-    if (recorded_variant != "")
-        return recorded_variant == "tachyon-core";
-
-    // Any version with a non-upstream, non-tachyon-core profile (e.g. -lx, extended)
-    // is definitely not tachyon-core.
-    let prof = core_profile.profile(as_string(sb_version_val), "");
-    if (prof != "upstream" && prof != "tachyon-core")
-        return false;
-
-    // Otherwise only believe the banner when the version names nothing else: with
-    // an explicit override in hand, that override is the build being generated for
-    // and the binary on disk is not evidence about it.
-    let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
-    if (override != "" && prof == "upstream") {
-        let preflight = getenv("SB_PREFLIGHT_BINARY");
-        if (preflight && preflight != "")
-            return sing_box_banner_names_tachyon_core();
-        return false;
-    }
-
-    if (sing_box_banner_names_tachyon_core())
-        return true;
-
-    if (match(as_string(sb_version_val), /^v?0\.[0-9]+\.[0-9]+/) != null)
-        return true;
-
-    return false;
+function is_tachyon_core_version(core_version_val) {
+    return true;
 }
 
-function is_sb_1_14_plus_detected(sb_version_val) {
-    if (is_tachyon_core_version(sb_version_val))
-        return true;
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-    if (sb_version_val != "") {
-        let m = match(sb_version_val, /^v?([0-9]+)\.([0-9]+)/);
-        if (m) {
-            let major = int(m[1]);
-            let minor = int(m[2]);
-            return major > 1 || (major == 1 && minor >= 14);
-        }
-    }
-    return false;
+function is_core_1_14_plus_detected(core_version_val) {
+    return true;
 }
 
-function is_sb_1_15_plus_detected(sb_version_val) {
-    if (is_tachyon_core_version(sb_version_val))
-        return true;
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-    let prof = core_profile.profile(as_string(sb_version_val), "");
-    let pdata = core_profile.profile_data(prof);
-    if (pdata && pdata.schema_1_15 == "no")
-        return false;
-    if (sb_version_val != "") {
-        let m = match(sb_version_val, /^v?([0-9]+)\.([0-9]+)/);
-        if (m) {
-            let major = int(m[1]);
-            let minor = int(m[2]);
-            return major > 1 || (major == 1 && minor >= 15);
-        }
-    }
-    return false;
+function is_core_1_15_plus_detected(core_version_val) {
+    return true;
 }
 
-function is_sing_box_lx_detected(sb_version_val) {
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-    let s = as_string(sb_version_val);
-    if (s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0)
-        return true;
-    let sb_variant_val = variant_state.read_variant_marker();
-    return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
+function is_tachyon_core_detected(core_version_val) {
+    return true;
 }
 
-function is_sing_box_extended_detected(sb_version_val) {
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-    let s = as_string(sb_version_val);
-    let sb_variant_val = variant_state.read_variant_marker();
-    return core_profile.supports_unified_delay(s, sb_variant_val);
+function certificate_pin_field(core_version_val) {
+    return "certificate_sha256";
 }
 
-// Tachyon's own core reports a version from its own series and prints no build
-// tags, so the -tachyon. suffix and the variant marker file are the only signals.
-function is_tachyon_core_detected(sb_version_val) {
-    return is_tachyon_core_version(sb_version_val);
-}
-
-// Which TLS field carries the pin, and "" when this build cannot pin at all.
-//
-// The field is not one thing renamed twice - the two names hash different
-// things. certificate_sha256 is over the whole DER certificate, which is what a
-// pcs value from a proxy link is; certificate_public_key_sha256 is over the
-// public key. Putting a certificate hash under the public-key field pins
-// something the server never presents, so the field has to be chosen, not
-// swapped.
-//
-// Verified on the real binaries: stock 1.14.2 and 1.14.2-lx.12 both reject
-// certificate_sha256 with "unknown field" and both accept
-// certificate_public_key_sha256. lx tracks upstream but does not carry the 1.15
-// field, so its version number says nothing either way - the marker decides.
-// Tachyon's own core is the same case one step further: the string
-// certificate_sha256 does not occur in its config crate at all, while
-// certificate_public_key_sha256 is in its TLS allowlist
-// (crates/core-config/src/validate.rs).
-function certificate_pin_field(sb_version_val) {
-    if (sb_version_val == null || sb_version_val == "")
-        sb_version_val = detect_sing_box_version();
-
-    // Our own core takes certificate_sha256, which is the field a proxy link's
-    // pcs actually is - so it gets it. The public-key field is the older one and
-    // hashes something else.
-    if (is_tachyon_core_detected(sb_version_val))
-        return "certificate_sha256";
-
-    if (is_sing_box_lx_detected(sb_version_val))
-        return "certificate_public_key_sha256";
-
-    if (is_sb_1_15_plus_detected(sb_version_val))
-        return "certificate_sha256";
-
-    return "";
-}
-
-// Whether this build can carry a pin at all, under whichever field it accepts.
-// lx and our own core pass this on the public-key field; see
-// certificate_pin_field for why that is not a rename.
-function is_certificate_sha256_supported(sb_version_val) {
-    return certificate_pin_field(sb_version_val) != "";
+function is_certificate_sha256_supported(core_version_val) {
+    return true;
 }
 
 const VERBOSE_LOG_PATH = "/tmp/tachyon-core/tachyon-core.log";
 
-function singbox_log_section(log_level, sb_version_val) {
-    if (log_level == "panic" && is_tachyon_core_detected(sb_version_val))
+function core_log_section(log_level, core_version_val) {
+    if (log_level == "panic")
         log_level = "fatal";
 
     let section = {
@@ -1191,14 +978,10 @@ function singbox_log_section(log_level, sb_version_val) {
         timestamp: false
     };
 
-    // Per-connection events (including sing-box's benign "stream N canceled by
-    // remote with error code 0" and WAN-down "no route to internet" bursts at
-    // ERROR/WARN level) flood OpenWrt's 128 KiB logd ring within ~10 minutes and
-    // evict netifd/pppd/hostapd/dnsmasq history (issue #365). Route all non-fatal
-    // levels to the tmpfs log file (auto-trimmed to 512 KiB by watchdog/failover).
-    // logd stamps syslog lines, but nothing stamps the file: without the core's
-    // own timestamp a warning there cannot be matched to the moment a client
-    // failed. Syslog output keeps timestamp off so lines are not stamped twice.
+    // Per-connection events (including benign stream cancellations and WAN-down
+    // "no route to internet" bursts at ERROR/WARN level) flood OpenWrt's 128 KiB
+    // logd ring within ~10 minutes and evict netifd/pppd/hostapd/dnsmasq history.
+    // Route all non-fatal levels to the tmpfs log file (auto-trimmed by watchdog/failover).
     if (log_level == "warn" || log_level == "error" || log_level == "info" || log_level == "debug" || log_level == "trace") {
         section.output = VERBOSE_LOG_PATH;
         section.timestamp = true;
@@ -1212,15 +995,8 @@ function base_config(settings, service_address, runtime_context) {
     let log_level = option(settings, "log_level", "warn");
     let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
     let turbo_cache = bool_option(settings, "dns_turbo_cache", false);
-    // Persistent by default. The FakeIP pool hands out addresses and the core
-    // keeps the reverse mapping; clients cache the address they were given, so
-    // a mapping that disappears (tmpfs, and therefore every reboot) makes the
-    // next packet for that address die with "missing fakeip record". Only the
-    // client could repair the mismatch, and it will not. Both routers checked
-    // run /usr/share/sing-box/cache.db, so this also matches what is deployed.
     let cache_path = option(settings, "cache_path", "/usr/share/tachyon-core/cache.db");
-    if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/tachyon-core/cache.db" ||
-                        cache_path == "/usr/share/sing-box/cache.db"))
+    if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/tachyon-core/cache.db"))
         cache_path = "/etc/tachyon-core/cache.db";
 
     // Say it out loud rather than degrading quietly: a deliberately volatile
@@ -1315,7 +1091,7 @@ function base_config(settings, service_address, runtime_context) {
         diag_fakeip_rule.query_type = [ "A" ];
     for (let rule in [
         // HTTPS/SVCB records are how a client discovers DoH servers, so they
-        // must not be answered - but with NODATA, not REFUSED. sing-box's
+        // must not be answered - but with NODATA, not REFUSED. tachyon-core's
         // `reject` answers REFUSED unconditionally (dns/router.go has no rcode
         // option on the action at all), and resolvers read REFUSED as the
         // server refusing to serve: they retry, switch servers or mark the
@@ -1404,51 +1180,38 @@ for (let inbound in dns_config.inbounds)
         reverse_mapping: bool_option(settings, "dns_reverse_mapping", true)
     };
 
-    let sb_version_val = detect_sing_box_version();
-    let is_sb_1_14_plus = is_sb_1_14_plus_detected(sb_version_val);
-    let is_sb_1_15_plus = is_sb_1_15_plus_detected(sb_version_val);
-    let is_sb_extended = is_sing_box_extended_detected(sb_version_val);
-    ctx.is_sb_1_14_plus = function() { return is_sb_1_14_plus; };
-    ctx.is_sb_1_15_plus = function() { return is_sb_1_15_plus; };
-    ctx.is_sing_box_extended = function() { return is_sb_extended; };
-
-    let use_legacy_rdrc = !is_sb_1_14_plus;
+    let core_version_val = detect_core_version();
+    ctx.is_core_1_14_plus = function() { return true; };
+    ctx.is_core_1_15_plus = function() { return true; };
 
     runtime_context.ipv6_active = eff_state.ipv6_active;
     let route_section = runtime_route.config(settings, runtime_context);
-    if (is_sb_1_14_plus)
-        route_section.default_http_client = "ruleset-http";
+    route_section.default_http_client = "ruleset-http";
 
-    if (is_sb_1_14_plus) {
-        let opt_timeout = trim(option(settings, "dns_optimistic_timeout", "6h")) || "6h";
-        if (opt_timeout == "3d" || opt_timeout == "72h")
-            opt_timeout = "6h";
-        dns_section.optimistic = {
-            enabled: bool_option(settings, "dns_optimistic_cache", true),
-            timeout: opt_timeout
-        };
-    }
+    let opt_timeout = trim(option(settings, "dns_optimistic_timeout", "6h")) || "6h";
+    if (opt_timeout == "3d" || opt_timeout == "72h")
+        opt_timeout = "6h";
+    dns_section.optimistic = {
+        enabled: bool_option(settings, "dns_optimistic_cache", true),
+        timeout: opt_timeout
+    };
 
     let cache_file_section = {
         enabled: true,
         path: cache_path,
         store_fakeip: eff_state.fakeip_enabled
     };
-    if (use_legacy_rdrc)
-        cache_file_section.store_rdrc = true;
-    else if (bool_option(settings, "dns_cache_store_disk", false))
+    if (bool_option(settings, "dns_cache_store_disk", false))
         cache_file_section.store_dns = true;
 
-    if (is_sb_1_15_plus) {
-        cache_file_section.buffer_size = option(settings, "cache_buffer_size", "16KB");
-        let flush_int = option(settings, "cache_flush_interval", "60s");
-        if (flush_int == "" || flush_int == "10s")
-            flush_int = "60s";
-        cache_file_section.flush_interval = flush_int;
-    }
+    cache_file_section.buffer_size = option(settings, "cache_buffer_size", "16KB");
+    let flush_int = option(settings, "cache_flush_interval", "60s");
+    if (flush_int == "" || flush_int == "10s")
+        flush_int = "60s";
+    cache_file_section.flush_interval = flush_int;
 
     let base_cfg = {
-        log: singbox_log_section(log_level, sb_version_val),
+        log: core_log_section(log_level, core_version_val),
         dns: dns_section,
         ntp: {},
         certificate: {},
@@ -1464,13 +1227,7 @@ for (let inbound in dns_config.inbounds)
         __dns_hosts_predefined: dns_hosts_predefined
     };
 
-    let want_unified_delay = bool_option(settings, "unified_delay", false) ||
-        lc(option(settings, "latency_test_mode", "standard")) == "keepalive";
-    if (want_unified_delay && is_sb_extended)
-        base_cfg.experimental.unified_delay = { enabled: true };
-
-    if (is_sb_1_14_plus)
-        base_cfg.http_clients = [{ tag: "ruleset-http" }];
+    base_cfg.http_clients = [{ tag: "ruleset-http" }];
 
     return base_cfg;
 }
@@ -1478,8 +1235,7 @@ for (let inbound in dns_config.inbounds)
 
 function mixed_proxy_enabled_action(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
-        action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-        action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "group";
+        action == "awg" || action == "desync" || action == "wdtt" || action == "csqtt" || action == "group";
 }
 
 function add_mixed_proxy_for_section(config, section, service_address) {
@@ -2308,7 +2064,7 @@ function strip_certificate_pins_if_unsupported(config) {
         }
     }
     if (stripped)
-        warn("installed sing-box (", detect_sing_box_version() || "unknown",
+        warn("installed tachyon-core (", detect_core_version() || "unknown",
             ") does not accept ", join(", ", drop),
             "; those certificate pins were removed to keep the config loadable\n");
 }
@@ -2509,7 +2265,7 @@ function finalize_config_owners(config, owners, output_path) {
 }
 
 // A quarantined section contributes no outbound, but selectors and urltest
-// groups of *other* sections can still reference its tag. sing-box then dies
+// groups of *other* sections can still reference its tag. tachyon-core then dies
 // with "dependency[...] not found" at start and procd loops the whole core.
 // Prune every missing reference from group members before the config ships
 // (issue #253).
@@ -2700,13 +2456,10 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     if (eff_state.fakeip_enabled && type(config.dns) == "object" && type(config.dns.rules) == "array") {
         let server_dns_inbounds = [];
         for (let server in servers) {
-            if (runtime_servers.is_native_tailscale(server))
-                continue;
             if (option(server, "protocol", "vless") == "tailscale")
                 continue;
             let ib = runtime_constants.server_inbound_tag(server[".name"]);
             if (option(server, "protocol", "vless") == "shadowtls" &&
-                variant_state.is_tachyon_core() &&
                 trim(as_string(option(server, "shadowtls_detour", ""))) == "")
                 ib += "-inner";
             if (index(server_dns_inbounds, ib) < 0)
@@ -2991,11 +2744,10 @@ ctx.uci_bin_to_hex = uci_bin_to_hex;
 ctx.download_detour_tag = download_detour_tag;
 ctx.atomic_write_json_file = atomic_write_json_file;
 ctx.tproxy_inbound_matcher = tproxy_inbound_matcher;
-ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
-ctx.is_sb_1_15_plus = is_sb_1_15_plus_detected;
-ctx.is_sing_box_lx = is_sing_box_lx_detected;
+ctx.is_core_1_14_plus = is_core_1_14_plus_detected;
+ctx.is_core_1_15_plus = is_core_1_15_plus_detected;
 ctx.is_tachyon_core = is_tachyon_core_detected;
-ctx.detect_sing_box_version = detect_sing_box_version;
+ctx.detect_core_version = detect_core_version;
 ctx.is_certificate_sha256_supported = is_certificate_sha256_supported;
 ctx.ipv6_effective_state = function() { return effective_ipv6_state(runtime_settings()); };
 
@@ -3051,18 +2803,17 @@ else if (mode == "object-nonempty")
 else if (mode == "is-cert-pin-supported")
     exit(is_certificate_sha256_supported(ARGV[1]) ? 0 : 1);
 else if (mode == "is-sb-1-14-plus")
-    exit(is_sb_1_14_plus_detected(ARGV[1]) ? 0 : 1);
+    exit(is_core_1_14_plus_detected(ARGV[1]) ? 0 : 1);
 else if (mode == "is-sb-1-15-plus")
-    exit(is_sb_1_15_plus_detected(ARGV[1]) ? 0 : 1);
+    exit(is_core_1_15_plus_detected(ARGV[1]) ? 0 : 1);
 else if (mode == "certificate-pin-field") {
     let field = certificate_pin_field(ARGV[1]);
     print(field + "\n");
     exit(field != "" ? 0 : 1);
 }
 else if (mode == "version-detect") {
-    // Exposed so the version source can be exercised directly: a state file that
-    // disagrees with the binary has to lose, and that is only observable here.
-    print(detect_sing_box_version() + "\n");
+    // Exposed so the version source can be exercised directly.
+    print(detect_core_version() + "\n");
     exit(0);
 }
 else if (mode == "strip-cert-pins") {

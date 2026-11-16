@@ -145,7 +145,7 @@ function get_fuzzer_state() {
         return {
             running: false,
             job_id: null,
-            engine: "zapret2",
+            engine: "desync",
             target: "youtube_suite",
             progress_pct: 0,
             current_index: 0,

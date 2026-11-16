@@ -14,7 +14,7 @@ UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 VERSIONS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/versions.uc"
 HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/helpers.uc"
-SINGBOX_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc"
+TACHYON_CORE_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc"
 
 # Comments mention 2>&1 to explain the bug; only real redirections count.
 code_only() {
@@ -53,31 +53,31 @@ grep -Fq 'remove_file(output_path + ".stderr")' "$UPDATES_UC" ||
 grep -Fq '"*.out.stderr"' "$UPDATES_UC" ||
   fail "the age-based orphan cleanup must cover *.out.stderr"
 
-# --- validation must judge sing-box by its output, not its exit status ---------
+# --- validation must judge tachyon-core by its output, not its exit status ----
 #
-# `sing-box version` prints the version and can still exit non-zero or be
+# `tachyon-core version` prints the version and can still exit non-zero or be
 # signalled by the service stop that precedes the install. command_output()
 # discards stdout whenever the raw wait status is non-zero, so validation saw an
 # empty string, declared a working binary broken and rolled the install back with
 # exit_code 129 (128+SIGHUP).
 
-probe="$(sed -n '/^function read_sing_box_binary_version/,/^}/p' "$VERSIONS_UC" | code_only)"
-[ -n "$probe" ] || fail "components/versions.uc must define read_sing_box_binary_version"
+probe="$(sed -n '/^function read_core_binary_version/,/^}/p' "$VERSIONS_UC" | code_only)"
+[ -n "$probe" ] || fail "components/versions.uc must define read_core_binary_version"
 grep -Fq 'command_output_lenient(' <<<"$probe" ||
-  fail "read_sing_box_binary_version must keep stdout regardless of exit status"
+  fail "read_core_binary_version must keep stdout regardless of exit status"
 if grep -Eq '[^_]command_output\(' <<<"$probe"; then
-  fail "read_sing_box_binary_version must not use the status-gated command_output"
+  fail "read_core_binary_version must not use the status-gated command_output"
 fi
 
-version_output="$(sed -n '/^function sing_box_version_output/,/^}/p' "$SINGBOX_UC" | code_only)"
-[ -n "$version_output" ] || fail "tachyon_core/runtime.uc must define sing_box_version_output"
+version_output="$(sed -n '/^function core_version_output/,/^}/p' "$TACHYON_CORE_RUNTIME_UC" | code_only)"
+[ -n "$version_output" ] || fail "tachyon_core/runtime.uc must define core_version_output"
 grep -Fq 'command_output_lenient(' <<<"$version_output" ||
-  fail "sing_box_version_output must keep stdout regardless of exit status"
+  fail "core_version_output must keep stdout regardless of exit status"
 
 # ucode does not hoist: the helper must be declared before every call site.
 # Within the split module layout the declaration lives in components/helpers.uc
 # and consumers bind it via require, so only files that own a copy are checked.
-for file in "$SINGBOX_UC" "$HELPERS_UC"; do
+for file in "$TACHYON_CORE_RUNTIME_UC" "$HELPERS_UC"; do
   decl="$(grep -n '^function command_output_lenient' "$file" | head -1 | cut -d: -f1)"
   [ -n "$decl" ] || fail "$file must declare command_output_lenient"
   # Every mention that is not the declaration itself is a call site. The
@@ -118,7 +118,7 @@ function command_output_lenient(command) {
     return data != null ? "" + data : "";
 }
 
-let cmd = "printf 'sing-box version 1.13.18-extended-2.6.3\\n'; exit 1";
+let cmd = "printf 'tachyon-core version 0.4.5\\n'; exit 1";
 print("strict=[" + trim(command_output(cmd)) + "]\n");
 print("lenient=[" + trim(command_output_lenient(cmd)) + "]\n");
 UC
@@ -126,7 +126,7 @@ UC
   out="$(ucode -R "$WORK_DIR/probe.uc")"
   grep -Fq 'strict=[]' <<<"$out" ||
     fail "sanity: status-gated command_output was expected to drop the output, got: $out"
-  grep -Fq 'lenient=[sing-box version 1.13.18-extended-2.6.3]' <<<"$out" ||
+  grep -Fq 'lenient=[tachyon-core version 0.4.5]' <<<"$out" ||
     fail "command_output_lenient must return stdout of a command that exits non-zero, got: $out"
 fi
 

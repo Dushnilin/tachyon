@@ -239,10 +239,10 @@ function xhttp_extra_settings(query) {
     return result;
 }
 
-// Xray/Remnawave spell a few xHTTP settings differently from sing-box:
+// Xray/Remnawave spell a few xHTTP settings differently from tachyon-core:
 // `uplinkHTTPMethod` (capital HTTP), and the session id fields are
 // `SessionIDPlacement` / `sessionIDPlacement` / `SessionIDKey` /
-// `sessionIDKey`. Reading only the sing-box spellings dropped them, so a node
+// `sessionIDKey`. Reading only the tachyon-core spellings dropped them, so a node
 // that needed them silently lost its session config and timed out.
 // Each alias argument accepts a list; the first present value wins.
 function xhttp_alias_keys(value) {
@@ -443,7 +443,7 @@ function xhttp_optional_enum(object, key, value, allowed) {
 
 function xhttp_apply_v2_settings(result, primary, extra) {
     // XHTTP v2 keys (session/seq placement, uplink-data placement, X-Padding
-    // obfuscation). Every field is opt-in per the sing-box-lx contract; the
+    // obfuscation). Every field is opt-in per the tachyon-core contract; the
     // v1 wire shape stays byte-identical when none are present.
     xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, [ "sessionPlacement", "SessionIDPlacement", "sessionIDPlacement", "sessionIdPlacement" ], [ "session_placement", "session_id_placement" ]), [ "path", "query", "header", "cookie" ]);
     xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, [ "sessionKey", "SessionIDKey", "sessionIDKey", "sessionIdKey" ], [ "session_key", "session_id_key" ]));
@@ -938,7 +938,7 @@ function add_tls(url, security, default_tls) {
             tls.reality.public_key = public_key;
         if (short_id != "")
             tls.reality.short_id = short_id;
-        // Three spellings of the same flag are in the wild: the sing-box
+        // Three spellings of the same flag are in the wild: the core
         // snake_case one, the camelCase one some panels emit, and the
         // kebab-case one a share link carries. Priority order is kept: the
         // first one that is present wins, and an explicit false is never
@@ -5773,7 +5773,7 @@ function normalize_xray_configs(configs) {
     return outbounds;
 }
 
-function normalize_sing_box_xhttp_transport(outbound) {
+function normalize_core_xhttp_transport(outbound) {
     if (type(outbound) != "object" || type(outbound.transport) != "object")
         return outbound;
     if (outbound.transport.type != "xhttp")
@@ -5800,7 +5800,7 @@ function normalize_sing_box_xhttp_transport(outbound) {
     return outbound;
 }
 
-function normalize_sing_box_hysteria2_outbound(outbound) {
+function normalize_core_hysteria2_outbound(outbound) {
     if (type(outbound) == "object" &&
         lc(as_string(outbound.type || "")) == "hysteria2" &&
         type(outbound.tls) == "object" &&
@@ -5810,7 +5810,7 @@ function normalize_sing_box_hysteria2_outbound(outbound) {
     return outbound;
 }
 
-function normalize_sing_box_tuic_outbound(outbound) {
+function normalize_core_tuic_outbound(outbound) {
     if (type(outbound) == "object" &&
         lc(as_string(outbound.type || "")) == "tuic" &&
         type(outbound.tls) == "object" &&
@@ -5820,11 +5820,11 @@ function normalize_sing_box_tuic_outbound(outbound) {
     return outbound;
 }
 
-function sing_box_urltest_group(outbound) {
+function core_urltest_group(outbound) {
     return type(outbound) == "object" && lc(as_string(outbound.type || "")) == "urltest";
 }
 
-function sing_box_outbound_tag(outbound) {
+function core_outbound_tag(outbound) {
     return type(outbound) == "object" ? as_string(outbound.tag || "") : "";
 }
 
@@ -5881,7 +5881,7 @@ parse_amnezia_vpn_container = function(line) {
                 continue;
             let outbounds = normalize_xray_configs([ last_cfg ]);
             for (let ob in outbounds) {
-                if (type(ob) != "object" || ob.__tachyon_hidden || sing_box_urltest_group(ob))
+                if (type(ob) != "object" || ob.__tachyon_hidden || core_urltest_group(ob))
                     continue;
                 if ((as_string(ob.server || "") == "" || ob.server == "$REMOTE_HOST" || ob.server == "$SERVER_IP_ADDRESS") && host_fallback != "")
                     ob.server = host_fallback;
@@ -5894,7 +5894,7 @@ parse_amnezia_vpn_container = function(line) {
                     else
                         ob.flow = nf;
                 }
-                ob = normalize_sing_box_xhttp_transport(ob);
+                ob = normalize_core_xhttp_transport(ob);
                 let tag_nm = frag != "" ? frag : (clean_desc != "" ? clean_desc : as_string(ob.remark || ob.tag || "Amnezia-Xray"));
                 ob.tag = tag_nm;
                 ob.remark = tag_nm;
@@ -6043,7 +6043,7 @@ function is_json_candidate_container(item) {
         type(item.nodes) == "array" || type(item.items) == "array" ||
         type(item.endpoints) == "array")
         return true;
-    if (type(item.outbounds) == "array" && !sing_box_urltest_group(item) && lc(as_string(item.type || "")) != "selector") {
+    if (type(item.outbounds) == "array" && !core_urltest_group(item) && lc(as_string(item.type || "")) != "selector") {
         for (let ob in item.outbounds) {
             if (type(ob) == "object")
                 return true;
@@ -6187,7 +6187,7 @@ function expand_json_config_outbound_items(item, fallback_peer) {
     return result;
 }
 
-function normalize_sing_box_wireguard_outbound(outbound) {
+function normalize_core_wireguard_outbound(outbound) {
     if (type(outbound) != "object")
         return outbound;
     let out_type = lc(trim(as_string(outbound.type || "")));
@@ -6271,7 +6271,7 @@ function normalize_sing_box_wireguard_outbound(outbound) {
     return outbound;
 }
 
-function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
+function normalize_core_json_outbounds(candidates, fallback_peer) {
     candidates = flatten_json_candidate_items(candidates, fallback_peer);
     let outbounds = [];
     let urltest_refs = {};
@@ -6331,7 +6331,7 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
             }
             delete outbound.streamSettings;
         }
-        outbound = normalize_sing_box_wireguard_outbound(outbound);
+        outbound = normalize_core_wireguard_outbound(outbound);
         if (outbound.type == "wireguard" && (type(outbound.peers) != "array" || length(outbound.peers) == 0))
             continue;
         if (lc(as_string(outbound.type || "")) == "vless" && outbound.flow != null) {
@@ -6343,13 +6343,13 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
             else
                 outbound.flow = norm_flow;
         }
-        outbound = normalize_sing_box_hysteria2_outbound(outbound);
-        outbound = normalize_sing_box_tuic_outbound(outbound);
-        push(outbounds, normalize_sing_box_xhttp_transport(outbound));
+        outbound = normalize_core_hysteria2_outbound(outbound);
+        outbound = normalize_core_tuic_outbound(outbound);
+        push(outbounds, normalize_core_xhttp_transport(outbound));
     }
 
     for (let outbound in outbounds) {
-        if (sing_box_urltest_group(outbound)) {
+        if (core_urltest_group(outbound)) {
             for (let tag_name in array_or_empty(outbound.outbounds)) {
                 tag_name = as_string(tag_name);
                 if (tag_name != "")
@@ -6363,8 +6363,8 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
     }
 
     for (let outbound in outbounds) {
-        let tag_name = sing_box_outbound_tag(outbound);
-        if (sing_box_urltest_group(outbound)) {
+        let tag_name = core_outbound_tag(outbound);
+        if (core_urltest_group(outbound)) {
             outbound.__tachyon_allow_group = true;
             continue;
         }
@@ -6375,7 +6375,7 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
     return outbounds;
 }
 
-function normalize_sing_box_json_value(value, output_file, headers_file) {
+function normalize_core_json_value(value, output_file, headers_file) {
     let candidates = [];
     let outbounds = [];
 
@@ -6387,7 +6387,7 @@ function normalize_sing_box_json_value(value, output_file, headers_file) {
     if (length(outbounds) > 0) {
         return write_json_file(output_file, {
             version: 1,
-            format: "sing-box-json",
+            format: "tachyon-core-json",
             outbounds: outbounds
         });
     }
@@ -6413,7 +6413,7 @@ function normalize_sing_box_json_value(value, output_file, headers_file) {
     else if (type(value) == "object" && (type(value.type) == "string" || type(value.protocol) == "string" || value.config != null || value.awg_config != null || value.wg_config != null))
         candidates = [value];
 
-    outbounds = normalize_sing_box_json_outbounds(candidates, fallback_peer);
+    outbounds = normalize_core_json_outbounds(candidates, fallback_peer);
 
     if (length(outbounds) == 0) {
         fs.unlink(output_file);
@@ -6422,7 +6422,7 @@ function normalize_sing_box_json_value(value, output_file, headers_file) {
 
     return write_json_file(output_file, {
         version: 1,
-        format: "sing-box-json",
+        format: "tachyon-core-json",
         outbounds: outbounds
     });
 }
@@ -6521,11 +6521,11 @@ function normalize_content_data(data, output_file, depth, headers_file) {
     if (first == "{" || first == "[") {
         let decoded_json = json_decode_text(data);
         if (decoded_json != null)
-            return normalize_sing_box_json_value(decoded_json, output_file, headers_file);
+            return normalize_core_json_value(decoded_json, output_file, headers_file);
     }
 
     if (index(lc(data), "[interface]") >= 0 && match(data, /(^|\n)[ \t]*\[[Ii]nterface\][ \t]*(\n|$)/) != null) {
-        if (normalize_sing_box_json_value({ config: data }, output_file, headers_file))
+        if (normalize_core_json_value({ config: data }, output_file, headers_file))
             return true;
     }
 
@@ -6704,13 +6704,13 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
     }
 
     let fallback_peer = extract_peer_params_from_headers_file(headers_file);
-    let outbounds = normalize_sing_box_json_outbounds(parsed, fallback_peer);
+    let outbounds = normalize_core_json_outbounds(parsed, fallback_peer);
     if (length(outbounds) == 0)
         return false;
 
     return write_json_file(output_file, {
         version: 1,
-        format: "sing-box-json",
+        format: "tachyon-core-json",
         outbounds: outbounds
     });
 }
@@ -6845,7 +6845,7 @@ function module_exports() {
         add_transport,
         parse_subscription_source_entry,
         extract_peer_params_from_headers_file,
-        normalize_sing_box_json_outbounds,
+        normalize_core_json_outbounds,
         validate_subscription,
         normalize_content_validated,
         core_subscription_cli_supported,

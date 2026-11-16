@@ -77,33 +77,7 @@ if command -v ucode >/dev/null 2>&1; then
     die("server-VLESSXHTTP-in not found in inbounds");
   '
 
-  # 3. On sing-box-lx 1.14.3-lx.23 (Go sing-box 1.x), reality inbounds must NOT
-  # emit certificate/key (`certificate is unavailable in reality`, issue #233).
-  export SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon-core-variant"
-  export SB_VERSION_STATE_FILE="$WORK_DIR/tachyon-core-version"
-  printf 'lx\n' > "$SB_VARIANT_STATE_FILE"
-  printf '1.14.3-lx.23\n' > "$SB_VERSION_STATE_FILE"
-  config_lx="$WORK_DIR/config-lx.json"
-  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
-    "$WORK_DIR/fixture.json" "$config_lx" "127.0.0.1" "0" "1" >/dev/null
-
-  ucode -L "$TACHYON_LIB" -e '
-  let fs = require("fs");
-  let parsed = json(fs.readfile("'"$config_lx"'"));
-  let found = false;
-  for (let inbound in parsed.inbounds) {
-    if (inbound.tag == "server-VLESSXHTTP-in") {
-      found = true;
-      if (inbound.tls.certificate != null || inbound.tls.key != null ||
-          inbound.tls.certificate_path != null || inbound.tls.key_path != null)
-        die("sing-box-lx 1.14.3-lx.23 reality inbound must omit certificate/key");
-    }
-  }
-  if (!found)
-    die("server-VLESSXHTTP-in not found in config-lx.json");
-  '
-
-  # 4. Quarantined server sections must be skipped by enabled_servers() so a
+  # 3. Quarantined server sections must be skipped by enabled_servers() so a
   # broken server inbound does not crash the whole service (issues #233/#234).
   cat >"$WORK_DIR/fixture-quarantine.json" <<'JSON'
 {

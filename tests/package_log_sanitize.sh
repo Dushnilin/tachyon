@@ -70,8 +70,8 @@ for (let line in suppressed) {
 
 // Test preservation of legitimate install/config messages
 let preserved = [
-    "Installing sing-box (1.10.0) to root...",
-    "Configuring sing-box.",
+    "Installing tachyon-core (0.4.5) to root...",
+    "Configuring tachyon-core.",
     "Updating database at /tmp/apk..."
 ];
 

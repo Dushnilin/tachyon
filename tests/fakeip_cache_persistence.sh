@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # The FakeIP cache must survive a reboot, and saying so when it does not.
 #
-# sing-box hands out addresses from the FakeIP pool and keeps the reverse
+# tachyon-core hands out addresses from the FakeIP pool and keeps the reverse
 # mapping. Clients (and dnsmasq) cache the address they were given, so if the
 # mapping is gone when a packet arrives, the core logs "missing fakeip record"
 # and that connection dies. The mapping therefore has to outlive a reboot: the
 # only client that can repair the mismatch is the client, and it will not.
 #
 # The default path used to be /tmp/tachyon-core/cache.db, which is tmpfs. Both
-# routers checked carry /usr/share/sing-box/cache.db instead, so the deployed
+# routers checked carry persistent cache storage instead, so the deployed
 # behaviour and the generated default disagreed - and a router following the
 # default would lose every mapping on each reboot.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"

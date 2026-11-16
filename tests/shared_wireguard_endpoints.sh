@@ -2,10 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
 export TACHYON_CONFIG_OWNERS_FILE="$WORK_DIR/owners.json"
-export SB_VERSION_OVERRIDE=0.5.2
-printf 'tachyon-core' >"$SB_VARIANT_STATE_FILE"
 
 node - "$WORK_DIR" <<'JS'
 const fs = require("fs");
@@ -51,9 +48,6 @@ for name in fixture removed unused; do
         "$WORK_DIR/$name.json" "$WORK_DIR/$name-config.json" "127.0.0.1" "0"
 done
 
-printf 'lx' >"$SB_VARIANT_STATE_FILE"
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-    "$WORK_DIR/fixture.json" "$WORK_DIR/lx-config.json" "127.0.0.1" "0"
 
 node - "$WORK_DIR" <<'JS'
 const assert = require("assert").strict;
@@ -94,7 +88,6 @@ function verify(name, sections) {
 }
 verify("fixture", ["a", "b", "c"]);
 verify("removed", ["b", "c"]);
-assert.equal(read("lx").endpoints.filter(item => item.type === "wireguard").length, 7);
 assert.equal((read("unused").endpoints || []).length, 0, "unused sources create no endpoint");
 JS
 echo "PASS: equivalent WireGuard transports are shared and section member tags still resolve"

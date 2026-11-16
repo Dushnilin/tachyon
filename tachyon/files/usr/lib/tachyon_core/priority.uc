@@ -242,16 +242,16 @@ function priority_clash_info() {
         let data = st ? fs.readfile(cfg_path) : null;
         if (data) {
             try {
-                let sb_cfg = json(data);
-                let ext = sb_cfg?.experimental?.clash_api?.external_controller;
+                let core_cfg = json(data);
+                let ext = core_cfg?.experimental?.clash_api?.external_controller;
                 if (ext) {
                     let parts = split(as_string(ext), ":");
                     let ip = length(parts) > 1 ? parts[0] : "";
                     let port = length(parts) > 1 ? parts[length(parts) - 1] : "9090";
                     host = (ip == "0.0.0.0" || ip == "") ? ("127.0.0.1:" + port) : as_string(ext);
                 }
-                if (sb_cfg?.experimental?.clash_api?.secret)
-                    secret = as_string(sb_cfg.experimental.clash_api.secret);
+                if (core_cfg?.experimental?.clash_api?.secret)
+                    secret = as_string(core_cfg.experimental.clash_api.secret);
             } catch (e) {}
         }
         cached_clash_base_url = "http://" + host;
@@ -731,7 +731,7 @@ function choose_from_level_range(group, start_index, end_index, probe, skip_tag)
 // Single-shot RTT noise on a home line is tens of milliseconds; without a
 // tolerance the group ping-pongs on noise and the user pays a reconnect every
 // fastest_check_interval for a "gain" that was never real. Same default the
-// sing-box urltest uses.
+// tachyon-core urltest uses.
 const FASTEST_SWITCH_TOLERANCE_MS = 50;
 
 function choose_fastest_same_level(group, level_index, active_tag, probe) {
@@ -1285,6 +1285,6 @@ else if (mode == "select-faster-fixture")
 else if (mode == "warm-fixture")
     warm_fixture(ARGV[1], ARGV[2]);
 else {
-    warn("Usage: singbox/priority.uc <start-runtime|stop-runtime|worker|select-fixture|select-faster-fixture|warm-fixture>\n");
+    warn("Usage: tachyon_core/priority.uc <start-runtime|stop-runtime|worker|select-fixture|select-faster-fixture|warm-fixture>\n");
     exit(1);
 }

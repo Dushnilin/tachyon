@@ -11,7 +11,7 @@ sequenceDiagram
     participant DNSMasq as dnsmasq (:53)
     participant CoreDNS as tachyon-core DNS (127.0.0.42:53)
     participant PREROUTING as nftables inet TachyonTable
-    participant Core as tachyon-core TProxy (:1602) / NFQueue
+    participant Core as tachyon-core TProxy (:1602)
     participant WAN as WAN / Internet
 
     Client->>DNSMasq: DNS Query (e.g. A youtube.com)
@@ -20,12 +20,9 @@ sequenceDiagram
     Client->>PREROUTING: TCP/UDP Packet to 198.18.x.x or matched IP/Subnet
     alt Packet matches Local / Bypass Set (localv4, localv6, excluded client)
         PREROUTING->>WAN: Direct Forwarding (0 ms overhead)
-    else Packet matches NFQueue Desync Rule (Zapret v1 / v2)
-        PREROUTING->>Core: Dispatch to NFQueue 200+ / 201+ (nfqws / nfqws2)
-        Core->>WAN: Desynchronized packets (marked 0x40000000 to avoid re-queue)
     else Packet matches FakeIP (198.18.0.0/15) or TProxy Set (tachyon_subnets)
         PREROUTING->>Core: Set fwmark 0x04000000 -> ip rule table tachyon -> tproxy to :1602
-        Core->>WAN: Routed via matched Section Outbound / Balancer / Provider
+        Core->>WAN: Routed via matched Section Outbound / Desync / Balancer / Endpoint
     end
 ```
 
@@ -45,9 +42,8 @@ Tachyon encapsulates all its firewall rules inside a dedicated table `inet Tachy
    * Intercepts incoming LAN packets on `settings.source_network_interfaces` (default `br-lan`).
    * Excludes bypassed LAN client IPs/MACs and TorrServer direct ports.
    * Redirects FakeIP (`198.18.0.0/15` / `fc00::/18`) and matched destination sets to `tproxy to :1602 meta mark set mark | 0x04000000 accept`.
-3. **Output & NFQueue Chains**:
-   * Handles router-originated traffic and dispatches packets matching `zapret` / `zapret2` sections to kernel NFQueue (`queue num 200..299 bypass`).
-   * Packets emitted by `nfqws` / `nfqws2` carry `NFT_COMMON_MARK = 0x40000000` so they are never queued a second time.
+3. **Output & Router Traffic Chains**:
+   * Handles router-originated traffic (`output_redirect` / `output_tproxy6` when `route_router_traffic` is enabled) while bypassing `outbound_mark` (`0x08000000`) and local/bootstrap destinations.
 
 ### 2.2. Firewall Marks & Ports Contract (`core/constants.uc`)
 
@@ -56,12 +52,10 @@ Tachyon encapsulates all its firewall rules inside a dedicated table `inet Tachy
 | `NFT_TABLE_NAME` | `TachyonTable` | Dedicated `inet` nftables table |
 | `RT_TABLE_NAME` | `tachyon` (ID `205`) | Policy routing table in `/etc/iproute2/rt_tables` |
 | `NFT_FAKEIP_MARK` | `0x04000000` | Packet mark triggering policy routing lookup in table `tachyon` for TProxy `:1602` |
-| `NFT_COMMON_MARK` | `0x40000000` | Bypass mark set by `nfqws` / `nfqws2` on desynchronized packets |
-| `FUZZER_SANDBOX_MARK` | `0x08000000` | Isolated socket mark routed to NFQueue `298` / `299` during Strategy Fuzzer runs |
-| `TProxy Listen Port` | `1602` | `tachyon-core` / `sing-box` TCP+UDP transparent proxy inbound |
+| `NFT_OUTBOUND_MARK` | `0x08000000` | Outbound socket mark used by `tachyon-core` to prevent routing loops |
+| `TProxy Listen Port` | `1602` | `tachyon-core` TCP+UDP transparent proxy inbound |
 | `Core DNS Listen` | `127.0.0.42:53` | `tachyon-core` DNS resolver and FakeIP allocator (`198.18.0.0/15`) |
 | `Clash API Listen` | `127.0.0.1:9090` | Local Clash REST API for group selection, RTT probes, and telemetry |
-| `ByeDPI SOCKS Port` | `127.0.0.1:4539` | Local SOCKS5 listener for `ciadpi` (sandbox port `11089`) |
 
 ---
 

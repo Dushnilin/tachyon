@@ -231,7 +231,7 @@ function outbound_uses_xhttp(outbound) {
 
 function ensure_explicit_outbound_supported(outbound, source, name) {
     if (!ctx.runtime_supports_xhttp && outbound_uses_xhttp(outbound))
-        ctx.runtime_generate_unsupported(as_string(source) + " '" + as_string(name) + "' uses XHTTP transport, but sing-box-extended is not installed");
+        ctx.runtime_generate_unsupported(as_string(source) + " '" + as_string(name) + "' uses XHTTP transport, which is not supported by the installed tachyon-core");
 }
 
 function subscription_outbound_display_name(outbound) {
@@ -281,7 +281,7 @@ function compatible_subscription_outbounds(outbounds, section_name) {
         if (!supported_subscription_outbound(outbound))
             continue;
         if (!ctx.runtime_supports_xhttp && outbound_uses_xhttp(outbound)) {
-            warn_skipped_subscription_outbound(section_name, outbound, "XHTTP requires sing-box-extended");
+            warn_skipped_subscription_outbound(section_name, outbound, "XHTTP not supported");
             continue;
         }
         push(retained, outbound);
@@ -521,13 +521,13 @@ function assert_unique_outbound_tags(config) {
     let seen = {};
     for (let outbound in array_or_empty(config.outbounds)) {
         if (type(outbound) != "object")
-            ctx.runtime_generate_unsupported("generated sing-box outbound is not an object");
+            ctx.runtime_generate_unsupported("generated tachyon-core outbound is not an object");
 
         let tag_name = as_string(outbound.tag || "");
         if (tag_name == "")
-            ctx.runtime_generate_unsupported("generated sing-box outbound has an empty tag");
+            ctx.runtime_generate_unsupported("generated tachyon-core outbound has an empty tag");
         if (seen[tag_name])
-            ctx.runtime_generate_unsupported("generated sing-box config has duplicate outbound tag '" + tag_name + "'");
+            ctx.runtime_generate_unsupported("generated tachyon-core config has duplicate outbound tag '" + tag_name + "'");
         seen[tag_name] = true;
     }
 }
@@ -604,18 +604,15 @@ function tls_alpn_array(value, transport) {
 // generator and the validator ended up disagreeing about the same binary, and a
 // disagreement here is silent - the pin is simply dropped from the config.
 //
-// SB_VERSION_OVERRIDE still wins, because the whole point of it is to generate a
+// TACHYON_CORE_VERSION_OVERRIDE still wins, because the whole point of it is to generate a
 // config for a build that is not the one installed.
 function certificate_pin_field() {
-    let override = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
+    let override = trim(as_string(getenv("TACHYON_CORE_VERSION_OVERRIDE") || ""));
     let version = override != ""
         ? override
         : variant_state.read_version_state();
-    let variant = variant_state.read_variant_marker();
 
-    // With no state file to go on, let the model look at the installed binary
-    // rather than guessing from an empty version.
-    return core_profile.pin_field(version, variant);
+    return core_profile.pin_field(version, "tachyon-core");
 }
 
 function apply_link_tls(outbound, scheme, query) {
@@ -648,7 +645,7 @@ function apply_link_tls(outbound, scheme, query) {
         if (pin_field != "")
             tls[pin_field] = [ certificate_pin ];
         else
-            warn("this sing-box build has no usable TLS pin field; certificate pin from the link ignored\n");
+            warn("this tachyon-core build has no usable TLS pin field; certificate pin from the link ignored\n");
     }
 
     let alpn = tls_alpn_array(query.alpn, query.type);
@@ -1134,43 +1131,27 @@ function manual_tuic_outbound(link, tag_name) {
     return outbound;
 }
 
-function ensure_imported_vpn_lx() {
-    let variant = variant_state.read_variant_marker();
-    let version = variant_state.read_version_state();
-    if (version == "" && ctx.detect_sing_box_version)
-        version = as_string(ctx.detect_sing_box_version() || "");
-    if (variant == "" && match(version, /^v?0\.[0-9]+\.[0-9]+/) != null)
-        variant = "tachyon-core";
-    if (variant != "lx" && variant != "tachyon-core" && index(version, "-lx") < 0 && index(version, "-tachyon.") < 0 && match(version, /^v?0\.[0-9]+\./) == null)
-        ctx.runtime_generate_unsupported("vpn:// import is available only with sing-box-lx or tachyon-core");
+function ensure_imported_vpn_supported() {
+    // tachyon-core supports vpn:// imports natively.
 }
 
-// A desync outbound exists only in tachyon-core, and only from 0.1.7 on. On
-// any other core the emitted config would be rejected outright, so refuse with
-// a clear error instead of shipping a broken config.
+// A desync outbound exists in tachyon-core from 0.1.7 on.
 function ensure_desync_outbound_supported() {
     let version = variant_state.read_version_state();
-    if (version == "" && ctx.detect_sing_box_version)
-        version = as_string(ctx.detect_sing_box_version() || "");
-    let variant = variant_state.read_variant_marker();
-    if (variant == "" && match(version, /^v?0\.[0-9]+\.[0-9]+/) != null)
-        variant = "tachyon-core";
-    if (core_profile.supports_desync(version, variant) === true)
+    if (version == "" && ctx.detect_core_version)
+        version = as_string(ctx.detect_core_version() || "");
+    if (core_profile.supports_desync(version, "tachyon-core") === true)
         return;
     ctx.runtime_generate_unsupported("Native Desync requires tachyon-core 0.1.7 or newer (installed: " + as_string(version) + ")");
 }
 
-// An fptn outbound exists only in tachyon-core's protocol list: on every other
-// core the emitted config would be rejected outright, so refuse with a clear
-// error instead of shipping a broken config. fptn_transport_mode() is the one
-// resolver that already knows the answer — native exists on tachyon-core only.
 function ensure_fptn_outbound_supported() {
     if (connections && connections.fptn_transport_mode() != "native")
-        ctx.runtime_generate_unsupported("fptn:// links require tachyon-core; this core cannot dial FPTN");
+        ctx.runtime_generate_unsupported("fptn:// links require tachyon-core");
 }
 
 function add_imported_wireguard_endpoint(config, endpoint) {
-    ensure_imported_vpn_lx();
+    ensure_imported_vpn_supported();
     if (type(endpoint) == "object") {
         if (type(endpoint.amnezia) == "object") {
             for (let k, v in endpoint.amnezia) {
@@ -1179,12 +1160,10 @@ function add_imported_wireguard_endpoint(config, endpoint) {
             }
             delete endpoint.amnezia;
         }
-        if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
-            delete endpoint.fake_packets;
-            delete endpoint.fake_packets_size;
-            delete endpoint.fake_packets_delay;
-            delete endpoint.fake_packets_mode;
-        }
+        delete endpoint.fake_packets;
+        delete endpoint.fake_packets_size;
+        delete endpoint.fake_packets_delay;
+        delete endpoint.fake_packets_mode;
         endpoint.__wireguard_client = true;
         if (endpoint.address != null)
             endpoint.address = core_ip.normalize_to_cidrs(endpoint.address);
@@ -1358,7 +1337,7 @@ function fptn_token_payload(payload) {
 // (`tachyon-core fptn decode <token>`). Returns null when the binary is
 // missing or refuses, and the caller falls back to the raw-token form.
 function fptn_token_decode_via_core(token) {
-    let binary = getenv("SB_PREFLIGHT_BINARY") || getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
+    let binary = getenv("TACHYON_CORE_PREFLIGHT_BINARY") || getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core";
     if (fs.stat(binary) == null)
         return null;
     let result = exec.run({ argv: [ binary, "fptn", "decode", token ], timeout: 15 });
@@ -1425,7 +1404,7 @@ function manual_link_outbound(link, tag_name, display_info) {
     let scheme = url_scheme(link);
     // Preserve the base64 payload; do not URL-decode the complete link first.
     if (scheme == "vpn") {
-        ensure_imported_vpn_lx();
+        ensure_imported_vpn_supported();
         let endpoint = subscription_wireguard.from_vpn(link);
         if (endpoint == null)
             endpoint = subscription_parser.parse_share_link(link);
@@ -1483,7 +1462,7 @@ function manual_link_outbound(link, tag_name, display_info) {
         return manual_hysteria2_outbound(link, tag_name);
     if (scheme == "tuic")
         return manual_tuic_outbound(link, tag_name);
-    ctx.runtime_generate_unsupported("manual proxy link scheme is not supported by sing-box config generation yet");
+    ctx.runtime_generate_unsupported("manual proxy link scheme is not supported by tachyon-core config generation yet");
 }
 
 // fptn:// is a share link whose scheme is not a standard URI scheme the
@@ -1767,14 +1746,6 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
     }
 }
 
-function is_extended_variant_detected() {
-    let sb_variant_val = variant_state.read_variant_marker();
-    if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
-        return true;
-    let sb_version_val = variant_state.read_version_state();
-    return index(sb_version_val, "extended") >= 0;
-}
-
 function add_connection_text_urltest(config, state, section, taken, selector_tags, urltest_candidate_tags, index_offset) {
     let section_name = section[".name"];
     if (index(connections.urltests(section), "urltest") >= 0)
@@ -1949,7 +1920,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     // when at least one outbound that is neither a group nor a member of one
     // survives. Never drop leaf servers that came from Xray balancer/multi-config
     // conversion (those carry a share_link and represent the subscription's real
-    // proxy servers rather than internal sing-box urltest helper outbounds).
+    // proxy servers rather than internal tachyon-core urltest helper outbounds).
     let urltest_member_tags = include_urltest_groups === false
         ? (visibility_refs.urltest || {})
         : {};
@@ -2101,13 +2072,6 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (type(copied_outbound.tls) == "object" && copied_outbound.tls.enabled === true) {
             if (sub_tls_fp != "") {
                 copied_outbound.tls.utls = { enabled: true, fingerprint: sub_tls_fp };
-            } else if (ctx.is_sing_box_extended && ctx.is_sing_box_extended() &&
-                type(copied_outbound.tls.reality) == "object" && copied_outbound.tls.reality.enabled === true &&
-                copied_outbound.tls.reality.support_x25519mlkem768 === true &&
-                type(copied_outbound.tls.utls) == "object" &&
-                lc(as_string(copied_outbound.tls.utls.fingerprint || "")) == "firefox") {
-                warn("node '", display_name, "' in rule '", section_name,
-                    "' uses VLESS REALITY + Firefox uTLS + ML-KEM (support_x25519mlkem768) on sing-box-extended, which may fail reality verification; set TLS Fingerprint Override to 'chrome' on the subscription source if handshake fails\n");
             }
         }
         push(prepared, copied_outbound);
@@ -2386,7 +2350,7 @@ function outbound_detour_tag_for_section(section) {
         return "";
     // A deferred or quarantined detour target contributes no outbound at all;
     // emitting its tag anyway would leave a dangling detour and take the whole
-    // config down at sing-box check time.
+    // config down at tachyon-core check time.
     if (ctx.deferred_sections && ctx.deferred_sections[detour_section])
         return "";
     if (ctx.routes && type(ctx.routes.enabled_sections) == "function") {
@@ -2739,20 +2703,6 @@ function apply_section_packet_encoding_to_connection_outbounds(config, start_ind
     }
 }
 
-function enabled_action_index(sections, target_section, action_name) {
-    if (connections && connections.active_provider_section_index)
-        return connections.active_provider_section_index(action_name, sections, target_section);
-    let index = 0;
-    for (let section in sections) {
-        if (option(section, "action", "") != action_name)
-            continue;
-        index++;
-        if (section[".name"] == target_section[".name"])
-            return index;
-    }
-    return 0;
-}
-
 function build_and_push_tailscale_client_endpoint(config, src, tag_name, parent_section) {
     let safe_id = safe_tailscale_id(tag_name);
     let ephemeral = bool_option(src, "tailscale_ephemeral", false);
@@ -2947,129 +2897,17 @@ function add_openvpn_endpoint(config, section) {
     push(config.endpoints, endpoint);
 }
 
-function add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags, single_dpi_only) {
+function add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags) {
     if (!connections || !connections.section_effective_outbound_sources)
         return;
     let section_name = section[".name"];
-    let sec_tag = outbound_tag(section_name);
-    let all_sections = null;
-    // The section list is only needed for DPI sources, and reading it needs a
-    // UCI cursor the generator may not have (fixtures, unit tests). Read it
-    // lazily so a section without DPI sources never needs the cursor.
-    let dpi_sections = function() {
-        if (all_sections == null) {
-            all_sections = (ctx.routes && type(ctx.routes.enabled_sections) == "function" &&
-                ctx.uci_cursor && type(ctx.uci_cursor) == "function")
-                ? ctx.routes.enabled_sections()
-                : [];
-        }
-        return all_sections;
-    };
     for (let src in connections.section_effective_outbound_sources(section)) {
         let stype = lc(trim(option(src, "source_type", "")));
         let src_id = as_string(src[".name"] || "");
         let display_name = trim(option(src, "name", src_id)) || src_id;
         if (!state.outboundMetadata.source_ids)
             state.outboundMetadata.source_ids = {};
-        if (stype == "zapret2") {
-            let idx = enabled_action_index(dpi_sections(), section, "zapret2");
-            if (idx <= 0)
-                idx = 1;
-            let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret2-" + src_id), taken);
-            taken[tag_name] = true;
-            let outbound = {
-                type: "direct",
-                tag: tag_name,
-                routing_mark: runtime_constants.ZAPRET2_ROUTE_MARK_BASE + idx
-            };
-            push(config.outbounds, outbound);
-            push(selector_tags, tag_name);
-            push(urltest_candidate_tags, tag_name);
-            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-            state.outboundMetadata.protocols[tag_name] = "zapret2";
-            state.outboundMetadata.sources[tag_name] = src_id;
-            state.outboundMetadata.source_ids[tag_name] = src_id;
-        } else if (stype == "zapret") {
-            let idx = enabled_action_index(dpi_sections(), section, "zapret");
-            if (idx <= 0)
-                idx = 1;
-            let tag_name = single_dpi_only ? sec_tag : unique_tag(outbound_tag(section_name + "-zapret-" + src_id), taken);
-            taken[tag_name] = true;
-            let outbound = {
-                type: "direct",
-                tag: tag_name,
-                routing_mark: runtime_constants.ZAPRET_ROUTE_MARK_BASE + idx
-            };
-            push(config.outbounds, outbound);
-            push(selector_tags, tag_name);
-            push(urltest_candidate_tags, tag_name);
-            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-            state.outboundMetadata.protocols[tag_name] = "zapret";
-            state.outboundMetadata.sources[tag_name] = src_id;
-            state.outboundMetadata.source_ids[tag_name] = src_id;
-        } else if (stype == "byedpi") {
-            let idx = enabled_action_index(dpi_sections(), section, "byedpi");
-            if (idx <= 0)
-                idx = 1;
-            let tag_name = unique_tag(outbound_tag(section_name + "-byedpi-" + src_id), taken);
-            taken[tag_name] = true;
-            let outbound = {
-                type: "socks",
-                tag: tag_name,
-                server: runtime_constants.BYEDPI_LISTEN_ADDRESS,
-                server_port: runtime_constants.BYEDPI_PORT_BASE + idx - 1,
-                version: "5"
-            };
-            push(config.outbounds, outbound);
-            push(selector_tags, tag_name);
-            push(urltest_candidate_tags, tag_name);
-            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-            state.outboundMetadata.protocols[tag_name] = "byedpi";
-            state.outboundMetadata.sources[tag_name] = src_id;
-            state.outboundMetadata.source_ids[tag_name] = src_id;
-        } else if (stype == "wdtt") {
-            if (connections && connections.is_native_wdtt_source && connections.is_native_wdtt_source(src))
-                continue;
-            let idx = enabled_action_index(dpi_sections(), section, "wdtt");
-            if (idx <= 0)
-                idx = 1;
-            let tag_name = unique_tag(outbound_tag(section_name + "-wdtt-" + src_id), taken);
-            taken[tag_name] = true;
-            let outbound = {
-                type: "socks",
-                tag: tag_name,
-                server: runtime_constants.WDTT_LISTEN_ADDRESS,
-                server_port: runtime_constants.WDTT_PORT_BASE + idx - 1,
-                version: "5"
-            };
-            push(config.outbounds, outbound);
-            push(selector_tags, tag_name);
-            push(urltest_candidate_tags, tag_name);
-            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-            state.outboundMetadata.protocols[tag_name] = "wdtt";
-            state.outboundMetadata.sources[tag_name] = src_id;
-            state.outboundMetadata.source_ids[tag_name] = src_id;
-        } else if (stype == "olcrtc") {
-            let idx = enabled_action_index(dpi_sections(), section, "olcrtc");
-            if (idx <= 0)
-                idx = 1;
-            let tag_name = unique_tag(outbound_tag(section_name + "-olcrtc-" + src_id), taken);
-            taken[tag_name] = true;
-            let outbound = {
-                type: "socks",
-                tag: tag_name,
-                server: runtime_constants.OLCRTC_LISTEN_ADDRESS,
-                server_port: runtime_constants.OLCRTC_PORT_BASE + idx - 1,
-                version: "5"
-            };
-            push(config.outbounds, outbound);
-            push(selector_tags, tag_name);
-            push(urltest_candidate_tags, tag_name);
-            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-            state.outboundMetadata.protocols[tag_name] = "olcrtc";
-            state.outboundMetadata.sources[tag_name] = src_id;
-            state.outboundMetadata.source_ids[tag_name] = src_id;
-        } else if (stype == "openvpn") {
+        if (stype == "openvpn") {
             let server = trim(option(src, "openvpn_server", ""));
             if (server == "")
                 continue;
@@ -3090,7 +2928,7 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
                 server_port: int_option(src, "openvpn_server_port", "1194")
             });
             state.outboundMetadata.sources[tag_name] = src_id;
-        } else if (stype == "tailscale" && connections.is_embedded_tailscale_source && connections.is_embedded_tailscale_source(src)) {
+        } else if (stype == "tailscale") {
             let tag_name = unique_tag(outbound_tag(section_name + "-tailscale-" + src_id), taken);
             taken[tag_name] = true;
             let ep = build_and_push_tailscale_client_endpoint(config, src, tag_name, section);
@@ -3156,25 +2994,7 @@ function add_connections_outbound(config, section, taken) {
     let cascade_start = length(array_or_empty(config.outbounds));
     let endpoints_start = length(array_or_empty(config.endpoints));
 
-    let eff_sources = (connections && connections.section_effective_outbound_sources)
-        ? connections.section_effective_outbound_sources(section)
-        : [];
-    let single_dpi_only = false;
-    if (length(eff_sources) == 1 &&
-        length(connections.balancer_refs(section)) == 0 &&
-        length(connections.outbound_group_refs(section)) == 0 &&
-        length(connections.connection_urls(section)) == 0 &&
-        length(connections.subscription_urls(section)) == 0 &&
-        length(connections.interfaces(section)) == 0 &&
-        length(connections.outbound_jsons(section)) == 0) {
-        let only_stype = lc(trim(option(eff_sources[0], "source_type", "")));
-        if (only_stype == "zapret" || only_stype == "zapret2")
-            single_dpi_only = true;
-    }
-
-    add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags, single_dpi_only);
-    if (single_dpi_only && length(selector_tags) == 1)
-        return;
+    add_connection_dpi_sources(config, state, section, taken, selector_tags, urltest_candidate_tags);
     let manual_count = length(connections.connection_urls(section));
     add_connection_manual_links(config, state, section, taken, selector_tags, urltest_candidate_tags);
     let text_urltest_tag = add_connection_text_urltest(config, state, section, taken, selector_tags, urltest_candidate_tags, manual_count);
@@ -3205,7 +3025,7 @@ function add_connections_outbound(config, section, taken) {
     if (length(selector_tags) == 0) {
         if (ctx.deferred_sections && ctx.deferred_sections[section_name])
             return;
-        if (getenv("SB_PREFLIGHT_BINARY")) {
+        if (getenv("TACHYON_CORE_PREFLIGHT_BINARY")) {
             let dummy_tag = unique_tag("preflight-dummy-" + section_name, taken);
             taken[dummy_tag] = true;
             push(config.outbounds, {
@@ -3237,7 +3057,7 @@ function add_connections_outbound(config, section, taken) {
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
     ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
-    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+    if (!getenv("TACHYON_CORE_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
 }
 
@@ -3349,7 +3169,7 @@ function add_awg_config_members(config, section) {
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
     ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
-    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+    if (!getenv("TACHYON_CORE_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
 }
 
@@ -3388,25 +3208,12 @@ function add_awg_endpoint(config, section) {
     let mtu = int_option(section, "awg_mtu", "1280");
     endpoint.mtu = mtu > 0 ? mtu : 1280;
 
-    let sb_version_val = variant_state.read_version_state();
-    let sb_variant_val = variant_state.read_variant_marker();
-    let is_lx = sb_variant_val == "lx" || index(sb_version_val, "-lx") >= 0;
-    // tachyon-core reads the AmneziaWG params flat off the wireguard endpoint -
-    // the same layout sing-box-lx uses. Its KNOWN_ENDPOINT_FIELDS has no
-    // "amnezia" wrapper, so a config carrying one is rejected outright.
-    let is_core = ctx.is_tachyon_core != null ? ctx.is_tachyon_core(sb_version_val) : false;
-    let flat_awg = is_lx || is_core;
-
     let keepalive = int_or_range_option(section, "awg_keepalive", 25);
-    if (is_lx) {
-        endpoint.peers[0].persistent_keepalive_interval = keepalive;
+    if (type(keepalive) == "string") {
+        let m = match(keepalive, /^([0-9]+)/);
+        endpoint.peers[0].persistent_keepalive_interval = m ? int(m[1], 10) : 25;
     } else {
-        if (type(keepalive) == "string") {
-            let m = match(keepalive, /^([0-9]+)/);
-            endpoint.peers[0].persistent_keepalive_interval = m ? int(m[1], 10) : 25;
-        } else {
-            endpoint.peers[0].persistent_keepalive_interval = keepalive > 0 ? keepalive : 25;
-        }
+        endpoint.peers[0].persistent_keepalive_interval = keepalive > 0 ? keepalive : 25;
     }
 
     let jc = int_option(section, "awg_jc", "4");
@@ -3417,72 +3224,31 @@ function add_awg_endpoint(config, section) {
     let jmax = int_option(section, "awg_jmax", "70");
     if (jmax > 1200) jmax = 1200;
 
-    // AmneziaWG obfuscation parameters. H1-H4 use badoption.Range on both
-    // sing-box-extended and sing-box-lx, so a "min-max" string passes through.
-    let amnezia = {
-        jc: jc,
-        jmin: jmin,
-        jmax: jmax,
-        s1: int_option(section, "awg_s1", "0"),
-        s2: int_option(section, "awg_s2", "0"),
-        h1: int_or_range_option(section, "awg_h1", 1),
-        h2: int_or_range_option(section, "awg_h2", 2),
-        h3: int_or_range_option(section, "awg_h3", 3),
-        h4: int_or_range_option(section, "awg_h4", 4),
-        s3: int_option(section, "awg_s3", "0"),
-        s4: int_option(section, "awg_s4", "0")
-    };
+    // AmneziaWG obfuscation parameters placed at the endpoint root for tachyon-core.
+    endpoint.jc = jc;
+    endpoint.jmin = jmin;
+    endpoint.jmax = jmax;
+    endpoint.s1 = int_option(section, "awg_s1", "0");
+    endpoint.s2 = int_option(section, "awg_s2", "0");
+    endpoint.h1 = int_or_range_option(section, "awg_h1", 1);
+    endpoint.h2 = int_or_range_option(section, "awg_h2", 2);
+    endpoint.h3 = int_or_range_option(section, "awg_h3", 3);
+    endpoint.h4 = int_or_range_option(section, "awg_h4", 4);
+    endpoint.s3 = int_option(section, "awg_s3", "0");
+    endpoint.s4 = int_option(section, "awg_s4", "0");
+
     let i1 = awg_cps_option(section, "awg_i1");
     let i2 = awg_cps_option(section, "awg_i2");
     let i3 = awg_cps_option(section, "awg_i3");
     let i4 = awg_cps_option(section, "awg_i4");
     let i5 = awg_cps_option(section, "awg_i5");
-    let j1 = awg_cps_option(section, "awg_j1");
-    let j2 = awg_cps_option(section, "awg_j2");
-    let j3 = awg_cps_option(section, "awg_j3");
-    let itime = int_option(section, "awg_itime", "0");
+    if (i1 != "") endpoint.i1 = i1;
+    if (i2 != "") endpoint.i2 = i2;
+    if (i3 != "" && i3 != "0") endpoint.i3 = i3;
+    if (i4 != "" && i4 != "0") endpoint.i4 = i4;
+    if (i5 != "" && i5 != "0") endpoint.i5 = i5;
 
-    if (flat_awg) {
-        // sing-box-lx and tachyon-core expect AWG fields at the endpoint root
-        // (AWG 2.0 schema). Magic headers accept a single value or an AWG 2.0
-        // "min-max" range; junk-packet fields are plain integers.
-        endpoint.jc = amnezia.jc;
-        endpoint.jmin = amnezia.jmin;
-        endpoint.jmax = amnezia.jmax;
-        endpoint.s1 = amnezia.s1;
-        endpoint.s2 = amnezia.s2;
-        endpoint.h1 = amnezia.h1;
-        endpoint.h2 = amnezia.h2;
-        endpoint.h3 = amnezia.h3;
-        endpoint.h4 = amnezia.h4;
-        endpoint.s3 = amnezia.s3;
-        endpoint.s4 = amnezia.s4;
-        if (i1 != "") endpoint.i1 = i1;
-        if (i2 != "") endpoint.i2 = i2;
-        if (i3 != "" && i3 != "0") endpoint.i3 = i3;
-        if (i4 != "" && i4 != "0") endpoint.i4 = i4;
-        if (i5 != "" && i5 != "0") endpoint.i5 = i5;
-    } else {
-        if (i1 != "") amnezia.i1 = i1;
-        if (i2 != "") amnezia.i2 = i2;
-        if (i3 != "" && i3 != "0") amnezia.i3 = i3;
-        if (i4 != "" && i4 != "0") amnezia.i4 = i4;
-        if (i5 != "" && i5 != "0") amnezia.i5 = i5;
-        // j1-j3/itime were removed from the extended schema in 2.6.1 and
-        // sing-box fatals on unknown fields, so emit them only for builds
-        // whose schema still accepts them.
-        let sb_version = variant_state.read_version_state();
-        if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
-            if (j1 != "") amnezia.j1 = j1;
-            if (j2 != "") amnezia.j2 = j2;
-            if (j3 != "") amnezia.j3 = j3;
-            if (itime > 0) amnezia.itime = itime;
-        }
-
-        endpoint.amnezia = amnezia;
-    }
-
-    // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx & sing-box-extended 2.7.0+)
+    // AmneziaWG version handling: 2.0, 3.0, and 3.1
     let awg_ver = option(section, "awg_version", "");
     if (awg_ver == "") {
         if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
@@ -3500,65 +3266,37 @@ function add_awg_endpoint(config, section) {
     if (awg_ver == "3.0" || awg_ver == "3.1") {
         let hpk = option(section, "awg_header_protection_key", "");
         if (hpk != "") {
-            if (flat_awg) {
-                if (endpoint.s1 < 12) endpoint.s1 = 20;
-                if (endpoint.s2 < 12) endpoint.s2 = 20;
-                if (endpoint.s3 < 12) endpoint.s3 = 20;
-                if (endpoint.s4 < 12) endpoint.s4 = 20;
-                endpoint.header_protection_key = hpk;
-            } else {
-                if (endpoint.amnezia.s1 < 12) endpoint.amnezia.s1 = 20;
-                if (endpoint.amnezia.s2 < 12) endpoint.amnezia.s2 = 20;
-                if (endpoint.amnezia.s3 < 12) endpoint.amnezia.s3 = 20;
-                if (endpoint.amnezia.s4 < 12) endpoint.amnezia.s4 = 20;
-                endpoint.amnezia.header_protection_key = hpk;
-            }
+            if (endpoint.s1 < 12) endpoint.s1 = 20;
+            if (endpoint.s2 < 12) endpoint.s2 = 20;
+            if (endpoint.s3 < 12) endpoint.s3 = 20;
+            if (endpoint.s4 < 12) endpoint.s4 = 20;
+            endpoint.header_protection_key = hpk;
         }
 
         let cpa = option(section, "awg_content_padding_addition", "");
-        if (cpa != "") {
-            if (flat_awg) endpoint.content_padding_addition = cpa;
-            else endpoint.amnezia.content_padding_addition = cpa;
-        }
+        if (cpa != "") endpoint.content_padding_addition = cpa;
     }
 
     if (awg_ver == "3.1") {
         let rka = option(section, "awg_rekey_after_time", "");
-        if (rka != "") {
-            if (flat_awg) endpoint.rekey_after_time = rka;
-            else endpoint.amnezia.rekey_after_time = rka;
-        }
+        if (rka != "") endpoint.rekey_after_time = rka;
 
         let rkt = option(section, "awg_rekey_timeout", "");
-        if (rkt != "") {
-            if (flat_awg) endpoint.rekey_timeout = rkt;
-            else endpoint.amnezia.rekey_timeout = rkt;
-        }
+        if (rkt != "") endpoint.rekey_timeout = rkt;
 
         let rja = option(section, "awg_reject_after_time", "");
-        if (rja != "") {
-            if (flat_awg) endpoint.reject_after_time = rja;
-            else endpoint.amnezia.reject_after_time = rja;
-        }
+        if (rja != "") endpoint.reject_after_time = rja;
 
         let kpt = option(section, "awg_keepalive_timeout", "");
-        if (kpt != "") {
-            if (flat_awg) endpoint.keepalive_timeout = kpt;
-            else endpoint.amnezia.keepalive_timeout = kpt;
-        }
+        if (kpt != "") endpoint.keepalive_timeout = kpt;
 
         let mha = option(section, "awg_max_handshake_attempts", "");
-        if (mha != "") {
-            if (flat_awg) endpoint.max_handshake_attempts = mha;
-            else endpoint.amnezia.max_handshake_attempts = mha;
-        }
+        if (mha != "") endpoint.max_handshake_attempts = mha;
 
-        if (flat_awg) {
-            if (bool_option(section, "awg_random_trailers", false))
-                endpoint.random_trailers = true;
-            if (bool_option(section, "awg_disable_cookies", false))
-                endpoint.disable_cookies = true;
-        }
+        if (bool_option(section, "awg_random_trailers", false))
+            endpoint.random_trailers = true;
+        if (bool_option(section, "awg_disable_cookies", false))
+            endpoint.disable_cookies = true;
     }
 
     let detour = outbound_detour_tag_for_section(section);
@@ -3586,47 +3324,21 @@ function add_warp_endpoint(config, section) {
     if (account_id == "")
         ctx.runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_account_id");
 
-    let profile = { id: account_id, private_key };
-    if (access_token != "") {
-        profile.auth_token = access_token;
-    }
-
     let detour = option(section, "warp_detour", "");
-    // NB: was ctx.sing_box_tachyon_core, which nothing ever set - the branch was
-    // dead and tachyon-core got the sing-box-extended masque shape instead.
-    if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
-        let masque_out = {
-            type: "masque",
-            tag,
-            server: "162.159.198.2",
-            server_port: 443,
-            profile: "cloudflare",
-            private_key,
-            ip: "172.16.0.2/32"
-        };
-        if (access_token != "")
-            masque_out.auth_token = access_token;
-        if (detour != "")
-            masque_out.detour = outbound_tag(detour);
-        push(config.outbounds, masque_out);
-        return;
-    }
-
-    // NB: no "mtu" here. sing-box-extended 2.7.x rejects it on the warp
-    // endpoint ("endpoints[0].mtu: json: unknown field \"mtu\"") and aborts the
-    // whole config. warp_mtu stays readable for backwards compatibility.
-    let endpoint = {
-        type: "warp",
+    let masque_out = {
+        type: "masque",
         tag,
-        name: tag,
-        profile
+        server: "162.159.198.2",
+        server_port: 443,
+        profile: "cloudflare",
+        private_key,
+        ip: "172.16.0.2/32"
     };
-
-    if (detour != "") {
-        endpoint.detour = outbound_tag(detour);
-    }
-
-    push(config.endpoints, endpoint);
+    if (access_token != "")
+        masque_out.auth_token = access_token;
+    if (detour != "")
+        masque_out.detour = outbound_tag(detour);
+    push(config.outbounds, masque_out);
 }
 
 function add_anytls_outbound(config, section) {
@@ -3798,73 +3510,49 @@ function add_sudoku_outbound(config, section) {
 
 function add_masque_outbound(config, section) {
     let tag = outbound_tag(section[".name"]);
-    let account_id  = option(section, "masque_account_id", "");
     let access_token = option(section, "masque_access_token", "");
-    let core_state = require("tachyon_core.variant_state");
-    let is_core = (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) ||
-        core_state.current_profile() == "tachyon-core" ||
-        core_state.current_profile() == "lx";
-
     let masque_server = option(section, "masque_server", "");
     let masque_priv = option(section, "masque_private_key", "");
 
-    if (is_core || masque_server != "" || masque_priv != "") {
-        let profile = option(section, "masque_profile", "cloudflare");
-        let server = masque_server != "" ? masque_server : "162.159.198.2";
-        let server_port = int_option(section, "masque_server_port", "443");
-        let outbound = {
-            type: "masque",
-            tag,
-            server,
-            server_port,
-            profile
-        };
-        let vhttp = option(section, "masque_vhttp", "");
-        if (vhttp != "") outbound.vhttp = vhttp;
-        if (masque_priv != "") outbound.private_key = masque_priv;
-        let pub = option(section, "masque_public_key", "");
-        if (pub != "") outbound.public_key = pub;
-        let ip = option(section, "masque_ip", profile == "cloudflare" ? "172.16.0.2/32" : "");
-        if (ip != "") outbound.ip = ip;
-        let ipv6 = option(section, "masque_ipv6", "");
-        if (ipv6 != "") outbound.ipv6 = ipv6;
-        let uri = option(section, "masque_uri", "");
-        if (uri != "") outbound.uri = uri;
-        let mtu = int_option(section, "masque_mtu", "0");
-        if (mtu > 0) outbound.mtu = mtu;
-        if (access_token != "") outbound.auth_token = access_token;
-        let sni = option(section, "masque_sni", "");
-        let insecure = bool_option(section, "masque_insecure", false);
-        let fragment = bool_option(section, "masque_fragment", false);
-        let record_fragment = bool_option(section, "masque_record_fragment", false);
-        if (sni != "" || insecure || fragment || record_fragment) {
-            let tls = { enabled: true };
-            if (sni != "") tls.server_name = sni;
-            if (insecure) tls.insecure = true;
-            if (fragment) tls.fragment = true;
-            if (record_fragment) tls.record_fragment = true;
-            outbound.tls = tls;
-        }
-        let detour = outbound_detour_tag_for_section(section);
-        if (detour != "") outbound.detour = detour;
-        push(config.outbounds, outbound);
-        return;
-    }
-
-    if (account_id == "")
-        ctx.runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_account_id");
-    if (access_token == "")
-        ctx.runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_access_token");
-    // sing-box-extended 2.7.x models MASQUE as an outbound with a single
-    // "profile" object; the endpoint + profiles[] form we used to emit is not
-    // known to it ("unknown endpoint type: masque") and aborts the config.
-    // masque_private_key is not part of that profile, so it is not emitted.
-    push(config.outbounds, {
+    let profile = option(section, "masque_profile", "cloudflare");
+    let server = masque_server != "" ? masque_server : "162.159.198.2";
+    let server_port = int_option(section, "masque_server_port", "443");
+    let outbound = {
         type: "masque",
         tag,
-        name: tag,
-        profile: { id: account_id, auth_token: access_token }
-    });
+        server,
+        server_port,
+        profile
+    };
+    let vhttp = option(section, "masque_vhttp", "");
+    if (vhttp != "") outbound.vhttp = vhttp;
+    if (masque_priv != "") outbound.private_key = masque_priv;
+    let pub = option(section, "masque_public_key", "");
+    if (pub != "") outbound.public_key = pub;
+    let ip = option(section, "masque_ip", profile == "cloudflare" ? "172.16.0.2/32" : "");
+    if (ip != "") outbound.ip = ip;
+    let ipv6 = option(section, "masque_ipv6", "");
+    if (ipv6 != "") outbound.ipv6 = ipv6;
+    let uri = option(section, "masque_uri", "");
+    if (uri != "") outbound.uri = uri;
+    let mtu = int_option(section, "masque_mtu", "0");
+    if (mtu > 0) outbound.mtu = mtu;
+    if (access_token != "") outbound.auth_token = access_token;
+    let sni = option(section, "masque_sni", "");
+    let insecure = bool_option(section, "masque_insecure", false);
+    let fragment = bool_option(section, "masque_fragment", false);
+    let record_fragment = bool_option(section, "masque_record_fragment", false);
+    if (sni != "" || insecure || fragment || record_fragment) {
+        let tls = { enabled: true };
+        if (sni != "") tls.server_name = sni;
+        if (insecure) tls.insecure = true;
+        if (fragment) tls.fragment = true;
+        if (record_fragment) tls.record_fragment = true;
+        outbound.tls = tls;
+    }
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour != "") outbound.detour = detour;
+    push(config.outbounds, outbound);
 }
 
 function normalize_desync_preset_value(val) {
@@ -4416,47 +4104,6 @@ function add_tailscale_client_endpoint(config, section) {
     return build_and_push_tailscale_client_endpoint(config, section, outbound_tag(section[".name"]), section);
 }
 
-function add_zapret_outbound(config, section, sections) {
-    if (connections && !connections.section_is_active_provider(section, "zapret"))
-        return;
-    let index = enabled_action_index(sections, section, "zapret");
-    if (index <= 0)
-        ctx.runtime_generate_unsupported("unable to resolve Zapret index for " + section[".name"]);
-    push(config.outbounds, {
-        type: "direct",
-        tag: outbound_tag(section[".name"]),
-        routing_mark: runtime_constants.ZAPRET_ROUTE_MARK_BASE + index
-    });
-}
-
-function add_zapret2_outbound(config, section, sections) {
-    if (connections && !connections.section_is_active_provider(section, "zapret2"))
-        return;
-    let index = enabled_action_index(sections, section, "zapret2");
-    if (index <= 0)
-        ctx.runtime_generate_unsupported("unable to resolve Zapret2 index for " + section[".name"]);
-    push(config.outbounds, {
-        type: "direct",
-        tag: outbound_tag(section[".name"]),
-        routing_mark: runtime_constants.ZAPRET2_ROUTE_MARK_BASE + index
-    });
-}
-
-function add_byedpi_outbound(config, section, sections) {
-    if (connections && !connections.section_is_active_provider(section, "byedpi"))
-        return;
-    let index = enabled_action_index(sections, section, "byedpi");
-    if (index <= 0)
-        ctx.runtime_generate_unsupported("unable to resolve ByeDPI index for " + section[".name"]);
-    push(config.outbounds, {
-        type: "socks",
-        tag: outbound_tag(section[".name"]),
-        server: runtime_constants.BYEDPI_LISTEN_ADDRESS,
-        server_port: runtime_constants.BYEDPI_PORT_BASE + index - 1,
-        version: "5"
-    });
-}
-
 function add_csqtt_outbound(config, section) {
     let tag_name = outbound_tag(section[".name"]);
     let uri = trim(as_string(option(section, "csqtt_uri", option(section, "warp_flow_uri", ""))));
@@ -4465,6 +4112,12 @@ function add_csqtt_outbound(config, section) {
         let parsed = subscription_parser.parse_share_link(uri);
         if (type(parsed) == "object" && lc(as_string(parsed.type || "")) == "wdtt") {
             let outbound = copy_subscription_outbound(parsed, tag_name);
+            let workers = int_option(section, "csqtt_workers", option(section, "wdtt_workers", "0"));
+            if (workers >= 1 && workers <= 126 && outbound.workers == null) outbound.workers = workers;
+            let mtu = int_option(section, "csqtt_mtu", option(section, "wdtt_mtu", "0"));
+            if (mtu >= 576 && mtu <= 1500 && outbound.mtu == null) outbound.mtu = mtu;
+            let did = trim(as_string(option(section, "csqtt_device_id", option(section, "warp_flow_device_id", option(section, "wdtt_device_id", "")))));
+            if (did != "" && outbound.device_id == null) outbound.device_id = did;
             let detour = outbound_detour_tag_for_section(section);
             if (detour != "")
                 outbound.detour = detour;
@@ -4543,11 +4196,11 @@ function add_csqtt_outbound(config, section) {
     if (turn_tr == "auto" || turn_tr == "tcp" || turn_tr == "udp" || turn_tr == "tcp_tls" || turn_tr == "tls")
         outbound.turn_transport = turn_tr;
 
-    let workers = int_option(section, "csqtt_workers", "0");
+    let workers = int_option(section, "csqtt_workers", option(section, "wdtt_workers", "0"));
     if (workers >= 1 && workers <= 126) outbound.workers = workers;
-    let did = trim(as_string(option(section, "csqtt_device_id", "")));
+    let did = trim(as_string(option(section, "csqtt_device_id", option(section, "warp_flow_device_id", option(section, "wdtt_device_id", "")))));
     if (did != "") outbound.device_id = did;
-    let mtu = int_option(section, "csqtt_mtu", "0");
+    let mtu = int_option(section, "csqtt_mtu", option(section, "wdtt_mtu", "0"));
     if (mtu >= 576 && mtu <= 1500) outbound.mtu = mtu;
     if (bool_option(section, "csqtt_chunk1", false)) outbound.chunk1 = true;
 
@@ -4564,53 +4217,8 @@ function add_csqtt_outbound(config, section) {
     push(config.outbounds, sanitize_wdtt_outbound(outbound));
 }
 
-function add_wdtt_outbound(config, section, sections) {
-    if (bool_option(section, "wdtt_native", false)) {
-        let uri = trim(as_string(option(section, "warp_flow_uri", "")));
-        if (uri != "") {
-            let parsed = subscription_parser.parse_share_link(uri);
-            if (type(parsed) == "object" && lc(as_string(parsed.type || "")) == "wdtt") {
-                let outbound = copy_subscription_outbound(parsed, outbound_tag(section[".name"]));
-                let workers = int_option(section, "wdtt_workers", "0");
-                if (workers >= 1 && workers <= 126) outbound.workers = workers;
-                let mtu = int_option(section, "wdtt_mtu", "0");
-                if (mtu >= 576 && mtu <= 1500) outbound.mtu = mtu;
-                let did = trim(as_string(option(section, "warp_flow_device_id", "")));
-                if (did != "" && outbound.device_id == null) outbound.device_id = did;
-                let detour = outbound_detour_tag_for_section(section);
-                if (detour != "") outbound.detour = detour;
-                push(config.outbounds, sanitize_wdtt_outbound(outbound));
-                return;
-            }
-        }
-    }
-    if (connections && !connections.section_is_active_provider(section, "wdtt"))
-        return;
-    let index = enabled_action_index(sections, section, "wdtt");
-    if (index <= 0)
-        ctx.runtime_generate_unsupported("unable to resolve WDTT index for " + section[".name"]);
-    push(config.outbounds, {
-        type: "socks",
-        tag: outbound_tag(section[".name"]),
-        server: runtime_constants.WDTT_LISTEN_ADDRESS,
-        server_port: runtime_constants.WDTT_PORT_BASE + index - 1,
-        version: "5"
-    });
-}
-
-function add_olcrtc_outbound(config, section, sections) {
-    if (connections && !connections.section_is_active_provider(section, "olcrtc"))
-        return;
-    let index = enabled_action_index(sections, section, "olcrtc");
-    if (index <= 0)
-        ctx.runtime_generate_unsupported("unable to resolve OlcRTC index for " + section[".name"]);
-    push(config.outbounds, {
-        type: "socks",
-        tag: outbound_tag(section[".name"]),
-        server: runtime_constants.OLCRTC_LISTEN_ADDRESS,
-        server_port: runtime_constants.OLCRTC_PORT_BASE + index - 1,
-        version: "5"
-    });
+function add_wdtt_outbound(config, section) {
+    return add_csqtt_outbound(config, section);
 }
 
 // Emit the section the way a connection section is shaped: one outbound per
@@ -4703,7 +4311,7 @@ function add_fptn_token_members(config, section, token) {
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
     ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
-    if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
+    if (!getenv("TACHYON_CORE_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
     return true;
 }
@@ -4773,12 +4381,8 @@ return {
     add_chain_outbound,
     add_tailscale_client_endpoint,
     add_openvpn_endpoint,
-    add_zapret_outbound,
-    add_zapret2_outbound,
-    add_byedpi_outbound,
     add_csqtt_outbound,
     add_wdtt_outbound,
-    add_olcrtc_outbound,
     add_fptn_outbound,
     fptn_token_decode,
     urltest_leaf_candidate_outbound,

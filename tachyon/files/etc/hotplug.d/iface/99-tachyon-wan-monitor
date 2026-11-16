@@ -61,7 +61,7 @@ schedule_core_hup() {
             rm -f "$pid_tmp" 2>/dev/null
             exit 1
         fi
-        for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+        for p in $(pidof tachyon-core 2>/dev/null); do
             kill -HUP "$p" 2>/dev/null
         done
     ' _ "${1:-1}" "$RELOAD_LOCK_DIR" "$HUP_LOCK_TIMEOUT" >/dev/null 2>&1 &

@@ -51,7 +51,7 @@ fi
 grep -Fq '"tachyon-stably-running"' "$UI_UC" ||
   fail "UI Tachyon status must use stable runtime state to avoid crash-loop flicker"
 grep -Fq '"tachyon-core-service-stable"' "$UI_UC" ||
-  fail "UI sing-box status must use stable runtime state to avoid crash-loop flicker"
+  fail "UI tachyon-core status must use stable runtime state to avoid crash-loop flicker"
 if sed -n '/^function ensure_dir(/,/^}/p' "$UI_UC" | grep -Fq 'mkdir", "-p'; then
   fail "UI state refresh must not spawn mkdir for existing directories"
 fi
@@ -66,8 +66,8 @@ grep -Fq 'let args = [ SERVICE_INIT, action ];' "$UI_UC" ||
   fail "UI service action worker must use init.d so procd triggers stay registered"
 grep -Fq 'start_service_action("reload", "initd", "pending")' "$UI_UC" ||
   fail "pending reload must enter the normal reload service action immediately"
-if grep -n -E 'pgrep.*sing-box|service-list-instance-running' "$UI_UC" >/dev/null 2>&1; then
-  fail "service/ui.uc must not use transient sing-box process probes for visible status"
+if grep -n -E 'pgrep.*tachyon-core|service-list-instance-running' "$UI_UC" >/dev/null 2>&1; then
+  fail "service/ui.uc must not use transient tachyon-core process probes for visible status"
 fi
 
 for mode in \
@@ -278,14 +278,14 @@ component_job="$TACHYON_UI_COMPONENT_ACTION_DIR/component-1.json"
 mkdir -p "$TACHYON_UI_COMPONENT_ACTION_DIR"
 bash -c 'while true; do sleep 1; done' component-action-worker &
 worker_pid=$!
-printf '%s\n' '{"running":true,"component":"sing_box","pid":null,"started_at":100}' >"$component_job"
+printf '%s\n' '{"running":true,"component":"tachyon-core","pid":null,"started_at":100}' >"$component_job"
 printf '%s\n' "$worker_pid" >"$component_job.pid"
-ui_ucode component-action-running-for sing_box >/dev/null ||
-  fail "component-action-running-for should detect running sing-box component action using sidecar .json.pid after grace period"
+ui_ucode component-action-running-for tachyon-core >/dev/null ||
+  fail "component-action-running-for should detect running tachyon-core component action using sidecar .json.pid after grace period"
 if grep -Fq "Component action worker exited unexpectedly" "$component_job"; then
   fail "refresh_action_dirs must not mark a live worker with sidecar .json.pid as exited unexpectedly"
 fi
-if ui_ucode component-action-running-for zapret >/dev/null 2>&1; then
+if ui_ucode component-action-running-for tachyon >/dev/null 2>&1; then
   fail "component-action-running-for should ignore other components"
 fi
 kill "$worker_pid" 2>/dev/null || true

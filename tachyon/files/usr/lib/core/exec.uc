@@ -12,7 +12,7 @@
 //   - Process identity (PID + starttime + boot_id) prevents PID-recycling bugs
 //   - Every spawn closes inherited descriptors through close_inherited_fds()
 //
-// The module is deliberately low-level: no UCI, no nft, no sing-box knowledge.
+// The module is deliberately low-level: no UCI, no nft, no proxy-core knowledge.
 // Higher-level abstractions (jobs, transactions) build on top of this.
 
 let fs = require("fs");

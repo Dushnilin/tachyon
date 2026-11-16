@@ -8,13 +8,10 @@ import { notifyActionFailure } from '../../helpers/notifyActionFailure';
 import { capSetSize } from '../../helpers/capCollectionSize';
 import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
 import { runDnsCheck } from './checks/runDnsCheck';
-import { runSingBoxCheck } from './checks/runSingBoxCheck';
+import { runTachyonCoreCheck } from './checks/runTachyonCoreCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
 import { runNftCheck } from './checks/runNftCheck';
 import { runFakeIPCheck } from './checks/runFakeIPCheck';
-import { runZapretCheck } from './checks/runZapretCheck';
-import { runZapret2Check } from './checks/runZapret2Check';
-import { runByedpiCheck } from './checks/runByedpiCheck';
 import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/constants';
 import {
   DiagnosticsProviderOptions,
@@ -73,10 +70,7 @@ import {
 } from './serviceTransition';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { tr } from '../../helpers/i18n';
-import {
-  formatSingBoxVersion,
-  normalizeSingBoxVariantFields,
-} from '../../helpers/singBoxVariant';
+import { formatCoreVersion } from '../../helpers/coreVersion';
 import {
   clearPersistedDiagnosticRun,
   PersistedDiagnosticRun,
@@ -84,10 +78,10 @@ import {
   savePersistedDiagnosticRun,
 } from './diagnosticRunPersistence';
 import {
-  formatMaskedSingBoxConfig,
+  formatMaskedCoreConfig,
   maskGlobalCheckText,
   maskLogText,
-  stringifySingBoxConfig,
+  stringifyCoreConfig,
 } from './helpers/maskDiagnostics';
 
 const SERVICE_STATUS_REFRESH_INTERVAL_MS = 2000;
@@ -117,20 +111,12 @@ function sleep(ms: number) {
 function getDiagnosticsProviderOptions(
   systemInfo: Pick<
     StoreType['diagnosticsSystemInfo'],
-    | 'zapret_installed'
-    | 'zapret2_installed'
-    | 'byedpi_installed'
-    | 'server_inbounds_enabled_count'
+    'server_inbounds_enabled_count'
   > = store.get().diagnosticsSystemInfo,
 ): DiagnosticsProviderOptions {
-  // activeEngine comes from store.activeEngine (set by fetchServicesInfo via getEngineStatus).
-  // diagnosticsSystemInfo has no engine field — it only tracks component versions.
-  const activeEngine = store.get().activeEngine || 'sing-box';
+  const activeEngine = store.get().activeEngine || 'tachyon-core';
   return {
     activeEngine,
-    includeZapret: Boolean(systemInfo.zapret_installed),
-    includeZapret2: Boolean(systemInfo.zapret2_installed),
-    includeByedpi: Boolean(systemInfo.byedpi_installed),
     includeInbounds: systemInfo.server_inbounds_enabled_count > 0,
   };
 }
@@ -402,35 +388,15 @@ async function fetchDiagnosticsProviderInfo({
 
     if (uiState) {
       const currentSystemInfo = store.get().diagnosticsSystemInfo;
-      const nextSystemInfo = normalizeSingBoxVariantFields({
+      const nextSystemInfo = {
         ...currentSystemInfo,
         providerInfoLoaded: true,
-        sing_box_extended: uiState.capabilities.sing_box_extended,
-        sing_box_tiny: uiState.capabilities.sing_box_tiny,
-        sing_box_compressed: uiState.capabilities.sing_box_compressed,
-        sing_box_lx: uiState.capabilities.sing_box_lx,
-        sing_box_tachyon_core: uiState.capabilities.sing_box_tachyon_core,
-        sing_box_fptn: uiState.capabilities.sing_box_fptn,
-        sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
-        sing_box_cert_pin: uiState.capabilities.sing_box_cert_pin,
-        zapret_installed: uiState.capabilities.zapret_installed,
-        zapret2_installed: uiState.capabilities.zapret2_installed,
-        byedpi_installed: uiState.capabilities.byedpi_installed,
+        tachyon_core_fptn: uiState.capabilities.tachyon_core_fptn,
+        tachyon_core_tailscale: uiState.capabilities.tachyon_core_tailscale,
+        tachyon_core_cert_pin: uiState.capabilities.tachyon_core_cert_pin,
         server_inbounds_enabled_count:
           uiState.capabilities.server_inbounds_enabled_count,
-      });
-
-      if (!nextSystemInfo.zapret_installed) {
-        nextSystemInfo.zapret_version = 'not installed';
-      }
-
-      if (!nextSystemInfo.zapret2_installed) {
-        nextSystemInfo.zapret2_version = 'not installed';
-      }
-
-      if (!nextSystemInfo.byedpi_installed) {
-        nextSystemInfo.byedpi_version = 'not installed';
-      }
+      };
 
       const nextState: Partial<StoreType> = {
         diagnosticsSystemInfo: nextSystemInfo,
@@ -452,13 +418,7 @@ async function fetchDiagnosticsProviderInfo({
       return;
     }
 
-    const [zapretRuntime, zapret2Runtime, byedpiRuntime, inboundsConfig] =
-      await Promise.all([
-        TachyonShellMethods.checkZapretRuntime(),
-        TachyonShellMethods.checkZapret2Runtime(),
-        TachyonShellMethods.checkByedpiRuntime(),
-        TachyonShellMethods.checkInboundsConfig(),
-      ]);
+    const inboundsConfig = await TachyonShellMethods.checkInboundsConfig();
 
     if (requestId !== latestProviderInfoRequestId) {
       return;
@@ -468,35 +428,10 @@ async function fetchDiagnosticsProviderInfo({
     const nextSystemInfo = {
       ...currentSystemInfo,
       providerInfoLoaded: true,
-      zapret_installed: zapretRuntime.success
-        ? zapretRuntime.data.zapret_installed
-        : currentSystemInfo.zapret_installed,
-      zapret2_installed: zapret2Runtime.success
-        ? zapret2Runtime.data.zapret2_installed
-        : currentSystemInfo.zapret2_installed,
-      byedpi_installed: byedpiRuntime.success
-        ? byedpiRuntime.data.byedpi_installed
-        : currentSystemInfo.byedpi_installed,
       server_inbounds_enabled_count: inboundsConfig.success
         ? inboundsConfig.data.enabled_count
         : -1,
     };
-
-    if (!zapretRuntime.success) {
-      logger.error('[DIAGNOSTIC]', 'fetchZapretRuntime failed', zapretRuntime);
-    }
-
-    if (!zapret2Runtime.success) {
-      logger.error(
-        '[DIAGNOSTIC]',
-        'fetchZapret2Runtime failed',
-        zapret2Runtime,
-      );
-    }
-
-    if (!byedpiRuntime.success) {
-      logger.error('[DIAGNOSTIC]', 'fetchByedpiRuntime failed', byedpiRuntime);
-    }
 
     if (!inboundsConfig.success) {
       logger.error(
@@ -504,18 +439,6 @@ async function fetchDiagnosticsProviderInfo({
         'fetchInboundsConfig failed',
         inboundsConfig,
       );
-    }
-
-    if (!nextSystemInfo.zapret_installed) {
-      nextSystemInfo.zapret_version = 'not installed';
-    }
-
-    if (!nextSystemInfo.zapret2_installed) {
-      nextSystemInfo.zapret2_version = 'not installed';
-    }
-
-    if (!nextSystemInfo.byedpi_installed) {
-      nextSystemInfo.byedpi_version = 'not installed';
     }
 
     const nextState: Partial<StoreType> = {
@@ -967,9 +890,6 @@ async function handleRunAiDoctor() {
         report,
         quickFixes,
         backendNodes,
-        isTachyonCore: Boolean(
-          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
-        ),
         onRefreshServices: () =>
           refreshDiagnosticServicesInfo({
             force: true,
@@ -1003,12 +923,7 @@ function handleOpenLeakCheck() {
   renderLeakCheckModal();
 }
 
-const FUZZER_DPI_ENGINES: Tachyon.FuzzerEngine[] = [
-  'zapret2',
-  'zapret',
-  'byedpi',
-  'desync',
-];
+const FUZZER_DPI_ENGINES: Tachyon.FuzzerEngine[] = ['desync'];
 
 function getInstalledFuzzerEngines(): {
   loaded: boolean;
@@ -1019,10 +934,7 @@ function getInstalledFuzzerEngines(): {
   return {
     loaded,
     engines: {
-      zapret2: Boolean(sysInfo.zapret2_installed),
-      zapret: Boolean(sysInfo.zapret_installed),
-      byedpi: Boolean(sysInfo.byedpi_installed),
-      desync: Boolean(sysInfo.sing_box_tachyon_core),
+      desync: true,
     },
   };
 }
@@ -1190,7 +1102,7 @@ function handleRestoreNativeInternet() {
         'p',
         {},
         _(
-          'This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP.',
+          'This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy and packet-routing firewall rules and restore direct Internet connection through your ISP.',
         ),
       ),
       E(
@@ -1243,73 +1155,58 @@ function handleRestoreNativeInternet() {
   );
 }
 
-async function handleShowSingBoxConfig() {
-  setDiagnosticActionLoading('showSingBoxConfig', true);
-  const isTachyonCore = Boolean(
-    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
-  );
+async function handleShowTachyonCoreConfig() {
+  setDiagnosticActionLoading('showTachyonCoreConfig', true);
 
   try {
-    const showSingBoxConfig =
-      await TachyonShellMethods.showSingBoxConfig(false);
+    const showTachyonCoreConfig =
+      await TachyonShellMethods.showTachyonCoreConfig(false);
 
-    if (showSingBoxConfig.success) {
-      const rawSingBoxConfigText = stringifySingBoxConfig(
-        showSingBoxConfig.data,
-      );
-      const maskedSingBoxConfigText = formatMaskedSingBoxConfig(
-        showSingBoxConfig.data,
+    if (showTachyonCoreConfig.success) {
+      const rawCoreConfigText = stringifyCoreConfig(showTachyonCoreConfig.data);
+      const maskedCoreConfigText = formatMaskedCoreConfig(
+        showTachyonCoreConfig.data,
       );
 
       ui.showModal(
-        isTachyonCore
-          ? _('Show Tachyon Core config')
-          : _('Show sing-box config'),
-        renderModal(rawSingBoxConfigText, 'show_sing_box_config', {
-          maskText: () => maskedSingBoxConfigText,
+        _('Show Tachyon Core config'),
+        renderModal(rawCoreConfigText, 'show_tachyon_core_config', {
+          maskText: () => maskedCoreConfigText,
           initialAutoRefresh: false,
           showMaskValuesToggle: true,
         }),
       );
     } else {
       notifyActionFailure(
-        'handleShowSingBoxConfig',
-        showSingBoxConfig,
-        isTachyonCore
-          ? _('Show Tachyon Core config failed')
-          : _('Show sing-box config failed'),
+        'handleShowTachyonCoreConfig',
+        showTachyonCoreConfig,
+        _('Show Tachyon Core config failed'),
       );
     }
   } catch (e) {
     notifyActionFailure(
-      'handleShowSingBoxConfig',
+      'handleShowTachyonCoreConfig',
       e,
-      isTachyonCore
-        ? _('Show Tachyon Core config failed')
-        : _('Show sing-box config failed'),
+      _('Show Tachyon Core config failed'),
     );
   } finally {
-    setDiagnosticActionLoading('showSingBoxConfig', false);
+    setDiagnosticActionLoading('showTachyonCoreConfig', false);
   }
 }
 
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading('generateBugReport', true);
   try {
-    const isTachyonCore = Boolean(
-      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
-    );
     const configResult = await fs.read('/etc/config/tachyon').catch(() => '');
     const logsResult = await executeShellCommand({
       command: '/sbin/logread',
       args: ['-e', 'tachyon', '-l', '1000'],
     });
-    const singboxLogsResult = await executeShellCommand({
+    const coreLogsResult = await executeShellCommand({
       command: '/sbin/logread',
-      args: ['-e', isTachyonCore ? 'tachyon-core' : 'sing-box', '-l', '1000'],
+      args: ['-e', 'tachyon-core', '-l', '1000'],
     });
 
-    const coreLabel = isTachyonCore ? 'tachyon-core' : 'sing-box';
     const filterUdpErrors = (text: string) => {
       if (!text || !text.includes('UDP is not supported by outbound:'))
         return text;
@@ -1320,7 +1217,7 @@ async function handleGenerateBugReport() {
         if (line.includes('UDP is not supported by outbound:')) {
           if (!noticeEmitted) {
             filtered.push(
-              `UDP traffic through HTTP outbounds is not supported by ${coreLabel}; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.`,
+              'UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.',
             );
             noticeEmitted = true;
           }
@@ -1340,10 +1237,10 @@ async function handleGenerateBugReport() {
         ? filterUdpErrors(logsResult.stdout)
         : 'Failed to fetch tachyon logs',
       '',
-      isTachyonCore ? '--- TACHYON-CORE LOGS ---' : '--- SING-BOX LOGS ---',
-      singboxLogsResult.code === 0
-        ? filterUdpErrors(singboxLogsResult.stdout)
-        : `Failed to fetch ${isTachyonCore ? 'tachyon-core' : 'sing-box'} logs`,
+      '--- TACHYON-CORE LOGS ---',
+      coreLogsResult.code === 0
+        ? filterUdpErrors(coreLogsResult.stdout)
+        : 'Failed to fetch tachyon-core logs',
     ].join('\n');
 
     const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
@@ -1549,13 +1446,11 @@ function renderDiagnosticAvailableActionsWidget() {
       onClick: handleViewLogs,
       disabled: viewLogsDisabled,
     },
-    showSingBoxConfig: {
-      loading: diagnosticsActions.showSingBoxConfig.loading,
+    showTachyonCoreConfig: {
+      loading: diagnosticsActions.showTachyonCoreConfig.loading,
       visible: true,
-      text: store.get().diagnosticsSystemInfo?.sing_box_tachyon_core
-        ? _('Show Tachyon Core config')
-        : _('Show sing-box config'),
-      onClick: handleShowSingBoxConfig,
+      text: _('Show Tachyon Core config'),
+      onClick: handleShowTachyonCoreConfig,
       disabled: utilityActionsDisabled,
     },
     generateBugReport: {
@@ -1643,61 +1538,30 @@ function renderDiagnosticSystemInfoWidget() {
     },
   ];
 
-  const singBoxRowLabel = diagnosticsSystemInfo.sing_box_tachyon_core
-    ? 'Tachyon Core'
-    : 'Sing-box';
-  const coreRunning = Boolean(svcData.singbox || svcData.tachyonRunning);
+  const coreRunning = Boolean(svcData.tachyonCore || svcData.tachyonRunning);
   const coreSubParts: string[] = [];
-  if (svcData.singboxPid) {
-    coreSubParts.push(`PID ${svcData.singboxPid}`);
+  if (svcData.tachyonCorePid) {
+    coreSubParts.push(`PID ${svcData.tachyonCorePid}`);
   }
   if (
-    typeof svcData.singboxMemoryMb === 'number' &&
-    svcData.singboxMemoryMb > 0
+    typeof svcData.tachyonCoreMemoryMb === 'number' &&
+    svcData.tachyonCoreMemoryMb > 0
   ) {
-    coreSubParts.push(`${svcData.singboxMemoryMb.toFixed(1)} MB`);
+    coreSubParts.push(`${svcData.tachyonCoreMemoryMb.toFixed(1)} MB`);
   }
-  if (svcData.singboxUptimePretty) {
-    coreSubParts.push(svcData.singboxUptimePretty);
+  if (svcData.tachyonCoreUptimePretty) {
+    coreSubParts.push(svcData.tachyonCoreUptimePretty);
   }
 
   items.push({
-    key: singBoxRowLabel,
-    value: formatSingBoxVersion(diagnosticsSystemInfo),
+    key: 'Tachyon Core',
+    value: formatCoreVersion(diagnosticsSystemInfo.tachyon_core_version),
     tag: {
       label: coreRunning ? _('active') : tr('остановлен', 'stopped'),
       kind: coreRunning ? 'success' : 'warning',
     },
     subvalue: coreSubParts.length ? coreSubParts.join(' · ') : undefined,
   });
-
-  if (diagnosticsSystemInfo.zapret_installed) {
-    items.push({
-      key: 'Zapret',
-      value: diagnosticsSystemInfo.zapret_version,
-    });
-  }
-
-  if (diagnosticsSystemInfo.zapret2_installed) {
-    items.push({
-      key: 'Zapret2',
-      value: diagnosticsSystemInfo.zapret2_version,
-      tag: svcData.zapret2Running
-        ? { label: _('active'), kind: 'success' }
-        : undefined,
-      subvalue:
-        svcData.zapret2Pid && svcData.zapret2MemoryMb
-          ? `PID ${svcData.zapret2Pid} · ${svcData.zapret2MemoryMb.toFixed(1)} MB`
-          : undefined,
-    });
-  }
-
-  if (diagnosticsSystemInfo.byedpi_installed) {
-    items.push({
-      key: 'ByeDPI',
-      value: diagnosticsSystemInfo.byedpi_version,
-    });
-  }
 
   items.push(
     {
@@ -1953,8 +1817,8 @@ function getDiagnosticRunners(
   providerOptions: DiagnosticsProviderOptions,
 ): DiagnosticRunner[] {
   const engineRunner = {
-    code: DIAGNOSTICS_CHECKS.SINGBOX,
-    run: runSingBoxCheck,
+    code: DIAGNOSTICS_CHECKS.TACHYON_CORE,
+    run: runTachyonCoreCheck,
   };
 
   return [
@@ -1964,15 +1828,6 @@ function getDiagnosticRunners(
       ? [{ code: DIAGNOSTICS_CHECKS.INBOUNDS, run: runInboundsCheck }]
       : []),
     { code: DIAGNOSTICS_CHECKS.NFT, run: runNftCheck },
-    ...(providerOptions.includeZapret
-      ? [{ code: DIAGNOSTICS_CHECKS.ZAPRET, run: runZapretCheck }]
-      : []),
-    ...(providerOptions.includeZapret2
-      ? [{ code: DIAGNOSTICS_CHECKS.ZAPRET2, run: runZapret2Check }]
-      : []),
-    ...(providerOptions.includeByedpi
-      ? [{ code: DIAGNOSTICS_CHECKS.BYEDPI, run: runByedpiCheck }]
-      : []),
     { code: DIAGNOSTICS_CHECKS.OUTBOUNDS, run: runSectionsCheck },
     { code: DIAGNOSTICS_CHECKS.FAKEIP, run: runFakeIPCheck },
   ];

@@ -151,36 +151,20 @@ function available_package_version(package_name) {
     return opkg_package_version_from_list(package_name, command_output_from_args([ "opkg", "list", package_name ]));
 }
 
-function extract_arch_package_version(package_name, package_arch) {
-    return trim(helpers.helper_output("updates-arch-package-version", [ package_name, package_arch ]));
-}
-
-function extract_zapret_bundle_version(bundle_name) {
-    return trim(helpers.helper_output("updates-zapret-bundle-version", [ bundle_name ]));
-}
-
-function extract_zapret2_bundle_version(bundle_name) {
-    return trim(helpers.helper_output("updates-zapret2-bundle-version", [ bundle_name ]));
-}
-
-function normalize_zapret_version(value) {
-    return trim(helpers.helper_output("updates-normalize-zapret-version", [ value ]));
-}
-
-function normalize_sing_box_version(value) {
-    return trim(helpers.helper_output("updates-normalize-sing-box-version", [ value ]));
+function normalize_core_version(value) {
+    return trim(helpers.helper_output("updates-normalize-core-version", [ value ]));
 }
 
 // ============================================================================
-// sing-box binary version parsing
+// tachyon-core binary version parsing
 // ============================================================================
 
-function extract_sing_box_version_from_output(output) {
+function extract_core_version_from_output(output) {
     output = as_string(output);
     for (let line in split(output, "\n")) {
         line = trim(line);
         let fields = split(line, /[ \t\r\n]+/);
-        if (length(fields) >= 3 && (lc(fields[0]) == "sing-box" || lc(fields[0]) == "tachyon-core") && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/))
+        if (length(fields) >= 3 && lc(fields[0]) == "tachyon-core" && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/))
             return fields[2];
         if (length(fields) >= 2 && (lc(fields[0]) == "version" || lc(fields[0]) == "tachyon-core") && match(fields[1], /^[vV]?[0-9]+/))
             return fields[1];
@@ -188,10 +172,10 @@ function extract_sing_box_version_from_output(output) {
     return "";
 }
 
-function read_sing_box_binary_version(binary, library_dir) {
+function read_core_binary_version(binary, library_dir) {
     binary = as_string(binary);
     if (binary == "" || !helpers.file_exists(binary)) {
-        helpers.updates_log("sing-box binary not found at " + binary, "warn");
+        helpers.updates_log("tachyon-core binary not found at " + binary, "warn");
         return "";
     }
 
@@ -208,7 +192,7 @@ function read_sing_box_binary_version(binary, library_dir) {
     }
 
     let raw_output = command_output_lenient("(" + command + ") 2>&1");
-    let version = extract_sing_box_version_from_output(raw_output);
+    let version = extract_core_version_from_output(raw_output);
     if (version == "") {
         let candidate = trim(helpers.helper_output_input(raw_output, "stdin-first-line-last-field", []));
         if (match(candidate, /^[vV]?[0-9]+/))
@@ -216,7 +200,7 @@ function read_sing_box_binary_version(binary, library_dir) {
     }
     if (version == "") {
         let trimmed_raw = trim(raw_output);
-        helpers.updates_log("Failed to parse sing-box version from binary " + binary + (trimmed_raw != "" ? "; output: " + trimmed_raw : "; binary produced no output"), "warn");
+        helpers.updates_log("Failed to parse tachyon-core version from binary " + binary + (trimmed_raw != "" ? "; output: " + trimmed_raw : "; binary produced no output"), "warn");
     }
     return version;
 }
@@ -230,13 +214,9 @@ function module_exports() {
         installed_package_version,
         opkg_package_version_from_list,
         available_package_version,
-        extract_arch_package_version,
-        extract_zapret_bundle_version,
-        extract_zapret2_bundle_version,
-        normalize_zapret_version,
-        normalize_sing_box_version,
-        extract_sing_box_version_from_output,
-        read_sing_box_binary_version
+        normalize_core_version,
+        extract_core_version_from_output,
+        read_core_binary_version
     };
 }
 

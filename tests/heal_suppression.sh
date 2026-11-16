@@ -38,12 +38,12 @@ done
 
 # ── the root cause is claimed and released ────────────────────────────────────
 # The general active_root_causes registry was replaced by two named deadline
-# vars — WAN and sing-box are the only two causes ever claimed; proxy and DNS
+# vars — WAN and core are the only two causes ever claimed; proxy and DNS
 # healers only need to know if either is active.
 grep -q 'let wan_repair_until' "$WATCHDOG_UC" \
   || fail "wan_repair_until is gone; nothing marks a WAN repair as a root cause"
-grep -q 'let singbox_repair_until' "$WATCHDOG_UC" \
-  || fail "singbox_repair_until is gone; nothing marks a sing-box restart as a root cause"
+grep -q 'let core_repair_until' "$WATCHDOG_UC" \
+  || fail "core_repair_until is gone; nothing marks a core restart as a root cause"
 grep -q 'function suppressed_by_root_cause(healer)' "$WATCHDOG_UC" \
   || fail "suppressed_by_root_cause() is gone; consequences no longer stand down"
 
@@ -56,16 +56,16 @@ ifdown_line="$(grep -n -m1 '/sbin/ifdown wan' "$WATCHDOG_UC" | cut -d: -f1)"
 [ "$claim_line" -lt "$ifdown_line" ] \
   || fail "the WAN deadline is set after ifdown; the resulting proxy/DNS failures would not be suppressed"
 
-grep -q 'singbox_repair_until = time()' "$WATCHDOG_UC" \
-  || fail "heal_core_stopped does not set singbox_repair_until"
+grep -q 'core_repair_until = ' "$WATCHDOG_UC" \
+  || fail "heal_core_stopped does not set core_repair_until"
 
 # ── every claim has a release path ────────────────────────────────────────────
 # A deadline released only at expiry suppresses real faults for the full window.
 # Both causes have a recovery fact that zeroes the deadline immediately.
 grep -q 'wan_repair_until = 0;' "$WATCHDOG_UC" \
   || fail "the WAN deadline is never cleared on recovery"
-grep -q 'singbox_repair_until = 0;' "$WATCHDOG_UC" \
-  || fail "the sing-box deadline is never cleared on recovery"
+grep -q 'core_repair_until = 0;' "$WATCHDOG_UC" \
+  || fail "the core deadline is never cleared on recovery"
 
 # WAN_UP is new: probe_wan only ever published failure, so a recovered uplink
 # was invisible.
@@ -102,7 +102,7 @@ grep -q '/sbin/ubus call network.interface.wan renew' <<< "$wan_heal_body" \
 # ── no http/mixed inbound → the proxy probe must not declare it broken ───────
 # proxy_port() used to fall back to the hardcoded 4534, so a config without
 # any http/mixed inbound (economy mode, all mixed proxies off) measured a dead
-# listener and the watchdog restarted sing-box every ~minute (issue #31).
+# listener and the watchdog restarted tachyon-core every ~minute (issue #31).
 proxy_port_body="$(sed -n '/^function proxy_port()/,/^}$/p' "$CONTROLLER_UC")"
 grep -q 'let port = "";' <<< "$proxy_port_body" \
   || fail "proxy_port() still defaults to a fake port instead of signalling 'no proxy inbound'"
@@ -130,7 +130,7 @@ done
 # ── a skip is logged, never silent ────────────────────────────────────────────
 # "the watchdog did nothing" and "the watchdog deliberately stood down" look
 # identical in a log that omits this.
-grep -qE 'standing down, WAN repair|standing down, sing-box restart' "$WATCHDOG_UC" \
+grep -qE 'standing down, WAN repair|standing down, .* restart is in progress' "$WATCHDOG_UC" \
   || fail "a suppressed repair is now silent; the log cannot distinguish it from inaction"
 
 # ── the suppression state machine behaves ─────────────────────────────────────
@@ -164,18 +164,18 @@ wan_repair_until = time() + SUPPRESSION_DEADLINE;
 push(out, "wan_proxy=" + (suppressed_by_root_cause("proxy") ? "skip" : "run"));
 push(out, "wan_dns=" + (suppressed_by_root_cause("dns") ? "skip" : "run"));
 // WAN does not suppress itself (it IS the root cause).
-// Both vars are in scope; singbox_repair_until is still 0, so only WAN fires.
+// Both vars are in scope; core_repair_until is still 0, so only WAN fires.
 push(out, "logged=" + (length(logged) > 0 ? "yes" : "no"));
 
 // The uplink comes back: suppression lifts immediately, not at the deadline.
 wan_repair_until = 0;
 push(out, "released_proxy=" + (suppressed_by_root_cause("proxy") ? "skip" : "run"));
 
-// A sing-box restart suppresses proxy/DNS, but not a WAN fault which must still
+// A core restart suppresses proxy/DNS, but not a WAN fault which must still
 // be repaired.
-singbox_repair_until = time() + SUPPRESSION_DEADLINE;
-push(out, "singbox_blocks_proxy=" + (suppressed_by_root_cause("proxy") ? "skip" : "run"));
-singbox_repair_until = 0;
+core_repair_until = time() + SUPPRESSION_DEADLINE;
+push(out, "core_blocks_proxy=" + (suppressed_by_root_cause("proxy") ? "skip" : "run"));
+core_repair_until = 0;
 
 // An expired deadline no longer suppresses.
 wan_repair_until = time() - 1;
@@ -185,7 +185,7 @@ print(join(" ", out) + "\n");
 DRIVER
 
 actual="$(ucode "$SUPPRESS_UC")"
-expected="idle_proxy=run wan_proxy=skip wan_dns=skip logged=yes released_proxy=run singbox_blocks_proxy=skip expired_proxy=run"
+expected="idle_proxy=run wan_proxy=skip wan_dns=skip logged=yes released_proxy=run core_blocks_proxy=skip expired_proxy=run"
 [ "$actual" = "$expected" ] \
   || fail "root-cause suppression misbehaves
   expected: $expected

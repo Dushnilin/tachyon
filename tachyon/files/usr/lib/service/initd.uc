@@ -158,7 +158,7 @@ function pid_alive(pid) {
     if (match(pid, /^[0-9]+$/) == null || !command_success_from_args([ "kill", "-0", pid ]))
         return false;
     let cmd = fs.readfile("/proc/" + pid + "/cmdline");
-    if (cmd != null && match(cmd, /ucode|tachyon|sh|sing-box/) == null)
+    if (cmd != null && match(cmd, /ucode|tachyon|sh/) == null)
         return false;
     return true;
 }
@@ -612,7 +612,7 @@ function system_uptime_seconds() {
     return int(field);
 }
 
-// Cold boot and WAN-up retries race the network coming up, so sing-box can take far
+// Cold boot and WAN-up retries race the network coming up, so tachyon-core can take far
 // longer to reach a stable state than on a start the user asked for. rc.common calls
 // boot() as a plain argument-less start, so the reason alone cannot tell the two
 // apart: a start early in uptime is treated as cold. Those paths keep the generous
@@ -671,7 +671,7 @@ function start_service(reason, owner_pid) {
     let verify_timeout = start_verify_timeout(reason, null);
     let start_command = command_from_args([ BIN_PATH, "start" ]);
     if (verify_timeout != "")
-        start_command = "TACHYON_SING_BOX_START_VERIFY_TIMEOUT=" +
+        start_command = "TACHYON_CORE_START_VERIFY_TIMEOUT=" +
             shell_quote(verify_timeout) + " " + start_command;
 
     let status = command_status(start_command);

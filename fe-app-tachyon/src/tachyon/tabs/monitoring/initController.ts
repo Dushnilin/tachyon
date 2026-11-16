@@ -155,14 +155,7 @@ function getRouteBadgeModifier(route: string): string {
   ) {
     return 'tachyon_monitoring-page__route--block';
   }
-  if (
-    routeLower.includes('dpi') ||
-    routeLower.includes('zapret') ||
-    routeLower.includes('byedpi') ||
-    routeLower.includes('desync') ||
-    routeLower.includes('wdtt') ||
-    routeLower.includes('olcrtc')
-  ) {
+  if (routeLower.includes('dpi') || routeLower.includes('desync')) {
     return 'tachyon_monitoring-page__route--dpi';
   }
   if (
@@ -1951,7 +1944,8 @@ function watchServiceState() {
         loading: false,
         failed: false,
         running: Boolean(
-          uiState.service.tachyon.running || uiState.service.sing_box?.running,
+          uiState.service.tachyon.running ||
+            uiState.service.tachyon_core?.running,
         ),
       }),
     );

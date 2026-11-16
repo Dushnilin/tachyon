@@ -3,11 +3,11 @@
 set -euo pipefail
 
 for file in settings.js section.js; do
-  source="$(sed -n '/^function isSingBoxDuration(/,/^}/p' \
+  source="$(sed -n '/^function isCoreDuration(/,/^}/p' \
     "$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/$file")"
 
   DURATION_SOURCE="$source" node <<'NODE'
-const validate = Function(`${process.env.DURATION_SOURCE}; return isSingBoxDuration`)();
+const validate = Function(`${process.env.DURATION_SOURCE}; return isCoreDuration`)();
 
 for (const value of ['1s', '0.5s', '2m30s']) {
   if (!validate(value)) throw new Error(`valid duration rejected: ${value}`);

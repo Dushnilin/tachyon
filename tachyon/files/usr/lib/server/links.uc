@@ -1,7 +1,6 @@
 // Client URI generation for server subscriptions. No engine configuration is changed.
 let common = require("core.common");
 let ip = require("core.ip");
-let variant_state = require("tachyon_core.variant_state");
 let str = common.as_string;
 
 function encode(value) {
@@ -311,7 +310,7 @@ function build(s, fallback_host, pin) {
     }
     if (protocol == "mtproto") {
         let secret = common.mtproto_secret_canonical(s.mtproto_secret || user.password, s.mtproto_faketls || "google.com");
-        if (secret && (s.mtproto_padding == "0" || variant_state.is_tachyon_core()))
+        if (secret)
             secret = substr(secret, 2, 32);
         return secret ? "https://t.me/proxy" + query({ server: address, port, secret }) + "#" + encode(user.name) : "";
     }

@@ -31,7 +31,7 @@ export function render() {
                   'span',
                   { class: 'tachyon_diagnostic-page__left-bar__subtitle' },
                   _(
-                    'Automated verification of DNS, routing rules, firewall and DPI bypass engines',
+                    'Automated verification of DNS, routing rules, firewall and packet desync engines',
                   ),
                 ),
               ],

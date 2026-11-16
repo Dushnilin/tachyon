@@ -2,14 +2,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-# tachyon-core is flagged as its own variant (sing_box_tachyon_core) while
-# sing_box_extended stays 0, so every frontend capability gate keyed on
-# sing_box_extended hid the AmneziaWG and AnyTLS section actions, the built-in
-# FPTN action and the XHTTP transport on servers, even though the backend
-# validator accepts all of them on a tachyon-core install. The same gates must
-# not open up what the validator still rejects (warp/masque/openvpn/snell/
-# mieru/sudoku) or MTProto, which tachyon-core has no inbound for: an offered
-# value there aborts the whole config on apply.
+# Verifies that LuCI views expose the unified tachyon-core section actions,
+# server protocols/transports, and UI capability flags cleanly.
 
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 SERVER_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js"
@@ -39,8 +33,6 @@ function functionBody(source, signature) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
-// Map every option.value(...) registration in a flat option builder to the
-// capability gate it sits behind (null = offered unconditionally).
 function valueGates(body) {
   const gates = {};
   let current = null;
@@ -72,65 +64,30 @@ function expectGate(gates, action, expected) {
 }
 
 // --- capabilities source (tachyon.js) ---------------------------------------
-if (!tachyonSource.includes("singBoxTachyonCore: false,")) {
-  fail("uiCapabilities must default singBoxTachyonCore to false");
+if (!tachyonSource.includes("tachyonCoreTailscale: true,")) {
+  fail("uiCapabilities must default tachyonCoreTailscale to true");
 }
-if (!tachyonSource.includes("typeof data?.sing_box_tachyon_core !== \"undefined\"")) {
-  fail("updateUiCapabilities must read sing_box_tachyon_core without clobbering it");
-}
-if (!tachyonSource.includes("singBoxTachyonCore: uiCapabilities.singBoxTachyonCore,")) {
-  fail("the action providers event must carry singBoxTachyonCore");
+if (!tachyonSource.includes("tachyon_core_tailscale")) {
+  fail("updateUiCapabilities must read tachyon_core_tailscale");
 }
 
 // --- section action dropdown (section.js) -----------------------------------
-const stateBlock = functionBody(
-  sectionSource,
-  "const actionProvidersAvailabilityState = {",
-);
-if (!stateBlock.includes("singBoxTachyonCore: false,")) {
-  fail("actionProvidersAvailabilityState must track singBoxTachyonCore");
-}
-
-const updateBlock = functionBody(
-  sectionSource,
-  "function updateActionProvidersAvailabilityState(",
-);
-if (!updateBlock.includes("typeof nextState.singBoxTachyonCore !== \"undefined\"")) {
-  fail("updateActionProvidersAvailabilityState must consume singBoxTachyonCore");
-}
-
 const fromSystemInfo = functionBody(
   sectionSource,
   "function updateActionProvidersAvailabilityFromSystemInfo(",
 );
-if (!fromSystemInfo.includes("singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core)")) {
-  fail("system-info must feed singBoxTachyonCore into the action providers state");
-}
-if (!fromSystemInfo.includes("fptnInstalled: Boolean(systemInfo.sing_box_fptn)")) {
-  fail("the built-in FPTN flag must make the FPTN action available");
-}
-
-if (!sectionSource.includes("singBoxTachyonCore: Boolean(capabilities?.singBoxTachyonCore)")) {
-  fail("the capabilities loader path must feed singBoxTachyonCore");
-}
-if (!sectionSource.includes("function isTachyonCoreForUi()")) {
-  fail("section.js must expose an isTachyonCoreForUi gate");
+if (!fromSystemInfo.includes("tachyon_core_fptn")) {
+  fail("the built-in FPTN flag must feed action availability");
 }
 
 const gates = valueGates(
   functionBody(sectionSource, "function populateActionOptionValues(option) {"),
 );
 
-const tachyonGate = "isSingBoxExtendedForUi() || isTachyonCoreForUi()";
-
-// Offered unconditionally: the routing base every engine understands.
-for (const base of ["connection", "bypass", "block", "dns", "hosts"]) {
+for (const base of ["connection", "group", "naive", "awg", "warp", "masque", "openvpn", "anytls", "snell", "mieru", "sudoku", "openconnect", "desync", "shadowtls", "trusttunnel", "tewfai", "csqtt", "bypass", "block", "dns", "hosts"]) {
   expectGate(gates, base, null);
 }
 
-// NaiveProxy ships an outbound in every core, so its action carries no variant
-// gate - gating it would hide it on stock sing-box, which has it too.
-expectGate(gates, "naive", null);
 if (!sectionSource.includes('case "naive":\n      return "NaiveProxy";')) {
   fail("naive action must carry its NaiveProxy label");
 }
@@ -139,101 +96,49 @@ for (const field of ["naive_server", "naive_server_port", "naive_username", "nai
     fail(`naive section must expose ${field}`);
   }
 }
-
-// Supported or unreleased actions offered when extended or tachyon-core is active.
-for (const action of [
-  "awg",
-  "warp",
-  "masque",
-  "openvpn",
-  "anytls",
-  "snell",
-  "mieru",
-  "sudoku",
-]) {
-  expectGate(gates, action, tachyonGate);
-}
-
 if (!sectionSource.includes('case "mieru":\n      return "Mieru";')) {
   fail("mieru label must be plain: tachyon-core implements it");
 }
 if (sectionSource.includes('"Mieru (не реализован)"')) {
   fail("the stale mieru (не реализован) label must be gone");
 }
-// mieru is implemented on tachyon-core, so neither the validate() guard nor the
-// disabled-<option> pass may touch it: an offered value there is a value the
-// validator refuses on apply.
-if (sectionSource.includes('value === "mieru" || value === "sudoku"')) {
-  fail("mieru must not be blocked by the tachyon-core validate() guard");
-}
-if (sectionSource.includes('option[value="mieru"]')) {
-  fail("mieru must not be disabled in the action dropdown for tachyon-core");
-}
-if (!sectionSource.includes('case "sudoku":\n      return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";')) {
+if (!sectionSource.includes('case "sudoku":\n      return _("Sudoku (не реализован)");')) {
   fail("sudoku label must indicate (не реализован) for tachyon-core");
 }
 if (!sectionSource.includes('value === "sudoku"')) {
-  fail("sudoku must stay blocked by the tachyon-core validate() guard");
+  fail("sudoku must stay blocked by the validate() guard");
 }
 
-// Component-gated actions must keep their own gates.
 expectGate(gates, "fptn", "isFptnInstalledForUi()");
-expectGate(gates, "zapret2", "isZapret2InstalledForUi()");
-expectGate(gates, "byedpi", "isByedpiInstalledForUi()");
+for (const removed of ["zapret", "zapret2", "byedpi", "olcrtc"]) {
+  if (removed in gates) fail(`removed section action "${removed}" must not be offered in UI`);
+}
 
 // --- servers (server.js) -----------------------------------------------------
 const normalize = functionBody(
   serverSource,
   "function normalizeServerCapabilities(capabilities) {",
 );
-if (!normalize.includes("singBoxTachyonCore,")) {
-  fail("normalizeServerCapabilities must expose singBoxTachyonCore");
-}
-if (!normalize.includes("singBoxXhttp: singBoxTachyonCore,")) {
-  fail("server-side XHTTP must only be offered on tachyon-core (sing-box-lx/extended only have client-side xhttp)");
-}
-if (!normalize.includes("singBoxExtended,")) {
-  fail("normalizeServerCapabilities must keep singBoxExtended as its own flag");
+if (!normalize.includes("tachyonCoreTailscale")) {
+  fail("normalizeServerCapabilities must read tachyonCoreTailscale");
 }
 
 const transports = functionBody(
   serverSource,
-  "function populateTransportValues(option,",
+  "function populateTransportValues(option)",
 );
-if (!transports.includes("if (supportsXhttp)")) {
-  fail("the transport list must gate XHTTP on the xhttp capability, not on the variant flag");
-}
-const xhttpLine = transports.indexOf('addOptionValue(option, "xhttp", "XHTTP");');
-const xhttpGuard = transports.lastIndexOf("if (", xhttpLine);
-if (xhttpLine < 0 || xhttpGuard < 0) {
+if (!transports.includes('addOptionValue(option, "xhttp", "XHTTP");')) {
   fail("XHTTP must be registered by the transport list");
-}
-if (!transports.slice(xhttpGuard, xhttpLine).includes("supportsXhttp")) {
-  fail("XHTTP must not be part of the unconditional transport list");
 }
 
 const protocols = functionBody(
   serverSource,
-  "function populateProtocolValues(option, capabilities) {",
+  "function populateProtocolValues(option,",
 );
-if (!protocols.includes("if (normalized.singBoxExtended)")) {
-  fail("extended-only protocols (MTProto) must stay behind singBoxExtended");
+if (!protocols.includes("CORE_SERVER_PROTOCOL_LABELS")) {
+  fail("populateProtocolValues must register CORE_SERVER_PROTOCOL_LABELS");
 }
 
-const applyBlock = functionBody(
-  serverSource,
-  "function applyServerCapabilities(sectionRef, capabilities) {",
-);
-if (!applyBlock.includes("populateTransportValues(options.transport, normalized.singBoxXhttp)")) {
-  fail("applyServerCapabilities must refresh transports with the XHTTP capability");
-}
-
-if (!serverSource.includes("populateTransportValues(o, singBoxXhttp);")) {
-  fail("createServerContent must render transports with the XHTTP capability");
-}
-if (serverSource.includes("populateTransportValues(o, singBoxExtended);")) {
-  fail("stale transport gate on singBoxExtended found");
-}
 if (!tachyonSource.includes('"require view.tachyon.local_devices as localDevices";')) {
   fail("tachyon.js must pre-declare view.tachyon.local_devices to avoid a 3rd L.require HTTP wave");
 }

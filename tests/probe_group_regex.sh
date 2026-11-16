@@ -2,7 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-export TMP_SING_BOX_FOLDER="$WORK_DIR" TACHYON_SECTION_CACHE_DIR="$WORK_DIR/cache"
+export TMP_TACHYON_CORE_FOLDER="$WORK_DIR" TACHYON_SECTION_CACHE_DIR="$WORK_DIR/cache"
 mkdir -p "$WORK_DIR/cache"
 cat >"$WORK_DIR/config.json" <<'JSON'
 {"outbounds":[{"type":"http","tag":"A"},{"type":"http","tag":"B"},{"type":"http","tag":"C"}]}

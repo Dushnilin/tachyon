@@ -1,12 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   getCheckToastMessage,
   getErrorMessage,
   getExpectedLatestVersionForAction,
   isComponentActionAlreadyRunningError,
-  notifyActionProvidersAvailabilityChanged,
 } from '../notifications';
-import { TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT } from '../../../../constants';
 
 describe('updates notifications helpers', () => {
   it('formats error message with fallback', () => {
@@ -48,13 +46,13 @@ describe('updates notifications helpers', () => {
     expect(
       getExpectedLatestVersionForAction(
         {
-          component: 'sing_box',
+          component: 'tachyon-core',
           action: 'install',
-          targetVersion: '1.11.0',
+          targetVersion: '0.2.4',
         },
         {},
       ),
-    ).toBe('1.11.0');
+    ).toBe('0.2.4');
 
     // Tachyon install without targetVersion pulls from updatesChecks
     expect(
@@ -73,64 +71,26 @@ describe('updates notifications helpers', () => {
     expect(
       getExpectedLatestVersionForAction(
         {
-          component: 'zapret',
+          component: 'tachyon-core',
           action: 'install',
         },
         {
-          zapret: { latest_version: '69.0' },
+          'tachyon-core': { latest_version: '0.2.5' },
         },
       ),
-    ).toBe('69.0');
+    ).toBe('0.2.5');
 
     // Non-install actions without targetVersion return undefined
     expect(
       getExpectedLatestVersionForAction(
         {
-          component: 'zapret',
+          component: 'tachyon-core',
           action: 'check_update',
         },
         {
-          zapret: { latest_version: '69.0' },
+          'tachyon-core': { latest_version: '0.2.5' },
         },
       ),
     ).toBeUndefined();
-  });
-
-  it('dispatches provider availability change event on window', () => {
-    const dispatchFn = vi.fn();
-    class MockCustomEvent {
-      type: string;
-      detail: unknown;
-      constructor(type: string, init?: { detail?: unknown }) {
-        this.type = type;
-        this.detail = init?.detail;
-      }
-    }
-
-    vi.stubGlobal('window', { dispatchEvent: dispatchFn });
-    vi.stubGlobal('CustomEvent', MockCustomEvent);
-
-    try {
-      notifyActionProvidersAvailabilityChanged({
-        zapret_installed: 1,
-        zapret2_installed: 0,
-        byedpi_installed: 1,
-        wdtt_installed: 0,
-        olcrtc_installed: 0,
-      });
-
-      expect(dispatchFn).toHaveBeenCalledTimes(1);
-      const event = dispatchFn.mock.calls[0][0] as MockCustomEvent;
-      expect(event.type).toBe(TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT);
-      expect(event.detail).toEqual({
-        zapretInstalled: true,
-        zapret2Installed: false,
-        byedpiInstalled: true,
-        wdttInstalled: false,
-        olcrtcInstalled: false,
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 });

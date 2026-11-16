@@ -6,7 +6,7 @@
 // link stays UP. On failure threshold it promotes the backup WAN default route
 // metric in the main routing table, keeps the primary WAN default route at a
 // high backup metric (so recovery probes bound to the primary device continue
-// to work), signals tachyon-core / sing-box with SIGHUP to refresh its outbound
+// to work), signals tachyon-core with SIGHUP to refresh its outbound
 // interface cache without rebuilding nftables, and restores the original route
 // metrics once the primary WAN recovers.
 //
@@ -317,15 +317,13 @@ function touch_wan_event_stamp(now) {
 }
 
 function send_core_hup_unlocked() {
-    for (let proc_name in [ "tachyon-core", "sing-box" ]) {
-        let out = trim(as_string(command_output_from_args([ "pgrep", "-x", proc_name ]) || ""));
-        if (out == "")
-            continue;
-        for (let pid in split(out, /[ \t\r\n]+/)) {
-            let clean_pid = trim(as_string(pid || ""));
-            if (clean_pid != "" && match(clean_pid, /^[0-9]+$/) != null)
-                command_success_from_args([ "kill", "-HUP", clean_pid ]);
-        }
+    let out = trim(as_string(command_output_from_args([ "pgrep", "-x", "tachyon-core" ]) || ""));
+    if (out == "")
+        return;
+    for (let pid in split(out, /[ \t\r\n]+/)) {
+        let clean_pid = trim(as_string(pid || ""));
+        if (clean_pid != "" && match(clean_pid, /^[0-9]+$/) != null)
+            command_success_from_args([ "kill", "-HUP", clean_pid ]);
     }
 }
 

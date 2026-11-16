@@ -23,7 +23,7 @@ fail() {
 }
 
 # Serialise the two tests that care about processes named like the real daemon.
-# One has to run a stand-in called "sing-box" (process_identity matches on the
+# One has to run a stand-in called "tachyon-core" (process_identity matches on the
 # exe basename and on comm), another asserts that no such process exists. Under
 # run_all's -P4 those two run at the same time and each one breaks the other.
 # mkdir is atomic on POSIX, so it serves as the lock; no framework needed.

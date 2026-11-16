@@ -15,7 +15,7 @@ grep -Fq 'listen == "127.0.0.1"' "$COMMON_UC" ||
 grep -Fq 'inbound.tag == "service-mixed-in"' "$TG_UC" ||
   fail "telegram.uc must prioritize service-mixed-in tag"
 
-# 3. Behavioral test: mock sing-box config with user inbound at index 0 and service mixed inbound at index 1
+# 3. Behavioral test: mock tachyon-core config with user inbound at index 0 and service mixed inbound at index 1
 CFG_FILE="$WORK_DIR/config.json"
 cat > "$CFG_FILE" <<'EOF'
 {

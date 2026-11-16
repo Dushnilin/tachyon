@@ -47,11 +47,7 @@ const ROUTING_ACTIONS = [
   "vpn",
   "bypass",
   "block",
-  "zapret",
-  "zapret2",
-  "byedpi",
   "wdtt",
-  "olcrtc",
   "fptn",
   "awg",
   "warp",
@@ -219,18 +215,13 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "trusttunnel",
       "tewfai",
       "csqtt",
+      "wdtt",
       "group",
     ].includes(action)
   ) {
     return true;
   }
-  if (action === "zapret") {
-    return isZapretInstalledForUi();
-  }
-  if (action === "zapret2") {
-    return isZapret2InstalledForUi();
-  }
-  return action === "byedpi" && isByedpiInstalledForUi();
+  return false;
 }
 
 function refreshDnsDetourSectionOptionValues(option, sectionId) {
@@ -277,285 +268,12 @@ function dependsOnRuleConditions(option) {
   return option;
 }
 
-const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT =
-  "--filter-tcp=80 <HOSTLIST> --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin --new --filter-udp=443 <HOSTLIST_NOAUTO> --dpi-desync=fake --dpi-desync-repeats=11 --new --filter-tcp=443 <HOSTLIST> --dpi-desync=multidisorder --dpi-desync-split-pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1";
-
-const ZAPRET_DEFAULT_NFQWS_OPT =
-  "--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin";
-
-const ZAPRET2_DEFAULT_NFQWS2_OPT =
-  "--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6";
-
-const BYEDPI_DEFAULT_CMD_OPTS = "-o 2 --auto=t,r,a,s -d 2";
 const ANNOTATED_TEXTAREA_STYLE_ID = "fkp-annotated-textarea-styles";
 const CONNECTIONS_DYNLIST_STYLE_ID = "fkp-connections-dynlist-styles";
-const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
-const NFQWS_VALIDATION_COMMAND = "/usr/bin/tachyon";
-const nfqwsRemoteValidationCache = new Map();
-const nfqwsRemoteValidationInflight = new Map();
-const nfqws2RemoteValidationCache = new Map();
-const nfqws2RemoteValidationInflight = new Map();
-const byedpiRemoteValidationCache = new Map();
-const byedpiRemoteValidationInflight = new Map();
-const BYEDPI_LONG_VALUE_OPTIONS = new Set([
-  "--max-conn",
-  "--conn-ip",
-  "--buf-size",
-  "--debug",
-  "--def-ttl",
-  "--auto",
-  "--auto-mode",
-  "--cache-ttl",
-  "--cache-dump",
-  "--timeout",
-  "--proto",
-  "--hosts",
-  "--ipset",
-  "--pf",
-  "--round",
-  "--split",
-  "--disorder",
-  "--oob",
-  "--disoob",
-  "--fake",
-  "--fake-sni",
-  "--ttl",
-  "--fake-offset",
-  "--fake-data",
-  "--fake-tls-mod",
-  "--oob-data",
-  "--mod-http",
-  "--tlsrec",
-  "--tlsminor",
-  "--udp-fake",
-]);
-const BYEDPI_LONG_FLAG_OPTIONS = new Set([
-  "--md5sig",
-  "--tfo",
-  "--drop-sack",
-  "--no-domain",
-  "--no-udp",
-]);
-const BYEDPI_SHORT_VALUE_OPTIONS = new Set([
-  "-c",
-  "-I",
-  "-b",
-  "-x",
-  "-g",
-  "-A",
-  "-L",
-  "-u",
-  "-y",
-  "-T",
-  "-K",
-  "-H",
-  "-j",
-  "-V",
-  "-R",
-  "-s",
-  "-d",
-  "-o",
-  "-q",
-  "-f",
-  "-n",
-  "-t",
-  "-O",
-  "-l",
-  "-Q",
-  "-e",
-  "-M",
-  "-r",
-  "-m",
-  "-a",
-]);
-const BYEDPI_SHORT_FLAG_OPTIONS = new Set(["-N", "-U", "-F", "-S", "-Y"]);
-const NFQWS_OPTIONAL_ARG_OPTIONS = new Set([
-  "--comment",
-  "--ctrack-disable",
-  "--debug",
-  "--dpi-desync-any-protocol",
-  "--dpi-desync-autottl",
-  "--dpi-desync-autottl6",
-  "--dpi-desync-skip-nosni",
-  "--dpi-desync-tcp-flags-set",
-  "--dpi-desync-tcp-flags-unset",
-  "--dup-autottl",
-  "--dup-autottl6",
-  "--dup-replace",
-  "--dup-tcp-flags-set",
-  "--dup-tcp-flags-unset",
-  "--ipcache-hostname",
-  "--orig-autottl",
-  "--orig-autottl6",
-  "--orig-tcp-flags-set",
-  "--orig-tcp-flags-unset",
-  "--synack-split",
-]);
-const NFQWS_NO_ARG_OPTIONS = new Set([
-  "--bind-fix4",
-  "--bind-fix6",
-  "--daemon",
-  "--domcase",
-  "--dry-run",
-  "--hostcase",
-  "--hostnospace",
-  "--methodeol",
-  "--new",
-  "--skip",
-  "--version",
-]);
-const NFQWS_REQUIRED_ARG_OPTIONS = new Set([
-  "--ctrack-timeouts",
-  "--dpi-desync",
-  "--dpi-desync-badack-increment",
-  "--dpi-desync-badseq-increment",
-  "--dpi-desync-cutoff",
-  "--dpi-desync-fake-dht",
-  "--dpi-desync-fake-discord",
-  "--dpi-desync-fake-http",
-  "--dpi-desync-fake-quic",
-  "--dpi-desync-fake-stun",
-  "--dpi-desync-fake-syndata",
-  "--dpi-desync-fake-tcp-mod",
-  "--dpi-desync-fake-tls",
-  "--dpi-desync-fake-tls-mod",
-  "--dpi-desync-fake-unknown",
-  "--dpi-desync-fake-unknown-udp",
-  "--dpi-desync-fake-wireguard",
-  "--dpi-desync-fakedsplit-mod",
-  "--dpi-desync-fakedsplit-pattern",
-  "--dpi-desync-fooling",
-  "--dpi-desync-fwmark",
-  "--dpi-desync-hostfakesplit-midhost",
-  "--dpi-desync-hostfakesplit-mod",
-  "--dpi-desync-ipfrag-pos-tcp",
-  "--dpi-desync-ipfrag-pos-udp",
-  "--dpi-desync-repeats",
-  "--dpi-desync-split-http-req",
-  "--dpi-desync-split-pos",
-  "--dpi-desync-split-seqovl",
-  "--dpi-desync-split-seqovl-pattern",
-  "--dpi-desync-split-tls",
-  "--dpi-desync-start",
-  "--dpi-desync-ts-increment",
-  "--dpi-desync-ttl",
-  "--dpi-desync-ttl6",
-  "--dpi-desync-udplen-increment",
-  "--dpi-desync-udplen-pattern",
-  "--dup",
-  "--dup-badack-increment",
-  "--dup-badseq-increment",
-  "--dup-cutoff",
-  "--dup-fooling",
-  "--dup-ip-id",
-  "--dup-start",
-  "--dup-ts-increment",
-  "--dup-ttl",
-  "--dup-ttl6",
-  "--filter-l3",
-  "--filter-l7",
-  "--filter-tcp",
-  "--filter-udp",
-  "--hostlist",
-  "--hostlist-auto",
-  "--hostlist-auto-debug",
-  "--hostlist-auto-fail-threshold",
-  "--hostlist-auto-fail-time",
-  "--hostlist-auto-retrans-threshold",
-  "--hostlist-domains",
-  "--hostlist-exclude",
-  "--hostlist-exclude-domains",
-  "--hostspell",
-  "--ip-id",
-  "--ipcache-lifetime",
-  "--ipset",
-  "--ipset-exclude",
-  "--ipset-exclude-ip",
-  "--ipset-ip",
-  "--orig-mod-cutoff",
-  "--orig-mod-start",
-  "--orig-ttl",
-  "--orig-ttl6",
-  "--pidfile",
-  "--qnum",
-  "--uid",
-  "--user",
-  "--wsize",
-  "--wssize",
-  "--wssize-cutoff",
-  "--wssize-forced-cutoff",
-]);
-const NFQWS2_OPTIONAL_ARG_OPTIONS = new Set([
-  "--chdir",
-  "--comment",
-  "--ctrack-disable",
-  "--debug",
-  "--hostlist-auto-retrans-reset",
-  "--intercept",
-  "--ipcache-hostname",
-  "--new",
-  "--payload-disable",
-  "--reasm-disable",
-  "--server",
-  "--template",
-  "--writeable",
-]);
-const NFQWS2_NO_ARG_OPTIONS = new Set([
-  "--bind-fix4",
-  "--bind-fix6",
-  "--daemon",
-  "--dry-run",
-  "--skip",
-  "--version",
-]);
-const NFQWS2_REQUIRED_ARG_OPTIONS = new Set([
-  "--blob",
-  "--cookie",
-  "--ctrack-timeouts",
-  "--filter-l3",
-  "--filter-l7",
-  "--filter-tcp",
-  "--filter-udp",
-  "--fwmark",
-  "--fuzz",
-  "--hostlist",
-  "--hostlist-auto",
-  "--hostlist-auto-debug",
-  "--hostlist-auto-fail-threshold",
-  "--hostlist-auto-fail-time",
-  "--hostlist-auto-retrans-threshold",
-  "--hostlist-domains",
-  "--hostlist-exclude",
-  "--hostlist-exclude-domains",
-  "--import",
-  "--in-range",
-  "--ipcache-lifetime",
-  "--ipset",
-  "--ipset-exclude",
-  "--ipset-exclude-ip",
-  "--ipset-ip",
-  "--lua-gc",
-  "--lua-init",
-  "--lua-desync",
-  "--name",
-  "--out-range",
-  "--payload",
-  "--pidfile",
-  "--qnum",
-  "--uid",
-  "--user",
-]);
 const actionProvidersAvailabilityState = {
   loaded: false,
-  zapretInstalled: false,
-  zapret2Installed: false,
-  byedpiInstalled: false,
-  wdttInstalled: false,
-  olcrtcInstalled: false,
   fptnInstalled: false,
   torInstalled: false,
-  singBoxExtended: false,
-  singBoxTachyonCore: false,
 };
 let actionProvidersAvailabilityPromise = null;
 let actionProvidersAvailabilityLoader = null;
@@ -725,51 +443,9 @@ function updateActionProvidersAvailabilityState(nextState) {
 
   actionProvidersAvailabilityState.loaded = true;
 
-  if (typeof nextState.zapretInstalled !== "undefined") {
-    actionProvidersAvailabilityState.zapretInstalled = Boolean(
-      nextState.zapretInstalled,
-    );
-  }
-
-  if (typeof nextState.zapret2Installed !== "undefined") {
-    actionProvidersAvailabilityState.zapret2Installed = Boolean(
-      nextState.zapret2Installed,
-    );
-  }
-
-  if (typeof nextState.byedpiInstalled !== "undefined") {
-    actionProvidersAvailabilityState.byedpiInstalled = Boolean(
-      nextState.byedpiInstalled,
-    );
-  }
-
-  if (typeof nextState.wdttInstalled !== "undefined") {
-    actionProvidersAvailabilityState.wdttInstalled = Boolean(
-      nextState.wdttInstalled,
-    );
-  }
-
-  if (typeof nextState.olcrtcInstalled !== "undefined") {
-    actionProvidersAvailabilityState.olcrtcInstalled = Boolean(
-      nextState.olcrtcInstalled,
-    );
-  }
-
   if (typeof nextState.fptnInstalled !== "undefined") {
     actionProvidersAvailabilityState.fptnInstalled = Boolean(
       nextState.fptnInstalled,
-    );
-  }
-
-  if (typeof nextState.singBoxTachyonCore !== "undefined") {
-    actionProvidersAvailabilityState.singBoxTachyonCore = Boolean(
-      nextState.singBoxTachyonCore,
-    );
-  }
-
-  if (typeof nextState.singBoxExtended !== "undefined") {
-    actionProvidersAvailabilityState.singBoxExtended = Boolean(
-      nextState.singBoxExtended,
     );
   }
 
@@ -788,15 +464,8 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
   }
 
   updateActionProvidersAvailabilityState({
-    zapretInstalled: Boolean(systemInfo.zapret_installed),
-    zapret2Installed: Boolean(systemInfo.zapret2_installed),
-    byedpiInstalled: Boolean(systemInfo.byedpi_installed),
-    wdttInstalled: Boolean(systemInfo.wdtt_installed),
-    olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
     // FPTN is built into tachyon-core.
-    fptnInstalled: Boolean(systemInfo.sing_box_fptn),
-    singBoxExtended: Boolean(systemInfo.sing_box_extended),
-    singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core),
+    fptnInstalled: Boolean(systemInfo.tachyon_core_fptn ?? 1),
     torInstalled: Boolean(systemInfo.tor_installed),
   });
 }
@@ -815,7 +484,7 @@ if (typeof window !== "undefined") {
 function refreshVpnUrlHints() {
   if (typeof document === "undefined") return;
   const supported = main.supportsVpnUrl();
-  const hint = supported ? "; vpn:// (AWG, LX / tachyon-core)" : "";
+  const hint = supported ? "; vpn:// (AWG, tachyon-core)" : "";
   document.querySelectorAll("[data-tachyon-vpn-url-hint]").forEach((node) => {
     node.textContent = hint;
   });
@@ -1160,7 +829,7 @@ function readSingleSectionCacheMetadata(targetId) {
 
 function resolveEffectiveSectionOutboundSourceIds(section_id) {
   const targetId = section_id || "Main";
-  const dpiTypes = new Set(["zapret", "zapret2", "byedpi", "desync", "olcrtc"]);
+  const dpiTypes = new Set(["desync"]);
   const isNonDpiSource = (srcObj) => {
     if (!srcObj || srcObj.enabled === "0") return false;
     const stype = String(srcObj.source_type || "subscription")
@@ -3693,7 +3362,7 @@ function currentDraftOutboundNames(section_id) {
       `${uci.get(UCI_PACKAGE, sid, "source_type") || "subscription"}`
         .trim()
         .toLowerCase();
-    if (["zapret", "zapret2", "byedpi", "desync", "olcrtc"].includes(stype)) {
+    if (stype === "desync") {
       return;
     }
     const rawLinks = [
@@ -3789,7 +3458,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     result.push({ value: v, label: `${label || v}`.trim() });
   };
 
-  const dpiTypes = new Set(["zapret", "zapret2", "byedpi", "desync", "olcrtc"]);
+  const dpiTypes = new Set(["desync"]);
 
   const secGroupRefs = new Set(
     currentSourceOptionValues(section_id, "outbound_group_refs"),
@@ -4020,30 +3689,11 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "trusttunnel",
       "tewfai",
       "csqtt",
+      "wdtt",
       "group",
     ].includes(action)
   ) {
     return true;
-  }
-
-  if (action === "zapret") {
-    return isZapretInstalledForUi();
-  }
-
-  if (action === "zapret2") {
-    return isZapret2InstalledForUi();
-  }
-
-  if (action === "byedpi") {
-    return isByedpiInstalledForUi();
-  }
-
-  if (action === "wdtt") {
-    return isWdttInstalledForUi();
-  }
-
-  if (action === "olcrtc") {
-    return isOlcrtcInstalledForUi();
   }
 
   if (action === "fptn") {
@@ -4994,7 +4644,7 @@ function defaultInterfaceSettings() {
 
 function subscriptionUserAgentChoices() {
   return [
-    "sing-box",
+    "TachyonCore",
     "Happ",
     "v2rayN",
     "v2rayNG",
@@ -5205,14 +4855,14 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     form.Value,
     "subscription_update_interval",
     _("Subscription update interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.depends("subscription_update_enabled", "1");
   o.placeholder = "1h";
   o.validate = function (itemId, value) {
     return optionMapValue(this, itemId, "subscription_update_enabled") === "1"
-      ? validateRequiredSingBoxDuration(value)
-      : validateOptionalSingBoxDuration(value);
+      ? validateRequiredCoreDuration(value)
+      : validateOptionalCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5347,7 +4997,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   );
   o.rmempty = true;
   o.validate = function (_itemId, value) {
-    return value ? validateOptionalSingBoxDuration(value) : true;
+    return value ? validateOptionalCoreDuration(value) : true;
   };
 
   o = itemSection.option(
@@ -5358,7 +5008,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   );
   o.rmempty = true;
   o.validate = function (_itemId, value) {
-    return value ? validateOptionalSingBoxDuration(value) : true;
+    return value ? validateOptionalCoreDuration(value) : true;
   };
 
   o.rmempty = false;
@@ -5660,7 +5310,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.rmempty = true;
   o.validate = function (_itemId, value) {
     if (value == null || `${value}`.trim() === "") return true;
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5749,12 +5399,12 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     form.Value,
     "check_interval",
     _("Check interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.default = "3m";
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5789,13 +5439,13 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     "idle_timeout",
     _("Idle timeout"),
     _(
-      "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m.",
+      "Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m.",
     ),
   );
   o.default = "30m";
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6261,7 +5911,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = "15s";
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6273,7 +5923,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = "2s";
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6287,7 +5937,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = "15s";
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6316,7 +5966,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
     form.Value,
     "fastest_check_interval",
     _("Faster server search interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.depends("switch_to_faster_same_priority", "1");
   o.default = "3m";
@@ -6324,7 +5974,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.validate = function (itemId, value) {
     return optionMapValue(this, itemId, "switch_to_faster_same_priority") ===
       "1"
-      ? validateRequiredSingBoxDuration(value)
+      ? validateRequiredCoreDuration(value)
       : true;
   };
 
@@ -6494,7 +6144,7 @@ function addDashboardServerFilterOptions(section) {
     "dashboard_hide_na_servers",
     _("Hide N/A servers"),
     _(
-      "Hide servers that are configured in a section but not present in the sing-box runtime. These servers appear as N/A on the dashboard.",
+      "Hide servers that are configured in a section but not present in the Tachyon Core runtime. These servers appear as N/A on the dashboard.",
     ),
   );
   o.default = "0";
@@ -7561,7 +7211,7 @@ function showOutboundJsonSettingsModal(
     form.TextValue,
     "outbound_json",
     _("JSON outbound"),
-    _("Enter a complete sing-box outbound object"),
+    _("Enter a complete Tachyon Core outbound object"),
   );
   jsonOption.rows = 12;
   jsonOption.wrap = "soft";
@@ -7690,11 +7340,7 @@ function ensureActionProvidersAvailabilityLoaded() {
     actionProvidersAvailabilityPromise = actionProvidersAvailabilityLoader()
       .then((capabilities) => {
         updateActionProvidersAvailabilityState({
-          zapretInstalled: Boolean(capabilities?.zapretInstalled),
-          zapret2Installed: Boolean(capabilities?.zapret2Installed),
-          byedpiInstalled: Boolean(capabilities?.byedpiInstalled),
-          singBoxExtended: Boolean(capabilities?.singBoxExtended),
-          singBoxTachyonCore: Boolean(capabilities?.singBoxTachyonCore),
+          fptnInstalled: Boolean(capabilities?.fptnInstalled ?? true),
         });
         return actionProvidersAvailabilityState;
       })
@@ -7710,87 +7356,12 @@ function ensureActionProvidersAvailabilityLoaded() {
     return actionProvidersAvailabilityPromise;
   }
 
-  actionProvidersAvailabilityPromise = Promise.allSettled([
-    main.TachyonShellMethods.checkZapretRuntime(),
-    main.TachyonShellMethods.checkZapret2Runtime(),
-    main.TachyonShellMethods.checkByedpiRuntime(),
-  ])
-    .then(([zapretResult, zapret2Result, byedpiResult]) => {
-      const zapret =
-        zapretResult && zapretResult.status === "fulfilled"
-          ? zapretResult.value
-          : null;
-      const zapret2 =
-        zapret2Result && zapret2Result.status === "fulfilled"
-          ? zapret2Result.value
-          : null;
-      const byedpi =
-        byedpiResult && byedpiResult.status === "fulfilled"
-          ? byedpiResult.value
-          : null;
-
-      actionProvidersAvailabilityState.loaded = true;
-      actionProvidersAvailabilityState.zapretInstalled = Boolean(
-        zapret && zapret.success && zapret.data && zapret.data.zapret_installed,
-      );
-      actionProvidersAvailabilityState.zapret2Installed = Boolean(
-        zapret2 &&
-          zapret2.success &&
-          zapret2.data &&
-          zapret2.data.zapret2_installed,
-      );
-      actionProvidersAvailabilityState.byedpiInstalled = Boolean(
-        byedpi && byedpi.success && byedpi.data && byedpi.data.byedpi_installed,
-      );
-
-      return actionProvidersAvailabilityState;
-    })
-    .catch(() => {
-      actionProvidersAvailabilityState.loaded = true;
-      actionProvidersAvailabilityState.zapretInstalled = false;
-      actionProvidersAvailabilityState.zapret2Installed = false;
-      actionProvidersAvailabilityState.byedpiInstalled = false;
-
-      // singBoxExtended is set via systemInfo, keep existing value
-      return actionProvidersAvailabilityState;
-    })
-    .finally(() => {
-      actionProvidersAvailabilityPromise = null;
-    });
-
-  return actionProvidersAvailabilityPromise;
-}
-
-function isZapretInstalledForUi() {
-  return actionProvidersAvailabilityState.zapretInstalled;
-}
-
-function isZapret2InstalledForUi() {
-  return actionProvidersAvailabilityState.zapret2Installed;
-}
-
-function isByedpiInstalledForUi() {
-  return actionProvidersAvailabilityState.byedpiInstalled;
-}
-
-function isWdttInstalledForUi() {
-  return actionProvidersAvailabilityState.wdttInstalled;
-}
-
-function isOlcrtcInstalledForUi() {
-  return actionProvidersAvailabilityState.olcrtcInstalled;
+  actionProvidersAvailabilityState.loaded = true;
+  return Promise.resolve(actionProvidersAvailabilityState);
 }
 
 function isFptnInstalledForUi() {
   return actionProvidersAvailabilityState.fptnInstalled;
-}
-
-function isSingBoxExtendedForUi() {
-  return actionProvidersAvailabilityState.singBoxExtended;
-}
-
-function isTachyonCoreForUi() {
-  return actionProvidersAvailabilityState.singBoxTachyonCore;
 }
 
 function getRuleConfiguredAction(section_id) {
@@ -7805,18 +7376,10 @@ function getRuleResolvedAction(section_id) {
 // Returns a human-readable label for a given outbound_source source_type.
 function getSourceTypeLabel(stype) {
   switch (`${stype}`.toLowerCase()) {
-    case "zapret":
-      return "Zapret";
-    case "zapret2":
-      return "Zapret2";
-    case "byedpi":
-      return "ByeDPI";
     case "desync":
       return "Desync";
     case "wdtt":
       return "WDTT";
-    case "olcrtc":
-      return "OlcRTC";
     case "fptn":
       return "FPTN";
     case "awg":
@@ -7877,9 +7440,6 @@ function getSectionConnectionTypeBadges(section_id) {
     "awg",
     "fptn",
     "desync",
-    "zapret",
-    "zapret2",
-    "byedpi",
     "group",
   ];
   if (!connectionActions.includes(action)) return null;
@@ -7927,16 +7487,8 @@ function getActionOptionLabel(action) {
       return "DNS";
     case "vpn":
       return "VPN";
-    case "zapret":
-      return "Zapret";
-    case "zapret2":
-      return "Zapret2";
-    case "byedpi":
-      return "ByeDPI";
     case "wdtt":
       return "WDTT";
-    case "olcrtc":
-      return "OlcRTC";
     case "fptn":
       return "FPTN";
 
@@ -7953,7 +7505,7 @@ function getActionOptionLabel(action) {
     case "naive":
       return "NaiveProxy";
     case "sudoku":
-      return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";
+      return _("Sudoku (не реализован)");
     case "masque":
       return "MASQUE";
     case "csqtt":
@@ -7983,24 +7535,8 @@ function getActionOptionLabel(action) {
 function getRuleActionDisplayValue(section_id) {
   const action = getRuleResolvedAction(section_id);
 
-  if (action === "zapret") {
-    return "Zapret";
-  }
-
-  if (action === "zapret2") {
-    return "Zapret2";
-  }
-
-  if (action === "byedpi") {
-    return "ByeDPI";
-  }
-
   if (action === "wdtt") {
     return "WDTT";
-  }
-
-  if (action === "olcrtc") {
-    return "OlcRTC";
   }
 
   if (action === "fptn") {
@@ -8045,9 +7581,7 @@ function getRuleActionDisplayValue(section_id) {
 function getRuleActionDisplayMarkup(section_id) {
   const base = getRuleActionDisplayValue(section_id);
   const action = getRuleResolvedAction(section_id);
-  if (
-    !["connection", "desync", "zapret", "zapret2", "byedpi"].includes(action)
-  ) {
+  if (!["connection", "desync"].includes(action)) {
     return base;
   }
   const srcRefs = normalizeOptionValues(
@@ -8080,42 +7614,24 @@ function populateActionOptionValues(option) {
   // NaiveProxy ships an outbound in every core we support, so it needs no
   // variant gate of its own.
   option.value("naive", getActionOptionLabel("naive"));
-  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
-    option.value("awg", getActionOptionLabel("awg"));
-    option.value("warp", getActionOptionLabel("warp"));
-    option.value("masque", getActionOptionLabel("masque"));
-    option.value("openvpn", getActionOptionLabel("openvpn"));
-    option.value("anytls", getActionOptionLabel("anytls"));
-    option.value("snell", getActionOptionLabel("snell"));
-    option.value("mieru", getActionOptionLabel("mieru"));
-    option.value("sudoku", getActionOptionLabel("sudoku"));
-  }
-  if (isTachyonCoreForUi()) {
-    option.value("openconnect", getActionOptionLabel("openconnect"));
-    option.value("desync", getActionOptionLabel("desync"));
-    option.value("shadowtls", getActionOptionLabel("shadowtls"));
-    option.value("trusttunnel", getActionOptionLabel("trusttunnel"));
-    option.value("tewfai", getActionOptionLabel("tewfai"));
-    option.value("csqtt", getActionOptionLabel("csqtt"));
-  }
+  option.value("awg", getActionOptionLabel("awg"));
+  option.value("warp", getActionOptionLabel("warp"));
+  option.value("masque", getActionOptionLabel("masque"));
+  option.value("openvpn", getActionOptionLabel("openvpn"));
+  option.value("anytls", getActionOptionLabel("anytls"));
+  option.value("snell", getActionOptionLabel("snell"));
+  option.value("mieru", getActionOptionLabel("mieru"));
+  option.value("sudoku", getActionOptionLabel("sudoku"));
+  option.value("openconnect", getActionOptionLabel("openconnect"));
+  option.value("desync", getActionOptionLabel("desync"));
+  option.value("shadowtls", getActionOptionLabel("shadowtls"));
+  option.value("trusttunnel", getActionOptionLabel("trusttunnel"));
+  option.value("tewfai", getActionOptionLabel("tewfai"));
+  option.value("csqtt", getActionOptionLabel("csqtt"));
+  option.value("wdtt", getActionOptionLabel("wdtt"));
   option.value("bypass", getActionOptionLabel("bypass"));
   option.value("block", getActionOptionLabel("block"));
   option.value("dns", "DNS");
-  if (isZapretInstalledForUi()) {
-    option.value("zapret", getActionOptionLabel("zapret"));
-  }
-  if (isZapret2InstalledForUi()) {
-    option.value("zapret2", getActionOptionLabel("zapret2"));
-  }
-  if (isByedpiInstalledForUi()) {
-    option.value("byedpi", getActionOptionLabel("byedpi"));
-  }
-  if (isWdttInstalledForUi()) {
-    option.value("wdtt", getActionOptionLabel("wdtt"));
-  }
-  if (isOlcrtcInstalledForUi()) {
-    option.value("olcrtc", getActionOptionLabel("olcrtc"));
-  }
   if (isFptnInstalledForUi()) {
     option.value("fptn", getActionOptionLabel("fptn"));
   }
@@ -8881,7 +8397,7 @@ function validateKeyword(_section_id, value) {
   return true;
 }
 
-function isSingBoxDuration(value) {
+function isCoreDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
@@ -8898,32 +8414,32 @@ function writeOptionalDurationOption(section_id, key, value) {
   }
 }
 
-function validateOptionalSingBoxDuration(value) {
+function validateOptionalCoreDuration(value) {
   const normalized = value ? `${value}`.trim() : "";
 
   if (!normalized.length) {
     return true;
   }
 
-  if (isSingBoxDuration(normalized)) {
+  if (isCoreDuration(normalized)) {
     return true;
   }
 
-  return _("Use sing-box duration format like 1d, 12h or 30m");
+  return _("Use duration format like 1d, 12h or 30m");
 }
 
-function validateRequiredSingBoxDuration(value) {
+function validateRequiredCoreDuration(value) {
   const normalized = value ? `${value}`.trim() : "";
 
   if (!normalized.length) {
-    return _("Use sing-box duration format like 1d, 12h or 30m");
+    return _("Use duration format like 1d, 12h or 30m");
   }
 
-  if (isSingBoxDuration(normalized)) {
+  if (isCoreDuration(normalized)) {
     return true;
   }
 
-  return _("Use sing-box duration format like 1d, 12h or 30m");
+  return _("Use duration format like 1d, 12h or 30m");
 }
 
 function parseSubscriptionUrlEntry(value) {
@@ -9589,102 +9105,6 @@ function refreshAnnotatedTextareaValidation(option, section_id, textarea) {
   }
 }
 
-function attachNfqwsRemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__tachyonNfqwsRemoteValidationAttached) {
-    return;
-  }
-
-  textarea.__tachyonNfqwsRemoteValidationAttached = true;
-  textarea.__tachyonNfqwsRemoteValidationRequestId = 0;
-  textarea.__tachyonNfqwsRemoteValidationTimer = null;
-
-  const runValidation = () => {
-    const value = textarea.value;
-    const localAnalysis = buildNfqwsLocalAnalysis(value);
-    if (!localAnalysis.valid) {
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-      return;
-    }
-
-    const requestId =
-      (textarea.__tachyonNfqwsRemoteValidationRequestId || 0) + 1;
-    textarea.__tachyonNfqwsRemoteValidationRequestId = requestId;
-
-    validateNfqwsStrategyRemotely(value).then(() => {
-      if (textarea.__tachyonNfqwsRemoteValidationRequestId !== requestId) {
-        return;
-      }
-
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-    });
-  };
-
-  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__tachyonNfqwsRemoteValidationTimer) {
-      window.clearTimeout(textarea.__tachyonNfqwsRemoteValidationTimer);
-    }
-
-    textarea.__tachyonNfqwsRemoteValidationTimer = window.setTimeout(() => {
-      textarea.__tachyonNfqwsRemoteValidationTimer = null;
-      runValidation();
-    }, delay);
-  };
-
-  textarea.addEventListener("input", () => scheduleValidation());
-  textarea.addEventListener("change", () => scheduleValidation(0));
-  textarea.addEventListener("blur", () => scheduleValidation(0));
-
-  scheduleValidation(0);
-}
-
-function attachNfqws2RemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__tachyonNfqws2RemoteValidationAttached) {
-    return;
-  }
-
-  textarea.__tachyonNfqws2RemoteValidationAttached = true;
-  textarea.__tachyonNfqws2RemoteValidationRequestId = 0;
-  textarea.__tachyonNfqws2RemoteValidationTimer = null;
-
-  const runValidation = () => {
-    const value = textarea.value;
-    const localAnalysis = buildNfqws2LocalAnalysis(value);
-    if (!localAnalysis.valid) {
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-      return;
-    }
-
-    const requestId =
-      (textarea.__tachyonNfqws2RemoteValidationRequestId || 0) + 1;
-    textarea.__tachyonNfqws2RemoteValidationRequestId = requestId;
-
-    validateNfqws2StrategyRemotely(value).then(() => {
-      if (textarea.__tachyonNfqws2RemoteValidationRequestId !== requestId) {
-        return;
-      }
-
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-    });
-  };
-
-  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__tachyonNfqws2RemoteValidationTimer) {
-      window.clearTimeout(textarea.__tachyonNfqws2RemoteValidationTimer);
-    }
-
-    textarea.__tachyonNfqws2RemoteValidationTimer = window.setTimeout(() => {
-      textarea.__tachyonNfqws2RemoteValidationTimer = null;
-      runValidation();
-    }, delay);
-  };
-
-  textarea.addEventListener("input", () => scheduleValidation());
-  textarea.addEventListener("change", () => scheduleValidation(0));
-  textarea.addEventListener("blur", () => scheduleValidation(0));
-
-  scheduleValidation(0);
-}
-
 function parseCommentAwareListTokens(value) {
   const text = value ? `${value}` : "";
   const tokens = [];
@@ -10043,1328 +9463,6 @@ function validatePortCondition(_section_id, value) {
   return true;
 }
 
-function getNfqwsOptionArgumentMode(option) {
-  if (NFQWS_REQUIRED_ARG_OPTIONS.has(option)) {
-    return "required";
-  }
-
-  if (NFQWS_OPTIONAL_ARG_OPTIONS.has(option)) {
-    return "optional";
-  }
-
-  if (NFQWS_NO_ARG_OPTIONS.has(option)) {
-    return "none";
-  }
-
-  return "unknown";
-}
-
-function getNfqws2OptionArgumentMode(option) {
-  if (NFQWS2_REQUIRED_ARG_OPTIONS.has(option)) {
-    return "required";
-  }
-
-  if (NFQWS2_OPTIONAL_ARG_OPTIONS.has(option)) {
-    return "optional";
-  }
-
-  if (NFQWS2_NO_ARG_OPTIONS.has(option)) {
-    return "none";
-  }
-
-  return "unknown";
-}
-
-function normalizeNfqwsStrategyWhitespace(value) {
-  return value ? `${value}`.replace(/\s+/g, " ").trim() : "";
-}
-
-function parseNfqwsRuntimeTokens(value) {
-  const text = value ? `${value}` : "";
-  const tokens = [];
-  const matcher = /\S+/g;
-  let match;
-
-  while ((match = matcher.exec(text)) !== null) {
-    tokens.push({
-      value: match[0],
-      start: match.index,
-      end: match.index + match[0].length,
-    });
-  }
-
-  return tokens;
-}
-function normalizeNfqwsStrategyValue(value) {
-  const normalized = normalizeNfqwsStrategyWhitespace(value);
-  if (!normalized.length) {
-    return "";
-  }
-
-  return normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-    ? ZAPRET_DEFAULT_NFQWS_OPT
-    : normalized;
-}
-
-function getCachedNfqwsRemoteValidation(value) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-  return normalized.length
-    ? nfqwsRemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheNfqwsRemoteValidation(value, result) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : "",
-    needle: result && result.needle ? `${result.needle}` : "",
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (nfqwsRemoteValidationCache.size >= 100) {
-    nfqwsRemoteValidationCache.delete(
-      nfqwsRemoteValidationCache.keys().next().value,
-    );
-  }
-  nfqwsRemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildNfqwsRemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _("Unable to validate the NFQWS strategy through the backend parser.");
-
-  return {
-    valid: false,
-    message: _("Backend validation failed: %s").format(message),
-    needle: "",
-    needles: [],
-  };
-}
-
-function validateNfqwsStrategyRemotely(value) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: "",
-      needle: "",
-      needles: [],
-    });
-  }
-
-  if (nfqwsRemoteValidationCache.has(normalized)) {
-    return Promise.resolve(nfqwsRemoteValidationCache.get(normalized));
-  }
-
-  if (nfqwsRemoteValidationInflight.has(normalized)) {
-    return nfqwsRemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      "validate_nfqws_strategy_json",
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : "{}").trim() || "{}",
-      );
-      return cacheNfqwsRemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || "",
-        needle: payload.needle || "",
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheNfqwsRemoteValidation(
-        normalized,
-        buildNfqwsRemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      nfqwsRemoteValidationInflight.delete(normalized);
-    });
-
-  nfqwsRemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getNfqwsForbiddenTokenInfo(token, index) {
-  const configFileMessage = _(
-    "External nfqws config files bypass Tachyon queue management and explicit validation.",
-  );
-  const hostSelectionMessage = _(
-    "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE.",
-  );
-  const ipSelectionMessage = _(
-    "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE.",
-  );
-  const placeholderMessage = _(
-    "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies.",
-  );
-  const queueMessage = _(
-    "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.",
-  );
-  const fwmarkMessage = _(
-    "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.",
-  );
-  const daemonMessage = _(
-    "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here.",
-  );
-  const dryRunMessage = _(
-    "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here.",
-  );
-  const versionMessage = _(
-    "This field must start a working nfqws strategy; --version exits immediately and is not allowed here.",
-  );
-
-  if (index === 0 && (token.startsWith("@") || token.startsWith("$"))) {
-    return {
-      reason: configFileMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "<HOSTLIST>" || token === "<HOSTLIST_NOAUTO>") {
-    return {
-      reason: placeholderMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === "--hostlist" ||
-    token.startsWith("--hostlist=") ||
-    token === "--hostlist-domains" ||
-    token.startsWith("--hostlist-domains=") ||
-    token === "--hostlist-exclude" ||
-    token.startsWith("--hostlist-exclude=") ||
-    token === "--hostlist-exclude-domains" ||
-    token.startsWith("--hostlist-exclude-domains=") ||
-    token === "--hostlist-auto" ||
-    token.startsWith("--hostlist-auto=") ||
-    token === "--hostlist-auto-fail-threshold" ||
-    token.startsWith("--hostlist-auto-fail-threshold=") ||
-    token === "--hostlist-auto-fail-time" ||
-    token.startsWith("--hostlist-auto-fail-time=") ||
-    token === "--hostlist-auto-retrans-threshold" ||
-    token.startsWith("--hostlist-auto-retrans-threshold=") ||
-    token === "--hostlist-auto-debug" ||
-    token.startsWith("--hostlist-auto-debug=")
-  ) {
-    return {
-      reason: hostSelectionMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (
-    token === "--ipset" ||
-    token.startsWith("--ipset=") ||
-    token === "--ipset-ip" ||
-    token.startsWith("--ipset-ip=") ||
-    token === "--ipset-exclude" ||
-    token.startsWith("--ipset-exclude=") ||
-    token === "--ipset-exclude-ip" ||
-    token.startsWith("--ipset-exclude-ip=")
-  ) {
-    return {
-      reason: ipSelectionMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (token === "--qnum" || token.startsWith("--qnum=")) {
-    return {
-      reason: queueMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (
-    token === "--dpi-desync-fwmark" ||
-    token.startsWith("--dpi-desync-fwmark=")
-  ) {
-    return {
-      reason: fwmarkMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (token === "--daemon") {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "--dry-run") {
-    return {
-      reason: dryRunMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "--version") {
-    return {
-      reason: versionMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function buildNfqwsLocalAnalysis(value) {
-  const text = value ? `${value}` : "";
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _("NFQWS strategy cannot be empty"),
-      annotations: [],
-    };
-  }
-
-  if (text.trim() === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
-    return { valid: true, message: "", annotations: [] };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const bareToken = token.value.includes("=")
-      ? token.value.slice(0, token.value.indexOf("="))
-      : token.value;
-    const nextToken = tokens[index + 1] || null;
-
-    const forbidden = getNfqwsForbiddenTokenInfo(token.value, index);
-    if (forbidden) {
-      addAnnotationIssue(annotationMap, token, forbidden.reason);
-
-      let displayToken = token.value;
-
-      if (
-        forbidden.captureNextValue &&
-        nextToken &&
-        !nextToken.value.startsWith("--")
-      ) {
-        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
-        displayToken = `${displayToken} ${nextToken.value}`;
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      errors.push(`${displayToken}: ${forbidden.reason}`);
-      continue;
-    }
-
-    if (!token.value.startsWith("--")) {
-      const reason = _(
-        "Unexpected standalone token. Use explicit flags such as --name or --name=value.",
-      );
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    const mode = getNfqwsOptionArgumentMode(bareToken);
-    if (mode === "unknown") {
-      const reason = _("Unknown NFQWS flag.");
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    if (mode === "none") {
-      if (token.value.includes("=")) {
-        const reason = _("This flag does not accept a value.");
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-      }
-
-      index += 1;
-      continue;
-    }
-
-    if (mode === "optional") {
-      if (
-        nextToken &&
-        !token.value.includes("=") &&
-        !nextToken.value.startsWith("--")
-      ) {
-        const reason = _(
-          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws.",
-        );
-        addAnnotationIssue(annotationMap, token, reason);
-        addAnnotationIssue(annotationMap, nextToken, reason);
-        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (!token.value.includes("=")) {
-      if (!nextToken || nextToken.value.startsWith("--")) {
-        const reason = _("This option requires a value.");
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-        index += 1;
-        continue;
-      }
-
-      index += 2;
-      continue;
-    }
-
-    index += 1;
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: "", annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function addNfqwsRemoteValidationNeedleAnnotations(
-  annotationMap,
-  tokens,
-  remoteValidation,
-  needle,
-) {
-  if (!needle.length) {
-    return;
-  }
-
-  let matched = false;
-
-  tokens.forEach((token) => {
-    const tokenValue = token.value || "";
-    const optionMatch =
-      needle.startsWith("--") &&
-      (tokenValue === needle || tokenValue.startsWith(`${needle}=`));
-    const valueMatch =
-      tokenValue === needle ||
-      tokenValue.endsWith(`=${needle}`) ||
-      (!needle.startsWith("--") && tokenValue.includes(`=${needle},`)) ||
-      (!needle.startsWith("--") && tokenValue.endsWith(`=${needle}`));
-
-    if (optionMatch || valueMatch) {
-      addAnnotationIssue(annotationMap, token, remoteValidation.message);
-      matched = true;
-    }
-  });
-
-  if (matched) {
-    return;
-  }
-
-  if (needle.startsWith("--")) {
-    tokens
-      .filter((token) => token.value && token.value.startsWith(needle))
-      .forEach((token) =>
-        addAnnotationIssue(annotationMap, token, remoteValidation.message),
-      );
-  }
-}
-
-function addNfqwsRemoteValidationAnnotations(
-  annotationMap,
-  tokens,
-  remoteValidation,
-) {
-  const needles =
-    remoteValidation &&
-    Array.isArray(remoteValidation.needles) &&
-    remoteValidation.needles.length
-      ? remoteValidation.needles.map((needle) => `${needle}`)
-      : remoteValidation && remoteValidation.needle
-        ? [`${remoteValidation.needle}`]
-        : [];
-
-  needles.forEach((needle) =>
-    addNfqwsRemoteValidationNeedleAnnotations(
-      annotationMap,
-      tokens,
-      remoteValidation,
-      needle,
-    ),
-  );
-}
-
-function analyzeNfqwsStrategy(value) {
-  const localAnalysis = buildNfqwsLocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedNfqwsRemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : "";
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function normalizeNfqws2StrategyValue(value) {
-  const normalized = normalizeNfqwsStrategyWhitespace(value);
-  return normalized.length ? normalized : ZAPRET2_DEFAULT_NFQWS2_OPT;
-}
-
-function getCachedNfqws2RemoteValidation(value) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-  return normalized.length
-    ? nfqws2RemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheNfqws2RemoteValidation(value, result) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : "",
-    needle: result && result.needle ? `${result.needle}` : "",
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (nfqws2RemoteValidationCache.size >= 100) {
-    nfqws2RemoteValidationCache.delete(
-      nfqws2RemoteValidationCache.keys().next().value,
-    );
-  }
-  nfqws2RemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildNfqws2RemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _("Unable to validate the NFQWS2 strategy through the backend parser.");
-
-  return {
-    valid: false,
-    message: _("Backend validation failed: %s").format(message),
-    needle: "",
-    needles: [],
-  };
-}
-
-function validateNfqws2StrategyRemotely(value) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: "",
-      needle: "",
-      needles: [],
-    });
-  }
-
-  if (nfqws2RemoteValidationCache.has(normalized)) {
-    return Promise.resolve(nfqws2RemoteValidationCache.get(normalized));
-  }
-
-  if (nfqws2RemoteValidationInflight.has(normalized)) {
-    return nfqws2RemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      "validate_nfqws2_strategy_json",
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : "{}").trim() || "{}",
-      );
-      return cacheNfqws2RemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || "",
-        needle: payload.needle || "",
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheNfqws2RemoteValidation(
-        normalized,
-        buildNfqws2RemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      nfqws2RemoteValidationInflight.delete(normalized);
-    });
-
-  nfqws2RemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getNfqws2ForbiddenTokenInfo(token, index, nextToken) {
-  const configFileMessage = _(
-    "External nfqws2 config files bypass Tachyon queue management and explicit validation.",
-  );
-  const hostSelectionMessage = _(
-    "Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.",
-  );
-  const ipSelectionMessage = _(
-    "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.",
-  );
-  const placeholderMessage = _(
-    "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.",
-  );
-  const queueMessage = _(
-    "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.",
-  );
-  const fwmarkMessage = _(
-    "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.",
-  );
-  const fuzzMessage = _(
-    "Fuzzing is not supported here because Tachyon needs deterministic runtime validation.",
-  );
-  const interceptMessage = _(
-    "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE.",
-  );
-  const daemonMessage = _(
-    "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here.",
-  );
-  const dryRunMessage = _(
-    "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here.",
-  );
-  const versionMessage = _(
-    "This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here.",
-  );
-
-  if (index === 0 && (token.startsWith("@") || token.startsWith("$"))) {
-    return {
-      reason: configFileMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "<HOSTLIST>" || token === "<HOSTLIST_NOAUTO>") {
-    return {
-      reason: placeholderMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === "--hostlist" ||
-    token.startsWith("--hostlist=") ||
-    token === "--hostlist-domains" ||
-    token.startsWith("--hostlist-domains=") ||
-    token === "--hostlist-exclude" ||
-    token.startsWith("--hostlist-exclude=") ||
-    token === "--hostlist-exclude-domains" ||
-    token.startsWith("--hostlist-exclude-domains=") ||
-    token === "--hostlist-auto" ||
-    token.startsWith("--hostlist-auto=") ||
-    token === "--hostlist-auto-fail-threshold" ||
-    token.startsWith("--hostlist-auto-fail-threshold=") ||
-    token === "--hostlist-auto-fail-time" ||
-    token.startsWith("--hostlist-auto-fail-time=") ||
-    token === "--hostlist-auto-retrans-threshold" ||
-    token.startsWith("--hostlist-auto-retrans-threshold=") ||
-    token === "--hostlist-auto-debug" ||
-    token.startsWith("--hostlist-auto-debug=") ||
-    token === "--hostlist-auto-retrans-reset" ||
-    token.startsWith("--hostlist-auto-retrans-reset=")
-  ) {
-    return {
-      reason: hostSelectionMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (
-    token === "--ipset" ||
-    token.startsWith("--ipset=") ||
-    token === "--ipset-ip" ||
-    token.startsWith("--ipset-ip=") ||
-    token === "--ipset-exclude" ||
-    token.startsWith("--ipset-exclude=") ||
-    token === "--ipset-exclude-ip" ||
-    token.startsWith("--ipset-exclude-ip=")
-  ) {
-    return {
-      reason: ipSelectionMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (token === "--qnum" || token.startsWith("--qnum=")) {
-    return {
-      reason: queueMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (
-    token === "--fwmark" ||
-    token.startsWith("--fwmark=") ||
-    token === "--dpi-desync-fwmark" ||
-    token.startsWith("--dpi-desync-fwmark=")
-  ) {
-    return {
-      reason: fwmarkMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (token === "--fuzz" || token.startsWith("--fuzz=")) {
-    return {
-      reason: fuzzMessage,
-      captureNextValue: !token.includes("="),
-    };
-  }
-
-  if (
-    token === "--intercept=0" ||
-    token === "--intercept=false" ||
-    token === "--intercept=no" ||
-    (token === "--intercept" && nextToken && nextToken.value === "0")
-  ) {
-    return {
-      reason: interceptMessage,
-      captureNextValue: token === "--intercept",
-    };
-  }
-
-  if (token === "--daemon") {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "--dry-run") {
-    return {
-      reason: dryRunMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "--version") {
-    return {
-      reason: versionMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function buildNfqws2LocalAnalysis(value) {
-  const text = value ? `${value}` : "";
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _("NFQWS2 strategy cannot be empty"),
-      annotations: [],
-    };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const bareToken = token.value.includes("=")
-      ? token.value.slice(0, token.value.indexOf("="))
-      : token.value;
-    const nextToken = tokens[index + 1] || null;
-
-    const forbidden = getNfqws2ForbiddenTokenInfo(
-      token.value,
-      index,
-      nextToken,
-    );
-    if (forbidden) {
-      addAnnotationIssue(annotationMap, token, forbidden.reason);
-
-      let displayToken = token.value;
-
-      if (
-        forbidden.captureNextValue &&
-        nextToken &&
-        !nextToken.value.startsWith("--")
-      ) {
-        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
-        displayToken = `${displayToken} ${nextToken.value}`;
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      errors.push(`${displayToken}: ${forbidden.reason}`);
-      continue;
-    }
-
-    if (!token.value.startsWith("--")) {
-      const reason = _(
-        "Unexpected standalone token. Use explicit flags such as --name or --name=value.",
-      );
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    const mode = getNfqws2OptionArgumentMode(bareToken);
-    if (mode === "unknown") {
-      const reason = _("Unknown NFQWS2 flag.");
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    if (mode === "none") {
-      if (token.value.includes("=")) {
-        const reason = _("This flag does not accept a value.");
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-      }
-
-      index += 1;
-      continue;
-    }
-
-    if (mode === "optional") {
-      if (
-        nextToken &&
-        !token.value.includes("=") &&
-        !nextToken.value.startsWith("--")
-      ) {
-        const reason = _(
-          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2.",
-        );
-        addAnnotationIssue(annotationMap, token, reason);
-        addAnnotationIssue(annotationMap, nextToken, reason);
-        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (!token.value.includes("=")) {
-      if (!nextToken || nextToken.value.startsWith("--")) {
-        const reason = _("This option requires a value.");
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-        index += 1;
-        continue;
-      }
-
-      index += 2;
-      continue;
-    }
-
-    index += 1;
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: "", annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function analyzeNfqws2Strategy(value) {
-  const localAnalysis = buildNfqws2LocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedNfqws2RemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : "";
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function normalizeByedpiStrategyWhitespace(value) {
-  return value ? `${value}`.replace(/\s+/g, " ").trim() : "";
-}
-
-function normalizeByedpiStrategyValue(value) {
-  const normalized = normalizeByedpiStrategyWhitespace(value);
-  return normalized.length ? normalized : BYEDPI_DEFAULT_CMD_OPTS;
-}
-
-function getCachedByedpiRemoteValidation(value) {
-  const normalized = normalizeByedpiStrategyValue(value);
-  return normalized.length
-    ? byedpiRemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheByedpiRemoteValidation(value, result) {
-  const normalized = normalizeByedpiStrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : "",
-    needle: result && result.needle ? `${result.needle}` : "",
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (byedpiRemoteValidationCache.size >= 100) {
-    byedpiRemoteValidationCache.delete(
-      byedpiRemoteValidationCache.keys().next().value,
-    );
-  }
-  byedpiRemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildByedpiRemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _("Unable to validate the ByeDPI strategy through the backend parser.");
-
-  return {
-    valid: false,
-    message: _("Backend validation failed: %s").format(message),
-    needle: "",
-    needles: [],
-  };
-}
-
-function validateByedpiStrategyRemotely(value) {
-  const normalized = normalizeByedpiStrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: "",
-      needle: "",
-      needles: [],
-    });
-  }
-
-  if (byedpiRemoteValidationCache.has(normalized)) {
-    return Promise.resolve(byedpiRemoteValidationCache.get(normalized));
-  }
-
-  if (byedpiRemoteValidationInflight.has(normalized)) {
-    return byedpiRemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      "validate_byedpi_strategy_json",
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : "{}").trim() || "{}",
-      );
-      return cacheByedpiRemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || "",
-        needle: payload.needle || "",
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheByedpiRemoteValidation(
-        normalized,
-        buildByedpiRemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      byedpiRemoteValidationInflight.delete(normalized);
-    });
-
-  byedpiRemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getByedpiShortOptionName(token) {
-  return token.length > 2 ? token.slice(0, 2) : token;
-}
-
-function byedpiTokenLooksLikeOption(token) {
-  return /^--.+/.test(token) || /^-[A-Za-z].*/.test(token);
-}
-
-function getByedpiControlledTokenInfo(token) {
-  const listenMessage = _(
-    "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy.",
-  );
-  const transparentMessage = _(
-    "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS.",
-  );
-  const daemonMessage = _(
-    "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here.",
-  );
-  const pidfileMessage = _(
-    "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here.",
-  );
-  const exitMessage = _(
-    "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here.",
-  );
-
-  if (
-    token === "--ip" ||
-    token.startsWith("--ip=") ||
-    token === "-i" ||
-    /^-i.+/.test(token) ||
-    token === "--port" ||
-    token.startsWith("--port=") ||
-    token === "-p" ||
-    /^-p.+/.test(token)
-  ) {
-    return {
-      reason: listenMessage,
-      captureNextValue:
-        token === "--ip" ||
-        token === "-i" ||
-        token === "--port" ||
-        token === "-p",
-    };
-  }
-
-  if (token === "--transparent" || token === "-E" || /^-E.+/.test(token)) {
-    return {
-      reason: transparentMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === "--daemon" || token === "-D" || /^-D.+/.test(token)) {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === "--pidfile" ||
-    token.startsWith("--pidfile=") ||
-    token === "-w" ||
-    /^-w.+/.test(token)
-  ) {
-    return {
-      reason: pidfileMessage,
-      captureNextValue: token === "--pidfile" || token === "-w",
-    };
-  }
-
-  if (
-    token === "--help" ||
-    token === "-h" ||
-    /^-h.+/.test(token) ||
-    token === "--version" ||
-    token === "-v" ||
-    /^-v.+/.test(token)
-  ) {
-    return {
-      reason: exitMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function validateByedpiStrategyToken(token, nextToken) {
-  const controlled = getByedpiControlledTokenInfo(token);
-  if (controlled) {
-    return {
-      valid: false,
-      reason: controlled.reason,
-      captureNextValue: controlled.captureNextValue,
-    };
-  }
-
-  if (/^--[^=]+=/.test(token)) {
-    const base = token.split("=", 1)[0];
-    const value = token.slice(base.length + 1);
-
-    if (BYEDPI_LONG_VALUE_OPTIONS.has(base)) {
-      return value.length
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _("ByeDPI option requires a value: %s").format(base),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_LONG_FLAG_OPTIONS.has(base)) {
-      return {
-        valid: false,
-        reason: _("ByeDPI option does not accept a value: %s").format(base),
-        captureNextValue: false,
-      };
-    }
-
-    return {
-      valid: false,
-      reason: _("Unknown ByeDPI option: %s").format(base),
-      captureNextValue: false,
-    };
-  }
-
-  if (/^--.+/.test(token)) {
-    if (BYEDPI_LONG_VALUE_OPTIONS.has(token)) {
-      return nextToken && !byedpiTokenLooksLikeOption(nextToken)
-        ? { valid: true, consumeNext: true }
-        : {
-            valid: false,
-            reason: _("ByeDPI option requires a value: %s").format(token),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_LONG_FLAG_OPTIONS.has(token)) {
-      return { valid: true, consumeNext: false };
-    }
-
-    return {
-      valid: false,
-      reason: _("Unknown ByeDPI option: %s").format(token),
-      captureNextValue: false,
-    };
-  }
-
-  if (/^-./.test(token)) {
-    if (token === "-") {
-      return {
-        valid: false,
-        reason: _("Unexpected ByeDPI strategy argument: %s").format(token),
-        captureNextValue: false,
-      };
-    }
-
-    const short = getByedpiShortOptionName(token);
-    const compactValue = token.slice(short.length);
-
-    if (BYEDPI_SHORT_VALUE_OPTIONS.has(short)) {
-      if (token === short) {
-        return nextToken && !byedpiTokenLooksLikeOption(nextToken)
-          ? { valid: true, consumeNext: true }
-          : {
-              valid: false,
-              reason: _("ByeDPI option requires a value: %s").format(short),
-              captureNextValue: false,
-            };
-      }
-
-      return compactValue.length
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _("ByeDPI option requires a value: %s").format(short),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_SHORT_FLAG_OPTIONS.has(short)) {
-      return token === short
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _(
-              "ByeDPI option does not accept a compact value: %s",
-            ).format(short),
-            captureNextValue: false,
-          };
-    }
-
-    return {
-      valid: false,
-      reason: _("Unknown ByeDPI option: %s").format(short),
-      captureNextValue: false,
-    };
-  }
-
-  return {
-    valid: false,
-    reason: _("Unexpected ByeDPI strategy argument: %s").format(token),
-    captureNextValue: false,
-  };
-}
-
-function buildByedpiLocalAnalysis(value) {
-  const text = value ? `${value}` : "";
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _("ByeDPI strategy cannot be empty"),
-      annotations: [],
-    };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const nextToken = tokens[index + 1] || null;
-    const tokenValidation = validateByedpiStrategyToken(
-      token.value,
-      nextToken ? nextToken.value : null,
-    );
-
-    if (tokenValidation.valid) {
-      index += tokenValidation.consumeNext ? 2 : 1;
-      continue;
-    }
-
-    addAnnotationIssue(annotationMap, token, tokenValidation.reason);
-    let displayToken = token.value;
-
-    if (
-      tokenValidation.captureNextValue &&
-      nextToken &&
-      !nextToken.value.startsWith("-")
-    ) {
-      addAnnotationIssue(annotationMap, nextToken, tokenValidation.reason);
-      displayToken = `${displayToken} ${nextToken.value}`;
-      index += 2;
-    } else {
-      index += 1;
-    }
-
-    errors.push(`${displayToken}: ${tokenValidation.reason}`);
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: "", annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function analyzeByedpiStrategy(value) {
-  const localAnalysis = buildByedpiLocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedByedpiRemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : "";
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join("\n"),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
 function configureTextareaOption(
   option,
   analyzer,
@@ -11453,91 +9551,6 @@ function getOptionTextarea(option, section_id) {
   return node && typeof node.querySelector === "function"
     ? node.querySelector("textarea")
     : null;
-}
-
-function rejectStrategyValidation(option, section_id, message) {
-  const title = option.stripTags(option.title).trim();
-  const error = message || option.getValidationError(section_id) || "";
-
-  return Promise.reject(
-    new TypeError(
-      `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
-    ),
-  );
-}
-
-function parseStrategyWithRemoteValidation(section_id, config) {
-  const active = this.isActive(section_id);
-
-  if (active) {
-    if (typeof this.triggerValidation === "function") {
-      this.triggerValidation(section_id);
-    }
-
-    if (!this.isValid(section_id)) {
-      return rejectStrategyValidation(
-        this,
-        section_id,
-        this.getValidationError(section_id),
-      );
-    }
-
-    const cval = this.cfgvalue(section_id);
-    const fval = this.formvalue(section_id);
-    const cvalString = cval == null ? "" : `${cval}`;
-    const fvalString = fval == null ? "" : `${fval}`;
-    const shouldWrite = this.forcewrite || cvalString !== fvalString;
-
-    if (!shouldWrite) {
-      return Promise.resolve();
-    }
-
-    return config.remoteValidate(fvalString).then((result) => {
-      const textarea = getOptionTextarea(this, section_id);
-
-      if (textarea) {
-        refreshAnnotatedTextareaValidation(this, section_id, textarea);
-      }
-
-      if (typeof this.triggerValidation === "function") {
-        this.triggerValidation(section_id);
-      }
-
-      if (!result || result.valid !== true) {
-        return rejectStrategyValidation(
-          this,
-          section_id,
-          result && result.message ? result.message : config.invalidMessage,
-        );
-      }
-
-      return Promise.resolve(this.write(section_id, fvalString));
-    });
-  }
-
-  if (!this.retain) {
-    return Promise.resolve(this.remove(section_id));
-  }
-
-  return Promise.resolve();
-}
-
-function parseNfqwsStrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
-    remoteValidate: validateNfqwsStrategyRemotely,
-    invalidMessage: _(
-      "Unable to validate the NFQWS strategy through the backend parser.",
-    ),
-  });
-}
-
-function parseNfqws2StrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
-    remoteValidate: validateNfqws2StrategyRemotely,
-    invalidMessage: _(
-      "Unable to validate the NFQWS2 strategy through the backend parser.",
-    ),
-  });
 }
 
 function addDynamicConditionField(section, config) {
@@ -11906,7 +9919,7 @@ var DOMAIN_LIST_HINTS = {
   huggingface:
     "[Маршрут: В Прокси / VPN] Репозитории моделей и датасетов Hugging Face (huggingface.co, hf.co), каталоги локальных LLM (ollama.com, lmstudio.ai, openwebui.com), платформы ролевых ИИ-персонажей (Character.AI, JanitorAI, Chub, NovelAI) и ML-инфраструктура (Weights & Biases, Kaggle, LangChain)",
   youtube:
-    "[Маршрут: В Desync (фрагментация / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)",
+    "[Маршрут: В Desync (фрагментация пакетов) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)",
   youtube_images:
     "[Маршрут: В Прокси / VPN или Desync] Только серверы обложек, превью роликов и аватарок каналов YouTube (i.ytimg.com, yt3.ggpht.com, yt3.googleusercontent.com) без проксирования самого видеопотока",
   twitch:
@@ -12098,7 +10111,7 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN] Спортивные трекеры, велосимуляторы, результаты матчей и трансляции: Strava (заблокирована в РФ), Garmin Connect, Zwift, Komoot, Nike Run Club, Flashscore, SofaScore, Transfermarkt, UFC Fight Pass, NBA, F1 TV и NHL",
   news: "[Маршрут: В Прокси / VPN или Desync] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)",
   torrent:
-    "[Маршрут: В Desync (фрагментация / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa",
+    "[Маршрут: В Desync (фрагментация пакетов) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa",
   tor: "[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров",
   porn: "[Маршрут: В Прокси / VPN или Desync] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate",
   ads_hagezi_pro:
@@ -12749,9 +10762,6 @@ function createSectionContent(section) {
       "awg",
       "fptn",
       "desync",
-      "zapret",
-      "zapret2",
-      "byedpi",
       "group",
     ];
     if (!connectionActions.includes(action)) return "";
@@ -12858,7 +10868,7 @@ function createSectionContent(section) {
   o.validate = function (section_id, value) {
     // mieru is implemented in tachyon-core (outbound/mieru.rs + inbound/mieru.rs
     // and its type is in KNOWN_OUTBOUND_TYPES), so only sudoku stays blocked.
-    if (isTachyonCoreForUi() && value === "sudoku") {
+    if (value === "sudoku") {
       return _("This protocol is not implemented in tachyon-core yet");
     }
     return super_validate
@@ -12869,21 +10879,17 @@ function createSectionContent(section) {
   const originalActionRenderWidget = o.renderWidget;
   o.renderWidget = function (section_id, option_index, cfgvalue) {
     const node = originalActionRenderWidget.apply(this, arguments);
-    if (isTachyonCoreForUi()) {
-      Promise.resolve(node).then((elem) => {
-        if (!elem) return;
-        const disabledItems = elem.querySelectorAll
-          ? elem.querySelectorAll(
-              '[data-value="sudoku"], option[value="sudoku"]',
-            )
-          : [];
-        disabledItems.forEach((opt) => {
-          opt.disabled = true;
-          opt.setAttribute("disabled", "disabled");
-          opt.classList.add("disabled");
-        });
+    Promise.resolve(node).then((elem) => {
+      if (!elem) return;
+      const disabledItems = elem.querySelectorAll
+        ? elem.querySelectorAll('[data-value="sudoku"], option[value="sudoku"]')
+        : [];
+      disabledItems.forEach((opt) => {
+        opt.disabled = true;
+        opt.setAttribute("disabled", "disabled");
+        opt.classList.add("disabled");
       });
-    }
+    });
     return node;
   };
 
@@ -12964,7 +10970,7 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.validate = function (section_id, value) {
     if (!value) return true;
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = section.taboption(
@@ -13012,7 +11018,7 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.validate = function (section_id, value) {
     if (!value) return true;
-    return validateOptionalSingBoxDuration(value);
+    return validateOptionalCoreDuration(value);
   };
 
   o = section.taboption(
@@ -13128,49 +11134,8 @@ function createSectionContent(section) {
     return value ? true : _("Select a section");
   };
 
-  let sectionScannerEnginesPromise = null;
   function resolveSectionScannerEngines() {
-    return ensureActionProvidersAvailabilityLoaded().then((av) => {
-      const sysInfo =
-        main.store && typeof main.store.get === "function"
-          ? main.store.get().diagnosticsSystemInfo
-          : null;
-      const base = {
-        zapret2: Boolean(av?.zapret2Installed || sysInfo?.zapret2_installed),
-        zapret: Boolean(av?.zapretInstalled || sysInfo?.zapret_installed),
-        byedpi: Boolean(av?.byedpiInstalled || sysInfo?.byedpi_installed),
-        desync: Boolean(
-          av?.singBoxTachyonCore || sysInfo?.sing_box_tachyon_core,
-        ),
-      };
-      if (sysInfo?.providerInfoLoaded || sysInfo?.loaded || base.desync) {
-        return base;
-      }
-      if (
-        !sectionScannerEnginesPromise &&
-        main.TachyonShellMethods &&
-        typeof main.TachyonShellMethods.getFuzzerStrategies === "function"
-      ) {
-        sectionScannerEnginesPromise =
-          main.TachyonShellMethods.getFuzzerStrategies()
-            .then((res) =>
-              res && res.success ? res.data?.available_engines : null,
-            )
-            .catch(() => null);
-      }
-      if (!sectionScannerEnginesPromise) {
-        return base;
-      }
-      return sectionScannerEnginesPromise.then((srv) => {
-        if (!srv) return base;
-        return {
-          zapret2: base.zapret2 || Boolean(srv.zapret2),
-          zapret: base.zapret || Boolean(srv.zapret),
-          byedpi: base.byedpi || Boolean(srv.byedpi),
-          desync: base.desync || Boolean(srv.desync),
-        };
-      });
-    });
+    return Promise.resolve({ desync: true });
   }
 
   function pushCleanDomainsFromRaw(rawVal, outSet) {
@@ -13414,157 +11379,6 @@ function createSectionContent(section) {
     return null;
   }
 
-  o = section.taboption(
-    "settings",
-    form.TextValue,
-    "nfqws_opt",
-    _("NFQWS Strategy"),
-  );
-  o.depends("action", "zapret");
-  o.rows = 6;
-  o.wrap = "soft";
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret");
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, "nfqws_opt")
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, "nfqws_opt");
-    const value =
-      secVal &&
-      secVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
-      secVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-        ? secVal
-        : srcVal &&
-            srcVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
-            srcVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-          ? srcVal
-          : secVal || srcVal;
-    if (!value || value === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
-      return ZAPRET_DEFAULT_NFQWS_OPT;
-    }
-
-    return value;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeNfqwsStrategyValue(value);
-    const nextValue =
-      !normalized.length || normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-        ? ZAPRET_DEFAULT_NFQWS_OPT
-        : normalized;
-
-    uci.set(UCI_PACKAGE, section_id, "nfqws_opt", nextValue);
-    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret");
-    if (linkedSrcId) {
-      uci.set(UCI_PACKAGE, linkedSrcId, "nfqws_opt", nextValue);
-    }
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeNfqwsStrategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  attachSectionStrategyScannerButton(o, "zapret", "nfqws_opt");
-
-  o = section.taboption(
-    "settings",
-    form.TextValue,
-    "nfqws2_opt",
-    _("NFQWS2 Strategy"),
-  );
-  o.depends("action", "zapret2");
-  o.rows = 6;
-  o.wrap = "soft";
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret2");
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, "nfqws2_opt")
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, "nfqws2_opt");
-    if (secVal && secVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
-      return secVal;
-    }
-    if (srcVal && srcVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
-      return srcVal;
-    }
-    return secVal || srcVal || ZAPRET2_DEFAULT_NFQWS2_OPT;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeNfqws2StrategyValue(value);
-    uci.set(UCI_PACKAGE, section_id, "nfqws2_opt", normalized);
-    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret2");
-    if (linkedSrcId) {
-      uci.set(UCI_PACKAGE, linkedSrcId, "nfqws2_opt", normalized);
-    }
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeNfqws2Strategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  attachSectionStrategyScannerButton(o, "zapret2", "nfqws2_opt");
-
-  o = section.taboption(
-    "settings",
-    form.TextValue,
-    "byedpi_cmd_opts",
-    _("ByeDPI Strategy"),
-  );
-  o.depends("action", "byedpi");
-  o.rows = 6;
-  o.wrap = "soft";
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, "byedpi");
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, "byedpi_cmd_opts")
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, "byedpi_cmd_opts");
-    if (secVal && secVal !== BYEDPI_DEFAULT_CMD_OPTS) {
-      return secVal;
-    }
-    if (srcVal && srcVal !== BYEDPI_DEFAULT_CMD_OPTS) {
-      return srcVal;
-    }
-    return secVal || srcVal || BYEDPI_DEFAULT_CMD_OPTS;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeByedpiStrategyValue(value);
-
-    return validateByedpiStrategyRemotely(normalized).then((result) => {
-      if (!result || result.valid !== true) {
-        throw new TypeError(
-          result && result.message
-            ? result.message
-            : _("Invalid ByeDPI strategy"),
-        );
-      }
-
-      uci.set(UCI_PACKAGE, section_id, "byedpi_cmd_opts", normalized);
-      const linkedSrcId = findLinkedProviderSourceId(section_id, "byedpi");
-      if (linkedSrcId) {
-        uci.set(UCI_PACKAGE, linkedSrcId, "byedpi_cmd_opts", normalized);
-      }
-    });
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeByedpiStrategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  configureTextareaOption(o, analyzeByedpiStrategy);
-  attachSectionStrategyScannerButton(o, "byedpi", "byedpi_cmd_opts");
-
   // ─── WDTT Fields ──────────────────────────────────────────────────────
 
   o = section.taboption(
@@ -13662,18 +11476,6 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
-    form.ListValue,
-    "warp_flow_qwdtt_mode",
-    _("WDTT QWDTT Mode"),
-  );
-  o.depends("action", "wdtt");
-  o.value("", _("Default"));
-  o.value("client", _("Client"));
-  o.value("server", _("Server"));
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
     form.DynamicList,
     "warp_flow_subscription_links",
     _("WDTT Subscription Links"),
@@ -13697,88 +11499,6 @@ function createSectionContent(section) {
     _("WDTT Remote Domain List"),
   );
   o.depends("action", "wdtt");
-  o.modalonly = true;
-
-  // ─── OlcRTC Fields ────────────────────────────────────────────────────
-
-  o = section.taboption(
-    "settings",
-    form.ListValue,
-    "olcrtc_provider",
-    _("OlcRTC Provider"),
-  );
-  o.depends("action", "olcrtc");
-  o.value("jitsi", _("Jitsi"));
-  o.value("wrt", _("WRT"));
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.ListValue,
-    "olcrtc_transport",
-    _("OlcRTC Transport"),
-  );
-  o.depends("action", "olcrtc");
-  o.value("whep", _("WHEP"));
-  o.value("whip", _("WHIP"));
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "olcrtc_room_id",
-    _("OlcRTC Room ID"),
-  );
-  o.depends("action", "olcrtc");
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "olcrtc_crypto_key",
-    _("OlcRTC Crypto Key"),
-  );
-  o.depends("action", "olcrtc");
-  o.password = true;
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "olcrtc_socks_host",
-    _("OlcRTC SOCKS Host"),
-  );
-  o.depends("action", "olcrtc");
-  o.default = "127.0.0.1";
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "olcrtc_socks_port",
-    _("OlcRTC SOCKS Port"),
-  );
-  o.depends("action", "olcrtc");
-  o.default = "1082";
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "olcrtc_dns_server",
-    _("OlcRTC DNS Server"),
-  );
-  o.depends("action", "olcrtc");
-  o.default = "8.8.8.8:53";
-  o.modalonly = true;
-
-  o = section.taboption(
-    "settings",
-    form.DynamicList,
-    "olcrtc_subscription_links",
-    _("OlcRTC Subscription Links"),
-  );
-  o.depends("action", "olcrtc");
   o.modalonly = true;
 
   // ─── FPTN Fields ───────────────────────────────────────────────────────
@@ -14703,7 +12423,7 @@ function createSectionContent(section) {
     form.Value,
     "hosts_list_update_interval",
     _("Hosts Lists Update Interval"),
-    _("Use sing-box duration format like 1d, 12h or 6h"),
+    _("Use duration format like 1d, 12h or 6h"),
   );
   o.depends("action", "hosts");
   o.depends({ action: "hosts", hosts_list_auto_update: "1" });
@@ -14715,7 +12435,7 @@ function createSectionContent(section) {
     if (!value) return true;
     return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value)
       ? true
-      : _("Use sing-box duration format like 1d, 12h or 6h");
+      : _("Use duration format like 1d, 12h or 6h");
   };
 
   // Keep tag chains (<b 0x..>, <t>, <r..>, etc.) and plain hex intact
@@ -15586,7 +13306,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.depends({ action: "awg", awg_version: "3.1" });
 
-  // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
+  // ── WARP (Cloudflare WARP) ────────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -15640,7 +13360,7 @@ function createSectionContent(section) {
     return optionMapValue(this, itemId, "warp_detour") || "";
   };
 
-  // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
+  // ── AnyTLS ────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -15698,7 +13418,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "anytls");
 
-  // ── Snell (sing-box-extended) ─────────────────────────────────────────────
+  // ── Snell ─────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -15750,7 +13470,7 @@ function createSectionContent(section) {
   o.default = "4";
   o.depends("action", "snell");
 
-  // ── Mieru (sing-box-extended, tachyon-core) ──────────────────────────────
+  // ── Mieru ─────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -15894,7 +13614,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "naive");
 
-  // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
+  // ── Sudoku ────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -15936,7 +13656,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "sudoku");
 
-  // ── MASQUE (Cloudflare MASQUE via sing-box-extended) ──────────────────────
+  // ── MASQUE (Cloudflare MASQUE) ────────────────────────────────────────────
 
   o = section.taboption(
     "settings",
@@ -17125,7 +14845,7 @@ function createSectionContent(section) {
   o.placeholder = "1400";
   o.depends("action", "openconnect");
 
-  // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
+  // ── OpenVPN ───────────────────────────────────────────────────────────────
 
   const parseOpenvpnConfig = (text) => {
     const result = {
@@ -17628,7 +15348,7 @@ function createSectionContent(section) {
     "outbound_source_refs",
     _("Connections from Pool (in Priority Order)"),
     _(
-      "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route.",
+      "Select any connections from the Connections Pool (Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route.",
     ),
   );
   o.modalonly = true;
@@ -18336,7 +16056,7 @@ function createSectionContent(section) {
     "section_health_url",
     _("Failover Health Check URL"),
     _(
-      "URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG).",
+      "URL probed to verify whether the primary connection (e.g. Desync on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG).",
     ),
   );
   o.modalonly = true;
@@ -18437,9 +16157,7 @@ function createSectionContent(section) {
     ButtonAddSettingsDynamicList,
     "selector_amnezia_configs",
     _("Amnezia configurations"),
-    _(
-      "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core.",
-    ),
+    _("Import .conf files for AmneziaWG 2.0, 3.0 and 3.1."),
   );
   o.depends("action", "awg");
   o.rmempty = true;
@@ -18940,12 +16658,8 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.depends("action", "fptn");
   o.depends("action", "awg");
-  o.depends("action", "byedpi");
   o.depends("action", "wdtt");
   o.depends("action", "csqtt");
-  o.depends("action", "olcrtc");
-  o.depends("action", "zapret");
-  o.depends("action", "zapret2");
   o.depends("action", "outbound");
   o.depends("action", "group");
   o.modalonly = true;
@@ -19100,12 +16814,8 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.depends("action", "fptn");
   o.depends("action", "awg");
-  o.depends("action", "byedpi");
   o.depends("action", "wdtt");
   o.depends("action", "csqtt");
-  o.depends("action", "olcrtc");
-  o.depends("action", "zapret");
-  o.depends("action", "zapret2");
   o.depends("action", "group");
   o.modalonly = true;
 
@@ -19120,9 +16830,6 @@ function createSectionContent(section) {
   o.depends({ action: "connection", mixed_proxy_enabled: "1" });
   o.depends({ action: "fptn", mixed_proxy_enabled: "1" });
   o.depends({ action: "awg", mixed_proxy_enabled: "1" });
-  o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
-  o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
-  o.depends({ action: "zapret2", mixed_proxy_enabled: "1" });
   o.depends({ action: "group", mixed_proxy_enabled: "1" });
   o.modalonly = true;
   o.validate = function (_section_id, value) {
@@ -19150,9 +16857,6 @@ function createSectionContent(section) {
   o.depends({ action: "connection", mixed_proxy_enabled: "1" });
   o.depends({ action: "fptn", mixed_proxy_enabled: "1" });
   o.depends({ action: "awg", mixed_proxy_enabled: "1" });
-  o.depends({ action: "byedpi", mixed_proxy_enabled: "1" });
-  o.depends({ action: "zapret", mixed_proxy_enabled: "1" });
-  o.depends({ action: "zapret2", mixed_proxy_enabled: "1" });
   o.depends({ action: "group", mixed_proxy_enabled: "1" });
   o.modalonly = true;
 
@@ -19175,21 +16879,6 @@ function createSectionContent(section) {
   });
   o.depends({
     action: "awg",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
-    action: "byedpi",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
-    action: "zapret",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
-    action: "zapret2",
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
   });
@@ -19230,21 +16919,6 @@ function createSectionContent(section) {
     mixed_proxy_auth_enabled: "1",
   });
   o.depends({
-    action: "byedpi",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
-    action: "zapret",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
-    action: "zapret2",
-    mixed_proxy_enabled: "1",
-    mixed_proxy_auth_enabled: "1",
-  });
-  o.depends({
     action: "group",
     mixed_proxy_enabled: "1",
     mixed_proxy_auth_enabled: "1",
@@ -19264,7 +16938,7 @@ function createSectionContent(section) {
     "resolve_real_ip_for_routing",
     _("Resolve real IP for routing"),
     _(
-      "Resolve domain names before routing so sing-box can use real destination IPs.",
+      "Resolve domain names before routing so Tachyon Core can use real destination IPs.",
     ),
   );
   o.default = "0";
@@ -19283,7 +16957,7 @@ function createSectionContent(section) {
       return value;
     }
 
-    return getRuleResolvedAction(section_id) === "byedpi" ? "1" : "0";
+    return "0";
   };
 
   // Modular Reusable Conditions (#242)
@@ -19407,11 +17081,7 @@ function createSectionContent(section) {
     "trusttunnel",
     "tewfai",
     "csqtt",
-    "zapret",
-    "zapret2",
-    "byedpi",
     "wdtt",
-    "olcrtc",
     "fptn",
     "bypass",
     "group",
@@ -19485,11 +17155,7 @@ function createSectionContent(section) {
     "trusttunnel",
     "tewfai",
     "csqtt",
-    "zapret",
-    "zapret2",
-    "byedpi",
     "wdtt",
-    "olcrtc",
     "fptn",
     "bypass",
     "group",
@@ -20282,11 +17948,7 @@ const ACTION_COLORS = {
   vpn: "#1abc9c",
   bypass: "#27ae60",
   block: "#c0392b",
-  zapret: "#8e44ad",
-  zapret2: "#9b59b6",
-  byedpi: "#d35400",
   wdtt: "#27ae60",
-  olcrtc: "#2980b9",
   fptn: "#e74c3c",
   awg: "#008080",
   warp: "#e67e22",
@@ -20496,7 +18158,6 @@ async function readSubnetListFile(service, snapshots) {
 
   const paths = [
     `/tmp/tachyon-core/rulesets/community-subnets-${service}.lst`,
-    `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
     `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
     `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
   ];
@@ -20664,28 +18325,15 @@ function detectQueryType(query) {
 }
 
 async function readRulesetFile(path, snapshots) {
-  const cachePath = path.replace(
-    "/tmp/sing-box/rulesets/",
-    "/tmp/tachyon-core/rulesets/",
-  );
+  const cachePath = path;
   const rulesetFiles = snapshots?.rulesetFiles;
   if (rulesetFiles?.has(cachePath)) return rulesetFiles.get(cachePath);
 
   const read = async () => {
     const candidates = [path];
-    if (path.startsWith("/tmp/sing-box/rulesets/")) {
-      candidates.unshift(
-        path.replace("/tmp/sing-box/rulesets/", "/tmp/tachyon-core/rulesets/"),
-      );
-      candidates.push(
-        path.replace("/tmp/sing-box/rulesets/", "/etc/tachyon/rulesets/"),
-      );
-    } else if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
+    if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
       candidates.push(
         path.replace("/tmp/tachyon-core/rulesets/", "/etc/tachyon/rulesets/"),
-      );
-      candidates.push(
-        path.replace("/tmp/tachyon-core/rulesets/", "/tmp/sing-box/rulesets/"),
       );
     }
     for (const candidate of candidates) {
@@ -20724,10 +18372,8 @@ async function findCachedRulesetFile(
 ) {
   const candidates = [
     `/tmp/tachyon-core/rulesets/community-${community}.trs`,
-    `/tmp/sing-box/rulesets/community-${community}.trs`,
     `/etc/tachyon/rulesets/community-${community}.trs`,
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
-    `/tmp/sing-box/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
 
@@ -20786,11 +18432,7 @@ async function matchCommunityList(secName, community, query, type, snapshots) {
           ? ["--ip", query]
           : ["--domain", (query || "").toLowerCase()]),
       ];
-      for (const bin of [
-        "/usr/bin/tachyon-core",
-        "/usr/bin/sing-box",
-        "/usr/sbin/sing-box",
-      ]) {
+      for (const bin of ["/usr/bin/tachyon-core", "/usr/sbin/tachyon-core"]) {
         const res = await fs.exec(bin, matchArgs).catch(() => null);
         if (!res || res.code !== 0) continue;
         return checkMatch(res);
@@ -20872,12 +18514,7 @@ async function matchConfiguredRulesets(secName, query, type, snapshots) {
       ...(type === "ip" ? ["--ip", query] : ["--domain", query.toLowerCase()]),
     ];
     let checked = false;
-    for (const bin of [
-      "/usr/bin/tachyon-core",
-      "/usr/sbin/tachyon-core",
-      "/usr/bin/sing-box",
-      "/usr/sbin/sing-box",
-    ]) {
+    for (const bin of ["/usr/bin/tachyon-core", "/usr/sbin/tachyon-core"]) {
       const result = await fs.exec(bin, args).catch(() => null);
       if (!result || result.code !== 0) continue;
       const output = (result.stdout || "") + (result.stderr || "");

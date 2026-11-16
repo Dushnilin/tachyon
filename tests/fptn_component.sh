@@ -36,10 +36,10 @@ fi
 if grep -Fq 'fptn_installed' "$SYSTEM_INFO_UC"; then
   fail "fptn_installed component field must be removed from diagnostics/system_info.uc"
 fi
-grep -Fq 'sing_box_fptn' "$SYSTEM_INFO_UC" ||
-  fail "native sing_box_fptn core capability flag must remain in diagnostics/system_info.uc"
+grep -Fq 'tachyon_core_fptn' "$SYSTEM_INFO_UC" ||
+  fail "native tachyon_core_fptn core capability flag must remain in diagnostics/system_info.uc"
 
-# 2. Verify state.uc sing-box-signature-fixture changes when FPTN section options change
+# 2. Verify state.uc tachyon-core-signature-fixture changes when FPTN section options change
 cat >"$WORK_DIR/state_fixture.json" <<'EOF_FIXTURE'
 {
   "section": [
@@ -56,8 +56,8 @@ cat >"$WORK_DIR/state_fixture.json" <<'EOF_FIXTURE'
 }
 EOF_FIXTURE
 
-SIG_1="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture.json")"
-[ -n "$SIG_1" ] || fail "sing-box signature should not be empty"
+SIG_1="$(ucode_run "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/state_fixture.json")"
+[ -n "$SIG_1" ] || fail "tachyon-core signature should not be empty"
 
 cat >"$WORK_DIR/state_fixture2.json" <<'EOF_FIXTURE2'
 {
@@ -75,8 +75,8 @@ cat >"$WORK_DIR/state_fixture2.json" <<'EOF_FIXTURE2'
 }
 EOF_FIXTURE2
 
-SIG_2="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture2.json")"
-[ "$SIG_1" != "$SIG_2" ] || fail "sing-box signature must differ when FPTN token changes"
+SIG_2="$(ucode_run "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/state_fixture2.json")"
+[ "$SIG_1" != "$SIG_2" ] || fail "tachyon-core signature must differ when FPTN token changes"
 
 cat >"$WORK_DIR/state_fixture3.json" <<'EOF_FIXTURE3'
 {
@@ -94,8 +94,8 @@ cat >"$WORK_DIR/state_fixture3.json" <<'EOF_FIXTURE3'
 }
 EOF_FIXTURE3
 
-SIG_3="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture3.json")"
-[ "$SIG_1" != "$SIG_3" ] || fail "sing-box signature must differ when FPTN sni/bypass_method/preferred_server change"
+SIG_3="$(ucode_run "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/state_fixture3.json")"
+[ "$SIG_1" != "$SIG_3" ] || fail "tachyon-core signature must differ when FPTN sni/bypass_method/preferred_server change"
 
 # 3. Verify validator supports native fptn rule action without external binary
 cat >"$WORK_DIR/fptn_valid.json" <<'JSON'

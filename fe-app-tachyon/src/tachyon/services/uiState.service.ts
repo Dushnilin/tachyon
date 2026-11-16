@@ -1,5 +1,4 @@
 import { getComponentActionKey } from '../helpers/getComponentActionKey';
-import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import type { Tachyon } from '../types';
 import { getLocalActionOverlay } from './localActionOverlay.service';
 import { store } from './store.service';
@@ -17,39 +16,9 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     tachyonInstall: { loading: false },
     tachyonReinstall: { loading: false },
     tachyonRollback: { loading: false },
-    singBoxCheck: { loading: false },
-    singBoxInstall: { loading: false },
-    singBoxRollback: { loading: false },
-    singBoxInstallExtended: { loading: false },
-    singBoxInstallExtendedCompressed: { loading: false },
-    singBoxInstallLx: { loading: false },
-    singBoxInstallTachyonCore: { loading: false },
-    singBoxInstallTiny: { loading: false },
-    singBoxInstallStable: { loading: false },
-    zapretCheck: { loading: false },
-    zapretInstall: { loading: false },
-    zapretRemove: { loading: false },
-    zapretRollback: { loading: false },
-    zapret2Check: { loading: false },
-    zapret2Install: { loading: false },
-    zapret2Remove: { loading: false },
-    zapret2Rollback: { loading: false },
-    byedpiCheck: { loading: false },
-    byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false },
-    byedpiRollback: { loading: false },
-    wdttCheck: { loading: false },
-    wdttInstall: { loading: false },
-    wdttRemove: { loading: false },
-    wdttRollback: { loading: false },
-    olcrtcCheck: { loading: false },
-    olcrtcInstall: { loading: false },
-    olcrtcRemove: { loading: false },
-    olcrtcRollback: { loading: false },
-    tailscaleCheck: { loading: false },
-    tailscaleInstall: { loading: false },
-    tailscaleRemove: { loading: false },
-    tailscaleRollback: { loading: false },
+    tachyonCoreCheck: { loading: false },
+    tachyonCoreInstall: { loading: false },
+    tachyonCoreRollback: { loading: false },
     directBypassEnable: { loading: false },
     directBypassDisable: { loading: false },
     torrserverDirectCheck: { loading: false },
@@ -57,7 +26,6 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     torrserverDirectRemove: { loading: false },
     torrserverDirectEnable: { loading: false },
     torrserverDirectDisable: { loading: false },
-    engineSwitch: { loading: false },
   };
 }
 
@@ -98,38 +66,27 @@ function applyServiceState(uiState: Tachyon.UiState) {
   const nextSystemInfo = {
     ...currentSystemInfo,
     providerInfoLoaded: true,
-    zapret_installed: uiState.capabilities.zapret_installed,
-    zapret2_installed: uiState.capabilities.zapret2_installed,
-    byedpi_installed: uiState.capabilities.byedpi_installed,
-    wdtt_installed: uiState.capabilities.wdtt_installed,
-    olcrtc_installed: uiState.capabilities.olcrtc_installed,
     server_inbounds_enabled_count:
       uiState.capabilities.server_inbounds_enabled_count,
   };
 
-  nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
-  nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
-  nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
-  nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
-  nextSystemInfo.sing_box_tachyon_core =
-    uiState.capabilities.sing_box_tachyon_core;
-  nextSystemInfo.sing_box_fptn = uiState.capabilities.sing_box_fptn;
-  nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
-  nextSystemInfo.sing_box_cert_pin =
-    uiState.capabilities.sing_box_cert_pin ?? 0;
+  nextSystemInfo.tachyon_core_fptn = uiState.capabilities.tachyon_core_fptn;
+  nextSystemInfo.tachyon_core_tailscale =
+    uiState.capabilities.tachyon_core_tailscale;
+  nextSystemInfo.tachyon_core_cert_pin =
+    uiState.capabilities.tachyon_core_cert_pin ?? 0;
 
   store.set({
     servicesInfoWidget: {
       loading: false,
       failed: false,
       data: {
-        singbox: uiState.service.sing_box.running,
-        singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
-        singboxPid: uiState.service.sing_box.pid,
-        singboxUptimeSeconds: uiState.service.sing_box.uptime_seconds,
-        singboxUptimePretty: uiState.service.sing_box.uptime_pretty,
-        engineVariant: uiState.service.sing_box.engine_variant,
-        engineVersion: uiState.service.sing_box.engine_version,
+        tachyonCore: uiState.service.tachyon_core.running,
+        tachyonCoreMemoryMb: uiState.service.tachyon_core.memory_rss_mb,
+        tachyonCorePid: uiState.service.tachyon_core.pid,
+        tachyonCoreUptimeSeconds: uiState.service.tachyon_core.uptime_seconds,
+        tachyonCoreUptimePretty: uiState.service.tachyon_core.uptime_pretty,
+        engineVersion: uiState.service.tachyon_core.engine_version,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
@@ -143,15 +100,6 @@ function applyServiceState(uiState: Tachyon.UiState) {
         watchdogRunning:
           uiState.service.watchdog?.running ??
           store.get().servicesInfoWidget.data.watchdogRunning,
-        zapret2Running: uiState.service.zapret2
-          ? uiState.service.zapret2.running
-          : undefined,
-        zapret2MemoryMb: uiState.service.zapret2
-          ? uiState.service.zapret2.memory_rss_mb
-          : undefined,
-        zapret2Pid: uiState.service.zapret2?.pid,
-        zapret2UptimeSeconds: uiState.service.zapret2?.uptime_seconds,
-        zapret2UptimePretty: uiState.service.zapret2?.uptime_pretty,
         dnsmasqRunning: uiState.service.dnsmasq
           ? uiState.service.dnsmasq.running
           : undefined,
@@ -169,8 +117,8 @@ function applyServiceState(uiState: Tachyon.UiState) {
         dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty,
       },
     },
-    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
-    ...(uiState.active_engine ? { activeEngine: uiState.active_engine } : {}),
+    diagnosticsSystemInfo: nextSystemInfo,
+    activeEngine: uiState.active_engine || 'tachyon-core',
   });
 }
 

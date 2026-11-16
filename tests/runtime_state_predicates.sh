@@ -5,9 +5,6 @@ set -eo pipefail
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 NFT_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
 UCODE_BIN="$(command -v ucode)"
-export ZAPRET_DEFAULT_NFQWS_OPT="--default-zapret"
-export ZAPRET2_DEFAULT_NFQWS2_OPT="--default-zapret2"
-export BYEDPI_DEFAULT_CMD_OPTS="--default-bye"
 export TACHYON_FAKE_INIT_CAPTURE="$WORK_DIR/pending-reload-init.args"
 
 assert_eq() {
@@ -37,9 +34,9 @@ if state_ucode list-has-remote-references "local.lst /tmp/list.txt" >/dev/null 2
 fi
 
 state_ucode list-has-remote-core-rulesets "https://example.com/rules.srs" >/dev/null ||
-  fail "remote sing-box ruleset should be detected"
+  fail "remote tachyon-core ruleset should be detected"
 if state_ucode list-has-remote-core-rulesets "/tmp/rules.srs" >/dev/null 2>&1; then
-  fail "local sing-box ruleset should not be remote"
+  fail "local tachyon-core ruleset should not be remote"
 fi
 
 assert_eq "meta telegram discord" \
@@ -93,33 +90,33 @@ if state_ucode time-sync-needed 2024 >/dev/null 2>&1; then
   fail "time sync should not be needed for current clock"
 fi
 
-if state_ucode sing-box-pid-replaced-fixture 3285 3285 1 >/dev/null 2>&1; then
-  fail "sing-box reload must not accept the old stable PID"
+if state_ucode tachyon-core-pid-replaced-fixture 3285 3285 1 >/dev/null 2>&1; then
+  fail "tachyon-core reload must not accept the old stable PID"
 fi
-if state_ucode sing-box-pid-replaced-fixture 3285 0 0 >/dev/null 2>&1; then
-  fail "sing-box reload must not accept a missing replacement process"
+if state_ucode tachyon-core-pid-replaced-fixture 3285 0 0 >/dev/null 2>&1; then
+  fail "tachyon-core reload must not accept a missing replacement process"
 fi
-state_ucode sing-box-pid-replaced-fixture 3285 4127 1 >/dev/null ||
-  fail "sing-box reload should accept a different live sing-box PID"
-if state_ucode sing-box-pid-replaced-fixture 3285 4127 0 >/dev/null 2>&1; then
-  fail "sing-box reload must reject a replacement PID owned by another executable"
+state_ucode tachyon-core-pid-replaced-fixture 3285 4127 1 >/dev/null ||
+  fail "tachyon-core reload should accept a different live tachyon-core PID"
+if state_ucode tachyon-core-pid-replaced-fixture 3285 4127 0 >/dev/null 2>&1; then
+  fail "tachyon-core reload must reject a replacement PID owned by another executable"
 fi
 assert_eq "3285" \
-  "$(state_ucode sing-box-reload-previous-pid-fixture 3285 old new)" \
-  "changed sing-box config replacement PID"
+  "$(state_ucode tachyon-core-reload-previous-pid-fixture 3285 old new)" \
+  "changed tachyon-core config replacement PID"
 assert_eq "0" \
-  "$(state_ucode sing-box-reload-previous-pid-fixture 3285 same same)" \
-  "unchanged sing-box config replacement PID"
+  "$(state_ucode tachyon-core-reload-previous-pid-fixture 3285 same same)" \
+  "unchanged tachyon-core config replacement PID"
 assert_eq "0" \
-  "$(state_ucode sing-box-reload-previous-pid-fixture missing old new)" \
-  "missing sing-box PID replacement constraint"
-if state_ucode sing-box-runtime-reload-needed-fixture same same 0 >/dev/null 2>&1; then
-  fail "unchanged sing-box config must skip an ordinary runtime reload"
+  "$(state_ucode tachyon-core-reload-previous-pid-fixture missing old new)" \
+  "missing tachyon-core PID replacement constraint"
+if state_ucode tachyon-core-runtime-reload-needed-fixture same same 0 >/dev/null 2>&1; then
+  fail "unchanged tachyon-core config must skip an ordinary runtime reload"
 fi
-state_ucode sing-box-runtime-reload-needed-fixture old new 0 >/dev/null ||
-  fail "changed sing-box config must reload the runtime"
-state_ucode sing-box-runtime-reload-needed-fixture same same 1 >/dev/null ||
-  fail "forced runtime reload must reload unchanged sing-box config"
+state_ucode tachyon-core-runtime-reload-needed-fixture old new 0 >/dev/null ||
+  fail "changed tachyon-core config must reload the runtime"
+state_ucode tachyon-core-runtime-reload-needed-fixture same same 1 >/dev/null ||
+  fail "forced runtime reload must reload unchanged tachyon-core config"
 
 assert_eq "8" \
   "$(state_ucode process-age-seconds-fixture 786161359 786162159)" \
@@ -132,16 +129,16 @@ if sed -n '/^function process_age_seconds(pid) {$/,/^}$/p' "$STATE_UC" | grep -F
 fi
 
 mkdir -p "$WORK_DIR/stable-start-bin"
-cp "$(command -v ucode)" "$WORK_DIR/stable-start-bin/sing-box"
+cp "$(command -v ucode)" "$WORK_DIR/stable-start-bin/tachyon-core"
 cat >"$WORK_DIR/stable-start-bin/ubus" <<'SH'
 #!/usr/bin/env bash
 set -eo pipefail
 
-pid="$(cat "${SING_BOX_TEST_PID_FILE:?}")"
-if [ -r "/proc/$pid/exe" ] && [ "$(basename "$(readlink "/proc/$pid/exe")")" = "sing-box" ]; then
-  printf '{"sing-box":{"instances":{"instance1":{"running":true,"pid":%s}}}}\n' "$pid"
+pid="$(cat "${TACHYON_CORE_TEST_PID_FILE:?}")"
+if [ -r "/proc/$pid/exe" ] && [ "$(basename "$(readlink "/proc/$pid/exe")")" = "tachyon-core" ]; then
+  printf '{"tachyon-core":{"instances":{"instance1":{"running":true,"pid":%s}}}}\n' "$pid"
 else
-  printf '{"sing-box":{"instances":{}}}\n'
+  printf '{"tachyon-core":{"instances":{}}}\n'
 fi
 SH
 cat >"$WORK_DIR/stable-start-bin/nft" <<'SH'
@@ -157,35 +154,35 @@ exec "${REAL_UCODE:?}" "$@"
 SH
 chmod 0755 "$WORK_DIR/stable-start-bin/ubus" "$WORK_DIR/stable-start-bin/nft" "$WORK_DIR/stable-start-bin/ucode"
 
-"$WORK_DIR/stable-start-bin/sing-box" -e "system('sleep 30')" &
-sing_box_pid=$!
-printf '%s\n' "$sing_box_pid" >"$WORK_DIR/tachyon-core.pid"
+"$WORK_DIR/stable-start-bin/tachyon-core" -e "system('sleep 30')" &
+tachyon_core_pid=$!
+printf '%s\n' "$tachyon_core_pid" >"$WORK_DIR/tachyon-core.pid"
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
-  state_ucode sing-box-service-running; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
-  fail "stable-start fixture must expose a running sing-box process"
+  TACHYON_CORE_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
+  state_ucode tachyon-core-service-running; then
+  kill "$tachyon_core_pid" >/dev/null 2>&1 || true
+  wait "$tachyon_core_pid" 2>/dev/null || true
+  fail "stable-start fixture must expose a running tachyon-core process"
 fi
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
+  TACHYON_CORE_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
   state_ucode tachyon-running tachyon TachyonTable 0x00100000; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
+  kill "$tachyon_core_pid" >/dev/null 2>&1 || true
+  wait "$tachyon_core_pid" 2>/dev/null || true
   fail "stable-start fixture must expose configured Tachyon networking"
 fi
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
   REAL_UCODE="$UCODE_BIN" \
-  SING_BOX_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
-  state_ucode wait-tachyon-stable-start tachyon TachyonTable 0x00100000 2 2; then
-  kill "$sing_box_pid" >/dev/null 2>&1 || true
-  wait "$sing_box_pid" 2>/dev/null || true
+  TACHYON_CORE_TEST_PID_FILE="$WORK_DIR/tachyon-core.pid" \
+  state_ucode wait-tachyon-stable-start tachyon TachyonTable 0x00100000 2 4; then
+  kill "$tachyon_core_pid" >/dev/null 2>&1 || true
+  wait "$tachyon_core_pid" 2>/dev/null || true
   fail "stable-start wait must check runtime state after its final sleep"
 fi
-kill "$sing_box_pid" >/dev/null 2>&1 || true
-wait "$sing_box_pid" 2>/dev/null || true
+kill "$tachyon_core_pid" >/dev/null 2>&1 || true
+wait "$tachyon_core_pid" 2>/dev/null || true
 
 PENDING_RELOAD_FILE="$WORK_DIR/reload.pending"
 state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "reload_busy"
@@ -221,7 +218,7 @@ assert_eq "reload" \
   fail "pending reload should be consumed when worker is started"
 
 # A recovered subscription cache is not a configuration change: config.json is
-# regenerated and SIGHUP'd into the running sing-box. It must not walk the full
+# regenerated and SIGHUP'd into the running tachyon-core. It must not walk the full
 # reload pipeline (issue #119). `ucode` is shimmed on PATH to observe the apply
 # without running the real one; the shim records and then passes through, so the
 # outer invocation this test makes itself still works.
@@ -525,10 +522,11 @@ cat >"$WORK_DIR/tachyon-core-signature.json" <<'JSON'
       "resolve_real_ip_for_routing": "0"
     },
     {
-      ".name": "bye1",
+      ".name": "des1",
       ".type": "section",
       "enabled": "1",
-      "action": "byedpi",
+      "action": "desync",
+      "desync_preset": "auto",
       "mixed_proxy_enabled": "0"
     },
     {
@@ -574,7 +572,7 @@ cat >"$WORK_DIR/tachyon-core-signature.json" <<'JSON'
 }
 JSON
 
-cat >"$WORK_DIR/tachyon-core-signature.expected" <<'EOF_SING_BOX_SIG'
+cat >"$WORK_DIR/tachyon-core-signature.expected" <<'EOF_CORE_SIG'
 [settings.dns_type]
 tcp
 [settings.dns_strategy]
@@ -809,43 +807,43 @@ disabled
 
 [rule.out1.domain_ip_lists]
 
-[rule.bye1.action]
-byedpi
-[rule.bye1.byedpi_index]
-1
-[rule.bye1.mixed_proxy_enabled]
+[rule.des1.action]
+desync
+[rule.des1.desync_preset]
+auto
+[rule.des1.outbound_detour_enabled]
 0
-[rule.bye1.resolve_real_ip_for_routing]
-1
-[rule.bye1.domain]
+[rule.des1.mixed_proxy_enabled]
+0
+[rule.des1.domain]
 
-[rule.bye1.domain_suffix]
+[rule.des1.domain_suffix]
 
-[rule.bye1.domain_keyword]
+[rule.des1.domain_keyword]
 
-[rule.bye1.domain_regex]
+[rule.des1.domain_regex]
 
-[rule.bye1.ip_cidr]
+[rule.des1.ip_cidr]
 
-[rule.bye1.source_ip_cidr]
+[rule.des1.source_ip_cidr]
 
-[rule.bye1.ports]
+[rule.des1.ports]
 
-[rule.bye1.fully_routed_ips]
+[rule.des1.fully_routed_ips]
 
-[rule.bye1.excluded_ips]
+[rule.des1.excluded_ips]
 
-[rule.bye1.excluded_protocol]
+[rule.des1.excluded_protocol]
 
-[rule.bye1.protocol]
+[rule.des1.protocol]
 
-[rule.bye1.community_lists]
+[rule.des1.community_lists]
 
-[rule.bye1.rule_set]
+[rule.des1.rule_set]
 
-[rule.bye1.rule_set_with_subnets]
+[rule.des1.rule_set_with_subnets]
 
-[rule.bye1.domain_ip_lists]
+[rule.des1.domain_ip_lists]
 
 [rule.vpn1.action]
 vpn
@@ -1045,8 +1043,6 @@ ws
 
 [server.srv1.tailscale_hostname]
 
-[server.srv1.tailscale_mode]
-singbox
 [server.srv1.tailscale_masquerade]
 1
 [server.srv1.tailscale_use_exit_node]
@@ -1161,168 +1157,11 @@ singbox
 
 [server.srv1.open_firewall_port]
 
-EOF_SING_BOX_SIG
+EOF_CORE_SIG
 
 assert_eq "$(md5_file "$WORK_DIR/tachyon-core-signature.expected")" \
-  "$(state_ucode sing-box-signature-fixture "$WORK_DIR/tachyon-core-signature.json")" \
-  "sing-box signature hash"
-
-cat >"$WORK_DIR/dpi-signatures.json" <<'JSON'
-{
-  "section": [
-    {
-      ".name": "disabled_zap",
-      ".type": "section",
-      "enabled": "0",
-      "action": "zapret",
-      "nfqws_opt": "--disabled"
-    },
-    {
-      ".name": "zap1",
-      ".type": "section",
-      "enabled": "1",
-      "action": "zapret",
-      "domain": [ "legacy.example" ],
-      "domain_suffix": [ "full:full.example", "suffix.example", "keyword:ads" ],
-      "domain_suffix_text": "full:textfull.example text-suffix.example",
-      "community_lists": [ "telegram", "youtube" ],
-      "rule_set": [ "https://example.com/zap.srs" ],
-      "rule_set_with_subnets": [ "https://example.com/zap-sub.srs" ],
-      "domain_ip_lists": [ "local.lst", "https://example.com/ip.lst" ],
-      "user_domain_list_type": "dynamic",
-      "user_domains": [ "dyn.example" ],
-      "user_domains_text": "ignored.example",
-      "local_domain_lists": [ "local-a" ],
-      "remote_domain_lists": [ "remote-a" ]
-    },
-    {
-      ".name": "zap2",
-      ".type": "section",
-      "enabled": "1",
-      "action": "zapret2",
-      "nfqws2_opt": "--z2\n opt",
-      "domain": [ "z2.example" ],
-      "domain_suffix": [ "z2-suffix.example" ],
-      "community_lists": [ "discord" ],
-      "rule_set": [ "https://example.com/zap2.srs" ],
-      "rule_set_with_subnets": [ "https://example.com/zap2-sub.srs" ],
-      "domain_ip_lists": [ "https://example.com/zap2-ip.lst" ],
-      "user_domain_list_type": "text",
-      "user_domains": [ "ignored-dyn.example" ],
-      "user_domains_text": "text.example text2.example",
-      "local_domain_lists": [ "local-b" ],
-      "remote_domain_lists": [ "remote-b" ]
-    },
-    {
-      ".name": "bye_disabled",
-      ".type": "section",
-      "enabled": "0",
-      "action": "byedpi",
-      "byedpi_cmd_opts": "--disabled"
-    },
-    {
-      ".name": "bye1",
-      ".type": "section",
-      "enabled": "1",
-      "action": "byedpi"
-    },
-    {
-      ".name": "bye2",
-      ".type": "section",
-      "enabled": "1",
-      "action": "byedpi",
-      "byedpi_cmd_opts": "--disorder   3\n--fake-sni example.org"
-    }
-  ]
-}
-JSON
-
-cat >"$WORK_DIR/zapret-queue.expected" <<'EOF_ZAPRET_QUEUE'
-[zapret_queue.section]
-zap1
-EOF_ZAPRET_QUEUE
-
-cat >"$WORK_DIR/zapret2-queue.expected" <<'EOF_ZAPRET2_QUEUE'
-[zapret2_queue.section]
-zap2
-EOF_ZAPRET2_QUEUE
-
-cat >"$WORK_DIR/zapret-runtime.expected" <<'EOF_ZAPRET_RUNTIME'
-[zapret.zap1.nfqws_opt]
---default-zapret
-[zapret.zap1.domain]
-textfull.example,full.example,legacy.example
-[zapret.zap1.domain_suffix]
-text-suffix.example,suffix.example
-[zapret.zap1.community_lists]
-telegram youtube
-[zapret.zap1.rule_set]
-https://example.com/zap.srs
-[zapret.zap1.rule_set_with_subnets]
-https://example.com/zap-sub.srs
-[zapret.zap1.domain_ip_lists]
-local.lst https://example.com/ip.lst
-[zapret.zap1.user_domain_list_type]
-dynamic
-[zapret.zap1.local_domain_lists]
-local-a
-[zapret.zap1.remote_domain_lists]
-remote-a
-[zapret.zap1.user_domains]
-dyn.example
-EOF_ZAPRET_RUNTIME
-
-cat >"$WORK_DIR/zapret2-runtime.expected" <<'EOF_ZAPRET2_RUNTIME'
-[zapret2.zap2.nfqws2_opt]
---z2 opt
-[zapret2.zap2.domain]
-z2.example
-[zapret2.zap2.domain_suffix]
-z2-suffix.example
-[zapret2.zap2.community_lists]
-discord
-[zapret2.zap2.rule_set]
-https://example.com/zap2.srs
-[zapret2.zap2.rule_set_with_subnets]
-https://example.com/zap2-sub.srs
-[zapret2.zap2.domain_ip_lists]
-https://example.com/zap2-ip.lst
-[zapret2.zap2.user_domain_list_type]
-text
-[zapret2.zap2.local_domain_lists]
-local-b
-[zapret2.zap2.remote_domain_lists]
-remote-b
-[zapret2.zap2.user_domains]
-text.example text2.example
-EOF_ZAPRET2_RUNTIME
-
-cat >"$WORK_DIR/byedpi-runtime.expected" <<'EOF_BYEDPI_RUNTIME'
-[byedpi.bye1.index]
-1
-[byedpi.bye1.byedpi_cmd_opts]
---default-bye
-[byedpi.bye2.index]
-2
-[byedpi.bye2.byedpi_cmd_opts]
---disorder 3 --fake-sni example.org
-EOF_BYEDPI_RUNTIME
-
-assert_eq "$(md5_file "$WORK_DIR/zapret-queue.expected")" \
-  "$(state_ucode zapret-queue-signature-fixture "$WORK_DIR/dpi-signatures.json")" \
-  "zapret queue signature hash"
-assert_eq "$(md5_file "$WORK_DIR/zapret2-queue.expected")" \
-  "$(state_ucode zapret2-queue-signature-fixture "$WORK_DIR/dpi-signatures.json")" \
-  "zapret2 queue signature hash"
-assert_eq "$(md5_file "$WORK_DIR/zapret-runtime.expected")" \
-  "$(state_ucode zapret-runtime-signature-fixture "$WORK_DIR/dpi-signatures.json")" \
-  "zapret runtime signature hash"
-assert_eq "$(md5_file "$WORK_DIR/zapret2-runtime.expected")" \
-  "$(state_ucode zapret2-runtime-signature-fixture "$WORK_DIR/dpi-signatures.json")" \
-  "zapret2 runtime signature hash"
-assert_eq "$(md5_file "$WORK_DIR/byedpi-runtime.expected")" \
-  "$(state_ucode byedpi-runtime-signature-fixture "$WORK_DIR/dpi-signatures.json")" \
-  "byedpi runtime signature hash"
+  "$(state_ucode tachyon-core-signature-fixture "$WORK_DIR/tachyon-core-signature.json")" \
+  "tachyon-core signature hash"
 
 cat >"$WORK_DIR/reload-state-signatures.json" <<'JSON'
 {
@@ -1583,24 +1422,17 @@ cat >"$WORK_DIR/dns-action-signature-dot.json" <<'JSON'
   ]
 }
 JSON
-if [ "$(state_ucode sing-box-signature-fixture "$WORK_DIR/dns-action-signature-udp.json")" = \
-  "$(state_ucode sing-box-signature-fixture "$WORK_DIR/dns-action-signature-dot.json")" ]; then
-  fail "DNS action protocol should change the sing-box signature"
+if [ "$(state_ucode tachyon-core-signature-fixture "$WORK_DIR/dns-action-signature-udp.json")" = \
+  "$(state_ucode tachyon-core-signature-fixture "$WORK_DIR/dns-action-signature-dot.json")" ]; then
+  fail "DNS action protocol should change the tachyon-core signature"
 fi
 
 cat >"$WORK_DIR/reload-state.expected" <<EOF_RELOAD_STATE
 format=1
 service_trigger_signature=$(state_ucode service-trigger-signature-fixture "$WORK_DIR/reload-state-signatures.json")
 dnsmasq_signature=$(state_ucode dnsmasq-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-sing_box_signature=$(state_ucode sing-box-signature-fixture "$WORK_DIR/reload-state-signatures.json")
+tachyon_core_signature=$(state_ucode tachyon-core-signature-fixture "$WORK_DIR/reload-state-signatures.json")
 nft_signature=$nft_signature
-zapret_queue_signature=$(state_ucode zapret-queue-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-zapret_runtime_signature=$(state_ucode zapret-runtime-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-zapret2_queue_signature=$(state_ucode zapret2-queue-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-zapret2_runtime_signature=$(state_ucode zapret2-runtime-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-byedpi_runtime_signature=$(state_ucode byedpi-runtime-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-wdtt_runtime_signature=$(state_ucode wdtt-runtime-signature-fixture "$WORK_DIR/reload-state-signatures.json")
-olcrtc_runtime_signature=$(state_ucode olcrtc-runtime-signature-fixture "$WORK_DIR/reload-state-signatures.json")
 list_signature=$(state_ucode list-update-signature-fixture "$WORK_DIR/reload-state-signatures.json")
 hosts_list_signature=$(state_ucode hosts-list-signature-fixture "$WORK_DIR/reload-state-signatures.json")
 cron_signature=$(state_ucode cron-signature-fixture "$WORK_DIR/reload-state-signatures.json")
@@ -1701,8 +1533,8 @@ state_ucode has-list-update-sources-fixture "$WORK_DIR/source-detection.json" >/
   fail "fixture should have general list update sources"
 state_ucode has-nft-list-update-sources-fixture "$WORK_DIR/source-detection.json" >/dev/null ||
   fail "fixture should have nft list update sources"
-state_ucode has-remote-sing-box-ruleset-sources-fixture "$WORK_DIR/source-detection.json" >/dev/null ||
-  fail "fixture should have remote sing-box ruleset sources"
+state_ucode has-remote-tachyon-core-ruleset-sources-fixture "$WORK_DIR/source-detection.json" >/dev/null ||
+  fail "fixture should have remote tachyon-core ruleset sources"
 
 cat >"$WORK_DIR/general-only-source.json" <<'JSON'
 {
@@ -1746,8 +1578,8 @@ fi
 if state_ucode has-nft-list-update-sources-fixture "$WORK_DIR/disabled-only-source.json" >/dev/null 2>&1; then
   fail "disabled rule should not require nft list update"
 fi
-if state_ucode has-remote-sing-box-ruleset-sources-fixture "$WORK_DIR/disabled-only-source.json" >/dev/null 2>&1; then
-  fail "disabled rule should not require remote sing-box ruleset refresh"
+if state_ucode has-remote-tachyon-core-ruleset-sources-fixture "$WORK_DIR/disabled-only-source.json" >/dev/null 2>&1; then
+  fail "disabled rule should not require remote tachyon-core ruleset refresh"
 fi
 
 cat >"$WORK_DIR/hosts-source.json" <<'JSON'

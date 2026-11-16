@@ -38,7 +38,7 @@ function _tr(ru, en) {
   return isRu ? ru : en;
 }
 
-function isSingBoxDuration(value) {
+function isCoreDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
@@ -472,14 +472,9 @@ function isDownloadSectionAction(action, capabilities) {
     case "masque":
     case "tewfai":
     case "csqtt":
+    case "wdtt":
     case "openvpn":
       return true;
-    case "zapret":
-      return !capabilities?.loaded || Boolean(capabilities.zapretInstalled);
-    case "zapret2":
-      return !capabilities?.loaded || Boolean(capabilities.zapret2Installed);
-    case "byedpi":
-      return !capabilities?.loaded || Boolean(capabilities.byedpiInstalled);
     default:
       return false;
   }
@@ -765,8 +760,8 @@ function configureDnsDuration(
   option.rmempty = false;
   option.validate = function (_section_id, value) {
     const normalized = `${value || ""}`.trim();
-    if (!normalized || !isSingBoxDuration(normalized)) {
-      return _("Use sing-box duration format like 10s, 1m or 2m30s");
+    if (!normalized || !isCoreDuration(normalized)) {
+      return _("Use duration format like 10s, 1m or 2m30s");
     }
     return true;
   };
@@ -2456,7 +2451,6 @@ function createSmartDetectSectionsWidget(section_id) {
     "csqtt",
     "openvpn",
     "wdtt",
-    "olcrtc",
     "fptn",
   ];
   const sectionActionByName = {};
@@ -2793,8 +2787,8 @@ function createMenuTabsOrderWidget(option, section_id) {
       group: _tr("Настройки", "Settings"),
       label: _tr("Система и бэкап", "System & Backup"),
       desc: _tr(
-        "Выбор ядра, резервное копирование конфигурации и логирование",
-        "Engine selection, configuration backup and logging",
+        "Параметры ядра, резервное копирование конфигурации и логирование",
+        "Core settings, configuration backup and logging",
       ),
       defaultVisible: true,
       fixed: false,
@@ -3154,71 +3148,14 @@ function createComponentsVisibilityWidget(option, section_id) {
       fixed: true,
     },
     {
-      id: "sing_box",
-      label: "Sing-box",
+      id: "tachyon_core",
+      label: "Tachyon Core",
       desc: _tr(
-        "Универсальная платформа и движок маршрутизации",
-        "Universal proxy platform routing engine",
+        "Универсальный нативный движок маршрутизации",
+        "Native proxy routing core engine",
       ),
       defaultVisible: true,
       fixed: true,
-    },
-    {
-      id: "zapret",
-      label: "Zapret",
-      desc: _tr(
-        "Движок десинхронизации (nfqws v1)",
-        "Packet desync engine (nfqws v1)",
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: "zapret2",
-      label: "Zapret2",
-      desc: _tr(
-        "Продвинутый движок десинхронизации со скриптами Lua (nfqws2)",
-        "Advanced packet desync engine with Lua scripts (nfqws2)",
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: "byedpi",
-      label: "ByeDPI",
-      desc: _tr(
-        "Локальный десинхронизатор SOCKS (ciadpi)",
-        "Local SOCKS proxy desynchronizer (ciadpi)",
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: "wdtt",
-      label: "WDTT",
-      desc: _tr("Туннель WireGuard поверх TURN", "WireGuard over TURN Tunnel"),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: "olcrtc",
-      label: "OlcRTC",
-      desc: _tr(
-        "Адаптивный WebRTC-туннель реального времени",
-        "Real-time adaptive WebRTC tunnel",
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: "tailscale",
-      label: "Tailscale",
-      desc: _tr(
-        "Mesh VPN демон с автоматической настройкой",
-        "Zero config mesh VPN daemon",
-      ),
-      defaultVisible: true,
-      fixed: false,
     },
     {
       id: "direct_bypass",
@@ -3475,7 +3412,7 @@ function createSettingsContent(section, capabilities) {
     "_dns_benchmark_btn",
     _("DNS Auto-Tuner & Benchmark"),
     _(
-      "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.",
+      "Automatically benchmark latency, packet loss, and reachability reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.",
     ),
   );
   dnsBenchmarkBtn.inputtitle = _("Auto-Tune & Benchmark DNS");
@@ -5070,7 +5007,7 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     "update_interval",
     _("List Update Frequency"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.depends("list_update_enabled", "1");
   o.placeholder = "1d";
@@ -5092,14 +5029,14 @@ function createSettingsContent(section, capabilities) {
     const normalized = value ? `${value}`.trim() : "";
 
     if (!normalized.length) {
-      return _("Use sing-box duration format like 1d, 12h or 30m");
+      return _("Use duration format like 1d, 12h or 30m");
     }
 
-    if (isSingBoxDuration(normalized)) {
+    if (isCoreDuration(normalized)) {
       return true;
     }
 
-    return _("Use sing-box duration format like 1d, 12h or 30m");
+    return _("Use duration format like 1d, 12h or 30m");
   };
 
   const updateListsBtn = section.taboption(
@@ -5426,7 +5363,7 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     "component_update_check_interval",
     _("Component update check interval"),
-    _("Use sing-box duration format like 1d, 12h or 30m"),
+    _("Use duration format like 1d, 12h or 30m"),
   );
   o.depends("component_update_check_enabled", "1");
   o.placeholder = "1d";
@@ -5450,11 +5387,11 @@ function createSettingsContent(section, capabilities) {
   o.validate = function (_section_id, value) {
     const normalized = value ? `${value}`.trim() : "";
 
-    if (normalized.length && isSingBoxDuration(normalized)) {
+    if (normalized.length && isCoreDuration(normalized)) {
       return true;
     }
 
-    return _("Use sing-box duration format like 1d, 12h or 30m");
+    return _("Use duration format like 1d, 12h or 30m");
   };
 
   o = section.taboption(
@@ -5598,11 +5535,6 @@ function createSettingsContent(section, capabilities) {
   o.value("tachyon", _("Tachyon"));
   o.value("tachyon-core", _("Tachyon Core"));
   o.value("luci_app_tachyon", _("LuCI Web UI"));
-  o.value("sing_box", _("sing-box"));
-  o.value("zapret", _("Zapret"));
-  o.value("zapret2", _("Zapret2"));
-  o.value("byedpi", _("ByeDPI"));
-  o.value("tailscale", _("Tailscale"));
   o.default = ["all"];
   o.rmempty = false;
 
@@ -5641,16 +5573,13 @@ function createSettingsContent(section, capabilities) {
     "latency_test_mode",
     _("Latency Measurement Mode"),
     _(
-      "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on sing-box-extended via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT).",
+      "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT).",
     ),
   );
   o.default = "standard";
   o.rmempty = false;
   o.value("standard", _("Standard (Handshake + HTTP HEAD)"));
-  o.value(
-    "keepalive",
-    _("KeepAlive / Warm Latency (Established Session, sing-box-extended)"),
-  );
+  o.value("keepalive", _("KeepAlive / Warm Latency (Established Session)"));
 
   o = section.taboption(
     "updates",
@@ -5809,7 +5738,7 @@ function createSettingsContent(section, capabilities) {
     form.ListValue,
     "log_level",
     _("Log Level"),
-    _("Select the log level for sing-box"),
+    _("Select the log level for Tachyon Core"),
   );
   o.value("trace", "Trace");
   o.value("debug", "Debug");
@@ -5840,7 +5769,7 @@ function createSettingsContent(section, capabilities) {
     "dns_doq_ech",
     _("Strict ECH + DoQ DNS Enforcer"),
     _(
-      "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding.",
+      "Forces Tachyon Core to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding.",
     ),
   );
   o.default = "0";
@@ -6264,7 +6193,7 @@ function createSettingsContent(section, capabilities) {
     "ai_config_validation_enabled",
     _("Enable Config Validation"),
     _(
-      "Validates sing-box config before restart to prevent boot loops on broken configs.",
+      "Validates Tachyon Core config before restart to prevent boot loops on broken configs.",
     ),
   );
   o.default = "1";
@@ -6320,7 +6249,7 @@ function createSettingsContent(section, capabilities) {
     "ai_anomaly_detection_enabled",
     _("Enable Anomaly Detection"),
     _(
-      "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour.",
+      "Monitors Tachyon Core reconnect frequency. Alerts if too many reconnects per hour.",
     ),
   );
   o.default = "1";
@@ -6344,7 +6273,7 @@ function createSettingsContent(section, capabilities) {
     "memory_limit_mb",
     _("Memory Limit (MB)"),
     _(
-      "Dynamic GOMEMLIMIT memory cap in MB for sing-box / tachyon-core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs).",
+      "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs).",
     ),
   );
   o.default = "0";
@@ -6368,7 +6297,7 @@ function createSettingsContent(section, capabilities) {
   // Default is the upstream 1.4.4 detector; Plus is explicitly opt-in.
   const smartDetectDescriptions = {
     default: _(
-      "Default: uses sing-box error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe.",
+      "Default: uses Tachyon Core error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe.",
     ),
     plus: _(
       "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection.",
@@ -6837,7 +6766,7 @@ function createTelegramContent(section) {
     "notify_crash",
     _("Notify on Core Crashes"),
     _(
-      "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored.",
+      "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored.",
     ),
   );
   o.depends("enabled", "1");

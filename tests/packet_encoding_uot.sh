@@ -20,7 +20,7 @@ printf '%s\n' "$r2" | grep -q '"packet_encoding": "xudp"' || fail "parser.uc fai
 r3=$(ucode -L "$TACHYON_LIB" "$PARSER_UC" share-link-outbound "vless://00000000-0000-0000-0000-000000000001@1.2.3.4:443?security=none&packet-encoding=packetaddr#t3" "t3")
 printf '%s\n' "$r3" | grep -q '"packet_encoding": "packetaddr"' || fail "parser.uc failed to parse packet-encoding=packetaddr"
 
-# 2. Test full sing-box config generation with section packet_encoding override
+# 2. Test full tachyon-core config generation with section packet_encoding override
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
   "settings": {

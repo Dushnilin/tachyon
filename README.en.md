@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/Dushnilin/tachyon/releases"><img src="https://img.shields.io/github/v/release/Dushnilin/tachyon?color=38bdf8&labelColor=19191b" alt="Latest Release"></a>
   <a href="https://openwrt.org/"><img src="https://img.shields.io/badge/openwrt-23.05%20%7C%2024.10%20%7C%2025.x%20%7C%20snapshot-232325?labelColor=19191b" alt="OpenWrt Compatibility"></a>
-  <a href="https://github.com/Dushnilin/tachyon-core"><img src="https://img.shields.io/badge/engines-tachyon--core%20%C2%B7%20sing--box-232325?labelColor=19191b" alt="Routing Engines"></a>
+  <a href="https://github.com/Dushnilin/tachyon-core"><img src="https://img.shields.io/badge/core-tachyon--core%20(Rust)-232325?labelColor=19191b" alt="Routing Core"></a>
   <a href="https://github.com/Dushnilin/tachyon-lists"><img src="https://img.shields.io/badge/lists-tachyon--lists%20(143)-232325?labelColor=19191b" alt="Tachyon Lists"></a>
   <a href="https://t.me/tachyon_proxy"><img src="https://img.shields.io/badge/telegram-%40tachyon__proxy-232325?labelColor=19191b" alt="Telegram Channel"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/Dushnilin/tachyon?color=232325&labelColor=19191b" alt="License"></a>
@@ -19,7 +19,7 @@
 
 **Tachyon** is a network routing, selective proxy orchestration, and L3/L4 traffic-shaping package for **OpenWrt** routers (`23.05`, `24.10`, `25.x`, and `SNAPSHOT`). It builds upon **[Forkop (@ushan0v)](https://github.com/ushan0v/forkop)** and the original **[Podkop (@itdoginfo)](https://github.com/itdoginfo/podkop)** architecture.
 
-The package integrates multi-engine routing (native Rust **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** and **sing-box**), **AmneziaWG / WireGuard**, **OpenVPN (`.ovpn`)**, and **FPTN** L3 tunnels, local packet desynchronization (**Zapret v2 / Zapret v1 / ByeDPI**) with a combinatorial strategy fuzzer, as well as **AI Doctor v3.0** self-diagnostics, a **Telegram management bot**, an **HTTP REST Agent API (OpenAPI 3.0)**, and an **MCP server**. All backend logic is implemented in **ucode** — OpenWrt's native C interpreter — running on routers with 128 MB RAM or more without external language runtimes.
+The package integrates the native Rust routing core **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** (including built-in **Desync Adaptive 2.0**, **CSQTT/WDTT** transport, and native **Tailscale**), **AmneziaWG / WireGuard**, **OpenVPN (`.ovpn`)**, and **FPTN** L3 tunnels with a combinatorial strategy fuzzer, as well as **AI Doctor v3.0** self-diagnostics, a **Telegram management bot**, an **HTTP REST Agent API (OpenAPI 3.0)**, and an **MCP server**. All backend logic is implemented in **ucode** — OpenWrt's native C interpreter — running on routers with 128 MB RAM or more without external language runtimes.
 
 ---
 
@@ -37,16 +37,16 @@ Run the transactional installer in a single SSH command on the router:
 wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 ```
 
-To install non-interactively with the native Rust `tachyon-core` engine preselected:
+To install non-interactively with the native Rust `tachyon-core` routing core:
 
 ```bash
-sh /tmp/tachyon-setup.sh -y --tachyon-core
+sh /tmp/tachyon-setup.sh -y
 ```
 
 | Option or Mechanism | Behavior |
 |:---|:---|
-| `--tachyon-core` | Installs the native Rust `tachyon-core` engine (~4.2 MiB idle RAM) instead of the Go-based `sing-box` binary |
-| Interactive selection | When run without flags, prompts for the target routing engine (`tachyon-core`, `sing-box` `stable`/`extended`/`tiny`/`lx`) and release version |
+| `--tachyon-core` / `--skip-engine` | Installs the native Rust `tachyon-core` engine (~4.2 MiB idle RAM) by default, or skips core installation when `--skip-engine` is passed |
+| Interactive selection | When run without flags, checks for `tachyon-core`, offers to install it if absent, and prompts for the release version |
 | Transactional snapshots | Saves a configuration backup in `/etc/tachyon/installer-backups/` and records `apk-world` state before changes; automatically rolls back on failure |
 | Memory protection (`zram-swap`) | On devices with ≤ 256 MB RAM, inspects available memory and offers to enable `zram-swap` |
 | Automatic migration | Migrates existing rules and sections from `forkop`, `podkop-plus`, and `podkop` into `/etc/config/tachyon` |
@@ -86,9 +86,9 @@ Tachyon classifies flows via kernel **nftables** (`fw4`) and dispatches traffic 
 | Processing Contour | Kernel & Daemon Mechanism | Purpose |
 |:---|:---|:---|
 | **1. Direct WAN** | Direct routing bypassing TPROXY/TUN (`0 ms overhead`) | Domestic banking, government portals, local CDNs, and trusted subnets |
-| **2. Zapret v1 / v2** | Initial packet interception via Netfilter queue (`nfqws` / `nfqws2`) | Hardware-level TCP/UDP desynchronization (`multisplit`, `seqovl`, `wsize`, `syndata`, PAWS `tcp_ts`, binary `blobs`, `fake`/`disorder`) directly on the router without a VPS |
-| **3. ByeDPI (`ciadpi`)** | Local SOCKS5 desynchronization daemon | HTTP payload and TLS ClientHello / SNI record fragmentation |
-| **4. Proxy Engines** | `tachyon-core` / `sing-box` | Selective routing by domains, `.trs`/`.srs`/`.lst` rule-sets, subnets, and LAN clients over VLESS Reality/XHTTP, Hysteria2, Trojan, VMess, and Shadowsocks |
+| **2. Native Desync** | Built-in `desync` module (Adaptive 2.0) inside `tachyon-core` | TCP/TLS/HTTP segmentation and per-connection shaping (`auto`, `multisplit`, `fake`, `disorder`) directly inside the routing core without external daemons or NFQUEUE |
+| **3. Proxy Core** | `tachyon-core` (Rust) | Selective routing by domains, `.trs` (priority) and `.srs`/`.lst` rule-sets, subnets, and LAN clients over VLESS Reality/XHTTP, Hysteria2, Trojan, VMess, and Shadowsocks |
+| **4. CSQTT & Tailscale** | In-core transports and mesh networking in `tachyon-core` | CSQTT/WDTT profiles with multi-tier pools/failover, plus native Tailscale endpoints (MagicDNS) without an external `tailscaled` daemon |
 | **5. L3 Tunnels** | Kernel `tun` / WireGuard interfaces (table `4249` for FPTN) | Packet-level tunneling via AmneziaWG (`AWG 2.0/3.0/3.1`), WireGuard, built-in OpenVPN (`.ovpn`), and `fptn-client-cli` over WebSocket/TLS |
 | **6. Smart DNS** | FakeIP (`198.18.0.0/15`) + UDP/TCP port 53 interception | Isolated name resolution over DoH, DoT, DoQ, and HTTP/3 with continuous upstream health checks (`dns_failover.uc`) and ISP anti-hijack protection |
 
@@ -98,29 +98,28 @@ Tachyon classifies flows via kernel **nftables** (`fw4`) and dispatches traffic 
   <img src="./assets/readme/section-subsystems.svg" width="100%" alt="03 — Subsystems & Functional Modules">
 </p>
 
-### 1. Multi-Engine Routing Architecture
+### 1. Routing Core (`tachyon-core`)
 
-Tachyon switches between independent routing engines via LuCI or CLI (`tachyon engine_set <name>`) while automatically reconfiguring `nftables` rules, network interfaces, and DNS pipelines:
+All selective routing, proxy tunneling, and DNS isolation run on the single native **`tachyon-core`** engine, with automated `nftables`, interface, and DNS orchestration:
 
-| Engine | Runtime Stack | Key Technical Characteristics |
+| Component | Runtime Stack | Key Technical Characteristics |
 |:---|:---|:---|
-| **`tachyon-core`** | Pure Rust (Zero-C-Crypto, no Go runtime or GC) | Around **4.2 MiB RAM** idle footprint; 100% configuration and CLI compatibility with `sing-box`; zero-copy `mmap` `.trs` rule-sets; built-in Outbound Desync (TCP/TLS/HTTP split) in the core network stack; asynchronous XHTTP transport (`packet-up`, `auto`); Brutal CC congestion control for Hysteria2; integrated FPTN L3 tunnel; automatic rollback to `fallback.json` on validation errors; builds for `aarch64`, `armv7`, `armv6`, `x86-64`, and `MIPS/MIPSEL soft-float` (MT7620/MT7621/MT7628) |
-| **`sing-box`** | Go (`stable`, `tiny`, `extended`, `extended-compressed`, `lx`) | Supports `1.11–1.14+`; full protocol suite, `urltest` groups (including `mode`, `balancer`, `passive_check` on `lx`/`extended` builds), FakeIP, and built-in OpenVPN client (`>= 1.14.0`) |
+| **`tachyon-core`** | Pure Rust (Zero-C-Crypto, no GC runtime) | Around **4.2 MiB RAM** idle footprint; zero-copy `mmap` for priority `.trs` rule-sets and support for binary `.srs` lists; built-in Outbound Desync (TCP/TLS/HTTP split) in the core network stack; asynchronous XHTTP transport (`packet-up`, `auto`); Brutal CC congestion control for Hysteria2; integrated FPTN L3 tunnel and OpenVPN client; automatic rollback to `fallback.json` on validation errors; builds for `aarch64`, `armv7`, `armv6`, `x86-64`, and `MIPS/MIPSEL soft-float` (MT7620/MT7621/MT7628) |
 
 ---
 
 ### 2. Protocols, Subscriptions, and Selective Routing
 
-* **AmneziaWG `2.0 / 3.0 / 3.1` (`.conf`) Import**: a dedicated named list between Connection URL and text links in section settings. Upload, editing, and removal are available on `tachyon-core` and `sing-box lx`. Original configurations are stored in the UCI option `selector_amnezia_configs` (up to 64 KiB including name, one `Interface` and one `Peer`; DNS and command hooks in the file are ignored). Switching to an engine without AWG support hides the entries without deleting them from UCI.
-* **Built-in OpenVPN Client (`.ovpn`)**: direct upload and validation of `.ovpn` profiles in LuCI for `sing-box >= 1.14.0` and `tachyon-core`.
-* **FPTN Tunnel (`fptn-client-cli`)**: L3 packet tunneling over WebSocket/TLS camouflaged as standard HTTPS traffic (`tun-fptn` interface, routing table `4249`).
+* **AmneziaWG `2.0 / 3.0 / 3.1` (`.conf`) Import**: a dedicated named list between Connection URL and text links in section settings. Original configurations are stored in the UCI option `selector_amnezia_configs` (up to 64 KiB including name, one `Interface` and one `Peer`; DNS and command hooks in the file are ignored).
+* **Built-in OpenVPN Client (`.ovpn`)**: direct upload and validation of `.ovpn` profiles in LuCI for `tachyon-core`.
+* **FPTN Tunnel (`fptn-client-cli`)**: L3 packet tunneling over WebSocket/TLS over standard HTTPS transport (`tun-fptn` interface, routing table `4249`).
 * **Subscription Processing**:
   * **Happ (`crypt2`–`crypt5`)** encrypted subscription decryption.
   * **Dual HWID** client header emulation.
   * **TLS Certificate SHA-256 Pinning** (`pcs` parameter validation).
   * **Anti-Collapse Shrink Guard**: preserves the working node cache when upstream subscription servers return empty or temporary error responses.
 * **Cloudflare WARP / AmneziaWG Profile Generator**: built-in `tachyon generate_warp` command.
-* **Smart Detect Exclusions (`smart_detect_exclude_lists`)**: under Settings → Services and access, manual domain exclusions can be combined with service presets in Default and Plus modes. Decoded caches are stored in `/etc/tachyon/smart-detect-exclusions/` and refreshed during scheduled list updates using `sing-box rule-set decompile` or `tachyon-core`. When root domain expansion would overlap an excluded subdomain, only the specific detected hostname is retained.
+* **Smart Detect Exclusions (`smart_detect_exclude_lists`)**: under Settings → Services and access, manual domain exclusions can be combined with service presets in Default and Plus modes. Decoded caches are stored in `/etc/tachyon/smart-detect-exclusions/` and refreshed during scheduled list updates using `tachyon-core`. When root domain expansion would overlap an excluded subdomain, only the specific detected hostname is retained.
 
 ---
 
@@ -138,14 +137,10 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
 
 ### 4. Packet Shaping Strategy Generator and Fuzzer (Packet Fuzzer v2)
 
-* **Modular Architecture (`fuzzer/*`)**: dedicated modules for network profiling, probe execution, stability scoring, and strategy generation.
+* **Modular Architecture (`fuzzer/*`)**: dedicated modules for network profiling, probe execution, stability scoring, and strategy generation for the native `desync` engine.
 * **Two-Stage Verification (Probe v2 & Stable Scoring)**: eliminates false positives on lossy or unstable links.
-* **480+ Curated Strategies**: **286+** presets for `Zapret v2 (nfqws2)`, **130** for `Zapret v1 (nfqws)`, and **65** for `ByeDPI (ciadpi)`, incorporating field-tested configurations from `zapret4rocket`, `homeproxy-hiddify`, and `Flowseal` patterns.
-* **Desynchronization Techniques**:
-  * **PAWS TCP Timestamp Spoofing** (`tcp_ts=-600000:tcp_ts_up` per RFC 7323).
-  * **Exact Sequence Overlap (SeqOvl)** and **TCP SYN Data (`syndata`)**.
-  * **Authentic Binary Protocol Blobs**: `tls_max`, `tls_google`, `tls_gosuslugi`, `tls_sber`, `quic_google`, `discord_udp`.
-* **Isolated Netfilter Queue**: benchmarks run in an isolated queue (`mark 0x00200000`) across custom multi-domain targets without interrupting active LAN traffic.
+* **30 Curated Presets & Combinatorial `desync` Matrix**: built-in `Adaptive 2.0` (`preset=auto`), `fake_split`, `fake_disorder`, `multi_disorder`, `multi_split`, `tlsrec`, `oob`, plus tunable parameters (`split_pos`, `fooling`, `fake_ttl`, `fake_sni`, `repeats`).
+* **Isolated Probe Bench**: benchmarks run in an isolated temporary `tachyon-core` instance across custom multi-domain targets without interrupting active LAN traffic.
 
 ---
 
@@ -164,13 +159,13 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
 * **HTTP REST Agent API (`/cgi-bin/tachyon-api`)**: OpenAPI 3.0.3 schema, Bearer token authentication with granular read/write scopes, and asynchronous service reloads without dropping client HTTP connections.
 
 <details>
-<summary><b>All 25 quick-fix repair codes in <code>diagnostics/repairs.uc</code> (<code>tachyon apply_quick_fix &lt;code&gt;</code>)</b></summary>
+<summary><b>All 22 quick-fix repair codes in <code>diagnostics/repairs.uc</code> (<code>tachyon apply_quick_fix &lt;code&gt;</code>)</b></summary>
 
 <br>
 
 | Category | Automated Repair Codes |
 |:---|:---|
-| **Services & Memory (7)** | `start_singbox`, `restart_singbox_dns`, `start_watchdog`, `restart_providers`, `restart_zapret`, `optimize_memory`, `upgrade_to_singbox_extended` |
+| **Services & Memory (4)** | `start_tachyon_core`, `restart_tachyon_core_dns`, `start_watchdog`, `optimize_memory` |
 | **Network & DNS (13)** | `rebuild_rules`, `fix_dnsmasq`, `fix_resolv_symlink`, `clear_dns_cache`, `fix_wan_interface`, `fix_gateway`, `reset_firewall`, `restart_network`, `switch_to_doh`, `fix_bootstrap_dns`, `heal_network_stack`, `enable_safe_bypass`, `restore_native_internet` |
 | **Config & Platform (5)** | `fix_uci_config`, `update_subscriptions`, `fix_system_time`, `flush_conntrack`, `optimize_mtu` |
 
@@ -201,7 +196,7 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
 * **PID Provenance & Identity (`core/process.uc`)**: verifies `pid`, `starttime`, and `boot_id` before sending signals, preventing accidental termination of recycled system PIDs. The same module defines the `procd` service contract and generates `/etc/init.d/tachyon-core`, stopping the daemon by executable path rather than calling `killall` on its own command name.
 * **Transactional Package Manager (`core/packages.uc`)**: cleans stale locks, verifies ELF headers on UPX-compressed binaries, and scrubs `/etc/apk/world` to prevent `PROVIDES/REPLACES` conflicts during upgrades.
 * **NAND Flash Wear Guard (`core/common.uc`)**: all file helpers (`write_file`, `write_json_file`, `copy_file`) check `content_unchanged()` before writing so identical rule-sets or configs never trigger redundant flash writes; runtime state stays in `tmpfs` (`/tmp`, `/var/run`).
-* **Restart-Loop & OOM Protection**: caps restarts at 3 per 10 minutes under the `PROXY_RESTART_LOCK` mutex, scales `GOMEMLIMIT` dynamically, and supports configuration snapshots (`snapshot_save` / `snapshot_restore`).
+* **Restart-Loop & OOM Protection**: caps restarts at 3 per 10 minutes under the `PROXY_RESTART_LOCK` mutex, dynamically manages memory limits, and supports configuration snapshots (`snapshot_save` / `snapshot_restore`).
 
 ---
 
@@ -222,7 +217,7 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
 * **Real-Time Memory Telemetry**: displays exact RAM consumption by Tachyon daemons and estimated `dnsmasq` cache size on the dashboard.
 * **Step-by-Step Update Progress**: structured step indicator for list and subscription updates instead of raw log dumps.
 * **1-Click Section Cloning (`Copy`)**: duplicates complex routing rules and section parameters.
-* **Integrated Modals**: routing engine switcher with live migration progress, strategy fuzzer modal with HTTP status codes, and streaming terminal for component installation and version rollbacks.
+* **Integrated Modals**: `tachyon-core` status and runtime controls, strategy fuzzer modal with HTTP status codes, and streaming terminal for component installation and version rollbacks.
 
 ---
 
@@ -235,17 +230,17 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
 </p>
 
 ```bash
-# Multi-Engine Routing Controls
-tachyon engine_list                             # List available routing engines (tachyon-core, sing-box)
-tachyon engine_get                              # Show current active engine
-tachyon engine_set <tachyon-core|sing-box>      # Switch engine with automated reconfiguration
-tachyon engine_status                           # Full active engine runtime status (JSON)
+# Routing Core Controls (tachyon-core)
+tachyon engine_status                           # Active tachyon-core runtime status (JSON)
+tachyon engine_info                             # Capabilities and metadata for tachyon-core
+tachyon engine_reload                           # Regenerate config and reload tachyon-core
+tachyon get_tachyon_core_status                 # Service status for tachyon-core
 
 # Packet Strategy Fuzzer & Benchmarks
-tachyon fuzzer_start youtube_suite zapret2      # Start YouTube connectivity benchmark on Zapret2
-tachyon fuzzer_start discord_suite zapret2      # Start Discord benchmark (voice + UDP RTC)
+tachyon fuzzer_start youtube_suite desync       # Start YouTube connectivity benchmark on desync
+tachyon fuzzer_start discord_suite desync       # Start Discord benchmark (voice + UDP RTC)
 tachyon fuzzer_status                           # Current fuzzer progress & results (JSON)
-tachyon fuzzer_stop                             # Terminate fuzzer & clean test Netfilter queue
+tachyon fuzzer_stop                             # Terminate fuzzer & clean test harness
 tachyon fuzzer_apply <strategy_id>              # Apply winning strategy to UCI configuration
 
 # DNS Testing & Route Tracing
@@ -299,7 +294,7 @@ wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/ta
 |:---|:---|
 | `-y`, `--yes` | Non-interactive execution without confirmation prompts |
 | `-p`, `--purge` | Remove all package files including configurations and backups |
-| `--keep-binaries` | Preserve installed binaries (`tachyon-core`, `sing-box`, `zapret`, `byedpi`) on the system |
+| `--keep-binaries` | Preserve installed binaries (`tachyon-core` and auxiliary tools) on the system |
 
 <details>
 <summary><b>Uninstallation commands via mirrors</b></summary>
@@ -322,11 +317,8 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 
 * **[Forkop (@ushan0v)](https://github.com/ushan0v/forkop)** — direct parent repository (formerly Podkop Plus).
 * **[Podkop (@itdoginfo)](https://github.com/itdoginfo/podkop)** — original project that established the core routing design.
-* **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — pure-Rust proxy engine (~4.2 MiB idle RAM, zero Go runtime or C dependencies).
+* **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** — pure-Rust proxy engine (~4.2 MiB idle RAM, zero external runtime or C dependencies).
 * **[tachyon-lists](https://github.com/Dushnilin/tachyon-lists)** — automated multi-source compiler and deduplicator for 143 domain and subnet categories (`.trs`, `.srs`, `.json`, `.lst`).
-* **[sing-box (SagerNet)](https://github.com/SagerNet/sing-box)** — universal proxy platform.
-* **[zapret / zapret2 (@bol-van)](https://github.com/bol-van/zapret2)** — DPI packet desynchronization tools (`nfqws` / `nfqws2`).
-* **[ByeDPI (@hrbrmstr)](https://github.com/hrbrmstr/byedpi)** — local SOCKS desynchronization proxy (`ciadpi`).
 * **[FPTN (@fptn-project)](https://github.com/fptn-project/fptn)** — L3 packet tunnel over WebSocket/TLS.
 
 ---
@@ -336,6 +328,7 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 If Tachyon is useful in your network setup, you can support ongoing development:
 
 * **Boosty:** [boosty.to/tachyon](https://boosty.to/tachyon)
+* **SBP (Ozon Bank):** [finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5](https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5)
 * **Bank Cards / SBP (CloudTips):** [pay.cloudtips.ru/p/449c5ef9](https://pay.cloudtips.ru/p/449c5ef9)
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`
 * **Ethereum (ETH / ERC-20):** `0x6CB7a4547eD62EF64990D5C6B5D9fdA58EB223E6`

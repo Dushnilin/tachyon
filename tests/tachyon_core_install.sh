@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# The core's archive holds a binary named after the build, not "sing-box".
+# The core's archive holds a binary named after the build, not a fixed generic name.
 #
-# sing-box-lx and the stock variants ship a member literally called sing-box, so
-# the install path looks it up by exact name. tachyon-core ships
-# tachyon-core-<arch>, which is not knowable in advance, so the member is found by
-# prefix, and that lookup has to survive the .sha256 sidecar and the SHA256SUMS
-# file sitting beside it.
+# tachyon-core ships tachyon-core-<arch>, which is not knowable in advance, so
+# the member is found by prefix, and that lookup has to survive the .sha256
+# sidecar and the SHA256SUMS file sitting beside it.
 #
 # The asset names below are copied verbatim from the published release v0.0.1 of
 # Dushnilin/tachyon-core. They are not invented: the release ships
@@ -33,7 +31,7 @@ members() {
 # The binary is found...
 got="$(members tachyon-core)"
 [ -n "$got" ] ||
-  fail "the core binary is named after the build, so an exact 'sing-box' lookup finds nothing"
+  fail "the core binary is named after the build, so a prefix lookup must find it"
 
 # ...and it is the binary, not the checksum beside it. Extracting the sidecar
 # over the binary would leave an engine that cannot start, and the two differ only
@@ -50,9 +48,9 @@ esac
   fail "a longer prefix must not match the full build's member"
 
 # ─── the arch name ──────────────────────────────────────────────────────────
-# The release names assets after the Rust target triple. sing-box-extended ships
-# "arm64" for the same machine, so the two resolvers cannot be shared: reusing the
-# Go name here resolves to nothing and the install fails with "no asset".
+# The release names assets after the Rust target triple (e.g. aarch64-musl
+# rather than GOARCH arm64), so reusing the Go name resolves to nothing and the
+# install fails with "no asset".
 arch() {
   ucode -L "$TACHYON_LIB" "$UPDATER" tachyon-core-arch-suffix "$1" "" 2>/dev/null
 }
@@ -72,7 +70,7 @@ arch() {
 # The Go name is exactly the trap: if this ever comes back "arm64", the asset
 # lookup is using the wrong table again.
 [ "$(arch aarch64)" != "arm64" ] ||
-  fail "tachyon-core must not be resolved with the sing-box-extended GOARCH name"
+  fail "tachyon-core must not be resolved with the GOARCH name"
 # OpenWrt is musl throughout; the gnu build would not link there.
 case "$(arch aarch64)" in
   *-musl) : ;;

@@ -8,9 +8,9 @@ let common = require("core.common");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
-const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
+const CORE_TPROXY_INBOUND6_ADDRESS = getenv("TACHYON_CORE_TPROXY_INBOUND6_ADDRESS") || getenv("CORE_TPROXY_INBOUND6_ADDRESS") || constants.TACHYON_CORE_TPROXY_INBOUND6_ADDRESS || constants.CORE_TPROXY_INBOUND6_ADDRESS || "::1";
+const CORE_TPROXY_INBOUND_PORT = getenv("TACHYON_CORE_TPROXY_INBOUND_PORT") || getenv("CORE_TPROXY_INBOUND_PORT") || constants.TACHYON_CORE_TPROXY_INBOUND_PORT || constants.CORE_TPROXY_INBOUND_PORT || "1602";
+const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -448,7 +448,7 @@ function uci_settings() {
     return uci_core.get_all(CONFIG_NAME, "settings") || {};
 }
 
-function sing_box_standard_ports_listening(netstat) {
+function tachyon_core_standard_ports_listening(netstat) {
     netstat = as_string(netstat);
     let port_53_ok = index(netstat, "127.0.0.42:53") >= 0;
     let proxy_mode = lc(trim(as_string(uci_settings().proxy_mode || "tproxy")));
@@ -461,21 +461,21 @@ function sing_box_standard_ports_listening(netstat) {
         let socks_port = as_string(uci_settings().socks_port || "1080");
         return port_53_ok && index(netstat, ":" + socks_port) >= 0;
     }
-    let tproxy_suffix = ":" + SB_TPROXY_INBOUND_PORT;
+    let tproxy_suffix = ":" + CORE_TPROXY_INBOUND_PORT;
     let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
         index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
     let eff_v6 = common.resolve_effective_ipv6_state(uci_settings(), null);
     let v6_active = (eff_v6 && eff_v6.ipv6_active) ? true : false;
     let port_1602_v6_ok = !v6_active ||
-        index(netstat, SB_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
-        index(netstat, "[" + SB_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
+        index(netstat, CORE_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
+        index(netstat, "[" + CORE_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
         index(netstat, "0:0:0:0:0:0:0:1" + tproxy_suffix) >= 0 ||
-        index(netstat, ":::" + SB_TPROXY_INBOUND_PORT) >= 0;
+        index(netstat, ":::" + CORE_TPROXY_INBOUND_PORT) >= 0;
     return port_53_ok && port_1602_ok && port_1602_v6_ok;
 }
 
-function sing_box_standard_ports_listening_fixture() {
-    exit(sing_box_standard_ports_listening(read_stdin()) ? 0 : 1);
+function tachyon_core_standard_ports_listening_fixture() {
+    exit(tachyon_core_standard_ports_listening(read_stdin()) ? 0 : 1);
 }
 
 function server_required_port_conflict_owners(listen, port, required_proto) {
@@ -638,8 +638,8 @@ return {
     default_gateway_exists,
     wan_has_ip,
     device_ipv4_address,
-    sing_box_standard_ports_listening,
-    sing_box_standard_ports_listening_fixture,
+    tachyon_core_standard_ports_listening,
+    tachyon_core_standard_ports_listening_fixture,
     server_required_port_conflict_owners,
     server_required_ports_listening,
     lan_clients,

@@ -16,9 +16,9 @@
 //
 // Bundle Content:
 //   - metadata.json: timestamp, versions, OpenWrt release, architecture, uptime, memory, disk
-//   - versions.json: installed packages, sing-box, zapret, byedpi, ucode versions
+//   - versions.json: installed packages, tachyon-core, ucode versions
 //   - service_status.json: service enabled/running, engine, watchdog, known-good, emergency state
-//   - config_sanitized/: /etc/config/tachyon, network, firewall, dhcp, sing-box config.json
+//   - config_sanitized/: /etc/config/tachyon, network, firewall, dhcp, tachyon-core config.json
 //   - events_and_jobs/: event journal (tail), recent job records, AI Doctor reports
 //   - network_and_routing/: routing tables (main & tachyon), policy rules, interfaces, resolv.conf
 //   - firewall_and_nftables/: TachyonTable ruleset, set counts and element statistics
@@ -270,11 +270,7 @@ function collect_metadata() {
 function collect_versions() {
     let vers = {
         ucode: command_output("ucode -v"),
-        sing_box: command_output("/usr/bin/tachyon-core version"),
-        sing_box_variant: trim(as_string(read_file_safe("/etc/tachyon/tachyon-core-variant") || "")),
-        zapret: command_output("nfqws --version"),
-        zapret2: command_output("nfqws2 --version"),
-        byedpi: command_output("ciadpi -v"),
+        tachyon_core: command_output("/usr/bin/tachyon-core version"),
         nftables: command_output("nft --version"),
         iptables: command_output("iptables --version")
     };
@@ -300,9 +296,8 @@ function collect_service_status() {
         emergency_failsafe: null,
         pids: {
             watchdog: trim(as_string(read_file_safe("/var/run/tachyon_watchdog.pid") || "")),
-            sing_box: trim(as_string(read_file_safe("/var/run/sing-box.pid") || "")),
-            telegram: trim(as_string(read_file_safe("/var/run/tachyon_telegram.pid") || "")),
-            byedpi: trim(as_string(read_file_safe("/var/run/byedpi.pid") || ""))
+            tachyon_core: trim(as_string(read_file_safe("/var/run/tachyon-core.pid") || "")),
+            telegram: trim(as_string(read_file_safe("/var/run/tachyon_telegram.pid") || ""))
         }
     };
 
@@ -359,7 +354,7 @@ function collect_process_and_fd_stats() {
     // Measure FD counts for prominent daemons
     let fd_stats = {};
     let pid_files = [
-        [ "sing-box", "/var/run/sing-box.pid" ],
+        [ "tachyon-core", "/var/run/tachyon-core.pid" ],
         [ "watchdog", "/var/run/tachyon_watchdog.pid" ],
         [ "telegram", "/var/run/tachyon_telegram.pid" ],
         [ "dnsmasq", "/var/run/dnsmasq/dnsmasq.cfg01411c.pid" ]
@@ -415,14 +410,14 @@ function stage_bundle(stage_dir) {
     }
 
     // Engine config JSON (sanitized)
-    let singbox_cfg = read_file_safe("/etc/tachyon-core/config.json");
-    if (singbox_cfg == null) singbox_cfg = read_file_safe("/var/etc/tachyon-core/config.json");
-    if (singbox_cfg != null) {
+    let core_cfg = read_file_safe("/etc/tachyon-core/config.json");
+    if (core_cfg == null) core_cfg = read_file_safe("/var/etc/tachyon-core/config.json");
+    if (core_cfg != null) {
         try {
-            let parsed = json(singbox_cfg);
-            write_json_safe(stage_dir + "/config_sanitized/singbox_config.json", redact_object(parsed));
+            let parsed = json(core_cfg);
+            write_json_safe(stage_dir + "/config_sanitized/tachyon_core_config.json", redact_object(parsed));
         } catch (e) {
-            write_file_safe(stage_dir + "/config_sanitized/singbox_config.json", redact_string(singbox_cfg));
+            write_file_safe(stage_dir + "/config_sanitized/tachyon_core_config.json", redact_string(core_cfg));
         }
     }
 
@@ -450,7 +445,6 @@ function stage_bundle(stage_dir) {
     write_file_safe(stage_dir + "/diagnostics_and_logs/system_logread.txt", redact_string(logread_lines));
 
     let core_log = read_file_safe("/tmp/tachyon-core/tachyon-core.log");
-    if (core_log == null) core_log = read_file_safe("/tmp/tachyon-core/sing-box.log");
     if (core_log != null && core_log != "")
         write_file_safe(stage_dir + "/diagnostics_and_logs/tachyon-core.log", redact_string(core_log));
 

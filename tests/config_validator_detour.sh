@@ -38,7 +38,7 @@ rows \
   ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-outbound-detours
 
 assert_rejects "unsupported source action" "supported only for Connection and AmneziaWG rules" \
-  source 1 zapret 1 target \
+  source 1 bypass 1 target \
   target 1 connection 0 ''
 
 assert_rejects "missing target" "references missing rule 'missing'" \
@@ -50,7 +50,7 @@ assert_rejects "disabled target" "references disabled rule 'target'" \
 
 assert_rejects "wrong target action" "but it is not a Connection or AmneziaWG rule" \
   source 1 connection 1 target \
-  target 1 zapret 0 ''
+  target 1 bypass 0 ''
 
 assert_rejects "self target" "cannot point to itself" \
   source 1 connection 1 source

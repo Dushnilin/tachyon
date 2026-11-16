@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   subscribeRuntimeUiState: vi.fn(),
   getUiCapabilities: vi.fn(),
   getEngineStatus: vi.fn(),
-  getSingBoxStatus: vi.fn(),
+  getTachyonCoreStatus: vi.fn(),
 }));
 
 vi.mock('../../../helpers', () => ({
@@ -24,7 +24,7 @@ vi.mock('../../methods/shell', () => ({
   TachyonShellMethods: {
     getUiCapabilities: mocks.getUiCapabilities,
     getEngineStatus: mocks.getEngineStatus,
-    getSingBoxStatus: mocks.getSingBoxStatus,
+    getTachyonCoreStatus: mocks.getTachyonCoreStatus,
   },
 }));
 
@@ -75,7 +75,7 @@ describe('RuntimeClient', () => {
 
     it('queries getUiCapabilities via TachyonShellMethods', async () => {
       const mockCaps = {
-        sing_box_extended: 1,
+        tachyon_core_tailscale: 1,
       } as unknown as Tachyon.GetUiCapabilities;
       mocks.getUiCapabilities.mockResolvedValueOnce({
         success: true,
@@ -88,10 +88,10 @@ describe('RuntimeClient', () => {
     });
   });
 
-  describe('Engine & Sing-box Status', () => {
+  describe('Engine & Tachyon Core Status', () => {
     it('queries getEngineRuntime', async () => {
       const mockEngineStatus = {
-        engine: 'sing-box',
+        engine: 'tachyon-core',
         running: true,
       } as unknown as Tachyon.GetEngineStatus;
       mocks.getEngineStatus.mockResolvedValueOnce({
@@ -104,19 +104,19 @@ describe('RuntimeClient', () => {
       expect(res).toEqual(mockEngineStatus);
     });
 
-    it('queries getSingBoxStatus', async () => {
-      const mockSingBox = {
+    it('queries getTachyonCoreStatus', async () => {
+      const mockCore = {
         status: 'running',
-        version: '1.9.0',
-      } as unknown as Tachyon.GetSingBoxStatus;
-      mocks.getSingBoxStatus.mockResolvedValueOnce({
+        engine_version: '0.3.10',
+      } as unknown as Tachyon.GetTachyonCoreStatus;
+      mocks.getTachyonCoreStatus.mockResolvedValueOnce({
         success: true,
-        data: mockSingBox,
+        data: mockCore,
       });
 
-      const res = await client.getSingBoxStatus();
-      expect(mocks.getSingBoxStatus).toHaveBeenCalled();
-      expect(res).toEqual(mockSingBox);
+      const res = await client.getTachyonCoreStatus();
+      expect(mocks.getTachyonCoreStatus).toHaveBeenCalled();
+      expect(res).toEqual(mockCore);
     });
   });
 
@@ -125,7 +125,7 @@ describe('RuntimeClient', () => {
       const mockStatus: KnownGoodStatus = {
         has_known_good: true,
         is_active_config_known_good: true,
-        manifest: { engine: 'sing-box', promotion_reason: 'auto' },
+        manifest: { engine: 'tachyon-core', promotion_reason: 'auto' },
       };
 
       mocks.executeShellCommand.mockResolvedValueOnce({
@@ -239,7 +239,7 @@ describe('RuntimeClient', () => {
         port: 443,
         proto: 'tcp',
         action: 'proxy',
-        engine: 'sing-box',
+        engine: 'tachyon-core',
         outbound: 'direct',
       };
 

@@ -3,7 +3,6 @@
 let fs = require("fs");
 let common = require("core.common");
 let runtime_constants = require("tachyon_core.constants");
-let variant_state = require("tachyon_core.variant_state");
 let core_ip = require("core.ip");
 
 let as_string = common.as_string;
@@ -125,7 +124,7 @@ function users(section, protocol) {
         }];
     }
     if (protocol == "mtproto") {
-        // MTProxyUser is { name, secret } in sing-box-extended.
+        // MTProtoUser { name, secret }.
         let user = { secret: mtproto_secret(section) };
         if (name != "")
             user.name = name;
@@ -197,21 +196,6 @@ const REALITY_FALLBACK_KEY = [
     "-----END PRIVATE KEY-----"
 ];
 
-// True when an explicit sing-box 1.x version/marker is recorded on disk (e.g.
-// sing-box-lx 1.14.3-lx.23, sing-box-extended, stock sing-box). Those builds
-// reject tls.certificate / tls.key on a Reality inbound with
-// `certificate is unavailable in reality`, whereas tachyon-core <= 0.1.3
-// requires certificate and key in validate_server_tls even when reality is enabled.
-function is_sing_box_1x() {
-    if (variant_state.is_tachyon_core())
-        return false;
-    let version = variant_state.read_version_state();
-    let marker = variant_state.read_variant_marker();
-    if (version == "" && marker == "")
-        return false;
-    return true;
-}
-
 function apply_tls(inbound, section, protocol) {
     let security = effective_security(section, protocol);
     if (security == "" || security == "none")
@@ -269,23 +253,18 @@ function apply_tls(inbound, section, protocol) {
         maybe_string(reality, "max_time_difference", option(section, "reality_max_time_difference", "1m"));
         tls.reality = reality;
 
-        // tachyon-core's validate_server_tls (still current at 0.1.3) rejects a server
-        // TLS block with a missing certificate or a missing key, and it never looks at
-        // tls.reality: both sides are checked independently, with no key-vs-cert match.
-        // Go sing-box 1.x (upstream, lx, extended) is the opposite and rejects a
-        // reality inbound carrying certificate/key with `certificate is unavailable in reality`.
-        if (!is_sing_box_1x()) {
-            let cert_path = option(section, "tls_certificate_path", "");
-            let k_path = option(section, "tls_key_path", "");
-            if (cert_path != "")
-                maybe_string(tls, "certificate_path", cert_path);
-            else
-                tls.certificate = REALITY_FALLBACK_CERTIFICATE;
-            if (k_path != "")
-                maybe_string(tls, "key_path", k_path);
-            else
-                tls.key = REALITY_FALLBACK_KEY;
-        }
+        // tachyon-core's validate_server_tls checks certificate and key independently
+        // from tls.reality, so both must be populated on Reality inbounds.
+        let cert_path = option(section, "tls_certificate_path", "");
+        let k_path = option(section, "tls_key_path", "");
+        if (cert_path != "")
+            maybe_string(tls, "certificate_path", cert_path);
+        else
+            tls.certificate = REALITY_FALLBACK_CERTIFICATE;
+        if (k_path != "")
+            maybe_string(tls, "key_path", k_path);
+        else
+            tls.key = REALITY_FALLBACK_KEY;
     }
 
     inbound.tls = tls;
@@ -345,10 +324,6 @@ function shadowtls_inner_port(section) {
 }
 
 function add_standard_inbound(config, section, protocol, tag_name) {
-    // Function scope, deliberately: the AWG block below is nested, and a let
-    // declared there would not be visible where the endpoint/inbound split
-    // happens at the end of this function.
-    let endpoint_schema = variant_state.awg_endpoint_schema();
     let inbound = {
         type: protocol,
         tag: tag_name,
@@ -409,7 +384,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             };
         }
         let detour_tag = trim(as_string(option(section, "shadowtls_detour", "")));
-        if (detour_tag == "" && variant_state.is_tachyon_core()) {
+        if (detour_tag == "") {
             detour_tag = tag_name + "-inner";
             push(config.inbounds, {
                 type: "shadowsocks",
@@ -455,7 +430,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         }
         if (first_port > 0)
             inbound.listen_port = first_port;
-        if (variant_state.is_tachyon_core() && (length(lp_ranges) > 1 || (length(lp_ranges) == 1 && index(lp_ranges[0], "-") >= 0)))
+        if (length(lp_ranges) > 1 || (length(lp_ranges) == 1 && index(lp_ranges[0], "-") >= 0))
             inbound.listen_ports = lp_ranges;
     }
     else if (protocol == "trusttunnel") {
@@ -528,9 +503,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
     }
     else if (protocol == "masque") {
         // tachyon-core's MASQUEInboundOptions: tls, users, ipv4_pool,
-        // ipv6_pool, mtu — no private_key/peers/local_address (that was the
-        // wireguard-flavoured masque of sing-box forks and is rejected by
-        // tachyon-core's strict decoder).
+        // ipv6_pool, mtu.
         let u = users(section, protocol);
         if (length(u) > 0)
             inbound.users = u;
@@ -583,35 +556,15 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             inbound.users = u;
     }
     else if (protocol == "mtproto") {
-        if (variant_state.is_tachyon_core()) {
-            // tachyon-core registers this inbound as "mtproto" with 32-hex secret.
-            inbound.type = "mtproto";
-            let srv_users = users(section, protocol);
-            for (let u in srv_users) {
-                let s = lc(trim(as_string(u.secret || "")));
-                if (length(s) >= 34 && (substr(s, 0, 2) == "ee" || substr(s, 0, 2) == "dd"))
-                    u.secret = substr(s, 2, 32);
-            }
-            inbound.users = srv_users;
-        } else {
-            // sing-box-extended registers this inbound as "mtproxy" and expects
-            // MTProxyUser { name, secret }. It must never fall back to a
-            // shadowsocks-2022 shape: SS2022 parses passwords as base64 PSKs and
-            // aborts with "decode psk" on hex secrets (#23).
-            inbound.type = "mtproxy";
-            inbound.users = users(section, protocol);
-            let concurrency = option(section, "mtproto_concurrency", "");
-            if (concurrency != "")
-                inbound.concurrency = int(concurrency, 10);
-            maybe_string(inbound, "prefer_ip", option(section, "mtproto_prefer_ip", "prefer-ipv4"));
-            if (bool_option(section, "mtproto_auto_update", false))
-                inbound.auto_update = true;
-            if (bool_option(section, "mtproto_allow_fallback_on_unknown_dc", false))
-                inbound.allow_fallback_on_unknown_dc = true;
-            maybe_string(inbound, "tolerate_time_skewness", option(section, "mtproto_tolerate_time_skewness", "3s"));
-            maybe_string(inbound, "idle_timeout", option(section, "mtproto_idle_timeout", "5m"));
-            maybe_string(inbound, "handshake_timeout", option(section, "mtproto_handshake_timeout", "10s"));
+        // tachyon-core registers this inbound as "mtproto" with 32-hex secret.
+        inbound.type = "mtproto";
+        let srv_users = users(section, protocol);
+        for (let u in srv_users) {
+            let s = lc(trim(as_string(u.secret || "")));
+            if (length(s) >= 34 && (substr(s, 0, 2) == "ee" || substr(s, 0, 2) == "dd"))
+                u.secret = substr(s, 2, 32);
         }
+        inbound.users = srv_users;
     }
     else if (protocol == "awg") {
         inbound.type = "wireguard";
@@ -671,8 +624,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             jmax: jmax,
             s1: int_option(section, "awg_s1", "0"),
             s2: int_option(section, "awg_s2", "0"),
-            // H1-H4 use badoption.Range on both sing-box-extended and
-            // sing-box-lx, so a "min-max" string passes through.
+            // H1-H4 use Range on tachyon-core, so a "min-max" string passes through.
             h1: int_or_range_option(section, "awg_h1", 1),
             h2: int_or_range_option(section, "awg_h2", 2),
             h3: int_or_range_option(section, "awg_h3", 3),
@@ -686,12 +638,8 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let i3 = awg_cps_option(section, "awg_i3");
         let i4 = awg_cps_option(section, "awg_i4");
         let i5 = awg_cps_option(section, "awg_i5");
-        let j1 = awg_cps_option(section, "awg_j1");
-        let j2 = awg_cps_option(section, "awg_j2");
-        let j3 = awg_cps_option(section, "awg_j3");
-        let itime = int_option(section, "awg_itime", "0");
 
-        // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
+        // AmneziaWG version handling: 2.0, 3.0, and 3.1
         let awg_ver = option(section, "awg_version", "");
         if (awg_ver == "") {
             if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
@@ -706,113 +654,60 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             }
         }
 
-        if (endpoint_schema) {
-            // sing-box-lx and tachyon-core expect AWG fields at the endpoint root (AWG 2.0 schema);
-            // magic headers accept a single value or an AWG 2.0 "min-max" range.
-            // j1-j3/itime are sing-box-extended-only and are not emitted here.
-            inbound.jc = amnezia.jc;
-            inbound.jmin = amnezia.jmin;
-            inbound.jmax = amnezia.jmax;
-            inbound.s1 = amnezia.s1;
-            inbound.s2 = amnezia.s2;
-            inbound.h1 = amnezia.h1;
-            inbound.h2 = amnezia.h2;
-            inbound.h3 = amnezia.h3;
-            inbound.h4 = amnezia.h4;
-            inbound.s3 = amnezia.s3;
-            inbound.s4 = amnezia.s4;
-            if (i1 != "") inbound.i1 = i1;
-            if (i2 != "") inbound.i2 = i2;
-            if (i3 != "" && i3 != "0") inbound.i3 = i3;
-            if (i4 != "" && i4 != "0") inbound.i4 = i4;
-            if (i5 != "" && i5 != "0") inbound.i5 = i5;
+        // tachyon-core expects AWG fields at the endpoint root;
+        // magic headers accept a single value or a "min-max" range.
+        inbound.jc = amnezia.jc;
+        inbound.jmin = amnezia.jmin;
+        inbound.jmax = amnezia.jmax;
+        inbound.s1 = amnezia.s1;
+        inbound.s2 = amnezia.s2;
+        inbound.h1 = amnezia.h1;
+        inbound.h2 = amnezia.h2;
+        inbound.h3 = amnezia.h3;
+        inbound.h4 = amnezia.h4;
+        inbound.s3 = amnezia.s3;
+        inbound.s4 = amnezia.s4;
+        if (i1 != "") inbound.i1 = i1;
+        if (i2 != "") inbound.i2 = i2;
+        if (i3 != "" && i3 != "0") inbound.i3 = i3;
+        if (i4 != "" && i4 != "0") inbound.i4 = i4;
+        if (i5 != "" && i5 != "0") inbound.i5 = i5;
 
-            if (awg_ver == "3.0" || awg_ver == "3.1") {
-                let hpk = option(section, "awg_header_protection_key", "");
-                if (hpk != "") {
-                    // Ensure S1-S4 are >= 12 if header_protection_key is set (sing-box-lx schema requirement)
-                    if (inbound.s1 < 12) inbound.s1 = 20;
-                    if (inbound.s2 < 12) inbound.s2 = 20;
-                    if (inbound.s3 < 12) inbound.s3 = 20;
-                    if (inbound.s4 < 12) inbound.s4 = 20;
-                    inbound.header_protection_key = hpk;
-                }
-
-                let cpa = option(section, "awg_content_padding_addition", "");
-                if (cpa != "") inbound.content_padding_addition = cpa;
+        if (awg_ver == "3.0" || awg_ver == "3.1") {
+            let hpk = option(section, "awg_header_protection_key", "");
+            if (hpk != "") {
+                // Ensure S1-S4 are >= 12 if header_protection_key is set
+                if (inbound.s1 < 12) inbound.s1 = 20;
+                if (inbound.s2 < 12) inbound.s2 = 20;
+                if (inbound.s3 < 12) inbound.s3 = 20;
+                if (inbound.s4 < 12) inbound.s4 = 20;
+                inbound.header_protection_key = hpk;
             }
 
-            if (awg_ver == "3.1") {
-                let rka = option(section, "awg_rekey_after_time", "");
-                if (rka != "") inbound.rekey_after_time = rka;
+            let cpa = option(section, "awg_content_padding_addition", "");
+            if (cpa != "") inbound.content_padding_addition = cpa;
+        }
 
-                let rkt = option(section, "awg_rekey_timeout", "");
-                if (rkt != "") inbound.rekey_timeout = rkt;
+        if (awg_ver == "3.1") {
+            let rka = option(section, "awg_rekey_after_time", "");
+            if (rka != "") inbound.rekey_after_time = rka;
 
-                let rja = option(section, "awg_reject_after_time", "");
-                if (rja != "") inbound.reject_after_time = rja;
+            let rkt = option(section, "awg_rekey_timeout", "");
+            if (rkt != "") inbound.rekey_timeout = rkt;
 
-                let kpt = option(section, "awg_keepalive_timeout", "");
-                if (kpt != "") inbound.keepalive_timeout = kpt;
+            let rja = option(section, "awg_reject_after_time", "");
+            if (rja != "") inbound.reject_after_time = rja;
 
-                let mha = option(section, "awg_max_handshake_attempts", "");
-                if (mha != "") inbound.max_handshake_attempts = mha;
+            let kpt = option(section, "awg_keepalive_timeout", "");
+            if (kpt != "") inbound.keepalive_timeout = kpt;
 
-                if (bool_option(section, "awg_random_trailers", false))
-                    inbound.random_trailers = true;
-                if (bool_option(section, "awg_disable_cookies", false))
-                    inbound.disable_cookies = true;
-            }
-        } else {
-            if (i1 != "") amnezia.i1 = i1;
-            if (i2 != "") amnezia.i2 = i2;
-            if (i3 != "" && i3 != "0") amnezia.i3 = i3;
-            if (i4 != "" && i4 != "0") amnezia.i4 = i4;
-            if (i5 != "" && i5 != "0") amnezia.i5 = i5;
-            // j1-j3/itime were removed from the extended schema in 2.6.1 and
-            // sing-box fatals on unknown fields, so emit them only for builds
-            // whose schema still accepts them.
-            let sb_version = variant_state.read_version_state();
-            if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
-                if (j1 != "") amnezia.j1 = j1;
-                if (j2 != "") amnezia.j2 = j2;
-                if (j3 != "") amnezia.j3 = j3;
-                if (itime > 0) amnezia.itime = itime;
-            }
+            let mha = option(section, "awg_max_handshake_attempts", "");
+            if (mha != "") inbound.max_handshake_attempts = mha;
 
-            // sing-box-extended 2.7.0+ supports AWG 3.0 / 3.1 inside the amnezia object
-            if (awg_ver == "3.0" || awg_ver == "3.1") {
-                let hpk = option(section, "awg_header_protection_key", "");
-                if (hpk != "") {
-                    if (amnezia.s1 < 12) amnezia.s1 = 20;
-                    if (amnezia.s2 < 12) amnezia.s2 = 20;
-                    if (amnezia.s3 < 12) amnezia.s3 = 20;
-                    if (amnezia.s4 < 12) amnezia.s4 = 20;
-                    amnezia.header_protection_key = hpk;
-                }
-
-                let cpa = option(section, "awg_content_padding_addition", "");
-                if (cpa != "") amnezia.content_padding_addition = cpa;
-            }
-
-            if (awg_ver == "3.1") {
-                let rka = option(section, "awg_rekey_after_time", "");
-                if (rka != "") amnezia.rekey_after_time = rka;
-
-                let rkt = option(section, "awg_rekey_timeout", "");
-                if (rkt != "") amnezia.rekey_timeout = rkt;
-
-                let rja = option(section, "awg_reject_after_time", "");
-                if (rja != "") amnezia.reject_after_time = rja;
-
-                let kpt = option(section, "awg_keepalive_timeout", "");
-                if (kpt != "") amnezia.keepalive_timeout = kpt;
-
-                let mha = option(section, "awg_max_handshake_attempts", "");
-                if (mha != "") amnezia.max_handshake_attempts = mha;
-            }
-
-            inbound.amnezia = amnezia;
+            if (bool_option(section, "awg_random_trailers", false))
+                inbound.random_trailers = true;
+            if (bool_option(section, "awg_disable_cookies", false))
+                inbound.disable_cookies = true;
         }
     }
     else {
@@ -825,7 +720,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let server_port = int_option(section, "awg_server_port", int_option(section, "listen_port", 51820));
         inbound.listen_port = server_port;
     }
-    if (protocol == "awg" && endpoint_schema) {
+    if (protocol == "awg") {
         delete inbound.listen;
         if (!config.endpoints)
             config.endpoints = [];
@@ -901,17 +796,8 @@ function add_tailscale_endpoint(config, section, tag_name) {
     push(config.endpoints, endpoint);
 }
 
-function is_native_tailscale(section) {
-    return option(section, "protocol", "vless") == "tailscale" &&
-        option(section, "tailscale_mode", "singbox") == "native";
-}
-
 function add_dns_bypass(config, section) {
     if (option(section, "protocol", "vless") != "tailscale")
-        return;
-    // Native mode runs tailscaled outside sing-box; MagicDNS is served by
-    // dnsmasq instead of a sing-box DNS server.
-    if (is_native_tailscale(section))
         return;
 
     if (!bool_option(section, "tailscale_accept_dns", true))
@@ -941,14 +827,12 @@ function add_dns_bypass(config, section) {
         domain_suffix: [ "ts.net" ],
         __service_tag: rule_tag + "-magicdns"
     });
-    if (variant_state.is_tachyon_core()) {
-        push(config.dns.rules, {
-            action: "route",
-            server: dns_tag,
-            preferred_by: inbound,
-            __service_tag: rule_tag + "-preferred"
-        });
-    }
+    push(config.dns.rules, {
+        action: "route",
+        server: dns_tag,
+        preferred_by: inbound,
+        __service_tag: rule_tag + "-preferred"
+    });
 }
 
 function add_server(config, section) {
@@ -956,11 +840,8 @@ function add_server(config, section) {
     let protocol = option(section, "protocol", "vless");
     let tag_name = runtime_constants.server_inbound_tag(section_name);
 
-    if (protocol == "tailscale") {
-        if (is_native_tailscale(section))
-            return;
+    if (protocol == "tailscale")
         add_tailscale_endpoint(config, section, tag_name);
-    }
     else if (protocol == "json_inbound")
         add_json_inbound(config, section, tag_name);
     else
@@ -990,7 +871,6 @@ function value_contains(value, item) {
 function add_sniff_rule(config, section) {
     let base_tag = runtime_constants.server_inbound_tag(section[".name"]);
     let tag = (option(section, "protocol", "vless") == "shadowtls" &&
-        variant_state.is_tachyon_core() &&
         trim(as_string(option(section, "shadowtls_detour", ""))) == "")
         ? (base_tag + "-inner")
         : base_tag;
@@ -1121,6 +1001,5 @@ return {
     add_server,
     add_sniff_rule,
     clone_rules_for_inbound,
-    is_native_tailscale,
     shadowtls_inner_port
 };

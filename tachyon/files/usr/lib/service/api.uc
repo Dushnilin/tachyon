@@ -26,8 +26,6 @@ function resolve_active_core_config_path() {
         return cfg_path;
     if (fs.stat("/etc/tachyon-core/config.json") != null)
         return "/etc/tachyon-core/config.json";
-    if (fs.stat("/etc/sing-box/config.json") != null)
-        return "/etc/sing-box/config.json";
     return "";
 }
 
@@ -317,61 +315,10 @@ function get_system_status() {
 
     // Routing engine status
     let engine_name = "tachyon-core";
-    try { engine_name = require("core.engine").get_active(); } catch (e) {}
     status_obj.engine_name = engine_name;
-    let sb_running = core_binary_running();
-    status_obj.singbox_running = sb_running;
-    status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
-    if (engine_name == "sing-box") {
-        let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || fs.readfile("/etc/tachyon/tachyon-core-variant") || ""));
-        if (sb_variant != "" && sb_variant != "tachyon-core")
-            status_obj.singbox_variant = sb_variant;
-    }
-
-    // zapret2 / zapret / byedpi / wdtt / olcrtc status
-    let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null ||
-                       fs.stat("/opt/zapret2/nfq/nfqws2") != null ||
-                       fs.stat("/opt/zapret2/nfqws2") != null ||
-                       fs.stat("/usr/bin/nfqws2") != null;
-    status_obj.zapret2_installed = z2_installed;
-    if (z2_installed) {
-        let z2_running = command_success_from_args(["pidof", "nfqws2"]);
-        status_obj.zapret2_running = z2_running;
-        status_obj.zapret2 = z2_running ? "🟢 running" : "🔴 stopped";
-    }
-
-    let z1_installed = fs.stat("/opt/zapret/nfq/nfqws") != null ||
-                       fs.stat("/usr/bin/nfqws") != null;
-    status_obj.zapret_installed = z1_installed;
-    if (z1_installed) {
-        let z1_running = command_success_from_args(["pidof", "nfqws"]);
-        status_obj.zapret_running = z1_running;
-        status_obj.zapret = z1_running ? "🟢 running" : "🔴 stopped";
-    }
-
-    let bd_installed = fs.stat("/usr/bin/ciadpi") != null || fs.stat("/usr/sbin/ciadpi") != null;
-    status_obj.byedpi_installed = bd_installed;
-    if (bd_installed) {
-        let bd_running = command_success_from_args(["pidof", "ciadpi"]);
-        status_obj.byedpi_running = bd_running;
-        status_obj.byedpi = bd_running ? "🟢 running" : "🔴 stopped";
-    }
-
-    let wdtt_installed = fs.stat("/usr/bin/wdtt") != null || fs.stat("/usr/sbin/wdtt") != null;
-    status_obj.wdtt_installed = wdtt_installed;
-    if (wdtt_installed) {
-        let wdtt_running = command_success_from_args(["pidof", "wdtt"]);
-        status_obj.wdtt_running = wdtt_running;
-        status_obj.wdtt = wdtt_running ? "🟢 running" : "🔴 stopped";
-    }
-
-    let olc_installed = fs.stat("/usr/bin/olcrtc") != null || fs.stat("/usr/sbin/olcrtc") != null;
-    status_obj.olcrtc_installed = olc_installed;
-    if (olc_installed) {
-        let olc_running = command_success_from_args(["pidof", "olcrtc"]);
-        status_obj.olcrtc_running = olc_running;
-        status_obj.olcrtc = olc_running ? "🟢 running" : "🔴 stopped";
-    }
+    let core_running = core_binary_running();
+    status_obj.tachyon_core_running = core_running;
+    status_obj.tachyon_core = core_running ? "🟢 running" : "🔴 stopped";
 
     // Eco / Lite mode
     let eco_mode = uci_core.get(CONFIG_NAME, "settings", "eco_mode") == "1" ||

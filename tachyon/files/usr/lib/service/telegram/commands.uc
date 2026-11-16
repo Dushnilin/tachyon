@@ -400,7 +400,7 @@ function view_menu(token, chat_id, msg_id) {
     let text = "🏠 <b>Tachyon Control Panel</b>\n\n" +
                t("menu_version") + ": <code>" + sys.tachyon_version + "</code>" +
                (sys.updates_available_count > 0 ? " ⚠️ <i>(+" + sys.updates_available_count + " upd)</i>" : "") + "\n" +
-               escape_html(engine_label) + ": <code>" + sys.singbox + "</code>\n" +
+               escape_html(engine_label) + ": <code>" + sys.tachyon_core + "</code>\n" +
                t("menu_cpu") + ": <code>" + sys.cpu + "</code> | RAM: <code>" + sys.ram_avail + "/" + sys.ram_total + " MB</code>\n";
     if (sys.eco_mode) {
         text += "🌿 " + t("status_eco_mode") + ": <code>🟢 ON</code>\n";
@@ -498,12 +498,7 @@ function view_status(token, chat_id, msg_id) {
                t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
                "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n" +
                (sys.eco_mode ? "🌿 " + t("status_eco_mode") + ": <code>🟢 ON</code>\n" : "") + "\n" +
-               escape_html(engine_label) + ": <code>" + sys.singbox + (sys.singbox_variant && sys.singbox_variant != engine_label ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
-               (sys.zapret2_installed ? "zapret2: <code>" + sys.zapret2 + "</code>\n" : "") +
-               (sys.zapret_installed ? "zapret: <code>" + sys.zapret + "</code>\n" : "") +
-               (sys.byedpi_installed ? "byedpi: <code>" + sys.byedpi + "</code>\n" : "") +
-               (sys.wdtt_installed ? "wdtt: <code>" + sys.wdtt + "</code>\n" : "") +
-               (sys.olcrtc_installed ? "olcrtc: <code>" + sys.olcrtc + "</code>\n" : "") +
+               escape_html(engine_label) + ": <code>" + sys.tachyon_core + "</code>\n" +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN: <code>" + (sys.wan_ip || "?") + "</code> " +
                (conn && conn.direct ? "✅" : "❌") + "\n" +
@@ -841,9 +836,7 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         let sname = src.label || src.name || src[".name"];
         let stype = src.source_type || "subscription";
         let detail = stype;
-        if (stype == "zapret2" && src.zapret2_strategy)
-            detail = stype + ":" + src.zapret2_strategy;
-        else if (stype == "desync") {
+        if (stype == "desync") {
             let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
             detail = stype + ":" + dp;
         }
@@ -1265,20 +1258,8 @@ function resolve_component_installed_version(comp_name, sys_info) {
     comp_name = as_string(comp_name || "");
     if (comp_name == "tachyon")
         return as_string(sys_info.tachyon_version || "");
-    if (comp_name == "sing_box" || comp_name == "sing-box" || comp_name == "tachyon-core" || comp_name == "tachyon_core")
-        return as_string(sys_info.tachyon_core_version || sys_info.sing_box_version || "");
-    if (comp_name == "zapret")
-        return as_string(sys_info.zapret_version || "");
-    if (comp_name == "zapret2")
-        return as_string(sys_info.zapret2_version || "");
-    if (comp_name == "byedpi")
-        return as_string(sys_info.byedpi_version || "");
-    if (comp_name == "wdtt")
-        return as_string(sys_info.wdtt_version || "");
-    if (comp_name == "olcrtc")
-        return as_string(sys_info.olcrtc_version || "");
-    if (comp_name == "tailscale")
-        return as_string(sys_info.tailscale_version || "");
+    if (comp_name == "tachyon-core" || comp_name == "tachyon_core")
+        return as_string(sys_info.tachyon_core_version || "");
     if (comp_name == "torrserver_direct")
         return as_string(sys_info.torrserver_version || "");
     return "";
@@ -1370,16 +1351,7 @@ function exec_run_check_updates(token, chat_id, msg_id) {
     if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
     else send_message(token, chat_id, wait_text, "HTML");
 
-    let components = [ "tachyon", "sing_box" ];
-    try {
-        let info_out = command_output_from_args([BIN_PATH, "get_system_info"]);
-        let info = (info_out && info_out != "") ? (json(info_out) || {}) : {};
-        if (info.zapret2_installed == "1") push(components, "zapret2");
-        if (info.zapret_installed == "1") push(components, "zapret");
-        if (info.byedpi_installed == "1") push(components, "byedpi");
-        if (info.wdtt_installed == "1") push(components, "wdtt");
-        if (info.olcrtc_installed == "1") push(components, "olcrtc");
-    } catch (e) {}
+    let components = [ "tachyon", "tachyon-core" ];
 
     let cache_dir = "/var/run/tachyon/component-update-checks";
     command_status(command_from_args([ "mkdir", "-p", cache_dir ]));
@@ -1641,7 +1613,7 @@ function view_quick_test(token, chat_id, msg_id) {
 
     text += (conn && conn.direct ? "✅" : "❌") + " " + t("test_direct") + "\n";
     text += (conn && conn.proxy ? "✅" : "❌") + " " + t("test_proxy") + "\n";
-    text += (sys && sys.singbox_running ? "✅" : "❌") + " " + escape_html(engine_label) + "\n";
+    text += (sys && sys.tachyon_core_running ? "✅" : "❌") + " " + escape_html(engine_label) + "\n";
     text += (sys && sys.tachyon_running ? "✅" : "❌") + " " + t("test_service") + "\n";
     text += (sys && sys.watchdog_running ? "✅" : "❌") + " Watchdog\n";
 
@@ -1694,7 +1666,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
             if (level == "error" && !match(line, /\[err\]|\[error\]/i)) continue;
             if (level == "warn" && !match(line, /\[warn\]/i)) continue;
             if (level == "info" && !match(line, /\[info\]/i)) continue;
-            if (match(line, /tachyon|tachyon-core|sing-box|watchdog/i)) push(filtered, line);
+            if (match(line, /tachyon|tachyon-core|watchdog/i)) push(filtered, line);
         }
         let start = length(filtered) - count;
         if (start < 0) start = 0;
@@ -1733,24 +1705,8 @@ function view_system_info(token, chat_id, msg_id) {
             text += "💻 OpenWrt: <code>" + as_string(info.openwrt_version || "N/A") + "</code>\n\n";
             text += "🔧 Tachyon: <code>" + as_string(info.tachyon_version || "N/A") + "</code>\n";
             text += "📱 LuCI App: <code>" + as_string(info.luci_app_version || "N/A") + "</code>\n\n";
-            let active_engine = "tachyon-core";
-            if (info.sing_box_tachyon_core == 1 || active_engine == "tachyon-core") {
-                text += "📦 tachyon-core: <code>" + as_string(info.tachyon_core_version || info.sing_box_version || "N/A") + "</code>\n";
-            } else {
-                text += "📦 sing-box: <code>" + as_string(info.sing_box_version || "N/A") + "</code>\n";
-                if (info.sing_box_lx == 1) text += "   Fork: Leadaxe (lx) 🟢\n";
-                else if (info.sing_box_compressed == 1) text += "   Fork: Extended (compressed) 🔵\n";
-                else if (info.sing_box_extended == 1) text += "   Fork: Extended (shtorm-7) 🔵\n";
-                else if (info.sing_box_tiny == 1) text += "   Variant: Tiny 🟡\n";
-                else text += "   Variant: Official / Stock ⚪\n";
-            }
-            if (info.sing_box_tailscale == 1) text += "   Tailscale: ✅\n";
-            text += "\n";
-            if (info.zapret_installed == "1") text += "🛡 Zapret: <code>" + as_string(info.zapret_version || "?") + "</code>\n";
-            if (info.zapret2_installed == "1") text += "🛡 Zapret2: <code>" + as_string(info.zapret2_version || "?") + "</code>\n";
-            if (info.byedpi_installed == "1") text += "🛡 ByeDPI: <code>" + as_string(info.byedpi_version || "?") + "</code>\n";
-            if (info.wdtt_installed == "1") text += "🛡 WDTT: <code>" + as_string(info.wdtt_version || "?") + "</code>\n";
-            if (info.olcrtc_installed == "1") text += "🛡 OlcRTC: <code>" + as_string(info.olcrtc_version || "?") + "</code>\n";
+            text += "📦 tachyon-core: <code>" + as_string(info.tachyon_core_version || "N/A") + "</code>\n";
+            if (info.tachyon_core_tailscale == 1) text += "   Tailscale: ✅\n";
         } catch(e) {
             text += t("info_read_error") + " " + e;
         }
@@ -1852,7 +1808,6 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
         let cat_type = src[".type"] || "outbound_source";
         text += icon + " <b>" + escape_html(src.label || src.name || sname) + "</b> <code>[" + escape_html(stype) + "]</code>";
         if (src.url) text += "\n   └ <code>" + escape_html(length(src.url) > 45 ? utf8_prefix(src.url, 45) + "..." : src.url) + "</code>";
-        else if (src.zapret2_strategy) text += " (<code>" + escape_html(src.zapret2_strategy) + "</code>)";
         else if (stype == "desync") {
             let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
             text += " (<code>" + escape_html(dp) + "</code>)";
@@ -2094,7 +2049,6 @@ function view_test_rule(token, chat_id, msg_id, target) {
                 else if (v == "dns") v_icon = "🌐";
                 else if (v == "blocked") v_icon = "🛑";
                 else if (v == "hosts") v_icon = "📝";
-                else if (v == "zapret" || v == "byedpi") v_icon = "🛡";
 
                 if (exp.matched_section && exp.matched_section != "default") {
                     matched = true;

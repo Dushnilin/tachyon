@@ -286,7 +286,7 @@ if (length(keys(names)) != 2)
     die("UI outbound metadata should contain only xray leaf outbound names\n");
 ' "$xray_metadata" || fail "xray UI outbound metadata filtering"
 
-cat >"$WORK_DIR/singbox.json" <<'JSON'
+cat >"$WORK_DIR/core-sub.json" <<'JSON'
 {
   "outbounds": [
     {
@@ -335,8 +335,8 @@ cat >"$WORK_DIR/singbox.json" <<'JSON'
 }
 JSON
 
-singbox_normalized="$WORK_DIR/singbox-normalized.json"
-normalize_subscription "$WORK_DIR/singbox.json" "$singbox_normalized"
+core_normalized="$WORK_DIR/core-normalized.json"
+normalize_subscription "$WORK_DIR/core-sub.json" "$core_normalized"
 
 ucode -e '
 let fs = require("fs");
@@ -348,18 +348,18 @@ for (let outbound in value.outbounds || [])
         hidden: outbound.__tachyon_hidden === true
     };
 if (!flags["Native Group"].allow)
-    die("native sing-box URLTest group was not allowed\n");
+    die("native core URLTest group was not allowed\n");
 if (!flags["Native A"].hidden)
-    die("native sing-box URLTest child was not hidden\n");
+    die("native core URLTest child was not hidden\n");
 if (!flags["Detour Only"].hidden)
-    die("native sing-box detour-only outbound was not hidden\n");
+    die("native core detour-only outbound was not hidden\n");
 if (flags["Uses Detour"].hidden)
     die("visible outbound using detour should stay visible\n");
-' "$singbox_normalized" || fail "native sing-box normalized URLTest fields"
+' "$core_normalized" || fail "native core normalized URLTest fields"
 
 rm -rf "$WORK_DIR/subscriptions"
-prepare_subscription_cache proxy 1 "https://singbox.example/sub" "$singbox_normalized"
-cat >"$WORK_DIR/singbox-fixture.json" <<'JSON'
+prepare_subscription_cache proxy 1 "https://sub.example.test/sub" "$core_normalized"
+cat >"$WORK_DIR/core-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -378,16 +378,16 @@ cat >"$WORK_DIR/singbox-fixture.json" <<'JSON'
       "urltest_filter_mode": "include",
       "urltest_include_regex": [ "^Native" ],
       "detect_server_country": "country_is",
-      "subscription_urls": [ "https://singbox.example/sub" ]
+      "subscription_urls": [ "https://sub.example.test/sub" ]
     }
   ]
 }
 JSON
 
-singbox_config="$WORK_DIR/singbox-config.json"
-generate_config "$WORK_DIR/singbox-fixture.json" "$singbox_config"
+core_config="$WORK_DIR/core-config.json"
+generate_config "$WORK_DIR/core-fixture.json" "$core_config"
 
-cat >"$WORK_DIR/singbox-prefix-fixture.json" <<'JSON'
+cat >"$WORK_DIR/core-prefix-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -406,15 +406,15 @@ cat >"$WORK_DIR/singbox-prefix-fixture.json" <<'JSON'
       "urltest_filter_mode": "include",
       "urltest_include_regex": [ "^Provider " ],
       "detect_server_country": "country_is",
-      "subscription_urls": [ "https://singbox.example/sub" ],
-      "subscription_url_settings": "{\"https://singbox.example/sub\":{\"prefix_nodes\":\"1\",\"node_prefix\":\"Provider\"}}"
+      "subscription_urls": [ "https://sub.example.test/sub" ],
+      "subscription_url_settings": "{\"https://sub.example.test/sub\":{\"prefix_nodes\":\"1\",\"node_prefix\":\"Provider\"}}"
     }
   ]
 }
 JSON
 
-singbox_prefix_config="$WORK_DIR/singbox-prefix-config.json"
-generate_config "$WORK_DIR/singbox-prefix-fixture.json" "$singbox_prefix_config"
+core_prefix_config="$WORK_DIR/core-prefix-config.json"
+generate_config "$WORK_DIR/core-prefix-fixture.json" "$core_prefix_config"
 
 ucode -e '
 let fs = require("fs");
@@ -460,9 +460,9 @@ if (names["Provider Native A"] != "Provider Native A" ||
     die("prefixed outbound metadata names were not retained\n");
 if (names["Native A"] != null || names["Native Group"] != null)
     die("unprefixed outbound metadata names must not remain\n");
-' "$singbox_prefix_config" "$singbox_prefix_config.section-cache/proxy.json" || fail "subscription node prefix behavior"
+' "$core_prefix_config" "$core_prefix_config.section-cache/proxy.json" || fail "subscription node prefix behavior"
 
-cat >"$WORK_DIR/singbox-drop-urltest-members-fixture.json" <<'JSON'
+cat >"$WORK_DIR/core-drop-urltest-members-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -477,15 +477,15 @@ cat >"$WORK_DIR/singbox-drop-urltest-members-fixture.json" <<'JSON'
       "action": "proxy",
       "urltest_enabled": "0",
       "detect_server_country": "country_is",
-      "subscription_urls": [ "https://singbox.example/sub" ],
-      "subscription_url_settings": "{\"https://singbox.example/sub\":{\"include_urltest_groups\":\"0\"}}"
+      "subscription_urls": [ "https://sub.example.test/sub" ],
+      "subscription_url_settings": "{\"https://sub.example.test/sub\":{\"include_urltest_groups\":\"0\"}}"
     }
   ]
 }
 JSON
 
-singbox_drop_members_config="$WORK_DIR/singbox-drop-urltest-members-config.json"
-generate_config "$WORK_DIR/singbox-drop-urltest-members-fixture.json" "$singbox_drop_members_config"
+core_drop_members_config="$WORK_DIR/core-drop-urltest-members-config.json"
+generate_config "$WORK_DIR/core-drop-urltest-members-fixture.json" "$core_drop_members_config"
 
 # With subscription URLTest groups switched off, the group is not emitted and
 # the node it was the only reference to is unreachable, so it must not linger in
@@ -508,9 +508,9 @@ if (!outbound_by_tag(config, "Detour Only"))
     die("a non-member outbound must survive the URLTest member filter\n");
 if (!outbound_by_tag(config, "Uses Detour"))
     die("a non-member outbound using a detour must survive the filter\n");
-' "$singbox_drop_members_config" || fail "disabled URLTest group members are dropped"
+' "$core_drop_members_config" || fail "disabled URLTest group members are dropped"
 
-cat >"$WORK_DIR/singbox-reveal-urltest-fixture.json" <<'JSON'
+cat >"$WORK_DIR/core-reveal-urltest-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -529,14 +529,14 @@ cat >"$WORK_DIR/singbox-reveal-urltest-fixture.json" <<'JSON'
       "urltest_filter_mode": "include",
       "urltest_include_regex": [ "^Native" ],
       "detect_server_country": "country_is",
-      "subscription_urls": [ "https://singbox.example/sub" ],
-      "subscription_url_settings": "{\"https://singbox.example/sub\":{\"hide_urltest_group_outbounds\":\"0\"}}"
+      "subscription_urls": [ "https://sub.example.test/sub" ],
+      "subscription_url_settings": "{\"https://sub.example.test/sub\":{\"hide_urltest_group_outbounds\":\"0\"}}"
     }
   ]
 }
 JSON
 
-cat >"$WORK_DIR/singbox-reveal-detour-fixture.json" <<'JSON'
+cat >"$WORK_DIR/core-reveal-detour-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -555,17 +555,17 @@ cat >"$WORK_DIR/singbox-reveal-detour-fixture.json" <<'JSON'
       "urltest_filter_mode": "include",
       "urltest_include_regex": [ "^Native" ],
       "detect_server_country": "country_is",
-      "subscription_urls": [ "https://singbox.example/sub" ],
-      "subscription_url_settings": "{\"https://singbox.example/sub\":{\"hide_detour_outbounds\":\"0\"}}"
+      "subscription_urls": [ "https://sub.example.test/sub" ],
+      "subscription_url_settings": "{\"https://sub.example.test/sub\":{\"hide_detour_outbounds\":\"0\"}}"
     }
   ]
 }
 JSON
 
-singbox_reveal_urltest_config="$WORK_DIR/singbox-reveal-urltest-config.json"
-singbox_reveal_detour_config="$WORK_DIR/singbox-reveal-detour-config.json"
-generate_config "$WORK_DIR/singbox-reveal-urltest-fixture.json" "$singbox_reveal_urltest_config"
-generate_config "$WORK_DIR/singbox-reveal-detour-fixture.json" "$singbox_reveal_detour_config"
+core_reveal_urltest_config="$WORK_DIR/core-reveal-urltest-config.json"
+core_reveal_detour_config="$WORK_DIR/core-reveal-detour-config.json"
+generate_config "$WORK_DIR/core-reveal-urltest-fixture.json" "$core_reveal_urltest_config"
+generate_config "$WORK_DIR/core-reveal-detour-fixture.json" "$core_reveal_detour_config"
 
 ucode -e '
 let fs = require("fs");
@@ -624,10 +624,10 @@ if (contains(candidates, "Native Group") || contains(candidates, "proxy-urltest-
     die("section cache native URLTest candidates must not include URLTest groups\n");
 if (!contains(candidates, "Native A") || !contains(candidates, "Detour Only"))
     die("section cache native URLTest candidates should include all leaf outbounds, including hidden ones\n");
-' "$singbox_config" "$singbox_config.section-cache/proxy.json" "$singbox_reveal_urltest_config" "$singbox_reveal_detour_config" || fail "native sing-box generated URLTest behavior"
+' "$core_config" "$core_config.section-cache/proxy.json" "$core_reveal_urltest_config" "$core_reveal_detour_config" || fail "native core generated URLTest behavior"
 
-singbox_metadata="$WORK_DIR/singbox-ui-outbound-metadata.json"
-ucode -L "$TACHYON_LIB" "$CACHE_UC" get-outbound-metadata "$singbox_config.section-cache" proxy "$WORK_DIR/missing-outbound-metadata.json" >"$singbox_metadata"
+core_metadata="$WORK_DIR/core-ui-outbound-metadata.json"
+ucode -L "$TACHYON_LIB" "$CACHE_UC" get-outbound-metadata "$core_config.section-cache" proxy "$WORK_DIR/missing-outbound-metadata.json" >"$core_metadata"
 
 ucode -e '
 let fs = require("fs");
@@ -637,7 +637,7 @@ if (names["Native Group"] != null || names["proxy-urltest-out"] != null)
     die("UI outbound metadata must not include native URLTest group names\n");
 if (names["Native A"] == null || names["Detour Only"] == null)
     die("UI outbound metadata should include all native leaf outbound names\n");
-' "$singbox_metadata" || fail "native UI outbound metadata filtering"
+' "$core_metadata" || fail "native UI outbound metadata filtering"
 
 cat >"$WORK_DIR/country-is-fixture.json" <<'JSON'
 {
@@ -739,7 +739,7 @@ cat >"$WORK_DIR/xray-mixed-sub.json" <<'JSON'
     ]
   },
   {
-    "remarks": "🇷🇺 Россия Без РКН-1",
+    "remarks": "🇷🇺 Россия Премиум-1",
     "outbounds": [
       {
         "protocol": "vless",
@@ -803,7 +803,7 @@ if (!selector)
 let members = {};
 for (let m in selector.outbounds || [])
     members[m] = true;
-if (!members["🇩🇪 Germany-1"] || !members["🇫🇮 Finland-1"] || !members["🇷🇺 Россия Без РКН-1"])
+if (!members["🇩🇪 Germany-1"] || !members["🇫🇮 Finland-1"] || !members["🇷🇺 Россия Премиум-1"])
     die("expected all Xray balancer members and standalone nodes in MAIN-out when include_urltest_groups defaults to 0 on outbound_source\n");
 ' "$xray_mixed_config" || fail "Xray mixed balancer + standalone subscription preserves all servers on outbound_source"
 

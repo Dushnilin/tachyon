@@ -17,14 +17,12 @@ import { prettyBytes } from '../../../helpers/prettyBytes';
 import {
   renderAlertTriangleIcon,
   renderArrowUpRightIcon,
-  renderCheckIcon,
   renderCopyIcon24,
   renderLayoutGridIcon,
   renderListIcon,
   renderLoaderCircleIcon24,
   renderRefreshCwIcon,
   renderSettingsIcon,
-  renderXIcon,
   renderZapIcon,
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
@@ -44,7 +42,6 @@ import {
   getLatencyTestLabel,
   renderFlagEmojis,
   renderSections,
-  renderWidget,
   renderDualWidget,
   renderConnections,
   patchConnections,
@@ -54,6 +51,8 @@ import {
   renderTrafficChartCard,
   renderDashboardSectionsAndNodes,
   renderSectionConditionsAndBalancersView,
+  applyPolicySectionPriorityMoves,
+  type PolicySectionMove,
 } from './partials';
 import {
   sortOutboundsForDashboard,
@@ -92,7 +91,6 @@ import {
 } from './dashboardLayout';
 import {
   getConfiguredServerInbounds,
-  hasEnabledNativeTailscaleServer,
   renderInboundServersDashboardWidget,
 } from './inboundServers';
 
@@ -655,9 +653,6 @@ async function completeSubscriptionUpdateJob(
   }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
-  if (hasEnabledNativeTailscaleServer()) {
-    void fetchTailscalePeers();
-  }
 }
 
 async function followSubscriptionUpdateState(
@@ -3458,7 +3453,7 @@ function handleShowPriorityInfo(
       .catch(() => {});
   }
 
-  // A priority group is a plain selector over raw server tags, so sing-box never
+  // A priority group is a plain selector over raw server tags, so tachyon-core never
   // measures it and every fallback-level node reads N/A - even though the members
   // are reachable and the priority daemon probes them on its own schedule. Ask the
   // same Clash API the daemon asks, then repaint the modal with the numbers.
@@ -4642,6 +4637,29 @@ function openSectionInspectorModal(sectionCode: string) {
   ui.showModal(titleText, [content]);
 }
 
+let movingPolicySections = false;
+
+async function handleMovePolicySectionsAbove(
+  moves: PolicySectionMove[],
+): Promise<void> {
+  if (movingPolicySections || moves.length === 0) {
+    return;
+  }
+
+  movingPolicySections = true;
+  void renderSectionsWidget(true);
+  try {
+    await applyPolicySectionPriorityMoves(moves, {
+      onSuccess: async () => {
+        await fetchDashboardSections({ force: true });
+      },
+    });
+  } finally {
+    movingPolicySections = false;
+    void renderSectionsWidget(true);
+  }
+}
+
 async function renderSectionsWidget(forceImmediate = false) {
   logger.debug('[DASHBOARD]', 'renderSectionsWidget');
   const sectionsWidget = store.get().sectionsWidget;
@@ -4814,6 +4832,8 @@ async function renderSectionsWidget(forceImmediate = false) {
     onSectionTypesChanged: () => {
       void renderSectionsWidget();
     },
+    onMovePolicySectionsAbove: handleMovePolicySectionsAbove,
+    isMovingPolicySections: movingPolicySections,
   });
 
   if (existingModal && selectedDashboardSectionCode) {
@@ -4835,50 +4855,6 @@ async function renderSectionsWidget(forceImmediate = false) {
   return preserveScrollForPage(() => {
     container.replaceChildren(...dashboardBlocks);
   }, container);
-}
-
-function renderStoreWidget(
-  containerId: string,
-  storeKey:
-    | 'bandwidthWidget'
-    | 'trafficTotalWidget'
-    | 'systemInfoWidget'
-    | 'servicesInfoWidget'
-    | 'tailscaleWidget',
-  title: string,
-  getItems: (data: any) => Array<{
-    key?: string | HTMLElement;
-    value: string | HTMLElement | (string | HTMLElement)[];
-    attributes?: {
-      class?: string;
-      title?: string;
-      [key: string]: string | undefined;
-    };
-  }>,
-  debugName: string,
-) {
-  logger.debug('[DASHBOARD]', debugName);
-  const widgetState = store.get()[storeKey];
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  if (widgetState.loading || widgetState.failed) {
-    const renderedWidget = renderWidget({
-      loading: widgetState.loading,
-      failed: widgetState.failed,
-      title: '',
-      items: [],
-    });
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: widgetState.loading,
-    failed: widgetState.failed,
-    title: title,
-    items: getItems(widgetState.data),
-  });
-  container.replaceChildren(renderedWidget);
 }
 
 let fetchConnectionsInFlight = false;
@@ -5975,13 +5951,13 @@ export async function renderSystemServicesWidget() {
       uptimePretty: tachyonUptime,
     });
 
-    const singboxUptime = formatLocalizedUptime(
-      srvData.singboxUptimePretty,
-      srvData.singboxUptimeSeconds,
+    const tachyonCoreUptime = formatLocalizedUptime(
+      srvData.tachyonCoreUptimePretty,
+      srvData.tachyonCoreUptimeSeconds,
     );
-    const singboxTooltip = formatServiceTooltip({
-      pid: srvData.singboxPid,
-      uptimePretty: singboxUptime,
+    const tachyonCoreTooltip = formatServiceTooltip({
+      pid: srvData.tachyonCorePid,
+      uptimePretty: tachyonCoreUptime,
     });
 
     srvItems.push(
@@ -5991,30 +5967,12 @@ export async function renderSystemServicesWidget() {
         uptimePretty: tachyonUptime,
         tooltip: tachyonTooltip,
       }),
-      renderServiceRowItem(
-        (() => {
-          if (srvData.engineVariant) {
-            return srvData.engineVariant;
-          }
-          const systemInfo = store.get().diagnosticsSystemInfo;
-          if (systemInfo?.sing_box_tachyon_core) {
-            return 'Tachyon Core';
-          }
-          if (systemInfo?.sing_box_lx) {
-            return 'Sing-box LX';
-          }
-          if (systemInfo?.sing_box_extended) {
-            return 'Sing-box Ext';
-          }
-          return 'Sing-box';
-        })(),
-        {
-          running: srvData.singbox,
-          memoryMb: srvData.singboxMemoryMb,
-          uptimePretty: singboxUptime,
-          tooltip: singboxTooltip,
-        },
-      ),
+      renderServiceRowItem('Tachyon Core', {
+        running: srvData.tachyonCore,
+        memoryMb: srvData.tachyonCoreMemoryMb,
+        uptimePretty: tachyonCoreUptime,
+        tooltip: tachyonCoreTooltip,
+      }),
     );
 
     if (srvData.dnsmasqRunning != null) {
@@ -6033,26 +5991,6 @@ export async function renderSystemServicesWidget() {
           memoryMb: srvData.dnsmasqMemoryMb,
           uptimePretty: dnsmasqUptime,
           tooltip: dnsmasqTooltip,
-        }),
-      );
-    }
-
-    if (srvData.zapret2Running) {
-      const zapret2Uptime = formatLocalizedUptime(
-        srvData.zapret2UptimePretty,
-        srvData.zapret2UptimeSeconds,
-      );
-      const zapret2Tooltip = formatServiceTooltip({
-        pid: srvData.zapret2Pid,
-        uptimePretty: zapret2Uptime,
-      });
-
-      srvItems.push(
-        renderServiceRowItem('Zapret2', {
-          running: srvData.zapret2Running,
-          memoryMb: srvData.zapret2MemoryMb,
-          uptimePretty: zapret2Uptime,
-          tooltip: zapret2Tooltip,
         }),
       );
     }
@@ -6819,121 +6757,6 @@ export function renderServiceRowItem(
   };
 }
 
-let latestTailscalePeersRequestId = 0;
-
-async function fetchTailscalePeers() {
-  const requestId = ++latestTailscalePeersRequestId;
-  try {
-    const response = await TachyonShellMethods.getTailscalePeers();
-    if (requestId !== latestTailscalePeersRequestId) return;
-    store.set({
-      tailscaleWidget: {
-        loading: false,
-        failed: !response.success,
-        data: response.success ? response.data : null,
-      },
-    });
-  } catch {
-    if (requestId !== latestTailscalePeersRequestId) return;
-    store.set({
-      tailscaleWidget: {
-        loading: false,
-        failed: true,
-        data: store.get().tailscaleWidget.data,
-      },
-    });
-  }
-}
-
-function peerRow(name: string, online: boolean) {
-  return {
-    key: name,
-    value: E(
-      'span',
-      {
-        style: 'display: inline-flex; align-items: center; gap: 4px;',
-      },
-      [
-        online ? renderCheckIcon(10) : renderXIcon(10),
-        online ? tr('В сети', 'Online') : tr('Не в сети', 'Offline'),
-      ],
-    ),
-    attributes: {
-      class: online
-        ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-        : 'tachyon_dashboard-page__widgets-section__item__row--error',
-    },
-  };
-}
-
-export async function renderTailscaleWidget() {
-  const widgetState = store.get().tailscaleWidget;
-  const container = document.getElementById('dashboard-widget-tailscale');
-  if (!container) return;
-
-  // Keep optional Tailscale slot hidden unless Tailscale is actually configured
-  // or a native Tailscale server exists to drive the initial fetch.
-  if (
-    !widgetState.data?.configured &&
-    (!hasEnabledNativeTailscaleServer() ||
-      (!widgetState.loading && !widgetState.failed))
-  ) {
-    container.style.display = 'none';
-    container.replaceChildren();
-    return;
-  }
-  container.style.display = '';
-
-  renderStoreWidget(
-    'dashboard-widget-tailscale',
-    'tailscaleWidget',
-    'Tailscale',
-    (data) => {
-      type WidgetItem = {
-        key: string | HTMLElement;
-        value: string | HTMLElement | (string | HTMLElement)[];
-        attributes?: Record<string, string>;
-      };
-      if (!data || !data.configured) return [] as WidgetItem[];
-      const items: WidgetItem[] = [
-        {
-          key: tr('Состояние', 'State'),
-          value:
-            data.backend_state === 'Running'
-              ? tr('Работает', 'Running')
-              : data.backend_state || '—',
-          attributes: {
-            class:
-              data.backend_state === 'Running'
-                ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-                : 'tachyon_dashboard-page__widgets-section__item__row--error',
-          },
-        },
-      ];
-      if (data.self && data.self.ips.length) {
-        items.push({
-          key: tr('Этот роутер', 'This router'),
-          value: data.self.ips[0],
-        });
-      }
-      for (const peer of data.peers.slice(0, 5)) {
-        if (!peer.online && !peer.name) continue;
-        items.push(
-          peerRow(peer.name || peer.dns_name || peer.ips[0], peer.online),
-        );
-      }
-      if (data.peers.length > 5) {
-        items.push({
-          key: tr('Другие пиры', 'Other peers'),
-          value: `+${data.peers.length - 5}`,
-        });
-      }
-      return items;
-    },
-    'renderTailscaleWidget',
-  );
-}
-
 async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
@@ -6971,14 +6794,6 @@ async function onStoreUpdate(
     }
     scheduleSystemServicesWidgetRender();
   }
-
-  if (diff.tailscaleWidget) {
-    renderTailscaleWidget();
-    renderInboundServersDashboardWidget({
-      rawConnections: lastRawConnections,
-      hostnames: cachedHostnames,
-    });
-  }
 }
 
 async function onPageMount() {
@@ -7013,15 +6828,11 @@ async function onPageMount() {
   void renderTrafficTotalWidget();
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
-  void renderTailscaleWidget();
   renderInboundServersDashboardWidget({
     rawConnections: lastRawConnections,
     hostnames: cachedHostnames,
   });
   syncDashboardServiceAvailability();
-  if (hasEnabledNativeTailscaleServer()) {
-    void fetchTailscalePeers();
-  }
 
   void refreshRuntimeUiState({ force: true }).then((uiState) => {
     if (!dashboardMounted || mountId !== dashboardMountId) {
@@ -7029,9 +6840,6 @@ async function onPageMount() {
     }
     if (!uiState && !hasRuntimeSnapshot) {
       void fetchServicesInfo();
-      if (hasEnabledNativeTailscaleServer()) {
-        void fetchTailscalePeers();
-      }
     }
   });
 }
@@ -7040,6 +6848,7 @@ function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
   dashboardVisibilityPaused = false;
+  movingPolicySections = false;
 
   directSocketsFailed = false;
   trafficRatesState = createInitialTrafficRatesState();

@@ -15,9 +15,6 @@ mkdir -p \
   "$fake_lib/config" \
   "$fake_lib/components" \
   "$fake_lib/service" \
-  "$fake_lib/providers/zapret" \
-  "$fake_lib/providers/zapret2" \
-  "$fake_lib/providers/byedpi" \
   "$job_dir"
 
 cat >"$fake_lib/core/uci.uc" <<'UCODE'
@@ -71,13 +68,6 @@ if (getenv("TEST_ACTION_CURRENT_SHA")) {
 print(sprintf("%J\n", result));
 UCODE
 
-cat >"$fake_lib/providers/zapret/runtime.uc" <<'UCODE'
-#!/usr/bin/env ucode
-exit(1);
-UCODE
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/zapret2/runtime.uc"
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/byedpi/runtime.uc"
-
 cat >"$fake_lib/service/state.uc" <<'UCODE'
 #!/usr/bin/env ucode
 exit(0);
@@ -93,23 +83,23 @@ updates_ucode() {
     ucode -L "$fake_lib" -L "$TACHYON_LIB" "$UPDATES_UC" "$@"
 }
 
-updates_ucode component-action-worker "$state_file" "$output_file" zapret check_update
-[ -s "$cache_dir/zapret.json" ] ||
+updates_ucode component-action-worker "$state_file" "$output_file" tachyon-core check_update
+[ -s "$cache_dir/tachyon-core.json" ] ||
   fail "manual checks must be cached while automatic checks are enabled"
 
 manual_cache="$(updates_ucode component-update-check-cache)"
 node -e '
 const value = JSON.parse(process.argv[1]);
 if (!value.enabled || value.results.length !== 1 ||
-    value.results[0].component !== "zapret" ||
+    value.results[0].component !== "tachyon-core" ||
     value.results[0].status !== "outdated" ||
     value.results[0].latest_version !== "1.1.0") process.exit(1);
 ' "$manual_cache" || fail "cached manual check response is invalid"
 
 rm -rf "$cache_dir"
 TEST_COMPONENT_UPDATE_CHECK_ENABLED=0 updates_ucode \
-  component-action-worker "$state_file" "$output_file" zapret check_update
-[ ! -e "$cache_dir/zapret.json" ] ||
+  component-action-worker "$state_file" "$output_file" tachyon-core check_update
+[ ! -e "$cache_dir/tachyon-core.json" ] ||
   fail "manual checks must not be cached while automatic checks are disabled"
 
 # A successful install must record the build identity it installed, not just

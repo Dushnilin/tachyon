@@ -5,12 +5,12 @@ set -eo pipefail
 CACHE_UC="$TACHYON_LIB/subscription/cache.uc"
 export REAL_UCODE="$(command -v ucode)"
 export TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state"
-export TMP_SING_BOX_FOLDER="$WORK_DIR/core"
+export TMP_TACHYON_CORE_FOLDER="$WORK_DIR/core"
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime"
 export TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent"
-export SB_VERSION_STATE_FILE="$WORK_DIR/core-version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/core-version"
 export CURL_LOG="$WORK_DIR/requests"
-printf '1.12.0\n' >"$SB_VERSION_STATE_FILE"
+printf '0.5.7\n' >"$TACHYON_CORE_VERSION_FILE"
 mkdir -p "$WORK_DIR/bin"
 
 cat >"$TACHYON_UCI_STATE_FILE" <<'STATE'
@@ -26,7 +26,7 @@ STATE
 cat >"$WORK_DIR/bin/ucode" <<'SH'
 #!/bin/sh
 case "$*" in
-  *'/service/state.uc sing-box-service-running') exit 0 ;;
+  *'/service/state.uc tachyon-core-service-running') exit 0 ;;
 esac
 exec "$REAL_UCODE" "$@"
 SH
@@ -86,12 +86,12 @@ assert_requests() {
   actual="$(cat "$CURL_LOG")"
   [ "$actual" = "$expected" ] || fail "unexpected requests: $actual"
 }
-source_base="$TMP_SING_BOX_FOLDER/subscriptions/proxy-subscription-1"
+source_base="$TMP_TACHYON_CORE_FOLDER/subscriptions/proxy-subscription-1"
 
 # A new subscription must reach the compatible UA without mirrors or a proxy
 # detour for every rejected profile, then persist the working profile.
 update_source
-assert_requests $'direct|sing-box/1.12.0|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token'
+assert_requests $'direct|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token'
 [ "$(cat "$source_base.user_agent")" = Happ ] || fail "working UA was not cached"
 [ "$(cat "$TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR/proxy-subscription-1.user_agent")" = Happ ] || fail "working UA was not persisted"
 
@@ -120,7 +120,7 @@ assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect
 # IP-based HTTP rejection must keep proxy fallback, after direct profiles.
 : >"$CURL_LOG"
 PROVIDER_MODE=blocked update_source
-assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|sing-box/1.12.0|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
+assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
 
 # Failure must leave both the active node list and its profile intact.
 cp "$source_base.json" "$WORK_DIR/last-good.json"

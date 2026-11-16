@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Editing a modular outbound_source (e.g. AmneziaWG params) must change the
-# sing-box reload signature; otherwise reload is skipped as "unchanged" and the
+# tachyon-core reload signature; otherwise reload is skipped as "unchanged" and the
 # runtime keeps the old endpoint config.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
@@ -28,19 +28,19 @@ EOF_UCI
 }
 
 sig() {
-  ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature
+  ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature
 }
 
 write_state 1 0
 base="$(sig)"
-[ -n "$base" ] || fail "sing-box-signature printed nothing"
+[ -n "$base" ] || fail "tachyon-core-signature printed nothing"
 
 write_state 1 64
 [ "$(sig)" != "$base" ] ||
-  fail "changing an outbound_source AWG field must change sing-box-signature"
+  fail "changing an outbound_source AWG field must change tachyon-core-signature"
 
 write_state 0 0
 [ "$(sig)" != "$base" ] ||
-  fail "disabling an outbound_source must change sing-box-signature"
+  fail "disabling an outbound_source must change tachyon-core-signature"
 
 echo "PASS: outbound_source edits change the reload signature"

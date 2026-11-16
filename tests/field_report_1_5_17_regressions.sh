@@ -2,10 +2,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-printf 'tachyon-core' >"$WORK_DIR/variant"
-printf '0.1.4' >"$WORK_DIR/version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/version"
+# Regressions for field reports and normalized subscription/UCI cases.
 
 # 1 & 2: AmneziaWG JSON array subscriptions (base64 config + type:amneziawg)
 # and subscription_filter_exclude_keywords on urltest groups.
@@ -250,26 +247,7 @@ assert.equal(b64Data.outbounds[0].type, 'wireguard');
 assert.equal(b64Data.outbounds[1].type, 'vless');
 JS
 
-# 3: zapret2 UDP port-only profile automatic --payload=all injection (#177)
-ucode -L "$TACHYON_LIB" -e '
-let z2 = require("providers.zapret2.common");
-let nfq = require("providers.nfqueue.runtime");
-let cfg = z2.config();
-
-let opt1 = join(" ", cfg.prepare_strategy_args("--filter-udp=50000-50099 --lua-desync=fake:blob=quic_initial_www_google_com:repeats=6"));
-if (index(opt1, "--payload=all") < 0)
-    die("Expected --payload=all in single UDP port-only profile: " + opt1);
-
-let quic_opt = join(" ", cfg.prepare_strategy_args("--filter-udp=443 --filter-l7=quic --lua-desync=fake:blob=quic_initial_www_google_com:repeats=6"));
-if (index(quic_opt, "--payload=all") >= 0)
-    die("Did not expect --payload=all when --filter-l7=quic is set: " + quic_opt);
-
-let multi = join(" ", nfq.strategy_words("--filter-tcp=443 --lua-desync=multisplit --new --filter-udp=9000-9100,20000-65535 --lua-desync=fake:blob=0x00000000:repeats=2"));
-if (index(multi, "--filter-udp=9000-9100,20000-65535 --payload=all --lua-desync=fake") < 0)
-    die("Expected --payload=all before --lua-desync in --new UDP port-only profile: " + multi);
-'
-
-# 4: Tailscale exit_node in sing-box endpoint mode rejected on tachyon-core
+# 3: Tailscale exit_node in tachyon-core endpoint mode
 mkdir -p "$WORK_DIR/bin"
 cat >"$WORK_DIR/bin/logger" <<'SH'
 #!/bin/sh
@@ -286,7 +264,7 @@ const makeFixture = (exitNode) => ({
   settings: {'.name': 'settings', '.type': 'settings', dns_server: '1.1.1.1', service_listen_address: '127.0.0.1'},
   server: [{
     '.name': 'ts_srv', '.type': 'server', enabled: '1', protocol: 'tailscale',
-    tailscale_mode: 'singbox', tailscale_advertise_exit_node: exitNode
+    tailscale_mode: 'tachyon-core', tailscale_advertise_exit_node: exitNode
   }],
   section: [{
     '.name': 'ts_sec', '.type': 'section', enabled: '1', action: 'proxy',
@@ -297,8 +275,8 @@ fs.writeFileSync(path.join(work, 'ts_bad.json'), JSON.stringify(makeFixture('1')
 fs.writeFileSync(path.join(work, 'ts_good.json'), JSON.stringify(makeFixture('0')));
 JS
 
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_bad.json" "" "0.4.5" || fail 'tailscale_advertise_exit_node in singbox mode should pass on tachyon-core'
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_good.json" "" "0.4.5" || fail 'tailscale without exit_node should pass'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-core-support "$WORK_DIR/ts_bad.json" "" "0.4.5" || fail 'tailscale_advertise_exit_node in tachyon-core mode should pass on tachyon-core'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-core-support "$WORK_DIR/ts_good.json" "" "0.4.5" || fail 'tailscale without exit_node should pass'
 
 # 5: Cookie engine enabled in subscription/cache.uc
 grep -Fq '"-b", "/dev/null"' "$TACHYON_LIB/subscription/cache.uc" || fail 'expected -b /dev/null in subscription/cache.uc'
@@ -355,12 +333,12 @@ printf '%s\n' "$TLS_SRV_OUT" | grep -Eq '"certificate":[[:space:]]*\[' || fail "
 
 # ---------------------------------------------------------------------------
 # 6. Bug 1 & Bug 4 (1.5.16 report):
-#    - sing-box-json / Xray JSON subscription with Shadowsocks + WebSocket
+#    - tachyon-core-json / Xray JSON subscription with Shadowsocks + WebSocket
 #    - UCI local SOCKS section (`type='socks'`) generates valid outbound
 # ---------------------------------------------------------------------------
 cat >"$WORK_DIR/ss_ws_sub.json" <<'EOF'
 {
-  "format": "sing-box-json",
+  "format": "tachyon-core-json",
   "outbounds": [
     {
       "tag": "SS-WS-Node",
@@ -405,8 +383,7 @@ SOCKS_UCI_OUT=$(ucode -L "$TACHYON_LIB" -e '
         routes: routes_mod,
         runtime_settings: function() { return {}; },
         runtime_generate_unsupported: function(msg) { die(msg); },
-        atomic_write_json_file: function() { return true; },
-        is_sb_1_14_plus: function() { return true; }
+        atomic_write_json_file: function() { return true; }
     };
     outbounds_mod.init(ctx);
     routes_mod.init(ctx);

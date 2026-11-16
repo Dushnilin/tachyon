@@ -12,12 +12,7 @@ export interface ActiveRouteInfo {
 }
 
 const SERVICE_ACTIONS = new Set([
-  'zapret',
-  'zapret2',
-  'byedpi',
   'desync',
-  'wdtt',
-  'olcrtc',
   'block',
   'reject',
   'bypass',
@@ -25,13 +20,8 @@ const SERVICE_ACTIONS = new Set([
   'dns',
 ]);
 export const SERVICE_OUTBOUND_TYPES = new Set([
-  'SING_BOX',
-  'ZAPRET',
-  'ZAPRET2',
-  'BYEDPI',
+  'TACHYON_CORE',
   'DESYNC',
-  'WDTT',
-  'OLCRTC',
   'BLOCK',
   'REJECT',
   'BYPASS',

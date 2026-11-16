@@ -176,8 +176,8 @@ function makeMockRouteReport(
         stage: 4,
         name: 'dns_decision',
         mode: 'fakeip',
-        resolver: 'sing-box FakeIP (127.0.0.1:5353)',
-        details: 'Domain resolved by sing-box FakeIP resolver.',
+        resolver: 'Tachyon Core FakeIP (127.0.0.1:5353)',
+        details: 'Domain resolved by Tachyon Core FakeIP resolver.',
       },
       '5_nftables_interception': {
         stage: 5,
@@ -200,7 +200,7 @@ function makeMockRouteReport(
       '7_engine_outbound': {
         stage: 7,
         name: 'engine_outbound',
-        engine: 'sing-box',
+        engine: 'tachyon-core',
         group_tag: 'main_proxy-out',
         selected_node: 'NL-Reality-1',
         node_type: 'vless',

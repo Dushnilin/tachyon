@@ -65,7 +65,7 @@ if command -v ucode >/dev/null 2>&1; then
   # Test 2.1: pkg_install_name_command with proxy includes PATH and fallback
   CMD_WITH_PROXY=$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
     let inst = require("components.installer");
-    print(inst.pkg_install_name_command("tailscale", "127.0.0.1:4535"), "\n");
+    print(inst.pkg_install_name_command("fptn", "127.0.0.1:4535"), "\n");
   ')
   assert_contains "$CMD_WITH_PROXY" "http_proxy='http://127.0.0.1:4535'" "http_proxy variable"
   assert_contains "$CMD_WITH_PROXY" "https_proxy='http://127.0.0.1:4535'" "https_proxy variable"
@@ -76,7 +76,7 @@ if command -v ucode >/dev/null 2>&1; then
   # Test 2.2: pkg_install_name_command without proxy has no proxy env and no PATH override
   CMD_NO_PROXY=$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
     let inst = require("components.installer");
-    print(inst.pkg_install_name_command("tailscale", ""), "\n");
+    print(inst.pkg_install_name_command("fptn", ""), "\n");
   ')
   case "$CMD_NO_PROXY" in
     *http_proxy*) fail "unexpected http_proxy in direct command: $CMD_NO_PROXY" ;;

@@ -293,15 +293,15 @@ const STOP_WORDS = {
 };
 
 const DOMAIN_BOOST_TERMS = {
-    "zapret2": 1.8, "nfqws2": 1.8, "zapret": 1.5, "nfqws": 1.6,
-    "byedpi": 1.7, "ciadpi": 1.7, "multisplit": 1.8, "seqovl": 1.8,
+    "multisplit": 1.8, "seqovl": 1.8,
+    "desync": 1.8, "tlsrec": 1.8, "fake_split": 1.7, "fake_disorder": 1.7,
+    "tailscale": 1.7, "fptn": 1.8, "wdtt": 1.8, "csqtt": 1.8,
     "disorder2": 1.6, "split2": 1.5, "fooling": 1.5, "badseq": 1.5,
     "md5sig": 1.5, "wsize": 1.5, "sniext": 1.6, "midsld": 1.6,
     "fakeip": 1.7, "tproxy": 1.6, "dnsmasq": 1.6, "nftables": 1.6,
     "tachyontable": 1.8, "fwmark": 1.7, "nfqueue": 1.7, "conntrack": 1.7,
     "vless": 1.6, "reality": 1.6, "wireguard": 1.6, "amnezia": 1.7,
     "awg": 1.7, "hysteria2": 1.6, "shadowsocks": 1.5, "trojan": 1.5,
-    "tailscale": 1.7, "fptn": 1.8, "wdtt": 1.8, "olcrtc": 1.8,
     "torrserver": 1.7, "urltest": 1.6, "balancer": 1.6,
     "condition": 1.6, "outbound_source": 1.8, "outbound_group": 1.8,
     "reconciler": 1.8, "known_good": 1.8, "transaction": 1.7, "watchdog": 1.6,

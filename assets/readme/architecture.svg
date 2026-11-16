@@ -2,7 +2,7 @@
      width="1200" height="480" viewBox="0 0 1200 480"
      role="img" aria-labelledby="title desc">
   <title id="title">Архитектура конвейера трафика Tachyon</title>
-  <desc id="desc">Трёхступенчатая схема маршрутизации трафика в Tachyon: клиенты локальной сети LAN и политики доступа, ядро классификации и перехвата nftables + ucode, и пять выходных контуров (Direct WAN, Zapret v1/v2, ByeDPI, мульти-движковые прокси и L3-туннели).</desc>
+  <desc id="desc">Трёхступенчатая схема маршрутизации трафика в Tachyon: клиенты локальной сети LAN и политики доступа, ядро классификации и перехвата nftables + ucode, и пять выходных контуров (Direct WAN, встроенный Desync, прокси-ядро tachyon-core, CSQTT/Tailscale и L3-туннели).</desc>
 
   <rect width="1200" height="480" rx="16" fill="#141415"/>
   <rect x="0.5" y="0.5" width="1199" height="479" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
@@ -72,7 +72,7 @@
     <!-- Core block 3 -->
     <g transform="translate(16, 212)">
       <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
-      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Таблицы nftables и NFQueue</text>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Таблицы nftables и TPROXY</text>
       <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">TPROXY / TUN · mark 0x00200000</text>
     </g>
 
@@ -98,31 +98,31 @@
       <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Банки, Госуслуги, локальные CDN и доверенные подсети</text>
     </g>
 
-    <!-- Out 2: Zapret v2 (nfqws2) -->
+    <!-- Out 2: Native Desync -->
     <g transform="translate(0, 74)">
       <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
       <circle cx="20" cy="24" r="4" fill="#e5484d"/>
-      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">2. Zapret v2 и Zapret v1</text>
-      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">nfqws2 / nfqws</text>
-      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">multisplit · seqovl · syndata · tcp_ts · fake/disorder</text>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">2. Встроенный Desync (Adaptive 2.0)</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon-core</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">auto · multisplit · disorder · fake · без NFQUEUE</text>
     </g>
 
-    <!-- Out 3: ByeDPI -->
+    <!-- Out 3: tachyon-core Proxy -->
     <g transform="translate(0, 148)">
       <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-      <circle cx="20" cy="24" r="4" fill="#e5484d"/>
-      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">3. ByeDPI (ciadpi)</text>
-      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Local SOCKS5</text>
-      <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Фрагментация заголовков HTTP и записей TLS SNI</text>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">3. Прокси-ядро tachyon-core (Rust)</text>
+      <text x="428" y="28" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">L4/L7 Proxy</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">VLESS Reality/XHTTP · Hysteria2 · Trojan · VMess · SS</text>
     </g>
 
-    <!-- Out 4: Multi-Engine Proxy -->
+    <!-- Out 4: CSQTT & Native Tailscale -->
     <g transform="translate(0, 222)">
       <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
       <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
-      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">4. Ядра tachyon-core и sing-box</text>
-      <text x="428" y="28" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">L4/L7 Proxy</text>
-      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">VLESS Reality/XHTTP · Hysteria2 · Trojan · VMess · SS</text>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">4. CSQTT / WDTT и нативный Tailscale</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">In-Core Transport</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Защищённый транспорт и ячеистая сеть внутри ядра</text>
     </g>
 
     <!-- Out 5: L3 Tunnels -->

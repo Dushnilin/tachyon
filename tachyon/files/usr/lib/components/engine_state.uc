@@ -28,10 +28,8 @@ function section_feature(section) {
         return "sections.subscription";
 
     if (stype == "section") {
-        if (action == "zapret2")
-            return "outbound.zapret_lua";
-        if (action == "zapret")
-            return "outbound.zapret";
+        if (action == "desync")
+            return "outbound.desync";
         if (action == "connection")
             return "sections.outbound";
         if (action == "group")

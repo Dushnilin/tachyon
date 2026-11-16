@@ -37,7 +37,7 @@ let uci_core={get_all:function(config,section){return {};}};
 let event_controller={smart_detect_queue_order:function(pending,domains){return domains;},
     smart_detect_main_domain:function(host){return "example.com";}};
 let controller={proxy_port:function(){return "4534";},dns_consecutive_fails:function(){return dns_fails;},
-    create_tick_context:function(){return {settings:{dns_type:"doh",dns_server:["resolver"]},singbox_pid:core_pid,singbox_running:test_engine=="tachyon-core",is_paused:false,reload_in_progress:false};}};
+    create_tick_context:function(){return {settings:{dns_type:"doh",dns_server:["resolver"]},tachyon_core_pid:core_pid,tachyon_core_running:test_engine=="tachyon-core",is_paused:false,reload_in_progress:false};}};
 let test_exclusions={};
 function settings(){return {...test_exclusions, smart_detect:"1",smart_detect_mode:"plus",smart_detect_sections:["vpn"]};}
 function smart_detect_get_proxy_sections(){return ["vpn"];}

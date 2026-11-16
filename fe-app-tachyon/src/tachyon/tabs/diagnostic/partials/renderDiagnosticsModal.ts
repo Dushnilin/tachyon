@@ -49,9 +49,9 @@ function buildPlainTextReport(checks: IDiagnosticsChecksStoreItem[]): string {
   const sys = store.get().diagnosticsSystemInfo;
   const lines: string[] = [
     `=== Tachyon Diagnostics Report ===`,
-    `Version: ${sys.tachyon_version || 'unknown'} | Engine: ${
-      sys.sing_box_tachyon_core ? 'tachyon-core' : 'sing-box'
-    } (${sys.sing_box_version || 'unknown'})`,
+    `Version: ${sys.tachyon_version || 'unknown'} | Engine: tachyon-core (${
+      sys.tachyon_core_version || 'unknown'
+    })`,
     `OS: ${sys.openwrt_version || 'unknown'} | Device: ${sys.device_model || 'unknown'}`,
     '',
   ];

@@ -78,7 +78,7 @@ done
   fail "these live Discord addresses fall outside $base/$prefix and would bypass the section:$missing"
 ok
 
-# The literals in the nft and singbox fallbacks must not drift back to /21.
+# The literals in the nft and tachyon_core fallbacks must not drift back to /21.
 for f in "$TACHYON_LIB/nft/apply.uc" "$TACHYON_LIB/tachyon_core/generator_routes.uc"; do
   [ -f "$f" ] || fail "missing $f"
   if grep -q '162\.159\.128\.0/21' "$f"; then

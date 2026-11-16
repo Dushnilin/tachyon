@@ -17,10 +17,10 @@ const RT_TABLES_PATH = env("TACHYON_RT_TABLES", "/etc/iproute2/rt_tables");
 const BIN_PATH = env("TACHYON_BIN", "/usr/bin/tachyon");
 const INIT_PATH = env("TACHYON_INIT", "/etc/init.d/tachyon");
 const DNS_APPLY_UC = env("TACHYON_DNS_APPLY_UC", "/usr/lib/tachyon/dns/apply.uc");
-const SING_BOX_INIT = env("TACHYON_SING_BOX_INIT", "/etc/init.d/tachyon-core");
-const SING_BOX_BIN = env("TACHYON_SING_BOX_BIN", "/usr/bin/tachyon-core");
-const SING_BOX_CRONET = env("TACHYON_SING_BOX_CRONET", "/usr/lib/libcronet.so");
-const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Tachyon managed sing-box service for binary variants");
+const TACHYON_CORE_INIT = env("TACHYON_CORE_INIT", "/etc/init.d/tachyon-core");
+const TACHYON_CORE_BIN = env("TACHYON_CORE_BIN", "/usr/bin/tachyon-core");
+const TACHYON_CORE_CRONET = env("TACHYON_CORE_CRONET", "/usr/lib/libcronet.so");
+const TACHYON_CORE_MANAGED_MARKER = env("TACHYON_CORE_MANAGED_SERVICE_MARKER", "Tachyon managed tachyon-core service");
 const PACKAGE_UPGRADE_STATE = env("TACHYON_PACKAGE_UPGRADE_STATE", "/tmp/tachyon-package-was-running");
 const RUNTIME_STATE_DIR = env("TACHYON_RUNTIME_STATE_DIR", "/var/run/tachyon");
 const COMPONENT_ACTION_DIR = env("TACHYON_UI_COMPONENT_ACTION_DIR", RUNTIME_STATE_DIR + "/component-actions");
@@ -35,7 +35,7 @@ const PACKAGE_TEST_MODE = env("TACHYON_PACKAGE_TEST_MODE", "") != "";
 // for a quarter of an hour. Every such call is bounded instead.
 const HOOK_COMMAND_TIMEOUT = env("TACHYON_HOOK_COMMAND_TIMEOUT", "20");
 // Starting the service legitimately takes longer than probing or stopping it —
-// sing-box comes up, nft rules load, subscriptions may be re-read — so it gets
+// tachyon-core comes up, nft rules load, subscriptions may be re-read — so it gets
 // its own, larger budget. Still bounded: postinst must end.
 const HOOK_START_TIMEOUT = env("TACHYON_HOOK_START_TIMEOUT", "180");
 
@@ -162,16 +162,16 @@ function restore_dnsmasq_if_needed() {
         bounded_command_success_from_args([ "ucode", DNS_APPLY_UC, "failsafe-restore" ]);
 }
 
-function remove_managed_sing_box() {
-    let data = fs.readfile(SING_BOX_INIT);
-    if (data == null || index(data, SING_BOX_MANAGED_MARKER) < 0)
+function remove_managed_core() {
+    let data = fs.readfile(TACHYON_CORE_INIT);
+    if (data == null || index(data, TACHYON_CORE_MANAGED_MARKER) < 0)
         return;
 
-    bounded_command_success_from_args([ SING_BOX_INIT, "stop" ]);
-    bounded_command_success_from_args([ SING_BOX_INIT, "disable" ]);
-    unlink_if_exists(SING_BOX_INIT);
-    unlink_if_exists(SING_BOX_BIN);
-    unlink_if_exists(SING_BOX_CRONET);
+    bounded_command_success_from_args([ TACHYON_CORE_INIT, "stop" ]);
+    bounded_command_success_from_args([ TACHYON_CORE_INIT, "disable" ]);
+    unlink_if_exists(TACHYON_CORE_INIT);
+    unlink_if_exists(TACHYON_CORE_BIN);
+    unlink_if_exists(TACHYON_CORE_CRONET);
 }
 
 function remember_upgrade_state(action) {

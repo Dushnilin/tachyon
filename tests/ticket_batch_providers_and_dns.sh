@@ -9,7 +9,7 @@
 #       process, so every later /etc/init.d/tachyon reload blocked forever.
 #  #97  DNS rules for fakeip domains carried no query_type, and the fakeip server
 #       only answers A and AAAA, so MX/SRV/TXT waited out the client timeout.
-#  #98  hup_sing_box_runtime() was named for SIGHUP and did a full restart.
+#  #98  hup_tachyon_core_runtime() was named for SIGHUP and did a full restart.
 #  #95  the "additional marking rules" check counted Tachyon's own fw4 rules,
 #       and --netfilter-mode was probed on tailscaled while it is a client flag.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
@@ -27,25 +27,14 @@ pass_count=0
 ok() { pass_count=$((pass_count + 1)); }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-TAILSCALE_RT="$TACHYON_LIB/providers/tailscale/runtime.uc"
 ROUTES="$TACHYON_LIB/tachyon_core/generator_routes.uc"
 GEN="$TACHYON_LIB/tachyon_core/generator.uc"
 STATE="$TACHYON_LIB/service/state.uc"
 ROUTING_DIAG="$TACHYON_LIB/diagnostics/routing.uc"
 STATUS_DIAG="$TACHYON_LIB/diagnostics/status.uc"
-for f in "$TAILSCALE_RT" "$ROUTES" "$GEN" "$STATE" "$ROUTING_DIAG" "$STATUS_DIAG"; do
+for f in "$ROUTES" "$GEN" "$STATE" "$ROUTING_DIAG" "$STATUS_DIAG"; do
   [ -f "$f" ] || fail "missing $f"
 done
-
-# --- #94: no hand-rolled background spawn in tailscale runtime ------------
-grep -q 'background_command_with_pid' "$TAILSCALE_RT" ||
-  fail "tailscaled must be spawned through background_command_with_pid, or it inherits procd's fd 1000 and every later reload deadlocks on flock 1000"
-ok
-
-# The fix's own comment names the construct it removed, so only executable lines count here.
-grep 'echo \$!' "$TAILSCALE_RT" | grep -qv '^[[:space:]]*//' &&
-  fail "tailscale/runtime.uc still spawns with a raw '& echo \$!', which redirects only 0/1/2 and leaks the lock descriptor into tailscaled"
-ok
 
 # --- #97: fakeip-routed DNS rules must declare the types fakeip can answer --
 grep -q 'function add_fakeip_query_type' "$ROUTES" ||
@@ -62,19 +51,19 @@ grep -q 'query_type: \[ "A", "AAAA" \]' "$GEN" ||
 ok
 
 # --- #98: the function named for SIGHUP has to send SIGHUP -----------------
-grep -q 'Applying DNS failover with sing-box service restart' "$STATE" &&
-  fail "hup_sing_box_runtime() is announcing a full restart again"
+grep -q 'Applying DNS failover with .* service restart' "$STATE" &&
+  fail "hup_tachyon_core_runtime() is announcing a full restart again"
 ok
 
-hup_line="$(grep -n '^function hup_sing_box_runtime' "$STATE" | cut -d: -f1)"
+hup_line="$(grep -n '^function hup_tachyon_core_runtime' "$STATE" | cut -d: -f1)"
 sighup_line="$(grep -n '^function try_sighup_reload' "$STATE" | cut -d: -f1)"
 [ -n "$hup_line" ] && [ -n "$sighup_line" ] || fail "cannot locate the SIGHUP functions in state.uc"
 [ "$sighup_line" -lt "$hup_line" ] ||
-  fail "hup_sing_box_runtime() calls try_sighup_reload(), so it must be declared after it: ucode resolves a module-level function where the caller is defined, and a forward reference becomes 'left-hand side is not a function' at runtime"
+  fail "hup_tachyon_core_runtime() calls try_sighup_reload(), so it must be declared after it: ucode resolves a module-level function where the caller is defined, and a forward reference becomes 'left-hand side is not a function' at runtime"
 ok
 
 grep -q 'Applying DNS failover via tachyon-core SIGHUP' "$STATE" ||
-  fail "hup_sing_box_runtime() must log the graceful SIGHUP path it now takes"
+  fail "hup_tachyon_core_runtime() must log the graceful SIGHUP path it now takes"
 ok
 
 # --- #95: Tachyon's own marks are not "another package's" marks ------------
@@ -84,14 +73,6 @@ ok
 
 grep -q 'TACHYON_OWN_MARKS' "$STATUS_DIAG" ||
   fail "diagnostics/status.uc must filter Tachyon's own marks out of the printed list"
-ok
-
-grep -q 'netfilter_mode_supported_by_client' "$TAILSCALE_RT" ||
-  fail "tailscale/runtime.uc must probe the client for --netfilter-mode; asking tailscaled made 'tailscale up' never receive the flag on current versions"
-ok
-
-grep -q 'netfilter_mode_supported_by_daemon' "$TAILSCALE_RT" ||
-  fail "the daemon spawn path must keep its own --netfilter-mode probe"
 ok
 
 # --- #95: and it has to behave, not merely exist ---------------------------
@@ -115,18 +96,11 @@ printf '%s' "$mixed" | grep -q '0x04000000' &&
   fail "the Tachyon mark must not survive into the printed list, got: $mixed"
 ok
 
-printf 'table inet zapret\n\toifname @wanif udp length >= 28 @ih,32,32 0x2112a442 @ih,0,8 & 0xc0 == 0x0 @ih,30,2 0x0 ip daddr != @nozapret meta mark set meta mark | 0x20000000 ct mark set ct mark | 0x40000000 queue flags bypass to 65400\n\tmeta mark & 0x40000000 == 0x00000000 jump postnat\ntable inet fw4\n\toifname @wanif udp length >= 28 @ih,32,32 0x2112a442 @ih,0,8 & 0xc0 == 0x0 @ih,30,2 0x0 ip daddr != @nozapret meta mark set meta mark | 0x20000000 ct mark set ct mark | 0x40000000 queue flags bypass to 65400\n\tmeta mark & 0x40000000 == 0x00000000 @ih,32,32 0x2112a442 jump postnat\n' >"$WORK_DIR/zapret.txt"
-
-zapret_printed="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$STATUS_DIAG" nft-ruleset-other-mark-lines TachyonTable <"$WORK_DIR/zapret.txt" 2>/dev/null || true)"
-[ -z "$zapret_printed" ] ||
-  fail "Zapret postnat and desync rules with payload hex matches must not be reported as foreign marking rules, got: $zapret_printed"
-ok
-
 printf 'table inet fw4\n\tmeta mark == 0x00000000 meta mark set 100\n' >"$WORK_DIR/zero_only.txt"
 zero_printed="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$STATUS_DIAG" nft-ruleset-other-mark-lines TachyonTable <"$WORK_DIR/zero_only.txt" 2>/dev/null || true)"
 printf '%s' "$zero_printed" | grep -q 'meta mark set 100' ||
   fail "a foreign rule whose only hex token is 0x00000000 must still be reported as foreign, got: $zero_printed"
 ok
 
-printf 'ticket batch 94/95/97/98: %d checks passed\n' "$pass_count"
+printf 'ticket batch 95/97/98: %d checks passed\n' "$pass_count"
 printf 'PASS: ticket_batch_providers_and_dns\n'

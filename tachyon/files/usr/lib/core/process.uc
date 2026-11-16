@@ -33,7 +33,7 @@ const PROC_COMM_FORMAT = "/proc/%s/comm";
 const BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 
 // Patterns that identify Tachyon-managed processes in /proc/PID/cmdline
-const TACHYON_CMDLINE_PATTERN = /ucode|tachyon|sh|sing-box/;
+const TACHYON_CMDLINE_PATTERN = /ucode|tachyon|sh|tachyon-core/;
 
 // ---------------------------------------------------------------------------
 // Boot ID
@@ -176,10 +176,8 @@ function is_tachyon_process(pid) {
     return true;
 }
 
-// The core answers to `tachyon-core`. A router upgraded from the previous
-// release can still have the old process or its `/usr/bin/sing-box` symlink
-// running, so both names count as the engine here.
-const CORE_PROCESS_NAMES = [ "tachyon-core", "sing-box" ];
+// The core answers to `tachyon-core`.
+const CORE_PROCESS_NAMES = [ "tachyon-core" ];
 
 // Service identity for the proxy core. Doctor, status, watchdog, lifecycle
 // and every init-script generator read this instead of hardcoding the procd
@@ -193,16 +191,13 @@ function core_contract() {
         uci_package: "tachyon-core",
         pid_files: [
             "/var/run/tachyon-core.pid",
-            "/var/run/tachyon-core/tachyon-core.pid",
-            "/var/run/sing-box.pid",
-            "/var/run/sing-box/sing-box.pid"
+            "/var/run/tachyon-core/tachyon-core.pid"
         ],
-        binaries: [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ],
+        binaries: [ "/usr/bin/tachyon-core" ],
         comm_names: CORE_PROCESS_NAMES,
         workdir: "/usr/share/tachyon-core",
         config_file: "/etc/tachyon-core/config.json",
-        log_file: "/tmp/tachyon-core/tachyon-core.log",
-        legacy_log_file: "/tmp/tachyon-core/sing-box.log"
+        log_file: "/tmp/tachyon-core/tachyon-core.log"
     };
 }
 
@@ -290,18 +285,17 @@ function init_script_kills_itself(text) {
     return false;
 }
 
-// Single generator for /etc/init.d/tachyon-core. reset_log keeps the
-// component-install variant that truncates the core log before procd starts.
+// Single generator for /etc/init.d/tachyon-core. reset_log truncates the core
+// log before procd starts.
 function managed_core_init_script(marker, reset_log) {
     let contract = core_contract();
     marker = as_string(marker);
     if (marker == "")
-        marker = "Tachyon managed sing-box service for binary variants";
+        marker = "Tachyon managed tachyon-core service";
 
     let primary = contract.binaries[0];
-    let fallback = contract.binaries[1];
-    let comms = contract.comm_names[0] + " " + contract.comm_names[1];
-    let exe_case = "*/" + contract.comm_names[0] + "|*/" + contract.comm_names[1];
+    let comms = contract.comm_names[0];
+    let exe_case = "*/" + contract.comm_names[0];
     let log_prep = "";
     if (reset_log)
         log_prep = "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
@@ -311,8 +305,7 @@ function managed_core_init_script(marker, reset_log) {
         "# " + marker + "\n\n" +
         "USE_PROCD=1\n" +
         "START=99\n" +
-        "PROG=\"" + primary + "\"\n" +
-        "[ -x \"$PROG\" ] || PROG=\"" + fallback + "\"\n\n" +
+        "PROG=\"" + primary + "\"\n\n" +
         "_kill_daemon_instances() {\n" +
         "    for p in $(pidof " + comms + " 2>/dev/null); do\n" +
         "        [ \"$p\" != \"$$\" ] || continue\n" +
@@ -340,7 +333,7 @@ function managed_core_init_script(marker, reset_log) {
         "    local log_stderr\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    [ -x \"$PROG\" ] || PROG=\"$(command -v " + contract.comm_names[0] + " 2>/dev/null || command -v " + contract.comm_names[1] + " 2>/dev/null || echo " + primary + ")\"\n" +
+        "    [ -x \"$PROG\" ] || PROG=\"$(command -v " + contract.comm_names[0] + " 2>/dev/null || echo " + primary + ")\"\n" +
         "    config_get config_file \"main\" \"conffile\" \"" + contract.config_file + "\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"" + contract.workdir + "\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
@@ -425,7 +418,7 @@ function managed_core_init_script(marker, reset_log) {
 }
 
 // Check if a PID is a proxy-core process (by /proc/PID/exe or /proc/PID/comm).
-function is_sing_box(pid) {
+function is_tachyon_core(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null)
         return false;
@@ -519,7 +512,7 @@ function module_exports() {
         // Liveness
         pid_alive_raw,
         is_tachyon_process,
-        is_sing_box,
+        is_tachyon_core,
         core_contract,
         own_pid,
         exe_basename,
@@ -636,8 +629,8 @@ if (mode == "selftest") {
     _test_assert(!init_script_kills_itself(generated), "generated init must not kill itself");
     _test_assert(init_script_kills_itself("killall -q -9 tachyon-core\n"), "detector flags killall of the init comm");
     _test_assert(index(generated, "_kill_daemon_instances") >= 0, "safe killer is present");
-    _test_assert(index(generated_log, contract.log_file) >= 0, "reset-log variant truncates the core log");
-    _test_assert(index(generated, contract.log_file) < 0, "plain variant leaves the core log alone");
+    _test_assert(index(generated_log, contract.log_file) >= 0, "reset-log mode truncates the core log");
+    _test_assert(index(generated, contract.log_file) < 0, "plain mode leaves the core log alone");
     _test_assert(index(generated, "procd_set_param nice 15") >= 0, "generated init supports lite_mode nice 15");
 
     print("process.uc selftest: " + _test_pass + " passed, " + _test_fail + " failed\n");

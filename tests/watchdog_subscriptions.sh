@@ -104,7 +104,7 @@ check_cooldown heal_anomaly_reconnects 300
 # ai_heal_proxy_health / ai_heal_dns_continuous on the fast tier (15s), and
 # ai_heal_proxy_connectivity / ai_heal_dns inside the normal-tier audit (120s+).
 # One probe now serves both, at the fast rate. Without these bounds a single
-# stall would restart sing-box eight times as often as it used to — the
+# stall would restart tachyon-core eight times as often as it used to — the
 # aggressive-restart regression fixed in c8052ee6.
 check_cooldown heal_proxy_connectivity 120
 check_cooldown heal_dns_stall 120
@@ -128,7 +128,7 @@ grep -q 'state.proxy_consecutive_fails++;' "$CONTROLLER_UC" \
 # The whole point of the split: no restart, reload or nft mutation may leak back
 # into event_controller.uc.
 for forbidden in 'safe_proxy_restart' 'safe_reload_firewall' 'ai_heal_report' \
-  '/etc/init.d/tachyon' 'service sing-box' 'nft add' 'nft flush'
+  '/etc/init.d/tachyon' 'service tachyon-core' 'nft add' 'nft flush'
 do
   if grep -q -- "$forbidden" "$CONTROLLER_UC"; then
     fail "event_controller.uc performs a repair action ($forbidden); observation must not heal"

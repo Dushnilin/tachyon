@@ -18,7 +18,14 @@ try {
   process.exit(1);
 }
 
-const engines = ['zapret2', 'zapret', 'byedpi'];
+const engines = ['desync'];
+const removed = ['zapret2', 'zapret', 'byedpi'];
+for (const oldEng of removed) {
+  if (Object.prototype.hasOwnProperty.call(data, oldEng)) {
+    console.error(`removed engine array must not exist in dpi-presets.json: ${oldEng}`);
+    process.exit(1);
+  }
+}
 const ids = new Map();
 let total = 0;
 

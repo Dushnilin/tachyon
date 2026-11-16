@@ -8,8 +8,6 @@ let read_stdin = common.read_stdin;
 let read_json_file = common.read_json_file;
 let array_or_empty = common.array_or_empty;
 let write_json = common.write_json;
-let bool_value = common.bool_value;
-let bool_arg = bool_value;
 
 function int_arg(value) {
     value = as_string(value);
@@ -42,35 +40,6 @@ function stdin_first_line_version_field() {
     let field = first_field(replace(line, /^.*version[ \t]*/, ""));
     if (field != "")
         print(field, "\n");
-}
-
-function byedpi_restart_count_file(path) {
-    let data = fs.readfile(path);
-    let count = 0;
-
-    if (data != null)
-        for (let line in split(data, "\n"))
-            if (match(as_string(line), /ciadpi for rule .* exited with code/) != null)
-                count++;
-
-    print(count, "\n");
-}
-
-function byedpi_validation_result(valid, message, needle) {
-    let needles = [];
-    if (!bool_arg(valid)) {
-        for (let line in split(read_stdin(), "\n")) {
-            if (line != "")
-                push(needles, line);
-        }
-    }
-
-    write_json({
-        valid: bool_arg(valid),
-        message: as_string(message),
-        needle: as_string(needle),
-        needles
-    });
 }
 
 function has_socks_outbound(config_path, tag, address, port) {
@@ -136,9 +105,7 @@ function find_tagged_item(items, tag) {
 function tagged_runtime_summary(config_path, section_name, tag) {
     let config = read_json_file(config_path);
     let item = find_tagged_item(config && config[section_name], tag);
-    // The same tag lives in a different top-level section depending on the
-    // core: AWG is an inbound on extended but an endpoint on lx /
-    // tachyon-core, so an inbound asked for by tag may answer from endpoints.
+    // AWG is an endpoint in tachyon-core, so an inbound asked for by tag may answer from endpoints.
     if (item == null && section_name == "inbounds")
         item = find_tagged_item(config && config.endpoints, tag);
 
@@ -167,127 +134,12 @@ function has_route_rule_for_inbound(config_path, inbound) {
     return false;
 }
 
-function byedpi_status(args) {
-    write_json({
-        installed: bool_arg(args[0]),
-        package_installed: bool_arg(args[1]),
-        provider_available: bool_arg(args[2]),
-        provider_path: as_string(args[3]),
-        version: as_string(args[4]),
-        configured: bool_arg(args[5]),
-        enabled_rule_count: int_arg(args[6]),
-        expected_process_count: int_arg(args[7]),
-        running_process_count: int_arg(args[8]),
-        supervisor_process_count: int_arg(args[9]),
-        restart_count: int_arg(args[10]),
-        runtime_unstable: bool_arg(args[11]),
-        standalone_service_enabled: bool_arg(args[12]),
-        standalone_service_running: bool_arg(args[13]),
-        listen_address: as_string(args[14]),
-        port_base: int_arg(args[15]),
-        outbounds_configured: bool_arg(args[16]),
-        routes_configured: bool_arg(args[17]),
-        ready: bool_arg(args[18]),
-        conflict: bool_arg(args[19]),
-        status_message: as_string(args[20])
-    });
-}
-
-function byedpi_check(installed, package_installed, provider_path) {
-    write_json({
-        byedpi_installed: bool_arg(installed),
-        byedpi_package_installed: bool_arg(package_installed),
-        byedpi_provider_path: as_string(provider_path)
-    });
-}
-
-function zapret_status(args) {
-    write_json({
-        installed: bool_arg(args[0]),
-        package_installed: bool_arg(args[1]),
-        provider_available: bool_arg(args[2]),
-        provider_path: as_string(args[3]),
-        files_available: bool_arg(args[4]),
-        ipset_available: bool_arg(args[5]),
-        version: as_string(args[6]),
-        configured: bool_arg(args[7]),
-        enabled_rule_count: int_arg(args[8]),
-        expected_process_count: int_arg(args[9]),
-        running_process_count: int_arg(args[10]),
-        supervisor_process_count: int_arg(args[11]),
-        standalone_service_enabled: bool_arg(args[12]),
-        standalone_service_running: bool_arg(args[13]),
-        standalone_config_present: bool_arg(args[14]),
-        standalone_conflict: bool_arg(args[15]),
-        luci_app_installed: bool_arg(args[16]),
-        queue_base: int_arg(args[17]),
-        queue_range_end: int_arg(args[18]),
-        queue_overlap: bool_arg(args[19]),
-        legacy_runtime_present: bool_arg(args[20]),
-        ready: bool_arg(args[21]),
-        conflict: bool_arg(args[22]),
-        outbounds_configured: bool_arg(args[23]),
-        routes_configured: bool_arg(args[24]),
-        status_message: as_string(args[25])
-    });
-}
-
-function zapret_check(installed, package_installed, provider_path) {
-    write_json({
-        zapret_installed: bool_arg(installed),
-        zapret_package_installed: bool_arg(package_installed),
-        zapret_provider_path: as_string(provider_path)
-    });
-}
-
-function zapret2_status(args) {
-    write_json({
-        installed: bool_arg(args[0]),
-        package_installed: bool_arg(args[1]),
-        provider_available: bool_arg(args[2]),
-        provider_path: as_string(args[3]),
-        files_available: bool_arg(args[4]),
-        ipset_available: bool_arg(args[5]),
-        version: as_string(args[6]),
-        configured: bool_arg(args[7]),
-        enabled_rule_count: int_arg(args[8]),
-        expected_process_count: int_arg(args[9]),
-        running_process_count: int_arg(args[10]),
-        supervisor_process_count: int_arg(args[11]),
-        standalone_service_enabled: bool_arg(args[12]),
-        standalone_service_running: bool_arg(args[13]),
-        standalone_config_present: bool_arg(args[14]),
-        standalone_conflict: bool_arg(args[15]),
-        luci_app_installed: bool_arg(args[16]),
-        queue_base: int_arg(args[17]),
-        queue_range_end: int_arg(args[18]),
-        queue_overlap: bool_arg(args[19]),
-        ready: bool_arg(args[20]),
-        conflict: bool_arg(args[21]),
-        outbounds_configured: bool_arg(args[22]),
-        routes_configured: bool_arg(args[23]),
-        status_message: as_string(args[24])
-    });
-}
-
-function zapret2_check(installed, package_installed, provider_path) {
-    write_json({
-        zapret2_installed: bool_arg(installed),
-        zapret2_package_installed: bool_arg(package_installed),
-        zapret2_provider_path: as_string(provider_path)
-    });
-}
-
 let mode = ARGV[0] || "";
 
-if (mode == "byedpi-validation")
-    byedpi_validation_result(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "stdin-first-nonempty-field")
+if (mode == "stdin-first-nonempty-field")
     stdin_first_nonempty_field();
 else if (mode == "stdin-first-line-version-field")
     stdin_first_line_version_field();
-else if (mode == "byedpi-restart-count-file")
-    byedpi_restart_count_file(ARGV[1]);
 else if (mode == "has-socks-outbound")
     exit(has_socks_outbound(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "has-direct-mark-outbound")
@@ -300,18 +152,6 @@ else if (mode == "endpoint-summary")
     tagged_runtime_summary(ARGV[1], "endpoints", ARGV[2]);
 else if (mode == "has-route-rule-for-inbound")
     exit(has_route_rule_for_inbound(ARGV[1], ARGV[2]) ? 0 : 1);
-else if (mode == "byedpi-status")
-    byedpi_status(slice(ARGV, 1));
-else if (mode == "byedpi-check")
-    byedpi_check(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "zapret-status")
-    zapret_status(slice(ARGV, 1));
-else if (mode == "zapret-check")
-    zapret_check(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "zapret2-status")
-    zapret2_status(slice(ARGV, 1));
-else if (mode == "zapret2-check")
-    zapret2_check(ARGV[1], ARGV[2], ARGV[3]);
 else {
     warn("Usage: providers/status.uc <operation> ...\n");
     exit(1);

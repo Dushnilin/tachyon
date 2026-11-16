@@ -1,5 +1,4 @@
 import { TachyonShellMethods } from '../methods';
-import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import { logger } from './logger.service';
 import { store, StoreType } from './store.service';
 
@@ -11,28 +10,11 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   tachyon_commit_sha: '',
   tachyon_latest_version: _('unknown'),
   luci_app_version: _('unknown'),
-  sing_box_version: _('unknown'),
-  sing_box_extended: 0,
-  sing_box_tiny: 0,
-  sing_box_compressed: 0,
-  sing_box_lx: 0,
-  sing_box_tachyon_core: 0,
-  sing_box_fptn: 0,
-  sing_box_tailscale: 1,
-  sing_box_cert_pin: 0,
-  sing_box_repo_url: '',
-  zapret_version: _('unknown'),
-  zapret_installed: 0,
-  zapret2_version: _('unknown'),
-  zapret2_installed: 0,
-  byedpi_version: _('unknown'),
-  byedpi_installed: 0,
-  wdtt_version: _('unknown'),
-  wdtt_installed: 0,
-  olcrtc_version: _('unknown'),
-  olcrtc_installed: 0,
-  tailscale_version: _('unknown'),
-  tailscale_installed: 0,
+  tachyon_core_version: _('unknown'),
+  tachyon_core_fptn: 0,
+  tachyon_core_tailscale: 1,
+  tachyon_core_cert_pin: 1,
+  tachyon_core_repo_url: '',
   server_inbounds_enabled_count: -1,
   openwrt_version: _('unknown'),
   device_model: _('unknown'),
@@ -84,16 +66,15 @@ export async function ensureSystemInfo({
       }
 
       if (systemInfo.success) {
-        const nextSystemInfo: StoreType['diagnosticsSystemInfo'] =
-          normalizeSingBoxVariantFields({
-            ...UNKNOWN_SYSTEM_INFO,
-            loading: false,
-            loaded: true,
-            providerInfoLoaded: true,
-            server_inbounds_enabled_count:
-              currentSystemInfo.server_inbounds_enabled_count,
-            ...systemInfo.data,
-          });
+        const nextSystemInfo: StoreType['diagnosticsSystemInfo'] = {
+          ...UNKNOWN_SYSTEM_INFO,
+          loading: false,
+          loaded: true,
+          providerInfoLoaded: true,
+          server_inbounds_enabled_count:
+            currentSystemInfo.server_inbounds_enabled_count,
+          ...systemInfo.data,
+        };
 
         store.set({
           diagnosticsSystemInfo: nextSystemInfo,

@@ -26,9 +26,9 @@ function core_url_module_or_null() {
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/tachyon-core";
-const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
-const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
+const TMP_TACHYON_CORE_FOLDER = getenv("TMP_TACHYON_CORE_FOLDER") || "/tmp/tachyon-core";
+const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/rulesets";
+const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/subscriptions";
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update";
 const TACHYON_SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-links";
@@ -45,17 +45,9 @@ const TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE
 const TACHYON_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || TACHYON_RUNTIME_STATE_DIR + "/reload.pending";
 const TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE = getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE") || TACHYON_RUNTIME_STATE_DIR + "/deferred-sections";
 const TACHYON_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
-const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
-const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
-let default_zapret2_bin = "/opt/zapret2/nfq2/nfqws2";
-for (let b in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]) {
-    if (fs.stat(b) != null) { default_zapret2_bin = b; break; }
-}
-const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || default_zapret2_bin;
-const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
+const CORE_SERVICE_MIXED_INBOUND_ADDRESS = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
+const CORE_SERVICE_MIXED_INBOUND_PORT = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT") || "4534";
+const CORE_VERSION_STATE_FILE = getenv("TACHYON_CORE_VERSION_FILE") || "/etc/tachyon/tachyon-core-version";
 
 function read_stdin() {
     let data = fs.readfile("/dev/stdin");
@@ -543,7 +535,7 @@ function user_agent_supported(user_agent, default_user_agent) {
         return false;
     if (user_agent == default_user_agent || user_agent == "offline")
         return true;
-    if (index(user_agent, "sing-box") == 0 || index(user_agent, "tachyon") == 0)
+    if (index(user_agent, "tachyon") == 0)
         return true;
     if (auto_user_agents[user_agent] == true)
         return true;
@@ -779,7 +771,7 @@ function chmod_path(path, mode) {
 }
 
 function ensure_runtime_dirs() {
-    ensure_dir(TMP_SING_BOX_FOLDER);
+    ensure_dir(TMP_TACHYON_CORE_FOLDER);
     ensure_dir(TMP_RULESET_FOLDER);
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     ensure_dir(TACHYON_RUNTIME_STATE_DIR);
@@ -1147,18 +1139,18 @@ function file_executable(path) {
     return (int(stat.mode) & 73) != 0;
 }
 
-function sing_box_service_running() {
-    return command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/state.uc", "sing-box-service-running" ]);
+function core_service_running() {
+    return command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/state.uc", "tachyon-core-service-running" ]);
 }
 
 function provider_action_is_available(action) {
-    if (action == "byedpi")
-        return file_executable(BYEDPI_BIN);
-    if (action == "zapret")
-        return file_executable(ZAPRET_PROVIDER_NFQWS_BIN);
-    if (action == "zapret2")
-        return file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN);
-    return false;
+    action = as_string(action);
+    return action == "fptn" || action == "awg" || action == "warp" ||
+        action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
+        action == "sudoku" || action == "masque" || action == "openvpn" || action == "openconnect" ||
+        action == "tewfai" || action == "csqtt" || action == "wdtt" || action == "trusttunnel" ||
+        action == "mtproto" || action == "shadowtls" || action == "desync" || action == "chain" ||
+        action == "tailscale" || action == "group";
 }
 
 function section_current_usable_cache_by_name(sections, section, default_user_agent) {
@@ -1883,25 +1875,24 @@ function append_available_cached_metadata(array_path, section, source_index, sou
     return length(array_or_empty(read_json(array_path))) > before;
 }
 
-function sing_box_version_from_output(output) {
+function core_version_from_output(output) {
     let first = split(as_string(output), "\n")[0] || "";
     let fields = whitespace_values(first);
     return length(fields) > 0 ? fields[length(fields) - 1] : "";
 }
 
-function get_sing_box_version() {
-    let version_state = trim(as_string(fs.readfile(SB_VERSION_STATE_FILE)));
+function get_core_version() {
+    let version_state = trim(as_string(fs.readfile(CORE_VERSION_STATE_FILE)));
     if (version_state != "")
         return version_state;
 
-    let bin = command_success_from_args([ "sh", "-c", "command -v tachyon-core" ]) ? "tachyon-core" :
-        (command_success_from_args([ "sh", "-c", "command -v sing-box" ]) ? "sing-box" : "");
+    let bin = command_success_from_args([ "sh", "-c", "command -v tachyon-core" ]) ? "tachyon-core" : "";
     if (bin == "")
         return "";
 
-    let v = sing_box_version_from_output(command_output_from_args([ bin, "version" ]));
+    let v = core_version_from_output(command_output_from_args([ bin, "version" ]));
     if (v != "")
-        write_file(SB_VERSION_STATE_FILE, v + "\n");
+        write_file(CORE_VERSION_STATE_FILE, v + "\n");
     return v;
 }
 
@@ -1910,8 +1901,8 @@ function get_subscription_user_agent(custom_user_agent) {
     if (custom_user_agent != "")
         return custom_user_agent;
 
-    let version = get_sing_box_version();
-    return "sing-box/" + (version != "" ? version : "unknown");
+    let version = get_core_version();
+    return "tachyon-core/" + (version != "" ? version : "unknown");
 }
 
 function user_agent_candidates(configured_user_agent, preferred_user_agent, default_user_agent) {
@@ -2234,24 +2225,24 @@ function get_subscription_download_proxy_address(section_name_value, sections, p
 
     let is_self = (download_section == as_string(section_name_value));
 
-    if (!sing_box_service_running()) {
+    if (!core_service_running()) {
         if (phase == "startup")
-            log_message("Subscription source for rule '" + section_name_value + "' is configured to download via rule '" + download_section + "', but sing-box is not running yet; downloading it directly during startup", "warn");
+            log_message("Subscription source for rule '" + section_name_value + "' is configured to download via rule '" + download_section + "', but tachyon-core is not running yet; downloading it directly during startup", "warn");
         else
-            log_message("Subscription source for rule '" + section_name_value + "' is configured to download via rule '" + download_section + "', but sing-box service proxy is not running; downloading it directly", "warn");
+            log_message("Subscription source for rule '" + section_name_value + "' is configured to download via rule '" + download_section + "', but tachyon-core service proxy is not running; downloading it directly", "warn");
         return "";
     }
 
-    let port = connections.subscription_download_target_port(sections, download_section, int(SB_SERVICE_MIXED_INBOUND_PORT));
+    let port = connections.subscription_download_target_port(sections, download_section, int(CORE_SERVICE_MIXED_INBOUND_PORT));
     if (port <= 0) {
         if (is_self)
-            port = int(SB_SERVICE_MIXED_INBOUND_PORT);
+            port = int(CORE_SERVICE_MIXED_INBOUND_PORT);
         else
             return "";
     }
 
-    let address = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(port);
-    // Verify the proxy port is actually accepting connections — the sing-box
+    let address = CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(port);
+    // Verify the proxy port is actually accepting connections — the tachyon-core
     // process may be running but the mixed inbound not yet ready after a
     // component update restart.
     let probe_status = command_status_from_args([
@@ -2326,7 +2317,7 @@ function finalize_downloaded_subscription_cache(
     if (file_nonempty(subscription_json_path) && parser.runtime_outbounds_equal(normalized_tmpfile, subscription_json_path)) {
         // Keep the current file and running outbound ordering. The newly downloaded file
         // differs only in provider node ordering or metadata ignored by runtime comparison,
-        // neither of which should churn the on-disk file or trigger a sing-box reload.
+        // neither of which should churn the on-disk file or trigger a tachyon-core reload.
         unlink_path(normalized_tmpfile);
 
         write_text_if_changed(subscription_url_cache_path, subscription_url);
@@ -2512,11 +2503,11 @@ function try_fetch_subscription_with_core(
     let normalized_ok = false;
     if (!requires_ucode && type(full_obj.outbounds) == "array" && length(full_obj.outbounds) > 0) {
         let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
-        let outbounds = parser.normalize_sing_box_json_outbounds(full_obj.outbounds, fallback_peer);
+        let outbounds = parser.normalize_core_json_outbounds(full_obj.outbounds, fallback_peer);
         if (length(outbounds) > 0) {
             let norm_payload = {
                 version: 1,
-                format: "sing-box-json",
+                format: "tachyon-core-json",
                 outbounds: outbounds
             };
             if (common.write_json_file(normalized_tmpfile, norm_payload) && parser.validate_subscription(normalized_tmpfile))
@@ -2613,13 +2604,13 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         unlink_path(metadata_tmpfile);
 
         let effective_hwid = get_subscription_hwid(subscription_hwid);
-        let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
-        let primary_proxy = (service_proxy_address_value == "" && prefer_fallback_proxy && sing_box_service_running())
+        let fallback_proxy = CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + CORE_SERVICE_MIXED_INBOUND_PORT;
+        let primary_proxy = (service_proxy_address_value == "" && prefer_fallback_proxy && core_service_running())
             ? fallback_proxy
             : service_proxy_address_value;
         let download_status = download_subscription(subscription_url, raw_tmpfile, primary_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
         let direct_transport_failed = (primary_proxy == "") ? _last_download_transport_failed : true;
-        if (download_status != 0 && primary_proxy == "" && service_proxy_address_value == "" && sing_box_service_running()) {
+        if (download_status != 0 && primary_proxy == "" && service_proxy_address_value == "" && core_service_running()) {
             if (download_status == 22 && subscription_user_agent == "") {
                 // Try the other direct client profiles before a potentially
                 // slow proxy retry. Keep proxy fallback for IP-based rejection.
@@ -2728,8 +2719,8 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         if (core_res >= 0)
             return core_res;
     }
-    if (deferred_proxy_fallback && sing_box_service_running()) {
-        let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+    if (deferred_proxy_fallback && core_service_running()) {
+        let fallback_proxy = CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + CORE_SERVICE_MIXED_INBOUND_PORT;
         log_message("Direct subscription client profiles failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
         return download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path,
             subscription_url_cache_path, fallback_proxy, subscription_user_agent, subscription_hwid,
@@ -3364,7 +3355,7 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
 
     if (phase == "startup" || phase == "runtime") {
         if (subscription_bootstrap_download_section_is_ready(sections, state.startup_blocked_sections, get_subscription_user_agent("")))
-            log_message("Starting temporarily without subscription-only rule(s): " + state.startup_blocked_sections + ". They will be retried through the service proxy after sing-box starts", "warn");
+            log_message("Starting temporarily without subscription-only rule(s): " + state.startup_blocked_sections + ". They will be retried through the service proxy after tachyon-core starts", "warn");
         else
             log_message("Starting temporarily without unavailable subscription-only rule(s): " + state.startup_blocked_sections + ". Other rules remain active and failed rules will apply fail_policy / retry in background", "warn");
         write_file(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE, state.startup_blocked_sections + "\n");
@@ -3396,7 +3387,7 @@ function mark_pending_subscription_recovery_reload() {
 }
 
 // A recovered subscription cache only needs config.json regenerated and pushed
-// into the running sing-box, which `updates.uc subscription-deferred-recovery-
+// into the running tachyon-core, which `updates.uc subscription-deferred-recovery-
 // apply` does in place. Escalating to `/etc/init.d/tachyon reload` walked the
 // whole validate/capture/plan pipeline and restarted both helper workers, so a
 // background bootstrap retry could take the router's proxy down for minutes
@@ -3466,7 +3457,7 @@ function worker_env() {
     return {
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
-        TMP_SING_BOX_FOLDER,
+        TMP_TACHYON_CORE_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
         TACHYON_RUNTIME_STATE_DIR,
@@ -3484,13 +3475,9 @@ function worker_env() {
         TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR,
         TACHYON_PENDING_RELOAD_FILE,
         TACHYON_SERVICE_INIT,
-        SB_SERVICE_MIXED_INBOUND_ADDRESS,
-        SB_SERVICE_MIXED_INBOUND_PORT,
-        SB_VARIANT_STATE_FILE,
-        SB_VERSION_STATE_FILE,
-        ZAPRET_PROVIDER_NFQWS_BIN,
-        ZAPRET2_PROVIDER_NFQWS2_BIN,
-        BYEDPI_BIN
+        TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS: CORE_SERVICE_MIXED_INBOUND_ADDRESS,
+        TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT: CORE_SERVICE_MIXED_INBOUND_PORT,
+        TACHYON_CORE_VERSION_FILE: CORE_VERSION_STATE_FILE
     };
 }
 
@@ -3533,10 +3520,10 @@ function run_deferred_subscription_bootstrap(deferred_sections) {
     if (deferred_sections == "")
         return;
 
-    log_message("Waiting for sing-box service proxy before retrying deferred subscription rule(s): " + deferred_sections, "info");
+    log_message("Waiting for tachyon-core service proxy before retrying deferred subscription rule(s): " + deferred_sections, "info");
     let process_ready = false;
     for (let attempt = 1; attempt <= 10; attempt++) {
-        if (sing_box_service_running()) {
+        if (core_service_running()) {
             process_ready = true;
             break;
         }
@@ -3544,16 +3531,16 @@ function run_deferred_subscription_bootstrap(deferred_sections) {
     }
 
     if (!process_ready) {
-        log_message("sing-box service proxy did not become ready in time; deferred subscription rule(s) will remain disabled until the next successful subscription update", "warn");
+        log_message("tachyon-core service proxy did not become ready in time; deferred subscription rule(s) will remain disabled until the next successful subscription update", "warn");
         start_deferred_subscription_bootstrap_retry_worker(deferred_sections);
         return;
     }
 
-    // Wait for the proxy port to actually accept TCP connections — the sing-box
+    // Wait for the proxy port to actually accept TCP connections — the tachyon-core
     // process may be running but the mixed inbound port not yet ready. Without
     // this check, the deferred download falls back to a direct connection that
     // may fail for subscription URLs only reachable through the proxy.
-    let proxy_address = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+    let proxy_address = CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + CORE_SERVICE_MIXED_INBOUND_PORT;
     let port_ready = false;
     for (let attempt = 1; attempt <= 10; attempt++) {
         let probe = command_status_from_args([
@@ -3596,8 +3583,8 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
         attempts++;
         let sleep_sec = attempts <= 2 ? 30 : (attempts <= 5 ? 60 : (attempts <= 10 ? 120 : 300));
         system("sleep " + sleep_sec);
-        if (!sing_box_service_running()) {
-            log_message("Stopping subscription bootstrap retry worker because sing-box is not running", "warn");
+        if (!core_service_running()) {
+            log_message("Stopping subscription bootstrap retry worker because tachyon-core is not running", "warn");
             break;
         }
 

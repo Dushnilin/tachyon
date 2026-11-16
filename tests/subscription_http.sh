@@ -82,7 +82,7 @@ if (link_tls != "https://secure.net:443?sni=sni.secure.net&insecure=1#test-https
 }
 ' || fail "HTTP/HTTPS serialization failed"
 
-# 3. Test UDP reject rule generation for HTTP outbound to prevent sing-box crash
+# 3. Test UDP reject rule generation for HTTP outbound to prevent tachyon-core crash
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
   "settings": {

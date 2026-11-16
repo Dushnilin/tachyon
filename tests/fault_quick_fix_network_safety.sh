@@ -35,6 +35,7 @@ exit 0
 EOF
 chmod +x "$WORK_DIR/bin/ln"
 export PATH="$WORK_DIR/bin:$PATH"
+export TACHYON_DOCTOR_FIXES_FILE="$WORK_DIR/doctor_fixes.json"
 
 run_fix() {
     : >"$LN_LOG"

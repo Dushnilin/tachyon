@@ -25,9 +25,9 @@ function core_url_module_or_null() {
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/tachyon-core";
-const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
-const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
+const TMP_TACHYON_CORE_FOLDER = getenv("TMP_TACHYON_CORE_FOLDER") || "/tmp/tachyon-core";
+const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/rulesets";
+const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/subscriptions";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const LIST_UPDATE_STATE_FILE = getenv("TACHYON_LIST_UPDATE_STATE_FILE") || RUNTIME_STATE_DIR + "/list-update.timestamp";
 const LIST_UPDATE_BACKOFF_FILE = getenv("TACHYON_LIST_UPDATE_BACKOFF_FILE") || RUNTIME_STATE_DIR + "/list-update.backoff";
@@ -75,9 +75,8 @@ const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || "tachyon_discord_
 const NFT_DISCORD6_SET_NAME = getenv("NFT_DISCORD6_SET_NAME") || "tachyon_discord_subnets6";
 const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "tachyon_interfaces";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x04000000";
-const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
-const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const CORE_SERVICE_MIXED_INBOUND_ADDRESS = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
+const CORE_SERVICE_MIXED_INBOUND_PORT = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT") || "4534";
 const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release";
 const TACHYON_LISTS_SUBNETS_BASE = getenv("TACHYON_LISTS_SUBNETS_URL") || "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets";
 const BUILTIN_SUBNET_URLS = {
@@ -105,7 +104,7 @@ const BUILTIN_SUBNET_URLS = {
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
-let singbox_rulesets_module_value = null;
+let core_rulesets_module_value = null;
 
 function routing_rulesets_module() {
     if (routing_rulesets_module_value == null)
@@ -113,10 +112,10 @@ function routing_rulesets_module() {
     return routing_rulesets_module_value;
 }
 
-function singbox_rulesets_module() {
-    if (singbox_rulesets_module_value == null)
-        singbox_rulesets_module_value = require("tachyon_core.rulesets");
-    return singbox_rulesets_module_value;
+function core_rulesets_module() {
+    if (core_rulesets_module_value == null)
+        core_rulesets_module_value = require("tachyon_core.rulesets");
+    return core_rulesets_module_value;
 }
 
 let as_string = common.as_string;
@@ -658,8 +657,8 @@ function settings_component_update_check_interval(settings) {
 
 function normalize_component_name(component) {
     component = as_string(component);
-    if (component == "sing-box" || component == "singbox" || component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
-        return "sing_box";
+    if (component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
+        return "tachyon-core";
     if (component == "tachyon")
         return "tachyon";
     if (component == "torrserver_direct" || component == "torrserver-direct" || component == "torrserver")
@@ -669,8 +668,7 @@ function normalize_component_name(component) {
 
 function valid_component_name(component) {
     component = normalize_component_name(component);
-    return component == "tachyon" || component == "sing_box" || component == "zapret" ||
-        component == "zapret2" || component == "byedpi" || component == "wdtt" || component == "olcrtc" || component == "tailscale" || component == "torrserver_direct";
+    return component == "tachyon" || component == "tachyon-core" || component == "torrserver_direct";
 }
 
 function settings_component_auto_update_enabled(settings) {
@@ -748,7 +746,6 @@ function auto_update_clash_api_endpoint(settings) {
     if (cfg_opt != "")
         push(candidates, cfg_opt);
     push(candidates, "/etc/tachyon-core/config.json");
-    push(candidates, "/etc/sing-box/config.json");
 
     for (let path in candidates) {
         let cfg = read_json_file(path);
@@ -1470,7 +1467,7 @@ function ensure_subscription_runtime_dirs() {
     let command = command_env({
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
-        TMP_SING_BOX_FOLDER,
+        TMP_TACHYON_CORE_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
         TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
@@ -1638,7 +1635,7 @@ function subscription_worker_env() {
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
         TACHYON_BIN: BIN_PATH,
-        TMP_SING_BOX_FOLDER,
+        TMP_TACHYON_CORE_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
         TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
@@ -1850,15 +1847,7 @@ function cache_component_update_check_result(value, notify_update) {
         (as_string(previous.status) != cached.status ||
             as_string(previous.latest_version) != cached.latest_version ||
             previous_build_key != build_key)) {
-        let notify_component = component;
-        if (component == "sing_box") {
-            let marker = trim(read_file(SB_VARIANT_STATE_FILE));
-            if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-                marker = trim(read_file("/etc/tachyon/sing-box-variant"));
-            if (marker == "tachyon-core")
-                notify_component = "tachyon-core";
-        }
-        log_message("[component-update] " + notify_component + " " + cached.latest_version +
+        log_message("[component-update] " + component + " " + cached.latest_version +
             (cached.status == "outdated_same_release" && build_key != "" ? " (build " + build_key + ")" : ""), "info");
     }
 
@@ -1926,7 +1915,7 @@ function component_update_check_cache() {
     let results = [];
 
     if (enabled) {
-        for (let component in [ "tachyon", "sing_box", "zapret", "zapret2", "byedpi", "wdtt", "olcrtc" ]) {
+        for (let component in [ "tachyon", "tachyon-core" ]) {
             let value = read_json_file(component_update_check_cache_path(component));
             if (component_update_check_result_cacheable(value))
                 push(results, value);
@@ -2295,18 +2284,8 @@ function component_action_log(job_id, offset) {
 function automatic_component_check_names() {
     let result = [ "tachyon" ];
 
-    if (fs.stat("/usr/bin/tachyon-core") != null || fs.stat("/usr/bin/sing-box") != null)
-        push(result, "sing_box");
-    if (module_success([ LIB_DIR + "/providers/zapret/runtime.uc", "installed" ]))
-        push(result, "zapret");
-    if (module_success([ LIB_DIR + "/providers/zapret2/runtime.uc", "installed" ]))
-        push(result, "zapret2");
-    if (module_success([ LIB_DIR + "/providers/byedpi/runtime.uc", "installed" ]))
-        push(result, "byedpi");
-    if (module_success([ LIB_DIR + "/providers/wdtt/runtime.uc", "installed" ]))
-        push(result, "wdtt");
-    if (module_success([ LIB_DIR + "/providers/olcrtc/runtime.uc", "installed" ]))
-        push(result, "olcrtc");
+    if (fs.stat("/usr/bin/tachyon-core") != null)
+        push(result, "tachyon-core");
 
     return result;
 }
@@ -2722,12 +2701,12 @@ function download_via_proxy_section(settings, purpose) {
 }
 
 function service_proxy_port_for_purpose(purpose) {
-    return int(SB_SERVICE_MIXED_INBOUND_PORT) + (as_string(purpose || "lists") == "components" ? 1 : 0);
+    return int(CORE_SERVICE_MIXED_INBOUND_PORT) + (as_string(purpose || "lists") == "components" ? 1 : 0);
 }
 
 function service_proxy_address(settings, purpose) {
     return download_via_proxy_section(settings, purpose) != "" ?
-        SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
+        CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
 }
 
 let _mirror_fail_counts = {};
@@ -3188,7 +3167,7 @@ function apply_domain_ip_list_subnets_to_nft_from_rule(section) {
 function invalidate_domain_ip_reference_cache(reference) {
     // Startup can also fall back to the per-reference cache after reading the
     // section's bundle. Drop that older view only after a successful read.
-    let tag = "inline-custom-" + singbox_rulesets_module().hash12(reference) + "-ruleset";
+    let tag = "inline-custom-" + core_rulesets_module().hash12(reference) + "-ruleset";
     let paths = [ TMP_RULESET_FOLDER + "/" + tag + ".json", TMP_RULESET_FOLDER + "/" + tag + ".srs",
         PERSISTENT_RULESET_DIR + "/" + tag + ".json", PERSISTENT_RULESET_DIR + "/" + tag + ".srs" ];
     remove_files(paths);
@@ -3255,10 +3234,10 @@ function rebuild_domain_ip_lists_from_rule(section, settings) {
 
 function import_community_srs_file(service, settings, skip_flash_persist) {
     service = as_string(service);
-    if (!singbox_rulesets_module().is_community(service))
+    if (!core_rulesets_module().is_community(service))
         return true;
 
-    let url = singbox_rulesets_module().community_url(service);
+    let url = core_rulesets_module().community_url(service);
     let cached_file = TMP_RULESET_FOLDER + "/community-" + service + ".srs";
     let persistent_file = "/etc/tachyon/rulesets/community-" + service + ".srs";
     let cached_trs_file = TMP_RULESET_FOLDER + "/community-" + service + ".trs";
@@ -3268,11 +3247,11 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         return false;
 
     let core_url_mod = core_url_module_or_null();
-    let use_trs = type(singbox_rulesets_module().supports_trs) == "function" &&
-        singbox_rulesets_module().supports_trs();
+    let use_trs = type(core_rulesets_module().supports_trs) == "function" &&
+        core_rulesets_module().supports_trs();
 
-    if (use_trs && type(singbox_rulesets_module().community_trs_urls) == "function") {
-        let trs_base_urls = singbox_rulesets_module().community_trs_urls(service);
+    if (use_trs && type(core_rulesets_module().community_trs_urls) == "function") {
+        let trs_base_urls = core_rulesets_module().community_trs_urls(service);
         let trs_candidates = [];
         for (let tu in trs_base_urls) {
             let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")
@@ -3284,7 +3263,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         for (let trs_url in trs_candidates) {
             if (download_to_file(trs_url, tmpfile, service_proxy_address(settings, "lists")) &&
                 file_nonempty(tmpfile) &&
-                singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
+                core_rulesets_module().is_usable_trs_file(tmpfile)) {
                 let st = fs.stat(tmpfile);
                 let sz = st != null ? int(st.size || 0) : 0;
                 ensure_dir(TMP_RULESET_FOLDER);
@@ -3305,16 +3284,16 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             }
             remove_file(tmpfile);
         }
-        if (type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
-            singbox_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
+        if (type(core_rulesets_module().is_referenceable_trs_file) == "function" &&
+            core_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
             ensure_dir(TMP_RULESET_FOLDER);
             copy_file(persistent_trs_file, cached_trs_file);
             remove_file(cached_file);
             log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
             return true;
         }
-        if (type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
-            singbox_rulesets_module().is_referenceable_trs_file(cached_trs_file)) {
+        if (type(core_rulesets_module().is_referenceable_trs_file) == "function" &&
+            core_rulesets_module().is_referenceable_trs_file(cached_trs_file)) {
             log_message("Keeping existing .trs ruleset in /tmp for " + service + " after download failure", "warn");
             return true;
         }
@@ -3322,8 +3301,8 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
     }
 
     let srs_base_urls = [ url ];
-    let fallback_url = type(singbox_rulesets_module().fallback_community_url) == "function" ?
-        singbox_rulesets_module().fallback_community_url(service) : "";
+    let fallback_url = type(core_rulesets_module().fallback_community_url) == "function" ?
+        core_rulesets_module().fallback_community_url(service) : "";
     if (fallback_url != "" && fallback_url != url)
         push(srs_base_urls, fallback_url);
     let srs_urls = [];
@@ -3345,13 +3324,13 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             let raw = sz_tmp <= 524288 ? fs.readfile(tmpfile) : null;
             let unchanged_verified = raw != null &&
                 common.content_unchanged(cached_file, raw) &&
-                singbox_rulesets_module().srs_file_already_verified(cached_file);
-            if (unchanged_verified || singbox_rulesets_module().is_usable_srs_file(tmpfile)) {
+                core_rulesets_module().srs_file_already_verified(cached_file);
+            if (unchanged_verified || core_rulesets_module().is_usable_srs_file(tmpfile)) {
                 ensure_dir(TMP_RULESET_FOLDER);
                 if (!skip_flash_persist && sz_tmp > 0 && sz_tmp <= 524288) {
                     ensure_dir("/etc/tachyon/rulesets");
                     copy_file(tmpfile, persistent_file);
-                    singbox_rulesets_module().remember_srs_file_verified(persistent_file);
+                    core_rulesets_module().remember_srs_file_verified(persistent_file);
                 } else if (sz_tmp > 524288) {
                     remove_file(persistent_file);
                 }
@@ -3359,7 +3338,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                     common.copy_file_stream(tmpfile, cached_file);
                     remove_file(tmpfile);
                 }
-                singbox_rulesets_module().remember_srs_file_verified(cached_file);
+                core_rulesets_module().remember_srs_file_verified(cached_file);
                 log_message("Successfully cached preset ruleset " + service + (srs_url != url ? " via fallback " + srs_url : ""), "info");
                 downloaded = true;
                 break;
@@ -3372,22 +3351,22 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
     if (downloaded) {
         // Cached successfully
     }
-    else if (use_trs && type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
-             singbox_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
+    else if (use_trs && type(core_rulesets_module().is_referenceable_trs_file) == "function" &&
+             core_rulesets_module().is_referenceable_trs_file(persistent_trs_file)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_trs_file, cached_trs_file);
         log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
     }
-    else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 18)) {
+    else if (core_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 18)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
-        singbox_rulesets_module().remember_srs_file_verified(cached_file);
+        core_rulesets_module().remember_srs_file_verified(cached_file);
         log_message("Using persistent cached ruleset for " + service + " after download failure", "warn");
     }
     else {
         remove_file(persistent_file);
-        if (!singbox_rulesets_module().is_valid_srs_file(cached_file))
-            singbox_rulesets_module().ensure_empty_srs_stub(cached_file);
+        if (!core_rulesets_module().is_valid_srs_file(cached_file))
+            core_rulesets_module().ensure_empty_srs_stub(cached_file);
         log_message("Failed to download preset ruleset " + service + "; preserving fallback stub until next update", "warn");
         ok = false;
     }
@@ -3494,7 +3473,7 @@ function import_remote_lists_from_all_sections(settings) {
         if (length(domain_refs) > 0)
             log_message("Pre-caching remote domain lists from section '" + section_name(section) + "'", "info");
         for (let url in domain_refs) {
-            let extension = singbox_rulesets_module().file_extension(url);
+            let extension = core_rulesets_module().file_extension(url);
             if (extension == "json" || extension == "srs") {
                 log_message("Skipping " + extension + " remote domain list (tachyon-core manages it): " + as_string(url), "debug");
                 continue;
@@ -3507,7 +3486,7 @@ function import_remote_lists_from_all_sections(settings) {
         if (length(subnet_refs) > 0)
             log_message("Pre-caching remote subnet lists from section '" + section_name(section) + "'", "info");
         for (let url in subnet_refs) {
-            let extension = singbox_rulesets_module().file_extension(url);
+            let extension = core_rulesets_module().file_extension(url);
             if (extension == "json") {
                 if (!import_subnets_from_remote_json_file(url, section, settings))
                     ok = false;
@@ -3606,7 +3585,7 @@ function import_all_preset_lists(settings) {
         }
     }
 
-    let community_services = keys(singbox_rulesets_module().COMMUNITY_SERVICES);
+    let community_services = keys(core_rulesets_module().COMMUNITY_SERVICES);
     for (let service in community_services) {
         if (!import_community_srs_file(service, settings, true))
             ok = false;
@@ -3645,20 +3624,20 @@ function import_builtin_subnets_from_rule(section, settings, apply_nft) {
     for (let s in connections.community_lists(section))
         if (!(s in section_services)) push(section_services, s);
     for (let s in connections.rule_sets(section))
-        if (singbox_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
+        if (core_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
     for (let s in connections.rule_sets_with_subnets(section))
-        if (singbox_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
+        if (core_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
     for (let cc in connections.geoip_country_list(section)) {
         let ip_list = "geoip_" + as_string(cc);
-        if (singbox_rulesets_module().is_community(ip_list) && !(ip_list in section_services))
+        if (core_rulesets_module().is_community(ip_list) && !(ip_list in section_services))
             push(section_services, ip_list);
-        if (as_string(cc) == "ru" && singbox_rulesets_module().is_community("geosite_ru") && !("geosite_ru" in section_services))
+        if (as_string(cc) == "ru" && core_rulesets_module().is_community("geosite_ru") && !("geosite_ru" in section_services))
             push(section_services, "geosite_ru");
     }
 
     for (let service in section_services) {
         service = as_string(service);
-        if (!singbox_rulesets_module().is_community(service))
+        if (!core_rulesets_module().is_community(service))
             continue;
 
         if (type(list_update_seen_community_srs) != "object" || list_update_seen_community_srs[service] != true) {
@@ -3854,7 +3833,7 @@ function import_custom_ruleset_subnets_from_remote(url, format, section, label, 
 function cache_refreshed_plain_ruleset(reference, plain_path) {
     if (!valid_plain_list_source(plain_path, true))
         return null;
-    let tag = "inline-custom-" + singbox_rulesets_module().hash12(reference) + "-ruleset";
+    let tag = "inline-custom-" + core_rulesets_module().hash12(reference) + "-ruleset";
     let srs_path = TMP_RULESET_FOLDER + "/" + tag + ".srs";
     let json_path = TMP_RULESET_FOLDER + "/" + tag + ".json";
     let etc_srs = PERSISTENT_RULESET_DIR + "/" + tag + ".srs";
@@ -3914,10 +3893,10 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
     // JSON/SRS/TRS may contain domain/source/logical restrictions owned by core.
     if (list_nft_batch != "") {
         for (let ref in connections.rule_sets(section)) {
-            if (!singbox_rulesets_module().is_plain_list_reference(ref)) continue;
+            if (!core_rulesets_module().is_plain_list_reference(ref)) continue;
             // Remote plain lists were already collected in phase 1.
             if (match(as_string(ref), /^https?:\/\//) != null &&
-                singbox_rulesets_module().is_plain_list_reference(ref)) continue;
+                core_rulesets_module().is_plain_list_reference(ref)) continue;
             if (!(ref in references)) push(references, ref);
         }
     }
@@ -3931,7 +3910,7 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
         reference = as_string(reference);
         log_message("Importing subnets from rule set reference for '" + section_name(section) + "': " + reference, "info");
 
-        let extension = singbox_rulesets_module().file_extension(reference);
+        let extension = core_rulesets_module().file_extension(reference);
         if (match(reference, /^\/.*\.srs$/) != null) {
             if (!import_custom_ruleset_subnets_from_local(reference, "binary", section, "Rule set " + reference))
                 ok = false;
@@ -3946,7 +3925,7 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
                 ok = false;
         }
         else if (match(reference, /^https?:\/\//) != null) {
-            if (extension == "lst" || extension == "txt" || singbox_rulesets_module().is_plain_list_reference(reference)) {
+            if (extension == "lst" || extension == "txt" || core_rulesets_module().is_plain_list_reference(reference)) {
                 let tmpfile = temp_path();
                 if (tmpfile == "") {
                     ok = false;
@@ -3969,7 +3948,7 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
                 }
             }
             else {
-                let format = extension == "json" ? "source" : (extension == "srs" ? "binary" : singbox_rulesets_module().remote_format(reference));
+                let format = extension == "json" ? "source" : (extension == "srs" ? "binary" : core_rulesets_module().remote_format(reference));
                 if (!import_custom_ruleset_subnets_from_remote(reference, format, section, "Rule set " + reference, settings))
                     ok = false;
             }
@@ -3996,7 +3975,7 @@ function update_remote_plain_rulesets_from_rule(section, settings) {
         reference = as_string(reference);
         if (match(reference, /^https?:\/\//) == null)
             continue;
-        if (!singbox_rulesets_module().is_plain_list_reference(reference))
+        if (!core_rulesets_module().is_plain_list_reference(reference))
             continue;
 
         log_message("Updating remote plain rule set for '" + section_name(section) + "': " + reference, "info");
@@ -4039,7 +4018,7 @@ function import_domains_from_remote_domain_lists(section, settings) {
     let ok = true;
     for (let url in references) {
         log_message("Importing domains from URL: " + as_string(url), "info");
-        let extension = singbox_rulesets_module().file_extension(url);
+        let extension = core_rulesets_module().file_extension(url);
         log_message("Detected file extension: '" + extension + "'", "debug");
         if (extension == "json" || extension == "srs") {
             log_message("No update needed - tachyon-core manages updates automatically.", "info");
@@ -4074,7 +4053,7 @@ function import_subnets_from_remote_subnet_lists(section, settings) {
     let ok = true;
     for (let url in references) {
         log_message("Importing subnets from URL: " + as_string(url), "info");
-        let extension = singbox_rulesets_module().file_extension(url);
+        let extension = core_rulesets_module().file_extension(url);
         log_message("Detected file extension: '" + extension + "'", "debug");
         if (extension == "json") {
             log_message("Import subnets from a remote JSON list", "info");
@@ -4121,7 +4100,7 @@ function list_update_pid_end() {
 function service_proxy_is_ready(proxy_address) {
     // Probe the service proxy by attempting a connection through it to a
     // well-known public IP (no DNS resolution required). If the port is not
-    // yet open — e.g., sing-box is still starting after a component update —
+    // yet open — e.g., tachyon-core is still starting after a component update —
     // curl returns exit 7 (CURLE_COULDNT_CONNECT) or 28 (timeout).
     // Any other result means the port is accepting connections.
     let status = command_status(
@@ -4137,7 +4116,7 @@ function service_proxy_is_ready(proxy_address) {
 function dns_probe_passed(proxy_address) {
     if (as_string(proxy_address) != "") {
         // When a service proxy is configured, verify it is actually accepting
-        // TCP connections before proceeding — sing-box may still be starting
+        // TCP connections before proceeding — tachyon-core may still be starting
         // up after a component update or restart and the proxy port may not be
         // ready even though the process is already running.
         let attempt = 1;
@@ -4218,7 +4197,7 @@ function subscription_cache_env() {
     return {
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
-        TMP_SING_BOX_FOLDER,
+        TMP_TACHYON_CORE_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
         TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
@@ -4234,9 +4213,8 @@ function subscription_cache_env() {
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
         TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
         TACHYON_SERVICE_INIT: SERVICE_INIT,
-        SB_SERVICE_MIXED_INBOUND_ADDRESS,
-        SB_SERVICE_MIXED_INBOUND_PORT,
-        SB_VARIANT_STATE_FILE
+        TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS: CORE_SERVICE_MIXED_INBOUND_ADDRESS,
+        TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT: CORE_SERVICE_MIXED_INBOUND_PORT
     };
 }
 
@@ -4273,7 +4251,7 @@ function log_file_lines_from_text(text, level, prefix) {
             log_message(as_string(prefix) + as_string(line), level);
 }
 
-function singbox_runtime_success(args) {
+function tachyon_core_runtime_success(args) {
     let command_args = [ LIB_DIR + "/tachyon_core/runtime.uc" ];
     for (let arg in args)
         push(command_args, arg);
@@ -4386,21 +4364,21 @@ function refresh_remote_rulesets(config_path) {
     return ok;
 }
 
-function reload_singbox_after_list_update(allow_deferred_remote_refresh) {
-    let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
-    if (sing_box_pid == "" || int(sing_box_pid) <= 0)
+function reload_core_after_list_update(allow_deferred_remote_refresh) {
+    let core_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
+    if (core_pid == "" || int(core_pid) <= 0)
         return true;
-    let sing_box_config_path = option(uci_settings(), "config_path", "") || "/etc/tachyon-core/config.json";
-    let sing_box_config_hash_before = file_md5(sing_box_config_path);
-    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ]))
+    let core_config_path = option(uci_settings(), "config_path", "") || "/etc/tachyon-core/config.json";
+    let core_config_hash_before = file_md5(core_config_path);
+    if (!tachyon_core_runtime_success([ "init-config", "0", "1", "1" ]))
         return false;
-    let sing_box_config_hash_after = file_md5(sing_box_config_path);
-    let has_local_rulesets = config_has_local_rulesets(sing_box_config_path);
+    let core_config_hash_after = file_md5(core_config_path);
+    let has_local_rulesets = config_has_local_rulesets(core_config_path);
     let local_rulesets_changed = list_update_local_rulesets_fp_before != null
-        ? (has_local_rulesets && local_rulesets_fingerprint(sing_box_config_path) != list_update_local_rulesets_fp_before)
+        ? (has_local_rulesets && local_rulesets_fingerprint(core_config_path) != list_update_local_rulesets_fp_before)
         : has_local_rulesets;
-    if (sing_box_config_hash_before != sing_box_config_hash_after || local_rulesets_changed) {
-        if (sing_box_config_hash_before != sing_box_config_hash_after)
+    if (core_config_hash_before != core_config_hash_after || local_rulesets_changed) {
+        if (core_config_hash_before != core_config_hash_after)
             log_message("Rulesets updated on disk; reloading tachyon-core with new configuration", "info");
         else
             log_message("Local rulesets refreshed on disk; reloading core runtime to apply updated rules", "info");
@@ -4408,9 +4386,9 @@ function reload_singbox_after_list_update(allow_deferred_remote_refresh) {
         module_success([ PRIORITY_UC, "stop-runtime" ]);
         let ok = service_state_success([
             "reload-core-runtime",
-            sing_box_pid,
-            sing_box_config_hash_before,
-            sing_box_config_hash_after,
+            core_pid,
+            core_config_hash_before,
+            core_config_hash_after,
             "1"
         ]);
         module_success([ PRIORITY_UC, "start-runtime" ]);
@@ -4419,10 +4397,10 @@ function reload_singbox_after_list_update(allow_deferred_remote_refresh) {
         if (!ok)
             return false;
     }
-    // Remote .srs/.json sets are owned by the core, not the plain-list importer.
+    // Remote .srs/.trs/.json sets are owned by the core, not the plain-list importer.
     // Refresh after reload: reloading can restart the core's interval timer,
     // indefinitely postponing downloads when configuration changes frequently.
-    let refreshed = refresh_remote_rulesets(sing_box_config_path);
+    let refreshed = refresh_remote_rulesets(core_config_path);
     return allow_deferred_remote_refresh ? true : refreshed;
 }
 
@@ -4448,8 +4426,8 @@ function list_update() {
     update_list_status(true, null, "starting", "Starting lists update");
 
     let settings = uci_settings();
-    let sing_box_config_path_initial = option(settings, "config_path", "") || "/etc/tachyon-core/config.json";
-    list_update_local_rulesets_fp_before = local_rulesets_fingerprint(sing_box_config_path_initial);
+    let core_config_path_initial = option(settings, "config_path", "") || "/etc/tachyon-core/config.json";
+    list_update_local_rulesets_fp_before = local_rulesets_fingerprint(core_config_path_initial);
     let proxy_address = service_proxy_address(settings, "lists");
     if (!dns_probe_passed(proxy_address)) {
         write_list_update_backoff(now_seconds(), "dns_probe_failed");
@@ -4571,7 +4549,7 @@ function list_update() {
 
     release_runtime_lock(RELOAD_LOCK_DIR);
 
-    if (ok && !reload_singbox_after_list_update(true))
+    if (ok && !reload_core_after_list_update(true))
         ok = false;
 
     if (ok) {
@@ -4693,11 +4671,11 @@ function run_pending_reload_if_requested() {
 }
 
 // Regenerate config.json from the freshly rewritten subscription caches and put
-// the new config in front of sing-box. Shared by the scheduled subscription
+// the new config in front of tachyon-core. Shared by the scheduled subscription
 // update and by the deferred-recovery bootstrap retry, which used to escalate
 // to a full `tachyon reload` (issue #119): the full reload walks
-// validate -> capture-state -> plan -> zapret -> nft -> sing-box, tears down
-// both helper workers and restarts them again, which is exactly the churn that
+// validate -> capture-state -> plan -> nft -> tachyon-core, tears down
+// helper workers and restarts them again, which is exactly the churn that
 // dropped live connections after a subscription update.
 function subscription_runtime_apply_changed(context) {
     log_message("Reloading tachyon-core to apply " + context, "info");
@@ -4708,30 +4686,30 @@ function subscription_runtime_apply_changed(context) {
         return false;
     }
 
-    if (!singbox_runtime_success([ "configure-service" ]))
+    if (!tachyon_core_runtime_success([ "configure-service" ]))
         return false;
-    let sing_box_config_path = option(uci_settings(), "config_path", "");
-    let sing_box_config_hash_before = file_md5(sing_box_config_path);
-    let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
-    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ])) {
+    let core_config_path = option(uci_settings(), "config_path", "");
+    let core_config_hash_before = file_md5(core_config_path);
+    let core_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
+    if (!tachyon_core_runtime_success([ "init-config", "0", "1", "1" ])) {
         log_message("Failed to rebuild tachyon-core configuration after " + context, "error");
         return false;
     }
 
-    // Graceful in-place reload via SIGHUP first: sing-box 1.10+ hot-swaps its
+    // Graceful in-place reload via SIGHUP first: tachyon-core hot-swaps its
     // config without tearing down the process, so active TCP sessions
     // (Telegram, etc.) are preserved. Only a failed SIGHUP escalates to a full
     // restart, and only there do the helper workers have to stand down.
-    let sighup_ok = service_state_success([ "sighup-core-runtime", sing_box_pid_before ]);
+    let sighup_ok = service_state_success([ "sighup-core-runtime", core_pid_before ]);
     if (!sighup_ok) {
         log_message("SIGHUP reload failed; falling back to full tachyon-core restart", "warn");
         module_success([ PRIORITY_UC, "stop-runtime" ]);
         module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
         if (!service_state_success([
             "reload-core-runtime",
-            sing_box_pid_before,
-            sing_box_config_hash_before,
-            file_md5(sing_box_config_path)
+            core_pid_before,
+            core_config_hash_before,
+            file_md5(core_config_path)
         ])) {
             module_success([ PRIORITY_UC, "start-runtime" ]);
             module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
@@ -4746,7 +4724,7 @@ function subscription_runtime_apply_changed(context) {
     // Priority reads the section cache once per worker start, and the cache was
     // just rewritten, so it always has to be restarted after an apply. Its
     // start-runtime stops the previous worker itself. DNS failover is left
-    // alone on the SIGHUP path: it probes the sing-box DNS listener, which
+    // alone on the SIGHUP path: it probes the tachyon-core DNS listener, which
     // stays bound across an in-place reload, and it re-normalizes its state
     // every probe cycle.
     if (!module_success([ PRIORITY_UC, "start-runtime" ])) {
@@ -5031,8 +5009,8 @@ else if (mode == "list-update-if-due")
     list_update_if_due();
 else if (mode == "stop-list-update")
     stop_list_update();
-else if (mode == "reload-singbox-after-list-update")
-    exit(reload_singbox_after_list_update() ? 0 : 1);
+else if (mode == "reload-core-after-list-update")
+    exit(reload_core_after_list_update() ? 0 : 1);
 else if (mode == "list-update-due-status")
     uci_list_update_due_status(ARGV[1], ARGV[2]);
 else if (mode == "list-update-due-status-fixture")

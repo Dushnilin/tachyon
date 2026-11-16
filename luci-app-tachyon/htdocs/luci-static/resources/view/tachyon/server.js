@@ -33,11 +33,7 @@ const ROUTING_SECTION_ACTIONS = [
   "mtproto",
   "chain",
   "tailscale",
-  "byedpi",
-  "zapret",
-  "zapret2",
   "wdtt",
-  "olcrtc",
   "group",
 ];
 const callNetworkInterfaceDump = rpc.declare({
@@ -459,8 +455,8 @@ const PORT_PROTOCOLS = [
   "masque",
   "openconnect",
   "wdtt",
+  "mtproto",
 ];
-const EXTENDED_PORT_PROTOCOLS = ["mtproto"];
 const PASSWORD_PROTOCOLS = [
   "shadowsocks",
   "socks",
@@ -502,8 +498,6 @@ const CORE_SERVER_PROTOCOL_LABELS = {
   masque: "MASQUE",
   openconnect: "OpenConnect",
   wdtt: "CSQTT / WDTT v3",
-};
-const EXTENDED_PROTOCOL_LABELS = {
   mtproto: "MTProto",
 };
 const CUSTOM_PROTOCOL_LABELS = {
@@ -515,7 +509,6 @@ const TAILSCALE_PROTOCOL_LABELS = {
 const PROTOCOL_LABELS = {
   ...BASE_PROTOCOL_LABELS,
   ...CORE_SERVER_PROTOCOL_LABELS,
-  ...EXTENDED_PROTOCOL_LABELS,
   ...CUSTOM_PROTOCOL_LABELS,
   ...TAILSCALE_PROTOCOL_LABELS,
 };
@@ -636,34 +629,21 @@ function addOptionValue(option, value, label) {
 }
 
 function normalizeServerCapabilities(capabilities) {
-  const singBoxExtended = Boolean(capabilities?.singBoxExtended);
-  const singBoxTachyonCore = Boolean(capabilities?.singBoxTachyonCore);
-
   return {
-    singBoxExtended,
-    singBoxTachyonCore,
-    singBoxTailscale: capabilities?.singBoxTailscale !== false,
-    // Server-side (inbound) XHTTP is only implemented in tachyon-core;
-    // sing-box-lx and sing-box-extended only include v2rayxhttp.Client
-    // (outbound) and fail `sing-box check` with
-    // `create server transport: xhttp: unknown transport type: xhttp`.
-    singBoxXhttp: singBoxTachyonCore,
+    tailscaleAvailable: capabilities?.tachyonCoreTailscale !== false,
   };
 }
 
 function getDefaultProtocolForCapabilities(capabilities) {
-  return normalizeServerCapabilities(capabilities).singBoxTailscale
+  return normalizeServerCapabilities(capabilities).tailscaleAvailable
     ? DEFAULT_SERVER_PROTOCOL
     : FALLBACK_SERVER_PROTOCOL;
 }
 
-function populateProtocolValues(option, capabilities) {
-  const normalized = normalizeServerCapabilities(capabilities);
-
+function populateProtocolValues(option, _capabilities) {
   resetOptionValues(option);
 
-  // Tailscale is offered unconditionally: the native tailscaled mode does not
-  // depend on the sing-box build, only on the installable Tailscale component.
+  // Tailscale is built into tachyon-core.
   Object.entries(TAILSCALE_PROTOCOL_LABELS).forEach(([value, label]) => {
     addOptionValue(option, value, label);
   });
@@ -672,29 +652,16 @@ function populateProtocolValues(option, capabilities) {
     addOptionValue(option, value, label);
   });
 
-  if (normalized.singBoxExtended || normalized.singBoxTachyonCore) {
-    Object.entries(CORE_SERVER_PROTOCOL_LABELS).forEach(([value, label]) => {
-      addOptionValue(option, value, label);
-    });
-  } else {
-    addOptionValue(option, "tuic", "TUIC");
-    addOptionValue(option, "shadowtls", "ShadowTLS");
-    addOptionValue(option, "http", "HTTP");
-    addOptionValue(option, "mixed", "Mixed (SOCKS/HTTP)");
-  }
-
-  if (normalized.singBoxExtended) {
-    Object.entries(EXTENDED_PROTOCOL_LABELS).forEach(([value, label]) => {
-      addOptionValue(option, value, label);
-    });
-  }
+  Object.entries(CORE_SERVER_PROTOCOL_LABELS).forEach(([value, label]) => {
+    addOptionValue(option, value, label);
+  });
 
   Object.entries(CUSTOM_PROTOCOL_LABELS).forEach(([value, label]) => {
     addOptionValue(option, value, label);
   });
 }
 
-function populateTransportValues(option, supportsXhttp) {
+function populateTransportValues(option) {
   resetOptionValues(option);
 
   addOptionValue(option, "tcp", "TCP");
@@ -702,10 +669,7 @@ function populateTransportValues(option, supportsXhttp) {
   addOptionValue(option, "grpc", "gRPC");
   addOptionValue(option, "http", "HTTP");
   addOptionValue(option, "httpupgrade", "HTTPUpgrade");
-
-  if (supportsXhttp) {
-    addOptionValue(option, "xhttp", "XHTTP");
-  }
+  addOptionValue(option, "xhttp", "XHTTP");
 }
 
 function applyServerCapabilities(sectionRef, capabilities) {
@@ -724,7 +688,7 @@ function applyServerCapabilities(sectionRef, capabilities) {
   }
 
   if (options.transport) {
-    populateTransportValues(options.transport, normalized.singBoxXhttp);
+    populateTransportValues(options.transport);
   }
 }
 
@@ -1494,7 +1458,6 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === "tailscale") {
-    setDefault(sectionId, "tailscale_mode", "singbox");
     setDefault(
       sectionId,
       "tailscale_control_url",
@@ -4103,7 +4066,6 @@ function syncProtocolWidgetValues(sectionId, _protocol) {
     "awg_h2",
     "awg_h3",
     "awg_h4",
-    "tailscale_mode",
     "tailscale_control_url",
     "tailscale_hostname",
     "tailscale_advertise_exit_node",
@@ -5019,7 +4981,6 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "wdtt_network", "10.66.0.1/16");
       setWidgetValue(sectionId, "wdtt_mtu", "1350");
     } else if (protocol === "tailscale") {
-      setWidgetValue(sectionId, "tailscale_mode", "singbox");
       setWidgetValue(
         sectionId,
         "tailscale_control_url",
@@ -5142,13 +5103,8 @@ function addStreamDepends(option) {
   STREAM_PROTOCOLS.forEach((protocol) => option.depends("protocol", protocol));
 }
 
-function addPortProtocolDepends(option, singBoxExtended) {
+function addPortProtocolDepends(option) {
   PORT_PROTOCOLS.forEach((protocol) => option.depends("protocol", protocol));
-  if (singBoxExtended) {
-    EXTENDED_PORT_PROTOCOLS.forEach((protocol) =>
-      option.depends("protocol", protocol),
-    );
-  }
 }
 
 function addTlsDepends(option) {
@@ -5412,8 +5368,6 @@ function configureServerSection(sectionRef, options = {}) {
 function createServerContent(section, options = {}) {
   injectServerStyles();
   const capabilities = normalizeServerCapabilities(options);
-  const singBoxXhttp = capabilities.singBoxXhttp;
-  const singBoxTailscale = capabilities.singBoxTailscale;
   section.serverCapabilityOptions = {};
   section.serverCapabilities = capabilities;
 
@@ -5501,36 +5455,7 @@ function createServerContent(section, options = {}) {
   o.rmempty = false;
   o.modalonly = true;
   o.validate = function (sectionId, value) {
-    const normalized = normalizeServerCapabilities(
-      section.serverCapabilities || capabilities,
-    );
-    if (normalized.singBoxTachyonCore && value === "mtproto") {
-      return _("MTProto is not implemented in tachyon-core yet");
-    }
     return validateRequired.call(this, sectionId, value);
-  };
-  const originalProtocolRenderWidget = o.renderWidget;
-  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
-    const node = originalProtocolRenderWidget.apply(this, arguments);
-    const normalized = normalizeServerCapabilities(
-      section.serverCapabilities || capabilities,
-    );
-    if (normalized.singBoxTachyonCore) {
-      Promise.resolve(node).then((elem) => {
-        if (!elem) return;
-        const disabledItems = elem.querySelectorAll
-          ? elem.querySelectorAll(
-              '[data-value="mtproto"], option[value="mtproto"]',
-            )
-          : [];
-        disabledItems.forEach((opt) => {
-          opt.disabled = true;
-          opt.setAttribute("disabled", "disabled");
-          opt.classList.add("disabled");
-        });
-      });
-    }
-    return node;
   };
   o.onchange = function (_ev, sectionId, value) {
     ensureProtocolDefaults(sectionId, value, true);
@@ -5668,7 +5593,7 @@ function createServerContent(section, options = {}) {
     form.TextValue,
     "inbound_json",
     _("Inbound JSON"),
-    _("Enter a complete sing-box inbound object"),
+    _("Enter a complete Tachyon Core inbound object"),
   );
   o.depends("protocol", "json_inbound");
   o.rows = 10;
@@ -5860,7 +5785,7 @@ function createServerContent(section, options = {}) {
 
   o = section.option(form.ListValue, "transport", _("Transport"));
   section.serverCapabilityOptions.transport = o;
-  populateTransportValues(o, singBoxXhttp);
+  populateTransportValues(o);
   o.default = "tcp";
   o.rmempty = false;
   o.modalonly = true;
@@ -6646,17 +6571,6 @@ function createServerContent(section, options = {}) {
   o.rmempty = true;
   addTailscaleDepends(o);
 
-  o = section.option(form.ListValue, "tailscale_mode", _("Tailscale mode"));
-  o.value("singbox", _("Embedded (tachyon-core / sing-box, default)"));
-  o.value(
-    "native",
-    _("Native tailscaled (tailnet reachable from LAN without client)"),
-  );
-  o.default = "singbox";
-  o.modalonly = true;
-  o.rmempty = false;
-  addTailscaleDepends(o);
-
   o = section.option(
     form.Flag,
     "tailscale_ephemeral",
@@ -6668,7 +6582,7 @@ function createServerContent(section, options = {}) {
   o.default = "0";
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Flag,
@@ -6679,7 +6593,7 @@ function createServerContent(section, options = {}) {
   o.default = "1";
   o.modalonly = true;
   o.rmempty = false;
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Flag,
@@ -6694,7 +6608,6 @@ function createServerContent(section, options = {}) {
   o.rmempty = false;
   o.depends({
     protocol: "tailscale",
-    tailscale_mode: "singbox",
     tailscale_accept_dns: "1",
   });
 
@@ -6710,7 +6623,7 @@ function createServerContent(section, options = {}) {
   o.rmempty = true;
   o.placeholder = "100.64.0.10";
   o.validate = validateOptionalHost;
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Flag,
@@ -6723,7 +6636,7 @@ function createServerContent(section, options = {}) {
   o.default = "0";
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Value,
@@ -6737,7 +6650,7 @@ function createServerContent(section, options = {}) {
   o.rmempty = true;
   o.placeholder = "40000";
   o.validate = validateOptionalPort;
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.DynamicList,
@@ -6750,7 +6663,7 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = "203.0.113.10:40000";
-  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Flag,
@@ -6764,32 +6677,6 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   addTailscaleDepends(o);
-
-  o = section.option(
-    form.Flag,
-    "tailscale_masquerade",
-    _("Masquerade LAN traffic into tailnet"),
-    _(
-      "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes.",
-    ),
-  );
-  o.default = "1";
-  o.modalonly = true;
-  o.rmempty = false;
-  o.depends({ protocol: "tailscale", tailscale_mode: "native" });
-
-  o = section.option(
-    form.Flag,
-    "tailscale_use_exit_node",
-    _("Use tailnet exit node for LAN"),
-    _(
-      "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines.",
-    ),
-  );
-  o.default = "0";
-  o.modalonly = true;
-  o.rmempty = false;
-  o.depends({ protocol: "tailscale", tailscale_mode: "native" });
 
   // AWG Server Options
   o = section.option(

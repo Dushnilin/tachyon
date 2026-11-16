@@ -147,7 +147,7 @@ function prepare_list(name, source) {
     if (!common.command_success_from_args(["mkdir", "-p", cache_dir])) return false;
     let stamp = clock();
     let temporary = sprintf("%s.%d.%d.decode", path, stamp[0], stamp[1]);
-    let bin = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/tachyon-core";
+    let bin = getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core";
     let ok = common.command_success_from_args([bin, "rule-set", "decompile", "--output", temporary, source]);
     let data = ok ? common.read_json_file(temporary) : null;
     try { fs.unlink(temporary); } catch (e) {}

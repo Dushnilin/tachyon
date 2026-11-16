@@ -165,7 +165,7 @@ let selector = outbound_by_tag(config, "proxy-out");
 if (!main || !backup)
     fail("expected one selector per priority group");
 if (main.type != "selector" || backup.type != "selector")
-    fail("priority groups must be sing-box selectors");
+    fail("priority groups must be tachyon-core selectors");
 if (main.interrupt_exist_connections !== true)
     fail("main priority interrupt flag should default to true");
 if (backup.interrupt_exist_connections !== false)
@@ -231,7 +231,7 @@ let cfg = json(fs.readfile(ARGV[0]));
 let cache = json(fs.readfile(ARGV[1]));
 for (let outbound in cfg.outbounds || [])
     if (outbound && outbound.tag == "proxy-priority-pg_empty-out")
-        die("empty priority group must not be added to sing-box config\n");
+        die("empty priority group must not be added to tachyon-core config\n");
 let cached = (cache.priorityGroups || {})["proxy-priority-pg_empty-out"];
 if (!cached || cached.displayName != "Empty")
     die("empty priority group should be cached for dashboard\n");
@@ -271,7 +271,7 @@ let cfg = json(fs.readfile(ARGV[0]));
 let cache = json(fs.readfile(ARGV[1]));
 for (let outbound in cfg.outbounds || [])
     if (outbound && outbound.tag == "proxy-priority-pg_main-out")
-        die("priority group with no matched outbounds must not be added to sing-box config\n");
+        die("priority group with no matched outbounds must not be added to tachyon-core config\n");
 let cached = (cache.priorityGroups || {})["proxy-priority-pg_main-out"];
 if (!cached || length(cached.levels || []) != 1)
     die("priority group with empty level should be cached for dashboard\n");
@@ -315,7 +315,7 @@ let cfg = json(fs.readfile(ARGV[0]));
 let cache = json(fs.readfile(ARGV[1]));
 for (let outbound in cfg.outbounds || [])
     if (outbound && outbound.tag == "proxy-urltest-cfg_empty-out")
-        die("empty URLTest group must not be added to sing-box config\n");
+        die("empty URLTest group must not be added to tachyon-core config\n");
 let cached = (cache.urltestGroups || {})["proxy-urltest-cfg_empty-out"];
 if (!cached || cached.displayName != "Empty URLTest")
     die("empty URLTest group should be cached for dashboard\n");
@@ -604,7 +604,7 @@ if (expected) {
         die("URLTest/Priority selected the wrong refreshed outbound\n");
 }
 else if (urltest || priority) {
-    die("empty URLTest/Priority group remained in sing-box config after membership refresh\n");
+    die("empty URLTest/Priority group remained in tachyon-core config after membership refresh\n");
 }
 ' "$config_path" "$expected"
 }

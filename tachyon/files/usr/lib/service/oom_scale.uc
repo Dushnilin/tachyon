@@ -14,7 +14,7 @@ let common = require("core.common");
 let as_string = common.as_string;
 
 
-// Shrink by 20% per OOM, and never past this: sing-box starved too far stops working
+// Shrink by 20% per OOM, and never past this: tachyon-core starved too far stops working
 // at all, which is a worse outcome than the memory pressure that caused it.
 const OOM_SCALE_FLOOR = 0.2;
 const OOM_SCALE_STEP = 0.8;

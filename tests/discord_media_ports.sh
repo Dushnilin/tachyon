@@ -2,13 +2,13 @@
 # Discord media runs on TCP 2053, 2083, 2087, 2096 and 8443 as well as 443.
 #
 # The voice half was handled and the media half was not: apply.uc fed the voice
-# ports into the UDP port sets, and the sing-box rule was network=udp. So a section
+# ports into the UDP port sets, and the tachyon-core rule was network=udp. So a section
 # captured voice and let media through on whatever port it happened to use. The
 # fuzzer's nft scope already listed the five ports, which made the gap visible: it
 # was measuring ports the section did not route.
 #
 # Protocol separation is the point. Merging the TCP ports into the voice list would
-# put 2053..8443 into a UDP port set, and sing-box would ignore them there.
+# put 2053..8443 into a UDP port set, and tachyon-core would ignore them there.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 

@@ -3,13 +3,13 @@
 Tachyon предоставляет встроенные инструменты интеграции с искусственным интеллектом:
 1. **AI Doctor** — автоматическая диагностика системы с участием LLM (OpenAI, Anthropic, DeepSeek или локальные/кастомные модели), обогащенная логами Watchdog, и поддержка цепочек быстрого исправления (Multi-Fix).
 2. **HTTP REST Agent API & CLI** — программный интерфейс для внешних ИИ-агентов (Claude, GPT, Open-WebUI, Cursor, AutoGPT и т.д.).
-3. **Автономный Watchdog** — работающая из коробки система самодиагностики и самовосстановления без внешних зависимостей.
+3. **Автономный Watchdog** — встроенная система самодиагностики и самовосстановления без внешних зависимостей.
 
 ---
 
 ## 1. AI Doctor (Встроенная LLM-диагностика)
 
-AI Doctor собирает снимок состояния роутера (проверки sing-box, nftables, DNS, WAN, памяти, uptime, активные сбои Watchdog и 15 последних критических строк системного лога), передаёт его в выбранную LLM и выдаёт вердикт на русском языке. При наличии проблем AI Doctor генерирует цепочку кодов авто-исправления (`FIX: код1, код2`). Результат сохраняется в `/tmp/ai_doctor_last.json`.
+AI Doctor собирает снимок состояния роутера (проверки tachyon-core, nftables, DNS, WAN, памяти, uptime, активные сбои Watchdog и 15 последних критических строк системного лога), передаёт его в выбранную LLM и выдаёт вердикт на русском языке. При наличии проблем AI Doctor генерирует цепочку кодов авто-исправления (`FIX: код1, код2`). Результат сохраняется в `/tmp/ai_doctor_last.json`.
 
 ### 1.1. Настройка AI Doctor
 
@@ -45,16 +45,16 @@ uci commit tachyon
 | **Gemini** | `gemini` | `gemini-2.5-flash` | `gemini-2.5-pro`, `gemini-1.5-flash` |
 | **Custom API** | `custom` | `gpt-4o-mini` | Любая модель вашего сервера (`llama-3.3-70b`, `qwen-2.5-72b`) |
 
-### 1.3. Коды быстрого исправления (Quick Fix Codes — 25 кодов)
+### 1.3. Коды быстрого исправления (Quick Fix Codes — 22 кода)
 
 Список совпадает с ветками `apply_quick_fix()` в `diagnostics/repairs.uc`. AI Doctor может вернуть один или несколько кодов через запятую.
 
-1. `start_singbox` — `restore_dnsmasq` и перезапуск `/etc/init.d/tachyon-core`
+1. `start_tachyon_core` — `restore_dnsmasq` и перезапуск `/etc/init.d/tachyon-core`
 2. `rebuild_rules` — `/etc/init.d/tachyon reload`
 3. `fix_dnsmasq` — перезапуск dnsmasq
 4. `fix_resolv_symlink` — `ln -sf` на существующий `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, иначе `/tmp/resolv.conf.auto`)
 5. `start_watchdog` — перезапуск `/etc/init.d/tachyon`
-6. `restart_singbox_dns` — перезапуск `/etc/init.d/tachyon-core` и reload dnsmasq
+6. `restart_tachyon_core_dns` — перезапуск `/etc/init.d/tachyon-core`
 7. `fix_uci_config` — восстановление UCI из `/etc/backup/tachyon_config`, иначе из `/etc/config/tachyon.bak`
 8. `fix_wan_interface` — `ubus call network.interface.wan up`, `ifup wan`, сброс кэша маршрутов
 9. `fix_gateway` — `/etc/init.d/network restart`
@@ -62,22 +62,19 @@ uci commit tachyon
 11. `update_subscriptions` — `tachyon subscription_update_async`
 12. `reset_firewall` — `/etc/init.d/firewall restart` и `/etc/init.d/tachyon reload`
 13. `restart_network` — `/etc/init.d/network restart`
-14. `restart_zapret` — остановка и отключение standalone zapret, zapret2 и byedpi, затем запуск runtime-провайдеров Tachyon
-15. `optimize_memory` — сброс page cache, удаление `/tmp/tachyon-core/*.tmp`, перезапуск tachyon-core
-16. `switch_to_doh` — `dns_type=doh`, commit, reload Tachyon
-17. `heal_network_stack` — восстановление `/etc/resolv.conf`, перезапуск dnsmasq и Tachyon, `ifup wan`
-18. `enable_safe_bypass` — `recovery_bypass=1`, commit, reload
-19. `restore_native_internet` — остановка Tachyon, удаление таблицы nftables и policy routing, перезапуск dnsmasq
-20. `fix_system_time` — `ntpd -q` и перезапуск sysntpd
-21. `flush_conntrack` — `nf_conntrack_max=65536` и `conntrack -F`
-22. `fix_bootstrap_dns` — `bootstrap_dns_server=77.88.8.8`, commit, reload
-23. `restart_providers` — старт runtime WDTT, OlcRTC и FPTN
-24. `optimize_mtu` — `tachyon discover-awg-mtu` и reload
-25. `upgrade_to_singbox_extended` — `component_action_async sing_box install_extended`
+14. `optimize_memory` — сброс page cache, удаление `/tmp/tachyon-core/*.tmp`, перезапуск tachyon-core
+15. `switch_to_doh` — `dns_type=doh`, commit, reload Tachyon
+16. `heal_network_stack` — восстановление `/etc/resolv.conf`, перезапуск dnsmasq и Tachyon, `ifup wan`
+17. `enable_safe_bypass` — `recovery_bypass=1`, commit, reload
+18. `restore_native_internet` — остановка Tachyon, удаление таблицы nftables и policy routing, перезапуск dnsmasq
+19. `fix_system_time` — `ntpd -q` и перезапуск sysntpd
+20. `flush_conntrack` — `nf_conntrack_max=65536` и `conntrack -F`
+21. `fix_bootstrap_dns` — `bootstrap_dns_server=77.88.8.8`, commit, reload
+22. `optimize_mtu` — `tachyon discover-awg-mtu` и reload
 
 Применение кодов из CLI:
 ```sh
-tachyon apply_quick_fix clear_dns_cache,start_singbox
+tachyon apply_quick_fix clear_dns_cache,start_tachyon_core
 ```
 
 ---
@@ -129,7 +126,7 @@ uci commit tachyon
 | GET | `/cgi-bin/tachyon-agent/diagnose` | Результаты диагностики + предложения по ремонту |
 | GET | `/cgi-bin/tachyon-agent/logs` | Последние строки системного лога Tachyon (обезличенные) |
 | GET | `/cgi-bin/tachyon-agent/config` | Конфигурация UCI (`tachyon-config-masked`, все секреты скрыты) |
-| GET | `/cgi-bin/tachyon-agent/docs/search` | Поиск по встроенной базе знаний RAG (`?q=zapret2&limit=5`) |
+| GET | `/cgi-bin/tachyon-agent/docs/search` | Поиск по встроенной базе знаний RAG (`?q=desync&limit=5`) |
 | GET | `/cgi-bin/tachyon-agent/route/explain` | Трассировка маршрута пакета и DNS для любого домена/IP (`?target=youtube.com`) |
 | GET | `/cgi-bin/tachyon-agent/known-good` | Статус эталонной конфигурации Last Known Good (`?action=status`) |
 | GET | `/cgi-bin/tachyon-agent/tools` | Схема всех 18 инструментов в формате OpenAI Function Calling / MCP |
@@ -141,8 +138,8 @@ uci commit tachyon
 |---|---|---|---|
 | POST | `/cgi-bin/tachyon-agent/heal` | `{}` | Принудительный запуск авто-ремонта |
 | POST | `/cgi-bin/tachyon-agent/ai-doctor` | `{"query":"почему не работает..."}` | Запуск анализа AI Doctor через подключённую LLM |
-| POST | `/cgi-bin/tachyon-agent/ai-doctor/fix` | `{"fix":"clear_dns_cache,start_singbox"}` | Применение кодов исправления |
-| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"singbox"}` | Перезапуск службы (`singbox`, `tachyon`, `dnsmasq`) |
+| POST | `/cgi-bin/tachyon-agent/ai-doctor/fix` | `{"fix":"clear_dns_cache,start_tachyon_core"}` | Применение кодов исправления |
+| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"tachyon-core"}` | Перезапуск службы (`tachyon-core`, `tachyon`, `dnsmasq`, `watchdog`) |
 | POST | `/cgi-bin/tachyon-agent/reload` | `{}` | Перезагрузка правил и конфигурации |
 | POST | `/cgi-bin/tachyon-agent/config/plan` | `{"changes":[...]}` | Сухой прогон (dry-run), проверка коллизий и маскированный diff перед изменением UCI |
 | POST | `/cgi-bin/tachyon-agent/config/set` | `{"section":"settings","option":"dns_type","value":"doh"}` | Изменение параметров UCI |
@@ -178,7 +175,7 @@ curl http://192.168.1.1/cgi-bin/tachyon-agent/ai-doctor/last | jq .
 curl -X POST \
   -H "Authorization: Bearer СЕКРЕТНЫЙ_ТОКЕН_АГЕНТА" \
   -H "Content-Type: application/json" \
-  -d '{"fix":"clear_dns_cache,start_singbox"}' \
+  -d '{"fix":"clear_dns_cache,start_tachyon_core"}' \
   http://192.168.1.1/cgi-bin/tachyon-agent/ai-doctor/fix
 ```
 

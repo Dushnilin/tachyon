@@ -46,11 +46,11 @@ fi
 # And the checks must actually be there, not an empty placeholder.
 count="$(printf '%s' "$out" | grep -o '"name"' | wc -l)"
 [ "$count" -ge 4 ] ||
-  fail "telegram diagnose returned only $count checks; it is supposed to report at least bot_token, admin_ids, sing_box and dns: $out"
+  fail "telegram diagnose returned only $count checks; it is supposed to report at least bot_token, admin_ids, tachyon_core and dns: $out"
 
 # The known check names guard against diagnose silently returning a short report
 # that happens to satisfy the array check above.
-for check in bot_token admin_ids sing_box proxy_port dns; do
+for check in bot_token admin_ids tachyon_core proxy_port dns; do
   printf '%s' "$out" | grep -q "\"$check\"" ||
     fail "telegram diagnose is missing the $check check, so the report would be incomplete: $out"
 done

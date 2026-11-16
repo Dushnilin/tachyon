@@ -185,14 +185,14 @@ chmod +x "$WORK_DIR/bin/tachyon-core"
 
 export PATH="$WORK_DIR/bin:$PATH"
 export CURL_LOG_TEST="$CURL_LOG"
-export TMP_SING_BOX_FOLDER="$WORK_DIR/sb"
+export TMP_TACHYON_CORE_FOLDER="$WORK_DIR/core"
 export TMP_RULESET_FOLDER="$WORK_DIR/rulesets"
-export TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/sb/subscriptions"
+export TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/core/subscriptions"
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime"
 export TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persist"
 export TACHYON_PERSISTENT_RULESET_DIR="$WORK_DIR/persist_rulesets"
-export SB_VERSION_STATE_FILE="$WORK_DIR/sb-version"
-printf '1.12.0\n' > "$SB_VERSION_STATE_FILE"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/core-version"
+printf '0.5.7\n' > "$TACHYON_CORE_VERSION_FILE"
 
 # 1. Without c-ares, download-subscription uses system DNS first (no --doh-url)!
 : >"$CURL_LOG"
@@ -277,7 +277,7 @@ if [ -n "$prepare_stdout" ]; then
   fail "prepare-caches leaked subprocess output into stdout (corrupts deferred_sections): '$prepare_stdout'"
 fi
 
-default_ua_tries="$(grep -c $'\tua=sing-box/' "$CURL_LOG" || true)"
+default_ua_tries="$(grep -c $'\tua=tachyon-core/' "$CURL_LOG" || true)"
 if [ "$default_ua_tries" -ne 1 ]; then
   cat "$CURL_LOG" >&2
   fail "expected HTTP 404 on default UA to fail fast in 1 attempt before rotating to Happ, got $default_ua_tries"

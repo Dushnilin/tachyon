@@ -48,17 +48,17 @@ fi
 grep -Fq '"tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_SYSTEM_INFO" ||
   fail "diagnostics Tachyon status must use stable runtime state to avoid crash-loop flicker"
 grep -Fq '"tachyon-core-service-stable",' "$DIAGNOSTICS_SYSTEM_INFO" ||
-  fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
+  fail "diagnostics tachyon-core status must use stable runtime state to avoid crash-loop flicker"
 
 capabilities="$(
-  TACHYON_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/missing-sing-box" \
+  TACHYON_DIAGNOSTICS_CORE_BIN_PATH="$WORK_DIR/missing-tachyon-core" \
   TACHYON_LIB="$TACHYON_LIB" \
     ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" get-server-capabilities
 )"
 JSON_VALUE="$capabilities" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);
-if (value.sing_box_extended !== 0 || value.sing_box_tiny !== 0 || value.sing_box_tailscale !== 0) {
-  console.error('missing sing-box must not expose stale capabilities');
+if (value.tachyon_core_tailscale !== 0 || value.tachyon_core_cert_pin !== 0) {
+  console.error('missing tachyon-core must not expose stale capabilities');
   process.exit(1);
 }
 NODE
@@ -107,7 +107,7 @@ esac
     printf 'Tue Jun 30 11:00:0%d 2026 daemon.err tachyon-core: ERROR connection upload closed: stream %d canceled by remote with error code 0\n' "$i" "$i"
   done
   for i in 1 2 3 4 5 6; do
-    printf 'Tue Jun 30 11:00:1%d 2026 daemon.err sing-box: ERROR connection: dial udp 77.238.230.167:304: no route to internet\n' "$i"
+    printf 'Tue Jun 30 11:00:1%d 2026 daemon.err tachyon-core: ERROR connection: dial udp 77.238.230.167:304: no route to internet\n' "$i"
   done
 } >"$WORK_DIR/spam-logread.txt"
 spam_logs="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" tachyon-logs-fixture <"$WORK_DIR/spam-logread.txt")" ||
@@ -268,28 +268,28 @@ printf '%s\n' "$netstat_listening6" |
   status_ucode server-required-ports-listening ::1 8443 "tcp" >/dev/null ||
   fail "IPv6 tcp netstat listener should satisfy required protocols"
 
-sing_box_netstat="$(cat <<'EOF'
+core_netstat="$(cat <<'EOF'
 Active Internet connections (only servers)
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
-tcp        0      0 127.0.0.42:53           0.0.0.0:*               LISTEN      16244/sing-box
-tcp        0      0 0.0.0.0:1602            0.0.0.0:*               LISTEN      16244/sing-box
-tcp        0      0 ::1:1602                :::*                    LISTEN      16244/sing-box
-udp        0      0 127.0.0.42:53           0.0.0.0:*                           16244/sing-box
-udp        0      0 0.0.0.0:1602            0.0.0.0:*                           16244/sing-box
-udp        0      0 ::1:1602                :::*                                16244/sing-box
+tcp        0      0 127.0.0.42:53           0.0.0.0:*               LISTEN      16244/tachyon-core
+tcp        0      0 0.0.0.0:1602            0.0.0.0:*               LISTEN      16244/tachyon-core
+tcp        0      0 ::1:1602                :::*                    LISTEN      16244/tachyon-core
+udp        0      0 127.0.0.42:53           0.0.0.0:*                           16244/tachyon-core
+udp        0      0 0.0.0.0:1602            0.0.0.0:*                           16244/tachyon-core
+udp        0      0 ::1:1602                :::*                                16244/tachyon-core
 EOF
 )"
 
-printf '%s\n' "$sing_box_netstat" |
-  TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null ||
-  fail "sing-box standard listeners should satisfy diagnostics"
+printf '%s\n' "$core_netstat" |
+  TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" tachyon-core-standard-ports-listening-fixture >/dev/null ||
+  fail "tachyon-core standard listeners should satisfy diagnostics"
 # IPv6 disabled: should only require IPv4 listeners
-printf '%s\n' "$sing_box_netstat" | grep -v '::' |
-  TACHYON_ENABLE_IPV6=0 TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null ||
-  fail "sing-box IPv4 listeners should satisfy diagnostics when IPv6 is disabled"
-if printf '%s\n' "$sing_box_netstat" | sed '/0.0.0.0:1602/d' |
-  TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null 2>&1; then
-  fail "missing sing-box tproxy listener should fail diagnostics"
+printf '%s\n' "$core_netstat" | grep -v '::' |
+  TACHYON_ENABLE_IPV6=0 TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" tachyon-core-standard-ports-listening-fixture >/dev/null ||
+  fail "tachyon-core IPv4 listeners should satisfy diagnostics when IPv6 is disabled"
+if printf '%s\n' "$core_netstat" | sed '/0.0.0.0:1602/d' |
+  TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" tachyon-core-standard-ports-listening-fixture >/dev/null 2>&1; then
+  fail "missing tachyon-core tproxy listener should fail diagnostics"
 fi
 
 netstat_owners="$(cat <<'EOF'
@@ -297,7 +297,7 @@ Active Internet connections (only servers)
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
 tcp        0      0 0.0.0.0:443             0.0.0.0:*               LISTEN      111/nginx
 udp        0      0 0.0.0.0:443             0.0.0.0:*                           222/dnsmasq
-tcp        0      0 0.0.0.0:443             0.0.0.0:*               LISTEN      333/sing-box
+tcp        0      0 0.0.0.0:443             0.0.0.0:*               LISTEN      333/tachyon-core
 EOF
 )"
 

@@ -52,16 +52,16 @@ if (cp != "/tmp/tachyon-core/cache.db") {
 }
 UCODE
 
-make_cache_fixture "/tmp/sing-box/cache.db" "$WORK_DIR/fx_ram_sb.json"
+make_cache_fixture "/tmp/custom-cache/cache.db" "$WORK_DIR/fx_ram_custom.json"
 mkdir -p "$WORK_DIR/sc2"
 TACHYON_SECTION_CACHE_DIR="$WORK_DIR/sc2" \
-  uc "$GENERATOR_UC" generate-config-fixture "$WORK_DIR/fx_ram_sb.json" "$WORK_DIR/out_ram_sb.json" "127.0.0.1" >/dev/null
-uc - "$WORK_DIR/out_ram_sb.json" <<'UCODE'
+  uc "$GENERATOR_UC" generate-config-fixture "$WORK_DIR/fx_ram_custom.json" "$WORK_DIR/out_ram_custom.json" "127.0.0.1" >/dev/null
+uc - "$WORK_DIR/out_ram_custom.json" <<'UCODE'
 let fs = require("fs");
 let cfg = json(fs.readfile(ARGV[0]));
 let cp = cfg.experimental?.cache_file?.path;
-if (cp != "/tmp/sing-box/cache.db") {
-    warn("expected explicit /tmp/sing-box/cache.db, got: " + cp + "\n");
+if (cp != "/tmp/custom-cache/cache.db") {
+    warn("expected explicit /tmp/custom-cache/cache.db, got: " + cp + "\n");
     exit(1);
 }
 UCODE
@@ -267,8 +267,8 @@ ctrl.probe_slow({
     now: time(),
     settings: { subscription_url: "https://sub.example.invalid/feed" },
     reload_in_progress: false,
-    singbox_pid: "",
-    singbox_running: false,
+    tachyon_core_pid: "",
+    tachyon_core_running: false,
     proxy_port: "",
     proxy_host: "127.0.0.1"
 });

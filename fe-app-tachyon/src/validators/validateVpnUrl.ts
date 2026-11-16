@@ -1,23 +1,10 @@
 import { ValidationResult } from './types';
-import { store } from '../tachyon/services/store.service';
 
 const MAX_AMNEZIA_SIZE = 65536;
 const AMNEZIA_CONFIG_SIGNATURE = 255;
 
 export function supportsVpnUrl() {
-  const state = store.get();
-  const info = state.diagnosticsSystemInfo || {};
-  const engine = state.activeEngine || info.active_engine || 'tachyon-core';
-  if (engine === 'tachyon-core') {
-    return true;
-  }
-  return (
-    engine === 'sing-box' &&
-    (Number(info.sing_box_lx) === 1 ||
-      Number(info.sing_box_tachyon_core) === 1 ||
-      /-lx(?:[.-]|$)/.test(String(info.sing_box_version || '')) ||
-      /-tachyon(?:[.-]|$)/.test(String(info.sing_box_version || '')))
-  );
+  return true;
 }
 
 export function compactVpnUri(raw: string): string {

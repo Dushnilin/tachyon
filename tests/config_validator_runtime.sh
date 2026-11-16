@@ -144,10 +144,11 @@ cat >"$WORK_DIR/valid.json" <<'JSON'
       "domain_suffix": [ "bypass.example" ]
     },
     {
-      ".name": "zap",
+      ".name": "des",
       ".type": "section",
       "enabled": "1",
-      "action": "zapret",
+      "action": "desync",
+      "desync_preset": "auto",
       "domain_ip_lists": [ "https://example.com/provider.lst" ]
     },
     {
@@ -480,76 +481,19 @@ cat >"$WORK_DIR/bad-country.json" <<'JSON'
 JSON
 assert_rejects "bad country" "$WORK_DIR/bad-country.json" "Invalid country code 'USA'"
 
-provider_context="$(node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); c.byedpi_installed=true; process.stdout.write(JSON.stringify(c));' "$WORK_DIR/context.json")"
-cat >"$WORK_DIR/bad-byedpi.json" <<'JSON'
+for removed_action in byedpi zapret zapret2 olcrtc; do
+  cat >"$WORK_DIR/bad-removed-$removed_action.json" <<JSON
 {
   "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ] },
   "section": [
-    { ".name": "bye", ".type": "section", "enabled": "1", "action": "byedpi", "byedpi_cmd_opts": "--port 1080 --disorder 3" }
+    { ".name": "legacy_sec", ".type": "section", "enabled": "1", "action": "$removed_action", "domain_suffix": [ "example.org" ] }
   ]
 }
 JSON
-if output="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/bad-byedpi.json" "$provider_context" 2>/dev/null)"; then
-  fail "bad byedpi should be rejected"
-fi
-printf '%s\n' "$output" | grep -Fq "ByeDPI listen address and port are assigned" ||
-  fail "bad byedpi: unexpected message '$output'"
-
-runtime_lib="$WORK_DIR/runtime-lib"
-mkdir -p "$runtime_lib"
-ln -s "$TACHYON_LIB/core" "$runtime_lib/core"
-ln -s "$TACHYON_LIB/config" "$runtime_lib/config"
-ln -s "$TACHYON_LIB/subscription" "$runtime_lib/subscription"
-ln -s "$TACHYON_LIB/providers" "$runtime_lib/providers"
-touch "$WORK_DIR/ciadpi-provider"
-cat >"$WORK_DIR/bad-byedpi-runtime-state.json" <<'JSON'
-{
-  "settings": { ".name": "settings", ".type": "settings", "dns_server": [ "77.88.8.8" ], "bootstrap_dns_server": [ "77.88.8.8" ] },
-  "section": [
-    { ".name": "bye", ".type": "section", "enabled": "1", "action": "byedpi", "byedpi_cmd_opts": "--port 1080 --disorder 3" }
-  ]
-}
-JSON
-
-env \
-  COMMUNITY_SERVICES="discord" \
-  BYEDPI_DEFAULT_CMD_OPTS="" \
-  ZAPRET_DEFAULT_NFQWS_OPT="" \
-  ZAPRET_LEGACY_DEFAULT_NFQWS_OPT="" \
-  ZAPRET2_DEFAULT_NFQWS2_OPT="" \
-  BYEDPI_BIN="$WORK_DIR/ciadpi-provider" \
-  ZAPRET_PROVIDER_NFQWS_BIN="$WORK_DIR/missing-nfqws" \
-  ZAPRET2_PROVIDER_NFQWS2_BIN="$WORK_DIR/missing-nfqws2" \
-  ZAPRET_ROUTE_MARK_BASE="0x01000000" \
-  ZAPRET_QUEUE_RANGE_SIZE="16" \
-  ZAPRET2_ROUTE_MARK_BASE="0x02000000" \
-  ZAPRET2_QUEUE_RANGE_SIZE="16" \
-  NFT_FAKEIP_MARK="0x00000800" \
-  NFT_OUTBOUND_MARK="0x00000400" \
-  TACHYON_LIB="$runtime_lib" \
-  ucode -L "$runtime_lib" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/bad-byedpi-runtime-state.json" "{}"
-chmod 755 "$WORK_DIR/ciadpi-provider"
-if output="$(env \
-  COMMUNITY_SERVICES="discord" \
-  BYEDPI_DEFAULT_CMD_OPTS="" \
-  ZAPRET_DEFAULT_NFQWS_OPT="" \
-  ZAPRET_LEGACY_DEFAULT_NFQWS_OPT="" \
-  ZAPRET2_DEFAULT_NFQWS2_OPT="" \
-  BYEDPI_BIN="$WORK_DIR/ciadpi-provider" \
-  ZAPRET_PROVIDER_NFQWS_BIN="$WORK_DIR/missing-nfqws" \
-  ZAPRET2_PROVIDER_NFQWS2_BIN="$WORK_DIR/missing-nfqws2" \
-  ZAPRET_ROUTE_MARK_BASE="0x01000000" \
-  ZAPRET_QUEUE_RANGE_SIZE="16" \
-  ZAPRET2_ROUTE_MARK_BASE="0x02000000" \
-  ZAPRET2_QUEUE_RANGE_SIZE="16" \
-  NFT_FAKEIP_MARK="0x00000800" \
-  NFT_OUTBOUND_MARK="0x00000400" \
-  TACHYON_LIB="$runtime_lib" \
-  ucode -L "$runtime_lib" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/bad-byedpi-runtime-state.json" "{}" 2>/dev/null)"; then
-  fail "executable byedpi provider should enable strategy validation"
-fi
-printf '%s\n' "$output" | grep -Fq "ByeDPI listen address and port are assigned" ||
-  fail "executable byedpi provider: unexpected message '$output'"
+  if TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/bad-removed-$removed_action.json" "$WORK_DIR/context.json" 2>/dev/null; then
+    fail "removed provider action '$removed_action' must be rejected by validator"
+  fi
+done
 
 # ─── Domain condition validation resilience ─────────────────────────────────
 cat >"$WORK_DIR/domain_resilience.json" <<'JSON'

@@ -74,7 +74,7 @@ function format_timestamp() {
 //       subsystem: "component",
 //       operation: "update",
 //       job_id: "cmp-abc123",
-//       message: "sing-box update started"
+//       message: "tachyon-core update started"
 //   });
 function write(entry) {
     let level = as_string(entry.level || "info");

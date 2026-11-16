@@ -27,11 +27,6 @@ mkdir -p \
   "$fake_lib/config" \
   "$fake_lib/components" \
   "$fake_lib/service" \
-  "$fake_lib/providers/zapret" \
-  "$fake_lib/providers/zapret2" \
-  "$fake_lib/providers/byedpi" \
-  "$fake_lib/providers/wdtt" \
-  "$fake_lib/providers/olcrtc" \
   "$job_dir" \
   "$cache_dir"
 
@@ -103,15 +98,6 @@ if (action == "update" || action == "install") {
     exit(0);
 }
 UCODE
-
-cat >"$fake_lib/providers/zapret/runtime.uc" <<'UCODE'
-#!/usr/bin/env ucode
-exit(1);
-UCODE
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/zapret2/runtime.uc"
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/byedpi/runtime.uc"
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/wdtt/runtime.uc"
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/olcrtc/runtime.uc"
 
 cat >"$fake_lib/service/state.uc" <<'UCODE'
 #!/usr/bin/env ucode

@@ -10,16 +10,15 @@
 //   surgical, targeted remediation:
 //     - Repairing DNS (dnsmasq redirect / SmartDNS) without bouncing proxy tunnels.
 //     - Repopulating missing/flushed nftables sets without reloading the core engine.
-//     - Restoring missing policy routing rules without restarting sing-box.
-//     - Restarting crashed auxiliary daemons (nfqws/nfqws2/byedpi) without touching DNS.
+//     - Restoring missing policy routing rules without restarting tachyon-core.
 //     - Restarting only the engine when the core process itself dies.
 //
 // Subsystems:
-//   - "engine":   core routing engine (tachyon-core / sing-box)
+//   - "engine":   core routing engine (tachyon-core)
 //   - "dns":      dnsmasq interception, localhost resolution
 //   - "nftables": kernel tables (TachyonTable), chains, runtime sets
 //   - "routing":  policy routing rules (ip rule fwmark/tachyon), table routes
-//   - "daemons":  auxiliary providers (zapret nfqws, zapret2 nfqws2, byedpi ciadpi)
+//   - "daemons":  auxiliary daemons (when registered)
 //
 // Integration:
 //   - Core Transaction Engine (core.transaction): multi-phase mutation with rollback
@@ -98,7 +97,7 @@ const ACTION_REPAIR_ROUTING = "repair_routing";
 const ACTION_REPAIR_DAEMON = "repair_daemon";
 const ACTION_RELOAD_SERVICE = "reload_service";
 
-const NFT_TABLE_SINGBOX = "TachyonTable";
+const NFT_TABLE_TACHYON = "TachyonTable";
 const RT_TABLE_NAME = "tachyon";
 const RT_TABLE_ID = "4249";
 
@@ -217,11 +216,7 @@ function get_active_engine_id() {
         if (type(engine_core.active_engine_id) == "function")
             return engine_core.active_engine_id();
     }
-    let s = get_settings();
-    let raw = lc(trim(as_string(s.engine || "")));
-    if (raw == "" || raw == "sing-box")
-        return "tachyon-core";
-    return raw;
+    return "tachyon-core";
 }
 
 function get_enabled_outbound_sections() {
@@ -269,7 +264,7 @@ function build_desired_dns(opts) {
 
     return {
         manage_dnsmasq: manage_dnsmasq,
-        mode: "sing-box",
+        mode: "tachyon-core",
         smartdns_needed: false,
         dns_type: s.dns_type || "doh",
         expect_resolving: enabled
@@ -282,7 +277,7 @@ function build_desired_nftables(opts) {
     if (!enabled) {
         return {
             table_needed: false,
-            table_name: NFT_TABLE_SINGBOX,
+            table_name: NFT_TABLE_TACHYON,
             sets_needed: [],
             leak_guard_needed: false,
             ipv6_active: false,
@@ -293,7 +288,7 @@ function build_desired_nftables(opts) {
     let eff = common.resolve_effective_ipv6_state(get_settings(), null);
     return {
         table_needed: true,
-        table_name: NFT_TABLE_SINGBOX,
+        table_name: NFT_TABLE_TACHYON,
         sets_needed: CORE_NFT_SETS,
         leak_guard_needed: eff.leak_guard_active,
         ipv6_active: eff.ipv6_active,
@@ -318,37 +313,7 @@ function build_desired_routing(opts) {
 }
 
 function build_desired_daemons(opts) {
-    let enabled = is_service_enabled();
-    let daemons = [];
-
-    if (!enabled) return daemons;
-
-    if (has_provider_sections("zapret")) {
-        push(daemons, {
-            id: "zapret",
-            name: "nfqws",
-            kind: "provider",
-            critical: false
-        });
-    }
-    if (has_provider_sections("zapret2")) {
-        push(daemons, {
-            id: "zapret2",
-            name: "nfqws2",
-            kind: "provider",
-            critical: false
-        });
-    }
-    if (has_provider_sections("byedpi")) {
-        push(daemons, {
-            id: "byedpi",
-            name: "ciadpi",
-            kind: "provider",
-            critical: false
-        });
-    }
-
-    return daemons;
+    return [];
 }
 
 function get_desired_state(opts) {
@@ -372,13 +337,8 @@ function inspect_actual_engine(desired_engine) {
     let running = false;
     let pid = "";
 
-    for (let p in [ "/var/run/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
-        pid = read_pid_file(p, "tachyon-core");
-        if (!pid) pid = read_pid_file(p, "sing-box");
-        if (pid) break;
-    }
+    pid = read_pid_file("/var/run/tachyon-core.pid", "tachyon-core");
     if (!pid) pid = get_pid_by_name("tachyon-core");
-    if (!pid) pid = get_pid_by_name("sing-box");
     running = pid != "";
 
     return {
@@ -952,37 +912,17 @@ function repair_routing_subsystem(drift_items, opts) {
 
 function repair_daemons_subsystem(drift_items, opts) {
     log("Reconciler: repairing auxiliary daemons subsystem...", "info");
-    let repaired_daemons = [];
     let failed_daemons = [];
 
     for (let item in drift_items) {
-        let daemon_id = item.daemon_id;
-        if (!daemon_id) continue;
-
-        log(sprintf("Reconciler: restarting daemon '%s'...", daemon_id), "info");
-        let ok = false;
-
-        if (daemon_id == "zapret") {
-            let cmd = sprintf("ucode -L %s %s/providers/zapret/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
-            ok = command_status(cmd) == 0;
-        } else if (daemon_id == "zapret2") {
-            let cmd = sprintf("ucode -L %s %s/providers/zapret2/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
-            ok = command_status(cmd) == 0;
-        } else if (daemon_id == "byedpi") {
-            let cmd = sprintf("ucode -L %s %s/providers/byedpi/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
-            ok = command_status(cmd) == 0;
-        }
-
-        if (ok)
-            push(repaired_daemons, daemon_id);
-        else
-            push(failed_daemons, daemon_id);
+        if (item.daemon_id)
+            push(failed_daemons, item.daemon_id);
     }
 
     return {
         ok: length(failed_daemons) == 0,
         subsystem: SUBSYSTEM_DAEMONS,
-        repaired: repaired_daemons,
+        repaired: [],
         failed: failed_daemons
     };
 }
@@ -1159,10 +1099,6 @@ function reconcile_event(event_type, event_payload, opts) {
         sub_opts.subsystem = SUBSYSTEM_ENGINE;
         return reconcile(sub_opts);
     }
-    if (event_type == "nfqueue.down" || event_type == "nfqueue_down") {
-        sub_opts.subsystem = SUBSYSTEM_DAEMONS;
-        return reconcile(sub_opts);
-    }
     if (event_type == "firewall.reloaded" || event_type == "firewall_reloaded") {
         sub_opts.subsystem = SUBSYSTEM_NFTABLES;
         let r1 = reconcile(sub_opts);
@@ -1260,14 +1196,14 @@ if (mode == "selftest") {
 
     // Test 2: diff_state on clean synthetic state
     let clean_desired = {
-        engine: { should_run: true, id: "sing-box" },
+        engine: { should_run: true, id: "tachyon-core" },
         dns: { manage_dnsmasq: true, smartdns_needed: false, expect_resolving: true },
         nftables: { table_needed: true, table_name: "TachyonTable", sets_needed: [ "localv4" ] },
         routing: { needed: true, table_name: "tachyon" },
         daemons: []
     };
     let clean_actual = {
-        engine: { running: true, id: "sing-box" },
+        engine: { running: true, id: "tachyon-core" },
         dns: { dnsmasq_running: true, dnsmasq_managed: true, smartdns_running: false, resolving: true },
         nftables: { table_present: true, table_name: "TachyonTable", sets_present: [ "localv4" ], sets_missing: [], sets_empty: [] },
         routing: { rule4_present: true, rule6_present: true, route_present: true },
@@ -1280,7 +1216,7 @@ if (mode == "selftest") {
 
     // Test 3: DNS drift detection
     let dns_dirty_actual = {
-        engine: { running: true, id: "sing-box" },
+        engine: { running: true, id: "tachyon-core" },
         dns: { dnsmasq_running: true, dnsmasq_managed: false, smartdns_running: false, resolving: false },
         nftables: { table_present: true, table_name: "TachyonTable", sets_present: [ "localv4" ], sets_missing: [], sets_empty: [] },
         routing: { rule4_present: true, rule6_present: true, route_present: true },
@@ -1298,7 +1234,7 @@ if (mode == "selftest") {
 
     // Test 4: NFT table missing detection
     let nft_missing_actual = {
-        engine: { running: true, id: "sing-box" },
+        engine: { running: true, id: "tachyon-core" },
         dns: { dnsmasq_running: true, dnsmasq_managed: true, smartdns_running: false, resolving: true },
         nftables: { table_present: false, table_name: "TachyonTable", sets_present: [], sets_missing: [ "localv4" ], sets_empty: [] },
         routing: { rule4_present: true, rule6_present: true, route_present: true },
@@ -1315,7 +1251,7 @@ if (mode == "selftest") {
 
     // Test 5: Engine stopped detection
     let eng_stopped_actual = {
-        engine: { running: false, id: "sing-box" },
+        engine: { running: false, id: "tachyon-core" },
         dns: { dnsmasq_running: true, dnsmasq_managed: true, smartdns_running: false, resolving: true },
         nftables: { table_present: true, table_name: "TachyonTable", sets_present: [ "localv4" ], sets_missing: [], sets_empty: [] },
         routing: { rule4_present: true, rule6_present: true, route_present: true },
@@ -1332,18 +1268,18 @@ if (mode == "selftest") {
 
     // Test 6: Daemons stopped detection
     let daemon_desired = {
-        engine: { should_run: true, id: "sing-box" },
+        engine: { should_run: true, id: "tachyon-core" },
         dns: { manage_dnsmasq: true, smartdns_needed: false, expect_resolving: true },
         nftables: { table_needed: true, table_name: "TachyonTable", sets_needed: [] },
         routing: { needed: true, table_name: "tachyon" },
-        daemons: [ { id: "zapret", name: "nfqws", kind: "provider", critical: false } ]
+        daemons: [ { id: "aux-daemon", name: "aux-daemon", kind: "provider", critical: false } ]
     };
     let daemon_dead_actual = {
-        engine: { running: true, id: "sing-box" },
+        engine: { running: true, id: "tachyon-core" },
         dns: { dnsmasq_running: true, dnsmasq_managed: true, smartdns_running: false, resolving: true },
         nftables: { table_present: true, table_name: "TachyonTable", sets_present: [], sets_missing: [], sets_empty: [] },
         routing: { rule4_present: true, rule6_present: true, route_present: true },
-        daemons: [ { id: "zapret", name: "nfqws", running: false } ]
+        daemons: [ { id: "aux-daemon", name: "aux-daemon", running: false } ]
     };
     let diff_daemon = diff_state(daemon_desired, daemon_dead_actual);
     _assert(diff_daemon.clean == false, "Dead daemon should detect drift");

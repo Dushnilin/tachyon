@@ -16,7 +16,7 @@ graph TD
     Deduper --> Cache[Unified Cache: /tmp/tachyon/hosts/combined.txt]
     
     Cache --> DNSMasq[dnsmasq /etc/dnsmasq.d/tachyon-hosts.conf]
-    Cache --> SingboxDNS[sing-box DNS hosts rule]
+    Cache --> CoreDNS[tachyon-core DNS hosts rule]
 ```
 
 ---
@@ -72,5 +72,5 @@ config rule 'adblock_section'
     list hosts_list_urls 'https://adaway.org/hosts.txt'
 ```
 
-* Domains in this section are redirected directly to `0.0.0.0` or custom IPs in dnsmasq / sing-box DNS.
+* Domains in this section are redirected directly to `0.0.0.0` or custom IPs in dnsmasq / `tachyon-core` DNS.
 * Zero traffic is routed to external proxies, preserving VPS bandwidth and minimizing latency.

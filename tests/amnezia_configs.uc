@@ -100,7 +100,6 @@ let generator = require("tachyon_core.generator_outbounds");
 let captured_errors = [];
 generator.init({
     runtime_settings: function() { return {}; },
-    is_sb_1_14_plus: function() { return true; },
     atomic_write_json_file: function() { return true; },
     routes: {
         section_needs_country_is: function() { return false; },

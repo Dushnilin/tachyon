@@ -20,7 +20,7 @@ set -eo pipefail
 LIB_DIR="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 FAILOVER="$LIB_DIR/tachyon_core/dns_failover.uc"
 
-[ -f "$FAILOVER" ] || fail "singbox/dns_failover.uc not found"
+[ -f "$FAILOVER" ] || fail "tachyon_core/dns_failover.uc not found"
 
 trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
 

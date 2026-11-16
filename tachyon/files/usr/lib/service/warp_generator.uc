@@ -313,7 +313,7 @@ for (let line in split(keypair_data, "\n")) {
     if (m_pub) public_key = trim(m_pub[1]);
 }
 
-// Fallback to wg genkey/pubkey if sing-box generate wg-keypair fails
+// Fallback to wg genkey/pubkey if tachyon-core generate wg-keypair fails
 if (!private_key || !public_key) {
     let priv = exec_output("wg genkey 2>/dev/null");
     if (priv != "") {

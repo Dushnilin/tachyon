@@ -14,11 +14,7 @@ BASH
 chmod +x "$WORK_DIR/bin/logger"
 
 cat >"$WORK_DIR/context.json" <<'JSON'
-{
-  "byedpi_installed": true,
-  "zapret_installed": true,
-  "zapret2_installed": true
-}
+{}
 JSON
 context="$(cat "$WORK_DIR/context.json")"
 
@@ -27,8 +23,8 @@ validate_fixture() {
   TACHYON_LIB="$LIB_DIR" PATH="$WORK_DIR/bin:$PATH" ucode -L "$LIB_DIR" "$VALIDATOR" validate-runtime-fixture "$fixture" "$context"
 }
 
-# 1. Provider section (byedpi) with no rules and mixed_proxy_enabled=0 must FAIL validation
-cat >"$WORK_DIR/byedpi_no_rules_disabled_proxy.json" <<'JSON'
+# 1. Provider section (csqtt) with no rules and mixed_proxy_enabled=0 must FAIL validation
+cat >"$WORK_DIR/csqtt_no_rules_disabled_proxy.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -38,10 +34,13 @@ cat >"$WORK_DIR/byedpi_no_rules_disabled_proxy.json" <<'JSON'
   },
   "section": [
     {
-      ".name": "byedpi_sec",
+      ".name": "csqtt_sec",
       ".type": "section",
       "enabled": "1",
-      "action": "byedpi",
+      "action": "csqtt",
+      "csqtt_server": "csqtt.example.com",
+      "csqtt_port": "46000",
+      "csqtt_password": "secret",
       "mixed_proxy_enabled": "0"
     }
   ]
@@ -49,13 +48,13 @@ cat >"$WORK_DIR/byedpi_no_rules_disabled_proxy.json" <<'JSON'
 JSON
 
 : >"$LOGGER_LOG"
-if validate_fixture "$WORK_DIR/byedpi_no_rules_disabled_proxy.json" >/dev/null 2>&1; then
-  fail "byedpi section with no rules and mixed_proxy_enabled=0 should fail validation"
+if validate_fixture "$WORK_DIR/csqtt_no_rules_disabled_proxy.json" >/dev/null 2>&1; then
+  fail "csqtt section with no rules and mixed_proxy_enabled=0 should fail validation"
 fi
 grep -Fq "has no routing conditions" "$LOGGER_LOG" || fail "expected 'has no routing conditions' in log, got $(cat "$LOGGER_LOG")"
 
-# 2. Provider section (byedpi) with no rules and mixed_proxy_enabled=1 must PASS validation
-cat >"$WORK_DIR/byedpi_no_rules_enabled_proxy.json" <<'JSON'
+# 2. Provider section (csqtt) with no rules and mixed_proxy_enabled=1 must PASS validation
+cat >"$WORK_DIR/csqtt_no_rules_enabled_proxy.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -65,10 +64,13 @@ cat >"$WORK_DIR/byedpi_no_rules_enabled_proxy.json" <<'JSON'
   },
   "section": [
     {
-      ".name": "byedpi_sec",
+      ".name": "csqtt_sec",
       ".type": "section",
       "enabled": "1",
-      "action": "byedpi",
+      "action": "csqtt",
+      "csqtt_server": "csqtt.example.com",
+      "csqtt_port": "46000",
+      "csqtt_password": "secret",
       "mixed_proxy_enabled": "1",
       "mixed_proxy_port": "1080"
     }
@@ -77,8 +79,8 @@ cat >"$WORK_DIR/byedpi_no_rules_enabled_proxy.json" <<'JSON'
 JSON
 
 : >"$LOGGER_LOG"
-if ! validate_fixture "$WORK_DIR/byedpi_no_rules_enabled_proxy.json" >/dev/null 2>&1; then
-  fail "byedpi section with no rules and mixed_proxy_enabled=1 should pass validation, log: $(cat "$LOGGER_LOG")"
+if ! validate_fixture "$WORK_DIR/csqtt_no_rules_enabled_proxy.json" >/dev/null 2>&1; then
+  fail "csqtt section with no rules and mixed_proxy_enabled=1 should pass validation, log: $(cat "$LOGGER_LOG")"
 fi
 
 # 3. Verify section_is_active_provider recognizes mixed_proxy_enabled
@@ -88,19 +90,19 @@ let connections = require("config.connections");
 let sec_no_proxy = {
     ".name": "test_sec",
     "enabled": "1",
-    "action": "byedpi",
+    "action": "csqtt",
     "mixed_proxy_enabled": "0"
 };
-if (connections.section_is_active_provider(sec_no_proxy, "byedpi"))
+if (connections.section_is_active_provider(sec_no_proxy, "csqtt"))
     exit(1);
 
 let sec_with_proxy = {
     ".name": "test_sec",
     "enabled": "1",
-    "action": "byedpi",
+    "action": "csqtt",
     "mixed_proxy_enabled": "1"
 };
-if (!connections.section_is_active_provider(sec_with_proxy, "byedpi"))
+if (!connections.section_is_active_provider(sec_with_proxy, "csqtt"))
     exit(2);
 
 print("active provider check OK\n");

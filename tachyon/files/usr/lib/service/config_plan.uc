@@ -4,8 +4,8 @@
 //
 // Generates, compares, and validates candidate configurations without activating them:
 //   - UCI schema, section, domain, IP, CIDR and port syntax validation
-//   - Candidate core engine generation (tachyon-core / sing-box config)
-//   - Direct binary preflight verification (sing-box check -c <candidate>)
+//   - Candidate core engine generation (tachyon-core config)
+//   - Direct binary preflight verification (tachyon-core check -c <candidate>)
 //   - Port collision detection against local listeners
 //   - DNS recursion loop & DoH deadlock prevention
 //   - Granular diff analysis: added, modified, deleted sections & options
@@ -20,7 +20,7 @@ let uci_core = require("core.uci");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const SING_BOX_BIN = "/usr/bin/tachyon-core";
+const TACHYON_CORE_BIN = "/usr/bin/tachyon-core";
 
 let as_string = common.as_string;
 
@@ -409,9 +409,6 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
     for (let sec in diff_result.added_sections) {
         if (sec.type == "section") {
             affected["engine"] = true;
-            if (sec.action == "zapret" || sec.action == "zapret2" || sec.action == "byedpi") {
-                affected["daemons"] = true;
-            }
             affected["nftables"] = true;
         } else if (sec.type == "condition") {
             affected["engine"] = true;
@@ -594,7 +591,7 @@ function normalize_action_family(action) {
     let a = lc(trim(as_string(action || "outbound")));
     if (a == "direct" || a == "bypass") return "direct";
     if (a == "block") return "block";
-    if (a == "zapret" || a == "zapret2" || a == "byedpi" || a == "desync") return "dpi:" + a;
+    if (a == "desync") return "dpi:" + a;
     return "proxy";
 }
 
@@ -2032,11 +2029,11 @@ function validate_uci_semantics(candidate_uci) {
         let valid_actions = {
             connection: true, group: true, desync: true, direct: true,
             outbound: true, proxy: true, bypass: true, block: true,
-            zapret: true, zapret2: true, byedpi: true, hosts: true, dns: true,
+            hosts: true, dns: true,
             awg: true, warp: true, anytls: true, snell: true, mieru: true, naive: true,
-            sudoku: true,
+            sudoku: true, tailscale: true,
             masque: true, openvpn: true, openconnect: true, shadowtls: true,
-            trusttunnel: true, tewfai: true, wdtt: true, olcrtc: true, fptn: true
+            trusttunnel: true, tewfai: true, wdtt: true, csqtt: true, fptn: true
         };
 
         if (!valid_actions[action]) {
@@ -2154,12 +2151,12 @@ function check_candidate_port_collisions(candidate_uci) {
 
 // ─── Core Engine Binary Dry-Run Check ─────────────────────────────────────────
 
-function check_singbox_candidate_binary(candidate_config_obj) {
-    if (fs.stat(SING_BOX_BIN) == null) {
+function check_core_candidate_binary(candidate_config_obj) {
+    if (fs.stat(TACHYON_CORE_BIN) == null) {
         return {
             checked: false,
             status: "skipped",
-            reason: "sing-box binary not present in /usr/bin/tachyon-core"
+            reason: "tachyon-core binary not present in /usr/bin/tachyon-core"
         };
     }
 
@@ -2172,7 +2169,7 @@ function check_singbox_candidate_binary(candidate_config_obj) {
         };
     }
 
-    let cmd = SING_BOX_BIN + " check -c " + tmp_path + " 2>&1";
+    let cmd = TACHYON_CORE_BIN + " check -c " + tmp_path + " 2>&1";
     let proc = fs.popen(cmd, "r");
     let out = "";
     let code = 0;
@@ -2193,7 +2190,7 @@ function check_singbox_candidate_binary(candidate_config_obj) {
     return {
         checked: true,
         status: "failed",
-        error: out != "" ? out : ("sing-box check exited with code " + code)
+        error: out != "" ? out : ("tachyon-core check exited with code " + code)
     };
 }
 
@@ -2251,9 +2248,9 @@ function plan(candidate_source, options) {
     let engine_check = { checked: false, status: "ok" };
     let cand_engine = candidate_uci.settings ? (candidate_uci.settings.engine || "tachyon-core") : "tachyon-core";
 
-    let bin_st = fs.stat(SING_BOX_BIN);
-    if ((cand_engine == "tachyon-core" || cand_engine == "sing-box") && bin_st != null) {
-        let bin_stamp = SING_BOX_BIN + "|" + as_string(bin_st.size || 0) + "|" + as_string(bin_st.mtime || 0);
+    let bin_st = fs.stat(TACHYON_CORE_BIN);
+    if (cand_engine == "tachyon-core" && bin_st != null) {
+        let bin_stamp = TACHYON_CORE_BIN + "|" + as_string(bin_st.size || 0) + "|" + as_string(bin_st.mtime || 0);
         let cache_file = "/var/run/tachyon/engine-binary-check.json";
         let cached_check = common.read_json_file(cache_file);
         let b_check = null;
@@ -2274,13 +2271,13 @@ function plan(candidate_source, options) {
                     final: "direct-out"
                 }
             };
-            b_check = check_singbox_candidate_binary(mock_cfg);
+            b_check = check_core_candidate_binary(mock_cfg);
             if (fs.stat("/var/run/tachyon") != null)
                 common.write_json_file(cache_file, { stamp: bin_stamp, result: b_check }, 0);
         }
         engine_check = b_check;
         if (b_check.status == "failed" && b_check.error) {
-            push(all_errors, "sing-box compiler check failed: " + b_check.error);
+            push(all_errors, "tachyon-core compiler check failed: " + b_check.error);
         }
     }
 

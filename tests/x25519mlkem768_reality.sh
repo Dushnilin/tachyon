@@ -6,8 +6,8 @@ set -eo pipefail
 # X25519MLKEM768 key share, which Xray-core 26.9.x+ servers expect.
 #
 # Tachyon used to inject `true` into every Reality outbound whenever the running
-# build was sing-box-extended >= 2.7.2. Two things broke because of that guess:
-# sing-box-lx and stock sing-box reject the field outright, which is why an
+# core build supported the field. Two things broke because of that guess:
+# older builds reject the field outright, which is why an
 # extended -> lx switch died in pre-flight with
 #   outbounds[N].tls.reality.support_x25519mlkem768: json: unknown field
 # and a server doing plain X25519 cannot complete a handshake that demands the

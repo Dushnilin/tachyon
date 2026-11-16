@@ -5,7 +5,7 @@ set -eo pipefail
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run" "$WORK_DIR/etc_tachyon"
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run"
 export TACHYON_IPV6_STATE_CACHE="$WORK_DIR/run/ipv6-state.json"
-export TACHYON_SING_BOX_CONFIG="$WORK_DIR/run/sing-box.json"
+export TACHYON_CORE_CONFIG="$WORK_DIR/run/tachyon-core.json"
 
 IP_LOG="$WORK_DIR/ip.log"
 NFT_LOG="$WORK_DIR/nft.log"
@@ -226,15 +226,12 @@ TACHYON_FORCE_IPV6_SUPPORTED=1 ucode -S -L "$TACHYON_LIB" -e '
   let net_mod = require("diagnostics.network");
   let netstat_v4 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\n";
   let netstat_v6 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\ntcp 0 0 :::1602 :::* LISTEN\n";
-  assert(net_mod.sing_box_standard_ports_listening(netstat_v4) == true, "sing_box_standard_ports_listening succeeds with v4-only ports when ipv6 is inactive");
-  assert(net_mod.sing_box_standard_ports_listening(netstat_v6) == true, "sing_box_standard_ports_listening succeeds with dual-stack ports");
+  assert(net_mod.tachyon_core_standard_ports_listening(netstat_v4) == true, "tachyon_core_standard_ports_listening succeeds with v4-only ports when ipv6 is inactive");
+  assert(net_mod.tachyon_core_standard_ports_listening(netstat_v6) == true, "tachyon_core_standard_ports_listening succeeds with dual-stack ports");
 '
 
 # 2. Validator + Migration + UI prefs
-printf 'tachyon-core' >"$WORK_DIR/sb_variant"
-printf '0.2.8' >"$WORK_DIR/sb_version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/sb_variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/sb_version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/core_version"
 
 write_validator_fixture() {
   local out="$1"

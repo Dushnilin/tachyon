@@ -1167,10 +1167,10 @@ if (mode == "selftest") {
     assert(type(all) == "array", "list_all should return array");
 
     // Test 7: generate_id
-    let id1 = generate_id("cmp", "sing_box", "update");
-    let id2 = generate_id("cmp", "sing_box", "update");
+    let id1 = generate_id("cmp", "tachyon_core", "update");
+    let id2 = generate_id("cmp", "tachyon_core", "update");
     assert(id1 != id2, "IDs should be unique");
-    assert(match(id1, /^cmp-sing_box-update-/), "ID should have expected prefix");
+    assert(match(id1, /^cmp-tachyon_core-update-/), "ID should have expected prefix");
 
     // Test 8: request_cancel sets flags
     let cjob = create("test", "cancel", "cooperative");

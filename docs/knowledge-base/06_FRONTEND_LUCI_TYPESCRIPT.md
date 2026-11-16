@@ -53,9 +53,8 @@ The frontend does not use heavy external frameworks (like React or Vue) to keep 
 ```
 src/tachyon/tabs/
 ├── dashboard/        # Live status, RTT ping matrix, traffic toggles
-├── diagnostic/       # AI Doctor modal, Local Rule Doctor, Emergency Fallback
-├── rules/            # Selective routing rules, domain/IP lists, client matchers
-├── providers/        # Zapret v1, Zapret v2, ByeDPI configurations
+├── diagnostic/       # AI Doctor modal, Local Rule Doctor, Desync Fuzzer, Emergency Fallback
+├── monitoring/       # Active connections, traffic counters, ruleset inspection
 ├── updates/          # Component installer, version checks, streaming log modal
 └── settings/         # DNS settings, Telegram bot credentials, AI Doctor API keys
 ```

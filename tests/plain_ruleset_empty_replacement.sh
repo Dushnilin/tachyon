@@ -7,7 +7,7 @@ cat >"$WORK_DIR/bin/core" <<'SH'
 exit 0
 SH
 chmod +x "$WORK_DIR/bin/core"
-export TACHYON_SING_BOX_BIN="$WORK_DIR/bin/core"
+export TACHYON_CORE_BIN="$WORK_DIR/bin/core"
 export TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verified"
 export CASE_DIR="$WORK_DIR"
 : >"$WORK_DIR/empty.lst"

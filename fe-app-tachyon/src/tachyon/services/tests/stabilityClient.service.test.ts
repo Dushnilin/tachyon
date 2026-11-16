@@ -35,7 +35,7 @@ describe('StabilityClient', () => {
         uptimes: {
           system: { seconds: 3600, pretty: '1h' },
           daemons: {
-            'sing-box': {
+            'tachyon-core': {
               running: true,
               pid: 1234,
               uptime_seconds: 3600,
@@ -62,13 +62,13 @@ describe('StabilityClient', () => {
             swap_total_kb: 0,
             swap_free_kb: 0,
             swap_used_kb: 0,
-            daemons_rss_kb: { 'sing-box': 50000 },
+            daemons_rss_kb: { 'tachyon-core': 50000 },
           },
           file_descriptors: {
             system_allocated: 500,
             system_max: 50000,
             system_used_pct: 1,
-            daemons: { 'sing-box': 50 },
+            daemons: { 'tachyon-core': 50 },
           },
           orphans: { count: 0, orphans: [] },
         },

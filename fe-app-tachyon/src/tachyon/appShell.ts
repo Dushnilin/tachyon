@@ -548,8 +548,9 @@ const NAV_ITEMS: NavItemDef[] = [
     simpleVisible: true,
     labelRu: 'Система и бэкап',
     labelEn: 'System & Backup',
-    subtitleRu: 'Выбор ядра, резервное копирование конфигурации и логирование',
-    subtitleEn: 'Engine selection, configuration backup and logging',
+    subtitleRu:
+      'Параметры ядра, резервное копирование конфигурации и логирование',
+    subtitleEn: 'Core settings, configuration backup and logging',
     iconPaths: [
       {
         tag: 'path',
@@ -569,7 +570,7 @@ const NAV_ITEMS: NavItemDef[] = [
     labelEn: 'Components & Core',
     subtitleRu:
       'Управление ядром Tachyon Core, модулями и обновлениями системы',
-    subtitleEn: 'Manage Tachyon Core, engine components and updates',
+    subtitleEn: 'Manage Tachyon Core, components and updates',
     iconPaths: [
       {
         tag: 'path',
@@ -950,39 +951,6 @@ function switchSettingsInternalSubTab(
 }
 
 function formatSidebarEngineLabel(): string {
-  const state = store.get();
-  const sys = state.diagnosticsSystemInfo;
-  const srvVariant = (
-    state.servicesInfoWidget?.data?.engineVariant || ''
-  ).toLowerCase();
-  if (srvVariant === 'lx' || sys?.sing_box_lx) {
-    return tr('Ядро: sing-box-lx', 'Engine: sing-box-lx');
-  }
-  if (
-    srvVariant === 'extended' ||
-    srvVariant === 'extended-compressed' ||
-    sys?.sing_box_extended ||
-    sys?.sing_box_compressed
-  ) {
-    return tr('Ядро: sing-box-extended', 'Engine: sing-box-extended');
-  }
-  if (srvVariant === 'tiny' || sys?.sing_box_tiny) {
-    return tr('Ядро: sing-box-tiny', 'Engine: sing-box-tiny');
-  }
-  if (srvVariant === 'stable') {
-    return tr('Ядро: sing-box', 'Engine: sing-box');
-  }
-  if (srvVariant === 'tachyon-core' || sys?.sing_box_tachyon_core) {
-    return tr('Ядро: Tachyon Core', 'Engine: Tachyon Core');
-  }
-  const ver = (
-    state.servicesInfoWidget?.data?.engineVersion ||
-    sys?.sing_box_version ||
-    ''
-  ).trim();
-  if (ver && ver !== 'unknown' && !/^v?0\./i.test(ver)) {
-    return tr('Ядро: sing-box', 'Engine: sing-box');
-  }
   return tr('Ядро: Tachyon Core', 'Engine: Tachyon Core');
 }
 
@@ -1075,7 +1043,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     const state = store.get();
     const srv = state.servicesInfoWidget;
     const diagActions = state.diagnosticsActions;
-    const running = Boolean(srv?.data?.tachyonRunning || srv?.data?.singbox);
+    const running = Boolean(
+      srv?.data?.tachyonRunning || srv?.data?.tachyonCore,
+    );
     const statusStr = String(srv?.data?.tachyonStatus || '');
     const activeAction: 'start' | 'stop' | 'restart' | null =
       topbarServiceActionInFlight ||
@@ -1796,7 +1766,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     // Service live status in Sidebar Footer
     const srvState = store.get().servicesInfoWidget;
     const isRunning = Boolean(
-      srvState?.data?.tachyonRunning || srvState?.data?.singbox,
+      srvState?.data?.tachyonRunning || srvState?.data?.tachyonCore,
     );
     const isReloading = srvState?.data?.tachyonStatus === 'reloading';
     const isLiteMode = Boolean(srvState?.data?.liteMode);

@@ -4,7 +4,7 @@ set -eo pipefail
 
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
 
-# 1. Test sing-box configuration generation with AWG server (2.0, 3.0, and 3.1)
+# 1. Test tachyon-core configuration generation with AWG server (2.0, 3.0, and 3.1)
 cat >"$WORK_DIR/awg_fixture.json" <<'JSON'
 {
   "settings": {
@@ -116,41 +116,37 @@ cat >"$WORK_DIR/awg_fixture.json" <<'JSON'
 JSON
 
 mkdir -p "$WORK_DIR/out.section-cache"
-out_json="$WORK_DIR/singbox_awg.json"
+out_json="$WORK_DIR/tachyon_core_awg.json"
 
-# Test 1: Leadaxe variant via variant state file
-printf 'lx\n' > "$WORK_DIR/sing-box-variant"
-SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-SB_VERSION_STATE_FILE="$WORK_DIR/nonexistent" \
 ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
 
-grep -q '"type": "wireguard"' "$out_json" || fail "sing-box config missing wireguard inbound"
-grep -q '"tag": "server-my_awg_server-in"' "$out_json" || fail "sing-box config missing server-my_awg_server-in tag"
-grep -q '"jc": 5' "$out_json" || fail "sing-box config missing amnezia jc parameter"
-grep -q '"s1": 15' "$out_json" || fail "sing-box config missing amnezia s1 parameter"
-grep -q '"h1": 100' "$out_json" || fail "sing-box config missing amnezia h1 parameter"
+grep -q '"type": "wireguard"' "$out_json" || fail "tachyon-core config missing wireguard endpoint"
+grep -q '"tag": "server-my_awg_server-in"' "$out_json" || fail "tachyon-core config missing server-my_awg_server-in tag"
+grep -q '"jc": 5' "$out_json" || fail "tachyon-core config missing amnezia jc parameter"
+grep -q '"s1": 15' "$out_json" || fail "tachyon-core config missing amnezia s1 parameter"
+grep -q '"h1": 100' "$out_json" || fail "tachyon-core config missing amnezia h1 parameter"
 
 # Check AWG mixed proxy inbound and route
-grep -q '"tag": "my_awg_section-mixed-in"' "$out_json" || fail "sing-box config missing my_awg_section-mixed-in tag"
-grep -q '"listen_port": 2085' "$out_json" || fail "sing-box config missing mixed proxy port 2085"
-grep -q '"username": "awguser"' "$out_json" || fail "sing-box config missing mixed proxy username"
-grep -q '"password": "awgpass"' "$out_json" || fail "sing-box config missing mixed proxy password"
-grep -q '"inbound": "my_awg_section-mixed-in"' "$out_json" || fail "sing-box config missing route rule for mixed proxy"
-grep -q '"outbound": "my_awg_section-out"' "$out_json" || fail "sing-box config missing route target for mixed proxy"
+grep -q '"tag": "my_awg_section-mixed-in"' "$out_json" || fail "tachyon-core config missing my_awg_section-mixed-in tag"
+grep -q '"listen_port": 2085' "$out_json" || fail "tachyon-core config missing mixed proxy port 2085"
+grep -q '"username": "awguser"' "$out_json" || fail "tachyon-core config missing mixed proxy username"
+grep -q '"password": "awgpass"' "$out_json" || fail "tachyon-core config missing mixed proxy password"
+grep -q '"inbound": "my_awg_section-mixed-in"' "$out_json" || fail "tachyon-core config missing route rule for mixed proxy"
+grep -q '"outbound": "my_awg_section-out"' "$out_json" || fail "tachyon-core config missing route target for mixed proxy"
 
 # Ensure UDP is NOT rejected for AWG mixed proxy (AWG is an endpoint with UDP capability)
 if grep -q '"inbound": "my_awg_section-mixed-in"' "$out_json" | grep -q '"action": "reject"'; then
   fail "AWG mixed proxy must not have UDP rejected"
 fi
 
-# Check AWG 3.0 server inbound
-grep -q '"tag": "server-my_awg30_server-in"' "$out_json" || fail "sing-box config missing server-my_awg30_server-in tag"
+# Check AWG 3.0 server endpoint
+grep -q '"tag": "server-my_awg30_server-in"' "$out_json" || fail "tachyon-core config missing server-my_awg30_server-in tag"
 grep -q '"header_protection_key": "dyBkZypS0O8PSlG0Ide3Agjp4Fng3YdYlPvXzZIldYQ="' "$out_json" || fail "AWG 3.0 server missing header_protection_key"
 grep -q '"content_padding_addition": "38-104"' "$out_json" || fail "AWG 3.0 server missing content_padding_addition"
 
-# Check AWG 3.1 server inbound
-grep -q '"tag": "server-my_awg31_server-in"' "$out_json" || fail "sing-box config missing server-my_awg31_server-in tag"
+# Check AWG 3.1 server endpoint
+grep -q '"tag": "server-my_awg31_server-in"' "$out_json" || fail "tachyon-core config missing server-my_awg31_server-in tag"
 grep -q '"rekey_after_time": "107-132"' "$out_json" || fail "AWG 3.1 server missing rekey_after_time"
 grep -q '"rekey_timeout": "5-6"' "$out_json" || fail "AWG 3.1 server missing rekey_timeout"
 grep -q '"reject_after_time": "171-193"' "$out_json" || fail "AWG 3.1 server missing reject_after_time"
@@ -159,25 +155,11 @@ grep -q '"max_handshake_attempts": "15-24"' "$out_json" || fail "AWG 3.1 server 
 grep -q '"random_trailers": true' "$out_json" || fail "AWG 3.1 server missing random_trailers"
 grep -q '"disable_cookies": true' "$out_json" || fail "AWG 3.1 server missing disable_cookies"
 
-# Check AWG 3.1 outbound on Leadaxe (range keepalive passed through, trailers/cookies present)
-grep -q '"persistent_keepalive_interval": "25-35"' "$out_json" || fail "Leadaxe AWG outbound missing range keepalive"
+# tachyon-core keeps integer persistent_keepalive_interval (extracting lower bound from range)
+grep -q '"persistent_keepalive_interval": 25' "$out_json" || fail "tachyon-core AWG outbound missing integer keepalive"
 
-# Test 2: Extended/Standard variant (range keepalive must degrade safely to integer 25)
-printf 'extended\n' > "$WORK_DIR/sing-box-variant"
-SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-SB_VERSION_STATE_FILE="$WORK_DIR/nonexistent" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-  "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
-
-grep -q '"persistent_keepalive_interval": 25' "$out_json" || fail "Non-lx AWG outbound must safely fallback to integer keepalive"
-grep -q '"tag": "my_awg_section-mixed-in"' "$out_json" || fail "Non-lx AWG missing mixed inbound"
-
-# Test 3: tachyon-core must get the endpoint schema exactly like lx. A released
-# tachyon-core prints a bare "0.0.x" version, so the marker is what identifies
-# it; without this the generator pushed a wireguard *inbound* and the core
-# refused to start with "unknown inbound type: wireguard".
-assert_awg_server_is_endpoint() {
-  JSON_VALUE="$(cat "$out_json")" node - <<'NODE'
+# tachyon-core must get the endpoint schema (never a wireguard inbound)
+JSON_VALUE="$(cat "$out_json")" node - <<'NODE'
 const cfg = JSON.parse(process.env.JSON_VALUE);
 const inbound = (cfg.inbounds || []).find(i => i.tag === "server-my_awg_server-in");
 const endpoint = (cfg.endpoints || []).find(e => e.tag === "server-my_awg_server-in");
@@ -202,28 +184,9 @@ if (endpoint.jc !== 5 || endpoint.s1 !== 15) {
   process.exit(1);
 }
 if (endpoint.amnezia !== undefined) {
-  console.error("endpoint must not carry the extended amnezia object");
+  console.error("endpoint must not carry the nested amnezia object");
   process.exit(1);
 }
 NODE
-}
-
-printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"
-: > "$WORK_DIR/sing-box-version"
-SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-  "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
-assert_awg_server_is_endpoint
-
-# The same build identified by its version suffix alone (pre-release builds),
-# with no marker to help - a stale or wiped marker must not lose the schema.
-printf '0.0.1-tachyon.0\n' > "$WORK_DIR/sing-box-version"
-: > "$WORK_DIR/sing-box-variant"
-SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version" \
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-  "$WORK_DIR/awg_fixture.json" "$out_json" "127.0.0.1" 0 0
-assert_awg_server_is_endpoint
 
 printf 'AWG 2.0, 3.0, and 3.1 server and outbound configuration checks passed\n'

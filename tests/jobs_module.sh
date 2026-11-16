@@ -152,8 +152,8 @@ assert_eq "fresh" "$STALE" "created job should not be stale"
 # ── Generate unique IDs ──────────────────────────────────────────────────────
 IDS=$(ucode -e '
   let jobs = require("core.jobs");
-  let id1 = jobs.generate_id("cmp", "sing_box", "update");
-  let id2 = jobs.generate_id("cmp", "sing_box", "update");
+  let id1 = jobs.generate_id("cmp", "tachyon_core", "update");
+  let id2 = jobs.generate_id("cmp", "tachyon_core", "update");
   print(id1 != id2 ? "unique" : "duplicate");
 ')
 assert_eq "unique" "$IDS" "IDs should be unique"

@@ -63,7 +63,7 @@ describe('runFakeIPCheck', () => {
     mocks.getDashboardSections.mockResolvedValue({
       success: true,
       data: [
-        { sectionName: 'Discord', action: 'zapret2' },
+        { sectionName: 'Discord', action: 'desync' },
         { sectionName: 'Main', action: 'connection' },
       ],
     });
@@ -117,7 +117,7 @@ describe('runFakeIPCheck', () => {
     );
   });
 
-  it('marks check as success when only DPI bypass sections exist and public IPs match', async () => {
+  it('marks check as success when only packet desync sections exist and public IPs match', async () => {
     mocks.checkFakeIP.mockResolvedValue({
       success: true,
       data: { fakeip: true, IP: '198.18.1.1' },
@@ -133,8 +133,8 @@ describe('runFakeIPCheck', () => {
     mocks.getDashboardSections.mockResolvedValue({
       success: true,
       data: [
-        { sectionName: 'Discord', action: 'zapret2' },
-        { sectionName: 'YouTube', action: 'zapret2' },
+        { sectionName: 'Discord', action: 'desync' },
+        { sectionName: 'YouTube', action: 'desync' },
       ],
     });
 

@@ -3,7 +3,7 @@
 // Tachyon Service Check - probe engine for Tachyon.
 //
 // Проверяет доступность сервисов так, как это делает клиент сети: имя резолвится
-// через тот же dnsmasq -> sing-box, а соединение уходит из роутера и попадает в
+// через тот же dnsmasq -> tachyon-core, а соединение уходит из роутера и попадает в
 // цепочку mangle_output -> tproxy, то есть тем же путём, что трафик из LAN.
 // В режиме netns трафик реально входит через br-lan из отдельного namespace,
 // что дополнительно воспроизводит правила секций, привязанные к source IP.
@@ -20,7 +20,7 @@ const PROFILES_OVERRIDE = "/etc/tachyon/servicecheck_profiles.json";
 const PROFILES_DEFAULT = "/usr/share/tachyon/servicecheck_profiles.json";
 const STATE_DIR = "/var/run/tachyon-servicecheck";
 const TACHYON_BIN = "/usr/bin/tachyon";
-const DEFAULT_SING_BOX_CONFIG = "/etc/tachyon-core/config.json";
+const DEFAULT_TACHYON_CORE_CONFIG = "/etc/tachyon-core/config.json";
 const NETNS_NAME = "fkpsc";
 const NETNS_VETH_HOST = "fkpsc0";
 const NETNS_VETH_PEER = "fkpsc1";
@@ -350,11 +350,11 @@ function backend_name(id) {
     id = as_string(id);
     if (id == "tachyon")
         return "Tachyon";
-    return "Sing-box";
+    return "Tachyon Core";
 }
 
-function sing_box_config_path() {
-    let overridden = trim(as_string(getenv("TACHYON_SC_SING_BOX_CONFIG")));
+function tachyon_core_config_path() {
+    let overridden = trim(as_string(getenv("TACHYON_SC_CORE_CONFIG")));
     if (overridden != "")
         return overridden;
 
@@ -364,7 +364,7 @@ function sing_box_config_path() {
             return configured;
     }
 
-    return DEFAULT_SING_BOX_CONFIG;
+    return DEFAULT_TACHYON_CORE_CONFIG;
 }
 
 function lan_interface() {
@@ -386,7 +386,7 @@ function interface_ipv4(interface) {
 
 function fakeip_ranges() {
     let ranges = [];
-    let config = read_json_file(sing_box_config_path());
+    let config = read_json_file(tachyon_core_config_path());
     let dns = object_or_empty(object_or_empty(config).dns);
 
     for (let server in array_or_empty(dns.servers)) {
@@ -409,7 +409,7 @@ function fakeip_ranges() {
 
 function fakeip6_ranges() {
     let ranges = [];
-    let config = read_json_file(sing_box_config_path());
+    let config = read_json_file(tachyon_core_config_path());
     let dns = object_or_empty(object_or_empty(config).dns);
 
     for (let server in array_or_empty(dns.servers)) {
@@ -525,13 +525,13 @@ function forkop_running() {
 
     let result = capture_args([ TACHYON_BIN, "get_status" ], false);
     if (result.status != 0)
-        return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
+        return run_quiet([ "pgrep", "-f", "tachyon-core" ]);
 
     let status = object_or_empty(parse_json(result.output));
     if (status.running === true || int(status.running) == 1)
         return true;
     if (status.running == null)
-        return run_quiet([ "pgrep", "-f", "tachyon-core|sing-box" ]);
+        return run_quiet([ "pgrep", "-f", "tachyon-core" ]);
     return false;
 }
 
@@ -581,7 +581,7 @@ function capabilities() {
         forkop_installed: false,
         podkop_installed: false,
         fixes_available: false,
-        sing_box_config: sing_box_config_path(),
+        tachyon_core_config: tachyon_core_config_path(),
         // Старое поле оставлено для совместимости со страницей предыдущих версий.
         forkop_running: running,
         profiles_version: int(object_or_empty(read_json_file(profiles_file())).version || 0)
@@ -1241,7 +1241,7 @@ function clash_connections() {
     if (backend == "tachyon") {
         result = capture_args([ TACHYON_BIN, "clash_api", "get_connections" ], false);
         if (result.status != 0) {
-            let config = object_or_empty(read_json_file(sing_box_config_path()));
+            let config = object_or_empty(read_json_file(tachyon_core_config_path()));
             let clash = object_or_empty(object_or_empty(config.experimental).clash_api);
             let controller = trim(as_string(clash.external_controller));
             let secret = as_string(clash.secret);
@@ -1698,19 +1698,19 @@ function custom_check(host, port, mode, client_ip) {
         label: host + ":" + as_string(port)
     });
 
-    let through_sing_box = null;
+    let through_tachyon_core = null;
     let route_status = "unknown";
     let route_message = "Маршрут не удалось подтвердить через Clash API.";
     let evidence = "";
 
     if (!ctx.backend_running) {
-        through_sing_box = false;
+        through_tachyon_core = false;
         route_status = "direct";
         evidence = "backend_stopped";
         route_message = ctx.backend_name + " остановлен: соединение не проходит через " + ctx.backend_name + ".";
     }
     else if (live_route.seen) {
-        through_sing_box = true;
+        through_tachyon_core = true;
         route_status = "tachyon-core";
         evidence = "clash_api";
         item.outbound = live_route.outbound;
@@ -1719,13 +1719,13 @@ function custom_check(host, port, mode, client_ip) {
             : "Соединение найдено среди активных соединений " + ctx.backend_name + ".";
     }
     else if (item.dns_fakeip) {
-        through_sing_box = true;
+        through_tachyon_core = true;
         route_status = "tachyon-core";
         evidence = "fakeip";
         route_message = "Домен получил FakeIP, который обслуживается " + ctx.backend_name + ".";
     }
     else if (live_route.attempted && item.state != "error" && item.state != "skipped") {
-        through_sing_box = false;
+        through_tachyon_core = false;
         route_status = "direct";
         evidence = "clash_api_absent";
         route_message = "Соединение доступно, но за время теста не появилось в Clash API: маршрут идёт мимо " + ctx.backend_name + ".";
@@ -1751,7 +1751,7 @@ function custom_check(host, port, mode, client_ip) {
         forkop_running: ctx.forkop_running,
         route: {
             status: route_status,
-            through_sing_box,
+            through_tachyon_core,
             outbound: as_string(item.outbound),
             evidence,
             message: route_message
@@ -2036,12 +2036,6 @@ function collect_section_custom_domains(s) {
 
 function resolve_section_route_type(s) {
     let route_type = s.action || "direct";
-    if (s.action == "zapret" && s.zapret_strategy)
-        return "zapret (" + s.zapret_strategy + ")";
-    if (s.action == "zapret2" && s.zapret2_strategy)
-        return "zapret2 (" + s.zapret2_strategy + ")";
-    if (s.action == "byedpi" && s.byedpi_strategy)
-        return "byedpi (" + s.byedpi_strategy + ")";
     if (s.action == "desync") {
         let dp = (s.desync_preset && s.desync_preset != "custom") ? s.desync_preset : (s.desync_mode || s.desync_preset || "auto");
         return "desync (" + dp + ")";
@@ -2049,12 +2043,6 @@ function resolve_section_route_type(s) {
     if (s.action == "connection") {
         for (let src in (connections.section_effective_outbound_sources(s) || [])) {
             let st = lc(trim(as_string(src.source_type || "")));
-            if (st == "zapret2")
-                return src.zapret2_strategy ? ("zapret2 (" + src.zapret2_strategy + ")") : "zapret2";
-            if (st == "zapret")
-                return src.zapret_strategy ? ("zapret (" + src.zapret_strategy + ")") : "zapret";
-            if (st == "byedpi")
-                return src.byedpi_args ? ("byedpi (" + src.byedpi_args + ")") : "byedpi";
             if (st == "desync") {
                 let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
                 return "desync (" + dp + ")";

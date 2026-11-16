@@ -201,7 +201,7 @@ ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
 ucode -L "$TACHYON_LIB" -e '
 let fs = require("fs");
 let profile = require("tachyon_core.core_profile");
-if (!profile.supports_protocol("wdtt", "0.5.2-tachyon", "tachyon-core") || !profile.supports_inbound("wdtt", "0.5.2-tachyon", "tachyon-core") || profile.supports_protocol("wdtt", "1.12.0", "")) {
+if (!profile.supports_protocol("wdtt", "0.5.2-tachyon", "tachyon-core") || !profile.supports_inbound("wdtt", "0.5.2-tachyon", "tachyon-core")) {
     warn("core_profile wdtt capability check mismatch\n");
     exit(1);
 }

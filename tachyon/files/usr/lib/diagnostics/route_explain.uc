@@ -34,7 +34,7 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tachyon";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
-const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
+const CORE_TPROXY_INBOUND_PORT = getenv("TACHYON_CORE_TPROXY_INBOUND_PORT") || getenv("CORE_TPROXY_INBOUND_PORT") || constants.TACHYON_CORE_TPROXY_INBOUND_PORT || constants.CORE_TPROXY_INBOUND_PORT || "1602";
 
 let as_string = common.as_string;
 
@@ -515,8 +515,7 @@ function find_local_community_ruleset_file(community_name) {
         "/tmp/tachyon-core/rulesets/community-" + community_name + ".trs",
         "/etc/tachyon/rulesets/community-" + community_name + ".trs",
         "/tmp/tachyon-core/rulesets/community-" + community_name + ".srs",
-        "/etc/tachyon/rulesets/community-" + community_name + ".srs",
-        "/tmp/sing-box/rulesets/community-" + community_name + ".srs"
+        "/etc/tachyon/rulesets/community-" + community_name + ".srs"
     ];
     for (let p in candidates) {
         let st = fs.stat(p);
@@ -534,10 +533,7 @@ function run_binary_ruleset_match_file(rs_path, target_value, is_ip) {
     let st = fs.stat(rs_path);
     if (st == null || st.type != "file" || (st.size || 0) <= 0)
         return false;
-    let is_trs = substr(rs_path, length(rs_path) - 4) == ".trs";
-    let bins = is_trs
-        ? [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core", "/usr/bin/sing-box" ]
-        : [ "/usr/bin/tachyon-core", "/usr/bin/sing-box", "/usr/sbin/sing-box" ];
+    let bins = [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core" ];
     let flag = is_ip ? "--ip" : "--domain";
     for (let bin in bins) {
         if (fs.stat(bin) == null)
@@ -664,8 +660,7 @@ function check_custom_reference_match(target_value, reference, is_ip) {
     let folders = [
         getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
         "/etc/tachyon/rulesets",
-        "/usr/share/tachyon/rulesets",
-        "/tmp/sing-box/rulesets"
+        "/usr/share/tachyon/rulesets"
     ];
     let tag_name = "inline-custom-" + get_runtime_rulesets().hash12(reference) + "-ruleset";
     for (let folder in folders) {
@@ -703,8 +698,7 @@ function check_section_compiled_lists_match(section_name, target_value, is_ip) {
     let folders = [
         getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
         "/etc/tachyon/rulesets",
-        "/usr/share/tachyon/rulesets",
-        "/tmp/sing-box/rulesets"
+        "/usr/share/tachyon/rulesets"
     ];
     let suffixes = is_ip
         ? [ "-lists-ruleset.json", "-lists-ruleset-subnets.json", "-remote-subnet-ruleset.json" ]
@@ -1027,7 +1021,7 @@ function resolve_effective_section_action(section, uci_cfg) {
             if (type(src) != "object" || src.enabled == "0")
                 continue;
             let st = lc(trim(as_string(src.source_type || "subscription")));
-            if (st == "zapret2" || st == "zapret" || st == "byedpi" || st == "desync") {
+            if (st == "desync") {
                 if (first_dpi == "")
                     first_dpi = st;
             } else {
@@ -1450,30 +1444,6 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
         };
     }
 
-    if (matched_action == "zapret" || matched_action == "zapret2") {
-        return {
-            group_tag: matched_section ? (matched_section[".name"] + "-out") : "zapret-out",
-            group_type: "nfqueue",
-            selected_node: matched_action == "zapret2" ? "nfqws2-daemon" : "nfqws-daemon",
-            node_type: "nfqueue",
-            server_address: "127.0.0.1",
-            server_port: 200,
-            transport: "desync"
-        };
-    }
-
-    if (matched_action == "byedpi") {
-        return {
-            group_tag: matched_section ? (matched_section[".name"] + "-out") : "byedpi-out",
-            group_type: "socks5",
-            selected_node: "ciadpi-daemon",
-            node_type: "socks",
-            server_address: "127.0.0.1",
-            server_port: 1080,
-            transport: "split"
-        };
-    }
-
     if (matched_action == "desync") {
         let d_preset = matched_section ? lc(trim(as_string(matched_section.desync_preset || ""))) : "";
         let d_mode = (d_preset != "" && d_preset != "custom")
@@ -1555,8 +1525,7 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
     let cfg_path = getenv("TACHYON_CORE_CONFIG_PATH") ||
                    ((uci_cfg && type(uci_cfg.settings) == "object" && uci_cfg.settings.config_path) ? as_string(uci_cfg.settings.config_path) : "");
     let sb_config_raw = (cfg_path != "" ? fs.readfile(cfg_path) : null) ||
-                        fs.readfile("/etc/tachyon-core/config.json") ||
-                        fs.readfile("/etc/sing-box/config.json");
+                        fs.readfile("/etc/tachyon-core/config.json");
     let sb_cfg_inline = (uci_cfg && type(uci_cfg._sb_cfg) == "object") ? uci_cfg._sb_cfg : null;
     if (sb_config_raw || sb_cfg_inline) {
         try {
@@ -1797,10 +1766,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         target_info.is_fakeip = true;
         target_info.is_private = false;
     }
-    let core_marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
-    let is_tachyon_core_bin = core_marker == "tachyon-core" ||
-        (core_marker != "extended" && core_marker != "extended-compressed" && core_marker != "lx" && core_marker != "tiny" && core_marker != "stable" && fs.stat("/usr/bin/tachyon-core") != null);
-    let active_engine = is_tachyon_core_bin ? "tachyon-core" : ((settings.engine && settings.engine != "sing-box") ? settings.engine : "tachyon-core");
+    let active_engine = "tachyon-core";
     let fakeip_enabled = common.is_fakeip_enabled(settings);
 
     let client_info = classify_client(client_in, uci_cfg);
@@ -2052,14 +2018,14 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             dns_resolver = dns_tag + " (" + dns_type_str + ": " + dns_srvs_str + dns_detour_str + ")";
             dns_details = "Domain matches DNS section '" + section_name + "'. Resolved via custom DNS server " + dns_srvs_str + " (" + dns_type_str + ")" + dns_detour_str + " without FakeIP allocation.";
         } else if (fakeip_enabled) {
-            let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
+            let core_dns_label = "tachyon-core";
             dns_mode = "fakeip";
             dns_resolver = core_dns_label + " FakeIP (127.0.0.42:53)";
             dns_details = eff_v6.ipv6_active
                 ? "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in " + fakeip4_range + " and synthetic IPv6 in " + fakeip6_range + " (IPv6 state: " + eff_v6.effective + ")."
                 : "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in " + fakeip4_range + "; AAAA queries receive NOERROR empty response (IPv6 state: " + eff_v6.effective + ").";
         } else {
-            let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
+            let core_dns_label = "tachyon-core";
             dns_mode = "tachyon_dns";
             dns_resolver = "dnsmasq -> " + core_dns_label + " (127.0.0.42:53)";
             dns_details = eff_v6.ipv6_active
@@ -2126,22 +2092,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         nft_mark = "none";
         nft_action = "reject with icmp type admin-prohibited";
         nft_details = "Blocked at firewall boundary by admin reject rule.";
-    } else if (action == "zapret" || action == "zapret2") {
-        nft_intercepted = true;
-        nft_mark = "0x20000000";
-        nft_action = "meta mark set 0x20000000 queue num 200 accept";
-        nft_details = "Marked with 0x20000000 and diverted to NFQueue 200 for nfqws packet desynchronization.";
-    } else if (action == "byedpi") {
-        nft_intercepted = true;
-        nft_mark = "0x40000000";
-        nft_action = "meta mark set 0x40000000 redirect to :1080";
-        nft_details = "Marked with 0x40000000 and redirected to local ByeDPI SOCKS proxy on port 1080.";
     } else {
-        // Proxy action (tachyon-core)
+        // Proxy / native desync action (tachyon-core)
         nft_intercepted = true;
         nft_mark = NFT_FAKEIP_MARK;
-        nft_action = "meta mark set " + NFT_FAKEIP_MARK + " tproxy to :" + SB_TPROXY_INBOUND_PORT + " accept";
-        nft_details = "Diverted via TProxy on port " + SB_TPROXY_INBOUND_PORT + " with firewall mark " + NFT_FAKEIP_MARK + ".";
+        nft_action = "meta mark set " + NFT_FAKEIP_MARK + " tproxy to :" + CORE_TPROXY_INBOUND_PORT + " accept";
+        nft_details = "Diverted via TProxy on port " + CORE_TPROXY_INBOUND_PORT + " with firewall mark " + NFT_FAKEIP_MARK + ".";
     }
 
     let stage5 = {
@@ -2224,8 +2180,6 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let verdict = "proxied";
     if (action == "bypass" || action == "direct") verdict = "direct";
     else if (action == "block") verdict = "blocked";
-    else if (action == "zapret" || action == "zapret2") verdict = "zapret";
-    else if (action == "byedpi") verdict = "byedpi";
     else if (action == "dns") verdict = "dns";
     else if (action == "hosts") verdict = "hosts";
 
@@ -2250,12 +2204,6 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     } else if (verdict == "blocked") {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is BLOCKED by section '" + section_name + "' (" + rule_desc + ").";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " ЗАБЛОКИРОВАН секцией «" + (section_label || section_name) + "» (" + rule_desc + ").";
-    } else if (verdict == "zapret") {
-        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches packet desynchronization section '" + section_name + "'. Diverted to NFQueue 200 for nfqws processing.";
-        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией десинхронизации пакетов «" + (section_label || section_name) + "». Перенаправлен в NFQueue 200 для обработки через nfqws.";
-    } else if (verdict == "byedpi") {
-        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches ByeDPI section '" + section_name + "'. Diverted to local ciadpi SOCKS proxy.";
-        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией ByeDPI «" + (section_label || section_name) + "». Перенаправлен в локальный прокси ciadpi.";
     }
 
     return {

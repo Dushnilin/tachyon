@@ -2,7 +2,7 @@
      width="1200" height="176" viewBox="0 0 1200 176"
      role="img" aria-labelledby="title desc">
   <title id="title">Веб-интерфейс LuCI на TypeScript</title>
-  <desc id="desc">Интерфейс управления Tachyon в LuCI: переключение движков маршрутизации, встроенный фаззер стратегий DPI, телеметрия ОЗУ и загрузка конфигураций OpenVPN и AmneziaWG.</desc>
+  <desc id="desc">Интерфейс управления Tachyon в LuCI: управление ядром tachyon-core, встроенный фаззер сетевых стратегий, телеметрия ОЗУ и загрузка конфигураций OpenVPN и AmneziaWG.</desc>
 
   <rect width="1200" height="176" rx="16" fill="#141415"/>
   <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
@@ -11,19 +11,19 @@
   <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">Веб-интерфейс LuCI (TypeScript) и реактивные панели управления</text>
   <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">fe-app-tachyon · luci-app-tachyon</text>
 
-  <!-- Card 1 (Highlighted): Engine Switcher (280px) -->
+  <!-- Card 1 (Highlighted): Core Control (280px) -->
   <g transform="translate(24, 52)">
     <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Routing Engine Switcher</text>
-    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Смена ядра в один клик</text>
-    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Пошаговая миграция между</text>
-    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon-core и sing-box</text>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">tachyon-core Control</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Управление ядром и версиями</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Обновление и откат релизов</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon-core · .trs · .srs</text>
   </g>
 
   <!-- Card 2: Fuzzer Modal (280px) -->
   <g transform="translate(316, 52)">
     <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">DPI Strategy Fuzzer UI</text>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Packet Strategy Fuzzer UI</text>
     <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Подбор стратегий в UI</text>
     <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Живой прогресс-бар проверки,</text>
     <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">HTTP-коды и запись в UCI</text>

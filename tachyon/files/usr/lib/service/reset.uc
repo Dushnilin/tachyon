@@ -31,15 +31,12 @@ const INIT_PATH = env("TACHYON_SERVICE_INIT", "/etc/init.d/" + CONFIG_NAME);
 const CONFIG_PATH = env("TACHYON_CONFIG_PATH", "/etc/config/" + CONFIG_NAME);
 const PERSISTENT_DIR = env("TACHYON_PERSISTENT_DIR", "/etc/" + CONFIG_NAME);
 const RUNTIME_STATE_DIR = env("TACHYON_RUNTIME_STATE_DIR", "/var/run/" + CONFIG_NAME);
-const SING_BOX_TMP_DIR = env("TACHYON_SING_BOX_TMP_DIR", "/tmp/tachyon-core");
-const SING_BOX_CONFIG_PATH = env("TACHYON_SING_BOX_CONFIG_PATH", "/etc/tachyon-core/config.json");
+const TACHYON_CORE_TMP_DIR = env("TACHYON_CORE_TMP_DIR", "/tmp/tachyon-core");
+const TACHYON_CORE_CONFIG_PATH = env("TACHYON_CORE_CONFIG_PATH", "/etc/tachyon-core/config.json");
 
 const PRESERVED_PERSISTENT_ENTRIES = {
     tailscale: 1,
-    "tachyon-core-variant": 1,
     "tachyon-core-version": 1,
-    "sing-box-variant": 1,
-    "sing-box-version": 1,
     "installer-backups": 1
 };
 
@@ -183,8 +180,8 @@ function reset_settings(no_start) {
         RUNTIME_STATE_DIR,
         "/var/run/" + CONFIG_NAME + ".reload.lock",
         "/tmp/.uci/" + CONFIG_NAME,
-        SING_BOX_TMP_DIR,
-        SING_BOX_CONFIG_PATH
+        TACHYON_CORE_TMP_DIR,
+        TACHYON_CORE_CONFIG_PATH
     ]);
     if (!remove_persistent_state()) {
         log_message("Reset settings failed: unable to clean " + PERSISTENT_DIR);

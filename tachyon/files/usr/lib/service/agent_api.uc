@@ -135,14 +135,14 @@ function check_write_auth(bearer) {
 function handle_health() {
     let ai_raw = fs.readfile("/tmp/tachyon_ai_status.json") || "{}";
     let ai = parse_json_safe(ai_raw) || {};
-    let sb_pid = trim(command_output("pidof tachyon-core sing-box"));
+    let core_pid = trim(command_output("pidof tachyon-core"));
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     ok({
-        status:    ai.status || (sb_pid != "" ? "healthy" : "critical"),
-        singbox:   sb_pid != "" ? "running" : "stopped",
-        watchdog:  (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) ? "running" : "stopped",
-        incidents: ai.incidents_resolved_total || 0,
-        timestamp: time()
+        status:       ai.status || (core_pid != "" ? "healthy" : "critical"),
+        tachyon_core: core_pid != "" ? "running" : "stopped",
+        watchdog:     (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) ? "running" : "stopped",
+        incidents:    ai.incidents_resolved_total || 0,
+        timestamp:    time()
     });
 }
 
@@ -202,7 +202,7 @@ function handle_snapshot() {
     if (tachyon_ver == "")
         tachyon_ver = trim(command_output("apk list tachyon 2>/dev/null | head -1"));
 
-    let sb_pid = trim(command_output("pidof tachyon-core sing-box"));
+    let core_pid = trim(command_output("pidof tachyon-core"));
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     let wd_ok = wd_pid != "" && fs.stat("/proc/" + wd_pid) != null;
 
@@ -269,8 +269,8 @@ function handle_snapshot() {
             timestamp:       time()
         },
         services: {
-            singbox:  sb_pid != "" ? "running" : "stopped",
-            watchdog: wd_ok ? "running" : "stopped"
+            tachyon_core: core_pid != "" ? "running" : "stopped",
+            watchdog:     wd_pid != "" && fs.stat("/proc/" + wd_pid) != null ? "running" : "stopped"
         },
         connectivity: {
             direct_ok: int(direct_resp || "0") >= 200 && int(direct_resp || "0") < 400,
@@ -453,7 +453,7 @@ function handle_tools() {
             },
             {
                 name:         "tachyon_restart",
-                description:  "Restart a subsystem: singbox | tachyon | dnsmasq | watchdog. Requires Bearer token.",
+                description:  "Restart a subsystem: tachyon-core | tachyon | dnsmasq | watchdog. Requires Bearer token.",
                 method:       "POST",
                 path:         "/tachyon/agent/v1/restart",
                 auth:         "bearer",
@@ -463,7 +463,7 @@ function handle_tools() {
                     properties: {
                         service: {
                             type:        "string",
-                            enum:        ["singbox", "tachyon", "dnsmasq", "watchdog"],
+                            enum:        ["tachyon-core", "tachyon", "dnsmasq", "watchdog"],
                             description: "Service to restart"
                         }
                     }
@@ -580,14 +580,14 @@ function handle_tools() {
             },
             {
                 name:         "tachyon_docs_search",
-                description:  "Search the built-in Tachyon RAG knowledge base (architecture, UCI schema, nftables, DNS, Zapret/Zapret2/ByeDPI, troubleshooting, reconciler, transactions, jobs) for authoritative documentation chunks.",
+                description:  "Search the built-in Tachyon RAG knowledge base (architecture, UCI schema, nftables, DNS, native Desync, troubleshooting, reconciler, transactions, jobs) for authoritative documentation chunks.",
                 method:       "GET",
                 path:         "/tachyon/agent/v1/docs/search",
                 input_schema: {
                     type:       "object",
                     required:   ["query"],
                     properties: {
-                        query: { type: "string", description: "Search query keywords (e.g. 'zapret2 multisplit', 'outbound_source balancer', 'bootstrap dns')" },
+                        query: { type: "string", description: "Search query keywords (e.g. 'desync multisplit', 'outbound_source balancer', 'bootstrap dns')" },
                         top_k: { type: "integer", description: "Max chunks to return (1..15, default: 5)" }
                     }
                 }
@@ -613,17 +613,17 @@ function handle_heal() {
 
 function handle_restart(body) {
     let svc = as_string(body.service || "");
-    let allowed = { singbox: 1, tachyon: 1, dnsmasq: 1, watchdog: 1 };
+    let allowed = { "tachyon-core": 1, tachyon: 1, dnsmasq: 1, watchdog: 1 };
     if (!allowed[svc]) {
-        err("Unknown service '" + svc + "'. Allowed: singbox, tachyon, dnsmasq, watchdog");
+        err("Unknown service '" + svc + "'. Allowed: tachyon-core, tachyon, dnsmasq, watchdog");
         return;
     }
 
     let cmd_map = {
-        singbox:  "/etc/init.d/tachyon-core restart > /dev/null 2>&1",
-        tachyon:  "/etc/init.d/tachyon restart > /dev/null 2>&1",
-        dnsmasq:  "/etc/init.d/dnsmasq restart > /dev/null 2>&1",
-        watchdog: "/usr/bin/tachyon watchdog start-runtime > /dev/null 2>&1"
+        "tachyon-core": "/etc/init.d/tachyon-core restart > /dev/null 2>&1",
+        tachyon:        "/etc/init.d/tachyon restart > /dev/null 2>&1",
+        dnsmasq:        "/etc/init.d/dnsmasq restart > /dev/null 2>&1",
+        watchdog:       "/usr/bin/tachyon watchdog start-runtime > /dev/null 2>&1"
     };
 
     system(cmd_map[svc]);
@@ -800,7 +800,7 @@ function handle_openapi() {
                                 schema: {
                                     type: "object",
                                     properties: {
-                                        fix: { type: "string", example: "clear_dns_cache,start_singbox" }
+                                        fix: { type: "string", example: "clear_dns_cache,start_tachyon_core" }
                                     }
                                 }
                             }
@@ -821,7 +821,7 @@ function handle_openapi() {
                                 schema: {
                                     type: "object",
                                     properties: {
-                                        service: { type: "string", enum: ["singbox", "tachyon", "dnsmasq", "watchdog"] }
+                                        service: { type: "string", enum: ["tachyon-core", "tachyon", "dnsmasq", "watchdog"] }
                                     }
                                 }
                             }

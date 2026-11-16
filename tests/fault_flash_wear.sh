@@ -5,7 +5,7 @@
 # long before the CPU does, and almost everything Tachyon regenerates is derived
 # data that comes back identical most of the time: the per-channel
 # domain lists, the zapret opts files, the compiled .srs rulesets, the
-# subscription cache, the sing-box config.
+# subscription cache, the tachyon-core config.
 #
 # Measured on 192.168.1.1: one list update rewrote all 33 .srs rulesets - 2.5 MB
 # - inside four minutes, with identical content, because the copy was
@@ -163,7 +163,7 @@ grep -q 'missing=yes' <<< "$out" ||
 # why it could not do both.
 ucode -L "$LIB_DIR" "$LIB_DIR/service/engine_runtime.uc" engine-info >/dev/null 2>&1 \
   || fail "the engine_runtime CLI shim no longer answers engine-info"
-out="$(ucode -L "$LIB_DIR" -e 'let rt = require("service.engine_runtime_lib"); print("lib=" + (type(rt.switch_engine) == "function" ? "yes" : "no") + "\n");' with-an-argument 2>&1)" \
+out="$(ucode -L "$LIB_DIR" -e 'let rt = require("service.engine_runtime_lib"); print("lib=" + (type(rt.start_active) == "function" ? "yes" : "no") + "\n");' with-an-argument 2>&1)" \
   || fail "requiring the library with an argument must not run a CLI or exit: $out"
 grep -q '^lib=yes$' <<< "$out" || fail "the library exports nothing usable: $out"
 

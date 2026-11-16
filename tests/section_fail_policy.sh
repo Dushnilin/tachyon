@@ -2,9 +2,9 @@
 # Section Fail Policy (keep | block | direct):
 # Verifies that when a section is quarantined, deferred, or marked failed by
 # runtime health probes in TACHYON_SECTION_FAIL_STATE_FILE:
-#   - fail_policy="block" turns sing-box route rules into action="reject",
+#   - fail_policy="block" turns tachyon-core route rules into action="reject",
 #     DNS rules into server="block-dns", and nftables priority rules into "drop".
-#   - fail_policy="direct" turns sing-box route rules into outbound="bypass-out",
+#   - fail_policy="direct" turns tachyon-core route rules into outbound="bypass-out",
 #     DNS rules into server="dns-server", and nftables priority rules into "accept".
 #   - service/failover.uc tracks per-section probe streaks and transitions
 #     failed=true / failed=false in TACHYON_SECTION_FAIL_STATE_FILE.
@@ -18,10 +18,8 @@ NFT_APPLY_UC="$TACHYON_LIB/nft/apply.uc"
 FAILOVER_UC="$TACHYON_LIB/service/failover.uc"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/version"
-printf 'tachyon-core' >"$SB_VARIANT_STATE_FILE"
-printf '0.0.9' >"$SB_VERSION_STATE_FILE"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
+printf '0.5.7' >"$TACHYON_CORE_VERSION_FILE"
 
 export TACHYON_SECTION_FAIL_STATE_FILE="$WORK_DIR/section-fail-state.json"
 
@@ -119,7 +117,7 @@ ucode -e '
       secret_rejected, work_bypassed, secret_dns_blocked, work_dns_direct));
     exit(1);
   }
-' || fail "failed/deferred sections must apply fail_policy block and direct in sing-box config"
+' || fail "failed/deferred sections must apply fail_policy block and direct in tachyon-core config"
 
 # 2b. Quarantined section without runtime fail-state file still applies fail_policy="direct"
 rm -f "$TACHYON_SECTION_FAIL_STATE_FILE"
@@ -182,7 +180,8 @@ tachyon.settings.section_failover_enabled=0
 tachyon.settings.section_failover_threshold=3
 tachyon.zap_sec=section
 tachyon.zap_sec.enabled=1
-tachyon.zap_sec.action=zapret2
+tachyon.zap_sec.action=desync
+tachyon.zap_sec.desync_preset=auto
 tachyon.zap_sec.fail_policy=direct
 tachyon.zap_sec.fail_policy_urls=https://i.ytimg.com/generate_204
 tachyon.zap_sec.fail_policy_timeout=2500

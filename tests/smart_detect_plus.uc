@@ -41,7 +41,7 @@ check(stalled(progress.tracked, [conn], 160).domains[host] == "https", "new stal
 check(length(stalled(progress.tracked, [], 160).tracked) == 0, "closed connections removed");
 conn.id = "new";
 check(length(stalled(first.tracked, [conn], 200).domains) == 0, "new connection is not old stall");
-for (let route in [ "vpn-out", "bypass-out", "zapret-out", "discord_zapret2-out" ]) {
+for (let route in [ "vpn-out", "bypass-out", "desync-out", "discord_desync-out" ]) {
     let routed = connection("exception", host, 35831, [route]);
     check(length(stalled({}, [routed], 100).tracked) == 0, "preserve " + route);
 }
@@ -93,7 +93,7 @@ check(queue["idle.example.com"].priority == 3 && queue["idle.example.com"].schem
 check(!enqueue(queue, {domain: "192.0.2.1", priority: 3}, 150, 2), "queue rejects non-domain");
 check(module.extract_domain('direct timeout target=example.com') == "example.com", "legacy target log");
 check(module.extract_domain('direct failed "EXAMPLE.COM:443"') == "example.com", "quoted log normalization");
-check(module.extract_domain('connection: open connection to deepswe.datacurve.ai:443 using outbound/direct[direct-out]: i/o timeout') == host, "plain sing-box destination");
+check(module.extract_domain('connection: open connection to deepswe.datacurve.ai:443 using outbound/direct[direct-out]: i/o timeout') == host, "plain core destination");
 check(module.extract_domain('direct timeout dial tcp 216.150.1.193:443') == null, "IP is not a domain");
 check(length(controller.classify_log_line('connection: open connection to deepswe.datacurve.ai:443 using outbound/direct[direct-out]: i/o timeout', true)) == 1, "log candidate publication");
 function candidate(line) {
@@ -113,7 +113,7 @@ let long_host = "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij.ex
 check(candidate('direct timeout "' + long_host + ':443"')?.domain == long_host, "long quoted hostname");
 check(candidate('direct timeout target=api.xn--e1afmkfd.xn--p1ai')?.domain == "api.xn--e1afmkfd.xn--p1ai", "IDNA log hostname");
 check(candidate('connection: open connection to broken.example.com:443 using outbound/direct[direct-out]: remote certificate "other.example.net" failed')?.domain == "broken.example.com", "explicit destination wins");
-for (let route in [ "bypass-out", "discord_zapret2-out", "youtube_zapret2-out", "vpn-out" ])
+for (let route in [ "bypass-out", "discord_desync-out", "youtube_desync-out", "vpn-out" ])
     check(candidate('connection: open connection to broken.example.com:443 using outbound/direct[' + route + ']: i/o timeout') == null, "log preserves " + route);
 for (let line in [
     'connection: open connection to game.example.com:27015 using outbound/direct[direct-out]: i/o timeout',

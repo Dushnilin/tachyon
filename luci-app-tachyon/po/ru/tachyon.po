@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-16 19:01+0300\n"
-"PO-Revision-Date: 2026-11-16 19:01+0300\n"
+"POT-Creation-Date: 2026-11-16 00:54+0300\n"
+"PO-Revision-Date: 2026-11-16 00:54+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -278,8 +278,8 @@ msgstr "Использовать MagicDNS (Accept DNS)"
 msgid "Accept default DNS resolvers"
 msgstr "Принимать DNS-резолверы по умолчанию"
 
-msgid "Accept external proxy connections and route them with sing-box."
-msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
+msgid "Accept external proxy connections and route them with Tachyon Core."
+msgstr "Принимать внешние прокси-подключения и маршрутизировать их через Tachyon Core."
 
 msgid "Accept fallback DNS resolvers distributed by the tailnet when Tailscale DNS is enabled."
 msgstr "Принимать резервные DNS-резолверы, передаваемые сетью Tailnet при включённом Tailscale DNS."
@@ -376,9 +376,6 @@ msgstr "Активный выход"
 
 msgid "Active WAN Subnet Match"
 msgstr "Подсеть активного WAN-интерфейса"
-
-msgid "Active engine"
-msgstr "Активный движок"
 
 msgid "Active node transport"
 msgstr "Активный транспорт узла"
@@ -1004,9 +1001,6 @@ msgstr "Авто / Адаптивный трансформер (по умолч�
 msgid "Auto / None"
 msgstr "Авто / без TURN"
 
-msgid "Auto Modes (--auto)"
-msgstr "Авто-режимы (--auto)"
-
 msgid "Auto refresh"
 msgstr "Автообновление"
 
@@ -1091,8 +1085,8 @@ msgstr "Автообновление: Выкл"
 msgid "Auto-updated HTTP/HTTPS subscription link (VLESS, Hysteria2, Trojan, SS)"
 msgstr "Автообновляемая HTTP/HTTPS подписка (VLESS, Hysteria2, Trojan, SS)"
 
-msgid "Automated verification of DNS, routing rules, firewall and DPI bypass engines"
-msgstr "Автоматическая проверка DNS, правил маршрутизации, межсетевого экрана и движков обхода DPI"
+msgid "Automated verification of DNS, routing rules, firewall and packet desync engines"
+msgstr ""
 
 msgid "Automatic (Priority Failover when mixing connections / DPI + VPN)"
 msgstr "Автоматически (Приоритет и отказоустойчивость при смешивании подключений)"
@@ -1124,8 +1118,8 @@ msgstr "Автоматически добавлять текст к имени �
 msgid "Automatically allow inbound WAN traffic to the server port in nftables firewall"
 msgstr "Автоматически разрешать входящий трафик из WAN к порту сервера в межсетевом экране nftables"
 
-msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
-msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
+msgid "Automatically benchmark latency, packet loss, and reachability reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
+msgstr ""
 
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
@@ -1213,9 +1207,6 @@ msgstr "БЛОКИРОВКА"
 
 msgid "BYPASS"
 msgstr "ОБХОД"
-
-msgid "Backend validation failed: %s"
-msgstr "Ошибка проверки бэкенда: %s"
 
 msgid "Background color presets:"
 msgstr "Пресеты цвета фона:"
@@ -1327,6 +1318,12 @@ msgstr "Блокировать"
 
 msgid "Block (Reject)"
 msgstr "Блокировка (Reject)"
+
+msgid "Block / Bypass section priority violated"
+msgstr "Нарушен приоритет секций Block / Bypass"
+
+msgid "Block / Bypass sections moved above routing sections"
+msgstr "Секции Block / Bypass подняты выше маршрутных секций"
 
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
@@ -1448,66 +1445,6 @@ msgstr "По эмодзи флага из имени"
 msgid "By schedule"
 msgstr "По расписанию"
 
-msgid "ByeDPI"
-msgstr "ByeDPI"
-
-msgid "ByeDPI (ciadpi SOCKS5 Desync)"
-msgstr "ByeDPI (ciadpi SOCKS5 обход DPI)"
-
-msgid "ByeDPI (ciadpi — local SOCKS5 desync)"
-msgstr "ByeDPI (ciadpi — локальный SOCKS5 десинхронизатор)"
-
-msgid "ByeDPI (ciadpi)"
-msgstr "ByeDPI (ciadpi)"
-
-msgid "ByeDPI (ciadpi) Command Arguments"
-msgstr "Аргументы командной строки ByeDPI (ciadpi)"
-
-msgid "ByeDPI Strategy"
-msgstr "Стратегия ByeDPI"
-
-msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
-msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны задаваться в стратегии."
-
-msgid "ByeDPI option does not accept a compact value: %s"
-msgstr "Параметр ByeDPI не принимает компактное значение: %s"
-
-msgid "ByeDPI option does not accept a value: %s"
-msgstr "Параметр ByeDPI не принимает значение: %s"
-
-msgid "ByeDPI option requires a value: %s"
-msgstr "Параметр ByeDPI требует значение: %s"
-
-msgid "ByeDPI outbound is configured"
-msgstr "Outbound ByeDPI настроен"
-
-msgid "ByeDPI outbound is not configured"
-msgstr "Outbound ByeDPI не настроен"
-
-msgid "ByeDPI package is installed"
-msgstr "Пакет ByeDPI установлен"
-
-msgid "ByeDPI package is not installed"
-msgstr "Пакет ByeDPI не установлен"
-
-msgid "ByeDPI provider binary is available"
-msgstr "Бинарный файл провайдера ByeDPI доступен"
-
-msgid "ByeDPI provider binary is not available"
-msgstr "Бинарный файл провайдера ByeDPI недоступен"
-
-msgid "ByeDPI restarted after exiting; strategy or traffic load may be unstable"
-msgstr "ByeDPI перезапустился после завершения; стратегия или нагрузка трафика могут быть нестабильны"
-
-msgid "ByeDPI sing-box outbound is configured"
-msgstr "Outbound ByeDPI в sing-box настроен"
-
-msgid "ByeDPI sing-box outbound is not configured"
-msgstr "Outbound ByeDPI в sing-box не настроен"
-
-msgid "ByeDPI strategy cannot be empty"
-msgstr "Стратегия ByeDPI не может быть пустой"
-
 msgid "Bypass"
 msgstr "Напрямую"
 
@@ -1619,9 +1556,6 @@ msgstr "Карточки"
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
 
-msgid "Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
-msgstr "Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
-
 msgid "Certificate path"
 msgstr "Путь к сертификату"
 
@@ -1690,9 +1624,6 @@ msgstr "Интервал проверки"
 
 msgid "Check mode:"
 msgstr "Режим проверки:"
-
-msgid "Check routing section order"
-msgstr "Обратите внимание на порядок секций"
 
 msgid "Check timeout after which the server is considered dead"
 msgstr "Таймаут проверки, после которого сервер считается недоступным"
@@ -1862,9 +1793,6 @@ msgstr ""
 msgid "Click to test section latency"
 msgstr "Нажмите для проверки задержки секции"
 
-msgid "Client"
-msgstr "Клиент"
-
 msgid "Client Address"
 msgstr "Адрес клиента"
 
@@ -2017,15 +1945,6 @@ msgstr "Ошибка выполнения команды"
 
 msgid "Command-line arguments string..."
 msgstr "Строка аргументов командной строки..."
-
-msgid "Command-line strategy arguments for ciadpi (ByeDPI)."
-msgstr "Аргументы командной строки стратегии для ciadpi (ByeDPI)."
-
-msgid "Command-line strategy arguments for nfqws (zapret)."
-msgstr "Аргументы командной строки стратегии для nfqws (zapret)."
-
-msgid "Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."
-msgstr ""
 
 msgid "Community Lists"
 msgstr "Community-списки"
@@ -2438,8 +2357,8 @@ msgstr "Пользовательский OpenAI-совместимый URL эн�
 msgid "Custom Parameters"
 msgstr "Пользовательские параметры"
 
-msgid "Custom Raw JSON Outbound (sing-box / tachyon-core)"
-msgstr "Собственный JSON-аутбаунд (sing-box / tachyon-core)"
+msgid "Custom Raw JSON Outbound (Tachyon Core)"
+msgstr "Собственный JSON-аутбаунд (Tachyon Core)"
 
 msgid "Custom Target URL(s)..."
 msgstr "Свои целевые URL..."
@@ -2681,15 +2600,6 @@ msgstr "ПРИЁМ (RX)"
 msgid "DPI / Desync"
 msgstr "DPI / Desync"
 
-msgid "DPI BYPASS (BYEDPI)"
-msgstr "ОБХОД DPI (BYEDPI)"
-
-msgid "DPI BYPASS (ZAPRET)"
-msgstr "ОБХОД DPI (ZAPRET)"
-
-msgid "DPI Desync / Zapret2 Strategy"
-msgstr "Стратегия DPI Desync / Zapret2"
-
 msgid "DPI Detected"
 msgstr "DPI обнаружен"
 
@@ -2813,8 +2723,8 @@ msgstr "Правило по умолчанию"
 msgid "Default vector icon (SVG)"
 msgstr "Стандартная векторная иконка (SVG)"
 
-msgid "Default: uses sing-box error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
-msgstr "Default: использует ошибки из журнала sing-box и HTTPS HEAD-проверки. Добавляет обнаруженный hostname после повторных сбоев Direct с подтверждением через минимум 120 секунд и успешной проверки через общий прокси."
+msgid "Default: uses Tachyon Core error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
+msgstr "По умолчанию: использует ошибки из журнала Tachyon Core и HTTPS HEAD-проверки. Добавляет обнаруженный домен после повторных сбоев Direct с интервалом не менее 120 секунд и успешной проверки через общий прокси."
 
 msgid "Degraded"
 msgstr "Деградировано"
@@ -2855,8 +2765,8 @@ msgstr "Порт назначения (dest_port)"
 msgid "Destination Ports"
 msgstr "Порты назначения"
 
-msgid "Desync (Built-in TCP/UDP DPI Fragmentation)"
-msgstr "Desync (встроенная TCP/UDP фрагментация DPI)"
+msgid "Desync (Built-in TCP/UDP Fragmentation)"
+msgstr ""
 
 msgid "Desync Mode"
 msgstr "Режим десинхронизации"
@@ -2866,6 +2776,9 @@ msgstr "Режимы десинхронизации (--mode)"
 
 msgid "Desync Preset"
 msgstr "Пресет десинхронизации"
+
+msgid "Desync Strategy (Adaptive 2.0)"
+msgstr "Стратегия Desync (Adaptive 2.0)"
 
 msgid "Desync Strategy String (Fuzzer / CLI)"
 msgstr "Строка стратегии десинхронизации (Fuzzer / CLI)"
@@ -2930,8 +2843,8 @@ msgstr "Устройства, изолированные в качестве г�
 msgid "Devices, IPs & Ports"
 msgstr "Устройства, IP и порты"
 
-msgid "Diagnose issues automatically or fuzz DPI bypass strategies"
-msgstr "Автоматическая диагностика проблем и подбор стратегий обхода DPI"
+msgid "Diagnose issues automatically or fuzz packet desync strategies"
+msgstr ""
 
 msgid "Diagnostic check completed"
 msgstr "Диагностическая проверка завершена"
@@ -2969,9 +2882,6 @@ msgstr "Прямое соединение (Direct / Резерв)"
 msgid "Direct IPv6:"
 msgstr "Прямой IPv6:"
 
-msgid "Direct NFQUEUE Mode (Bypass Proxy Core)"
-msgstr "Прямой режим NFQUEUE (мимо прокси-ядра)"
-
 msgid "Direct Proxy"
 msgstr "Прямой прокси (Direct Proxy)"
 
@@ -3001,12 +2911,6 @@ msgstr "Прямое подключение (WAN): внешний IP совпа�
 
 msgid "Direct connection via ISP"
 msgstr "Прямое подключение через провайдера"
-
-msgid "Direct nfqws binary launch (isolated instance)"
-msgstr "Прямой запуск бинарника nfqws (изолированный инстанс)"
-
-msgid "Direct nfqws2 binary launch (isolated per-section instance)"
-msgstr "Прямой запуск бинарника nfqws2 (изолированный per-section инстанс без /etc/init.d/zapret2)"
 
 msgid "Direct routing bypassing proxy (WAN)"
 msgstr "Прямой выход мимо прокси (WAN)"
@@ -3059,9 +2963,6 @@ msgstr "Отключено (например, 10s)"
 msgid "Disabled (raw UDP)"
 msgstr "Отключено (обычный сырой UDP)"
 
-msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
-msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
-
 msgid "Discord (Gateway + Voice + CDN)"
 msgstr "Discord (Шлюз + Голос + CDN)"
 
@@ -3070,9 +2971,6 @@ msgstr "Disorder (Отправка сегментов в обратном пор
 
 msgid "Disorder (out-of-order TCP segments without fake)"
 msgstr "Disorder (отправка сегментов в обратном порядке без fake)"
-
-msgid "Disorder Values (-d)"
-msgstr "Значения Disorder (-d)"
 
 msgid "Display Name"
 msgstr "Отображаемое имя"
@@ -3281,8 +3179,8 @@ msgstr "Дубликаты"
 msgid "Duration format like 1m, 3m, 30s."
 msgstr "Формат длительности, например 1m, 3m, 30s."
 
-msgid "Dynamic GOMEMLIMIT memory cap in MB for sing-box / tachyon-core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
-msgstr "Динамический лимит памяти GOMEMLIMIT в МБ для sing-box / tachyon-core. Укажите 0 для автовыбора (50% ОЗУ на устройствах с малым объёмом памяти)."
+msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
+msgstr "Динамический лимит памяти в МБ для Tachyon Core. Укажите 0 для автовыбора (50% ОЗУ на устройствах с малым объёмом памяти или при OOM)."
 
 msgid "EXCELLENT"
 msgstr "ОТЛИЧНО"
@@ -3308,17 +3206,8 @@ msgstr "Редактировать группу серверов"
 msgid "Eligible components for auto-update"
 msgstr "Разрешенные компоненты для автообновления"
 
-msgid "Embedded"
-msgstr "Встроенный"
-
-msgid "Embedded (tachyon-core / sing-box, default)"
-msgstr "Встроенный (tachyon-core / sing-box, по умолчанию)"
-
 msgid "Embedded Tailscale is running"
 msgstr "Встроенный Tailscale работает"
-
-msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
-msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
 
 msgid "Emergency Direct Bypass"
 msgstr "Аварийный прямой обход"
@@ -3503,26 +3392,14 @@ msgstr "Сбоев движка:"
 msgid "Engine: Tachyon Core"
 msgstr "Ядро: Tachyon Core"
 
-msgid "Engine: sing-box"
-msgstr "Ядро: sing-box"
-
-msgid "Engine: sing-box-extended"
-msgstr "Ядро: sing-box-extended"
-
-msgid "Engine: sing-box-lx"
-msgstr "Ядро: sing-box-lx"
-
-msgid "Engine: sing-box-tiny"
-msgstr "Ядро: sing-box-tiny"
-
 msgid "Enter HWID"
 msgstr "Введите HWID"
 
-msgid "Enter a complete sing-box inbound object"
-msgstr "Введите полный JSON объект inbound для sing-box"
+msgid "Enter a complete Tachyon Core inbound object"
+msgstr "Введите полный JSON-объект inbound для Tachyon Core"
 
-msgid "Enter a complete sing-box outbound object"
-msgstr "Введите полный объект outbound sing-box"
+msgid "Enter a complete Tachyon Core outbound object"
+msgstr "Введите полный JSON-объект outbound для Tachyon Core"
 
 msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
@@ -3767,17 +3644,8 @@ msgstr "Внешний (интерфейс WAN)"
 msgid "External (WAN)"
 msgstr "Внешний (WAN)"
 
-msgid "External NFQUEUE rules overlap with Tachyon"
-msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
-
 msgid "External fwmark"
 msgstr "Внешний fwmark"
-
-msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
-msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
-
-msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
-msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную проверку."
 
 msgid "Extra CLI Strategy String (optional)"
 msgstr "Дополнительная CLI-строка (необязательно)"
@@ -3991,6 +3859,12 @@ msgstr "Не удалось прочитать лог операции"
 
 msgid "Failed to receive response from AI service."
 msgstr "Не удалось получить ответ от ИИ-сервиса."
+
+msgid "Failed to reorder sections"
+msgstr "Не удалось изменить порядок секций"
+
+msgid "Failed to reorder sections: UCI API unavailable"
+msgstr "Не удалось изменить порядок секций: UCI API недоступен"
 
 msgid "Failed to reset fuzzer patterns"
 msgstr "Не удалось сбросить паттерны фаззера"
@@ -4289,12 +4163,6 @@ msgstr "Поля потока для привязки по хэшу Rendezvous H
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
 
-msgid "Fooling Methods (dpi-desync-fooling)"
-msgstr "Методы спуфинга (dpi-desync-fooling)"
-
-msgid "Fooling Methods (fooling)"
-msgstr "Методы спуфинга (fooling)"
-
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
 
@@ -4310,8 +4178,8 @@ msgstr "Принудительная маршрутизация устройст
 msgid "Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile."
 msgstr "Принудительно включает безопасный поиск в Google, Яндекс, Bing, DuckDuckGo и строгий ограниченный режим на YouTube через подмену DNS для всех устройств профиля."
 
-msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
-msgstr "Принудительно направлять DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
+msgid "Forces Tachyon Core to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
+msgstr "Заставляет Tachyon Core туннелировать DNS-запросы по DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
 
 msgid "Format"
 msgstr "Формат"
@@ -4381,9 +4249,6 @@ msgstr "Полностью маршрутизируемые IP / хосты (н�
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Обход) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции (например, исключить |WL| или Обход) перед передачей в балансировщики."
-
-msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime validation."
-msgstr "Fuzzing не поддерживается здесь, потому что Tachyon нуждается в детерминированной проверке во время выполнения."
 
 msgid "GOOD"
 msgstr "ХОРОШО"
@@ -4688,8 +4553,8 @@ msgstr "Скрыть серверы из выбранных групп без п
 msgid "Hide servers from the specified countries."
 msgstr "Скрыть серверы из указанных стран."
 
-msgid "Hide servers that are configured in a section but not present in the sing-box runtime. These servers appear as N/A on the dashboard."
-msgstr "Скрыть серверы, настроенные в секции, но отсутствующие в runtime sing-box. Такие серверы отображаются как N/A на дашборде."
+msgid "Hide servers that are configured in a section but not present in the Tachyon Core runtime. These servers appear as N/A on the dashboard."
+msgstr "Скрыть серверы, настроенные в секции, но отсутствующие в runtime Tachyon Core. Такие серверы отображаются как N/A на дашборде."
 
 msgid "Hide servers whose names match the expression."
 msgstr "Скрыть серверы, чьи имена соответствуют выражению."
@@ -4844,9 +4709,6 @@ msgstr "IP-адреса (IP CIDR)"
 msgid "IP Block (TCP SYN Timeout)"
 msgstr "Блокировка по IP (Таймаут TCP SYN)"
 
-msgid "IP Frag Bounds (--ip-frag)"
-msgstr "Границы фрагментации IP (--ip-frag)"
-
 msgid "IP addresses pinged through the primary WAN interface to verify internet connectivity (default: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
 msgstr "IP-адреса, опрашиваемые через основной WAN-интерфейс для проверки наличия интернета (по умолчанию: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
 
@@ -4856,8 +4718,8 @@ msgstr "Время ожидания проверки утечек IP и DNS ис
 msgid "IP tunnel mode"
 msgstr "Режим IP-туннеля"
 
-msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain."
-msgstr "Обнаружена фильтрация по IP! Ресурс недоступен на сетевом уровне (нет ответа на TCP SYN). Механизмы десинхронизации пакетов (Zapret / ByeDPI) здесь неприменимы — настройте маршрутизацию через прокси или VPN для этого домена."
+msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization (Native Desync) cannot traverse an IP-level limit — configure proxy/VPN routing for this domain."
+msgstr ""
 
 msgid "IPs"
 msgstr "IP"
@@ -4976,9 +4838,6 @@ msgstr "Если не указан, ссылка для интерактивно
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
 
-msgid "Ignored (Upgrade to Extended)"
-msgstr "Игнорируется (обновите до Extended)"
-
 msgid "Immediately upon release"
 msgstr "Сразу при выходе новой версии"
 
@@ -4991,8 +4850,8 @@ msgstr "Импорт (%d записей)"
 msgid "Import .conf File"
 msgstr "Импорт файла .conf"
 
-msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with sing-box LX and tachyon-core."
-msgstr "Загрузите .conf для AmneziaWG 2.0, 3.0 и 3.1. Доступно с sing-box LX и tachyon-core."
+msgid "Import .conf files for AmneziaWG 2.0, 3.0 and 3.1."
+msgstr "Загрузите .conf для AmneziaWG 2.0, 3.0 и 3.1."
 
 msgid "Import .ovpn File"
 msgstr "Импорт файла .ovpn"
@@ -5141,9 +5000,6 @@ msgstr "Включить серверы"
 msgid "Included in Group (all sources)"
 msgstr "Доступен в группе (все источники)"
 
-msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
-msgstr "Включает привязку TLS-сертификатов (pcs / certificate_sha256), XHTTP и AmneziaWG 3.x"
-
 msgid "Incompatible"
 msgstr "Несовместима"
 
@@ -5231,9 +5087,6 @@ msgstr "Instagram / Meta (веб + CDN)"
 msgid "Install"
 msgstr "Установить"
 
-msgid "Install & Switch"
-msgstr "Установить и переключить"
-
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
@@ -5248,6 +5101,9 @@ msgstr "Установка русификатора и переключение 
 
 msgid "Installing packages"
 msgstr "Установка пакетов"
+
+msgid "Instant SBP transfer without fees"
+msgstr "Мгновенный перевод по СБП без комиссии"
 
 msgid "Intercept All LAN DNS"
 msgstr "Перехватывать весь DNS из LAN"
@@ -5305,9 +5161,6 @@ msgstr "Некорректный JSON конфигурации Amnezia: ожид
 
 msgid "Invalid Amnezia configuration: paste a vpn:// link or WireGuard / AmneziaWG .conf with [Interface]."
 msgstr "Некорректная конфигурация Amnezia: вставьте ссылку vpn:// или файл .conf WireGuard / AmneziaWG с секцией [Interface]."
-
-msgid "Invalid ByeDPI strategy"
-msgstr "Неверная стратегия ByeDPI"
 
 msgid "Invalid CIDR format (expected IP/prefix)"
 msgstr "Неверный формат CIDR (ожидается IP/префикс)"
@@ -5696,9 +5549,6 @@ msgstr "Япония (jp)"
 msgid "Jc (Junk Packet Count)"
 msgstr "Jc (количество шумовых пакетов)"
 
-msgid "Jitsi"
-msgstr "Jitsi"
-
 msgid "Jitter"
 msgstr "Джиттер"
 
@@ -5765,8 +5615,8 @@ msgstr "Оставлять только узлы подписки, имя кот
 msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
 msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
 
-msgid "KeepAlive / Warm Latency (Established Session, sing-box-extended)"
-msgstr "KeepAlive / тёплая задержка (установленная сессия, sing-box-extended)"
+msgid "KeepAlive / Warm Latency (Established Session)"
+msgstr "KeepAlive / тёплая задержка (установленная сессия)"
 
 msgid "Keepalive Timeout"
 msgstr "Таймаут Keepalive"
@@ -5899,9 +5749,6 @@ msgstr "Оставьте пустым для автогенерации при �
 
 msgid "Leave empty to omit this header"
 msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
-
-msgid "Legacy zapret runtime paths are still present and should be migrated"
-msgstr "Обнаружены устаревшие пути zapret, требуется миграция"
 
 msgid "Level name"
 msgstr "Имя уровня"
@@ -6128,9 +5975,6 @@ msgstr "MASQUE URI шаблон (необязательно)"
 msgid "MB"
 msgstr "МБ"
 
-msgid "MTProto is not implemented in tachyon-core yet"
-msgstr "MTProto еще не реализован в tachyon-core"
-
 msgid "MTU"
 msgstr "MTU"
 
@@ -6170,17 +6014,14 @@ msgstr "Ручная проверка доступности URL через се
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
 
-msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing."
-msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков."
+msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor, etc.) and routing."
+msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor и др.) и настройка списков."
 
 msgid "Manual selection"
 msgstr "Ручной выбор"
 
 msgid "Manual setup"
 msgstr "Ручная настройка"
-
-msgid "Masquerade LAN traffic into tailnet"
-msgstr "Маскарадинг LAN-трафика в тейлнет"
 
 msgid "Master and family devices with full LAN and router access. Any device NOT in this list will be treated as a guest."
 msgstr "Основные и семейные устройства с полным доступом к локальной сети и роутеру. Любое устройство не из этого списка будет считаться гостевым."
@@ -6383,8 +6224,8 @@ msgstr "Отслеживаемые интерфейсы"
 msgid "Monitoring"
 msgstr "Мониторинг"
 
-msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
-msgstr "Отслеживает частоту переподключений sing-box. Оповещает при слишком частых переподключениях."
+msgid "Monitors Tachyon Core reconnect frequency. Alerts if too many reconnects per hour."
+msgstr "Отслеживает частоту переподключений Tachyon Core. Оповещает при слишком частых переподключениях в час."
 
 msgid "More details"
 msgstr "Подробнее"
@@ -6404,6 +6245,9 @@ msgstr "Переместить выше"
 msgid "Move Up (Higher Priority)"
 msgstr "Выше по приоритету"
 
+msgid "Move above"
+msgstr "Поднять выше"
+
 msgid "Move down"
 msgstr "Вниз"
 
@@ -6421,6 +6265,9 @@ msgstr "Переместить боковое меню направо"
 
 msgid "Move up"
 msgstr "Вверх"
+
+msgid "Moving..."
+msgstr "Перемещение..."
 
 msgid "Multi-Connection Selection Mode"
 msgstr "Режим работы нескольких подключений в секции"
@@ -6467,24 +6314,6 @@ msgstr "Только мои пользовательские стратегии"
 msgid "My Strategies"
 msgstr "Мои стратегии"
 
-msgid "NFQUEUE range is available"
-msgstr "Диапазон NFQUEUE свободен"
-
-msgid "NFQUEUE range overlaps with another rule"
-msgstr "Диапазон NFQUEUE пересекается с другим правилом"
-
-msgid "NFQWS Strategy"
-msgstr "Стратегия NFQWS"
-
-msgid "NFQWS strategy cannot be empty"
-msgstr "Стратегия NFQWS не может быть пустой"
-
-msgid "NFQWS2 Strategy"
-msgstr "Стратегия NFQWS2"
-
-msgid "NFQWS2 strategy cannot be empty"
-msgstr "Стратегия NFQWS2 не может быть пустой"
-
 msgid "NOT (invert selected conditions)"
 msgstr "НЕ (NOT — инвертировать выбранные условия)"
 
@@ -6500,9 +6329,6 @@ msgstr "Имя, отображаемое на дашборде"
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
 
-msgid "Native (system tailscaled / tailscale0)"
-msgstr "Нативный (системный tailscaled / tailscale0)"
-
 msgid "Native Desync"
 msgstr "Встроенный Desync"
 
@@ -6515,20 +6341,11 @@ msgstr "Матрица шаблонов нативной десинхрониз�
 msgid "Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls."
 msgstr "Встроенный алгоритм балансировки ядра Rust для пулов URLTest: «Стабильность» отсеивает узлы с джиттером и потерями, «Привязка потока» закрепляет сессии через хэш Rendezvous HRW, «Наименьшая нагрузка» распределяет параллельные потоки, «Взвешенный» делит трафик пропорционально 1/RTT², «Пассивный предохранитель» отправляет в карантин узлы при раннем обрыве (< 64 КиБ), а «Параллельный резерв» подключает запасной узел при задержке рукопожатия."
 
-msgid "Native Tailscale is configured, but tailscale package is missing"
-msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
-
-msgid "Native Tailscale is configured, but tailscaled is not running for every section"
-msgstr "Нативный Tailscale настроен, но tailscaled запущен не для всех секций"
-
 msgid "Native internet restored. Tachyon stopped."
 msgstr "Обычный интернет восстановлен. Tachyon остановлен."
 
 msgid "Native packet desynchronization inside Tachyon Core"
 msgstr "Нативная десинхронизация пакетов в ядре Tachyon Core (без прокси)"
-
-msgid "Native tailscaled (tailnet reachable from LAN without client)"
-msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
 
 msgid "Need expert knobs? Advanced Mode →"
 msgstr "Нужны тонкие параметры? Расширенный режим →"
@@ -6719,15 +6536,6 @@ msgstr "Нет ответа от трассировщика правил."
 msgid "No routes"
 msgstr "Нет маршрутов"
 
-msgid "No rules use ByeDPI"
-msgstr "Нет правил, использующих ByeDPI"
-
-msgid "No rules use Zapret"
-msgstr "Нет правил, использующих Zapret"
-
-msgid "No rules use Zapret2"
-msgstr "Нет правил, использующих Zapret2"
-
 msgid "No section is strictly satisfied by the supplied arguments."
 msgstr "Ни одна секция не удовлетворяется строго указанными аргументами."
 
@@ -6899,9 +6707,6 @@ msgstr "Количество мусорных пакетов перед руко
 msgid "Numeric (0-63), hex (0x2e), or class name (ef, cs5, af41)."
 msgstr "Число (0–63), hex-значение (0x2e) или имя класса (ef, cs5, af41)."
 
-msgid "OOB Values (-o)"
-msgstr "Значения OOB (-o)"
-
 msgid "OR (any selected condition matches)"
 msgstr "ИЛИ (достаточно совпадения любого выбранного условия)"
 
@@ -6913,6 +6718,9 @@ msgstr "Версия ОС (x-ver-os)"
 
 msgid "Obfs Host Domain"
 msgstr "Хост обфускации (Obfs Host)"
+
+msgid "Obfuscated AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
+msgstr "Маскированный туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
 
 msgid "Obfuscation"
 msgstr "Обфускация"
@@ -6940,33 +6748,6 @@ msgstr "Выкл (Разрешить)"
 
 msgid "Offline"
 msgstr "Не отвечает"
-
-msgid "OlcRTC (Discord / WebRTC nfqws2)"
-msgstr "OlcRTC (Discord / WebRTC nfqws2)"
-
-msgid "OlcRTC Crypto Key"
-msgstr "Ключ шифрования OlcRTC"
-
-msgid "OlcRTC DNS Server"
-msgstr "DNS-сервер OlcRTC"
-
-msgid "OlcRTC Provider"
-msgstr "Провайдер OlcRTC"
-
-msgid "OlcRTC Room ID"
-msgstr "ID комнаты OlcRTC"
-
-msgid "OlcRTC SOCKS Host"
-msgstr "Хост SOCKS OlcRTC"
-
-msgid "OlcRTC SOCKS Port"
-msgstr "Порт SOCKS OlcRTC"
-
-msgid "OlcRTC Subscription Links"
-msgstr "Ссылки подписок OlcRTC"
-
-msgid "OlcRTC Transport"
-msgstr "Транспорт OlcRTC"
 
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
@@ -7163,12 +6944,6 @@ msgstr "Необязательное имя узла или Tailscale IP в се
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
 
-msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
-msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws."
-
-msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
-msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws2."
-
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
 
@@ -7217,9 +6992,6 @@ msgstr "Упорядоченный список групп серверов, и�
 msgid "Other"
 msgstr "Другое"
 
-msgid "Other peers"
-msgstr "Другие пиры"
-
 msgid "Out-of-window TCP ACK + TS-Up (badack)"
 msgstr "Смещение TCP ACK за пределы окна + TS-Up (badack)"
 
@@ -7244,8 +7016,8 @@ msgstr "Выходной сетевой интерфейс"
 msgid "Override the default OpenWrt device headers for this subscription"
 msgstr "Переопределить стандартные заголовки устройства OpenWrt для этой подписки"
 
-msgid "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes. Useful when Firefox + REALITY + ML-KEM (support-x25519mlkem768) fails verification on sing-box-extended; switching to Chrome resolves it."
-msgstr "Переопределить отпечаток uTLS (fp) провайдера на импортируемых узлах TLS/REALITY. Полезно, когда связка Firefox + REALITY + ML-KEM (support-x25519mlkem768) не проходит проверку на sing-box-extended — переключение на Chrome решает проблему."
+msgid "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes (for example, switching to Chrome if another fingerprint fails verification with REALITY + ML-KEM)."
+msgstr "Переопределить отпечаток uTLS (fp) провайдера на импортированных узлах TLS/REALITY (например, переключить на Chrome, если другой отпечаток не проходит проверку с REALITY + ML-KEM)."
 
 msgid "Overview"
 msgstr "Обзор"
@@ -7255,6 +7027,9 @@ msgstr "Перезаписать существующие записи (если
 
 msgid "P2P Client Ports"
 msgstr "Порты P2P-клиента"
+
+msgid "PACKET DESYNC (CORE)"
+msgstr ""
 
 msgid "PASSIVE • CIRCUIT BREAKER"
 msgstr "PASSIVE • АВТОКАРАНТИН"
@@ -7289,8 +7064,8 @@ msgstr "Пакет не установлен"
 msgid "Packet Desync"
 msgstr "Десинхронизация (Desync)"
 
-msgid "Packet Desync (Desync / Zapret2)"
-msgstr "Десинхронизация пакетов (Desync / Zapret2)"
+msgid "Packet Desync (Tachyon Core)"
+msgstr "Десинхронизация пакетов (Desync)"
 
 msgid "Packet Desynchronization Engine"
 msgstr "Движок десинхронизации пакетов"
@@ -7300,15 +7075,6 @@ msgstr "Захват пакетов недоступен или не завер�
 
 msgid "Packet desync & modification"
 msgstr "Модификация пакетов и десинхронизация"
-
-msgid "Packet desync via ByeDPI (ciadpi SOCKS5)"
-msgstr "Десинхронизация через ByeDPI (ciadpi SOCKS5)"
-
-msgid "Packet desync via Zapret (nfqws)"
-msgstr "Десинхронизация через Zapret (nfqws)"
-
-msgid "Packet desync via Zapret2 (nfqws2 + Lua strategies)"
-msgstr "Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)"
 
 msgid "Packet fragmentation and fake ClientHello for YouTube, Discord & Telegram"
 msgstr "Фрагментация пакетов и подмена ClientHello для YouTube, Discord и Telegram"
@@ -7435,9 +7201,6 @@ msgstr "Полезный груз (I4)"
 
 msgid "Payload (I5)"
 msgstr "Полезный груз (I5)"
-
-msgid "Peer (host:port)"
-msgstr ""
 
 msgid "Peer Hashes (comma-separated)"
 msgstr "Хеши / Ключи узлов (через запятую)"
@@ -7970,9 +7733,6 @@ msgstr "Алгоритм QUIC Congestion Control & Потоки"
 msgid "QUOTA • TRAFFIC CAP"
 msgstr "QUOTA • ПО КВОТЕ ТРАФИКА"
 
-msgid "QWDTT Mode"
-msgstr ""
-
 msgid "QoS Priority Engine (DSCP)"
 msgstr "Движок приоритета QoS (DSCP)"
 
@@ -8081,14 +7841,14 @@ msgstr ""
 msgid "Raw OpenVPN Configuration (.ovpn)"
 msgstr "Исходный текст конфигурации OpenVPN (.ovpn)"
 
-msgid "Raw Outbound JSON Object (sing-box / tachyon-core)"
-msgstr "JSON-объект outbound (sing-box / tachyon-core)"
+msgid "Raw Outbound JSON Object (Tachyon Core)"
+msgstr "JSON-объект outbound (Tachyon Core)"
+
+msgid "Raw Tachyon Core outbound JSON objects."
+msgstr "Необработанные JSON-объекты outbound для Tachyon Core."
 
 msgid "Raw UDP Port (optional)"
 msgstr ""
-
-msgid "Raw sing-box outbound JSON objects."
-msgstr "Сырые JSON-объекты outbound для sing-box."
 
 msgid "Re-run Leak Test"
 msgstr "Повторить проверку утечек"
@@ -8264,11 +8024,8 @@ msgstr "Перезагрузка..."
 msgid "Remote Hosts Lists"
 msgstr "Удалённые списки Hosts"
 
-msgid "Remote endpoint in HOST:PORT format for qwdtt client."
-msgstr ""
-
-msgid "Remote or local sing-box rule-set URLs or paths (domains only)."
-msgstr "Удалённые URL или локальные пути к наборам правил sing-box (только домены)."
+msgid "Remote or local rule-set URLs or paths (domains only)."
+msgstr "Удалённые или локальные URL или пути к наборам правил (только домены)."
 
 msgid "Removal completed successfully!"
 msgstr "Удаление успешно завершено!"
@@ -8299,9 +8056,6 @@ msgstr "Удаление"
 
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr "Консистентное хэширование Rendezvous HRW: сохраняет один выходной IP для клиента и домена (банки, ИИ, игры)"
-
-msgid "Reorder sections →"
-msgstr "Изменить порядок →"
 
 msgid "Replace current routes"
 msgstr "Заменить текущие маршруты"
@@ -8345,8 +8099,8 @@ msgstr "Сброс…"
 msgid "Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
 msgstr "Устойчивый мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
 
-msgid "Resolve domain names before routing so sing-box can use real destination IPs."
-msgstr "Разрешать имена доменов перед маршрутизацией, чтобы sing-box мог использовать реальные IP назначения."
+msgid "Resolve domain names before routing so Tachyon Core can use real destination IPs."
+msgstr "Разрешать доменные имена до маршрутизации, чтобы Tachyon Core мог использовать реальные IP назначения."
 
 msgid "Resolve gateway"
 msgstr "Определить шлюз"
@@ -8371,18 +8125,6 @@ msgstr "Протокол резолвера"
 
 msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
 msgstr "Принадлежность резолвера не подтверждена. Данных для достоверного вывода об утечке недостаточно."
-
-msgid "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
-msgstr "Выбор ресурсов по IP или CIDR внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
-
-msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
-msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
-
-msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
-msgstr "Выбор ресурсов по имени хоста внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
-
-msgid "Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
-msgstr "Выбор ресурсов по имени хоста внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
 msgid "Response Packet Magic Header (S2)"
 msgstr "Magic-заголовок ответного пакета (S2)"
@@ -8411,9 +8153,6 @@ msgstr "Перезапустить DNS Tachyon Core"
 msgid "Restart Tachyon service"
 msgstr "Перезапустить службу Tachyon"
 
-msgid "Restart Zapret/ByeDPI"
-msgstr "Перезапустить Zapret/ByeDPI"
-
 msgid "Restart dnsmasq"
 msgstr "Перезапустить dnsmasq"
 
@@ -8422,9 +8161,6 @@ msgstr "Перезапустить firewall"
 
 msgid "Restart network"
 msgstr "Перезапустить сеть"
-
-msgid "Restart sing-box DNS"
-msgstr "Перезапустить DNS sing-box"
 
 msgid "Restarting..."
 msgstr "Перезапуск..."
@@ -8513,9 +8249,6 @@ msgstr "Маршрутизировать подсети из списков со
 msgid "Route all matching device traffic and DNS queries through this section without requiring domain or IP lists."
 msgstr ""
 
-msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
-msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
-
 msgid "Route all remaining traffic through this section without requiring specific domain/IP conditions."
 msgstr "Направлять весь не совпавший выше трафик через эту секцию без дополнительных условий."
 
@@ -8545,9 +8278,6 @@ msgstr "Направлять локальный трафик, исходящий
 
 msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
-
-msgid "Route matched traffic directly into kernel NFQUEUE via nftables without passing through sing-box/tachyon-core."
-msgstr "Направлять совпавший трафик напрямую в NFQUEUE ядра через nftables в обход sing-box/tachyon-core."
 
 msgid "Route requests to this DNS server through another section."
 msgstr "Маршрутизировать запросы к этому DNS-серверу через другую секцию."
@@ -8651,9 +8381,6 @@ msgstr "Маршрутизация и система"
 msgid "Routing Conditions & Traffic Rules"
 msgstr "Условия маршрутизации и правила фильтрации"
 
-msgid "Routing Engine"
-msgstr "Маршрутизирующий движок"
-
 msgid "Routing Rule Tracer"
 msgstr "Трассировщик правил маршрутизации"
 
@@ -8744,9 +8471,6 @@ msgstr "Запустить ИИ-доктора"
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
-msgid "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client."
-msgstr ""
-
 msgid "Run doctor repair"
 msgstr "Запустить восстановление"
 
@@ -8786,6 +8510,9 @@ msgstr "S4 (транспортный паддинг)"
 msgid "SAFE"
 msgstr "БЕЗОПАСНО"
 
+msgid "SBP (Ozon Bank)"
+msgstr "СБП (Ozon Банк)"
+
 msgid "SECURE"
 msgstr "ЗАЩИЩЕНО"
 
@@ -8797,9 +8524,6 @@ msgstr "ФИЛЬТРАЦИЯ СЕРВЕРОВ • УРОВЕНЬ 2"
 
 msgid "SLOW"
 msgstr "МЕДЛЕННО"
-
-msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
-msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
 
 msgid "SNI"
 msgstr "SNI"
@@ -9056,11 +8780,11 @@ msgstr "Выберите промежуточную секцию"
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
 
-msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
+msgid "Select any connections from the Connections Pool (Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
 msgstr ""
 
-msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
-msgstr "Выберите любой существующий сетевой интерфейс роутера или готовый пресет (например: wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
+msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, wan, eth0, br-lan)."
+msgstr ""
 
 msgid "Select at least one section to merge"
 msgstr "Выберите хотя бы одну секцию для объединения"
@@ -9119,8 +8843,8 @@ msgstr "Выберите движок для загрузки и разбора 
 msgid "Select the fastest node"
 msgstr "Выбирать самый быстрый узел"
 
-msgid "Select the log level for sing-box"
-msgstr "Выберите уровень логирования для sing-box"
+msgid "Select the log level for Tachyon Core"
+msgstr "Выберите уровень логирования Tachyon Core"
 
 msgid "Select the network interface from which the traffic will originate"
 msgstr "Выберите интерфейс, с которого будет идти трафик"
@@ -9194,11 +8918,11 @@ msgstr "Отправлять уведомление в Telegram при исче�
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr "Отправлять уведомление в Telegram, если SSL/TLS-сертификаты скоро истекут."
 
+msgid "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored."
+msgstr "Отправлять уведомление в Telegram, если Tachyon Core или правила nftables аварийно завершились и были автоматически восстановлены."
+
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr "Отправлять уведомление в Telegram при обнаружении потенциальной утечки DNS."
-
-msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
-msgstr "Отправлять уведомление в Telegram, если правила sing-box или nftables упали и были автоматически восстановлены."
 
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr "Отправлять уведомление в Telegram, если сервис Tachyon перезапущен watchdog."
@@ -9226,9 +8950,6 @@ msgstr "Отправка российских сайтов, банков или 
 
 msgid "Send fake low-TTL UDP packets before real UDP/QUIC payload"
 msgstr "Отправлять фейковые UDP-пакеты с малым TTL перед реальными данными UDP/QUIC"
-
-msgid "Sequence Overlaps (seqovl)"
-msgstr "Перекрытия последовательностей (seqovl)"
 
 msgid "Sequential (one active at a time)"
 msgstr "Последовательный (один активный)"
@@ -9509,12 +9230,6 @@ msgstr "Показывать серверы только из указанных
 msgid "Show servers whose names match the expression."
 msgstr "Показывать серверы, чьи имена соответствуют выражению."
 
-msgid "Show sing-box config"
-msgstr "Показать sing-box конфигурацию"
-
-msgid "Show sing-box config failed"
-msgstr "Не удалось показать конфигурацию sing-box"
-
 msgid "Show subscription metadata for this source on the dashboard"
 msgstr "Показывать метаданные подписки для этого источника на дашборде"
 
@@ -9532,27 +9247,6 @@ msgstr "Обычный режим: только базовые настройк�
 
 msgid "Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy."
 msgstr "Одновременная проверка внешнего IP-адреса и вышестоящих DNS-резолверов для проверки сетевой видимости через прямое подключение и прокси."
-
-msgid "Sing-box Outbound JSON"
-msgstr "JSON-конфигурация Outbound (sing-box)"
-
-msgid "Sing-box autostart disabled"
-msgstr "Автостарт sing-box отключен"
-
-msgid "Sing-box installed"
-msgstr "Sing-box установлен"
-
-msgid "Sing-box listening ports"
-msgstr "Sing-box слушает порты"
-
-msgid "Sing-box process running"
-msgstr "Процесс sing-box запущен"
-
-msgid "Sing-box service exist"
-msgstr "Сервис sing-box существует"
-
-msgid "Sing-box version is compatible (newer than 1.12.4)"
-msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
 msgid "Singapore (sg)"
 msgstr "Сингапур (sg)"
@@ -9689,23 +9383,11 @@ msgstr "Задержка разделения (мс)"
 msgid "Split Delays ms (--split-delay)"
 msgstr "Задержки разделения мс (--split-delay)"
 
-msgid "Split Modes (dpi-desync)"
-msgstr "Режимы разделения (dpi-desync)"
-
 msgid "Split Position"
 msgstr "Позиция разделения (Split Position)"
 
 msgid "Split Positions (--split-pos)"
 msgstr "Позиции разделения (--split-pos)"
-
-msgid "Split Positions (dpi-desync-split-pos)"
-msgstr "Позиции разделения (dpi-desync-split-pos)"
-
-msgid "Split Positions (pos)"
-msgstr "Позиции разделения (pos)"
-
-msgid "Split Values (-s)"
-msgstr "Значения сплита (-s)"
 
 msgid "Stability & Fleet Report"
 msgstr "Отчёт о стабильности"
@@ -9728,39 +9410,6 @@ msgstr "Этап 1: Разведочное сканирование"
 msgid "Stage 2: Stability Verification"
 msgstr "Этап 2: Проверка стабильности"
 
-msgid "Standalone ByeDPI autostart is enabled"
-msgstr "Автозапуск отдельной службы ByeDPI включен"
-
-msgid "Standalone ByeDPI is active together with Tachyon ByeDPI rules"
-msgstr "Отдельная служба ByeDPI активна вместе с правилами ByeDPI в Tachyon"
-
-msgid "Standalone ByeDPI service is active"
-msgstr "Отдельная служба ByeDPI активна"
-
-msgid "Standalone ByeDPI service is inactive"
-msgstr "Отдельная служба ByeDPI неактивна"
-
-msgid "Standalone Zapret is active together with Tachyon Zapret rules"
-msgstr "Отдельная служба Zapret активна вместе с правилами Zapret в Tachyon"
-
-msgid "Standalone Zapret service is active"
-msgstr "Отдельная служба Zapret активна"
-
-msgid "Standalone Zapret service is inactive"
-msgstr "Отдельная служба Zapret неактивна"
-
-msgid "Standalone Zapret2 autostart is enabled"
-msgstr "Автозапуск отдельной службы Zapret2 включён"
-
-msgid "Standalone Zapret2 is active together with Tachyon Zapret2 rules"
-msgstr "Отдельная служба Zapret2 активна вместе с правилами Zapret2 в Tachyon"
-
-msgid "Standalone Zapret2 service is active"
-msgstr "Отдельная служба Zapret2 активна"
-
-msgid "Standalone Zapret2 service is inactive"
-msgstr "Отдельная служба Zapret2 неактивна"
-
 msgid "Standalone servers"
 msgstr "Отдельные серверы"
 
@@ -9776,8 +9425,8 @@ msgstr "Стандартный (рукопожатие + HTTP HEAD)"
 msgid "Standard Item"
 msgstr "Стандартная запись"
 
-msgid "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on sing-box-extended via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT)."
-msgstr "Стандартный режим замеряет полное установление соединения + HTTP HEAD-запрос. Режим KeepAlive / тёплая задержка (поддерживается в sing-box-extended через experimental.unified_delay) замеряет 2-й HTTP HEAD-запрос поверх уже установленной TLS-сессии (аналогично режиму KeepAlive в Happ; не учитывает время первичного рукопожатия)."
+msgid "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT)."
+msgstr "Обычный режим измеряет полное установление соединения + HTTP HEAD-запрос. KeepAlive / тёплая задержка (через experimental.unified_delay) измеряет второй HTTP HEAD-запрос по уже установленной TLS-сессии (аналогично режиму Happ KeepAlive; не отражает RTT первичного рукопожатия)."
 
 msgid "Standby"
 msgstr "Ожидание"
@@ -9811,9 +9460,6 @@ msgstr "Начало разрешенного ежедневного интер�
 
 msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
 msgstr "Начало ежедневного окна обновления в формате ЧЧ:ММ (24 ч). Внутри окна роутер ждёт спокойного момента, а не обновляется в фиксированную минуту. Пусто — используется время выше."
-
-msgid "Start sing-box"
-msgstr "Запустить sing-box"
 
 msgid "Start watchdog"
 msgstr "Запустить watchdog"
@@ -9878,8 +9524,8 @@ msgstr "Остановить бота"
 msgid "Stop checking imported URLTest groups when not used (e.g. 30m, 12h, 1d). Leave empty to use provider or default value."
 msgstr "Останавливать проверку импортированных групп URLTest при отсутствии трафика (например: 30m, 12h, 1d). Оставьте пустым для значения провайдера или по умолчанию."
 
-msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
-msgstr "Остановить проверку, когда группа URLTest не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
+msgid "Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m."
+msgstr "Прекратить проверку, когда группа URLTest не используется. Укажите длительность в формате 1d, 12h или 30m."
 
 msgid "Stopped"
 msgstr "Остановлен"
@@ -10040,8 +9686,8 @@ msgstr "Поддержать на Boosty"
 msgid "Support on CloudTips"
 msgstr "Поддержать проект на CloudTips"
 
-msgid "Supported"
-msgstr "Поддерживается"
+msgid "Support via SBP"
+msgstr "Поддержать через СБП"
 
 msgid "Suppress non-critical Telegram notifications during the configured night window."
 msgstr ""
@@ -10154,9 +9800,6 @@ msgstr "TCP Urgent OOB десинхронизация (midsld)"
 msgid "TCP Window Clamp Bytes (wsize)"
 msgstr ""
 
-msgid "TCP Window Sizes (wsize)"
-msgstr "Размеры окна TCP (wsize)"
-
 msgid "TCP connect timed out before TLS handshake — host is unreachable at the IP layer. Packet desynchronization cannot traverse an IP-level block; route via VPN/Proxy outbound instead."
 msgstr "Истекло время ожидания TCP-подключения до рукопожатия TLS — узел недоступен на уровне IP. Десинхронизация пакетов не поможет; используйте маршрутизацию через VPN или прокси."
 
@@ -10211,9 +9854,6 @@ msgstr "Домен TLS SNI"
 msgid "TLS certificate error"
 msgstr "Ошибка сертификата TLS"
 
-msgid "TLS certificate pinning (sing-box 1.15+)"
-msgstr "Пиннинг TLS-сертификатов (sing-box 1.15+)"
-
 msgid "TLS probe supports the active DoH server; other DNS protocols are not verified."
 msgstr "TLS-проба поддерживает активный DoH-сервер; другие протоколы DNS не проверены."
 
@@ -10226,20 +9866,11 @@ msgstr "Ключ TLS-Auth (<tls-auth>)"
 msgid "TLS-Crypt Key (<tls-crypt>)"
 msgstr "Ключ TLS-Crypt (<tls-crypt>)"
 
-msgid "TLS-Rec Bounds (--tlsrec)"
-msgstr "Границы записей TLS (--tlsrec)"
-
 msgid "TPROXY LO"
 msgstr "TPROXY LO"
 
 msgid "TTFB"
 msgstr "TTFB"
-
-msgid "TTL Values (dpi-desync-ttl)"
-msgstr "Значения TTL (dpi-desync-ttl)"
-
-msgid "TTL Values (ttl)"
-msgstr "Значения TTL (ttl)"
 
 msgid "TTL for fake TLS packets so they expire before the destination server"
 msgstr "TTL для фейковых пакетов TLS, чтобы они истекали до достижения целевого сервера"
@@ -10292,6 +9923,9 @@ msgstr "Бинарник Tachyon Core (tachyon-core subscription)"
 msgid "Tachyon Core Desync (Built-in Native Engine)"
 msgstr "Tachyon Core Desync (встроенный нативный движок)"
 
+msgid "Tachyon Core Outbound JSON"
+msgstr "Outbound JSON (Tachyon Core)"
+
 msgid "Tachyon Core autostart disabled"
 msgstr "Автостарт Tachyon Core отключен"
 
@@ -10343,18 +9977,6 @@ msgstr "Настройки Tachyon"
 msgid "Tachyon has been installed"
 msgstr "Tachyon успешно установлен"
 
-msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
-msgstr "Tachyon управляет файлами pid ciadpi самостоятельно, поэтому параметры pidfile здесь не допускаются."
-
-msgid "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon управляет жизненным циклом процесса ciadpi самостоятельно, поэтому режим daemon здесь не допускается."
-
-msgid "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon управляет жизненным циклом процесса nfqws самостоятельно, поэтому режим daemon здесь не допускается."
-
-msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
-
 msgid "Tachyon proxy routing"
 msgstr "Маршрутизация через прокси Tachyon"
 
@@ -10382,36 +10004,6 @@ msgstr "Tachyon обновлён до"
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
 
-msgid "Tachyon-managed ciadpi runtime has restarted"
-msgstr "ciadpi Tachyon перезапускался"
-
-msgid "Tachyon-managed ciadpi runtime is not ready"
-msgstr "ciadpi Tachyon не готов"
-
-msgid "Tachyon-managed ciadpi runtime is not running"
-msgstr "ciadpi Tachyon не запущен"
-
-msgid "Tachyon-managed ciadpi runtime is ready"
-msgstr "ciadpi Tachyon готов"
-
-msgid "Tachyon-managed nfqws runtime is not ready"
-msgstr "NFQWS Tachyon не готов"
-
-msgid "Tachyon-managed nfqws runtime is not running"
-msgstr "NFQWS Tachyon не запущен"
-
-msgid "Tachyon-managed nfqws runtime is ready"
-msgstr "NFQWS Tachyon готов"
-
-msgid "Tachyon-managed nfqws2 runtime is not ready"
-msgstr "NFQWS2 Tachyon не готов"
-
-msgid "Tachyon-managed nfqws2 runtime is not running"
-msgstr "NFQWS2 Tachyon не запущен"
-
-msgid "Tachyon-managed nfqws2 runtime is ready"
-msgstr "NFQWS2 Tachyon готов"
-
 msgid "Tailscale"
 msgstr "Tailscale"
 
@@ -10424,14 +10016,8 @@ msgstr "URL контроллера (Control URL)"
 msgid "Tailscale Hostname"
 msgstr "Имя хоста (Hostname)"
 
-msgid "Tailscale Interface Name on Router"
-msgstr "Сетевой интерфейс Tailscale на роутере"
-
 msgid "Tailscale Mesh VPN"
 msgstr "Tailscale Mesh VPN"
-
-msgid "Tailscale Mode"
-msgstr "Режим Tailscale"
 
 msgid "Tailscale auth key (optional)"
 msgstr "Ключ авторизации Tailscale (необязательно)"
@@ -10447,12 +10033,6 @@ msgstr "Tailscale endpoint"
 
 msgid "Tailscale hostname"
 msgstr "Имя хоста Tailscale"
-
-msgid "Tailscale mode"
-msgstr "Режим Tailscale"
-
-msgid "Tailscale package is installed, but no server section uses native mode"
-msgstr "Пакет Tailscale установлен, но ни одна серверная секция не использует нативный режим"
 
 msgid "Target"
 msgstr "Цель"
@@ -10613,17 +10193,11 @@ msgstr "Пресеты цвета текста:"
 msgid "Text:"
 msgstr "Текст:"
 
-msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
-msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не может быть переопределён здесь."
-
 msgid "The TLS certificate or DNS answer could not be verified."
 msgstr "Не удалось подтвердить TLS-сертификат или корректность DNS-ответа."
 
 msgid "The connection will be added to Outbound Connections without creating or modifying routing sections."
 msgstr "Подключение будет добавлено в раздел «Подключения (Аутбаунды)» без создания или изменения секций маршрутизации."
-
-msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
-msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
 
 msgid "The old URL will stop working after Save & Apply."
 msgstr "Старая ссылка перестанет работать после «Сохранить и применить»."
@@ -10640,23 +10214,11 @@ msgstr "Сервер работает и готов принимать подк�
 msgid "Their routing settings are preserved. Enable these servers manually after enabling the section."
 msgstr "Настройки маршрутизации сохранены. После включения секции включите нужные серверы вручную."
 
-msgid "There are rules using ByeDPI"
-msgstr "Есть правила, использующие ByeDPI"
-
-msgid "There are rules using Zapret"
-msgstr "Есть правила использующие Zapret"
-
-msgid "There are rules using Zapret2"
-msgstr "Есть правила, использующие Zapret2"
-
-msgid "These features will be parked and restored when you switch back"
-msgstr "Эти возможности будут сохранены и восстановлены при возврате обратно"
-
 msgid "Thinking..."
 msgstr "Думаю..."
 
-msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
-msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
+msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy and packet-routing firewall rules and restore direct Internet connection through your ISP."
+msgstr ""
 
 msgid "This display name is already in use"
 msgstr "Это имя уже используется"
@@ -10664,32 +10226,8 @@ msgstr "Это имя уже используется"
 msgid "This field is required"
 msgstr "Это поле обязательно"
 
-msgid "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here."
-msgstr "Это поле должно запускать рабочую стратегию ciadpi; опции help/version завершаются немедленно и здесь не допускаются."
-
-msgid "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here."
-msgstr "Это поле должно запускать рабочую стратегию nfqws; --dry-run завершается немедленно и здесь не допускается."
-
-msgid "This field must start a working nfqws strategy; --version exits immediately and is not allowed here."
-msgstr "Это поле должно запускать рабочую стратегию nfqws; --version завершается немедленно и здесь не допускается."
-
-msgid "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here."
-msgstr "Это поле должно запускать рабочую стратегию nfqws2; --dry-run завершается немедленно и здесь не допускается."
-
-msgid "This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here."
-msgstr "Это поле должно запускать рабочую стратегию nfqws2; --version завершается немедленно и здесь не допускается."
-
-msgid "This flag does not accept a value."
-msgstr "Этот флаг не принимает значение."
-
-msgid "This option requires a value."
-msgstr "Этот параметр требует значение."
-
 msgid "This protocol is not implemented in tachyon-core yet"
 msgstr "Этот протокол еще не реализован в tachyon-core"
-
-msgid "This router"
-msgstr "Этот роутер"
 
 msgid "This section uses direct or manual node selection (no URLTest / Priority balancers attached)."
 msgstr "В этой секции используется прямой или ручной выбор узла (без групп URLTest / Priority)."
@@ -10762,6 +10300,9 @@ msgstr "Таймаут в миллисекундах для каждого пр�
 
 msgid "Title"
 msgstr "Провайдер"
+
+msgid "To sections"
+msgstr "К секциям"
 
 msgid "Toddler"
 msgstr "Малыш"
@@ -10879,9 +10420,6 @@ msgstr "Строка-код скопирована в буфер обмена"
 
 msgid "Transient connection error"
 msgstr "Временная ошибка соединения"
-
-msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
-msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Tachyon подключается к ciadpi через SOCKS."
 
 msgid "Transport"
 msgstr "Транспорт"
@@ -11006,8 +10544,8 @@ msgstr "URL должен использовать один из следующи
 msgid "URL path"
 msgstr "Путь URL"
 
-msgid "URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG)."
-msgstr "URL для проверки работоспособности основного подключения (например, Zapret2 на YouTube) перед автоматическим переключением на резервное (например, FPTN или AmneziaWG)."
+msgid "URL probed to verify whether the primary connection (e.g. Desync on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG)."
+msgstr ""
 
 msgid "URL to test through the proxy (default: Cloudflare 204)."
 msgstr "URL для теста через прокси (по умолчанию: Cloudflare 204)."
@@ -11075,15 +10613,6 @@ msgstr "Украина (ua)"
 msgid "Unable to read DNS speed test results."
 msgstr "Не удалось прочитать результат проверки DNS."
 
-msgid "Unable to validate the ByeDPI strategy through the backend parser."
-msgstr "Не удалось проверить стратегию ByeDPI через парсер бэкенда."
-
-msgid "Unable to validate the NFQWS strategy through the backend parser."
-msgstr "Не удалось проверить стратегию NFQWS через парсер бэкенда."
-
-msgid "Unable to validate the NFQWS2 strategy through the backend parser."
-msgstr "Не удалось проверить стратегию NFQWS2 через парсер бэкенда."
-
 msgid "Unavailability timeout"
 msgstr "Таймаут недоступности"
 
@@ -11111,23 +10640,8 @@ msgstr "Незашифрованный DNS на WAN"
 msgid "Unencrypted bootstrap DNS alone is not proof of a DNS leak. Browser Secure DNS may use a different resolver."
 msgstr "Обычный bootstrap DNS сам по себе не доказывает утечку. Защищённый DNS в браузере может использовать другой резолвер."
 
-msgid "Unexpected ByeDPI strategy argument: %s"
-msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
-
-msgid "Unexpected Tachyon-managed ciadpi runtime is running"
-msgstr "Обнаружен лишний ciadpi Tachyon"
-
-msgid "Unexpected Tachyon-managed nfqws runtime is running"
-msgstr "Обнаружен лишний NFQWS Tachyon"
-
-msgid "Unexpected Tachyon-managed nfqws2 runtime is running"
-msgstr "Обнаружен лишний NFQWS2 Tachyon"
-
 msgid "Unexpected background processes"
 msgstr "Непредвиденные фоновые процессы"
-
-msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
-msgstr "Неожиданный отдельный токен. Используйте явные флаги, такие как --name или --name=value."
 
 msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
 msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации."
@@ -11144,17 +10658,8 @@ msgstr "США (us)"
 msgid "Unknown"
 msgstr "Неизвестно"
 
-msgid "Unknown ByeDPI option: %s"
-msgstr "Неизвестный параметр ByeDPI: %s"
-
 msgid "Unknown DPI Pattern"
 msgstr "Неизвестный тип DPI"
-
-msgid "Unknown NFQWS flag."
-msgstr "Неизвестный флаг NFQWS."
-
-msgid "Unknown NFQWS2 flag."
-msgstr "Неизвестный флаг NFQWS2."
 
 msgid "Unknown country"
 msgstr "Неизвестная страна"
@@ -11321,9 +10826,6 @@ msgstr "Использовать DNS провайдера с порта WAN"
 msgid "Use ISP DNS servers from WAN port"
 msgstr "Брать DNS-серверы провайдера с WAN-порта (ISP DNS)"
 
-msgid "Use Native Core Engine (tachyon-core)"
-msgstr ""
-
 msgid "Use QUIC (HTTP/3)"
 msgstr "Использовать QUIC (HTTP/3)"
 
@@ -11357,23 +10859,20 @@ msgstr "Использовать другую секцию в качестве �
 msgid "Use domains from section"
 msgstr "Подставить домены из секции"
 
+msgid "Use duration format like 10s, 1m or 2m30s"
+msgstr "Укажите длительность в формате 10s, 1m или 2m30s"
+
+msgid "Use duration format like 1d, 12h or 30m"
+msgstr "Укажите длительность в формате 1d, 12h или 30m"
+
+msgid "Use duration format like 1d, 12h or 6h"
+msgstr "Укажите длительность в формате 1d, 12h или 6h"
+
 msgid "Use letters, digits, dots, underscores, or hyphens"
 msgstr "Используйте буквы, цифры, точки, подчёркивания или дефисы"
 
 msgid "Use primary server tier first and automatically fail over to backup tiers on outage"
 msgstr "Использование основного уровня серверов с автоматическим переходом на резервный при сбое"
-
-msgid "Use sing-box duration format like 10s, 1m or 2m30s"
-msgstr "Используйте формат длительности sing-box, например 10s, 1m или 2m30s"
-
-msgid "Use sing-box duration format like 1d, 12h or 30m"
-msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"
-
-msgid "Use sing-box duration format like 1d, 12h or 6h"
-msgstr "Используйте формат длительности sing-box, например 1d, 12h или 6h"
-
-msgid "Use tailnet exit node for LAN"
-msgstr "Использовать exit-node тейлнета для LAN"
 
 msgid "Use this subscription. A disabled one is neither downloaded nor added to the config"
 msgstr "Использовать эту подписку. Отключенная подписка не скачивается и не добавляется в конфигурацию"
@@ -11471,8 +10970,8 @@ msgstr "Профиль VPN-клиента, который эмулирует с�
 msgid "Valid"
 msgstr "Валидно"
 
-msgid "Validates sing-box config before restart to prevent boot loops on broken configs."
-msgstr "Проверять конфигурацию sing-box перед перезапуском, чтобы предотвратить циклические перезагрузки."
+msgid "Validates Tachyon Core config before restart to prevent boot loops on broken configs."
+msgstr "Проверяет конфигурацию Tachyon Core перед перезапуском для предотвращения циклической перезагрузки при некорректной конфигурации."
 
 msgid "Validation errors detected"
 msgstr "Обнаружены ошибки в списке"
@@ -11594,7 +11093,7 @@ msgstr "Конфигурация WARP успешно сгенерирована 
 msgid "WARP generation failed: %s"
 msgstr "Ошибка генерации WARP: %s"
 
-msgid "WDTT (Native / qwdtt)"
+msgid "WDTT (tachyon-core native)"
 msgstr ""
 
 msgid "WDTT / CSQTT URI"
@@ -11624,9 +11123,6 @@ msgstr "Максимум хешей WDTT"
 msgid "WDTT Mode"
 msgstr "Режим WDTT"
 
-msgid "WDTT QWDTT Mode"
-msgstr "Режим QWDTT"
-
 msgid "WDTT Refresh"
 msgstr "Обновление WDTT"
 
@@ -11650,15 +11146,6 @@ msgstr "WEIGHTED • ВЗВЕШЕННЫЙ 1/RTT²"
 
 msgid "WG Port / Local Port"
 msgstr "Порт WireGuard / Локальный порт"
-
-msgid "WHEP"
-msgstr "WHEP"
-
-msgid "WHIP"
-msgstr "WHIP"
-
-msgid "WRT"
-msgstr "WRT"
 
 msgid "Waiting for TorrServer"
 msgstr "Ожидание TorrServer"
@@ -11825,96 +11312,6 @@ msgstr "YouTube + Discord + CS2"
 msgid "YouTube Only"
 msgstr "Только YouTube"
 
-msgid "Zapret"
-msgstr "Zapret"
-
-msgid "Zapret (nfqws DPI Desync)"
-msgstr "Zapret (nfqws обход DPI)"
-
-msgid "Zapret (nfqws — classic NFQUEUE)"
-msgstr "Zapret (nfqws — классический NFQUEUE)"
-
-msgid "Zapret Strategy (nfqws arguments)"
-msgstr "Стратегия Zapret (аргументы nfqws)"
-
-msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
-msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
-
-msgid "Zapret outbound is configured"
-msgstr "Outbound Zapret настроен"
-
-msgid "Zapret outbound is not configured"
-msgstr "Outbound Zapret не настроен"
-
-msgid "Zapret package is installed"
-msgstr "Пакет Zapret установлен"
-
-msgid "Zapret package is not installed"
-msgstr "Пакет Zapret не установлен"
-
-msgid "Zapret provider binary is available"
-msgstr "Бинарник провайдера Zapret доступен"
-
-msgid "Zapret provider binary is not available"
-msgstr "Бинарник провайдера Zapret недоступен"
-
-msgid "Zapret sing-box outbound is configured"
-msgstr "sing-box outbound для Zapret настроен"
-
-msgid "Zapret sing-box outbound is not configured"
-msgstr "sing-box outbound для Zapret не настроен"
-
-msgid "Zapret v1"
-msgstr "Zapret v1"
-
-msgid "Zapret v1 (nfqws)"
-msgstr "Zapret v1 (nfqws)"
-
-msgid "Zapret v2"
-msgstr "Zapret v2"
-
-msgid "Zapret v2 (nfqws2)"
-msgstr "Zapret v2 (nfqws2)"
-
-msgid "Zapret2"
-msgstr "Zapret2"
-
-msgid "Zapret2 (nfqws2 DPI Desync)"
-msgstr "Zapret2 (nfqws2 обход DPI)"
-
-msgid "Zapret2 (nfqws2 — Lua strategies & NFQUEUE)"
-msgstr "Zapret2 (nfqws2 — Lua-стратегии и NFQUEUE)"
-
-msgid "Zapret2 Strategy (nfqws2 / Lua arguments)"
-msgstr "Стратегия Zapret2 (аргументы nfqws2 / Lua)"
-
-msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
-msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
-
-msgid "Zapret2 outbound is configured"
-msgstr "Исходящее подключение Zapret2 настроено"
-
-msgid "Zapret2 outbound is not configured"
-msgstr "Исходящее подключение Zapret2 не настроено"
-
-msgid "Zapret2 package is installed"
-msgstr "Пакет Zapret2 установлен"
-
-msgid "Zapret2 package is not installed"
-msgstr "Пакет Zapret2 не установлен"
-
-msgid "Zapret2 provider binary is available"
-msgstr "Бинарник провайдера Zapret2 доступен"
-
-msgid "Zapret2 provider binary is not available"
-msgstr "Бинарник провайдера Zapret2 недоступен"
-
-msgid "Zapret2 routing rules are configured"
-msgstr "Правила маршрутизации Zapret2 настроены"
-
-msgid "Zapret2 routing rules are not configured"
-msgstr "Правила маршрутизации Zapret2 не настроены"
-
 msgid "active"
 msgstr "активен"
 
@@ -11929,9 +11326,6 @@ msgstr "проверка..."
 
 msgid "checks"
 msgstr "проверки"
-
-msgid "compressed"
-msgstr "compressed"
 
 msgid "confidence"
 msgstr "уверенность"
@@ -12011,8 +11405,8 @@ msgstr "Например: Основная подписка, Нидерланд�
 msgid "e.g. Main Subscription, Germany VLESS, My AWG"
 msgstr "Например: Основная подписка, Германия VLESS, Мой AWG"
 
-msgid "e.g. Main Subscription, YouTube Zapret2, EU AWG"
-msgstr "например: Основная подписка, YouTube Zapret2, EU AWG"
+msgid "e.g. Main Subscription, YouTube Desync, EU AWG"
+msgstr ""
 
 msgid "e.g. SHA256 — leave empty for default"
 msgstr "напр. SHA256 — оставьте пустым для значения по умолчанию"
@@ -12083,9 +11477,6 @@ msgstr "эндпоинтов доступно"
 msgid "entries"
 msgstr "записей"
 
-msgid "extended"
-msgstr "расширенная"
-
 msgid "extlen (TLS extensions length field)"
 msgstr "extlen (поле длины расширений TLS)"
 
@@ -12113,17 +11504,11 @@ msgstr "ч"
 msgid "host+1 (1 byte into hostname)"
 msgstr "host+1 (1-й байт имени хоста)"
 
-msgid "installed"
-msgstr "установлен"
-
 msgid "ipv6_only warning"
 msgstr "Риск ipv6_only"
 
 msgid "is unavailable"
 msgstr "недоступно"
-
-msgid "lx"
-msgstr "lx"
 
 msgid "m"
 msgstr "м"
@@ -12164,9 +11549,6 @@ msgstr "нет префикса"
 msgid "not detected"
 msgstr "не обнаружен"
 
-msgid "not installed"
-msgstr "не установлен"
-
 msgid "off"
 msgstr "выкл"
 
@@ -12187,9 +11569,6 @@ msgstr ""
 
 msgid "padencap (max.ru + exact-length TLS Padding)"
 msgstr "padencap (max.ru + TLS Padding 1:1 по длине)"
-
-msgid "peers online"
-msgstr "устр. в сети"
 
 msgid "pkts"
 msgstr "пакетов"
@@ -12218,9 +11597,6 @@ msgstr "server_port должен быть числом от 1 до 65535"
 msgid "servers"
 msgstr "серверов"
 
-msgid "sing-box"
-msgstr "sing-box"
-
 msgid "sites"
 msgstr "сайтов"
 
@@ -12248,14 +11624,8 @@ msgstr "остановлен"
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
 
-msgid "tailscaled daemon is running"
-msgstr "Демон tailscaled работает"
-
 msgid "timeout"
 msgstr "таймаут"
-
-msgid "tiny"
-msgstr "tiny"
 
 msgid "tlsrec (TLS Record Fragmentation)"
 msgstr "tlsrec (фрагментация записей TLS)"
@@ -12287,8 +11657,8 @@ msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s:/
 msgid "vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, anytls://, naive+https://, mieru://, snell://, trusttunnel://, etc."
 msgstr "vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, anytls://, naive+https://, mieru://, snell://, trusttunnel:// и др."
 
-msgid "vpn:// is available only with Tachyon Core or sing-box LX"
-msgstr "vpn:// доступен только с Tachyon Core или sing-box LX"
+msgid "vpn:// is available only with Tachyon Core"
+msgstr "Ссылки vpn:// доступны только с Tachyon Core"
 
 msgid "vpn:// link or .conf file content"
 msgstr "Ключ vpn:// или содержимое файла .conf"
@@ -12485,6 +11855,654 @@ msgstr "🇱🇻 Латвия (lv)"
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
 
+msgid "Auto Modes (--auto)"
+msgstr "Авто-режимы (--auto)"
+
+msgid "Automated verification of DNS, routing rules, firewall and DPI bypass engines"
+msgstr "Автоматическая проверка DNS, правил маршрутизации, межсетевого экрана и движков обхода DPI"
+
+msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
+msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
+
+msgid "Backend validation failed: %s"
+msgstr "Ошибка проверки бэкенда: %s"
+
+msgid "ByeDPI"
+msgstr "ByeDPI"
+
+msgid "ByeDPI (ciadpi SOCKS5 Desync)"
+msgstr "ByeDPI (ciadpi SOCKS5 обход DPI)"
+
+msgid "ByeDPI (ciadpi — local SOCKS5 desync)"
+msgstr "ByeDPI (ciadpi — локальный SOCKS5 десинхронизатор)"
+
+msgid "ByeDPI (ciadpi)"
+msgstr "ByeDPI (ciadpi)"
+
+msgid "ByeDPI (ciadpi) Command Arguments"
+msgstr "Аргументы командной строки ByeDPI (ciadpi)"
+
+msgid "ByeDPI Strategy"
+msgstr "Стратегия ByeDPI"
+
+msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
+msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны задаваться в стратегии."
+
+msgid "ByeDPI option does not accept a compact value: %s"
+msgstr "Параметр ByeDPI не принимает компактное значение: %s"
+
+msgid "ByeDPI option does not accept a value: %s"
+msgstr "Параметр ByeDPI не принимает значение: %s"
+
+msgid "ByeDPI option requires a value: %s"
+msgstr "Параметр ByeDPI требует значение: %s"
+
+msgid "ByeDPI outbound is configured"
+msgstr "Outbound ByeDPI настроен"
+
+msgid "ByeDPI outbound is not configured"
+msgstr "Outbound ByeDPI не настроен"
+
+msgid "ByeDPI package is installed"
+msgstr "Пакет ByeDPI установлен"
+
+msgid "ByeDPI package is not installed"
+msgstr "Пакет ByeDPI не установлен"
+
+msgid "ByeDPI provider binary is available"
+msgstr "Бинарный файл провайдера ByeDPI доступен"
+
+msgid "ByeDPI provider binary is not available"
+msgstr "Бинарный файл провайдера ByeDPI недоступен"
+
+msgid "ByeDPI restarted after exiting; strategy or traffic load may be unstable"
+msgstr "ByeDPI перезапустился после завершения; стратегия или нагрузка трафика могут быть нестабильны"
+
+msgid "ByeDPI strategy cannot be empty"
+msgstr "Стратегия ByeDPI не может быть пустой"
+
+msgid "Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
+msgstr "Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
+
+msgid "Client"
+msgstr "Клиент"
+
+msgid "Command-line strategy arguments for ciadpi (ByeDPI)."
+msgstr "Аргументы командной строки стратегии для ciadpi (ByeDPI)."
+
+msgid "Command-line strategy arguments for nfqws (zapret)."
+msgstr "Аргументы командной строки стратегии для nfqws (zapret)."
+
+msgid "Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."
+msgstr ""
+
+msgid "DPI BYPASS (BYEDPI)"
+msgstr "ОБХОД DPI (BYEDPI)"
+
+msgid "DPI BYPASS (ZAPRET)"
+msgstr "ОБХОД DPI (ZAPRET)"
+
+msgid "DPI Desync / Zapret2 Strategy"
+msgstr "Стратегия DPI Desync / Zapret2"
+
+msgid "Desync (Built-in TCP/UDP DPI Fragmentation)"
+msgstr "Desync (встроенная TCP/UDP фрагментация DPI)"
+
+msgid "Diagnose issues automatically or fuzz DPI bypass strategies"
+msgstr "Автоматическая диагностика проблем и подбор стратегий обхода DPI"
+
+msgid "Direct NFQUEUE Mode (Bypass Proxy Core)"
+msgstr "Прямой режим NFQUEUE (мимо прокси-ядра)"
+
+msgid "Direct nfqws binary launch (isolated instance)"
+msgstr "Прямой запуск бинарника nfqws (изолированный инстанс)"
+
+msgid "Direct nfqws2 binary launch (isolated per-section instance)"
+msgstr "Прямой запуск бинарника nfqws2 (изолированный per-section инстанс без /etc/init.d/zapret2)"
+
+msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
+msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
+
+msgid "Disorder Values (-d)"
+msgstr "Значения Disorder (-d)"
+
+msgid "Embedded"
+msgstr "Встроенный"
+
+msgid "Embedded (tachyon-core, default)"
+msgstr "Встроенный (tachyon-core, по умолчанию)"
+
+msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
+msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
+
+msgid "External NFQUEUE rules overlap with Tachyon"
+msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
+
+msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
+msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
+
+msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
+msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную проверку."
+
+msgid "Fooling Methods (dpi-desync-fooling)"
+msgstr "Методы спуфинга (dpi-desync-fooling)"
+
+msgid "Fooling Methods (fooling)"
+msgstr "Методы спуфинга (fooling)"
+
+msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime validation."
+msgstr "Fuzzing не поддерживается здесь, потому что Tachyon нуждается в детерминированной проверке во время выполнения."
+
+msgid "IP Frag Bounds (--ip-frag)"
+msgstr "Границы фрагментации IP (--ip-frag)"
+
+msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain."
+msgstr "Обнаружена фильтрация по IP! Ресурс недоступен на сетевом уровне (нет ответа на TCP SYN). Механизмы десинхронизации пакетов (Zapret / ByeDPI) здесь неприменимы — настройте маршрутизацию через прокси или VPN для этого домена."
+
+msgid "Invalid ByeDPI strategy"
+msgstr "Неверная стратегия ByeDPI"
+
+msgid "Jitsi"
+msgstr "Jitsi"
+
+msgid "Legacy zapret runtime paths are still present and should be migrated"
+msgstr "Обнаружены устаревшие пути zapret, требуется миграция"
+
+msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing."
+msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков."
+
+msgid "Masquerade LAN traffic into tailnet"
+msgstr "Маскарадинг LAN-трафика в тейлнет"
+
+msgid "NFQUEUE range is available"
+msgstr "Диапазон NFQUEUE свободен"
+
+msgid "NFQUEUE range overlaps with another rule"
+msgstr "Диапазон NFQUEUE пересекается с другим правилом"
+
+msgid "NFQWS Strategy"
+msgstr "Стратегия NFQWS"
+
+msgid "NFQWS strategy cannot be empty"
+msgstr "Стратегия NFQWS не может быть пустой"
+
+msgid "NFQWS2 Strategy"
+msgstr "Стратегия NFQWS2"
+
+msgid "NFQWS2 strategy cannot be empty"
+msgstr "Стратегия NFQWS2 не может быть пустой"
+
+msgid "Native (system tailscaled / tailscale0)"
+msgstr "Нативный (системный tailscaled / tailscale0)"
+
+msgid "Native Tailscale is configured, but tailscale package is missing"
+msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
+
+msgid "Native Tailscale is configured, but tailscaled is not running for every section"
+msgstr "Нативный Tailscale настроен, но tailscaled запущен не для всех секций"
+
+msgid "Native tailscaled (tailnet reachable from LAN without client)"
+msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
+
+msgid "No rules use ByeDPI"
+msgstr "Нет правил, использующих ByeDPI"
+
+msgid "No rules use Zapret"
+msgstr "Нет правил, использующих Zapret"
+
+msgid "No rules use Zapret2"
+msgstr "Нет правил, использующих Zapret2"
+
+msgid "OOB Values (-o)"
+msgstr "Значения OOB (-o)"
+
+msgid "OlcRTC (Discord / WebRTC nfqws2)"
+msgstr "OlcRTC (Discord / WebRTC nfqws2)"
+
+msgid "OlcRTC Crypto Key"
+msgstr "Ключ шифрования OlcRTC"
+
+msgid "OlcRTC DNS Server"
+msgstr "DNS-сервер OlcRTC"
+
+msgid "OlcRTC Provider"
+msgstr "Провайдер OlcRTC"
+
+msgid "OlcRTC Room ID"
+msgstr "ID комнаты OlcRTC"
+
+msgid "OlcRTC SOCKS Host"
+msgstr "Хост SOCKS OlcRTC"
+
+msgid "OlcRTC SOCKS Port"
+msgstr "Порт SOCKS OlcRTC"
+
+msgid "OlcRTC Subscription Links"
+msgstr "Ссылки подписок OlcRTC"
+
+msgid "OlcRTC Transport"
+msgstr "Транспорт OlcRTC"
+
+msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
+msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws."
+
+msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
+msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws2."
+
+msgid "Other peers"
+msgstr "Другие пиры"
+
+msgid "Packet Desync (Desync / Zapret2)"
+msgstr "Десинхронизация пакетов (Desync / Zapret2)"
+
+msgid "Packet desync via ByeDPI (ciadpi SOCKS5)"
+msgstr "Десинхронизация через ByeDPI (ciadpi SOCKS5)"
+
+msgid "Packet desync via Zapret (nfqws)"
+msgstr "Десинхронизация через Zapret (nfqws)"
+
+msgid "Packet desync via Zapret2 (nfqws2 + Lua strategies)"
+msgstr "Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)"
+
+msgid "Peer (host:port)"
+msgstr ""
+
+msgid "QWDTT Mode"
+msgstr ""
+
+msgid "Remote endpoint in HOST:PORT format for qwdtt client."
+msgstr ""
+
+msgid "Resource selection by IP or CIDR inside nfqws is not supported here; Tachyon Core selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws здесь не поддерживается; Tachyon Core выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; Tachyon Core selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 здесь не поддерживается; Tachyon Core выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by hostname inside nfqws is not supported here; Tachyon Core selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по имени хоста внутри nfqws здесь не поддерживается; Tachyon Core выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by hostname inside nfqws2 is not supported here; Tachyon Core selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по имени хоста внутри nfqws2 здесь не поддерживается; Tachyon Core выбирает ресурсы до NFQUEUE."
+
+msgid "Restart Zapret/ByeDPI"
+msgstr "Перезапустить Zapret/ByeDPI"
+
+msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
+msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
+
+msgid "Route matched traffic directly into kernel NFQUEUE via nftables without passing through tachyon-core."
+msgstr "Направлять совпавший трафик напрямую в NFQUEUE ядра через nftables без передачи в tachyon-core."
+
+msgid "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client."
+msgstr ""
+
+msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
+msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
+
+msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
+msgstr ""
+
+msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
+msgstr "Выберите любой существующий сетевой интерфейс роутера или готовый пресет (например: wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
+
+msgid "Sequence Overlaps (seqovl)"
+msgstr "Перекрытия последовательностей (seqovl)"
+
+msgid "Split Modes (dpi-desync)"
+msgstr "Режимы разделения (dpi-desync)"
+
+msgid "Split Positions (dpi-desync-split-pos)"
+msgstr "Позиции разделения (dpi-desync-split-pos)"
+
+msgid "Split Positions (pos)"
+msgstr "Позиции разделения (pos)"
+
+msgid "Split Values (-s)"
+msgstr "Значения сплита (-s)"
+
+msgid "Standalone ByeDPI autostart is enabled"
+msgstr "Автозапуск отдельной службы ByeDPI включен"
+
+msgid "Standalone ByeDPI is active together with Tachyon ByeDPI rules"
+msgstr "Отдельная служба ByeDPI активна вместе с правилами ByeDPI в Tachyon"
+
+msgid "Standalone ByeDPI service is active"
+msgstr "Отдельная служба ByeDPI активна"
+
+msgid "Standalone ByeDPI service is inactive"
+msgstr "Отдельная служба ByeDPI неактивна"
+
+msgid "Standalone Zapret is active together with Tachyon Zapret rules"
+msgstr "Отдельная служба Zapret активна вместе с правилами Zapret в Tachyon"
+
+msgid "Standalone Zapret service is active"
+msgstr "Отдельная служба Zapret активна"
+
+msgid "Standalone Zapret service is inactive"
+msgstr "Отдельная служба Zapret неактивна"
+
+msgid "Standalone Zapret2 autostart is enabled"
+msgstr "Автозапуск отдельной службы Zapret2 включён"
+
+msgid "Standalone Zapret2 is active together with Tachyon Zapret2 rules"
+msgstr "Отдельная служба Zapret2 активна вместе с правилами Zapret2 в Tachyon"
+
+msgid "Standalone Zapret2 service is active"
+msgstr "Отдельная служба Zapret2 активна"
+
+msgid "Standalone Zapret2 service is inactive"
+msgstr "Отдельная служба Zapret2 неактивна"
+
+msgid "TCP Window Sizes (wsize)"
+msgstr "Размеры окна TCP (wsize)"
+
+msgid "TLS-Rec Bounds (--tlsrec)"
+msgstr "Границы записей TLS (--tlsrec)"
+
+msgid "TTL Values (dpi-desync-ttl)"
+msgstr "Значения TTL (dpi-desync-ttl)"
+
+msgid "TTL Values (ttl)"
+msgstr "Значения TTL (ttl)"
+
+msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
+msgstr "Tachyon управляет файлами pid ciadpi самостоятельно, поэтому параметры pidfile здесь не допускаются."
+
+msgid "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса ciadpi самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса nfqws самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon-managed ciadpi runtime has restarted"
+msgstr "ciadpi Tachyon перезапускался"
+
+msgid "Tachyon-managed ciadpi runtime is not ready"
+msgstr "ciadpi Tachyon не готов"
+
+msgid "Tachyon-managed ciadpi runtime is not running"
+msgstr "ciadpi Tachyon не запущен"
+
+msgid "Tachyon-managed ciadpi runtime is ready"
+msgstr "ciadpi Tachyon готов"
+
+msgid "Tachyon-managed nfqws runtime is not ready"
+msgstr "NFQWS Tachyon не готов"
+
+msgid "Tachyon-managed nfqws runtime is not running"
+msgstr "NFQWS Tachyon не запущен"
+
+msgid "Tachyon-managed nfqws runtime is ready"
+msgstr "NFQWS Tachyon готов"
+
+msgid "Tachyon-managed nfqws2 runtime is not ready"
+msgstr "NFQWS2 Tachyon не готов"
+
+msgid "Tachyon-managed nfqws2 runtime is not running"
+msgstr "NFQWS2 Tachyon не запущен"
+
+msgid "Tachyon-managed nfqws2 runtime is ready"
+msgstr "NFQWS2 Tachyon готов"
+
+msgid "Tailscale Interface Name on Router"
+msgstr "Сетевой интерфейс Tailscale на роутере"
+
+msgid "Tailscale Mode"
+msgstr "Режим Tailscale"
+
+msgid "Tailscale mode"
+msgstr "Режим Tailscale"
+
+msgid "Tailscale package is installed, but no server section uses native mode"
+msgstr "Пакет Tailscale установлен, но ни одна серверная секция не использует нативный режим"
+
+msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
+msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не может быть переопределён здесь."
+
+msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
+msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
+
+msgid "There are rules using ByeDPI"
+msgstr "Есть правила, использующие ByeDPI"
+
+msgid "There are rules using Zapret"
+msgstr "Есть правила использующие Zapret"
+
+msgid "There are rules using Zapret2"
+msgstr "Есть правила, использующие Zapret2"
+
+msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
+msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
+
+msgid "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию ciadpi; опции help/version завершаются немедленно и здесь не допускаются."
+
+msgid "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws; --dry-run завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws strategy; --version exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws; --version завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws2; --dry-run завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws2; --version завершается немедленно и здесь не допускается."
+
+msgid "This flag does not accept a value."
+msgstr "Этот флаг не принимает значение."
+
+msgid "This option requires a value."
+msgstr "Этот параметр требует значение."
+
+msgid "This router"
+msgstr "Этот роутер"
+
+msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
+msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Tachyon подключается к ciadpi через SOCKS."
+
+msgid "URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG)."
+msgstr "URL для проверки работоспособности основного подключения (например, Zapret2 на YouTube) перед автоматическим переключением на резервное (например, FPTN или AmneziaWG)."
+
+msgid "Unable to validate the ByeDPI strategy through the backend parser."
+msgstr "Не удалось проверить стратегию ByeDPI через парсер бэкенда."
+
+msgid "Unable to validate the NFQWS strategy through the backend parser."
+msgstr "Не удалось проверить стратегию NFQWS через парсер бэкенда."
+
+msgid "Unable to validate the NFQWS2 strategy through the backend parser."
+msgstr "Не удалось проверить стратегию NFQWS2 через парсер бэкенда."
+
+msgid "Unexpected ByeDPI strategy argument: %s"
+msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
+
+msgid "Unexpected Tachyon-managed ciadpi runtime is running"
+msgstr "Обнаружен лишний ciadpi Tachyon"
+
+msgid "Unexpected Tachyon-managed nfqws runtime is running"
+msgstr "Обнаружен лишний NFQWS Tachyon"
+
+msgid "Unexpected Tachyon-managed nfqws2 runtime is running"
+msgstr "Обнаружен лишний NFQWS2 Tachyon"
+
+msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
+msgstr "Неожиданный отдельный токен. Используйте явные флаги, такие как --name или --name=value."
+
+msgid "Unknown ByeDPI option: %s"
+msgstr "Неизвестный параметр ByeDPI: %s"
+
+msgid "Unknown NFQWS flag."
+msgstr "Неизвестный флаг NFQWS."
+
+msgid "Unknown NFQWS2 flag."
+msgstr "Неизвестный флаг NFQWS2."
+
+msgid "Use Native Core Engine (tachyon-core)"
+msgstr ""
+
+msgid "Use tailnet exit node for LAN"
+msgstr "Использовать exit-node тейлнета для LAN"
+
+msgid "WDTT (Native / qwdtt)"
+msgstr ""
+
+msgid "WDTT QWDTT Mode"
+msgstr "Режим QWDTT"
+
+msgid "WHEP"
+msgstr "WHEP"
+
+msgid "WHIP"
+msgstr "WHIP"
+
+msgid "WRT"
+msgstr "WRT"
+
+msgid "Zapret"
+msgstr "Zapret"
+
+msgid "Zapret (nfqws DPI Desync)"
+msgstr "Zapret (nfqws обход DPI)"
+
+msgid "Zapret (nfqws — classic NFQUEUE)"
+msgstr "Zapret (nfqws — классический NFQUEUE)"
+
+msgid "Zapret Strategy (nfqws arguments)"
+msgstr "Стратегия Zapret (аргументы nfqws)"
+
+msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
+msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
+
+msgid "Zapret outbound is configured"
+msgstr "Outbound Zapret настроен"
+
+msgid "Zapret outbound is not configured"
+msgstr "Outbound Zapret не настроен"
+
+msgid "Zapret package is installed"
+msgstr "Пакет Zapret установлен"
+
+msgid "Zapret package is not installed"
+msgstr "Пакет Zapret не установлен"
+
+msgid "Zapret provider binary is available"
+msgstr "Бинарник провайдера Zapret доступен"
+
+msgid "Zapret provider binary is not available"
+msgstr "Бинарник провайдера Zapret недоступен"
+
+msgid "Zapret v1"
+msgstr "Zapret v1"
+
+msgid "Zapret v1 (nfqws)"
+msgstr "Zapret v1 (nfqws)"
+
+msgid "Zapret v2"
+msgstr "Zapret v2"
+
+msgid "Zapret v2 (nfqws2)"
+msgstr "Zapret v2 (nfqws2)"
+
+msgid "Zapret2"
+msgstr "Zapret2"
+
+msgid "Zapret2 (nfqws2 DPI Desync)"
+msgstr "Zapret2 (nfqws2 обход DPI)"
+
+msgid "Zapret2 (nfqws2 — Lua strategies & NFQUEUE)"
+msgstr "Zapret2 (nfqws2 — Lua-стратегии и NFQUEUE)"
+
+msgid "Zapret2 Strategy (nfqws2 / Lua arguments)"
+msgstr "Стратегия Zapret2 (аргументы nfqws2 / Lua)"
+
+msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
+msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
+
+msgid "Zapret2 outbound is configured"
+msgstr "Исходящее подключение Zapret2 настроено"
+
+msgid "Zapret2 outbound is not configured"
+msgstr "Исходящее подключение Zapret2 не настроено"
+
+msgid "Zapret2 package is installed"
+msgstr "Пакет Zapret2 установлен"
+
+msgid "Zapret2 package is not installed"
+msgstr "Пакет Zapret2 не установлен"
+
+msgid "Zapret2 provider binary is available"
+msgstr "Бинарник провайдера Zapret2 доступен"
+
+msgid "Zapret2 provider binary is not available"
+msgstr "Бинарник провайдера Zapret2 недоступен"
+
+msgid "Zapret2 routing rules are configured"
+msgstr "Правила маршрутизации Zapret2 настроены"
+
+msgid "Zapret2 routing rules are not configured"
+msgstr "Правила маршрутизации Zapret2 не настроены"
+
+msgid "e.g. Main Subscription, YouTube Zapret2, EU AWG"
+msgstr "например: Основная подписка, YouTube Zapret2, EU AWG"
+
+msgid "peers online"
+msgstr "устр. в сети"
+
+msgid "tailscaled daemon is running"
+msgstr "Демон tailscaled работает"
+
+msgid "Check routing section order"
+msgstr "Обратите внимание на порядок секций"
+
+msgid "Reorder sections →"
+msgstr "Изменить порядок →"
+
+msgid "Active engine"
+msgstr "Активный движок"
+
+msgid "Ignored (Upgrade to Extended)"
+msgstr "Игнорируется (обновите до Extended)"
+
+msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
+msgstr "Включает привязку TLS-сертификатов (pcs / certificate_sha256), XHTTP и AmneziaWG 3.x"
+
+msgid "Install & Switch"
+msgstr "Установить и переключить"
+
+msgid "MTProto is not implemented in tachyon-core yet"
+msgstr "MTProto еще не реализован в tachyon-core"
+
+msgid "Routing Engine"
+msgstr "Маршрутизирующий движок"
+
+msgid "Supported"
+msgstr "Поддерживается"
+
+msgid "These features will be parked and restored when you switch back"
+msgstr "Эти возможности будут сохранены и восстановлены при возврате обратно"
+
+msgid "compressed"
+msgstr "compressed"
+
+msgid "extended"
+msgstr "расширенная"
+
+msgid "installed"
+msgstr "установлен"
+
+msgid "lx"
+msgstr "lx"
+
+msgid "not installed"
+msgstr "не установлен"
+
+msgid "tiny"
+msgstr "tiny"
+
 msgid "Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."
 msgstr "Аргументы командной строки стратегии для nfqws2 (zapret2 / wdtt / olcrtc)."
 
@@ -12592,9 +12610,6 @@ msgstr "Многоразовый или эфемерный pre-auth ключ д�
 
 msgid "Tailscale auth key"
 msgstr "Ключ авторизации Tailscale"
-
-msgid "sing-box endpoint (userspace, default)"
-msgstr "Endpoint в sing-box (userspace, по умолчанию)"
 
 msgid "Invalid CSQTT URL: missing host/peer or password"
 msgstr ""
@@ -13631,15 +13646,6 @@ msgstr "устройств"
 msgid "PID"
 msgstr "PID"
 
-msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
-
-msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
-msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
-
-msgid "vpn:// is available only with sing-box LX"
-msgstr "vpn:// доступен только с sing-box LX"
-
 msgid "Cache"
 msgstr "Кэш"
 
@@ -13666,12 +13672,6 @@ msgstr "Пользовательский URL эндпоинта OpenAI-совм�
 
 msgid "Model name to use. Leave empty to use default (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
 msgstr "Имя используемой модели. Оставьте пустым, чтобы использовать модель по умолчанию (gpt-6-luna / claude-haiku-4-5 / deepseek-chat / llama3.2)."
-
-msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
-msgstr "Выберите или введите путь к файлу кэша sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
-
-msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
-msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
 
 msgid "Open"
 msgstr "Открыть"
@@ -13793,26 +13793,8 @@ msgstr "Не удалось переключить"
 msgid "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
 msgstr "Tachyon может использовать несколько движков маршрутизации. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
-msgid "Sing-box FakeIP DNS does not work"
-msgstr "FakeIP DNS sing-box не работает"
-
-msgid "Sing-box FakeIP DNS works"
-msgstr "FakeIP DNS sing-box работает"
-
 msgid "This engine is not installed yet. Choose a variant below to install it:"
 msgstr "Этот движок еще не установлен. Выберите вариант ниже для установки:"
-
-msgid "Zapret2 sing-box outbound is configured"
-msgstr "sing-box outbound для Zapret2 настроен"
-
-msgid "Zapret2 sing-box outbound is not configured"
-msgstr "sing-box outbound для Zapret2 не настроен"
-
-msgid "Zapret2 sing-box route rules are configured"
-msgstr "Правила маршрутизации sing-box для Zapret2 настроены"
-
-msgid "Zapret2 sing-box route rules are not configured"
-msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
 
 msgid "idle"
 msgstr "простой"
@@ -13919,9 +13901,6 @@ msgstr "🛡️ ЗАЩИЩЕНО: Утечек DNS не обнаружено. В
 msgid "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
 msgstr "🛡️ ЗАЩИЩЕНО: Утечек IP не обнаружено. Реальный WAN IP скрыт за исходящим прокси."
 
-msgid "127.0.0.1:4534 (sing-box mixed)"
-msgstr "127.0.0.1:4534 (смешанный sing-box)"
-
 msgid "Baseline"
 msgstr "Базовый уровень"
 
@@ -13952,9 +13931,6 @@ msgstr "В тесте через прокси резолверы не зафик
 msgid "OFFLINE"
 msgstr "ОФЛАЙН"
 
-msgid "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
-msgstr "Выполняет одновременные исходящие запросы напрямую в WAN (в обход правил Sing-box) и через прокси (127.0.0.1:4534), проверяя, что ваш реальный IP и DNS-запросы не утекают провайдеру."
-
 msgid "Proxy is offline or unreachable on 127.0.0.1:4534."
 msgstr "Прокси выключен или недоступен на 127.0.0.1:4534."
 
@@ -13966,9 +13942,6 @@ msgstr "Тестирование восходящих DNS-резолверов �
 
 msgid "Блокировка по IP (Таймаут TCP SYN)"
 msgstr "Блокировка по IP (Таймаут TCP SYN)"
-
-msgid "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
 
 msgid "Block (RKN)"
 msgstr "RKN Block"
@@ -14243,9 +14216,6 @@ msgstr "Не удалось проверить DNS"
 msgid "Cannot check port 4534"
 msgstr "Не удалось проверить порт 4534"
 
-msgid "Cannot check sing-box status"
-msgstr "Не удалось проверить статус sing-box"
-
 msgid "Cannot reach Telegram API directly (IPv4 blocked by ISP?)"
 msgstr "Нет прямого доступа к Telegram API (IPv4 заблокирован провайдером?)"
 
@@ -14284,12 +14254,6 @@ msgstr "Маршрут через прокси к Telegram API не сработ
 
 msgid "Proxy route to Telegram API works"
 msgstr "Маршрут через прокси к Telegram API работает"
-
-msgid "sing-box is NOT running — bot cannot route through proxy"
-msgstr "sing-box не запущен — бот не может маршрутизировать через прокси"
-
-msgid "sing-box is running"
-msgstr "sing-box запущен"
 
 msgid "Test message sent to chat"
 msgstr "Тестовое сообщение отправлено в чат"

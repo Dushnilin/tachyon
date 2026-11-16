@@ -30,24 +30,16 @@ assert_eq() {
 
 # 1. Normalization
 assert_eq "0.0.1" \
-  "$(ucode "$UPDATER" updates-normalize-sing-box-version "v0.0.1-tachyon.0")" \
+  "$(ucode "$UPDATER" updates-normalize-core-version "v0.0.1-tachyon.0")" \
   "tachyon-core version with v and -tachyon.0 suffix normalizes to bare semver"
 
 assert_eq "0.0.1" \
-  "$(ucode "$UPDATER" updates-normalize-sing-box-version "0.0.1-tachyon.0")" \
+  "$(ucode "$UPDATER" updates-normalize-core-version "0.0.1-tachyon.0")" \
   "tachyon-core version without v and with -tachyon.0 suffix normalizes to bare semver"
 
 assert_eq "0.0.1" \
-  "$(ucode "$UPDATER" updates-normalize-sing-box-version "v0.0.1")" \
+  "$(ucode "$UPDATER" updates-normalize-core-version "v0.0.1")" \
   "tachyon-core release tag normalizes to bare semver"
-
-assert_eq "1.14.3-lx.14" \
-  "$(ucode "$UPDATER" updates-normalize-sing-box-version "1.14.3-lx.14")" \
-  "sing-box-lx version preserves fork suffix"
-
-assert_eq "1.13.21-extended" \
-  "$(ucode "$UPDATER" updates-normalize-sing-box-version "1.13.21-extended")" \
-  "sing-box-extended version preserves fork suffix"
 
 # 2. Comparison via versions.uc
 assert_eq "0" \

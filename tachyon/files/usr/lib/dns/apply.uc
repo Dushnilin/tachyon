@@ -4,7 +4,7 @@ let fs = require("fs");
 let uci = require("core.uci");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
-const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
+const CORE_DNS_INBOUND_ADDRESS = getenv("TACHYON_CORE_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -183,7 +183,7 @@ function dnsmasq_default_servers() {
 }
 
 function dnsmasq_default_has_tachyon_dns() {
-    return list_has(dnsmasq_default_servers(), SB_DNS_INBOUND_ADDRESS);
+    return list_has(dnsmasq_default_servers(), CORE_DNS_INBOUND_ADDRESS);
 }
 
 function dnsmasq_has_tachyon_dns() {
@@ -243,7 +243,7 @@ function backup_dnsmasq_server_list() {
         return;
 
     for (let server in words(dnsmasq_default_servers())) {
-        if (server != SB_DNS_INBOUND_ADDRESS && !starts_with(server, SB_DNS_INBOUND_ADDRESS + "#"))
+        if (server != CORE_DNS_INBOUND_ADDRESS && !starts_with(server, CORE_DNS_INBOUND_ADDRESS + "#"))
             uci_add_list("dhcp.@dnsmasq[0].tachyon_server", server);
     }
 }
@@ -285,7 +285,7 @@ function dnsmasq_cleanup_legacy_instance() {
     uci_delete("dhcp.@dnsmasq[0].tachyon_notinterface");
 }
 
-function sing_box_dns_listening() {
+function core_dns_listening() {
     let udp = fs.readfile("/proc/net/udp");
     // 127.0.0.42:53 in hex is 2A00007F:0035; 0.0.0.0:53 is 00000000:0035
     if (udp && (index(udp, "2A00007F:0035") >= 0 || index(udp, "00000000:0035") >= 0))
@@ -310,7 +310,7 @@ function dnsmasq_configure_default_instance() {
     uci_delete("dhcp.@dnsmasq[0].addn_hosts");
 
     uci_delete("dhcp.@dnsmasq[0].server");
-    uci_add_list("dhcp.@dnsmasq[0].server", SB_DNS_INBOUND_ADDRESS);
+    uci_add_list("dhcp.@dnsmasq[0].server", CORE_DNS_INBOUND_ADDRESS);
     uci_set("dhcp.@dnsmasq[0].noresolv", "1");
     uci_set("dhcp.@dnsmasq[0].rebind_protection", "0");
     uci_set("dhcp.@dnsmasq[0].cachesize", dnsmasq_target_cachesize());
@@ -319,7 +319,7 @@ function dnsmasq_configure_default_instance() {
 function dnsmasq_restore_default_instance() {
     let server_list = dnsmasq_default_servers();
     let backup_servers = uci_get("dhcp.@dnsmasq[0].tachyon_server");
-    let managed_global_dns = list_has(server_list, SB_DNS_INBOUND_ADDRESS);
+    let managed_global_dns = list_has(server_list, CORE_DNS_INBOUND_ADDRESS);
 
     uci_delete("dhcp.@dnsmasq[0].server");
     if (backup_servers != "") {
@@ -329,7 +329,7 @@ function dnsmasq_restore_default_instance() {
     }
     else {
         for (let value in words(server_list)) {
-            if (value != SB_DNS_INBOUND_ADDRESS && !starts_with(value, SB_DNS_INBOUND_ADDRESS + "#"))
+            if (value != CORE_DNS_INBOUND_ADDRESS && !starts_with(value, CORE_DNS_INBOUND_ADDRESS + "#"))
                 uci_add_list("dhcp.@dnsmasq[0].server", value);
         }
     }
@@ -365,15 +365,15 @@ function restore_resolv_conf_symlink() {
     }
 }
 
-// Resolves sing-box multi-fallback PID detection across pidfiles, ubus procd, and pidof
-function sing_box_running_pid() {
-    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+// Resolves tachyon-core multi-fallback PID detection across pidfiles, ubus procd, and pidof
+function core_running_pid() {
+    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid" ]) {
         let pid = trim(fs.readfile(path) || "");
         if (pid != "" && run("kill -0 " + shell_quote(pid) + " 2>/dev/null"))
             return pid;
     }
 
-    for (let svc in [ "tachyon-core", "sing-box" ]) {
+    for (let svc in [ "tachyon-core" ]) {
         let p = fs.popen("ubus call service list '{\"name\":\"" + svc + "\"}' 2>/dev/null", "r");
         if (p) {
             let out = p.read("all");
@@ -389,7 +389,7 @@ function sing_box_running_pid() {
         }
     }
 
-    let p2 = fs.popen("pidof tachyon-core sing-box 2>/dev/null", "r");
+    let p2 = fs.popen("pidof tachyon-core 2>/dev/null", "r");
     if (p2) {
         let out2 = p2.read("all");
         p2.close();
@@ -698,7 +698,7 @@ function dnsmasq_configure(force) {
     // The restart churn (stop_main, netifd, dnsmasq) routinely clobbers the
     // /etc/resolv.conf symlink into a regular file. Restore it here, before the
     // early returns below — "unclean shutdown, already configured" and
-    // "sing-box not running yet" both used to skip the restore on the happy
+    // "tachyon-core not running yet" both used to skip the restore on the happy
     // path only, leaving a plain-file resolv.conf after every such restart.
     restore_resolv_conf_symlink();
 
@@ -708,24 +708,24 @@ function dnsmasq_configure(force) {
     }
 
     if (as_string(force) != "force") {
-        let sb_pid = sing_box_running_pid();
+        let core_pid = core_running_pid();
         let wait_attempt = 0;
-        while (sb_pid == "" && wait_attempt < 5) {
+        while (core_pid == "" && wait_attempt < 5) {
             common.command_status_from_args([ "sleep", "1" ]);
-            sb_pid = sing_box_running_pid();
+            core_pid = core_running_pid();
             wait_attempt++;
         }
-        if (sb_pid == "") {
+        if (core_pid == "") {
             log("tachyon-core is not running; dnsmasq will forward to system DNS until tachyon-core starts", "warn");
             return true;
         }
 
         let listen_attempt = 0;
-        while (!sing_box_dns_listening() && listen_attempt < 5) {
+        while (!core_dns_listening() && listen_attempt < 5) {
             common.command_status_from_args([ "sleep", "1" ]);
             listen_attempt++;
         }
-        if (!sing_box_dns_listening()) {
+        if (!core_dns_listening()) {
             log("tachyon-core DNS inbound (127.0.0.42:53) is not listening yet; dnsmasq will forward to system DNS", "warn");
             return true;
         }
@@ -809,7 +809,7 @@ function recovery_ready() {
     if (uci_get("dhcp.@dnsmasq[0].port") == "0" &&
         (run("pidof AdGuardHome >/dev/null 2>&1") || run("pidof adguardhome >/dev/null 2>&1")))
         return true;
-    return sing_box_dns_listening() && dnsmasq_default_config_is_complete() &&
+    return core_dns_listening() && dnsmasq_default_config_is_complete() &&
         common.command_success_from_args([
             "sh", "-c", "nslookup -timeout=2 connectivitycheck.gstatic.com 127.0.0.1 >/dev/null 2>&1 || " +
             "nslookup -timeout=2 openwrt.org 127.0.0.1 >/dev/null 2>&1"

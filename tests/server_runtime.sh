@@ -17,7 +17,7 @@ fail() {
 }
 
 mkdir -p "$WORK_DIR/bin"
-cat >"$WORK_DIR/bin/tachyon-core" <<'SINGBOX'
+cat >"$WORK_DIR/bin/tachyon-core" <<'CORE_EOF'
 #!/usr/bin/env bash
 set -eo pipefail
 
@@ -38,11 +38,11 @@ case "$*" in
     printf 'PrivateKey: private-key\nPublicKey: public-key\n'
     ;;
   *)
-    printf 'unsupported sing-box command: %s\n' "$*" >&2
+    printf 'unsupported tachyon-core command: %s\n' "$*" >&2
     exit 2
     ;;
 esac
-SINGBOX
+CORE_EOF
 chmod 0755 "$WORK_DIR/bin/tachyon-core"
 
 cat >"$WORK_DIR/bin/logger" <<'LOGGER'

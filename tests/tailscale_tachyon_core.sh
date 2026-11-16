@@ -65,13 +65,11 @@ exit 0
 SH
 chmod 0755 "$WORK_DIR/bin/logger"
 
-printf 'tachyon-core\n' >"$WORK_DIR/core-variant"
 printf '0.4.5\n' >"$WORK_DIR/core-version"
 : >"$WORK_DIR/empty.uci.state"
 
-export SB_VARIANT_STATE_FILE="$WORK_DIR/core-variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/core-version"
-export SB_VERSION_OVERRIDE="0.4.5"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/core-version"
+export TACHYON_CORE_VERSION_OVERRIDE="0.4.5"
 
 generate_config() {
   local fixture="$1"
@@ -103,7 +101,7 @@ cat >"$WORK_DIR/server_fixture.json" <<'JSON'
       ".type": "server",
       "enabled": "1",
       "protocol": "tailscale",
-      "tailscale_mode": "singbox",
+      "tailscale_mode": "tachyon-core",
       "tailscale_ephemeral": "1",
       "tailscale_auth_key": "",
       "tailscale_control_url": "https://headscale.example.test",
@@ -420,23 +418,22 @@ for (const ep of [ secWithExit, modWithExit, impWithExit ]) {
 }
 NODE
 
-# Check connections.interfaces() filters embedded tailscale sources and keeps native ones.
+# Check connections.interfaces() only returns interface sources and embedded_tailscale_sources captures all enabled tailscale sources.
 ucode -L "$TACHYON_LIB" -e '
 let connections = require("config.connections");
 connections.set_item_sections_from_data({
   outbound_source: [
-    { ".name": "src_emb", ".type": "outbound_source", enabled: "1", source_type: "tailscale", tailscale_mode: "embedded", interface_name: "tailscale9" },
+    { ".name": "src_emb", ".type": "outbound_source", enabled: "1", source_type: "tailscale", tailscale_mode: "tachyon-core", interface_name: "tailscale9" },
     { ".name": "src_def", ".type": "outbound_source", enabled: "1", source_type: "tailscale", tailscale_hostname: "peer-a" },
-    { ".name": "src_nat", ".type": "outbound_source", enabled: "1", source_type: "tailscale", tailscale_mode: "native", interface_name: "tailscale0" },
     { ".name": "src_wg",  ".type": "outbound_source", enabled: "1", source_type: "interface", interface_name: "wg0" }
   ],
   section: [
-    { ".name": "mix", ".type": "section", enabled: "1", action: "connection", outbound_source_refs: [ "src_emb", "src_def", "src_nat", "src_wg" ] }
+    { ".name": "mix", ".type": "section", enabled: "1", action: "connection", outbound_source_refs: [ "src_emb", "src_def", "src_wg" ] }
   ]
 });
-let sec = { ".name": "mix", ".type": "section", enabled: "1", action: "connection", outbound_source_refs: [ "src_emb", "src_def", "src_nat", "src_wg" ] };
+let sec = { ".name": "mix", ".type": "section", enabled: "1", action: "connection", outbound_source_refs: [ "src_emb", "src_def", "src_wg" ] };
 let ifaces = connections.interfaces(sec);
-if (length(ifaces) != 2 || ifaces[0] != "tailscale0" || ifaces[1] != "wg0") {
+if (length(ifaces) != 1 || ifaces[0] != "wg0") {
   warn(sprintf("unexpected interfaces() result: %J\n", ifaces));
   exit(1);
 }
@@ -494,7 +491,7 @@ tachyon.settings.ipv6_mode=dual_stack
 tachyon.ts_srv=server
 tachyon.ts_srv.enabled=1
 tachyon.ts_srv.protocol=tailscale
-tachyon.ts_srv.tailscale_mode=singbox
+tachyon.ts_srv.tailscale_mode=tachyon-core
 EOF_STATE
 
 run_nft_base "$WORK_DIR/nft_emb_srv.state"
@@ -562,7 +559,7 @@ tachyon.settings.ipv6_mode=dual_stack
 tachyon.ts_srv=server
 tachyon.ts_srv.enabled=0
 tachyon.ts_srv.protocol=tailscale
-tachyon.ts_srv.tailscale_mode=singbox
+tachyon.ts_srv.tailscale_mode=tachyon-core
 tachyon.ts_sec=section
 tachyon.ts_sec.enabled=0
 tachyon.ts_sec.action=tailscale
@@ -577,7 +574,7 @@ cat >"$WORK_DIR/sig_active.json" <<'JSON'
 {
   "settings": { "source_network_interfaces": "br-lan" },
   "server": [
-    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "singbox", "tailscale_ephemeral": "1", "tailscale_relay_server_port": "41641" }
+    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "tachyon-core", "tailscale_ephemeral": "1", "tailscale_relay_server_port": "41641" }
   ],
   "outbound_source": [
     { ".name": "ts_src", "enabled": "1", "source_type": "tailscale", "tailscale_mode": "embedded" }
@@ -593,7 +590,7 @@ cat >"$WORK_DIR/sig_disabled.json" <<'JSON'
 {
   "settings": { "source_network_interfaces": "br-lan" },
   "server": [
-    { ".name": "ts_srv", "enabled": "0", "protocol": "tailscale", "tailscale_mode": "singbox" }
+    { ".name": "ts_srv", "enabled": "0", "protocol": "tailscale", "tailscale_mode": "tachyon-core" }
   ],
   "section": [
     { ".name": "ts_sec", "enabled": "0", "action": "tailscale" }
@@ -623,12 +620,12 @@ if [ "$nft_sig_active" = "$nft_sig_disabled" ]; then
   fail "active embedded tailscale must alter nft signature"
 fi
 
-# sing-box-signature reacts to server and section tailscale_* fields
+# tachyon-core-signature reacts to server and section tailscale_* fields
 cat >"$WORK_DIR/sb_sig_a.json" <<'JSON'
 {
   "settings": { "dns_server": [ "8.8.8.8" ] },
   "server": [
-    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "singbox", "tailscale_ephemeral": "0", "tailscale_relay_server_port": "41641" }
+    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "tachyon-core", "tailscale_ephemeral": "0", "tailscale_relay_server_port": "41641" }
   ],
   "section": [
     { ".name": "ts_sec", "enabled": "1", "action": "tailscale", "tailscale_exit_node": "" }
@@ -639,17 +636,17 @@ cat >"$WORK_DIR/sb_sig_b.json" <<'JSON'
 {
   "settings": { "dns_server": [ "8.8.8.8" ] },
   "server": [
-    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "singbox", "tailscale_ephemeral": "1", "tailscale_relay_server_port": "41642" }
+    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "tachyon-core", "tailscale_ephemeral": "1", "tailscale_relay_server_port": "41642" }
   ],
   "section": [
     { ".name": "ts_sec", "enabled": "1", "action": "tailscale", "tailscale_exit_node": "100.64.0.10" }
   ]
 }
 JSON
-sb_a="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/sb_sig_a.json")"
-sb_b="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/sb_sig_b.json")"
+sb_a="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/sb_sig_a.json")"
+sb_b="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/sb_sig_b.json")"
 if [ "$sb_a" = "$sb_b" ]; then
-  fail "sing-box-signature must reflect changes in tailscale_* options"
+  fail "tachyon-core-signature must reflect changes in tailscale_* options"
 fi
 
 # ---------------------------------------------------------------------------
@@ -705,7 +702,7 @@ mkdir -p "$WORK_DIR/val-bin"
 cp "$WORK_DIR/bin/logger" "$WORK_DIR/val-bin/logger"
 chmod 0755 "$WORK_DIR/val-bin/logger"
 VAL_LOG="$WORK_DIR/val_logger.log"
-VAL_CTX="$(printf '{"sing_box_variant_state_file":"%s"}' "$WORK_DIR/core-variant")"
+VAL_CTX="{}"
 
 cat >"$WORK_DIR/val_ok.json" <<'JSON'
 {
@@ -719,7 +716,7 @@ cat >"$WORK_DIR/val_ok.json" <<'JSON'
       ".name": "ts_srv",
       "enabled": "1",
       "protocol": "tailscale",
-      "tailscale_mode": "singbox",
+      "tailscale_mode": "tachyon-core",
       "tailscale_auth_key": "",
       "tailscale_relay_server_port": "41641",
       "tailscale_system_interface": "1",
@@ -768,7 +765,7 @@ cat >"$WORK_DIR/val_bad_port_srv.json" <<'JSON'
 {
   "settings": { "dns_type": "udp", "dns_server": [ "8.8.8.8" ], "bootstrap_dns_server": [ "1.1.1.1" ] },
   "server": [
-    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "singbox", "tailscale_relay_server_port": "70000" }
+    { ".name": "ts_srv", "enabled": "1", "protocol": "tailscale", "tailscale_mode": "tachyon-core", "tailscale_relay_server_port": "70000" }
   ],
   "section": []
 }
@@ -829,61 +826,5 @@ cat >"$WORK_DIR/val_mod_only.json" <<'JSON'
 JSON
 ucode -L "$TACHYON_LIB" "$WORK_DIR/validator_probe.uc" "$WORK_DIR/val_mod_only.json" ||
   fail "has_outbound_section must return true for modular embedded tailscale source"
-
-# d3: service/watchdog.uc: check_tailscale_worker skips get_tailscale_status without enabled native server
-grep -Fq 'safe_call(check_tailscale_worker, "check_tailscale_worker");' "$WATCHDOG_UC" ||
-  fail "watchdog perform_slow_checks must schedule check_tailscale_worker"
-awk '/^function worker\(\)/{exit} NR > 1 {print}' "$WATCHDOG_UC" >"$WORK_DIR/watchdog_probe.uc"
-awk '/^function check_tailscale_worker\(\)/{in_fn=1} in_fn{print} in_fn && /^}$/{exit}' "$WATCHDOG_UC" >>"$WORK_DIR/watchdog_probe.uc"
-cat >>"$WORK_DIR/watchdog_probe.uc" <<'UC'
-let status_calls = 0;
-command_output_from_args = function(args) {
-    if (type(args) == "array" && length(args) >= 2 && args[1] == "get_tailscale_status") {
-        status_calls++;
-        return "{\"configured\":true,\"ready\":true}";
-    }
-    return "";
-};
-command_status = function(cmd) { return 0; };
-log_message = function(msg, lvl) {};
-check_tailscale_worker();
-print(status_calls, "\n");
-UC
-
-cat >"$WORK_DIR/wd_none.state" <<'EOF_STATE'
-tachyon.settings=settings
-EOF_STATE
-assert_eq "0" "$(TACHYON_UCI_STATE_FILE="$WORK_DIR/wd_none.state" ucode -L "$TACHYON_LIB" "$WORK_DIR/watchdog_probe.uc")" \
-  "watchdog must skip get_tailscale_status when no tailscale server exists"
-
-cat >"$WORK_DIR/wd_emb.state" <<'EOF_STATE'
-tachyon.settings=settings
-tachyon.ts_srv=server
-tachyon.ts_srv.enabled=1
-tachyon.ts_srv.protocol=tailscale
-tachyon.ts_srv.tailscale_mode=singbox
-EOF_STATE
-assert_eq "0" "$(TACHYON_UCI_STATE_FILE="$WORK_DIR/wd_emb.state" ucode -L "$TACHYON_LIB" "$WORK_DIR/watchdog_probe.uc")" \
-  "watchdog must skip get_tailscale_status for embedded tailscale server"
-
-cat >"$WORK_DIR/wd_native.state" <<'EOF_STATE'
-tachyon.settings=settings
-tachyon.ts_srv=server
-tachyon.ts_srv.enabled=1
-tachyon.ts_srv.protocol=tailscale
-tachyon.ts_srv.tailscale_mode=native
-EOF_STATE
-assert_eq "1" "$(TACHYON_UCI_STATE_FILE="$WORK_DIR/wd_native.state" ucode -L "$TACHYON_LIB" "$WORK_DIR/watchdog_probe.uc")" \
-  "watchdog must invoke get_tailscale_status when native tailscale server is enabled"
-
-cat >"$WORK_DIR/wd_native_disabled.state" <<'EOF_STATE'
-tachyon.settings=settings
-tachyon.ts_srv=server
-tachyon.ts_srv.enabled=0
-tachyon.ts_srv.protocol=tailscale
-tachyon.ts_srv.tailscale_mode=native
-EOF_STATE
-assert_eq "0" "$(TACHYON_UCI_STATE_FILE="$WORK_DIR/wd_native_disabled.state" ucode -L "$TACHYON_LIB" "$WORK_DIR/watchdog_probe.uc")" \
-  "watchdog must skip get_tailscale_status when native tailscale server is disabled"
 
 printf 'embedded tailscale tachyon-core checks passed\n'

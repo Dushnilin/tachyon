@@ -42,12 +42,12 @@ describe('LogNotificationDeduper', () => {
     expect(isErrorLogLine('tachyon: [fatal] failed')).toBe(true);
     expect(
       getTachyonLogNotification(
-        'tachyon: [info] [component-update] zapret2 v1.2.3',
+        'tachyon: [info] [component-update] tachyon-core v1.2.3',
       ),
     ).toEqual({
       kind: 'component-update',
-      line: 'tachyon: [info] [component-update] zapret2 v1.2.3',
-      component: 'zapret2',
+      line: 'tachyon: [info] [component-update] tachyon-core v1.2.3',
+      component: 'tachyon-core',
       version: 'v1.2.3',
     });
     expect(getTachyonLogNotification('tachyon: [info] ok')).toBeNull();
@@ -65,7 +65,7 @@ describe('LogNotificationDeduper', () => {
         'tachyon: [error] another component action is already running',
       ),
     ).toBe(false);
-    // DNS retry during sing-box restart is transient
+    // DNS retry during tachyon-core restart is transient
     expect(
       isErrorLogLine(
         'tachyon: [debug] Subscription DNS resolution failed for rule; retrying in 5s (attempt 1/3)',
@@ -73,7 +73,7 @@ describe('LogNotificationDeduper', () => {
     ).toBe(false);
     // Other real errors must still fire
     expect(
-      isErrorLogLine('tachyon: [error] sing-box crashed unexpectedly'),
+      isErrorLogLine('tachyon: [error] tachyon-core crashed unexpectedly'),
     ).toBe(true);
   });
 

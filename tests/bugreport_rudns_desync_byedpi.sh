@@ -47,12 +47,12 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "source_ip_cidr": [ "192.168.10.222/32" ]
     },
     {
-      ".name": "bye",
+      ".name": "tls_tcp",
       ".type": "section",
       "enabled": "1",
-      "action": "byedpi",
-      "byedpi_cmd_opts": "-s1 -s3+s -r1+s -S",
-      "condition_refs": [ "cond_bye" ]
+      "action": "desync",
+      "desync_preset": "tlsrec",
+      "condition_refs": [ "cond_tls_tcp" ]
     },
     {
       ".name": "Discord",
@@ -79,7 +79,7 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
       "community_lists": [ "russia_outside" ]
     },
     {
-      ".name": "cond_bye",
+      ".name": "cond_tls_tcp",
       ".type": "condition",
       "enabled": "1",
       "condition_type": "atomic",
@@ -91,8 +91,7 @@ cat >"$WORK_DIR/fixture.json" <<'JSON'
 JSON
 
 TACHYON_LIB="$TACHYON_LIB" \
-SB_VERSION_OVERRIDE="0.2.1" \
-SB_VARIANT_OVERRIDE="tachyon-core" \
+TACHYON_CORE_VERSION_OVERRIDE="0.2.1" \
   ucode -L "$TACHYON_LIB" "$GENERATOR" generate-config-fixture \
   "$WORK_DIR/fixture.json" "$WORK_DIR/out.json" "127.0.0.1" "0" "1"
 
@@ -121,7 +120,7 @@ function has(arr, item) {
 let dns_rules = cfg.dns.rules || [];
 let rudns_idx = -1;
 let yt_idx = -1;
-let bye_idx = -1;
+let tls_tcp_idx = -1;
 let fallback_rule = null;
 
 for (let i = 0; i < length(dns_rules); i++) {
@@ -130,16 +129,16 @@ for (let i = 0; i < length(dns_rules); i++) {
         rudns_idx = i;
     if (r.server == "fakeip-server" && has(r.rule_set, "yt-youtube-community-ruleset"))
         yt_idx = i;
-    if (r.server == "fakeip-server" && has(r.rule_set, "bye-youtube-community-ruleset"))
-        bye_idx = i;
+    if (r.server == "fakeip-server" && has(r.rule_set, "tls_tcp-youtube-community-ruleset"))
+        tls_tcp_idx = i;
     if (r.server == "dnsmasq-server" && has(r.inbound, "source-dns-in"))
         fallback_rule = r;
 }
 
-assert(yt_idx >= 0 && bye_idx >= 0 && rudns_idx >= 0,
-    sprintf("expected yt (%d), bye (%d), and RuDNS (%d) DNS rules", yt_idx, bye_idx, rudns_idx));
-assert(yt_idx < rudns_idx && bye_idx < rudns_idx,
-    sprintf("FakeIP DNS rules (yt=%d, bye=%d) must precede RuDNS (%d)", yt_idx, bye_idx, rudns_idx));
+assert(yt_idx >= 0 && tls_tcp_idx >= 0 && rudns_idx >= 0,
+    sprintf("expected yt (%d), tls_tcp (%d), and RuDNS (%d) DNS rules", yt_idx, tls_tcp_idx, rudns_idx));
+assert(yt_idx < rudns_idx && tls_tcp_idx < rudns_idx,
+    sprintf("FakeIP DNS rules (yt=%d, tls_tcp=%d) must precede RuDNS (%d)", yt_idx, tls_tcp_idx, rudns_idx));
 
 assert(fallback_rule != null, "source-dns-in fallback rule must exist");
 assert(has(fallback_rule.source_ip_cidr, "192.168.10.222/32") && has(fallback_rule.source_ip_cidr, "192.168.10.119/32"),
@@ -148,8 +147,8 @@ assert(has(fallback_rule.source_ip_cidr, "192.168.10.222/32") && has(fallback_ru
 let route_rules = cfg.route.rules || [];
 let yt_udp_reject = -1;
 let yt_tcp_route = -1;
-let bye_udp_reject = -1;
-let bye_tcp_route = -1;
+let tls_tcp_udp_reject = -1;
+let tls_tcp_tcp_route = -1;
 
 for (let i = 0; i < length(route_rules); i++) {
     let r = route_rules[i];
@@ -157,16 +156,16 @@ for (let i = 0; i < length(route_rules); i++) {
         yt_udp_reject = i;
     if (r.outbound == "yt-out" && has(r.network, "tcp") && has(r.rule_set, "yt-youtube-community-ruleset"))
         yt_tcp_route = i;
-    if (r.action == "reject" && has(r.network, "udp") && has(r.rule_set, "bye-youtube-community-ruleset"))
-        bye_udp_reject = i;
-    if (r.outbound == "bye-out" && has(r.network, "tcp") && has(r.rule_set, "bye-youtube-community-ruleset"))
-        bye_tcp_route = i;
+    if (r.action == "reject" && has(r.network, "udp") && has(r.rule_set, "tls_tcp-youtube-community-ruleset"))
+        tls_tcp_udp_reject = i;
+    if (r.outbound == "tls_tcp-out" && has(r.network, "tcp") && has(r.rule_set, "tls_tcp-youtube-community-ruleset"))
+        tls_tcp_tcp_route = i;
 }
 
 assert(yt_udp_reject >= 0 && yt_tcp_route > yt_udp_reject,
     sprintf("TCP-only desync must reject UDP before TCP route (udp=%d, tcp=%d)", yt_udp_reject, yt_tcp_route));
-assert(bye_udp_reject >= 0 && bye_tcp_route > bye_udp_reject,
-    sprintf("ByeDPI must reject UDP before TCP route (udp=%d, tcp=%d)", bye_udp_reject, bye_tcp_route));
+assert(tls_tcp_udp_reject >= 0 && tls_tcp_tcp_route > tls_tcp_udp_reject,
+    sprintf("Secondary TCP-only desync section must reject UDP before TCP route (udp=%d, tcp=%d)", tls_tcp_udp_reject, tls_tcp_tcp_route));
 
 let discord_udp_reject = -1;
 let discord_route = -1;
@@ -184,7 +183,7 @@ assert(discord_udp_reject < 0 && discord_route >= 0,
 grep -Fq '" >/dev/null"' "$RULESETS" ||
   fail "rulesets.uc srs_file_parses must redirect stdout to /dev/null"
 
-grep -Fq 'append_reload_action(actions, plan.needs_sing_box_reload, "tachyon-core")' "$LIFECYCLE" ||
+grep -Fq 'append_reload_action(actions, plan.needs_tachyon_core_reload, "tachyon-core")' "$LIFECYCLE" ||
   fail "lifecycle.uc reload_actions_summary must label reload as tachyon-core"
 
 # Verify newly created Priority & URLTest balancers with AmneziaWG + Subscription sources
@@ -346,8 +345,7 @@ assert(single_sel != null && length(single_sel.outbounds) == 1 && single_sel.out
 // Verify Adaptive Desync 2.0 presets, modes, fooling, and auto_tune
 let outbounds_gen = require("tachyon_core.generator_outbounds");
 outbounds_gen.init({
-    detect_sing_box_version: function() { return "0.2.3"; },
-    ensure_sing_box_variant_supported: function() { return true; },
+    detect_core_version: function() { return "0.2.3"; },
     runtime_generate_unsupported: function(msg) { warn("FAIL: " + msg + "\n"); exit(1); }
 });
 let desync_cfg = { outbounds: [] };

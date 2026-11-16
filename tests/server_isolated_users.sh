@@ -33,7 +33,7 @@ JSON
 generate() {
   mkdir -p "$WORK_DIR/out.section-cache"
   ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
-    "$WORK_DIR/fixture.json" "$WORK_DIR/singbox.json" "127.0.0.1" 0 0
+    "$WORK_DIR/fixture.json" "$WORK_DIR/tachyon-core.json" "127.0.0.1" 0 0
 }
 
 # 1. Test isolate_lan_for_users with specific isolated_users list
@@ -51,17 +51,17 @@ fixture_with_server '{
 generate
 
 # Verify reject rule exists with auth_user and ip_is_private
-grep -q '"action": "reject"' "$WORK_DIR/singbox.json" ||
+grep -q '"action": "reject"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected action reject rule for isolated users"
-grep -q '"inbound": "server-my_vless_server-in"' "$WORK_DIR/singbox.json" ||
+grep -q '"inbound": "server-my_vless_server-in"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected inbound tag on reject rule"
-grep -q '"ip_is_private": true' "$WORK_DIR/singbox.json" ||
+grep -q '"ip_is_private": true' "$WORK_DIR/tachyon-core.json" ||
   fail "expected ip_is_private on reject rule"
-grep -q '"auth_user": \[' "$WORK_DIR/singbox.json" ||
+grep -q '"auth_user": \[' "$WORK_DIR/tachyon-core.json" ||
   fail "expected auth_user array on reject rule"
-grep -q '"friend-1"' "$WORK_DIR/singbox.json" ||
+grep -q '"friend-1"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected friend-1 in auth_user"
-grep -q '"friend-2"' "$WORK_DIR/singbox.json" ||
+grep -q '"friend-2"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected friend-2 in auth_user"
 
 # 2. Test isolate_lan_for_users without specific users (blocks all users on that inbound)
@@ -77,11 +77,11 @@ fixture_with_server '{
 }'
 generate
 
-grep -q '"action": "reject"' "$WORK_DIR/singbox.json" ||
+grep -q '"action": "reject"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected action reject rule for guest_vless"
-grep -q '"inbound": "server-guest_vless-in"' "$WORK_DIR/singbox.json" ||
+grep -q '"inbound": "server-guest_vless-in"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected inbound tag on reject rule for guest_vless"
-grep -q '"ip_is_private": true' "$WORK_DIR/singbox.json" ||
+grep -q '"ip_is_private": true' "$WORK_DIR/tachyon-core.json" ||
   fail "expected ip_is_private on reject rule for guest_vless"
 
 # 3. Test custom isolated_subnets and block_private_for_users alias
@@ -99,11 +99,11 @@ fixture_with_server '{
 }'
 generate
 
-grep -q '"action": "reject"' "$WORK_DIR/singbox.json" ||
+grep -q '"action": "reject"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected reject rule for custom_subnet_server"
-grep -q '"192.168.1.0/24"' "$WORK_DIR/singbox.json" ||
+grep -q '"192.168.1.0/24"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected custom subnet 192.168.1.0/24 in reject rule"
-grep -q '"guest"' "$WORK_DIR/singbox.json" ||
+grep -q '"guest"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected guest in auth_user"
 
 # 4. Test custom_route_rules injection
@@ -119,11 +119,11 @@ fixture_with_server '{
 }'
 generate
 
-grep -q '"domain": \[' "$WORK_DIR/singbox.json" ||
+grep -q '"domain": \[' "$WORK_DIR/tachyon-core.json" ||
   fail "expected custom domain rule"
-grep -q '"blocked.local"' "$WORK_DIR/singbox.json" ||
+grep -q '"blocked.local"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected blocked.local domain in rules"
-grep -q '"inbound": "server-custom_rules_server-in"' "$WORK_DIR/singbox.json" ||
+grep -q '"inbound": "server-custom_rules_server-in"' "$WORK_DIR/tachyon-core.json" ||
   fail "expected auto-assigned inbound tag on custom route rule"
 
 printf 'PASS: server isolated users and custom route rules tests passed\n'

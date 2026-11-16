@@ -138,9 +138,8 @@ TACHYON_INIT="$WORK_DIR/tachyon-init" \
 TACHYON_STOP_LOG="$WORK_DIR/stop-order.log" \
 TACHYON_BIN="$WORK_DIR/missing-tachyon-bin" \
 TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_CORE_INIT="$WORK_DIR/missing-tachyon-core-init" \
+TACHYON_CORE_BIN="$WORK_DIR/missing-tachyon-core-bin" \
 TACHYON_RT_TABLES="$WORK_DIR/rt_tables_stop_order" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
@@ -171,9 +170,8 @@ TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
 TACHYON_RESTORE_LOG="$WORK_DIR/restore-dont-touch.log" \
 TACHYON_BIN="$WORK_DIR/tachyon-bin" \
 TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_CORE_INIT="$WORK_DIR/missing-tachyon-core-init" \
+TACHYON_CORE_BIN="$WORK_DIR/missing-tachyon-core-bin" \
 TACHYON_RT_TABLES="$WORK_DIR/rt_tables_dont_touch" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 if grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore-dont-touch.log"; then
@@ -193,9 +191,8 @@ TACHYON_UCI_STATE_FILE="$WORK_DIR/restore.state" \
 TACHYON_RESTORE_LOG="$WORK_DIR/restore.log" \
 TACHYON_BIN="$WORK_DIR/tachyon-bin" \
 TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_CORE_INIT="$WORK_DIR/missing-tachyon-core-init" \
+TACHYON_CORE_BIN="$WORK_DIR/missing-tachyon-core-bin" \
 TACHYON_RT_TABLES="$WORK_DIR/rt_tables_restore" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
@@ -250,7 +247,7 @@ TACHYON_HOOK_COMMAND_TIMEOUT=2 \
 TACHYON_INIT="$WORK_DIR/hanging-init" \
 TACHYON_BIN="$WORK_DIR/hanging-init" \
 TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+TACHYON_CORE_INIT="$WORK_DIR/missing-tachyon-core-init" \
 TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
 TACHYON_RT_TABLES="$WORK_DIR/rt_tables_hang" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm upgrade
@@ -293,7 +290,7 @@ TACHYON_SWEEP_LOG="$WORK_DIR/sweep.log" \
   TACHYON_BIN="$sweep_parent" \
   TACHYON_INIT="$WORK_DIR/upgrade-init" \
   TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-  TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+  TACHYON_CORE_INIT="$WORK_DIR/missing-tachyon-core-init" \
   TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
   TACHYON_RT_TABLES="$WORK_DIR/rt_tables_sweep" \
   TACHYON_SWEEP_LOG="$WORK_DIR/sweep.log" \

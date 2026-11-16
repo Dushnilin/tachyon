@@ -142,7 +142,7 @@ describe('dashboard initController', () => {
     expect(runningItem.attributes.class).toContain('row--success');
     expect(runningItem.attributes.title).toBe('PID: 1234 • Uptime: 2ч 51м');
 
-    const stoppedItem = renderServiceRowItem('Zapret2', {
+    const stoppedItem = renderServiceRowItem('Dnsmasq (DNS)', {
       running: 0,
     });
     expect(stoppedItem.attributes.class).toContain('row--error');
@@ -178,7 +178,7 @@ describe('dashboard initController', () => {
         failed: false,
         data: {
           tachyonRunning: 0,
-          singbox: 0,
+          tachyonCore: 0,
           dnsmasqRunning: 1,
         } as any,
       },
@@ -459,50 +459,5 @@ describe('dashboard initController', () => {
         upSpeed: 20,
       });
     });
-  });
-
-  it('keeps optional tailscale widget hidden while loading when no native tailscale server exists', async () => {
-    const { renderTailscaleWidget } = await import('../initController');
-    const { store } = await import('../../../services/store.service');
-
-    const container = {
-      style: { display: 'none' },
-      replaceChildren: vi.fn(),
-    };
-    (globalThis.document as any).getElementById = vi.fn((id: string) => {
-      if (id === 'dashboard-widget-tailscale') return container;
-      return null;
-    });
-    (globalThis as any).uci = {
-      sections: vi.fn().mockReturnValue([]),
-    } as any;
-
-    store.set({
-      tailscaleWidget: {
-        loading: true,
-        failed: false,
-        data: null,
-      },
-    });
-
-    await renderTailscaleWidget();
-    expect(container.style.display).toBe('none');
-    expect(container.replaceChildren).toHaveBeenCalledWith();
-
-    store.set({
-      tailscaleWidget: {
-        loading: false,
-        failed: false,
-        data: {
-          configured: true,
-          backend_state: 'Running',
-          peers: [],
-        } as any,
-      },
-    });
-
-    await renderTailscaleWidget();
-    expect(container.style.display).toBe('');
-    expect(container.replaceChildren).toHaveBeenCalledTimes(2);
   });
 });

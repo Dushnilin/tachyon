@@ -663,11 +663,9 @@ function normalize_to_cidrs(items) {
 }
 
 function core_needs_ipv4_mapped_cidrs() {
-    let ver = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
+    let ver = trim(as_string(getenv("TACHYON_CORE_VERSION_OVERRIDE") || ""));
     if (ver == "") {
         let raw = fs.readfile("/etc/tachyon/tachyon-core-version");
-        if (raw == null || trim(as_string(raw)) == "")
-            raw = fs.readfile("/etc/tachyon/sing-box-version");
         ver = trim(as_string(raw || ""));
     }
     if (ver == "")
@@ -738,7 +736,7 @@ function is_cloudflare_shared_cidr(value) {
 // on the alternate Cloudflare edge ports 2053, 2083, 2087, 2096 and 8443, and the
 // fuzzer's nft scope already listed them while this section did not route them.
 // Kept apart from the voice ports because both consumers are protocol-specific:
-// apply.uc feeds DISCORD_VOICE_PORTS_NFT into the UDP port sets, and the sing-box
+// apply.uc feeds DISCORD_VOICE_PORTS_NFT into the UDP port sets, and the tachyon-core
 // voice rule is network=udp. The voice UDP range stays 50000-65535, which is what
 // Discord documents and where allocations above 50100 do occur.
 const DISCORD_VOICE_PORTS_NFT = "443, 5000-5020, 3478, 19294-19344, 50000-65535";
@@ -749,7 +747,7 @@ const DEFAULT_DISCORD_VOICE_SUBNETS = [ "104.16.0.0/12", "162.158.0.0/15", "172.
 // Discord's edge is spread across 162.159.128.0/20: discord.com answers on
 // .128, .135, .136, .137 and .138. The old /21 stopped at .135.255, so roughly
 // half of the addresses a resolver hands out fell outside the Discord section
-// and bypassed it without zapret. The whole /20 is CLOUDFLARENET (RIPE), the
+// and bypassed it without explicit subnet coverage. The whole /20 is CLOUDFLARENET (RIPE), the
 // operator Discord already runs on, so widening sweeps in nothing unrelated.
 const DISCORD_DEDICATED_SUBNETS = [ "162.159.128.0/20" ];
 

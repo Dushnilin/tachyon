@@ -113,9 +113,7 @@ CT
 ct_json="$(TACHYON_CONNTRACK_FILE="$WORK_DIR/nf_conntrack" ucode -L "$TACHYON_LIB" -e '
   let routing = require("diagnostics.routing");
   let mark_info = {
-    marks: { "33554433": "youtube_z2-out" },
-    default_zapret: "zapret-out",
-    default_zapret2: "youtube_z2-out"
+    marks: { "33554433": "youtube_ds-out" }
   };
   let existing = {};
   existing[routing.connection_tuple_key("tcp", "192.168.1.50", "54321", "142.250.74.110", "443")] = true;
@@ -136,7 +134,7 @@ if (
   c.upload !== 4100 ||
   c.download !== 19200 ||
   !Array.isArray(c.chains) ||
-  c.chains[0] !== "youtube_z2-out" ||
+  c.chains[0] !== "youtube_ds-out" ||
   !c.metadata ||
   c.metadata.host !== "one.one.one.one"
 ) {

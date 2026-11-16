@@ -35,15 +35,6 @@ function formatRouteType(routeType: string): string {
   if (clean === 'auto') {
     return _('Auto');
   }
-  if (clean.startsWith('zapret2')) {
-    return clean.replace(/^zapret2/, 'Zapret 2');
-  }
-  if (clean.startsWith('zapret')) {
-    return clean.replace(/^zapret/, 'Zapret');
-  }
-  if (clean.startsWith('byedpi')) {
-    return clean.replace(/^byedpi/, 'ByeDPI');
-  }
   if (clean.startsWith('desync')) {
     return clean.replace(/^desync/, 'Desync');
   }

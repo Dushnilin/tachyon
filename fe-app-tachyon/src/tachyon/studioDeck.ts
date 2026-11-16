@@ -480,12 +480,7 @@ function resolveSectionTelemetry(sid: string): {
   });
 
   const hasDpiSource =
-    ['desync', 'zapret', 'zapret2', 'byedpi'].includes(actionRaw) ||
-    sources.some((s) =>
-      ['desync', 'zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
-        s.type,
-      ),
-    );
+    actionRaw === 'desync' || sources.some((s) => s.type === 'desync');
 
   let actionLabel = tr('Прокси / Туннель', 'Proxy / Tunnel');
   let actionTone: 'proxy' | 'dpi' | 'block' | 'bypass' | 'dns' = 'proxy';
@@ -529,12 +524,8 @@ function resolveSectionTelemetry(sid: string): {
       protoSet.add('WARP');
     } else if (s.type === 'awg' || s.type === 'amnezia_config') {
       protoSet.add('AmneziaWG');
-    } else if (
-      ['desync', 'zapret2', 'zapret', 'byedpi', 'wdtt', 'olcrtc'].includes(
-        s.type,
-      )
-    ) {
-      protoSet.add(s.type.toUpperCase());
+    } else if (s.type === 'desync') {
+      protoSet.add('DESYNC');
     } else if (s.type) {
       protoSet.add(s.type.toUpperCase());
     }
@@ -728,18 +719,6 @@ function getBalancerEngineCapabilities(): {
   supportsNativeTachyonBalancers: boolean;
   supportsPoolModes: boolean;
 } {
-  let activeEngine = 'sing-box';
-  try {
-    const uciEngine = String(
-      uci.get(UCI_PACKAGE, 'settings', 'engine') || '',
-    ).trim();
-    if (uciEngine) {
-      activeEngine = uciEngine;
-    }
-  } catch {
-    // ignore
-  }
-
   let sysInfo: Record<string, any> = {};
   try {
     const storeMod = (globalThis as any).tachyonStore || null;
@@ -751,9 +730,7 @@ function getBalancerEngineCapabilities(): {
     // ignore
   }
 
-  const isTachyonCore =
-    activeEngine === 'tachyon-core' ||
-    Boolean(sysInfo.tachyon_core_installed && activeEngine === 'tachyon-core');
+  const isTachyonCore = true;
   const tcVersion = String(sysInfo.tachyon_core_version || '').trim();
   const parseSemverAtLeast = (
     ver: string,
@@ -771,16 +748,12 @@ function getBalancerEngineCapabilities(): {
     return pat >= minPatch;
   };
   const supportsNativeTachyonBalancers =
-    isTachyonCore &&
-    (Boolean(sysInfo.tachyon_core_native_balancers) ||
-      parseSemverAtLeast(tcVersion, 0, 3, 9));
-  const isExtendedOrLx = Boolean(
-    sysInfo.sing_box_extended || sysInfo.sing_box_lx,
-  );
+    Boolean(sysInfo.tachyon_core_native_balancers) ||
+    parseSemverAtLeast(tcVersion, 0, 3, 9);
   return {
     isTachyonCore,
     supportsNativeTachyonBalancers,
-    supportsPoolModes: supportsNativeTachyonBalancers || isExtendedOrLx,
+    supportsPoolModes: supportsNativeTachyonBalancers,
   };
 }
 
@@ -838,8 +811,8 @@ function getQuickCreateTemplates(
         id: 'dpi',
         icon: () => renderShieldIcon(20),
         title: tr(
-          'Десинхронизация пакетов (Desync / Zapret2)',
-          'Packet Desync (Desync / Zapret2)',
+          'Десинхронизация пакетов (Desync)',
+          'Packet Desync (Tachyon Core)',
         ),
         desc: tr(
           'Фрагментация и коррекция рукопожатий YouTube, Discord и Telegram без внешнего прокси-сервера',
@@ -908,8 +881,8 @@ function getQuickCreateTemplates(
         id: 'desync',
         icon: () => renderShieldIcon(20),
         title: tr(
-          'Стратегия DPI Desync / Zapret2',
-          'DPI Desync / Zapret2 Strategy',
+          'Стратегия Desync (Adaptive 2.0)',
+          'Desync Strategy (Adaptive 2.0)',
         ),
         desc: tr(
           'Фрагментация пакетов и подмена ClientHello для YouTube, Discord и Telegram',
@@ -926,8 +899,8 @@ function getQuickCreateTemplates(
         icon: () => renderLockIcon(20),
         title: tr('AmneziaWG / WireGuard', 'AmneziaWG / WireGuard'),
         desc: tr(
-          'Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)',
-          'Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)',
+          'Маскированный туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)',
+          'Obfuscated AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)',
         ),
         defaults: { enabled: '1', source_type: 'amnezia_config' },
       },
@@ -2902,19 +2875,14 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               'amnezia_config',
               'openvpn',
               'tailscale',
+              'csqtt',
+              'wdtt',
               'tor',
               'interface',
             ].includes(stype);
           }
           if (fid === 'dpi') {
-            return [
-              'desync',
-              'zapret',
-              'zapret2',
-              'byedpi',
-              'wdtt',
-              'olcrtc',
-            ].includes(stype);
+            return stype === 'desync';
           }
           return true;
         });
@@ -3595,14 +3563,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     if (type === 'outbound_source') {
       const name = raw.name || raw.label || sid;
       const stype = String(raw.source_type || 'subscription').toLowerCase();
-      const isDpiSource = [
-        'desync',
-        'zapret',
-        'zapret2',
-        'byedpi',
-        'wdtt',
-        'olcrtc',
-      ].includes(stype);
+      const isDpiSource = stype === 'desync';
       const usedIn = (uci.sections(UCI_PACKAGE, 'section') || [])
         .filter((s: any) => asArray(s.outbound_source_refs).includes(sid))
         .map((s: any) => ({

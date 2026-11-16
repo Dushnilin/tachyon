@@ -2,7 +2,7 @@
      width="1200" height="400" viewBox="0 0 1200 400"
      role="img" aria-labelledby="title desc">
   <title id="title">tachyon — оркестратор селективной маршрутизации и туннелирования для OpenWrt</title>
-  <desc id="desc">Система селективной маршрутизации, мульти-движкового туннелирования (tachyon-core, sing-box, FPTN, OpenVPN), локальной сегментации пакетов (Zapret v2, Zapret v1, ByeDPI) и самодиагностики AI Doctor v3.0 для роутеров OpenWrt.</desc>
+  <desc id="desc">Система селективной маршрутизации, туннелирования (tachyon-core, AmneziaWG, FPTN, OpenVPN, нативный Tailscale), встроенной пакетной десинхронизации (Adaptive 2.0) и самодиагностики AI Doctor v3.0 для роутеров OpenWrt.</desc>
 
   <!-- Canvas -->
   <rect width="1200" height="400" rx="16" fill="#141415"/>
@@ -26,13 +26,13 @@
       <text x="64" y="20" text-anchor="middle" fill="#ededed" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="500">tachyon-core</text>
 
       <rect x="136" y="0" width="100" height="32" rx="6" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-      <text x="186" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">sing-box</text>
+      <text x="186" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">awg / wg</text>
 
       <rect x="244" y="0" width="96" height="32" rx="6" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-      <text x="292" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">zapret2</text>
+      <text x="292" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">desync</text>
 
       <rect x="348" y="0" width="92" height="32" rx="6" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-      <text x="394" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">byedpi</text>
+      <text x="394" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">csqtt</text>
 
       <rect x="448" y="0" width="136" height="32" rx="6" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
       <text x="516" y="20" text-anchor="middle" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">fptn / ovpn</text>
@@ -46,9 +46,9 @@
       <text x="16" y="50" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Rust-ядро в простое</text>
 
       <rect x="196" y="0" width="184" height="68" rx="8" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
-      <text x="212" y="28" fill="#ededed" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="500">480+</text>
-      <text x="276" y="28" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="400">стратегий</text>
-      <text x="212" y="50" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Zapret v2/v1 и ByeDPI</text>
+      <text x="212" y="28" fill="#ededed" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="500">30+</text>
+      <text x="262" y="28" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="400">стратегий</text>
+      <text x="212" y="50" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Desync Adaptive 2.0</text>
 
       <rect x="392" y="0" width="192" height="68" rx="8" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
       <text x="408" y="28" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="500">ucode + LuCI</text>
@@ -98,9 +98,9 @@
     <g transform="translate(16, 140)">
       <rect x="0" y="0" width="464" height="80" rx="8" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
       <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">2. Туннелирование и шейпинг пакетов</text>
-      <text x="448" y="24" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">multi-engine</text>
-      <text x="16" y="46" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Ядра прокси: tachyon-core (Rust) и sing-box · FPTN и OpenVPN</text>
-      <text x="16" y="64" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Аппаратный десинк без VPS: Zapret v2 (nfqws2), v1 и ByeDPI</text>
+      <text x="448" y="24" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">tachyon-core</text>
+      <text x="16" y="46" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Ядро прокси: tachyon-core (Rust) · FPTN и OpenVPN</text>
+      <text x="16" y="64" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Встроенный desync (Adaptive 2.0), CSQTT и Tailscale</text>
     </g>
 
     <!-- Connector 2 -->
@@ -110,7 +110,7 @@
     <g transform="translate(16, 236)">
       <rect x="0" y="0" width="226" height="84" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
       <text x="16" y="24" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="500">Диагностика и откаты</text>
-      <text x="16" y="46" fill="#ededed" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">AI Doctor v3 · 25 кодов</text>
+      <text x="16" y="46" fill="#ededed" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">AI Doctor v3 · 22 кода</text>
       <text x="16" y="66" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Watchdog · PID check</text>
 
       <rect x="238" y="0" width="226" height="84" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>

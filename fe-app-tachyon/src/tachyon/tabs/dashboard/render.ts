@@ -166,23 +166,6 @@ export function render() {
             }),
           ),
 
-          // Optional Tailscale status slot
-          E(
-            'div',
-            {
-              id: 'dashboard-widget-tailscale',
-              class:
-                'tachyon-dashboard-widget-slot tachyon-dashboard-widget-slot--full',
-              style: 'display:none; order: 90;',
-            },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: '',
-              items: [],
-            }),
-          ),
-
           // Hidden legacy slot kept for unit-test compatibility
           E(
             'div',

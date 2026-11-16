@@ -159,165 +159,39 @@ if (index(link, "pcs=" + ARGV[1]) < 0) {
 }
 ' "$B64" "$HEX" || fail "share_link hysteria2 pcs round-trip"
 
-# The field is chosen by the build, not fixed: certificate_sha256 for stock
-# 1.15+, certificate_public_key_sha256 for lx and our own core. Verified on the
-# real binaries - 1.14.2-lx.12 rejects certificate_sha256 with "unknown field".
-for spec in "1.15.0:certificate_sha256" "1.14.2-lx.12:certificate_public_key_sha256" "0.0.1-tachyon.0:certificate_sha256"; do
-  version="${spec%%:*}"
-  field="${spec##*:}"
-  SB_VERSION_OVERRIDE="$version" ucode -e '
+# tachyon-core pins via certificate_sha256.
+TACHYON_CORE_VERSION_OVERRIDE="0.5.7" ucode -e '
 let generator = require("tachyon_core.generator_outbounds");
 let outbound = generator.manual_vless_outbound(ARGV[0], "pin-test");
 if (type(outbound.tls) != "object") exit(1);
-if (type(outbound.tls[ARGV[2]]) != "array") exit(2);
-if (outbound.tls[ARGV[2]][0] !== ARGV[1]) exit(3);
-' "$vless_link" "$B64" "$field" \
-    || fail "manual vless link must pin via $field on $version"
+if (type(outbound.tls.certificate_sha256) != "array") exit(2);
+if (outbound.tls.certificate_sha256[0] !== ARGV[1]) exit(3);
+if (type(outbound.tls.certificate_public_key_sha256) == "array") exit(4);
+' "$vless_link" "$B64" \
+  || fail "manual vless link must pin via certificate_sha256 on tachyon-core"
 
-  # And the other field must not be written at the same time: a build that
-  # rejects it would fail the whole config, not just this node.
-  other="certificate_sha256"
-  [ "$field" = "certificate_sha256" ] && other="certificate_public_key_sha256"
-  SB_VERSION_OVERRIDE="$version" ucode -e '
-let generator = require("tachyon_core.generator_outbounds");
-let outbound = generator.manual_vless_outbound(ARGV[0], "pin-test");
-exit(type(outbound.tls[ARGV[1]]) == "object" ? 1 : 0);
-' "$vless_link" "$other" \
-    || fail "$version must not also emit $other, the build rejects it"
+# 6. Verify tachyon_core/runtime.uc and generator.uc agree on supports-cert-pin
+for version in 0.4.8 0.5.7 v0.0.1-tachyon.0; do
+  ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "$version" ||
+    fail "supports-cert-pin must succeed on tachyon-core $version"
+  ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc" is-cert-pin-supported "$version" ||
+    fail "generator is-cert-pin-supported must succeed on tachyon-core $version"
 done
-
-# 6. Verify tachyon_core/runtime.uc supports-cert-pin version gates
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0" ||
-  fail "supports-cert-pin must succeed on 1.15.0"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.2" ||
-  fail "supports-cert-pin must succeed on 1.15.2"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "v1.16.1" ||
-  fail "supports-cert-pin must succeed on v1.16.1"
-# lx is below 1.15, so it has no certificate_sha256 - but it does accept
-# certificate_public_key_sha256 (checked against the real 1.14.2-lx.12 binary),
-# and the generator writes that field, so pinning is available to it. The old
-# expectation here was that lx had no pin at all, which turned a field choice
-# into a missing feature.
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.2-lx.4" ||
-  fail "supports-cert-pin must succeed on 1.14.2-lx.4 (it accepts the public-key field)"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.0-lx.32" ||
-  fail "supports-cert-pin must succeed on 1.14.0-lx.32"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "v0.0.1-tachyon.0" ||
-  fail "supports-cert-pin must succeed on Tachyon's own core (it accepts the public-key field)"
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.2"; then
-  fail "stock 1.14.2 has neither pin field's upstream support and must not claim pinning"
-fi
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "sing-box-lx"; then
-  fail "supports-cert-pin must not claim pinning from a bare variant name with no version"
-fi
-
-# The variant marker must NOT decide this. lx on 1.14.2 is unsupported because
-# of its version, same as stock, and lx on 1.15 is supported, same as stock. A
-# build-level exclusion would strip pins from every future lx release.
-printf 'lx\n' > "$WORK_DIR/variant_lx"
-if SB_VARIANT_STATE_FILE="$WORK_DIR/variant_lx" \
-  ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0"; then :; else
-  fail "supports-cert-pin must succeed on 1.15.0 even when the variant marker says lx - the field is gated by version, not by build (issue #79)"
-fi
-
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.13.0"; then
-  fail "supports-cert-pin must fail on 1.13.0"
-fi
-if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.14.9"; then
-  fail "supports-cert-pin must fail on 1.14.9"
-fi
-
-# 7. Generator: pins are kept where a usable field exists (issue #79)
-GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
-
-ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0" ||
-  fail "generator is-cert-pin-supported must succeed on 1.15.0"
-ucode "$GENERATOR_UC" is-cert-pin-supported "1.14.2-lx.4" ||
-  fail "generator is-cert-pin-supported must succeed on lx (it accepts the public-key field)"
-ucode "$GENERATOR_UC" is-cert-pin-supported "0.0.1-tachyon.0" ||
-  fail "generator is-cert-pin-supported must succeed on Tachyon's own core"
-if ucode "$GENERATOR_UC" is-cert-pin-supported "1.14.2"; then
-  fail "generator is-cert-pin-supported must fail on stock 1.14.2, which has no pin field"
-fi
 
 TEST_CFG='{"outbounds":[{"type":"vless","tag":"pinned-node","tls":{"enabled":true,"server_name":"example.com","certificate_sha256":["abc"]}}]}'
-
-printf '1.14.2-lx.4\n' > "$WORK_DIR/ver_lx"
-lx_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_lx" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
-if grep -Fq "certificate_sha256" <<<"$lx_stripped"; then
-  fail "generator must strip certificate_sha256 for sing-box-lx (the field does not exist there)"
+printf '0.5.7\n' > "$WORK_DIR/ver_core"
+kept="$(printf '%s' "$TEST_CFG" | TACHYON_CORE_VERSION_FILE="$WORK_DIR/ver_core" ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc" strip-cert-pins 2>/dev/null)"
+if ! grep -Fq "certificate_sha256" <<<"$kept"; then
+  fail "generator must keep certificate_sha256 on tachyon-core"
 fi
 
-printf '1.14.2\n' > "$WORK_DIR/ver_stock"
-stock_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_stock" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
-if grep -Fq "certificate_sha256" <<<"$stock_stripped"; then
-  fail "generator must strip certificate_sha256 for stock sing-box 1.14.2"
-fi
-
-printf '1.15.0\n' > "$WORK_DIR/ver_new"
-new_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_new" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
-if ! grep -Fq "certificate_sha256" <<<"$new_stripped"; then
-  fail "generator must keep certificate_sha256 on sing-box 1.15+"
-fi
-
-# 7b. The field is gated by version, not by build.
-#
-# This started as a claim that sing-box-lx is a special case. It is not, and
-# checking the real binaries settles it: stock 1.14.2 and 1.14.2-lx.8 both
-# reject tls.certificate_sha256 with "unknown field", and both accept
-# certificate_public_key_sha256. The official docs say certificate_sha256 was
-# added upstream in 1.15.0 and is the SHA-256 of the whole DER certificate,
-# while certificate_public_key_sha256 (1.13.0) hashes the public key - a
-# different value, so it cannot stand in for a pcs.
-#
-# sing-box-lx tracks upstream, so excluding it by name would have cost it the
-# feature for good once it passed 1.15. The rule is the version, so that is what
-# is pinned here: the two must agree, and neither may special-case lx.
-printf '%-16s %-11s %-11s\n' variant generator runtime
-for variant in 1.15.0 1.15.2 v1.16.1 1.14.2 1.14.2-lx.8 1.14.0-lx.32 1.15.0-lx.1 1.16.0-lx.3; do
-  if ucode "$GENERATOR_UC" is-cert-pin-supported "$variant" 2>/dev/null; then gen=supported; else gen=unsupported; fi
-  if ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "$variant" 2>/dev/null; then rt=supported; else rt=unsupported; fi
-  printf '%-16s %-11s %-11s\n' "$variant" "$gen" "$rt"
-  [ "$gen" = "$rt" ] ||
-    fail "generator and runtime disagree about $variant: generator=$gen runtime=$rt - the generator would emit a field the runtime then strips (issue #79)"
-done
-
-# lx is judged by what the binary does, not by what it might do. The old
-# expectation here was that lx 1.15 would inherit certificate_sha256 because lx
-# tracks upstream - but that is a guess, and it is the expensive direction: the
-# real 1.14.2-lx.12 rejects the field outright ("unknown field", checked against
-# the binary), and an unknown field takes the whole config down rather than one
-# node. certificate_public_key_sha256 is accepted by lx today, so lx gets that
-# field and no speculation about 1.15.
-ucode "$GENERATOR_UC" is-cert-pin-supported "1.15.0-lx.1" ||
-  fail "generator must support pinning on lx 1.15 (under the public-key field)"
-ucode "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/runtime.uc" supports-cert-pin "1.15.0-lx.1" ||
-  fail "runtime must support pinning on lx 1.15, same reason"
-
-# On lx, certificate_sha256 is the field to strip - it is the one the build
-# rejects. The public-key field stays, because that is the one it accepts.
-for v in "1.15.0-lx.1" "1.14.2-lx.8"; do
-  printf '%s\n' "$v" > "$WORK_DIR/ver_lx_check"
-  out="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_lx_check" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
-  if grep -Fq "certificate_sha256" <<<"$out"; then
-    fail "generator must strip certificate_sha256 on lx $v - the build rejects it"
-  fi
-done
-
-# Stock below 1.15 has no field at all, so both spellings go.
-printf '1.14.2\n' > "$WORK_DIR/ver_stock_strip"
-stock_stripped="$(printf '%s' "$TEST_CFG" | SB_VERSION_STATE_FILE="$WORK_DIR/ver_stock_strip" ucode "$GENERATOR_UC" strip-cert-pins 2>/dev/null)"
-if grep -Fq "certificate_sha256" <<<"$stock_stripped"; then
-  fail "generator must strip certificate_sha256 below 1.15 on stock"
-fi
-
-# 8. Verify diagnostics reports sing_box_cert_pin capability flag
+# 7. Verify diagnostics reports tachyon_core_cert_pin capability flag
 server_caps="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" get-server-capabilities)"
 printf '%s\n' "$server_caps" > "$WORK_DIR/caps.json"
-assert_contains "$WORK_DIR/caps.json" "sing_box_cert_pin" "capabilities-has-cert-pin"
+assert_contains "$WORK_DIR/caps.json" "tachyon_core_cert_pin" "capabilities-has-cert-pin"
 
-singbox_chk="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" check-sing-box)"
-printf '%s\n' "$singbox_chk" > "$WORK_DIR/sb_chk.json"
-assert_contains "$WORK_DIR/sb_chk.json" "sing_box_cert_pin" "check-sing-box-has-cert-pin"
+core_chk="$(ucode "$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc" check-tachyon-core)"
+printf '%s\n' "$core_chk" > "$WORK_DIR/core_chk.json"
+assert_contains "$WORK_DIR/core_chk.json" "tachyon_core_cert_pin" "check-tachyon-core-has-cert-pin"
 
 printf 'subscription certificate pin checks passed\n'

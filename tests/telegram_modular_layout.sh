@@ -72,11 +72,11 @@ check(re.check_community_domain_match("gemini.google.com", "google_ai") == true,
 check(type(r.component_display_title) == "function", "component_display_title is missing");
 check(type(r.clean_release_notes) == "function", "clean_release_notes is missing");
 let tc_title = r.component_display_title({
-    component: "sing_box",
+    component: "tachyon_core",
     message: "tachyon-core update available: 0.1.7",
     release_url: "https://github.com/Dushnilin/tachyon-core/releases/tag/v0.1.7"
 });
-check(tc_title == "tachyon-core", "sing_box component with tachyon-core release must display as tachyon-core, got: " + tc_title);
+check(tc_title == "tachyon-core", "tachyon_core component with tachyon-core release must display as tachyon-core, got: " + tc_title);
 
 // Verify api.uc outbound display helpers (country flag + remark + group display)
 let api = require("service.api");
@@ -98,8 +98,9 @@ let cmds = require("service.telegram.commands");
 check(type(cmds.resolve_component_installed_version) == "function", "resolve_component_installed_version is missing");
 let resolved_ver = cmds.resolve_component_installed_version("tachyon", { tachyon_version: "1.6.2" });
 check(resolved_ver == "1.6.2", "resolve_component_installed_version must resolve tachyon_version, got: " + resolved_ver);
-check(r.valid_updatable_component("wdtt") == true, "wdtt must be a valid updatable component");
-check(r.valid_updatable_component("olcrtc") == true, "olcrtc must be a valid updatable component");
+check(r.valid_updatable_component("tachyon-core") == 1, "tachyon-core must be a valid updatable component");
+check(r.valid_updatable_component("torrserver_direct") == 1, "torrserver_direct must be a valid updatable component");
+check(r.valid_updatable_component("olcrtc") == null && r.valid_updatable_component("wdtt") == null, "removed providers must not be valid updatable components");
 
 let cleaned_notes = r.clean_release_notes(
     "[![GitHub Release](https://img.shields.io/github/v/release/Dushnilin/tachyon-core?style=flat-square)](https://github.com/Dushnilin/tachyon-core/releases)\n" +

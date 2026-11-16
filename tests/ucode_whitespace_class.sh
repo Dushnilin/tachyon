@@ -4,15 +4,15 @@
 # It reads as "not backslash, not s". A negated class built that way keeps
 # matching the very characters it was meant to stop at, so:
 #
-#   match("sing-box version 1.15.0-alpha.10\n\nTags: with_quic\n",
-#         /sing-box version ([^\s]+)/)[1]
+#   match("tachyon-core version 0.4.5\n\nTags: with_quic\n",
+#         /tachyon-core version ([^\s]+)/)[1]
 #     == "1.15.0-alpha.10\n\nTag"
 #
 # and is_valid_url() - whose path class was [^\s;`$&|<>'"\\] - rejected every URL
 # whose path contained the letter s, so https://discord.com/api/v9/users/@me came
 # back invalid and a custom fuzzer target was refused with no stated reason.
 #
-# core/common.uc already documents the rule for parse_sing_box_version(). This test
+# core/common.uc already documents the rule for parse_core_version(). This test
 # keeps the rest of the tree honest about it.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
@@ -38,9 +38,9 @@ let errors = [];
 let note = function(m) { push(errors, m); };
 
 // The shared parser has to survive a banner with blank lines and a Tags line.
-let banner = "sing-box version 1.15.0-alpha.10\n\nTags: with_quic,with_tailscale\n";
-let got = common.parse_sing_box_version(banner);
-if (got != "1.15.0-alpha.10") note("parse_sing_box_version returned [" + got + "]");
+let banner = "tachyon-core version 0.5.7\n\nTags: with_quic,with_tailscale\n";
+let got = common.parse_core_version(banner);
+if (got != "0.5.7") note("parse_core_version returned [" + got + "]");
 
 // The engine really does behave this way, so the rule is not cargo cult.
 let leaky = match("a b", /a[^\s]+/);

@@ -12,7 +12,7 @@
 //           Probing lives here, in one loop, instead of being duplicated
 //           inside every healer: one tick collects each observation exactly
 //           once and publishes it, where the old code called is_dns_working()
-//           from two healers and get_sing_box_pid() from eight.
+//           from two healers and get_tachyon_core_pid() from eight.
 //
 // Probe tiers and their intervals are unchanged from the timer-based
 // watchdog: fast 15s, normal adaptive 120/300s, slow 300s.
@@ -82,8 +82,6 @@ const EV = {
     SECTIONS_EMPTY:         "sections.empty",
     ANOMALY_RECONNECTS:     "anomaly.reconnects",
     PAUSE_EXPIRED:          "pause.expired",
-    NFQUEUE_DOWN:           "nfqueue.down",
-    NFQUEUE_UP:             "nfqueue.up",
     TICK:                   "tick"
 };
 
@@ -131,27 +129,25 @@ function process_running(pid, expected_name) {
 
 // ─── Shared observations ──────────────────────────────────────────────────────
 // Resolved once per tick and handed to every probe that needs them. This is
-// what removes the repeated get_sing_box_pid() / is_dns_working() calls that
+// what removes the repeated get_tachyon_core_pid() / is_dns_working() calls that
 // the per-healer detection prologues used to make.
 
-function get_sing_box_pid() {
-    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+function get_tachyon_core_pid() {
+    for (let path in [ "/var/run/tachyon-core.pid", "/var/run/tachyon-core/tachyon-core.pid" ]) {
         let pid = trim(fs.readfile(path) || "");
         if (pid != "" && process_running(pid, "tachyon-core")) return pid;
     }
 
-    for (let svc in [ "tachyon-core", "sing-box" ]) {
-        let ubus_res = command_capture("ubus call service list '{\"name\":\"" + svc + "\"}' 2>/dev/null");
-        if (ubus_res.status == 0 && ubus_res.output != "") {
-            let matched = match(ubus_res.output, /"pid":\s*([0-9]+)/);
-            if (matched && matched[1] != "") {
-                let pid = matched[1];
-                if (process_running(pid, "tachyon-core")) return pid;
-            }
+    let ubus_res = command_capture("ubus call service list '{\"name\":\"tachyon-core\"}' 2>/dev/null");
+    if (ubus_res.status == 0 && ubus_res.output != "") {
+        let matched = match(ubus_res.output, /"pid":\s*([0-9]+)/);
+        if (matched && matched[1] != "") {
+            let pid = matched[1];
+            if (process_running(pid, "tachyon-core")) return pid;
         }
     }
 
-    let pidof_res = command_capture("pidof tachyon-core sing-box 2>/dev/null");
+    let pidof_res = command_capture("pidof tachyon-core 2>/dev/null");
     if (pidof_res.status == 0 && pidof_res.output != "") {
         let fields = split(trim(pidof_res.output), /[ \t]+/);
         if (length(fields) > 0 && fields[0] != "") {
@@ -163,9 +159,9 @@ function get_sing_box_pid() {
     return "";
 }
 
-// Scans /proc for a tachyon-core or sing-box executable. Slower than get_sing_box_pid(), used
+// Scans /proc for a tachyon-core executable. Slower than get_tachyon_core_pid(), used
 // only to confirm a suspected stop before publishing the fact.
-function sing_box_in_proc() {
+function tachyon_core_in_proc() {
     let proc = fs.opendir("/proc");
     if (!proc) return "";
     let entry;
@@ -175,7 +171,7 @@ function sing_box_in_proc() {
             let exe = fs.readlink("/proc/" + entry + "/exe") || "";
             let slash = rindex(exe, "/");
             let base = slash >= 0 ? substr(exe, slash + 1) : exe;
-            if (base == "tachyon-core" || base == "sing-box") {
+            if (base == "tachyon-core") {
                 pid = entry;
                 break;
             }
@@ -235,18 +231,18 @@ function is_reload_in_progress() {
     return fs.stat("/var/run/tachyon.reload.lock") != null || check_tachyon_cli_running();
 }
 
-// Reads a port out of the generated sing-box config. Both callers fall back to
+// Reads a port out of the generated tachyon-core config. Both callers fall back to
 // a compiled-in default when the file cannot be parsed, and that fallback is
-// worth a log line: a watchdog probing 4534 while sing-box listens elsewhere
+// worth a log line: a watchdog probing 4534 while tachyon-core listens elsewhere
 // reports the proxy as down forever and heals it in a loop. The failure used to
 // be swallowed by an empty catch, so the symptom was a permanently unhealthy
 // proxy with nothing in the log to connect it to the config.
 //
 // Logged once per process — these are called on every tick, and a config that
 // fails to parse fails to parse every time.
-let sb_config_parse_reported = false;
+let core_config_parse_reported = false;
 
-function parse_singbox_config() {
+function parse_core_config() {
     let data = fs.readfile("/etc/tachyon-core/config.json");
     if (data == null)
         return null;
@@ -255,8 +251,8 @@ function parse_singbox_config() {
         return json(data);
     }
     catch (e) {
-        if (!sb_config_parse_reported) {
-            sb_config_parse_reported = true;
+        if (!core_config_parse_reported) {
+            core_config_parse_reported = true;
             command_success_from_args([ "logger", "-t", "tachyon",
                 "[err] Watchdog: /etc/tachyon-core/config.json is unparseable (" + as_string(e) +
                 "); falling back to default inbound ports, proxy checks may probe the wrong port" ]);
@@ -298,7 +294,7 @@ function inbound_routes_to_direct(sb_cfg, inb_tag) {
     return false;
 }
 
-// Reads the http/mixed inbound port from the generated sing-box config.
+// Reads the http/mixed inbound port from the generated tachyon-core config.
 // Cached because the config only changes across a reload or regeneration.
 let cached_proxy_port = null;
 let cached_proxy_host = null;
@@ -314,7 +310,7 @@ function proxy_port() {
     // default port would measure a dead listener and report the proxy broken.
     let port = "";
     let host = "127.0.0.1";
-    let sb_cfg = parse_singbox_config();
+    let sb_cfg = parse_core_config();
     if (sb_cfg && sb_cfg.inbounds) {
         // 1. Prefer service-mixed-in (unless bound to an external direct interface)
         for (let inb in sb_cfg.inbounds) {
@@ -371,7 +367,7 @@ function forget_proxy_port() {
     cached_proxy_host = null;
     cached_tproxy_port = null;
     cached_proxy_cfg_mtime = 0;
-    sb_config_parse_reported = false;
+    core_config_parse_reported = false;
 }
 
 function tproxy_port() {
@@ -380,7 +376,7 @@ function tproxy_port() {
     if (cached_tproxy_port != null && cached_proxy_cfg_mtime == current_mtime)
         return cached_tproxy_port;
     let port = 4530;
-    let sb_cfg = parse_singbox_config();
+    let sb_cfg = parse_core_config();
     if (sb_cfg && sb_cfg.inbounds) {
         for (let inb in sb_cfg.inbounds) {
             if (inb.type == "tproxy") {
@@ -398,14 +394,14 @@ function tproxy_port() {
 // Pure functions: a syslog line in, a fact (or null) out. No I/O, so the
 // classifier is directly testable — see tests/event_controller.sh.
 
-// Extract a candidate domain from a sing-box log line. Returns null when the
+// Extract a candidate domain from a tachyon-core log line. Returns null when the
 // line carries no usable hostname. Kept separate from log handling so the
 // pattern can be exercised directly by tests.
 function smart_detect_extract_domain(line) {
     return smart_detect.extract_host(line);
 }
 
-// Hostnames of connections that are still open, keyed by trace id. sing-box
+// Hostnames of connections that are still open, keyed by trace id. tachyon-core
 // logs the resolved IP on the failure line, so this is the only place the
 // hostname of a failing connection can come from.
 // ponytail: bounded twice over — entries older than TRACE_HOST_TTL are dropped
@@ -486,7 +482,7 @@ function classify_log_line(line, plus_mode) {
     let is_oom = (index(line_lower, "oom-killer") >= 0 ||
                   index(line_lower, "out of memory: kill process") >= 0 ||
                   (index(line_lower, "kernel:") >= 0 && index(line_lower, "out of memory") >= 0) ||
-                  (index(line_lower, "sing-box") >= 0 && index(line_lower, "out of memory") >= 0) ||
+                  (index(line_lower, "tachyon-core") >= 0 && index(line_lower, "out of memory") >= 0) ||
                   index(line_lower, "fatal error: out of memory") >= 0);
     let is_netlink_warning = (index(line_lower, "netlink") >= 0 || index(line_lower, "nlbwmon") >= 0);
 
@@ -513,9 +509,9 @@ function classify_log_line(line, plus_mode) {
     else if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
         (index(line_lower, "failed") >= 0 || index(line_lower, "timeout") >= 0 ||
          index(line_lower, "reset") >= 0)) {
-        // "direct" is the outbound TYPE. A section backed by a local DPI bypass
-        // logs outbound/direct[<section>-out] and its failure says nothing
-        // about the destination, so only the bypass outbounds count.
+        // "direct" is the outbound TYPE. A section backed by a local desync
+        // outbound logs outbound/direct[<section>-out] and its failure says
+        // nothing about the destination, so only the bypass outbounds count.
         if (smart_detect.failure_outbound_is_bypass(line)) {
             let trace = smart_detect.parse_trace(line);
             let domain = smart_detect_extract_domain(line)
@@ -642,7 +638,7 @@ function controller(bus, opts) {
     };
 
     // ── Probe: expired pause ──────────────────────────────────────────────────
-    // Declared ahead of probe_singbox, which consults it on every fast tick.
+    // Declared ahead of probe_tachyon_core, which consults it on every fast tick.
     function probe_pause() {
         let val = trim(fs.readfile("/tmp/tachyon_paused_until") || "");
         if (val == "") return false;
@@ -665,8 +661,8 @@ function controller(bus, opts) {
         let cfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
         let reload = is_reload_in_progress();
         let list_upd = is_list_update_running();
-        let sb_pid = get_sing_box_pid();
-        let sb_running = (sb_pid != "" && process_running(sb_pid, "sing-box"));
+        let core_pid = get_tachyon_core_pid();
+        let core_running = (core_pid != "" && process_running(core_pid, "tachyon-core"));
         let port = proxy_port();
         let host = proxy_host();
         let paused = probe_pause();
@@ -676,8 +672,8 @@ function controller(bus, opts) {
             settings: cfg,
             reload_in_progress: reload,
             list_update_running: list_upd,
-            singbox_pid: sb_pid,
-            singbox_running: sb_running,
+            tachyon_core_pid: core_pid,
+            tachyon_core_running: core_running,
             proxy_port: port,
             proxy_host: host,
             is_paused: paused
@@ -709,7 +705,7 @@ function controller(bus, opts) {
     function probe_smart_detect_connections() {
         let ctx = current_tick_ctx || create_tick_context();
         if (!smart_plus.capture_enabled(ctx.settings) || ctx.is_paused ||
-            ctx.reload_in_progress || !ctx.singbox_running) {
+            ctx.reload_in_progress || !ctx.tachyon_core_running) {
             state.smart_detect_connections = {};
             state.smart_detect_silent_drops = {};
             last_smart_detect_poll = 0;
@@ -756,21 +752,21 @@ function controller(bus, opts) {
     self.get_tick_context = function() { return current_tick_ctx; };
     self.clear_tick_context = function() { current_tick_ctx = null; };
 
-    // ── Probe: sing-box liveness ──────────────────────────────────────────────
+    // ── Probe: tachyon-core liveness ──────────────────────────────────────────
     // The expensive /proc scan only runs once the cheap pidfile/ubus/pidof
     // path has already failed, preserving the original fast-path ordering.
-    function probe_singbox() {
+    function probe_tachyon_core() {
         let ctx = current_tick_ctx || create_tick_context();
         if (setting("recovery_bypass", "0") == "1") return;
-        // An active pause means sing-box is stopped on purpose.
+        // An active pause means tachyon-core is stopped on purpose.
         if (ctx.is_paused) return;
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
 
-        let pid = ctx.singbox_pid;
-        if (pid != "" && ctx.singbox_running) return;
+        let pid = ctx.tachyon_core_pid;
+        if (pid != "" && ctx.tachyon_core_running) return;
 
-        // No configured sections means sing-box is legitimately absent.
+        // No configured sections means tachyon-core is legitimately absent.
         let has_sections = false;
         let uci_sections = uci_core.get_all(CONFIG_NAME);
         if (uci_sections) {
@@ -783,7 +779,7 @@ function controller(bus, opts) {
         }
         if (!has_sections) return;
 
-        if (sing_box_in_proc() == "")
+        if (tachyon_core_in_proc() == "")
             bus.emit(EV.CORE_STOPPED, { reason: "process missing from /proc" });
     }
 
@@ -801,8 +797,8 @@ function controller(bus, opts) {
         // land in the latency history as a fault that never happened.
         if (ctx.reload_in_progress) return;
 
-        let pid = ctx.singbox_pid;
-        if (pid == "" || !ctx.singbox_running) return;
+        let pid = ctx.tachyon_core_pid;
+        if (pid == "" || !ctx.tachyon_core_running) return;
 
         let port = ctx.proxy_port;
         // No http/mixed inbound in the generated config: there is nothing to
@@ -867,7 +863,7 @@ function controller(bus, opts) {
         state.proxy_consecutive_fails++;
 
         // Distinguish "proxy is broken" from "the whole uplink is down": only
-        // the former is worth restarting sing-box over.
+        // the former is worth restarting tachyon-core over.
         // Check primary URL, and if that fails, check fallback URL directly too
         // in case the primary URL is blocked directly on the ISP WAN.
         let direct_ok = command_success_from_args([
@@ -913,8 +909,8 @@ function controller(bus, opts) {
             return;
         }
 
-        let pid = ctx.singbox_pid;
-        if (pid == "" || !ctx.singbox_running) {
+        let pid = ctx.tachyon_core_pid;
+        if (pid == "" || !ctx.tachyon_core_running) {
             clear_dns_streak();
             return;
         }
@@ -1021,8 +1017,8 @@ function controller(bus, opts) {
         } catch (e) {}
         if (active_engine != "tachyon-core") return;
 
-        let pid = ctx.singbox_pid;
-        if (pid == "" || !ctx.singbox_running) return;
+        let pid = ctx.tachyon_core_pid;
+        if (pid == "" || !ctx.tachyon_core_running) return;
 
         let proxy_mode = lc(trim(as_string(ctx.settings.proxy_mode || "tproxy")));
         if (proxy_mode == "tun" || proxy_mode == "socks") return;
@@ -1274,8 +1270,8 @@ function controller(bus, opts) {
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
 
-        let pid = ctx.singbox_pid;
-        if (pid == "" || !ctx.singbox_running) return;
+        let pid = ctx.tachyon_core_pid;
+        if (pid == "" || !ctx.tachyon_core_running) return;
 
         let now = time();
         if (!state.subnet_sets_had_empty &&
@@ -1430,72 +1426,6 @@ function controller(bus, opts) {
         bus.emit(EV.OOM_RECOVERABLE, { last_oom: state.last_oom_time, scale: current_scale });
     }
 
-    // ── Probe: nfqueue/zapret runtime health ──────────────────────────────────
-    // Checks if nfqws/nfqws2 supervisor processes are alive by counting PID
-    // files. A mismatch means the DPI bypass engine crashed or was killed.
-    function probe_nfqueue() {
-        let ctx = current_tick_ctx || create_tick_context();
-        if (!bus.has(EV.NFQUEUE_DOWN) && !bus.has(EV.NFQUEUE_UP)) return;
-        if (ctx.reload_in_progress) return;
-
-        let pid_dirs = [
-            "/var/run/tachyon/zapret/child-pid",
-            "/var/run/tachyon/zapret2/child-pid"
-        ];
-
-        let configured_nfqueue = { zapret: 0, zapret2: 0 };
-        let sections = uci_core.get_all(CONFIG_NAME);
-        if (type(sections) == "object") {
-            for (let sname, sec in sections) {
-                if (type(sec) == "object" && sec.enabled == "1") {
-                    if (sec.action == "zapret")
-                        configured_nfqueue.zapret++;
-                    else if (sec.action == "zapret2")
-                        configured_nfqueue.zapret2++;
-                }
-            }
-        }
-
-        for (let i = 0; i < length(pid_dirs); i++) {
-            let child_dir = pid_dirs[i];
-            let kind = index(child_dir, "zapret2") >= 0 ? "zapret2" : "zapret";
-            let cfg_count = configured_nfqueue[kind];
-            let expected = 0;
-            let running = 0;
-            let dir = fs.opendir(child_dir);
-            if (dir) {
-                let entry;
-                while ((entry = dir.read()) != null) {
-                    if (entry == "." || entry == "..") continue;
-                    expected++;
-                    let pid_data = fs.readfile(child_dir + "/" + entry);
-                    if (pid_data == null) continue;
-                    let pid = trim(as_string(pid_data));
-                    if (pid == "" || match(pid, /^[0-9]+$/) == null) continue;
-                    if (fs.stat("/proc/" + pid) != null) {
-                        running++;
-                    }
-                }
-                dir.close();
-            }
-
-            if (expected == 0 && cfg_count > 0)
-                expected = cfg_count;
-
-            if (expected == 0) continue;
-
-            if (running == expected) {
-                bus.emit(EV.NFQUEUE_UP, { running: running, expected: expected });
-            } else {
-                bus.emit(EV.NFQUEUE_DOWN, {
-                    running: running,
-                    expected: expected,
-                    dir: child_dir
-                });
-            }
-        }
-    }
-
     // ── Tier drivers ──────────────────────────────────────────────────────────
     // Each probe is wrapped so one failing observation cannot stop the tier;
     // this mirrors the safe_call() isolation the old per-check loop had.
@@ -1532,7 +1462,7 @@ function controller(bus, opts) {
 
     self.probe_fast = function(ctx) {
         current_tick_ctx = ctx || create_tick_context();
-        run_probe(probe_singbox, "singbox");
+        run_probe(probe_tachyon_core, "tachyon_core");
         run_probe(probe_proxy, "proxy");
         run_probe(probe_dns, "dns");
     };
@@ -1555,7 +1485,6 @@ function controller(bus, opts) {
         run_probe(probe_empty_sections, "empty_sections");
         run_probe(probe_anomalies, "anomalies");
         run_probe(probe_oom_recovery, "oom_recovery");
-        run_probe(probe_nfqueue, "nfqueue");
     };
 
     // Health is graded by how long we go without publishing a fault: after a
@@ -1592,7 +1521,7 @@ function controller(bus, opts) {
     self.healthy_streak = function() { return state.healthy_streak; };
 
     self.forget_proxy_port = forget_proxy_port;
-    self.get_sing_box_pid = get_sing_box_pid;
+    self.get_tachyon_core_pid = get_tachyon_core_pid;
     self.is_dns_working = is_dns_working;
     self.is_reload_in_progress = is_reload_in_progress;
     self.is_list_update_running = is_list_update_running;

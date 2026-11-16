@@ -207,8 +207,8 @@ run_uc snapshot-save >"$WORK_DIR/auto1.json" ||
   fail "snapshot-save without a name must auto-generate a unique hex ID"
 grep -Fq '"success": true' "$WORK_DIR/auto1.json" ||
   fail "snapshot-save without a name must report success"
-AUTO_NAME_1="$(sed -n 's/.*"name": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto1.json")"
-AUTO_FILE_1="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto1.json")"
+AUTO_NAME_1="$(ucode -e 'let fs = require("fs"); let r = json(fs.readfile(ARGV[0])); print(r.name || "");' "$WORK_DIR/auto1.json")"
+AUTO_FILE_1="$(ucode -e 'let fs = require("fs"); let r = json(fs.readfile(ARGV[0])); print(r.file || "");' "$WORK_DIR/auto1.json")"
 [[ "$AUTO_NAME_1" =~ ^[0-9a-f]{8}$ ]] ||
   fail "auto-generated snapshot ID must be an 8-char lowercase hex string, got: $AUTO_NAME_1"
 [[ "$AUTO_FILE_1" =~ ^${AUTO_NAME_1}-[0-9]{8}-[0-9]{6}\.tar\.gz$ ]] ||
@@ -216,7 +216,7 @@ AUTO_FILE_1="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto1.json")"
 
 run_uc snapshot-save "" >"$WORK_DIR/auto2.json" ||
   fail "snapshot-save with empty string must auto-generate a unique hex ID"
-AUTO_NAME_2="$(sed -n 's/.*"name": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto2.json")"
+AUTO_NAME_2="$(ucode -e 'let fs = require("fs"); let r = json(fs.readfile(ARGV[0])); print(r.name || "");' "$WORK_DIR/auto2.json")"
 [[ "$AUTO_NAME_2" =~ ^[0-9a-f]{8}$ ]] ||
   fail "second auto-generated snapshot ID must be an 8-char lowercase hex string, got: $AUTO_NAME_2"
 [ "$AUTO_NAME_1" != "$AUTO_NAME_2" ] ||
@@ -239,24 +239,21 @@ config settings 'settings'
 	option dns '8.8.8.8'
 	option engine 'tachyon-core'
 
-config section 's_z2'
-	option label 'Active Z2'
+config section 's_desync'
+	option label 'Active Desync'
 	option enabled '1'
-	option action 'zapret2'
+	option action 'desync'
+	option desync_preset 'auto'
 
-config section 's_disabled_bd'
-	option label 'Disabled ByeDPI'
+config section 's_disabled_fptn'
+	option label 'Disabled FPTN'
 	option enabled '0'
-	option action 'byedpi'
+	option action 'fptn'
 EOF
 
 TACHYON_VERSION="1.7.24" \
-SB_VERSION_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
-SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-variant" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
 TACHYON_CORE_BIN="$WORK_DIR/nonexistent-core-bin" \
-TACHYON_SING_BOX_BIN="$WORK_DIR/nonexistent-sb-bin" \
-TACHYON_COMPONENT_VERSION_ZAPRET2="0.8.5" \
-TACHYON_COMPONENT_VERSION_BYEDPI="0.17.3" \
   run_uc snapshot-save "" >"$WORK_DIR/comp-save.json"
 grep -Fq '"success": true' "$WORK_DIR/comp-save.json" ||
   fail "snapshot-save with active component metadata must succeed"
@@ -274,11 +271,6 @@ grep -Fq '"name": "Tachyon Core"' "$WORK_DIR/comp-list.json" ||
   fail "snapshot-list must expose Tachyon Core name from snapshot metadata"
 grep -Fq '"version": "0.4.9"' "$WORK_DIR/comp-list.json" ||
   fail "snapshot-list must expose Tachyon Core version from snapshot metadata"
-grep -Fq '"version": "0.8.5"' "$WORK_DIR/comp-list.json" ||
-  fail "snapshot-list must expose enabled Zapret2 component version"
-if grep -Fq '"0.17.3"' "$WORK_DIR/comp-list.json"; then
-  fail "snapshot-list must NOT include versions of disabled sections (ByeDPI)"
-fi
 
 run_uc snapshot-export "$COMP_FILE" >"$WORK_DIR/comp-export.json"
 grep -Fq '"version": "0.4.9"' "$WORK_DIR/comp-export.json" ||
@@ -294,12 +286,12 @@ COMP_IMP_BASE="${COMP_IMP_FILE%.tar.gz}"
 [ -f "$WORK_DIR/snapshots/${COMP_IMP_BASE}.meta.json" ] ||
   fail "snapshot-import must restore .meta.json sidecar from exported profile"
 run_uc snapshot-list >"$WORK_DIR/comp-list-after-imp.json"
-grep -Fq '"version": "0.8.5"' "$WORK_DIR/comp-list-after-imp.json" ||
+grep -Fq '"version": "0.4.9"' "$WORK_DIR/comp-list-after-imp.json" ||
   fail "snapshot-list after import must return preserved component versions"
 
 sleep 1
-SNAPSHOT_LIMIT=1 TACHYON_VERSION="1.7.24" SB_VERSION_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
-  TACHYON_CORE_BIN="$WORK_DIR/nonexistent-core-bin" TACHYON_SING_BOX_BIN="$WORK_DIR/nonexistent-sb-bin" \
+SNAPSHOT_LIMIT=1 TACHYON_VERSION="1.7.24" TACHYON_CORE_VERSION_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
+  TACHYON_CORE_BIN="$WORK_DIR/nonexistent-core-bin" \
   run_uc snapshot-save newest_only >/dev/null
 [ ! -e "$WORK_DIR/snapshots/${COMP_IMP_BASE}.meta.json" ] ||
   fail "prune_snapshots rotation must remove .meta.json sidecars of pruned snapshots"
@@ -496,7 +488,7 @@ cat >"$WORK_DIR/config/tachyon" <<'EOF'
 config settings 'settings'
 	option dns_type 'udp'
 	option dns '9.9.9.9'
-	option engine 'sing-box'
+	option log_level 'warn'
 
 config section 's_existing'
 	option label 'Existing Local Route'

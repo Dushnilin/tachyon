@@ -9,7 +9,7 @@ BUILD_SCRIPT="$ROOT_DIR/build.sh"
 CONSTANTS_SH="$TACHYON_LIB/constants.sh"
 LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 CONSTANTS_UC="$TACHYON_LIB/core/constants.uc"
-SINGBOX_CONSTANTS_UC="$TACHYON_LIB/tachyon_core/constants.uc"
+TACHYON_CORE_CONSTANTS_UC="$TACHYON_LIB/tachyon_core/constants.uc"
 FRONTEND_CONSTANTS="$ROOT_DIR/fe-app-tachyon/src/constants.ts"
 
 [ ! -e "$CONSTANTS_SH" ] ||
@@ -44,15 +44,20 @@ eval "$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" shell-env)"
   fail "core/constants.uc shell-env did not derive TACHYON_CONFIG"
 [ "$TMP_RULESET_FOLDER" = "/tmp/tachyon-core/rulesets" ] ||
   fail "core/constants.uc shell-env did not derive TMP_RULESET_FOLDER"
-[ "$BYEDPI_PID_DIR" = "/var/run/tachyon/byedpi/pid" ] ||
-  fail "core/constants.uc shell-env did not derive BYEDPI_PID_DIR"
+[ "$CORE_TPROXY_INBOUND_PORT" = "1602" ] ||
+  fail "core/constants.uc shell-env did not derive CORE_TPROXY_INBOUND_PORT"
+for removed in BYEDPI_PID_DIR ZAPRET_ROUTE_MARK_BASE ZAPRET2_ROUTE_MARK_BASE WDTT_SERVICE_NAME OLCRTC_SERVICE_NAME; do
+  if [ -n "${!removed:-}" ]; then
+    fail "removed provider constant $removed must not remain in core/constants.uc"
+  fi
+done
 
 [ "$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" get FAKEIP_TEST_DOMAIN)" = "fakeip.podkop.fyi" ] ||
   fail "FakeIP diagnostics must use the deployed public endpoint"
 [ "$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" get CHECK_PROXY_IP_DOMAIN)" = "ip.podkop.fyi" ] ||
   fail "public IP diagnostics must use the deployed public endpoint"
-grep -Fq 'const FAKEIP_TEST_DOMAIN = "fakeip.podkop.fyi";' "$SINGBOX_CONSTANTS_UC" ||
-  fail "sing-box constants must match the deployed FakeIP endpoint"
+grep -Fq 'const FAKEIP_TEST_DOMAIN = "fakeip.podkop.fyi";' "$TACHYON_CORE_CONSTANTS_UC" ||
+  fail "tachyon-core constants must match the deployed FakeIP endpoint"
 grep -Fq "export const FAKEIP_CHECK_DOMAIN = 'fakeip.podkop.fyi';" "$FRONTEND_CONSTANTS" ||
   fail "LuCI diagnostics must use the deployed FakeIP endpoint"
 grep -Fq "export const IP_CHECK_DOMAIN = 'ip.podkop.fyi';" "$FRONTEND_CONSTANTS" ||

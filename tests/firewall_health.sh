@@ -66,7 +66,7 @@ let seen = [];
 for (let event in ["nft.missing", "qos.missing", "tproxy.down", "subnets.empty", "proxy.up"])
     bus.on(event, function(ev) { push(seen, ev.type); });
 let controller = require("service.event_controller").controller(bus, {});
-let ctx = { settings: cfg, now: time(), singbox_pid: "123", singbox_running: true,
+let ctx = { settings: cfg, now: time(), tachyon_core_pid: "123", tachyon_core_running: true,
     proxy_port: "4534", proxy_host: "127.0.0.1", reload_in_progress: false, list_update_running: false };
 output = "";
 files = {};

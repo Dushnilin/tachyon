@@ -16,19 +16,14 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
 function filter_installed_engines(recs) {
-    let installed = [];
-    if (binaries.get_zapret2_bin() != null) push(installed, "zapret2");
-    if (binaries.get_zapret_bin() != null) push(installed, "zapret");
-    if (binaries.get_byedpi_bin() != null) push(installed, "byedpi");
-    if (binaries.get_desync_bin() != null) push(installed, "desync");
-    if (length(installed) == 0)
+    if (binaries.get_desync_bin() == null)
         return recs;
     let out = [];
     for (let e in (recs || [])) {
-        if (index(installed, e) >= 0)
+        if (e == "desync")
             push(out, e);
     }
-    return length(out) > 0 ? out : installed;
+    return length(out) > 0 ? out : ["desync"];
 }
 
 function probe_single_target_dpi(target_item, dns_flags) {
@@ -115,28 +110,28 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.type = "throttle";
         result.confidence = 95;
         result.details = sprintf("Mid-stream bandwidth or byte cap detected on %s — stream stalled at %d bytes", domain, metrics.data_bytes || 0);
-        result.recommended_engines = ["zapret2", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (metrics.dpi_verdict == "throttled_16k" || (http_code == 200 && metrics.data_bytes >= 10240 && metrics.data_bytes <= 28672 && error_str != "")) {
         result.type = "throttle";
         result.confidence = 95;
         result.details = sprintf("16KB DPI throttling detected on %s — handshake succeeded but stream dropped at ~16KB data transfer", domain);
-        result.recommended_engines = ["zapret2", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (metrics.dpi_verdict == "server_fakes") {
         result.type = "rst";
         result.confidence = 85;
         result.details = sprintf("Server rejected corrupted/fake packets on %s (HTTP 400 Bad Request)", domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
         result.type = "throttle";
         result.confidence = 75;
         result.details = sprintf("High TTFB (%dms) despite successful connection on %s — likely bandwidth throttling by DPI", ttfb, domain);
-        result.recommended_engines = ["zapret2", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if ((http_code >= 200 && http_code < 400) || ((http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421 || http_code == 429) && handshake > 0)) {
         if (p_kind == "streaming" && http_code >= 200 && http_code < 300 && metrics.data_bytes < 1024) {
             result.type = "throttle";
             result.confidence = 80;
             result.details = sprintf("Streaming probe on %s received insufficient data (%d bytes) — likely DPI throttling/drop", domain, metrics.data_bytes);
-            result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+            result.recommended_engines = ["desync"];
         } else {
             result.type = "none";
             result.confidence = 95;
@@ -148,12 +143,12 @@ function probe_single_target_dpi(target_item, dns_flags) {
             result.type = "drop";
             result.confidence = 85;
             result.details = sprintf("Streaming endpoint %s returned HTTP %d — stream media blocked or redirected", domain, http_code);
-            result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+            result.recommended_engines = ["desync"];
         } else {
             result.type = "rst";
             result.confidence = 60;
             result.details = sprintf("Target %s returned client error HTTP %d — possible DPI filtering or access restriction", domain, http_code);
-            result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+            result.recommended_engines = ["desync"];
         }
     } else if (metrics.dpi_verdict == "connect_timeout" || metrics.dpi_verdict == "connect_refused") {
         // TCP never came up without any bypass: SNI/TLS desync cannot help here.
@@ -166,36 +161,36 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.type = "rst";
         result.confidence = 90;
         result.details = sprintf("TCP RST received from DPI for %s — active TCP reset injection detected", domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (dns_blocked && http_code == 0 && (!target_flags || target_flags == "")) {
         result.type = "dns_block";
         result.confidence = 90;
         result.details = sprintf("DNS resolution failed or hijacked for %s — likely DNS-level blocking by ISP/DPI", domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (http_code == 0 && (index(error_str, "timed out") >= 0 || index(error_str, "Connection timed out") >= 0 || index(error_str, "ETIMEDOUT") >= 0 || index(error_str, "exit 28") >= 0)) {
         result.type = "drop";
         result.confidence = 95;
         if (handshake > 0) {
             result.details = sprintf("TLS ClientHello dropped for %s (handshake %dms, timed out waiting for server response) — transit SNI filtering drop detected", domain, handshake);
         } else {
-            result.details = sprintf("TCP connect timed out for %s — transit middlebox packet drop detected. Can be mitigated using syndata, multisplit, or PAWS.", domain);
+            result.details = sprintf("TCP connect timed out for %s — transit middlebox packet drop detected. Can be mitigated using syndata, multi_split, or fake_disorder.", domain);
         }
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
         result.type = "rst";
         result.confidence = 70;
         result.details = sprintf("Connection refused or dropped for %s — likely RST or blackhole by DPI", domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else if (handshake > 2000) {
         result.type = "throttle";
         result.confidence = 75;
         result.details = sprintf("Very slow TLS handshake (%dms) on %s — likely DPI deep inspection causing delay", handshake, domain);
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     } else {
         result.type = "unknown";
         result.confidence = 30;
         result.details = sprintf("Inconclusive for %s — HTTP %d, error: %s", domain, http_code, error_str != "" ? error_str : "none");
-        result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
+        result.recommended_engines = ["desync"];
     }
 
     return result;
@@ -207,11 +202,11 @@ function detect_dpi_type(target_key, custom_url) {
         urls_list = [ { name: "Default", url: "https://www.google.com", required: true } ];
     let dns_flags = binaries.get_fuzzer_curl_dns_flags();
 
-    // Direct probe with bypass of Sing-box TProxy.
+    // Direct probe with bypass of Tachyon Core TProxy.
     // Pre-clean: delete any stale fuzzer table so chain/rule adds don't conflict.
     binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     system("nft add table inet tachyon_fuzzer 2>/dev/null");
-    binaries.add_bypass_singbox_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), true);
+    binaries.add_bypass_core_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), true);
 
     let first_accessible_result = null;
     let blocked_result = null;
@@ -251,7 +246,7 @@ function detect_dpi_type(target_key, custom_url) {
         type: "unknown",
         confidence: 0,
         details: "Unable to probe target URLs",
-        recommended_engines: filter_installed_engines(["zapret2", "zapret", "byedpi", "desync"]),
+        recommended_engines: filter_installed_engines(["desync"]),
         probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
     };
 }

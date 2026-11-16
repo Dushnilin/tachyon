@@ -26,16 +26,16 @@ assert_eq() {
 
 # --- OOM detection: the real thing must be recognised ---
 for line in \
-  'kernel: sing-box invoked oom-killer: gfp_mask=0x100cca' \
-  'kernel: Out of memory: Kill process 1234 (sing-box) score 900' \
-  'daemon.err sing-box[123]: fatal error: out of memory'
+  'kernel: tachyon-core invoked oom-killer: gfp_mask=0x100cca' \
+  'kernel: Out of memory: Kill process 1234 (tachyon-core) score 900' \
+  'daemon.err tachyon-core[123]: fatal error: out of memory'
 do
   assert_eq "$(classify_joined "$line")" "oom.detected" "OOM line: $line"
 done
 
 # --- OOM discrimination: netlink/nlbwmon noise must NOT read as OOM ---
 # This is the guard at watchdog.uc:1509. Misreading it would shrink
-# GOMEMLIMIT for nothing, degrading throughput on every router that logs it.
+# the cache budget for nothing, degrading throughput on every router that logs it.
 assert_eq "$(classify_joined 'nlbwmon: netlink: out of memory allocating buffer')" \
   "" "netlink out-of-memory warning is not an OOM event"
 assert_eq "$(classify_joined 'kernel: netlink: 12 bytes leftover after parsing, out of memory')" \
@@ -43,7 +43,7 @@ assert_eq "$(classify_joined 'kernel: netlink: 12 bytes leftover after parsing, 
 
 # --- OOM is terminal: no further facts from the same line ---
 # The original returned immediately after handling OOM.
-assert_eq "$(classify_joined 'kernel: sing-box invoked oom-killer, URLTest switch proxy')" \
+assert_eq "$(classify_joined 'kernel: tachyon-core invoked oom-killer, URLTest switch proxy')" \
   "oom.detected" "OOM short-circuits URLTest classification"
 
 # --- keyword pre-filter: unrelated lines cost nothing and yield nothing ---
@@ -142,7 +142,7 @@ let c = ec.controller(b, {});
 let seen = 0;
 b.on("oom.detected", function(ev) { seen++; });
 // syslog_start_time still 0: we are inside the historical replay window.
-print(length(c.handle_log_line("kernel: sing-box invoked oom-killer")) + "," + seen);
+print(length(c.handle_log_line("kernel: tachyon-core invoked oom-killer")) + "," + seen);
 ')"
 assert_eq "$actual" "0,0" "OOM from the log replay window is not published"
 
@@ -153,8 +153,8 @@ let seen = 0;
 b.on("oom.detected", function(ev) { seen++; });
 // Started well in the past: live lines, not replay.
 c.set_syslog_start(time() - 3600);
-c.handle_log_line("kernel: sing-box invoked oom-killer");
-c.handle_log_line("kernel: sing-box invoked oom-killer");
+c.handle_log_line("kernel: tachyon-core invoked oom-killer");
+c.handle_log_line("kernel: tachyon-core invoked oom-killer");
 print(seen);
 ')"
 assert_eq "$actual" "1" "an OOM storm collapses into one published fact"
@@ -172,7 +172,7 @@ print(seen);
 ')"
 assert_eq "$actual" "1" "URLTest facts are throttled to one per window"
 
-# --- publication layer: ubus service stop is scoped to sing-box ---
+# --- publication layer: ubus service stop is scoped to tachyon-core ---
 actual="$(run_case '
 let b = events.bus();
 let c = ec.controller(b, {});

@@ -19,7 +19,7 @@ let command_status = common.command_status;
 let object_or_empty = common.object_or_empty;
 let read_json_file = common.read_json_file;
 
-const DOCTOR_FIXES_FILE = "/tmp/tachyon_doctor_fixes.json";
+const DOCTOR_FIXES_FILE = getenv("TACHYON_DOCTOR_FIXES_FILE") || "/tmp/tachyon_doctor_fixes.json";
 
 function doctor_fix_record(code) {
     let data = object_or_empty(read_json_file(DOCTOR_FIXES_FILE));
@@ -27,7 +27,8 @@ function doctor_fix_record(code) {
     rec.count = int(rec.count) + 1;
     rec.last = time();
     data[code] = rec;
-    let tmp_path = DOCTOR_FIXES_FILE + ".tmp." + int(clock()[0]);
+    let c = clock();
+    let tmp_path = DOCTOR_FIXES_FILE + ".tmp." + int(c[0]) + "." + int(c[1] || 0);
     let f = fs.open(tmp_path, "w");
     if (f) {
         f.write(sprintf("%J\n", data));
@@ -42,11 +43,6 @@ function doctor_fix_overused(code) {
     if (!rec) return false;
     let one_hour_ago = time() - 3600;
     return (int(rec.count) >= 3 && int(rec.last) > one_hour_ago);
-}
-
-function is_tachyon_core_active() {
-    let marker = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-    return marker == "tachyon-core";
 }
 
 function uci_backup_save() {
@@ -84,11 +80,6 @@ function uci_backup_restore() {
     } catch (e) { return false; }
 }
 
-function neutralize_zapret_defaults() {
-    command_status("logger -t tachyon '[info] Standalone zapret is not neutralized automatically; Tachyon uses /opt/zapret/nfq/nfqws as an external provider and manages only its own NFQUEUE range.'");
-    return 0;
-}
-
 function apply_quick_fix(codes_str) {
     if (!codes_str || codes_str == "") {
         print(sprintf("%J\n", { success: false, error: "No fix code provided" }));
@@ -98,7 +89,7 @@ function apply_quick_fix(codes_str) {
     let codes = split(replace(codes_str, /[ \[\]"]/g, ""), ",");
     let results = [];
     let all_ok = true;
-    let core_label = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
+    let core_label = "tachyon-core";
 
     for (let c in codes) {
         c = trim(c);
@@ -107,7 +98,7 @@ function apply_quick_fix(codes_str) {
         let status = false;
         let msg = "";
 
-        if (c == "start_singbox") {
+        if (c == "start_tachyon_core") {
             let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? (core_label + " restarted") : (core_label + " restart failed (exit " + rc + ")");
@@ -138,7 +129,7 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Watchdog started" : "Watchdog start failed (exit " + rc + ")";
-        } else if (c == "restart_singbox_dns") {
+        } else if (c == "restart_tachyon_core_dns") {
             let rc = command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? (core_label + " DNS restarted") : (core_label + " DNS restart failed (exit " + rc + ")");
@@ -179,10 +170,6 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/etc/init.d/network restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Network service restarted" : "Network restart failed (exit " + rc + ")";
-        } else if (c == "restart_zapret") {
-            let rc = command_status("/etc/init.d/zapret stop >/dev/null 2>&1; /etc/init.d/zapret disable >/dev/null 2>&1; /etc/init.d/zapret2 stop >/dev/null 2>&1; /etc/init.d/zapret2 disable >/dev/null 2>&1; /etc/init.d/byedpi stop >/dev/null 2>&1; /etc/init.d/byedpi disable >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/zapret/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/zapret2/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/byedpi/runtime.uc start-runtime >/dev/null 2>&1");
-            status = (rc == 0);
-            msg = status ? "Zapret/ByeDPI standalone services stopped and Tachyon engines restarted" : "Zapret/ByeDPI restart failed (exit " + rc + ")";
         } else if (c == "optimize_memory") {
             let rc = command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/tachyon-core/*.tmp 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
             status = (rc == 0);
@@ -219,18 +206,10 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("uci set tachyon.settings.bootstrap_dns_server='77.88.8.8'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Bootstrap DNS reset to reliable public resolver (77.88.8.8) and reloaded" : "Bootstrap DNS fix failed (exit " + rc + ")";
-        } else if (c == "restart_providers") {
-            let rc = command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/wdtt/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/olcrtc/runtime.uc start-runtime >/dev/null 2>&1");
-            status = (rc == 0);
-            msg = status ? "WDTT/OLCRTC provider runtimes restarted" : "Provider runtimes restart failed (exit " + rc + ")";
         } else if (c == "optimize_mtu") {
             let rc = command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "AWG MTU discovery executed and tunnels reloaded" : "MTU optimization failed (exit " + rc + ")";
-        } else if (c == "upgrade_to_singbox_extended") {
-            let rc = command_status(command_from_args([ TACHYON_BIN, "component_action_async", "sing_box", "install_extended" ]));
-            status = (rc == 0);
-            msg = status ? "Sing-box Extended upgrade initiated" : "Sing-box Extended upgrade trigger failed (exit " + rc + ")";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -256,7 +235,6 @@ function apply_quick_fix(codes_str) {
 return {
     uci_backup_save,
     uci_backup_restore,
-    neutralize_zapret_defaults,
     doctor_fix_record,
     doctor_fix_overused,
     apply_quick_fix

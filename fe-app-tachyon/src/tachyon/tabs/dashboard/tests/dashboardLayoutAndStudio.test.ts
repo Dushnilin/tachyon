@@ -414,8 +414,8 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
         {
           code: 'media_dpi',
           sectionName: 'media_dpi',
-          displayName: 'Zapret2 (Direct DPI Bypass)',
-          action: 'zapret2',
+          displayName: 'Core Desync (Direct)',
+          action: 'desync',
           outbounds: [],
           configError: false,
         },
@@ -461,10 +461,10 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     expect(sectionNames).toEqual([
       'Youtube',
       'Discord',
-      'Zapret2 (Direct DPI Bypass)',
+      'Core Desync (Direct)',
       'Geo Block',
     ]);
-    expect(sectionNames).toContain('Zapret2 (Direct DPI Bypass)');
+    expect(sectionNames).toContain('Core Desync (Direct)');
     expect(sectionNames).not.toContain('block');
     expect(sectionNames).not.toContain('ByPass');
     expect(sectionNames).not.toContain('YandexDns');
@@ -491,7 +491,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     ['reject', 'Proxy'],
     ['dns_proxy', 'Proxy'],
     ['direct', 'Proxy'],
-    ['zapret_proxy', 'Proxy'],
+    ['desync_proxy', 'Proxy'],
   ])(
     'classifies connection section %s (%s) by its action',
     (sectionName, displayName) => {
@@ -508,7 +508,6 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
   );
 
   it.each([
-    ['ZAPRET2', 'dpi'],
     ['DESYNC', 'dpi'],
     ['BLOCK', 'block'],
     ['DNS', 'dns'],
@@ -630,7 +629,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
       resolveSectionCategory({ action: 'dns', '.name': 'YandexDns' } as any),
     ).toBe('dns');
     expect(
-      resolveSectionCategory({ action: 'zapret2', '.name': 'yt' } as any),
+      resolveSectionCategory({ action: 'desync', '.name': 'yt' } as any),
     ).toBe('dpi');
     expect(
       resolveSectionCategory({
@@ -920,9 +919,235 @@ xiaomi.com`,
 
     const warnings = wrap.querySelectorAll('.tachyon-section-order-warning');
     expect(warnings.length).toBe(1);
+    expect(warnings[0].textContent).toContain(
+      'Block / Bypass section priority violated',
+    );
     expect(warnings[0].textContent).toContain('RU Direct');
     expect(warnings[0].textContent).toContain('Block Telemetry');
     expect(warnings[0].textContent).toContain('Main Proxy');
+    expect(warnings[0].textContent).toContain('Youtube');
+    expect(warnings[0].textContent).toContain('Move above');
+    expect(warnings[0].textContent).toContain('To sections');
+  });
+
+  it('ignores disabled block/bypass or disabled routing sections and builds singular/plural reorder plans', () => {
+    // Disabled block section after Main Proxy must not trigger warning
+    const disabledOnly = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Ads',
+        action: 'block',
+        enabled: '0',
+        outbounds: [],
+      },
+    ]);
+    expect(disabledOnly.issues).toEqual([]);
+    expect(disabledOnly.moves).toEqual([]);
+
+    // Disabled routing section before block must not trigger warning
+    const disabledRoute = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'OldVpn',
+        sectionName: 'OldVpn',
+        displayName: 'Old VPN',
+        action: 'connection',
+        enabled: '0',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ]);
+    expect(disabledRoute.issues).toEqual([]);
+
+    // Singular violation after multiple routing sections (Discord, YouTube)
+    const singular = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'discord',
+        sectionName: 'discord',
+        displayName: 'Discord',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'youtube',
+        sectionName: 'youtube',
+        displayName: 'YouTube',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ]);
+    expect(singular.misplacedLabels).toEqual(['block']);
+    expect(singular.precedingLabels).toEqual(['Discord', 'YouTube']);
+    expect(singular.firstRoutingSectionName).toBe('discord');
+    expect(singular.moves).toEqual([{ from: 'block', to: 'discord' }]);
+
+    const singularDescEn =
+      renderOverviewMod.formatPolicySectionOrderWarningDescription(singular);
+    expect(singularDescEn).toContain('Section «block»');
+    expect(singularDescEn).toContain('«Discord», «YouTube»');
+
+    const prevLang = (globalThis as any).L?.env?.lang;
+    (globalThis as any).L = { env: { lang: 'ru' } };
+    try {
+      const singularDescRu =
+        renderOverviewMod.formatPolicySectionOrderWarningDescription(singular);
+      expect(singularDescRu).toContain('Секция «block»');
+      expect(singularDescRu).toContain('«Discord», «YouTube»');
+    } finally {
+      (globalThis as any).L = { env: { lang: prevLang || 'en' } };
+    }
+  });
+
+  it('reorders UCI sections on Move above click, saves, applies, and disables button while saving', async () => {
+    const onMovePolicySectionsAbove = vi.fn();
+    const sections = [
+      {
+        code: 'discord',
+        sectionName: 'discord',
+        displayName: 'Discord',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'youtube',
+        sectionName: 'youtube',
+        displayName: 'YouTube',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ];
+
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onMovePolicySectionsAbove,
+      isMovingPolicySections: false,
+    });
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const moveBtn = wrap
+      .querySelectorAll('.tachyon-section-order-warning__btn')
+      .find((b: any) => b.textContent.includes('Move above'));
+    expect(moveBtn).toBeDefined();
+    moveBtn.click({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(onMovePolicySectionsAbove).toHaveBeenCalledWith([
+      { from: 'block', to: 'discord' },
+    ]);
+
+    // Busy state disables button to prevent double clicks
+    const busyBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onMovePolicySectionsAbove,
+      isMovingPolicySections: true,
+    });
+    const busyWrap = createDummyElement('div');
+    busyBlocks.forEach((b: any) => busyWrap.appendChild(b));
+    const busyBtn = busyWrap
+      .querySelectorAll('.tachyon-section-order-warning__btn')
+      .find((b: any) => b.textContent.includes('Moving...'));
+    expect(busyBtn).toBeDefined();
+    expect(busyBtn.disabled).toBeTruthy();
+
+    // applyPolicySectionPriorityMoves executes uci.move -> uci.save -> ui.changes.apply
+    const order = ['discord', 'youtube', 'block', 'bypass'];
+    const moveCalls: Array<[string, string, string]> = [];
+    const uciMock = {
+      sections: vi.fn(() => order.map((name) => ({ '.name': name }))),
+      move: vi.fn((pkg: string, from: string, to: string) => {
+        moveCalls.push([pkg, from, to]);
+        const fromIdx = order.indexOf(from);
+        const [item] = order.splice(fromIdx, 1);
+        const toIdx = order.indexOf(to);
+        order.splice(toIdx, 0, item);
+        return true;
+      }),
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    const uiMock = {
+      changes: {
+        init: vi.fn().mockResolvedValue(undefined),
+        apply: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const onSuccess = vi.fn().mockResolvedValue(undefined);
+    const onNotify = vi.fn();
+
+    const ok = await renderOverviewMod.applyPolicySectionPriorityMoves(
+      [
+        { from: 'block', to: 'discord' },
+        { from: 'bypass', to: 'discord' },
+      ],
+      { uciObj: uciMock, uiObj: uiMock, onSuccess, onNotify },
+    );
+
+    expect(ok).toBe(true);
+    expect(moveCalls).toEqual([
+      ['tachyon', 'block', 'discord'],
+      ['tachyon', 'bypass', 'discord'],
+    ]);
+    expect(order).toEqual(['block', 'bypass', 'discord', 'youtube']);
+    expect(uciMock.save).toHaveBeenCalledTimes(1);
+    expect(uiMock.changes.init).toHaveBeenCalledTimes(1);
+    expect(uiMock.changes.apply).toHaveBeenCalledWith(true);
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onNotify).toHaveBeenCalledWith(expect.any(String), 'success');
   });
 
   it('hides sections marked hidden until Show hidden is toggled (#405)', () => {

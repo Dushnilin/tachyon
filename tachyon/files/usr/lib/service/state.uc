@@ -4,18 +4,12 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let rule_config = null;
 let connections = null;
-let zapret_validator = null;
-let zapret2_validator = null;
-let byedpi_validator = null;
 let common = require("core.common");
 let process_identity = require("core.process");
 
 function ensure_signature_deps() {
     if (rule_config == null) rule_config = require("config.rule");
     if (connections == null) connections = require("config.connections");
-    if (zapret_validator == null) zapret_validator = require("providers.zapret.validator");
-    if (zapret2_validator == null) zapret2_validator = require("providers.zapret2.validator");
-    if (byedpi_validator == null) byedpi_validator = require("providers.byedpi.validator");
 }
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
@@ -24,13 +18,8 @@ const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/v
 const DEFAULT_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
-const SING_BOX_PROVENANCE_FILE = getenv("TACHYON_SING_BOX_PROVENANCE_FILE") || "/var/run/tachyon/sing-box.provenance";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
+const TACHYON_CORE_PROVENANCE_FILE = getenv("TACHYON_CORE_PROVENANCE_FILE") || "/var/run/tachyon/tachyon-core.provenance";
 const CORE_LOG_PATH = getenv("TACHYON_CORE_LOG_PATH") || "/tmp/tachyon-core/tachyon-core.log";
-const LEGACY_CORE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
-const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
-const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
-const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
 
 let as_string = common.as_string;
 
@@ -139,15 +128,8 @@ const RELOAD_STATE_FIELDS = [
     "format",
     "service_trigger_signature",
     "dnsmasq_signature",
-    "sing_box_signature",
+    "tachyon_core_signature",
     "nft_signature",
-    "zapret_queue_signature",
-    "zapret_runtime_signature",
-    "zapret2_queue_signature",
-    "zapret2_runtime_signature",
-    "byedpi_runtime_signature",
-    "wdtt_runtime_signature",
-    "olcrtc_runtime_signature",
     "list_signature",
     "hosts_list_signature",
     "cron_signature",
@@ -232,7 +214,7 @@ function consume_pending_reload(path) {
 }
 
 // Only this one pending reason means "a subscription cache was rewritten",
-// which config.json regeneration plus a SIGHUP into the running sing-box
+// which config.json regeneration plus a SIGHUP into the running tachyon-core
 // settles. Every other reason still means the configuration itself changed and
 // has to go through the real reload (issue #119).
 const PENDING_RELOAD_SOFT_APPLY_REASON = "subscription_deferred_recovery";
@@ -445,31 +427,27 @@ function stdin_first_field() {
         print(fields[0], "\n");
 }
 
-function sing_box_service_pid_from_value(value) {
-    // The engine's procd service is `tachyon-core` now; an install that has
-    // not been through the service migration yet still registers as sing-box.
+function tachyon_core_service_pid_from_value(value) {
     value = type(value) == "object" ? value : {};
-    for (let name in [ "tachyon-core", "sing-box" ]) {
-        let service = value[name];
-        let instances = service && type(service.instances) == "object" ? service.instances : {};
+    let service = value["tachyon-core"];
+    let instances = service && type(service.instances) == "object" ? service.instances : {};
 
-        for (let _, instance in instances) {
-            if (type(instance) == "object" && instance.running === true && int(instance.pid || 0) > 0)
-                return int(instance.pid);
-        }
+    for (let _, instance in instances) {
+        if (type(instance) == "object" && instance.running === true && int(instance.pid || 0) > 0)
+            return int(instance.pid);
     }
 
     return 0;
 }
 
-function sing_box_service_pid() {
-    let pid = sing_box_service_pid_from_value(read_stdin_json());
+function tachyon_core_service_pid() {
+    let pid = tachyon_core_service_pid_from_value(read_stdin_json());
     if (pid > 0)
         print(pid, "\n");
 }
 
-function pid_is_sing_box(pid) {
-    return process_identity.is_sing_box(pid);
+function pid_is_tachyon_core_proc(pid) {
+    return process_identity.is_tachyon_core(pid);
 }
 
 function read_json_file_local(path) {
@@ -485,47 +463,38 @@ function read_json_file_local(path) {
 }
 
 function read_provenance_file() {
-    return read_json_file_local(SING_BOX_PROVENANCE_FILE);
+    return read_json_file_local(TACHYON_CORE_PROVENANCE_FILE);
 }
 
-function sing_box_service_pid_runtime() {
-    // new procd pid file first, the previous release's paths after it: an
-    // upgraded router can still be running under the old service name until
-    // the managed init script is rewritten
+function tachyon_core_service_pid_runtime() {
     for (let path in process_identity.core_contract().pid_files) {
         let pid = int(trim(fs.readfile(path) || "0"));
-        if (pid > 0 && pid_is_sing_box(pid))
+        if (pid > 0 && pid_is_tachyon_core_proc(pid))
             return pid;
     }
 
-    if (getenv("SING_BOX_TEST_PID_FILE") == null) {
+    if (getenv("TACHYON_CORE_TEST_PID_FILE") == null) {
         let prov = read_provenance_file();
         let prov_pid = type(prov) == "object" ? int(prov.pid || 0) : 0;
-        if (prov_pid > 0 && pid_is_sing_box(prov_pid))
+        if (prov_pid > 0 && pid_is_tachyon_core_proc(prov_pid))
             return prov_pid;
     }
 
-    // procd registers the service under its init script name; an install that
-    // has not been migrated yet still answers as sing-box
-    for (let name in [ "tachyon-core", "sing-box" ]) {
-        let data = command_output_from_args([ "ubus", "call", "service", "list", "{\"name\":\"" + name + "\"}" ]);
-        try {
-            let pid = sing_box_service_pid_from_value(json(data));
-            if (pid > 0 && pid_is_sing_box(pid))
-                return pid;
-        }
-        catch (e) {
-            // ubus is unavailable or answered with something that is not the
-            // service list; the fallbacks below handle this case.
-        }
+    let data = command_output_from_args([ "ubus", "call", "service", "list", "{\"name\":\"tachyon-core\"}" ]);
+    try {
+        let pid = tachyon_core_service_pid_from_value(json(data));
+        if (pid > 0 && pid_is_tachyon_core_proc(pid))
+            return pid;
+    }
+    catch (e) {
+        // ubus is unavailable or answered with something that is not the
+        // service list; the fallbacks below handle this case.
     }
 
     let pids = split(trim(command_trimmed_output_from_args([ "pidof", "tachyon-core" ])), /[ \t\r\n]+/);
-    if (length(pids) == 0 || pids[0] == "")
-        pids = split(trim(command_trimmed_output_from_args([ "pidof", "sing-box" ])), /[ \t\r\n]+/);
     for (let p in pids) {
         let pid = int(p);
-        if (pid > 0 && pid_is_sing_box(pid))
+        if (pid > 0 && pid_is_tachyon_core_proc(pid))
             return pid;
     }
 
@@ -542,7 +511,7 @@ function has_int(values, needle) {
 // Inbound and endpoint ports the generated config declares. Read from the config
 // rather than hardcoded, so this stays in step with the generator and verifies
 // both mixed proxy ports and configured Server Inbounds after SIGHUP.
-function sing_box_expected_ports() {
+function tachyon_core_expected_ports() {
     let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     let config_path = trim(as_string(settings.config_path || "")) || "/etc/tachyon-core/config.json";
     let data = fs.readfile(config_path);
@@ -596,14 +565,14 @@ function sing_box_expected_ports() {
     return { tcp, udp };
 }
 
-function sing_box_mixed_ports() {
-    return sing_box_expected_ports().tcp;
+function tachyon_core_mixed_ports() {
+    return tachyon_core_expected_ports().tcp;
 }
 
 // Are the ports the config promises actually in LISTEN? /proc/net/tcp and
 // /proc/net/udp are read directly: this runs inside the SIGHUP poll loop and a
 // netstat fork per iteration is exactly the kind of churn a reload should not add.
-function sing_box_expected_ports_listening(expected) {
+function tachyon_core_expected_ports_listening(expected) {
     let tcp_ports = type(expected) == "array" ? expected : (expected.tcp || []);
     let udp_ports = type(expected) == "object" ? (expected.udp || []) : [];
     if (length(tcp_ports) == 0 && length(udp_ports) == 0)
@@ -649,13 +618,13 @@ function sing_box_expected_ports_listening(expected) {
         for (let port in udp_ports)
             if (!listening_udp[int(port)])
                 return false;
-    }
+        }
 
     return true;
 }
 
-function sing_box_mixed_ports_listening(ports) {
-    return sing_box_expected_ports_listening(ports);
+function tachyon_core_mixed_ports_listening(ports) {
+    return tachyon_core_expected_ports_listening(ports);
 }
 
 // Read the core log from a byte offset and report whether the core emitted a
@@ -673,7 +642,7 @@ function core_logread_tail() {
     for (let line in split(out, "\n")) {
         if (index(line, "tachyon: [") >= 0)
             continue;
-        if (index(line, "tachyon-core") >= 0 || index(line, "sing-box") >= 0)
+        if (index(line, "tachyon-core") >= 0)
             push(lines, line);
     }
     return join("\n", lines);
@@ -700,7 +669,7 @@ function active_core_log_path() {
 }
 
 function core_log_reload_failed(since_offset, logread_before, log_path) {
-    let data = fs.readfile(log_path || active_core_log_path());
+    let data = fs.readfile(log_path || CORE_LOG_PATH);
     if (data != null) {
         data = as_string(data);
         if (length(data) > since_offset) {
@@ -727,34 +696,9 @@ function core_log_reload_failed(since_offset, logread_before, log_path) {
     return false;
 }
 
-// In-place hot reload (SIGHUP) is exclusively supported on tachyon-core.
-// When sing-box (stable / tiny / extended / lx) is active, return false so the
-// caller always performs a clean restart instead of relying on sing-box SIGHUP.
+// In-place hot reload (SIGHUP) is supported on tachyon-core.
 function pid_is_tachyon_core(pid) {
-    if (!pid_is_sing_box(pid))
-        return false;
-
-    let marker = trim(as_string(fs.readfile(SB_VARIANT_STATE_FILE) || ""));
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-    if (marker == "tachyon-core")
-        return true;
-    if (getenv("SB_VARIANT_STATE_FILE") == null) {
-        let rt_prof = trim(command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/tachyon_core/runtime.uc", "core-profile" ]));
-        if (rt_prof == "tachyon-core")
-            return true;
-    }
-    if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")
-        return false;
-
-    let exe = process_identity.exe_basename(pid);
-    if (exe == "sing-box")
-        return false;
-    if (exe == "tachyon-core")
-        return true;
-
-    let comm = trim(as_string(fs.readfile("/proc/" + as_string(pid) + "/comm") || ""));
-    return comm == "tachyon-core";
+    return pid_is_tachyon_core_proc(pid);
 }
 
 function consume_reload_preview() {
@@ -847,7 +791,7 @@ function config_state_reload_confirmed(clash_info, before_state, preview) {
 }
 
 function finalize_sighup_success(clash_info, has_state_probe) {
-    common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
+    common.write_file(RUNTIME_STATE_DIR + "/tachyon-core-reload.timestamp", as_string(time()) + "\n");
     if (has_state_probe)
         trigger_tachyon_route_recheck(clash_info);
     return true;
@@ -870,7 +814,7 @@ function try_sighup_reload(pid, preview) {
 
     let clash_info = core_clash_api_info();
     let before_state = fetch_tachyon_config_state(clash_info);
-    let log_path = active_core_log_path();
+    let log_path = CORE_LOG_PATH;
     let log_offset = 0;
     let log_stat = fs.stat(log_path);
     if (log_stat != null)
@@ -878,16 +822,16 @@ function try_sighup_reload(pid, preview) {
     let logread_before = core_logread_tail();
     command_success_from_args([ "kill", "-HUP", as_string(pid) ]);
 
-    let ports = sing_box_expected_ports();
+    let ports = tachyon_core_expected_ports();
     let deadline = 30;
     while (deadline > 0) {
         command_success_from_args([ "sleep", "0.5" ]);
         deadline--;
-        let current_pid = sing_box_service_pid_runtime();
+        let current_pid = tachyon_core_service_pid_runtime();
         if (current_pid <= 0)
             return false;   // process died — caller must restart
         let process_ok = current_pid == pid || pid_is_tachyon_core(current_pid);
-        if (process_ok && sing_box_mixed_ports_listening(ports)) {
+        if (process_ok && tachyon_core_mixed_ports_listening(ports)) {
             if (core_log_reload_failed(log_offset, logread_before, log_path))
                 return false;
             if (!config_state_reload_confirmed(clash_info, before_state, preview))
@@ -898,23 +842,19 @@ function try_sighup_reload(pid, preview) {
 
     // Timed out: verify at least that tachyon-core is still up, and that it is
     // not running deaf.
-    let final_pid = sing_box_service_pid_runtime();
+    let final_pid = tachyon_core_service_pid_runtime();
     if (final_pid <= 0 || !pid_is_tachyon_core(final_pid))
         return false;
     if (core_log_reload_failed(log_offset, logread_before, log_path))
         return false;
-    if (sing_box_mixed_ports_listening(ports) && config_state_reload_confirmed(clash_info, before_state, preview))
+    if (tachyon_core_mixed_ports_listening(ports) && config_state_reload_confirmed(clash_info, before_state, preview))
         return finalize_sighup_success(clash_info, before_state != null);
     return false;
 }
 
-function hup_sing_box_runtime() {
-    // The name said SIGHUP and the caller's log line said "SIGHUP DNS reload",
-    // but the body was a full /etc/init.d/tachyon-core restart, so every DNS
-    // failover dropped live sessions and the graceful path in
-    // reload_sing_box_runtime() was never the one being taken. Try SIGHUP first
-    // and fall back to a restart only when the process does not survive it.
-    let active_pid = sing_box_service_pid_runtime();
+function hup_tachyon_core_runtime() {
+    // Try SIGHUP first and fall back to a restart only when the process does not survive it.
+    let active_pid = tachyon_core_service_pid_runtime();
     if (active_pid > 0 && try_sighup_reload(active_pid)) {
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via tachyon-core SIGHUP (graceful)" ]);
         return;
@@ -952,12 +892,12 @@ function write_provenance_file(pid) {
         launched_at: int(time())
     };
 
-    ensure_parent_dir(SING_BOX_PROVENANCE_FILE);
+    ensure_parent_dir(TACHYON_CORE_PROVENANCE_FILE);
     let stamp = clock();
-    let tmp_path = sprintf("%s.%d.%d.tmp", SING_BOX_PROVENANCE_FILE, stamp[0], stamp[1]);
+    let tmp_path = sprintf("%s.%d.%d.tmp", TACHYON_CORE_PROVENANCE_FILE, stamp[0], stamp[1]);
     let text = sprintf("%J", provenance);
     if (write_text_file(tmp_path, text)) {
-        if (fs.rename(tmp_path, SING_BOX_PROVENANCE_FILE))
+        if (fs.rename(tmp_path, TACHYON_CORE_PROVENANCE_FILE))
             return true;
     }
     try { fs.unlink(tmp_path); } catch(e) {}
@@ -974,15 +914,15 @@ function verify_provenance() {
     if (pid <= 0 || recorded_ticks == "")
         return false;
 
-    if (!pid_is_sing_box(pid))
+    if (!pid_is_tachyon_core_proc(pid))
         return false;
 
     let current_ticks = process_start_ticks(fs.readfile("/proc/" + as_string(pid) + "/stat"));
     return as_string(current_ticks) == recorded_ticks;
 }
 
-function sing_box_is_foreign() {
-    let pid = sing_box_service_pid_runtime();
+function tachyon_core_is_foreign() {
+    let pid = tachyon_core_service_pid_runtime();
     if (pid <= 0)
         return false;
     if (!verify_provenance())
@@ -991,24 +931,24 @@ function sing_box_is_foreign() {
 }
 
 function cleanup_provenance_file() {
-    try { fs.unlink(SING_BOX_PROVENANCE_FILE); } catch(e) {}
+    try { fs.unlink(TACHYON_CORE_PROVENANCE_FILE); } catch(e) {}
 }
 
-function sing_box_pid_replaced(previous_pid, current_pid, current_is_sing_box) {
+function tachyon_core_pid_replaced(previous_pid, current_pid, current_is_core) {
     previous_pid = int(previous_pid || 0);
     current_pid = int(current_pid || 0);
-    current_is_sing_box = lc(as_string(current_is_sing_box));
-    let executable_matches = current_is_sing_box == "1" || current_is_sing_box == "true" ||
-        current_is_sing_box == "yes" || current_is_sing_box == "on";
+    current_is_core = lc(as_string(current_is_core));
+    let executable_matches = current_is_core == "1" || current_is_core == "true" ||
+        current_is_core == "yes" || current_is_core == "on";
     return current_pid > 0 && executable_matches &&
         (previous_pid <= 0 || current_pid != previous_pid);
 }
 
-function wait_sing_box_pid_replacement(previous_pid, timeout) {
+function wait_tachyon_core_pid_replacement(previous_pid, timeout) {
     timeout = int(timeout || 15);
     while (timeout > 0) {
-        let current_pid = sing_box_service_pid_runtime();
-        if (sing_box_pid_replaced(previous_pid, current_pid, pid_is_sing_box(current_pid)))
+        let current_pid = tachyon_core_service_pid_runtime();
+        if (tachyon_core_pid_replaced(previous_pid, current_pid, pid_is_tachyon_core_proc(current_pid)))
             return true;
 
         command_success_from_args([ "sleep", "1" ]);
@@ -1017,7 +957,7 @@ function wait_sing_box_pid_replacement(previous_pid, timeout) {
     return false;
 }
 
-function sing_box_reload_previous_pid(previous_pid, config_hash_before, config_hash_after) {
+function tachyon_core_reload_previous_pid(previous_pid, config_hash_before, config_hash_after) {
     previous_pid = as_string(previous_pid);
     if (as_string(config_hash_before) == as_string(config_hash_after) ||
         match(previous_pid, /^[0-9]+$/) == null || int(previous_pid) <= 0)
@@ -1030,7 +970,7 @@ function arg_bool(value) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-function sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force) {
+function tachyon_core_runtime_reload_needed(config_hash_before, config_hash_after, force) {
     return as_string(force) == "restart" || arg_bool(force) || as_string(config_hash_before) != as_string(config_hash_after);
 }
 
@@ -1047,15 +987,15 @@ function has_active_mtproxy_inbound() {
     return found;
 }
 
-function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after, force) {
-    if (!sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force)) {
+function reload_tachyon_core_runtime(previous_pid, config_hash_before, config_hash_after, force) {
+    if (!tachyon_core_runtime_reload_needed(config_hash_before, config_hash_after, force)) {
         command_success_from_args([ "logger", "-t", "tachyon", "[info] tachyon-core reload skipped: configuration is unchanged" ]);
         return;
     }
 
     // Try graceful SIGHUP reload first when tachyon-core is running: it reloads
     // config in-place without terminating the process, preserving active sessions.
-    let active_pid = sing_box_service_pid_runtime();
+    let active_pid = tachyon_core_service_pid_runtime();
     if (active_pid > 0 && as_string(force) != "restart" && pid_is_tachyon_core(active_pid)) {
         let preview = consume_reload_preview();
         if (type(preview) == "object" && preview.in_place === false) {
@@ -1072,8 +1012,8 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
 
     if (has_active_mtproxy_inbound()) {
         command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating tachyon-core and performing full restart (issue #30)" ]);
-        let mt_pid = sing_box_service_pid_runtime();
-        if (mt_pid > 0 && pid_is_sing_box(mt_pid)) {
+        let mt_pid = tachyon_core_service_pid_runtime();
+        if (mt_pid > 0 && pid_is_tachyon_core_proc(mt_pid)) {
             command_success_from_args([ "kill", "-9", as_string(mt_pid) ]);
             command_success_from_args([ "sleep", "0.2" ]);
         }
@@ -1091,16 +1031,16 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     }
 }
 
-function sing_box_service_running() {
-    let pid = sing_box_service_pid_runtime();
-    return pid > 0 && pid_is_sing_box(pid);
+function tachyon_core_service_running() {
+    let pid = tachyon_core_service_pid_runtime();
+    return pid > 0 && pid_is_tachyon_core_proc(pid);
 }
 
-function sing_box_service_stable(min_age) {
+function tachyon_core_service_stable(min_age) {
     min_age = int(min_age || 2);
 
-    let pid = sing_box_service_pid_runtime();
-    if (pid <= 0 || !pid_is_sing_box(pid))
+    let pid = tachyon_core_service_pid_runtime();
+    if (pid <= 0 || !pid_is_tachyon_core_proc(pid))
         return false;
 
     let age = process_age_seconds(pid);
@@ -1157,7 +1097,7 @@ function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
 
     let need_tproxy_route = proxy_mode != "tun" && proxy_mode != "socks";
     let tproxy_ok = !need_tproxy_route || (
-        getenv("SING_BOX_TEST_PID_FILE") != null
+        getenv("TACHYON_CORE_TEST_PID_FILE") != null
             ? command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ])
             : tproxy_route_rule_present_fast(rt_table, mark)
     );
@@ -1170,11 +1110,11 @@ function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
 }
 
 function tachyon_running(rt_table, nft_table, mark) {
-    return sing_box_service_running() && tachyon_runtime_network_configured(rt_table, nft_table, mark);
+    return tachyon_core_service_running() && tachyon_runtime_network_configured(rt_table, nft_table, mark);
 }
 
 function tachyon_stably_running(rt_table, nft_table, mark, min_age) {
-    return sing_box_service_stable(min_age) && tachyon_runtime_network_configured(rt_table, nft_table, mark);
+    return tachyon_core_service_stable(min_age) && tachyon_runtime_network_configured(rt_table, nft_table, mark);
 }
 
 function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) {
@@ -1193,14 +1133,14 @@ function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) 
 function wait_tachyon_core_service_stable(min_age, timeout) {
     timeout = int(timeout || 30);
     while (timeout > 0) {
-        if (sing_box_service_stable(min_age))
+        if (tachyon_core_service_stable(min_age))
             return true;
 
         command_success_from_args([ "sleep", "1" ]);
         timeout--;
     }
 
-    return sing_box_service_stable(min_age);
+    return tachyon_core_service_stable(min_age);
 }
 
 function whitespace_fields(value) {
@@ -1699,10 +1639,7 @@ function tailscale_nft_signature_value(sections, servers) {
         if (lc(trim(option(srv, "protocol", ""))) != "tailscale")
             continue;
         let name = as_string(srv[".name"] || "");
-        let mode = lc(trim(option(srv, "tailscale_mode", "singbox")));
-        if (mode == "")
-            mode = "singbox";
-        push(parts, "srv:" + name + ":" + mode);
+        push(parts, "srv:" + name + ":tachyon-core");
     }
     for (let sec in (type(sections) == "array" ? sections : [])) {
         sec = object_or_empty(sec);
@@ -2158,7 +2095,7 @@ function print_urltest_enabled_sections(sections) {
     print(urltest_enabled_sections_value(sections), "\n");
 }
 
-function sing_box_signature_has_remote_ruleset_sources(sections) {
+function tachyon_core_signature_has_remote_ruleset_sources(sections) {
     for (let section in sections) {
         section = object_or_empty(section);
         if (!bool_option(section, "enabled", true))
@@ -2171,26 +2108,6 @@ function sing_box_signature_has_remote_ruleset_sources(sections) {
     }
 
     return false;
-}
-
-function sing_box_signature_enabled_action_index(sections, target_section, action) {
-    let result = 0;
-    target_section = as_string(target_section);
-    action = as_string(action);
-
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (section_name(section) == "" ||
-            !bool_option(section, "enabled", true) ||
-            option(section, "action", "") != action)
-            continue;
-
-        result++;
-        if (section_name(section) == target_section)
-            return result;
-    }
-
-    return 0;
 }
 
 function signature_add_mixed_proxy_body(body, section, prefix) {
@@ -2220,7 +2137,7 @@ function signature_add_outbound_detour_body(body, section, prefix) {
     return body;
 }
 
-function append_sing_box_rule_signature_body(body, section, sections) {
+function append_tachyon_core_rule_signature_body(body, section, sections) {
     section = object_or_empty(section);
     let name = section_name(section);
     if (name == "" || !bool_option(section, "enabled", true))
@@ -2259,11 +2176,6 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
-    }
-    else if (action == "byedpi") {
-        body = signature_add_value(body, prefix + ".byedpi_index", sing_box_signature_enabled_action_index(sections, name, "byedpi"));
-        body = signature_add_mixed_proxy_body(body, section, prefix);
-        body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", "1");
     }
     else if (action == "awg") {
         body = signature_add_value(body, prefix + ".label", option(section, "label", ""));
@@ -2316,7 +2228,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     else if (index([
         "warp", "masque", "openvpn", "anytls", "snell", "mieru", "naive",
         "sudoku", "openconnect", "tewfai", "trusttunnel", "mtproto",
-        "shadowtls", "desync", "fptn", "tor"
+        "shadowtls", "desync", "fptn", "tor", "wdtt", "csqtt"
     ], action) >= 0) {
         let pkeys = keys(section);
         sort(pkeys);
@@ -2331,10 +2243,6 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         }
         body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
-    }
-    else if (action == "zapret" || action == "zapret2") {
-        body = signature_add_mixed_proxy_body(body, section, prefix);
-        body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", "1");
     }
     else if (action == "dns") {
         body = signature_add_value(body, prefix + ".dns_type", option(section, "dns_type", "udp"));
@@ -2431,7 +2339,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     return body;
 }
 
-function append_sing_box_server_signature_body(body, server) {
+function append_tachyon_core_server_signature_body(body, server) {
     server = object_or_empty(server);
     let name = section_name(server);
     if (name == "")
@@ -2516,7 +2424,6 @@ function append_sing_box_server_signature_body(body, server) {
         [ "tailscale_auth_key", "" ],
         [ "tailscale_control_url", "" ],
         [ "tailscale_hostname", "" ],
-        [ "tailscale_mode", "singbox" ],
         [ "tailscale_masquerade", "1" ],
         [ "tailscale_use_exit_node", "0" ],
         [ "tailscale_accept_routes", "" ],
@@ -2582,10 +2489,10 @@ function append_sing_box_server_signature_body(body, server) {
     return body;
 }
 
-function append_sing_box_profile_signature_body(body, profile) {
+function append_tachyon_core_profile_signature_body(body, profile) {
     let name = section_name(profile);
     if (name == "") return body;
-    let prefix = "sing_box.profile." + name;
+    let prefix = "tachyon_core.profile." + name;
     let enabled = bool_option(profile, "enabled", true) ? "1" : "0";
     body = signature_add_value(body, prefix + ".enabled", enabled);
     let dev_ips = join(",", list_option(profile, "device_ip"));
@@ -2597,10 +2504,10 @@ function append_sing_box_profile_signature_body(body, profile) {
     return body;
 }
 
-function append_sing_box_schedule_signature_body(body, schedule) {
+function append_tachyon_core_schedule_signature_body(body, schedule) {
     let name = section_name(schedule);
     if (name == "") return body;
-    let prefix = "sing_box.schedule." + name;
+    let prefix = "tachyon_core.schedule." + name;
     let enabled = bool_option(schedule, "enabled", true) ? "1" : "0";
     body = signature_add_value(body, prefix + ".enabled", enabled);
     let dev_ips = join(",", list_option(schedule, "device_ip"));
@@ -2619,7 +2526,7 @@ function append_sing_box_schedule_signature_body(body, schedule) {
     return body;
 }
 
-function sing_box_signature_body(settings, sections, servers, mwan3_active, schedules, profiles, telegram) {
+function tachyon_core_signature_body(settings, sections, servers, mwan3_active, schedules, profiles, telegram) {
     settings = object_or_empty(settings);
     let body = "";
 
@@ -2647,7 +2554,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     body = signature_add_value(body, "settings.block_doh", bool_option_value(settings, "block_doh", false));
     if (bool_option(settings, "dns_intercept_all", false))
         body = signature_add_value(body, "settings.dns_intercept_all", "1");
-    if (sing_box_signature_has_remote_ruleset_sources(sections))
+    if (tachyon_core_signature_has_remote_ruleset_sources(sections))
         body = signature_add_value(body, "settings.update_interval", settings_update_interval(settings));
     body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/usr/share/tachyon-core/cache.db"));
     body = signature_add_value(body, "settings.config_path", option(settings, "config_path", ""));
@@ -2713,216 +2620,26 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     let chunks = [ body ];
 
     for (let section in sections)
-        push(chunks, append_sing_box_rule_signature_body("", object_or_empty(section), sections));
+        push(chunks, append_tachyon_core_rule_signature_body("", object_or_empty(section), sections));
 
     for (let server in servers)
-        push(chunks, append_sing_box_server_signature_body("", object_or_empty(server)));
+        push(chunks, append_tachyon_core_server_signature_body("", object_or_empty(server)));
 
     for (let profile in profiles)
-        push(chunks, append_sing_box_profile_signature_body("", object_or_empty(profile)));
+        push(chunks, append_tachyon_core_profile_signature_body("", object_or_empty(profile)));
 
     for (let schedule in schedules)
-        push(chunks, append_sing_box_schedule_signature_body("", object_or_empty(schedule)));
+        push(chunks, append_tachyon_core_schedule_signature_body("", object_or_empty(schedule)));
 
     return join("", chunks);
-}
-
-function section_provider_for_action(section, action) {
-    if (section_name(section) == "" || !bool_option(section, "enabled", true))
-        return null;
-    action = as_string(action);
-    let src = connections.section_matching_provider_source(section, action);
-    if (option(section, "action", "") == action || src != null)
-        return connections.merge_section_with_provider_source(section, src);
-    return null;
-}
-
-function section_action_is_enabled(section, action) {
-    return section_provider_for_action(section, action) != null;
-}
-
-function action_queue_signature_body(sections, action, signature_key) {
-    let body = "";
-
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (section_action_is_enabled(section, action))
-            body = signature_add_value(body, signature_key, section_name(section));
-    }
-
-    return body;
-}
-
-function section_user_domains_for_list_type(section) {
-    let list_type = option(section, "user_domain_list_type", "disabled");
-
-    if (list_type == "dynamic")
-        return section_leaf_option_text(section, "user_domains");
-    if (list_type == "text")
-        return section_leaf_option_text(section, "user_domains_text");
-    return "";
-}
-
-function append_zapret_runtime_signature_body(body, section, signature_prefix, opt_key, normalized_opt) {
-    let name = section_name(section);
-    let user_domain_list_type = option(section, "user_domain_list_type", "disabled");
-
-    body = signature_add_value(body, signature_prefix + "." + name + "." + opt_key, normalized_opt);
-    body = signature_add_value(body, signature_prefix + "." + name + ".domain", section_rule_condition_csv(section, "domain", "domains"));
-    body = signature_add_value(body, signature_prefix + "." + name + ".domain_suffix", section_rule_condition_csv(section, "domain_suffix", "domains"));
-    body = signature_add_value(body, signature_prefix + "." + name + ".community_lists", connections.community_lists_value(section));
-    body = signature_add_value(body, signature_prefix + "." + name + ".rule_set", connections.rule_sets_value(section));
-    body = signature_add_value(body, signature_prefix + "." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-    body = signature_add_value(body, signature_prefix + "." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
-    body = signature_add_value(body, signature_prefix + "." + name + ".user_domain_list_type", user_domain_list_type);
-    body = signature_add_value(body, signature_prefix + "." + name + ".local_domain_lists", section_leaf_option_text(section, "local_domain_lists"));
-    body = signature_add_value(body, signature_prefix + "." + name + ".remote_domain_lists", section_leaf_option_text(section, "remote_domain_lists"));
-    body = signature_add_value(body, signature_prefix + "." + name + ".user_domains", section_user_domains_for_list_type(section));
-
-    return body;
-}
-
-function zapret_runtime_signature_body(sections) {
-    let body = "";
-
-    for (let raw_section in sections) {
-        let section = section_provider_for_action(object_or_empty(raw_section), "zapret");
-        if (section == null)
-            continue;
-
-        body = append_zapret_runtime_signature_body(
-        body,
-        section,
-        "zapret",
-        "nfqws_opt",
-            zapret_validator.strategy_or_default(option(section, "nfqws_opt", ""), ZAPRET_DEFAULT_NFQWS_OPT)
-        );
-    }
-
-    return body;
-}
-
-function zapret2_runtime_signature_body(sections) {
-    let body = "";
-
-    // Use active_provider_sections so that both legacy action=zapret2 sections
-    // and modern action=connection sections with a zapret2 outbound_source are
-    // included. Without this, switching Discord from zapret2 to Desync would not
-    // change the signature, so needs_zapret2_restart would stay false and the
-    // stale nfqws2 worker would keep running until the next full tachyon restart.
-    for (let section in connections.active_provider_sections("zapret2", sections)) {
-        section = object_or_empty(section);
-
-        body = append_zapret_runtime_signature_body(
-        body,
-        section,
-        "zapret2",
-        "nfqws2_opt",
-            zapret2_validator.strategy_or_default(option(section, "nfqws2_opt", ""), ZAPRET2_DEFAULT_NFQWS2_OPT)
-        );
-    }
-
-    return body;
-}
-
-function enabled_action_index(sections, target_section, action) {
-    let result = 0;
-    target_section = as_string(target_section);
-    action = as_string(action);
-
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_action_is_enabled(section, action))
-            continue;
-
-        result++;
-        if (section_name(section) == target_section)
-            return result;
-    }
-
-    return 0;
-}
-
-function byedpi_runtime_signature_body(sections) {
-    let body = "";
-
-    for (let raw_section in sections) {
-        let section = section_provider_for_action(object_or_empty(raw_section), "byedpi");
-        if (section == null)
-            continue;
-
-        let name = section_name(section);
-        body = signature_add_value(body, "byedpi." + name + ".index", enabled_action_index(sections, name, "byedpi"));
-        body = signature_add_value(body, "byedpi." + name + ".byedpi_cmd_opts", byedpi_validator.strategy_or_default(option(section, "byedpi_cmd_opts", ""), BYEDPI_DEFAULT_CMD_OPTS));
-    }
-
-    return body;
-}
-
-function wdtt_runtime_signature_body(sections) {
-    let body = "";
-
-    for (let raw_section in sections) {
-        let section = section_provider_for_action(object_or_empty(raw_section), "wdtt");
-        if (section == null)
-            continue;
-
-        let name = section_name(section);
-        body = signature_add_value(body, "wdtt." + name + ".peer", option(section, "peer", ""));
-        body = signature_add_value(body, "wdtt." + name + ".password", option(section, "password", ""));
-        body = signature_add_value(body, "wdtt." + name + ".device_id", option(section, "device_id", ""));
-        body = signature_add_value(body, "wdtt." + name + ".mode", option(section, "mode", ""));
-        body = signature_add_value(body, "wdtt." + name + ".workers", option(section, "workers", ""));
-        body = signature_add_value(body, "wdtt." + name + ".max_hashes", option(section, "max_hashes", ""));
-        body = signature_add_value(body, "wdtt." + name + ".mtu", option(section, "mtu", ""));
-        body = signature_add_value(body, "wdtt." + name + ".refresh", option(section, "refresh", ""));
-        body = signature_add_value(body, "wdtt." + name + ".auto_update", bool_option(section, "auto_update", true) ? "1" : "0");
-        body = signature_add_value(body, "wdtt." + name + ".block_doh", bool_option(section, "block_doh", false) ? "1" : "0");
-        body = signature_add_value(body, "wdtt." + name + ".block_ipv6", bool_option(section, "block_ipv6", false) ? "1" : "0");
-        body = signature_add_value(body, "wdtt." + name + ".subscription_links", join(" ", list_option(section, "subscription_links")));
-        body = signature_add_value(body, "wdtt." + name + ".community_lists", connections.community_lists_value(section));
-        body = signature_add_value(body, "wdtt." + name + ".remote_domain_list", join(" ", list_option(section, "remote_domain_list")));
-        body = signature_add_value(body, "wdtt." + name + ".qwdtt_mode", option(section, "qwdtt_mode", ""));
-    }
-
-    return body;
-}
-
-function olcrtc_runtime_signature_body(sections) {
-    let body = "";
-
-    for (let raw_section in sections) {
-        let section = section_provider_for_action(object_or_empty(raw_section), "olcrtc");
-        if (section == null)
-            continue;
-
-        let name = section_name(section);
-        body = signature_add_value(body, "olcrtc." + name + ".provider", option(section, "provider", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".transport", option(section, "transport", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".room_id", option(section, "room_id", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".crypto_key", option(section, "crypto_key", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".socks_host", option(section, "socks_host", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".socks_port", option(section, "socks_port", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".dns_server", option(section, "dns_server", ""));
-        body = signature_add_value(body, "olcrtc." + name + ".subscription_links", join(" ", list_option(section, "subscription_links")));
-    }
-
-    return body;
 }
 
 function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes, telegram) {
     let hashes = signature_hashes_batch({
         service_trigger_signature: service_trigger_signature_body(settings),
         dnsmasq_signature: dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present),
-        sing_box_signature: sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram),
+        tachyon_core_signature: tachyon_core_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram),
         nft_signature: nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes, servers),
-        zapret_queue_signature: action_queue_signature_body(sections, "zapret", "zapret_queue.section"),
-        zapret_runtime_signature: zapret_runtime_signature_body(sections),
-        zapret2_queue_signature: action_queue_signature_body(sections, "zapret2", "zapret2_queue.section"),
-        zapret2_runtime_signature: zapret2_runtime_signature_body(sections),
-        byedpi_runtime_signature: byedpi_runtime_signature_body(sections),
-        wdtt_runtime_signature: wdtt_runtime_signature_body(sections),
-        olcrtc_runtime_signature: olcrtc_runtime_signature_body(sections),
         list_signature: list_update_signature_body(sections),
         hosts_list_signature: hosts_list_signature_body(sections),
         cron_signature: cron_signature_body(settings, sections)
@@ -2931,15 +2648,8 @@ function reload_state_values_from_sources(format, settings, sections, servers, d
         format: as_string(format),
         service_trigger_signature: hashes.service_trigger_signature,
         dnsmasq_signature: hashes.dnsmasq_signature,
-        sing_box_signature: hashes.sing_box_signature,
+        tachyon_core_signature: hashes.tachyon_core_signature,
         nft_signature: hashes.nft_signature,
-        zapret_queue_signature: hashes.zapret_queue_signature,
-        zapret_runtime_signature: hashes.zapret_runtime_signature,
-        zapret2_queue_signature: hashes.zapret2_queue_signature,
-        zapret2_runtime_signature: hashes.zapret2_runtime_signature,
-        byedpi_runtime_signature: hashes.byedpi_runtime_signature,
-        wdtt_runtime_signature: hashes.wdtt_runtime_signature,
-        olcrtc_runtime_signature: hashes.olcrtc_runtime_signature,
         list_signature: hashes.list_signature,
         hosts_list_signature: hashes.hosts_list_signature,
         cron_signature: hashes.cron_signature,
@@ -3032,7 +2742,7 @@ function mwan3_active() {
     return multiwan_network_interfaces_active();
 }
 
-function has_remote_sing_box_ruleset_sources_from_sections(sections) {
+function has_remote_tachyon_core_ruleset_sources_from_sections(sections) {
     for (let section in sections) {
         if (!bool_option(section, "enabled", true))
             continue;
@@ -3256,12 +2966,12 @@ const FAST_RUNTIME_MODES = {
     "tachyon-core-service-pid": true,
     "tachyon-core-service-runtime-pid": true,
     "tachyon-core-service-pid-runtime": true,
-    "sing-box-service-running": true,
+    "tachyon-core-service-running": true,
     "tachyon-core-service-stable": true,
     "process-age-seconds-fixture": true,
-    "sing-box-pid-replaced-fixture": true,
-    "sing-box-reload-previous-pid-fixture": true,
-    "sing-box-runtime-reload-needed-fixture": true,
+    "tachyon-core-pid-replaced-fixture": true,
+    "tachyon-core-reload-previous-pid-fixture": true,
+    "tachyon-core-runtime-reload-needed-fixture": true,
     "tachyon-running": true,
     "tachyon-stably-running": true,
     "wait-tachyon-stable-start": true,
@@ -3297,11 +3007,11 @@ else if (mode == "acquire-runtime-dir-lock-wait")
 else if (mode == "release-runtime-dir-lock")
     release_runtime_dir_lock(ARGV[1]);
 else if (mode == "reload-core-runtime")
-    reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    reload_tachyon_core_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "sighup-core-runtime")
     exit(try_sighup_reload(ARGV[1]) ? 0 : 1);
 else if (mode == "hup-core-runtime")
-    hup_sing_box_runtime();
+    hup_tachyon_core_runtime();
 else if (mode == "clear-reload-state")
     clear_reload_state(ARGV[1], ARGV[2]);
 else if (mode == "remove-file")
@@ -3325,29 +3035,29 @@ else if (mode == "response-success")
 else if (mode == "stdin-first-field")
     stdin_first_field();
 else if (mode == "tachyon-core-service-pid")
-    sing_box_service_pid();
+    tachyon_core_service_pid();
 else if (mode == "tachyon-core-service-runtime-pid" || mode == "tachyon-core-service-pid-runtime") {
-    let pid = sing_box_service_pid_runtime();
+    let pid = tachyon_core_service_pid_runtime();
     if (pid <= 0)
         exit(1);
     print(pid, "\n");
 }
-else if (mode == "sing-box-service-running")
-    exit(sing_box_service_running() ? 0 : 1);
+else if (mode == "tachyon-core-service-running")
+    exit(tachyon_core_service_running() ? 0 : 1);
 else if (mode == "tachyon-core-service-stable")
-    exit(sing_box_service_stable(ARGV[1]) ? 0 : 1);
+    exit(tachyon_core_service_stable(ARGV[1]) ? 0 : 1);
 else if (mode == "process-age-seconds-fixture") {
     let age = process_age_seconds_from_ticks(ARGV[1], ARGV[2]);
     if (age == null)
         exit(1);
     print(age, "\n");
 }
-else if (mode == "sing-box-pid-replaced-fixture")
-    exit(sing_box_pid_replaced(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
-else if (mode == "sing-box-reload-previous-pid-fixture")
-    print(sing_box_reload_previous_pid(ARGV[1], ARGV[2], ARGV[3]), "\n");
-else if (mode == "sing-box-runtime-reload-needed-fixture")
-    exit(sing_box_runtime_reload_needed(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+else if (mode == "tachyon-core-pid-replaced-fixture")
+    exit(tachyon_core_pid_replaced(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+else if (mode == "tachyon-core-reload-previous-pid-fixture")
+    print(tachyon_core_reload_previous_pid(ARGV[1], ARGV[2], ARGV[3]), "\n");
+else if (mode == "tachyon-core-runtime-reload-needed-fixture")
+    exit(tachyon_core_runtime_reload_needed(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "tachyon-running")
     exit(tachyon_running(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "tachyon-stably-running")
@@ -3380,63 +3090,21 @@ else if (mode == "dnsmasq-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(dnsmasq_signature_body(fixture_settings(data), fixture_dnsmasq(data), fixture_legacy_dnsmasq_present(data))) ? 0 : 1);
 }
-else if (mode == "sing-box-signature")
-    exit(print_signature_hash(sing_box_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active(), uci_sections("schedule"), uci_sections("profile"), uci_section("telegram"))) ? 0 : 1);
-else if (mode == "sing-box-signature-fixture") {
+else if (mode == "tachyon-core-signature")
+    exit(print_signature_hash(tachyon_core_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active(), uci_sections("schedule"), uci_sections("profile"), uci_section("telegram"))) ? 0 : 1);
+else if (mode == "tachyon-core-signature-fixture") {
     let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram))) ? 0 : 1);
+    exit(print_signature_hash(tachyon_core_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram))) ? 0 : 1);
 }
-else if (mode == "sing-box-signature-body-fixture") {
+else if (mode == "tachyon-core-signature-body-fixture") {
     let data = fixture_data(ARGV[1]);
-    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram)));
+    print(tachyon_core_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram)));
 }
 else if (mode == "nft-signature")
     exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"), uci_sections("schedule"), uci_sections("profile"), uci_sections("guest_mode"), uci_servers())) ? 0 : 1);
 else if (mode == "nft-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(nft_runtime_signature_body(fixture_settings(data), fixture_section_list(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), fixture_section_list(data, "guest_mode"), fixture_servers(data))) ? 0 : 1);
-}
-else if (mode == "zapret-queue-signature")
-    exit(print_signature_hash(action_queue_signature_body(uci_sections("section"), "zapret", "zapret_queue.section")) ? 0 : 1);
-else if (mode == "zapret-queue-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(action_queue_signature_body(fixture_section_list(data), "zapret", "zapret_queue.section")) ? 0 : 1);
-}
-else if (mode == "zapret-runtime-signature")
-    exit(print_signature_hash(zapret_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "zapret-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(zapret_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
-}
-else if (mode == "zapret2-queue-signature")
-    exit(print_signature_hash(action_queue_signature_body(uci_sections("section"), "zapret2", "zapret2_queue.section")) ? 0 : 1);
-else if (mode == "zapret2-queue-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(action_queue_signature_body(fixture_section_list(data), "zapret2", "zapret2_queue.section")) ? 0 : 1);
-}
-else if (mode == "zapret2-runtime-signature")
-    exit(print_signature_hash(zapret2_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "zapret2-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(zapret2_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
-}
-else if (mode == "byedpi-runtime-signature")
-    exit(print_signature_hash(byedpi_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "byedpi-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(byedpi_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
-}
-else if (mode == "wdtt-runtime-signature")
-    exit(print_signature_hash(wdtt_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "wdtt-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(wdtt_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
-}
-else if (mode == "olcrtc-runtime-signature")
-    exit(print_signature_hash(olcrtc_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "olcrtc-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(olcrtc_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
 }
 else if (mode == "dont-touch-dhcp")
     print(dont_touch_dhcp_value(uci_settings()), "\n");
@@ -3512,10 +3180,10 @@ else if (mode == "urltest-enabled-sections-fixture") {
     let data = fixture_data(ARGV[1]);
     print_urltest_enabled_sections(fixture_section_list(data));
 }
-else if (mode == "has-remote-sing-box-ruleset-sources")
-    exit(has_remote_sing_box_ruleset_sources_from_sections(uci_sections("section")) ? 0 : 1);
-else if (mode == "has-remote-sing-box-ruleset-sources-fixture")
-    exit(has_remote_sing_box_ruleset_sources_from_sections(fixture_sections(ARGV[1])) ? 0 : 1);
+else if (mode == "has-remote-tachyon-core-ruleset-sources")
+    exit(has_remote_tachyon_core_ruleset_sources_from_sections(uci_sections("section")) ? 0 : 1);
+else if (mode == "has-remote-tachyon-core-ruleset-sources-fixture")
+    exit(has_remote_tachyon_core_ruleset_sources_from_sections(fixture_sections(ARGV[1])) ? 0 : 1);
 else if (mode == "has-list-update-sources")
     exit(has_list_update_sources_from_sections(uci_sections("section")) ? 0 : 1);
 else if (mode == "has-list-update-sources-fixture")
@@ -3537,7 +3205,7 @@ else if (mode == "write-provenance")
 else if (mode == "verify-provenance")
     exit(verify_provenance() ? 0 : 1);
 else if (mode == "core-is-foreign")
-    exit(sing_box_is_foreign() ? 0 : 1);
+    exit(tachyon_core_is_foreign() ? 0 : 1);
 else if (mode == "cleanup-provenance") {
     cleanup_provenance_file();
     exit(0);

@@ -97,7 +97,7 @@ let mockSections = [
   { '.name': 'main_proxy', action: 'connection', enabled: '1' },
   { '.name': 'policy_group', action: 'group', enabled: '1' },
   { '.name': 'disabled_group', action: 'group', enabled: '0' },
-  { '.name': 'local_dpi', action: 'zapret2', enabled: '1' },
+  { '.name': 'local_dpi', action: 'desync', enabled: '1' },
   { '.name': 'direct_bypass', action: 'bypass', enabled: '1' },
 ];
 let savedSdSections = ['policy_group'];

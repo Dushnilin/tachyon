@@ -608,19 +608,19 @@ function command_first_nonempty_line(command) {
 }
 
 function server_generate_uuid() {
-    return command_first_nonempty_line("tachyon-core generate uuid 2>/dev/null || sing-box generate uuid 2>/dev/null");
+    return command_first_nonempty_line("tachyon-core generate uuid 2>/dev/null");
 }
 
 function server_generate_password() {
-    return replace(output("tachyon-core generate rand --base64 18 2>/dev/null || sing-box generate rand --base64 18 2>/dev/null"), /\n/g, "");
+    return replace(output("tachyon-core generate rand --base64 18 2>/dev/null"), /\n/g, "");
 }
 
 function server_generate_short_id() {
-    return replace(output("tachyon-core generate rand --hex 4 2>/dev/null || sing-box generate rand --hex 4 2>/dev/null"), /\n/g, "");
+    return replace(output("tachyon-core generate rand --hex 4 2>/dev/null"), /\n/g, "");
 }
 
 function server_generate_mtproto_secret() {
-    let random_hex = replace(output("tachyon-core generate rand --hex 16 2>/dev/null || sing-box generate rand --hex 16 2>/dev/null"), /\n/g, "");
+    let random_hex = replace(output("tachyon-core generate rand --hex 16 2>/dev/null"), /\n/g, "");
     if (random_hex == "")
         random_hex = replace(output("head -c 16 /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null"), /\n/g, "");
     if (random_hex == "00000000000000000000000000000000")
@@ -661,7 +661,7 @@ function print_effective_security(section, protocol) {
 }
 
 function generate_reality_keypair_values() {
-    let data = output("tachyon-core generate reality-keypair 2>/dev/null || sing-box generate reality-keypair 2>/dev/null");
+    let data = output("tachyon-core generate reality-keypair 2>/dev/null");
     let private_key = first_key_value_line_value(data, "PrivateKey");
     let public_key = first_key_value_line_value(data, "PublicKey");
 
@@ -675,7 +675,7 @@ function generate_reality_keypair_values() {
 }
 
 function generate_wg_keypair_values() {
-    let data = output("tachyon-core generate wg-keypair 2>/dev/null || sing-box generate wg-keypair 2>/dev/null");
+    let data = output("tachyon-core generate wg-keypair 2>/dev/null");
     let private_key = first_key_value_line_value(data, "PrivateKey");
     let public_key = first_key_value_line_value(data, "PublicKey");
 
@@ -750,7 +750,7 @@ function server_generate_tls_keypair_files(server_name, certificate_path, key_pa
         return true;
     }
 
-    let data = output("tachyon-core generate tls-keypair " + shell_quote(clean_name) + " 2>/dev/null || sing-box generate tls-keypair " + shell_quote(clean_name) + " 2>/dev/null");
+    let data = output("tachyon-core generate tls-keypair " + shell_quote(clean_name) + " 2>/dev/null");
     if (data == "")
         return false;
 
@@ -870,7 +870,7 @@ function generate_awg_header_int() {
             return as_string(val);
         }
     }
-    let rand_hex = replace(output("tachyon-core generate rand --hex 3 2>/dev/null || sing-box generate rand --hex 3 2>/dev/null"), /\n/g, "");
+    let rand_hex = replace(output("tachyon-core generate rand --hex 3 2>/dev/null"), /\n/g, "");
     if (rand_hex != "") {
         let fallback_val = 100000000 + (int(rand_hex, 16) || 0);
         return as_string(fallback_val);

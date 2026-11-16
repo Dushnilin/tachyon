@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # A truncated .srs passes every cheap check Tachyon makes: the "SRS" magic sits at
 # the front, and a prefix of a real list is still far larger than the placeholder.
-# sing-box then dies on it with "parse rule-set: read rule: unexpected EOF", takes
+# tachyon-core then dies on it with "parse rule-set: read rule: unexpected EOF", takes
 # the whole generated config down with it, and the router stops applying anything -
 # a red check no list update clears. Reported on 1.4.9.
 #
 # The payload is a zlib stream, so the real length is not in the header and no size
-# comparison can tell a whole file from a prefix. The check therefore asks sing-box
+# comparison can tell a whole file from a prefix. The check therefore asks tachyon-core
 # to parse it, which is stubbed here: the test is about which files we adopt, not
-# about sing-box's parser.
+# about tachyon-core's parser.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
@@ -18,9 +18,9 @@ RULESETS_UC="$TACHYON_LIB/tachyon_core/rulesets.uc"
 STUB_BIN="$WORK_DIR/bin"
 mkdir -p "$STUB_BIN"
 
-# A stand-in for sing-box that rejects any file the test marked as truncated, by
+# A stand-in for tachyon-core that rejects any file the test marked as truncated, by
 # name. Anything else it accepts, which is what a whole file does.
-cat >"$STUB_BIN/sing-box" <<'STUB'
+cat >"$STUB_BIN/tachyon-core" <<'STUB'
 #!/usr/bin/env bash
 set -eo pipefail
 for arg in "$@"; do
@@ -30,9 +30,9 @@ for arg in "$@"; do
 done
 exit 0
 STUB
-chmod 0755 "$STUB_BIN/sing-box"
+chmod 0755 "$STUB_BIN/tachyon-core"
 
-export TACHYON_SING_BOX_BIN="$STUB_BIN/sing-box"
+export TACHYON_CORE_BIN="$STUB_BIN/tachyon-core"
 
 # Whole file: real magic, and comfortably past the placeholder.
 printf 'SRS\001\072\332\102\000\004\000\000\377\377\000\001\000\001payload' \
@@ -74,11 +74,11 @@ check is-usable-srs-file "$WORK_DIR/stub.srs"      no  "is_usable_srs_file on th
 check is-usable-srs-file "$WORK_DIR/garbage.bin"   no  "is_usable_srs_file on garbage"
 check is-usable-srs-file "$WORK_DIR/missing.srs"   no  "is_usable_srs_file on a missing file"
 
-# Without sing-box there is nothing to ask, and the cheap checks are all we have:
+# Without tachyon-core there is nothing to ask, and the cheap checks are all we have:
 # the function must degrade to the old answer instead of rejecting every list.
-out="$(TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verify-none" TACHYON_SING_BOX_BIN="$WORK_DIR/absent-sing-box" \
+out="$(TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verify-none" TACHYON_CORE_BIN="$WORK_DIR/absent-tachyon-core" \
   ucode -S -L "$TACHYON_LIB" "$RULESETS_UC" is-usable-srs-file "$WORK_DIR/whole.srs" 2>&1)" ||
-  { printf 'FAIL: without sing-box a whole list was rejected: %s\n' "$out" >&2; exit 1; }
+  { printf 'FAIL: without tachyon-core a whole list was rejected: %s\n' "$out" >&2; exit 1; }
 
 # And the adopt paths must ask for the strict predicate, not the cheap one. Both
 # call sites matter: a truncated download must not be published, and a truncated
@@ -86,20 +86,20 @@ out="$(TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verify-none" TACHYON_SING_BOX_BIN="$WOR
 for f in "$TACHYON_LIB/components/updates.uc" "$TACHYON_LIB/service/lifecycle.uc"; do
   [ -f "$f" ] || fail "missing $f"
   if ! grep -q 'is_usable_srs_file\|is_adoptable_srs_file' "$f"; then
-    fail "$f adopts .srs files without asking sing-box whether they parse"
+    fail "$f adopts .srs files without asking tachyon-core whether they parse"
   fi
 done
 
 # The /tmp copy has to be validated too. It used to be trusted outright, and that is
 # what left the reported router stuck: the file an older Tachyon downloaded passed
-# the cheap test, sing-box died on it, and the copy that was broken was the copy
+# the cheap test, tachyon-core died on it, and the copy that was broken was the copy
 # believed - so neither an apply nor a list update could recover.
 if ! grep -qE 'is_(adoptable|referenceable)_srs_file\(tmp_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
-  fail "lifecycle.uc trusts the /tmp copy without asking sing-box; a file downloaded before the fix stays broken forever"
+  fail "lifecycle.uc trusts the /tmp copy without asking tachyon-core; a file downloaded before the fix stays broken forever"
 fi
 
 if ! grep -qE 'is_(usable|adoptable|referenceable)_srs_file\(etc_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
-  fail "restore_rulesets_from_cache copies /etc .srs files into the ruleset sing-box reads without parsing them first"
+  fail "restore_rulesets_from_cache copies /etc .srs files into the ruleset tachyon-core reads without parsing them first"
 fi
 
 # Validating spawns a process, so it must happen once per file and not once per
@@ -108,7 +108,7 @@ fi
 # different file as far as this is concerned.
 STUB_LOG="$WORK_DIR/stub.log"
 : >"$STUB_LOG"
-cat >"$STUB_BIN/sing-box" <<STUB
+cat >"$STUB_BIN/tachyon-core" <<STUB
 #!/usr/bin/env bash
 set -eo pipefail
 printf '%s\n' "\$*" >>"$STUB_LOG"
@@ -119,7 +119,7 @@ for arg in "\$@"; do
 done
 exit 0
 STUB
-chmod 0755 "$STUB_BIN/sing-box"
+chmod 0755 "$STUB_BIN/tachyon-core"
 
 export TACHYON_SRS_VERIFY_DIR="$WORK_DIR/verify"
 
@@ -162,9 +162,9 @@ adopt "$WORK_DIR/truncated.srs" no "second adopt of a truncated list"
   { printf 'FAIL: expected 4 spawns after the truncated adopts, got %s\n' "$(spawns)" >&2; exit 1; }
 
 # End to end through the generator: a section that references a built-in list must
-# not be handed a `local` rule_set pointing at a file sing-box cannot read. That
+# not be handed a `local` rule_set pointing at a file tachyon-core cannot read. That
 # config is refused outright, which is what left the router unable to apply
-# anything. Falling through to the remote url lets sing-box fetch the list itself,
+# anything. Falling through to the remote url lets tachyon-core fetch the list itself,
 # which is the recovery the reporter was missing.
 GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 [ -f "$GENERATOR_UC" ] || fail "missing $GENERATOR_UC"
@@ -216,11 +216,11 @@ gen_config_with_list "$WORK_DIR/whole.srs" "$WORK_DIR/gen-whole.json"
 gen_config_with_list "$WORK_DIR/truncated.srs" "$WORK_DIR/gen-truncated.json"
 kind="$(rule_set_kind "$WORK_DIR/gen-truncated.json")"
 [ "$kind" = "remote" ] ||
-  { printf 'FAIL: a truncated list was still referenced as %s; sing-box refuses that config with unexpected EOF\n' "$kind" >&2; exit 1; }
+  { printf 'FAIL: a truncated list was still referenced as %s; tachyon-core refuses that config with unexpected EOF\n' "$kind" >&2; exit 1; }
 
 # The placeholder is the opposite case and must stay local. It is valid and
 # parseable - it simply matches nothing - and it exists so a cold boot without a
-# network still applies. A remote rule_set here puts the fetch back into sing-box's
+# network still applies. A remote rule_set here puts the fetch back into tachyon-core's
 # startup, where a GitHub hiccup kills the core with "initialize rule-set: context
 # deadline exceeded". Two tests in this suite pull in opposite directions on the
 # stub (cold_boot_community_stub wants local, and the TCH-1043 note wanted remote);

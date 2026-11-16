@@ -6,12 +6,11 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
-let variant_state = require("tachyon_core.variant_state");
 let gomemlimit = require("core.gomemlimit");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/tachyon-core";
+const TMP_TACHYON_CORE_FOLDER = getenv("TMP_TACHYON_CORE_FOLDER") || constants.TMP_TACHYON_CORE_FOLDER || "/tmp/tachyon-core";
 const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK_PROXY_IP_DOMAIN || "ip.podkop.fyi";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
@@ -21,10 +20,10 @@ const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || constants.NFT_IP_
 const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || constants.NFT_INTERFACE_SET_NAME || "tachyon_interfaces";
 const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || constants.NFT_DISCORD_SET_NAME || "tachyon_discord_subnets";
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || constants.NFT_LOCALV4_SET_NAME || "localv4";
-const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
+const CORE_CLASH_API_CONTROLLER_PORT = getenv("TACHYON_CORE_CLASH_API_CONTROLLER_PORT") || getenv("CORE_CLASH_API_CONTROLLER_PORT") || constants.TACHYON_CORE_CLASH_API_CONTROLLER_PORT || constants.CORE_CLASH_API_CONTROLLER_PORT || "9090";
 const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://www.gstatic.com/generate_204";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
+const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const PROVIDERS_STATUS_UC = LIB_DIR + "/providers/status.uc";
 const SERVICE_UI_UC = LIB_DIR + "/service/ui.uc";
 
@@ -170,21 +169,6 @@ function uci_sections(type_name) {
 function active_engine_name() {
     let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
     return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
-}
-
-// Native Tailscale (tailscale_mode=native) runs tailscaled outside sing-box:
-// servers.uc:567 skips the endpoint, tailscaled manages its own nft rules.
-// Diagnostics must not flag the absence of those as errors.
-function native_tailscale_enabled() {
-    for (let section in uci_sections("server")) {
-        if (as_string(section["enabled"]) == "0" || as_string(section["enabled"]) == "false")
-            continue;
-        if (as_string(section["protocol"] || "") != "tailscale")
-            continue;
-        if (as_string(section["tailscale_mode"] || "singbox") == "native")
-            return true;
-    }
-    return false;
 }
 
 function parse_json_or_null(text) {
@@ -346,15 +330,14 @@ function server_runtime_type_for_protocol(protocol) {
         return "";
     if (protocol == "mtproto")
         return "mtproxy";
-    // Every schema Tachyon generates calls the AWG object "wireguard": an
-    // inbound on extended, an endpoint on lx / tachyon-core.
+    // Every schema Tachyon generates calls the AWG object "wireguard" (endpoint).
     if (protocol == "awg")
         return "wireguard";
     return protocol;
 }
 
 // The port an AWG server actually listens on, mirroring the generator:
-// singbox/servers.uc gives awg_server_port precedence, then listen_port, then
+// tachyon_core/servers.uc gives awg_server_port precedence, then listen_port, then
 // the 51820 WireGuard default - and nft/apply.uc opens exactly that port. The
 // generic listen_port option alone is not what the core binds, so every probe
 // below has to ask about the effective port.
@@ -587,7 +570,7 @@ function check_inbounds_config() {
 
 function check_inbounds() {
     let cfg = settings();
-    let sing_box_config_path = option(cfg, "config_path", "");
+    let core_config_path = option(cfg, "config_path", "");
     let wan_ip = get_wan_ip_addresses();
     let wan_public = 0;
     for (let ip in words(wan_ip)) {
@@ -599,7 +582,7 @@ function check_inbounds() {
     let items = [];
     let enabled_count = 0;
     let requires_public_wan = 0;
-    let sb_config = sing_box_config_path != "" ? common.read_json_file(sing_box_config_path) : null;
+    let sb_config = core_config_path != "" ? common.read_json_file(core_config_path) : null;
     let netstat_lnp_cache = null;
     let netstat_ln_cache = null;
     let firewall_cache = null;
@@ -624,16 +607,9 @@ function check_inbounds() {
         let inbound_tag = server_inbound_tag(section_name);
         let expected_type = server_runtime_type_for_protocol(protocol);
         let required_proto = server_required_inbound_proto(protocol, section);
-        let is_section_native_ts = (protocol == "tailscale" && option(section, "tailscale_mode", "singbox") == "native");
         let runtime_json = protocol == "tailscale"
             ? runtime_summary_json_from_config(sb_config, "endpoints", inbound_tag)
             : runtime_summary_json_from_config(sb_config, "inbounds", inbound_tag);
-        // Native mode: tailscaled runs outside sing-box, no endpoint is
-        // generated (servers.uc add_server) and no route rule is expected.
-        if (is_section_native_ts) {
-            runtime_json = "";
-            routing_mode = "native";
-        }
 
         let listening = -1;
         let firewall_required = 0;
@@ -659,9 +635,7 @@ function check_inbounds() {
             }
         }
 
-        let routes_configured = is_section_native_ts
-            ? 1
-            : (has_route_rule_for_inbound_in_config(sb_config, inbound_tag) ? 1 : 0);
+        let routes_configured = has_route_rule_for_inbound_in_config(sb_config, inbound_tag) ? 1 : 0;
 
         let public_host_ips = "";
         if (protocol != "json_inbound" && !(protocol == "tailscale" && public_host == "")) {
@@ -698,7 +672,7 @@ function check_inbounds() {
 
     write_json({
         enabled_count,
-        config_path: sing_box_config_path,
+        config_path: core_config_path,
         wan_ip,
         wan_ipv6: network_mod.first_ipv6_from_list(wan_ip),
         wan_public,
@@ -711,39 +685,39 @@ function check_inbounds() {
 
 function cleanup_check_proxy_dir(dir) {
     dir = as_string(dir);
-    let prefix = TMP_SING_BOX_FOLDER + "/check-proxy-";
+    let prefix = TMP_TACHYON_CORE_FOLDER + "/check-proxy-";
     if (substr(dir, 0, length(prefix)) == prefix)
         command_success_from_args([ "rm", "-rf", dir ]);
 }
 
 function check_proxy() {
-    let sing_box_config_path = option(settings(), "config_path", "");
-    let bin = command_exists("tachyon-core") ? "tachyon-core" : (command_exists("sing-box") ? "sing-box" : "");
+    let core_config_path = option(settings(), "config_path", "");
+    let bin = command_exists("tachyon-core") ? "tachyon-core" : "";
     if (bin == "") {
         nolog("tachyon-core is not installed");
         return 1;
     }
-    if (!file_exists(sing_box_config_path)) {
+    if (!file_exists(core_config_path)) {
         nolog("Configuration file not found");
         return 1;
     }
 
     nolog("Checking " + bin + " configuration...");
-    if (!command_success_from_args([ bin, "-c", sing_box_config_path, "check" ])) {
+    if (!command_success_from_args([ bin, "-c", core_config_path, "check" ])) {
         nolog("Invalid configuration");
         return 1;
     }
 
-    print(status_output([ "mask-sing-box-config", sing_box_config_path ], null));
+    print(status_output([ "mask-core-config", core_config_path ], null));
     nolog("Checking proxy connection...");
 
-    let check_proxy_dir = TMP_SING_BOX_FOLDER + "/check-proxy-" + clock()[0] + "-" + clock()[1];
+    let check_proxy_dir = TMP_TACHYON_CORE_FOLDER + "/check-proxy-" + clock()[0] + "-" + clock()[1];
     let check_proxy_config = check_proxy_dir + "/config.json";
     let check_proxy_cache = check_proxy_dir + "/cache.db";
 
     cleanup_check_proxy_dir(check_proxy_dir);
     common.ensure_dir(check_proxy_dir);
-    if (!status_success([ "prepare-check-proxy-config", sing_box_config_path, check_proxy_config, check_proxy_cache ], null)) {
+    if (!status_success([ "prepare-check-proxy-config", core_config_path, check_proxy_config, check_proxy_cache ], null)) {
         nolog("Failed to prepare temporary configuration");
         cleanup_check_proxy_dir(check_proxy_dir);
         return 1;
@@ -875,12 +849,6 @@ function nft_chain_counter_status(chain) {
 const TACHYON_OWN_MARKS = [
     constants.NFT_FAKEIP_MARK || "0x04000000",
     constants.NFT_OUTBOUND_MARK || "0x08000000",
-    constants.ZAPRET_DESYNC_MARK || "0x40000000",
-    constants.ZAPRET_DESYNC_MARK_POSTNAT || "0x20000000",
-    constants.ZAPRET2_DESYNC_MARK || "0x40000000",
-    constants.ZAPRET2_DESYNC_MARK_POSTNAT || "0x20000000",
-    constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000",
-    constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000",
     "0x00200000",
     "0x00240000",
     "0x00ff0000"
@@ -982,13 +950,6 @@ function check_nft_rules() {
         let table_name = fields[2];
         if (table_name == NFT_TABLE_NAME)
             continue;
-        // Native Tailscale: tailscaled (and Tachyon's own exit-node/firewall
-        // rules) live in their own table — their marking rules are expected.
-        if (table_name == "tachyon_tailscale" && native_tailscale_enabled())
-            continue;
-        // Zapret / Zapret2 companion tables managed alongside Tachyon
-        if (table_name == "zapret" || table_name == "zapret2")
-            continue;
         if (nft_table_has_other_mark_rules(family, table_name)) {
             rules_other_mark_exist = 1;
             break;
@@ -1040,7 +1001,7 @@ function clash_json_data(args, auth) {
 
 function clash_api_url() {
     if (getenv("FAKE_CURL_LOG") == null) {
-        for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_SING_BOX_FOLDER + "/config.json" ]) {
+        for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_TACHYON_CORE_FOLDER + "/config.json" ]) {
             let cfg_data = fs.readfile(cfg_path);
             if (!cfg_data)
                 continue;
@@ -1059,15 +1020,15 @@ function clash_api_url() {
             } catch (e) {}
         }
     }
-    let address = replace(module_output(SINGBOX_RUNTIME_UC, [ "service-listen-address" ]), /[\r\n]+$/g, "");
+    let address = replace(module_output(TACHYON_CORE_RUNTIME_UC, [ "service-listen-address" ]), /[\r\n]+$/g, "");
     if (address == "")
         address = "127.0.0.1";
-    return address + ":" + SB_CLASH_API_CONTROLLER_PORT;
+    return address + ":" + CORE_CLASH_API_CONTROLLER_PORT;
 }
 
 function clash_auth_args() {
     let secret = "";
-    for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_SING_BOX_FOLDER + "/config.json" ]) {
+    for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_TACHYON_CORE_FOLDER + "/config.json" ]) {
         let config_data = fs.readfile(cfg_path);
         if (config_data) {
             try {
@@ -1213,79 +1174,11 @@ function uci_config_stamp() {
     return join("|", parts);
 }
 
-function zapret_section_tags(secs) {
-    let tags = [];
-    for (let sec in secs) {
-        if (option(sec, "enabled", "1") == "0")
-            continue;
-        let sec_name = as_string(sec[".name"]);
-        if (sec_name != "")
-            push(tags, sec_name + "-out");
-    }
-    return tags;
-}
-
 function build_conntrack_mark_map() {
     let marks = {};
-    let default_zapret = "";
-    let default_zapret2 = "";
-    let z1_idx = 0;
-    let z2_idx = 0;
-    let z1_base = int(as_string(constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000"), 0) || 0x01000000;
-    let z2_base = int(as_string(constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000"), 0) || 0x02000000;
-
     let state_dir = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
-    // config.connections costs ~0.12s to load on router CPUs and the UI polls this
-    // every few seconds; the zapret tags only change with the UCI config itself.
-    let zapret_cache_file = state_dir + "/conntrack-zapret-tags.json";
-    let uci_stamp = uci_config_stamp();
-    let zapret_cached = common.read_json_file(zapret_cache_file);
-    let z1_tags = null, z2_tags = null;
-    if (uci_stamp != "" && type(zapret_cached) == "object" && zapret_cached.stamp == uci_stamp &&
-        type(zapret_cached.z1) == "array" && type(zapret_cached.z2) == "array") {
-        z1_tags = zapret_cached.z1;
-        z2_tags = zapret_cached.z2;
-    } else {
-        let secs = uci_sections("section");
-        let connections = null;
-        try { connections = require("config.connections"); } catch (e) {}
-        let z1_secs = (connections && connections.active_provider_sections)
-            ? connections.active_provider_sections("zapret", secs)
-            : [];
-        let z2_secs = (connections && connections.active_provider_sections)
-            ? connections.active_provider_sections("zapret2", secs)
-            : [];
-        if (length(z1_secs) == 0 && length(z2_secs) == 0) {
-            for (let sec in secs) {
-                if (option(sec, "enabled", "1") == "0")
-                    continue;
-                let act = lc(option(sec, "action", ""));
-                if (act == "zapret")
-                    push(z1_secs, sec);
-                else if (act == "zapret2")
-                    push(z2_secs, sec);
-            }
-        }
-        z1_tags = zapret_section_tags(z1_secs);
-        z2_tags = zapret_section_tags(z2_secs);
-        if (uci_stamp != "" && fs.stat(state_dir) != null)
-            common.write_json_file(zapret_cache_file, { stamp: uci_stamp, z1: z1_tags, z2: z2_tags }, 0);
-    }
-    for (let tag in z1_tags) {
-        z1_idx++;
-        marks[as_string(z1_base + z1_idx)] = tag;
-        if (default_zapret == "")
-            default_zapret = tag;
-    }
-    for (let tag in z2_tags) {
-        z2_idx++;
-        marks[as_string(z2_base + z2_idx)] = tag;
-        if (default_zapret2 == "")
-            default_zapret2 = tag;
-    }
-
     let mark_cache_file = state_dir + "/conntrack-mark-map.json";
-    for (let cfg_path in [ TMP_SING_BOX_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {
+    for (let cfg_path in [ TMP_TACHYON_CORE_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {
         let st = fs.stat(cfg_path);
         if (st == null)
             continue;
@@ -1337,8 +1230,6 @@ function build_conntrack_mark_map() {
 
     return {
         marks: marks,
-        default_zapret: default_zapret,
-        default_zapret2: default_zapret2,
         tailscale_section_id: tailscale_section_id
     };
 }
@@ -1414,8 +1305,6 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
 
     let result = [];
     let marks = (type(mark_info) == "object" && type(mark_info.marks) == "object") ? mark_info.marks : {};
-    let def_z1 = type(mark_info) == "object" ? as_string(mark_info.default_zapret || "") : "";
-    let def_z2 = type(mark_info) == "object" ? as_string(mark_info.default_zapret2 || "") : "";
     let ts_sec_id = type(mark_info) == "object" ? as_string(mark_info.tailscale_section_id || "") : "";
     let host_map = type(ip_host_map) == "object" ? ip_host_map : {};
 
@@ -1508,15 +1397,6 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
         if (marks[rmark_key] != null && marks[rmark_key] != "") {
             route_tag = marks[rmark_key];
             rule_str = sprintf("conntrack mark=0x%x => route(%s)", mark_val, route_tag);
-        } else if ((route_mark & 0xff000000) == 0x02000000) {
-            route_tag = def_z2 != "" ? def_z2 : "zapret2-out";
-            rule_str = sprintf("conntrack mark=0x%x => route(%s)", mark_val, route_tag);
-        } else if ((route_mark & 0xff000000) == 0x01000000) {
-            route_tag = def_z1 != "" ? def_z1 : "zapret-out";
-            rule_str = sprintf("conntrack mark=0x%x => route(%s)", mark_val, route_tag);
-        } else if ((mark_val & 0x60000000) != 0) {
-            route_tag = def_z2 != "" ? def_z2 : (def_z1 != "" ? def_z1 : "zapret2-out");
-            rule_str = sprintf("conntrack nfqueue mark=0x%x => route(%s)", mark_val, route_tag);
         } else if (orig_dport == "53" && !is_ts_conn) {
             route_tag = "dns-out";
             rule_str = "conntrack => dns-out";

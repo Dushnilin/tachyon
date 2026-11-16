@@ -43,26 +43,25 @@ function fallback_init_script_kills_itself(text) {
 function fallback_managed_core_init_script(marker) {
     marker = as_string(marker);
     if (marker == "")
-        marker = "Tachyon managed sing-box service for binary variants";
+        marker = "Tachyon managed tachyon-core service";
     return "#!/bin/sh /etc/rc.common\n" +
         "# " + marker + "\n\n" +
         "USE_PROCD=1\n" +
         "START=99\n" +
-        "PROG=\"/usr/bin/tachyon-core\"\n" +
-        "[ -x \"$PROG\" ] || PROG=\"/usr/bin/sing-box\"\n\n" +
+        "PROG=\"/usr/bin/tachyon-core\"\n\n" +
         "_kill_daemon_instances() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "    for p in $(pidof tachyon-core 2>/dev/null); do\n" +
         "        [ \"$p\" != \"$$\" ] || continue\n" +
         "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box) kill -9 \"$p\" 2>/dev/null || true ;;\n" +
+        "            */tachyon-core) kill -9 \"$p\" 2>/dev/null || true ;;\n" +
         "        esac\n" +
         "    done\n" +
         "}\n\n" +
         "_has_running_daemon() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "    for p in $(pidof tachyon-core 2>/dev/null); do\n" +
         "        [ \"$p\" != \"$$\" ] || continue\n" +
         "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box) return 0 ;;\n" +
+        "            */tachyon-core) return 0 ;;\n" +
         "        esac\n" +
         "    done\n" +
         "    return 1\n" +
@@ -77,7 +76,7 @@ function fallback_managed_core_init_script(marker) {
         "    local log_stderr\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
-        "    [ -x \"$PROG\" ] || PROG=\"$(command -v tachyon-core 2>/dev/null || command -v sing-box 2>/dev/null || echo /usr/bin/tachyon-core)\"\n" +
+        "    [ -x \"$PROG\" ] || PROG=\"$(command -v tachyon-core 2>/dev/null || echo /usr/bin/tachyon-core)\"\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/tachyon-core/config.json\"\n" +
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
@@ -127,10 +126,10 @@ function fallback_managed_core_init_script(marker) {
         "    procd_close_instance\n" +
         "}\n\n" +
         "stop_service() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "    for p in $(pidof tachyon-core 2>/dev/null); do\n" +
         "        [ \"$p\" != \"$$\" ] || continue\n" +
         "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box) kill -TERM \"$p\" 2>/dev/null || true ;;\n" +
+        "            */tachyon-core) kill -TERM \"$p\" 2>/dev/null || true ;;\n" +
         "        esac\n" +
         "    done\n" +
         "    local i=0\n" +
@@ -142,10 +141,10 @@ function fallback_managed_core_init_script(marker) {
         "    _kill_daemon_instances\n" +
         "}\n\n" +
         "reload_service() {\n" +
-        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "    for p in $(pidof tachyon-core 2>/dev/null); do\n" +
         "        [ \"$p\" != \"$$\" ] || continue\n" +
         "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
-        "            */tachyon-core|*/sing-box)\n" +
+        "            */tachyon-core)\n" +
         "                if ucode -L /usr/lib/tachyon /usr/lib/tachyon/service/state.uc sighup-core-runtime \"$p\" >/dev/null 2>&1; then\n" +
         "                    return 0\n" +
         "                fi\n" +
@@ -162,9 +161,9 @@ function fallback_managed_core_init_script(marker) {
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/tachyon-core";
-const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
-const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
+const TMP_TACHYON_CORE_FOLDER = getenv("TMP_TACHYON_CORE_FOLDER") || "/tmp/tachyon-core";
+const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/rulesets";
+const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_TACHYON_CORE_FOLDER + "/subscriptions";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
 const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
@@ -189,13 +188,10 @@ const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "tachyon_inte
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || "localv4";
 const NFT_LOCALV6_SET_NAME = getenv("NFT_LOCALV6_SET_NAME") || "localv6";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x04000000";
-const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
-const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
-const SB_LEGACY_VARIANT_STATE_FILE = "/etc/tachyon/sing-box-variant";
-const SB_LEGACY_VERSION_STATE_FILE = "/etc/tachyon/sing-box-version";
-const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || "Tachyon managed sing-box service for binary variants";
+const CORE_SERVICE_MIXED_INBOUND_ADDRESS = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
+const CORE_SERVICE_MIXED_INBOUND_PORT = getenv("TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT") || "4534";
+const CORE_VERSION_STATE_FILE = getenv("TACHYON_CORE_VERSION_FILE") || "/etc/tachyon/tachyon-core-version";
+const CORE_MANAGED_SERVICE_MARKER = getenv("TACHYON_CORE_MANAGED_SERVICE_MARKER") || "Tachyon managed tachyon-core service";
 
 function command_env(assignments) {
     let parts = [];
@@ -278,168 +274,59 @@ function first_line_last_field(value) {
     return length(fields) > 0 ? as_string(fields[length(fields) - 1]) : "";
 }
 
-let parse_sing_box_version = common.parse_sing_box_version;
-
-function sing_box_variant_marker() {
-    let marker = file_first_line(SB_VARIANT_STATE_FILE);
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = file_first_line(SB_LEGACY_VARIANT_STATE_FILE);
-    return marker;
-}
+let parse_core_version = common.parse_core_version;
 
 function find_core_binary() {
-    let marker = sing_box_variant_marker();
-    let prefer_sing_box = (marker == "extended" || marker == "tiny" || marker == "stable");
-    let order = prefer_sing_box ? [ "sing-box", "tachyon-core" ] : [ "tachyon-core", "sing-box" ];
     let path_env = as_string(getenv("PATH") || "/usr/sbin:/usr/bin:/sbin:/bin");
     for (let dir in split(path_env, ":")) {
         if (dir == "")
             continue;
-        for (let name in order) {
-            let candidate = dir + "/" + name;
-            if (fs.access(candidate, "x"))
-                return candidate;
-        }
+        let candidate = dir + "/tachyon-core";
+        if (fs.access(candidate, "x"))
+            return candidate;
     }
-    for (let name in order) {
-        if (command_exists(name))
-            return name;
-    }
+    if (command_exists("tachyon-core"))
+        return "tachyon-core";
     return "";
 }
 
-// The version string is taken from stdout whatever the exit status: sing-box
-// prints "sing-box version X" first and may still exit non-zero (a warning about
-// a missing config, a signal from a concurrent service stop). Gating on the exit
-// code made the dashboard fall back to "unknown" for a perfectly working binary.
-function sing_box_version_output() {
+// The version string is taken from stdout whatever the exit status: tachyon-core
+// prints "tachyon-core version X" first and may still exit non-zero (e.g. a warning
+// about a missing config or a signal from a concurrent service stop).
+function core_version_output() {
     let bin = find_core_binary();
     return bin != "" ? command_output_lenient(command_from_args([ bin, "version" ]) + " 2>/dev/null") : "";
 }
 
-// The name the binary calls itself, read off the banner: "sing-box version
-// 1.14.2-lx.12" gives "sing-box", our own build gives "tachyon-core".
-//
-// This exists because our core does not carry a fork suffix in its version. The
-// released v0.0.1 prints "tachyon-core 0.0.1" - a bare number from its own
-// series - so sing_box_version() hands back "0.0.1", which looks like a stock
-// build of the same number. Every detection that used to look for "-tachyon."
-// in the version therefore misses the real binary, and the minimum-version gate
-// then compares 0.0.1 against 1.12 and refuses to start the router.
-let sing_box_banner_identity_cache = null;
-
-function sing_box_banner_identity() {
-    if (sing_box_banner_identity_cache != null)
-        return sing_box_banner_identity_cache;
-
-    sing_box_banner_identity_cache = "";
-    let output = sing_box_version_output();
-    if (output != "") {
-        let newline = index(output, "\n");
-        let line = trim(newline >= 0 ? substr(output, 0, newline) : output);
-        let parts = split(line, /[ \t\r\n]+/);
-        if (length(parts) > 0)
-            sing_box_banner_identity_cache = as_string(parts[0]);
-    }
-    return sing_box_banner_identity_cache;
+function core_version_state() {
+    return file_first_line(CORE_VERSION_STATE_FILE);
 }
 
-function sing_box_marker_is(value) {
-    return sing_box_variant_marker() == as_string(value);
-}
-
-function sing_box_marker_is_tachyon_core() {
-    return sing_box_marker_is("tachyon-core");
-}
-
-function sing_box_banner_is_tachyon_core() {
-    return sing_box_banner_identity() == "tachyon-core";
-}
-
-
-function sing_box_version_state() {
-    let ver = file_first_line(SB_VERSION_STATE_FILE);
-    if (ver == "" && getenv("SB_VERSION_STATE_FILE") == null)
-        ver = file_first_line(SB_LEGACY_VERSION_STATE_FILE);
-    return ver;
-}
-
-function sing_box_write_version_state(version) {
+function core_write_version_state(version) {
     version = as_string(version);
-    let ok = version != "" && ensure_parent_dir(SB_VERSION_STATE_FILE) && write_file(SB_VERSION_STATE_FILE, version + "\n");
-    if (ok && getenv("SB_VERSION_STATE_FILE") == null)
-        remove_file(SB_LEGACY_VERSION_STATE_FILE);
-    return ok;
+    return version != "" && ensure_parent_dir(CORE_VERSION_STATE_FILE) && write_file(CORE_VERSION_STATE_FILE, version + "\n");
 }
 
-function sing_box_clear_version_state() {
-    remove_file(SB_VERSION_STATE_FILE);
-    if (getenv("SB_VERSION_STATE_FILE") == null)
-        remove_file(SB_LEGACY_VERSION_STATE_FILE);
+function core_clear_version_state() {
+    remove_file(CORE_VERSION_STATE_FILE);
     return true;
 }
 
-function sing_box_restore_version_state(version) {
+function core_restore_version_state(version) {
     version = as_string(version);
-    return version != "" ? sing_box_write_version_state(version) : sing_box_clear_version_state();
+    return version != "" ? core_write_version_state(version) : core_clear_version_state();
 }
 
-function sing_box_write_variant_marker(variant) {
-    variant = as_string(variant);
-    let ok = variant != "" && ensure_parent_dir(SB_VARIANT_STATE_FILE) && write_file(SB_VARIANT_STATE_FILE, variant + "\n");
-    if (ok && getenv("SB_VARIANT_STATE_FILE") == null)
-        remove_file(SB_LEGACY_VARIANT_STATE_FILE);
-    return ok;
-}
-
-function sing_box_clear_variant_marker() {
-    remove_file(SB_VARIANT_STATE_FILE);
-    if (getenv("SB_VARIANT_STATE_FILE") == null)
-        remove_file(SB_LEGACY_VARIANT_STATE_FILE);
-    return true;
-}
-
-function sing_box_restore_variant_marker(variant) {
-    variant = as_string(variant);
-    return variant != "" ? sing_box_write_variant_marker(variant) : sing_box_clear_variant_marker();
-}
-
-function sing_box_version() {
+function core_version() {
     if (find_core_binary() == "")
         return "";
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core")) {
-        let state_v = sing_box_version_state();
-        if (state_v != "")
-            return state_v;
-    }
-    let v = parse_sing_box_version(sing_box_version_output());
+    let state_v = core_version_state();
+    if (state_v != "")
+        return state_v;
+    let v = parse_core_version(core_version_output());
     return match(v, /^[vV]?[0-9]+/) ? v : "";
 }
 
-function sing_box_version_is_extended(value) {
-    return index(as_string(value), "extended") >= 0;
-}
-
-function sing_box_version_is_lx(value) {
-    let s = as_string(value);
-    return s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0;
-}
-
-// Tachyon's own core, a from-scratch implementation of the sing-box schema rather
-// than a fork of the Go binary. It identifies itself in the version string with a
-// "-tachyon.<n>" suffix, and that suffix is the only thing that distinguishes it:
-// it prints no build tags, so every capability that used to be probed from the
-// banner has to answer from this instead.
-//
-// Two consequences worth keeping straight, because they pull in opposite
-// directions:
-//
-//   - Its own version is NOT a sing-box version. `0.0.1-tachyon.0` is not older
-//     than sing-box 1.12, it is a different project that never had a release
-//     number in sing-box's series. Comparing the two numerically is meaningless
-//     and used to fail the minimum-version gate outright.
-//   - The suffix carries no schema level. Nothing in it says which sing-box
-//     release it tracks, so no field may be enabled on the strength of it.
 function module_command(args) {
     let command_args = [ "ucode", "-L", LIB_DIR ];
     for (let arg in args)
@@ -451,249 +338,91 @@ function module_success(args) {
     return command_status(module_command(args)) == 0;
 }
 
-function sing_box_package_installed(name) {
-    return module_success([ LIB_DIR + "/core/packages.uc", "installed", as_string(name) ]);
-}
-
-function sing_box_version_is_tachyon_core(value) {
-    let s = as_string(value);
-    if (index(s, "-tachyon.") >= 0 || s == "tachyon-core" || index(s, "tachyon-core") >= 0 || match(s, /^v?0\.[0-9]+\./) != null)
-        return true;
-    if (s != "" && (sing_box_version_is_extended(s) || sing_box_version_is_lx(s)))
-        return false;
-    let marker = sing_box_variant_marker();
-    if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
-        return false;
-    if (marker == "tachyon-core")
-        return true;
-    let identity = sing_box_banner_identity();
-    if (identity == "tachyon-core")
-        return true;
-    if (identity == "sing-box")
-        return false;
-    return false;
-}
-
-
-// True for any build that is neither upstream sing-box nor a named fork, so the
-// version gate can stop treating its number as comparable.
-function sing_box_version_is_foreign_core(version) {
-    return sing_box_version_is_tachyon_core(version);
-}
-
-// Answers "which variant is installed *right now*", and for that the marker file
-// is the authority - the binary of an extended build does not always name itself.
-//
-// But that makes it the wrong question immediately after a package swap: the
-// marker still describes the variant that was just replaced, so the post-install
-// check in components/action.uc read "extended" for a freshly installed stock
-// 1.13.21 and rolled the install back with "the active binary is still
-// sing-box-extended". That question is about one string, so this is the predicate
-// for it: the version alone, no marker, no fallback to a live probe.
-function sing_box_version_looks_extended(value) {
-    let v = as_string(value);
-    if (v == "")
-        return false;
-    return sing_box_version_is_extended(v) || sing_box_version_is_lx(v);
-}
-
-function sing_box_is_extended(value) {
-    value = as_string(value);
-    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
-        return true;
-    if (!sing_box_marker_is("tiny") && !sing_box_marker_is("stable") && sing_box_package_installed("sing-box-extended"))
-        return true;
-
-    value = value != "" ? value : sing_box_version();
-    return sing_box_version_is_extended(value) || sing_box_version_is_lx(value) || sing_box_version_is_foreign_core(value);
-}
-
-function sing_box_is_lx(value) {
-    value = as_string(value);
-    if (sing_box_version_is_lx(value) || sing_box_version_is_foreign_core(value))
-        return true;
-    if (sing_box_marker_is("lx") || sing_box_marker_is("tachyon-core"))
-        return true;
-
-    return sing_box_version_is_lx(value != "" ? value : sing_box_version()) || sing_box_version_is_foreign_core(value != "" ? value : sing_box_version());
-}
-
 // ─── the capability model ────────────────────────────────────────────────────
-// The model itself lives in singbox/core_profile.uc: it is a pure lookup, and
+// The model itself lives in tachyon_core/core_profile.uc: it is a pure lookup, and
 // requiring runtime.uc from a generator would run this file's command-line
 // dispatch on load and exit the process with a usage message. What is left here
-// is the part that knows about the machine - the marker file, the banner of the
-// installed binary - and it fills those in before delegating.
-// Which marker answers "what is installed".
-//
-// The marker file is the fallback, not the authority, and the order here is the
-// whole point of this function. A build that names itself - our core in either
-// its version suffix or its banner - outranks the file, because the file
-// describes what was installed *previously*: on a test router the binary had
-// been swapped for tachyon-core while /etc/tachyon/tachyon-core-variant still read
-// "lx", and taking the file first handed a foreign core to the lx profile - a
-// wrong pin field, a wrong schema level, and no error anywhere.
-function sing_box_core_identity_marker(build, given) {
-    let from_version = core_profile.profile_by_version(build);
-    if (from_version != "")
-        return from_version;
+// is reading the installed binary version before delegating.
 
-    let identity = sing_box_banner_identity();
-    if (identity == "tachyon-core")
-        return "tachyon-core";
-
-    let marker = as_string(given);
-    marker = marker != "" ? marker : sing_box_variant_marker();
-    if (marker != "")
-        return marker;
-
-    if (sing_box_package_installed("sing-box-extended"))
-        return "extended";
-    if (sing_box_package_installed("sing-box-tiny"))
-        return "tiny";
-    return "";
-}
-
-// The version of the installed binary, asked of the binary itself whenever it
-// answers.
-//
-// sing_box_version() reads the version state file whenever the marker claims lx
-// or extended-compressed. That is right for those forks, which do not always
-// name themselves, and wrong for a marker left behind by a package swap: on a
-// test router the marker still read "lx" after the binary had become tachyon-core,
-// so sing_box_version() answered "1.14.2-lx.12" and the stale file, not the binary
-// on disk, decided what was installed.
-function sing_box_core_installed_version() {
+function core_installed_version() {
     if (find_core_binary() != "") {
-        let parsed = parse_sing_box_version(sing_box_version_output());
+        let parsed = parse_core_version(core_version_output());
         if (as_string(parsed) != "")
             return as_string(parsed);
     }
-    return sing_box_version();
+    return core_version();
 }
 
-function sing_box_core_resolve(version, marker) {
-    let build = as_string(version == null || version == "" ? sing_box_core_installed_version() : version);
+function core_resolve(version, marker) {
+    let build = as_string(version == null || version == "" ? core_installed_version() : version);
     return {
         version: build,
-        marker: sing_box_core_identity_marker(build, marker)
+        marker: "tachyon-core"
     };
 }
 
-function sing_box_core_profile(version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_profile_name(version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.profile(resolved.version, resolved.marker);
 }
 
-function sing_box_core_profile_data(profile) {
+function core_profile_data(profile) {
     return core_profile.profile_data(profile);
 }
 
-function sing_box_core_pin_field(version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_pin_field(version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.pin_field(resolved.version, resolved.marker);
 }
 
-function sing_box_core_has_1_14(version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_has_1_14(version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.has_1_14(resolved.version, resolved.marker);
 }
 
-function sing_box_core_has_1_15(version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_has_1_15(version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.has_1_15(resolved.version, resolved.marker);
 }
 
-function sing_box_core_protocols(version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_protocols(version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.protocols(resolved.version, resolved.marker);
 }
 
-function sing_box_core_supports_protocol(protocol, version, marker) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_supports_protocol(protocol, version, marker) {
+    let resolved = core_resolve(version, marker);
     return core_profile.supports_protocol(protocol, resolved.version, resolved.marker);
 }
 
-function output_has_build_tag(output, tag) {
-    tag = as_string(tag);
-    if (tag == "")
-        return false;
-
-    for (let item in split(trim(replace(as_string(output), /[,: \t\r\n]+/g, " ")), " "))
-        if (as_string(item) == tag)
-            return true;
-    return false;
-}
-
-// xhttp and tailscale are build-tag probes on upstream, which prints them, and a
-// flat yes on the forks, which do not. Our own core implements xhttp but prints
-// no build tag, so the probe alone answers "no" and every xhttp node is dropped
-// from a subscription - which is why the answer is a profile field, not a probe.
-// The interpretation lives in core_profile.flag(); what is left here is the
-// machine part - a null answer means the question needs the installed binary's
-// banner, and only this module may run it.
-function sing_box_core_flag(version, marker, field, tag, version_output) {
-    let resolved = sing_box_core_resolve(version, marker);
+function core_flag(version, marker, field, tag, version_output) {
+    let resolved = core_resolve(version, marker);
     let answer = core_profile.flag(resolved.version, resolved.marker, field, tag, version_output);
-    if (answer != null)
-        return answer;
-    return output_has_build_tag(sing_box_version_output(), tag);
+    return answer == true;
 }
 
-// The whole answer for one core, in a shape the interface and the diagnostics can
-// read without re-deriving any of it. version_output is the caller's already-read
-// `sing-box version` banner: a string (empty or not) means the caller has asked
-// the binary already and nothing here may ask again - the compressed build is a
-// self-extracting stub and the lx build may have no runtime to run it with. Only
-// leaving the argument off lets this function probe the installed binary itself.
-function sing_box_core_capabilities(version, marker, version_output) {
+function core_capabilities(version, marker, version_output) {
     let output = version_output == null ? null : as_string(version_output);
-    if (output != null && output != "" && sing_box_banner_identity_cache == null) {
-        let first = trim(split(output, "\n")[0] || "");
-        let parts = split(first, /[ \t\r\n]+/);
-        sing_box_banner_identity_cache = length(parts) > 0 ? as_string(parts[0]) : "";
-    }
-
-    let resolved = sing_box_core_resolve(version, marker);
+    let resolved = core_resolve(version, marker);
     let build = resolved.version;
     let field = core_profile.pin_field(build, resolved.marker);
     let protocols = core_profile.protocols(build, resolved.marker);
     let inbounds = core_profile.inbounds(build, resolved.marker);
 
-    let tailscale;
-    let xhttp;
-    if (output != null) {
-        let tail_flag = core_profile.flag(build, resolved.marker, "tailscale", "with_tailscale", output);
-        let xhttp_flag = core_profile.flag(build, resolved.marker, "xhttp", "with_xhttp", output);
-        tailscale = (tail_flag == null ? false : tail_flag) ? 1 : 0;
-        xhttp = (xhttp_flag == null ? false : xhttp_flag) ? 1 : 0;
-    }
-    else {
-        tailscale = sing_box_core_flag(build, marker, "tailscale", "with_tailscale", "") ? 1 : 0;
-        xhttp = sing_box_core_flag(build, marker, "xhttp", "with_xhttp", "") ? 1 : 0;
-    }
+    let tailscale = core_flag(build, marker, "tailscale", "with_tailscale", output != null ? output : "") ? 1 : 0;
+    let xhttp = core_flag(build, marker, "xhttp", "with_xhttp", output != null ? output : "") ? 1 : 0;
 
-    // The table answers "can this profile ever speak it", but upstream carries
-    // tailscale only when the binary was built with the tag - so the list is
-    // corrected against the actual build before the missing-list is derived.
-    if (!tailscale) {
-        let filtered = [];
-        for (let item in protocols)
-            if (item != "tailscale")
-                push(filtered, item);
-        protocols = filtered;
-    }
     return {
         profile: core_profile.profile(build, resolved.marker),
         version: build,
         marker: resolved.marker,
         pin_field: field,
         cert_pin: field != "",
-        schema_1_14: sing_box_core_has_1_14(build, marker) ? 1 : 0,
-        schema_1_15: sing_box_core_has_1_15(build, marker) ? 1 : 0,
+        schema_1_14: core_has_1_14(build, marker) ? 1 : 0,
+        schema_1_15: core_has_1_15(build, marker) ? 1 : 0,
         xhttp,
         tailscale,
-        foreign_series: sing_box_core_profile_data(sing_box_core_profile(build, marker)).foreign_series ? 1 : 0,
+        foreign_series: core_profile_data(core_profile_name(build, marker)).foreign_series ? 1 : 0,
         protocols,
         inbounds,
         // What this core cannot do out of the protocols and inbound kinds Tachyon
@@ -704,105 +433,16 @@ function sing_box_core_capabilities(version, marker, version_output) {
     };
 }
 
-
-function sing_box_supports_tailscale(version, version_output) {
-    return sing_box_core_flag(as_string(version), "", "tailscale", "with_tailscale", as_string(version_output));
+function core_supports_tailscale(version, version_output) {
+    return core_flag(as_string(version), "", "tailscale", "with_tailscale", as_string(version_output));
 }
 
-function sing_box_supports_xhttp(version, version_output) {
-    return sing_box_core_flag(as_string(version), "", "xhttp", "with_xhttp", as_string(version_output));
+function core_supports_xhttp(version, version_output) {
+    return core_flag(as_string(version), "", "xhttp", "with_xhttp", as_string(version_output));
 }
 
-function sing_box_supports_cert_pin(version) {
-    version = as_string(version);
-    // Pinning asks whether the build can carry a pin at all, and the field it
-    // wants is not the same everywhere. certificate_sha256 (whole DER, the value
-    // a proxy link's pcs carries) arrived upstream in 1.15.0 and is a question of
-    // version only. Verified on the real binaries: stock 1.14.2 and 1.14.2-lx.12
-    // both reject it with "unknown field".
-    //
-    // certificate_public_key_sha256 hashes the public key, so it is a different
-    // value and cannot stand in for a pcs - but it is what lx and our own core
-    // accept, and the generator writes the field the build understands. Both
-    // therefore support pinning, and the exclusion that used to sit here (issue
-    // #79, added because the core rejects certificate_sha256) is gone: it turned
-    // "which field" into "no feature".
-    if (version == "" && find_core_binary() != "") {
-        if (sing_box_marker_is("extended-compressed"))
-            version = sing_box_version_state();
-        else
-            version = sing_box_version();
-    }
-
-    // lx carries no certificate_sha256 and accepts the public-key field instead,
-    // which is a field choice the generator makes. Verified on the real binary:
-    // 1.14.2-lx.12 rejects certificate_sha256 with "unknown field".
-    //
-    // Our own core has to be named here rather than left to the version rule:
-    // "0.0.1-tachyon.0" is below 1.15 by any numeric reading, and it does carry
-    // the field - it was added to its TLS allowlist together with the pinning
-    // itself. Reading the version here would switch the feature off for the one
-    // build that has it.
-    //
-    // Matched on the version suffix, not on the bare variant name: "sing-box-lx"
-    // alone carries no version to judge (and contains "-lx" itself, so a plain
-    // substring test would match it), and the marker file is the authority for
-    // what is actually installed.
-    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core() ||
-        sing_box_marker_is("lx") || match(version, /^[0-9]+\.[0-9]+.*-lx/) != null)
-        return true;
-
-    let m = match(version, /^v?([0-9]+)\.([0-9]+)/);
-    if (m) {
-        let major = int(m[1]);
-        let minor = int(m[2]);
-        return major > 1 || (major == 1 && minor >= 15);
-    }
-    return false;
-}
-
-function sing_box_is_tiny(version, version_output) {
-    version = as_string(version);
-    version_output = as_string(version_output);
-
-    if (find_core_binary() != "" && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
-        return false;
-    let computed_version = version != "" ? version : sing_box_version();
-    if (sing_box_is_extended(computed_version) || sing_box_is_lx(computed_version))
-        return false;
-    if (sing_box_package_installed("sing-box-tiny"))
-        return true;
-    if (!sing_box_marker_is("tiny"))
-        return false;
-    return !sing_box_supports_tailscale(version, version_output);
-}
-
-function sing_box_variant() {
-    let version = "";
-
-    if (sing_box_marker_is("tachyon-core"))
-        return "tachyon-core";
-    if (getenv("SB_VARIANT_STATE_FILE") == null && find_core_binary() != "" && sing_box_core_profile("", "") == "tachyon-core")
-        return "tachyon-core";
-    if (sing_box_marker_is("lx"))
-        return "lx";
-    if (sing_box_marker_is("extended-compressed"))
-        return "extended-compressed";
-    if (find_core_binary() == "")
-        return "not-installed";
-
-    version = sing_box_version();
-    // Before the upstream forks: this binary claims the schema, it is not a fork
-    // of the Go one, so it must not be reported as "stable".
-    if (sing_box_version_is_tachyon_core(version) || sing_box_marker_is_tachyon_core())
-        return "tachyon-core";
-    if (sing_box_is_lx(version))
-        return "lx";
-    if (sing_box_is_extended(version))
-        return sing_box_marker_is("extended-compressed") ? "extended-compressed" : "extended";
-    if (sing_box_is_tiny(version, ""))
-        return "tiny";
-    return "stable";
+function core_supports_cert_pin(version) {
+    return true;
 }
 
 function log_message(message, level) {
@@ -843,14 +483,7 @@ function uci_commit(config) {
     return uci_core.commit(config);
 }
 
-function ensure_sing_box_main_section() {
-    // The engine config used to live in its own `sing-box` UCI package. The
-    // settings move to `tachyon-core`, and an install that still carries the
-    // old package has it renamed in place so nothing is lost on upgrade.
-    if (uci_core.exists("sing-box.main") && !uci_core.exists("tachyon-core.main")) {
-        uci_core.rename_package("sing-box", "tachyon-core");
-        uci_core.commit("tachyon-core");
-    }
+function ensure_core_main_section() {
     let cfg_file = "/etc/config/tachyon-core";
     if (!fs.stat(cfg_file)) {
         let dir = fs.stat("/etc/config");
@@ -877,7 +510,7 @@ function owner_pid() {
 
 function managed_service_installed() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
-    return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC=\"50\"") >= 0;
+    return data != null && index(as_string(data), CORE_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC=\"50\"") >= 0;
 }
 
 // Маркер и GOGC есть в каждом поколении скрипта, включая сломанный, который
@@ -900,7 +533,7 @@ function managed_service_script_stale() {
         index(data, "core=\"unlimited\"") >= 0 ||
         index(data, "procd_set_param file ") >= 0 ||
         index(data, "GOMEMLIMIT") < 0 ||
-        index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
+        index(data, "PROG=\"/usr/bin/tachyon-core\"") < 0 ||
         index(data, "stop_service()") < 0 ||
         index(data, "kill -TERM") < 0 ||
         index(data, "reload_service()") < 0 ||
@@ -910,12 +543,8 @@ function managed_service_script_stale() {
 function managed_service_text() {
     let cp = core_process_or_null();
     if (cp && type(cp.managed_core_init_script) == "function")
-        return cp.managed_core_init_script(SB_MANAGED_SERVICE_MARKER, false);
-    return fallback_managed_core_init_script(SB_MANAGED_SERVICE_MARKER);
-}
-
-function sing_box_compressed_marker_set() {
-    return sing_box_variant_marker() == "extended-compressed";
+        return cp.managed_core_init_script(CORE_MANAGED_SERVICE_MARKER, false);
+    return fallback_managed_core_init_script(CORE_MANAGED_SERVICE_MARKER);
 }
 
 function install_managed_service_script() {
@@ -939,7 +568,7 @@ function remove_managed_service_script() {
 }
 
 function disable_service_config() {
-    if (!ensure_sing_box_main_section())
+    if (!ensure_core_main_section())
         return;
     uci_set_option("tachyon-core", "main", "enabled", "0");
     uci_commit("tachyon-core");
@@ -951,40 +580,21 @@ function prepare_service_disabled() {
         command_success_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
         command_success_from_args([ "/etc/init.d/tachyon-core", "disable" ]);
     }
-    if (file_exists("/etc/init.d/sing-box")) {
-        command_success_from_args([ "/etc/init.d/sing-box", "stop" ]);
-        command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
-    }
 }
 
 function configure_service() {
     let settings = uci_settings();
-    let variant_marker = sing_box_variant_marker();
-    let prefer_sing_box = (variant_marker == "extended" || variant_marker == "tiny" || variant_marker == "stable");
-
-    if (fs.stat("/usr/bin/sing-box") != null && (fs.stat("/usr/bin/tachyon-core") == null || prefer_sing_box)) {
-        try { fs.unlink("/usr/bin/tachyon-core"); } catch (e) {}
-        try { fs.symlink("/usr/bin/sing-box", "/usr/bin/tachyon-core"); } catch (e) {}
-        if (fs.stat("/usr/bin/tachyon-core") == null)
-            command_success_from_args([ "ln", "-sf", "/usr/bin/sing-box", "/usr/bin/tachyon-core" ]);
-        sing_box_banner_identity_cache = null;
-    }
 
     if ((!managed_service_installed() || managed_service_script_stale()) && !install_managed_service_script()) {
         log_message("Failed to install managed tachyon-core service. Aborted.", "fatal");
         exit(1);
     }
 
-    if (!ensure_sing_box_main_section())
+    if (!ensure_core_main_section())
         exit(1);
 
     let changed = false;
     let workdir = uci_get_option("tachyon-core", "main", "workdir") || "/usr/share/tachyon-core";
-    if (workdir == "/usr/share/sing-box") {
-        workdir = "/usr/share/tachyon-core";
-        if (uci_set_option("tachyon-core", "main", "workdir", workdir))
-            changed = true;
-    }
     if (!fs.stat(workdir)) {
         let parent = "/usr/share";
         if (!fs.stat(parent))
@@ -1036,16 +646,9 @@ function configure_service() {
     if (changed && !uci_commit("tachyon-core"))
         exit(1);
 
-    if (file_exists("/etc/rc.d/S99sing-box") || file_exists("/etc/rc.d/S99tachyon-core")) {
+    if (file_exists("/etc/rc.d/S99tachyon-core")) {
         log_message("Disabling standalone tachyon-core autostart", "info");
         command_success_from_args([ "/etc/init.d/tachyon-core", "disable" ]);
-    }
-
-    // Досервисный /etc/init.d/sing-box может всё ещё гонять то же ядро - два
-    // инстанса дерутся за lock cache.db, и второй падает с cache-file timeout.
-    if (file_exists("/etc/init.d/sing-box")) {
-        command_success_from_args([ "/etc/init.d/sing-box", "stop" ]);
-        command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
     }
 
     for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
@@ -1091,12 +694,12 @@ function download_via_proxy_section(settings, purpose) {
 }
 
 function service_proxy_port_for_purpose(purpose) {
-    return int(SB_SERVICE_MIXED_INBOUND_PORT) + (as_string(purpose || "lists") == "components" ? 1 : 0);
+    return int(CORE_SERVICE_MIXED_INBOUND_PORT) + (as_string(purpose || "lists") == "components" ? 1 : 0);
 }
 
 function service_proxy_address(settings, purpose) {
     return download_via_proxy_section(settings, purpose) != "" ?
-        SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
+        CORE_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
 }
 
 function ip_addr_first_inet4(data) {
@@ -1199,7 +802,7 @@ function subscription_cache_env() {
     return {
         TACHYON_CONFIG_NAME: CONFIG_NAME,
         TACHYON_LIB: LIB_DIR,
-        TMP_SING_BOX_FOLDER,
+        TMP_TACHYON_CORE_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
         TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
@@ -1271,19 +874,19 @@ function log_file_lines(path, level, prefix) {
     log_lines(fs.readfile(path), level, prefix);
 }
 
-// The same binary sing_box_check() runs, so the diagnosis names the file that
+// The same binary core_check() runs, so the diagnosis names the file that
 // actually failed rather than a path we guessed.
-function sing_box_binary_path() {
+function core_binary_path() {
     // command_output_lenient returns the newline; stat'ing the raw value would
     // report an existing binary as missing.
-    return trim(command_output_lenient("command -v tachyon-core 2>/dev/null || command -v sing-box 2>/dev/null")) || "/usr/bin/tachyon-core";
+    return trim(command_output_lenient("command -v tachyon-core 2>/dev/null")) || "/usr/bin/tachyon-core";
 }
 
 
 let binary_diag = require("tachyon_core.binary_diag");
-let sing_box_binary_problem = binary_diag.sing_box_binary_problem;
-let sing_box_check_blamed_the_binary = binary_diag.sing_box_check_blamed_the_binary;
-function sing_box_check(config_path, output_path) {
+let core_binary_problem = binary_diag.core_binary_problem;
+let core_check_blamed_the_binary = binary_diag.core_check_blamed_the_binary;
+function core_check(config_path, output_path) {
     let bin = find_core_binary();
     if (bin == "")
         bin = "tachyon-core";
@@ -1309,7 +912,7 @@ function sing_box_check(config_path, output_path) {
 }
 
 function core_engine_label() {
-    return sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
+    return "tachyon-core";
 }
 
 function prepare_subscription_caches(prepared, no_refresh) {
@@ -1379,10 +982,6 @@ function enrich_reload_preview(parsed, current_path, candidate_path, old_exists)
 function write_reload_preview(current_path, candidate_path) {
     if (!file_exists(candidate_path))
         return;
-    if (sing_box_variant() != "tachyon-core") {
-        remove_file(RELOAD_PREVIEW_FILE);
-        return;
-    }
     let bin = find_core_binary();
     if (bin == "") {
         remove_file(RELOAD_PREVIEW_FILE);
@@ -1474,7 +1073,7 @@ function patch_dns_config(state_path) {
     let check_log = temp_path();
     let check_result = check_log == ""
         ? { status: 1, reason: "unable to create check output file" }
-        : sing_box_check(temp_config, check_log);
+        : core_check(temp_config, check_log);
     if (check_result.status != 0) {
         log_message("DNS failover produced an invalid " + core_engine_label() + " configuration: " + check_result.reason, "error");
         remove_files([ backup_path, temp_config, check_log ]);
@@ -1570,7 +1169,7 @@ function ensure_local_rulesets_exist(temp_config) {
     } catch (e) {}
 }
 
-// Strips the field sing-box rejected from the outbound it named, logging which one
+// Strips the field tachyon-core rejected from the outbound it named, logging which one
 // it was. Returns true only when something changed, so the caller retries instead of
 // rewriting the same file for a reason it cannot act on. The repair itself lives in
 // components/verifier so the apply path and the pre-flight share one tested copy:
@@ -1580,7 +1179,7 @@ function ensure_local_rulesets_exist(temp_config) {
 function repair_outbound_field(temp_config, reason) {
     if (!verifier.repair_unknown_outbound_field(temp_config, reason))
         return false;
-    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
+    let core_name = "tachyon-core";
     let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
     if (m) {
         let bad_index = int(m[1]);
@@ -1595,10 +1194,10 @@ function repair_outbound_field(temp_config, reason) {
 
 // --- section quarantine ------------------------------------------------------
 //
-// A generated config that sing-box refuses to load must not take the whole
+// A generated config that tachyon-core refuses to load must not take the whole
 // proxy down: the runtime isolates the offending section, regenerates without
 // it and starts with the rest, leaving the error visible to the UI in
-// /var/run/tachyon/section-errors.json. Only failures that sing-box itself
+// /var/run/tachyon/section-errors.json. Only failures that tachyon-core itself
 // attributes to an outbound/endpoint/inbound/rule-set tag get quarantined -
 // tags carry the owning section name as their prefix, and section names are
 // [A-Za-z0-9_]+ (valid_section_name in the generator), so the substring before
@@ -1693,7 +1292,7 @@ function load_config_owners(config_path) {
     return type(global_owners) == "object" ? global_owners : null;
 }
 
-// Maps a sing-box check failure to the section that produced the blamed
+// Maps a tachyon-core check failure to the section that produced the blamed
 // element. Returns "" when the failure is not attributable to a section
 // (global settings, inbounds of the service itself, unparseable output).
 function section_from_check_reason(reason, config_path) {
@@ -1948,16 +1547,16 @@ function repair_or_find_dangling_outbound_dependency(temp_config) {
     return "";
 }
 
-// Runs sing-box check and applies the known graceful-degradation repairs
+// Runs tachyon-core check and applies the known graceful-degradation repairs
 // (stripping fields older builds reject) until either the config passes or
 // nothing else can be stripped. Extracted from init_config so the quarantine
 // loop can call it once per attempt without re-running the repairs inline.
 function check_with_field_repairs(temp_config, runtime_log) {
     ensure_local_rulesets_exist(temp_config);
-    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
-    let check_result = sing_box_check(temp_config, runtime_log);
+    let core_name = "tachyon-core";
+    let check_result = core_check(temp_config, runtime_log);
     while (check_result.status != 0) {
-        // Graceful degradation: if the installed sing-box does not support an inbound
+        // Graceful degradation: if the installed tachyon-core does not support an inbound
         // field that was added for newer versions (e.g. close_timeout for MTProto
         // hot-reload fix, issue #15, prefer_ip, tolerate_time_skewness), strip it
         // from all inbounds and retry. Loops to handle multiple unknown fields
@@ -1967,7 +1566,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
         if (cert_pin_m) {
-            log_message("Installed " + core_name + " rejected tls.certificate_sha256 (the field was added in sing-box 1.15.0; this build predates it); stripping certificate pins and retrying", "warn");
+            log_message("Installed " + core_name + " rejected tls.certificate_sha256 (this build predates it); stripping certificate pins and retrying", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             let found = false;
@@ -2075,14 +1674,9 @@ function check_with_field_repairs(temp_config, runtime_log) {
                 }
             }
             else if (out_field_m) {
-                // sing-box names the exact outbound it choked on, so only that one
-                // loses the field: deleting it everywhere threw away settings that
-                // were working - "default" is rejected on a urltest by every build
-                // tested (stock 1.14.2, 1.14.2-lx.8, 1.14.1-extended-2.7.2) while a
-                // selector accepts it in all three. One bad urltest silently cost
-                // every selector its chosen starting node on each regenerate, which
-                // was the warning on 192.168.1.1. The repair runs through
-                // components/verifier so apply and pre-flight cannot drift.
+                // tachyon-core names the exact outbound it choked on, so only that one
+                // loses the field instead of stripping working fields across all outbounds.
+                // The repair runs through components/verifier so apply and pre-flight cannot drift.
                 if (repair_outbound_field(temp_config, check_result.reason))
                     stripped = true;
             }
@@ -2097,7 +1691,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     stripped = true;
                 }
             }
-            // 1.14 and later answer with a deprecation notice that does not carry the
+            // Later schema revisions answer with a deprecation notice that does not carry the
             // option path, so matching only "experimental.cache_file.store_rdrc" missed
             // it and the whole start died on [fatal] instead of retrying with store_dns.
             else if (match(check_result.reason, /store_rdrc cache file option is deprecated/)) {
@@ -2193,7 +1787,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     stripped = true;
                 }
             }
-            else if (match(check_result.reason, /rule[-_]set\[(\d+)\]: .*(invalid sing-box rule-set file|unexpected EOF)/)) {
+            else if (match(check_result.reason, /rule[-_]set\[(\d+)\]: .*(invalid .*rule-set file|unexpected EOF)/)) {
                 let rs_m = match(check_result.reason, /rule[-_]set\[(\d+)\]/);
                 let rs_idx = rs_m ? int(rs_m[1]) : -1;
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
@@ -2203,26 +1797,17 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     let rs_entry = cfg.route.rule_set[rs_idx];
                     if (type(rs_entry) == "object" && rs_entry.type == "local" && as_string(rs_entry.path || "") != "") {
                         let bad_path = as_string(rs_entry.path);
-                        let is_tcore = sing_box_version_is_tachyon_core("");
-                        log_message("Installed " + (is_tcore ? "tachyon-core" : "sing-box") +
+                        log_message("Installed " + core_name +
                             " rejected local rule-set at index " + rs_idx + " (" + bad_path + "); removing broken rule-set and retrying", "warn");
                         remove_file(bad_path);
-                        let fallback_srs = replace(bad_path, /\.trs$/, ".srs");
-                        if (fallback_srs != bad_path) {
+                        let fallback_trs = replace(bad_path, /\.trs$/, ".empty.json");
+                        if (fallback_trs != bad_path) {
                             let etc_bad_trs = replace(bad_path, /^.*\/(community-[^\/]+\.trs)$/, "/etc/tachyon/rulesets/$1");
                             if (index(etc_bad_trs, "/etc/tachyon/rulesets/") == 0)
                                 remove_file(etc_bad_trs);
-                            if (!is_tcore) {
-                                rs_entry.path = fallback_srs;
-                                let srs_st = fs.stat(rs_entry.path);
-                                if (!srs_st || srs_st.size < 17)
-                                    fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
-                            } else {
-                                let empty_json_path = replace(bad_path, /\.trs$/, ".empty.json");
-                                write_file(empty_json_path, "{\"version\":1,\"rules\":[]}");
-                                rs_entry.path = empty_json_path;
-                                rs_entry.format = "source";
-                            }
+                            write_file(fallback_trs, "{\"version\":1,\"rules\":[]}");
+                            rs_entry.path = fallback_trs;
+                            rs_entry.format = "source";
                         } else {
                             let srs_st = fs.stat(rs_entry.path);
                             if (!srs_st || srs_st.size < 17)
@@ -2289,14 +1874,14 @@ function check_with_field_repairs(temp_config, runtime_log) {
         }
         if (!stripped)
             break;
-        check_result = sing_box_check(temp_config, runtime_log);
+        check_result = core_check(temp_config, runtime_log);
     }
     return check_result;
 }
 
 function init_config(populate_nft, caches_prepared, no_refresh) {
     let settings = uci_settings();
-    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
+    let core_name = "tachyon-core";
     let config_path = option(settings, "config_path", "");
     if (config_path == "") {
         log_message(core_name + " config path is empty. Aborted.", "fatal");
@@ -2341,8 +1926,8 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         exit(1);
     }
 
-    // Quarantine loop: each iteration either yields a config sing-box accepts
-    // or isolates one more section that both the generator and sing-box check
+    // Quarantine loop: each iteration either yields a config tachyon-core accepts
+    // or isolates one more section that both the generator and tachyon-core check
     // could attribute by name. 16 bounds the loop for pathological cases; in
     // practice every pass quarantines at least one section or breaks out.
     let quarantined = {};
@@ -2365,7 +1950,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 temp_config,
                 service_listen_address_value(settings),
                 mwan3_active ? "1" : "0",
-                sing_box_supports_xhttp(sing_box_version()) ? "1" : "0",
+                core_supports_xhttp(core_version()) ? "1" : "0",
                 deferred_sections,
                 join(",", keys(quarantined))
             ]) + " >" + shell_quote(runtime_log) + " 2>&1"
@@ -2420,8 +2005,8 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             break;
 
         // Say which of the two it was before blaming the configuration.
-        let bin_problem = sing_box_binary_problem(sing_box_binary_path());
-        if (bin_problem == "" && sing_box_check_blamed_the_binary(check_result.reason))
+        let bin_problem = core_binary_problem(core_binary_path());
+        if (bin_problem == "" && core_check_blamed_the_binary(check_result.reason))
             bin_problem = core_name + " could not be run: " + check_result.reason;
         if (bin_problem != "") {
             log_message("Cannot verify the generated configuration: " + bin_problem +
@@ -2491,7 +2076,7 @@ else if (mode == "init-config")
 else if (mode == "save-config-file-fixture")
     exit(save_config_file(ARGV[1] || "", ARGV[2] || "") ? 0 : 1);
 else if (mode == "check-config-fixture") {
-    let result = sing_box_check(ARGV[1] || "", ARGV[2] || "");
+    let result = core_check(ARGV[1] || "", ARGV[2] || "");
     if (result.reason != "")
         print(result.reason, "\n");
     exit(result.status);
@@ -2541,68 +2126,46 @@ else if (mode == "device-ipv4-address") {
 else if (mode == "ip-addr-first-inet4")
     print(ip_addr_first_inet4(fs.readfile("/dev/stdin")), "\n");
 else if (mode == "version")
-    print(sing_box_version(), "\n");
+    print(core_version(), "\n");
 else if (mode == "version-output")
-    print(sing_box_version_output());
+    print(core_version_output());
 else if (mode == "version-from-output")
-    print(parse_sing_box_version(fs.readfile("/dev/stdin")), "\n");
+    print(parse_core_version(fs.readfile("/dev/stdin")), "\n");
 else if (mode == "read-version-state")
-    print(sing_box_version_state(), "\n");
+    print(core_version_state(), "\n");
 else if (mode == "write-version-state")
-    exit(sing_box_write_version_state(ARGV[1]) ? 0 : 1);
+    exit(core_write_version_state(ARGV[1]) ? 0 : 1);
 else if (mode == "clear-version-state")
-    exit(sing_box_clear_version_state() ? 0 : 1);
+    exit(core_clear_version_state() ? 0 : 1);
 else if (mode == "restore-version-state")
-    exit(sing_box_restore_version_state(ARGV[1]) ? 0 : 1);
-else if (mode == "read-variant-marker")
-    print(sing_box_variant_marker(), "\n");
-else if (mode == "write-variant-marker")
-    exit(sing_box_write_variant_marker(ARGV[1]) ? 0 : 1);
-else if (mode == "clear-variant-marker")
-    exit(sing_box_clear_variant_marker() ? 0 : 1);
-else if (mode == "restore-variant-marker")
-    exit(sing_box_restore_variant_marker(ARGV[1]) ? 0 : 1);
-else if (mode == "marker-is")
-    exit(sing_box_marker_is(ARGV[1]) ? 0 : 1);
-else if (mode == "is-extended")
-    exit(sing_box_is_extended(ARGV[1]) ? 0 : 1);
-else if (mode == "version-looks-extended")
-    exit(sing_box_version_looks_extended(ARGV[1]) ? 0 : 1);
-else if (mode == "is-lx")
-    exit(sing_box_is_lx(ARGV[1]) ? 0 : 1);
-else if (mode == "is-foreign-core")
-    exit(sing_box_version_is_foreign_core(ARGV[1]) ? 0 : 1);
+    exit(core_restore_version_state(ARGV[1]) ? 0 : 1);
 else if (mode == "supports-xhttp")
-    exit(sing_box_supports_xhttp(ARGV[1], ARGV[2]) ? 0 : 1);
-else if (mode == "is-tiny")
-    exit(sing_box_is_tiny(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(core_supports_xhttp(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-tailscale")
-    exit(sing_box_supports_tailscale(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(core_supports_tailscale(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-cert-pin")
-    exit(sing_box_supports_cert_pin(ARGV[1]) ? 0 : 1);
+    exit(core_supports_cert_pin(ARGV[1]) ? 0 : 1);
 else if (mode == "core-profile")
-    print(sing_box_core_profile(ARGV[1], ARGV[2]), "\n");
+    print(core_profile_name(ARGV[1], ARGV[2]), "\n");
 else if (mode == "core-pin-field") {
-    let field = sing_box_core_pin_field(ARGV[1], ARGV[2]);
+    let field = core_pin_field(ARGV[1], ARGV[2]);
     print(field, "\n");
     exit(field != "" ? 0 : 1);
 }
 else if (mode == "core-has-1-14")
-    exit(sing_box_core_has_1_14(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(core_has_1_14(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "core-has-1-15")
-    exit(sing_box_core_has_1_15(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(core_has_1_15(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "core-protocols")
-    print(sprintf("%J\n", sing_box_core_protocols(ARGV[1], ARGV[2])));
+    print(sprintf("%J\n", core_protocols(ARGV[1], ARGV[2])));
 else if (mode == "core-supports-protocol")
-    exit(sing_box_core_supports_protocol(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+    exit(core_supports_protocol(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "core-inbounds")
-    print(sprintf("%J\n", core_profile.inbounds(sing_box_core_resolve(ARGV[1], ARGV[2]).version, sing_box_core_resolve(ARGV[1], ARGV[2]).marker)));
+    print(sprintf("%J\n", core_profile.inbounds(core_resolve(ARGV[1], ARGV[2]).version, core_resolve(ARGV[1], ARGV[2]).marker)));
 else if (mode == "core-supports-inbound")
-    exit(core_profile.supports_inbound(ARGV[1], sing_box_core_resolve(ARGV[2], ARGV[3]).version, sing_box_core_resolve(ARGV[2], ARGV[3]).marker) ? 0 : 1);
+    exit(core_profile.supports_inbound(ARGV[1], core_resolve(ARGV[2], ARGV[3]).version, core_resolve(ARGV[2], ARGV[3]).marker) ? 0 : 1);
 else if (mode == "core-capabilities")
-    print(sprintf("%J\n", sing_box_core_capabilities(ARGV[1], ARGV[2], ARGV[3])));
-else if (mode == "variant")
-    print(sing_box_variant(), "\n");
+    print(sprintf("%J\n", core_capabilities(ARGV[1], ARGV[2], ARGV[3])));
 else {
     warn("Usage: tachyon_core/runtime.uc <operation> ...\n");
     exit(1);

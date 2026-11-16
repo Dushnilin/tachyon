@@ -382,86 +382,14 @@ function parse_desync_outbound(args_val, tag_name) {
 
 function validate_strategy_args(engine, args_val) {
     engine = lc(as_string(engine));
-    if (engine != "zapret" && engine != "zapret2" && engine != "byedpi" && engine != "desync")
+    if (engine != "desync")
         return false;
 
     let tok_res = tokenize_strategy_args(args_val);
     if (!tok_res.valid)
         return false;
 
-    if (engine == "desync")
-        return parse_desync_outbound(args_val, "desync-out") != null;
-
-    try {
-        if (engine == "zapret2") {
-            let val = require("providers.zapret2.validator");
-            let res = val.validate_strategy("nfqws2", args_val, "");
-            return (res && res.valid === true) ? true : false;
-        } else if (engine == "zapret") {
-            let val = require("providers.zapret.validator");
-            let res = val.validate_strategy("nfqws", args_val, "");
-            return (res && res.valid === true) ? true : false;
-        } else if (engine == "byedpi") {
-            let val = require("providers.byedpi.validator");
-            let fn = val.validate_byedpi_strategy || val.validate_strategy;
-            let res = fn ? fn(args_val) : null;
-            return (res && res.valid === true) ? true : false;
-        }
-    } catch (e) {
-        return false;
-    }
-    return false;
-}
-
-function build_byedpi_argv(bin, port, tokens) {
-    let argv = [ bin, "-i", "127.0.0.1", "-p", sprintf("%d", port) ];
-    for (let tok in tokens)
-        push(argv, tok);
-    return argv;
-}
-
-function build_zapret_argv(bin, qnum, fwmark_flag, lua_init_flags, blob_flags, filter_prefix, tokens) {
-    let argv = [ bin, sprintf("--qnum=%d", qnum) ];
-
-    let append_flags = function(flag_str) {
-        if (!flag_str || flag_str == "") return;
-        let parts = split(trim(flag_str), /[ \t]+/);
-        for (let p in parts) {
-            if (p != "") push(argv, p);
-        }
-    };
-
-    append_flags(fwmark_flag);
-    append_flags(lua_init_flags);
-    append_flags(blob_flags);
-    append_flags(filter_prefix);
-
-    let has_bind_fix4 = false;
-    let has_bind_fix6 = false;
-    for (let a in argv) {
-        if (a == "--bind-fix4") has_bind_fix4 = true;
-        if (a == "--bind-fix6") has_bind_fix6 = true;
-    }
-
-    for (let tok in tokens) {
-        if (tok == "--daemon" || index(tok, "--pidfile") == 0)
-            continue;
-        if (tok == "--bind-fix4") has_bind_fix4 = true;
-        if (tok == "--bind-fix6") has_bind_fix6 = true;
-        let m_lua = match(tok, /^--lua-init=@(.+)$/);
-        if (m_lua && m_lua[1]) {
-            let lp = m_lua[1];
-            if (fs.stat(lp) == null && fs.stat(lp + ".gz") != null) {
-                tok = "--lua-init=@" + lp + ".gz";
-            }
-        }
-        push(argv, tok);
-    }
-
-    if (!has_bind_fix4) push(argv, "--bind-fix4");
-    if (!has_bind_fix6) push(argv, "--bind-fix6");
-
-    return argv;
+    return parse_desync_outbound(args_val, "desync-out") != null;
 }
 
 function find_child_pids(parent_pid) {
@@ -662,8 +590,6 @@ return {
     tokenize_strategy_args,
     parse_desync_outbound,
     validate_strategy_args,
-    build_byedpi_argv,
-    build_zapret_argv,
     kill_pid_file,
     get_system_capabilities,
     get_system_memory_kb,

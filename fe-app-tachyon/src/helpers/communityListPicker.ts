@@ -44,8 +44,7 @@ export function parseCommunityHint(rawHint: string): ParsedCommunityHint {
   } else if (
     lower.includes('десинхронизац') ||
     lower.includes('desync') ||
-    lower.includes('обход dpi') ||
-    lower.includes('zapret')
+    lower.includes('фрагментац')
   ) {
     routeKind = 'dpi';
     routeShort = 'VPN / Desync';

@@ -6,7 +6,7 @@
 #   * `seen[domain]` was stamped before any probe ran, so a candidate that was
 #     examined during a DNS blip stayed suppressed for the full 24h TTL, and a
 #     single TCP reset was enough to spend that window;
-#   * one failing sample was enough to add the domain and reload sing-box, so a
+#   * one failing sample was enough to add the domain and reload tachyon-core, so a
 #     transient reset turned into a permanent routing rule for everyone on the
 #     router.
 #

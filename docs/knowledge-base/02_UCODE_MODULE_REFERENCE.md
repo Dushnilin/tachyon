@@ -8,10 +8,10 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 
 | Module | Key Functions & Responsibilities |
 |---|---|
-| `constants.uc` | Central repository of paths, default ports (`1602`, `127.0.0.42:53`, `9090`, `4539`), fwmark values (`0x04000000`, `0x40000000`), version detection, UCI config names. |
+| `constants.uc` | Central repository of paths, default ports (`1602`, `127.0.0.42:53`, `9090`), fwmark values (`0x04000000`, `0x08000000`), version detection, UCI config names. |
 | `common.uc` | String manipulation (`trim`, `as_string`, `substr`), flash-safe atomic file writers (`write_file`, `write_json_file`, `copy_file` with `content_unchanged()`), logging helpers. |
 | `exec.uc` | Safe subprocess execution (`command_from_args`, `command_status_from_args`, `run_output`, background daemon builder) without shell injection. |
-| `process.uc` | Core service contract (`tachyon-core` / `sing-box`) and PID-recycling-safe process identity (`pid` + `starttime` + `boot_id`). |
+| `process.uc` | Core service contract (`tachyon-core`) and PID-recycling-safe process identity (`pid` + `starttime` + `boot_id`). |
 | `transaction.uc` | Atomic 8-phase transaction engine (`PLAN -> PREFLIGHT -> SNAPSHOT -> MUTATE -> VALIDATE -> ACTIVATE -> VERIFY -> COMMIT`) with LIFO rollback (`restore_file`, `remove_file`, `restore_uci`, `command`, `callback`). |
 | `jobs.uc` | Asynchronous background job engine with PID+starttime+boot_id identity, heartbeat, cooperative cancellation, and critical sections. |
 | `events.uc` | In-memory pub/sub bus and bounded ring journal (`/var/run/tachyon/events.jsonl`) with write-time secret redaction (`redact_string`, `redact_payload`). |
@@ -49,10 +49,10 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 | Module | Key Functions & Responsibilities |
 |---|---|
 | `doctor.uc` | **Local Rule Doctor & AI Doctor v3.0 engine**: runs offline heuristic checks, live end-to-end verification, builds pre-redacted LLM prompts with architecture context and RAG documentation, and parses `FIX:` repair chains. |
-| `repairs.uc` | Implements all 25 automated quick-fix actions (`apply_quick_fix()`), including `restore_native_internet`, `heal_network_stack`, `fix_bootstrap_dns`, `upgrade_to_singbox_extended`. |
+| `repairs.uc` | Implements all 24 automated quick-fix actions (`apply_quick_fix()`), including `restore_native_internet`, `heal_network_stack`, `fix_bootstrap_dns`, `start_tachyon_core`. |
 | `rag.uc` | **Hybrid RAG Engine**: combines vector cosine similarity (`embed_query`) and domain-boosted lexical search (`lexical_search`, `search_docs`) over `/usr/lib/tachyon/rag_index.json` with strict query secret sanitization. |
 | `route_explain.uc` | Packet path simulator (`tachyon route_explain`): traces client IP, target domain/IP, port, protocol through DNS/FakeIP, `inet TachyonTable`, `ip rule`, and matched `section`/`condition`/`outbound_source`/`balancer`. |
-| `fuzzer.uc` & `fuzzer/ai.uc` | **Strategy Fuzzer & AI Strategy Generator**: benchmarks `zapret2`, `zapret`, `byedpi`, and native `desync` strategies in an isolated sandbox (NFQueue `298/299`, mark `0x08000000`) and synthesizes valid strategies via LLM+RAG. |
+| `fuzzer.uc` & `fuzzer/ai.uc` | **Strategy Fuzzer & AI Strategy Generator**: benchmarks native `desync` (`tachyon-core`) strategies in an isolated sandbox and synthesizes valid strategies via LLM+RAG. |
 | `smart_detect.uc` | Autonomous degraded-domain detector (Default and Plus modes) with upstream DNS/WAN guard. |
 | `runtime.uc` | Diagnostics CLI & RPC dispatcher delegating to `doctor.uc`, `repairs.uc`, `dns.uc`, `routing.uc`, and `status.uc`. |
 | `service_check.uc` | Health probes: tests TCP/UDP proxying, DNS response latency, WAN internet connectivity, gateway reachability. |
@@ -64,7 +64,7 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 
 | Module | Key Functions & Responsibilities |
 |---|---|
-| `generator.uc` | Master JSON configuration compiler (`/etc/tachyon-core/config.json` or `/etc/sing-box/config.json`): binds inbounds (`:1602`), outbounds, routing rules, DNS (`127.0.0.42:53`), and Clash API (`127.0.0.1:9090`). |
+| `generator.uc` | Master JSON configuration compiler (`/etc/tachyon-core/config.json`): binds inbounds (`:1602`), outbounds, routing rules, DNS (`127.0.0.42:53`), and Clash API (`127.0.0.1:9090`). |
 | `generator_outbounds.uc` | Compiles VLESS (Reality/gRPC/WS/XHTTP), VMess, Shadowsocks, Trojan, Hysteria2, WireGuard, AmneziaWG (`add_awg_endpoint`), Direct, Block, and balancer outbounds. |
 | `generator_routes.uc` | Compiles modular routing rules from `section` + `condition` + `outbound_source` + `balancer` + `outbound_group`. |
 | `dns.uc` | Compiles core DNS configuration: local DNS, remote DoH/DoT/UDP DNS, FakeIP (`198.18.0.0/15`), and bootstrap DNS resolution rules. |
@@ -73,27 +73,20 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 | `dns_presets.uc` | Built-in DNS presets (Cloudflare, Google, AdGuard, Quad9, OpenDNS, Custom DoH). |
 | `priority.uc` | Outbound group priority manager: auto-failover, primary/backup cascade, URL-test latency sorting, and `fail_policy` handling. |
 | `route.uc` | Low-level route rule builder & selector logic. |
-| `rulesets.uc` | Rule-set binary (`.srs`) and JSON ruleset compiler and parser. |
+| `rulesets.uc` | Rule-set binary (`.trs` priority and `.srs` supported) and JSON ruleset compiler and parser. |
 | `servers.uc` | Server node parser, validator, and URI serializer. |
 | `subscription.uc` | Subscriptions processor: download, base64 decoding, node deduplication, format normalizer. |
 | `urltest.uc` | RTT ping & latency testing worker: measures real response times across proxy servers. |
 
 ---
 
-## 5. Packet Desynchronization & Tunnel Providers Subsystem (`providers/`)
+## 5. Tunnel Providers & Rules Subsystem (`providers/`)
 
 | Module | Key Functions & Responsibilities |
 |---|---|
-| `zapret/runtime.uc` | Manages **Zapret v1 (`nfqws`)** process arguments, queue numbers (`200+`), NFQueue bindings, daemon start/stop. |
-| `zapret2/runtime.uc` | Manages **Zapret v2 (`nfqws2`)** Lua-based multi-profile desync arguments (`--lua-desync=multisplit:...`, queues `201+`). |
-| `byedpi/runtime.uc` | Manages **ByeDPI (`ciadpi`)** SOCKS5 proxy daemon (`127.0.0.1:4539`), port allocation, payload split parameters. |
-| `nfqueue/runtime.uc` | Kernel NFQueue allocation table, prevents queue ID collisions between Zapret v1 and v2. |
-| `wdtt/runtime.uc` | Manages **WDTT** tunnel provider for WebRTC, Discord voice, and Telegram calls. |
-| `olcrtc/runtime.uc` | Manages **OlcRTC** media and RTC relay provider. |
 | `fptn/runtime.uc` | Manages **FPTN** tunnel client provider. |
-| `tailscale/runtime.uc` | Manages **Tailscale** mesh VPN integration and routing rules. |
-| `rules.uc` | Maps UCI routing sections to specific provider action handlers (`zapret`, `zapret2`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `proxy`). |
-| `status.uc` | Real-time process inspection and health monitoring of all active provider daemons. |
+| `rules.uc` | Maps UCI routing sections to provider and native core actions (`fptn`, `desync`, `csqtt`, `tailscale`, `connection`). |
+| `status.uc` | Real-time process and inbound/outbound summary inspection for `tachyon-core` and `fptn`. |
 
 ---
 

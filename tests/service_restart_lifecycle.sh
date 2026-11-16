@@ -159,7 +159,7 @@ export PATH="$WORK_DIR/bin:$PATH"
 : > "$LOG"
 
 ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$APPLY_UC" configure ||
-  fail "dnsmasq_configure should succeed when dnsmasq already points to sing-box"
+  fail "dnsmasq_configure should succeed when dnsmasq already points to tachyon-core"
 
 # Verify that no deletion of 127.0.0.42 or restoration of 1.1.1.1 occurred
 if grep -Eq 'SET dhcp\.@dnsmasq\[0\]\.server=1\.1\.1\.1|ADD_LIST dhcp\.@dnsmasq\[0\]\.server 1\.1\.1\.1' "$LOG"; then

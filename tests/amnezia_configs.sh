@@ -3,9 +3,6 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 ucode -L "$TACHYON_LIB" "$ROOT_DIR/tests/amnezia_configs.uc"
 node "$ROOT_DIR/tests/amnezia_configs_ui.mjs"
-printf 'tachyon-core' >"$WORK_DIR/variant"
-printf '0.0.7' >"$WORK_DIR/version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant" SB_VERSION_STATE_FILE="$WORK_DIR/version"
 node - "$WORK_DIR" <<'JS'
 const fs=require('fs'), path=require('path');
 const key=Buffer.from(Array.from({length:32},(_,i)=>i+1)).toString('base64');
@@ -29,9 +26,3 @@ assert(cfg.outbounds.some(o=>o.type==='selector' && o.outbounds.includes(endpoin
 assert(!cfg.outbounds.some(o=>o.type==='wireguard'));
 console.log('PASS: named .conf full generator, native endpoint and selector');
 JS
-printf 'standard' >"$WORK_DIR/variant"
-printf '1.14.2' >"$WORK_DIR/version"
-if ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture "$WORK_DIR/fixture.json" "$WORK_DIR/rejected.json" '127.0.0.1' '0' >"$WORK_DIR/error" 2>&1; then
- fail 'unsupported core must reject Amnezia imports'
-fi
-printf 'PASS: unsupported core fails before apply\n'

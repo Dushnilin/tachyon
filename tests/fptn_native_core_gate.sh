@@ -24,20 +24,12 @@ for f in "$VALIDATOR_UC" "$CONNECTIONS_UC" "$GENERATOR_UC"; do
   [ -f "$f" ] || fail "$(basename "$f") not found"
 done
 
-# 1. fptn_transport_mode() resolves to "native" on tachyon-core and "" on sing-box.
-printf 'tachyon-core\n' > "$WORK_DIR/variant-core"
-MODE_CORE="$(SB_VARIANT_STATE_FILE="$WORK_DIR/variant-core" ucode -L "$TACHYON_LIB" -e '
+# 1. fptn_transport_mode() resolves to "native" on tachyon-core.
+MODE_CORE="$(ucode -L "$TACHYON_LIB" -e '
 let c = require("config.connections");
 printf("%s", c.fptn_transport_mode());
 ')"
 [ "$MODE_CORE" = "native" ] || fail "expected fptn_transport_mode() == 'native' on tachyon-core, got '$MODE_CORE'"
-
-printf 'stable\n' > "$WORK_DIR/variant-sb"
-MODE_SB="$(SB_VARIANT_STATE_FILE="$WORK_DIR/variant-sb" TACHYON_CORE_ENGINE="sing-box" ucode -L "$TACHYON_LIB" -e '
-let c = require("config.connections");
-printf("%s", c.fptn_transport_mode());
-')"
-[ "$MODE_SB" = "" ] || fail "expected fptn_transport_mode() == '' on sing-box, got '$MODE_SB'"
 
 # 2. Native is a core-side outbound gated on core capability, with no external client binary or routing_mark fallback.
 grep -Fq 'type: "fptn"' "$GENERATOR_UC" ||

@@ -31,8 +31,8 @@ SDK_CACHE_DIR="${SDK_CACHE_DIR:-$DEFAULT_BUILD_HOME/.cache/tachyon/openwrt-sdk}"
 IPK_SDK_URL="${IPK_SDK_URL:-https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst}"
 APK_SDK_URL="${APK_SDK_URL:-https://downloads.openwrt.org/releases/25.12.3/targets/x86/64/openwrt-sdk-25.12.3-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst}"
 
-BACKEND_DESCRIPTION="Rule-based Tachyon backend with hybrid sing-box + zapret orchestration"
-APP_DESCRIPTION="Rule-based Tachyon LuCI app with hybrid sing-box + zapret orchestration"
+BACKEND_DESCRIPTION="Rule-based Tachyon backend with tachyon-core orchestration"
+APP_DESCRIPTION="Rule-based Tachyon LuCI app with tachyon-core orchestration"
 I18N_DESCRIPTION="Translation for luci-app-tachyon - Русский (Russian)"
 MAINTAINER="Dushnilin <dushnilin@gmail.com>"
 PROJECT_URL="https://github.com/Dushnilin/tachyon"
@@ -396,7 +396,7 @@ build_backend_root() {
   # Registrable-domain boundaries for Smart Detect Plus (ICANN + PRIVATE, MPL-2.0).
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/public-suffix-list.dat" \
     "$output_root/usr/share/tachyon/public-suffix-list.dat"
-  # Curated DPI bypass strategy presets. Without it the fuzzer falls back to
+  # Curated strategy presets. Without it the fuzzer falls back to
   # downloading the file from a mirror on first use.
   install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/dpi-presets.json" \
     "$output_root/usr/share/tachyon/dpi-presets.json"
@@ -522,15 +522,27 @@ EOF
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
 
-# Stop and disable legacy forkop / podkop / netshift / steer services to prevent boot conflicts
-for legacy_svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer; do
+# Stop and disable legacy forkop / podkop / netshift / standalone provider services to prevent boot conflicts
+for legacy_svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
 	if [ -f "/etc/init.d/${legacy_svc}" ]; then
 		"/etc/init.d/${legacy_svc}" stop >/dev/null 2>&1 || true
 		"/etc/init.d/${legacy_svc}" disable >/dev/null 2>&1 || true
 	fi
 done
-rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* 2>/dev/null || true
+if [ -f /etc/init.d/tailscale ] && grep -q "Tachyon managed" /etc/init.d/tailscale 2>/dev/null; then
+	/etc/init.d/tailscale stop >/dev/null 2>&1 || true
+	/etc/init.d/tailscale disable >/dev/null 2>&1 || true
+	rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true
+fi
+killall -9 nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc steer >/dev/null 2>&1 || true
+rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc 2>/dev/null || true
+rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* 2>/dev/null || true
 rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true
+rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true
+rm -rf /var/run/tachyon/zapret* /var/run/tachyon/byedpi /var/run/tachyon/wdtt /var/run/tachyon/olcrtc /var/run/tachyon/tailscale /var/run/qwdtt /etc/tachyon/tailscale/*/native 2>/dev/null || true
+rm -rf /etc/tachyon/component-backups/zapret /etc/tachyon/component-backups/zapret2 /etc/tachyon/component-backups/byedpi /etc/tachyon/component-backups/wdtt /etc/tachyon/component-backups/olcrtc /etc/tachyon/component-backups/tailscale 2>/dev/null || true
+rm -f /var/run/tachyon/component-update-checks/zapret.json /var/run/tachyon/component-update-checks/zapret2.json /var/run/tachyon/component-update-checks/byedpi.json /var/run/tachyon/component-update-checks/wdtt.json /var/run/tachyon/component-update-checks/olcrtc.json 2>/dev/null || true
+rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true
 nft delete table inet podkop >/dev/null 2>&1 || true
 nft delete table inet PodkopTable >/dev/null 2>&1 || true
 nft delete table inet forkop >/dev/null 2>&1 || true
@@ -538,6 +550,12 @@ nft delete table inet ForkopTable >/dev/null 2>&1 || true
 nft delete table inet netshift >/dev/null 2>&1 || true
 nft delete table inet NetShiftTable >/dev/null 2>&1 || true
 nft delete table inet steer >/dev/null 2>&1 || true
+nft delete table inet tachyon_tailscale >/dev/null 2>&1 || true
+for legacy_tbl in zapret zapret2; do
+	nft delete table inet "$legacy_tbl" >/dev/null 2>&1 || true
+	nft delete table ip "$legacy_tbl" >/dev/null 2>&1 || true
+	nft delete table ip6 "$legacy_tbl" >/dev/null 2>&1 || true
+done
 
 rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
@@ -838,10 +856,13 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     // the old one kept serving. Placed before the migrations so it happens on
     // every exit path below, including the ones that exit early.
     system("/etc/init.d/rpcd reload >/dev/null 2>&1 || true");
-    system("for svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
-    system("rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* 2>/dev/null || true");
-    system("rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true");
-    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable steer; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
+    system("for svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
+    system("if [ -f /etc/init.d/tailscale ] && grep -q 'Tachyon managed' /etc/init.d/tailscale 2>/dev/null; then /etc/init.d/tailscale stop >/dev/null 2>&1 || true; /etc/init.d/tailscale disable >/dev/null 2>&1 || true; rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true; fi");
+    system("killall -9 nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc steer >/dev/null 2>&1 || true");
+    system("rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* 2>/dev/null || true");
+    system("rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc /var/run/tachyon/zapret* /var/run/tachyon/byedpi /var/run/tachyon/wdtt /var/run/tachyon/olcrtc /var/run/tachyon/tailscale /var/run/qwdtt /etc/tachyon/tailscale/*/native /etc/tachyon/component-backups/zapret /etc/tachyon/component-backups/zapret2 /etc/tachyon/component-backups/byedpi /etc/tachyon/component-backups/wdtt /etc/tachyon/component-backups/olcrtc /etc/tachyon/component-backups/tailscale 2>/dev/null || true");
+    system("rm -f /var/run/tachyon/component-update-checks/zapret.json /var/run/tachyon/component-update-checks/zapret2.json /var/run/tachyon/component-update-checks/byedpi.json /var/run/tachyon/component-update-checks/wdtt.json /var/run/tachyon/component-update-checks/olcrtc.json /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true");
+    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable steer zapret zapret2 tachyon_tailscale; do nft delete table inet $tbl >/dev/null 2>&1 || true; done; for tbl in zapret zapret2; do nft delete table ip $tbl >/dev/null 2>&1 || true; nft delete table ip6 $tbl >/dev/null 2>&1 || true; done");
     system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json /etc/uci-defaults/50_luci-netshift 2>/dev/null || true");
     if (system("test -f /etc/config/netshift") == 0) {
         system("mv /etc/config/netshift /etc/config/tachyon");
@@ -965,10 +986,13 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     // the old one kept serving. Placed before the migrations so it happens on
     // every exit path below, including the ones that exit early.
     system("/etc/init.d/rpcd reload >/dev/null 2>&1 || true");
-    system("for svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
-    system("rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* 2>/dev/null || true");
-    system("rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true");
-    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable steer; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
+    system("for svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
+    system("if [ -f /etc/init.d/tailscale ] && grep -q 'Tachyon managed' /etc/init.d/tailscale 2>/dev/null; then /etc/init.d/tailscale stop >/dev/null 2>&1 || true; /etc/init.d/tailscale disable >/dev/null 2>&1 || true; rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true; fi");
+    system("killall -9 nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc steer >/dev/null 2>&1 || true");
+    system("rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* 2>/dev/null || true");
+    system("rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc /var/run/tachyon/zapret* /var/run/tachyon/byedpi /var/run/tachyon/wdtt /var/run/tachyon/olcrtc /var/run/tachyon/tailscale /var/run/qwdtt /etc/tachyon/tailscale/*/native /etc/tachyon/component-backups/zapret /etc/tachyon/component-backups/zapret2 /etc/tachyon/component-backups/byedpi /etc/tachyon/component-backups/wdtt /etc/tachyon/component-backups/olcrtc /etc/tachyon/component-backups/tailscale 2>/dev/null || true");
+    system("rm -f /var/run/tachyon/component-update-checks/zapret.json /var/run/tachyon/component-update-checks/zapret2.json /var/run/tachyon/component-update-checks/byedpi.json /var/run/tachyon/component-update-checks/wdtt.json /var/run/tachyon/component-update-checks/olcrtc.json /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true");
+    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable steer zapret zapret2 tachyon_tailscale; do nft delete table inet $tbl >/dev/null 2>&1 || true; done; for tbl in zapret zapret2; do nft delete table ip $tbl >/dev/null 2>&1 || true; nft delete table ip6 $tbl >/dev/null 2>&1 || true; done");
     system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json /etc/uci-defaults/50_luci-netshift 2>/dev/null || true");
     system("if [ -d /www/cgi-bin ]; then if [ -n \"$(uci -q get tachyon.settings.agent_api_token)\" ]; then ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true; else rm -f /www/cgi-bin/tachyon-agent 2>/dev/null || true; fi; fi");
     if (system("test -f /etc/config/netshift") == 0) {

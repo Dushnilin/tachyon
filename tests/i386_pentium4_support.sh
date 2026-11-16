@@ -10,18 +10,9 @@ tc_arch() {
   ucode -L "$TACHYON_LIB" "$UPDATER" tachyon-core-arch-suffix "$1" "" 2>/dev/null
 }
 
-sb_arch() {
-  ucode -L "$TACHYON_LIB" "$UPDATER" sing-box-extended-arch-suffix "$1" "" 2>/dev/null
-}
-
 for a in i386_pentium4 i386 i486 i586 i686 x86; do
   [ "$(tc_arch "$a")" = "i386_pentium4" ] ||
     fail "$a must resolve to i386_pentium4 for tachyon-core, got '$(tc_arch "$a")'"
-done
-
-for a in i386_pentium4 i386 i486 i586 i686 x86; do
-  [ "$(sb_arch "$a")" = "386" ] ||
-    fail "$a must resolve to 386 for sing-box-extended, got '$(sb_arch "$a")'"
 done
 
 candidates="$(ucode -L "$TACHYON_LIB" "$UPDATER" updates-arch-candidates "i386_pentium4" 2>/dev/null)"

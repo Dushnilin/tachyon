@@ -29,7 +29,7 @@ let port_ok = false;
 firewall_health.inspect = function(s) { return { nft_ok: nft_ok, qos_ok: qos_ok }; };
 firewall_health.tproxy_listening = function(port) { return port_ok; };
 controller.create_tick_context = function() {
-    return { settings: cfg, singbox_running: true, proxy_port: "4534", proxy_host: "127.0.0.1" };
+    return { settings: cfg, tachyon_core_running: true, proxy_port: "4534", proxy_host: "127.0.0.1" };
 };
 controller.tproxy_port = function() { return 4530; };
 controller.check_tachyon_cli_running = function() { return false; };

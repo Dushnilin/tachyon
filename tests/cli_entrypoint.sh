@@ -52,16 +52,16 @@ show_version_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" show_version)"
 [ "$show_version_out" = $'diagnostics\tshow-version\t\t\t' ] ||
   fail "show_version must dispatch through diagnostics/runtime.uc"
 
-byedpi_val_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" validate_byedpi_strategy_json 'strategy_dummy')"
-[ "$byedpi_val_out" = $'diagnostics\tvalidate-byedpi-strategy-json\tstrategy_dummy\t\t' ] ||
-  fail "validate_byedpi_strategy_json must dispatch through diagnostics/runtime.uc with arguments"
+check_fakeip_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" check_fakeip 'example.org')"
+[ "$check_fakeip_out" = $'diagnostics\tcheck-fakeip\texample.org\t\t' ] ||
+  fail "check_fakeip must dispatch through diagnostics/runtime.uc with arguments"
 
 subscription_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" subscription_update proxy 2)"
 [ "$subscription_out" = $'updates\tsubscription-update\tproxy\t2' ] ||
   fail "subscription_update must dispatch through components/updates.uc with arguments"
 
-component_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" component_action sing_box update)"
-[ "$component_out" = $'action\tcomponent-action\tsing_box\tupdate' ] ||
+component_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" component_action tachyon-core update)"
+[ "$component_out" = $'action\tcomponent-action\ttachyon-core\tupdate' ] ||
   fail "component_action must dispatch through components/action.uc with arguments"
 
 component_check_cache_out="$(TACHYON_LIB="$fake_lib" ucode "$TACHYON_BIN" component_update_check_cache)"

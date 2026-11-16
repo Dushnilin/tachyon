@@ -11,8 +11,6 @@ STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 UI_UC="$ROOT_DIR/tachyon/files/usr/lib/service/ui.uc"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 SUBSCRIPTION_CACHE_UC="$ROOT_DIR/tachyon/files/usr/lib/subscription/cache.uc"
-NFQUEUE_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/nfqueue/runtime.uc"
-BYEDPI_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/runtime.uc"
 PRIORITY_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/priority.uc"
 
 require_pattern() {
@@ -104,8 +102,7 @@ require_file_pattern "$INITD_UC" 'subscription-deferred-recovery-apply' \
   "service/initd.uc must launch the in-place subscription apply"
 require_file_pattern "$STATE_UC" 'subscription-deferred-recovery-apply' \
   "service/state.uc must launch the in-place subscription apply"
-for background_owner in "$UI_UC" "$UPDATES_UC" "$SUBSCRIPTION_CACHE_UC" \
-    "$NFQUEUE_RUNTIME_UC" "$BYEDPI_RUNTIME_UC" "$PRIORITY_UC"; do
+for background_owner in "$UI_UC" "$UPDATES_UC" "$SUBSCRIPTION_CACHE_UC" "$PRIORITY_UC"; do
   require_file_pattern "$background_owner" 'common.background_command_with_pid(' \
     "$(basename "$background_owner") workers must spawn through background_command_with_pid"
 done

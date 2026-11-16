@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FAULT: the core installer OOM-kills itself backing up the old sing-box.
+# FAULT: the core installer OOM-kills itself backing up the old tachyon-core.
 #
 # Issue #124: install_tachyon_core on a 256 MB router (SNR-CPE-AX2) died with
 # rc=247 twice, kernel log naming ucode as the OOM victim at 70-77 MB RSS, with
@@ -27,10 +27,10 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # The rollback backup of /usr/bin/tachyon-core is the one copy in the install path
 # whose payload is the binary itself. It has to go through the streaming helper;
 # a plain copy_file() there is the OOM, whatever the rest of the function does.
-grep -q 'copy_file_stream("/usr/bin/tachyon-core"' "$ACTION_UC" ||
+grep -q 'copy_file_stream(TACHYON_CORE_BIN,' "$ACTION_UC" ||
   fail "install_tachyon_core no longer backs up the old core through copy_file_stream, so a big binary returns to the ucode heap"
 
-if grep -n 'copy_file("/usr/bin/tachyon-core"' "$ACTION_UC" >/dev/null; then
+if grep -n 'copy_file(TACHYON_CORE_BIN,' "$ACTION_UC" >/dev/null; then
   fail "install_tachyon_core still copies /usr/bin/tachyon-core with copy_file(), which reads the whole binary into memory (issue #124)"
 fi
 

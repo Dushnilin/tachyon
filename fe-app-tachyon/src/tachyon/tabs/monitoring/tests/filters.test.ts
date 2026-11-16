@@ -315,7 +315,7 @@ describe('monitoring filters and resolution', () => {
     'searches session targets instead of candidate rule sets in the %s tab',
     (tab) => {
       const rule =
-        'rule_set=[zapret-community-rutracker_lampa-rs zapret-community-youtube-rs] => route(zapret-out)';
+        'rule_set=[tachyon-community-rutracker_lampa-rs tachyon-community-youtube-rs] => route(desync-out)';
       const connections: MonitoredConnection[] = [
         {
           id: 'dota',
@@ -450,10 +450,10 @@ describe('monitoring filters and resolution', () => {
         enabled: '1',
       } as any,
       {
-        '.name': 'zapret3_youtube_section',
+        '.name': 'desync_youtube_section',
         '.type': 'section',
-        label: 'zapret3_youtube_section',
-        action: 'zapret2',
+        label: 'desync_youtube_section',
+        action: 'desync',
         enabled: '1',
       } as any,
     ]);
@@ -472,7 +472,7 @@ describe('monitoring filters and resolution', () => {
       {
         id: 'c2',
         lastSeenAt: 1000,
-        chains: ['zapret3_youtube_section-out'],
+        chains: ['desync_youtube_section-out'],
         metadata: {
           network: 'udp',
           sourceIP: '192.168.1.44',
@@ -574,7 +574,7 @@ describe('monitoring filters and resolution', () => {
           destinationIP: '1.1.1.1',
           destinationPort: '443',
         },
-        chains: ['zapret2-out'],
+        chains: ['desync-out'],
       },
     ];
 

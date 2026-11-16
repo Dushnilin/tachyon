@@ -247,7 +247,7 @@ function cached_payload(path, tag) {
 }
 
 function extract(reference) {
-    let config = common.read_json_file(common.singbox_config_path());
+    let config = common.read_json_file(common.core_config_path());
     let selected = null;
     let hash_tag = "inline-custom-" + runtime_rulesets.hash12(reference) + "-ruleset";
     let hash_prefix = "inline-custom-" + runtime_rulesets.hash12(reference) + "-r";

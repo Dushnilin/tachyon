@@ -272,39 +272,24 @@ function parse_core_banner(output) {
         if (line == "")
             continue;
         let fields = split(line, /[ \t\r\n]+/);
-        if (length(fields) >= 3 && (lc(fields[0]) == "sing-box" || lc(fields[0]) == "tachyon-core") && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/) != null)
+        if (length(fields) >= 3 && lc(fields[0]) == "tachyon-core" && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/) != null)
             return { identity: lc(fields[0]), version: clean_version_token(fields[2]) };
-        if (length(fields) >= 2 && (lc(fields[0]) == "tachyon-core" || lc(fields[0]) == "sing-box" || lc(fields[0]) == "version") && match(fields[1], /^[vV]?[0-9]+/) != null)
+        if (length(fields) >= 2 && (lc(fields[0]) == "tachyon-core" || lc(fields[0]) == "version") && match(fields[1], /^[vV]?[0-9]+/) != null)
             return { identity: lc(fields[0]) == "version" ? "" : lc(fields[0]), version: clean_version_token(fields[1]) };
     }
     return { identity: "", version: "" };
 }
 
 function detect_snapshot_core_component(engine_opt) {
-    let state_ver_file = env("SB_VERSION_STATE_FILE", PERSISTENT_DIR + "/tachyon-core-version");
-    let state_var_file = env("SB_VARIANT_STATE_FILE", PERSISTENT_DIR + "/tachyon-core-variant");
+    let state_ver_file = env("TACHYON_CORE_VERSION_FILE", PERSISTENT_DIR + "/tachyon-core-version");
     let state_ver = clean_version_token(fs.readfile(state_ver_file));
-    if (state_ver == "" && getenv("SB_VERSION_STATE_FILE") == null)
-        state_ver = clean_version_token(fs.readfile("/etc/tachyon/tachyon-core-version") || fs.readfile("/etc/tachyon/sing-box-version"));
-    let marker = lc(trim(as_string(fs.readfile(state_var_file) || "")));
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = lc(trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "")));
-
-    let prefer_sing_box = (lc(as_string(engine_opt || "")) == "sing-box") ||
-        marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable";
+    if (state_ver == "" && getenv("TACHYON_CORE_VERSION_FILE") == null)
+        state_ver = clean_version_token(fs.readfile("/etc/tachyon/tachyon-core-version"));
 
     let banner = { identity: "", version: "" };
-    if (marker != "extended-compressed" && marker != "lx") {
-        let bins = prefer_sing_box
-            ? [ env("TACHYON_SING_BOX_BIN", "/usr/bin/sing-box"), "/usr/bin/tachyon-core" ]
-            : [ env("TACHYON_CORE_BIN", "/usr/bin/tachyon-core"), "/usr/bin/sing-box" ];
-        for (let bin_path in bins) {
-            if (bin_path != "" && fs.access(bin_path, "x")) {
-                banner = parse_core_banner(command_output_from_args([ bin_path, "version" ]));
-                if (banner.version != "")
-                    break;
-            }
-        }
+    let bin_path = env("TACHYON_CORE_BIN", "/usr/bin/tachyon-core");
+    if (bin_path != "" && fs.access(bin_path, "x")) {
+        banner = parse_core_banner(command_output_from_args([ bin_path, "version" ]));
     }
 
     let ver = banner.version != "" ? banner.version : state_ver;
@@ -313,20 +298,6 @@ function detect_snapshot_core_component(engine_opt) {
     if (ver == "")
         return null;
 
-    let is_sing_box = false;
-    if (banner.identity == "sing-box")
-        is_sing_box = true;
-    else if (banner.identity == "tachyon-core")
-        is_sing_box = false;
-    else if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")
-        is_sing_box = true;
-    else if (match(ver, /^[1-9]\.[0-9]+/) != null && index(ver, "-tachyon.") < 0)
-        is_sing_box = true;
-    else if (prefer_sing_box && marker != "tachyon-core" && match(ver, /^0\.[0-9]+/) == null)
-        is_sing_box = true;
-
-    if (is_sing_box)
-        return { id: "sing-box", name: "sing-box", version: ver };
     return { id: "tachyon-core", name: "Tachyon Core", version: ver };
 }
 
@@ -342,47 +313,14 @@ function detect_optional_component_version(comp_id, pkgs_mod) {
     if (pkg_ver != "")
         return pkg_ver;
 
-    if (comp_id == "tailscale") {
-        let ts_bin = env("TAILSCALE_BIN", "/usr/sbin/tailscale");
-        if (fs.access(ts_bin, "x")) {
-            let out = trim(command_output_from_args([ ts_bin, "version" ]));
-            if (out != "")
-                return clean_version_token(split(out, "\n")[0]);
-        }
-    }
     return "";
 }
 
 function parse_config_active_flags(config_text) {
     let flags = {
-        engine: "tachyon-core",
-        zapret2: false,
-        zapret: false,
-        byedpi: false,
-        tailscale: false
+        engine: "tachyon-core"
     };
     let cur_type = "";
-    let cur_enabled = true;
-    let cur_action = "";
-    let cur_protocol = "";
-    let cur_source_type = "";
-
-    let flush_section = function() {
-        if (cur_type == "" || !cur_enabled)
-            return;
-        if (cur_type == "section") {
-            if (cur_action == "zapret2") flags.zapret2 = true;
-            else if (cur_action == "zapret") flags.zapret = true;
-            else if (cur_action == "byedpi") flags.byedpi = true;
-            else if (cur_action == "tailscale") flags.tailscale = true;
-        } else if (cur_type == "outbound_source") {
-            if (cur_source_type == "tailscale")
-                flags.tailscale = true;
-        } else if (cur_type == "server") {
-            if (cur_protocol == "tailscale")
-                flags.tailscale = true;
-        }
-    };
 
     for (let raw_line in split(as_string(config_text || ""), "\n")) {
         let line = trim(replace(as_string(raw_line), /\r$/, ""));
@@ -390,12 +328,7 @@ function parse_config_active_flags(config_text) {
             continue;
         let hdr = match(line, /^config[ \t]+([A-Za-z0-9_-]+)/);
         if (hdr != null) {
-            flush_section();
             cur_type = as_string(hdr[1]);
-            cur_enabled = true;
-            cur_action = "";
-            cur_protocol = "";
-            cur_source_type = "";
             continue;
         }
         let opt = match(line, /^option[ \t]+([A-Za-z0-9_]+)[ \t]+['"]?([^'"\r\n]*)['"]?/);
@@ -405,16 +338,7 @@ function parse_config_active_flags(config_text) {
         let v = trim(as_string(opt[2]));
         if (cur_type == "settings" && k == "engine" && v != "")
             flags.engine = v;
-        else if (k == "enabled" && (v == "0" || lc(v) == "false" || lc(v) == "off" || lc(v) == "no"))
-            cur_enabled = false;
-        else if (k == "action" || k == "type")
-            cur_action = lc(v);
-        else if (k == "protocol")
-            cur_protocol = lc(v);
-        else if (k == "source_type")
-            cur_source_type = lc(v);
     }
-    flush_section();
     return flags;
 }
 
@@ -439,20 +363,6 @@ function collect_active_components(config_path) {
     let core_comp = detect_snapshot_core_component(flags.engine);
     if (core_comp != null)
         push(list, core_comp);
-
-    let extras = [
-        [ "zapret2", "Zapret2", flags.zapret2 ],
-        [ "zapret", "Zapret", flags.zapret ],
-        [ "byedpi", "ByeDPI", flags.byedpi ],
-        [ "tailscale", "Tailscale", flags.tailscale ]
-    ];
-    for (let entry in extras) {
-        if (!entry[2])
-            continue;
-        let ver = detect_optional_component_version(entry[0], pkgs_mod);
-        if (ver != "")
-            push(list, { id: entry[0], name: entry[1], version: ver });
-    }
 
     return normalize_snapshot_components(list);
 }
@@ -967,9 +877,6 @@ function summarize_uci_blocks(blocks, files_map) {
 const TRANSFER_EXCLUDED_ENTRIES = [
     "keys",
     "tachyon-core-version",
-    "tachyon-core-variant",
-    "sing-box-version",
-    "sing-box-variant",
     "mem_scale",
     "selector_state.json"
 ];

@@ -243,9 +243,9 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   huggingface:
     '[Маршрут: В Прокси / VPN] Репозитории моделей и датасетов Hugging Face (huggingface.co, hf.co), каталоги локальных LLM (ollama.com, lmstudio.ai, openwebui.com), платформы ролевых ИИ-персонажей (Character.AI, JanitorAI, Chub, NovelAI) и ML-инфраструктура (Weights & Biases, Kaggle, LangChain)',
   youtube:
-    '[Маршрут: В Desync (фрагментация / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
+    '[Маршрут: В Desync (фрагментация пакетов) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
   youtube_images:
-    '[Маршрут: В Прокси / VPN — для тех, кто чинит само видео через Zapret/ByeDPI] Серверы обложек роликов (i.ytimg.com, i9.ytimg.com), аватарок каналов (yt3.ggpht.com, yt4.ggpht.com) и веб-интерфейса YouTube БЕЗ тяжёлых видеосерверов googlevideo.com. Если видео через десинхронизацию (Desync) показывает, но не грузятся картинки и аватарки — направьте этот список в Прокси!',
+    '[Маршрут: В Прокси / VPN — для тех, кто отправляет само видео через Desync] Серверы обложек роликов (i.ytimg.com, i9.ytimg.com), аватарок каналов (yt3.ggpht.com, yt4.ggpht.com) и веб-интерфейса YouTube БЕЗ тяжёлых видеосерверов googlevideo.com. Если видео через десинхронизацию (Desync) показывает, но не грузятся картинки и аватарки — направьте этот список в Прокси!',
   twitch:
     '[Маршрут: В Прокси / VPN или Desync] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
   twitch_ads:
@@ -403,9 +403,9 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   hodca:
     '[Маршрут: В Прокси / VPN] Серверы проверки отзыва SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, GlobalSign, Entrust, Let’s Encrypt, Amazon Trust, IdenTrust и SSL.com (устраняет зависания HTTPS при региональных ограничениях OCSP)',
   doh_dot_dns:
-    '[Маршрут: В Прокси / VPN (для обхода блокировки DoH) или Блокировать (Block — чтобы запретить устройствам обходить локальный DNS роутера)] Полная база публичных серверов DNS-over-HTTPS (DoH) и DNS-over-TLS (DoT), включая домены и IP-адреса резолверов Cloudflare (1.1.1.1, cloudflare-dns.com), Google (8.8.8.8, dns.google), Quad9 (9.9.9.9, dns.quad9.net), AdGuard DNS, NextDNS, OpenDNS, Control D и Mullvad DNS',
+    '[Маршрут: В Прокси / VPN (при ограничениях DoH) или Блокировать (Block — чтобы запретить устройствам обходить локальный DNS роутера)] Полная база публичных серверов DNS-over-HTTPS (DoH) и DNS-over-TLS (DoT), включая домены и IP-адреса резолверов Cloudflare (1.1.1.1, cloudflare-dns.com), Google (8.8.8.8, dns.google), Quad9 (9.9.9.9, dns.quad9.net), AdGuard DNS, NextDNS, OpenDNS, Control D и Mullvad DNS',
   cloudflare:
-    '[Маршрут: В Прокси / VPN или Desync] IPv4/IPv6-подсети и домены Cloudflare CDN (обход фильтрации TLS ECH и сайтов за Cloudflare на транзитных узлах)',
+    '[Маршрут: В Прокси / VPN или Desync] IPv4/IPv6-подсети и домены Cloudflare CDN (десинхронизация пакетов для TLS ECH и сайтов за Cloudflare на транзитных узлах)',
   cloudfront:
     '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки',
   fastly:
@@ -435,7 +435,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: Только в Прокси / VPN] Спортивные трекеры, умные часы, велостанки и результаты матчей: Strava (strava.com — закрыла доступ и синхронизацию тренировок с российских IP!), Garmin Connect (garmin.com, connect.garmin.com), виртуальный велотренажёр Zwift (zwift.com), велонавигатор Komoot, Wahoo, Whoop, MyFitnessPal, результаты матчей Flashscore (flashscore.com — ограничен в РФ), Sofascore, Transfermarkt, F1 TV, UFC Fight Pass, NBA и NHL',
   news: '[Маршрут: В Прокси / VPN или Desync] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
   torrent:
-    '[Маршрут: В Desync (фрагментация / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
+    '[Маршрут: В Desync (фрагментация пакетов) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
   tor: '[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров',
   porn: '[Маршрут: В Прокси / VPN или Desync] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate',
   ads_hagezi_pro:

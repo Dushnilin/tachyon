@@ -10,10 +10,10 @@ let network_mod = require("diagnostics.network");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
-const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
+const CORE_DNS_INBOUND_ADDRESS = getenv("TACHYON_CORE_DNS_INBOUND_ADDRESS") || getenv("CORE_DNS_INBOUND_ADDRESS") || constants.TACHYON_CORE_DNS_INBOUND_ADDRESS || constants.CORE_DNS_INBOUND_ADDRESS || "127.0.0.42";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
-const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
+const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 
 let as_string = common.as_string;
@@ -113,12 +113,12 @@ function dns_check_resolve_host(host, resolver, timeout_seconds) {
     return "";
 }
 
-function dns_check_through_singbox(domain) {
-    let resolved = dns_check_resolve_host(domain, SB_DNS_INBOUND_ADDRESS, 3);
+function dns_check_through_core(domain) {
+    let resolved = dns_check_resolve_host(domain, CORE_DNS_INBOUND_ADDRESS, 3);
     if (resolved != "")
         return true;
 
-    let res = command_capture("nslookup " + shell_quote(domain) + " " + SB_DNS_INBOUND_ADDRESS + " 2>&1");
+    let res = command_capture("nslookup " + shell_quote(domain) + " " + CORE_DNS_INBOUND_ADDRESS + " 2>&1");
     return (index(res.output, "Address") >= 0 || index(res.output, "name =") >= 0) &&
            index(res.output, "NXDOMAIN") < 0 &&
            index(res.output, "can't resolve") < 0 &&
@@ -126,12 +126,12 @@ function dns_check_through_singbox(domain) {
 }
 
 function dns_check_router_resolver_available(domain) {
-    for (let address in [ "127.0.0.1", SB_DNS_INBOUND_ADDRESS ]) {
+    for (let address in [ "127.0.0.1", CORE_DNS_INBOUND_ADDRESS ]) {
         if (address != "" && command_success_from_args([ "dig", "@" + address, domain, "+timeout=1", "+tries=1" ]))
             return true;
     }
 
-    let pipe = fs.popen(sprintf("ucode -L %s %s service-listen-address", shell_quote(LIB_DIR), shell_quote(SINGBOX_RUNTIME_UC)), "r");
+    let pipe = fs.popen(sprintf("ucode -L %s %s service-listen-address", shell_quote(LIB_DIR), shell_quote(TACHYON_CORE_RUNTIME_UC)), "r");
     let listen_address = "";
     if (pipe) {
         listen_address = replace(as_string(pipe.read("all")), /[\r\n]+$/g, "");
@@ -195,7 +195,7 @@ function check_dns_available() {
         push(active_dns_args, "-p");
         push(active_dns_args, as_string(runtime_dns.health_port("active", 0)));
     }
-    push(active_dns_args, "@" + SB_DNS_INBOUND_ADDRESS);
+    push(active_dns_args, "@" + CORE_DNS_INBOUND_ADDRESS);
     push(active_dns_args, domain);
     push(active_dns_args, "A");
     push(active_dns_args, "+short");
@@ -264,7 +264,7 @@ function check_fakeip(target_domain) {
     let fakeip_address = "";
     let fakeip6_address = "";
     for (let line in split(command_output_from_args([
-        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, query_domain, "A", "+timeout=2", "+tries=1"
+        "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, query_domain, "A", "+timeout=2", "+tries=1"
     ]), "\n")) {
         line = trim(as_string(line));
         if (valid_ipv4(line)) {
@@ -273,7 +273,7 @@ function check_fakeip(target_domain) {
         }
     }
     for (let line in split(command_output_from_args([
-        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, query_domain, "AAAA", "+timeout=2", "+tries=1"
+        "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, query_domain, "AAAA", "+timeout=2", "+tries=1"
     ]), "\n")) {
         line = lc(trim(as_string(line)));
         if (core_ip.valid_ipv6(line)) {
@@ -378,7 +378,7 @@ return {
     url_host,
     get_all_dns_servers,
     dns_check_resolve_host,
-    dns_check_through_singbox,
+    dns_check_through_core,
     dns_check_router_resolver_available,
     dns_check_timeout_seconds,
     dnsmasq_has_tachyon_dns,

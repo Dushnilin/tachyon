@@ -11,7 +11,7 @@ generate_config() {
     "$fixture" "$output" "127.0.0.1"
 }
 
-# sing-box rejects a URLTest group whose interval exceeds its idle_timeout and
+# tachyon-core rejects a URLTest group whose interval exceeds its idle_timeout and
 # substitutes its own 30m default when the option is omitted, so the generator
 # has to raise idle_timeout to the check interval whenever it would be smaller.
 cat >"$WORK_DIR/children.json" <<'JSON'
@@ -123,7 +123,7 @@ let relaxed = groups["proxy-urltest-cfg010005-out"];
 if (!relaxed)
     die("missing URLTest outbound proxy-urltest-cfg010005-out\n");
 if (relaxed.idle_timeout != null)
-    die(sprintf("expected no idle_timeout below the sing-box default, got %s\n", relaxed.idle_timeout));
+    die(sprintf("expected no idle_timeout below the core default, got %s\n", relaxed.idle_timeout));
 ' "$children_output" || fail "URLTest child idle_timeout regression"
 
 echo "PASS: urltest_idle_timeout test passed"

@@ -104,9 +104,9 @@ function constants_map() {
     c.RESOLV_CONF = env("RESOLV_CONF", "/etc/resolv.conf");
     c.CHECK_PROXY_IP_DOMAIN = env("CHECK_PROXY_IP_DOMAIN", "ip.podkop.fyi");
     c.FAKEIP_TEST_DOMAIN = env("FAKEIP_TEST_DOMAIN", "fakeip.podkop.fyi");
-    c.TMP_SING_BOX_FOLDER = env("TMP_SING_BOX_FOLDER", "/tmp/tachyon-core");
-    c.TMP_RULESET_FOLDER = env("TMP_RULESET_FOLDER", c.TMP_SING_BOX_FOLDER + "/rulesets");
-    c.TMP_SUBSCRIPTION_FOLDER = env("TMP_SUBSCRIPTION_FOLDER", c.TMP_SING_BOX_FOLDER + "/subscriptions");
+    c.TMP_TACHYON_CORE_FOLDER = env("TMP_TACHYON_CORE_FOLDER", "/tmp/tachyon-core");
+    c.TMP_RULESET_FOLDER = env("TMP_RULESET_FOLDER", c.TMP_TACHYON_CORE_FOLDER + "/rulesets");
+    c.TMP_SUBSCRIPTION_FOLDER = env("TMP_SUBSCRIPTION_FOLDER", c.TMP_TACHYON_CORE_FOLDER + "/subscriptions");
     c.CLOUDFLARE_OCTETS = env("CLOUDFLARE_OCTETS", "8.47 162.159 188.114");
     c.COREUTILS_BASE64_REQUIRED_VERSION = env("COREUTILS_BASE64_REQUIRED_VERSION", "9.7");
     c.RT_TABLE_NAME = env("RT_TABLE_NAME", "tachyon");
@@ -125,35 +125,38 @@ function constants_map() {
     c.NFT_FAKEIP_MARK = env("NFT_FAKEIP_MARK", "0x04000000");
     c.NFT_OUTBOUND_MARK = env("NFT_OUTBOUND_MARK", "0x08000000");
 
-    c.SB_REQUIRED_VERSION = env("SB_REQUIRED_VERSION", "1.12.0");
-    c.SB_MANAGED_SERVICE_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Tachyon managed sing-box service for binary variants");
-    c.SB_DNS_SERVER_TAG = env("SB_DNS_SERVER_TAG", "dns-server");
-    c.SB_FAKEIP_DNS_SERVER_TAG = env("SB_FAKEIP_DNS_SERVER_TAG", "fakeip-server");
-    c.SB_FAKEIP_INET4_RANGE = env("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
-    c.SB_FAKEIP_INET6_RANGE = env("SB_FAKEIP_INET6_RANGE", "fc00::/18");
-    c.SB_BOOTSTRAP_SERVER_TAG = env("SB_BOOTSTRAP_SERVER_TAG", "bootstrap-dns-server");
-    c.SB_FAKEIP_DNS_RULE_TAG = env("SB_FAKEIP_DNS_RULE_TAG", "fakeip-dns-rule-tag");
-    c.SB_FAKEIP_RULESET_DNS_RULE_TAG = env("SB_FAKEIP_RULESET_DNS_RULE_TAG", "fakeip-ruleset-dns-rule-tag");
-    c.SB_SERVICE_FAKEIP_DNS_RULE_TAG = env("SB_SERVICE_FAKEIP_DNS_RULE_TAG", "service-fakeip-dns-rule-tag");
-    c.SB_TPROXY_INBOUND_TAG = env("SB_TPROXY_INBOUND_TAG", "tproxy-in");
-    c.SB_TPROXY_INBOUND_ADDRESS = env("SB_TPROXY_INBOUND_ADDRESS", "0.0.0.0");
-    c.SB_TPROXY_INBOUND6_TAG = env("SB_TPROXY_INBOUND6_TAG", "tproxy6-in");
-    c.SB_TPROXY_INBOUND6_ADDRESS = env("SB_TPROXY_INBOUND6_ADDRESS", "::1");
-    c.SB_TPROXY_INBOUND_PORT = env("SB_TPROXY_INBOUND_PORT", "1602");
-    c.SB_DNS_INBOUND_TAG = env("SB_DNS_INBOUND_TAG", "dns-in");
-    c.SB_DNS_INBOUND_ADDRESS = env("SB_DNS_INBOUND_ADDRESS", "127.0.0.42");
-    c.SB_DNS_INBOUND_PORT = env("SB_DNS_INBOUND_PORT", "53");
-    c.SB_DNS_BLOCK_INBOUND_TAG = env("SB_DNS_BLOCK_INBOUND_TAG", "dns-block-in");
-    c.SB_DNS_BLOCK_INBOUND_ADDRESS = env("SB_DNS_BLOCK_INBOUND_ADDRESS", "::");
-    c.SB_DNS_BLOCK_INBOUND_PORT = env("SB_DNS_BLOCK_INBOUND_PORT", "1053");
-    c.SB_SERVICE_MIXED_INBOUND_TAG = env("SB_SERVICE_MIXED_INBOUND_TAG", "service-mixed-in");
-    c.SB_SERVICE_MIXED_INBOUND_ADDRESS = env("SB_SERVICE_MIXED_INBOUND_ADDRESS", "127.0.0.1");
-    c.SB_SERVICE_MIXED_INBOUND_PORT = env("SB_SERVICE_MIXED_INBOUND_PORT", "4534");
-    c.SB_DIRECT_OUTBOUND_TAG = env("SB_DIRECT_OUTBOUND_TAG", "direct-out");
-    c.SB_BYPASS_OUTBOUND_TAG = env("SB_BYPASS_OUTBOUND_TAG", "bypass-out");
-    c.SB_CLASH_API_CONTROLLER_PORT = env("SB_CLASH_API_CONTROLLER_PORT", "9090");
-    c.SB_VARIANT_STATE_FILE = env("SB_VARIANT_STATE_FILE", "/etc/tachyon/tachyon-core-variant");
-    c.SB_VERSION_STATE_FILE = env("SB_VERSION_STATE_FILE", "/etc/tachyon/tachyon-core-version");
+    c.CORE_MANAGED_SERVICE_MARKER = env("TACHYON_CORE_MANAGED_SERVICE_MARKER", "Tachyon managed tachyon-core service");
+    c.CORE_DNS_SERVER_TAG = env("TACHYON_CORE_DNS_SERVER_TAG", "dns-server");
+    c.CORE_FAKEIP_DNS_SERVER_TAG = env("TACHYON_CORE_FAKEIP_DNS_SERVER_TAG", "fakeip-server");
+    c.CORE_FAKEIP_INET4_RANGE = env("TACHYON_CORE_FAKEIP_INET4_RANGE", "198.18.0.0/15");
+    c.CORE_FAKEIP_INET6_RANGE = env("TACHYON_CORE_FAKEIP_INET6_RANGE", "fc00::/18");
+    c.CORE_BOOTSTRAP_SERVER_TAG = env("TACHYON_CORE_BOOTSTRAP_SERVER_TAG", "bootstrap-dns-server");
+    c.CORE_FAKEIP_DNS_RULE_TAG = env("TACHYON_CORE_FAKEIP_DNS_RULE_TAG", "fakeip-dns-rule-tag");
+    c.CORE_FAKEIP_RULESET_DNS_RULE_TAG = env("TACHYON_CORE_FAKEIP_RULESET_DNS_RULE_TAG", "fakeip-ruleset-dns-rule-tag");
+    c.CORE_SERVICE_FAKEIP_DNS_RULE_TAG = env("TACHYON_CORE_SERVICE_FAKEIP_DNS_RULE_TAG", "service-fakeip-dns-rule-tag");
+    c.CORE_TPROXY_INBOUND_TAG = env("TACHYON_CORE_TPROXY_INBOUND_TAG", "tproxy-in");
+    c.CORE_TPROXY_INBOUND_ADDRESS = env("TACHYON_CORE_TPROXY_INBOUND_ADDRESS", "0.0.0.0");
+    c.CORE_TPROXY_INBOUND6_TAG = env("TACHYON_CORE_TPROXY_INBOUND6_TAG", "tproxy6-in");
+    c.CORE_TPROXY_INBOUND6_ADDRESS = env("TACHYON_CORE_TPROXY_INBOUND6_ADDRESS", "::1");
+    c.CORE_TPROXY_INBOUND_PORT = env("TACHYON_CORE_TPROXY_INBOUND_PORT", "1602");
+    c.CORE_DNS_INBOUND_TAG = env("TACHYON_CORE_DNS_INBOUND_TAG", "dns-in");
+    c.CORE_DNS_INBOUND_ADDRESS = env("TACHYON_CORE_DNS_INBOUND_ADDRESS", "127.0.0.42");
+    c.CORE_DNS_INBOUND_PORT = env("TACHYON_CORE_DNS_INBOUND_PORT", "53");
+    c.CORE_DNS_BLOCK_INBOUND_TAG = env("TACHYON_CORE_DNS_BLOCK_INBOUND_TAG", "dns-block-in");
+    c.CORE_DNS_BLOCK_INBOUND_ADDRESS = env("TACHYON_CORE_DNS_BLOCK_INBOUND_ADDRESS", "::");
+    c.CORE_DNS_BLOCK_INBOUND_PORT = env("TACHYON_CORE_DNS_BLOCK_INBOUND_PORT", "1053");
+    c.CORE_SERVICE_MIXED_INBOUND_TAG = env("TACHYON_CORE_SERVICE_MIXED_INBOUND_TAG", "service-mixed-in");
+    c.CORE_SERVICE_MIXED_INBOUND_ADDRESS = env("TACHYON_CORE_SERVICE_MIXED_INBOUND_ADDRESS", "127.0.0.1");
+    c.CORE_SERVICE_MIXED_INBOUND_PORT = env("TACHYON_CORE_SERVICE_MIXED_INBOUND_PORT", "4534");
+    c.CORE_DIRECT_OUTBOUND_TAG = env("TACHYON_CORE_DIRECT_OUTBOUND_TAG", "direct-out");
+    c.CORE_BYPASS_OUTBOUND_TAG = env("TACHYON_CORE_BYPASS_OUTBOUND_TAG", "bypass-out");
+    c.CORE_CLASH_API_CONTROLLER_PORT = env("TACHYON_CORE_CLASH_API_CONTROLLER_PORT", "9090");
+    c.CORE_VERSION_STATE_FILE = env("TACHYON_CORE_VERSION_FILE", "/etc/tachyon/tachyon-core-version");
+    c.TACHYON_CORE_DNS_INBOUND_ADDRESS = c.CORE_DNS_INBOUND_ADDRESS;
+    c.TACHYON_CORE_TPROXY_INBOUND6_ADDRESS = c.CORE_TPROXY_INBOUND6_ADDRESS;
+    c.TACHYON_CORE_TPROXY_INBOUND_PORT = c.CORE_TPROXY_INBOUND_PORT;
+    c.TACHYON_CORE_CLASH_API_CONTROLLER_PORT = c.CORE_CLASH_API_CONTROLLER_PORT;
+    c.TACHYON_CORE_VERSION_FILE = c.CORE_VERSION_STATE_FILE;
 
     c.TACHYON_LISTS_RAW_URL = env("TACHYON_LISTS_RAW_URL", "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release");
     c.GITHUB_RAW_URL = env("GITHUB_RAW_URL", c.TACHYON_LISTS_RAW_URL);
@@ -184,87 +187,6 @@ function constants_map() {
     c.SUBNETS_HAGEZI_TIF_IP_BLOCK = env("SUBNETS_HAGEZI_TIF_IP_BLOCK", c.TACHYON_LISTS_RAW_URL + "/subnets/hagezi_tif_ip_block.lst");
     c.SUBNETS_BOTNET_ATTACKERS_IP_BLOCK = env("SUBNETS_BOTNET_ATTACKERS_IP_BLOCK", c.TACHYON_LISTS_RAW_URL + "/subnets/botnet_attackers_ip_block.lst");
     c.COMMUNITY_SERVICES = env("COMMUNITY_SERVICES", "russia_inside russia_outside ukraine_inside belarus_inside geoblock block porn news anime youtube youtube_images tmdb_metadata streaming_west books_archives podcasts_radio hdrezka tiktok google_ai google_play google_meet google_services hodca discord discord_voice meta twitter cloudflare cloudfront digitalocean hetzner ovh vps_clouds doh_dot_dns telegram roblox ads_hagezi_pro supercell github twitch ru_whitelist ru_domains ru_only_inside push steam_cdn captive_ntp_stun ru_blocked ru_blocked_all antifilter refilter apple microsoft win_spy steam epicgames riot origin escapefromtarkov faceit callofduty game_backends cs2_dota2 survival_coop mmorpg netease_tencent_games japanese_publishers fighting_racing strategy_sim meta_quest chess_boardgames gaming_mods_stats pinterest torrent twitch_ads kick ai_all openai anthropic xai openrouter cursor perplexity copilot deepseek qwen kimi midjourney elevenlabs huggingface ai_video ai_cloud_gpu spotify netflix soundcloud_music rutracker_lampa patreon_creators whatsapp messengers reddit zoom_teams linkedin games_all ubisoft warthunder blizzard xbox playstation nintendo gog wargaming hoyoverse minecraft rockstar pubg docker tor fastly jetbrains gitlab_notion figma_adobe pkg_registries paas_db captcha_auth cloud_gaming_remote cloud_storage gamedev_3d security_passwords smarthome_iot smarttv_apps smart_cars linux_repos speedtest crypto paypal_fintech travel_booking shopping_global edtech_learning freelance_remote sports_fitness xiaomi_smarttv_ads android_ads_block gambling_block phishing_malware_block telemetry_mobile_block et_spamhaus_block hagezi_tif_ip_block botnet_attackers_ip_block");
-
-    c.ZAPRET_PROVIDER_BASE_DIR = env("ZAPRET_PROVIDER_BASE_DIR", "/opt/zapret");
-    let default_nfqws_bin = c.ZAPRET_PROVIDER_BASE_DIR + "/nfq/nfqws";
-    if (fs.stat(default_nfqws_bin) == null && fs.stat(c.ZAPRET_PROVIDER_BASE_DIR + "/nfqws") != null)
-        default_nfqws_bin = c.ZAPRET_PROVIDER_BASE_DIR + "/nfqws";
-    else if (fs.stat(default_nfqws_bin) == null && fs.stat("/usr/bin/nfqws") != null)
-        default_nfqws_bin = "/usr/bin/nfqws";
-    c.ZAPRET_PROVIDER_NFQWS_BIN = env("ZAPRET_PROVIDER_NFQWS_BIN", default_nfqws_bin);
-    c.ZAPRET_PROVIDER_FILES_DIR = env("ZAPRET_PROVIDER_FILES_DIR", c.ZAPRET_PROVIDER_BASE_DIR + "/files");
-    c.ZAPRET_PROVIDER_IPSET_DIR = env("ZAPRET_PROVIDER_IPSET_DIR", c.ZAPRET_PROVIDER_BASE_DIR + "/ipset");
-    c.ZAPRET_LEGACY_RUNTIME_BASE_DIR = env("ZAPRET_LEGACY_RUNTIME_BASE_DIR", "/var/run/tachyon/zapret-runtime");
-    c.ZAPRET_NFQWS_BIN = env("ZAPRET_NFQWS_BIN", c.ZAPRET_PROVIDER_NFQWS_BIN);
-    c.ZAPRET_STATE_DIR = env("ZAPRET_STATE_DIR", "/var/run/tachyon/zapret");
-    c.ZAPRET_PID_DIR = env("ZAPRET_PID_DIR", c.ZAPRET_STATE_DIR + "/pid");
-    c.ZAPRET_CHILD_PID_DIR = env("ZAPRET_CHILD_PID_DIR", c.ZAPRET_STATE_DIR + "/child-pid");
-    c.ZAPRET_LOG_DIR = env("ZAPRET_LOG_DIR", c.ZAPRET_STATE_DIR + "/log");
-    c.ZAPRET_HOSTLIST_DIR = env("ZAPRET_HOSTLIST_DIR", c.ZAPRET_STATE_DIR + "/hostlist");
-    c.ZAPRET_ROUTE_MARK_BASE = env("ZAPRET_ROUTE_MARK_BASE", "0x01000000");
-    c.ZAPRET_QUEUE_BASE = env("ZAPRET_QUEUE_BASE", "4000");
-    c.ZAPRET_QUEUE_RANGE_SIZE = env("ZAPRET_QUEUE_RANGE_SIZE", "256");
-    c.ZAPRET_NFQWS_RESPAWN_DELAY = env("ZAPRET_NFQWS_RESPAWN_DELAY", "5");
-    c.ZAPRET_DESYNC_MARK = env("ZAPRET_DESYNC_MARK", "0x40000000");
-    c.ZAPRET_DESYNC_MARK_POSTNAT = env("ZAPRET_DESYNC_MARK_POSTNAT", "0x20000000");
-    c.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = env("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT", "--filter-tcp=80 <HOSTLIST> --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin --new --filter-udp=443 <HOSTLIST_NOAUTO> --dpi-desync=fake --dpi-desync-repeats=11 --new --filter-tcp=443 <HOSTLIST> --dpi-desync=multidisorder --dpi-desync-split-pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1");
-    c.ZAPRET_DEFAULT_NFQWS_OPT = env("ZAPRET_DEFAULT_NFQWS_OPT", "--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin --ctrack-timeouts=30:600:30:30");
-
-    c.ZAPRET2_PROVIDER_BASE_DIR = env("ZAPRET2_PROVIDER_BASE_DIR", "/opt/zapret2");
-    let default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq2/nfqws2";
-    if (fs.stat(default_nfqws2_bin) == null && fs.stat(c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq/nfqws2") != null)
-        default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq/nfqws2";
-    else if (fs.stat(default_nfqws2_bin) == null && fs.stat(c.ZAPRET2_PROVIDER_BASE_DIR + "/nfqws2") != null)
-        default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfqws2";
-    else if (fs.stat(default_nfqws2_bin) == null && fs.stat("/usr/bin/nfqws2") != null)
-        default_nfqws2_bin = "/usr/bin/nfqws2";
-    c.ZAPRET2_PROVIDER_NFQWS2_BIN = env("ZAPRET2_PROVIDER_NFQWS2_BIN", default_nfqws2_bin);
-    c.ZAPRET2_PROVIDER_FILES_DIR = env("ZAPRET2_PROVIDER_FILES_DIR", c.ZAPRET2_PROVIDER_BASE_DIR + "/files");
-    c.ZAPRET2_PROVIDER_IPSET_DIR = env("ZAPRET2_PROVIDER_IPSET_DIR", c.ZAPRET2_PROVIDER_BASE_DIR + "/ipset");
-    c.ZAPRET2_PROVIDER_LUA_DIR = env("ZAPRET2_PROVIDER_LUA_DIR", c.ZAPRET2_PROVIDER_BASE_DIR + "/lua");
-    c.ZAPRET2_NFQWS2_BIN = env("ZAPRET2_NFQWS2_BIN", c.ZAPRET2_PROVIDER_NFQWS2_BIN);
-    c.ZAPRET2_STATE_DIR = env("ZAPRET2_STATE_DIR", "/var/run/tachyon/zapret2");
-    c.ZAPRET2_PID_DIR = env("ZAPRET2_PID_DIR", c.ZAPRET2_STATE_DIR + "/pid");
-    c.ZAPRET2_CHILD_PID_DIR = env("ZAPRET2_CHILD_PID_DIR", c.ZAPRET2_STATE_DIR + "/child-pid");
-    c.ZAPRET2_LOG_DIR = env("ZAPRET2_LOG_DIR", c.ZAPRET2_STATE_DIR + "/log");
-    c.ZAPRET2_ROUTE_MARK_BASE = env("ZAPRET2_ROUTE_MARK_BASE", "0x02000000");
-    c.ZAPRET2_QUEUE_BASE = env("ZAPRET2_QUEUE_BASE", "4300");
-    c.ZAPRET2_QUEUE_RANGE_SIZE = env("ZAPRET2_QUEUE_RANGE_SIZE", "256");
-    c.ZAPRET2_NFQWS2_RESPAWN_DELAY = env("ZAPRET2_NFQWS2_RESPAWN_DELAY", "5");
-    c.ZAPRET2_DESYNC_MARK = env("ZAPRET2_DESYNC_MARK", "0x40000000");
-    c.ZAPRET2_DESYNC_MARK_POSTNAT = env("ZAPRET2_DESYNC_MARK_POSTNAT", "0x20000000");
-    c.ZAPRET2_DEFAULT_NFQWS2_OPT = env("ZAPRET2_DEFAULT_NFQWS2_OPT", "--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6 --ctrack-timeouts=30:600:30:30");
-
-    c.BYEDPI_BIN = env("BYEDPI_BIN", "/usr/bin/ciadpi");
-    c.BYEDPI_SERVICE_INIT = env("BYEDPI_SERVICE_INIT", "/etc/init.d/byedpi");
-    c.BYEDPI_STATE_DIR = env("BYEDPI_STATE_DIR", "/var/run/tachyon/byedpi");
-    c.BYEDPI_PID_DIR = env("BYEDPI_PID_DIR", c.BYEDPI_STATE_DIR + "/pid");
-    c.BYEDPI_CHILD_PID_DIR = env("BYEDPI_CHILD_PID_DIR", c.BYEDPI_STATE_DIR + "/child-pid");
-    c.BYEDPI_LOG_DIR = env("BYEDPI_LOG_DIR", c.BYEDPI_STATE_DIR + "/log");
-    c.BYEDPI_LISTEN_ADDRESS = env("BYEDPI_LISTEN_ADDRESS", "127.0.0.1");
-    c.BYEDPI_PORT_BASE = env("BYEDPI_PORT_BASE", "1080");
-    c.BYEDPI_RESPAWN_DELAY = env("BYEDPI_RESPAWN_DELAY", "5");
-    c.BYEDPI_OPEN_FILES_LIMIT = env("BYEDPI_OPEN_FILES_LIMIT", "4096");
-    c.BYEDPI_DEFAULT_CMD_OPTS = env("BYEDPI_DEFAULT_CMD_OPTS", "-o 2 --auto=t,r,a,s -d 2");
-
-    c.WDTT_BIN = env("WDTT_BIN", "/usr/bin/wdtt");
-    c.WDTT_SERVICE_INIT = env("WDTT_SERVICE_INIT", "/etc/init.d/wdtt");
-    c.WDTT_STATE_DIR = env("WDTT_STATE_DIR", "/var/run/tachyon/wdtt");
-    c.WDTT_PID_DIR = env("WDTT_PID_DIR", c.WDTT_STATE_DIR + "/pid");
-    c.WDTT_LOG_DIR = env("WDTT_LOG_DIR", c.WDTT_STATE_DIR + "/log");
-    c.WDTT_LISTEN_ADDRESS = env("WDTT_LISTEN_ADDRESS", "127.0.0.1");
-    c.WDTT_PORT_BASE = env("WDTT_PORT_BASE", "1081");
-    c.WDTT_RESPAWN_DELAY = env("WDTT_RESPAWN_DELAY", "5");
-    c.WDTT_DEFAULT_MODE = env("WDTT_DEFAULT_MODE", "freedom");
-
-    c.OLCRTC_BIN = env("OLCRTC_BIN", "/usr/bin/olcrtc");
-    c.OLCRTC_SERVICE_INIT = env("OLCRTC_SERVICE_INIT", "/etc/init.d/olcrtc");
-    c.OLCRTC_STATE_DIR = env("OLCRTC_STATE_DIR", "/var/run/tachyon/olcrtc");
-    c.OLCRTC_PID_DIR = env("OLCRTC_PID_DIR", c.OLCRTC_STATE_DIR + "/pid");
-    c.OLCRTC_LOG_DIR = env("OLCRTC_LOG_DIR", c.OLCRTC_STATE_DIR + "/log");
-    c.OLCRTC_LISTEN_ADDRESS = env("OLCRTC_LISTEN_ADDRESS", "127.0.0.1");
-    c.OLCRTC_PORT_BASE = env("OLCRTC_PORT_BASE", "1082");
-    c.OLCRTC_RESPAWN_DELAY = env("OLCRTC_RESPAWN_DELAY", "5");
 
     return c;
 }

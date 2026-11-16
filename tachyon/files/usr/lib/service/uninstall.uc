@@ -34,16 +34,26 @@ function remove_tree(path) {
         run_shell("rm -rf '" + replace(as_string(path), /'/g, "'\\''") + "'");
 }
 
-function clean_managed_sing_box(keep_binaries) {
+function clean_managed_core(keep_binaries) {
     if (fs.stat("/etc/init.d/tachyon-core") != null) {
         let content = fs.readfile("/etc/init.d/tachyon-core");
-        if (content && index(content, "Tachyon managed sing-box") >= 0) {
+        if (content && (index(content, "Tachyon managed tachyon-core") >= 0 || index(content, "Tachyon managed sing-box") >= 0)) {
             run_cmd(["/etc/init.d/tachyon-core", "stop"]);
             run_cmd(["/etc/init.d/tachyon-core", "disable"]);
             remove_file("/etc/init.d/tachyon-core");
+            run_shell("rm -f /etc/rc.d/*tachyon-core* 2>/dev/null || true");
+        }
+    }
+    if (fs.stat("/etc/init.d/sing-box") != null) {
+        let legacy_content = fs.readfile("/etc/init.d/sing-box");
+        if (legacy_content && index(legacy_content, "Tachyon managed") >= 0) {
+            run_cmd(["/etc/init.d/sing-box", "stop"]);
+            run_cmd(["/etc/init.d/sing-box", "disable"]);
+            remove_file("/etc/init.d/sing-box");
             run_shell("rm -f /etc/rc.d/*sing-box* 2>/dev/null || true");
         }
     }
+    remove_tree("/etc/sing-box");
 
     if (!keep_binaries) {
         if (fs.stat("/bin/opkg") != null || fs.stat("/usr/bin/opkg") != null) {
@@ -87,9 +97,6 @@ function clean_crontab() {
 }
 
 function restore_dhcp_dns() {
-    // Hand back the dhcp options Tailscale MagicDNS set (servers file, localservice).
-    if (fs.stat("/usr/lib/tachyon/providers/tailscale/runtime.uc") != null)
-        run_cmd([ "ucode", "-L", "/usr/lib/tachyon", "/usr/lib/tachyon/providers/tailscale/runtime.uc", "release-dns" ]);
     if (fs.stat("/usr/lib/tachyon/dns/apply.uc") != null)
         run_cmd([ "ucode", "-L", "/usr/lib/tachyon", "/usr/lib/tachyon/dns/apply.uc", "odhcpd-restore" ]);
 
@@ -100,6 +107,34 @@ function restore_dhcp_dns() {
 
     if (uci_core != null) {
         try {
+            // Release any leftover MagicDNS serversfile/localservice markers from older versions
+            let dnsmasq_names = [];
+            for (let s in (uci_core.sections("dhcp", "dnsmasq") || [])) {
+                let name = type(s) == "object" ? as_string(s[".name"] || "") : as_string(s);
+                if (name != "")
+                    push(dnsmasq_names, name);
+            }
+            if (length(dnsmasq_names) == 0 && uci_core.get("dhcp", "@dnsmasq[0]", ".type") == "dnsmasq")
+                push(dnsmasq_names, "@dnsmasq[0]");
+            for (let name in dnsmasq_names) {
+                let base = "dhcp." + name + ".";
+                if (as_string(uci_core.get(base + "tachyon_serversfile")) != "") {
+                    if (as_string(uci_core.get(base + "serversfile")) == "/etc/tachyon/dnsmasq-tailscale.servers")
+                        uci_core.delete(base + "serversfile");
+                    uci_core.delete(base + "tachyon_serversfile");
+                }
+                let saved_local = as_string(uci_core.get(base + "tachyon_localservice"));
+                if (saved_local != "") {
+                    if (as_string(uci_core.get(base + "localservice")) == "0") {
+                        if (saved_local == "unset")
+                            uci_core.delete(base + "localservice");
+                        else
+                            uci_core.set(base + "localservice", saved_local);
+                    }
+                    uci_core.delete(base + "tachyon_localservice");
+                }
+            }
+
             // Remove 127.0.0.42 from server list
             let servers = uci_core.get("dhcp", "@dnsmasq[0]", "server");
             if (servers != null) {
@@ -177,6 +212,8 @@ function restore_dhcp_dns() {
 
     remove_file("/etc/dnsmasq.d/tachyon.conf");
     remove_file("/tmp/dnsmasq.d/tachyon.conf");
+    remove_file("/etc/tachyon/dnsmasq-tailscale.servers");
+    remove_file("/tmp/dnsmasq.d/tachyon-tailscale.conf");
     run_shell("rm -f /etc/dnsmasq.d/tachyon*.conf /tmp/dnsmasq.d/tachyon*.conf 2>/dev/null || true");
 
     if (fs.stat("/etc/init.d/dnsmasq") != null)
@@ -191,6 +228,13 @@ function clean_firewall_and_routing() {
     run_cmd(["nft", "delete", "table", "inet", "TachyonKillSwitch"]);
     run_cmd(["nft", "delete", "table", "inet", "tachyon"]);
     run_cmd(["nft", "delete", "table", "inet", "steer"]);
+    run_cmd(["nft", "delete", "table", "inet", "tachyon_tailscale"]);
+    run_cmd(["nft", "delete", "table", "inet", "zapret"]);
+    run_cmd(["nft", "delete", "table", "ip", "zapret"]);
+    run_cmd(["nft", "delete", "table", "ip6", "zapret"]);
+    run_cmd(["nft", "delete", "table", "inet", "zapret2"]);
+    run_cmd(["nft", "delete", "table", "ip", "zapret2"]);
+    run_cmd(["nft", "delete", "table", "ip6", "zapret2"]);
     run_cmd(["nft", "delete", "table", "ip", "tachyon"]);
     run_cmd(["nft", "delete", "table", "ip6", "tachyon"]);
     remove_file("/usr/share/nftables.d/chain-pre/input/10-tachyon.nft");
@@ -205,12 +249,18 @@ function clean_firewall_and_routing() {
     run_cmd(["ip", "-6", "rule", "del", "fwmark", "0x10000000/0x10000000", "lookup", "100"]);
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x1/0x1", "lookup", "100"]);
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x2/0x2", "lookup", "100"]);
+    run_cmd(["ip", "rule", "del", "to", "100.64.0.0/10", "priority", "100", "table", "4247"]);
+    run_cmd(["ip", "-6", "rule", "del", "to", "fd7a:115c:a1e0::/48", "priority", "100", "table", "4247"]);
+    run_cmd(["ip", "rule", "del", "fwmark", "0x00200000/0x00ff0000", "priority", "90", "table", "4248"]);
     run_cmd(["ip", "route", "flush", "table", "tachyon"]);
     run_cmd(["ip", "route", "flush", "table", "105"]);
     run_cmd(["ip", "route", "flush", "table", "100"]);
+    run_cmd(["ip", "route", "flush", "table", "4247"]);
+    run_cmd(["ip", "route", "flush", "table", "4248"]);
     run_cmd(["ip", "-6", "route", "flush", "table", "tachyon"]);
     run_cmd(["ip", "-6", "route", "flush", "table", "105"]);
     run_cmd(["ip", "-6", "route", "flush", "table", "100"]);
+    run_cmd(["ip", "-6", "route", "flush", "table", "4247"]);
     clean_rt_tables();
 
     // Clean network namespaces
@@ -230,19 +280,36 @@ function uninstall_tachyon(purge_config, keep_binaries) {
         run_cmd(["/etc/init.d/tachyon", "disable"]);
     }
 
-    clean_managed_sing_box(keep_binaries);
+    clean_managed_core(keep_binaries);
 
-    for (let svc in [ "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer" ]) {
+    for (let svc in [
+        "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer",
+        "/etc/init.d/zapret", "/etc/init.d/zapret2",
+        "/etc/init.d/byedpi", "/etc/init.d/wdtt-client",
+        "/etc/init.d/qwdtt", "/etc/init.d/olcrtc"
+    ]) {
         if (fs.stat(svc) != null) {
             run_cmd([ svc, "stop" ]);
             run_cmd([ svc, "disable" ]);
             remove_file(svc);
         }
     }
-    run_shell("rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true");
+    let managed_tailscale = false;
+    if (fs.stat("/etc/init.d/tailscale") != null) {
+        let ts_init = fs.readfile("/etc/init.d/tailscale");
+        if (ts_init && index(ts_init, "Tachyon managed") >= 0) {
+            managed_tailscale = true;
+            run_cmd([ "/etc/init.d/tailscale", "stop" ]);
+            run_cmd([ "/etc/init.d/tailscale", "disable" ]);
+            remove_file("/etc/init.d/tailscale");
+            run_shell("rm -f /etc/rc.d/*tailscale* 2>/dev/null || true");
+        }
+    }
+    run_shell("rm -rf /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true");
+    run_shell("rm -rf /etc/tachyon/tailscale/*/native /var/run/qwdtt 2>/dev/null || true");
 
-    // Stop proxy and desync processes
-    run_shell("killall sing-box steer nfqws nfqws2 ciadpi 2>/dev/null || true");
+    // Stop core and legacy standalone processes
+    run_shell("killall tachyon-core sing-box steer nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc 2>/dev/null || true");
     // Stop background daemons safely (excluding self PID)
     run_shell("ps 2>/dev/null | grep -E 'dns_failover|watchdog|telegram' | grep -v grep | awk '{print $1}' | while read _pid; do [ \"$_pid\" != \"$$\" ] && kill -9 \"$_pid\" 2>/dev/null; done; true");
 
@@ -279,10 +346,28 @@ function uninstall_tachyon(purge_config, keep_binaries) {
     }
 
     log_step("Removing Tachyon packages...");
+    let legacy_pkgs = [ "zapret", "zapret2", "byedpi", "wdtt", "qwdtt", "olcrtc" ];
+    if (managed_tailscale)
+        push(legacy_pkgs, "tailscale");
+
     if (fs.stat("/bin/opkg") != null || fs.stat("/usr/bin/opkg") != null) {
         run_cmd(["opkg", "remove", "--force-depends", "--force-remove", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
+        if (!keep_binaries) {
+            for (let lp in legacy_pkgs)
+                run_cmd(["opkg", "remove", "--force-depends", "--force-remove", lp]);
+        }
     } else if (fs.stat("/sbin/apk") != null || fs.stat("/usr/sbin/apk") != null || fs.stat("/usr/bin/apk") != null) {
         run_cmd(["apk", "del", "--no-network", "--repositories-file", "/dev/null", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
+        if (!keep_binaries) {
+            for (let lp in legacy_pkgs) {
+                run_shell("sed -i -E '/^" + lp + "([><= ].*)?$/d' /etc/apk/world 2>/dev/null || true");
+                run_cmd(["apk", "del", "--no-network", "--repositories-file", "/dev/null", lp]);
+            }
+        }
+    }
+    if (!keep_binaries) {
+        run_shell("rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true");
+        run_shell("rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc 2>/dev/null || true");
     }
 
     // Clean translations and LuCI views

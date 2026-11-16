@@ -4360,7 +4360,7 @@ header .dropdown-menu {
 
 /* ==========================================================================
    Simple Mode (Обычный режим) — Clean "Set & Forget" View
-   Hides expert tabs, legacy DPI tools (zapret/zapret2/byedpi), and low-level knobs
+   Hides expert tabs and low-level knobs
    ========================================================================== */
 
 /* 1. Hide expert Settings sub-tabs in Simple Mode (AI/Watchdog internals) */

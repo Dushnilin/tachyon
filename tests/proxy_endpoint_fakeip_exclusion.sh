@@ -6,7 +6,7 @@ set -eo pipefail
 # from the FakeIP pool. A connection section routing `domain_suffix
 # example.net` also covered the endpoint `cdn.example.net`, so the internal DNS
 # lookup for that endpoint matched the section rule, returned 198.18.0.0/15, and
-# sing-box then dialled the FakeIP and timed out.
+# tachyon-core then dialled the FakeIP and timed out.
 #
 # The endpoint list is rebuilt from the generated config on every run, so it
 # follows endpoint changes in a subscription with no manual exclusion.
@@ -87,10 +87,10 @@ if (problems.length) {
 console.log(`endpoint DNS rule first, covering ${domains.length} endpoint domain(s)`);
 NODE
 
-if command -v sing-box >/dev/null 2>&1; then
-  sing-box check -c "$OUTPUT" >/dev/null 2>&1 ||
-    fail "generated config rejected by $(sing-box version | head -1)"
-  printf '  accepted by %s\n' "$(sing-box version | head -1)"
+if command -v tachyon-core >/dev/null 2>&1; then
+  tachyon-core check -c "$OUTPUT" >/dev/null 2>&1 ||
+    fail "generated config rejected by $(tachyon-core version | head -1)"
+  printf '  accepted by %s\n' "$(tachyon-core version | head -1)"
 fi
 
 printf 'proxy endpoint fakeip exclusion checks passed\n'

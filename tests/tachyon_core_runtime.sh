@@ -1,0 +1,1567 @@
+#!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
+set -eo pipefail
+
+TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
+CLI_UC="$TACHYON_BIN"
+LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
+TC_RUNTIME_UC="$TACHYON_LIB/tachyon_core/runtime.uc"
+TC_GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
+
+grep -Fq '#!/usr/bin/ucode' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must be a direct ucode executable"
+grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
+  fail "service/cli.uc must dispatch lifecycle orchestration through service/lifecycle.uc"
+grep -Fq 'tachyon_core/runtime.uc' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must call tachyon_core/runtime.uc for core runtime operations"
+if grep -R -n -E 'core_runtime_ucode|rulesets_ucode|core_configure_service|core_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$TACHYON_BIN" "$TACHYON_LIB" --include='*.sh' >/dev/null 2>&1; then
+  fail "legacy runtime shell symbols must not remain"
+fi
+grep -Fq 'mode == "configure-service"' "$TC_RUNTIME_UC" ||
+  fail "tachyon_core/runtime.uc must own core service configuration"
+grep -Fq 'mode == "init-config"' "$TC_RUNTIME_UC" ||
+  fail "tachyon_core/runtime.uc must own core config initialization"
+grep -Fq 'mode == "service-listen-address"' "$TC_RUNTIME_UC" ||
+  fail "tachyon_core/runtime.uc must own service listen address detection"
+grep -Fq 'mode == "service-proxy-address"' "$TC_RUNTIME_UC" ||
+  fail "tachyon_core/runtime.uc must own service proxy address detection"
+if grep -Fq 'log_file_lines(runtime_log, "debug", "core config generator: ");' "$TC_RUNTIME_UC"; then
+  fail "tachyon_core/runtime.uc must not duplicate generator failure output as debug log"
+fi
+if grep -Fq 'warn("unsupported: "' "$TC_GENERATOR_UC"; then
+  fail "tachyon_core/generator.uc must emit concise generator failure reasons"
+fi
+if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$TC_RUNTIME_UC" >/dev/null 2>&1; then
+  fail "tachyon_core/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
+fi
+if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$TC_GENERATOR_UC" >/dev/null 2>&1; then
+  fail "tachyon_core/generator.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
+fi
+grep -Fq 'require("core.uci")' "$TC_GENERATOR_UC" ||
+  fail "tachyon_core/generator.uc must import core.uci"
+grep -Fq 'TACHYON_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must pass rule-condition cache dir through module environment"
+if awk '
+/"write-current-reload-state-clean"|"write-captured-reload-state"/ {
+  in_block = 1
+  bad = 0
+}
+in_block && /SECTION_CACHE_DIR/ {
+  bad = 1
+}
+in_block && /\]\);/ {
+  if (bad)
+    found_bad = 1
+  in_block = 0
+}
+END {
+  exit found_bad ? 0 : 1
+}
+' "$LIFECYCLE_UC"; then
+  fail "reload-state cleanup must not delete subscription section-cache"
+fi
+
+mkdir -p "$WORK_DIR/bin"
+cat >"$WORK_DIR/bin/tachyon-core" <<'EOF_CORE'
+#!/bin/sh
+echo 'tachyon-core version 0.5.7'
+EOF_CORE
+chmod +x "$WORK_DIR/bin/tachyon-core"
+core_ver="$({
+  PATH="$WORK_DIR/bin:$PATH" \
+    TACHYON_LIB="$TACHYON_LIB" \
+    TACHYON_CORE_VERSION_FILE="$WORK_DIR/tachyon-core-version" \
+    ucode -L "$TACHYON_LIB" "$TC_RUNTIME_UC" version
+} 2>"$WORK_DIR/core-ver.stderr")" ||
+  fail "tachyon_core/runtime.uc must detect a tachyon-core binary without a ucode call-order failure"
+[ "$core_ver" = "0.5.7" ] ||
+  fail "tachyon_core/runtime.uc should parse tachyon-core version banner, got '$core_ver'"
+[ ! -s "$WORK_DIR/core-ver.stderr" ] ||
+  fail "core version detection must not emit ucode runtime errors"
+
+mkdir -p "$WORK_DIR/check-bin"
+cat >"$WORK_DIR/check-bin/tachyon-core" <<'EOF_CORE_CHECK'
+#!/bin/sh
+printf '\n' >&2
+printf '%s\n' 'FATAL[0000] route: missing outbound tag' >&2
+exit 42
+EOF_CORE_CHECK
+chmod +x "$WORK_DIR/check-bin/tachyon-core"
+: >"$WORK_DIR/invalid-config.json"
+if PATH="$WORK_DIR/check-bin:$PATH" \
+  ucode -L "$TACHYON_LIB" "$TC_RUNTIME_UC" check-config-fixture \
+  "$WORK_DIR/invalid-config.json" "$WORK_DIR/tachyon-core-check.log" \
+  >"$WORK_DIR/tachyon-core-check.reason"; then
+  fail "tachyon_core/runtime.uc check fixture should preserve a failed core check status"
+fi
+[ "$(cat "$WORK_DIR/tachyon-core-check.reason")" = 'FATAL[0000] route: missing outbound tag' ] ||
+  fail "tachyon_core/runtime.uc must return the first non-empty core check diagnostic"
+grep -Fq 'Generated tachyon-core configuration is invalid: " + check_result.reason' "$TC_RUNTIME_UC" ||
+  fail "generated config failure must include the captured core check diagnostic"
+
+cat >"$WORK_DIR/generator-failure.log" <<'EOF_GENERATOR_FAILURE'
+skipped incompatible subscription outbound for rule 'only_xhttp': Only XHTTP node (XHTTP not supported)
+connection section has no usable outbounds
+EOF_GENERATOR_FAILURE
+generator_reason="$(ucode -L "$TACHYON_LIB" "$TC_RUNTIME_UC" generator-failure-reason-fixture \
+  "$WORK_DIR/generator-failure.log" 2)"
+[ "$generator_reason" = 'connection section has no usable outbounds' ] ||
+  fail "tachyon_core/runtime.uc must report the terminal generator error instead of an earlier warning"
+
+mkdir -p "$WORK_DIR/etc" "$WORK_DIR/tmp"
+printf 'old config\n' >"$WORK_DIR/etc/config.json"
+printf 'new config\n' >"$WORK_DIR/tmp/config.json"
+ucode -L "$TACHYON_LIB" "$TC_RUNTIME_UC" save-config-file-fixture \
+  "$WORK_DIR/tmp/config.json" "$WORK_DIR/etc/config.json"
+[ "$(cat "$WORK_DIR/etc/config.json")" = "new config" ] ||
+  fail "tachyon_core/runtime.uc must replace an existing config from a temp file"
+[ ! -e "$WORK_DIR/tmp/config.json" ] ||
+  fail "tachyon_core/runtime.uc must consume the temp config after save"
+
+generate_config() {
+  local fixture="$1"
+  local output="$2"
+  local mwan3_active="${3:-0}"
+
+  mkdir -p "$output.section-cache" "$output.rulesets"
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
+    "$fixture" "$output" "127.0.0.1" "$mwan3_active"
+}
+
+generate_config_with_subscription_cache() {
+  local fixture="$1"
+  local output="$2"
+  local supports_xhttp="${3:-1}"
+
+  mkdir -p "$output.section-cache" "$output.rulesets"
+  TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
+    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
+      "$fixture" "$output" "127.0.0.1" "0" "$supports_xhttp"
+}
+
+cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": []
+}
+JSON
+
+if ucode -L "$TACHYON_LIB" "$TC_GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/no-enabled-fixture.json" "$WORK_DIR/no-enabled.json" "127.0.0.1" "0" \
+  >"$WORK_DIR/no-enabled.stdout" 2>"$WORK_DIR/no-enabled.stderr"; then
+  fail "generator should reject a config without enabled sections"
+fi
+if grep -Fq 'unsupported:' "$WORK_DIR/no-enabled.stderr"; then
+  fail "generator failure reason must not include redundant unsupported prefix"
+fi
+grep -Fxq 'no enabled sections' "$WORK_DIR/no-enabled.stderr" ||
+  fail "generator failure reason should be concise"
+
+cat >"$WORK_DIR/generator-uci.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.dns_server=1.1.1.1
+tachyon.settings.bootstrap_dns_server=1.1.1.1
+tachyon.settings.config_path=/tmp/tachyon-core/config.json
+tachyon.settings.cache_path=/tmp/tachyon-core/cache.db
+tachyon.settings.log_level=warn
+tachyon.uci_proxy=section
+tachyon.uci_proxy.enabled=1
+tachyon.uci_proxy.action=connection
+tachyon.uci_proxy.outbound_jsons={"type":"direct"}
+tachyon.uci_proxy.domain_suffix=example.org
+tachyon.uci_proxy.user_domains=smart.example
+EOF_UCI
+TACHYON_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
+  TACHYON_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
+  ucode -L "$TACHYON_LIB" "$TC_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
+grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
+  fail "tachyon_core/generator.uc must read section matchers from core.uci"
+grep -Fq '"smart.example"' "$WORK_DIR/generated-from-uci.json" ||
+  fail "tachyon_core/generator.uc must route smart-detect user_domains from core.uci"
+grep -Fq '"uci_proxy-out"' "$WORK_DIR/generated-from-uci.json" ||
+  fail "tachyon_core/generator.uc must read section names from core.uci"
+
+cat >"$WORK_DIR/disabled-updates-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "list_update_enabled": "0",
+    "update_interval": "5m",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "domain_suffix": [ "example.org" ],
+      "rule_set": [ "https://example.com/rules.srs" ],
+      "resolve_real_ip_for_routing": "1"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/default-updates-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "rule_set": [ "https://example.com/rules.srs" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/server-inbound-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "example.org" ]
+    }
+  ],
+  "server": [
+    {
+      ".name": "edge",
+      ".type": "server",
+      "enabled": "1",
+      "protocol": "socks",
+      "listen": "0.0.0.0",
+      "listen_port": "18080",
+      "server_username": "tester",
+      "server_password": "secret",
+      "routing_mode": "direct"
+    },
+    {
+      ".name": "open",
+      ".type": "server",
+      "enabled": "1",
+      "protocol": "socks",
+      "listen": "0.0.0.0",
+      "listen_port": "18081",
+      "socks_auth_enabled": "0",
+      "server_username": "ignored",
+      "server_password": "ignored",
+      "routing_mode": "direct"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "dns_strategy": "prefer_ipv6",
+    "ipv6_mode": "dual_stack",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "detour",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "detour.example" ]
+    },
+    {
+      ".name": "bypass",
+      ".type": "section",
+      "enabled": "1",
+      "action": "bypass",
+      "domain_suffix": [ "example.org" ],
+      "ip_cidr": [ "198.51.100.0/24" ],
+      "source_ip_cidr": [ "10.0.0.3/32" ]
+    },
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080" ],
+      "domain": "commented.example # ignored.example\nfull:exact-comment.example // ignored-full.example\nkeyword:clip",
+      "domain_suffix": [ "proxy.example.org", "сайт.рф", "full:пример.испытание", "keyword:пример", "regex:^сайт[.]рф$" ],
+      "ip_cidr": "77.111.247.0/24 #77.111.247.19\n198.51.100.0/24 //203.0.113.0/24",
+      "source_ip_cidr": "10.0.0.2/32 #10.0.0.99\n2001:db8::2/128 //2001:db8::99/128",
+      "ports_text": "80 # 443\n8080 // 8443",
+      "outbound_detour_enabled": "1",
+      "outbound_detour_section": "detour",
+      "mixed_proxy_enabled": "1",
+      "mixed_proxy_port": "19090",
+      "mixed_proxy_auth_enabled": "1",
+      "mixed_proxy_username": "user",
+      "mixed_proxy_password": "pass"
+    },
+    {
+      ".name": "source_only",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080" ],
+      "source_ip_cidr": [ "192.168.1.77/32" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/dns-action.lst" <<'EOF_DNS_ACTION_LIST'
+list-dns.example
+198.51.100.0/24
+EOF_DNS_ACTION_LIST
+cat >"$WORK_DIR/dns-action-fixture.json" <<JSON
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "dns_first",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "dns_type": "dot",
+      "dns_server": "9.9.9.9:5353",
+      "dns_detour_enabled": "1",
+      "dns_detour_section": "detour",
+      "domain_suffix": [ "dns-first.example" ],
+      "community_lists": [ "youtube" ],
+      "rule_set": [ "https://example.com/domain-only.srs" ],
+      "domain_ip_lists": [ "$WORK_DIR/dns-action.lst" ],
+      "ip_cidr": [ "203.0.113.0/24" ],
+      "source_ip_cidr": [ "192.0.2.1/32" ],
+      "fully_routed_ips": [ "192.0.2.2/32" ],
+      "ports": [ "443" ]
+    },
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "domain_suffix": [ "dns-first.example", "proxy-first.example" ]
+    },
+    {
+      ".name": "dns_second",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "dns_server": "8.8.8.8",
+      "domain_suffix": [ "proxy-first.example" ]
+    },
+    {
+      ".name": "detour",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "domain_suffix": [ "detour.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/urltest-filter-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "outbound_jsons": [
+        "{\"type\":\"http\",\"tag\":\"Keep\",\"server\":\"127.0.0.1\",\"server_port\":18081}",
+        "{\"type\":\"http\",\"tag\":\"Drop\",\"server\":\"127.0.0.1\",\"server_port\":18082}"
+      ],
+      "urltest_enabled": "1",
+      "urltest_filter_mode": "include",
+      "urltest_include_outbounds": [ "Keep" ],
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/manual-http-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": "1.1.1.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "http://127.0.0.1:8080" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/provider-actions-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    { ".name": "des", ".type": "section", "enabled": "1", "action": "desync", "desync_preset": "auto", "domain_suffix": [ "des.example" ] },
+    { ".name": "csq", ".type": "section", "enabled": "1", "action": "csqtt", "csqtt_uri": "csqtt://connect?v=2&host=csqtt.example&peer=46000&password=pw", "domain_suffix": [ "csq.example" ] }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/manual-transport-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links": [
+        "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?security=tls&type=ws&path=%2Fws&host=example.com&sni=example.com&alpn=h2%2Chttp%2F1.1&encryption=mlkem768x25519plus.native.test#WS",
+        "vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgV1MiLCJhZGQiOiIxMjcuMC4wLjEiLCJwb3J0IjoiNDQzIiwiaWQiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJhaWQiOiI0Iiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0Ijoidm1lc3MuZXhhbXBsZSIsInBhdGgiOiIvdm1lc3MiLCJ0bHMiOiJ0bHMiLCJzbmkiOiJ2bWVzcy5leGFtcGxlIiwiYWxwbiI6ImgyLGh0dHAvMS4xIiwiZnAiOiJjaHJvbWUifQ==#VMess",
+        "ss://YWVzLTEyOC1nY206cGFzcw@127.0.0.1:8388#SS"
+      ],
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/vpn-interface-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "renamed_awg",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "domain_suffix": [ "vpn.example" ]
+    }
+  ],
+  "section_interface": [
+    {
+      ".name": "vpn-interface",
+      ".type": "section_interface",
+      "section": "renamed_awg",
+      "name": "tun0",
+      "domain_resolver_enabled": "1",
+      "domain_resolver_dns_type": "doh",
+      "domain_resolver_dns_server": "https://dns.example/dns-query"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/download-via-proxy-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "download_lists_via_proxy": "1",
+    "download_subscriptions_via_proxy": "1",
+    "download_components_via_proxy": "1",
+    "download_lists_via_proxy_section": "proxy",
+    "download_components_via_proxy_section": "components_proxy"
+  },
+  "telegram": {
+    ".name": "telegram",
+    ".type": "telegram",
+    "enabled": "1",
+    "bot_proxy_section": "components_proxy"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1080}",
+      "domain_suffix": [ "example.org" ],
+      "community_lists": [ "discord" ],
+      "rule_set": [ "https://example.com/rules.srs" ]
+    },
+    {
+      ".name": "components_proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.2\",\"server_port\":1080}",
+      "domain_suffix": [ "components.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/fully-routed-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "ipv6_mode": "dual_stack",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "fully_routed_ips": [ "192.168.1.20/32", "192.168.1.30/32", "2001:db8::20/128", "a8:8c:3e:c9:25:05" ],
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/mwan3-auto-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/mwan3-pinned-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "output_network_interface": "wan2"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/p2p-isolate-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "isolate_p2p": "1",
+    "p2p_ports": "tcp:6881,udp:6881-6889,udp,51413"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "example.org" ],
+      "excluded_protocol": [ "bittorrent" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/domain-ip.lst" <<'EOF_LIST'
+example.net
+203.0.113.0/24
+EOF_LIST
+
+cat >"$WORK_DIR/with-subnets.json" <<'JSON'
+{
+  "version": 3,
+  "rules": [
+    { "domain_suffix": [ "ruleset.example" ], "ip_cidr": [ "198.51.100.0/24" ] }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/domain-ip-rulesets-fixture.json" <<JSON
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\\"type\\":\\"direct\\"}",
+      "domain_suffix": [ "example.org" ],
+      "rule_set_with_subnets": [ "$WORK_DIR/with-subnets.json" ],
+      "domain_ip_lists": [ "$WORK_DIR/domain-ip.lst" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-metadata-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "subscription_urls": [
+        "https://example.com/sub-v2rayn.txt",
+        "https://example.com/sub.txt"
+      ],
+      "subscription_url_settings": "{\"https://example.com/sub-v2rayn.txt\":{\"user_agent\":\"v2rayN\"}}",
+      "domain_suffix": [ "proxy.example" ]
+    },
+    {
+      ".name": "test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "subscription_urls": [
+        "https://example.com/test-sub.txt"
+      ],
+      "subscription_url_settings": "{\"https://example.com/test-sub.txt\":{\"user_agent\":\"v2rayN\"}}",
+      "domain_suffix": [ "test.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-group-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "detour",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1081}" ],
+      "domain_suffix": [ "detour.example" ]
+    },
+    {
+      ".name": "grouped",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [
+        "https://example.com/group.json"
+      ],
+      "subscription_url_settings": "{\"https://example.com/group.json\":{\"user_agent\":\"Happ\"}}",
+      "domain_suffix": [ "grouped.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-group-disabled-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "grouped",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [
+        "https://example.com/group.json"
+      ],
+      "subscription_url_settings": "{\"https://example.com/group.json\":{\"user_agent\":\"Happ\",\"include_urltest_groups\":\"0\"}}",
+      "domain_suffix": [ "grouped.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-xhttp-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [ "https://example.com/xhttp.json" ],
+      "subscription_url_settings": "{\"https://example.com/xhttp.json\":{\"user_agent\":\"Happ\"}}",
+      "domain_suffix": [ "xhttp.example" ]
+    }
+  ],
+  "urltest": [
+    {
+      ".name": "ut_xhttp",
+      ".type": "urltest",
+      "section": "xhttp",
+      "name": "Compatible URLTest"
+    }
+  ],
+  "priority_group": [
+    {
+      ".name": "pg_xhttp",
+      ".type": "priority_group",
+      "section": "xhttp",
+      "name": "Compatible Priority"
+    }
+  ],
+  "priority_level": [
+    {
+      ".name": "pl_xhttp",
+      ".type": "priority_level",
+      "group": "pg_xhttp",
+      "name": "All compatible",
+      "order": "0",
+      "filter_mode": "disabled"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-only-xhttp-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "only_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [ "https://example.com/only-xhttp.json" ],
+      "subscription_url_settings": "{\"https://example.com/only-xhttp.json\":{\"user_agent\":\"Happ\"}}",
+      "domain_suffix": [ "only-xhttp.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/manual-xhttp-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "1.1.1.1" },
+  "section": [
+    {
+      ".name": "manual_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000001@xhttp.example:443?encryption=none&security=tls&sni=xhttp.example&type=xhttp#Manual XHTTP"
+      ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/json-xhttp-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "1.1.1.1" },
+  "section": [
+    {
+      ".name": "json_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [
+        "{\"type\":\"vless\",\"tag\":\"JSON XHTTP\",\"server\":\"xhttp.example\",\"server_port\":443,\"uuid\":\"00000000-0000-4000-8000-000000000002\",\"transport\":{\"type\":\"xhttp\"}}"
+      ]
+    }
+  ]
+}
+JSON
+
+mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/persistent-subscription-cache"
+for source in proxy-subscription-1 proxy-subscription-2 test-subscription-1; do
+  cat >"$WORK_DIR/subscriptions/$source.json" <<'JSON'
+{"outbounds":[{"type":"socks","tag":"subscription-proxy","server":"127.0.0.1","server_port":1080}]}
+JSON
+  printf '%s' 'https://example.com/sub.txt' >"$WORK_DIR/subscriptions/$source.url"
+  cat >"$WORK_DIR/persistent-subscription-cache/$source.metadata.json" <<'JSON'
+{"version":1,"title":"WolfPN"}
+JSON
+  printf '%s' 'https://example.com/sub.txt' >"$WORK_DIR/persistent-subscription-cache/$source.url"
+done
+printf '%s' 'https://example.com/sub-v2rayn.txt' >"$WORK_DIR/subscriptions/proxy-subscription-1.url"
+printf '%s' 'https://example.com/sub-v2rayn.txt' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-1.url"
+printf '%s' 'https://example.com/test-sub.txt' >"$WORK_DIR/subscriptions/test-subscription-1.url"
+printf '%s' 'https://example.com/test-sub.txt' >"$WORK_DIR/persistent-subscription-cache/test-subscription-1.url"
+printf '%s' 'v2rayN' >"$WORK_DIR/subscriptions/proxy-subscription-1.user_agent"
+printf '%s' 'tachyon-core/default' >"$WORK_DIR/subscriptions/proxy-subscription-2.user_agent"
+printf '%s' 'v2rayN' >"$WORK_DIR/subscriptions/test-subscription-1.user_agent"
+printf '%s' 'v2rayN' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-1.user_agent"
+printf '%s' 'tachyon-core/default' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-2.user_agent"
+printf '%s' 'v2rayN' >"$WORK_DIR/persistent-subscription-cache/test-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Provider Group",
+      "outbounds": [ "grouped-out", "leaf" ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "10m",
+      "tolerance": 50,
+      "remark": "Provider Group",
+      "__tachyon_allow_group": true
+    },
+    {
+      "type": "vless",
+      "tag": "grouped-out",
+      "server": "127.0.0.1",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "tls": { "enabled": true, "server_name": "example.com" },
+      "__tachyon_hidden": true
+    },
+    {
+      "type": "vless",
+      "tag": "leaf",
+      "server": "127.0.0.2",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "tls": { "enabled": true, "server_name": "example.org" },
+      "__tachyon_hidden": true
+    },
+    {
+      "type": "direct",
+      "tag": "provider-direct"
+    },
+    {
+      "type": "unsupported",
+      "tag": "provider-unsupported",
+      "server": "127.0.0.3",
+      "server_port": 8080
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/group.json' >"$WORK_DIR/subscriptions/grouped-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/grouped-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/xhttp-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Provider XHTTP Group",
+      "outbounds": [ "xhttp-node", "plain-node" ],
+      "default": "xhttp-node",
+      "url": "https://www.gstatic.com/generate_204",
+      "remark": "Provider XHTTP Group",
+      "__tachyon_allow_group": true
+    },
+    {
+      "type": "vless",
+      "tag": "xhttp-node",
+      "remark": "Moscow XHTTP",
+      "server": "127.0.0.10",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000010",
+      "transport": { "type": "xhttp" },
+      "__tachyon_hidden": true
+    },
+    {
+      "type": "socks",
+      "tag": "plain-node",
+      "remark": "Plain node",
+      "server": "127.0.0.11",
+      "server_port": 1080,
+      "__tachyon_hidden": true
+    },
+    {
+      "type": "socks",
+      "tag": "depends-on-xhttp",
+      "remark": "Depends on XHTTP",
+      "server": "127.0.0.12",
+      "server_port": 1080,
+      "detour": "xhttp-node"
+    },
+    {
+      "type": "socks",
+      "tag": "recursive-dependent",
+      "remark": "Recursive dependent",
+      "server": "127.0.0.13",
+      "server_port": 1080,
+      "detour": "depends-on-xhttp"
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/xhttp.json' >"$WORK_DIR/subscriptions/xhttp-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/xhttp-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "only-xhttp-node",
+      "remark": "Only XHTTP node",
+      "server": "127.0.0.20",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000020",
+      "transport": { "type": "xhttp" }
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/only-xhttp.json' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.user_agent"
+
+cat >"$WORK_DIR/block-doh-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "ipv6_mode": "dual_stack",
+    "block_doh": "1"
+  },
+  "section": [
+    {
+      ".name": "doh_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links": [ "vless://00000000-0000-0000-0000-000000000001@127.0.0.1:443?encryption=none#dummy" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/bulk-proxy-links-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sec_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links_text": "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?encryption=none#BulkOne\n# comment\nvless://22222222-2222-4222-8222-222222222222@127.0.0.1:444?encryption=none#BulkTwo",
+      "urltest_proxy_links_text": "vless://33333333-3333-4333-8333-333333333333@127.0.0.1:445?encryption=none#BulkUT"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-filter-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/tachyon-core/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sub_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "subscription_urls": [ "https://example.com/filter-sub.json" ],
+      "subscription_filter_include_keywords": [ "нидерланды", "германия" ],
+      "subscription_filter_exclude_keywords": [ "ads" ]
+    }
+  ]
+}
+JSON
+cat >"$WORK_DIR/subscriptions/sub_test-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    { "type": "socks", "tag": "nl-fast", "remark": "Нидерланды Fast", "server": "127.0.0.1", "server_port": 1080 },
+    { "type": "socks", "tag": "nl-ads", "remark": "Нидерланды Ads Server", "server": "127.0.0.2", "server_port": 1080 },
+    { "type": "socks", "tag": "de-highspeed", "remark": "ГЕРМАНИЯ Premium", "server": "127.0.0.3", "server_port": 1080 },
+    { "type": "socks", "tag": "us-proxy", "remark": "США Server", "server": "127.0.0.4", "server_port": 1080 }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/filter-sub.json' >"$WORK_DIR/subscriptions/sub_test-subscription-1.url"
+
+generate_config "$WORK_DIR/block-doh-fixture.json" "$WORK_DIR/block-doh.json"
+generate_config "$WORK_DIR/bulk-proxy-links-fixture.json" "$WORK_DIR/bulk-proxy-links.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-filter-fixture.json" "$WORK_DIR/subscription-filter.json"
+generate_config "$WORK_DIR/disabled-updates-fixture.json" "$WORK_DIR/disabled.json"
+generate_config "$WORK_DIR/default-updates-fixture.json" "$WORK_DIR/default.json"
+generate_config "$WORK_DIR/server-inbound-fixture.json" "$WORK_DIR/server.json"
+generate_config "$WORK_DIR/runtime-matchers-fixture.json" "$WORK_DIR/matchers.json"
+generate_config "$WORK_DIR/dns-action-fixture.json" "$WORK_DIR/dns-action.json"
+generate_config "$WORK_DIR/urltest-filter-fixture.json" "$WORK_DIR/urltest.json"
+generate_config "$WORK_DIR/manual-http-fixture.json" "$WORK_DIR/manual-http.json"
+TACHYON_CORE_VERSION_OVERRIDE="0.5.7" generate_config "$WORK_DIR/provider-actions-fixture.json" "$WORK_DIR/providers.json"
+generate_config "$WORK_DIR/manual-transport-fixture.json" "$WORK_DIR/manual.json"
+generate_config "$WORK_DIR/vpn-interface-fixture.json" "$WORK_DIR/vpn.json"
+generate_config "$WORK_DIR/download-via-proxy-fixture.json" "$WORK_DIR/download.json"
+generate_config "$WORK_DIR/fully-routed-fixture.json" "$WORK_DIR/fully-routed.json"
+generate_config "$WORK_DIR/mwan3-auto-fixture.json" "$WORK_DIR/mwan3-auto.json" 1
+generate_config "$WORK_DIR/mwan3-pinned-fixture.json" "$WORK_DIR/mwan3-pinned.json" 1
+generate_config "$WORK_DIR/p2p-isolate-fixture.json" "$WORK_DIR/p2p-isolate.json"
+generate_config "$WORK_DIR/domain-ip-rulesets-fixture.json" "$WORK_DIR/domain-ip-rulesets.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-metadata-fixture.json" "$WORK_DIR/subscription-metadata.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-group-fixture.json" "$WORK_DIR/subscription-group.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-group-disabled-fixture.json" "$WORK_DIR/subscription-group-disabled.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-xhttp-fixture.json" "$WORK_DIR/subscription-xhttp-extended.json" 1
+generate_config_with_subscription_cache "$WORK_DIR/subscription-xhttp-fixture.json" "$WORK_DIR/subscription-xhttp-stable.json" 0 \
+  2>"$WORK_DIR/subscription-xhttp-stable.stderr"
+grep -Fq "Moscow XHTTP (XHTTP not supported)" "$WORK_DIR/subscription-xhttp-stable.stderr" ||
+  fail "XHTTP-disabled warning should identify the incompatible subscription outbound"
+grep -Fq "Recursive dependent (detour depends on unavailable outbound 'depends-on-xhttp')" "$WORK_DIR/subscription-xhttp-stable.stderr" ||
+  fail "XHTTP filtering should report recursively pruned detours"
+
+if generate_config_with_subscription_cache "$WORK_DIR/subscription-only-xhttp-fixture.json" "$WORK_DIR/subscription-only-xhttp.json" 0 \
+  >"$WORK_DIR/subscription-only-xhttp.stdout" 2>"$WORK_DIR/subscription-only-xhttp.stderr"; then
+  fail "generator should reject a subscription section with only XHTTP outbounds when XHTTP is disabled"
+fi
+grep -Fq "Only XHTTP node (XHTTP not supported)" "$WORK_DIR/subscription-only-xhttp.stderr" ||
+  fail "all-XHTTP subscription failure should identify the incompatible outbound"
+[ "$(tail -n 1 "$WORK_DIR/subscription-only-xhttp.stderr")" = 'connection section has no usable outbounds' ] ||
+  fail "all-XHTTP subscription failure should end with the actionable generator error"
+
+for fixture in manual-xhttp json-xhttp; do
+  if ucode -L "$TACHYON_LIB" "$TC_GENERATOR_UC" generate-config-fixture \
+    "$WORK_DIR/$fixture-fixture.json" "$WORK_DIR/$fixture-stable.json" "127.0.0.1" "0" "0" \
+    >"$WORK_DIR/$fixture-stable.stdout" 2>"$WORK_DIR/$fixture-stable.stderr"; then
+    fail "generator should reject explicit $fixture configuration when XHTTP is disabled"
+  fi
+  grep -Fq "uses XHTTP transport, which is not supported by the installed tachyon-core" "$WORK_DIR/$fixture-stable.stderr" ||
+    fail "explicit $fixture XHTTP failure should explain the XHTTP requirement"
+  generate_config "$WORK_DIR/$fixture-fixture.json" "$WORK_DIR/$fixture-extended.json"
+done
+
+ucode -e '
+let fs = require("fs");
+let dir = ARGV[0];
+
+function cfg(name) {
+    return json(fs.readfile(dir + "/" + name + ".json"));
+}
+
+function as_array(value) {
+    if (value == null)
+        return [];
+    return type(value) == "array" ? value : [ value ];
+}
+
+function contains(values, needle) {
+    for (let value in as_array(values))
+        if (value == needle)
+            return true;
+    return false;
+}
+
+function assert(condition, message) {
+    if (!condition) {
+        warn("FAIL: ", message, "\n");
+        exit(1);
+    }
+}
+
+function no_internal_fields(value) {
+    if (type(value) == "array") {
+        for (let item in value)
+            if (!no_internal_fields(item))
+                return false;
+    }
+    else if (type(value) == "object") {
+        for (let key, item in value) {
+            if (substr(key, 0, 2) == "__")
+                return false;
+            if (!no_internal_fields(item))
+                return false;
+        }
+    }
+    return true;
+}
+
+function first_remote_ruleset(config) {
+    for (let rule_set in config.route.rule_set || [])
+        if (rule_set && rule_set.type == "remote")
+            return rule_set;
+    return null;
+}
+
+function ruleset(config, tag) {
+    for (let rule_set in config.route.rule_set || [])
+        if (rule_set && rule_set.tag == tag)
+            return rule_set;
+    return null;
+}
+
+function ruleset_url(config, url) {
+    for (let rule_set in config.route.rule_set || [])
+        if (rule_set && rule_set.url == url)
+            return rule_set;
+    return null;
+}
+
+// Rule-set download transport uses `http_client` + `http_clients` on
+// tachyon-core; full coverage is in tests/tachyon_core_ruleset_download_transport.sh.
+function assert_downloads_via(config, rule_set, outbound_tag, label) {
+    if (rule_set == null) {
+        assert(false, label + " (rule-set missing)");
+        return;
+    }
+    if (rule_set.download_detour == outbound_tag) {
+        return;
+    }
+    let client_tag = rule_set.http_client;
+    if (client_tag == null || client_tag == "") {
+        assert(false, label + " (no download transport)");
+        return;
+    }
+    for (let client in config.http_clients || [])
+        if (client && client.tag == client_tag && client.detour == outbound_tag)
+            return;
+    assert(false, label);
+}
+
+function outbound(config, tag) {
+    for (let item in config.outbounds || [])
+        if (item && item.tag == tag)
+            return item;
+    return null;
+}
+
+function inbound(config, tag) {
+    for (let item in config.inbounds || [])
+        if (item && item.tag == tag)
+            return item;
+    return null;
+}
+
+function route_rule(config, predicate) {
+    for (let rule in config.route.rules || [])
+        if (rule && predicate(rule))
+            return rule;
+    return null;
+}
+
+function dns_rule(config, predicate) {
+    for (let rule in config.dns.rules || [])
+        if (rule && predicate(rule))
+            return rule;
+    return null;
+}
+
+function dns_rule_index(config, predicate) {
+    let rules = config.dns.rules || [];
+    for (let i = 0; i < length(rules); i++)
+        if (rules[i] && predicate(rules[i]))
+            return i;
+    return -1;
+}
+
+function dns_server(config, predicate) {
+    for (let server in config.dns.servers || [])
+        if (server && predicate(server))
+            return server;
+    return null;
+}
+
+let disabled = cfg("disabled");
+assert(first_remote_ruleset(disabled).update_interval == "876000h", "disabled list update interval");
+assert(route_rule(disabled, r => r.action == "resolve" && r.server == "dns-server") != null, "resolve rule generated");
+
+let defaults = cfg("default");
+assert(first_remote_ruleset(defaults).update_interval == "1d", "default list update interval");
+assert(defaults.dns.strategy == "ipv4_only", "auto IPv6 without WAN6 PD clamps missing DNS strategy to ipv4_only");
+assert(cfg("fully-routed").dns.strategy == "prefer_ipv4", "dual_stack without DNS strategy defaults to prefer_ipv4");
+
+let server = cfg("server");
+let socks = inbound(server, "server-edge-in");
+assert(socks && socks.type == "socks" && socks.listen_port == 18080, "server socks inbound");
+assert(socks.users && socks.users[0].username == "tester", "legacy server socks auth defaults to enabled");
+let open_socks = inbound(server, "server-open-in");
+assert(open_socks && open_socks.type == "socks" && open_socks.listen_port == 18081, "server open socks inbound");
+assert(open_socks.users == null, "disabled server socks auth omits users");
+assert(route_rule(server, r => r.inbound == "server-edge-in" && r.outbound == "direct-out") != null, "server direct route");
+
+let matchers = cfg("matchers");
+assert(matchers.dns.strategy == "prefer_ipv6", "configured DNS strategy is generated");
+assert(dns_server(matchers, r => r.tag == "fakeip-server" && r.inet6_range == "fc00::/18") != null, "FakeIP IPv6 range");
+assert(inbound(matchers, "tproxy6-in") != null, "IPv6 TProxy inbound");
+assert(inbound(matchers, "tproxy6-in").listen == "::1", "IPv6 TProxy listen address");
+assert(route_rule(matchers, r => r.action == "reject" && r.ip_version == 6) == null, "IPv6 traffic is not rejected globally");
+assert(outbound(matchers, "bypass-out").type == "direct", "bypass fallback outbound");
+assert(outbound(matchers, "proxy-1-out").detour == "detour-out", "connection URL outbound detour");
+let mixed = inbound(matchers, "proxy-mixed-in");
+assert(mixed && mixed.listen_port == 19090 && mixed.users[0].username == "user", "mixed inbound auth");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.action == "hijack-dns") == null, "mixed inbound must not hijack DNS");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.ip_is_private == true && r.outbound == "direct-out") != null, "mixed inbound private IP bypass");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.outbound == "proxy-out") != null, "mixed inbound route");
+assert(dns_rule(matchers, r => contains(r.domain_suffix, "example.org")).server == "dns-server", "bypass domain real DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_suffix, "proxy.example.org")).server == "fakeip-server", "proxy domain FakeIP DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_suffix, "xn--80aswg.xn--p1ai")).server == "fakeip-server", "IDN suffix converted for DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain, "xn--e1afmkfd.xn--80akhbyknj4f")).server == "fakeip-server", "IDN full domain converted for DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_keyword, "xn--e1afmkfd")).server == "fakeip-server", "IDN keyword converted for DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_regex, "^xn--80aswg[.]xn--p1ai$")).server == "fakeip-server", "IDN regex converted for DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_suffix, "commented.example")).server == "fakeip-server", "commented domain value generated");
+assert(dns_rule(matchers, r => contains(r.domain, "exact-comment.example")).server == "fakeip-server", "commented full domain generated");
+assert(dns_rule(matchers, r => contains(r.domain_keyword, "clip")).server == "fakeip-server", "commented keyword generated");
+assert(index(sprintf("%J", matchers), "ignored.example") < 0 && index(sprintf("%J", matchers), "ignored-full.example") < 0, "domain comments excluded from generated config");
+assert(route_rule(matchers, r => r.outbound == "bypass-out" && contains(r.domain_suffix, "example.org") && contains(r.source_ip_cidr, "10.0.0.3/32")) != null, "bypass fallback route");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain_suffix, "xn--80aswg.xn--p1ai")) != null, "IDN suffix converted for route rule");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain, "xn--e1afmkfd.xn--80akhbyknj4f")) != null, "IDN full domain converted for route rule");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain_keyword, "xn--e1afmkfd")) != null, "IDN keyword converted for route rule");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain_regex, "^xn--80aswg[.]xn--p1ai$")) != null, "IDN regex converted for route rule");
+assert(route_rule(matchers, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && r.outbound == "proxy-out") != null, "section route dual tproxy inbound");
+assert(route_rule(matchers, r => r.outbound == "direct-out" && contains(r.source_ip_cidr, "192.168.1.5/32")) == null, "routing excluded source removed");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.source_ip_cidr, "10.0.0.2/32") && contains(r.source_ip_cidr, "2001:db8::2/128")) != null, "source_ip_cidr matcher");
+assert(route_rule(matchers, r => r.outbound == "source_only-out" && contains(r.source_ip_cidr, "192.168.1.77/32")) != null, "source_only route rule generated");
+let commented_ip_rule = route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.ip_cidr, "77.111.247.0/24") && contains(r.ip_cidr, "198.51.100.0/24"));
+assert(commented_ip_rule != null, "comment-aware ip_cidr matcher");
+assert(contains(commented_ip_rule.port, 80) && contains(commented_ip_rule.port, 8080), "comment-aware port matcher");
+let commented_rule_json = sprintf("%J", commented_ip_rule);
+assert(index(commented_rule_json, "#77.111.247.19") < 0 && index(commented_rule_json, "203.0.113.0/24") < 0 && index(commented_rule_json, "10.0.0.99") < 0 && index(commented_rule_json, "2001:db8::99/128") < 0, "IP comments excluded from generated config");
+assert(index(commented_rule_json, "443") < 0 && index(commented_rule_json, "8443") < 0, "port comments excluded from generated config");
+
+let dns_action = cfg("dns-action");
+let dns_first_server = dns_server(dns_action, r => r.tag == "dns_first-dns-server");
+assert(dns_first_server && dns_first_server.type == "tls" && dns_first_server.server == "9.9.9.9" && dns_first_server.server_port == 5353, "DNS action protocol and server");
+assert(dns_first_server.detour == "detour-out", "DNS action detour");
+assert(dns_server(dns_action, r => r.tag == "dns_second-dns-server" && r.server == "8.8.8.8") != null, "second DNS action server");
+assert(outbound(dns_action, "dns_first-out") == null && outbound(dns_action, "dns_second-out") == null, "DNS actions do not create outbounds");
+assert(route_rule(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.outbound != null) != null, "proxy still owns its route rule");
+assert(route_rule(dns_action, r => contains(r.domain_suffix, "list-dns.example")) == null, "DNS action does not create route rules");
+let dns_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "dns_first-dns-server");
+let proxy_after_dns_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "fakeip-server");
+assert(proxy_after_dns_index >= 0 && dns_first_index > proxy_after_dns_index, "traffic-routing FakeIP DNS rule precedes DNS-only action so TPROXY intercepts traffic");
+let proxy_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "fakeip-server");
+let dns_after_proxy_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "dns_second-dns-server");
+assert(proxy_first_index >= 0 && dns_after_proxy_index > proxy_first_index, "higher proxy DNS rule wins over lower DNS action");
+assert(dns_first_index >= 0 && dns_after_proxy_index > dns_first_index, "higher DNS action precedes lower DNS action");
+assert(dns_rule(dns_action, r => contains(r.rule_set, "dns_first-youtube-community-ruleset") && r.server == "dns_first-dns-server") != null, "DNS action built-in domain rule set");
+let dns_custom_ruleset = ruleset_url(dns_action, "https://example.com/domain-only.srs");
+assert(dns_custom_ruleset && dns_rule(dns_action, r => contains(r.rule_set, dns_custom_ruleset.tag) && r.server == "dns_first-dns-server") != null, "DNS action custom domain rule set");
+let dns_list = json(fs.readfile(dir + "/dns-action.json.rulesets/dns_first-lists-ruleset.json"));
+assert(index(sprintf("%J", dns_list), "list-dns.example") >= 0, "DNS action imports domains from plain lists");
+assert(index(sprintf("%J", dns_list), "198.51.100.0/24") < 0, "DNS action drops subnets from plain lists");
+
+let urltest = cfg("urltest");
+let urltest_out = outbound(urltest, "proxy-urltest-out");
+assert(urltest_out && length(urltest_out.outbounds) == 1 && urltest_out.outbounds[0] == "Keep", "URLTest include filter");
+assert(outbound(urltest, "Keep").type == "http", "HTTP JSON outbound remains supported");
+assert(outbound(urltest, "proxy-out").default == "proxy-urltest-out", "selector defaults to URLTest");
+
+let manual_http = cfg("manual-http");
+let manual_http_out = outbound(manual_http, "proxy-1-out");
+assert(manual_http_out && manual_http_out.type == "http" && manual_http_out.server == "127.0.0.1" && manual_http_out.server_port == 8080, "manual HTTP outbound supported");
+assert(route_rule(manual_http, r => r.action == "reject" && contains(r.network, "udp")) != null, "HTTP outbound generates UDP reject rule");
+
+let providers = cfg("providers");
+assert(outbound(providers, "des-out").type == "desync", "Native Desync outbound");
+assert(outbound(providers, "csq-out").type == "wdtt", "Native CSQTT outbound");
+assert(route_rule(providers, r => r.outbound == "des-out" && contains(r.domain_suffix, "des.example")) != null, "Desync domain route");
+assert(route_rule(providers, r => r.outbound == "csq-out" && contains(r.domain_suffix, "csq.example")) != null, "CSQTT domain route");
+
+let manual = cfg("manual");
+let vless = outbound(manual, "proxy-1-out");
+assert(vless.transport.type == "ws" && vless.transport.path == "/ws", "manual VLESS WS transport");
+assert(vless.tls.server_name == "example.com", "manual VLESS TLS");
+assert(length(vless.tls.alpn) == 1 && vless.tls.alpn[0] == "http/1.1", "manual VLESS WS ALPN normalized");
+assert(vless.encryption == "mlkem768x25519plus.native.test", "manual VLESS encryption preserved");
+let vmess = outbound(manual, "proxy-2-out");
+assert(vmess.type == "vmess" && vmess.uuid == "22222222-2222-4222-8222-222222222222", "manual VMess link");
+assert(vmess.alter_id == 4 && vmess.security == "auto", "manual VMess alter_id and security");
+assert(vmess.transport.type == "ws" && vmess.transport.path == "/vmess", "manual VMess WS transport");
+assert(vmess.transport.headers.Host == "vmess.example", "manual VMess WS Host header");
+assert(vmess.tls.server_name == "vmess.example", "manual VMess TLS SNI");
+assert(length(vmess.tls.alpn) == 1 && vmess.tls.alpn[0] == "http/1.1", "manual VMess WS ALPN normalized");
+assert(vmess.tls.utls.fingerprint == "chrome", "manual VMess fingerprint");
+assert(outbound(manual, "proxy-3-out").type == "shadowsocks", "manual Shadowsocks link");
+
+let vpn = cfg("vpn");
+assert(outbound(vpn, "renamed_awg-interface-1-out").bind_interface == "tun0", "renamed VPN interface outbound");
+assert(outbound(vpn, "renamed_awg-interface-1-out").domain_resolver == "renamed_awg-interface-1-domain-resolver", "renamed VPN domain resolver tag");
+assert(dns_server(vpn, r => r.tag == "renamed_awg-interface-1-domain-resolver") != null, "renamed VPN domain resolver DNS server");
+assert(outbound(vpn, "renamed_awg-interface-1-out").detour == null, "interface outbound must not receive a detour");
+assert(route_rule(vpn, r => r.outbound == "renamed_awg-out" && contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain route");
+assert(dns_rule(vpn, r => contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain DNS rule");
+
+let download = cfg("download");
+assert(inbound(download, "service-mixed-in") != null, "service mixed inbound");
+assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound == "proxy-out") != null, "service mixed route");
+assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound == "components_proxy-out" && contains(r.domain_suffix, "api.telegram.org")) != null, "bot proxy route on service-mixed-in");
+assert(inbound(download, "service-components-in") != null, "components service mixed inbound");
+assert(route_rule(download, r => r.inbound == "service-components-in" && r.outbound == "components_proxy-out") != null, "components service mixed route");
+assert_downloads_via(download, ruleset(download, "proxy-discord-community-ruleset"), "proxy-out", "community ruleset downloads via proxy-out");
+assert_downloads_via(download, ruleset_url(download, "https://example.com/rules.srs"), "proxy-out", "custom remote ruleset downloads via proxy-out");
+
+let fully = cfg("fully-routed");
+assert(route_rule(fully, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && contains(r.source_ip_cidr, "192.168.1.20/32") && contains(r.source_ip_cidr, "192.168.1.30/32") && contains(r.source_ip_cidr, "2001:db8::20/128")) != null, "fully routed IP route");
+assert(route_rule(fully, r => contains(r.source_ip_cidr, "a8:8c:3e:c9:25:05")) == null, "raw MAC address never present in source_ip_cidr");
+
+let mwan3_auto = cfg("mwan3-auto");
+assert(mwan3_auto.route.auto_detect_interface === false, "mwan3 disables auto_detect_interface");
+assert(mwan3_auto.route.default_interface == null, "mwan3 without pinned interface does not set default_interface");
+
+let mwan3_pinned = cfg("mwan3-pinned");
+assert(mwan3_pinned.route.auto_detect_interface === false, "mwan3 pinned interface disables auto_detect_interface");
+assert(mwan3_pinned.route.default_interface == "wan2", "mwan3 pinned interface is preserved");
+
+let p2p_isolate = cfg("p2p-isolate");
+assert(route_rule(p2p_isolate, r => contains(r.protocol, "bittorrent") && r.outbound == "direct-out") != null, "p2p isolation sniffer rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "tcp") && r.source_port == 6881 && r.outbound == "direct-out") != null, "p2p client tcp source port rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "tcp") && contains(r.port, 6881) && r.outbound == "direct-out") != null, "p2p client tcp dest port rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "udp") && contains(r.source_port_range, "6881:6889") && r.outbound == "direct-out") != null, "p2p client udp source port range rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "udp") && contains(r.port_range, "6881:6889") && r.outbound == "direct-out") != null, "p2p client udp dest port range rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "udp") && r.source_port == null && r.port == null && r.source_port_range == null && r.port_range == null && r.outbound == "direct-out") != null, "p2p protocol-wide direct rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "tcp") && contains(r.network, "udp") && r.source_port == 51413 && r.outbound == "direct-out") != null, "p2p plain port source rule");
+assert(route_rule(p2p_isolate, r => contains(r.network, "tcp") && contains(r.network, "udp") && contains(r.port, 51413) && r.outbound == "direct-out") != null, "p2p plain port dest rule");
+
+let lists = cfg("domain-ip-rulesets");
+assert(no_internal_fields(lists), "internal runtime fields stripped from generated config");
+
+// Mixed domain+IP lists are now split into separate -domains and -subnets rulesets
+let dom_ruleset = null;
+let sub_ruleset = null;
+for (let rule_set in lists.route.rule_set || []) {
+    if (rule_set.tag == "proxy-lists-ruleset-domains")
+        dom_ruleset = rule_set;
+    if (rule_set.tag == "proxy-lists-ruleset-subnets")
+        sub_ruleset = rule_set;
+}
+assert(dom_ruleset && dom_ruleset.type == "local" && dom_ruleset.format == "source", "domain_ip_lists split domains ruleset");
+assert(sub_ruleset && sub_ruleset.type == "local" && sub_ruleset.format == "source", "domain_ip_lists split subnets ruleset");
+assert(route_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-domains") && contains(r.rule_set, "proxy-lists-ruleset-subnets")) != null, "domain_ip_lists split rulesets in route");
+assert(dns_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-domains")) != null, "domain_ip_lists domains fakeip DNS rule");
+assert(dns_rule(lists, r => contains(r.rule_set, "proxy-lists-ruleset-subnets")) == null, "domain_ip_lists subnets NOT in DNS rules");
+
+let dom_file = json(fs.readfile(dir + "/domain-ip-rulesets.json.rulesets/proxy-lists-ruleset-domains.json"));
+let sub_file = json(fs.readfile(dir + "/domain-ip-rulesets.json.rulesets/proxy-lists-ruleset-subnets.json"));
+let has_domain = false;
+let has_ip = false;
+for (let rule in dom_file.rules || [])
+    if (contains(rule.domain_suffix, "example.net"))
+        has_domain = true;
+for (let rule in sub_file.rules || [])
+    if (contains(rule.ip_cidr, "203.0.113.0/24"))
+        has_ip = true;
+assert(has_domain, "split domains ruleset contains example.net");
+assert(has_ip, "split subnets ruleset contains 203.0.113.0/24");
+
+let subscription_group = cfg("subscription-group");
+let provider_group = outbound(subscription_group, "Provider Group");
+assert(provider_group && provider_group.type == "urltest", "provider URLTest group imported");
+assert(length(provider_group.outbounds) == 2, "provider URLTest group keeps leaf references");
+assert(provider_group.outbounds[0] == "grouped-out-1", "provider URLTest group leaf reference retagged");
+assert(provider_group.outbounds[1] == "leaf", "provider URLTest group second leaf reference kept");
+assert(provider_group.detour == null, "provider URLTest group does not receive outbound detour");
+let grouped_leaf = outbound(subscription_group, "grouped-out-1");
+let second_leaf = outbound(subscription_group, "leaf");
+assert(grouped_leaf && grouped_leaf.detour == null, "hidden subscription leaf does not receive connection URL detour");
+assert(second_leaf && second_leaf.detour == null, "second hidden subscription leaf does not receive connection URL detour");
+assert(outbound(subscription_group, "provider-direct") == null, "provider direct outbound skipped");
+assert(outbound(subscription_group, "provider-unsupported") == null, "provider unsupported outbound skipped");
+let grouped_selector = outbound(subscription_group, "grouped-out");
+assert(grouped_selector && length(grouped_selector.outbounds) == 1 && grouped_selector.outbounds[0] == "Provider Group", "selector exposes provider group only");
+let grouped_state = cfg("subscription-group.json.section-cache/grouped");
+assert(grouped_state.outboundMetadata.names["Provider Group"] == "Provider Group", "provider group metadata visible");
+assert(grouped_state.outboundMetadata.names["grouped-out-1"] == "grouped-out", "hidden leaf metadata visible");
+assert(length(grouped_state.urltestGroups["Provider Group"].outbounds) == 2, "provider group membership cached");
+assert(grouped_state.urltestGroups["Provider Group"].outbounds[0] == "grouped-out-1", "provider group membership retagged");
+assert(grouped_state.linkRefs == null, "section cache omits source link refs");
+assert(index(grouped_state.links["grouped-out-1"], "vless://") == 0, "hidden leaf caches its direct proxy link");
+assert(index(grouped_state.links["leaf"], "vless://") == 0, "second hidden leaf caches its direct proxy link");
+let subscription_group_disabled = cfg("subscription-group-disabled");
+assert(outbound(subscription_group_disabled, "Provider Group") == null, "provider URLTest group skipped when import is disabled");
+let disabled_grouped_leaf = outbound(subscription_group_disabled, "grouped-out-1");
+let disabled_second_leaf = outbound(subscription_group_disabled, "leaf");
+assert(disabled_grouped_leaf && disabled_second_leaf, "URLTest group leaf outbounds kept when import is disabled");
+let disabled_grouped_selector = outbound(subscription_group_disabled, "grouped-out");
+assert(disabled_grouped_selector && contains(disabled_grouped_selector.outbounds, "grouped-out-1") && contains(disabled_grouped_selector.outbounds, "leaf"), "selector exposes URLTest group leaves when import is disabled");
+let disabled_grouped_state = cfg("subscription-group-disabled.json.section-cache/grouped");
+assert(disabled_grouped_state.urltestGroups["Provider Group"] == null, "skipped provider group is not cached as URLTest");
+assert(disabled_grouped_state.linkRefs == null, "disabled group cache omits source link refs");
+assert(index(disabled_grouped_state.links["grouped-out-1"], "vless://") == 0, "visible leaf caches its direct proxy link when group import is disabled");
+
+let xhttp_stable = cfg("subscription-xhttp-stable");
+assert(outbound(xhttp_stable, "xhttp-node") == null, "XHTTP-disabled excludes XHTTP subscription leaf");
+assert(outbound(xhttp_stable, "depends-on-xhttp") == null, "XHTTP-disabled excludes outbound detouring through XHTTP");
+assert(outbound(xhttp_stable, "recursive-dependent") == null, "XHTTP-disabled recursively excludes XHTTP-dependent detours");
+let stable_provider_group = outbound(xhttp_stable, "Provider XHTTP Group");
+assert(stable_provider_group && length(stable_provider_group.outbounds) == 1 && stable_provider_group.outbounds[0] == "plain-node", "provider group removes XHTTP member");
+assert(stable_provider_group.default == null, "provider URLTest removes unsupported default field");
+let stable_urltest = outbound(xhttp_stable, "xhttp-urltest-ut_xhttp-out");
+assert(stable_urltest && length(stable_urltest.outbounds) == 1 && stable_urltest.outbounds[0] == "plain-node", "URLTest receives only compatible subscription leaves");
+let stable_priority = outbound(xhttp_stable, "xhttp-priority-pg_xhttp-out");
+assert(stable_priority && length(stable_priority.outbounds) == 1 && stable_priority.outbounds[0] == "plain-node", "Priority receives only compatible subscription leaves");
+
+let xhttp_extended = cfg("subscription-xhttp-extended");
+assert(outbound(xhttp_extended, "xhttp-node") != null, "tachyon-core keeps XHTTP subscription leaf");
+assert(outbound(xhttp_extended, "Provider XHTTP Group").default == null, "provider URLTest removes unsupported default field");
+assert(outbound(xhttp_extended, "depends-on-xhttp").detour == "xhttp-node", "tachyon-core keeps XHTTP detour chain");
+assert(outbound(xhttp_extended, "recursive-dependent").detour == "depends-on-xhttp", "tachyon-core keeps recursive detour chain");
+
+let proxy_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/proxy.json"));
+let test_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/test.json"));
+let proxy_share_link_cached = false;
+for (let tag, link in proxy_cache.links || {})
+    if (link == "socks5://127.0.0.1:1080#subscription-proxy")
+        proxy_share_link_cached = true;
+assert(proxy_share_link_cached, "subscription share link cached for instant dashboard copy");
+assert(proxy_cache.linkRefs == null && test_cache.linkRefs == null, "subscription caches contain direct links without source refs");
+let proxy_metadata = as_array(proxy_cache.subscriptionMetadata);
+let test_metadata = as_array(test_cache.subscriptionMetadata);
+assert(length(proxy_metadata) == 2, "duplicate subscription URL metadata kept for both proxy sources");
+assert(proxy_metadata[0].sourceSection == "proxy-subscription-1" && proxy_metadata[0].title == "WolfPN", "proxy source 1 metadata marker");
+assert(proxy_metadata[1].sourceSection == "proxy-subscription-2" && proxy_metadata[1].title == "WolfPN", "proxy source 2 metadata marker");
+assert(length(test_metadata) == 1, "same subscription URL metadata kept for second section");
+assert(test_metadata[0].sourceSection == "test-subscription-1" && test_metadata[0].title == "WolfPN", "test source metadata marker");
+
+let doh_cfg = cfg("block-doh");
+assert(route_rule(doh_cfg, r => r.action == "reject" && contains(r.inbound, "tproxy-in") && contains(r.ip_cidr, "1.1.1.1/32")) != null, "block_doh IPv4 reject rule present");
+assert(route_rule(doh_cfg, r => r.action == "reject" && contains(r.inbound, "tproxy-in") && contains(r.ip_cidr, "2606:4700:4700::1111/128")) != null, "block_doh IPv6 reject rule present");
+
+let bulk_cfg = cfg("bulk-proxy-links");
+assert(outbound(bulk_cfg, "sec_test-1-out") != null, "bulk selector proxy link 1 created");
+assert(outbound(bulk_cfg, "sec_test-2-out") != null, "bulk selector proxy link 2 created");
+assert(outbound(bulk_cfg, "sec_test-3-out") != null, "bulk urltest proxy link created");
+assert(outbound(bulk_cfg, "sec_test-urltest-out") != null, "bulk urltest group created");
+
+let filter_cfg = cfg("subscription-filter");
+assert(outbound(filter_cfg, "nl-fast") != null, "include keyword match preserves node");
+assert(outbound(filter_cfg, "de-highspeed") != null, "case-insensitive Cyrillic include keyword match preserves node");
+assert(outbound(filter_cfg, "nl-ads") == null, "exclude keyword drops node even if included");
+assert(outbound(filter_cfg, "us-proxy") == null, "unmatched include keyword drops node");
+' "$WORK_DIR"
+
+sig_with_bot_proxy="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/service/state.uc" tachyon-core-signature-fixture "$WORK_DIR/download-via-proxy-fixture.json")"
+sed 's/"bot_proxy_section": "components_proxy"/"bot_proxy_section": "proxy"/' \
+  "$WORK_DIR/download-via-proxy-fixture.json" >"$WORK_DIR/download-via-proxy-bot-changed.json"
+sig_changed_bot_proxy="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/service/state.uc" tachyon-core-signature-fixture "$WORK_DIR/download-via-proxy-bot-changed.json")"
+[ "$sig_with_bot_proxy" != "$sig_changed_bot_proxy" ] ||
+  fail "tachyon-core-signature must change when telegram.bot_proxy_section changes"
+
+printf 'tachyon-core runtime checks passed\n'

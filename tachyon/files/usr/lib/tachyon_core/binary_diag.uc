@@ -1,6 +1,6 @@
 #!/usr/bin/env ucode
 //
-// Telling a broken sing-box apart from a broken configuration.
+// Telling a broken tachyon-core binary apart from a broken configuration.
 //
 // Separate from tachyon_core/runtime.uc because that file is a script: requiring it runs
 // its CLI dispatcher. Both helpers are small and pure apart from the stat/open, and
@@ -22,18 +22,18 @@ let as_string = common.as_string;
  * a failure with no usable detail. The shell's own error arrives prefixed with the
  * binary path, so the message reads like a configuration problem when it is not.
  */
-function sing_box_binary_problem(path) {
+function core_binary_problem(path) {
     // The path can arrive straight from `command -v` with its trailing newline, and
     // a stat of "/usr/bin/tachyon-core\n" fails on a file that is very much there —
     // which reported a perfectly present binary as missing.
     path = trim(as_string(path));
     if (path == "")
-        return "sing-box binary path is empty";
+        return "tachyon-core binary path is empty";
     let info = fs.stat(path);
     if (info == null)
-        return "sing-box binary is missing at " + path;
+        return "tachyon-core binary is missing at " + path;
     if (int(info.size || 0) <= 0)
-        return "sing-box binary at " + path + " is empty";
+        return "tachyon-core binary at " + path + " is empty";
 
     let head = "";
     try {
@@ -67,26 +67,26 @@ function sing_box_binary_problem(path) {
             (b0 == 0xbe && b1 == 0xba && b2 == 0xfe && b3 == 0xca);    // FAT_CIGAM
     }
     if (is_macho)
-        return "sing-box at " + path +
-            " is a macOS (Mach-O) build, not a Linux binary - a binary for another operating system was installed in its place. Reinstall the sing-box variant to get the correct build.";
+        return "tachyon-core at " + path +
+            " is a macOS (Mach-O) build, not a Linux binary - a binary for another operating system was installed in its place. Reinstall tachyon-core to get the correct build.";
 
     // A shebang means something is being executed in its place - a wrapper, a
     // half-extracted stub, a failed upgrade - and it is not the engine.
     if (substr(head, 0, 2) == "#!")
-        return "sing-box at " + path +
-            " is a shell script, not the sing-box binary - the variant is broken or something replaced it with a wrapper";
+        return "tachyon-core at " + path +
+            " is a shell script, not the tachyon-core binary - the binary is broken or something replaced it with a wrapper";
 
     return "";
 }
 
 /**
  * True when the check output is the shell complaining about the binary rather than
- * sing-box complaining about the configuration.
+ * tachyon-core complaining about the configuration.
  *
  * Deliberately conservative: a bare exit status carries no evidence at all, and
  * guessing from one would blame the binary for ordinary config errors.
  */
-function sing_box_check_blamed_the_binary(reason) {
+function core_check_blamed_the_binary(reason) {
     let text = as_string(reason || "");
     if (text == "") return false;
     // The shell's shape is "<path>: line <N>: <message>". The space and the word
@@ -99,8 +99,8 @@ function sing_box_check_blamed_the_binary(reason) {
 
 function module_exports() {
     return {
-        sing_box_binary_problem,
-        sing_box_check_blamed_the_binary
+        core_binary_problem,
+        core_check_blamed_the_binary
     };
 }
 

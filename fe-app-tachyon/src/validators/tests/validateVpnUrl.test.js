@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { deflateSync } from 'node:zlib';
-import { store } from '../../tachyon/services/store.service';
 import {
   compactVpnUri,
   splitAmneziaTextEntries,
@@ -15,32 +14,13 @@ const key = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString(
 );
 const conf = `[Interface]\nPrivateKey = ${key}\nAddress = 10.77.0.2/32\nJc = 4\n[Peer]\nPublicKey = ${key}\nEndpoint = [2001:db8::1]:51820\n`;
 const encode = (text) => 'vpn://' + Buffer.from(text).toString('base64url');
-const original = store.get();
-function core(version, lx, engine = 'sing-box') {
-  store.set({
-    activeEngine: engine,
-    diagnosticsSystemInfo: {
-      ...original.diagnosticsSystemInfo,
-      sing_box_version: version,
-      sing_box_lx: lx,
-    },
-  });
-}
-afterEach(() => store.reset());
 
 describe('vpn:// import', () => {
-  it('requires active LX, including plain WireGuard exports', () => {
-    for (const version of ['1.14.2', '1.14.1-extended-2.7.2']) {
-      core(version, 0);
-      expect(supportsVpnUrl()).toBe(false);
-      expect(validateProxyUrl(encode(conf)).valid).toBe(false);
-    }
-    core('1.14.2-lx.11', 0);
+  it('supports vpn:// natively on tachyon-core, including plain WireGuard exports', () => {
     expect(supportsVpnUrl()).toBe(true);
     expect(validateProxyUrl(encode(conf)).valid).toBe(true);
   });
   it('accepts plain INI and selected native JSON containers', () => {
-    core('1.14.2-lx.11', 1);
     expect(validateProxyUrl(encode(conf)).valid).toBe(true);
     const payload = {
       defaultContainer: 'amnezia-awg2',
@@ -60,7 +40,6 @@ describe('vpn:// import', () => {
     );
   });
   it('checks the compressed envelope and leaves full deflate validation to backend', () => {
-    core('1.14.2-lx.11', 1);
     const bytes = Buffer.from(conf);
     const size = Buffer.alloc(4);
     size.writeUInt32BE(bytes.length);
@@ -75,7 +54,6 @@ describe('vpn:// import', () => {
     expect(validateProxyUrl('vpn://invalid!').valid).toBe(false);
   });
   it('preserves copy support without accepting additional URI aliases', () => {
-    core('1.14.2-lx.11', 1);
     expect(isCopyableProxyLink(encode(conf))).toBe(true);
     for (const scheme of ['wg', 'wireguard', 'awg']) {
       expect(validateProxyUrl(scheme + '://example.com').valid).toBe(false);
@@ -83,16 +61,11 @@ describe('vpn:// import', () => {
     }
   });
   it('supports vpn:// on tachyon-core even without diagnosticsSystemInfo', () => {
-    store.set({
-      activeEngine: 'tachyon-core',
-      diagnosticsSystemInfo: undefined,
-    });
     expect(supportsVpnUrl()).toBe(true);
     expect(validateVpnUrl(encode(conf)).valid).toBe(true);
     expect(validateProxyUrl(encode(conf)).valid).toBe(true);
   });
   it('compacts multiline vpn:// URIs and keeps fragments intact', () => {
-    core('1.14.2-lx.11', 1);
     const full = encode(conf);
     const body = full.slice(6);
     const splitAt = Math.floor(body.length / 2);
@@ -102,7 +75,6 @@ describe('vpn:// import', () => {
     expect(validateProxyUrl(multiline).valid).toBe(true);
   });
   it('inflates 0x000000FF Amnezia header streams synchronously and rejects invalid inner payloads', () => {
-    core('1.14.2-lx.11', 1);
     const header = Buffer.from([0x00, 0x00, 0x00, 0xff]);
     const validPayload = Buffer.concat([
       header,
@@ -123,7 +95,6 @@ describe('vpn:// import', () => {
     ).toBe(false);
   });
   it('substitutes $REMOTE_HOST and $SERVER_IP_ADDRESS placeholders from container metadata', () => {
-    core('1.14.2-lx.11', 1);
     const withRemoteHost = {
       defaultContainer: 'amnezia-awg2',
       containers: [
@@ -196,7 +167,6 @@ describe('vpn:// import', () => {
     ).toBe(true);
   });
   it('synthesizes missing [Peer] block from container settings metadata', () => {
-    core('1.14.2-lx.11', 1);
     const ifaceOnly = `[Interface]\nPrivateKey = ${key}\nAddress = 10.77.0.2/32\nJc = 4\n`;
     const payload = {
       defaultContainer: 'amnezia-awg',
@@ -237,7 +207,6 @@ describe('vpn:// import', () => {
     );
   });
   it('rejects Amnezia Cloud API keys (api_config / api_key) with descriptive guidance', () => {
-    core('1.14.2-lx.11', 1);
     for (const cloudObj of [
       { api_config: 'https://api.example.com/v1', api_key: 'tok-123' },
       { api_config: { endpoint: 'https://api.example.com/v1' } },

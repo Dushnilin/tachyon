@@ -33,9 +33,8 @@
 
 ```
 /etc/tachyon/state/known_good/
-  manifest.json      версия, время промоушена, причина, sha256, движок, метрики
+  manifest.json      версия, время промоушена, причина, sha256, ядро, метрики
   config             атомарная копия /etc/config/tachyon
-  sing-box-variant   резервная копия варианта ядра
   history.json       кольцо событий смены состояния
   last_failed_config конфиг, сохранённый перед откатом (для посмертного анализа)
 ```
@@ -133,7 +132,7 @@ watchdog-воркер, Telegram-бот). Отсюда два правила:
 | `section-cache/` | `tachyon_core/generator_outbounds.uc` | UI-дашборд, генератор |
 | `smart_detect_seen.json` | watchdog | watchdog |
 | `selector_state.json` | UI, Telegram | генераторы, Clash-эмуляция |
-| `dns-failover.json` | `singbox/dns_failover.uc` | watchdog, UI |
+| `dns-failover.json` | `tachyon_core/dns_failover.uc` | watchdog, UI |
 | `events.jsonl` | шина | UI, `eventClient`, support bundle, AI Doctor |
 | `tx/<id>/` | `core/transaction.uc` | `transaction.uc recover`, watchdog |
 

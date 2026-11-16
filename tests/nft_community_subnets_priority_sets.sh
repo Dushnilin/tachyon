@@ -11,9 +11,9 @@ if ! awk '/function nft_add_community_subnet_file_for_section/,/^}/' "$APPLY_UC"
   fail "nft_add_community_subnet_file_for_section must call nft_create_priority_sets(table, sets) when priority sets are needed"
 fi
 
-# Invariant 2: lifecycle.uc must not use obsolete 'pidof sing-box', but query tachyon-core-service-runtime-pid
-if grep -n 'pidof.*sing-box' "$LIFECYCLE_UC" >/dev/null 2>&1; then
-  fail "lifecycle.uc must not call 'pidof sing-box'; use tachyon-core-service-runtime-pid instead"
+# Invariant 2: lifecycle.uc must not use obsolete 'pidof tachyon-core', but query tachyon-core-service-runtime-pid
+if grep -n 'pidof.*tachyon-core' "$LIFECYCLE_UC" >/dev/null 2>&1; then
+  fail "lifecycle.uc must not call 'pidof tachyon-core'; use tachyon-core-service-runtime-pid instead"
 fi
 
 if ! grep -n 'tachyon-core-service-runtime-pid' "$LIFECYCLE_UC" >/dev/null 2>&1; then

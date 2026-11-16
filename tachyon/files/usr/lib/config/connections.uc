@@ -3,7 +3,6 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
-let constants = require("core.constants");
 let core_url = require("core.url");
 
 let as_string = common.as_string;
@@ -411,15 +410,7 @@ function is_remote_proxy_action(action) {
         action == "masque" || action == "openvpn" || action == "openconnect" ||
         action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
         action == "chain" || action == "tailscale" ||
-        action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "fptn";
-}
-
-function is_wdtt_action(action) {
-    return as_string(action) == "wdtt";
-}
-
-function is_olcrtc_action(action) {
-    return as_string(action) == "olcrtc";
+        action == "wdtt" || action == "csqtt" || action == "fptn";
 }
 
 function is_fptn_action(action) {
@@ -427,10 +418,9 @@ function is_fptn_action(action) {
 }
 
 // FPTN is spoken natively by tachyon-core; there is no external client package
-// or TUN daemon. Returns "native" when tachyon-core is the active engine and
-// "" on engines that do not support the FPTN outbound protocol.
+// or TUN daemon.
 function fptn_transport_mode() {
-    return require("tachyon_core.variant_state").is_tachyon_core() ? "native" : "";
+    return "native";
 }
 
 function normalize_action(action) {
@@ -555,7 +545,7 @@ function interface_source_item(section, value) {
 
 function is_dpi_or_desync_source_type(stype) {
     stype = lc(trim(as_string(stype)));
-    return stype == "zapret" || stype == "zapret2" || stype == "byedpi" || stype == "desync";
+    return stype == "desync";
 }
 
 function has_modular_entities_migration() {
@@ -768,18 +758,8 @@ function section_effective_outbound_sources(section) {
     }
     if (length(result) == 0 && !has_explicit_non_dpi_sources && type(section) == "object") {
         let inferred_stype = "";
-        if (trim(option(section, "nfqws2_opt", "")) != "")
-            inferred_stype = "zapret2";
-        else if (trim(option(section, "nfqws_opt", "")) != "")
-            inferred_stype = "zapret";
-        else if (trim(option(section, "byedpi_cmd_opts", option(section, "byedpi_opts", ""))) != "")
-            inferred_stype = "byedpi";
-        else if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
+        if (trim(option(section, "desync_preset", option(section, "desync_opts", ""))) != "")
             inferred_stype = "desync";
-        else if (trim(option(section, "wdtt_mode", "")) != "")
-            inferred_stype = "wdtt";
-        else if (trim(option(section, "olcrtc_stun_host", "")) != "")
-            inferred_stype = "olcrtc";
         else if (trim(option(section, "openvpn_server", "")) != "")
             inferred_stype = "openvpn";
         else if (trim(option(section, "tailscale_auth_key", "")) != "" ||
@@ -803,24 +783,7 @@ function section_effective_outbound_sources(section) {
 }
 
 function is_embedded_tailscale_source(src) {
-    if (type(src) != "object" || lc(option(src, "source_type", "")) != "tailscale")
-        return false;
-    let ts_mode = lc(trim(option(src, "tailscale_mode", "")));
-    if (ts_mode == "native")
-        return false;
-    if (ts_mode == "singbox" || ts_mode == "embedded" || ts_mode == "tachyon-core")
-        return true;
-    for (let key in [
-        "tailscale_auth_key", "tailscale_control_url", "tailscale_hostname",
-        "tailscale_exit_node", "tailscale_ephemeral", "tailscale_exit_node_allow_lan_access",
-        "tailscale_accept_routes", "tailscale_advertise_routes", "tailscale_advertise_exit_node",
-        "tailscale_accept_dns", "tailscale_accept_default_resolvers",
-        "tailscale_relay_server_port", "tailscale_system_interface", "tailscale_udp_timeout"
-    ]) {
-        if (trim(option(src, key, "")) != "" || length(list_value(src, key)) > 0)
-            return true;
-    }
-    return trim(option(src, "interface_name", "")) == "";
+    return type(src) == "object" && lc(trim(option(src, "source_type", ""))) == "tailscale";
 }
 
 function embedded_tailscale_sources(section) {
@@ -1325,10 +1288,6 @@ function interfaces(section) {
             if (iname != "")
                 push_unique_str(result, seen, iname);
         }
-        else if (stype == "tailscale" && !is_embedded_tailscale_source(src)) {
-            let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
-            push_unique_str(result, seen, ts_iface);
-        }
     }
     let items = child_values(section, "section_interface", "name", "");
     if (length(items) > 0) {
@@ -1348,7 +1307,7 @@ function is_dpi_or_desync_only_section(section) {
     if (type(section) != "object")
         return false;
     let act = lc(trim(option(section, "action", "")));
-    if (act == "zapret" || act == "zapret2" || act == "byedpi" || act == "desync")
+    if (act == "desync")
         return true;
     if (!is_connections_action(act))
         return false;
@@ -1380,34 +1339,11 @@ function is_remote_proxy_section(section) {
     return true;
 }
 
-function has_external_wdtt_binary() {
-    let qbin = getenv("TACHYON_QWDTT_BIN") || "/usr/bin/qwdtt-client";
-    let wbin = (constants && constants.WDTT_BIN) ? constants.WDTT_BIN : "/usr/bin/wdtt";
-    return fs.stat(qbin) != null || fs.stat(wbin) != null || fs.stat("/usr/bin/wdtt-client") != null;
-}
-
 function is_native_wdtt_source(src) {
     if (type(src) != "object")
         return false;
     let stype = lc(trim(option(src, "source_type", "")));
-    if (stype != "wdtt")
-        return false;
-    let raw_native = raw_option(src, "wdtt_native");
-    if (raw_native != null && raw_native != "")
-        return bool_value(raw_native, false);
-
-    let uri = trim(option(src, "csqtt_uri", option(src, "warp_flow_uri", "")));
-    let srv = trim(option(src, "csqtt_server", option(src, "server", "")));
-    let has_native_target = (uri != "" && match(lc(uri), /^(csqtt|qwdtt|wdtt):\/\//)) || srv != "";
-    if (!has_native_target)
-        return false;
-
-    let is_tcore = false;
-    try {
-        let vs = require("tachyon_core.variant_state");
-        is_tcore = type(vs.is_tachyon_core) == "function" && vs.is_tachyon_core();
-    } catch (e) {}
-    return is_tcore && !has_external_wdtt_binary();
+    return stype == "csqtt" || stype == "wdtt";
 }
 
 function apply_csqtt_src_overrides(src, obj) {
@@ -1713,11 +1649,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         }
         return finalize(obj);
     }
-    if (stype == "csqtt") {
-        let obj = synthesize_csqtt_outbound_object(src, tag_name);
-        return obj != null ? finalize(obj) : "";
-    }
-    if (stype == "wdtt" && is_native_wdtt_source(src)) {
+    if (stype == "csqtt" || stype == "wdtt") {
         let obj = synthesize_csqtt_outbound_object(src, tag_name);
         return obj != null ? finalize(obj) : "";
     }
@@ -1945,21 +1877,6 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             let iv = trim(option(src, "awg_" + ik, ""));
             if (iv != "")
                 wg_obj[ik] = type(common.awg_tag_chain) == "function" ? common.awg_tag_chain(iv) : iv;
-        }
-        let is_tcore = false;
-        try {
-            let vs = require("tachyon_core.variant_state");
-            is_tcore = type(vs.is_tachyon_core) == "function" && vs.is_tachyon_core();
-        } catch (e) {}
-        if (!is_tcore) {
-            let fp = trim(option(src, "warp_fake_packets", ""));
-            if (fp != "") wg_obj.fake_packets = fp;
-            let fps = trim(option(src, "warp_fake_packets_size", ""));
-            if (fps != "") wg_obj.fake_packets_size = fps;
-            let fpd = trim(option(src, "warp_fake_packets_delay", ""));
-            if (fpd != "") wg_obj.fake_packets_delay = fpd;
-            let fpm = trim(option(src, "warp_fake_packets_mode", ""));
-            if (fpm != "") wg_obj.fake_packets_mode = fpm;
         }
         return finalize(wg_obj);
     }
@@ -2215,11 +2132,6 @@ function source_id_for_manual_item(section, value) {
                 if (sname != "" && (su + "#" + sname) == value)
                     return src_id;
             }
-        }
-        if (stype == "tailscale" && !is_embedded_tailscale_source(src)) {
-            let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
-            if (ts_iface == value)
-                return src_id;
         }
         if (stype == "tor") {
             let tor_port = trim(option(src, "tor_socks_port", "9050")) || "9050";
@@ -4123,20 +4035,6 @@ function section_has_routing_matchers(section) {
     return false;
 }
 
-function is_default_provider_strategy(key, val) {
-    val = trim(as_string(val));
-    if (val == "")
-        return true;
-    if (key == "nfqws2_opt")
-        return val == trim(as_string(constants.ZAPRET2_DEFAULT_NFQWS2_OPT));
-    if (key == "nfqws_opt")
-        return val == trim(as_string(constants.ZAPRET_DEFAULT_NFQWS_OPT)) ||
-               val == trim(as_string(constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT));
-    if (key == "byedpi_cmd_opts")
-        return val == trim(as_string(constants.BYEDPI_DEFAULT_CMD_OPTS));
-    return false;
-}
-
 function merge_section_with_provider_source(section, src) {
     if (src == null)
         return section;
@@ -4152,14 +4050,8 @@ function merge_section_with_provider_source(section, src) {
             continue;
         let cur = merged[k];
         let cur_empty = cur == null || (type(cur) == "array" ? length(cur) == 0 : trim(as_string(cur)) == "");
-        if (cur_empty) {
+        if (cur_empty || is_conn_act)
             merged[k] = v;
-        } else if (k == "nfqws2_opt" || k == "nfqws_opt" || k == "byedpi_cmd_opts") {
-            if (!is_default_provider_strategy(k, v))
-                merged[k] = v;
-        } else if (is_conn_act) {
-            merged[k] = v;
-        }
     }
     return merged;
 }
@@ -4237,14 +4129,6 @@ function component_provider_sections(action) {
         }
     }
     return result;
-}
-
-function wdtt_sections() {
-    return component_provider_sections("wdtt");
-}
-
-function olcrtc_sections() {
-    return component_provider_sections("olcrtc");
 }
 
 function fptn_sections() {
@@ -4501,7 +4385,7 @@ function subscription_user_agent(section, value) {
     let configured = child != null
         ? child_option(child, "user_agent", "")
         : item_option(section, "subscription_url_settings", value, "user_agent", "");
-    return configured != "" ? configured : "sing-box";
+    return configured != "" ? configured : "tachyon-core";
 }
 
 function subscription_hwid(section, value) {
@@ -5687,7 +5571,7 @@ function trace_match_binary_ruleset_file(rs_path, target_val, is_ip) {
     if (st == null || st.type != "file" || (st.size || 0) <= 0)
         return false;
     let flag = is_ip ? "--ip" : "--domain";
-    for (let bin in [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core", "/usr/bin/sing-box", "/usr/sbin/sing-box" ]) {
+    for (let bin in [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core" ]) {
         if (fs.stat(bin) == null)
             continue;
         let out = common.command_output_from_args([ bin, "rule-set", "match", rs_path, flag, target_val ]);
@@ -5706,8 +5590,7 @@ function trace_check_list_reference(reference, target_val, is_ip, owner_sec_id) 
     let folders = [
         getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
         "/etc/tachyon/rulesets",
-        "/usr/share/tachyon/rulesets",
-        "/tmp/sing-box/rulesets"
+        "/usr/share/tachyon/rulesets"
     ];
     let tag_name = "inline-custom-" + trace_hash12(reference) + "-ruleset";
     for (let folder in folders) {
@@ -6206,30 +6089,28 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
     if (timeout_ms <= 0)
         timeout_ms = 4000;
 
-    let env_tmp = getenv("TMP_SING_BOX_FOLDER");
+    let env_tmp = getenv("TMP_TACHYON_CORE_FOLDER");
     let cfg_path = "/etc/tachyon-core/config.json";
     if (env_tmp != null && env_tmp != "" && common.file_exists(env_tmp + "/config.json"))
         cfg_path = env_tmp + "/config.json";
     else if (common.file_exists("/etc/tachyon-core/config.json"))
         cfg_path = "/etc/tachyon-core/config.json";
-    else if (common.file_exists("/etc/sing-box/config.json"))
-        cfg_path = "/etc/sing-box/config.json";
     else if (common.file_exists("/tmp/tachyon-core/config.json"))
         cfg_path = "/tmp/tachyon-core/config.json";
 
     let host = "127.0.0.1:9090";
     let secret = "";
-    let sb_cfg = common.read_json_file(cfg_path);
-    if (type(sb_cfg) == "object") {
-        let ext = sb_cfg?.experimental?.clash_api?.external_controller;
+    let core_cfg = common.read_json_file(cfg_path);
+    if (type(core_cfg) == "object") {
+        let ext = core_cfg?.experimental?.clash_api?.external_controller;
         if (ext) {
             let parts = split(as_string(ext), ":");
             let ip = length(parts) > 1 ? parts[0] : "";
             let port = length(parts) > 1 ? parts[length(parts) - 1] : "9090";
             host = (ip == "0.0.0.0" || ip == "") ? ("127.0.0.1:" + port) : as_string(ext);
         }
-        if (sb_cfg?.experimental?.clash_api?.secret)
-            secret = as_string(sb_cfg.experimental.clash_api.secret);
+        if (core_cfg?.experimental?.clash_api?.secret)
+            secret = as_string(core_cfg.experimental.clash_api.secret);
     }
 
     let runtime_urltest = null;
@@ -6330,9 +6211,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
     let seen_tags = {};
     let selector_groups = [];
     let urltest_groups_by_tag = {};
-    if (type(sb_cfg) == "object" && type(sb_cfg.outbounds) == "array") {
+    if (type(core_cfg) == "object" && type(core_cfg.outbounds) == "array") {
         let skip_types = { selector: true, urltest: true, block: true, dns: true };
-        for (let ob in sb_cfg.outbounds) {
+        for (let ob in core_cfg.outbounds) {
             if (type(ob) != "object") continue;
             let otype = lc(as_string(ob.type || ""));
             let otag = as_string(ob.tag || "");
@@ -7163,13 +7044,9 @@ return {
     amnezia_configs,
     item_index_from_cursor,
     cli_delete_section,
-    wdtt_sections,
-    olcrtc_sections,
     fptn_sections,
     fptn_section_token,
     fptn_transport_mode,
-    is_wdtt_action,
-    is_olcrtc_action,
     is_fptn_action,
     source_inbounds,
     server_domain_rules,

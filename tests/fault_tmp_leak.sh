@@ -2,7 +2,7 @@
 # FAULT: mktemp files were created in /tmp and never reclaimed.
 #
 # Measured on 192.168.1.1: ten orphaned /tmp/tachyon-XXXXXX files, 968 KB, seven
-# days old, out of a 363 MB tmpfs. Contents were sing-box config candidates and
+# days old, out of a 363 MB tmpfs. Contents were tachyon-core config candidates and
 # rule lists - leftovers from a validation run that did not reach its rename.
 #
 # TMP_FILE_STALE_TTL_MINUTES is 10 minutes and a sweeper exists, so this looked

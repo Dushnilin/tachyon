@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Smart Detect candidate trigger: which sing-box log lines are evidence that a
+# Smart Detect candidate trigger: which tachyon-core log lines are evidence that a
 # destination is blocked, and which are just a section's own outbound failing.
 #
-# The discriminator is the outbound TAG, not the word "direct": in sing-box
-# 1.14 `outbound/direct[Zapret2-out]` is a direct-TYPE outbound owned by the
+# The discriminator is the outbound TAG, not the word "direct": in tachyon-core
+# configs `outbound/direct[Zapret2-out]` is a direct-TYPE outbound owned by the
 # Zapret2 section. Reading it as "the bypass path failed" inverted the meaning
 # and produced VPN rules for every site whenever a section broke.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
@@ -38,8 +38,8 @@ assert_no_candidate() {
 
 # --- the bypass path failing on a blocked destination IS evidence ---
 assert_candidate "$(stream \
-  'daemon.err sing-box[3869]: INFO[5799] [3166229034 0ms] outbound/direct[direct-out]: outbound connection to blocked.example.org:443' \
-  'daemon.err sing-box[3869]: ERROR[5731] [3166229034 5.1s] connection: open connection to [93.184.216.34] using outbound/direct[direct-out]: dial tcp 93.184.216.34:443: i/o timeout')" \
+  'daemon.err tachyon-core[3869]: INFO[5799] [3166229034 0ms] outbound/direct[direct-out]: outbound connection to blocked.example.org:443' \
+  'daemon.err tachyon-core[3869]: ERROR[5731] [3166229034 5.1s] connection: open connection to [93.184.216.34] using outbound/direct[direct-out]: dial tcp 93.184.216.34:443: i/o timeout')" \
   blocked.example.org \
   "bypass outbound failure paired with its own open line"
 
@@ -47,19 +47,19 @@ assert_candidate "$(stream \
 # This is the regression: Zapret2's outbound times out for every destination it
 # touches, and each of those lines used to become a candidate.
 assert_no_candidate "$(stream \
-  'daemon.err sing-box[3869]: INFO[5799] [3166229034 0ms] outbound/direct[Zapret2-out]: outbound connection to www.google.com:443' \
-  'daemon.err sing-box[3869]: ERROR[5731] [3166229034 5.1s] connection: open connection to [173.194.221.84,2a00:1450:4010:c0a::54] using outbound/direct[Zapret2-out]: dial tcp 173.194.221.84:7: i/o timeout')" \
+  'daemon.err tachyon-core[3869]: INFO[5799] [3166229034 0ms] outbound/direct[Zapret2-out]: outbound connection to www.google.com:443' \
+  'daemon.err tachyon-core[3869]: ERROR[5731] [3166229034 5.1s] connection: open connection to [173.194.221.84,2a00:1450:4010:c0a::54] using outbound/direct[Zapret2-out]: dial tcp 173.194.221.84:7: i/o timeout')" \
   "section outbound failure must not become a candidate"
 
 # A urltest group inside a section is the section's own path as well.
 assert_no_candidate "$(stream \
-  'daemon.err sing-box[3869]: INFO[5799] [11 0ms] outbound/direct[Main-urltest-cfg092898-out]: outbound connection to hdrezka.tv:443' \
-  'daemon.err sing-box[3869]: ERROR[5731] [11 5.1s] connection: open connection to [1.2.3.4] using outbound/direct[Main-urltest-cfg092898-out]: dial tcp 1.2.3.4:443: i/o timeout')" \
+  'daemon.err tachyon-core[3869]: INFO[5799] [11 0ms] outbound/direct[Main-urltest-cfg092898-out]: outbound connection to hdrezka.tv:443' \
+  'daemon.err tachyon-core[3869]: ERROR[5731] [11 5.1s] connection: open connection to [1.2.3.4] using outbound/direct[Main-urltest-cfg092898-out]: dial tcp 1.2.3.4:443: i/o timeout')" \
   "urltest group failure must not become a candidate"
 
 # --- a failure with no hostname anywhere must stay silent, not guess ---
 assert_no_candidate "$(stream \
-  'daemon.err sing-box[3869]: ERROR[5731] [249686047 5.1s] connection: open connection to [173.194.221.84] using outbound/direct[direct-out]: dial tcp 173.194.221.84:7: i/o timeout')" \
+  'daemon.err tachyon-core[3869]: ERROR[5731] [249686047 5.1s] connection: open connection to [173.194.221.84] using outbound/direct[direct-out]: dial tcp 173.194.221.84:7: i/o timeout')" \
   "failure line with no open line and no host must not guess"
 
 # --- the legacy quoted form still works, on the bypass path ---
@@ -77,8 +77,8 @@ assert_no_candidate "$(stream \
 # trace 7 is remembered with a FakeIP-only open line; a later bypass failure
 # reusing that trace must not emit the IP as a domain.
 assert_no_candidate "$(stream \
-  'daemon.err sing-box[3869]: INFO[5798] [7 0ms] inbound/tproxy[tproxy-in]: inbound packet connection to 198.18.2.165:443' \
-  'daemon.err sing-box[3869]: ERROR[5731] [7 5.1s] connection: open connection to [198.18.2.165] using outbound/direct[direct-out]: dial tcp 198.18.2.165:443: i/o timeout')" \
+  'daemon.err tachyon-core[3869]: INFO[5798] [7 0ms] inbound/tproxy[tproxy-in]: inbound packet connection to 198.18.2.165:443' \
+  'daemon.err tachyon-core[3869]: ERROR[5731] [7 5.1s] connection: open connection to [198.18.2.165] using outbound/direct[direct-out]: dial tcp 198.18.2.165:443: i/o timeout')" \
   "FakeIP-only open line must not become the candidate"
 
 printf 'smart detect log trigger checks passed\n'

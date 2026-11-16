@@ -7,13 +7,9 @@ VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
 WDTT_RUNTIME_UC="$TACHYON_LIB/providers/wdtt/runtime.uc"
 
 # 1. Mock tachyon-core 0.5.7 state files (no qwdtt binary on disk)
-printf '%s\n' "tachyon-core" >"$WORK_DIR/variant"
 printf '%s\n' "0.5.7" >"$WORK_DIR/version"
-printf '%s\n' "upstream" >"$WORK_DIR/upstream-variant"
-printf '%s\n' "1.14.0" >"$WORK_DIR/upstream-version"
 
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant"
-export SB_VERSION_STATE_FILE="$WORK_DIR/version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
 export TACHYON_QWDTT_BIN="$WORK_DIR/nonexistent-qwdtt"
 export WDTT_BIN="$WORK_DIR/nonexistent-wdtt"
 export TACHYON_PERSISTENT_SELECTOR_STATE_FILE="$WORK_DIR/nonexistent-selector-state.json"
@@ -109,15 +105,6 @@ cat >"$WORK_DIR/pool_fixture.json" <<'JSON'
       "name": "WDTT_Native",
       "source_type": "wdtt",
       "warp_flow_uri": "csqtt://connect?v=2&host=native-wdtt.example.com&peer=46000&password=native-pass"
-    },
-    {
-      ".name": "src_wdtt_socks",
-      ".type": "outbound_source",
-      "enabled": "1",
-      "name": "WDTT_External",
-      "source_type": "wdtt",
-      "wdtt_native": "0",
-      "warp_flow_uri": "wdtt://ext.example.com:56000:56001:56002:ext-pass:hash1"
     }
   ],
   "outbound_group": [
@@ -190,14 +177,6 @@ cat >"$WORK_DIR/pool_fixture.json" <<'JSON'
       "action": "connection",
       "outbound_source_refs": [ "src_csqtt_wg", "src_csqtt_uri", "src_wdtt_native" ],
       "domain_suffix": [ "variants.example.com" ]
-    },
-    {
-      ".name": "WDTT_Legacy_Pool",
-      ".type": "section",
-      "enabled": "1",
-      "action": "connection",
-      "outbound_source_refs": [ "src_wdtt_socks" ],
-      "domain_suffix": [ "legacy-wdtt.example.com" ]
     },
     {
       ".name": "Member_One",
@@ -286,10 +265,6 @@ let native_wdtt = find_out("WDTT_Native");
 if (!native_wdtt || native_wdtt.type != "wdtt" || native_wdtt.server != "native-wdtt.example.com")
     die("Expected native wdtt source to emit type=wdtt instead of socks: " + sprintf("%J\n", native_wdtt));
 
-let ext_wdtt = find_out("WDTT_Legacy_Pool-wdtt-src_wdtt_socks-out");
-if (!ext_wdtt || ext_wdtt.type != "socks" || ext_wdtt.server != "127.0.0.1")
-    die("Expected wdtt_native=0 source to keep 127.0.0.1 socks outbound: " + sprintf("%J\n", ext_wdtt));
-
 let grp_sel = find_out("Group_Priority_Test-out");
 let grp_prio = find_out("Group_Priority_Test-priority-bal_grp_prio-out");
 if (!grp_sel || !grp_prio)
@@ -298,54 +273,7 @@ if (grp_sel.default != "Group_Priority_Test-priority-bal_grp_prio-out")
     die("Expected Group_Priority_Test selector default to priority outbound, got: " + sprintf("%J\n", grp_sel.default));
 ' || fail "pool failover / native wdtt / sanitize assertions failed"
 
-# 3. Verify providers/wdtt/runtime.uc warp_flow_* fallback options
-mkdir -p "$WORK_DIR/bin" "$WORK_DIR/hashes"
-cat >"$WORK_DIR/bin/uci" <<'SH'
-#!/bin/sh
-printf '%s\n' "$*" >>"${MOCK_UCI_LOG:?}"
-exit 0
-SH
-chmod +x "$WORK_DIR/bin/uci"
-
-PATH="$WORK_DIR/bin:$PATH" \
-MOCK_UCI_LOG="$WORK_DIR/uci.log" \
-TACHYON_QWDTT_CONFIG="$WORK_DIR/qwdtt-config.json" \
-TACHYON_WDTT_HASHES_DIR="$WORK_DIR/hashes" \
-ucode -L "$TACHYON_LIB" -e '
-let rt = require("providers.wdtt.runtime");
-let sec = {
-    ".name": "src_wdtt_fallback",
-    ".type": "outbound_source",
-    "warp_flow_uri": "qwdtt://config?ip=fallback.example.com&dtls=56000&pass=fbpass&hashes=hashA,hashB",
-    "warp_flow_device_id": "fb-dev-id",
-    "warp_flow_workers": "12",
-    "warp_flow_mtu": "1340",
-    "warp_flow_qwdtt_mode": "socks",
-    "warp_flow_subscription_links": [ "qwdtt://config?ip=fallback.example.com&dtls=56000&pass=fbpass&hashes=hashA,hashB" ]
-};
-if (!rt.write_qwdtt_json_config(sec, "src_wdtt_fallback"))
-    die("write_qwdtt_json_config failed\n");
-if (!rt.write_wdtt_uci_config(sec))
-    die("write_wdtt_uci_config failed\n");
-' || fail "providers.wdtt.runtime warp_flow_* fallback invocation failed"
-
-ucode -e '
-let fs = require("fs");
-let q = json(fs.readfile("'"$WORK_DIR/qwdtt-config.json"'"));
-if (q.peer != "fallback.example.com" || q.password != "fbpass" ||
-    q.device_id != "fb-dev-id" || q.workers != 12 || q.mode != "socks" ||
-    length(q.hashes || []) != 2)
-    die("qwdtt config warp_flow_* fallback mismatch: " + sprintf("%J\n", q));
-let uci_log = fs.readfile("'"$WORK_DIR/uci.log"'") || "";
-if (index(uci_log, "set wdtt.settings.mtu=1340") < 0 ||
-    index(uci_log, "set wdtt.settings.workers=12") < 0 ||
-    index(uci_log, "set wdtt.settings.device_id=fb-dev-id") < 0 ||
-    index(uci_log, "set wdtt.settings.peer=fallback.example.com") < 0 ||
-    index(uci_log, "set wdtt.settings.password=fbpass") < 0)
-    die("wdtt uci config warp_flow_* fallback mismatch: " + uci_log + "\n");
-' || fail "providers.wdtt.runtime warp_flow_* assertions failed"
-
-# 4. Verify validator.uc gating for pool CSQTT/WDTT on upstream sing-box vs tachyon-core + invalid outbound_source
+# 3. Verify validator.uc gating for pool CSQTT/WDTT on tachyon-core + invalid outbound_source
 cat >"$WORK_DIR/validator_pool_ok.json" <<'JSON'
 {
   "settings": {
@@ -378,15 +306,9 @@ cat >"$WORK_DIR/validator_pool_ok.json" <<'JSON'
 }
 JSON
 
-CTX_UPSTREAM="{\"sing_box_variant_state_file\":\"$WORK_DIR/upstream-variant\",\"sing_box_version_state_file\":\"$WORK_DIR/upstream-version\"}"
-CTX_TCORE="{\"sing_box_variant_state_file\":\"$WORK_DIR/variant\",\"sing_box_version_state_file\":\"$WORK_DIR/version\"}"
+CTX_TCORE="{\"tachyon_core_version_state_file\":\"$WORK_DIR/version\"}"
 
-if ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-section-action-variant-support \
-    "$WORK_DIR/validator_pool_ok.json" "$CTX_UPSTREAM" "1.14.0" >/dev/null 2>&1; then
-  fail "connection section with CSQTT source must be rejected on upstream sing-box"
-fi
-
-ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-section-action-variant-support \
+ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-section-action-core-support \
   "$WORK_DIR/validator_pool_ok.json" "$CTX_TCORE" "0.5.7" ||
   fail "connection section with CSQTT source must pass on tachyon-core 0.5.7"
 

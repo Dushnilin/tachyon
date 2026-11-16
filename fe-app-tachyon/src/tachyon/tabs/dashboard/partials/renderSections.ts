@@ -493,6 +493,7 @@ const CONNECTION_ACTION_LABELS: Record<string, string> = {
   tewfai: 'TewFai',
   trusttunnel: 'TrustTunnel',
   shadowtls: 'ShadowTLS',
+  csqtt: 'CSQTT / WDTT',
   desync: 'Native Desync',
   fptn: 'FPTN',
   vpn: 'VPN',
@@ -1658,35 +1659,16 @@ function renderDefaultState({
       'tewfai',
       'trusttunnel',
       'shadowtls',
+      'csqtt',
     ].includes(section.action || '');
   const isServiceNode =
-    ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-      section.action || '',
-    ) || Boolean(section.serviceStatus);
+    section.action === 'desync' || Boolean(section.serviceStatus);
 
   if (isServiceNode) {
     const ss = section.serviceStatus;
     const serviceType =
-      ss?.serviceType ||
-      (['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        section.action || '',
-      )
-        ? (section.action as Tachyon.ServiceStatus['serviceType'])
-        : 'zapret');
-    const typeLabel =
-      serviceType === 'zapret'
-        ? 'Zapret'
-        : serviceType === 'zapret2'
-          ? 'Zapret2'
-          : serviceType === 'byedpi'
-            ? 'ByeDPI'
-            : serviceType === 'wdtt'
-              ? 'WDTT'
-              : serviceType === 'olcrtc'
-                ? 'OlcRTC'
-                : serviceType === 'desync'
-                  ? _('Native Desync')
-                  : 'FPTN';
+      ss?.serviceType || (section.action === 'desync' ? 'desync' : 'fptn');
+    const typeLabel = serviceType === 'desync' ? _('Native Desync') : 'FPTN';
     const statusColor = ss
       ? ss.ready
         ? 'var(--success-color-medium, green)'
@@ -1866,7 +1848,7 @@ function renderDefaultState({
       }
 
       if (!outbound.latency) {
-        // Service nodes (desync, zapret2, …) have no measurable latency;
+        // Service nodes (desync, fptn, …) have no measurable latency;
         // colour the badge green when bypass is active, red when stopped.
         if (isServiceNode) {
           return section.serviceStatus?.ready

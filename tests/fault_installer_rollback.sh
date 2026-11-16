@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # FAULT: a failed install must not leave the package manager broken.
 #
-# Issue #85. Podkop binds sing-box's DNS to 127.0.0.42:53 and users point dnsmasq
+# Issue #85. Tachyon binds tachyon-core's DNS to 127.0.0.42:53 and users point dnsmasq
 # at it manually. The installer purges podkop, that resolver disappears, and the
 # rest of the install cannot resolve names - so it fails, and the failure path is
 # where the damage becomes permanent.

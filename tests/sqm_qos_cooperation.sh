@@ -118,7 +118,7 @@ fi
 echo "=== Test 4: Doctor detects SQM + Flow Offloading conflict ==="
 cat >"$WORK_DIR/doctor_conflict.state" <<'EOF'
 tachyon.settings=settings
-tachyon.settings.core=sing-box
+tachyon.settings.core=tachyon-core
 tachyon.Main=section
 tachyon.Main.enabled=1
 sqm.wan=queue

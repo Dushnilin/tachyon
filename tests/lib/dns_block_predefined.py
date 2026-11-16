@@ -116,7 +116,7 @@ def live_check(binary, rules, work):
             stopped.set()
             thread.join(timeout=2)
         assert queries and all(name == 'allowed.example.' for name in queries), queries
-    print('PASS: real sing-box DNS A/AAAA, queried owner names, subdomains and unblocked upstream traffic')
+    print('PASS: real tachyon-core DNS A/AAAA, queried owner names, subdomains and unblocked upstream traffic')
 
 
 def main():
@@ -128,32 +128,24 @@ def main():
     }
     fixture_file = work / 'fixture.json'
     fixture_file.write_text(json.dumps(fixture))
-    binary = os.environ.get('TACHYON_TEST_SING_BOX_BIN')
-    binary_version = subprocess.check_output([binary, 'version'], text=True).splitlines()[0].split()[-1].lstrip('v') if binary else None
-    live_checked = False
-    for profile, version in [('extended', '1.14.3-extended-2.7.3'), ('stable', '1.12.0'), ('stable', '1.14.3'), ('lx', '1.14.2-lx.8'), ('tachyon-core', '0.3.4')]:
-        (work / 'variant').write_text(profile)
-        (work / 'version').write_text(version)
-        env = dict(os.environ, TACHYON_LIB=str(lib), SB_VARIANT_STATE_FILE=str(work / 'variant'), SB_VERSION_STATE_FILE=str(work / 'version'), TACHYON_DNS_FAILOVER_STATE_FILE=str(work / 'no-dns-state'), TACHYON_SECTION_FAIL_STATE_FILE=str(work / 'no-fail-state'))
-        output = work / f'{profile}-{version}.json'
-        subprocess.run(['ucode', '-L', str(lib), str(lib / 'tachyon_core/generator.uc'), 'generate-config-fixture', str(fixture_file), str(output), '127.0.0.1', '0'], env=env, check=True)
-        config = json.loads(output.read_text())
-        rules = [rule for rule in config['dns']['rules'] if rule.get('action') == 'predefined' and rule.get('answer')]
-        assert len(rules) == 2, (profile, rules)
-        for qtype, ip in [('A', '0.0.0.0'), ('AAAA', '::')]:
-            rule, = [rule for rule in rules if rule['query_type'] == [qtype]]
-            assert rule['rcode'] == 'NOERROR' and '127.0.0.1/32' in rule['source_ip_cidr']
-            answer, = rule['answer']
-            if profile == 'tachyon-core':
-                assert answer == {'ttl': 15, 'value': ip}, answer
-            else:
-                assert answer == f'*. 15 IN {qtype} {ip}', (profile, answer)
-        print(f'PASS: DNS block records for {profile} {version}')
-        if binary and version == binary_version:
-            subprocess.run([binary, 'check', '-c', str(output)], check=True)
-            live_check(binary, rules, work)
-            live_checked = True
-    assert not binary or live_checked, f'No fixture profile for sing-box {binary_version}'
+    binary = os.environ.get('TACHYON_TEST_CORE_BIN')
+    version = '0.5.7'
+    (work / 'version').write_text(version)
+    env = dict(os.environ, TACHYON_LIB=str(lib), TACHYON_CORE_VERSION_FILE=str(work / 'version'), TACHYON_DNS_FAILOVER_STATE_FILE=str(work / 'no-dns-state'), TACHYON_SECTION_FAIL_STATE_FILE=str(work / 'no-fail-state'))
+    output = work / f'tachyon-core-{version}.json'
+    subprocess.run(['ucode', '-L', str(lib), str(lib / 'tachyon_core/generator.uc'), 'generate-config-fixture', str(fixture_file), str(output), '127.0.0.1', '0'], env=env, check=True)
+    config = json.loads(output.read_text())
+    rules = [rule for rule in config['dns']['rules'] if rule.get('action') == 'predefined' and rule.get('answer')]
+    assert len(rules) == 2, rules
+    for qtype, ip in [('A', '0.0.0.0'), ('AAAA', '::')]:
+        rule, = [rule for rule in rules if rule['query_type'] == [qtype]]
+        assert rule['rcode'] == 'NOERROR' and '127.0.0.1/32' in rule['source_ip_cidr']
+        answer, = rule['answer']
+        assert answer == {'ttl': 15, 'value': ip}, answer
+    print(f'PASS: DNS block records for tachyon-core {version}')
+    if binary:
+        subprocess.run([binary, 'check', '-c', str(output)], check=True)
+        live_check(binary, rules, work)
 
 
 if __name__ == '__main__':

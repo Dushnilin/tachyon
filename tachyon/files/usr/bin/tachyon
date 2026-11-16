@@ -87,46 +87,35 @@ function show_help() {
     print("    check_proxy             Check proxy connectivity\n");
     print("    check_nft               Check NFT rules\n");
     print("    check_nft_rules         Check NFT rules status\n");
-    print("    check_sing_box          Check sing-box installation and status\n");
+    print("    check_tachyon_core      Check tachyon-core installation and status\n");
     print("    check_inbounds_config   Check whether enabled server inbounds are configured\n");
     print("    check_inbounds          Check server inbounds from the Servers tab\n");
     print("    check_logs              Show Tachyon logs from system journal\n");
-    print("    check_sing_box_logs     Show sing-box logs\n");
-    print("    check_fakeip            Test sing-box FakeIP DNS\n");
-    print("    check_zapret_runtime    Check external zapret provider state\n");
-    print("    check_zapret2_runtime   Check external zapret2 provider state\n");
-    print("    check_byedpi_runtime    Check external ByeDPI provider state\n");
+    print("    check_tachyon_core_logs Show tachyon-core logs\n");
+    print("    check_fakeip            Test tachyon-core FakeIP DNS\n");
     print("    check_tor_runtime       Check Tor installation state\n");
     print("    install_tor             Install Tor via opkg\n");
-    print("    neutralize_zapret_defaults\n");
-    print("                            Compatibility no-op; Tachyon does not manage standalone zapret\n");
     print("    clash_api               Clash API interface for managing proxies and groups\n");
     print("    show_config             Display current Tachyon configuration\n");
     print("    show_version            Show Tachyon version\n");
-    print("    show_sing_box_config    Show sing-box configuration\n");
-    print("    show_sing_box_version   Show sing-box version\n");
+    print("    show_tachyon_core_config\n");
+    print("                            Show tachyon-core configuration\n");
+    print("    show_tachyon_core_version\n");
+    print("                            Show tachyon-core version\n");
     print("    get_status              Get Tachyon service status\n");
 
     print("    get_outbound_metadata   Get generated outbound display names and countries\n");
     print("    get_subscription_metadata\n");
     print("                            Get UI-only metadata for a subscription rule\n");
-    print("    get_sing_box_status     Get sing-box service status\n");
-    print("    get_zapret_status       Get zapret provider and Tachyon-managed nfqws status\n");
-    print("    get_zapret2_status      Get zapret2 provider and Tachyon-managed nfqws2 status\n");
-    print("    get_byedpi_status       Get ByeDPI provider and Tachyon-managed ciadpi status\n");
-    print("    get_wdtt_status         Get WDTT provider and Tachyon-managed wdtt status\n");
-    print("    get_olcrtc_status       Get OlcRTC provider and Tachyon-managed olcrtc status\n");
+    print("    get_tachyon_core_status Get tachyon-core service status\n");
     print("    get_system_info         Get system information in JSON format\n");
-    print("    engine_info             Get active routing engine and installed engines (JSON)\n");
+    print("    engine_info             Get active routing engine status and capabilities (JSON)\n");
     print("    engine_features         List engine features the current config needs (JSON)\n");
-    print("    engine_plan <engine>    Show what switching engines would keep or park (JSON)\n");
-    print("    engine_switch <engine>  Switch the active routing engine (--allow-install, --dry-run)\n");
-    print("    engine_switch_back      Switch back to the previously active engine\n");
-    print("    engine_start            Start the active engine, stopping the others\n");
-    print("    engine_stop             Stop the active engine\n");
-    print("    engine_reload [reason]  Reload the active engine\n");
+    print("    engine_start            Start tachyon-core\n");
+    print("    engine_stop             Stop tachyon-core\n");
+    print("    engine_reload [reason]  Reload tachyon-core\n");
     print("    engine_status           Active engine status\n");
-    print("    engine_apply [--dry-run] Compile and apply the active engine's rules\n");
+    print("    engine_apply [--dry-run] Compile and apply tachyon-core rules\n");
     print("    route_explain <client> <target> [port] [proto] Explain routing decision pipeline\n");
     print("    config_plan [candidate] [--json] Plan & preview configuration changes & impact\n");
     print("    config_validate [candidate]     Validate candidate configuration semantics & ports\n");
@@ -139,10 +128,10 @@ function show_help() {
     print("    latency_test_status     Get background latency test status\n");
     print("    ui_action_ack           Acknowledge a finished UI action state\n");
     print("    generate_reality_keypair\n");
-    print("                            Generate a sing-box Reality key pair in JSON format\n");
+    print("                            Generate a Reality key pair in JSON format\n");
     print("    get_tls_certificate_sha256 [server]\n");
     print("                            Get a server TLS certificate SHA-256 fingerprint in JSON format\n");
-    print("    component_action        Manage Tachyon, sing-box, zapret, zapret2, and ByeDPI components\n");
+    print("    component_action        Manage Tachyon, tachyon-core, hosts, and TorrServer components\n");
     print("    component_action_async  Start a component action in the background\n");
     print("    component_action_status Get background component action status\n");
     print("    component_action_log [job_id] [offset]\n");
@@ -184,12 +173,6 @@ function show_help() {
     print("    dns_speed_test_start <json>  Test selected DoH servers and domains without changing settings\n");
     print("    dns_speed_test_status        Read DNS speed test progress and per-domain latency\n");
     print("    dns_autotune [--apply]  Auto-tune and recommend/apply the optimal DNS configuration\n");
-    print("    validate_nfqws_strategy_json\n");
-    print("                            Validate an NFQWS strategy and print JSON result\n");
-    print("    validate_nfqws2_strategy_json\n");
-    print("                            Validate an NFQWS2 strategy and print JSON result\n");
-    print("    validate_byedpi_strategy_json\n");
-    print("                            Validate a ByeDPI ciadpi strategy and print JSON result\n");
     print("    leak_check [--pretty]   Test for IP and DNS leaks (direct vs proxy outbound)\n");
     print("    leak_check_async        Start async IP and DNS leak test (returns job_id)\n");
     print("    leak_check_status <id>  Poll async leak check status\n");
@@ -260,36 +243,24 @@ function command_spec(command) {
         check_proxy: [ "diagnostics/runtime.uc", "check-proxy", 0 ],
         check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
         check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
-        check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
+        check_tachyon_core: [ "diagnostics/runtime.uc", "check-tachyon-core", 0 ],
         check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
         check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
         check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
-        check_sing_box_logs: [ "diagnostics/runtime.uc", "check-sing-box-logs", 0 ],
+        check_tachyon_core_logs: [ "diagnostics/runtime.uc", "check-tachyon-core-logs", 0 ],
         check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 1 ],
-        check_zapret_runtime: [ "diagnostics/runtime.uc", "check-zapret-runtime", 0 ],
-        check_zapret2_runtime: [ "diagnostics/runtime.uc", "check-zapret2-runtime", 0 ],
-        check_byedpi_runtime: [ "diagnostics/runtime.uc", "check-byedpi-runtime", 0 ],
         check_tor_runtime: [ "diagnostics/runtime.uc", "check-tor-runtime", 0 ],
         install_tor: [ "diagnostics/runtime.uc", "install-tor", 0 ],
-        neutralize_zapret_defaults: [ "diagnostics/runtime.uc", "neutralize-zapret-defaults", 0 ],
         clash_api: [ "diagnostics/runtime.uc", "clash-api", 4 ],
         show_config: [ "diagnostics/runtime.uc", "show-config", 1 ],
         show_version: [ "diagnostics/runtime.uc", "show-version", 0 ],
-        show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
-        show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
+        show_tachyon_core_config: [ "diagnostics/runtime.uc", "show-tachyon-core-config", 1 ],
+        show_tachyon_core_version: [ "diagnostics/runtime.uc", "show-tachyon-core-version", 0 ],
         get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
         get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
         get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
-        get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+        get_tachyon_core_status: [ "diagnostics/runtime.uc", "get-tachyon-core-status", 0 ],
         get_engine_status: [ "diagnostics/runtime.uc", "get-engine-status", 0 ],
-        get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
-        get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
-        get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
-        get_wdtt_status: [ "diagnostics/runtime.uc", "get-wdtt-status", 0 ],
-        get_olcrtc_status: [ "diagnostics/runtime.uc", "get-olcrtc-status", 0 ],
-        get_tailscale_status: [ "diagnostics/runtime.uc", "get-tailscale-status", 0 ],
-        get_tailscale_peers: [ "diagnostics/runtime.uc", "get-tailscale-peers", 0 ],
-        tailscale_restart: [ "providers/tailscale/runtime.uc", "start-runtime", 0 ],
         parental_quota_tick: [ "service/parental_quota.uc", "tick", 0 ],
         parental_quota_reset: [ "service/parental_quota.uc", "reset", 0 ],
         failover_check: [ "service/failover.uc", "check", 0 ],
@@ -348,9 +319,6 @@ function command_spec(command) {
         telegram_start: [ "service/telegram.uc", "start-runtime", 0 ],
         telegram_stop: [ "service/telegram.uc", "stop-runtime", 0 ],
         telegram_diagnose: [ "service/telegram.uc", "diagnose", 0 ],
-        validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
-        validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
-        validate_byedpi_strategy_json: [ "diagnostics/runtime.uc", "validate-byedpi-strategy-json", 1 ],
         leak_check: [ "diagnostics/leak_check.uc", "leak-check", 2 ],
         leak_check_async: [ "diagnostics/leak_check.uc", "leak-check-async", 1 ],
         leak_check_status: [ "diagnostics/leak_check.uc", "leak-check-status", 1 ],
@@ -378,9 +346,6 @@ function command_spec(command) {
         luci_postinst: [ "service/package.uc", "luci-postinst", 0 ],
         engine_info: [ "service/engine_runtime.uc", "engine-info", 0 ],
         engine_features: [ "service/engine_runtime.uc", "engine-features", 0 ],
-        engine_plan: [ "service/engine_runtime.uc", "engine-plan", 1 ],
-        engine_switch: [ "service/engine_runtime.uc", "engine-switch", 3 ],
-        engine_switch_back: [ "service/engine_runtime.uc", "engine-switch-back", 0 ],
         engine_start: [ "service/engine_runtime.uc", "engine-start", 0 ],
         engine_stop: [ "service/engine_runtime.uc", "engine-stop", 0 ],
         engine_reload: [ "service/engine_runtime.uc", "engine-reload", 1 ],

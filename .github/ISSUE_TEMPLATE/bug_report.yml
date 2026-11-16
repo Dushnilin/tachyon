@@ -1,5 +1,5 @@
 ---
-name: 🐛 Сообщение об ошибке
+name: Сообщение об ошибке
 description: Создавайте только, если проблема точно не на вашей стороне.
 title: "[BUG] "
 labels: ["bug"]
@@ -17,7 +17,7 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: 📝 Описание проблемы
+      label: Описание проблемы
       description: Четкое и краткое описание того, что не работает
       placeholder: Опишите проблему
     validations:
@@ -39,7 +39,7 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: ✅ Ожидаемое поведение
+      label: Ожидаемое поведение
       description: Четкое и краткое описание того, что должно было произойти
       placeholder: Опишите ожидаемое поведение
     validations:
@@ -48,14 +48,14 @@ body:
   - type: textarea
     id: environment
     attributes:
-      label: 🖥️ Информация о системе
+      label: Информация о системе
       description: |
         Информация о вашей системе (заполните всё применимое)
       value: |
         - **OpenWrt версия**: 
         - **Tachyon версия**:
         - **Роутер модель**: 
-        - **Sing-box версия**: 
+        - **tachyon-core версия**:
       render: markdown
     validations:
       required: true
@@ -63,12 +63,12 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: ⚙️ Конфигурация
+      label: Конфигурация
       description: |
         Релевантные части конфигурации (удалите чувствительную информацию!)
       placeholder: |
         Например:
         - Содержимое /etc/config/tachyon
-        - Конфигурация sing-box (если релевантно)
+        - Конфигурация tachyon-core (/etc/tachyon-core/config.json, если релевантно)
         - Дополнительные конфиги, которые потребуются wireless/network/dhcp и т.д.
       render: shell

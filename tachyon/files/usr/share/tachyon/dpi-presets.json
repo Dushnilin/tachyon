@@ -1,340 +1,248 @@
 {
-  "version": 1,
-  "updated": "2026-09-19",
+  "version": 2,
+  "updated": "2026-11-16",
   "source": "tachyon-builtin",
-  "description": "Curated DPI bypass strategy presets. Sources: bol-van/zapret (v1 nfqws), IndeecFOX/zapret4rocket (v1 curated, 1.1k stars), 1andrevich/homeproxy-hiddify (v2 + ByeDPI). Zapret2 (nfqws2) entries use Tachyon-native lua-desync syntax; zapret (nfqws) entries use classic --dpi-desync flags. ByeDPI entries use ciadpi short flags.",
-  "zapret2": [
+  "description": "Curated native tachyon-core Desync packet optimization strategy presets (Adaptive 2.0 and tuned profiles).",
+  "desync": [
     {
-      "id": "z2r_quic_fake_ipfrag2",
-      "name": "QUIC YouTube: fake + ipfrag2",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=3:ipfrag2",
-      "description": "UDP QUIC fragmentation with fake QUIC initial. From zapret4rocket UDP/YT suite. ipfrag2 is a value of the ipfrag argument, not a desync method of its own.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
+      "id": "ds_preset_auto",
+      "name": "Adaptive 2.0 Autopilot (16 recipes + cache.db)",
+      "args": "preset=auto",
+      "description": "Built-in tachyon-core Adaptive 2.0 autopilot with RST origin forensics, AutoTTL calibration, hedged probing, and UDP ladder.",
+      "source": "tachyon-builtin",
+      "tags": ["adaptive", "auto", "universal", "tcp", "udp"]
     },
     {
-      "id": "z2r_quic_udplen_4",
-      "name": "QUIC YouTube: fake + udplen +4",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=2 --lua-desync=udplen:increment=4",
-      "description": "UDP length desync with +4 byte increment against QUIC throttling.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
+      "id": "ds_preset_fake_split",
+      "name": "Fake + Split (midsld, TCP MD5, UDP Fake)",
+      "args": "preset=fake_split",
+      "description": "Default tachyon-core desync preset combining decoy ClientHello, mid-SLD TCP segmentation, and UDP QUIC/STUN fake packets.",
+      "source": "tachyon-builtin",
+      "tags": ["universal", "tcp", "udp"]
     },
     {
-      "id": "z2r_quic_udplen_8_pattern",
-      "name": "QUIC YouTube: fake + udplen +8 (pattern)",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=2 --lua-desync=udplen:increment=8:pattern=0xFEA82025",
-      "description": "UDP length desync with +8 increment and fixed payload pattern.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
-    },
-    {
-      "id": "z2r_quic_udplen_25",
-      "name": "QUIC YouTube: fake + udplen +25",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=2 --lua-desync=udplen:increment=25",
-      "description": "Aggressive UDP length inflation for stateful QUIC DPI.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
-    },
-    {
-      "id": "z2r_quic_fake_repeats_11",
-      "name": "QUIC YouTube: fake burst repeats=11",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=11",
-      "description": "High-intensity fake QUIC burst to saturate DPI connection tracking.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
-    },
-    {
-      "id": "z2r_rkn_fake_multidisorder",
-      "name": "RKN HTTPS: fake + multidisorder (fonts.google)",
-      "args": "--filter-tcp=443,8443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=badsum --lua-desync=multidisorder:pos=1,midsld",
-      "description": "YouTube/RKN interface strategy from zapret4rocket strategies 1/2.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "youtube", "tcp"]
-    },
-    {
-      "id": "z2r_rkn_fake_ts_badsum",
-      "name": "RKN HTTPS: fake ts+badsum (msn.com SNI)",
-      "args": "--filter-tcp=443,2053,2083,2087,2096,8443 --lua-desync=fake:blob=tls_max:repeats=6:fooling=tcp_ts=-600000,badsum",
-      "description": "Multi-port HTTPS strategy covering all CDN ports used by Discord/RKN targets.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "discord", "tcp"]
-    },
-    {
-      "id": "z2r_hostfakesplit_rzd",
-      "name": "HostFakeSplit (rzd.ru, seqovl=726)",
-      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=rzd.ru:midhost=host-2:seqovl=726:fooling=badsum,tcp_seq=1000000",
-      "description": "Splits at a whitelisted hostname boundary. zapret4rocket user-domain strategy 5.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z2r_hostfakesplit_google",
-      "name": "HostFakeSplit (www.google.com, repeats=4)",
-      "args": "--filter-tcp=443 --lua-desync=hostfakesplit:host=www.google.com:repeats=4:fooling=tcp_ts=-600000,badsum",
-      "description": "Google-host fake split. zapret4rocket strategy 9.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "youtube", "tcp"]
-    },
-    {
-      "id": "z2r_syndata_seqovl_endsld",
-      "name": "SYN data + multisplit (endsld-2)",
-      "args": "--filter-tcp=443 --lua-desync=syndata:blob=syn_packet --lua-desync=multisplit:pos=1,sld+1,endsld-2:seqovl=1",
-      "description": "SYN payload injection with SDN-boundary split. zapret4rocket user-domain strategy 6.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z2r_badseq_increment_10000000",
-      "name": "Fake + badseq increment 1e7",
-      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=tcp_ts=-600000,badsum --lua-desync=multisplit:pos=1:fooling=tcp_seq=1000000",
-      "description": "Large badseq increment to defeat strict stateful reassembly. zapret4rocket strategy 7.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z2r_fake_split2_google_blob",
-      "name": "Fake + multisplit (google blob, repeats=6)",
-      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google:repeats=6:fooling=tcp_ts=-600000,badsum --lua-desync=multisplit:pos=1",
-      "description": "zapret4rocket strategy 13 adapted to nfqws2. v1 split2 is nfqws2 multisplit.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z2r_multidisorder_gv_pos_chain",
-      "name": "GoogleVideo: multidisorder pos chain",
-      "args": "--filter-tcp=443 --lua-desync=multidisorder:pos=2,5,105,host+5,sld-1,endsld-5,endsld",
-      "description": "Deep multi-position disorder tailored for googlevideo CDN. zapret4rocket GV strategy 16.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "googlevideo", "tcp"]
-    },
-    {
-      "id": "z2r_fakeddisorder_vk_pattern",
-      "name": "Fake + fakedsplit disorder (vk/gosuslugi patterns)",
-      "args": "--filter-tcp=443 --lua-desync=fake:blob=tls_google --lua-desync=fakeddisorder:pos=10,midsld:seqovl=336:seqovl_pattern=tls_gosuslugi",
-      "description": "Composite fake + disorder with whitelist pattern overlap. zapret4rocket strategy 11.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z2r_discord_voice_multi_profile",
-      "name": "Discord Voice: STUN + QUIC multi-profile",
-      "args": "--filter-udp=50000-50099,1400,3478-3481,5349,19294-19344 --lua-desync=fake:blob=discord_udp:repeats=3",
-      "description": "Full Discord voice RTC port set with STUN fake. From zapret4rocket + homeproxy-hiddify Discord voice profile.",
-      "source": "homeproxy-hiddify",
-      "tags": ["discord", "voice", "udp"]
-    },
-    {
-      "id": "z2r_games_udp_anyproto",
-      "name": "Games / unknown UDP: any-protocol fake",
-      "args": "--filter-udp=1026-65531 --lua-desync=fake:blob=quic_google:repeats=10",
-      "description": "Generic UDP desync for games and messengers. zapret4rocket strategy 10.",
-      "source": "zapret4rocket",
-      "tags": ["games", "udp"]
-    },
-    {
-      "id": "z2r_whatsapp_quic",
-      "name": "WhatsApp: QUIC fake (whatsapp.net)",
-      "args": "--filter-udp=443 --lua-desync=fake:blob=quic_google:repeats=4",
-      "description": "WhatsApp streaming/throttle bypass via QUIC fake. zapret4rocket changelog 26.12.25.",
-      "source": "zapret4rocket",
-      "tags": ["whatsapp", "quic", "udp"]
-    },
-    {
-      "id": "z2r_rutracker_http_md5sig",
-      "name": "RuTracker HTTP: multisplit md5sig",
-      "args": "--filter-tcp=80 --lua-desync=multisplit:pos=host+1:seqovl=2:fooling=tcp_md5",
-      "description": "Plain HTTP announcer bypass with host-boundary split. zapret4rocket rutracker strategy.",
-      "source": "zapret4rocket",
-      "tags": ["rutracker", "http"]
-    },
-    {
-      "id": "z2r_tlsrec_sniext_ladder",
-      "name": "TLS Record fragment + SNI ladder",
-      "args": "--filter-tcp=443 --lua-desync=multisplit:pos=1,midsld,sniext+4:seqovl=1:fooling=tcp_seq=1000000",
-      "description": "Combined TLS record and SNI extension fragmentation.",
-      "source": "homeproxy-hiddify",
-      "tags": ["rkn", "tcp", "advanced"]
-    }
-  ],
-  "zapret": [
-    {
-      "id": "z1r_fake_multidisorder_fonts",
-      "name": "Fake + multidisorder (fonts.google SNI mod)",
-      "args": "--dpi-desync=fake,multidisorder --dpi-desync-split-pos=7,sld+1 --dpi-desync-fake-tls=0x0F0F0F0F --dpi-desync-fake-tls=! --dpi-desync-fake-tls-mod=rnd,dupsid,sni=fonts.google.com --dpi-desync-fooling=badseq",
-      "description": "zapret4rocket user-domain strategy 1. Top performer for RKN HTTPS.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z1r_fake_ts_badsum_msn",
-      "name": "Fake + ts,badsum (msn.com SNI)",
-      "args": "--dpi-desync=fake --dpi-desync-fooling=ts,badsum --dpi-desync-fake-tls-mod=sni=msn.com",
-      "description": "Lightweight TS+badsum fake. zapret4rocket strategies 2, 4.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z1r_fake_multisplit_md5sig_dup",
-      "name": "Fake + multisplit md5sig + dup=2",
-      "args": "--dpi-desync=fake,multisplit --dpi-desync-split-pos=sld+1 --dpi-desync-fake-tls=0x0F0F0E0F --dpi-desync-fake-tls-mod=rnd,dupsid --dpi-desync-fooling=md5sig --dup=2 --dup-fooling=md5sig --dup-cutoff=n3",
-      "description": "Duplicated md5sig packets with SDN split. zapret4rocket user-domain strategy 3.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z1r_hostfakesplit_rzd_v1",
-      "name": "HostFakeSplit (rzd.ru)",
-      "args": "--dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=rzd.ru --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,tcp_seq=1000000 --dpi-desync-badseq-increment=0",
-      "description": "Whitelisted hostname boundary split. zapret4rocket user-domain strategy 5.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z1r_syndata_multisplit_endsld",
-      "name": "SYN data + multisplit (endsld-2)",
-      "args": "--dpi-desync=syndata,multisplit --dpi-desync-split-seqovl=1 --dpi-desync-split-pos=1,sld+1,endsld-2 --dup=2 --dup-cutoff=n3",
-      "description": "SYN payload + boundary split. zapret4rocket user-domain strategy 6.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp", "advanced"]
-    },
-    {
-      "id": "z1r_fake_split2_google",
-      "name": "Fake + split2 (www.google blob)",
-      "args": "--dpi-desync=fake,split2 --dpi-desync-repeats=6 --dpi-desync-fooling=ts,badsum --dpi-desync-fake-tls=www.google.com",
-      "description": "zapret4rocket user-domain strategy 13.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z1r_fake_fakedsplit_google_sni",
-      "name": "Fake + fakedsplit (sni=www.google.com)",
-      "args": "--dpi-desync=fake,fakedsplit --dpi-desync-split-pos=1 --dpi-desync-fooling=ts,badsum --dpi-desync-badseq-increment=2 --dpi-desync-repeats=8 --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com",
-      "description": "zapret4rocket user-domain strategy 15.",
-      "source": "zapret4rocket",
-      "tags": ["rkn", "tcp"]
-    },
-    {
-      "id": "z1r_multidisorder_chain_gv",
-      "name": "GoogleVideo: multidisorder pos chain",
-      "args": "--dpi-desync=multidisorder --dpi-desync-split-pos=2,5,105,host+5,sld-1,endsld-5,endsld",
-      "description": "googlevideo CDN deep disorder. zapret4rocket GV strategy 16.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "googlevideo", "tcp"]
-    },
-    {
-      "id": "z1r_ip_id_zero_fake",
-      "name": "IP-ID zero + fake (google blob)",
-      "args": "--ip-id=zero --dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fooling=ts,badsum --dpi-desync-fake-tls=www.google.com",
-      "description": "IP identification zeroing combined with fake. zapret4rocket GV strategy 9/17.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "tcp", "advanced"]
-    },
-    {
-      "id": "z1r_quic_udplen_8",
-      "name": "QUIC YouTube: fake + udplen +8",
-      "args": "--filter-udp=443 --dpi-desync=fake,udplen --dpi-desync-udplen-increment=8 --dpi-desync-udplen-pattern=0x0F0F0E0F --dpi-desync-cutoff=n3 --dpi-desync-repeats=2",
-      "description": "UDP QUIC length desync. zapret4rocket YouTube UDP strategy.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
-    },
-    {
-      "id": "z1r_quic_fake_repeats_8",
-      "name": "QUIC YouTube: fake burst repeats=8",
-      "args": "--filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=8",
-      "description": "Fake QUIC burst. zapret4rocket YouTube UDP strategy 7.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "quic", "udp"]
-    },
-    {
-      "id": "z1r_discord_voice_stun",
-      "name": "Discord Voice: STUN/QUIC fake",
-      "args": "--filter-udp=50000-50099,1400,3478-3481,5349,19294-19344 --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-discord=stun.bin --dpi-desync-repeats=3",
-      "description": "Discord RTC voice bypass. zapret4rocket + homeproxy-hiddify Discord voice profile.",
-      "source": "homeproxy-hiddify",
-      "tags": ["discord", "voice", "udp"]
-    },
-    {
-      "id": "z1r_games_udp_anyproto",
-      "name": "Games / unknown UDP: any-protocol fake",
-      "args": "--filter-udp=1026-65531 --dpi-desync=fake --dpi-desync-repeats=10 --dpi-desync-any-protocol=1 --dpi-desync-cutoff=n2",
-      "description": "Generic UDP desync for games/messengers. zapret4rocket strategy 10.",
-      "source": "zapret4rocket",
-      "tags": ["games", "udp"]
-    },
-    {
-      "id": "z1r_rtmps_syndata",
-      "name": "RTMPS outgoing streams: syndata",
-      "args": "--filter-tcp=443 --dpi-desync=syndata --dup=2 --dup-cutoff=n3",
-      "description": "TLS/RTMPS outgoing stream unblock. zapret4rocket stream strategy.",
-      "source": "zapret4rocket",
-      "tags": ["streaming", "tcp"]
-    },
-    {
-      "id": "z1r_http_rutracker_multisplit",
-      "name": "RuTracker HTTP: multisplit md5sig",
-      "args": "--filter-tcp=80 --dpi-desync=fake,multisplit --dpi-desync-split-seqovl=2 --dpi-desync-split-pos=host+1 --dpi-desync-fake-http=0x0E0E0F0E --dpi-desync-fooling=md5sig",
-      "description": "Plain HTTP announcer bypass. zapret4rocket rutracker strategy.",
-      "source": "zapret4rocket",
-      "tags": ["rutracker", "http"]
-    },
-    {
-      "id": "z1r_orig_mod_start",
-      "name": "Original packet modifier (start=s1 cutoff=d1)",
-      "args": "--filter-tcp=443 --orig-mod-start=s1 --orig-mod-cutoff=d1",
-      "description": "Original-packet modifier variant. zapret4rocket GV strategy 7.",
-      "source": "zapret4rocket",
-      "tags": ["youtube", "tcp", "advanced"]
-    }
-  ],
-  "byedpi": [
-    {
-      "id": "bdr_auto_tr_ra_s",
-      "name": "ByeDPI Auto full (t,r,a,s)",
-      "args": "-o 2 --auto=t,r,a,s -d 2",
-      "description": "Universal adaptive auto-mode. homeproxy-hiddify ByeDPI default.",
-      "source": "homeproxy-hiddify",
-      "tags": ["universal", "auto"]
-    },
-    {
-      "id": "bdr_split1_disorder_fake_ttl8",
-      "name": "Split 1 + Disorder + Fake (TTL=8)",
-      "args": "--split 1 --disorder 1 --fake -1 --ttl 8",
-      "description": "Classic split/disorder/fake combo. homeproxy-hiddify preset.",
-      "source": "homeproxy-hiddify",
+      "id": "ds_preset_fake_disorder",
+      "name": "Fake + Disorder (Out-of-order MidSLD)",
+      "args": "preset=fake_disorder",
+      "description": "Decoy ClientHello combined with out-of-order TCP segment delivery.",
+      "source": "tachyon-builtin",
       "tags": ["universal", "tcp"]
     },
     {
-      "id": "bdr_sniext_fake_ttl6",
-      "name": "SNI extension split + fake (TTL=6)",
-      "args": "-s 1+sniext -f -1 -t 6",
-      "description": "SNI extension fragmentation with fake. homeproxy-hiddify preset.",
-      "source": "homeproxy-hiddify",
-      "tags": ["universal", "tcp"]
+      "id": "ds_preset_multi_disorder",
+      "name": "Multi-Disorder (TLSRec + Fake + Multi-cut)",
+      "args": "preset=multi_disorder",
+      "description": "TLS record pre-split, decoy ClientHello, and reverse multi-segment disorder.",
+      "source": "tachyon-builtin",
+      "tags": ["advanced", "tcp", "tlsrec"]
     },
     {
-      "id": "bdr_aggressive_fake_ttl4",
-      "name": "Aggressive fake (TTL=4) + disorder + split",
-      "args": "--fake -1 --ttl 4 --disorder 1 --split 1",
-      "description": "Aggressive low-TTL fake. homeproxy-hiddify preset.",
-      "source": "homeproxy-hiddify",
-      "tags": ["universal", "tcp"]
+      "id": "ds_preset_multi_split",
+      "name": "Multi-Split (TLSRec + SNI + MidSLD)",
+      "args": "preset=multi_split",
+      "description": "Multi-point TCP segmentation at TLS record, SNI, and mid-SLD boundaries without fake packets.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp", "tlsrec"]
     },
     {
-      "id": "bdr_tlsrec_split",
-      "name": "TLS record split (-r 1+sniext)",
-      "args": "-r 1+sniext -s 1+sniext -f -1 -t 8",
-      "description": "Splits ClientHello into multiple TLS records at SNI extension.",
-      "source": "homeproxy-hiddify",
-      "tags": ["universal", "tcp", "advanced"]
+      "id": "ds_preset_tlsrec",
+      "name": "TLS Record Split (pos=sni)",
+      "args": "preset=tlsrec",
+      "description": "RFC-compliant outer TLS Record splitting at the SNI extension boundary.",
+      "source": "tachyon-builtin",
+      "tags": ["tlsrec", "tcp"]
     },
     {
-      "id": "bdr_auto_ts_fake",
-      "name": "ByeDPI Auto (t,s) + fake (TTL=6)",
-      "args": "--auto=t,s -f -1 -t 6 -d 1",
-      "description": "TLS-record and split auto mode with fake injection.",
-      "source": "homeproxy-hiddify",
-      "tags": ["universal", "auto"]
+      "id": "ds_preset_disorder",
+      "name": "Out-of-order Disorder (pos=midsld)",
+      "args": "preset=disorder",
+      "description": "Out-of-order TCP segment delivery across the second-level domain boundary.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_preset_split",
+      "name": "Mid-SLD TCP Split",
+      "args": "preset=split",
+      "description": "Clean TCP segment split at the middle of the second-level domain.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_preset_fake",
+      "name": "Low-TTL Fake Only (TTL=6, UDP Fake)",
+      "args": "preset=fake",
+      "description": "Decoy ClientHello and UDP QUIC/STUN fake packet injection without TCP segmentation.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp", "udp"]
+    },
+    {
+      "id": "ds_preset_oob",
+      "name": "TCP Out-Of-Band URG (pos=1)",
+      "args": "preset=oob",
+      "description": "TCP MSG_OOB urgent byte injection with 1-byte ClientHello segmentation.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp", "advanced"]
+    },
+    {
+      "id": "ds_hostfakesplit_md5_badack_rzd",
+      "name": "HostFakeSplit + Disorder (sni,endhost-1, md5_badack, seqovl=4)",
+      "args": "mode=fake_disorder split_pos=sni,endhost-1 fooling=md5_badack fake_sni=rzd.ru seqovl=4 repeats=2",
+      "description": "In-band exact-length hostname replacement with valid-checksum TCP MD5 and BadAck fooling.",
+      "source": "tachyon-builtin",
+      "tags": ["advanced", "tcp"]
+    },
+    {
+      "id": "ds_multidisorder_7point_md5_badack",
+      "name": "7-Point Multi-Disorder (md5_badack, rndsni, tlsrec_first)",
+      "args": "mode=multi_disorder split_pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1 fooling=md5_badack fake_sni=rndsni tlsrec_first=true repeats=2",
+      "description": "Seven-point reverse disorder with TLS record pre-split and randomized same-length SNI.",
+      "source": "tachyon-builtin",
+      "tags": ["youtube", "googlevideo", "advanced", "tcp"]
+    },
+    {
+      "id": "ds_fakedisorder_badack_padencap",
+      "name": "Fake + Disorder (midsld+2, badack, padencap, seqovl=8)",
+      "args": "mode=fake_disorder split_pos=midsld+2 fooling=badack fake_sni=padencap tlsrec_first=true seqovl=8 repeats=2",
+      "description": "Exact-length TLS padding encapsulation with BadAck fooling and 8-byte sequence overlap.",
+      "source": "tachyon-builtin",
+      "tags": ["advanced", "tcp"]
+    },
+    {
+      "id": "ds_fakesplit_datanoack_seqovl12",
+      "name": "Fake + Split (sniext+1, datanoack, gosuslugi.ru, seqovl=12)",
+      "args": "mode=fake_split split_pos=sniext+1 fooling=datanoack fake_sni=gosuslugi.ru tlsrec_first=true seqovl=12 repeats=2",
+      "description": "Clears TCP ACK flag on decoy segments with 12-byte sequence overlap.",
+      "source": "tachyon-builtin",
+      "tags": ["advanced", "tcp"]
+    },
+    {
+      "id": "ds_multidisorder_combo_7point",
+      "name": "7-Point Multi-Disorder (badseq_badack_badsum, ozon.ru)",
+      "args": "mode=multi_disorder split_pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1 fooling=badseq_badack_badsum fake_sni=ozon.ru tlsrec_first=true seqovl=4 repeats=2",
+      "description": "Compound BadSeq + BadAck + BadSum 7-point reverse disorder for strict stateful middleboxes.",
+      "source": "tachyon-builtin",
+      "tags": ["youtube", "advanced", "tcp"]
+    },
+    {
+      "id": "ds_fakedisorder_autottl_max",
+      "name": "HostFakeSplit + AutoTTL (sni,endhost-1, autottl, max.ru)",
+      "args": "mode=fake_disorder split_pos=sni,endhost-1 fooling=autottl fake_sni=max.ru tlsrec_first=true repeats=2",
+      "description": "Calibrated hop-distance AutoTTL decoy injection with in-band HostFakeSplit.",
+      "source": "tachyon-builtin",
+      "tags": ["adaptive", "tcp"]
+    },
+    {
+      "id": "ds_fake_split_midsld_ttl4_max",
+      "name": "Fake + Split (midsld, TTL=4, max.ru, repeats=6)",
+      "args": "mode=fake_split split_pos=midsld fake_ttl=4 fake_sni=max.ru repeats=6",
+      "description": "Low-TTL decoy ClientHello burst followed by mid-SLD TCP split.",
+      "source": "tachyon-builtin",
+      "tags": ["youtube", "tcp"]
+    },
+    {
+      "id": "ds_fake_split_midsld_ttl6_google",
+      "name": "Fake + Split (midsld, TTL=6, www.google.com, repeats=6)",
+      "args": "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=6",
+      "description": "TTL=6 Google decoy ClientHello burst followed by mid-SLD TCP split.",
+      "source": "tachyon-builtin",
+      "tags": ["youtube", "tcp"]
+    },
+    {
+      "id": "ds_fake_split_sni_ttl5_gosuslugi",
+      "name": "Fake + Split (sni, TTL=5, gosuslugi.ru, repeats=6)",
+      "args": "mode=fake_split split_pos=sni fake_ttl=5 fake_sni=gosuslugi.ru repeats=6",
+      "description": "Decoy ClientHello at TTL=5 with SNI extension boundary split.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_fake_split_pos1_ttl4_sber",
+      "name": "Fake + Split (pos=1, TTL=4, sberbank.ru, repeats=6)",
+      "args": "mode=fake_split split_pos=1 fake_ttl=4 fake_sni=sberbank.ru repeats=6",
+      "description": "One-byte ClientHello split preceded by a low-TTL decoy burst.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_fake_split_pos2_ttl8_max",
+      "name": "Fake + Split (pos=2, TTL=8, max.ru, repeats=8)",
+      "args": "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
+      "description": "Higher TTL=8 decoy burst for distant transit middlebox hops with 2-byte split.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_tlsrec_midsld",
+      "name": "TLS Record Split (pos=midsld, delay=2ms)",
+      "args": "mode=tlsrec split_pos=midsld split_delay_ms=2",
+      "description": "Splits outer TLS record header at the middle of the domain name.",
+      "source": "tachyon-builtin",
+      "tags": ["tlsrec", "tcp"]
+    },
+    {
+      "id": "ds_tlsrec_pos2",
+      "name": "TLS Record Split (pos=2, delay=1ms)",
+      "args": "mode=tlsrec split_pos=2 split_delay_ms=1",
+      "description": "Two-byte TLS record split for stateless packet parsers.",
+      "source": "tachyon-builtin",
+      "tags": ["tlsrec", "tcp"]
+    },
+    {
+      "id": "ds_disorder_midsld",
+      "name": "TTL=1 Disorder (pos=midsld)",
+      "args": "mode=disorder split_pos=midsld",
+      "description": "Drops initial segment up to mid-SLD at TTL=1 so the second segment arrives first.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_disorder_sni",
+      "name": "TTL=1 Disorder (pos=sni)",
+      "args": "mode=disorder split_pos=sni",
+      "description": "Drops initial segment up to the SNI extension at TTL=1 to desynchronize stateful reassembly.",
+      "source": "tachyon-builtin",
+      "tags": ["tcp"]
+    },
+    {
+      "id": "ds_discord_voice_combo",
+      "name": "Discord TCP + UDP Voice Fake Burst (midsld, TTL=6, UDP=8x)",
+      "args": "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=4 udp_fake=true udp_repeats=8 udp_fake_ttl=6",
+      "description": "Combined TCP Fake+Split and 8x UDP STUN/QUIC fake burst for Discord and WebRTC voice.",
+      "source": "tachyon-builtin",
+      "tags": ["discord", "voice", "udp", "tcp"]
+    },
+    {
+      "id": "ds_cs2_faceit_udp_fake_6x",
+      "name": "CS2 / Faceit / Cybershoke: TCP Fake+Split + UDP Fake (6x, TTL=5, udplen=64)",
+      "args": "mode=fake_split split_pos=midsld fake_ttl=5 fake_sni=www.google.com repeats=6 udp_fake=true udp_repeats=6 udp_fake_ttl=5 udplen=64",
+      "description": "Combined TCP SNI split and 6x UDP fake burst with 64-byte UDP padding for CS2, Faceit, and Cybershoke.",
+      "source": "tachyon-builtin",
+      "tags": ["games", "udp", "tcp"]
+    },
+    {
+      "id": "ds_cs2_faceit_udp_fake_8x_ttl6",
+      "name": "CS2 / Faceit / Cybershoke: TCP Fake+Split + UDP Fake (8x, TTL=6, udplen=128)",
+      "args": "mode=fake_split split_pos=sni fake_ttl=6 fake_sni=max.ru repeats=6 udp_fake=true udp_repeats=8 udp_fake_ttl=6 udplen=128",
+      "description": "High-intensity 8x UDP fake burst with 128-byte UDP padding and SNI boundary split for game servers.",
+      "source": "tachyon-builtin",
+      "tags": ["games", "udp", "tcp"]
+    },
+    {
+      "id": "ds_cs2_faceit_syndata_udp",
+      "name": "CS2 / Faceit / Cybershoke: SYN Data + Disorder + UDP Fake (6x, TTL=4)",
+      "args": "mode=disorder split_pos=midsld fake_ttl=4 syndata=true udp_fake=true udp_repeats=6 udp_fake_ttl=4 udplen=64",
+      "description": "TCP SYN payload injection with TTL=1 disorder and low-TTL UDP fake packets for stateful middleboxes.",
+      "source": "tachyon-builtin",
+      "tags": ["games", "udp", "tcp"]
+    },
+    {
+      "id": "ds_gaming_udp_only_ttl5",
+      "name": "Gaming & Voice UDP: Low-TTL UDP Fake Burst (8x, TTL=5, udplen=64)",
+      "args": "mode=fake fake_ttl=5 repeats=4 udp_fake=true udp_repeats=8 udp_fake_ttl=5 udplen=64",
+      "description": "Dedicated UDP fake packet injection with length padding without TCP stream splitting.",
+      "source": "tachyon-builtin",
+      "tags": ["games", "voice", "quic", "udp"]
     }
   ]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env ucode
 //
 // Post-install verification for components: binary presence, version reads,
-// sing-box extended binary validation and human-readable fingerprints.
+// tachyon-core binary validation and human-readable fingerprints.
 //
 
 let fs = require("fs");
@@ -14,7 +14,7 @@ let core_profile_module = null;
 let as_string = common.as_string;
 
 // Lazy on purpose: components_updater_job.sh stages this module into a partial
-// -L tree whose singbox/ directory is created but left empty, to pin that
+// -L tree whose tachyon_core/ directory is created but left empty, to pin that
 // component verification carries the profile lookup itself rather than
 // inheriting it from a require graph.
 function core_profile() {
@@ -100,7 +100,7 @@ function verify_binary_post_install(binary_path, expected_version, version_cmd_a
         return false;
     }
     if (type(version_cmd_args) == "array" && length(version_cmd_args) > 0) {
-        let actual = versions.read_sing_box_binary_version(binary_path, "");
+        let actual = versions.read_core_binary_version(binary_path, "");
         if (actual == "") {
             helpers.updates_log("Post-install verification: cannot read version from " + binary_path, "warn");
         } else if (as_string(expected_version) != "" && actual != as_string(expected_version)) {
@@ -110,31 +110,7 @@ function verify_binary_post_install(binary_path, expected_version, version_cmd_a
     return true;
 }
 
-function validate_sing_box_extended_binary(binary, library_dir, compressed) {
-    let version = versions.read_sing_box_binary_version(binary, library_dir || "");
-    if (version != "")
-        return version;
-    if (compressed && binary && binary != "") {
-        let is_elf = false;
-        try {
-            let f = fs.open(binary, "r");
-            if (f) {
-                let header = f.read("4");
-                f.close();
-                is_elf = (header == "\x7fELF");
-            }
-        }
-        catch (e) {}
-        if (is_elf) {
-            helpers.updates_log("Compressed binary validated via ELF header check: " + binary, "info");
-            return "compressed";
-        }
-        helpers.updates_log("Compressed binary is not a valid ELF executable: " + binary, "warn");
-    }
-    return "";
-}
-
-// Drops the field sing-box named from the outbound it named, and reports whether
+// Drops the field tachyon-core named from the outbound it named, and reports whether
 // anything changed.
 //
 // The apply path in tachyon_core/runtime.uc calls this same function now, because its
@@ -143,7 +119,7 @@ function validate_sing_box_extended_binary(binary, library_dir, compressed) {
 // It is the reason a build that rejects one field can still run: only the offending
 // outbound loses it, because deleting it everywhere threw away settings that were
 // working. The pre-flight needs the same repair, or a binary that rejects a single
-// field is refused outright and the user is told the variant is "incompatible" when
+// field is refused outright and the user is told the core build is "incompatible" when
 // the truth is that one key could have been dropped.
 //
 // Reports false once no further repair applies, so the caller stops instead of
@@ -312,13 +288,13 @@ function repair_unknown_outbound_field(config_file, reason) {
     return false;
 }
 
-function check_sing_box_config_with_binary(binary, config_path, library_dir, target_variant) {
+function check_core_config_with_binary(binary, config_path, library_dir) {
     binary = as_string(binary);
     if (binary == "" || !helpers.file_exists(binary))
-        return { ok: false, reason: "sing-box binary not found at " + binary };
+        return { ok: false, reason: "tachyon-core binary not found at " + binary };
 
     helpers.init_tmp_dir();
-    let err_file = helpers.make_tmp_file("sb-chk");
+    let err_file = helpers.make_tmp_file("core-chk");
     if (err_file == "")
         return { ok: true };
 
@@ -326,9 +302,8 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         GODEBUG: "madvdontneed=1",
         GOGC: "30"
     };
-    // A config check loads every .srs the config references while the daemon
-    // already holds its own copy. Without a ceiling here the second Go runtime
-    // balloons by 40-80 MB of RSS and the OOM killer lands on the daemon.
+    // A config check loads every rule-set the config references while the daemon
+    // already holds its own copy. Keep the same memory cap as the daemon.
     for (let name, value in gomemlimit_env_map())
         env_map[name] = value;
     let lib_path = as_string(library_dir || "");
@@ -341,35 +316,16 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
     }
 
     let ver_out = trim(common.command_output_from_args([ binary, "version" ]));
-    let ver_str = common.parse_sing_box_version(ver_out);
+    let ver_str = common.parse_core_version(ver_out);
     if (ver_str == "") {
         helpers.remove_file(err_file);
         helpers.updates_log("Pre-flight check failed: binary " + binary + " is invalid or unable to report version", "error");
         return { ok: false, reason: "binary unable to report version" };
     }
 
-    let active_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let active_variant = trim(fs.readfile(active_variant_file) || "");
-    let target_var = as_string(target_variant || "");
-    if (target_var == "") {
-        if (index(ver_out, "tachyon-core") >= 0 || index(ver_str, "-tachyon.") >= 0)
-            target_var = "tachyon-core";
-        else if (index(ver_str, "-lx") >= 0)
-            target_var = "lx";
-        else if (index(ver_str, "extended") >= 0)
-            target_var = "extended";
-        else
-            target_var = active_variant != "" ? active_variant : "stable";
-    }
-
-    let is_variant_switch = (target_var != "" && active_variant != "" && target_var != active_variant);
-
     config_path = as_string(config_path || "/etc/tachyon-core/config.json");
 
-    // When changing core/variant, the existing config on disk was built for the
-    // old variant/core and may contain incompatible options (e.g. endpoints[0].amnezia).
-    // Configs must be regenerated for the target variant and checked only after regeneration.
-    if (!is_variant_switch && helpers.file_exists(config_path) && helpers.file_nonempty(config_path)) {
+    if (helpers.file_exists(config_path) && helpers.file_nonempty(config_path)) {
         let check_cmd = helpers.command_env(env_map) + " " +
             common.command_from_args([ binary, "-c", config_path, "check" ]) +
             " >" + common.shell_quote(err_file) + " 2>&1";
@@ -389,28 +345,20 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         }
     }
 
-    let candidate_cfg = helpers.make_tmp_file("sb-cand");
-    let version_file = helpers.make_tmp_file("sb-cand-ver");
-    let variant_file = helpers.make_tmp_file("sb-cand-var");
+    let candidate_cfg = helpers.make_tmp_file("core-cand");
+    let version_file = helpers.make_tmp_file("core-cand-ver");
     let cand_status = -1;
     if (candidate_cfg != "" && version_file != "") {
         fs.writefile(version_file, ver_str + "\n");
-        if (variant_file != "")
-            fs.writefile(variant_file, target_var + "\n");
         let gen_env = {
-            SB_PREFLIGHT_BINARY: binary,
-            SB_VERSION_OVERRIDE: ver_str,
-            SB_VERSION_STATE_FILE: version_file,
+            TACHYON_CORE_PREFLIGHT_BINARY: binary,
+            TACHYON_CORE_VERSION_OVERRIDE: ver_str,
+            TACHYON_CORE_VERSION_FILE: version_file,
             RECORD_FLASH_WEAR: "0"
         };
-        if (variant_file != "")
-            gen_env.SB_VARIANT_STATE_FILE = variant_file;
         if (lib_path != "")
             gen_env.LD_LIBRARY_PATH = lib_path;
-        // The banner itself may still be the only thing naming our core - the
-        // variant file can lag behind it - so the name wins over target_var.
-        let xhttp_marker = index(ver_out, "tachyon-core") >= 0 ? "tachyon-core" : target_var;
-        let target_supports_xhttp = core_profile().supports_xhttp(ver_str, xhttp_marker, ver_out) === true;
+        let target_supports_xhttp = core_profile().supports_xhttp(ver_str, "tachyon-core", ver_out) === true;
         let gen_cmd = helpers.command_env(gen_env) + " " +
             common.command_from_args([
                 "ucode", "-L", helpers.LIB_DIR, helpers.LIB_DIR + "/tachyon_core/generator.uc",
@@ -438,11 +386,10 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
                     repaired = false;
                     break;
                 }
-                helpers.updates_log("Pre-flight: the candidate sing-box rejected a field, retrying without it", "warn");
+                helpers.updates_log("Pre-flight: the candidate tachyon-core rejected a field, retrying without it", "warn");
             }
             helpers.remove_file(candidate_cfg);
             helpers.remove_file(version_file);
-            if (variant_file != "") helpers.remove_file(variant_file);
             if (repaired) {
                 helpers.remove_file(err_file);
                 return { ok: true };
@@ -450,7 +397,6 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
         } else {
             helpers.remove_file(candidate_cfg);
             helpers.remove_file(version_file);
-            if (variant_file != "") helpers.remove_file(variant_file);
         }
     }
 
@@ -480,10 +426,10 @@ function check_sing_box_config_with_binary(binary, config_path, library_dir, tar
             helpers.updates_log("Pre-flight: no enabled sections yet in configuration, skipping pre-flight check", "info");
             return { ok: true };
         }
-        helpers.updates_log("Pre-flight check failed: unable to generate configuration for " + target_var + ": " + reason, "error");
+        helpers.updates_log("Pre-flight check failed: unable to generate configuration for tachyon-core: " + reason, "error");
     }
     else {
-        helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for " + target_var + ": " + reason, "error");
+        helpers.updates_log("Pre-flight check failed: binary " + binary + " rejected config for tachyon-core: " + reason, "error");
     }
     return { ok: false, reason: reason };
 }
@@ -496,8 +442,7 @@ function module_exports() {
         repair_unknown_outbound_field,
         verify_package_post_install,
         verify_binary_post_install,
-        validate_sing_box_extended_binary,
-        check_sing_box_config_with_binary
+        check_core_config_with_binary
     };
 }
 

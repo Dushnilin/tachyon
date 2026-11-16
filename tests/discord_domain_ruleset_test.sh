@@ -10,7 +10,7 @@
 set -eo pipefail
 
 if [ -z "$TACHYON_LIB" ]; then
-  if [ -d "$ROOT_DIR/tachyon/files/usr/lib/singbox" ]; then
+  if [ -d "$ROOT_DIR/tachyon/files/usr/lib/tachyon_core" ]; then
     TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
   else
     TACHYON_LIB="/usr/lib/tachyon"
@@ -63,8 +63,7 @@ gr.init({
     runtime_settings: () => ({}),
     runtime_ruleset_folder: "/tmp",
     download_detour_tag: (settings, kind) => "direct-out",
-    runtime_generate_unsupported: (msg) => { warn(msg + "\n"); exit(1); },
-    is_sb_1_14_plus: () => true
+    runtime_generate_unsupported: (msg) => { warn(msg + "\n"); exit(1); }
 });
 
 let config = {

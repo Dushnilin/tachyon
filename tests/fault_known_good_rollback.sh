@@ -29,8 +29,7 @@ let known_good = require("service.known_good");
 known_good.set_test_overrides(
     getenv("TACHYON_KNOWN_GOOD_DIR"),
     getenv("TACHYON_OBSERVATION_FILE"),
-    getenv("TACHYON_CONFIG_PATH"),
-    getenv("SB_VARIANT_STATE_FILE"));
+    getenv("TACHYON_CONFIG_PATH"));
 '"$1"'
 ' 2>&1
 }
@@ -90,7 +89,7 @@ grep -qiE '^error=.*identical' <<< "$out" || fail "the loop guard gives no reaso
 # --- the real thing: a bad config comes back -------------------------------
 printf '%s' "$BAD" > "$CFG"
 out="$(kg '
-let r = known_good.rollback_to_known_good("sing-box_failed_to_start", { reload: false });
+let r = known_good.rollback_to_known_good("tachyon-core_failed_to_start", { reload: false });
 printf("ok=%s\n", r.ok ? "yes" : "no");
 printf("reason=%s\n", r.reason || "");
 ')"
@@ -105,7 +104,7 @@ grep -q "broken_section" "$KG_DIR/last_failed_config" \
 # And the reason has to be recorded, or the user cannot tell why their config
 # came back by itself.
 [ -s "$OBS" ] || fail "no observation state was written"
-grep -q "sing-box_failed_to_start" "$OBS" \
+grep -q "tachyon-core_failed_to_start" "$OBS" \
   || fail "the rollback reason was not recorded anywhere: $(cat "$OBS")"
 grep -q "rolled_back" "$OBS" || fail "the observation state does not say it rolled back: $(cat "$OBS")"
 grep -q "rollback" "$KG_DIR/history.json" 2>/dev/null \
@@ -148,23 +147,5 @@ grep -qiE '^error=.*(fail|restore)' <<< "$out" \
 # failed - a partial write would destroy the very thing we were trying to save.
 [ "$(cat "$CFG")" = "$(printf '%s' "$BAD")" ] \
   || fail "a failed rollback still modified the active config"
-
-# --- the variant marker is restored too, to where it belongs ---------------
-# This one was hardcoded to /etc/tachyon/tachyon-core-variant while every other path
-# in the module was overridable, so a rollback wrote outside the directory it
-# was told to use - and the module could not be exercised without touching the
-# real /etc.
-printf 'lx\n' > "$KG_DIR/variant"
-printf '%s' "$GOOD" > "$KG_DIR/config"
-printf '%s' "$BAD" > "$CFG"
-out="$(SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" kg '
-let r = known_good.rollback_to_known_good("variant_test", { reload: false });
-printf("ok=%s\n", r.ok ? "yes" : "no");
-')"
-[ "$(field "$out" ok)" = "yes" ] || fail "rollback failed while restoring the variant marker: $out"
-[ -f "$WORK_DIR/sing-box-variant" ] || fail "the variant marker was not restored to the configured path"
-grep -q '^lx$' "$WORK_DIR/sing-box-variant" || fail "the wrong variant marker was restored: $(cat "$WORK_DIR/sing-box-variant")"
-[ -e /etc/tachyon/tachyon-core-variant ] \
-  && fail "rollback wrote the variant marker to the hardcoded /etc path instead of the configured one"
 
 printf 'fault: known good rollback checks passed\n'

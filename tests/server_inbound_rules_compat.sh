@@ -2,9 +2,8 @@
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 
-printf 'tachyon-core' >"$WORK_DIR/variant"
-printf '0.0.7' >"$WORK_DIR/version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant" SB_VERSION_STATE_FILE="$WORK_DIR/version"
+printf '0.5.7' >"$WORK_DIR/version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
 
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {

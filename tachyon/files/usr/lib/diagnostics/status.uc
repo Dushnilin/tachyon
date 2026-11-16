@@ -441,10 +441,6 @@ function tachyon_config_masked_line(line) {
     line = mask_after_token_space(line, "option fptn_password");
     line = mask_after_token_space(line, "option fptn_server");
     line = mask_after_token_space(line, "option fptn_sni");
-    line = mask_after_token_space(line, "option olcrtc_token");
-    line = mask_after_token_space(line, "option olcrtc_username");
-    line = mask_after_token_space(line, "option olcrtc_password");
-    line = mask_after_token_space(line, "option olcrtc_server");
     line = mask_after_token_space(line, "option wdtt_token");
     line = mask_after_token_space(line, "option wdtt_username");
     line = mask_after_token_space(line, "option wdtt_password");
@@ -1133,8 +1129,8 @@ function inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_list
     if (runtime_type != expected_type && !(protocol == "mtproto" && (runtime_type == "mtproto" || runtime_type == "mtproxy")))
         return 0;
 
-    // An endpoint-schema AWG (lx / tachyon-core) carries no listen field -
-    // singbox/servers.uc deletes it before pushing the object into endpoints -
+    // An endpoint-schema AWG (tachyon-core) carries no listen field -
+    // tachyon_core/servers.uc deletes it before pushing the object into endpoints -
     // so the port is the only thing left to match here; the socket itself is
     // checked by the separate listening probe.
     if (protocol == "awg" && runtime_type == "wireguard" && runtime_listen == "")
@@ -1163,13 +1159,6 @@ function write_inbound_item_json(args) {
     let runtime_type = object_value(runtime, "type");
     let runtime_listen = object_value(runtime, "listen");
     let runtime_port_text = object_value(runtime, "listen_port") || "0";
-    // args[21]: native Tailscale (tailscaled outside sing-box) — no endpoint
-    // or route rule is generated for it; absence is the healthy state.
-    let native_mode = as_string(args[21]) == "1";
-    if (native_mode) {
-        runtime_exists = "1";
-        runtime_type = expected_type;
-    }
 
     let runtime_ok_flag = inbound_runtime_ok(protocol, runtime_exists, runtime_type, runtime_listen, runtime_port_text, expected_type, listen, listen_port);
     let raw_listening = number_value(args[12]);
@@ -1221,24 +1210,15 @@ function write_inbounds_check_json(enabled_count, config_path, wan_ip, wan_publi
     });
 }
 
-function write_server_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_tailscale) {
+function write_server_capabilities_json(tachyon_core_tailscale) {
     write_json({
-        sing_box_extended: arg_number(sing_box_extended),
-        sing_box_tiny: arg_number(sing_box_tiny),
-        sing_box_tailscale: arg_number(sing_box_tailscale)
+        tachyon_core_tailscale: arg_number(tachyon_core_tailscale)
     });
 }
 
-function write_ui_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_compressed, sing_box_lx, sing_box_tailscale, zapret_installed, zapret2_installed, byedpi_installed, server_inbounds_enabled_count) {
+function write_ui_capabilities_json(tachyon_core_tailscale, server_inbounds_enabled_count) {
     write_json({
-        sing_box_extended: arg_number(sing_box_extended),
-        sing_box_tiny: arg_number(sing_box_tiny),
-        sing_box_compressed: arg_number(sing_box_compressed),
-        sing_box_lx: arg_number(sing_box_lx),
-        sing_box_tailscale: arg_number(sing_box_tailscale),
-        zapret_installed: arg_number(zapret_installed),
-        zapret2_installed: arg_number(zapret2_installed),
-        byedpi_installed: arg_number(byedpi_installed),
+        tachyon_core_tailscale: arg_number(tachyon_core_tailscale),
         server_inbounds_enabled_count: arg_number(server_inbounds_enabled_count)
     });
 }
@@ -1316,15 +1296,14 @@ function write_nft_check_json(table_exist, rules_mangle_exist, rules_mangle_coun
     });
 }
 
-function write_sing_box_check_json(sing_box_installed, sing_box_version_ok, sing_box_extended, sing_box_service_exist, sing_box_autostart_disabled, sing_box_process_running, sing_box_ports_listening) {
+function write_tachyon_core_check_json(tachyon_core_installed, tachyon_core_version_ok, tachyon_core_service_exist, tachyon_core_autostart_disabled, tachyon_core_process_running, tachyon_core_ports_listening) {
     write_json({
-        sing_box_installed: arg_number(sing_box_installed),
-        sing_box_version_ok: arg_number(sing_box_version_ok),
-        sing_box_extended: arg_number(sing_box_extended),
-        sing_box_service_exist: arg_number(sing_box_service_exist),
-        sing_box_autostart_disabled: arg_number(sing_box_autostart_disabled),
-        sing_box_process_running: arg_number(sing_box_process_running),
-        sing_box_ports_listening: arg_number(sing_box_ports_listening)
+        tachyon_core_installed: arg_number(tachyon_core_installed),
+        tachyon_core_version_ok: arg_number(tachyon_core_version_ok),
+        tachyon_core_service_exist: arg_number(tachyon_core_service_exist),
+        tachyon_core_autostart_disabled: arg_number(tachyon_core_autostart_disabled),
+        tachyon_core_process_running: arg_number(tachyon_core_process_running),
+        tachyon_core_ports_listening: arg_number(tachyon_core_ports_listening)
     });
 }
 
@@ -1415,29 +1394,7 @@ function render_flag_line(value, key, ok_message, fail_message) {
     print_line((flag_is_one(value[key]) ? ok_message : fail_message));
 }
 
-function sing_box_core_label(value) {
-    if (flag_is_one(value.sing_box_tachyon_core))
-        return "tachyon-core";
-    if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
-        return "extended-compressed";
-    if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_lx))
-        return "lx";
-    if (flag_is_one(value.sing_box_extended))
-        return "extended";
-    if (flag_is_one(value.sing_box_tiny))
-        return "tiny";
-    return "";
-}
-
-function sing_box_version_note_label(value) {
-    if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
-        return "compressed";
-    if (flag_is_one(value.sing_box_tiny))
-        return "tiny";
-    return "";
-}
-
-function sing_box_version_is_known(version) {
+function tachyon_core_version_is_known(version) {
     version = lc(trim(as_string(version)));
     return version != "" &&
         version != "loading" &&
@@ -1445,66 +1402,37 @@ function sing_box_version_is_known(version) {
         version != "not installed";
 }
 
-function format_sing_box_version(value, version) {
+function format_tachyon_core_version(value, version) {
     version = as_string(version);
-    if (!sing_box_version_is_known(version))
-        return version;
-
-    let variant = sing_box_version_note_label(value);
-    return variant != "" ? version + " (" + variant + ")" : version;
+    return version;
 }
 
-function render_global_sing_box_check() {
+function render_global_tachyon_core_check() {
     let value = object_or_empty(read_stdin_json());
-    let is_core = flag_is_one(value.sing_box_tachyon_core);
-    let name = is_core ? "Tachyon Core" : "Sing-box";
+    let name = "Tachyon Core";
 
-    render_flag_line(value, "sing_box_installed", "\u2705 " + name + " installed", "\u274c " + name + " installed");
-    if (is_core)
-        render_flag_line(value, "sing_box_version_ok", "\u2705 " + name + " version is compatible", "\u274c " + name + " version is not compatible");
-    else
-        render_flag_line(value, "sing_box_version_ok", "\u2705 Sing-box version is compatible (newer than 1.12.4)", "\u274c Sing-box version is not compatible (older than 1.12.4)");
-
-    if (is_core)
-        print_line("Tachyon Core detected");
-    else if (flag_is_one(value.sing_box_extended))
-        print_line("Sing-box extended detected");
-    else
-        print_line("Sing-box regular build detected");
-
-    render_flag_line(value, "sing_box_service_exist", "\u2705 " + name + " service exist", "\u274c " + name + " service exist");
-    render_flag_line(value, "sing_box_autostart_disabled", "\u2705 " + name + " autostart disabled", "\u274c " + name + " autostart disabled");
-    render_flag_line(value, "sing_box_process_running", "\u2705 " + name + " process running", "\u274c " + name + " process running");
-    render_flag_line(value, "sing_box_ports_listening", "\u2705 " + name + " listening ports", "\u274c " + name + " listening ports");
+    render_flag_line(value, "tachyon_core_installed", "\u2705 " + name + " installed", "\u274c " + name + " installed");
+    render_flag_line(value, "tachyon_core_version_ok", "\u2705 " + name + " version is compatible", "\u274c " + name + " version is not compatible");
+    print_line("Tachyon Core detected");
+    render_flag_line(value, "tachyon_core_service_exist", "\u2705 " + name + " service exist", "\u274c " + name + " service exist");
+    render_flag_line(value, "tachyon_core_autostart_disabled", "\u2705 " + name + " autostart disabled", "\u274c " + name + " autostart disabled");
+    render_flag_line(value, "tachyon_core_process_running", "\u2705 " + name + " process running", "\u274c " + name + " process running");
+    render_flag_line(value, "tachyon_core_ports_listening", "\u2705 " + name + " listening ports", "\u274c " + name + " listening ports");
 }
 
 function render_global_system_info() {
     let value = object_or_empty(read_stdin_json());
     let tachyon_version = object_value(value, "tachyon_version") || "unknown";
     let luci_app_version = object_value(value, "luci_app_version") || "unknown";
-    let sing_box_version = object_value(value, "sing_box_version") || "unknown";
-    let zapret_version = object_value(value, "zapret_version") || "unknown";
-    let zapret2_version = object_value(value, "zapret2_version") || "unknown";
-    let byedpi_version = object_value(value, "byedpi_version") || "unknown";
+    let tachyon_core_version = object_value(value, "tachyon_core_version") || "unknown";
     let openwrt_version = object_value(value, "openwrt_version") || "unknown";
     let device_model = object_value(value, "device_model") || "unknown";
 
-    let is_core = flag_is_one(value.sing_box_tachyon_core);
-    let sing_box_core = sing_box_core_label(value) || "regular";
-    if (is_core)
-        print_line("Proxy core: Tachyon Core");
-    else
-        print_line("Sing-box core: " + sing_box_core);
+    print_line("Proxy core: Tachyon Core");
 
     print_line("\ud83d\udd73\ufe0f Tachyon:   " + tachyon_version);
     print_line("\ud83d\udd73\ufe0f LuCI App:      " + luci_app_version);
-    print_line("\ud83d\udce6 " + (is_core ? "Tachyon Core:  " : "Sing-box:      ") + format_sing_box_version(value, sing_box_version));
-    if (flag_is_one(value.zapret_installed))
-        print_line("\ud83e\uddf5 Zapret:        " + zapret_version);
-    if (flag_is_one(value.zapret2_installed))
-        print_line("\ud83e\uddf5 Zapret2:       " + zapret2_version);
-    if (flag_is_one(value.byedpi_installed))
-        print_line("\ud83e\uddf5 ByeDPI:        " + byedpi_version);
+    print_line("\ud83d\udce6 Tachyon Core:  " + format_tachyon_core_version(value, tachyon_core_version));
     print_line("\ud83d\udedc OpenWrt:       " + openwrt_version);
     print_line("\ud83d\udedc Device:        " + device_model);
 }
@@ -1587,12 +1515,6 @@ function global_nft_other_mark_exists() {
 const TACHYON_OWN_MARKS = [
     getenv("NFT_FAKEIP_MARK") || "0x04000000",
     getenv("NFT_OUTBOUND_MARK") || "0x08000000",
-    getenv("ZAPRET_DESYNC_MARK") || "0x40000000",
-    getenv("ZAPRET_DESYNC_MARK_POSTNAT") || "0x20000000",
-    getenv("ZAPRET2_DESYNC_MARK") || "0x40000000",
-    getenv("ZAPRET2_DESYNC_MARK_POSTNAT") || "0x20000000",
-    getenv("ZAPRET_ROUTE_MARK_BASE") || "0x01000000",
-    getenv("ZAPRET2_ROUTE_MARK_BASE") || "0x02000000",
     "0x00200000",
     "0x00240000",
     "0x00ff0000"
@@ -1634,8 +1556,7 @@ function nft_ruleset_other_mark_lines(table_name) {
 
     for (let line in split(read_stdin(), "\n")) {
         line = as_string(line);
-        if (index(line, "table inet " + table_name) >= 0 ||
-            match(line, /^table (inet|ip|ip6) (zapret|zapret2|tachyon_tailscale)\b/) != null) {
+        if (index(line, "table inet " + table_name) >= 0) {
             in_tachyon_table = true;
             continue;
         }
@@ -1705,18 +1626,18 @@ function render_matching_log_tail(needle, max_lines) {
             continue;
         if (line_contains(line, needle) || needle == "*")
         {
-            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_udp_unsupported_outbound_log(line)) {
+            if ((needle == "tachyon-core" || needle == "*") && is_udp_unsupported_outbound_log(line)) {
                 if (!udp_http_notice_emitted) {
                     push(filtered, "UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                     udp_http_notice_emitted = true;
                 }
                 continue;
             }
-            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_benign_stream_cancel_log(line)) {
+            if ((needle == "tachyon-core" || needle == "*") && is_benign_stream_cancel_log(line)) {
                 stream_cancel_count++;
                 continue;
             }
-            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_no_route_burst_log(line)) {
+            if ((needle == "tachyon-core" || needle == "*") && is_no_route_burst_log(line)) {
                 no_route_count++;
                 last_no_route_line = line;
                 if (no_route_count <= 3)
@@ -1755,21 +1676,21 @@ function render_tachyon_logs() {
     for (let line in lines) {
         if (line == "")
             continue;
-        if (!line_contains(line, "tachyon") && !line_contains(line, "sing-box"))
+        if (!line_contains(line, "tachyon"))
             continue;
 
-        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_udp_unsupported_outbound_log(line)) {
+        if (line_contains(line, "tachyon-core") && is_udp_unsupported_outbound_log(line)) {
             if (!udp_http_notice_emitted) {
                 push(filtered, "UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                 udp_http_notice_emitted = true;
             }
             continue;
         }
-        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_benign_stream_cancel_log(line)) {
+        if (line_contains(line, "tachyon-core") && is_benign_stream_cancel_log(line)) {
             stream_cancel_count++;
             continue;
         }
-        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_no_route_burst_log(line)) {
+        if (line_contains(line, "tachyon-core") && is_no_route_burst_log(line)) {
             no_route_count++;
             last_no_route_line = line;
             if (no_route_count <= 3)
@@ -1870,40 +1791,15 @@ function system_info_json() {
         tachyon_version: as_string(ARGV[1]),
         tachyon_latest_version: as_string(ARGV[2]),
         luci_app_version: as_string(ARGV[3]),
-        sing_box_version: as_string(ARGV[4]),
-        sing_box_extended: arg_number(ARGV[5]),
-        sing_box_tiny: arg_number(ARGV[6]),
-        sing_box_compressed: arg_number(ARGV[7]),
-        sing_box_lx: arg_number(ARGV[8]),
-        sing_box_tailscale: arg_number(ARGV[9]),
-        zapret_version: as_string(ARGV[10]),
-        zapret_installed: arg_number(ARGV[11]),
-        zapret2_version: as_string(ARGV[12]),
-        zapret2_installed: arg_number(ARGV[13]),
-        byedpi_version: as_string(ARGV[14]),
-        byedpi_installed: arg_number(ARGV[15]),
-        openwrt_version: as_string(ARGV[16]),
-        device_model: as_string(ARGV[17]),
-        generated_at: arg_number(ARGV[18])
+        tachyon_core_version: as_string(ARGV[4]),
+        tachyon_core_tailscale: arg_number(ARGV[5]),
+        openwrt_version: as_string(ARGV[6]),
+        device_model: as_string(ARGV[7]),
+        generated_at: arg_number(ARGV[8])
     });
 }
 
-function nfqws_strategy_validation(valid, message, needle, needles) {
-    let result = [];
-    for (let item in split(as_string(needles), "\n")) {
-        if (item != "")
-            push(result, item);
-    }
-
-    write_json({
-        valid: arg_bool(valid),
-        message: as_string(message),
-        needle: as_string(needle),
-        needles: result
-    });
-}
-
-let masked_sing_box_keys = {
+let masked_core_keys = {
     auth_key: true,
     auth_str: true,
     auth: true,
@@ -1946,26 +1842,26 @@ let masked_sing_box_keys = {
     source_ip_cidr: true
 };
 
-function mask_sing_box_value(value) {
+function mask_core_value(value) {
     if (type(value) == "array") {
         let result = [];
         for (let item in value)
-            push(result, mask_sing_box_value(item));
+            push(result, mask_core_value(item));
         return result;
     }
 
     if (type(value) == "object") {
         let result = {};
         for (let key, item in value)
-            result[key] = masked_sing_box_keys[key] ? "MASKED" : mask_sing_box_value(item);
+            result[key] = masked_core_keys[key] ? "MASKED" : mask_core_value(item);
         return result;
     }
 
     return value;
 }
 
-function mask_sing_box_config(path) {
-    write_json(mask_sing_box_value(read_json_file(path)));
+function mask_core_config(path) {
+    write_json(mask_core_value(read_json_file(path)));
 }
 
 function prepare_check_proxy_config(input_path, output_path, cache_path) {
@@ -2178,9 +2074,9 @@ else if (mode == "inbounds-config-json")
 else if (mode == "inbounds-check-json")
     write_inbounds_check_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "server-capabilities-json")
-    write_server_capabilities_json(ARGV[1], ARGV[2], ARGV[3]);
+    write_server_capabilities_json(ARGV[1]);
 else if (mode == "ui-capabilities-json")
-    write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9]);
+    write_ui_capabilities_json(ARGV[1], ARGV[2]);
 else if (mode == "service-status-json")
     write_service_status_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-status-running")
@@ -2191,8 +2087,8 @@ else if (mode == "dns-check-json")
     write_dns_check_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8]);
 else if (mode == "nft-check-json")
     write_nft_check_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8]);
-else if (mode == "sing-box-check-json")
-    write_sing_box_check_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
+else if (mode == "tachyon-core-check-json")
+    write_tachyon_core_check_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 else if (mode == "fakeip-check-json")
     write_fakeip_check_json(ARGV[1], ARGV[2]);
 else if (mode == "fakeip-address-status")
@@ -2201,8 +2097,8 @@ else if (mode == "mask-dns-server")
     mask_dns_server(ARGV[1]);
 else if (mode == "global-inbounds-check")
     render_global_inbounds_check();
-else if (mode == "global-sing-box-check")
-    render_global_sing_box_check();
+else if (mode == "global-tachyon-core-check")
+    render_global_tachyon_core_check();
 else if (mode == "global-system-info")
     render_global_system_info();
 else if (mode == "global-fakeip-check")
@@ -2235,10 +2131,8 @@ else if (mode == "system-info-cache-valid")
     exit(system_info_cache_valid(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
 else if (mode == "system-info-json")
     system_info_json();
-else if (mode == "nfqws-strategy-validation")
-    nfqws_strategy_validation(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
-else if (mode == "mask-sing-box-config")
-    mask_sing_box_config(ARGV[1]);
+else if (mode == "mask-core-config")
+    mask_core_config(ARGV[1]);
 else if (mode == "proxy-response-is-retryable-error")
     exit(proxy_response_is_retryable_error() ? 0 : 1);
 else if (mode == "prepare-check-proxy-config")

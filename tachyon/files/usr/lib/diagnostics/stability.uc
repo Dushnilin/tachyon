@@ -139,7 +139,7 @@ function scan_proc_comm_map() {
 function get_daemon_pids(name) {
     let pmap = scan_proc_comm_map();
 
-    if (name == "tachyon-core" || name == "sing-box") {
+    if (name == "tachyon-core") {
         let pids = [];
         let seen = {};
         let proc = require("core.process");
@@ -254,40 +254,6 @@ function get_daemon_pids(name) {
         return pids;
     }
 
-    if (name == "wdtt") {
-        let pids = [];
-        for (let comm_name in [ "qwdtt-client", "qwdtt", "wdtt" ]) {
-            for (let pid in (pmap[comm_name] || []))
-                push(pids, pid);
-        }
-        return pids;
-    }
-
-    if (name == "tailscale") {
-        return pmap["tailscaled"] || [];
-    }
-
-    if (name == "sing-box") {
-        let pids = [];
-        let seen = {};
-        for (let p in (pmap["sing-box"] || [])) {
-            push(pids, p);
-            seen[p] = true;
-        }
-        let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
-        if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-            marker = safe_read_file("/etc/tachyon/sing-box-variant");
-        if (marker != "tachyon-core") {
-            for (let p in (pmap["tachyon-core"] || [])) {
-                if (!seen[p]) {
-                    push(pids, p);
-                    seen[p] = true;
-                }
-            }
-        }
-        return pids;
-    }
-
     return pmap[name] || [];
 }
 
@@ -299,15 +265,9 @@ function find_named_pid(name) {
 function get_relevant_daemons() {
     let cfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     let tg_cfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    let sections = uci_core.section_objects(CONFIG_NAME, "section") || [];
-    let servers = uci_core.section_objects(CONFIG_NAME, "server") || [];
 
     let list = [];
-    let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = safe_read_file("/etc/tachyon/sing-box-variant");
-    let is_core = (marker == "tachyon-core");
-    push(list, is_core ? "tachyon-core" : "sing-box");
+    push(list, "tachyon-core");
 
     if (length(get_daemon_pids("tachyon")) > 0)
         push(list, "tachyon");
@@ -317,47 +277,6 @@ function get_relevant_daemons() {
 
     if (tg_cfg.enabled == "1" || length(get_daemon_pids("telegram")) > 0)
         push(list, "telegram");
-
-    let has_action = function(act) {
-        for (let s in sections) {
-            if (s.enabled != "0" && s.action == act)
-                return true;
-        }
-        return false;
-    };
-
-    let has_bin = function(paths) {
-        for (let p in paths) {
-            if (p && fs.stat(p) != null)
-                return true;
-        }
-        return false;
-    };
-
-    if ((has_action("zapret2") && has_bin([ constants.ZAPRET2_PROVIDER_NFQWS2_BIN, "/opt/zapret2/nfq2/nfqws2", "/usr/bin/nfqws2" ])) || length(get_daemon_pids("nfqws2")) > 0)
-        push(list, "nfqws2");
-
-    if ((has_action("zapret") && has_bin([ constants.ZAPRET_PROVIDER_NFQWS_BIN, "/opt/zapret/nfq/nfqws", "/usr/bin/nfqws" ])) || length(get_daemon_pids("nfqws")) > 0)
-        push(list, "nfqws");
-
-    if ((has_action("byedpi") && has_bin([ constants.BYEDPI_BIN, "/usr/bin/ciadpi" ])) || length(get_daemon_pids("ciadpi")) > 0)
-        push(list, "ciadpi");
-
-    if ((has_action("wdtt") && has_bin([ "/usr/bin/qwdtt-client", "/usr/bin/qwdtt", "/usr/bin/wdtt" ])) || length(get_daemon_pids("wdtt")) > 0)
-        push(list, "wdtt");
-
-    if ((has_action("olcrtc") && has_bin([ "/usr/bin/olcrtc" ])) || length(get_daemon_pids("olcrtc")) > 0)
-        push(list, "olcrtc");
-
-    let has_native_ts = false;
-    for (let srv in servers) {
-        if (srv.enabled != "0" && srv.protocol == "tailscale" && srv.tailscale_mode == "native") {
-            has_native_ts = true;
-            break;
-        }
-    }
-    if ((has_native_ts && has_bin([ "/usr/sbin/tailscaled", "/usr/bin/tailscaled" ])) || length(get_daemon_pids("tailscale")) > 0)
-        push(list, "tailscale");
 
     push(list, "dnsmasq");
     if (length(get_daemon_pids("AdGuardHome")) > 0)
@@ -534,7 +453,7 @@ function get_fd_stats(daemon_uptimes) {
 
 function get_orphan_processes() {
     let orphans = [];
-    let tracked = [ "curl", "nfqws", "nfqws2", "ciadpi" ];
+    let tracked = [ "curl" ];
     let proc_dir = fs.opendir("/proc");
     if (proc_dir) {
         let ent;
@@ -621,7 +540,7 @@ function analyze_incidents_and_logs() {
             wan_flaps++;
         if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
             wan_flaps++;
-        if ((index(l, "sing-box") >= 0 || index(l, "tachyon-core") >= 0) &&
+        if (index(l, "tachyon-core") >= 0 &&
             (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
             engine_crashes++;
         if (index(l, "dnsmasq") >= 0 &&
@@ -719,7 +638,7 @@ function compute_stability_score(incidents, memory, servers, jobs, daemons) {
     let penalties = [];
 
     // 1. Process health: engine and (if enabled) watchdog must be running
-    if (!daemons["tachyon-core"]?.running && !daemons["sing-box"]?.running) {
+    if (!daemons["tachyon-core"]?.running) {
         score -= 40;
         push(penalties, "Routing engine is not running (-40)");
     }

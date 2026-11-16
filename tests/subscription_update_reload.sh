@@ -80,9 +80,9 @@ exit(ARGV[0] == "validate-runtime" ? 0 : 64);
 write_stub "$FAKE_LIB/tachyon_core/runtime.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
 if (mode == "init-config")
-    record("singbox/runtime:init-config:" + as_string(ARGV[1]) + ":" + as_string(ARGV[2]) + ":" + as_string(ARGV[3]));
+    record("tachyon_core/runtime:init-config:" + as_string(ARGV[1]) + ":" + as_string(ARGV[2]) + ":" + as_string(ARGV[3]));
 else
-    record("singbox/runtime:" + mode);
+    record("tachyon_core/runtime:" + mode);
 if (mode == "configure-service" || mode == "init-config")
     exit(0);
 exit(64);
@@ -90,7 +90,7 @@ exit(64);
 
 write_stub "$FAKE_LIB/tachyon_core/priority.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
-record("singbox/priority:" + mode);
+record("tachyon_core/priority:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
     exit(0);
 exit(64);
@@ -98,7 +98,7 @@ exit(64);
 
 write_stub "$FAKE_LIB/tachyon_core/dns_failover.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
-record("singbox/dns_failover:" + mode);
+record("tachyon_core/dns_failover:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
     exit(0);
 exit(64);
@@ -139,18 +139,18 @@ const fs = require("fs");
 const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
 
 // Happy path: SIGHUP succeeds, so reload-core-runtime is NOT called.
-// Neither helper worker is stopped before it: DNS failover probes the sing-box
+// Neither helper worker is stopped before it: DNS failover probes the tachyon-core
 // DNS listener, which stays bound across an in-place reload, and Priority's
 // start-runtime stops its previous worker by itself (issue #119).
 const expected = [
   "subscription/cache:update-request",
   "server/service:prepare-all-defaults",
   "config/validator:validate-runtime",
-  "singbox/runtime:configure-service",
+  "tachyon_core/runtime:configure-service",
   "service/state:tachyon-core-service-runtime-pid",
-  "singbox/runtime:init-config:0:1:1",
+  "tachyon_core/runtime:init-config:0:1:1",
   "service/state:sighup-core-runtime",
-  "singbox/priority:start-runtime",
+  "tachyon_core/priority:start-runtime",
   "service/state:write-current-reload-state-clean",
   "service/state:run-pending-reload-if-requested"
 ];
@@ -175,7 +175,7 @@ if (calls.includes("service/state:reload-core-runtime")) {
 // An ordered "expected" list does not catch extra calls - it only requires the
 // listed ones to appear in order. DNS failover is the one that must be absent
 // entirely: it is the churn the graceful path removed.
-const dns_failover_calls = calls.filter((c) => c.startsWith("singbox/dns_failover:"));
+const dns_failover_calls = calls.filter((c) => c.startsWith("tachyon_core/dns_failover:"));
 if (dns_failover_calls.length > 0) {
   console.error("DNS failover must not be cycled on the graceful path, got:");
   console.error(dns_failover_calls.join("\n"));
@@ -207,7 +207,7 @@ FAKE_SIGHUP_FAILS=1 \
     FAKE_SUBSCRIPTION_UPDATE_SUMMARY="1 0 0 0" \
     ucode -L "$REAL_LIB" "$UPDATES_UC" subscription-update-if-due
 
-# When SIGHUP fails, reload_sing_box_runtime must be called as the fallback.
+# When SIGHUP fails, reload_core_runtime must be called as the fallback.
 grep -Fq 'service/state:sighup-core-runtime' "$sighup_fail_log" ||
   fail "sighup-core-runtime must be attempted even when FAKE_SIGHUP_FAILS=1"
 grep -Fq 'service/state:reload-core-runtime' "$sighup_fail_log" ||
@@ -222,11 +222,11 @@ const calls = fs.readFileSync(process.argv[2], "utf8").trim().split(/\n+/);
 
 const fallback = [
   "service/state:sighup-core-runtime",
-  "singbox/priority:stop-runtime",
-  "singbox/dns_failover:stop-runtime",
+  "tachyon_core/priority:stop-runtime",
+  "tachyon_core/dns_failover:stop-runtime",
   "service/state:reload-core-runtime",
-  "singbox/dns_failover:start-runtime",
-  "singbox/priority:start-runtime",
+  "tachyon_core/dns_failover:start-runtime",
+  "tachyon_core/priority:start-runtime",
 ];
 
 let position = -1;
@@ -244,8 +244,8 @@ JS
 unchanged_log="$WORK_DIR/unchanged.log"
 run_update "0 0 1 0" "$unchanged_log"
 
-if grep -Eq 'server/service|config/validator|singbox/runtime|singbox/priority|singbox/dns_failover|reload-core-runtime|write-current-reload-state-clean' "$unchanged_log"; then
-  fail "unchanged subscription update must not rebuild or reload sing-box"
+if grep -Eq 'server/service|config/validator|tachyon_core/runtime|tachyon_core/priority|tachyon_core/dns_failover|reload-core-runtime|write-current-reload-state-clean' "$unchanged_log"; then
+  fail "unchanged subscription update must not rebuild or reload tachyon-core"
 fi
 
 printf 'subscription update reload checks passed\n'

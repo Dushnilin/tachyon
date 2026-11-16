@@ -39,7 +39,7 @@ if (core_ip.is_cloudflare_shared_cidr("162.159.128.0/20")) exit(6);
 if (core_ip.is_cloudflare_shared_cidr("1.1.1.1/32")) exit(7);
 ' || fail "core.ip is_cloudflare_shared_cidr validation failed"
 
-# 2. Test singbox.generator_routes load_community_subnet_cidrs filtering and voice extraction
+# 2. Test tachyon_core.generator_routes load_community_subnet_cidrs filtering and voice extraction
 # Create temporary /tmp/tachyon-core/rulesets if needed or link to TMP_DIR
 mkdir -p /tmp/tachyon-core/rulesets
 cp "$DISCORD_LST" /tmp/tachyon-core/rulesets/community-subnets-discord.lst
@@ -73,9 +73,9 @@ if (length(discord_cf) != 4) {
 // Ensure non-discord service is NOT stripped of Cloudflare CIDRs
 let other_cidrs = generator_routes.load_community_subnet_cidrs("other");
 if (length(other_cidrs) != 2) exit(5);
-' || fail "singbox.generator_routes load_community_subnet_cidrs filtering failed"
+' || fail "tachyon_core.generator_routes load_community_subnet_cidrs filtering failed"
 
-# 3. Test sing-box route generation for Discord section
+# 3. Test tachyon-core route generation for Discord section
 # Keep the test community-subnets-discord.lst present
 cp "$DISCORD_LST" /tmp/tachyon-core/rulesets/community-subnets-discord.lst
 
@@ -148,14 +148,14 @@ if (!found_voice_udp) {
     exit(5);
 }
 
-fs.writefile("/tmp/test_discord_singbox.json", sprintf("%J", config));
-' || fail "sing-box Discord route generation verification failed"
+fs.writefile(getenv("WORK_DIR") + "/test_discord_core.json", sprintf("%J", config));
+' || fail "tachyon-core Discord route generation verification failed"
 
-# Verify sing-box parses the generated route rules without error (if binary is present)
-if command -v sing-box >/dev/null 2>&1; then
-    sing-box check -c /tmp/test_discord_singbox.json || fail "sing-box check failed on generated Discord voice rules"
+# Verify tachyon-core parses the generated route rules without error (if binary is present)
+if command -v tachyon-core >/dev/null 2>&1; then
+    tachyon-core check -c "$WORK_DIR/test_discord_core.json" || fail "tachyon-core check failed on generated Discord voice rules"
 fi
-rm -f /tmp/test_discord_singbox.json
+rm -f "$WORK_DIR/test_discord_core.json"
 
 # Clean up /tmp test files
 rm -f /tmp/tachyon-core/rulesets/community-subnets-discord.lst /tmp/tachyon-core/rulesets/community-subnets-other.lst
@@ -176,7 +176,7 @@ if (!has_104) {
     warn("Fallback voice subnets missing 104.16.0.0/12\n");
     exit(2);
 }
-' || fail "singbox.generator_routes fallback voice subnets failed"
+' || fail "tachyon_core.generator_routes fallback voice subnets failed"
 
 # 5. Test core.ip against discord file lines
 ucode -L "$LIB_DIR" -e '

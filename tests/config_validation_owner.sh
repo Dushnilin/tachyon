@@ -35,7 +35,7 @@ grep -Fq 'text_list_values,' "$RULE_CONFIG" ||
 grep -Fq 'rule_config.text_list_values(value, "comma-space")' "$VALIDATOR" ||
   fail "domain validation must use the shared comment-aware text parser"
 grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$TACHYON_LIB/tachyon_core/generator_routes.uc" ||
-  fail "sing-box domain generation must use the shared comment-aware text parser"
+  fail "tachyon-core domain generation must use the shared comment-aware text parser"
 grep -Fq 'return appendUniqueDomainTextValues(textValue, values);' "$SECTION_JS" ||
   fail "Domains field loading must preserve the original combined text"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|command_output\("uci' "$VALIDATOR" >/dev/null 2>&1; then

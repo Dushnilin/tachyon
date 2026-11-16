@@ -80,7 +80,7 @@ fi
 if [ -f "$TACHYON_BIN" ]; then
   # Extract commands from contract and verify they are present in command_spec
   MISSING=0
-  for cmd in get_status get_sing_box_status get_engine_status get_ui_capabilities get_ui_state \
+  for cmd in get_status get_tachyon_core_status get_engine_status get_ui_capabilities get_ui_state \
              job_list job_query job_cancel job_request_cancel job_gc \
              event_query event_tail event_stats event_clear event_record \
              known_good known_good_promote known_good_restore route_explain; do
@@ -92,5 +92,99 @@ if [ -f "$TACHYON_BIN" ]; then
   [ "$MISSING" -eq 0 ] || fail "Missing CLI command mappings in tachyon binary"
   printf 'PASS: All core contract CLI commands are mapped in tachyon binary\n'
 fi
+
+# 4. Cleanup contract: removed external providers must stay absent across contract, catalog, and modules
+# while core components & native transports remain supported.
+CONTRACT_FILE="$CONTRACT_FILE" ROOT_DIR="$ROOT_DIR" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const contract = JSON.parse(fs.readFileSync(process.env.CONTRACT_FILE, 'utf8'));
+const names = new Set(contract.methods.map((m) => m.name));
+
+const forbiddenMethods = [
+  'check_byedpi_runtime',
+  'check_zapret_runtime',
+  'check_zapret2_runtime',
+  'get_byedpi_status',
+  'get_olcrtc_status',
+  'get_tailscale_peers',
+  'get_tailscale_status',
+  'get_wdtt_status',
+  'get_zapret_status',
+  'get_zapret2_status',
+  'neutralize_zapret_defaults',
+  'tailscale_restart',
+  'validate_byedpi_strategy_json',
+  'validate_nfqws_strategy_json',
+  'validate_nfqws2_strategy_json',
+];
+for (const method of forbiddenMethods) {
+  if (names.has(method)) {
+    console.error(`Removed external provider RPC method still present in contract: ${method}`);
+    process.exit(1);
+  }
+}
+
+const root = process.env.ROOT_DIR;
+const catalogText = fs.readFileSync(path.join(root, 'tachyon/files/usr/lib/components/catalog.uc'), 'utf8');
+for (const removedResolver of [
+  'resolve_zapret_release',
+  'resolve_zapret2_release',
+  'resolve_byedpi_release',
+  'resolve_wdtt_release',
+  'resolve_olcrtc_release',
+]) {
+  if (catalogText.includes(removedResolver)) {
+    console.error(`Removed release resolver still present in catalog.uc: ${removedResolver}`);
+    process.exit(1);
+  }
+}
+for (const keptResolver of ['resolve_tachyon_release', 'resolve_torrserver_release']) {
+  if (!catalogText.includes(keptResolver)) {
+    console.error(`Required resolver missing from catalog.uc: ${keptResolver}`);
+    process.exit(1);
+  }
+}
+
+const removedProviderDirs = [
+  'providers/byedpi',
+  'providers/zapret',
+  'providers/zapret2',
+  'providers/nfqueue',
+  'providers/olcrtc',
+  'providers/wdtt',
+  'providers/tailscale',
+];
+for (const rel of removedProviderDirs) {
+  if (fs.existsSync(path.join(root, 'tachyon/files/usr/lib', rel))) {
+    console.error(`Removed provider directory still exists: ${rel}`);
+    process.exit(1);
+  }
+}
+
+const validatorText = fs.readFileSync(path.join(root, 'tachyon/files/usr/lib/config/validator.uc'), 'utf8');
+for (const keptAction of ['desync', 'csqtt', 'tailscale', 'fptn', 'hosts']) {
+  if (!validatorText.includes(`"${keptAction}"`)) {
+    console.error(`Kept action/feature missing from validator.uc: ${keptAction}`);
+    process.exit(1);
+  }
+}
+
+const installText = fs.readFileSync(path.join(root, 'install.sh'), 'utf8');
+const uninstallText = fs.readFileSync(path.join(root, 'uninstall.sh'), 'utf8');
+if (!installText.includes('tachyon-core')) {
+  console.error('install.sh must reference tachyon-core');
+  process.exit(1);
+}
+if (/pkg_install.*\b(zapret|zapret2|byedpi|olcrtc|qwdtt|tailscale)\b/.test(installText)) {
+  console.error('install.sh must not install removed external provider packages');
+  process.exit(1);
+}
+if (!uninstallText.includes('/etc/init.d/zapret') || !uninstallText.includes('/etc/init.d/olcrtc')) {
+  console.error('uninstall.sh must keep legacy provider cleanup');
+  process.exit(1);
+}
+NODE
 
 printf '=== ALL RPC CONTRACT TESTS PASSED ===\n'

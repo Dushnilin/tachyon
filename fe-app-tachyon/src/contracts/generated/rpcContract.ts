@@ -23,7 +23,6 @@ export const TACHYON_RPC_METHODS = [
   'ai_status',
   'ai_status_full',
   'apply_quick_fix',
-  'check_byedpi_runtime',
   'check_dns_available',
   'check_dns_leak',
   'check_fakeip',
@@ -34,11 +33,9 @@ export const TACHYON_RPC_METHODS = [
   'check_nft',
   'check_nft_rules',
   'check_proxy',
-  'check_sing_box',
-  'check_sing_box_logs',
+  'check_tachyon_core',
+  'check_tachyon_core_logs',
   'check_tor_runtime',
-  'check_zapret2_runtime',
-  'check_zapret_runtime',
   'clash_api',
   'component_action',
   'component_action_async',
@@ -74,13 +71,10 @@ export const TACHYON_RPC_METHODS = [
   'engine_apply',
   'engine_features',
   'engine_info',
-  'engine_plan',
   'engine_reload',
   'engine_start',
   'engine_status',
   'engine_stop',
-  'engine_switch',
-  'engine_switch_back',
   'escalation_status',
   'event-clear',
   'event-query',
@@ -114,26 +108,19 @@ export const TACHYON_RPC_METHODS = [
   'generate_tls_keypair',
   'generate_warp',
   'generate_wg_keypair',
-  'get_byedpi_status',
   'get_engine_status',
   'get_lite_mode',
-  'get_olcrtc_status',
   'get_outbound_metadata',
   'get_router_network_env',
   'get_server_capabilities',
-  'get_sing_box_status',
   'get_status',
   'get_subscription_metadata',
   'get_system_info',
-  'get_tailscale_peers',
-  'get_tailscale_status',
+  'get_tachyon_core_status',
   'get_tls_certificate_sha256',
   'get_ui_capabilities',
   'get_ui_prefs',
   'get_ui_state',
-  'get_wdtt_status',
-  'get_zapret2_status',
-  'get_zapret_status',
   'global_check',
   'hosts_list_status',
   'hosts_list_update',
@@ -175,7 +162,6 @@ export const TACHYON_RPC_METHODS = [
   'luci_postinst',
   'main',
   'mcp',
-  'neutralize_zapret_defaults',
   'package_postinst',
   'package_prerm',
   'parental_quota_reset',
@@ -211,8 +197,8 @@ export const TACHYON_RPC_METHODS = [
   'set_lite_mode',
   'set_ui_prefs',
   'show_config',
-  'show_sing_box_config',
-  'show_sing_box_version',
+  'show_tachyon_core_config',
+  'show_tachyon_core_version',
   'show_version',
   'snapshot_delete',
   'snapshot_diff',
@@ -233,7 +219,6 @@ export const TACHYON_RPC_METHODS = [
   'subscription_update_status',
   'support-bundle',
   'support_bundle',
-  'tailscale_restart',
   'telegram',
   'telegram_diagnose',
   'telegram_start',
@@ -243,9 +228,6 @@ export const TACHYON_RPC_METHODS = [
   'trace_rules',
   'ui_action_ack',
   'uninstall',
-  'validate_byedpi_strategy_json',
-  'validate_nfqws2_strategy_json',
-  'validate_nfqws_strategy_json',
   'wan_failover_check',
   'wan_failover_status',
   'watchdog',
@@ -316,11 +298,6 @@ export interface ApplyquickfixParams {
 
 export type ApplyquickfixResult = Record<string, unknown>;
 
-/** check-byedpi-runtime (diagnostics/runtime.uc) */
-export type CheckbyedpiruntimeParams = Record<string, never>;
-
-export type CheckbyedpiruntimeResult = Record<string, unknown>;
-
 /** check-dns-available (diagnostics/runtime.uc) */
 export type CheckdnsavailableParams = Record<string, never>;
 
@@ -374,30 +351,20 @@ export type CheckproxyParams = Record<string, never>;
 
 export type CheckproxyResult = Record<string, unknown>;
 
-/** check-sing-box (diagnostics/runtime.uc) */
-export type ChecksingboxParams = Record<string, never>;
+/** check-tachyon-core (diagnostics/runtime.uc) */
+export type ChecktachyoncoreParams = Record<string, never>;
 
-export type ChecksingboxResult = Record<string, unknown>;
+export type ChecktachyoncoreResult = Record<string, unknown>;
 
-/** check-sing-box-logs (diagnostics/runtime.uc) */
-export type ChecksingboxlogsParams = Record<string, never>;
+/** check-tachyon-core-logs (diagnostics/runtime.uc) */
+export type ChecktachyoncorelogsParams = Record<string, never>;
 
-export type ChecksingboxlogsResult = Record<string, unknown>;
+export type ChecktachyoncorelogsResult = Record<string, unknown>;
 
 /** check-tor-runtime (diagnostics/runtime.uc) */
 export type ChecktorruntimeParams = Record<string, never>;
 
 export type ChecktorruntimeResult = Record<string, unknown>;
-
-/** check-zapret2-runtime (diagnostics/runtime.uc) */
-export type Checkzapret2runtimeParams = Record<string, never>;
-
-export type Checkzapret2runtimeResult = Record<string, unknown>;
-
-/** check-zapret-runtime (diagnostics/runtime.uc) */
-export type CheckzapretruntimeParams = Record<string, never>;
-
-export type CheckzapretruntimeResult = Record<string, unknown>;
 
 /** clash-api (diagnostics/runtime.uc) */
 export interface ClashapiParams {
@@ -653,14 +620,6 @@ export type EngineinfoParams = Record<string, never>;
 
 export type EngineinfoResult = Record<string, unknown>;
 
-/** engine-plan (service/engine_runtime.uc) */
-export interface EngineplanParams {
-  /** positional argument 1 of engine_plan */
-  arg1?: string;
-}
-
-export type EngineplanResult = Record<string, unknown>;
-
 /** engine-reload (service/engine_runtime.uc) */
 export interface EnginereloadParams {
   /** positional argument 1 of engine_reload */
@@ -683,23 +642,6 @@ export type EnginestatusResult = Record<string, unknown>;
 export type EnginestopParams = Record<string, never>;
 
 export type EnginestopResult = Record<string, unknown>;
-
-/** engine-switch (service/engine_runtime.uc) */
-export interface EngineswitchParams {
-  /** positional argument 1 of engine_switch */
-  arg1?: string;
-  /** positional argument 2 of engine_switch */
-  arg2?: string;
-  /** positional argument 3 of engine_switch */
-  arg3?: string;
-}
-
-export type EngineswitchResult = Record<string, unknown>;
-
-/** engine-switch-back (service/engine_runtime.uc) */
-export type EngineswitchbackParams = Record<string, never>;
-
-export type EngineswitchbackResult = Record<string, unknown>;
 
 /** escalation-status (service/watchdog.uc) */
 export type EscalationstatusParams = Record<string, never>;
@@ -936,11 +878,6 @@ export type GeneratewgkeypairParams = Record<string, never>;
 
 export type GeneratewgkeypairResult = Record<string, unknown>;
 
-/** get-byedpi-status (diagnostics/runtime.uc) */
-export type GetbyedpistatusParams = Record<string, never>;
-
-export type GetbyedpistatusResult = Record<string, unknown>;
-
 /** get-engine-status (diagnostics/runtime.uc) */
 export type GetenginestatusParams = Record<string, never>;
 
@@ -950,11 +887,6 @@ export type GetenginestatusResult = Record<string, unknown>;
 export type GetlitemodeParams = Record<string, never>;
 
 export type GetlitemodeResult = Record<string, unknown>;
-
-/** get-olcrtc-status (diagnostics/runtime.uc) */
-export type GetolcrtcstatusParams = Record<string, never>;
-
-export type GetolcrtcstatusResult = Record<string, unknown>;
 
 /** get-outbound-metadata (diagnostics/runtime.uc) */
 export interface GetoutboundmetadataParams {
@@ -974,11 +906,6 @@ export type GetservercapabilitiesParams = Record<string, never>;
 
 export type GetservercapabilitiesResult = Record<string, unknown>;
 
-/** get-sing-box-status (diagnostics/runtime.uc) */
-export type GetsingboxstatusParams = Record<string, never>;
-
-export type GetsingboxstatusResult = Record<string, unknown>;
-
 /** get-status (diagnostics/runtime.uc) */
 export type GetstatusParams = Record<string, never>;
 
@@ -997,15 +924,10 @@ export type GetsysteminfoParams = Record<string, never>;
 
 export type GetsysteminfoResult = Record<string, unknown>;
 
-/** get-tailscale-peers (diagnostics/runtime.uc) */
-export type GettailscalepeersParams = Record<string, never>;
+/** get-tachyon-core-status (diagnostics/runtime.uc) */
+export type GettachyoncorestatusParams = Record<string, never>;
 
-export type GettailscalepeersResult = Record<string, unknown>;
-
-/** get-tailscale-status (diagnostics/runtime.uc) */
-export type GettailscalestatusParams = Record<string, never>;
-
-export type GettailscalestatusResult = Record<string, unknown>;
+export type GettachyoncorestatusResult = Record<string, unknown>;
 
 /** tls-certificate-sha256 (server/service.uc) */
 export interface Gettlscertificatesha256Params {
@@ -1029,21 +951,6 @@ export type GetuiprefsResult = Record<string, unknown>;
 export type GetuistateParams = Record<string, never>;
 
 export type GetuistateResult = Record<string, unknown>;
-
-/** get-wdtt-status (diagnostics/runtime.uc) */
-export type GetwdttstatusParams = Record<string, never>;
-
-export type GetwdttstatusResult = Record<string, unknown>;
-
-/** get-zapret2-status (diagnostics/runtime.uc) */
-export type Getzapret2statusParams = Record<string, never>;
-
-export type Getzapret2statusResult = Record<string, unknown>;
-
-/** get-zapret-status (diagnostics/runtime.uc) */
-export type GetzapretstatusParams = Record<string, never>;
-
-export type GetzapretstatusResult = Record<string, unknown>;
 
 /** global-check (diagnostics/runtime.uc) */
 export interface GlobalcheckParams {
@@ -1343,11 +1250,6 @@ export type McpParams = Record<string, never>;
 
 export type McpResult = Record<string, unknown>;
 
-/** neutralize-zapret-defaults (diagnostics/runtime.uc) */
-export type NeutralizezapretdefaultsParams = Record<string, never>;
-
-export type NeutralizezapretdefaultsResult = Record<string, unknown>;
-
 /** postinst (service/package.uc) */
 export type PackagepostinstParams = Record<string, never>;
 
@@ -1619,18 +1521,18 @@ export interface ShowconfigParams {
 
 export type ShowconfigResult = Record<string, unknown>;
 
-/** show-sing-box-config (diagnostics/runtime.uc) */
-export interface ShowsingboxconfigParams {
-  /** positional argument 1 of show_sing_box_config */
+/** show-tachyon-core-config (diagnostics/runtime.uc) */
+export interface ShowtachyoncoreconfigParams {
+  /** positional argument 1 of show_tachyon_core_config */
   arg1?: string;
 }
 
-export type ShowsingboxconfigResult = Record<string, unknown>;
+export type ShowtachyoncoreconfigResult = Record<string, unknown>;
 
-/** show-sing-box-version (diagnostics/runtime.uc) */
-export type ShowsingboxversionParams = Record<string, never>;
+/** show-tachyon-core-version (diagnostics/runtime.uc) */
+export type ShowtachyoncoreversionParams = Record<string, never>;
 
-export type ShowsingboxversionResult = Record<string, unknown>;
+export type ShowtachyoncoreversionResult = Record<string, unknown>;
 
 /** show-version (diagnostics/runtime.uc) */
 export type ShowversionParams = Record<string, never>;
@@ -1777,11 +1679,6 @@ export interface SupportbundleParams {
 
 export type SupportbundleResult = Record<string, unknown>;
 
-/** start-runtime (providers/tailscale/runtime.uc) */
-export type TailscalerestartParams = Record<string, never>;
-
-export type TailscalerestartResult = Record<string, unknown>;
-
 /**  (service/telegram.uc) */
 export interface TelegramParams {
   /** positional argument 1 of telegram */
@@ -1846,30 +1743,6 @@ export interface UninstallParams {
 
 export type UninstallResult = Record<string, unknown>;
 
-/** validate-byedpi-strategy-json (diagnostics/runtime.uc) */
-export interface ValidatebyedpistrategyjsonParams {
-  /** positional argument 1 of validate_byedpi_strategy_json */
-  arg1?: string;
-}
-
-export type ValidatebyedpistrategyjsonResult = Record<string, unknown>;
-
-/** validate-nfqws2-strategy-json (diagnostics/runtime.uc) */
-export interface Validatenfqws2strategyjsonParams {
-  /** positional argument 1 of validate_nfqws2_strategy_json */
-  arg1?: string;
-}
-
-export type Validatenfqws2strategyjsonResult = Record<string, unknown>;
-
-/** validate-nfqws-strategy-json (diagnostics/runtime.uc) */
-export interface ValidatenfqwsstrategyjsonParams {
-  /** positional argument 1 of validate_nfqws_strategy_json */
-  arg1?: string;
-}
-
-export type ValidatenfqwsstrategyjsonResult = Record<string, unknown>;
-
 /** check (service/wan_failover.uc) */
 export type WanfailovercheckParams = Record<string, never>;
 
@@ -1927,10 +1800,6 @@ export interface TachyonRpcRegistry {
     params: ApplyquickfixParams;
     result: ApplyquickfixResult;
   };
-  check_byedpi_runtime: {
-    params: CheckbyedpiruntimeParams;
-    result: CheckbyedpiruntimeResult;
-  };
   check_dns_available: {
     params: CheckdnsavailableParams;
     result: CheckdnsavailableResult;
@@ -1971,25 +1840,17 @@ export interface TachyonRpcRegistry {
     params: CheckproxyParams;
     result: CheckproxyResult;
   };
-  check_sing_box: {
-    params: ChecksingboxParams;
-    result: ChecksingboxResult;
+  check_tachyon_core: {
+    params: ChecktachyoncoreParams;
+    result: ChecktachyoncoreResult;
   };
-  check_sing_box_logs: {
-    params: ChecksingboxlogsParams;
-    result: ChecksingboxlogsResult;
+  check_tachyon_core_logs: {
+    params: ChecktachyoncorelogsParams;
+    result: ChecktachyoncorelogsResult;
   };
   check_tor_runtime: {
     params: ChecktorruntimeParams;
     result: ChecktorruntimeResult;
-  };
-  check_zapret2_runtime: {
-    params: Checkzapret2runtimeParams;
-    result: Checkzapret2runtimeResult;
-  };
-  check_zapret_runtime: {
-    params: CheckzapretruntimeParams;
-    result: CheckzapretruntimeResult;
   };
   clash_api: {
     params: ClashapiParams;
@@ -2131,10 +1992,6 @@ export interface TachyonRpcRegistry {
     params: EngineinfoParams;
     result: EngineinfoResult;
   };
-  engine_plan: {
-    params: EngineplanParams;
-    result: EngineplanResult;
-  };
   engine_reload: {
     params: EnginereloadParams;
     result: EnginereloadResult;
@@ -2150,14 +2007,6 @@ export interface TachyonRpcRegistry {
   engine_stop: {
     params: EnginestopParams;
     result: EnginestopResult;
-  };
-  engine_switch: {
-    params: EngineswitchParams;
-    result: EngineswitchResult;
-  };
-  engine_switch_back: {
-    params: EngineswitchbackParams;
-    result: EngineswitchbackResult;
   };
   escalation_status: {
     params: EscalationstatusParams;
@@ -2291,10 +2140,6 @@ export interface TachyonRpcRegistry {
     params: GeneratewgkeypairParams;
     result: GeneratewgkeypairResult;
   };
-  get_byedpi_status: {
-    params: GetbyedpistatusParams;
-    result: GetbyedpistatusResult;
-  };
   get_engine_status: {
     params: GetenginestatusParams;
     result: GetenginestatusResult;
@@ -2302,10 +2147,6 @@ export interface TachyonRpcRegistry {
   get_lite_mode: {
     params: GetlitemodeParams;
     result: GetlitemodeResult;
-  };
-  get_olcrtc_status: {
-    params: GetolcrtcstatusParams;
-    result: GetolcrtcstatusResult;
   };
   get_outbound_metadata: {
     params: GetoutboundmetadataParams;
@@ -2319,10 +2160,6 @@ export interface TachyonRpcRegistry {
     params: GetservercapabilitiesParams;
     result: GetservercapabilitiesResult;
   };
-  get_sing_box_status: {
-    params: GetsingboxstatusParams;
-    result: GetsingboxstatusResult;
-  };
   get_status: {
     params: GetstatusParams;
     result: GetstatusResult;
@@ -2335,13 +2172,9 @@ export interface TachyonRpcRegistry {
     params: GetsysteminfoParams;
     result: GetsysteminfoResult;
   };
-  get_tailscale_peers: {
-    params: GettailscalepeersParams;
-    result: GettailscalepeersResult;
-  };
-  get_tailscale_status: {
-    params: GettailscalestatusParams;
-    result: GettailscalestatusResult;
+  get_tachyon_core_status: {
+    params: GettachyoncorestatusParams;
+    result: GettachyoncorestatusResult;
   };
   get_tls_certificate_sha256: {
     params: Gettlscertificatesha256Params;
@@ -2358,18 +2191,6 @@ export interface TachyonRpcRegistry {
   get_ui_state: {
     params: GetuistateParams;
     result: GetuistateResult;
-  };
-  get_wdtt_status: {
-    params: GetwdttstatusParams;
-    result: GetwdttstatusResult;
-  };
-  get_zapret2_status: {
-    params: Getzapret2statusParams;
-    result: Getzapret2statusResult;
-  };
-  get_zapret_status: {
-    params: GetzapretstatusParams;
-    result: GetzapretstatusResult;
   };
   global_check: {
     params: GlobalcheckParams;
@@ -2535,10 +2356,6 @@ export interface TachyonRpcRegistry {
     params: McpParams;
     result: McpResult;
   };
-  neutralize_zapret_defaults: {
-    params: NeutralizezapretdefaultsParams;
-    result: NeutralizezapretdefaultsResult;
-  };
   package_postinst: {
     params: PackagepostinstParams;
     result: PackagepostinstResult;
@@ -2679,13 +2496,13 @@ export interface TachyonRpcRegistry {
     params: ShowconfigParams;
     result: ShowconfigResult;
   };
-  show_sing_box_config: {
-    params: ShowsingboxconfigParams;
-    result: ShowsingboxconfigResult;
+  show_tachyon_core_config: {
+    params: ShowtachyoncoreconfigParams;
+    result: ShowtachyoncoreconfigResult;
   };
-  show_sing_box_version: {
-    params: ShowsingboxversionParams;
-    result: ShowsingboxversionResult;
+  show_tachyon_core_version: {
+    params: ShowtachyoncoreversionParams;
+    result: ShowtachyoncoreversionResult;
   };
   show_version: {
     params: ShowversionParams;
@@ -2767,10 +2584,6 @@ export interface TachyonRpcRegistry {
     params: SupportbundleParams;
     result: SupportbundleResult;
   };
-  tailscale_restart: {
-    params: TailscalerestartParams;
-    result: TailscalerestartResult;
-  };
   telegram: {
     params: TelegramParams;
     result: TelegramResult;
@@ -2806,18 +2619,6 @@ export interface TachyonRpcRegistry {
   uninstall: {
     params: UninstallParams;
     result: UninstallResult;
-  };
-  validate_byedpi_strategy_json: {
-    params: ValidatebyedpistrategyjsonParams;
-    result: ValidatebyedpistrategyjsonResult;
-  };
-  validate_nfqws2_strategy_json: {
-    params: Validatenfqws2strategyjsonParams;
-    result: Validatenfqws2strategyjsonResult;
-  };
-  validate_nfqws_strategy_json: {
-    params: ValidatenfqwsstrategyjsonParams;
-    result: ValidatenfqwsstrategyjsonResult;
   };
   wan_failover_check: {
     params: WanfailovercheckParams;
@@ -2927,16 +2728,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
         },
       ],
     },
-    check_byedpi_runtime: {
-      name: 'check_byedpi_runtime',
-      cli_command: 'check_byedpi_runtime',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'check-byedpi-runtime (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
     check_dns_available: {
       name: 'check_dns_available',
       cli_command: 'check_dns_available',
@@ -3044,22 +2835,22 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 5000,
       params: [],
     },
-    check_sing_box: {
-      name: 'check_sing_box',
-      cli_command: 'check_sing_box',
+    check_tachyon_core: {
+      name: 'check_tachyon_core',
+      cli_command: 'check_tachyon_core',
       category: 'diagnostics',
       acl: 'read',
-      description: 'check-sing-box (diagnostics/runtime.uc)',
+      description: 'check-tachyon-core (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
     },
-    check_sing_box_logs: {
-      name: 'check_sing_box_logs',
-      cli_command: 'check_sing_box_logs',
+    check_tachyon_core_logs: {
+      name: 'check_tachyon_core_logs',
+      cli_command: 'check_tachyon_core_logs',
       category: 'diagnostics',
       acl: 'read',
-      description: 'check-sing-box-logs (diagnostics/runtime.uc)',
+      description: 'check-tachyon-core-logs (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -3070,26 +2861,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'diagnostics',
       acl: 'read',
       description: 'check-tor-runtime (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    check_zapret2_runtime: {
-      name: 'check_zapret2_runtime',
-      cli_command: 'check_zapret2_runtime',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'check-zapret2-runtime (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    check_zapret_runtime: {
-      name: 'check_zapret_runtime',
-      cli_command: 'check_zapret_runtime',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'check-zapret-runtime (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -3643,23 +3414,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 5000,
       params: [],
     },
-    engine_plan: {
-      name: 'engine_plan',
-      cli_command: 'engine_plan',
-      category: 'system',
-      acl: 'read',
-      description: 'engine-plan (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of engine_plan',
-        },
-      ],
-    },
     engine_reload: {
       name: 'engine_reload',
       cli_command: 'engine_reload',
@@ -3703,45 +3457,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'system',
       acl: 'write',
       description: 'engine-stop (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 60000,
-      params: [],
-    },
-    engine_switch: {
-      name: 'engine_switch',
-      cli_command: 'engine_switch',
-      category: 'system',
-      acl: 'write',
-      description: 'engine-switch (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 60000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of engine_switch',
-        },
-        {
-          name: 'arg2',
-          type: 'string',
-          required: false,
-          description: 'positional argument 2 of engine_switch',
-        },
-        {
-          name: 'arg3',
-          type: 'string',
-          required: false,
-          description: 'positional argument 3 of engine_switch',
-        },
-      ],
-    },
-    engine_switch_back: {
-      name: 'engine_switch_back',
-      cli_command: 'engine_switch_back',
-      category: 'system',
-      acl: 'write',
-      description: 'engine-switch-back (service/engine_runtime.uc)',
       async: false,
       timeout_ms: 60000,
       params: [],
@@ -4258,16 +3973,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 60000,
       params: [],
     },
-    get_byedpi_status: {
-      name: 'get_byedpi_status',
-      cli_command: 'get_byedpi_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-byedpi-status (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
     get_engine_status: {
       name: 'get_engine_status',
       cli_command: 'get_engine_status',
@@ -4284,16 +3989,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'system',
       acl: 'read',
       description: 'get-lite-mode (service/ui.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_olcrtc_status: {
-      name: 'get_olcrtc_status',
-      cli_command: 'get_olcrtc_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-olcrtc-status (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -4335,16 +4030,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 5000,
       params: [],
     },
-    get_sing_box_status: {
-      name: 'get_sing_box_status',
-      cli_command: 'get_sing_box_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-sing-box-status (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
     get_status: {
       name: 'get_status',
       cli_command: 'get_status',
@@ -4382,22 +4067,12 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 5000,
       params: [],
     },
-    get_tailscale_peers: {
-      name: 'get_tailscale_peers',
-      cli_command: 'get_tailscale_peers',
+    get_tachyon_core_status: {
+      name: 'get_tachyon_core_status',
+      cli_command: 'get_tachyon_core_status',
       category: 'diagnostics',
       acl: 'read',
-      description: 'get-tailscale-peers (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_tailscale_status: {
-      name: 'get_tailscale_status',
-      cli_command: 'get_tailscale_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-tailscale-status (diagnostics/runtime.uc)',
+      description: 'get-tachyon-core-status (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -4445,36 +4120,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'system',
       acl: 'read',
       description: 'get-ui-state (service/ui.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_wdtt_status: {
-      name: 'get_wdtt_status',
-      cli_command: 'get_wdtt_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-wdtt-status (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_zapret2_status: {
-      name: 'get_zapret2_status',
-      cli_command: 'get_zapret2_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-zapret2-status (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_zapret_status: {
-      name: 'get_zapret_status',
-      cli_command: 'get_zapret_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-zapret-status (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -5118,16 +4763,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       timeout_ms: 60000,
       params: [],
     },
-    neutralize_zapret_defaults: {
-      name: 'neutralize_zapret_defaults',
-      cli_command: 'neutralize_zapret_defaults',
-      category: 'diagnostics',
-      acl: 'write',
-      description: 'neutralize-zapret-defaults (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 60000,
-      params: [],
-    },
     package_postinst: {
       name: 'package_postinst',
       cli_command: 'package_postinst',
@@ -5722,12 +5357,12 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
         },
       ],
     },
-    show_sing_box_config: {
-      name: 'show_sing_box_config',
-      cli_command: 'show_sing_box_config',
+    show_tachyon_core_config: {
+      name: 'show_tachyon_core_config',
+      cli_command: 'show_tachyon_core_config',
       category: 'diagnostics',
       acl: 'read',
-      description: 'show-sing-box-config (diagnostics/runtime.uc)',
+      description: 'show-tachyon-core-config (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [
@@ -5735,16 +5370,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           name: 'arg1',
           type: 'string',
           required: false,
-          description: 'positional argument 1 of show_sing_box_config',
+          description: 'positional argument 1 of show_tachyon_core_config',
         },
       ],
     },
-    show_sing_box_version: {
-      name: 'show_sing_box_version',
-      cli_command: 'show_sing_box_version',
+    show_tachyon_core_version: {
+      name: 'show_tachyon_core_version',
+      cli_command: 'show_tachyon_core_version',
       category: 'diagnostics',
       acl: 'read',
-      description: 'show-sing-box-version (diagnostics/runtime.uc)',
+      description: 'show-tachyon-core-version (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -6062,16 +5697,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
         },
       ],
     },
-    tailscale_restart: {
-      name: 'tailscale_restart',
-      cli_command: 'tailscale_restart',
-      category: 'system',
-      acl: 'write',
-      description: 'start-runtime (providers/tailscale/runtime.uc)',
-      async: false,
-      timeout_ms: 60000,
-      params: [],
-    },
     telegram: {
       name: 'telegram',
       cli_command: 'telegram',
@@ -6206,57 +5831,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 1 of uninstall',
-        },
-      ],
-    },
-    validate_byedpi_strategy_json: {
-      name: 'validate_byedpi_strategy_json',
-      cli_command: 'validate_byedpi_strategy_json',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'validate-byedpi-strategy-json (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of validate_byedpi_strategy_json',
-        },
-      ],
-    },
-    validate_nfqws2_strategy_json: {
-      name: 'validate_nfqws2_strategy_json',
-      cli_command: 'validate_nfqws2_strategy_json',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'validate-nfqws2-strategy-json (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of validate_nfqws2_strategy_json',
-        },
-      ],
-    },
-    validate_nfqws_strategy_json: {
-      name: 'validate_nfqws_strategy_json',
-      cli_command: 'validate_nfqws_strategy_json',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'validate-nfqws-strategy-json (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of validate_nfqws_strategy_json',
         },
       ],
     },

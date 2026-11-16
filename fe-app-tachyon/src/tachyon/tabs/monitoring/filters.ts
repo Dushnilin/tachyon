@@ -214,19 +214,7 @@ export function isExcludedRoutingName(name: string, action = ''): boolean {
   ) {
     return false;
   }
-  if (
-    act === 'zapret' ||
-    act === 'zapret2' ||
-    act === 'byedpi' ||
-    act === 'desync' ||
-    act === 'wdtt' ||
-    act === 'olcrtc' ||
-    lower.includes('zapret') ||
-    lower.includes('byedpi') ||
-    lower.includes('desync') ||
-    lower.includes('wdtt') ||
-    lower.includes('olcrtc')
-  ) {
+  if (act === 'desync' || lower.includes('desync')) {
     return false;
   }
   return (
@@ -274,8 +262,6 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
     'fallback-dns-server': 'DNS',
     'fakeip-dns-server': 'DNS',
     'tachyon-failover': 'Failover',
-    'zapret-out': 'Zapret',
-    'zapret2-out': 'Zapret2',
   };
   const serverMap: Record<string, string> = {};
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
@@ -297,14 +283,7 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       ]);
     });
 
-  const DPI_SECTION_ACTIONS = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
+  const DPI_SECTION_ACTIONS = new Set(['desync']);
 
   sections
     .filter((section) => section['.type'] === 'section')
@@ -322,16 +301,8 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
 
       const isDpiSection =
         DPI_SECTION_ACTIONS.has(action) ||
-        lowerName.includes('zapret') ||
-        lowerDisplayName.includes('zapret') ||
-        lowerName.includes('byedpi') ||
-        lowerDisplayName.includes('byedpi') ||
         lowerName.includes('desync') ||
-        lowerDisplayName.includes('desync') ||
-        lowerName.includes('wdtt') ||
-        lowerDisplayName.includes('wdtt') ||
-        lowerName.includes('olcrtc') ||
-        lowerDisplayName.includes('olcrtc');
+        lowerDisplayName.includes('desync');
 
       const typeFilter = getDashboardSectionTypeFilter();
       let isCategoryAllowed = true;

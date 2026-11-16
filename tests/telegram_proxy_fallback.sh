@@ -8,7 +8,7 @@ cat "$TACHYON_LIB/service/telegram.uc" "$TACHYON_LIB/service/telegram/"*.uc >"$T
 [ -f "$TG" ] || fail "telegram.uc not found"
 
 # 1. Proxy selection must verify the mixed port actually listens; a running
-#    sing-box with a failed inbound used to blackhole every bot request.
+#    tachyon-core with a failed inbound used to blackhole every bot request.
 grep -Fq 'function mixed_port_alive()' "$TG" ||
   fail "telegram.uc must define mixed_port_alive()"
 grep -Fq 'if (!mixed_port_alive()) {' "$TG" ||

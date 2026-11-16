@@ -381,57 +381,6 @@ function openwrt_release_series(path) {
     }
 }
 
-function updates_arch_package_version(package_name, package_arch) {
-    let version = str_remove_suffix(str_remove_suffix(package_name, ".ipk"), ".apk");
-    let prefixes = ["zapret2_", "zapret2-", "zapret_", "zapret-", "byedpi_", "byedpi-", "wdtt_", "wdtt-", "olcrtc_", "olcrtc-"];
-
-    for (let prefix in prefixes) {
-        if (str_startswith(version, prefix)) {
-            version = substr(version, length(prefix));
-            break;
-        }
-    }
-
-    package_arch = as_string(package_arch);
-    if (package_arch != "") {
-        version = str_remove_suffix(version, "_" + package_arch);
-        version = str_remove_suffix(version, "-" + package_arch);
-    }
-
-    print(version, "\n");
-}
-
-function updates_bundle_version(bundle_name, prefixes) {
-    let name = common.path_basename(bundle_name);
-
-    for (let prefix in prefixes) {
-        if (!str_startswith(name, prefix))
-            continue;
-
-        let rest = substr(name, length(prefix));
-        let separator = index(rest, "_");
-        if (separator <= 0)
-            continue;
-
-        let version = substr(rest, 0, separator);
-        if (str_startswith(version, "v"))
-            version = substr(version, 1);
-
-        print(version, "\n");
-        return;
-    }
-
-    print("\n");
-}
-
-function updates_zapret_bundle_version(bundle_name) {
-    updates_bundle_version(bundle_name, ["zapret_v", "zapret_"]);
-}
-
-function updates_zapret2_bundle_version(bundle_name) {
-    updates_bundle_version(bundle_name, ["zapret2_v", "zapret2_", "zapret_v", "zapret_"]);
-}
-
 function first_version_token(value) {
     value = as_string(value);
     for (let i = 0; i < length(value); i++) {
@@ -449,33 +398,18 @@ function strip_plus_metadata(value) {
     return plus >= 0 ? substr(value, 0, plus) : value;
 }
 
-function strip_revision_suffix(value) {
-    let matched = match(as_string(value), /^(.*)-r[0-9]+$/);
-    return matched ? matched[1] : as_string(value);
-}
-
 function strip_tachyon_suffix(value) {
     let matched = match(as_string(value), /^(.*)-tachyon\.[0-9]+$/);
     return matched ? matched[1] : as_string(value);
 }
 
-function updates_normalize_sing_box_version(value) {
+function updates_normalize_core_version(value) {
     value = as_string(value);
     if (str_startswith(value, "v") || str_startswith(value, "V"))
         value = substr(value, 1);
 
     value = strip_tachyon_suffix(value);
     print(first_version_token(strip_plus_metadata(value)), "\n");
-}
-
-function updates_normalize_zapret_version(value) {
-    value = as_string(value);
-    if (str_startswith(value, "v"))
-        value = substr(value, 1);
-
-    value = strip_revision_suffix(value);
-    value = strip_plus_metadata(value);
-    print(first_version_token(value), "\n");
 }
 
 function tachyon_normalized_release_version(value) {
@@ -751,48 +685,9 @@ function updates_arch_candidates(arch_list) {
     print(target, "\t", join(" ", candidates), "\n");
 }
 
-function sing_box_extended_arch_suffix(host_arch, distrib_arch) {
-    host_arch = as_string(host_arch);
-    distrib_arch = as_string(distrib_arch);
-
-    if (str_contains(distrib_arch, "mipsel") || str_contains(distrib_arch, "mipsle"))
-        host_arch = "mipsel";
-    else if (str_contains(distrib_arch, "mips64el") || str_contains(distrib_arch, "mips64le"))
-        host_arch = "mips64el";
-
-    if (host_arch == "aarch64")
-        print("arm64\n");
-    else if (str_startswith(host_arch, "armv7"))
-        print("armv7\n");
-    else if (str_startswith(host_arch, "armv6"))
-        print("armv6\n");
-    else if (host_arch == "x86_64")
-        print("amd64\n");
-    else if (host_arch == "i386" || host_arch == "i486" || host_arch == "i586" || host_arch == "i686" || host_arch == "i386_pentium4" || host_arch == "x86" || str_contains(distrib_arch, "i386") || distrib_arch == "x86")
-        print("386\n");
-    else if (host_arch == "mips")
-        print("mips-softfloat\n");
-    else if (host_arch == "mipsel" || host_arch == "mipsle")
-        print("mipsle-softfloat\n");
-    else if (host_arch == "mips64")
-        print("mips64\n");
-    else if (host_arch == "mips64el" || host_arch == "mips64le")
-        print("mips64le\n");
-    else if (host_arch == "riscv64")
-        print("riscv64\n");
-    else if (host_arch == "s390x")
-        print("s390x\n");
-    else
-        exit(1);
-}
-
-// tachyon-core names its assets after the Rust target triple, not after Go's
-// GOARCH: the release ships aarch64-musl where sing-box-extended ships arm64,
-// and x86_64-musl where that one ships amd64. Reusing the sing-box suffix
-// resolves to nothing and the install fails with "no asset".
-//
-// OpenWrt is musl throughout, so only the musl names are ever produced - taking
-// the gnu build onto a musl router would not link.
+// tachyon-core names its assets after the Rust target triple (e.g.
+// aarch64-musl, x86_64-musl). OpenWrt is musl throughout, so only the musl
+// targets are selected.
 function tachyon_core_arch_suffix(host_arch, distrib_arch) {
     host_arch = as_string(host_arch);
     distrib_arch = as_string(distrib_arch);
@@ -828,66 +723,6 @@ function tachyon_core_arch_suffix(host_arch, distrib_arch) {
         print("riscv64-musl\n");
     else
         exit(1);
-}
-
-function sing_box_extended_asset_url(arch_suffix, _unused, compressed) {
-    let release = object_or_empty(read_stdin_json());
-
-    if (as_string(compressed) != "1")
-        exit(1);
-
-    arch_suffix = as_string(arch_suffix);
-    if (arch_suffix == "")
-        exit(1);
-
-    let url = release_asset_url_by_suffix_from_release(release, "linux-" + arch_suffix + "-compressed.tar.gz");
-    if (url != "") {
-        print(url, "\n");
-        return;
-    }
-
-    exit(1);
-}
-
-function sing_box_lx_asset_url(arch_suffix) {
-    let release = object_or_empty(read_stdin_json());
-
-    arch_suffix = as_string(arch_suffix);
-    if (arch_suffix == "")
-        exit(1);
-
-    let url = release_asset_url_by_suffix_from_release(release, "linux-" + arch_suffix + ".tar.gz");
-    if (url != "") {
-        print(url, "\n");
-        return;
-    }
-
-    exit(1);
-}
-
-function sing_box_extended_package_asset_url(distrib_arch, asset_ext) {
-    let release = object_or_empty(read_stdin_json());
-    let suffix;
-
-    distrib_arch = as_string(distrib_arch);
-    asset_ext = as_string(asset_ext);
-    if (distrib_arch == "" || asset_ext == "")
-        exit(1);
-
-    suffix = "_openwrt_" + distrib_arch + "." + asset_ext;
-    for (let asset in array_or_empty(release.assets)) {
-        if (type(asset) != "object")
-            continue;
-
-        let name = as_string(asset.name || "");
-        let url = as_string(asset.browser_download_url || "");
-        if (url != "" && str_startswith(name, "sing-box-extended_") && str_endswith(name, suffix)) {
-            print(url, "\n");
-            return;
-        }
-    }
-
-    exit(1);
 }
 
 function updates_opkg_package_installed(package_name) {
@@ -954,12 +789,6 @@ function updates_apk_policy_version() {
         print(str_remove_suffix(as_string(fields[0]), ":"), "\n");
         return;
     }
-}
-
-function byedpi_asset_matches(name, arch, ext) {
-    return (str_startswith(name, "byedpi_") || str_startswith(name, "byedpi-")) &&
-        str_endswith(name, "." + ext) &&
-        (str_contains(name, "_" + arch + "." + ext) || str_contains(name, "-" + arch + "." + ext));
 }
 
 function release_asset_matches_arch(name, prefix, arch, ext) {
@@ -1040,124 +869,8 @@ function release_select_arch_suffix_asset(asset_ext, arch_candidates) {
     }
 }
 
-function select_byedpi_asset_from_release(release, asset_ext, arch_candidates) {
-    for (let arch in split(as_string(arch_candidates), " ")) {
-        if (arch == "")
-            continue;
-        for (let asset in array_or_empty(release.assets)) {
-            if (type(asset) != "object")
-                continue;
-            let name = as_string(asset.name || "");
-            let url = as_string(asset.browser_download_url || "");
-            if (url != "" && byedpi_asset_matches(name, arch, asset_ext)) {
-                print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-function byedpi_select_asset(series, asset_ext, arch_candidates) {
-    let releases = releases_array_or_wrapped(read_stdin_json());
-
-    for (let pass = 0; pass < 2; pass++) {
-        if (pass == 0 && as_string(series) == "")
-            continue;
-
-        for (let release in releases) {
-            if (type(release) != "object")
-                continue;
-            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
-                continue;
-            if (pass == 0 && length(releases) > 1) {
-                let tag = as_string(release.tag_name || "");
-                let name = as_string(release.name || "");
-                if (!str_contains(tag, series) && !str_contains(name, series))
-                    continue;
-            }
-            if (select_byedpi_asset_from_release(release, asset_ext, arch_candidates))
-                return;
-        }
-    }
-}
-
-function wdtt_select_asset(series, asset_ext, arch_candidates) {
-    let releases = releases_array_or_wrapped(read_stdin_json());
-
-    for (let pass = 0; pass < 2; pass++) {
-        if (pass == 0 && as_string(series) == "")
-            continue;
-
-        for (let release in releases) {
-            if (type(release) != "object")
-                continue;
-            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
-                continue;
-            if (pass == 0 && length(releases) > 1) {
-                let tag = as_string(release.tag_name || "");
-                let name = as_string(release.name || "");
-                if (!str_contains(tag, series) && !str_contains(name, series))
-                    continue;
-            }
-            for (let arch in split(as_string(arch_candidates), " ")) {
-                if (arch == "")
-                    continue;
-                for (let asset in array_or_empty(release.assets)) {
-                    if (type(asset) != "object")
-                        continue;
-                    let name = as_string(asset.name || "");
-                    let url = as_string(asset.browser_download_url || "");
-                    if (url != "" && release_asset_matches_arch(name, "wdtt", arch, asset_ext)) {
-                        print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
-                        return;
-                    }
-                }
-            }
-        }
-    }
-}
-
-function olcrtc_select_asset(series, asset_ext, arch_candidates) {
-    let releases = releases_array_or_wrapped(read_stdin_json());
-
-    for (let pass = 0; pass < 2; pass++) {
-        if (pass == 0 && as_string(series) == "")
-            continue;
-
-        for (let release in releases) {
-            if (type(release) != "object")
-                continue;
-            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
-                continue;
-            if (pass == 0 && length(releases) > 1) {
-                let tag = as_string(release.tag_name || "");
-                let name = as_string(release.name || "");
-                if (!str_contains(tag, series) && !str_contains(name, series))
-                    continue;
-            }
-            for (let arch in split(as_string(arch_candidates), " ")) {
-                if (arch == "")
-                    continue;
-                for (let asset in array_or_empty(release.assets)) {
-                    if (type(asset) != "object")
-                        continue;
-                    let name = as_string(asset.name || "");
-                    let url = as_string(asset.browser_download_url || "");
-                    if (url != "" && release_asset_matches_arch(name, "olcrtc", arch, asset_ext)) {
-                        print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
-                        return;
-                    }
-                }
-            }
-        }
-    }
-}
-
 // GitHub orders /releases by created_at, not by version, so the first entry is
-// not the newest build: Leadaxe published lx.9 at 11:51 and lx.11 at 18:16 the
-// same day, and the API hands lx.9 back first. Comparing the tags here is
+// not guaranteed to be the newest build. Comparing the tags here is
 // deliberately in-process: core/helpers.uc owns version_compare but it is a CLI
 // dispatcher with no export list, and spawning it after read_stdin_json() leaves
 // the child with a consumed stdin and an empty result.
@@ -1209,27 +922,10 @@ function highest_release_tag(candidates) {
     return best;
 }
 
-function sing_box_extended_release_tag() {
-    let candidates = [];
-    for (let release in releases_array_or_wrapped(read_stdin_json())) {
-        if (type(release) != "object")
-            continue;
-        if (release.draft === true || release.prerelease === true)
-            continue;
-        let tag = as_string(release.tag_name || "");
-        let lowered = lc(tag);
-        if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
-            push(candidates, tag);
-    }
-    print(highest_release_tag(candidates), "\n");
-}
-
-// Tachyon's own core, packaged from github.com/Dushnilin/tachyon-core.
+// Tachyon's native routing core, packaged from github.com/Dushnilin/tachyon-core.
 //
 // The assets are named `tachyon-core-<arch>-<version>.tar.gz` with the binary
-// inside, so the arch is in the middle of the name rather than at the end the way
-// sing-box-lx spells it. That is why this cannot reuse the suffix matcher: an
-// arch-specific prefix is what has to be matched here.
+// inside, so an arch-specific prefix is matched here.
 const TACHYON_CORE_RELEASE_REPO = "Dushnilin/tachyon-core";
 
 function tachyon_core_release_tag() {
@@ -1241,8 +937,6 @@ function tachyon_core_release_tag() {
             continue;
         let tag = as_string(release.tag_name || "");
         let lowered = lc(tag);
-        // A core release carries no fork marker, so nothing else has to be
-        // excluded the way lx excludes alpha/beta/rc.
         if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
             push(candidates, tag);
     }
@@ -1331,21 +1025,6 @@ function tachyon_core_asset_url(arch_suffix, pkg_ext) {
     }
 
     exit(1);
-}
-
-function sing_box_lx_release_tag() {
-    let candidates = [];
-    for (let release in releases_array_or_wrapped(read_stdin_json())) {
-        if (type(release) != "object")
-            continue;
-        if (release.draft === true || release.prerelease === true)
-            continue;
-        let tag = as_string(release.tag_name || "");
-        let lowered = lc(tag);
-        if (tag != "" && str_contains(lowered, "-lx") && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc"))
-            push(candidates, tag);
-    }
-    print(highest_release_tag(candidates), "\n");
 }
 
 function text_first_chars(value, max_chars) {
@@ -1675,16 +1354,8 @@ else if (mode == "stdin-contains-ci")
     exit(stdin_contains_ci(ARGV[1]) ? 0 : 1);
 else if (mode == "stdin-first-line-last-field")
     stdin_first_line_last_field();
-else if (mode == "updates-arch-package-version")
-    updates_arch_package_version(ARGV[1], ARGV[2]);
-else if (mode == "updates-zapret-bundle-version")
-    updates_zapret_bundle_version(ARGV[1]);
-else if (mode == "updates-zapret2-bundle-version")
-    updates_zapret2_bundle_version(ARGV[1]);
-else if (mode == "updates-normalize-sing-box-version")
-    updates_normalize_sing_box_version(ARGV[1]);
-else if (mode == "updates-normalize-zapret-version")
-    updates_normalize_zapret_version(ARGV[1]);
+else if (mode == "updates-normalize-core-version")
+    updates_normalize_core_version(ARGV[1]);
 else if (mode == "tachyon-release-version-valid")
     exit(tachyon_release_version_valid(ARGV[1]) ? 0 : 1);
 else if (mode == "tachyon-release-version-compare")
@@ -1703,20 +1374,12 @@ else if (mode == "string-has-whitespace-field")
     exit(string_has_whitespace_field(ARGV[1]) ? 0 : 1);
 else if (mode == "file-whitespace-list")
     file_whitespace_list(ARGV[1]);
-else if (mode == "sing-box-extended-arch-suffix")
-    sing_box_extended_arch_suffix(ARGV[1], ARGV[2]);
 else if (mode == "tachyon-core-arch-suffix")
     tachyon_core_arch_suffix(ARGV[1], ARGV[2]);
-else if (mode == "sing-box-extended-asset-url")
-    sing_box_extended_asset_url(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "sing-box-lx-asset-url")
-    sing_box_lx_asset_url(ARGV[1]);
 else if (mode == "tachyon-core-asset-url")
     tachyon_core_asset_url(ARGV[1], ARGV[2]);
 else if (mode == "tachyon-core-release-tag")
     tachyon_core_release_tag();
-else if (mode == "sing-box-extended-package-asset-url")
-    sing_box_extended_package_asset_url(ARGV[1], ARGV[2]);
 else if (mode == "updates-opkg-package-installed")
     updates_opkg_package_installed(ARGV[1]);
 else if (mode == "updates-opkg-package-version")
@@ -1731,16 +1394,6 @@ else if (mode == "named-release-select-asset")
     named_release_select_asset(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "release-select-arch-suffix-asset")
     release_select_arch_suffix_asset(ARGV[1], ARGV[2]);
-else if (mode == "byedpi-select-asset")
-    byedpi_select_asset(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "wdtt-select-asset")
-    wdtt_select_asset(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "olcrtc-select-asset")
-    olcrtc_select_asset(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "sing-box-extended-release-tag")
-    sing_box_extended_release_tag();
-else if (mode == "sing-box-lx-release-tag")
-    sing_box_lx_release_tag();
 else if (mode == "file-last-nonblank-line")
     file_last_nonblank_line(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "file-flat-snippet")

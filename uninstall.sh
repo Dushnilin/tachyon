@@ -61,7 +61,7 @@ _tui_hline() {
 
 tui_banner() {
     printf '\n'
-    printf '  %s%s⚡ Tachyon Clean Uninstaller%s v%s\n' "$_c_cyan" "$_c_bold" "$_c_reset" "$UNINSTALLER_VERSION"
+    printf '  %s%sTachyon Clean Uninstaller%s v%s\n' "$_c_cyan" "$_c_bold" "$_c_reset" "$UNINSTALLER_VERSION"
     printf '  %sПолное удаление пакетов, сетевых правил и восстановление DNS%s\n' "$_c_dim" "$_c_reset"
     printf '  %s%s%s\n\n' "$_c_dim" "$(_tui_hline '─')" "$_c_reset"
 }
@@ -110,7 +110,7 @@ for _arg in "$@"; do
             printf 'Опции:\n'
             printf '  -y, --yes            Выполнить удаление без подтверждения\n'
             printf '  -p, --purge          Полное удаление вместе с резервными копиями конфига\n'
-            printf '      --keep-binaries  Не удалять бинарники sing-box / zapret / byedpi\n'
+            printf '      --keep-binaries  Не удалять бинарники tachyon-core\n'
             printf '  -h, --help           Показать эту справку\n\n'
             exit 0
             ;;
@@ -199,9 +199,9 @@ if [ -f "/etc/init.d/tachyon-core" ]; then
     tui_ok "Сервис tachyon-core остановлен и удален"
 fi
 
-# Stop and remove managed sing-box service if created by Tachyon
+# Silently stop and remove legacy init script if created by older Tachyon
 if [ -f "/etc/init.d/sing-box" ]; then
-    if grep -q "Tachyon managed sing-box" "/etc/init.d/sing-box" 2>/dev/null; then
+    if grep -q "Tachyon managed" "/etc/init.d/sing-box" 2>/dev/null; then
         if command -v timeout >/dev/null 2>&1; then
             timeout 8 /etc/init.d/sing-box stop >/dev/null 2>&1 || true
         else
@@ -209,27 +209,36 @@ if [ -f "/etc/init.d/sing-box" ]; then
         fi
         /etc/init.d/sing-box disable >/dev/null 2>&1 || true
         rm -f /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
-        tui_ok "Управляемый сервис sing-box остановлен и удален"
     fi
 fi
 
-# Stop and remove legacy steer / tachyon-steer-zapret services if present
-for _steer_svc in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer; do
-    if [ -f "$_steer_svc" ]; then
-        "$_steer_svc" stop >/dev/null 2>&1 || true
-        "$_steer_svc" disable >/dev/null 2>&1 || true
-        rm -f "$_steer_svc" 2>/dev/null || true
+# Stop and remove legacy standalone provider services if present
+for _legacy_svc in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc; do
+    if [ -f "$_legacy_svc" ]; then
+        "$_legacy_svc" stop >/dev/null 2>&1 || true
+        "$_legacy_svc" disable >/dev/null 2>&1 || true
+        rm -f "$_legacy_svc" 2>/dev/null || true
     fi
 done
-rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true
+MANAGED_TAILSCALE=0
+if [ -f "/etc/init.d/tailscale" ] && grep -q "Tachyon managed" "/etc/init.d/tailscale" 2>/dev/null; then
+    MANAGED_TAILSCALE=1
+    /etc/init.d/tailscale stop >/dev/null 2>&1 || true
+    /etc/init.d/tailscale disable >/dev/null 2>&1 || true
+    rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true
+fi
+rm -rf /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /etc/tachyon/tailscale/*/native /var/run/qwdtt 2>/dev/null || true
 
-# Terminate running DPI and proxy processes if any
+# Terminate running core and legacy processes if any
 killall -9 tachyon-core >/dev/null 2>&1 || true
 killall -9 sing-box >/dev/null 2>&1 || true
 killall -9 steer >/dev/null 2>&1 || true
 killall -9 nfqws >/dev/null 2>&1 || true
 killall -9 nfqws2 >/dev/null 2>&1 || true
 killall -9 ciadpi >/dev/null 2>&1 || true
+killall -9 qwdtt-client >/dev/null 2>&1 || true
+killall -9 wdtt >/dev/null 2>&1 || true
+killall -9 olcrtc >/dev/null 2>&1 || true
 killall -9 tachyon >/dev/null 2>&1 || true
 
 # Terminate running background Tachyon daemons (watchdog, telegram, failover, etc.)
@@ -240,7 +249,7 @@ ps 2>/dev/null | grep -E 'dns_failover|watchdog|telegram' | grep -v grep | awk '
     fi
 done
 
-tui_ok "Фоновые процессы sing-box, zapret, byedpi и сервисы Tachyon завершены"
+tui_ok "Фоновые процессы tachyon-core и сервисы Tachyon завершены"
 
 CURRENT_STEP=$((CURRENT_STEP + 1))
 
@@ -254,6 +263,13 @@ if command -v nft >/dev/null 2>&1; then
     nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
     nft delete table inet tachyon >/dev/null 2>&1 || true
     nft delete table inet steer >/dev/null 2>&1 || true
+    nft delete table inet tachyon_tailscale >/dev/null 2>&1 || true
+    nft delete table inet zapret >/dev/null 2>&1 || true
+    nft delete table ip zapret >/dev/null 2>&1 || true
+    nft delete table ip6 zapret >/dev/null 2>&1 || true
+    nft delete table inet zapret2 >/dev/null 2>&1 || true
+    nft delete table ip zapret2 >/dev/null 2>&1 || true
+    nft delete table ip6 zapret2 >/dev/null 2>&1 || true
     nft delete table ip tachyon >/dev/null 2>&1 || true
     nft delete table ip6 tachyon >/dev/null 2>&1 || true
     rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true
@@ -275,6 +291,12 @@ if command -v ip >/dev/null 2>&1; then
     ip route flush table tachyon >/dev/null 2>&1 || true
     ip route flush table 105 >/dev/null 2>&1 || true
     ip route flush table 100 >/dev/null 2>&1 || true
+    ip rule del to 100.64.0.0/10 priority 100 table 4247 >/dev/null 2>&1 || true
+    ip -6 rule del to fd7a:115c:a1e0::/48 priority 100 table 4247 >/dev/null 2>&1 || true
+    ip rule del fwmark 0x00200000/0x00ff0000 priority 90 table 4248 >/dev/null 2>&1 || true
+    ip route flush table 4247 >/dev/null 2>&1 || true
+    ip route flush table 4248 >/dev/null 2>&1 || true
+    ip -6 route flush table 4247 >/dev/null 2>&1 || true
 
     # Clean /etc/iproute2/rt_tables entry
     if [ -f "/etc/iproute2/rt_tables" ]; then
@@ -296,11 +318,12 @@ tui_step "$CURRENT_STEP" "$TOTAL_STEPS" "Восстановление конфи
 
 rm -f /etc/dnsmasq.d/tachyon*.conf 2>/dev/null || true
 rm -f /tmp/dnsmasq.d/tachyon*.conf 2>/dev/null || true
+rm -f /etc/tachyon/dnsmasq-tailscale.servers 2>/dev/null || true
 rm -rf /tmp/tachyon 2>/dev/null || true
 
 # Restore /etc/config/dhcp via UCI
 if command -v uci >/dev/null 2>&1 && [ -f "/etc/config/dhcp" ]; then
-    # Remove sing-box DNS 127.0.0.42
+    # Remove local core DNS 127.0.0.42
     uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.42" 2>/dev/null || true
 
     # Restore original servers from tachyon_server backup
@@ -365,8 +388,10 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
             apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
         fi
     done
-    if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
-        for _pkg in sing-box-extended sing-box-tiny; do
+    if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
+        _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
+        [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
+        for _pkg in $_legacy_pkgs; do
             if [ -f /etc/apk/world ]; then
                 sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
             fi
@@ -374,15 +399,25 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
                 apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
             fi
         done
-        if [ "$OPT_PURGE" -eq 1 ] || [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
+    fi
+    if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
+        _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
+        [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
+        for _pkg in $_legacy_pkgs; do
+            if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
+                opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
+            fi
+        done
+    fi
+    if [ "$OPT_PURGE" -eq 1 ]; then
+        for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
             if [ -f /etc/apk/world ]; then
-                sed -i -E '/^sing-box([><= ].*)?$/d' /etc/apk/world 2>/dev/null || true
+                sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
             fi
-            if apk info -e "sing-box" >/dev/null 2>&1; then
-                apk del --no-network --repositories-file /dev/null "sing-box" >/dev/null 2>&1 || true
+            if apk info -e "$_pkg" >/dev/null 2>&1; then
+                apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
             fi
-            rm -f /usr/bin/sing-box 2>/dev/null || true
-        fi
+        done
     fi
     tui_ok "Пакеты удалены через apk-tools"
 elif command -v opkg >/dev/null 2>&1; then
@@ -397,18 +432,33 @@ elif command -v opkg >/dev/null 2>&1; then
             opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
         fi
     done
-    if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
-        for _pkg in sing-box-extended sing-box-tiny; do
+    if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
+        _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
+        [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
+        for _pkg in $_legacy_pkgs; do
+            if [ -f /etc/apk/world ]; then
+                sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
+            fi
+            if apk info -e "$_pkg" >/dev/null 2>&1; then
+                apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
+            fi
+        done
+    fi
+    if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
+        _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
+        [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
+        for _pkg in $_legacy_pkgs; do
             if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
                 opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
             fi
         done
-        if [ "$OPT_PURGE" -eq 1 ] || [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
-            if opkg list-installed "sing-box" 2>/dev/null | grep -q "^sing-box "; then
-                opkg remove --force-depends --force-remove "sing-box" >/dev/null 2>&1 || true
+    fi
+    if [ "$OPT_PURGE" -eq 1 ]; then
+        for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
+            if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
+                opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
             fi
-            rm -f /usr/bin/sing-box 2>/dev/null || true
-        fi
+        done
     fi
     tui_ok "Пакеты удалены через opkg"
 fi
@@ -426,7 +476,6 @@ rm -f /usr/share/rpcd/acl.d/luci-app-tachyon.json 2>/dev/null || true
 rm -f /etc/uci-defaults/50_luci-tachyon 2>/dev/null || true
 rm -f /etc/tachyon_commit 2>/dev/null || true
 rm -f /usr/bin/tachyon 2>/dev/null || true
-rm -f /usr/bin/tachyon-core 2>/dev/null || true
 rm -f /etc/init.d/tachyon 2>/dev/null || true
 rm -f /etc/init.d/tachyon-core 2>/dev/null || true
 rm -f /etc/hotplug.d/iface/99-tachyon-wan-monitor 2>/dev/null || true
@@ -435,14 +484,11 @@ rm -f /www/cgi-bin/tachyon-sub 2>/dev/null || true
 rm -f /usr/lib/cgi-bin/tachyon-agent 2>/dev/null || true
 
 # Optional binary removal
-if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
-    # Remove sing-box binary if it was managed by Tachyon
-    if [ ! -f "/lib/apk/db/installed" ] && command -v opkg >/dev/null 2>&1; then
-        if ! opkg list-installed "sing-box*" 2>/dev/null | grep -q "^sing-box"; then
-            rm -f /usr/bin/sing-box 2>/dev/null || true
-        fi
-    fi
+if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
+    rm -f /usr/bin/tachyon-core 2>/dev/null || true
     rm -f /usr/lib/libcronet.so 2>/dev/null || true
+    rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc 2>/dev/null || true
+    rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true
 fi
 
 # Clean translations
@@ -450,7 +496,7 @@ rm -f /usr/lib/lua/luci/i18n/tachyon.* 2>/dev/null || true
 find /usr/lib/lua/luci/i18n/ -name "tachyon.*" -delete 2>/dev/null || true
 
 # Clear runtime and temporary state
-rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/sing-box /tmp/tachyon* /tmp/tachyon-core /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true
+rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/tachyon* /tmp/tachyon-core /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* 2>/dev/null || true
 
 # Clear LuCI index and module caches
 rm -f /var/luci-indexcache* /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || true
@@ -461,10 +507,10 @@ if [ -f "/etc/config/ucitrack" ]; then
     uci -q commit ucitrack 2>/dev/null || true
 fi
 
-# Purge configs and persistent state if requested
+# Purge configs, persistent state, and any leftover legacy paths if requested
 if [ "$OPT_PURGE" -eq 1 ]; then
-    rm -f /etc/config/tachyon* 2>/dev/null || true
-    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/sing-box /etc/tachyon-core 2>/dev/null || true
+    rm -f /etc/config/tachyon* /usr/bin/sing-box /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
+    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/tachyon-core /usr/share/tachyon-core /var/run/tachyon-core* /etc/sing-box /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
     tui_ok "Все конфигурации и скрытые состояния Tachyon удалены (--purge)"
 fi
 
@@ -499,10 +545,10 @@ printf '  %s%s%s\n' "$_c_dim" "$(_tui_hline '─')" "$_c_reset"
 printf '  %s%s✓ Tachyon успешно и чисто удален с вашего роутера!%s\n' "$_c_green" "$_c_bold" "$_c_reset"
 
 if [ "$OPT_PURGE" -eq 0 ] && [ -n "$BACKUP_PATH" ]; then
-    printf '  %s📁 Резервная копия конфигурации сохранена:%s %s%s%s\n' "$_c_cyan" "$_c_reset" "$_c_bold" "$BACKUP_PATH" "$_c_reset"
-    printf '  %s   (а также продублирована в /etc/config/tachyon.bak)%s\n' "$_c_dim" "$_c_reset"
+    printf '  %sРезервная копия конфигурации сохранена:%s %s%s%s\n' "$_c_cyan" "$_c_reset" "$_c_bold" "$BACKUP_PATH" "$_c_reset"
+    printf '  %s(а также продублирована в /etc/config/tachyon.bak)%s\n' "$_c_dim" "$_c_reset"
 fi
 
-printf '  %s🌐 Сетевой стек и DNS возвращены в штатный режим OpenWrt.%s\n\n' "$_c_dim" "$_c_reset"
+printf '  %sСетевой стек и DNS возвращены в штатный режим OpenWrt.%s\n\n' "$_c_dim" "$_c_reset"
 
 exit 0

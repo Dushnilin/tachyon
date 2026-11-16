@@ -442,13 +442,13 @@ function has(values, needle) {
     return false;
 }
 printf("feat=%s\n", st.section_feature({ ".type": "section", "action": "group" }));
-printf("singbox=%d\n", has(e.capabilities("tachyon-core"), "sections.group"));
+printf("core=%d\n", has(e.capabilities("tachyon-core"), "sections.group"));
 ' 2>&1)" || fail "could not read group parking metadata: $parking"
 
 grep -q '^feat=sections.group$' <<<"$parking" ||
   fail "a group section must map to the sections.group feature: $parking"
-grep -q '^singbox=1$' <<<"$parking" ||
-  fail "sing-box capabilities must include sections.group: $parking"
+grep -q '^core=1$' <<<"$parking" ||
+  fail "tachyon-core capabilities must include sections.group: $parking"
 
 # ─── UI: action is choosable and members are pickable ─────────────────────────
 

@@ -82,7 +82,7 @@ if (!found_scoped_logical)
     die("Expected scoped logical rule for sec_yt-out with inverted source_ip_cidr not found!\n");
 
 if (!found_sec_gg)
-    die("sec_gg-out rule not found in generated sing-box rules!\n");
+    die("sec_gg-out rule not found in generated tachyon-core rules!\n");
 ' || fail "section_excluded_ips failed verification"
 
 printf 'PASS: section_excluded_ips\n'

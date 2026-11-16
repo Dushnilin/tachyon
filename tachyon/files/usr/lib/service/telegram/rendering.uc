@@ -229,9 +229,6 @@ let setting_schema = {
         url: "url",
         proxy_links: "proxy_links",
         interface: "interface",
-        zapret2_strategy: "zapret2_strategy",
-        zapret_strategy: "zapret_strategy",
-        byedpi_args: "byedpi_args",
         desync_mode: "desync_mode",
         subscription_update_enabled: "subscription_update_enabled",
         subscription_update_interval: "subscription_update_interval",
@@ -402,7 +399,7 @@ let safe_exec_patterns = {
         bin: "/usr/bin/tachyon",
         min_args: 0,
         max_args: 1,
-        usage: "tachyon [get_status|doctor|show_sing_box_version|show_version|restore_native_internet|failsafe_restore|stop|restart|reload]"
+        usage: "tachyon [get_status|doctor|show_tachyon_core_version|show_version|restore_native_internet|failsafe_restore|stop|restart|reload]"
     },
     logread: {
         bin: "/sbin/logread",
@@ -506,7 +503,7 @@ function safe_execute(exec_text, custom_t) {
                 get_status: 1,
                 doctor: 1,
                 show_version: 1,
-                show_sing_box_version: 1,
+                show_tachyon_core_version: 1,
                 show_config: 1,
                 get_system_info: 1,
                 restore_native_internet: 1,
@@ -631,14 +628,6 @@ function valid_updatable_component(name) {
         tachyon: 1,
         tachyon_core: 1,
         "tachyon-core": 1,
-        sing_box: 1,
-        "sing-box": 1,
-        zapret: 1,
-        zapret2: 1,
-        byedpi: 1,
-        wdtt: 1,
-        olcrtc: 1,
-        tailscale: 1,
         torrserver_direct: 1
     };
     return allowed[name];
@@ -647,30 +636,13 @@ function valid_updatable_component(name) {
 function component_display_title(comp) {
     if (type(comp) == "object") {
         let name = as_string(comp.component || "");
-        let rel_url = as_string(comp.release_url || "");
-        let msg = as_string(comp.message || "");
-        let cur_v = as_string(comp.current_version || "");
         if (name == "tachyon_core" || name == "tachyon-core")
             return "tachyon-core";
-        if (name == "sing_box" || name == "sing-box") {
-            if (index(rel_url, "tachyon-core") >= 0 || index(msg, "tachyon-core") >= 0 || index(cur_v, "tachyon") >= 0)
-                return "tachyon-core";
-            let marker = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-            if (marker == "" || marker == "tachyon-core")
-                return "tachyon-core";
-            return "sing-box";
-        }
         return name;
     }
     let sname = as_string(comp || "");
     if (sname == "tachyon_core" || sname == "tachyon-core")
         return "tachyon-core";
-    if (sname == "sing_box" || sname == "sing-box") {
-        let marker = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-        if (marker == "" || marker == "tachyon-core")
-            return "tachyon-core";
-        return "sing-box";
-    }
     return sname;
 }
 

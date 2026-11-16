@@ -64,8 +64,8 @@ for (let t in targets)
 
 assert_eq "vpn1" "$(cat "$WORK_DIR/targets.out")" "subscription_download_targets should include vpn1"
 
-# 3. Test singbox config generator with deferred section
-printf 'Testing singbox config generator skips deferred section...\n'
+# 3. Test tachyon-core config generator with deferred section
+printf 'Testing tachyon-core config generator skips deferred section...\n'
 mkdir -p "$WORK_DIR/runtime"
 
 cat > "$WORK_DIR/fixture.json" <<'JSON'

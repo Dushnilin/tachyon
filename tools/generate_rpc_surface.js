@@ -117,7 +117,7 @@ const CATEGORY_BY_MODULE_PREFIX = [
   ['diagnostics/leak_check', 'diagnostics'],
   ['diagnostics/doctor', 'diagnostics'],
   ['config/connections', 'system'],
-  ['singbox/', 'engine'],
+  ['tachyon_core/', 'engine'],
   ['providers/', 'system'],
   ['config/', 'system'],
   ['subscription/', 'updates'],

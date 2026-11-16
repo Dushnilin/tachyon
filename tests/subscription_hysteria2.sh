@@ -67,14 +67,14 @@ mport_output="$(
 assert_contains "$mport_output" '"server_port": 443' "hy2 mport explicit server_port"
 assert_contains "$mport_output" '"server_ports": [' "hy2 mport server_ports"
 
-singbox_input="$WORK_DIR/sing-box-hy2.json"
-singbox_output="$WORK_DIR/sing-box-hy2-normalized.json"
-cat >"$singbox_input" <<'JSON'
+core_input="$WORK_DIR/core-hy2.json"
+core_output="$WORK_DIR/core-hy2-normalized.json"
+cat >"$core_input" <<'JSON'
 {
   "outbounds": [
     {
       "type": "hysteria2",
-      "tag": "sing-box-hy2",
+      "tag": "core-hy2",
       "server": "example.com",
       "server_port": 443,
       "password": "pw",
@@ -91,16 +91,16 @@ cat >"$singbox_input" <<'JSON'
   ]
 }
 JSON
-ucode "$PARSER" normalize-content "$singbox_input" "$singbox_output"
-assert_contains "$singbox_output" '"type": "hysteria2"' "sing-box HY2 type"
-assert_contains "$singbox_output" '"alpn": [ "h3" ]' "sing-box HY2 ALPN"
-if grep -Fq '"utls"' "$singbox_output"; then
-  cat "$singbox_output" >&2
-  fail "sing-box Hysteria2 normalization must drop TLS uTLS"
+ucode "$PARSER" normalize-content "$core_input" "$core_output"
+assert_contains "$core_output" '"type": "hysteria2"' "tachyon-core HY2 type"
+assert_contains "$core_output" '"alpn": [ "h3" ]' "tachyon-core HY2 ALPN"
+if grep -Fq '"utls"' "$core_output"; then
+  cat "$core_output" >&2
+  fail "tachyon-core Hysteria2 normalization must drop TLS uTLS"
 fi
 
 mkdir -p "$WORK_DIR/subscriptions"
-cp "$singbox_output" "$WORK_DIR/subscriptions/proxy-subscription-1.json"
+cp "$core_output" "$WORK_DIR/subscriptions/proxy-subscription-1.json"
 printf '%s' 'https://example.com/sub.json' >"$WORK_DIR/subscriptions/proxy-subscription-1.url"
 printf '%s' 'Happ' >"$WORK_DIR/subscriptions/proxy-subscription-1.user_agent"
 
@@ -133,7 +133,7 @@ TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
 assert_contains "$generator_output" '"type": "hysteria2"' "generated stale HY2 type"
 if grep -Fq '"utls"' "$generator_output"; then
   cat "$generator_output" >&2
-  fail "sing-box generator must drop stale Hysteria2 TLS uTLS from subscription cache"
+  fail "tachyon-core generator must drop stale Hysteria2 TLS uTLS from subscription cache"
 fi
 
 printf 'subscription Hysteria2 checks passed\n'

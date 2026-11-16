@@ -7,9 +7,9 @@ STATE_UC="$TACHYON_LIB/service/state.uc"
 
 # A routed resolver must resolve the upstream destination without replacing the
 # client's FakeIP: otherwise domain-only traffic never enters the TPROXY rules.
-for version in 1.13.5 1.14.1; do
+for version in 0.5.7; do
   printf '%s\n' "$version" >"$WORK_DIR/version"
-  for action in zapret zapret2 byedpi; do
+  for action in desync; do
     fixture="$WORK_DIR/$version-$action.json"
     output="$WORK_DIR/$version-$action-out.json"
     ucode -e '
@@ -26,7 +26,7 @@ for version in 1.13.5 1.14.1; do
       }));
     ' "$action" >"$fixture"
     mkdir -p "$output.section-cache" "$output.rulesets"
-    SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+    TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
       ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$fixture" "$output" 127.0.0.1 0 1
     ucode -e '
       let cfg = json(require("fs").readfile(ARGV[0]));
@@ -68,11 +68,11 @@ ucode -e '
   let cfg = json(require("fs").readfile(ARGV[0]));
   cfg.section[0].source_ip_cidr = [ "192.0.2.0/24" ];
   cfg.section[0].excluded_ips = [ "192.0.2.42" ];
-  cfg.section[0].nfqws2_opt = "--filter-l3=ipv4 --filter-tcp=443";
+  cfg.section[0].ipv6_support = "0";
   print(sprintf("%J\n", cfg));
-' "$WORK_DIR/1.14.1-zapret2.json" >"$scoped"
+' "$WORK_DIR/0.5.7-desync.json" >"$scoped"
 mkdir -p "$scoped.out.section-cache" "$scoped.out.rulesets"
-SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
   ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$scoped" "$scoped.out" 127.0.0.1 0 1
 ucode -e '
   let cfg = json(require("fs").readfile(ARGV[0]));
@@ -99,8 +99,8 @@ ucode -e '
 
 # These fields change generated DNS servers/rules, so reload must rebuild the
 # core config as well as nftables. Previously only the nft signature changed.
-base="$WORK_DIR/1.14.1-zapret2.json"
-base_signature="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$base")"
+base="$WORK_DIR/0.5.7-desync.json"
+base_signature="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$base")"
 for option in routed_dns_enabled routed_dns_type routed_dns_server; do
   candidate="$WORK_DIR/$option.json"
   ucode -e '
@@ -109,7 +109,7 @@ for option in routed_dns_enabled routed_dns_type routed_dns_server; do
     cfg.section[0][ARGV[1]] = values[ARGV[1]];
     print(sprintf("%J\n", cfg));
   ' "$base" "$option" >"$candidate"
-  next_signature="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$candidate")"
+  next_signature="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$candidate")"
   [ "$base_signature" != "$next_signature" ] || fail "$option must invalidate the core reload signature"
 done
 
@@ -117,14 +117,14 @@ done
 # is decided before the outbound is chosen, and a FakeIP address has none.
 # So the domain rule must not be replaced by FakeIP there.
 for mode in include_all exclude_direct; do
-  closed="$WORK_DIR/geo-1.14.1-zapret2-$mode.json"
+  closed="$WORK_DIR/geo-0.5.7-desync-$mode.json"
   ucode -e '
     let cfg = json(require("fs").readfile(ARGV[0]));
     cfg.section[0].geoip_mode = ARGV[1];
     print(sprintf("%J\n", cfg));
   ' "$base" "$mode" >"$closed"
   mkdir -p "$closed.out.section-cache" "$closed.out.rulesets"
-  SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+  TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
     ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$closed" "$closed.out" 127.0.0.1 0 1
   ucode -e '
     let cfg = json(require("fs").readfile(ARGV[0]));
@@ -146,7 +146,7 @@ ucode -e '
   print(sprintf("%J\n", cfg));
 ' "$base" >"$mixed"
 mkdir -p "$mixed.out.section-cache" "$mixed.out.rulesets"
-SB_VERSION_STATE_FILE="$WORK_DIR/version" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
   ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$mixed" "$mixed.out" 127.0.0.1 0 1
 ucode -e '
   let cfg = json(require("fs").readfile(ARGV[0]));
@@ -164,12 +164,12 @@ ucode -e '
 # The real-engine check: it runs the generated config through a live core and
 # watches the answers. It needs a core binary, so it only runs when one is
 # given.
-if [ -n "${SING_BOX_RUNTIME_BIN:-}" ]; then
+if [ -n "${TACHYON_CORE_RUNTIME_BIN:-}" ]; then
   python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
-    "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/1.14.1-zapret2-out.json"
+    "$TACHYON_CORE_RUNTIME_BIN" "$WORK_DIR/0.5.7-desync-out.json"
   for mode in exclude_direct include_all; do
     python3 "$ROOT_DIR/tests/lib/dpi_routed_dns_runtime.py" \
-      "$SING_BOX_RUNTIME_BIN" "$WORK_DIR/geo-1.14.1-zapret2-$mode-out.json" --geoip-mode "$mode"
+      "$TACHYON_CORE_RUNTIME_BIN" "$WORK_DIR/geo-0.5.7-desync-$mode-out.json" --geoip-mode "$mode"
   done
 fi
 

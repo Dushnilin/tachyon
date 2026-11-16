@@ -29,10 +29,6 @@ routes.init({
     uci_cursor: function() { return null; },
     runtime_settings: function() { return {}; },
     runtime_generate_unsupported: function(msg) { warn("Unsupported: " + msg + "\n"); exit(1); },
-    detect_sing_box_version: function() { return "0.2.3"; },
-    is_sb_1_14_plus: function() { return true; },
-    is_sb_1_15_plus: function() { return true; },
-    is_sing_box_lx: function() { return false; },
     is_tachyon_core: function() { return true; }
 });
 
@@ -433,9 +429,9 @@ JSON
 
 OUTPUT_WIZ="$WORK_DIR/wizard-tags-out.json"
 mkdir -p "$OUTPUT_WIZ.section-cache" "$OUTPUT_WIZ.rulesets"
-echo "0.4.2-tachyon.0" > "$WORK_DIR/sb-version"
+echo "0.4.2-tachyon.0" > "$WORK_DIR/core-version"
 TACHYON_LIB="$TACHYON_LIB" \
-TACHYON_UI_SING_BOX_VERSION_CACHE_FILE="$WORK_DIR/sb-version" \
+TACHYON_UI_CORE_VERSION_CACHE_FILE="$WORK_DIR/core-version" \
 TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing.json" \
 ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/wizard-tags.json" "$OUTPUT_WIZ" 192.168.1.1 0

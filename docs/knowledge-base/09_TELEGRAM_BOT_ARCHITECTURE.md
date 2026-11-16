@@ -38,7 +38,7 @@ graph LR
 | `/fix` | `<fix_code>` | Applies specific automated repair code (e.g. `/fix clear_dns_cache`). |
 | `/server` | — | Opens interactive server selector with inline pagination and RTT pings. |
 | `/rules` | — | Shows active routing rules with 1-click toggle switches. |
-| `/restart` | `[service]` | Restarts sing-box, dnsmasq, watchdog, or entire network stack. |
+| `/restart` | `[service]` | Restarts tachyon-core, dnsmasq, watchdog, or entire network stack. |
 | `/backup` | — | Sends latest atomic configuration backup directly to Telegram chat. |
 
 ---

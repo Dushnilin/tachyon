@@ -30,9 +30,6 @@ const STATE_FILE = STATE_DIR + "/fuzzer-state.json";
 const PID_FILE = STATE_DIR + "/fuzzer-worker.pid";
 const JOBS_DIR = STATE_DIR + "/fuzzer";
 const HISTORY_FILE = "/etc/tachyon/fuzzer_history.json";
-const BYEDPI_PORT = 11089;
-const NFQUEUE_QNUM_ZAPRET = 298;
-const NFQUEUE_QNUM_ZAPRET2 = 299;
 const FUZZER_FWMARK = "0x40000000";
 const FUZZER_OUTBOUND_MARK = getenv("NFT_OUTBOUND_MARK") || "0x08000000";
 const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
@@ -57,15 +54,7 @@ function get_history(limit) { return history.get_history(limit); }
 
 function resolve_binary(paths) { return binaries.resolve_binary(paths); }
 
-function get_zapret2_bin() { return binaries.get_zapret2_bin(); }
-
-function get_zapret_bin() { return binaries.get_zapret_bin(); }
-
-function get_byedpi_bin() { return binaries.get_byedpi_bin(); }
-
 function get_desync_bin() { return binaries.get_desync_bin(); }
-
-function get_zapret2_lua_flags(args_str) { return binaries.get_zapret2_lua_flags(args_str); }
 
 let _has_timeout = null;
 function get_timeout_prefix(sec) { return binaries.get_timeout_prefix(sec); }
@@ -88,27 +77,6 @@ function get_fuzzer_curl_dns_flags() { return binaries.get_fuzzer_curl_dns_flags
 let _fuzzer_host_cache = {};
 function get_resolved_host_flags(url) { return binaries.get_resolved_host_flags(url); }
 
-const KNOWN_BLOB_FILES = {
-    tls_max: { file: "tls_clienthello_max_ru.bin", size: 654, desc: "Max.ru authentic ClientHello" },
-    tls_google: { file: "tls_clienthello_www_google_com.bin", size: 681, desc: "Google authentic ClientHello" },
-    tls_gosuslugi: { file: "tls_clienthello_gosuslugi_ru.bin", size: 517, desc: "Gosuslugi Russian Government ClientHello" },
-    tls_sber: { file: "tls_clienthello_sberbank_ru.bin", size: 517, desc: "Sberbank authentic ClientHello" },
-    tls_iana: { file: "tls_clienthello_iana_org.bin", size: 517, desc: "IANA root authority ClientHello" },
-    tls_vk: { file: "tls_clienthello_vk_com.bin", size: 517, desc: "VK authentic ClientHello" },
-    tls_onetrust: { file: "tls_clienthello_www_onetrust_com.bin", size: 664, desc: "OneTrust CDN ClientHello" },
-    quic_google: { file: "quic_initial_www_google_com.bin", size: 1200, desc: "Google QUIC Initial" },
-    quic_yt1: { file: "quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_1.bin", size: 1230, desc: "GoogleVideo Kyber QUIC Initial" },
-    quic_vk: { file: "quic_initial_vk_com.bin", size: 1357, desc: "VK QUIC Initial" },
-    stun_fake: { file: "stun.bin", size: 100, desc: "STUN discovery packet" },
-    discord_udp: { file: "stun.bin", size: 100, desc: "Discord Voice UDP fake packet" }
-};
-
-function get_zapret2_blob_dir() { return binaries.get_zapret2_blob_dir(); }
-
-function resolve_zapret2_blobs(args_str) { return binaries.resolve_zapret2_blobs(args_str); }
-
-function setup_fuzzer_direct_nftables(qnum, is_udp) { return binaries.setup_fuzzer_direct_nftables(qnum, is_udp); }
-
 function validate_strategy_args(engine, args_val) {
     return fuzzer_runner.validate_strategy_args(engine, args_val);
 }
@@ -130,29 +98,11 @@ function load_builtin_presets() { return strategies.load_builtin_presets(); }
 
 function reset_presets_cache() { return strategies.reset_presets_cache(); }
 
-function preset_blobs_available(entry) { return strategies.preset_blobs_available(entry); }
-
-
-
 function get_patterns_config() { return strategies.get_patterns_config(); }
 
 function save_patterns_config(cfg_obj) { return strategies.save_patterns_config(cfg_obj); }
 
 function reset_patterns_config() { return strategies.reset_patterns_config(); }
-
-// Target Suites & Definitions
-
-
-// Strategy Matrices (Expanded Elite Production Suite)
-
-
-
-
-function generate_combinatorial_zapret2() { return strategies.generate_combinatorial_zapret2(); }
-
-function generate_combinatorial_zapret() { return strategies.generate_combinatorial_zapret(); }
-
-function generate_combinatorial_byedpi() { return strategies.generate_combinatorial_byedpi(); }
 
 function generate_combinatorial_desync() { return strategies.generate_combinatorial_desync(); }
 
@@ -206,20 +156,13 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt, extra
 }
 
 function validate_engine_request(engine) {
-    engine = lc(trim(as_string(engine || "")));
-    if (engine == "zapret2") {
-        return get_zapret2_bin() ? { valid: true, engine: engine } : { valid: false, error: "Zapret v2 binary is not installed on the router" };
-    }
-    if (engine == "zapret") {
-        return get_zapret_bin() ? { valid: true, engine: engine } : { valid: false, error: "Zapret v1 binary is not installed on the router" };
-    }
-    if (engine == "byedpi") {
-        return get_byedpi_bin() ? { valid: true, engine: engine } : { valid: false, error: "ByeDPI binary is not installed on the router" };
-    }
+    engine = lc(trim(as_string(engine || "desync")));
+    if (engine == "")
+        engine = "desync";
     if (engine == "desync") {
         return get_desync_bin() ? { valid: true, engine: engine } : { valid: false, error: "tachyon-core binary is not installed on the router" };
     }
-    return { valid: false, error: "Unsupported engine: " + (engine != "" ? engine : "none") };
+    return { valid: false, error: "Unsupported engine: " + engine };
 }
 
 function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode, job_id) {
@@ -749,7 +692,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
         _force: true,
         running: true,
         job_id: job_id,
-        engine: engine || "zapret2",
+        engine: engine || "desync",
         target: target || "youtube_suite",
         target_url: resolve_target_url(target, custom_url),
         mode: as_string(mode || "presets"),
@@ -781,7 +724,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
         deadline_env,
         shell_quote(LIB_DIR),
         shell_quote(fuzzer_bin),
-        shell_quote(engine || "zapret2"),
+        shell_quote(engine || "desync"),
         shell_quote(target || "youtube_suite"),
         shell_quote(custom_url || ""),
         shell_quote(rule_section || ""),
@@ -793,36 +736,33 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     let job_worker_pid = get_job_dir(job_id) + "/worker.pid";
     system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE) + " && cp " + shell_quote(PID_FILE) + " " + shell_quote(job_worker_pid) + " 2>/dev/null"));
     
-    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube_suite", mode: mode || "presets" }));
+    print(sprintf("%J\n", { success: true, job_id, engine: engine || "desync", target: target || "youtube_suite", mode: mode || "presets" }));
 }
 
 function get_available_engines() {
     return {
-        zapret2: get_zapret2_bin() != null,
-        zapret: get_zapret_bin() != null,
-        byedpi: get_byedpi_bin() != null,
         desync: get_desync_bin() != null
     };
 }
 
 function normalize_strategy_for_uci(engine, args_val) {
-    args_val = trim(as_string(args_val));
-    if (engine == "zapret2") {
-        let blob_defs = resolve_zapret2_blobs(args_val);
-        if (blob_defs != "") {
-            args_val = trim(blob_defs) + " " + args_val;
-        }
-    }
-    return args_val;
+    return trim(as_string(args_val));
 }
 
 function apply_strategy(engine, args_val, target_rule) {
-    engine = lc(as_string(engine));
+    engine = lc(trim(as_string(engine || "desync")));
+    if (engine == "")
+        engine = "desync";
     args_val = trim(as_string(args_val));
     target_rule = trim(as_string(target_rule));
     
     if (args_val == "") {
         print(sprintf("%J\n", { success: false, error: "Empty strategy arguments" }));
+        return;
+    }
+
+    if (engine != "desync") {
+        print(sprintf("%J\n", { success: false, error: "Unsupported engine: " + engine }));
         return;
     }
 
@@ -857,57 +797,44 @@ function apply_strategy(engine, args_val, target_rule) {
         return;
     }
     let write_strategy_fields = function(sid) {
-        if (engine == "zapret2")
-            uci_core.set(CONFIG_NAME, sid, "nfqws2_opt", args_val);
-        else if (engine == "zapret")
-            uci_core.set(CONFIG_NAME, sid, "nfqws_opt", args_val);
-        else if (engine == "byedpi")
-            uci_core.set(CONFIG_NAME, sid, "byedpi_cmd_opts", args_val);
-        else if (engine == "desync") {
-            let parsed_ds = fuzzer_runner.parse_desync_outbound(args_val, "desync-out");
-            let clear_keys = [
-                "desync_mode", "desync_fooling", "desync_auto_tune", "desync_split_pos",
-                "desync_fake_ttl", "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
-                "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_seqovl",
-                "desync_syndata", "desync_wsize", "desync_ipfrag", "desync_udplen", "desync_tlsrec_first"
-            ];
-            for (let ck in clear_keys)
-                uci_core.delete(CONFIG_NAME, sid, ck);
-            uci_core.set(CONFIG_NAME, sid, "desync_opts", args_val);
-            if (parsed_ds) {
-                uci_core.set(CONFIG_NAME, sid, "desync_preset", parsed_ds.preset ? as_string(parsed_ds.preset) : "custom");
-                if (parsed_ds.mode) uci_core.set(CONFIG_NAME, sid, "desync_mode", as_string(parsed_ds.mode));
-                if (parsed_ds.fooling) uci_core.set(CONFIG_NAME, sid, "desync_fooling", as_string(parsed_ds.fooling));
-                if (parsed_ds.auto_tune != null) uci_core.set(CONFIG_NAME, sid, "desync_auto_tune", parsed_ds.auto_tune ? "1" : "0");
-                if (parsed_ds.split_pos != null) {
-                    let sp_str = type(parsed_ds.split_pos) == "array" ? join(",", parsed_ds.split_pos) : as_string(parsed_ds.split_pos);
-                    uci_core.set(CONFIG_NAME, sid, "desync_split_pos", sp_str);
-                }
-                if (parsed_ds.fake_ttl != null) uci_core.set(CONFIG_NAME, sid, "desync_fake_ttl", as_string(parsed_ds.fake_ttl));
-                if (parsed_ds.fake_sni) uci_core.set(CONFIG_NAME, sid, "desync_fake_sni", as_string(parsed_ds.fake_sni));
-                if (parsed_ds.repeats != null) uci_core.set(CONFIG_NAME, sid, "desync_repeats", as_string(parsed_ds.repeats));
-                if (parsed_ds.split_delay_ms != null) uci_core.set(CONFIG_NAME, sid, "desync_split_delay_ms", as_string(parsed_ds.split_delay_ms));
-                if (parsed_ds.udp_fake != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_fake", parsed_ds.udp_fake ? "1" : "0");
-                else uci_core.set(CONFIG_NAME, sid, "desync_udp_fake", "1");
-                if (parsed_ds.udp_repeats != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_repeats", as_string(parsed_ds.udp_repeats));
-                if (parsed_ds.udp_fake_ttl != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_fake_ttl", as_string(parsed_ds.udp_fake_ttl));
-                if (parsed_ds.seqovl != null) uci_core.set(CONFIG_NAME, sid, "desync_seqovl", as_string(parsed_ds.seqovl));
-                if (parsed_ds.syndata != null) uci_core.set(CONFIG_NAME, sid, "desync_syndata", parsed_ds.syndata ? "1" : "0");
-                if (parsed_ds.wsize != null) uci_core.set(CONFIG_NAME, sid, "desync_wsize", as_string(parsed_ds.wsize));
-                if (parsed_ds.ipfrag != null) uci_core.set(CONFIG_NAME, sid, "desync_ipfrag", parsed_ds.ipfrag ? "1" : "0");
-                if (parsed_ds.udplen != null) uci_core.set(CONFIG_NAME, sid, "desync_udplen", as_string(parsed_ds.udplen));
-                if (parsed_ds.tlsrec_first != null) uci_core.set(CONFIG_NAME, sid, "desync_tlsrec_first", parsed_ds.tlsrec_first ? "1" : "0");
+        let parsed_ds = fuzzer_runner.parse_desync_outbound(args_val, "desync-out");
+        let clear_keys = [
+            "desync_mode", "desync_fooling", "desync_auto_tune", "desync_split_pos",
+            "desync_fake_ttl", "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
+            "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_seqovl",
+            "desync_syndata", "desync_wsize", "desync_ipfrag", "desync_udplen", "desync_tlsrec_first"
+        ];
+        for (let ck in clear_keys)
+            uci_core.delete(CONFIG_NAME, sid, ck);
+        uci_core.set(CONFIG_NAME, sid, "desync_opts", args_val);
+        if (parsed_ds) {
+            uci_core.set(CONFIG_NAME, sid, "desync_preset", parsed_ds.preset ? as_string(parsed_ds.preset) : "custom");
+            if (parsed_ds.mode) uci_core.set(CONFIG_NAME, sid, "desync_mode", as_string(parsed_ds.mode));
+            if (parsed_ds.fooling) uci_core.set(CONFIG_NAME, sid, "desync_fooling", as_string(parsed_ds.fooling));
+            if (parsed_ds.auto_tune != null) uci_core.set(CONFIG_NAME, sid, "desync_auto_tune", parsed_ds.auto_tune ? "1" : "0");
+            if (parsed_ds.split_pos != null) {
+                let sp_str = type(parsed_ds.split_pos) == "array" ? join(",", parsed_ds.split_pos) : as_string(parsed_ds.split_pos);
+                uci_core.set(CONFIG_NAME, sid, "desync_split_pos", sp_str);
             }
+            if (parsed_ds.fake_ttl != null) uci_core.set(CONFIG_NAME, sid, "desync_fake_ttl", as_string(parsed_ds.fake_ttl));
+            if (parsed_ds.fake_sni) uci_core.set(CONFIG_NAME, sid, "desync_fake_sni", as_string(parsed_ds.fake_sni));
+            if (parsed_ds.repeats != null) uci_core.set(CONFIG_NAME, sid, "desync_repeats", as_string(parsed_ds.repeats));
+            if (parsed_ds.split_delay_ms != null) uci_core.set(CONFIG_NAME, sid, "desync_split_delay_ms", as_string(parsed_ds.split_delay_ms));
+            if (parsed_ds.udp_fake != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_fake", parsed_ds.udp_fake ? "1" : "0");
+            else uci_core.set(CONFIG_NAME, sid, "desync_udp_fake", "1");
+            if (parsed_ds.udp_repeats != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_repeats", as_string(parsed_ds.udp_repeats));
+            if (parsed_ds.udp_fake_ttl != null) uci_core.set(CONFIG_NAME, sid, "desync_udp_fake_ttl", as_string(parsed_ds.udp_fake_ttl));
+            if (parsed_ds.seqovl != null) uci_core.set(CONFIG_NAME, sid, "desync_seqovl", as_string(parsed_ds.seqovl));
+            if (parsed_ds.syndata != null) uci_core.set(CONFIG_NAME, sid, "desync_syndata", parsed_ds.syndata ? "1" : "0");
+            if (parsed_ds.wsize != null) uci_core.set(CONFIG_NAME, sid, "desync_wsize", as_string(parsed_ds.wsize));
+            if (parsed_ds.ipfrag != null) uci_core.set(CONFIG_NAME, sid, "desync_ipfrag", parsed_ds.ipfrag ? "1" : "0");
+            if (parsed_ds.udplen != null) uci_core.set(CONFIG_NAME, sid, "desync_udplen", as_string(parsed_ds.udplen));
+            if (parsed_ds.tlsrec_first != null) uci_core.set(CONFIG_NAME, sid, "desync_tlsrec_first", parsed_ds.tlsrec_first ? "1" : "0");
         }
     };
 
-    if (engine != "zapret2" && engine != "zapret" && engine != "byedpi" && engine != "desync") {
-        print(sprintf("%J\n", { success: false, error: "Unsupported engine: " + engine }));
-        return;
-    }
-
     if (sec_type == "outbound_source") {
-        uci_core.set(CONFIG_NAME, target_rule, "source_type", engine);
+        uci_core.set(CONFIG_NAME, target_rule, "source_type", "desync");
         write_strategy_fields(target_rule);
         for (let s in uci_core.section_objects(CONFIG_NAME, "section")) {
             let s_id = as_string(s[".name"] || "");
@@ -920,25 +847,20 @@ function apply_strategy(engine, args_val, target_rule) {
     } else if (sec_action == "connection") {
         let refs_raw = sec_obj.outbound_source_refs;
         let refs = type(refs_raw) == "array" ? refs_raw : (refs_raw ? split(trim(as_string(refs_raw)), /[ \t]+/) : []);
-        let matched_src = "";
-        let any_dpi_src = "";
+        let target_src = "";
         for (let r in refs) {
             let r_str = trim(as_string(r));
             if (r_str == "") continue;
             let src_obj = uci_core.get_all(CONFIG_NAME, r_str);
             if (!src_obj) continue;
             let st = lc(trim(as_string(src_obj.source_type || "")));
-            if (st == engine) {
-                matched_src = r_str;
+            if (st == "desync") {
+                target_src = r_str;
                 break;
             }
-            if (any_dpi_src == "" && (st == "zapret2" || st == "zapret" || st == "byedpi" || st == "desync" || st == "wdtt" || st == "olcrtc")) {
-                any_dpi_src = r_str;
-            }
         }
-        let target_src = matched_src != "" ? matched_src : any_dpi_src;
         if (target_src != "") {
-            uci_core.set(CONFIG_NAME, target_src, "source_type", engine);
+            uci_core.set(CONFIG_NAME, target_src, "source_type", "desync");
             write_strategy_fields(target_src);
         } else {
             print(sprintf("%J\n", {
@@ -949,16 +871,12 @@ function apply_strategy(engine, args_val, target_rule) {
         }
         write_strategy_fields(target_rule);
     } else {
-        if (sec_action != "" && sec_action != engine) {
-            if (sec_action == "zapret2" || sec_action == "zapret" || sec_action == "byedpi" || sec_action == "desync") {
-                uci_core.set(CONFIG_NAME, target_rule, "action", engine);
-            } else {
-                print(sprintf("%J\n", {
-                    success: false,
-                    error: sprintf("Cannot apply %s strategy to section '%s' configured for %s", engine, target_rule, sec_action)
-                }));
-                return;
-            }
+        if (sec_action != "" && sec_action != "desync") {
+            print(sprintf("%J\n", {
+                success: false,
+                error: sprintf("Cannot apply %s strategy to section '%s' configured for %s", engine, target_rule, sec_action)
+            }));
+            return;
         }
         write_strategy_fields(target_rule);
         let refs_raw = sec_obj.outbound_source_refs;
@@ -969,8 +887,8 @@ function apply_strategy(engine, args_val, target_rule) {
             let src_obj = uci_core.get_all(CONFIG_NAME, r_str);
             if (!src_obj) continue;
             let st = lc(trim(as_string(src_obj.source_type || "")));
-            if (st == engine || st == "zapret2" || st == "zapret" || st == "byedpi" || st == "desync") {
-                uci_core.set(CONFIG_NAME, r_str, "source_type", engine);
+            if (st == "desync") {
+                uci_core.set(CONFIG_NAME, r_str, "source_type", "desync");
                 write_strategy_fields(r_str);
             }
         }
@@ -1129,16 +1047,13 @@ if (op == "start") {
 } else if (op == "clear_history") {
     clear_history();
 } else if (op == "generate" || op == "strategies_generate") {
-    print(sprintf("%J\n", get_strategies_for_engine(ARGV[1], ARGV[2] || "combinatorial")));
+    print(sprintf("%J\n", get_strategies_for_engine(ARGV[1] || "desync", ARGV[2] || "combinatorial")));
 } else if (op == "strategies") {
     let strat_mode = ARGV[1] || "presets";
     print(sprintf("%J\n", {
         available_engines: get_available_engines(),
         target_suites: binaries.TARGET_SUITES,
         patterns: get_patterns_config(),
-        zapret2: get_strategies_for_engine("zapret2", strat_mode),
-        zapret: get_strategies_for_engine("zapret", strat_mode),
-        byedpi: get_strategies_for_engine("byedpi", strat_mode),
         desync: get_strategies_for_engine("desync", strat_mode)
     }));
 } else if (op == "presets_info") {

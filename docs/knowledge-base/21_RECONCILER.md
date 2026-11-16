@@ -28,7 +28,7 @@ Reconciler разделяет вопрос на три:
 
 | Подсистема | Источник ожиданий |
 |---|---|
-| `engine` | `settings.engine` (`sing-box` / `tachyon-core`) |
+| `engine` | `settings.engine` (`tachyon-core`) |
 | `dns` | `settings.dns_*`, `nft`-перехват |
 | `nftables` | сеты Tachyon, tproxy-правила, приоритетные цепочки |
 | `routing` | `ip rule` / `ip route`, таблица `tachyon` |
@@ -40,14 +40,14 @@ Reconciler разделяет вопрос на три:
 
 `get_actual_state()` — опрос реальной системы:
 
-- детект ядра (`tachyon-core` / `sing-box`) **с защитой от PID recycling** через
+- детект ядра (`tachyon-core`) **с защитой от PID recycling** через
   `core/process.uc`;
 - dnsmasq, перехват DNS Tachyon, локальный резолвинг;
 - наличие nft-таблицы `TachyonTable` и заполненность базовых
   сетов (`localv4`, `localv6`, `tachyon_subnets`, `tachyon_ports`,
   `tachyon_ip_ports`);
 - `ip rule` по fwmark и маршруты;
-- запущенность помощников (`nfqws`, `nfqws2`, `ciadpi`, `fptn`).
+- запущенность встроенных и вспомогательных сервисов (например, `fptn`, нативного `tailscale`, `torrserver`).
 
 ---
 
@@ -58,8 +58,8 @@ Reconciler разделяет вопрос на три:
 `repair_dns`, `repair_nft_sets`, `repair_engine` и так далее.
 
 Привязка к действию — то, что отличает reconciler от «просто перезапустить».
-`plan()` без `apply()` показывает, что именно изменится, то есть даёт dry-run
-из коробки.
+`plan()` без `apply()` показывает, что именно изменится, то есть работает как
+встроенный dry-run.
 
 ---
 
@@ -73,7 +73,7 @@ Reconciler разделяет вопрос на три:
 | `repair_daemons` | изолированный перезапуск одного упавшего демона | нет |
 | `repair_engine` | перезапуск только ядра | да |
 
-`repair_dns` принципиально не трогает ядро sing-box: именно этот сценарий
+`repair_dns` принципиально не трогает ядро `tachyon-core`: именно этот сценарий
 («DNS отвалился») раньше разрушал рабочую прокси-маршрутизацию целиком.
 
 ---
@@ -110,7 +110,7 @@ engine → daemons → routing → nftables → dns
 |---|---|
 | `dns.down` | `repair_dns` |
 | `nft.missing` | `repair_nftables` |
-| `singbox.stopped` | `repair_engine` |
+| `core.stopped` | `repair_engine` |
 | `firewall.reloaded` | `repair_nftables` + `repair_routing` |
 
 Реакция на событие дешевле реакции на тик: не ждём следующего опроса.

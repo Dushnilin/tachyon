@@ -11,11 +11,8 @@ set -eo pipefail
 GENERATOR_UC="$TACHYON_LIB/tachyon_core/generator.uc"
 VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
 
-# vpn:// import and the AWG group expansion are both gated on the variant
-# marker, never on a version string: both families ship a sing-box binary.
-printf 'tachyon-core' >"$WORK_DIR/variant"
-printf '0.0.9' >"$WORK_DIR/version"
-export SB_VARIANT_STATE_FILE="$WORK_DIR/variant" SB_VERSION_STATE_FILE="$WORK_DIR/version"
+printf '0.5.7' >"$WORK_DIR/version"
+export TACHYON_CORE_VERSION_FILE="$WORK_DIR/version"
 
 generate_config() {
   local fixture="$1"
@@ -290,18 +287,18 @@ for (let tag in expected) {
 
 printf 'PASS: hybrid AWG section (inline WARP + imported .conf files) includes all endpoints and caches links\n'
 
-# Verify that service/state.uc sing-box-signature-fixture changes when
+# Verify that service/state.uc tachyon-core-signature-fixture changes when
 # selector_amnezia_configs or awg_private_key changes on an action=awg section.
 STATE_UC="$TACHYON_LIB/service/state.uc"
-SIG_MANUAL="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/awg-manual-fixture.json")"
-SIG_HYBRID="$(ucode -L "$TACHYON_LIB" "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/awg-hybrid-fixture.json")"
+SIG_MANUAL="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/awg-manual-fixture.json")"
+SIG_HYBRID="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$WORK_DIR/awg-hybrid-fixture.json")"
 [ -n "$SIG_MANUAL" ] && [ -n "$SIG_HYBRID" ] && [ "$SIG_MANUAL" != "$SIG_HYBRID" ] ||
-  fail "sing-box-signature-fixture did not change when AWG configs changed ($SIG_MANUAL vs $SIG_HYBRID)"
+  fail "tachyon-core-signature-fixture did not change when AWG configs changed ($SIG_MANUAL vs $SIG_HYBRID)"
 UT_SECTIONS="$(ucode -L "$TACHYON_LIB" "$STATE_UC" urltest-enabled-sections-fixture "$WORK_DIR/awg-hybrid-fixture.json")"
 printf '%s\n' "$UT_SECTIONS" | grep -Fxq "hybrid" ||
   fail "urltest-enabled-sections-fixture missed AWG section with selector_amnezia_configs (got '$UT_SECTIONS')"
 
-printf 'PASS: service/state.uc tracks AWG configs in sing-box-signature and urltest-enabled-sections\n'
+printf 'PASS: service/state.uc tracks AWG configs in tachyon-core-signature and urltest-enabled-sections\n'
 
 # Verify that config/migration.uc syncs a newly added action=awg section into
 # outbound_source (src_awg_<name> and src_amnezia_<name>) even when

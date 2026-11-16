@@ -117,20 +117,6 @@
       }
     },
     {
-      "name": "check_byedpi_runtime",
-      "cli_command": "check_byedpi_runtime",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "check-byedpi-runtime (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "check_dns_available",
       "cli_command": "check_dns_available",
       "category": "diagnostics",
@@ -278,11 +264,11 @@
       }
     },
     {
-      "name": "check_sing_box",
-      "cli_command": "check_sing_box",
+      "name": "check_tachyon_core",
+      "cli_command": "check_tachyon_core",
       "category": "diagnostics",
       "acl": "read",
-      "description": "check-sing-box (diagnostics/runtime.uc)",
+      "description": "check-tachyon-core (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -292,11 +278,11 @@
       }
     },
     {
-      "name": "check_sing_box_logs",
-      "cli_command": "check_sing_box_logs",
+      "name": "check_tachyon_core_logs",
+      "cli_command": "check_tachyon_core_logs",
       "category": "diagnostics",
       "acl": "read",
-      "description": "check-sing-box-logs (diagnostics/runtime.uc)",
+      "description": "check-tachyon-core-logs (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -311,34 +297,6 @@
       "category": "diagnostics",
       "acl": "read",
       "description": "check-tor-runtime (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "check_zapret2_runtime",
-      "cli_command": "check_zapret2_runtime",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "check-zapret2-runtime (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "check_zapret_runtime",
-      "cli_command": "check_zapret_runtime",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "check-zapret-runtime (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -1037,27 +995,6 @@
       }
     },
     {
-      "name": "engine_plan",
-      "cli_command": "engine_plan",
-      "category": "system",
-      "acl": "read",
-      "description": "engine-plan (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of engine_plan"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "engine_reload",
       "cli_command": "engine_reload",
       "category": "system",
@@ -1112,53 +1049,6 @@
       "category": "system",
       "acl": "write",
       "description": "engine-stop (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 60000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "engine_switch",
-      "cli_command": "engine_switch",
-      "category": "system",
-      "acl": "write",
-      "description": "engine-switch (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 60000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of engine_switch"
-        },
-        {
-          "name": "arg2",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 2 of engine_switch"
-        },
-        {
-          "name": "arg3",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 3 of engine_switch"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "engine_switch_back",
-      "cli_command": "engine_switch_back",
-      "category": "system",
-      "acl": "write",
-      "description": "engine-switch-back (service/engine_runtime.uc)",
       "async": false,
       "timeout_ms": 60000,
       "params": [],
@@ -1812,20 +1702,6 @@
       }
     },
     {
-      "name": "get_byedpi_status",
-      "cli_command": "get_byedpi_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-byedpi-status (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "get_engine_status",
       "cli_command": "get_engine_status",
       "category": "diagnostics",
@@ -1845,20 +1721,6 @@
       "category": "system",
       "acl": "read",
       "description": "get-lite-mode (service/ui.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "get_olcrtc_status",
-      "cli_command": "get_olcrtc_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-olcrtc-status (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -1917,20 +1779,6 @@
       }
     },
     {
-      "name": "get_sing_box_status",
-      "cli_command": "get_sing_box_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-sing-box-status (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "get_status",
       "cli_command": "get_status",
       "category": "diagnostics",
@@ -1980,25 +1828,11 @@
       }
     },
     {
-      "name": "get_tailscale_peers",
-      "cli_command": "get_tailscale_peers",
+      "name": "get_tachyon_core_status",
+      "cli_command": "get_tachyon_core_status",
       "category": "diagnostics",
       "acl": "read",
-      "description": "get-tailscale-peers (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "get_tailscale_status",
-      "cli_command": "get_tailscale_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-tailscale-status (diagnostics/runtime.uc)",
+      "description": "get-tachyon-core-status (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -2062,48 +1896,6 @@
       "category": "system",
       "acl": "read",
       "description": "get-ui-state (service/ui.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "get_wdtt_status",
-      "cli_command": "get_wdtt_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-wdtt-status (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "get_zapret2_status",
-      "cli_command": "get_zapret2_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-zapret2-status (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "get_zapret_status",
-      "cli_command": "get_zapret_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-zapret-status (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -2916,20 +2708,6 @@
       }
     },
     {
-      "name": "neutralize_zapret_defaults",
-      "cli_command": "neutralize_zapret_defaults",
-      "category": "diagnostics",
-      "acl": "write",
-      "description": "neutralize-zapret-defaults (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 60000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "package_postinst",
       "cli_command": "package_postinst",
       "category": "system",
@@ -3664,11 +3442,11 @@
       }
     },
     {
-      "name": "show_sing_box_config",
-      "cli_command": "show_sing_box_config",
+      "name": "show_tachyon_core_config",
+      "cli_command": "show_tachyon_core_config",
       "category": "diagnostics",
       "acl": "read",
-      "description": "show-sing-box-config (diagnostics/runtime.uc)",
+      "description": "show-tachyon-core-config (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [
@@ -3676,7 +3454,7 @@
           "name": "arg1",
           "type": "string",
           "required": false,
-          "description": "positional argument 1 of show_sing_box_config"
+          "description": "positional argument 1 of show_tachyon_core_config"
         }
       ],
       "returns": {
@@ -3685,11 +3463,11 @@
       }
     },
     {
-      "name": "show_sing_box_version",
-      "cli_command": "show_sing_box_version",
+      "name": "show_tachyon_core_version",
+      "cli_command": "show_tachyon_core_version",
       "category": "diagnostics",
       "acl": "read",
-      "description": "show-sing-box-version (diagnostics/runtime.uc)",
+      "description": "show-tachyon-core-version (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -4092,20 +3870,6 @@
       }
     },
     {
-      "name": "tailscale_restart",
-      "cli_command": "tailscale_restart",
-      "category": "system",
-      "acl": "write",
-      "description": "start-runtime (providers/tailscale/runtime.uc)",
-      "async": false,
-      "timeout_ms": 60000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "telegram",
       "cli_command": "telegram",
       "category": "telegram",
@@ -4271,69 +4035,6 @@
           "type": "string",
           "required": false,
           "description": "positional argument 1 of uninstall"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "validate_byedpi_strategy_json",
-      "cli_command": "validate_byedpi_strategy_json",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "validate-byedpi-strategy-json (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of validate_byedpi_strategy_json"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "validate_nfqws2_strategy_json",
-      "cli_command": "validate_nfqws2_strategy_json",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "validate-nfqws2-strategy-json (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of validate_nfqws2_strategy_json"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "validate_nfqws_strategy_json",
-      "cli_command": "validate_nfqws_strategy_json",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "validate-nfqws-strategy-json (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of validate_nfqws_strategy_json"
         }
       ],
       "returns": {

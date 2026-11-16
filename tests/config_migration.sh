@@ -311,8 +311,11 @@ assert(legacyExclusion.action === 'bypass', 'legacy exclusion connection type mi
 absent(legacyExclusion, 'connection_type', 'legacy-exclusion');
 
 const legacyZap = sections['legacy-zap'];
-assert(legacyZap.nfqws_opt === process.env.ZAPRET_DEFAULT_NFQWS_OPT, 'zapret legacy default migrated');
-assert(legacyZap.byedpi_cmd_opts === '--legacy-bye', 'cmd_opts copied to byedpi_cmd_opts');
+assert(legacyZap.action === 'desync', 'zapret section migrated to desync');
+assert(legacyZap.desync_preset === 'auto', 'zapret section migrated to desync_preset=auto');
+assert(legacyZap.enabled !== '0', 'migrated zapret section stays enabled');
+absent(legacyZap, 'nfqws_opt', 'legacy-zap');
+absent(legacyZap, 'byedpi_cmd_opts', 'legacy-zap');
 absent(legacyZap, 'cmd_opts', 'legacy-zap');
 
 const legacyVpn = sections['legacy-vpn'];
@@ -858,5 +861,187 @@ grep -Fq 'tachyon.bal_ut.interval=30s' "$WORK_DIR/relax_intervals.state" ||
   fail "relax_probe_intervals_v1 must relax aggressive balancer urltest interval 10s to 30s"
 grep -Fq 'relax_probe_intervals_v1' "$WORK_DIR/relax_intervals.state" ||
   fail "relax_probe_intervals_v1 must record migration name"
+
+# Provider unification migration:
+# - byedpi / zapret / zapret2 sections and sources migrate to native desync (preset=auto) and stay enabled
+# - olcrtc, non-native external wdtt, and external tailscaled (tailscale_mode='native') are disabled (enabled='0')
+# - native CSQTT/WDTT and native tachyon-core Tailscale stay enabled without wdtt_native or tailscale_mode='native'
+cat >"$WORK_DIR/provider_unify.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.engine=sing-box
+tachyon.settings.engine_previous=tachyon-core
+tachyon.settings.component_auto_update_targets=tachyon zapret zapret2 byedpi wdtt olcrtc tailscale sing-box
+tachyon.sec_byedpi=section
+tachyon.sec_byedpi.enabled=1
+tachyon.sec_byedpi.action=byedpi
+tachyon.sec_byedpi.byedpi_cmd_opts=-s1 -d1
+tachyon.sec_byedpi.domain_suffix=youtube.com
+tachyon.sec_zapret=section
+tachyon.sec_zapret.enabled=1
+tachyon.sec_zapret.action=zapret
+tachyon.sec_zapret.nfqws_opt=--dpi-desync=fake
+tachyon.sec_zapret.domain_suffix=discord.com
+tachyon.sec_zapret2=section
+tachyon.sec_zapret2.enabled=1
+tachyon.sec_zapret2.action=zapret2
+tachyon.sec_zapret2.nfqws2_opt=--lua-desync=multisplit
+tachyon.sec_zapret2.domain_suffix=googlevideo.com
+tachyon.src_zapret2=outbound_source
+tachyon.src_zapret2.enabled=1
+tachyon.src_zapret2.source_type=zapret2
+tachyon.src_zapret2.nfqws2_opt=--lua-desync=fake
+tachyon.src_byedpi=outbound_source
+tachyon.src_byedpi.enabled=1
+tachyon.src_byedpi.source_type=byedpi
+tachyon.src_byedpi.byedpi_opts=-o1
+tachyon.sec_olcrtc=section
+tachyon.sec_olcrtc.enabled=1
+tachyon.sec_olcrtc.action=olcrtc
+tachyon.srv_olcrtc=server
+tachyon.srv_olcrtc.enabled=1
+tachyon.srv_olcrtc.protocol=olcrtc
+tachyon.sec_ext_wdtt=section
+tachyon.sec_ext_wdtt.enabled=1
+tachyon.sec_ext_wdtt.action=wdtt
+tachyon.src_ext_wdtt=outbound_source
+tachyon.src_ext_wdtt.enabled=1
+tachyon.src_ext_wdtt.source_type=wdtt
+tachyon.sec_nat_wdtt=section
+tachyon.sec_nat_wdtt.enabled=1
+tachyon.sec_nat_wdtt.action=wdtt
+tachyon.sec_nat_wdtt.wdtt_native=1
+tachyon.sec_nat_wdtt.warp_flow_uri=csqtt://connect?v=2&host=wdtt.example&peer=46000&password=pw
+tachyon.sec_nat_wdtt.wdtt_workers=6
+tachyon.sec_nat_wdtt.wdtt_mtu=1360
+tachyon.sec_nat_wdtt.warp_flow_device_id=dev-1
+tachyon.src_csqtt=outbound_source
+tachyon.src_csqtt.enabled=1
+tachyon.src_csqtt.source_type=csqtt
+tachyon.src_csqtt.wdtt_native=1
+tachyon.src_csqtt.csqtt_server=csqtt.example
+tachyon.sec_ext_ts=section
+tachyon.sec_ext_ts.enabled=1
+tachyon.sec_ext_ts.action=tailscale
+tachyon.sec_ext_ts.tailscale_mode=native
+tachyon.src_ext_ts=outbound_source
+tachyon.src_ext_ts.enabled=1
+tachyon.src_ext_ts.source_type=tailscale
+tachyon.src_ext_ts.interface_name=tailscale0
+tachyon.src_nat_ts=outbound_source
+tachyon.src_nat_ts.enabled=1
+tachyon.src_nat_ts.source_type=tailscale
+tachyon.src_nat_ts.tailscale_mode=embedded
+tachyon.src_nat_ts.tailscale_auth_key=tskey-auth-123
+tachyon.srv_nat_ts=server
+tachyon.srv_nat_ts.enabled=1
+tachyon.srv_nat_ts.protocol=tailscale
+tachyon.srv_nat_ts.tailscale_mode=singbox
+EOF_UCI
+: >"$WORK_DIR/provider_unify.log"
+run_provider_unify() {
+  TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify.state" \
+  TACHYON_UCI_LOG_FILE="$WORK_DIR/provider_unify.log" \
+  TACHYON_CONFIG_NAME="tachyon" \
+  TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
+  TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+  TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+  TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+  ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+}
+run_provider_unify
+run_provider_unify
+
+TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify.state" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let uci = require("core.uci");
+let must = function(cond, msg) {
+    if (!cond) {
+        warn("FAIL: " + msg + "\n");
+        exit(1);
+    }
+};
+
+// Settings normalized to tachyon-core and removed targets stripped
+must(uci.get("tachyon", "settings", "engine") == "tachyon-core", "engine must normalize to tachyon-core");
+must(uci.get("tachyon", "settings", "engine_previous") == "", "engine_previous must be deleted");
+let targets_str = uci.get("tachyon", "settings", "component_auto_update_targets");
+must(targets_str == "tachyon tachyon-core",
+    "component_auto_update_targets must strip removed providers and map sing-box -> tachyon-core, got: " + sprintf("%J", targets_str));
+
+// byedpi / zapret / zapret2 sections & sources migrate to desync preset=auto and stay enabled
+for (let s in [ "sec_byedpi", "sec_zapret", "sec_zapret2" ]) {
+    must(uci.get("tachyon", s, "enabled") == "1", s + " must stay enabled");
+    must(uci.get("tachyon", s, "action") == "desync", s + " must migrate to desync");
+    must(uci.get("tachyon", s, "desync_preset") == "auto", s + " must set desync_preset=auto");
+}
+must(uci.get("tachyon", "sec_byedpi", "byedpi_cmd_opts") == "", "byedpi_cmd_opts must be removed");
+must(uci.get("tachyon", "sec_zapret", "nfqws_opt") == "", "nfqws_opt must be removed");
+must(uci.get("tachyon", "sec_zapret2", "nfqws2_opt") == "", "nfqws2_opt must be removed");
+
+// zapret2 outbound_source migrates to desync preset=auto and stays enabled;
+// identical byedpi outbound_source in the same config is deduplicated onto the canonical desync source
+must(uci.get("tachyon", "src_zapret2", "enabled") == "1", "src_zapret2 must stay enabled");
+must(uci.get("tachyon", "src_zapret2", "source_type") == "desync", "src_zapret2 must migrate to desync");
+must(uci.get("tachyon", "src_zapret2", "desync_preset") == "auto", "src_zapret2 must set desync_preset=auto");
+must(uci.get("tachyon", "src_zapret2", "nfqws2_opt") == "", "src_zapret2.nfqws2_opt must be removed");
+
+// olcrtc, external wdtt, external tailscaled become disabled (enabled=0)
+for (let dead in [ "sec_olcrtc", "srv_olcrtc", "sec_ext_wdtt", "src_ext_wdtt", "sec_ext_ts", "src_ext_ts" ]) {
+    must(uci.get("tachyon", dead, "enabled") == "0", dead + " must be disabled on migration");
+}
+
+// Native CSQTT/WDTT stays enabled and extracts into canonical csqtt outbound_source without wdtt_native
+must(uci.get("tachyon", "sec_nat_wdtt", "enabled") == "1", "sec_nat_wdtt must stay enabled");
+must(uci.get("tachyon", "sec_nat_wdtt", "action") == "connection", "sec_nat_wdtt must normalize to connection + csqtt source");
+let nat_wdtt_refs = uci.get("tachyon", "sec_nat_wdtt", "outbound_source_refs");
+must(index(nat_wdtt_refs, "src_csqtt_sec_nat_wdtt") >= 0, "sec_nat_wdtt must reference extracted csqtt outbound_source, got: " + nat_wdtt_refs);
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "enabled") == "1", "src_csqtt_sec_nat_wdtt must stay enabled");
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "source_type") == "csqtt", "src_csqtt_sec_nat_wdtt must normalize to csqtt");
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "wdtt_native") == "", "src_csqtt_sec_nat_wdtt.wdtt_native must be deleted");
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "csqtt_workers") == "6", "src_csqtt_sec_nat_wdtt.csqtt_workers must migrate");
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "csqtt_mtu") == "1360", "src_csqtt_sec_nat_wdtt.csqtt_mtu must migrate");
+must(uci.get("tachyon", "src_csqtt_sec_nat_wdtt", "csqtt_device_id") == "dev-1", "src_csqtt_sec_nat_wdtt.csqtt_device_id must migrate");
+must(uci.get("tachyon", "src_csqtt", "enabled") == "1", "src_csqtt must stay enabled");
+must(uci.get("tachyon", "src_csqtt", "source_type") == "csqtt", "src_csqtt must keep source_type=csqtt");
+must(uci.get("tachyon", "src_csqtt", "wdtt_native") == "", "src_csqtt.wdtt_native must be deleted");
+
+// Native tachyon-core Tailscale stays enabled and normalizes tailscale_mode=tachyon-core
+must(uci.get("tachyon", "src_nat_ts", "enabled") == "1", "src_nat_ts must stay enabled");
+must(uci.get("tachyon", "src_nat_ts", "tailscale_mode") == "tachyon-core", "src_nat_ts must normalize to tachyon-core");
+must(uci.get("tachyon", "srv_nat_ts", "enabled") == "1", "srv_nat_ts must stay enabled");
+must(uci.get("tachyon", "srv_nat_ts", "tailscale_mode") == "tachyon-core", "srv_nat_ts must normalize to tachyon-core");
+UCODE
+
+# Verify standalone byedpi outbound_source migrates to desync without colliding in desync deduplication
+cat >"$WORK_DIR/provider_unify_byedpi.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.engine=byedpi
+tachyon.src_byedpi=outbound_source
+tachyon.src_byedpi.enabled=1
+tachyon.src_byedpi.source_type=byedpi
+tachyon.src_byedpi.byedpi_opts=-o1
+EOF_UCI
+: >"$WORK_DIR/provider_unify_byedpi.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify_byedpi.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/provider_unify_byedpi.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
+TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify_byedpi.state" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let uci = require("core.uci");
+let must = function(cond, msg) {
+    if (!cond) {
+        warn("FAIL: " + msg + "\n");
+        exit(1);
+    }
+};
+must(uci.get("tachyon", "src_byedpi", "enabled") == "1", "standalone src_byedpi must stay enabled");
+must(uci.get("tachyon", "src_byedpi", "source_type") == "desync", "standalone src_byedpi must migrate to desync");
+must(uci.get("tachyon", "src_byedpi", "desync_preset") == "auto", "standalone src_byedpi must set desync_preset=auto");
+must(uci.get("tachyon", "src_byedpi", "byedpi_opts") == "", "standalone src_byedpi.byedpi_opts must be removed");
+UCODE
 
 printf 'installer config migration checks passed\n'

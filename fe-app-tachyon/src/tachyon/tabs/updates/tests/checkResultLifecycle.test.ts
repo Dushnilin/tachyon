@@ -63,7 +63,7 @@ describe('updates check result lifecycle', () => {
             {
               success: true,
               running: true,
-              component: 'zapret',
+              component: 'tachyon-core',
               action: 'check_update',
               message: 'Component action is running',
               job_id: 'job-1',

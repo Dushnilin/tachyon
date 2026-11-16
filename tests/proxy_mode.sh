@@ -47,13 +47,13 @@ rejects "tun0"
 
 # ─── the capability table knows about tun as an inbound ─────────────────────
 # A core that has no tun inbound cannot be asked for one: the generator would
-# otherwise write a section the binary rejects and `sing-box check` would take
+# otherwise write a section the binary rejects and `tachyon-core check` would take
 # the whole config down over it.
 ucode -L "$LIB_DIR" "$LIB_DIR/tachyon_core/runtime.uc" core-supports-inbound tun "0.0.1-tachyon.0" \
   || fail "tachyon-core must report a tun inbound; it implements one on smoltcp"
 ok
 ucode -L "$LIB_DIR" "$LIB_DIR/tachyon_core/runtime.uc" core-supports-inbound tun "1.15.0" \
-  || fail "upstream sing-box must report a tun inbound"
+  || fail "core version 1.15.0 must report a tun inbound"
 ok
 
 # ─── the generator honours the mode ─────────────────────────────────────────
@@ -116,10 +116,8 @@ cat >"$WORK_DIR/tun-fixture.json" <<'JSON'
 JSON
 
 printf '0.2.1\n' >"$WORK_DIR/tun-version"
-printf 'tachyon-core\n' >"$WORK_DIR/tun-variant"
 mkdir -p "$WORK_DIR/tun-config.json.section-cache"
-SB_VERSION_STATE_FILE="$WORK_DIR/tun-version" \
-SB_VARIANT_STATE_FILE="$WORK_DIR/tun-variant" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/tun-version" \
   ucode -L "$LIB_DIR" "$GEN" generate-config-fixture \
   "$WORK_DIR/tun-fixture.json" "$WORK_DIR/tun-config.json" "127.0.0.1" \
   || fail "tun mode config generation failed"
@@ -173,8 +171,7 @@ ok
 sed 's/"proxy_mode": "tun"/"proxy_mode": "tun", "selector_auto_failover": "1"/' \
   "$WORK_DIR/tun-fixture.json" > "$WORK_DIR/tun-failover-fixture.json"
 mkdir -p "$WORK_DIR/tun-failover-config.json.section-cache"
-SB_VERSION_STATE_FILE="$WORK_DIR/tun-version" \
-SB_VARIANT_STATE_FILE="$WORK_DIR/tun-variant" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/tun-version" \
   ucode -L "$LIB_DIR" "$GEN" generate-config-fixture \
   "$WORK_DIR/tun-failover-fixture.json" "$WORK_DIR/tun-failover-config.json" "127.0.0.1" \
   || fail "tun mode failover config generation failed"

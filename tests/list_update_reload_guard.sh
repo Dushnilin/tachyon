@@ -51,10 +51,10 @@ exit(64);
 
 write_stub "$FAKE_LIB/tachyon_core/runtime.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
-record("singbox/runtime:" + mode);
+record("tachyon_core/runtime:" + mode);
 if (mode == "init-config") {
     let mutate = getenv("MUTATE_CONFIG_ON_INIT") || "0";
-    let config_path = getenv("FAKE_SINGBOX_CONFIG_PATH") || "";
+    let config_path = getenv("FAKE_CORE_CONFIG_PATH") || "";
     if (mutate == "1" && config_path != "") {
         let f = fs.open(config_path, "w");
         if (f) {
@@ -69,7 +69,7 @@ exit(64);
 
 write_stub "$FAKE_LIB/tachyon_core/priority.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
-record("singbox/priority:" + mode);
+record("tachyon_core/priority:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
     exit(0);
 exit(64);
@@ -77,7 +77,7 @@ exit(64);
 
 write_stub "$FAKE_LIB/tachyon_core/dns_failover.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
-record("singbox/dns_failover:" + mode);
+record("tachyon_core/dns_failover:" + mode);
 if (mode == "stop-runtime" || mode == "start-runtime")
     exit(0);
 exit(64);
@@ -103,18 +103,18 @@ run_reload() {
     TACHYON_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
     TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state" \
     FAKE_CALL_LOG="$log" \
-    FAKE_SINGBOX_CONFIG_PATH="$CONFIG_PATH" \
+    FAKE_CORE_CONFIG_PATH="$CONFIG_PATH" \
     MUTATE_CONFIG_ON_INIT="$mutate" \
-    ucode -L "$REAL_LIB" "$UPDATES_UC" reload-singbox-after-list-update
+    ucode -L "$REAL_LIB" "$UPDATES_UC" reload-core-after-list-update
 }
 
-# Test 1: Unchanged config must NOT trigger sing-box reload or stop failover/priority (Issue #54)
+# Test 1: Unchanged config must NOT trigger core reload or stop failover/priority (Issue #54)
 UNCHANGED_LOG="$WORK_DIR/unchanged.log"
 echo '{"version": 1}' > "$CONFIG_PATH"
 run_reload "0" "$UNCHANGED_LOG"
 
 if grep -Eq 'reload-core-runtime|priority:stop-runtime|dns_failover:stop-runtime' "$UNCHANGED_LOG"; then
-  fail "reload_singbox_after_list_update must NOT reload sing-box when config is unchanged"
+  fail "reload_core_after_list_update must NOT reload core when config is unchanged"
 fi
 
 # Test 2: Changed config MUST trigger reload and stop/start priority & failover
@@ -123,16 +123,16 @@ echo '{"version": 1}' > "$CONFIG_PATH"
 run_reload "1" "$CHANGED_LOG"
 
 grep -Fq 'service/state:reload-core-runtime' "$CHANGED_LOG" ||
-  fail "reload_singbox_after_list_update must reload sing-box when config has changed"
+  fail "reload_core_after_list_update must reload core when config has changed"
 
-grep -Fq 'singbox/priority:stop-runtime' "$CHANGED_LOG" ||
-  fail "reload_singbox_after_list_update must stop priority on reload"
+grep -Fq 'tachyon_core/priority:stop-runtime' "$CHANGED_LOG" ||
+  fail "reload_core_after_list_update must stop priority on reload"
 
-grep -Fq 'singbox/dns_failover:stop-runtime' "$CHANGED_LOG" ||
-  fail "reload_singbox_after_list_update must stop dns_failover on reload"
+grep -Fq 'tachyon_core/dns_failover:stop-runtime' "$CHANGED_LOG" ||
+  fail "reload_core_after_list_update must stop dns_failover on reload"
 
 grep -Fq 'service/state:write-current-reload-state-clean' "$CHANGED_LOG" ||
-  fail "reload_singbox_after_list_update must write clean reload state"
+  fail "reload_core_after_list_update must write clean reload state"
 
 # Test 3: Unchanged config WITH local rule_set MUST trigger reload so core re-reads updated rulesets
 LOCAL_RS_LOG="$WORK_DIR/local_rs.log"
@@ -153,7 +153,7 @@ EOF
 run_reload "0" "$LOCAL_RS_LOG"
 
 grep -Fq 'service/state:reload-core-runtime' "$LOCAL_RS_LOG" ||
-  fail "reload_singbox_after_list_update must reload core when local rule_set is present even if config.json hash is unchanged"
+  fail "reload_core_after_list_update must reload core when local rule_set is present even if config.json hash is unchanged"
 
 mkdir -p "$WORK_DIR/bin"
 cat > "$WORK_DIR/bin/curl" <<'SH'

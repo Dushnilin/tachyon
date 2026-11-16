@@ -8,14 +8,14 @@
 # 1. cache.uc's bootstrap retry escalated to `/etc/init.d/tachyon reload
 #    subscription_deferred_recovery` when it managed to download a deferred
 #    subscription. That is the *full* reload: validate -> capture reload state
-#    -> plan -> zapret -> nft rebuild -> sing-box, plus Tailscale and parental
+#    -> plan -> zapret -> nft rebuild -> tachyon-core, plus Tailscale and parental
 #    bookkeeping, all to apply one rewritten cache file. It ran from a
 #    background worker at an arbitrary moment, so a subscription that only
 #    arrived late (deferred at boot, retried by the worker) could restart the
 #    proxy while the household was already using it.
 #
 # 2. Even the soft apply stopped both helper workers around a graceful SIGHUP.
-#    DNS failover probes dig @127.0.0.42 - sing-box's own DNS listener - which
+#    DNS failover probes dig @127.0.0.42 - tachyon-core's own DNS listener - which
 #    stays bound across an in-place reload, and it re-normalizes its state every
 #    probe cycle, so stopping and restarting it bought nothing but a window
 #    where DNS was unmonitored. Priority is different: it reads the section
@@ -53,7 +53,7 @@ grep -q '"subscription-deferred-recovery-apply"' "$UPDATES_UC" ||
   fail "components/updates.uc does not dispatch the subscription-deferred-recovery-apply mode"
 
 # The apply has to hold the reload lock, or it races a real reload that is
-# already rewriting sing-box's config underneath it.
+# already rewriting tachyon-core's config underneath it.
 grep -q 'acquire_runtime_lock(RELOAD_LOCK_DIR' "$UPDATES_UC" ||
   fail "the deferred-recovery apply does not take RELOAD_LOCK_DIR"
 
@@ -88,7 +88,7 @@ awk '/^function subscription_runtime_apply_changed\(/,/^}/' "$UPDATES_UC" |
   awk '/sighup-core-runtime/{inside=1} inside' >"$WORK_DIR/fallback.uc"
 
 grep -q 'reload-core-runtime' "$WORK_DIR/fallback.uc" ||
-  fail "a failed SIGHUP no longer escalates to a full sing-box restart"
+  fail "a failed SIGHUP no longer escalates to a full tachyon-core restart"
 
 grep -q 'DNS_FAILOVER_UC, "stop-runtime"' "$WORK_DIR/fallback.uc" ||
   fail "the full-restart fallback no longer stops DNS failover; its probes would fail during the restart window"

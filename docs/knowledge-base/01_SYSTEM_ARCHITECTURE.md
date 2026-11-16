@@ -2,7 +2,7 @@
 
 ## 1. High-Level Overview
 
-**Tachyon** is an enterprise-grade, lightweight traffic orchestration, multi-protocol proxying, and packet desynchronization platform built natively for **OpenWrt** (supporting 23.05, 24.10, 25.x, and SNAPSHOT).
+**Tachyon** is a lightweight traffic orchestration, multi-protocol proxying, and packet desynchronization platform built natively for **OpenWrt** (supporting 23.05, 24.10, 25.x, and SNAPSHOT).
 
 ```mermaid
 graph TD
@@ -10,19 +10,13 @@ graph TD
     Router --> NFT[nftables: inet TachyonTable]
     
     NFT -->|Direct List / 0ms| WAN[Direct WAN Gateway]
-    NFT -->|NFQueue Desync| Zapret[Zapret v1 / v2 nfqws/2]
-    NFT -->|SOCKS Desync| ByeDPI[ByeDPI ciadpi :4539]
-    NFT -->|TProxy :1602| SingBox[tachyon-core / sing-box]
+    NFT -->|TProxy :1602| TachyonCore[tachyon-core]
     
-    SingBox -->|VLESS Reality / H2 / AWG| VPS[External VPS / Global Web]
-    Zapret --> WAN
-    ByeDPI --> WAN
+    TachyonCore -->|VLESS Reality / XHTTP / AWG / Desync / CSQTT / Tailscale| VPS[External VPS / Peer / Global Web]
     
     subgraph Tachyon Control Plane
         UCODE[ucode Core Runtime] --> NFT
-        UCODE --> SingBox
-        UCODE --> Zapret
-        UCODE --> ByeDPI
+        UCODE --> TachyonCore
         Watchdog[Autonomous Watchdog & Reconciler] --> UCODE
         AIDoctor[AI Doctor v3.0 / Local Doctor / RAG] --> Watchdog
         Telegram[Telegram Bot Daemon] --> UCODE
@@ -52,7 +46,7 @@ graph TD
 3. **HTTP REST Agent API & MCP Server**: Secure CGI endpoint (`/cgi-bin/tachyon-agent/`) with OpenAPI 3.0.3 spec and JSON-RPC 2.0 Model Context Protocol (`service/agent_mcp.uc`) with built-in privacy redaction (`service/support_bundle.uc`) so connected LLMs never see plaintext secrets.
 
 ### 2.4. Core Service Contract (`core/process.uc`)
-Doctor, status, watchdog, lifecycle and the init-script generators share one contract: procd name `tachyon-core`, init script `/etc/init.d/tachyon-core`, UCI package `tachyon-core`, binaries `/usr/bin/tachyon-core` and `/usr/bin/sing-box`, and the pid files under `/var/run`. Process liveness is verified using triple identity (`pid` + `/proc/<pid>/stat` `starttime` + `/proc/sys/kernel/random/boot_id`) to prevent PID recycling false positives.
+Doctor, status, watchdog, lifecycle and the init-script generators share one contract: procd name `tachyon-core`, init script `/etc/init.d/tachyon-core`, UCI package `tachyon-core`, binary `/usr/bin/tachyon-core`, and the pid files under `/var/run`. Process liveness is verified using triple identity (`pid` + `/proc/<pid>/stat` `starttime` + `/proc/sys/kernel/random/boot_id`) to prevent PID recycling false positives.
 
 ---
 
@@ -72,7 +66,7 @@ tachyon/
 │   │       ├── service/               # Lifecycle, Watchdog, Reconciler, Known-Good, APIs, MCP, Telegram
 │   │       ├── diagnostics/           # AI Doctor, Local Doctor, RAG, Fuzzer, Route Explain, Quick Fixes
 │   │       ├── tachyon_core/          # Core config generator, outbounds, routes, DNS, balancers
-│   │       ├── providers/             # Zapret v1/v2, ByeDPI, NFQueue, WDTT, OlcRTC, FPTN, Tailscale
+│   │       ├── providers/             # FPTN runtime, provider rules & status
 │   │       ├── nft/                   # nftables ruleset compiler & applier (inet TachyonTable)
 │   │       ├── dns/                   # dnsmasq & DNS routing coordinator, speed test
 │   │       ├── components/            # Updater, package catalog, hosts, engine state
@@ -99,9 +93,8 @@ tachyon/
 
 | Process | Role | Execution Model |
 |---|---|---|
-| `tachyon-core` / `sing-box` | Core proxying and packet tunneling engine (TProxy `:1602`, DNS `127.0.0.42:53`, Clash API `127.0.0.1:9090`) | Managed by procd (`/etc/init.d/tachyon-core`), identity verified via `core/process.uc` |
-| `nfqws` / `nfqws2` | Local TCP/UDP packet desynchronizer (Zapret v1 NFQueue `200+`, Zapret v2 NFQueue `201+` with Lua) | Spawned into background per configured rule |
-| `ciadpi` | Local SOCKS5 desync proxy (ByeDPI) | Spawned on `127.0.0.1:4539` (Fuzzer sandbox: `11089`) |
+| `tachyon-core` | Core proxying, native desync, Tailscale, CSQTT/WDTT, and tunnel engine (TProxy `:1602`, DNS `127.0.0.42:53`, Clash API `127.0.0.1:9090`) | Managed by procd (`/etc/init.d/tachyon-core`), identity verified via `core/process.uc` |
+| `fptn-client-cli` | L3 FPTN tunnel provider (when standalone FPTN is active) | Managed by `providers/fptn/runtime.uc` |
 | `watchdog.uc` | State supervision, Reconciler drift repair, LKG observation, OOM guard, Smart Detect | Background periodic daemon (every 5–15s) |
 | `telegram.uc` | Telegram Bot Long-Polling Daemon | Procd-supervised background worker |
 | `agent_api.uc` / `agent_mcp.uc` | HTTP REST Agent API & MCP Server | Invoked on-demand via `uhttpd` CGI |

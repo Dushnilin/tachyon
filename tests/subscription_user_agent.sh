@@ -13,7 +13,7 @@ assert_file() {
   [ "$actual" = "$expected" ] || fail "expected candidates '$expected', got '$actual'"
 }
 
-default_ua="sing-box/1.12.0"
+default_ua="tachyon-core/0.4.5"
 default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
   "$default_ua" \
   Happ \

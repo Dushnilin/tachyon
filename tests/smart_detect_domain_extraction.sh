@@ -32,7 +32,7 @@ assert_rejects() {
   [ -z "$actual" ] || fail "$label: expected no domain, got '$actual'"
 }
 
-# --- quoted-host form (primary sing-box log shape) ---
+# --- quoted-host form (primary core log shape) ---
 assert_extracts 'outbound/direct: failed to connect to "example.com:443"' \
   example.com "quoted host with port"
 assert_extracts 'direct connection failed: "sub.domain.example.org"' \
@@ -48,8 +48,8 @@ assert_extracts 'direct failed target=blocked.example.net' \
 assert_extracts 'direct failed target blocked2.example.net' \
   blocked2.example.net "target<space> form"
 
-# --- unquoted host: the shape sing-box 1.14 actually emits ---
-# Captured from a live router running sing-box 1.14.2-lx.2. The quoted-host
+# --- unquoted host: the unquoted log shape ---
+# Captured from a live router running the core. The quoted-host
 # fixtures above never match this format, which is why Smart Detect produced
 # zero candidates on a router where smart_detect=1 and the trigger word was
 # present in the log.
@@ -104,7 +104,7 @@ done
 rm -f "$SENTINEL"
 
 # --- smart_detect_get_proxy_sections filtering ---
-# Issue #56: zapret, zapret2, byedpi, bypass, block, dns must NEVER be returned as candidate proxy sections.
+# zapret, zapret2, byedpi, desync, bypass, block, dns must NEVER be returned as candidate proxy sections.
 # Only enabled remote proxy sections (connection, awg, warp, etc.) should be returned.
 TMP_DIR="$(mktemp -d /tmp/tachyon_smart_detect_test.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -114,15 +114,9 @@ cat > "$UCI_STATE_TEST" << 'EOF'
 tachyon.sec_bypass=section
 tachyon.sec_bypass.enabled=1
 tachyon.sec_bypass.action=bypass
-tachyon.sec_zapret=section
-tachyon.sec_zapret.enabled=1
-tachyon.sec_zapret.action=zapret
-tachyon.sec_zapret2=section
-tachyon.sec_zapret2.enabled=1
-tachyon.sec_zapret2.action=zapret2
-tachyon.sec_byedpi=section
-tachyon.sec_byedpi.enabled=1
-tachyon.sec_byedpi.action=byedpi
+tachyon.sec_desync=section
+tachyon.sec_desync.enabled=1
+tachyon.sec_desync.action=desync
 tachyon.sec_block=section
 tachyon.sec_block.enabled=1
 tachyon.sec_block.action=block

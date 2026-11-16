@@ -37,7 +37,7 @@ type DashboardSectionCache = {
     | Tachyon.SubscriptionMetadata
     | Tachyon.SubscriptionMetadata[];
   // Tags that belong to a URLTest/selector group and should not be shown
-  // as standalone nodes in the UI (mirrors hiddenOutboundTags in sing-box).
+  // as standalone nodes in the UI (mirrors hiddenOutboundTags in tachyon-core).
   hiddenOutboundTags?: Record<string, boolean>;
 };
 
@@ -141,8 +141,9 @@ type ChildType =
   | 'balancer';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
-// Written by singbox/runtime.uc when it quarantines a section that sing-box
-// refused to load; absent (or stale-empty) when every section loaded fine.
+// Written by tachyon_core/runtime.uc when it quarantines a section that
+// tachyon-core refused to load; absent (or stale-empty) when every section
+// loaded fine.
 const SECTION_ERRORS_FILE = '/var/run/tachyon/section-errors.json';
 const CLASH_API_FETCH_TIMEOUT_MS = 2500;
 let directClashApiFailedAt = 0;
@@ -355,7 +356,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     // Collect effective modular outbound_source items (mirrors connections.uc:section_effective_outbound_sources)
     const effectiveSources: Tachyon.ConfigSection[] = [];
     const seenSrcIds = new Set<string>();
-    const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+    const dpiSourceTypes = new Set(['desync']);
     const hasDirectNonDpiSourceRefs =
       outboundSources.length > 0 &&
       getListValues(next.outbound_source_refs).some((sid) => {
@@ -481,23 +482,9 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       });
     });
 
-    const isNativeWdttSource = (src: Tachyon.ConfigSection) =>
-      (src.source_type || '').toLowerCase() === 'wdtt' &&
-      (src.wdtt_native === '1' ||
-        Boolean((src.warp_flow_uri || src.csqtt_uri || '').trim()));
-    const serviceSourceTypes = new Set([
-      'zapret',
-      'zapret2',
-      'byedpi',
-      'desync',
-      'olcrtc',
-    ]);
-    const isServiceSource = (src: Tachyon.ConfigSection) => {
-      const st = (src.source_type || '').toLowerCase();
-      if (serviceSourceTypes.has(st)) return true;
-      if (st === 'wdtt') return !isNativeWdttSource(src);
-      return false;
-    };
+    const serviceSourceTypes = new Set(['desync']);
+    const isServiceSource = (src: Tachyon.ConfigSection) =>
+      serviceSourceTypes.has((src.source_type || '').toLowerCase());
     const allSourcesAreService =
       effectiveSources.length > 0 && effectiveSources.every(isServiceSource);
 
@@ -678,12 +665,8 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         const port = (src.tor_socks_port || '9050').trim() || '9050';
         const tname = (src.name || 'Tor').trim() || 'Tor';
         pushSourceLink(src, `socks5://127.0.0.1:${port}#${tname}`);
-      } else if (stype === 'interface' || stype === 'tailscale') {
-        const iname = (
-          src.interface_name ||
-          src.interface ||
-          (stype === 'tailscale' ? 'tailscale0' : '')
-        ).trim();
+      } else if (stype === 'interface') {
+        const iname = (src.interface_name || src.interface || '').trim();
         if (iname) extraInterfaces.push(iname);
       } else if (stype === 'outbound_json' || stype === 'json') {
         getRawListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
@@ -703,9 +686,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'trusttunnel',
           'tewfai',
           'csqtt',
+          'wdtt',
+          'tailscale',
           'openvpn',
         ].includes(stype) ||
-        isNativeWdttSource(src) ||
         (stype === 'desync' && !allSourcesAreService)
       ) {
         if (next.action !== stype) {
@@ -877,7 +861,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       allSourcesAreService
     ) {
       next.action = (
-        effectiveSources[0].source_type || 'zapret2'
+        effectiveSources[0].source_type || 'desync'
       ).toLowerCase() as Tachyon.ConfigSection['action'];
     }
 
@@ -1286,6 +1270,7 @@ const SINGLE_ENDPOINT_ACTIONS = new Set([
   'trusttunnel',
   'shadowtls',
   'csqtt',
+  'wdtt',
 ]);
 
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
@@ -1317,12 +1302,7 @@ function isConnectionAction(action?: string) {
 }
 
 function isServiceAction(action?: string) {
-  return Boolean(
-    action &&
-      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        action,
-      ),
-  );
+  return action === 'desync';
 }
 
 function isPolicyAction(action?: string) {
@@ -1383,7 +1363,7 @@ function shouldHideNaServers(section: Tachyon.ConfigSection) {
   );
 }
 
-// A server is rendered as N/A when it is missing from the sing-box runtime or
+// A server is rendered as N/A when it is missing from the tachyon-core runtime or
 // when no latency has ever been measured for it. "Not responding" (-1) is a
 // distinct, meaningful state and stays visible.
 function isNaOutbound(outbound: Tachyon.Outbound) {
@@ -3333,99 +3313,17 @@ export async function getDashboardSections(
     Promise<Tachyon.ServiceStatus | undefined>
   >();
 
-  const getServiceStatus = (
-    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'desync' | 'wdtt' | 'olcrtc',
-  ) => {
+  const getServiceStatus = (serviceType: 'desync') => {
     if (!serviceStatusCache.has(serviceType)) {
       serviceStatusCache.set(
         serviceType,
         (async () => {
           try {
-            if (serviceType === 'zapret') {
-              const result = await TachyonShellMethods.getZapretStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'zapret',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'zapret2') {
-              const result = await TachyonShellMethods.getZapret2Status();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'zapret2',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: 0,
-                  unstable: false,
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'byedpi') {
-              const result = await TachyonShellMethods.getByedpiStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'byedpi',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'wdtt') {
-              const result = await TachyonShellMethods.getWdttStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'wdtt',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'olcrtc') {
-              const result = await TachyonShellMethods.getOlcrtcStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'olcrtc',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'desync') {
+            if (serviceType === 'desync') {
               // desync runs inside tachyon-core — there is no separate process.
-              // Reflect readiness from the tachyon-core/sing-box engine status.
+              // Reflect readiness from the tachyon-core engine status.
               try {
-                const result = await TachyonShellMethods.getSingBoxStatus();
+                const result = await TachyonShellMethods.getTachyonCoreStatus();
                 if (result?.success && result.data) {
                   const s = result.data;
                   const isRunning = Boolean(s.running);

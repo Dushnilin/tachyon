@@ -36,13 +36,11 @@ try { events = require("core.events"); } catch (e) {}
 let _override_kg_dir = null;
 let _override_obs_file = null;
 let _override_cfg_path = null;
-let _override_variant_path = null;
 
-function set_test_overrides(kg_dir, obs_file, cfg_path, variant_path) {
+function set_test_overrides(kg_dir, obs_file, cfg_path, _unused) {
     _override_kg_dir = kg_dir;
     _override_obs_file = obs_file;
     _override_cfg_path = cfg_path;
-    _override_variant_path = variant_path;
 }
 
 function get_known_good_dir() {
@@ -198,17 +196,6 @@ function get_config_backup_path() {
     return get_known_good_dir() + "/config";
 }
 
-function get_variant_target_path() {
-    if (_override_variant_path != null) return _override_variant_path;
-    let p = getenv("SB_VARIANT_STATE_FILE");
-    if (p != null && p != "") return p;
-    return "/etc/tachyon/tachyon-core-variant";
-}
-
-function get_variant_backup_path() {
-    return get_known_good_dir() + "/variant";
-}
-
 function get_history_path() {
     return get_known_good_dir() + "/history.json";
 }
@@ -249,23 +236,12 @@ function append_history(action, details) {
 // ─── Engine and Health Probes ─────────────────────────────────────────────────
 
 function get_active_engine() {
-    let c = uci_core.cursor();
-    if (c) {
-        try {
-            c.load(CONFIG_NAME);
-            let eng = c.get(CONFIG_NAME, "settings", "engine");
-            if (eng != null && eng != "")
-                return eng == "sing-box" ? "tachyon-core" : eng;
-        } catch (e) {}
-    }
     return "tachyon-core";
 }
 
 function get_engine_pid(engine_id) {
-    let names = [ "tachyon-core", "sing-box" ];
-    for (let proc_name in names) {
-        let p = fs.popen("pidof " + shell_quote(proc_name) + " 2>/dev/null", "r");
-        if (!p) continue;
+    let p = fs.popen("pidof tachyon-core 2>/dev/null", "r");
+    if (p) {
         let out = trim(as_string(p.read("line")));
         p.close();
         if (out != "") {
@@ -349,16 +325,11 @@ function promote(reason, metrics) {
         };
     }
 
-    // 2. Copy variant if present
-    if (fs.stat("/etc/tachyon/tachyon-core-variant") != null) {
-        copy_file_atomic("/etc/tachyon/tachyon-core-variant", get_variant_backup_path());
-    }
-
-    // 3. Calculate hash
+    // 2. Calculate hash
     let hash = file_sha256(cfg_backup);
     let eng = get_active_engine();
 
-    // 4. Write manifest
+    // 3. Write manifest
     let manifest = {
         version: constants.TACHYON_VERSION || "1.4.3",
         promoted_at: time(),
@@ -625,12 +596,7 @@ function rollback_to_known_good(reason, options) {
         };
     }
 
-    // 3. Restore variant if present
-    let variant_backup = get_variant_backup_path();
-    if (fs.stat(variant_backup) != null)
-        copy_file_atomic(variant_backup, get_variant_target_path());
-
-    // 4. Update observation state to rolled_back
+    // 3. Update observation state to rolled_back
     write_json_atomic(get_observation_file(), {
         status: "rolled_back",
         rolled_back_at: time(),

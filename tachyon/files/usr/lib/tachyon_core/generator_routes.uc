@@ -260,7 +260,7 @@ function urltest_idle_timeout(section, urltest_id) {
         ? configured
         : runtime_constants.URLTEST_DEFAULT_IDLE_TIMEOUT);
 
-    // sing-box refuses to start a URLTest group whose interval exceeds its
+    // tachyon-core refuses to start a URLTest group whose interval exceeds its
     // idle_timeout, and substitutes URLTEST_DEFAULT_IDLE_TIMEOUT when the
     // option is omitted. Raise the timeout to the interval instead of emitting
     // a config that fails with "interval must be less or equal than idle_timeout".
@@ -1571,7 +1571,7 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     if (idle_timeout != "")
         urltest_outbound.idle_timeout = idle_timeout;
 
-    if (variant_state.supports_native_balancer(ctx.detect_sing_box_version ? ctx.detect_sing_box_version() : null)) {
+    if (variant_state.supports_native_balancer(ctx.detect_core_version ? ctx.detect_core_version() : null)) {
         let ut_mode = connections.urltest_mode(section, urltest_id);
         if (ut_mode != "" && ut_mode != "least_test")
             urltest_outbound.mode = ut_mode;
@@ -1875,7 +1875,7 @@ function add_group_urltest_outbounds(config, sections) {
         });
 
         state.urltestCandidateTags = unique_string_array(tags);
-        if (!getenv("SB_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
+        if (!getenv("TACHYON_CORE_PREFLIGHT_BINARY") && !ctx.atomic_write_json_file(runtime_subscription.section_cache_path(group_name), state))
             ctx.runtime_generate_unsupported("failed to write section cache for " + group_name);
 
         active_group_tags[group_name] = selector_tag;
@@ -1973,16 +1973,8 @@ function is_valid_detour(config, tag) {
     return false;
 }
 
-// sing-box 1.14.0 deprecated the remote rule-set `download_detour` field in
-// favour of `http_client`, and removed it in 1.16.0. The replacement names a
-// declared HTTP client, so a detour that the old field carried inline now needs
-// a client of its own. `ruleset-http` already exists in base_config and covers
-// the no-detour case; cores below 1.14 keep `download_detour`, since
-// `http_clients` is an unknown top-level field there and sing-box aborts the
-// whole config on it.
+// tachyon-core uses `http_client` for remote rule-set downloads (`ruleset-http`).
 function download_http_client_tag(config, detour) {
-    if (!ctx.is_sb_1_14_plus || !ctx.is_sb_1_14_plus())
-        return "";
     if (!is_valid_detour(config, detour))
         return "ruleset-http";
 
@@ -2420,7 +2412,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
     let has_explicit_balancers = length(urltest_tags) > 0 || length(priority_tags) > 0;
-    let supports_native_bal = variant_state.supports_native_balancer(ctx.detect_sing_box_version ? ctx.detect_sing_box_version() : null);
+    let supports_native_bal = variant_state.supports_native_balancer(ctx.detect_core_version ? ctx.detect_core_version() : null);
     let use_section_failover = sel_mode != "default" && (
         has_dpi_source ||
         (is_priority_failover_mode && (!has_explicit_balancers || (!supports_native_bal && length(priority_tags) == 0)))
@@ -2546,7 +2538,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         default: selector_default,
         interrupt_exist_connections: connections.section_interrupt_exist_connections(section)
     };
-    if (variant_state.is_tachyon_core() && connections.section_selector_auto_failover(section, ctx.runtime_settings ? ctx.runtime_settings() : null))
+    if (connections.section_selector_auto_failover(section, ctx.runtime_settings ? ctx.runtime_settings() : null))
         selector_outbound.auto_failover = true;
     push(config.outbounds, selector_outbound);
 }
@@ -2560,8 +2552,6 @@ function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
             dec_ok = common.command_success_from_args([ "/usr/bin/tachyon-core", "rule-set", "decompile", srs_path, "-o", json_path ]);
         if (!dec_ok)
             dec_ok = common.command_success_from_args([ "tachyon-core", "rule-set", "decompile", srs_path, "-o", json_path ]);
-        if (!dec_ok)
-            dec_ok = common.command_success_from_args([ "sing-box", "rule-set", "decompile", srs_path, "-o", json_path ]);
         if (dec_ok && fs.stat(json_path) != null && etc_json != null && etc_json != "") {
             let st_j = fs.stat(json_path);
             let sz_j = st_j != null ? int(st_j.size || 0) : 0;
@@ -2632,15 +2622,15 @@ function ensure_custom_ruleset(config, reference, section_name) {
 
             // is_populated_srs_file, not is_valid_srs_file: the fetch-failure
             // stub is itself a valid 17-byte SRS, and treating it as downloaded
-            // emits a local rule_set with no url, so sing-box can never fetch the
+            // emits a local rule_set with no url, so tachyon-core can never fetch the
             // real list and the rule matches nothing (TCH-1043).
-// is_referenceable_srs_file: the question is whether sing-box can read the file,
+// is_referenceable_srs_file: the question is whether tachyon-core can read the file,
 // not whether it matches anything. The 17-byte placeholder is valid and parseable,
 // so it stays referenced locally and a cold boot without a network still applies -
 // emitting a remote rule-set there puts the fetch back into startup, and a GitHub
 // hiccup then kills the core. A truncated list is valid-looking and unreadable, and
 // that one must fall through to the remote url, because a config pointing at a file
-// sing-box cannot parse is refused outright ("unexpected EOF") and leaves the router
+// tachyon-core cannot parse is refused outright ("unexpected EOF") and leaves the router
 // unable to apply anything. is_populated_srs_file alone answers neither: it accepts
 // the truncation.
 if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_rulesets.is_referenceable_trs_file(tmp_trs))
@@ -2835,12 +2825,12 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             }
         }
         else {
-            ctx.runtime_generate_unsupported("plain list reference is not supported by sing-box config generation");
+            ctx.runtime_generate_unsupported("plain list reference is not supported by tachyon-core config generation");
         }
     }
     else if (substr(reference, 0, 1) == "/") {
         if (extension != "srs" && extension != "trs" && extension != "json")
-            ctx.runtime_generate_unsupported("local rule_set extension is not supported by sing-box config generation");
+            ctx.runtime_generate_unsupported("local rule_set extension is not supported by tachyon-core config generation");
         // Skip broken local ruleset files — nonexistent or suspiciously small
         if (!helpers.file_is_usable(reference, 100))
             return null;
@@ -2868,7 +2858,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
         push(config.route.rule_set, rule_set);
     }
     else {
-        ctx.runtime_generate_unsupported("rule_set reference is not supported by sing-box config generation");
+        ctx.runtime_generate_unsupported("rule_set reference is not supported by tachyon-core config generation");
     }
 
     return { tag: tag_name, kind };
@@ -3047,7 +3037,7 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_que
         config.route.rule_set = [];
 
     // If ruleset has BOTH domains and IP subnets, split them so domains can go to DNS without
-    // causing sing-box 1.14+ to require match_response: true, which erroneously issues FakeIP for pure-IP matches.
+    // causing tachyon-core to require match_response: true, which erroneously issues FakeIP for pure-IP matches.
     if (has_domains && has_ips) {
         let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
         let dom_path = folder + "/" + tag_name + "-domains.json";
@@ -3283,22 +3273,6 @@ function section_dns_server(section) {
     return fakeip_or_real;
 }
 
-function section_is_ipv4_only_dpi(section) {
-    let action = option(section, "action", "");
-    let z2_src = connections.section_matching_provider_source(section, "zapret2");
-    let z1_src = connections.section_matching_provider_source(section, "zapret");
-    if (action != "zapret" && action != "zapret2" && z2_src == null && z1_src == null)
-        return false;
-    let is_z2 = action == "zapret2" || (action != "zapret" && z2_src != null);
-    let opt_key = is_z2 ? "nfqws2_opt" : "nfqws_opt";
-    let eff_sec = is_z2 ? (z2_src ? connections.merge_section_with_provider_source(section, z2_src) : section)
-                        : (z1_src ? connections.merge_section_with_provider_source(section, z1_src) : section);
-    let raw = trim(option(eff_sec, opt_key, ""));
-    if (raw == "" || index(raw, "--filter-l3=ipv4") < 0)
-        return false;
-    return match(raw, /--filter-l3=[^[:space:]]*ipv6/) == null;
-}
-
 function section_awg_has_ipv6(section) {
     let amz = connections.amnezia_configs ? connections.amnezia_configs(section) : [];
     if (length(amz) > 0) {
@@ -3335,8 +3309,6 @@ function section_ipv6_supported(section) {
         return false;
     let raw_v6 = lc(trim(option(section, "ipv6_support", "1")));
     if (raw_v6 == "0" || raw_v6 == "false" || raw_v6 == "off")
-        return false;
-    if (section_is_ipv4_only_dpi(section))
         return false;
     let action = option(section, "action", "");
     if (eff_state && eff_state.effective == "tunnel_over_v4" &&
@@ -3572,54 +3544,33 @@ function add_dns_action_rules_for_clause(config, section, phase) {
     }
 
     if (emit_rulesets) {
-        let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
-        if (is_1_14) {
-            if (length(query_rule_set_tags) > 0) {
-                let dns_rule = {
-                    action: "route",
-                    server: server_tag,
-                    rewrite_ttl,
-                    rule_set: single_or_array(query_rule_set_tags)
-                };
-                add_source_dns_matchers(dns_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, dns_rule);
-            }
-            if (length(response_rule_set_tags) > 0) {
-                let eval_rule = {
-                    action: "evaluate",
-                    server: runtime_constants.DNS_SERVER_TAG
-                };
-                add_source_dns_matchers(eval_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, eval_rule);
-
-                let dns_rule = {
-                    action: "route",
-                    server: server_tag,
-                    rewrite_ttl,
-                    rule_set: single_or_array(response_rule_set_tags),
-                    match_response: true
-                };
-                add_source_dns_matchers(dns_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, dns_rule);
-            }
+        if (length(query_rule_set_tags) > 0) {
+            let dns_rule = {
+                action: "route",
+                server: server_tag,
+                rewrite_ttl,
+                rule_set: single_or_array(query_rule_set_tags)
+            };
+            add_source_dns_matchers(dns_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, dns_rule);
         }
-        else {
-            let all_rule_set_tags = [];
-            for (let tag in query_rule_set_tags)
-                push(all_rule_set_tags, tag);
-            for (let tag in response_rule_set_tags)
-                push(all_rule_set_tags, tag);
+        if (length(response_rule_set_tags) > 0) {
+            let eval_rule = {
+                action: "evaluate",
+                server: runtime_constants.DNS_SERVER_TAG
+            };
+            add_source_dns_matchers(eval_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, eval_rule);
 
-            if (length(all_rule_set_tags) > 0) {
-                let dns_rule = {
-                    action: "route",
-                    server: server_tag,
-                    rewrite_ttl,
-                    rule_set: single_or_array(all_rule_set_tags)
-                };
-                add_source_dns_matchers(dns_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, dns_rule);
-            }
+            let dns_rule = {
+                action: "route",
+                server: server_tag,
+                rewrite_ttl,
+                rule_set: single_or_array(response_rule_set_tags),
+                match_response: true
+            };
+            add_source_dns_matchers(dns_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, dns_rule);
         }
     }
 
@@ -3639,8 +3590,7 @@ function normalize_port_number_value(value) {
 
 function add_dscp_matchers(rule, section) {
     // DSCP matching is handled exclusively at the firewall/nftables layer (nft/apply.uc).
-    // sing-box route rules do not support a "dscp" field; emitting it causes sing-box
-    // to abort config loading with: route.rules[...].dscp: json: unknown field "dscp".
+    // tachyon-core route rules do not support a "dscp" field.
 }
 
 function add_port_matchers(rule, section) {
@@ -3725,10 +3675,6 @@ function outbound_supports_udp(config, tag_name, visited) {
                     res = true;
             }
         }
-        else if (t == "socks" && as_string(outb.server) == runtime_constants.BYEDPI_LISTEN_ADDRESS &&
-            int(outb.server_port || 0) >= runtime_constants.BYEDPI_PORT_BASE &&
-            int(outb.server_port || 0) < runtime_constants.BYEDPI_PORT_BASE + 100)
-            res = false;
         else if (t == "selector" || t == "urltest") {
             if (type(outb.outbounds) == "array" && length(outb.outbounds) > 0) {
                 res = true;
@@ -3999,10 +3945,8 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
         push_dns_matcher_rule(config, apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs));
         return;
     }
-    let action = option(section, "action", "");
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
-    let is_dpi_sec = action == "zapret" || action == "zapret2" || action == "byedpi" ||
-        connections.is_dpi_or_desync_only_section(section);
+    let is_dpi_sec = connections.is_dpi_or_desync_only_section(section);
     let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
     if ((!eff_state || eff_state.fakeip_enabled) && is_dpi_sec &&
         connections.routed_dns_enabled(section) && rule.server == routed_tag &&
@@ -4592,11 +4536,9 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
         add_port_matchers(sub, neg);
         add_protocol_matchers(sub, neg);
         add_interface_address_matchers(sub, neg);
-        if ((ctx.is_tachyon_core && ctx.is_tachyon_core()) || variant_state.is_tachyon_core()) {
-            let ntw = trim(option(neg, "time_window", ""));
-            if (ntw != "")
-                sub.time_window = ntw;
-        }
+        let ntw = trim(option(neg, "time_window", ""));
+        if (ntw != "")
+            sub.time_window = ntw;
         let nrs = [];
         for (let comm in list_option(neg, "community_lists")) {
             let ens = ensure_community_ruleset(config, section_name, as_string(comm));
@@ -4774,11 +4716,9 @@ function add_combined_route_for_clause(config, section) {
         add_dscp_matchers(r, section);
         add_protocol_matchers(r, section);
         add_interface_address_matchers(r, section);
-        if ((ctx.is_tachyon_core && ctx.is_tachyon_core()) || variant_state.is_tachyon_core()) {
-            let tw = trim(option(section, "time_window", ""));
-            if (tw != "")
-                r.time_window = tw;
-        }
+        let tw = trim(option(section, "time_window", ""));
+        if (tw != "")
+            r.time_window = tw;
         return r;
     };
 
@@ -4962,96 +4902,60 @@ function add_combined_route_for_clause(config, section) {
     for (let tag in dns_query_rule_set_tags)
         if (index(dns_non_domain_query_tags, tag) < 0)
             push(domain_only_dns_tags, tag);
-    let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
-    if (is_1_14) {
-        if (length(dns_query_rule_set_tags) > 0) {
-            let dns_rule = {
+    if (length(dns_query_rule_set_tags) > 0) {
+        let dns_rule = {
+            action: "route",
+            server: dns_server_tag,
+            rule_set: single_or_array(dns_query_rule_set_tags)
+        };
+        if (use_rewrite_ttl)
+            dns_rule.rewrite_ttl = rewrite_ttl;
+        add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
+        add_source_dns_matchers(dns_rule, source_ip_cidr);
+        if (emit_sec_aaaa_noerror)
+            push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
+        push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
+        if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
+            let aaaa_rule = {
                 action: "route",
-                server: dns_server_tag,
+                server: runtime_constants.DNS_SERVER_TAG,
+                rewrite_ttl,
+                query_type: [ "AAAA" ],
                 rule_set: single_or_array(dns_query_rule_set_tags)
             };
-            if (use_rewrite_ttl)
-                dns_rule.rewrite_ttl = rewrite_ttl;
-            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            if (emit_sec_aaaa_noerror)
-                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
-            if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
-                let aaaa_rule = {
-                    action: "route",
-                    server: runtime_constants.DNS_SERVER_TAG,
-                    rewrite_ttl,
-                    query_type: [ "AAAA" ],
-                    rule_set: single_or_array(dns_query_rule_set_tags)
-                };
-                add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
-            }
-        }
-        if (length(dns_response_rule_set_tags) > 0) {
-            let eval_rule = {
-                action: "evaluate",
-                server: runtime_constants.DNS_SERVER_TAG
-            };
-            add_source_dns_matchers(eval_rule, source_ip_cidr);
-
-            let dns_rule = {
-                action: "route",
-                server: dns_server_tag,
-                rule_set: single_or_array(dns_response_rule_set_tags),
-                match_response: true
-            };
-            if (use_rewrite_ttl)
-                dns_rule.rewrite_ttl = rewrite_ttl;
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            if (config.__defer_dns_response_rules) {
-                if (type(config.__deferred_dns_response_rules) != "array")
-                    config.__deferred_dns_response_rules = [];
-                push(config.__deferred_dns_response_rules, {
-                    section_name: section[".name"],
-                    section: section,
-                    eval_rule: apply_excluded_source_ips(eval_rule, dns_excluded_cidrs),
-                    dns_rule: dns_rule,
-                    excluded_cidrs: excluded_cidrs
-                });
-            } else {
-                push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, dns_excluded_cidrs));
-                push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
-            }
+            add_source_dns_matchers(aaaa_rule, source_ip_cidr);
+            push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
         }
     }
-    else {
-        let all_dns_tags = [];
-        for (let tag in dns_query_rule_set_tags)
-            push(all_dns_tags, tag);
-        for (let tag in dns_response_rule_set_tags)
-            push(all_dns_tags, tag);
+    if (length(dns_response_rule_set_tags) > 0) {
+        let eval_rule = {
+            action: "evaluate",
+            server: runtime_constants.DNS_SERVER_TAG
+        };
+        add_source_dns_matchers(eval_rule, source_ip_cidr);
 
-        if (length(all_dns_tags) > 0) {
-            let dns_rule = {
-                action: "route",
-                server: dns_server_tag,
-                rule_set: single_or_array(all_dns_tags)
-            };
-            if (use_rewrite_ttl)
-                dns_rule.rewrite_ttl = rewrite_ttl;
-            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            if (emit_sec_aaaa_noerror)
-                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
-            if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
-                let aaaa_rule = {
-                    action: "route",
-                    server: runtime_constants.DNS_SERVER_TAG,
-                    rewrite_ttl,
-                    query_type: [ "AAAA" ],
-                    rule_set: single_or_array(all_dns_tags)
-                };
-                add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
-            }
+        let dns_rule = {
+            action: "route",
+            server: dns_server_tag,
+            rule_set: single_or_array(dns_response_rule_set_tags),
+            match_response: true
+        };
+        if (use_rewrite_ttl)
+            dns_rule.rewrite_ttl = rewrite_ttl;
+        add_source_dns_matchers(dns_rule, source_ip_cidr);
+        if (config.__defer_dns_response_rules) {
+            if (type(config.__deferred_dns_response_rules) != "array")
+                config.__deferred_dns_response_rules = [];
+            push(config.__deferred_dns_response_rules, {
+                section_name: section[".name"],
+                section: section,
+                eval_rule: apply_excluded_source_ips(eval_rule, dns_excluded_cidrs),
+                dns_rule: dns_rule,
+                excluded_cidrs: excluded_cidrs
+            });
+        } else {
+            push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, dns_excluded_cidrs));
+            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
         }
     }
     if (bool_option(section, "match_all", false) && !closed_geo &&
@@ -5097,7 +5001,7 @@ function add_outbound_for_section(config, section, taken, sections) {
         return;
     let action = option(section, "action", "");
     if (!valid_section_name(section_name))
-        ctx.runtime_generate_unsupported("section name is not safe for sing-box config generation");
+        ctx.runtime_generate_unsupported("section name is not safe for tachyon-core config generation");
     let unsupported_matcher = unsupported_matcher_key(section);
     if (unsupported_matcher != "")
         ctx.runtime_generate_unsupported("section has unsupported matcher " + unsupported_matcher);
@@ -5138,18 +5042,10 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_chain_outbound(config, section);
     else if (action == "tailscale")
         ctx.outbounds.add_tailscale_client_endpoint(config, section);
-    else if (action == "zapret")
-        ctx.outbounds.add_zapret_outbound(config, section, sections);
-    else if (action == "zapret2")
-        ctx.outbounds.add_zapret2_outbound(config, section, sections);
-    else if (action == "byedpi")
-        ctx.outbounds.add_byedpi_outbound(config, section, sections);
     else if (action == "wdtt")
-        ctx.outbounds.add_wdtt_outbound(config, section, sections);
+        ctx.outbounds.add_wdtt_outbound(config, section);
     else if (action == "csqtt")
         ctx.outbounds.add_csqtt_outbound(config, section);
-    else if (action == "olcrtc")
-        ctx.outbounds.add_olcrtc_outbound(config, section, sections);
     else if (action == "fptn")
         ctx.outbounds.add_fptn_outbound(config, section, sections);
     else if (action == "group") {
@@ -5180,8 +5076,8 @@ function reserve_section_outbound_tags(sections, taken) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "fptn" ||
+            action == "awg" || action == "warp" ||
+            action == "wdtt" || action == "csqtt" || action == "fptn" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn" || action == "openconnect" ||
             action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
@@ -5237,8 +5133,8 @@ function failover_candidate(sections) {
             continue;
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "csqtt" || action == "olcrtc" ||
+            action == "awg" || action == "warp" ||
+            action == "wdtt" || action == "csqtt" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn" || action == "openconnect" ||
             action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
@@ -5543,15 +5439,11 @@ function add_server_routes(config, servers, sections) {
     let lan_cidrs = type(config.__lan_interface_cidrs) == "array" ? config.__lan_interface_cidrs : [];
     for (let server in servers) {
         ctx.current_section = server[".name"];
-        // Native-mode Tailscale runs outside sing-box: no inbound, no rules.
-        if (runtime_servers.is_native_tailscale(server))
-            continue;
         runtime_servers.add_sniff_rule(config, server);
 
         let base_inbound = runtime_constants.server_inbound_tag(server[".name"]);
         let inbound = base_inbound;
         if (option(server, "protocol", "vless") == "shadowtls" &&
-            variant_state.is_tachyon_core() &&
             trim(as_string(option(server, "shadowtls_detour", ""))) == "") {
             push(config.route.rules, {
                 action: "route",
@@ -5715,8 +5607,7 @@ function add_server_routes(config, servers, sections) {
                 ip_cidr: [ "100.64.0.0/10", "fd7a:115c:a1e0::/48" ],
                 outbound: inbound
             });
-            if (variant_state.is_tachyon_core() &&
-                (bool_option(server, "tailscale_accept_routes", false) || trim(option(server, "tailscale_exit_node", "")) != "")) {
+            if (bool_option(server, "tailscale_accept_routes", false) || trim(option(server, "tailscale_exit_node", "")) != "") {
                 push(config.route.rules, {
                     action: "route",
                     preferred_by: inbound,

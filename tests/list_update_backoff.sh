@@ -47,7 +47,7 @@ plan1="$(ucode -L "$TACHYON_LIB" "$UPDATES_UC" cron-refresh-plan-fixture "$WORK_
 [ "$plan1" = "list-disabled" ] || fail "list_update_interval=0 expected list-disabled, got '$plan1'"
 
 # 2. Circuit breaker stops mirror storm across unreachable files and sets cron backoff
-mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run" "$WORK_DIR/singbox/rulesets"
+mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run" "$WORK_DIR/tachyon-core/rulesets"
 export TACHYON_UCI_STATE_FILE="$WORK_DIR/uci_state"
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run"
 export TACHYON_LIST_UPDATE_STATE_FILE="$WORK_DIR/run/list-update.timestamp"
@@ -55,8 +55,8 @@ export TACHYON_LIST_UPDATE_BACKOFF_FILE="$WORK_DIR/run/list-update.backoff"
 export TACHYON_LIST_UPDATE_PID_FILE="$WORK_DIR/run/list_update.pid"
 export TACHYON_LIST_UPDATE_STATUS_FILE="$WORK_DIR/run/list-update.status"
 export TACHYON_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock"
-export TMP_SING_BOX_FOLDER="$WORK_DIR/singbox"
-export TMP_RULESET_FOLDER="$WORK_DIR/singbox/rulesets"
+export TMP_TACHYON_CORE_FOLDER="$WORK_DIR/tachyon-core"
+export TMP_RULESET_FOLDER="$WORK_DIR/tachyon-core/rulesets"
 export TACHYON_PERSISTENT_RULESET_DIR="$WORK_DIR/persistent_rulesets"
 export TACHYON_BIN="$WORK_DIR/bin/tachyon"
 export TACHYON_SERVICE_INIT="$WORK_DIR/bin/init_tachyon"
@@ -65,7 +65,7 @@ export PATH="$WORK_DIR/bin:$PATH"
 
 mkdir -p "$TACHYON_PERSISTENT_RULESET_DIR"
 for name in l1 l2 l3 l4 l5; do
-  printf '1.1.1.0/24\n' > "$WORK_DIR/singbox/rulesets/remote-domain-$name.txt"
+  printf '1.1.1.0/24\n' > "$WORK_DIR/tachyon-core/rulesets/remote-domain-$name.txt"
 done
 
 cat >"$WORK_DIR/bin/curl" <<'STUB'
@@ -135,7 +135,7 @@ let urls = [
     "https://raw.githubusercontent.com/o/r/main/e.txt"
 ];
 for (let i = 0; i < length(urls); i++) {
-    let p = "'"$WORK_DIR/singbox/rulesets/f"'" + i + ".txt";
+    let p = "'"$WORK_DIR/tachyon-core/rulesets/f"'" + i + ".txt";
     fs.writefile(p, "cached.example\n");
     let ok = mod.download_to_file(urls[i], p, "", false);
     if (!ok) { warn("cached fallback failed on file " + i + "\n"); exit(1); }

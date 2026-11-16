@@ -63,10 +63,10 @@ if command -v ucode >/dev/null 2>&1; then
       "fix_uci_config": 8,
       "fix_wan_interface": 10,
       "fix_resolv_symlink": 30,
-      "start_singbox": 50
+      "start_tachyon_core": 50
   };
 
-  let test_ai_res = "Some diagnosis text\nFIX: `fix_resolv_symlink`., invalid_code_123,  start_singbox \n";
+  let test_ai_res = "Some diagnosis text\nFIX: `fix_resolv_symlink`., invalid_code_123,  start_tachyon_core \n";
   let quick_fixes = [];
   let fix_idx = index(test_ai_res, "FIX:");
   if (fix_idx >= 0) {
@@ -86,7 +86,7 @@ if command -v ucode >/dev/null 2>&1; then
       }
   }
 
-  if (length(quick_fixes) != 2 || quick_fixes[0] != "fix_resolv_symlink" || quick_fixes[1] != "start_singbox") {
+  if (length(quick_fixes) != 2 || quick_fixes[0] != "fix_resolv_symlink" || quick_fixes[1] != "start_tachyon_core") {
       warn("Quick fix parsing failed: " + sprintf("%J\n", quick_fixes));
       exit(1);
   }
