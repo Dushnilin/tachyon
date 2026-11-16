@@ -2603,7 +2603,8 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     let source_aware_dns = source_aware_dns_sources(sections, settings);
     let config = base_config(settings, service_address, {
         mwan3_active: cli_bool(mwan3_active),
-        source_aware_dns: length(source_aware_dns) > 0
+        source_aware_dns: length(source_aware_dns) > 0,
+        fail_closed: require("service.kill_switch").veto(settings, sections) != ""
     });
     add_source_aware_dns_support(config, source_aware_dns);
     if (length(servers) > 0) {

@@ -213,8 +213,10 @@ function config(settings, runtime) {
         for (let rule in p2p_direct_rules(settings, "block"))
             push(result.rules, rule);
     }
-    // dns_intercept_all includes the DoH block.
-    if (bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false)) {
+    // dns_intercept_all includes the DoH block, and Fail-Closed forces it: a
+    // client resolving over DoH gets real IPs that walk past domain sections.
+    let fail_closed = type(runtime) == "object" && runtime.fail_closed == true;
+    if (bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false) || fail_closed) {
         let doh_cidrs = [];
         for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
             push(doh_cidrs, cidr);

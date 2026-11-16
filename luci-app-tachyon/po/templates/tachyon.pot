@@ -10031,8 +10031,8 @@ msgstr ""
 msgid "Off (Allow)"
 msgstr ""
 
-#: src/views/settings.ts:6207
-msgid "Off now: Fail-Closed is set in sections: %s."
+#: src/views/settings.ts:6225
+ is set in sections: %s."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1157
@@ -10079,6 +10079,10 @@ msgstr ""
 
 #: src/views/settings.ts:6040
 msgid "Ollama (Local PC / Server)"
+msgstr ""
+
+#: src/views/settings.ts:4897
+msgid "On now: forced by Fail-Closed in sections: %s."
 msgstr ""
 
 #: src/views/server.ts:7466

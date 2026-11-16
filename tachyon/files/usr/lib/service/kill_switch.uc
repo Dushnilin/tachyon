@@ -6,8 +6,11 @@
 // start, a start that failed, the delete-then-build step of every nft rebuild.
 //
 // The guard is a gate in its own table: it drops everything forwarded from
-// the LAN source interfaces to anywhere else unless the interface is in the
-// `open` set. Tachyon opens the gate once interception is in place and closes
+// the LAN source interfaces to anywhere else, and their DNS (53, 853) to the
+// router itself, unless the interface is in the `open` set. With LAN DNS shut
+// out, the router's own resolver may fall back to WAN DNS while the gate is
+// closed: the router keeps resolving (updates, NTP, subscriptions) and the
+// clients still get nothing. Tachyon opens the gate once interception is in place and closes
 // it before interception goes away.
 //
 // The same ruleset is installed as an fw4 ruleset-post include, so the closed
@@ -29,6 +32,7 @@ const FW4_INCLUDE_ROOT = getenv("TACHYON_FW4_INCLUDE_ROOT") || "/usr/share/nftab
 const FW4_INCLUDE_DIR = FW4_INCLUDE_ROOT + "/ruleset-post";
 const FW4_INCLUDE_FILE = FW4_INCLUDE_DIR + "/90-tachyon-kill-switch.nft";
 const ENABLED_LINK = "/etc/rc.d/S99tachyon";
+const DNS_INBOUND_ADDRESS = require("core.constants").SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
 
 // Why Tachyon may NOT fall back to direct WAN / direct DNS on its own, or ""
 // when it may. One fail-closed section vetoes it router-wide because every
@@ -84,10 +88,15 @@ function ruleset(interfaces) {
         "\tchain forward {\n" +
         "\t\ttype filter hook forward priority -200; policy accept;\n" +
         "\t}\n" +
+        "\tchain input {\n" +
+        "\t\ttype filter hook input priority -200; policy accept;\n" +
+        "\t}\n" +
         "}\n" +
         "flush chain inet %s forward\n" +
-        "add rule inet %s forward iifname %s oifname != %s iifname != @%s counter drop comment \"tachyon fail-closed kill-switch\"\n",
-        GUARD_TABLE, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, set, GATE_SET);
+        "add rule inet %s forward iifname %s oifname != %s iifname != @%s counter drop comment \"tachyon fail-closed kill-switch\"\n" +
+        "flush chain inet %s input\n" +
+        "add rule inet %s input iifname %s meta l4proto { tcp, udp } th dport { 53, 853 } iifname != @%s counter drop comment \"tachyon fail-closed kill-switch dns\"\n",
+        GUARD_TABLE, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, set, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, GATE_SET);
 }
 
 function nft(args) {
@@ -157,10 +166,34 @@ function hold() {
 // Only an enabled, fail-closed service vetoes: disabling or removing Tachyon
 // is the user leaving it, and the router must keep a working resolver then.
 function dns_veto() {
-    // Package removal: the resolver must work once Tachyon is gone.
-    if (getenv("TACHYON_DNS_FORCE_DIRECT") == "1" || fs.lstat(ENABLED_LINK) == null)
+    if (fs.lstat(ENABLED_LINK) == null)
         return "";
-    return uci_veto();
+    let reason = uci_veto();
+    // A closed gate already shuts LAN clients out of DNS and WAN, so the
+    // router may resolve directly then; only an open gate (Tachyon running)
+    // must keep DNS on the proxy.
+    if (reason == "" || engaged())
+        return "";
+    return reason;
+}
+
+// dnsmasq answers LAN clients through Tachyon again (or Tachyon does not own
+// DNS at all). Until then the gate stays closed, or clients would resolve real
+// IPs over WAN DNS the moment it opens.
+function dns_ready() {
+    let dhcp = function(key) {
+        return trim(common.as_string(uci_core.get("dhcp.@dnsmasq[0]." + key) || ""));
+    };
+    if (common.bool_option(uci_settings(), "dont_touch_dhcp", false) || dhcp("port") == "0")
+        return true;
+    let servers = uci_core.get("dhcp.@dnsmasq[0].server");
+    servers = type(servers) == "array" ? servers : split(common.as_string(servers || ""), /[ \t]+/);
+    return dhcp("noresolv") == "1" && index(servers, DNS_INBOUND_ADDRESS) >= 0;
+}
+
+// Open the gate once interception is up and DNS is back on the proxy.
+function release_if_ready() {
+    return dns_ready() ? release() : false;
 }
 
 // For stop: a disabled service is the user leaving Tachyon, so no gate and
@@ -200,5 +233,7 @@ return {
     hold,
     stop_hold,
     dns_veto,
+    dns_ready,
+    release_if_ready,
     boot
 };

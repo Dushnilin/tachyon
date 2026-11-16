@@ -38,6 +38,15 @@ let section_leaf_tags = {};
 let section_group_map = {};
 let section_state_map = {};
 let active_group_tags = {};
+// The section whose route rules are being emitted (push_section_route_rule needs
+// its fail policy and has no section argument).
+let active_route_section = null;
+
+// Declared before every caller: ucode resolves names at the call site, and
+// section_fail_policy_mode() is defined far below the selector builders.
+function section_is_fail_closed(section) {
+    return lc(trim(as_string(object_or_empty(section).fail_policy || ""))) == "block";
+}
 let active_remote_custom_rulesets = {};
 let remote_custom_rulesets_state = null;
 
@@ -1298,6 +1307,11 @@ function build_priority_levels_for_mode(group_id, urltest_candidate_tags, state,
     let result = [];
     let assigned = {};
     for (let level_id in connections.priority_levels(group_id, section, force_from_section_pool)) {
+        // Fail-Closed promises the section never leaves directly, so a Direct
+        // failover level cannot be part of its chain.
+        if (section_is_fail_closed(section) &&
+            connections.priority_level_direct(group_id, level_id, section, force_from_section_pool))
+            continue;
         let outbounds = [];
         for (let tag_name in priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state, section, force_from_section_pool)) {
             if (!assigned[tag_name]) {
@@ -2514,7 +2528,16 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         else {
             selector_outbounds = [ runtime_constants.DIRECT_OUTBOUND_TAG ];
             selector_default = runtime_constants.DIRECT_OUTBOUND_TAG;
-            warn("Section " + section_name + ": subscription has no loaded servers yet, using direct fallback until cache is populated\n");
+            if (section_is_fail_closed(section)) {
+                // The direct placeholder only keeps the selector valid: routing
+                // this section to it would be a leak, so it is quarantined and
+                // its rules reject until the cache is populated.
+                ctx.quarantined_sections = ctx.quarantined_sections || {};
+                ctx.quarantined_sections[section_name] = true;
+                warn("Section " + section_name + ": subscription has no loaded servers yet; Fail-Closed rejects its traffic until the cache is populated\n");
+            }
+            else
+                warn("Section " + section_name + ": subscription has no loaded servers yet, using direct fallback until cache is populated\n");
         }
     }
 
@@ -4055,7 +4078,8 @@ function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, 
         for (let k, v in rule)
             udp_rule[k] = v;
         delete udp_rule.outbound;
-        if (rule.source_ip_cidr && !rule.domain && !rule.ip_cidr && !rule.rule_set) {
+        let fail_closed = active_route_section != null && section_is_fail_closed(active_route_section);
+        if (!fail_closed && rule.source_ip_cidr && !rule.domain && !rule.ip_cidr && !rule.rule_set) {
             udp_rule.action = "route";
             udp_rule.outbound = runtime_constants.DIRECT_OUTBOUND_TAG;
         } else {
@@ -4101,6 +4125,7 @@ function section_leaf_list_option(section, key) {
 }
 
 function add_fully_routed_ips_rule(config, section) {
+    active_route_section = section;
     let source_ip_cidr = core_ip.normalize_to_cidrs(section_leaf_list_option(section, "fully_routed_ips"));
     if (length(source_ip_cidr) == 0)
         return;
@@ -4218,6 +4243,7 @@ function resolve_section_server_outbound_tag(config, section, server_key) {
 }
 
 function add_server_domain_rules_for_section(config, section) {
+    active_route_section = section;
     let raw_entries = connections.server_domain_rules ? connections.server_domain_rules(section) : [];
     if (length(raw_entries) == 0)
         return;
@@ -4631,6 +4657,7 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
 }
 
 function add_combined_route_for_clause(config, section) {
+    active_route_section = section;
     let domains = domain_conditions(section);
     let domain = domains.domain;
     let domain_suffix = domains.domain_suffix;

@@ -29,6 +29,8 @@ check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >=
 check(index(rs, "hook forward") >= 0, "Guard is not on the forward hook");
 check(index(rs, "iifname { \"br-lan\", \"br-guest\" } oifname != { \"br-lan\", \"br-guest\" } iifname != @" + ks.GATE_SET + " counter drop") >= 0,
     "Guard does not drop LAN traffic leaving the LAN while the gate is closed");
+check(index(rs, "hook input") >= 0 && index(rs, "th dport { 53, 853 } iifname != @" + ks.GATE_SET + " counter drop") >= 0,
+    "A closed gate does not shut LAN clients out of the router DNS");
 // An fw4 reload replays this text: deleting the table would wipe an open gate.
 check(index(rs, "delete table") < 0, "Replaying the guard would reset the gate");
 print(rs);
@@ -96,7 +98,7 @@ awk '
   f && /kill_switch\.hold\(\)/ { hold = 1 }
   f && /nft_delete_table\(table\)/ && !hold { exit }
   f && /if \(built\)/ && hold { built = 1 }
-  f && /kill_switch\.release\(\)/ && built { ok = 1; exit }
+  f && /kill_switch\.release_if_ready\(\)/ && built { ok = 1; exit }
   END { exit ok ? 0 : 1 }
 ' "$NFT_UC" || fail "nft rebuild must hold the guard before deleting the table and release it only once built"
 awk '
@@ -115,6 +117,15 @@ INCLUDE='/usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft'
 for f in "$ROOT_DIR/tachyon/Makefile" "$ROOT_DIR/uninstall.sh" "$TACHYON_LIB/service/uninstall.uc"; do
   grep -Fq "$INCLUDE" "$f" || fail "${f##*/} must delete the kill-switch include"
 done
-grep -Fq 'TACHYON_DNS_FORCE_DIRECT=1' "$TACHYON_LIB/service/package.uc" ||
-  fail "package removal must restore a working resolver despite Fail-Closed"
+# The router keeps a resolver while the gate is closed (LAN DNS is shut out
+# by the gate itself); only an open gate keeps DNS on the proxy.
+grep -Fq 'if (reason == "" || engaged())' "$TACHYON_LIB/service/kill_switch.uc" ||
+  fail "a closed gate must let the router itself resolve over WAN"
+# Start rebuilds nft before DNS is back on the proxy: the gate may open only after.
+awk '
+  /^function start_impl\(\)/ { f = 1 }
+  f && /dnsmasq_configure\(true\)/ { dns = 1 }
+  f && /kill_switch\.release_if_ready\(\)/ { ok = dns; exit }
+  END { exit ok ? 0 : 1 }
+' "$LIFECYCLE_UC" || fail "start must open the gate only after DNS is back on the proxy"
 printf 'fail-closed kill-switch tests passed\n'

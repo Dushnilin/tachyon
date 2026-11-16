@@ -62,7 +62,8 @@ intercept_line="$(awk -v pat=$'udp\tdport\t53\tcounter\tredirect\tto\t:53' 'inde
 
 # The from-UCI path turns DoH blocking on together with the intercept, in nft
 # and in the core route rules.
-grep -Fq 'bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false) ? "1" : "0"' "$NFT_RUNTIME" ||
+grep -Fq 'let dns_intercept = bool_option(settings, "dns_intercept_all", false) || fail_closed;' "$NFT_RUNTIME" &&
+  grep -Fq 'bool_option(settings, "block_doh", false) || dns_intercept ? "1" : "0"' "$NFT_RUNTIME" ||
   fail "dns_intercept_all must enable the nft DoH block"
 grep -Fq 'bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false)' \
   "$TACHYON_LIB/tachyon_core/route.uc" || fail "dns_intercept_all must enable the core DoH reject"

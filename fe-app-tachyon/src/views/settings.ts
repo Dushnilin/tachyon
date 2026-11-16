@@ -505,6 +505,36 @@ function refreshDownloadSectionChoices(option, capabilities) {
   }
 }
 
+// Enabled sections with fail_policy=block, as service/kill_switch.uc counts
+// them: these force some global settings at runtime whatever is stored.
+function failClosedSectionNames() {
+  return (uci.sections(UCI_PACKAGE, 'section') || [])
+    .filter(function (s) {
+      const enabled = `${s.enabled ?? '1'}`.trim().toLowerCase();
+      return (
+        ['0', 'false', 'no', 'off'].indexOf(enabled) < 0 &&
+        `${s.fail_policy || ''}`.trim().toLowerCase() === 'block'
+      );
+    })
+    .map(function (s) {
+      return s.label || s['.name'];
+    });
+}
+
+// Show a setting that Fail-Closed forces at runtime as its effective value,
+// read-only, without touching the stored value.
+function showForcedByFailClosed(option, effective, note) {
+  const sections = failClosedSectionNames();
+  if (sections.length === 0) return;
+  option.readonly = true;
+  option.cfgvalue = function () {
+    return effective;
+  };
+  option.write = function () {};
+  option.remove = function () {};
+  option.description += ' ' + note.format(sections.join(', '));
+}
+
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.default = '';
   option.rmempty = false;
@@ -4861,6 +4891,11 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = '0';
   o.rmempty = false;
+  showForcedByFailClosed(
+    o,
+    '1',
+    _('On now: forced by Fail-Closed in sections: %s.'),
+  );
 
   o = section.taboption(
     'services',
@@ -6184,30 +6219,11 @@ function createSettingsContent(section, capabilities) {
   // whatever is stored here, so show the effective state instead of a ticked
   // box. The stored value is left alone: it applies again once no section is
   // Fail-Closed.
-  const failClosedSections = (uci.sections(UCI_PACKAGE, 'section') || [])
-    .filter(function (s) {
-      const enabled = `${s.enabled ?? '1'}`.trim().toLowerCase();
-      return (
-        ['0', 'false', 'no', 'off'].indexOf(enabled) < 0 &&
-        `${s.fail_policy || ''}`.trim().toLowerCase() === 'block'
-      );
-    })
-    .map(function (s) {
-      return s.label || s['.name'];
-    });
-  if (failClosedSections.length > 0) {
-    o.readonly = true;
-    o.cfgvalue = function () {
-      return '0';
-    };
-    o.write = function () {};
-    o.remove = function () {};
-    o.description +=
-      ' ' +
-      _('Off now: Fail-Closed is set in sections: %s.').format(
-        failClosedSections.join(', '),
-      );
-  }
+  showForcedByFailClosed(
+    o,
+    '0',
+    _('Off now: Fail-Closed is set in sections: %s.'),
+  );
 
   // DNS Continuous Check
   o = section.taboption(

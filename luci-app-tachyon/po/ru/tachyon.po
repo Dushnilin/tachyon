@@ -6932,6 +6932,9 @@ msgstr "Транспорт OlcRTC"
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
 
+msgid "On now: forced by Fail-Closed in sections: %s."
+msgstr "Сейчас включён принудительно: Fail-Closed в секциях: %s."
+
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
 

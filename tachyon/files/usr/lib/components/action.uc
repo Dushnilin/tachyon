@@ -673,10 +673,8 @@ function stop_tachyon_before_sing_box_change() {
     if (tachyon_was_running && file_exists(stop_bin))
         run_logged("Stopping Tachyon before tachyon-core update", command_from_args([ stop_bin, "stop" ]), 30);
 
-    // A fail-closed setup keeps DNS on the proxy through the update.
     if (tachyon_was_running && file_exists(BIN_PATH) &&
-        uci_core.get(TACHYON_CONFIG_NAME, "settings", "keep_dns_on_upgrade") == "0" &&
-        require("service.kill_switch").uci_veto() == "")
+        uci_core.get(TACHYON_CONFIG_NAME, "settings", "keep_dns_on_upgrade") == "0")
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
