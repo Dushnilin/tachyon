@@ -279,7 +279,7 @@ function pkg_install_files_command(files, force_reinstall) {
     if (is_apk()) {
         sanitize_apk_world();
         let add_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite" ];
-        if (apk_can_install_files_offline(files)) {
+        if (apk_can_install_files_offline(files) || apk_satisfy_missing_files_deps(files)) {
             push(add_args, "--no-network", "--repositories-file", "/dev/null");
         } else {
             let repos_file = apk_filtered_repositories_file(null);
@@ -438,7 +438,8 @@ function pkg_tx_install_files(files, force_reinstall) {
     update_job_phase("package_transaction", "Installing package files");
     let cmd = pkg_install_files_command(files, force_reinstall);
     let res = pkg_tx_run_with_lock("Installing packages", cmd, PKG_TX_INSTALL_TIMEOUT);
-    if (!res.success && is_apk() && apk_satisfy_missing_files_deps(files)) {
+    if (!res.success && is_apk()) {
+        apk_satisfy_missing_files_deps(files);
         let offline_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite", "--no-network", "--repositories-file", "/dev/null" ];
         for (let file in files)
             push(offline_args, file);

@@ -160,6 +160,10 @@ function notify_auto_update_cli(component, old_ver, new_ver) {
     return runtime.notify_auto_update_cli(component, old_ver, new_ver);
 }
 
+function notify_auto_update_failed_cli(component, old_ver, error_msg) {
+    return runtime.notify_auto_update_failed_cli(component, old_ver, error_msg);
+}
+
 function process_updates(token, admin_ids) {
     // Idle poll guard invariant:
     // if (!res || !res.ok || !res.result) return false;
@@ -201,6 +205,13 @@ if ((sourcepath(1) == null || sourcepath(1) == "") && length(ARGV) > 0) {
         let old_v = ARGV[start_arg + 1];
         let new_v = ARGV[start_arg + 2];
         exit(notify_auto_update_cli(comp, old_v, new_v));
+    }
+    else if (mode == "notify-auto-update-failed") {
+        let start_arg = (ARGV[0] == "" || ARGV[0] == null) ? 2 : 1;
+        let comp = ARGV[start_arg];
+        let old_v = ARGV[start_arg + 1];
+        let err_v = ARGV[start_arg + 2];
+        exit(notify_auto_update_failed_cli(comp, old_v, err_v));
     }
     else if (mode == "send-smart") {
         let start_arg = (ARGV[0] == "" || ARGV[0] == null) ? 2 : 1;
@@ -252,6 +263,7 @@ return {
     send_api,
     notify_updates_cli,
     notify_auto_update_cli,
+    notify_auto_update_failed_cli,
     process_updates,
     dispatch_command,
     rendering,
