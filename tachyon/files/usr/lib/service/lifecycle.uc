@@ -1500,7 +1500,14 @@ function stop_impl() {
     let status = 0;
     invalidate_reload_hash();
 
-    if (!setting_bool("dont_touch_dhcp", false)) {
+    // Every stop goes through here: the LuCI button, but also package upgrades,
+    // tachyon-core updates and the installer. A fail-closed setup must not get
+    // a direct path out of any of them, so the gate closes and DNS stays on the
+    // proxy; only a disabled or removed service goes direct.
+    let fail_closed = kill_switch.stop_hold();
+    if (fail_closed != "")
+        log_message("Stopping with Fail-Closed: LAN stays blocked and DNS stays on the proxy until Tachyon starts (" + fail_closed + ")", "warn");
+    else if (!setting_bool("dont_touch_dhcp", false)) {
         let dns_status = dnsmasq_restore(false);
         if (dns_status != 0)
             status = dns_status;
@@ -1514,8 +1521,6 @@ function stop_impl() {
     let runtime_status = stop_main();
     if (runtime_status != 0)
         status = runtime_status;
-    // A manual stop is the user choosing direct Internet.
-    kill_switch.release();
 
     if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
         status = 1;
@@ -1527,7 +1532,7 @@ function stop_impl() {
 
     module_success(STATE_UC, [ "clear-reload-state", RELOAD_STATE_FILE, RELOAD_STATE_SNAPSHOT_FILE ]);
 
-    if (status != 0)
+    if (status != 0 && fail_closed == "")
         dnsmasq_restore_fail_safe();
 
     return status;
@@ -2052,6 +2057,8 @@ function uninstall() {
         command_success_from_args([ SERVICE_INIT, "disable" ]);
     }
 
+    // Removing Tachyon is the one stop that must leave the router usable.
+    kill_switch.remove();
     dnsmasq_restore_fail_safe();
 
     if (fs.stat("/etc/init.d/tachyon") != null) {

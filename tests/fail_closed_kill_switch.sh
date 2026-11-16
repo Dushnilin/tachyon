@@ -22,6 +22,7 @@ check(join(",", ks.source_interfaces({})) == "br-lan", "Missing source interface
 let ifaces = ks.source_interfaces({ source_network_interfaces: [ "br-lan", "br-guest", "br-lan", "x\" } accept", "" ] });
 check(join(",", ifaces) == "br-lan,br-guest", "Unsafe or duplicate interface names reached the ruleset");
 
+check(type(ks.stop_hold) == "function" && type(ks.dns_veto) == "function", "Stop/DNS kill-switch helpers missing");
 let rs = ks.ruleset([ "br-lan", "br-guest" ]);
 check(index(rs, "table inet " + ks.GUARD_TABLE + " {") >= 0, "Guard does not own a separate table");
 check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >= 0, "Guard has no interface gate set");
@@ -66,13 +67,30 @@ for fn in 'restart' 'restart_runtime_for_reload'; do
     END { exit ok ? 0 : 1 }
   ' "$LIFECYCLE_UC" || fail "$fn must hold the kill-switch before stop_main drops interception"
 done
+# Stop is also what package upgrades, tachyon-core updates and the installer
+# run: it must hold the gate and decide before any DNS rollback, never open it.
 awk '
   /^function stop_impl\(\)/ { f = 1 }
-  f && /stop_main\(\);/ { stop = 1 }
-  f && /kill_switch\.release\(\)/ && stop { ok = 1; exit }
+  f && /kill_switch\.release\(\)/ { bad = 1 }
+  f && /dnsmasq_restore\(/ && !hold { bad = 1 }
+  f && /kill_switch\.stop_hold\(\)/ { hold = 1 }
+  f && /stop_main\(\);/ { ok = hold; exit }
+  END { exit (ok && !bad) ? 0 : 1 }
+' "$LIFECYCLE_UC" || fail "stop must hold the kill-switch before rolling DNS back or dropping interception"
+awk '
+  /^function uninstall\(\)/ { f = 1 }
+  f && /kill_switch\.remove\(\)/ { ok = 1; exit }
   f && /^}/ { exit }
   END { exit ok ? 0 : 1 }
-' "$LIFECYCLE_UC" || fail "manual stop must release the kill-switch"
+' "$LIFECYCLE_UC" || fail "uninstall must remove the kill-switch"
+awk '
+  /^function failsafe_restore\(\)/ { f = 1 }
+  f && /kill_switch\.dns_veto\(\)/ { veto = 1 }
+  f && /dnsmasq_restore\(/ { ok = veto; exit }
+  END { exit ok ? 0 : 1 }
+' "$TACHYON_LIB/dns/apply.uc" || fail "every automatic DNS rollback must respect Fail-Closed"
+[[ "$(grep -c 'require("service.kill_switch").hold();' "$TACHYON_LIB/diagnostics/doctor.uc")" -ge 2 ]] ||
+  fail "doctor must hold the kill-switch before deleting the interception table"
 awk '
   /^function nft_rebuild_runtime_from_uci\(/ { f = 1 }
   f && /kill_switch\.hold\(\)/ { hold = 1 }
@@ -89,4 +107,14 @@ awk '
 ' "$TACHYON_LIB/service/watchdog.uc" || fail "a chosen direct bypass must open the kill-switch gate"
 grep -Fq 'require("service.kill_switch").boot()' "$HOTPLUG" ||
   fail "WAN ifup must engage the guard before Tachyon starts"
+# The fw4 include is written at runtime, so no package owns it: every removal
+# path must delete it, or fw4 recreates a closed gate at each boot with nothing
+# left to open it.
+INCLUDE='/usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft'
+[[ "$(grep -cF "$INCLUDE" "$ROOT_DIR/build.sh")" -ge 2 ]] || fail "build.sh removal hooks must delete the kill-switch include"
+for f in "$ROOT_DIR/tachyon/Makefile" "$ROOT_DIR/uninstall.sh" "$TACHYON_LIB/service/uninstall.uc"; do
+  grep -Fq "$INCLUDE" "$f" || fail "${f##*/} must delete the kill-switch include"
+done
+grep -Fq 'TACHYON_DNS_FORCE_DIRECT=1' "$TACHYON_LIB/service/package.uc" ||
+  fail "package removal must restore a working resolver despite Fail-Closed"
 printf 'fail-closed kill-switch tests passed\n'

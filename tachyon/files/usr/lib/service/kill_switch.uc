@@ -153,6 +153,27 @@ function hold() {
     return reason;
 }
 
+// Why DNS must not be rolled back to direct WAN now, or "" when it may.
+// Only an enabled, fail-closed service vetoes: disabling or removing Tachyon
+// is the user leaving it, and the router must keep a working resolver then.
+function dns_veto() {
+    // Package removal: the resolver must work once Tachyon is gone.
+    if (getenv("TACHYON_DNS_FORCE_DIRECT") == "1" || fs.lstat(ENABLED_LINK) == null)
+        return "";
+    return uci_veto();
+}
+
+// For stop: a disabled service is the user leaving Tachyon, so no gate and
+// direct DNS; an enabled one stays fail-closed until it starts again.
+// Returns the veto reason ("" = stop may go direct).
+function stop_hold() {
+    if (fs.lstat(ENABLED_LINK) == null) {
+        remove();
+        return "";
+    }
+    return hold();
+}
+
 // WAN hotplug. fw4 already created the closed gate at boot; settle it for
 // the current state: no service, no gate; interception up, gate open.
 function boot() {
@@ -177,5 +198,7 @@ return {
     release,
     remove,
     hold,
+    stop_hold,
+    dns_veto,
     boot
 };

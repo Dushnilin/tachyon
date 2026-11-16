@@ -6,6 +6,7 @@ let uci = require("core.uci");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 let common = require("core.common");
+let kill_switch = require("service.kill_switch");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
@@ -782,6 +783,16 @@ function dnsmasq_restore(force, quiet) {
 function failsafe_restore() {
     if (!uci_available())
         return true;
+
+    // Every automatic rollback lands here (watchdog, failed start, unclean
+    // boot, init.d, the CLI loader, doctor). Direct DNS hands clients real IPs
+    // that bypass fakeip interception, so a fail-closed setup keeps DNS on the
+    // proxy and fails closed instead.
+    let veto = kill_switch.dns_veto();
+    if (veto != "") {
+        log("DNS rollback skipped: Fail-Closed keeps DNS on the proxy (" + veto + ")", "warn");
+        return true;
+    }
 
     if (dnsmasq_management_disabled()) {
         if (!dnsmasq_has_tachyon_managed_state()) {

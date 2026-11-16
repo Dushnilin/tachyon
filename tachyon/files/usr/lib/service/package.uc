@@ -157,9 +157,12 @@ function restore_dnsmasq_if_needed() {
     if (dont_touch_dhcp_enabled())
         return;
 
-    bounded_command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
+    // Only reached when Tachyon is going away (or keep_dns_on_upgrade=0 without
+    // Fail-Closed): the router needs a working resolver afterwards, so this
+    // rollback overrides the Fail-Closed DNS veto.
+    bounded_command_success_from_args([ "env", "TACHYON_DNS_FORCE_DIRECT=1", BIN_PATH, "restore_dnsmasq" ]);
     if (path_exists(DNS_APPLY_UC))
-        bounded_command_success_from_args([ "ucode", DNS_APPLY_UC, "failsafe-restore" ]);
+        bounded_command_success_from_args([ "env", "TACHYON_DNS_FORCE_DIRECT=1", "ucode", DNS_APPLY_UC, "failsafe-restore" ]);
 }
 
 function remove_managed_sing_box() {
@@ -221,8 +224,11 @@ function prerm_cleanup(action) {
 
         // Kill any remaining tachyon processes, minus this hook's own ancestors.
         system(kill_matching_command("-F '" + BIN_PATH + "'"));
+        // An upgrade of a fail-closed setup keeps DNS on the proxy: the new
+        // package starts Tachyon again, and direct DNS would leak meanwhile.
         if (as_string(action) != "upgrade" ||
-            uci_core.get(CONFIG_NAME + ".settings.keep_dns_on_upgrade") == "0")
+            (uci_core.get(CONFIG_NAME + ".settings.keep_dns_on_upgrade") == "0" &&
+             require("service.kill_switch").uci_veto() == ""))
             restore_dnsmasq_if_needed();
     }
     remove_rt_tables_entry(); // best-effort
