@@ -32,6 +32,14 @@ tachyon.telegram.quiet_hours_start=0
 tachyon.telegram.quiet_hours_end=24
 STATE
 
+# Exercise the configured fallback SOCKS proxy, independent of other tests
+# that start a core process while the backend suite is running.
+cat >"$WORK_DIR/bin/pidof" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+chmod 0755 "$WORK_DIR/bin/pidof"
+
 cat >"$WORK_DIR/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -eo pipefail
@@ -162,8 +170,15 @@ TACHYON_UCI_STATE_FILE="$UCI_STATE" \
   ucode -S -L "$LIB_DIR" "$WORK_DIR/verify_direct_fallback.uc" | grep -Fq "phase2_ok" ||
     fail "phase 2 (short direct fallback) failed"
 
-grep -Fq "proxy_down_direct_ok|getUpdates|proxy=0|m=15|body=offset=7&timeout=5" "$CALLS_LOG" ||
-  { cat "$CALLS_LOG" >&2; fail "direct fallback for getUpdates must cap timeout=5 and -m 15"; }
+cat >"$WORK_DIR/expected_fallback_calls.log" <<'CALLS'
+proxy_down_direct_ok|getUpdates|proxy=1|m=35|body=offset=7&timeout=25
+proxy_down_direct_ok|getMe|proxy=1|m=12|
+proxy_down_direct_ok|getUpdates|proxy=0|m=15|body=offset=7&timeout=5
+CALLS
+# The getMe probe may serialize its empty payload differently across ucode versions.
+sed '/|getMe|/s/|body=.*$/|/' "$CALLS_LOG" >"$WORK_DIR/fallback_calls.log"
+diff -u "$WORK_DIR/expected_fallback_calls.log" "$WORK_DIR/fallback_calls.log" ||
+  fail "expected a failed proxy poll and probe followed by a short direct poll"
 
 # Phase 3: quiet hours suppression and persistent cooldown across separate ucode processes.
 cat >"$UCI_STATE" <<'STATE'
