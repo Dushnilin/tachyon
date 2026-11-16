@@ -6896,6 +6896,9 @@ msgstr "Выкл"
 msgid "Off (Allow)"
 msgstr "Выкл (Разрешить)"
 
+msgid "Off now: Fail-Closed is set in sections: %s."
+msgstr "Сейчас выключен: Fail-Closed включён в секциях: %s."
+
 msgid "Offline"
 msgstr "Не отвечает"
 

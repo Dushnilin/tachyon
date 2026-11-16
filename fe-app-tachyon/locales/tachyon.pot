@@ -10031,6 +10031,10 @@ msgstr ""
 msgid "Off (Allow)"
 msgstr ""
 
+#: src/views/settings.ts:6207
+msgid "Off now: Fail-Closed is set in sections: %s."
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1157
 #: src/tachyon/tabs/dashboard/initController.ts:6859
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2856

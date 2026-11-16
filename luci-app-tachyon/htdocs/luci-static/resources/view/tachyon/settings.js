@@ -6178,6 +6178,34 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
+  // Fail-Closed sections veto the bypass at runtime (service/kill_switch.uc)
+  // whatever is stored here, so show the effective state instead of a ticked
+  // box. The stored value is left alone: it applies again once no section is
+  // Fail-Closed.
+  const failClosedSections = (uci.sections(UCI_PACKAGE, "section") || [])
+    .filter(function (s) {
+      const enabled = `${s.enabled ?? "1"}`.trim().toLowerCase();
+      return (
+        ["0", "false", "no", "off"].indexOf(enabled) < 0 &&
+        `${s.fail_policy || ""}`.trim().toLowerCase() === "block"
+      );
+    })
+    .map(function (s) {
+      return s.label || s[".name"];
+    });
+  if (failClosedSections.length > 0) {
+    o.readonly = true;
+    o.cfgvalue = function () {
+      return "0";
+    };
+    o.write = function () {};
+    o.remove = function () {};
+    o.description +=
+      " " +
+      _("Off now: Fail-Closed is set in sections: %s.").format(
+        failClosedSections.join(", "),
+      );
+  }
 
   // DNS Continuous Check
   o = section.taboption(
