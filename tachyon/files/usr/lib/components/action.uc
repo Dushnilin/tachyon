@@ -3064,8 +3064,12 @@ function install_tachyon() {
     let same_release_build = trim(as_string(latest_version)) == trim(as_string(TACHYON_VERSION));
 
     let install_result = pkg_tx_install_files(install_files, same_release_build);
-    if (!install_result.success)
-        action_fail("tachyon", "install", "Failed to install Tachyon packages: " + as_string(install_result.message), TACHYON_VERSION, latest_version);
+    if (!install_result.success) {
+        if (!is_apk() || !verify_package_post_install("tachyon", latest_version))
+            action_fail("tachyon", "install", "Failed to install Tachyon packages: " + as_string(install_result.message), TACHYON_VERSION, latest_version);
+        else
+            updates_log("Tachyon packages were installed despite package manager repository warning; continuing", "warn");
+    }
 
     if (!verify_package_post_install("tachyon", latest_version))
         updates_log("Warning: Tachyon package version may not have been updated in package database", "warn");
@@ -3111,8 +3115,12 @@ function install_tachyon_version(target_tag) {
         push(install_files, i18n_file);
 
     let install_result = pkg_tx_install_files(install_files, true);
-    if (!install_result.success)
-        action_fail("tachyon", "install_version", "Failed to install Tachyon packages: " + as_string(install_result.message), TACHYON_VERSION, target_tag);
+    if (!install_result.success) {
+        if (!is_apk() || !verify_package_post_install("tachyon", target_tag))
+            action_fail("tachyon", "install_version", "Failed to install Tachyon packages: " + as_string(install_result.message), TACHYON_VERSION, target_tag);
+        else
+            updates_log("Tachyon packages were installed despite package manager repository warning; continuing", "warn");
+    }
 
     if (!verify_package_post_install("tachyon", target_tag))
         updates_log("Warning: Tachyon package version may not have been updated in package database", "warn");

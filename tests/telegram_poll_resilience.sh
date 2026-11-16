@@ -88,6 +88,12 @@ exit 28
 STUB
 chmod 0755 "$WORK_DIR/bin/curl"
 
+cat >"$WORK_DIR/bin/pidof" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod 0755 "$WORK_DIR/bin/pidof"
+
 cat >"$WORK_DIR/verify_poll_resilience.uc" <<'UC'
 let fs = require("fs");
 let transport = require("service.telegram.transport");

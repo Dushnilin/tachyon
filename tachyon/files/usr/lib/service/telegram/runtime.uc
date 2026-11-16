@@ -179,6 +179,38 @@ function send_daily_digest(token, admin_ids) {
     return accepted && recipients > 0;
 }
 
+function normalize_component_name(component) {
+    component = as_string(component);
+    if (component == "sing-box" || component == "singbox" || component == "tachyon-core" || component == "tachyon_core" || component == "tachyoncore")
+        return "sing_box";
+    if (component == "torrserver_direct" || component == "torrserver-direct" || component == "torrserver")
+        return "torrserver_direct";
+    return component;
+}
+
+function is_component_auto_update_active(comp_name) {
+    let s = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let enabled = s.component_auto_update_enabled;
+    if (enabled != "1" && enabled != 1 && enabled != true)
+        return false;
+    let targets = s.component_auto_update_targets;
+    if (targets == null || targets == "" || (type(targets) == "array" && length(targets) == 0))
+        return true;
+    let norm_comp = normalize_component_name(comp_name);
+    if (type(targets) == "string") {
+        if (targets == "all" || normalize_component_name(targets) == norm_comp)
+            return true;
+        targets = split(targets, /[ \t,]+/);
+    }
+    if (type(targets) == "array") {
+        for (let t in targets) {
+            if (t == "all" || normalize_component_name(t) == norm_comp)
+                return true;
+        }
+    }
+    return false;
+}
+
 function check_notified_updates(token, admin_ids) {
     let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
     if (!out || out == "") return;
@@ -198,6 +230,8 @@ function check_notified_updates(token, admin_ids) {
             if (name == "") continue;
             if (comp.success !== true) continue;
             if (comp.status == "outdated" || comp.status == "outdated_same_release") {
+                if (is_component_auto_update_active(name))
+                    continue;
                 let latest = comp.latest_version;
                 // Keyed by version *and* build: a rebuild under an existing tag
                 // leaves the version untouched, so a version-only key would
@@ -321,6 +355,60 @@ function notify_auto_update_cli(component, old_ver, new_ver) {
         if (cid == "") continue;
         recipients++;
         if (!notifications.submit(cfg.bot_token, cid, msg, "HTML", null)) accepted = false;
+    }
+    return accepted && recipients > 0 ? 0 : 1;
+}
+
+function notify_auto_update_failed_cli(component, old_ver, error_msg) {
+    let cfg = settings();
+    if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
+    if (cfg.notify_auto_update == "0") return 0;
+
+    component = as_string(component || "");
+    old_ver = as_string(old_ver || "");
+    error_msg = as_string(error_msg || "");
+
+    let title = component;
+    if (component == "sing_box" || component == "sing-box" || component == "singbox") {
+        let sb_variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant") || ""));
+        if (sb_variant == "tachyon-core" || index(sb_variant, "tachyon") >= 0) {
+            title = "tachyon-core";
+        } else if (sb_variant != "") {
+            title = sb_variant;
+        } else {
+            title = "sing-box";
+        }
+    } else if (component == "tachyon-core" || component == "tachyon_core") {
+        title = "tachyon-core";
+    }
+
+    let lang = cfg.language;
+    if (!lang || lang == "") {
+        try {
+            let luci_lang = uci_core.get("luci", "main", "lang");
+            if (luci_lang == "ru" || match(luci_lang, /^ru/))
+                lang = "ru";
+        } catch(e) {}
+    }
+    let local_t = i18n.bind(lang || "ru");
+
+    let msg = "⚠️ <b>" + (lang == "ru" ? "Ошибка автообновления" : "Auto-update failed") + "</b>\n" +
+        local_t("component_label") + ": <code>" + escape_html(title) + "</code>\n";
+    if (old_ver != "")
+        msg += local_t("version_label") + ": <code>" + escape_html(old_ver) + "</code>\n";
+    if (error_msg != "")
+        msg += (lang == "ru" ? "Ошибка" : "Error") + ": <code>" + escape_html(error_msg) + "</code>\n";
+
+    let kb = [[{text: local_t("btn_update_component") + " " + title, callback_data: "/update_component " + component}]];
+
+    let admins = split(cfg.admin_ids, /,/);
+    let accepted = true;
+    let recipients = 0;
+    for (let admin in admins) {
+        let cid = trim(admin);
+        if (cid == "") continue;
+        recipients++;
+        if (!notifications.submit(cfg.bot_token, cid, msg, "HTML", kb)) accepted = false;
     }
     return accepted && recipients > 0 ? 0 : 1;
 }
@@ -1172,6 +1260,7 @@ return {
     check_notified_updates,
     notify_updates_cli,
     notify_auto_update_cli,
+    notify_auto_update_failed_cli,
     block_schedules_with_notify,
     load_blocked_counts,
     save_blocked_counts,

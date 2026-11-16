@@ -2401,6 +2401,18 @@ function notify_component_auto_updated(component, prev_version, new_version) {
     command_status(common.background_command(cmd));
 }
 
+function notify_component_auto_update_failed(component, prev_version, err_msg) {
+    let cmd = command_from_args([
+        BIN_PATH,
+        "telegram",
+        "notify-auto-update-failed",
+        as_string(component),
+        as_string(prev_version || ""),
+        as_string(err_msg || "")
+    ]);
+    command_status(common.background_command(cmd));
+}
+
 function continue_component_auto_update(completed_component) {
     let settings = uci_settings();
     if (!settings_component_auto_update_enabled(settings))
@@ -2505,6 +2517,14 @@ function finish_component_job(path, component, action, exit_code, output_file) {
         }
         notify_component_auto_updated(component, prev_version, new_ver);
         continue_component_auto_update(component);
+    }
+    else if (is_auto_update && !is_job_success) {
+        let err_msg = "";
+        if (type(value) == "object")
+            err_msg = as_string(value.message || "");
+        if (err_msg == "")
+            err_msg = "Package operation failed (exit code " + arg_number(exit_code) + ")";
+        notify_component_auto_update_failed(component, prev_version, err_msg);
     }
 
     return ok;
