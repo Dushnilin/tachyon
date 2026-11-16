@@ -464,7 +464,9 @@ function sing_box_standard_ports_listening(netstat) {
     let tproxy_suffix = ":" + SB_TPROXY_INBOUND_PORT;
     let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
         index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
-    let port_1602_v6_ok = !core_ip.ipv6_supported() ||
+    let eff_v6 = common.resolve_effective_ipv6_state(uci_settings(), null);
+    let v6_active = (eff_v6 && eff_v6.ipv6_active) ? true : false;
+    let port_1602_v6_ok = !v6_active ||
         index(netstat, SB_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
         index(netstat, "[" + SB_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
         index(netstat, "0:0:0:0:0:0:0:1" + tproxy_suffix) >= 0 ||
