@@ -2253,4 +2253,174 @@ describe('getDashboardSections', () => {
     expect(names).not.toContain('StaleSourceLink');
     expect(names).not.toContain('StaleInlineLink');
   });
+
+  it('propagates hidden flags on sections, subscriptions, and manual outbound_source entries (#405)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'sub_hidden',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '1',
+        name: 'Hidden Sub',
+        source_type: 'subscription',
+        url: 'https://hidden.example.com/sub',
+      } as Tachyon.ConfigSection,
+      {
+        '.name': 'sub_visible',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '0',
+        name: 'Visible Sub',
+        source_type: 'subscription',
+        url: 'https://visible.example.com/sub',
+      } as Tachyon.ConfigSection,
+      {
+        '.name': 'manual_hidden',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '1',
+        name: 'Hidden Manual',
+        source_type: 'proxy_links',
+        proxy_links: [
+          'vless://11111111-1111-4111-8111-111111111111@198.51.100.47:443#HiddenNode',
+        ],
+      } as Tachyon.ConfigSection,
+      proxySection({
+        '.name': 'mixed_sec',
+        outbound_source_refs: ['sub_hidden', 'sub_visible', 'manual_hidden'],
+      }),
+      proxySection({
+        '.name': 'solo_hidden_source_sec',
+        outbound_source_refs: ['sub_hidden'],
+      }),
+      proxySection({
+        '.name': 'explicit_hidden_sec',
+        hidden: '1',
+        outbound_source_refs: ['sub_visible'],
+      }),
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'mixed_sec-out': {
+            type: 'Selector',
+            name: 'mixed_sec-out',
+            now: 'vis-node',
+            all: ['hid-sub-node', 'vis-node', 'hid-manual-node'],
+            history: [],
+          },
+          'solo_hidden_source_sec-out': {
+            type: 'Selector',
+            name: 'solo_hidden_source_sec-out',
+            now: 'solo-hid-node',
+            all: ['solo-hid-node'],
+            history: [],
+          },
+          'explicit_hidden_sec-out': {
+            type: 'Selector',
+            name: 'explicit_hidden_sec-out',
+            now: 'exp-vis-node',
+            all: ['exp-vis-node'],
+            history: [],
+          },
+          'hid-sub-node': {
+            type: 'VLESS',
+            name: 'hid-sub-node',
+            history: [{ delay: 30 }],
+          },
+          'vis-node': {
+            type: 'VLESS',
+            name: 'vis-node',
+            history: [{ delay: 20 }],
+          },
+          'hid-manual-node': {
+            type: 'VLESS',
+            name: 'hid-manual-node',
+            history: [{ delay: 40 }],
+          },
+          'solo-hid-node': {
+            type: 'VLESS',
+            name: 'solo-hid-node',
+            history: [{ delay: 35 }],
+          },
+          'exp-vis-node': {
+            type: 'VLESS',
+            name: 'exp-vis-node',
+            history: [{ delay: 25 }],
+          },
+        },
+      },
+    });
+
+    mocks.fsRead.mockImplementation(async (filePath: string) => {
+      if (filePath.includes('mixed_sec')) {
+        return JSON.stringify({
+          outboundMetadata: {
+            names: {
+              'hid-sub-node': 'Hidden Sub Node',
+              'vis-node': 'Visible Sub Node',
+              'hid-manual-node': 'HiddenNode',
+            },
+            sources: {
+              'hid-sub-node': 'sub:1',
+              'vis-node': 'sub:2',
+              'hid-manual-node': 'manual',
+            },
+            source_ids: {
+              'hid-sub-node': 'sub_hidden',
+              'vis-node': 'sub_visible',
+              'hid-manual-node': 'manual_hidden',
+            },
+          },
+          subscriptionMetadata: [
+            {
+              title: 'Hidden Sub',
+              sourceIndex: 1,
+              sourceSection: 'mixed_sec-subscription-1',
+            },
+            {
+              title: 'Visible Sub',
+              sourceIndex: 2,
+              sourceSection: 'mixed_sec-subscription-2',
+            },
+          ],
+        });
+      }
+      throw new Error('cache miss');
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+
+    const mixed = result.data.find((s) => s.sectionName === 'mixed_sec');
+    const solo = result.data.find(
+      (s) => s.sectionName === 'solo_hidden_source_sec',
+    );
+    const explicit = result.data.find(
+      (s) => s.sectionName === 'explicit_hidden_sec',
+    );
+
+    expect(mixed?.hidden).toBeUndefined();
+    expect(solo?.hidden).toBe(true);
+    expect(explicit?.hidden).toBe(true);
+
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'hid-sub-node')?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'hid-manual-node')?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'vis-node')?.hidden,
+    ).toBeUndefined();
+
+    expect(
+      mixed?.subscriptionMetadata?.find((m) => m.sourceIndex === 1)?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.subscriptionMetadata?.find((m) => m.sourceIndex === 2)?.hidden,
+    ).toBeUndefined();
+  });
 });

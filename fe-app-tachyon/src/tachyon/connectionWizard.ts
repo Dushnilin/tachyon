@@ -354,14 +354,14 @@ const TRAFFIC_PRESETS: Array<{
   },
   {
     id: 'rkn_geoblock',
-    labelRu: 'Базовый обход РФ + Геоблок 150+ сервисов + SSL CA',
-    labelEn: 'Base Russia Bypass + GeoBlock 150+ + SSL CA',
+    labelRu: 'Базовый список РФ + Геоблок 150+ сервисов + SSL CA',
+    labelEn: 'Base Russia List + GeoBlock 150+ + SSL CA',
     domains: ['russia_inside', 'hodca'],
   },
   {
     id: 'antifilter_refilter',
-    labelRu: 'Расширенный реестр РКН, Антизапрет и Re:filter',
-    labelEn: 'Extended RKN Registry, Antizapret & Re:filter',
+    labelRu: 'Расширенный реестр РФ, Антизапрет и Re:filter',
+    labelEn: 'Extended RU Registry, Antizapret & Re:filter',
     domains: ['ru_blocked', 'refilter', 'antifilter'],
   },
   {
@@ -922,12 +922,12 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     id: 'ru_all_in_one',
     titleRu: 'РФ: Всё включено (Рекомендуется)',
     titleEn: 'Russia: All-in-One (Recommended)',
-    badgeRu: 'ХИТ • В 1 КЛИК',
+    badgeRu: 'РЕКОМЕНДУЕТСЯ',
     badgeEn: 'RECOMMENDED',
     descRu:
-      'YouTube, Discord, Telegram, все ИИ (ChatGPT, Claude, Gemini), соцсети, Spotify и базовый обход РФ — через подписку с автовыбором узла (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую.',
+      'YouTube, Discord, Telegram, все ИИ (ChatGPT, Claude, Gemini), соцсети, Spotify и базовый список РФ — через подписку с автовыбором узла (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую.',
     descEn:
-      'YouTube, Discord, Telegram, AI services (ChatGPT, Claude, Gemini), Meta, X, Spotify & Russia bypass via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
+      'YouTube, Discord, Telegram, AI services (ChatGPT, Claude, Gemini), Meta, X, Spotify & Russia list via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
@@ -964,9 +964,9 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'БАЗОВЫЙ',
     badgeEn: 'ESSENTIAL',
     descRu:
-      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый список блокировок РФ + геоблок 150+ сервисов и нейросети. Всё остальное идёт напрямую через провайдера.',
+      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый реестр ограничений РФ + геоблок 150+ сервисов и нейросети. Всё остальное идёт напрямую через провайдера.',
     descEn:
-      'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia bypass + GeoBlock 150+ and AI services. Everything else goes direct.',
+      'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia list + GeoBlock 150+ and AI services. Everything else goes direct.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
@@ -979,21 +979,21 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     enableAutoUrlTest: true,
     tagsRu: [
       'YouTube + Discord + TG',
-      'Базовый обход РФ + ИИ',
+      'Базовый список РФ + ИИ',
       '1 секция без лишнего',
     ],
-    tagsEn: ['YouTube + Discord + TG', 'Base RU Bypass + AI', 'Single section'],
+    tagsEn: ['YouTube + Discord + TG', 'Base RU List + AI', 'Single section'],
   },
   {
     id: 'ru_max_adblock',
-    titleRu: 'РФ: Максимальный обход + Антиреклама',
-    titleEn: 'Russia: Maximum Bypass + AdBlock',
-    badgeRu: 'МАКСИМУМ + ADBLOCK',
-    badgeEn: 'MAX + ADBLOCK',
+    titleRu: 'РФ: Полный профиль + Антиреклама',
+    titleEn: 'Russia: Full Profile + AdBlock',
+    badgeRu: 'ПОЛНЫЙ + ADBLOCK',
+    badgeEn: 'FULL + ADBLOCK',
     descRu:
-      'Полные реестры РКН, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой обход для банков РФ и игр.',
+      'Полный реестр ограничений РФ, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой маршрут для банков РФ и игр.',
     descEn:
-      'Full RKN/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct bypass for RU banks & games.',
+      'Full RU/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct routing for RU banks & games.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: [
@@ -1020,13 +1020,13 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     globalDnsPreset: 'yandex_doh',
     enableAutoUrlTest: true,
     tagsRu: [
-      'Полные базы РКН + Re:filter',
+      'Полные базы РФ + Re:filter',
       'ИИ + Соцсети + Стримы',
       'Блокировка рекламы HaGeZi',
       'Банки РФ и Игры напрямую',
     ],
     tagsEn: [
-      'Full RKN + Re:filter',
+      'Full RU + Re:filter',
       'AI + Social + Streaming',
       'HaGeZi Pro AdBlock',
       'RU Banks & Games Direct',
@@ -5708,7 +5708,7 @@ export function openConnectionWizardModal(
                     { class: 'tachyon-wizard__checkbox-desc' },
                     tr(
                       'Роутер сам измеряет задержку и автоматически переключает маршрут на самый быстрый живой узел без разрыва связи',
-                      'Router automatically measures latency and switches to the fastest alive server seamlessly',
+                      'Router automatically measures latency and switches to the fastest available server without dropping connections',
                     ),
                   ),
                 ]),

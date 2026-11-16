@@ -75,6 +75,7 @@ import {
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
 import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
+import { getRouterUiPrefs, setRouterUiPrefs } from '../../helpers/uiPrefs';
 import {
   computeConnectionRates,
   computeTrafficRates,
@@ -99,6 +100,20 @@ let expandedSections = getExpandedSections();
 const expandedRoutingSections = new Set<string>();
 const sectionAccordionTabs = new Map<string, 'nodes' | 'conditions'>();
 const DASHBOARD_NODES_VIEW_MODE_KEY = 'tachyon_dashboard_nodes_view_mode';
+let dashboardShowHiddenOverride: boolean | null = null;
+
+function isDashboardShowHidden(): boolean {
+  return dashboardShowHiddenOverride !== null
+    ? dashboardShowHiddenOverride
+    : Boolean(getRouterUiPrefs()?.dashboard_show_hidden);
+}
+
+function toggleDashboardShowHidden() {
+  const next = !isDashboardShowHidden();
+  dashboardShowHiddenOverride = next;
+  setRouterUiPrefs({ dashboard_show_hidden: next });
+  void renderSectionsWidget(true);
+}
 
 function getDashboardNodesViewMode(): 'table' | 'tiles' {
   try {
@@ -4005,6 +4020,7 @@ function renderSectionInspectorModalContent(
             failed: false,
             section,
             hideSectionHeader: true,
+            showHidden: isDashboardShowHidden(),
             nodesViewMode: currentNodesViewMode,
             onChangeNodesViewMode: (mode) => {
               setDashboardNodesViewMode(mode);
@@ -4484,6 +4500,7 @@ function renderSectionAccordionBody(
             failed: false,
             section,
             hideSectionHeader: true,
+            showHidden: isDashboardShowHidden(),
             nodesViewMode: currentNodesViewMode,
             onChangeNodesViewMode: (mode) => {
               setDashboardNodesViewMode(mode);
@@ -4692,6 +4709,8 @@ async function renderSectionsWidget(forceImmediate = false) {
     sections: sectionsWithCustomLatencies,
     selectedSectionCode: selectedDashboardSectionCode,
     expandedSections: expandedRoutingSections,
+    showHidden: isDashboardShowHidden(),
+    onToggleShowHidden: toggleDashboardShowHidden,
     onToggleExpandSection: (sectionCode: string) => {
       toggleRoutingSectionExpanded(sectionCode);
     },

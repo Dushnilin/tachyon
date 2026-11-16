@@ -1348,4 +1348,79 @@ describe('renderSections', () => {
     expect(el.textContent).toContain('164.3 GB / 800.0 GB');
     expect(el.textContent).not.toContain('176 GB / 859 GB');
   });
+
+  it('hides hidden outbounds and metadata by default and reveals them when showHidden is true (#405)', () => {
+    const section: any = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'VisibleSub',
+          sourceIndex: 1,
+          sourceSection: 'main',
+        },
+        {
+          title: 'SecretSub',
+          sourceIndex: 2,
+          sourceSection: 'main',
+          hidden: true,
+        },
+      ],
+      outbounds: [
+        {
+          code: 'vis-1',
+          displayName: 'Visible Node',
+          selected: true,
+          latency: 20,
+          sourceGroup: 'sub:1',
+        },
+        {
+          code: 'hid-sub-1',
+          displayName: 'Hidden Sub Node',
+          selected: false,
+          latency: 35,
+          sourceGroup: 'sub:2',
+          hidden: true,
+        },
+        {
+          code: 'hid-manual-1',
+          displayName: 'Hidden Manual Server',
+          selected: false,
+          latency: 50,
+          sourceGroup: 'manual',
+          hidden: true,
+        },
+      ],
+    };
+
+    const baseProps = {
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    };
+
+    const defaultEl = renderSections(baseProps);
+    expect(defaultEl.textContent).toContain('Visible Node');
+    expect(defaultEl.textContent).not.toContain('SecretSub');
+    expect(defaultEl.textContent).not.toContain('Hidden Sub Node');
+    expect(defaultEl.textContent).not.toContain('Hidden Manual Server');
+
+    const revealedEl = renderSections({ ...baseProps, showHidden: true });
+    expect(revealedEl.textContent).toContain('Visible Node');
+    expect(revealedEl.textContent).toContain('SecretSub');
+    expect(revealedEl.textContent).toContain('Hidden Sub Node');
+    expect(revealedEl.textContent).toContain('Hidden Manual Server');
+    expect(revealedEl.textContent).toContain('Hidden');
+  });
 });

@@ -1821,8 +1821,8 @@ export function buildDashboardLayoutEditorDom(options?: {
             'span',
             { class: 'tachyon-dash-editor__section-sub' },
             tr(
-              'Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда',
-              'Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block',
+              'Включайте или отключайте категории правил (прокси, desync, DNS, прямой выход, блокировка) в блоке секций дашборда',
+              'Enable or disable rule categories (proxy, desync, DNS, direct WAN, block) in the dashboard sections block',
             ),
           ),
         ]),
@@ -1868,12 +1868,12 @@ export const SECTION_TYPE_DEFINITIONS: SectionTypeDefinition[] = [
   },
   {
     id: 'dpi',
-    titleRu: 'Обход DPI (Desync)',
-    titleEn: 'DPI Bypass (Desync)',
+    titleRu: 'Десинхронизация пакетов (Desync)',
+    titleEn: 'Packet Desync (Desync)',
     descRu:
-      'Секции обхода блокировок: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
+      'Секции десинхронизации и модификации пакетов: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
     descEn:
-      'DPI bypass engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
+      'Packet desync engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
     icon: () => renderZapIcon(15),
   },
   {

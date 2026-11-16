@@ -3168,7 +3168,10 @@ function createComponentsVisibilityWidget(option, section_id) {
     {
       id: 'zapret',
       label: 'Zapret',
-      desc: _tr('Движок обхода DPI (nfqws v1)', 'DPI bypass engine (nfqws v1)'),
+      desc: _tr(
+        'Движок десинхронизации (nfqws v1)',
+        'Packet desync engine (nfqws v1)',
+      ),
       defaultVisible: true,
       fixed: false,
     },
@@ -3176,8 +3179,8 @@ function createComponentsVisibilityWidget(option, section_id) {
       id: 'zapret2',
       label: 'Zapret2',
       desc: _tr(
-        'Продвинутый движок обхода DPI со скриптами Lua (nfqws2)',
-        'Advanced DPI bypass engine with Lua scripts (nfqws2)',
+        'Продвинутый движок десинхронизации со скриптами Lua (nfqws2)',
+        'Advanced packet desync engine with Lua scripts (nfqws2)',
       ),
       defaultVisible: true,
       fixed: false,
@@ -3203,8 +3206,8 @@ function createComponentsVisibilityWidget(option, section_id) {
       id: 'olcrtc',
       label: 'OlcRTC',
       desc: _tr(
-        'Антицензурный WebRTC-туннель реального времени',
-        'Real-time WebRTC anti-censorship tunnel',
+        'Адаптивный WebRTC-туннель реального времени',
+        'Real-time adaptive WebRTC tunnel',
       ),
       defaultVisible: true,
       fixed: false,
@@ -4739,6 +4742,19 @@ function createSettingsContent(section, capabilities) {
     'route_router_traffic_section',
     capabilities,
   );
+
+  o = section.taboption(
+    'network',
+    form.Flag,
+    'tcp_bbr',
+    _tr('TCP BBR (контроль перегрузки ядра)', 'TCP BBR Congestion Control'),
+    _tr(
+      'Включает алгоритм управления перегрузкой TCP BBR на уровне ядра Linux (при наличии поддержки bbr и планировщика fq или fq_codel) для более стабильной пропускной способности на каналах с потерями и высокой задержкой. Если модуль ядра отсутствует, настройка безопасно пропускается.',
+      'Enables Linux kernel TCP BBR congestion control (when bbr and fq or fq_codel qdisc are supported by the kernel) for higher throughput on high-latency or lossy links. Safely skipped if kernel support is unavailable.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
 
   o = section.taboption(
     'services',

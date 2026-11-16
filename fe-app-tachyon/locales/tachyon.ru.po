@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-15 23:44+0300\n"
-"PO-Revision-Date: 2026-11-15 23:44+0300\n"
+"POT-Creation-Date: 2026-11-16 07:51+0300\n"
+"PO-Revision-Date: 2026-11-16 07:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1511,9 +1511,6 @@ msgstr "Напрямую (Bypass)"
 msgid "Bypass Active"
 msgstr "Обход активен"
 
-msgid "Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server"
-msgstr "Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера"
-
 msgid "Bypass FakeIP (resolve real IP addresses)"
 msgstr "Без FakeIP (возвращать реальные IP-адреса)"
 
@@ -1618,9 +1615,6 @@ msgstr "Каскадное подключение"
 
 msgid "Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
 msgstr "Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
-
-msgid "Censorship-resistant multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
-msgstr "Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
 
 msgid "Certificate path"
 msgstr "Путь к сертификату"
@@ -2177,6 +2171,9 @@ msgstr "Соединение и балансировка"
 msgid "Connection / Source Type"
 msgstr "Тип подключения / источника"
 
+msgid "Connection Handover"
+msgstr ""
+
 msgid "Connection Name"
 msgstr "Название подключения"
 
@@ -2678,12 +2675,6 @@ msgstr "ОБХОД DPI (BYEDPI)"
 msgid "DPI BYPASS (ZAPRET)"
 msgstr "ОБХОД DPI (ZAPRET)"
 
-msgid "DPI Bypass (Desync / Zapret2)"
-msgstr "Обход DPI (Desync / Zapret2)"
-
-msgid "DPI Desync"
-msgstr "Обход DPI (Desync)"
-
 msgid "DPI Desync / Zapret2 Strategy"
 msgstr "Стратегия DPI Desync / Zapret2"
 
@@ -2701,18 +2692,6 @@ msgstr "Тип DPI"
 
 msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
 msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
-
-msgid "DPI bypass & desync"
-msgstr "Обход DPI и модификация пакетов"
-
-msgid "DPI bypass via ByeDPI (ciadpi SOCKS5)"
-msgstr "Обход DPI через ByeDPI (ciadpi SOCKS5)"
-
-msgid "DPI bypass via Zapret (nfqws)"
-msgstr "Обход DPI через Zapret (nfqws)"
-
-msgid "DPI bypass via Zapret2 (nfqws2 + Lua strategies)"
-msgstr "Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)"
 
 msgid "DPI throttling: stream cut off after ~16KB payload transfer"
 msgstr "DPI-троттлинг: поток оборван после передачи ~16 КБ данных"
@@ -3440,8 +3419,8 @@ msgstr "Включить встроенный DNS-резолвер для дом
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
 
-msgid "Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block"
-msgstr "Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда"
+msgid "Enable or disable rule categories (proxy, desync, DNS, direct WAN, block) in the dashboard sections block"
+msgstr "Включайте или отключайте категории правил (прокси, desync, DNS, прямой выход, блокировка) в блоке секций дашборда"
 
 msgid "Enable subscription"
 msgstr "Включить подписку"
@@ -3824,8 +3803,8 @@ msgstr "Метод маскировки трафика FPTN"
 msgid "FPTN VPN (fptn:// Access Token)"
 msgstr "FPTN VPN (токен доступа fptn://)"
 
-msgid "FPTN anti-censorship VPN via fptn:// access token"
-msgstr "Антицензурный VPN FPTN по токену доступа fptn://"
+msgid "FPTN adaptive VPN tunnel via fptn:// access token"
+msgstr "Адаптивный VPN-туннель FPTN по токену доступа fptn://"
 
 msgid "FPTN section accepts only fptn:// or fptnb:// links"
 msgstr "Секция FPTN принимает только ссылки fptn:// или fptnb://"
@@ -4574,6 +4553,9 @@ msgstr "Половина ширины (50% — ставится в пару с �
 msgid "Handshake Mode"
 msgstr "Режим рукопожатия (Handshake)"
 
+msgid "Handshake desynchronization for YouTube, Discord, or Telegram without a proxy server"
+msgstr "Фрагментация и коррекция рукопожатий YouTube, Discord и Telegram без внешнего прокси-сервера"
+
 msgid "Handshake server"
 msgstr "Сервер рукопожатия"
 
@@ -4622,6 +4604,12 @@ msgstr "Скрыт"
 msgid "Hidden by client"
 msgstr "Скрыто клиентом"
 
+msgid "Hidden on Dashboard (active in routing)"
+msgstr "Скрыта на Дашборде (активна в маршрутизации)"
+
+msgid "Hidden on Dashboard while remaining active in routing"
+msgstr "Скрыт на Дашборде, но активен в маршрутизации"
+
 msgid "Hidden widgets (click \"+\" to restore to dashboard)"
 msgstr "Скрытые виджеты (нажмите «+», чтобы вернуть на дашборд)"
 
@@ -4646,11 +4634,20 @@ msgstr "Скрыть узлы каскадных подключений"
 msgid "Hide details"
 msgstr "Скрыть подробности"
 
+msgid "Hide hidden"
+msgstr "Спрятать скрытые"
+
+msgid "Hide hidden sections, subscriptions, and servers"
+msgstr "Спрятать скрытые секции, подписки и серверы"
+
 msgid "Hide individual nodes that are already included in imported subscription URLTest groups"
 msgstr "Скрыть отдельные узлы, уже включённые в импортированные группы URLTest подписки"
 
 msgid "Hide intermediate nodes used as detours by other subscription nodes"
 msgstr "Скрыть промежуточные узлы, используемые как detour другими узлами подписки"
+
+msgid "Hide on Dashboard"
+msgstr "Скрыть на Дашборде"
 
 msgid "Hide selected servers."
 msgstr "Скрыть выбранные серверы."
@@ -4684,6 +4681,15 @@ msgstr "Скрыть серверы с одним из выбранных тип
 
 msgid "Hide servers with one of the selected transports."
 msgstr "Скрыть серверы с одним из выбранных транспортов."
+
+msgid "Hide this section on the Dashboard while keeping it active in routing"
+msgstr "Скрыть эту секцию на Дашборде, сохранив её активность в маршрутизации"
+
+msgid "Hide this subscription on the Dashboard while keeping it active in routing"
+msgstr "Скрыть эту подписку на Дашборде, сохранив её активность в маршрутизации"
+
+msgid "Hide this subscription or server on the Dashboard while keeping it active in routing"
+msgstr "Скрыть эту подписку или сервер на Дашборде, сохранив активность в маршрутизации"
 
 msgid "Hide values"
 msgstr "Скрывать значения"
@@ -7235,11 +7241,29 @@ msgstr "Пакет установлен, но бинарный файл отсу
 msgid "Package is not installed"
 msgstr "Пакет не установлен"
 
+msgid "Packet Desync"
+msgstr "Десинхронизация (Desync)"
+
+msgid "Packet Desync (Desync / Zapret2)"
+msgstr "Десинхронизация пакетов (Desync / Zapret2)"
+
 msgid "Packet Desynchronization Engine"
 msgstr "Движок десинхронизации пакетов"
 
 msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
 msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
+
+msgid "Packet desync & modification"
+msgstr "Модификация пакетов и десинхронизация"
+
+msgid "Packet desync via ByeDPI (ciadpi SOCKS5)"
+msgstr "Десинхронизация через ByeDPI (ciadpi SOCKS5)"
+
+msgid "Packet desync via Zapret (nfqws)"
+msgstr "Десинхронизация через Zapret (nfqws)"
+
+msgid "Packet desync via Zapret2 (nfqws2 + Lua strategies)"
+msgstr "Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)"
 
 msgid "Packet fragmentation and fake ClientHello for YouTube, Discord & Telegram"
 msgstr "Фрагментация пакетов и подмена ClientHello для YouTube, Discord и Telegram"
@@ -8255,6 +8279,9 @@ msgstr "Сбросить по умолчанию"
 msgid "Resetting…"
 msgstr "Сброс…"
 
+msgid "Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
+msgstr "Устойчивый мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
+
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
 msgstr "Разрешать имена доменов перед маршрутизацией, чтобы sing-box мог использовать реальные IP назначения."
 
@@ -8528,7 +8555,7 @@ msgstr "Секция для трафика роутера"
 msgid "Router address"
 msgstr "Адрес роутера"
 
-msgid "Router automatically measures latency and switches to the fastest alive server seamlessly"
+msgid "Router automatically measures latency and switches to the fastest available server without dropping connections"
 msgstr "Роутер сам измеряет задержку и автоматически переключает маршрут на самый быстрый живой узел без разрыва связи"
 
 msgid "Router network interface"
@@ -8785,9 +8812,6 @@ msgstr "Время обновления по расписанию"
 
 msgid "Score"
 msgstr "Баллы"
-
-msgid "Seamless Handover"
-msgstr "Бесшовное переключение (Handover)"
 
 msgid "Search"
 msgstr "Поиск"
@@ -9373,6 +9397,12 @@ msgstr "Не удалось показать конфигурацию Tachyon Co
 
 msgid "Show details"
 msgstr "Показать подробности"
+
+msgid "Show hidden"
+msgstr "Показать скрытые"
+
+msgid "Show hidden sections, subscriptions, and servers"
+msgstr "Показать скрытые секции, подписки и серверы"
 
 msgid "Show matching servers"
 msgstr "Показать подходящие серверы"
@@ -11015,8 +11045,8 @@ msgstr "Непредвиденные фоновые процессы"
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
 msgstr "Неожиданный отдельный токен. Используйте явные флаги, такие как --name или --name=value."
 
-msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and DPI strategies."
-msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI."
+msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
+msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации."
 
 msgid "Unique identifier (letters, digits, underscores)."
 msgstr "Уникальный идентификатор (латинские буквы, цифры и подчёркивания)."
@@ -12322,6 +12352,45 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server"
+msgstr "Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера"
+
+msgid "Censorship-resistant multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
+msgstr "Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
+
+msgid "DPI Bypass (Desync / Zapret2)"
+msgstr "Обход DPI (Desync / Zapret2)"
+
+msgid "DPI Desync"
+msgstr "Обход DPI (Desync)"
+
+msgid "DPI bypass & desync"
+msgstr "Обход DPI и модификация пакетов"
+
+msgid "DPI bypass via ByeDPI (ciadpi SOCKS5)"
+msgstr "Обход DPI через ByeDPI (ciadpi SOCKS5)"
+
+msgid "DPI bypass via Zapret (nfqws)"
+msgstr "Обход DPI через Zapret (nfqws)"
+
+msgid "DPI bypass via Zapret2 (nfqws2 + Lua strategies)"
+msgstr "Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)"
+
+msgid "Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block"
+msgstr "Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда"
+
+msgid "FPTN anti-censorship VPN via fptn:// access token"
+msgstr "Антицензурный VPN FPTN по токену доступа fptn://"
+
+msgid "Router automatically measures latency and switches to the fastest alive server seamlessly"
+msgstr "Роутер сам измеряет задержку и автоматически переключает маршрут на самый быстрый живой узел без разрыва связи"
+
+msgid "Seamless Handover"
+msgstr "Бесшовное переключение (Handover)"
+
+msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and DPI strategies."
+msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI."
 
 msgid "Auto (Dual-Stack)"
 msgstr "Авто (Dual-Stack)"

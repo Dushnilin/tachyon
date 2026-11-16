@@ -1502,6 +1502,64 @@ install_zram_if_requested() {
     [ -x /etc/init.d/zram ] && /etc/init.d/zram start >/dev/null 2>&1 || true
 }
 
+write_if_changed() {
+    _wic_path="$1"
+    _wic_content="$2"
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    _wic_dir="$(dirname "$_wic_path")"
+    [ -d "$_wic_dir" ] || mkdir -p "$_wic_dir" 2>/dev/null || return 1
+    _wic_tmp="${_wic_path}.tmp.$$"
+    printf '%s' "$_wic_content" >"$_wic_tmp" || { rm -f "$_wic_tmp" 2>/dev/null || true; return 1; }
+    if [ -f "$_wic_path" ] && cmp -s "$_wic_path" "$_wic_tmp" 2>/dev/null; then
+        rm -f "$_wic_tmp" 2>/dev/null || true
+        return 0
+    fi
+    mv -f "$_wic_tmp" "$_wic_path"
+}
+
+ensure_tcp_bbr_best_effort() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would probe/install kmod-tcp-bbr best-effort and configure TCP BBR if supported"
+        return 0
+    fi
+    _bbr_uci="1"
+    if command_exists uci; then
+        _bbr_uci="$(uci -q get tachyon.settings.tcp_bbr 2>/dev/null || echo '1')"
+    fi
+    [ "$_bbr_uci" = "0" ] && return 0
+
+    _avail_cc="${TACHYON_PROC_TCP_AVAIL_CC:-/proc/sys/net/ipv4/tcp_available_congestion_control}"
+    _conf_file="${TACHYON_SYSCTL_BBR_CONF:-/etc/sysctl.d/99-tachyon-bbr.conf}"
+
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        modprobe tcp_bbr >/dev/null 2>&1 || true
+    fi
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        if ensure_package kmod-tcp-bbr; then
+            modprobe tcp_bbr >/dev/null 2>&1 || true
+        else
+            warn "kmod-tcp-bbr is unavailable for the current kernel; skipping kernel TCP BBR (userspace BBR remains active)"
+        fi
+    fi
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        msg "Kernel TCP BBR is unavailable; skipping 99-tachyon-bbr.conf (userspace BBR remains active)"
+        return 0
+    fi
+
+    modprobe sch_fq >/dev/null 2>&1 || true
+    _qdisc="fq_codel"
+    if sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1; then
+        _qdisc="fq"
+    else
+        sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1 || true
+    fi
+    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+
+    _desired="$(printf 'net.core.default_qdisc=%s\nnet.ipv4.tcp_congestion_control=bbr\n' "$_qdisc")"
+    write_if_changed "$_conf_file" "$_desired" || warn "Could not write $_conf_file"
+    return 0
+}
+
 install_selected_sing_box() {
     [ -n "$ENGINE_INSTALL_CHOICE" ] || [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
     [ -x /usr/bin/tachyon ] || return 1
@@ -1702,6 +1760,7 @@ main() {
     resolve_legacy_conflicts_before_install
     install_core_transaction || fail "Tachyon package transaction failed"
     install_zram_if_requested
+    ensure_tcp_bbr_best_effort
     install_selected_sing_box || fail "sing-box installation failed"
     msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"

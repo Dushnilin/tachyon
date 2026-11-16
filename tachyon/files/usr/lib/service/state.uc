@@ -1772,6 +1772,8 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
+    if (!common.is_tcp_bbr_enabled(settings))
+        body = signature_add_value(body, "settings.tcp_bbr", "0");
     for (let pair in common.ipv6_signature_pairs(settings, false))
         body = signature_add_value(body, pair[0], pair[1]);
 
@@ -2683,6 +2685,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
+    if (!common.is_tcp_bbr_enabled(settings))
+        body = signature_add_value(body, "settings.tcp_bbr", "0");
     let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
     if (proxy_mode != "" && proxy_mode != "tproxy") {
         body = signature_add_value(body, "settings.proxy_mode", proxy_mode);

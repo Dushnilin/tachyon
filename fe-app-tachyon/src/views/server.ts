@@ -6132,7 +6132,7 @@ function createServerContent(section, options = {}) {
   o = section.option(
     form.Flag,
     'tewfai_handover_enabled',
-    _('Seamless Handover'),
+    _('Connection Handover'),
   );
   o.default = '1';
   o.modalonly = true;

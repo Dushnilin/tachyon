@@ -41,9 +41,14 @@ export function parseCommunityHint(rawHint: string): ParsedCommunityHint {
   ) {
     routeKind = 'direct';
     routeShort = 'Direct';
-  } else if (lower.includes('обход dpi') || lower.includes('zapret')) {
+  } else if (
+    lower.includes('десинхронизац') ||
+    lower.includes('desync') ||
+    lower.includes('обход dpi') ||
+    lower.includes('zapret')
+  ) {
     routeKind = 'dpi';
-    routeShort = 'VPN / DPI';
+    routeShort = 'VPN / Desync';
   } else if (
     lower.includes('прокси') ||
     lower.includes('vpn') ||

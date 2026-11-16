@@ -307,11 +307,17 @@ function compactSettingsMap(settings: Record<string, ItemSettings>) {
 }
 
 const manualLinkPrefixMap = new Map<string, string>();
+const hiddenManualLinks = new Set<string>();
+const hiddenSourceIds = new Set<string>();
+const sectionSourcesHiddenMap = new Map<string, boolean>();
 let latestSourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
   {};
 
 function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   manualLinkPrefixMap.clear();
+  hiddenManualLinks.clear();
+  hiddenSourceIds.clear();
+  sectionSourcesHiddenMap.clear();
   latestSourcePrefixStyles = {};
   const subscriptionUrls = childSections(configSections, 'subscription_url');
   const interfaces = childSections(configSections, 'section_interface');
@@ -319,6 +325,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   const priorityGroups = childSections(configSections, 'priority_group');
   const priorityLevels = childSections(configSections, 'priority_level');
   const outboundSources = childSections(configSections, 'outbound_source');
+  outboundSources.forEach((src) => {
+    if (src.hidden === '1' && src['.name']) {
+      hiddenSourceIds.add(src['.name']);
+    }
+  });
   const outboundGroups = childSections(configSections, 'outbound_group');
   const balancers = childSections(configSections, 'balancer');
 
@@ -494,6 +505,9 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
 
     const pushSourceLink = (src: Tachyon.ConfigSection, rawLink: string) => {
       extraProxyLinks.push(rawLink);
+      if (src.hidden === '1' && rawLink) {
+        hiddenManualLinks.add(rawLink);
+      }
       const pfx =
         src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
           ? src.node_prefix.trim()
@@ -859,6 +873,20 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       ).toLowerCase() as Tachyon.ConfigSection['action'];
     }
 
+    const hasAnyAttachedSource =
+      effectiveSources.length > 0 || subscriptionUrlItems.length > 0;
+    const allAttachedSourcesHidden =
+      hasAnyAttachedSource &&
+      !hasInlineConnectionItems &&
+      interfaceItems.length === 0 &&
+      legacyUrltestItems.length === 0 &&
+      legacyPriorityGroupItems.length === 0 &&
+      effectiveSources.every((s) => s.hidden === '1') &&
+      subscriptionUrlItems.every((it) => it.hidden === '1');
+    if (allAttachedSourcesHidden && next['.name']) {
+      sectionSourcesHiddenMap.set(next['.name'], true);
+    }
+
     if (subscriptionUrlItems.length) {
       const settings: Record<string, ItemSettings> = {};
       next.subscription_urls = subscriptionUrlItems
@@ -897,6 +925,12 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           device_locale: item.device_locale,
           app_version: item.app_version,
           accept_language: item.accept_language,
+          hidden:
+            item.hidden === '1' || item.hidden === '0'
+              ? item.hidden
+              : undefined,
+          source_id:
+            item['.type'] === 'outbound_source' ? item['.name'] : undefined,
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes:
             item.prefix_nodes ?? (item.node_prefix ? '1' : undefined),
@@ -2947,6 +2981,45 @@ function buildProxyGroupOutbounds(
       }
     }
 
+    let sourceId = isGroupType
+      ? undefined
+      : outboundMetadata?.source_ids?.[code];
+    const sourceName = isGroupType
+      ? undefined
+      : outboundMetadata?.source_names?.[code];
+    let isHiddenOutbound = false;
+    if (!isGroupType) {
+      if (sourceId && hiddenSourceIds.has(sourceId)) {
+        isHiddenOutbound = true;
+      }
+      if (link && hiddenManualLinks.has(link)) {
+        isHiddenOutbound = true;
+      }
+      if (sourceGroup && sourceGroup.startsWith('sub:')) {
+        const subIdx = Number.parseInt(sourceGroup.slice(4), 10);
+        const subUrls = getListValues(section.subscription_urls);
+        const subUrl = subIdx >= 1 ? subUrls[subIdx - 1] : undefined;
+        if (subUrl) {
+          const subSt = itemSettingsMap(section.subscription_url_settings)[
+            subUrl
+          ];
+          if (
+            !sourceId &&
+            typeof subSt?.source_id === 'string' &&
+            subSt.source_id.trim()
+          ) {
+            sourceId = subSt.source_id.trim();
+          }
+          if (
+            subSt?.hidden === '1' ||
+            Boolean(sourceId && hiddenSourceIds.has(sourceId))
+          ) {
+            isHiddenOutbound = true;
+          }
+        }
+      }
+    }
+
     return [
       {
         code,
@@ -2976,6 +3049,9 @@ function buildProxyGroupOutbounds(
         urlTestInfo,
         priorityInfo,
         sourceGroup,
+        ...(sourceId ? { sourceId } : {}),
+        ...(sourceName ? { sourceName } : {}),
+        ...(isHiddenOutbound ? { hidden: true } : {}),
       },
     ];
   });
@@ -3138,9 +3214,6 @@ function getSubscriptionMetadata(
         isSubscriptionMetadataVisible(section, sourceCount, metadata),
     )
     .map((metadata) => {
-      if (metadata.title) {
-        return metadata;
-      }
       const sourceIndex = getSubscriptionMetadataSourceIndex(
         section['.name'],
         sourceCount,
@@ -3149,12 +3222,29 @@ function getSubscriptionMetadata(
       const sourceEntry =
         sourceIndex && sourceIndex >= 1 ? subUrls[sourceIndex - 1] : undefined;
       const srcSettings = sourceEntry ? settingsMap[sourceEntry] : undefined;
+      const sourceId =
+        typeof srcSettings?.source_id === 'string' &&
+        srcSettings.source_id.trim()
+          ? srcSettings.source_id.trim()
+          : undefined;
+      const isHidden =
+        srcSettings?.hidden === '1' ||
+        Boolean(sourceId && hiddenSourceIds.has(sourceId));
       const fallbackName =
         (typeof srcSettings?.name === 'string' && srcSettings.name.trim()) ||
         (typeof srcSettings?.node_prefix === 'string' &&
           srcSettings.node_prefix.trim()) ||
         '';
-      return fallbackName ? { ...metadata, title: fallbackName } : metadata;
+      const resolvedTitle = metadata.title || fallbackName;
+      if (!resolvedTitle && !isHidden && !sourceId) {
+        return metadata;
+      }
+      return {
+        ...metadata,
+        ...(resolvedTitle && !metadata.title ? { title: resolvedTitle } : {}),
+        ...(sourceId ? { sourceId } : {}),
+        ...(isHidden ? { hidden: true } : {}),
+      };
     });
 
   if (visibleMetadataItems.length > 0) {
@@ -3181,6 +3271,8 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
     details: objectMap(metadata.details),
     prefixes: objectMap(metadata.prefixes),
     sources: objectMap(metadata.sources),
+    source_ids: objectMap(metadata.source_ids),
+    source_names: objectMap(metadata.source_names),
   };
 }
 
@@ -3497,6 +3589,14 @@ export async function getDashboardSections(
                     ...mMeta.sources,
                     ...outboundMetadata?.sources,
                   },
+                  source_ids: {
+                    ...mMeta.source_ids,
+                    ...outboundMetadata?.source_ids,
+                  },
+                  source_names: {
+                    ...mMeta.source_names,
+                    ...outboundMetadata?.source_names,
+                  },
                 };
               }
               if (includeSubscriptionCopyState) {
@@ -3806,11 +3906,27 @@ export async function getDashboardSections(
       }),
   );
 
-  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) =>
-    sectionErrors[group.sectionName]
-      ? { ...group, configError: sectionErrors[group.sectionName] }
-      : group,
+  const configSectionByName = new Map(
+    configSections
+      .filter((s) => s['.type'] === 'section' && s['.name'])
+      .map((s) => [s['.name'], s]),
   );
+
+  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) => {
+    const cfg = configSectionByName.get(group.sectionName);
+    const isGroupHidden =
+      cfg?.hidden === '1' ||
+      sectionSourcesHiddenMap.get(group.sectionName) === true;
+    const err = sectionErrors[group.sectionName];
+    if (!err && !isGroupHidden) {
+      return group;
+    }
+    return {
+      ...group,
+      ...(err ? { configError: err } : {}),
+      ...(isGroupHidden ? { hidden: true } : {}),
+    };
+  });
 
   return {
     success: true,

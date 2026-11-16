@@ -1022,6 +1022,27 @@ export const styles = `
     white-space: nowrap;
 }
 
+.tachyon_dashboard-page__outbound-grid__item__hidden-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(148, 163, 184, 0.16);
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    color: #64748b;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--hidden,
+.tachyon-dashboard-nodes-table__row.is-dashboard-hidden {
+    opacity: 0.72;
+}
+
 .tachyon_proto-popover-trigger {
     position: relative;
     cursor: help;

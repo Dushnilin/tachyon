@@ -175,3 +175,190 @@ IPV6_URI="$IPV6_URI" \
 WORK_DIR="$WORK_DIR" \
 TACHYON_CORE_BIN="$CORE_STUB" \
   ucode -S -L "$LIB_DIR" "$WORK_DIR/verify_mieru.uc"
+
+# Extended checks (198.51.100.47, %3D single-decode, base64/Clash YAML, urltestCandidateTags):
+cat >"$WORK_DIR/clash_mieru.yaml" <<'YAML'
+proxies:
+  - name: "Mieru"
+    type: mieru
+    server: 198.51.100.47
+    port-range: "2012-2022"
+    transport: TCP
+    username: default
+    password: "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ="
+    multiplexing: MULTIPLEXING_HIGH
+    handshake-mode: HANDSHAKE_NO_WAIT
+    traffic-pattern: GgQIARAK
+  - name: "Mieru"
+    type: mieru
+    server: 198.51.100.48
+    ports:
+      - "2012-2022"
+      - "2030"
+    transport: TCP
+    username: default
+    password: "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ="
+    multiplexing: MULTIPLEXING_LOW
+    handshake-mode: HANDSHAKE_STANDARD
+    traffic-pattern: GgQIARAK
+YAML
+
+TACHYON_CORE_BIN="" ucode -S -L "$LIB_DIR" "$LIB_DIR/subscription/parser.uc" normalize-clash-yaml "$WORK_DIR/clash_mieru.yaml" "$WORK_DIR/clash_mieru.json"
+
+cat >"$WORK_DIR/verify_mieru_extended.uc" <<'UC'
+let fs = require("fs");
+let parser = require("subscription.parser");
+let share = require("subscription.share_link");
+let generator = require("tachyon_core.generator_outbounds");
+
+function die_ext(msg) {
+    warn(msg);
+    exit(1);
+}
+
+let work_dir = getenv("WORK_DIR");
+let uri_pct3d = "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.47?profile=default&port=2012-2022&protocol=TCP&multiplexing=MULTIPLEXING_HIGH&handshake-mode=HANDSHAKE_NO_WAIT&traffic-pattern=GgQIARAK#Mieru";
+let uri_plus = "mierus://user%2Bx:pass%2Bword%3D@198.51.100.47?port=2012-2022&protocol=TCP&traffic-pattern=GgQIARAK#Mieru";
+let uri_hostport = "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.48:2015?profile=default&protocol=TCP&multiplexing=MULTIPLEXING_HIGH&traffic-pattern=GgQIARAK#Mieru";
+
+let parsed_3d = parser.parse_share_link(uri_pct3d);
+if (!parsed_3d || parsed_3d.type != "mieru")
+    die_ext(sprintf("failed to parse mierus URI without port: %J\n", parsed_3d));
+if (parsed_3d.server != "198.51.100.47" || parsed_3d.server_port != null)
+    die_ext(sprintf("expected range-only mieru server_port null: %J\n", parsed_3d));
+if (type(parsed_3d.server_ports) != "array" || parsed_3d.server_ports[0] != "2012-2022")
+    die_ext(sprintf("unexpected server_ports for range mierus URI: %J\n", parsed_3d));
+if (parsed_3d.password != "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ=")
+    die_ext(sprintf("%%3D must decode once in password: %J\n", parsed_3d));
+if (parsed_3d.traffic_pattern != "GgQIARAK" || parsed_3d.handshake_mode != "HANDSHAKE_NO_WAIT")
+    die_ext(sprintf("lost traffic_pattern or handshake_mode on mierus URI: %J\n", parsed_3d));
+
+let parsed_plus = parser.parse_share_link("mierus://user+x:pass+word%3D@198.51.100.47?port=2012-2022&protocol=TCP&traffic-pattern=GgQIARAK#Mieru");
+if (!parsed_plus || parsed_plus.username != "user+x" || parsed_plus.password != "pass+word=")
+    die_ext(sprintf("literal + in credentials must be preserved: %J\n", parsed_plus));
+
+let round_link = share.serialize_outbound_link(parsed_3d);
+if (!round_link || index(round_link, "traffic-pattern=GgQIARAK") < 0 || index(round_link, "handshake-mode=HANDSHAKE_NO_WAIT") < 0)
+    die_ext(sprintf("share link serializer omitted mieru traffic/handshake params: %J\n", round_link));
+let round_parsed = parser.parse_share_link(round_link);
+if (!round_parsed || round_parsed.password != parsed_3d.password || round_parsed.traffic_pattern != "GgQIARAK" || round_parsed.handshake_mode != "HANDSHAKE_NO_WAIT")
+    die_ext(sprintf("round-trip parsed mismatch: %J\n", round_parsed));
+
+// Raw + base64 subscription with duplicate #Mieru tags
+let sub_text = uri_pct3d + "\n" + uri_hostport + "\n";
+fs.writefile(work_dir + "/mieru_raw.txt", sub_text);
+fs.writefile(work_dir + "/mieru_b64.txt", b64enc(sub_text));
+fs.writefile(work_dir + "/empty_headers.txt", "");
+
+if (!parser.normalize_content_validated(work_dir + "/mieru_raw.txt", work_dir + "/mieru_raw.json", work_dir + "/empty_headers.txt", "tachyon-core"))
+    die_ext(sprintf("normalize_content_validated failed for raw mieru list: %s\n", parser.get_last_normalize_error()));
+if (!parser.normalize_content_validated(work_dir + "/mieru_b64.txt", work_dir + "/mieru_b64.json", work_dir + "/empty_headers.txt", "tachyon-core"))
+    die_ext(sprintf("normalize_content_validated failed for base64 mieru list: %s\n", parser.get_last_normalize_error()));
+
+for (let path in [ work_dir + "/mieru_raw.json", work_dir + "/mieru_b64.json" ]) {
+    let doc = json(fs.readfile(path));
+    if (!doc || type(doc.outbounds) != "array" || length(doc.outbounds) != 2)
+        die_ext(sprintf("expected 2 outbounds in %s: %J\n", path, doc));
+    if (doc.outbounds[0].server_port != null || doc.outbounds[0].server_ports[0] != "2012-2022" || doc.outbounds[0].traffic_pattern != "GgQIARAK")
+        die_ext(sprintf("bad first outbound in %s: %J\n", path, doc.outbounds[0]));
+    if (doc.outbounds[1].server_port != 2015 || doc.outbounds[1].password != "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ=")
+        die_ext(sprintf("bad second outbound in %s: %J\n", path, doc.outbounds[1]));
+}
+
+// Clash YAML mieru output check
+let clash_doc = json(fs.readfile(work_dir + "/clash_mieru.json"));
+if (!clash_doc || type(clash_doc.outbounds) != "array" || length(clash_doc.outbounds) != 2)
+    die_ext(sprintf("unexpected clash_mieru.json: %J\n", clash_doc));
+let clash0 = clash_doc.outbounds[0];
+let clash1 = clash_doc.outbounds[1];
+if (clash0.server_port != null || type(clash0.server_ports) != "array" || clash0.server_ports[0] != "2012-2022" || clash0.traffic_pattern != "GgQIARAK" || clash0.handshake_mode != "HANDSHAKE_NO_WAIT")
+    die_ext(sprintf("clash YAML mieru port-range/traffic-pattern mismatch: %J\n", clash0));
+if (clash1.server_port != null || length(clash1.server_ports) != 2 || clash1.server_ports[0] != "2012-2022" || clash1.server_ports[1] != "2030")
+    die_ext(sprintf("clash YAML mieru ports list mismatch: %J\n", clash1));
+
+// generator_outbounds: urltest_leaf_candidate_outbound + add_mieru_outbound + add_connections_outbound urltestCandidateTags
+let range_mieru_sb = {
+    type: "mieru",
+    tag: "m-range-1",
+    server: "198.51.100.47",
+    server_ports: [ "2012:2022" ],
+    transport: "TCP",
+    username: "default",
+    password: "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ="
+};
+if (!generator.urltest_leaf_candidate_outbound(range_mieru_sb))
+    die_ext("urltest_leaf_candidate_outbound must return true for range-only mieru\n");
+
+let hy2_range_sb = {
+    type: "hysteria2",
+    tag: "hy2-range-1",
+    server: "198.51.100.47",
+    server_ports: [ "20000:20500" ],
+    password: "test"
+};
+if (!generator.urltest_leaf_candidate_outbound(hy2_range_sb))
+    die_ext("urltest_leaf_candidate_outbound must return true for range-only hysteria2\n");
+
+let direct_cfg = { outbounds: [] };
+generator.add_mieru_outbound(direct_cfg, {
+    ".name": "mieru_sec",
+    ".type": "section",
+    mieru_server: "198.51.100.47",
+    mieru_server_ports: [ "2012:2022" ],
+    mieru_transport: "TCP",
+    mieru_username: "default",
+    mieru_password: "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ=",
+    mieru_handshake_mode: "HANDSHAKE_NO_WAIT",
+    mieru_traffic_pattern: "GgQIARAK"
+});
+if (length(direct_cfg.outbounds) != 1 || direct_cfg.outbounds[0].server_port != null ||
+    direct_cfg.outbounds[0].traffic_pattern != "GgQIARAK" ||
+    direct_cfg.outbounds[0].handshake_mode != "HANDSHAKE_NO_WAIT" ||
+    direct_cfg.outbounds[0].server_ports[0] != "2012-2022")
+    die_ext(sprintf("add_mieru_outbound mismatch: %J\n", direct_cfg));
+
+let captured_state = null;
+generator.init({
+    runtime_settings: function() { return {}; },
+    is_sb_1_14_plus: function() { return true; },
+    atomic_write_json_file: function(_path, state) { captured_state = state; return true; },
+    routes: {
+        section_needs_country_is: function() { return false; },
+        section_has_direct_priority_level: function() { return false; },
+        add_proxy_selector: function() { return null; },
+        urltest_outbound_tag: function(n, p) { return p + "-" + n; },
+        urltest_idle_timeout: function() { return ""; }
+    },
+    runtime_generate_unsupported: function(msg) { die_ext("unexpected generator error: " + msg + "\n"); }
+});
+
+let conn_cfg = { outbounds: [], endpoints: [] };
+generator.add_connections_outbound(conn_cfg, {
+    ".name": "MieruSec",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    selector_proxy_links: [ uri_pct3d, uri_hostport ]
+}, {});
+if (!captured_state || type(captured_state.urltestCandidateTags) != "array" || length(captured_state.urltestCandidateTags) != 2)
+    die_ext(sprintf("expected 2 urltestCandidateTags for mieru section (including range-only node): %J\n", captured_state));
+
+// Single range-only Mieru node must also stay in urltestCandidateTags (not dropped when alone)
+captured_state = null;
+let single_cfg = { outbounds: [], endpoints: [] };
+generator.add_connections_outbound(single_cfg, {
+    ".name": "MieruSingleSec",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    selector_proxy_links: [ uri_pct3d ]
+}, {});
+if (!captured_state || type(captured_state.urltestCandidateTags) != "array" || length(captured_state.urltestCandidateTags) != 1)
+    die_ext(sprintf("single range-only mieru node dropped from urltestCandidateTags: %J\n", captured_state));
+
+print("mieru extended subscription and urltest candidate tests passed\n");
+UC
+
+WORK_DIR="$WORK_DIR" \
+TACHYON_CORE_BIN="" \
+  ucode -S -L "$LIB_DIR" "$WORK_DIR/verify_mieru_extended.uc"

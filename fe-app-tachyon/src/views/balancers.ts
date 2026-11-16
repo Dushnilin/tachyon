@@ -424,7 +424,7 @@ function summarizeBalancer(sectionId) {
   ).toLowerCase();
   const resolveEntityName = (id) => {
     if (id === 'direct') return _('Direct Connection (Fallback)');
-    if (String(id).startsWith('srv:')) return `🎯 ${String(id).slice(4)}`;
+    if (String(id).startsWith('srv:')) return String(id).slice(4);
     return (
       uci.get(UCI_PACKAGE, id, 'name') ||
       uci.get(UCI_PACKAGE, id, 'label') ||

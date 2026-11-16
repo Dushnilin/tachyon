@@ -3105,7 +3105,7 @@ const EntryPoint = {
       },
     };
 
-    // Instantiate all sections in configured tab order so switching between Simple and Advanced modes works seamlessly
+    // Instantiate all sections in configured tab order so switching between Simple and Advanced modes works reliably
     for (const tabId of tabOrder) {
       if (typeof sectionFactories[tabId] === "function") {
         sectionFactories[tabId]();

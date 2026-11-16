@@ -688,6 +688,15 @@ function urldecode(value) {
     });
 }
 
+function urldecode_raw_plus(value) {
+    value = as_string(value);
+    if (index(value, "%") < 0)
+        return value;
+    return replace(value, /%([0-9A-Fa-f][0-9A-Fa-f])/g, function(all, hex_value) {
+        return chr(hex(hex_value));
+    });
+}
+
 let fragment_prefix_decode_cache = {};
 let fragment_decode_cache = {};
 let query_parse_cache = {};
@@ -2084,6 +2093,42 @@ function process_snell(raw, url) {
     return outbound;
 }
 
+function parse_mieru_port_specs_into(raw_value, specs, seen) {
+    let text = trim(as_string(raw_value));
+    if (length(text) >= 2 && substr(text, 0, 1) == "[" && substr(text, length(text) - 1) == "]")
+        text = substr(text, 1, length(text) - 2);
+    let has_range = false;
+    for (let token in split(replace(text, /[, \t\r\n]+/g, " "), " ")) {
+        token = trim(replace(replace(token, /^["']/g, ""), /["']$/g, ""));
+        token = trim(replace(token, ":", "-"));
+        if (token == "")
+            continue;
+        let m = match(token, /^([0-9]+)-([0-9]+)$/);
+        let spec = "";
+        if (m != null) {
+            let lo = int(m[1], 10);
+            let hi = int(m[2], 10);
+            if (lo >= 1 && hi <= 65535 && lo <= hi) {
+                if (lo == hi) {
+                    spec = as_string(lo);
+                } else {
+                    has_range = true;
+                    spec = sprintf("%d-%d", lo, hi);
+                }
+            }
+        } else {
+            let p = parse_port_value(token);
+            if (valid_port(p))
+                spec = as_string(int(p));
+        }
+        if (spec != "" && !seen[spec]) {
+            seen[spec] = true;
+            push(specs, spec);
+        }
+    }
+    return has_range;
+}
+
 function process_mieru(raw, url) {
     let raw_str = as_string(raw);
     let scheme_pos = index(raw_str, "://");
@@ -2104,45 +2149,30 @@ function process_mieru(raw, url) {
     let query_specs = [];
     let seen_specs = {};
     let has_explicit_range = false;
+    let query_traffic_pattern = "";
+    let query_handshake_mode = "";
+    let query_password = "";
     if (raw_query != "") {
         for (let pair in split(raw_query, "&")) {
             if (pair == "")
                 continue;
             let eq = index(pair, "=");
             let k = lc(trim(urldecode(eq >= 0 ? substr(pair, 0, eq) : pair)));
-            let v = trim(urldecode(eq >= 0 ? substr(pair, eq + 1) : ""));
-            if (v == "")
+            let raw_val = eq >= 0 ? substr(pair, eq + 1) : "";
+            let v_raw_plus = trim(urldecode_raw_plus(raw_val));
+            if (v_raw_plus == "")
                 continue;
             if (k == "port" || k == "ports" || k == "port-range" || k == "server_ports") {
                 if (k != "port")
                     has_explicit_range = true;
-                for (let token in split(replace(v, /[, \t\r\n]+/g, " "), " ")) {
-                    token = trim(replace(token, ":", "-"));
-                    if (token == "")
-                        continue;
-                    let m = match(token, /^([0-9]+)-([0-9]+)$/);
-                    let spec = "";
-                    if (m != null) {
-                        let lo = int(m[1], 10);
-                        let hi = int(m[2], 10);
-                        if (lo >= 1 && hi <= 65535 && lo <= hi) {
-                            if (lo == hi) {
-                                spec = as_string(lo);
-                            } else {
-                                has_explicit_range = true;
-                                spec = sprintf("%d-%d", lo, hi);
-                            }
-                        }
-                    } else {
-                        let p = parse_port_value(token);
-                        if (valid_port(p))
-                            spec = as_string(int(p));
-                    }
-                    if (spec != "" && !seen_specs[spec]) {
-                        seen_specs[spec] = true;
-                        push(query_specs, spec);
-                    }
-                }
+                if (parse_mieru_port_specs_into(v_raw_plus, query_specs, seen_specs))
+                    has_explicit_range = true;
+            } else if (k == "traffic-pattern" || k == "traffic_pattern") {
+                query_traffic_pattern = v_raw_plus;
+            } else if (k == "handshake-mode" || k == "handshake_mode") {
+                query_handshake_mode = v_raw_plus;
+            } else if (k == "password" || k == "pass") {
+                query_password = v_raw_plus;
             }
         }
     }
@@ -2154,10 +2184,10 @@ function process_mieru(raw, url) {
     if (raw_userinfo != "") {
         let raw_colon = index(raw_userinfo, ":");
         if (raw_colon >= 0) {
-            username = urldecode(substr(raw_userinfo, 0, raw_colon));
-            password = urldecode(substr(raw_userinfo, raw_colon + 1));
+            username = urldecode_raw_plus(substr(raw_userinfo, 0, raw_colon));
+            password = urldecode_raw_plus(substr(raw_userinfo, raw_colon + 1));
         } else {
-            username = urldecode(raw_userinfo);
+            username = urldecode_raw_plus(raw_userinfo);
         }
     }
     if (username == "" && url.userinfo != "") {
@@ -2170,7 +2200,7 @@ function process_mieru(raw, url) {
         }
     }
     if (password == "")
-        password = as_string(url.query.password || url.query.pass || "");
+        password = query_password != "" ? query_password : as_string(url.query.password || url.query.pass || "");
     if (url.host == "" || username == "" || password == "")
         return null;
 
@@ -2224,7 +2254,14 @@ function process_mieru(raw, url) {
     let mux = as_string(url.query.multiplexing || url.query.mux || "");
     if (mux != "")
         outbound.multiplexing = mux;
-    let traffic_pattern = as_string(url.query["traffic-pattern"] || url.query.traffic_pattern || "");
+    let handshake_mode = query_handshake_mode != ""
+        ? query_handshake_mode
+        : trim(as_string(url.query["handshake-mode"] || url.query.handshake_mode || ""));
+    if (handshake_mode != "")
+        outbound.handshake_mode = handshake_mode;
+    let traffic_pattern = query_traffic_pattern != ""
+        ? query_traffic_pattern
+        : trim(as_string(url.query["traffic-pattern"] || url.query.traffic_pattern || ""));
     if (traffic_pattern != "")
         outbound.traffic_pattern = traffic_pattern;
     return outbound;
@@ -2662,15 +2699,6 @@ function process_hysteria1(raw, url) {
 }
 
 let parse_wdtt_via_core_cli;
-
-function urldecode_raw_plus(value) {
-    value = as_string(value);
-    if (index(value, "%") < 0)
-        return value;
-    return replace(value, /%([0-9A-Fa-f][0-9A-Fa-f])/g, function(all, hex_value) {
-        return chr(hex(hex_value));
-    });
-}
 
 function split_wdtt_hashes(raw) {
     let out = [];
@@ -3380,6 +3408,10 @@ let clash_nested_keys = {
     "amnezia_wg_option": true,
     "amnezia-wg-opts": true,
     "amnezia_wg_opts": true,
+    ports: true,
+    "port-range": true,
+    server_ports: true,
+    alpn: true,
     headers: true,
     extra: true,
     xmux: true
@@ -3460,6 +3492,16 @@ function clash_yaml_records(input_file) {
                 let map_value = replace(line, /^[ \t]*-[ \t]*/g, "");
                 parse_clash_map(record, map_value, "");
                 record = emit_clash_record(records, record);
+            }
+            else if (clash_record_has_fields(record) && record.context != "" && match(line, /^[ \t]*-[ \t]*/) &&
+                     (leading_indent(line) > record.context_indent ||
+                      (leading_indent(line) == record.context_indent &&
+                       find_top_level_colon(replace(line, /^[ \t]*-[ \t]*/g, "")) == null))) {
+                let item_val = clean_scalar(replace(line, /^[ \t]*-[ \t]*/g, ""));
+                if (item_val != "") {
+                    let prev_val = as_string(record.fields[record.context] || "");
+                    set_record_field(record, record.context, prev_val != "" ? (prev_val + "," + item_val) : item_val);
+                }
             }
             else if (match(line, /^[ \t]*-[ \t]*/)) {
                 record = emit_clash_record(records, record);
@@ -3592,9 +3634,15 @@ function parse_clash_record(record) {
     let name = as_string(record.name);
     let server = as_string(record.server);
     let port = int(record.port || 0);
-    if (name == "")
-        name = server + ":" + as_string(record.port);
-    if (proxy_type == "" || server == "" || is_dummy_server(server, port) || !valid_port(port))
+    let raw_mieru_ports = as_string(record["port-range"] || record.port_range || record.ports || record.server_ports || "");
+    let has_mieru_ports = proxy_type == "mieru" && trim(raw_mieru_ports) != "";
+    if (name == "") {
+        let port_label = valid_port(port) ? as_string(record.port) : trim(raw_mieru_ports);
+        name = port_label != "" ? (server + ":" + port_label) : server;
+    }
+    if (proxy_type == "" || server == "" ||
+        is_dummy_server(server, (has_mieru_ports && !valid_port(port)) ? null : port) ||
+        (!valid_port(port) && !has_mieru_ports))
         return null;
 
     let options = {
@@ -3902,20 +3950,43 @@ function parse_clash_record(record) {
         let password = as_string(record.password || "");
         if (username == "" || password == "")
             return null;
-        let transport = uc(as_string(record.transport || "TCP"));
+        let mieru_specs = [];
+        let mieru_seen = {};
+        let has_explicit_range = (record["port-range"] != null || record.port_range != null || record.ports != null || record.server_ports != null) && raw_mieru_ports != "";
+        let has_range_spec = raw_mieru_ports != "" ? parse_mieru_port_specs_into(raw_mieru_ports, mieru_specs, mieru_seen) : false;
+        let outbound_port = valid_port(port) ? port : null;
+        let outbound_ports = [];
+        if (length(mieru_specs) > 0) {
+            if (outbound_port == null && length(mieru_specs) == 1 && !has_range_spec && !has_explicit_range && match(mieru_specs[0], /^[0-9]+$/) != null)
+                outbound_port = int(mieru_specs[0], 10);
+            else
+                outbound_ports = mieru_specs;
+        }
+        if (outbound_port == null && length(outbound_ports) == 0)
+            return null;
+        let transport = uc(trim(as_string(record.transport || record.protocol || "TCP")));
         if (transport != "UDP")
             transport = "TCP";
         let outbound = {
             type: "mieru",
             tag: name,
             server: server,
-            server_port: port,
             username: username,
             password: password,
             transport: transport
         };
+        if (length(outbound_ports) > 0)
+            outbound.server_ports = outbound_ports;
+        if (outbound_port != null)
+            outbound.server_port = outbound_port;
         if (as_string(record.multiplexing || "") != "")
-            outbound.multiplexing = as_string(record.multiplexing);
+            outbound.multiplexing = trim(as_string(record.multiplexing));
+        let handshake_mode = trim(as_string(record["handshake-mode"] || record.handshake_mode || ""));
+        if (handshake_mode != "")
+            outbound.handshake_mode = handshake_mode;
+        let traffic_pattern = trim(as_string(record["traffic-pattern"] || record.traffic_pattern || ""));
+        if (traffic_pattern != "")
+            outbound.traffic_pattern = traffic_pattern;
         return outbound;
     }
     if (proxy_type == "shadow-tls" || proxy_type == "shadowtls") {
@@ -6542,13 +6613,13 @@ function extract_mieru_uri_outbounds_from_file(input_file) {
     if (data == null || data == "")
         return result;
 
-    let text = data;
+    let text = strip_metadata_preamble_data(replace(as_string(data), /\r/g, ""));
     if (index(text, "://") < 0) {
         let compact = replace(text, /[\r\n\t ]/g, "");
         let decoded = base64_decode(compact);
         if (decoded == null || index(decoded, "://") < 0)
             return result;
-        text = decoded;
+        text = strip_metadata_preamble_data(replace(as_string(decoded), /\r/g, ""));
     }
 
     for (let raw_line in split(replace(text, /\r/g, ""), "\n")) {

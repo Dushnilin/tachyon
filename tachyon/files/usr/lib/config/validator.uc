@@ -1261,7 +1261,7 @@ function validate_ipv6_and_fakeip_settings(settings, sections) {
     ], raw_ipv6_mode))
         fail_validation("Unsupported IPv6 mode '" + raw_ipv6_mode + "'. Use off, auto, dual_stack, or tunnel_over_v4. Aborted.");
 
-    for (let bool_key in [ "ipv6_leak_guard", "fakeip_enabled", "webrtc_leak_protect" ]) {
+    for (let bool_key in [ "ipv6_leak_guard", "fakeip_enabled", "webrtc_leak_protect", "tcp_bbr" ]) {
         let raw_bool = trim(option(settings, bool_key, ""));
         if (raw_bool != "" && !valid_bool_setting_text(raw_bool))
             fail_validation("Invalid boolean value '" + raw_bool + "' for settings." + bool_key + " (expected 0 or 1). Aborted.");
@@ -1306,6 +1306,16 @@ function validate_ipv6_and_fakeip_settings(settings, sections) {
         let raw_v6_sup = lc(trim(option(sec, "ipv6_support", "")));
         if (raw_v6_sup != "" && raw_v6_sup != "auto" && !valid_bool_setting_text(raw_v6_sup))
             fail_validation("Invalid section." + section_name(sec) + ".ipv6_support '" + raw_v6_sup + "' (expected auto, 0, or 1). Aborted.");
+        let raw_hidden = lc(trim(option(sec, "hidden", "")));
+        if (raw_hidden != "" && !valid_bool_setting_text(raw_hidden))
+            fail_validation("Invalid section." + section_name(sec) + ".hidden '" + raw_hidden + "' (expected 0 or 1). Aborted.");
+    }
+    for (let type_name in [ "outbound_source", "subscription_url" ]) {
+        for (let item in sections_by_type(type_name)) {
+            let raw_hidden = lc(trim(option(item, "hidden", "")));
+            if (raw_hidden != "" && !valid_bool_setting_text(raw_hidden))
+                fail_validation("Invalid " + type_name + "." + section_name(item) + ".hidden '" + raw_hidden + "' (expected 0 or 1). Aborted.");
+        }
     }
 }
 
