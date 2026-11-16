@@ -5,8 +5,8 @@
 # the stopped core (restart() never hands DNS back, and a fail-closed hold keeps
 # it on the proxy on purpose). The old loop ran `nslookup <d> 127.0.0.1`, then
 # `nslookup <d>`, with no timeout, for up to 64 domains: BusyBox waits 5 s per
-# unanswered lookup, so a restart sat ~5 minutes in this loop with the
-# kill-switch blocking the LAN. A user log showed 22:29:31 -> 22:35:11 of
+# unanswered lookup, so a restart sat ~5 minutes in this loop. The fail-closed
+# gate correctly kept the LAN closed meanwhile; the window was what was wrong. A user log showed 22:29:31 -> 22:35:11 of
 # silence between the last set load and the next section.
 #
 # Checked here: the decisions through the real module with stubbed lookups, and

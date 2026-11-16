@@ -8,7 +8,8 @@
 // so every lookup sat out BusyBox nslookup's full 5 s timeout, twice per domain
 // (127.0.0.1, then the resolv.conf server, which is 127.0.0.1 again on OpenWrt),
 // for up to 64 domains. A restart after an OOM took six and a half minutes,
-// almost five of them here, with the kill-switch blocking the LAN all along.
+// almost five of them here. The fail-closed gate rightly keeps the LAN closed
+// while interception is down; the bug is how long that window lasted.
 //
 // Each lookup is now bounded, two lookups in a row that run out the clock end
 // the pass (the resolver is not answering, so the rest would wait just as
