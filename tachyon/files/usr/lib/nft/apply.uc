@@ -3240,10 +3240,11 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
 
 function nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     let settings = uci_settings();
-    // Fail-Closed forces the LAN DNS intercept (clients with their own resolver
-    // would get real IPs past domain sections) and the forward leak guard.
+    // Fail-Closed turns the LAN DNS intercept on by default (dns_intercept_all
+    // "auto"; clients with their own resolver would get real IPs past domain
+    // sections) and always adds the forward leak guard.
     let fail_closed = kill_switch.veto(settings, uci_sections("section")) != "";
-    let dns_intercept = bool_option(settings, "dns_intercept_all", false) || fail_closed;
+    let dns_intercept = kill_switch.dns_intercept_effective(settings, fail_closed);
     let eff_v6 = common.resolve_effective_ipv6_state(settings);
     let eff_fakeip4 = trim(as_string(fakeip_range || "")) || trim(option(settings, "fakeip_inet4_range", "")) || "198.18.0.0/15";
     let eff_fakeip6 = trim(as_string(fakeip6_range || "")) || trim(option(settings, "fakeip_inet6_range", "")) || "fc00::/18";
@@ -3271,7 +3272,7 @@ function nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_s
         ip_port6_set,
         eff_fakeip6,
         eff_tproxy6,
-        // dns_intercept_all includes the DoH block; Fail-Closed forces both.
+        // The DNS intercept includes the DoH block.
         bool_option(settings, "block_doh", false) || dns_intercept ? "1" : "0",
         option(settings, "disable_quic", "0"),
         dns_intercept ? "1" : "0",
@@ -4825,8 +4826,9 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     // The kill-switch gate follows this setting (service/kill_switch.uc).
     if (option(settings, "emergency_direct_bypass", "1") == "0")
         body = signature_add_value(body, "settings.emergency_direct_bypass", "0");
-    if (bool_option(settings, "dns_intercept_all", false))
-        body = signature_add_value(body, "settings.dns_intercept_all", "1");
+    let dns_intercept_mode = kill_switch.dns_intercept_mode(settings);
+    if (dns_intercept_mode != "auto")
+        body = signature_add_value(body, "settings.dns_intercept_all", dns_intercept_mode);
     let quic_mode = disable_quic_mode(option(settings, "disable_quic", "0"));
     if (quic_mode != "off")
         body = signature_add_value(body, "settings.disable_quic", quic_mode);

@@ -4880,20 +4880,29 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "services",
-    form.Flag,
+    form.ListValue,
     "dns_intercept_all",
     _("Intercept All LAN DNS"),
     _(
       "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected.",
     ),
   );
-  o.default = "0";
+  o.value("auto", _("Auto (on while a section is Fail-Closed)"));
+  o.value("1", _("On"));
+  o.value("0", _("Off"));
+  o.default = "auto";
   o.rmempty = false;
-  showForcedByFailClosed(
-    o,
-    "1",
-    _("On now: forced by Fail-Closed in sections: %s."),
-  );
+  // Auto follows Fail-Closed at runtime (service/kill_switch.uc); say so loudly,
+  // since the stored value alone reads as a plain default.
+  const dnsFailClosedSections = failClosedSectionNames();
+  if (dnsFailClosedSections.length > 0) {
+    o.description +=
+      " <strong>" +
+      _(
+        "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app).",
+      ).format(dnsFailClosedSections.join(", ")) +
+      "</strong>";
+  }
 
   o = section.taboption(
     "services",

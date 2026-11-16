@@ -79,7 +79,10 @@ if (index(keep, "route:") != 0)
     die("keep section lost its UDP route (" + keep + ")\n");
 ' "$WORK_DIR/tcp-only-block-config.json" "$WORK_DIR/tcp-only-keep-config.json"
 
-# --- 3. DoH reject in the core is forced on by Fail-Closed -------------------
+# --- 3. DoH reject in the core: on by default with Fail-Closed, user may opt out
+sed 's/"settings": { ".name": "settings", ".type": "settings" }/"settings": { ".name": "settings", ".type": "settings", "dns_intercept_all": "0" }/' \
+  "$WORK_DIR/tcp-only-block.json" >"$WORK_DIR/tcp-only-block-optout.json"
+generate "$WORK_DIR/tcp-only-block-optout.json" "$WORK_DIR/tcp-only-block-optout-config.json"
 ucode -e '
 let fs = require("fs");
 function doh_rejects(path) {
@@ -92,7 +95,9 @@ if (!doh_rejects(ARGV[0]))
     die("Fail-Closed did not force the core DoH reject\n");
 if (doh_rejects(ARGV[1]))
     die("DoH reject appeared without block_doh, dns_intercept_all or Fail-Closed\n");
-' "$WORK_DIR/tcp-only-block-config.json" "$WORK_DIR/tcp-only-keep-config.json"
+if (doh_rejects(ARGV[2]))
+    die("dns_intercept_all=0 was overridden by Fail-Closed: clients cannot use their own DNS\n");
+' "$WORK_DIR/tcp-only-block-config.json" "$WORK_DIR/tcp-only-keep-config.json" "$WORK_DIR/tcp-only-block-optout-config.json"
 
 # --- 4. nft: forward leak guard, tproxy mode only ----------------------------
 NFT_LOG="$WORK_DIR/nft.log"
@@ -128,8 +133,8 @@ run_base 1 tun
 if grep -Fq 'fail_closed_forward' "$NFT_LOG"; then fail "forward leak guard installed in tun mode"; fi
 
 # --- 5. nft from UCI: Fail-Closed forces the LAN DNS intercept ---------------
-grep -Fq 'let dns_intercept = bool_option(settings, "dns_intercept_all", false) || fail_closed;' "$NFT_RUNTIME" ||
-  fail "Fail-Closed must force the LAN DNS intercept"
+grep -Fq 'let dns_intercept = kill_switch.dns_intercept_effective(settings, fail_closed);' "$NFT_RUNTIME" ||
+  fail "Fail-Closed must turn the LAN DNS intercept on by default"
 
 # --- 6. No servers loaded yet: the direct placeholder must not carry traffic --
 # The selector gets a direct member only to stay valid; a Fail-Closed section is

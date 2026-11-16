@@ -1422,6 +1422,10 @@ msgstr ""
 msgid "Auto (from server link)"
 msgstr ""
 
+#: src/views/settings.ts:4892
+msgid "Auto (on while a section is Fail-Closed)"
+msgstr ""
+
 #: src/tachyon/connectionWizard.ts:4204
 #: src/views/outbounds.ts:6066
 #: src/views/section.ts:16635
@@ -5595,6 +5599,10 @@ msgstr ""
 
 #: src/views/section.ts:18837
 msgid "Fail-Closed (Block / Kill-switch)"
+msgstr ""
+
+#: src/views/settings.ts:4904
+msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
 msgstr ""
 
 #: src/views/section.ts:18838
@@ -10081,8 +10089,8 @@ msgstr ""
 msgid "Ollama (Local PC / Server)"
 msgstr ""
 
-#: src/views/settings.ts:4897
-msgid "On now: forced by Fail-Closed in sections: %s."
+#: src/views/settings.ts:4893
+msgid "On"
 msgstr ""
 
 #: src/views/server.ts:7466

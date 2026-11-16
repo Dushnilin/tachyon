@@ -23,6 +23,17 @@ let ifaces = ks.source_interfaces({ source_network_interfaces: [ "br-lan", "br-g
 check(join(",", ifaces) == "br-lan,br-guest", "Unsafe or duplicate interface names reached the ruleset");
 
 check(type(ks.stop_hold) == "function" && type(ks.dns_veto) == "function", "Stop/DNS kill-switch helpers missing");
+
+// dns_intercept_all: on by default with Fail-Closed, but always the user's to turn off.
+check(ks.dns_intercept_mode({}) == "auto" && ks.dns_intercept_mode({ dns_intercept_all: "auto" }) == "auto",
+    "Missing dns_intercept_all is not auto");
+check(ks.dns_intercept_mode({ dns_intercept_all: "1" }) == "on" && ks.dns_intercept_mode({ dns_intercept_all: "0" }) == "off",
+    "Explicit dns_intercept_all values are not honoured");
+check(ks.dns_intercept_effective({}, true) && !ks.dns_intercept_effective({}, false),
+    "auto does not follow Fail-Closed");
+check(!ks.dns_intercept_effective({ dns_intercept_all: "0" }, true),
+    "An explicit off was overridden by Fail-Closed (clients could not use their own DNS)");
+check(ks.dns_intercept_effective({ dns_intercept_all: "1" }, false), "An explicit on was ignored");
 let rs = ks.ruleset([ "br-lan", "br-guest" ]);
 check(index(rs, "table inet " + ks.GUARD_TABLE + " {") >= 0, "Guard does not own a separate table");
 check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >= 0, "Guard has no interface gate set");

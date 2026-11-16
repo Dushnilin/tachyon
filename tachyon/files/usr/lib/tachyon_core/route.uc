@@ -213,10 +213,12 @@ function config(settings, runtime) {
         for (let rule in p2p_direct_rules(settings, "block"))
             push(result.rules, rule);
     }
-    // dns_intercept_all includes the DoH block, and Fail-Closed forces it: a
-    // client resolving over DoH gets real IPs that walk past domain sections.
+    // The LAN DNS intercept includes the DoH block (on by default while a
+    // section is Fail-Closed): a client resolving over DoH gets real IPs that
+    // walk past domain sections.
     let fail_closed = type(runtime) == "object" && runtime.fail_closed == true;
-    if (bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false) || fail_closed) {
+    let dns_intercept = require("service.kill_switch").dns_intercept_effective(settings, fail_closed);
+    if (bool_option(settings, "block_doh", false) || dns_intercept) {
         let doh_cidrs = [];
         for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
             push(doh_cidrs, cidr);

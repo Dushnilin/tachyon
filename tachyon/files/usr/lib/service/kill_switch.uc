@@ -51,6 +51,23 @@ function veto(settings, sections) {
     return sprintf("fail_policy=block: %s", join(", ", names));
 }
 
+// settings.dns_intercept_all: "auto" (default) intercepts LAN DNS while a
+// section is Fail-Closed; "1"/"0" are the user's explicit choice, so clients
+// that need their own resolver (a VPN app, a custom DNS) can still opt out.
+function dns_intercept_mode(settings) {
+    let value = lc(trim(common.as_string(common.object_or_empty(settings).dns_intercept_all || "")));
+    if (index([ "1", "true", "yes", "on" ], value) >= 0)
+        return "on";
+    if (index([ "0", "false", "no", "off" ], value) >= 0)
+        return "off";
+    return "auto";
+}
+
+function dns_intercept_effective(settings, fail_closed) {
+    let mode = dns_intercept_mode(settings);
+    return mode == "on" || (mode == "auto" && !!fail_closed);
+}
+
 function uci_settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
@@ -224,6 +241,8 @@ return {
     FW4_INCLUDE_FILE,
     veto,
     uci_veto,
+    dns_intercept_mode,
+    dns_intercept_effective,
     source_interfaces,
     ruleset,
     engaged,

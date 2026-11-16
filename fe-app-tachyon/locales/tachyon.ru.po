@@ -992,6 +992,9 @@ msgstr "Авто (пул доменов / клонирование ClientHello)"
 msgid "Auto (from server link)"
 msgstr "Авто (из ссылки сервера)"
 
+msgid "Auto (on while a section is Fail-Closed)"
+msgstr "Авто (включено, пока есть секция с Fail-Closed)"
+
 msgid "Auto / Adaptive Transformer"
 msgstr "Авто / Адаптивный трансформер (Auto Transformer)"
 
@@ -3835,6 +3838,9 @@ msgstr "Порог восстановления"
 
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr "Fail-Closed (Блокировка / Kill-switch)"
+
+msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
+msgstr "В секциях %h включён Fail-Closed, поэтому в режиме «Авто» перехват сейчас ВКЛЮЧЁН. Выберите «Выкл», если клиентам нужен свой DNS (например, VPN-приложение)."
 
 msgid "Fail-Open (Direct bypass)"
 msgstr "Fail-Open (Прямой обход)"
@@ -6932,8 +6938,8 @@ msgstr "Транспорт OlcRTC"
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
 
-msgid "On now: forced by Fail-Closed in sections: %s."
-msgstr "Сейчас включён принудительно: Fail-Closed в секциях: %s."
+msgid "On"
+msgstr "Вкл"
 
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
