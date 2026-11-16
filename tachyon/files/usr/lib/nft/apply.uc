@@ -5423,29 +5423,9 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                 }
             }
             if (length(bypass_domains) > 0 && getenv("TACHYON_SKIP_BYPASS_DNS_RESOLVE") != "1") {
-                let resolved_ips = [];
-                let seen_res_ip = {};
-                for (let bdom in bypass_domains) {
-                    let ns_out = command_output_quiet_from_args([ "nslookup", bdom, "127.0.0.1" ]);
-                    if (ns_out == "")
-                        ns_out = command_output_quiet_from_args([ "nslookup", bdom ]);
-                    if (ns_out != "") {
-                        let past_header = false;
-                        for (let line in split(ns_out, "\n")) {
-                            line = trim(line);
-                            if (index(line, "Name:") == 0 || index(line, "Non-authoritative") >= 0)
-                                past_header = true;
-                            if (!past_header) continue;
-                            let m4 = match(line, /([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
-                            if (m4 && m4[1] && valid_ipv4(m4[1]) && substr(m4[1], 0, 7) != "127.0.0" && substr(m4[1], 0, 7) != "198.18." && substr(m4[1], 0, 7) != "198.19.") {
-                                if (!seen_res_ip[m4[1]]) {
-                                    seen_res_ip[m4[1]] = true;
-                                    push(resolved_ips, m4[1]);
-                                }
-                            }
-                        }
-                    }
-                }
+                // Bounded: see nft/bypass_resolve.uc for why this used to stall
+                // every start and restart for minutes.
+                let resolved_ips = require("nft.bypass_resolve").resolve_bypass_domains(bypass_domains, { log: log_warn }).ips;
                 if (length(resolved_ips) > 0) {
                     if (ports != "")
                         nft_add_values_to_section_port_sets(resolved_ips, table, sets, ports, "5000");
