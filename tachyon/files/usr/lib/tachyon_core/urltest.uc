@@ -371,11 +371,8 @@ function countries_from_flag_names(names) {
     return result;
 }
 
-function regex_matching_tag_array(tags, names, regexes) {
-    tags = array_or_empty(tags);
-    names = object_or_empty(names);
+function compile_filter_regexes(regexes) {
     regexes = array_or_empty(regexes);
-    
     let compiled = [];
     for (let pattern in regexes) {
         let pat_str = as_string(pattern);
@@ -392,20 +389,30 @@ function regex_matching_tag_array(tags, names, regexes) {
             }
         }
     }
-    
+    return compiled;
+}
+
+function matches_filter_regex(compiled, tag, name) {
+    if (length(compiled) == 0)
+        return false;
+
+    name = name == null || as_string(name) == "" ? tag : as_string(name);
+    for (let re in compiled)
+        if (match(name, re) != null)
+            return true;
+    return false;
+}
+
+function regex_matching_tag_array(tags, names, regexes) {
+    let compiled = compile_filter_regexes(regexes);
     let result = [];
-    for (let tag in tags) {
-        let name = names[tag];
-        name = name == null || as_string(name) == "" ? tag : as_string(name);
+    if (length(compiled) == 0)
+        return result;
 
-        for (let re in compiled) {
-            if (match(name, re) != null) {
-                push(result, tag);
-                break;
-            }
-        }
-    }
-
+    names = object_or_empty(names);
+    for (let tag in array_or_empty(tags))
+        if (matches_filter_regex(compiled, tag, names[tag]))
+            push(result, tag);
     return result;
 }
 
@@ -829,6 +836,8 @@ return {
     normalized_country_list,
     countries_from_flag_names,
     regex_matching_tag_array,
+    compile_filter_regexes,
+    matches_filter_regex,
     strip_dynamic_server_telemetry,
     name_filter_contains,
     prepare_name_filter,

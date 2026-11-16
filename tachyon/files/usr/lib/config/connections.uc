@@ -6391,6 +6391,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                 let has_inc_o = length(keys(inc_o)) > 0;
                 let has_inc_re = length(gspec.include_regex || []) > 0 && runtime_urltest != null;
                 let has_base_inc = has_inc_c || has_inc_o || has_inc_re;
+                let has_exc_re = length(gspec.exclude_regex || []) > 0 && runtime_urltest != null;
+                let inc_regex = null;
+                let exc_regex = null;
                 let filtered = [];
                 for (let t in candidate_tags) {
                     let raw_tname = names_map[t] || t;
@@ -6442,8 +6445,8 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                             let o_ok = has_inc_o && name_matches_set(inc_o);
                             let re_ok = false;
                             if (has_inc_re) {
-                                let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.include_regex);
-                                re_ok = length(matched_re) > 0;
+                                inc_regex ??= runtime_urltest.compile_filter_regexes(gspec.include_regex);
+                                re_ok = runtime_urltest.matches_filter_regex(inc_regex, t, raw_tname);
                             }
                             if (!(c_ok || o_ok || re_ok)) continue;
                         }
@@ -6451,9 +6454,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                     if (gspec.mode == "exclude" || gspec.mode == "mixed") {
                         if (length(keys(exc_c)) > 0 && exc_c[tc]) continue;
                         if (length(keys(exc_o)) > 0 && name_matches_set(exc_o)) continue;
-                        if (length(gspec.exclude_regex || []) > 0 && runtime_urltest != null) {
-                            let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.exclude_regex);
-                            if (length(matched_re) > 0) continue;
+                        if (has_exc_re) {
+                            exc_regex ??= runtime_urltest.compile_filter_regexes(gspec.exclude_regex);
+                            if (runtime_urltest.matches_filter_regex(exc_regex, t, raw_tname)) continue;
                         }
                     }
                     push(filtered, t);
