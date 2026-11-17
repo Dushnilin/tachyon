@@ -17353,3 +17353,21 @@ msgstr ""
 #: src/views/conditions.ts:2407
 msgid "🇵🇱 Poland (pl)"
 msgstr ""
+
+msgid "Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer."
+msgstr ""
+
+msgid "Keep UDP Socket"
+msgstr ""
+
+msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
+msgstr ""
+
+msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
+msgstr ""
+
+msgid "UDP Fake Packet Range"
+msgstr ""
+
+msgid "UDP Fake Payload (HEX)"
+msgstr ""

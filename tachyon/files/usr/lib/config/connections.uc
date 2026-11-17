@@ -2107,6 +2107,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                 }
             }
         }
+        require("config.desync_udp").apply(ds_obj, src, is_custom);
         return sprintf("%J", ds_obj);
     }
     return "";

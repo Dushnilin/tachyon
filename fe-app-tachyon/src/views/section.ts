@@ -14064,6 +14064,48 @@ function createSectionContent(section) {
   o = section.taboption(
     'settings',
     form.Value,
+    'desync_udp_fake_payload',
+    _('UDP Fake Payload (HEX)'),
+    _('Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer.'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '0x0001';
+  o.depends({ action: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_udp_out_range',
+    _('UDP Fake Packet Range'),
+    _(
+      'Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '1-2';
+  o.depends({ action: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'desync_udp_keep_socket',
+    _('Keep UDP Socket'),
+    _(
+      'Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Default'));
+  o.value('1', _('Enabled'));
+  o.value('0', _('Disabled'));
+  o.depends('action', 'desync');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
     'desync_udp_fake_ttl',
     _('UDP Fake TTL'),
   );
@@ -14098,7 +14140,7 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = true;
-  o.depends('action', 'desync');
+  o.depends({ action: 'desync', desync_preset: 'custom' });
   attachSectionStrategyScannerButton(o, 'desync', 'desync_opts');
 
   // ── ShadowTLS (tachyon-core) ──────────────────────────────────────────────

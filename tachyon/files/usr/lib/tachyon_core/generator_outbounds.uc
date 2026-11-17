@@ -12,6 +12,7 @@ let runtime_url = require("core.url");
 let subscription_share_link = require("subscription.share_link");
 let subscription_parser = require("subscription.parser");
 let connections = require("config.connections");
+let desync_udp = require("config.desync_udp");
 let subscription_wireguard = require("subscription.wireguard");
 let subscription_amnezia = require("subscription.amnezia_config");
 let amnezia_decoder = require("subscription.amnezia");
@@ -229,7 +230,18 @@ function outbound_uses_xhttp(outbound) {
         lc(as_string(outbound.transport.type || "")) == "xhttp";
 }
 
+function ensure_desync_udp_options_supported(outbound, name) {
+    if (lc(as_string(outbound.type || "")) != "desync" || !desync_udp.configured(outbound))
+        return;
+    let version = ctx.detect_core_version ? as_string(ctx.detect_core_version() || "") : "";
+    if (version == "")
+        version = variant_state.read_version_state();
+    if (!core_profile.reaches_triple(version, "0.5.9"))
+        ctx.runtime_generate_unsupported("Desync '" + as_string(name) + "' UDP payload, range and socket options require tachyon-core 0.5.9 or newer (installed: " + as_string(version) + ")");
+}
+
 function ensure_explicit_outbound_supported(outbound, source, name) {
+    ensure_desync_udp_options_supported(outbound, name);
     if (!ctx.runtime_supports_xhttp && outbound_uses_xhttp(outbound))
         ctx.runtime_generate_unsupported(as_string(source) + " '" + as_string(name) + "' uses XHTTP transport, which is not supported by the installed tachyon-core");
 }
@@ -3827,6 +3839,8 @@ function add_desync_outbound(config, section) {
 
     if (is_custom)
         apply_desync_opts_string(outbound, option(section, "desync_opts", ""));
+    desync_udp.apply(outbound, section, is_custom);
+    ensure_desync_udp_options_supported(outbound, section[".name"]);
 
     if (outbound.preset == null && outbound.mode == null)
         outbound.preset = "auto";

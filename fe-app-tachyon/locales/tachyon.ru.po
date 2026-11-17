@@ -14788,3 +14788,21 @@ msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."
+
+msgid "Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer."
+msgstr "Пользовательское содержимое подставного UDP-пакета. Требуется tachyon-core 0.5.9 или новее."
+
+msgid "Keep UDP Socket"
+msgstr "Сохранять UDP-сокет"
+
+msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
+msgstr "Сохранять исходящий сокет, если ответ задерживается. Требуется tachyon-core 0.5.9 или новее."
+
+msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
+msgstr "Отправлять подставные UDP-пакеты перед первыми N пакетами или перед пакетами указанного диапазона включительно. Требуется tachyon-core 0.5.9 или новее."
+
+msgid "UDP Fake Packet Range"
+msgstr "Диапазон для подставных UDP-пакетов"
+
+msgid "UDP Fake Payload (HEX)"
+msgstr "Содержимое подставного UDP-пакета (HEX)"
