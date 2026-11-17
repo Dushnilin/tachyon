@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
-set -eo pipefail
+set -Eeo pipefail
+# Name the failing command before parallel xargs reduces its status to 123.
+trap 'rc=$?; printf "FAIL: %s:%s: %s (exit %s)\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2; exit "$rc"' ERR
 
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/run" "$WORK_DIR/etc_tachyon"
 export TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run"
