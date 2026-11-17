@@ -5601,6 +5601,10 @@ msgstr ""
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr ""
 
+#: src/views/settings.ts:5943
+msgid "Fail-Closed is set in sections %h, so in Auto mode WebRTC protection is ON now. Choose Off if direct calls or games need STUN."
+msgstr ""
+
 #: src/views/settings.ts:4904
 msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
 msgstr ""
@@ -12696,7 +12700,7 @@ msgid "SNI / Host"
 msgstr ""
 
 #: src/views/settings.ts:4346
-msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgid "SOCKS mode does not intercept LAN traffic at all."
 msgstr ""
 
 #: src/views/conditions.ts:2290
@@ -17071,6 +17075,10 @@ msgstr ""
 
 #: src/views/section.ts:15971
 msgid "WireGuard private key from your Cloudflare account"
+msgstr ""
+
+#: src/views/settings.ts:5934
+msgid "With WebRTC protection off, a site opened through the proxy can learn the real address over STUN."
 msgstr ""
 
 #: src/views/settings.ts:4932

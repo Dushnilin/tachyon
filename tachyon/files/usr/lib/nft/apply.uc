@@ -2302,15 +2302,52 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
     return nft_add_rule(table, "mangle", rule);
 }
 
-// Fail-Closed, tproxy mode: a packet marked for the proxy is delivered locally
-// by the fwmark policy route and never forwarded. One that reaches the forward
-// hook anyway (policy route or tproxy listener missing) would leave via WAN
-// directly, so it is dropped instead.
-function nft_add_fail_closed_forward_guard(table, interface_set, fakeip_mark) {
+// Fail-Closed: a packet marked for the proxy must never leave via WAN.
+// tproxy: it is delivered locally by the fwmark policy route and never
+// forwarded, so one that reaches the forward hook (policy route or listener
+// missing) is dropped. tun: the core's auto_route forwards it into the tun
+// device; when the core dies its routes vanish and the packet would go out
+// via WAN, so anything marked and not headed into tun is dropped.
+function nft_add_fail_closed_forward_guard(table, interface_set, fakeip_mark, tun_if) {
     let mark = as_string(fakeip_mark);
+    let rule = [ "iifname", "@" + as_string(interface_set), "meta", "mark", "&", mark, "==", mark ];
+    if (tun_if != null)
+        append_array(rule, [ "oifname", "!=", "\"" + as_string(tun_if) + "\"" ]);
+    append_array(rule, [ "counter", "drop", "comment", "\"tachyon-fail-closed-forward\"" ]);
     return nft_create_chain(table, "fail_closed_forward", "{ type filter hook forward priority -200; policy accept; }") &&
-        nft_add_rule(table, "fail_closed_forward", [ "iifname", "@" + as_string(interface_set), "meta", "mark", "&", mark, "==", mark,
-            "counter", "drop", "comment", "\"tachyon-fail-closed-forward\"" ]);
+        nft_add_rule(table, "fail_closed_forward", rule);
+}
+
+// Fail-Closed full tunnel: only TCP and UDP are captured. tproxy cannot carry
+// anything else (ICMP, GRE, ESP), so it would be forwarded directly with the
+// client's real address: drop it. tun carries it, so it is marked for the
+// forward guard instead.
+function nft_add_fail_closed_full_tunnel_rules(table, interface_set, localv4_set, localv6_set, fakeip_mark, v6_active) {
+    let verdict = tproxy_intercept_enabled() ? [ "counter", "drop" ] : [ "meta", "mark", "set", as_string(fakeip_mark), "counter" ];
+    let families = [ [ "ip", localv4_set ] ];
+    if (v6_active)
+        push(families, [ "ip6", localv6_set ]);
+    for (let f in families) {
+        let rule = [ "iifname", "@" + as_string(interface_set), f[0], "daddr", "!=", "@" + as_string(f[1]),
+            "meta", "mark", "0", "meta", "l4proto", "!=", "{ tcp, udp }", "ct", "state", "new" ];
+        append_array(rule, verdict);
+        append_array(rule, [ "comment", "\"tachyon-fail-closed-full-tunnel\"" ]);
+        if (!nft_add_rule(table, "mangle", rule))
+            return false;
+    }
+    return true;
+}
+
+// The forward guard's tun device in tun mode, null in tproxy mode.
+function fail_closed_guard_tun_if() {
+    let settings = uci_settings();
+    if (lc(trim(as_string(option(settings, "proxy_mode", "tproxy")))) != "tun")
+        return null;
+    return trim(as_string(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE))) || runtime_constants.TUN_INTERFACE;
+}
+
+function fail_closed_guard_enabled() {
+    return lc(trim(as_string(option(uci_settings(), "proxy_mode", "tproxy")))) != "socks";
 }
 
 // dns_intercept_all: DNS-over-TLS (853) cannot be redirected to the router
@@ -2768,7 +2805,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     let base_settings = uci_settings();
     let eff_fakeip_enabled = (fakeip_enabled != null && fakeip_enabled != "") ? arg_bool(fakeip_enabled) : common.is_fakeip_enabled(base_settings);
     let eff_leak_guard = (leak_guard_active != null && leak_guard_active != "") ? arg_bool(leak_guard_active) : false;
-    let eff_webrtc = (webrtc_leak_protect != null && webrtc_leak_protect != "") ? arg_bool(webrtc_leak_protect) : bool_option(base_settings, "webrtc_leak_protect", false);
+    let eff_webrtc = (webrtc_leak_protect != null && webrtc_leak_protect != "") ? arg_bool(webrtc_leak_protect) :
+        kill_switch.webrtc_protect_effective(base_settings, kill_switch.veto(base_settings, uci_sections("section")) != "");
     let eff_v6_active = (tproxy6_address != "");
     let eff_ipv6_mode = common.normalize_ipv6_mode(option(base_settings, "ipv6_mode", ""));
     let eff_off_strict = (!eff_v6_active && eff_ipv6_mode == "off");
@@ -3063,7 +3101,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         )) ||
         (quic_mode != "off" && !nft_add_quic_block_rule(table, interface_set, fakeip_mark, quic_mode)) ||
         (arg_bool(dns_intercept_all) && !nft_add_dot_block_rule(table, interface_set, fakeip_mark)) ||
-        (arg_bool(fail_closed) && tproxy_intercept_enabled() && !nft_add_fail_closed_forward_guard(table, interface_set, fakeip_mark)) ||
+        (arg_bool(fail_closed) && is_full_tunnel && !nft_add_fail_closed_full_tunnel_rules(table, interface_set, localv4_set, localv6_set, fakeip_mark, eff_v6_active)) ||
+        (arg_bool(fail_closed) && fail_closed_guard_enabled() && !nft_add_fail_closed_forward_guard(table, interface_set, fakeip_mark, fail_closed_guard_tun_if())) ||
         (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark, eff_v6_active)) ||
         !nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, dnat_forwards) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||
@@ -3277,7 +3316,7 @@ function nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_s
         option(settings, "disable_quic", "0"),
         dns_intercept ? "1" : "0",
         eff_v6.leak_guard_active ? "1" : "0",
-        bool_option(settings, "webrtc_leak_protect", false) ? "1" : "0",
+        kill_switch.webrtc_protect_effective(settings, fail_closed) ? "1" : "0",
         eff_v6.fakeip_enabled ? "1" : "0",
         fail_closed ? "1" : "0"
     );
@@ -4832,8 +4871,12 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     let quic_mode = disable_quic_mode(option(settings, "disable_quic", "0"));
     if (quic_mode != "off")
         body = signature_add_value(body, "settings.disable_quic", quic_mode);
-    if (bool_option(settings, "webrtc_leak_protect", false))
-        body = signature_add_value(body, "settings.webrtc_leak_protect", "1");
+    let webrtc_mode = kill_switch.webrtc_protect_mode(settings);
+    if (webrtc_mode != "auto")
+        body = signature_add_value(body, "settings.webrtc_leak_protect", webrtc_mode);
+    // The TUN kill-switch rules are synced on every nft rebuild.
+    if (!bool_option(settings, "tun_kill_switch", true))
+        body = signature_add_value(body, "settings.tun_kill_switch", "0");
     for (let kv in common.ipv6_signature_pairs(settings, false))
         body = signature_add_value(body, kv[0], kv[1]);
     if (option(settings, "qos_priority_engine", "1") == "0")
@@ -5057,6 +5100,9 @@ function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, 
     }
 
     let built = nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    // The TUN guard follows proxy_mode and Fail-Closed on every rebuild, even
+    // while the gate stays closed (stale rules would cut the LAN off in tproxy).
+    kill_switch.tun_guard_sync();
     if (built)
         kill_switch.release_if_ready();
     return built;

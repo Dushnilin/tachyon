@@ -5482,11 +5482,22 @@ function add_full_tunnel_route_rule(config, sections) {
     if (!is_full_tunnel)
         return;
 
+    // Fail-Closed: a tunnel section that is down (deferred until its
+    // subscription loads, quarantined, failed) must not hand the catch-all to
+    // the next section or to route.final, which is Direct; it rejects instead.
+    let reject_all = function() {
+        push_route_matcher_rule(config, { action: "reject", inbound: tproxy_inbound_matcher() });
+    };
+    let down_fail_closed = function(section) {
+        return section_is_fail_closed(section) && section_is_failed_or_quarantined(section[".name"]);
+    };
     let def_tunnel_name = trim(option(settings, "default_tunnel_section", ""));
     let full_tunnel_target = "";
-    if (def_tunnel_name != "" && !(ctx.deferred_sections && ctx.deferred_sections[def_tunnel_name])) {
+    if (def_tunnel_name != "") {
         let def_sec = section_by_name(sections, def_tunnel_name);
-        if (def_sec != null && section_enabled(def_sec))
+        if (def_sec != null && section_enabled(def_sec) && down_fail_closed(def_sec))
+            return reject_all();
+        if (def_sec != null && section_enabled(def_sec) && !(ctx.deferred_sections && ctx.deferred_sections[def_tunnel_name]))
             full_tunnel_target = group_outbound_tag_for_section(def_sec) || outbound_tag(def_tunnel_name);
     }
     if (full_tunnel_target == "" || !is_valid_detour(config, full_tunnel_target)) {
@@ -5495,10 +5506,13 @@ function add_full_tunnel_route_rule(config, sections) {
         for (let section in sections) {
             if (!section_enabled(section))
                 continue;
+            let action = option(section, "action", "");
+            let tunnel_action = connections.is_connections_action(action) || action == "awg" || action == "fptn" || action == "group";
+            if (tunnel_action && down_fail_closed(section))
+                return reject_all();
             if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]])
                 continue;
-            let action = option(section, "action", "");
-            if (connections.is_connections_action(action) || action == "awg" || action == "fptn" || action == "group") {
+            if (tunnel_action) {
                 let cand_tag = group_outbound_tag_for_section(section) || outbound_tag(section[".name"]);
                 if (is_valid_detour(config, cand_tag)) {
                     if (connections.is_dpi_or_desync_only_section && connections.is_dpi_or_desync_only_section(section)) {
@@ -5521,6 +5535,8 @@ function add_full_tunnel_route_rule(config, sections) {
             outbound: full_tunnel_target
         }, full_tunnel_target);
     }
+    else if (require("service.kill_switch").veto(settings, sections) != "")
+        reject_all();
 }
 
 function enabled_sections() {

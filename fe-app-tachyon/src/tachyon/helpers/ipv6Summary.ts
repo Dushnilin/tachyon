@@ -28,21 +28,28 @@ export interface IPv6RuntimeSnapshot {
 
 interface UciReader {
   get?: (pkg: string, sec: string, opt: string) => unknown;
+  sections?: (pkg: string, type: string) => Array<Record<string, unknown>>;
 }
 
-function readUciSetting(option: string): string {
+function uciReader(): UciReader | null {
   try {
     const lexicalUci =
       typeof uci !== 'undefined' ? (uci as unknown as UciReader) : null;
-    if (lexicalUci && typeof lexicalUci.get === 'function') {
-      const val = lexicalUci.get('tachyon', 'settings', option);
-      return typeof val === 'string' ? val.trim() : '';
-    }
+    if (lexicalUci && typeof lexicalUci.get === 'function') return lexicalUci;
     const g = globalThis as {
       uci?: UciReader;
       L?: { uci?: UciReader };
     };
-    const reader = g.uci || g.L?.uci;
+    return g.uci || g.L?.uci || null;
+  } catch {
+    // ignore outside LuCI runtime
+  }
+  return null;
+}
+
+function readUciSetting(option: string): string {
+  try {
+    const reader = uciReader();
     if (reader && typeof reader.get === 'function') {
       const val = reader.get('tachyon', 'settings', option);
       return typeof val === 'string' ? val.trim() : '';
@@ -51,6 +58,23 @@ function readUciSetting(option: string): string {
     // ignore outside LuCI runtime
   }
   return '';
+}
+
+// An enabled section with fail_policy=block, which turns "auto" protections on.
+function hasFailClosedSection(): boolean {
+  try {
+    const reader = uciReader();
+    if (!reader || typeof reader.sections !== 'function') return false;
+    return (reader.sections('tachyon', 'section') || []).some((s) => {
+      const enabled = `${s.enabled ?? '1'}`.trim().toLowerCase();
+      return (
+        !['0', 'false', 'no', 'off'].includes(enabled) &&
+        `${s.fail_policy ?? ''}`.trim().toLowerCase() === 'block'
+      );
+    });
+  } catch {
+    return false;
+  }
 }
 
 function normalizeFlag(
@@ -124,11 +148,12 @@ export function getIPv6RuntimeSnapshot(
     sysInfo?.ipv6_leak_guard,
     true,
   );
-  const webrtcGuardActive = normalizeFlag(
-    readUciSetting('webrtc_leak_protect'),
-    sysInfo?.webrtc_leak_protect,
-    true,
-  );
+  // "auto" (also the unset default) is on while a section is Fail-Closed.
+  const webrtcRaw = readUciSetting('webrtc_leak_protect').toLowerCase();
+  const webrtcGuardActive =
+    webrtcRaw === '' || webrtcRaw === 'auto'
+      ? hasFailClosedSection()
+      : normalizeFlag(webrtcRaw, sysInfo?.webrtc_leak_protect, true);
   const fakeIpEnabled = normalizeFlag(
     readUciSetting('fakeip_enabled'),
     sysInfo?.fakeip_enabled,

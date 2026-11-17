@@ -34,6 +34,21 @@ check(ks.dns_intercept_effective({}, true) && !ks.dns_intercept_effective({}, fa
 check(!ks.dns_intercept_effective({ dns_intercept_all: "0" }, true),
     "An explicit off was overridden by Fail-Closed (clients could not use their own DNS)");
 check(ks.dns_intercept_effective({ dns_intercept_all: "1" }, false), "An explicit on was ignored");
+// TUN guard: only TUN + Fail-Closed + enabled service; never in tproxy mode,
+// where the rules would cut the LAN off instead of guarding it.
+let tun = { proxy_mode: "tun", source_network_interfaces: [ "br-lan", "br-guest" ] };
+let tun_rules = map(ks.tun_guard_rules(tun, [ blocked ], true), (r) => join(" ", r));
+check(length(tun_rules) == 8, "TUN guard needs 2 rules x 2 families x 2 interfaces, got " + length(tun_rules));
+check(index(tun_rules, "-4 rule add iif br-lan lookup main suppress_prefixlength 0 pref 9500") >= 0 &&
+      index(tun_rules, "-4 rule add iif br-lan unreachable pref 9501") >= 0 &&
+      index(tun_rules, "-6 rule add iif br-guest unreachable pref 9501") >= 0,
+    "TUN guard does not leave LAN without a default route when the core is gone");
+check(length(ks.tun_guard_rules(tun, [ { fail_policy: "keep" } ], true)) == 0, "TUN guard without Fail-Closed");
+check(length(ks.tun_guard_rules({ proxy_mode: "tproxy" }, [ blocked ], true)) == 0, "TUN guard in tproxy mode");
+check(length(ks.tun_guard_rules({}, [ blocked ], true)) == 0, "TUN guard with the default (tproxy) mode");
+check(length(ks.tun_guard_rules(tun, [ blocked ], false)) == 0, "TUN guard while the service is disabled");
+tun.tun_kill_switch = "0";
+check(length(ks.tun_guard_rules(tun, [ blocked ], true)) == 0, "TUN guard ignores tun_kill_switch=0");
 let rs = ks.ruleset([ "br-lan", "br-guest" ]);
 check(index(rs, "table inet " + ks.GUARD_TABLE + " {") >= 0, "Guard does not own a separate table");
 check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >= 0, "Guard has no interface gate set");

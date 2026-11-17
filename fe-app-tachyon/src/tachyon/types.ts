@@ -853,7 +853,7 @@ export namespace Tachyon {
     fakeip_exclude?: string | string[];
     tun_inet4?: string;
     tun_inet6?: string;
-    webrtc_leak_protect?: '0' | '1';
+    webrtc_leak_protect?: '0' | '1' | 'auto';
   }
 
   export interface MethodSuccessResponse<T> {
