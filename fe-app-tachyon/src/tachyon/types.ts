@@ -1227,6 +1227,15 @@ export namespace Tachyon {
 
   export interface UiState {
     active_engine?: string;
+    list_update?: {
+      running?: boolean;
+      success?: boolean | null;
+      timestamp?: number;
+      failures?: number;
+      retry_at?: number;
+      using_cache?: boolean;
+      auto_update_enabled?: boolean;
+    };
     service: {
       tachyon: GetStatus;
       sing_box: GetSingBoxStatus;

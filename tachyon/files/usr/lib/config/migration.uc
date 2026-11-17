@@ -1248,6 +1248,14 @@ function migrate_rule_section(ctx, section, constants) {
 
 function migrate_list_update_enabled(ctx) {
     let settings = ctx.model.settings;
+    if (option_exists(settings, "list_update_interval")) {
+        set_option(ctx, settings, "update_interval", option(settings, "list_update_interval", "1d"));
+        delete_option(ctx, settings, "list_update_interval");
+    }
+    if (index([ "0", "off", "never", "disabled" ], lc(trim(option(settings, "update_interval", "")))) >= 0) {
+        set_option(ctx, settings, "list_update_enabled", "0");
+        set_option(ctx, settings, "update_interval", "1d");
+    }
     if (option_exists(settings, "list_update_enabled")) {
         if (bool_option(settings, "list_update_enabled", true) &&
             option(settings, "update_interval", "") == "") {
@@ -3643,6 +3651,9 @@ function migrate_numeric_wizard_ids(ctx) {
 
 function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
+    if (option_exists(model.settings, "list_update_interval") ||
+        index([ "0", "off", "never", "disabled" ], lc(trim(option(model.settings, "update_interval", "")))) >= 0)
+        migrate_list_update_enabled(ctx);
     let converted_any_rules = false;
     if (length(model.rules || []) > 0) {
         let constants = constants_context();

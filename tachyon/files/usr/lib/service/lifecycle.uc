@@ -1348,7 +1348,7 @@ function start_impl() {
 
     try { fs.unlink("/var/run/tachyon/boot-sweep-done"); } catch (e) {}
     module_background(UI_UC, [ "latency-boot-sweep" ]);
-    module_background(UPDATES_UC, [ "list-update" ]);
+    module_background(UPDATES_UC, [ "list-update", "auto" ]);
     module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     module_background(UI_UC, [ "get-ui-capabilities" ]);
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
@@ -1957,7 +1957,7 @@ function reload(reason) {
     }
 
     if (plan.needs_list_update == 1)
-        module_background(UPDATES_UC, [ "list-update" ]);
+        module_background(UPDATES_UC, [ "list-update", "auto" ]);
 
     module_background(TELEGRAM_UC, [ "start-runtime" ]);
 

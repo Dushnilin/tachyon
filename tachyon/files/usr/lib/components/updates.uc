@@ -32,6 +32,7 @@ const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachy
 const LIST_UPDATE_STATE_FILE = getenv("TACHYON_LIST_UPDATE_STATE_FILE") || RUNTIME_STATE_DIR + "/list-update.timestamp";
 const LIST_UPDATE_PID_FILE = getenv("TACHYON_LIST_UPDATE_PID_FILE") || "/var/run/tachyon_list_update.pid";
 const LIST_UPDATE_STATUS_FILE = getenv("TACHYON_LIST_UPDATE_STATUS_FILE") || RUNTIME_STATE_DIR + "/list-update.status";
+const LIST_UPDATE_LOCK_DIR = getenv("TACHYON_LIST_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/list-update.lock";
 const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
 const SUBSCRIPTION_JOB_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR") || "/var/run/tachyon/subscription-update-jobs";
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
@@ -388,7 +389,9 @@ function uci_sections(type_name) {
     return uci_core.section_objects(CONFIG_NAME, as_string(type_name));
 }
 
-function uci_settings() {
+function uci_settings(refresh) {
+    if (refresh)
+        uci_core.load(CONFIG_NAME, true);
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
@@ -636,10 +639,8 @@ function settings_update_interval(settings) {
     if (!bool_option(settings, "list_update_enabled", true))
         return "";
 
-    let value = option(settings, "update_interval", "1d");
-    // "0" reads as "never" to people (#420). As an invalid duration it used to
-    // fail the whole cron plan, which dropped the subscription and component
-    // jobs along with the list one.
+    // Accept the spelling from #420 until migration folds it into update_interval.
+    let value = option(settings, "list_update_interval", option(settings, "update_interval", "1d"));
     if (index([ "0", "off", "never", "disabled" ], lc(trim(as_string(value)))) >= 0)
         return "";
     return value != "" ? value : "1d";
@@ -1019,7 +1020,8 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
                 status = 1;
             }
             else {
-                push(rows, "list\t" + due_check_cron_schedule_text(seconds) + " " + as_string(bin) + " list_update_if_due " + as_string(list_marker));
+                // Check at least hourly so a failed daily update can retry after 1 h.
+                push(rows, "list\t" + due_check_cron_schedule_text(seconds > 3600 ? 3600 : seconds) + " " + as_string(bin) + " list_update_if_due " + as_string(list_marker));
             }
         }
     }
@@ -1245,6 +1247,13 @@ function refresh_cron_from_sources(settings, sections, bin, list_marker, subscri
     exit(result.status);
 }
 
+function list_update_backoff_active(status, now) {
+    // A backwards clock jump must not leave a router stuck in cooldown.
+    return int(status.timestamp || 0) <= now &&
+        int(status.retry_at || 0) > now &&
+        int(status.retry_at || 0) - now <= 86400;
+}
+
 function list_update_due_status(settings, timestamp_path, now) {
     let interval = settings_update_interval(settings);
     if (interval == "")
@@ -1255,6 +1264,9 @@ function list_update_due_status(settings, timestamp_path, now) {
         print("error\t", interval, "\n");
         exit(2);
     }
+    let status = object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE));
+    if (int(status.failures || 0) > 0)
+        exit(list_update_backoff_active(status, int(now)) ? 1 : 0);
 
     exit(update_due_status(now, file_first_line_value(timestamp_path), seconds));
 }
@@ -2736,10 +2748,15 @@ function service_proxy_address(settings, purpose) {
 // copy. An HTTP error (curl 22) is about one file and does not count.
 let _download_dead_hosts = {};
 const CURL_NETWORK_FAILURES = [ 5, 6, 7, 28, 35, 52, 56 ];
+let _list_update_automatic = false;
+let _list_cached_downloads = 0;
 
 function download_to_file(url, filepath, proxy_address, allow_empty) {
     let core_url_mod = core_url_module_or_null();
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
+    // One original + at most two mirrors. Preset importers pass base URLs only:
+    // expanding here and again in the caller used to walk the mirror tree twice.
+    candidates = slice(candidates, 0, 3);
     let existing_stat = fs.stat(filepath);
     // mktemp creates an empty placeholder, not a usable download fallback.
     let had_existing = existing_stat != null && int(existing_stat.size || 0) > 0;
@@ -2750,7 +2767,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
     function download_one(target_url, proxy_addr) {
         remove_file(filepath);
         if (command_exists("curl")) {
-            let max_dns_tries = as_string(proxy_addr) == "" ? (1 + length(CURL_DOH_FALLBACK_URLS)) : 1;
+            let max_dns_tries = as_string(proxy_addr) == "" ? 2 : 1;
             for (let dns_try = 0; dns_try < max_dns_tries; dns_try++) {
                 remove_file(filepath);
                 let curl_args = [ "curl", "--connect-timeout", "3", "-m", "10", "-y", "5", "-Y", "32768", "-fsSL" ];
@@ -2792,6 +2809,8 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
     // One attempt, skipped when its host already failed at the network level
     // on the same path during this run.
     function try_candidate(target_url, proxy_addr) {
+        if (_list_update_automatic && settings_update_interval(uci_settings(true)) == "")
+            return false;
         let h = core_url_mod && type(core_url_mod.host) == "function" ? lc(as_string(core_url_mod.host(target_url))) : "";
         let key = as_string(proxy_addr) + "|" + (h != "" ? h : as_string(target_url));
         if (_download_dead_hosts[key])
@@ -2813,7 +2832,6 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
             log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
             return true;
         }
-        log_message("Download via proxy section failed for " + as_string(url) + "; retrying direct and mirrors", "warn");
     }
 
     for (let i = 0; i < length(candidates); i++) {
@@ -2829,18 +2847,18 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
 
         // 3. Through the configured proxy section for mirrors if direct failed
         if (as_string(proxy_address) != "" && i > 0) {
-            log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
             if (try_candidate(candidate, proxy_address)) {
                 log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
                 return true;
             }
-            log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
         }
     }
 
     remove_file(filepath);
     if (had_existing && existing_backup != null) {
-        write_file(filepath, existing_backup);
+        if (!write_file(filepath, existing_backup))
+            return false;
+        _list_cached_downloads++;
         log_message("Failed to download " + as_string(url) + " (tried direct and mirrors); keeping existing cached file on disk", "warn");
         return true;
     }
@@ -3139,6 +3157,7 @@ function rebuild_domain_ip_lists_from_rule(section, settings) {
         ok = cleanup_empty_ruleset(path, true);
     } else if (file_exists_value(persistent_path)) {
         copy_file(persistent_path, path);
+        _list_cached_downloads++;
     } else {
         remove_file(path);
     }
@@ -3152,28 +3171,19 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
 
     let url = singbox_rulesets_module().community_url(service);
     let cached_file = TMP_RULESET_FOLDER + "/community-" + service + ".srs";
-    let persistent_file = "/etc/tachyon/rulesets/community-" + service + ".srs";
+    let persistent_file = PERSISTENT_RULESET_DIR + "/community-" + service + ".srs";
     let cached_trs_file = TMP_RULESET_FOLDER + "/community-" + service + ".trs";
-    let persistent_trs_file = "/etc/tachyon/rulesets/community-" + service + ".trs";
+    let persistent_trs_file = PERSISTENT_RULESET_DIR + "/community-" + service + ".trs";
     let tmpfile = temp_path();
     if (tmpfile == "")
         return false;
 
-    let core_url_mod = core_url_module_or_null();
     let use_trs = type(singbox_rulesets_module().supports_trs) == "function" &&
         singbox_rulesets_module().supports_trs();
 
     if (use_trs && type(singbox_rulesets_module().community_trs_urls) == "function") {
         let trs_base_urls = singbox_rulesets_module().community_trs_urls(service);
-        let trs_candidates = [];
-        for (let tu in trs_base_urls) {
-            let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")
-                ? core_url_mod.download_candidates(tu) : [ tu ];
-            for (let ex in expanded)
-                if (!(ex in trs_candidates))
-                    push(trs_candidates, ex);
-        }
-        for (let trs_url in trs_candidates) {
+        for (let trs_url in trs_base_urls) {
             if (download_to_file(trs_url, tmpfile, service_proxy_address(settings, "lists")) &&
                 file_nonempty(tmpfile) &&
                 singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
@@ -3181,7 +3191,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 let sz = st != null ? int(st.size || 0) : 0;
                 ensure_dir(TMP_RULESET_FOLDER);
                 if (!skip_flash_persist && sz > 0 && sz <= 524288) {
-                    ensure_dir("/etc/tachyon/rulesets");
+                    ensure_dir(PERSISTENT_RULESET_DIR);
                     copy_file(tmpfile, persistent_trs_file);
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
@@ -3202,12 +3212,14 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             ensure_dir(TMP_RULESET_FOLDER);
             copy_file(persistent_trs_file, cached_trs_file);
             remove_file(cached_file);
+            _list_cached_downloads++;
             log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
             return true;
         }
         if (type(singbox_rulesets_module().is_referenceable_trs_file) == "function" &&
             singbox_rulesets_module().is_referenceable_trs_file(cached_trs_file)) {
             log_message("Keeping existing .trs ruleset in /tmp for " + service + " after download failure", "warn");
+            _list_cached_downloads++;
             return true;
         }
         log_message("Could not download .trs preset ruleset " + service + "; falling back to .srs", "info");
@@ -3218,17 +3230,9 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         singbox_rulesets_module().fallback_community_url(service) : "";
     if (fallback_url != "" && fallback_url != url)
         push(srs_base_urls, fallback_url);
-    let srs_urls = [];
-    for (let su in srs_base_urls) {
-        let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")
-            ? core_url_mod.download_candidates(su) : [ su ];
-        for (let ex in expanded)
-            if (!(ex in srs_urls))
-                push(srs_urls, ex);
-    }
     let downloaded = false;
 
-    for (let srs_url in srs_urls) {
+    for (let srs_url in srs_base_urls) {
         if (download_to_file(srs_url, tmpfile, service_proxy_address(settings, "lists")) &&
             file_nonempty(tmpfile) &&
             helpers.file_is_usable(tmpfile, 18)) {
@@ -3241,7 +3245,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             if (unchanged_verified || singbox_rulesets_module().is_usable_srs_file(tmpfile)) {
                 ensure_dir(TMP_RULESET_FOLDER);
                 if (!skip_flash_persist && sz_tmp > 0 && sz_tmp <= 524288) {
-                    ensure_dir("/etc/tachyon/rulesets");
+                    ensure_dir(PERSISTENT_RULESET_DIR);
                     copy_file(tmpfile, persistent_file);
                     singbox_rulesets_module().remember_srs_file_verified(persistent_file);
                 } else if (sz_tmp > 524288) {
@@ -3269,12 +3273,14 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_trs_file, cached_trs_file);
         log_message("Using persistent cached .trs ruleset for " + service + " after download failure", "warn");
+        _list_cached_downloads++;
     }
     else if (singbox_rulesets_module().is_adoptable_srs_file(persistent_file) && helpers.file_is_usable(persistent_file, 18)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
         singbox_rulesets_module().remember_srs_file_verified(cached_file);
         log_message("Using persistent cached ruleset for " + service + " after download failure", "warn");
+        _list_cached_downloads++;
     }
     else {
         remove_file(persistent_file);
@@ -3994,9 +4000,12 @@ function import_subnets_from_remote_subnet_lists(section, settings) {
 }
 
 function list_update_pid_begin() {
+    if (!acquire_runtime_lock(LIST_UPDATE_LOCK_DIR, false))
+        return false;
     let existing_pid = trim(as_string(fs.readfile(LIST_UPDATE_PID_FILE) || ""));
     let current_pid = owner_pid();
     if (existing_pid != "" && existing_pid != current_pid && runtime_pid_running(existing_pid)) {
+        release_runtime_lock(LIST_UPDATE_LOCK_DIR);
         log_message("Another lists update is already running, skipping", "info");
         return false;
     }
@@ -4008,6 +4017,7 @@ function list_update_pid_begin() {
 
 function list_update_pid_end() {
     remove_file(LIST_UPDATE_PID_FILE);
+    release_runtime_lock(LIST_UPDATE_LOCK_DIR);
 }
 
 function service_proxy_is_ready(proxy_address) {
@@ -4065,45 +4075,41 @@ function dns_probe_passed(proxy_address) {
     return false;
 }
 
-function github_probe(proxy_address) {
-    let attempt = 1;
-    let timeout = 3;
-    while (attempt <= 2) {
-        let args = [ "curl", "-s", "-m", "" + timeout ];
-        if (as_string(proxy_address) != "") {
-            push(args, "-x");
-            push(args, "http://" + as_string(proxy_address));
-        }
-        push(args, "https://github.com");
-
-        if (command_success_from_args(args)) {
-            log_message(as_string(proxy_address) != "" ? "GitHub connection check passed (via proxy)" : "GitHub connection check passed", "info");
-            return true;
-        }
-
-        log_message("GitHub is unavailable [" + attempt + "/2] (max-timeout=" + timeout + ")", "info");
-        command_success_from_args([ "sleep", "1" ]);
-        attempt++;
-    }
-
-    log_message("GitHub connection check failed; trying configured list downloads individually", "info");
-    return false;
-}
-
 function write_list_update_timestamp(timestamp) {
     ensure_dir(RUNTIME_STATE_DIR);
     write_file(LIST_UPDATE_STATE_FILE, as_string(timestamp) + "\n");
 }
 
 function update_list_status(running, success, progress, message) {
+    let previous = object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE));
+    let now = now_seconds();
+    let failures = unsigned_number(previous.failures) || 0;
+    let retry_delay = int(previous.retry_delay || 0);
+    let retry_at = int(previous.retry_at || 0);
+    let last_success = int(previous.last_success || file_first_line_value(LIST_UPDATE_STATE_FILE) || 0);
+    if (!running && success != null) {
+        failures = success ? 0 : (failures < 32 ? failures + 1 : 32);
+        retry_delay = success ? 0 : 3600 * (1 << (failures > 5 ? 5 : failures - 1));
+        if (retry_delay > 86400)
+            retry_delay = 86400;
+        retry_at = success ? 0 : now + retry_delay;
+        if (success)
+            last_success = now;
+    }
     ensure_dir(RUNTIME_STATE_DIR);
-    write_json_file(LIST_UPDATE_STATUS_FILE, {
-        running: running,
-        success: success,
-        progress: progress,
-        message: message,
-        timestamp: now_seconds()
-    });
+    if (!write_json_file(LIST_UPDATE_STATUS_FILE, {
+        running,
+        success,
+        progress,
+        message,
+        timestamp: now,
+        failures,
+        retry_delay,
+        retry_at,
+        last_success,
+        using_cache: _list_cached_downloads > 0
+    }))
+        log_message("Could not save list update status and retry deadline", "error");
 }
 
 function subscription_cache_env() {
@@ -4318,7 +4324,11 @@ function reload_singbox_after_list_update(allow_deferred_remote_refresh) {
     return allow_deferred_remote_refresh ? true : refreshed;
 }
 
-function list_update() {
+function list_update(automatic) {
+    _list_update_automatic = automatic == "auto";
+    if (_list_update_automatic && (settings_update_interval(uci_settings()) == "" ||
+        list_update_backoff_active(object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE)), now_seconds())))
+        return;
     // When spawned by start_main() while start_impl() is still finalizing DNS,
     // reload-state, and system-info warmup, wait for startup to finish and
     // settle so list downloads and nft compilation do not contend with postinst
@@ -4335,6 +4345,11 @@ function list_update() {
     log_message("Starting lists update", "info");
     if (!list_update_pid_begin())
         exit(0);
+    if (_list_update_automatic && (settings_update_interval(uci_settings(true)) == "" ||
+        list_update_backoff_active(object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE)), now_seconds()))) {
+        list_update_pid_end();
+        return;
+    }
 
     update_list_status(true, null, "starting", "Starting lists update");
 
@@ -4345,9 +4360,8 @@ function list_update() {
     if (!dns_probe_passed(proxy_address)) {
         update_list_status(false, false, "error", "DNS probe failed");
         list_update_pid_end();
-        exit(0);
+        exit(1);
     }
-    github_probe(proxy_address);
 
     log_message("Downloading and processing lists", "info");
     update_list_status(true, null, "downloading", "Downloading and processing lists");
@@ -4394,6 +4408,19 @@ function list_update() {
     for (let section in sections)
         if (!import_builtin_subnets_from_rule(section, settings, false))
             ok = false;
+
+    // Cached data remains usable, but is not a fresh successful update.
+    if (_list_cached_downloads > 0)
+        ok = false;
+    if (_list_update_automatic && settings_update_interval(uci_settings(true)) == "") {
+        list_nft_batch = "";
+        list_update_seen_community_srs = null;
+        list_update_seen_builtin_subnets = null;
+        remove_files([ nft_additions, nft_prefix ]);
+        update_list_status(false, null, "disabled", "Automatic list updates disabled");
+        list_update_pid_end();
+        return;
+    }
 
     // Фаза 2: применение к nft (захватываем лок reload, чтобы не конфликтовать
     // с reload-firewall, который пересоздаёт таблицы и сеты nftables)
@@ -4445,7 +4472,7 @@ function list_update() {
             ok = false;
 
     list_nft_batch = "";
-    if (list_nft_batch_failed)
+    if (list_nft_batch_failed || _list_cached_downloads > 0)
         ok = false;
     if (config_hash != "" && file_sha256(config_path) != config_hash) {
         log_message("Routing settings changed during list update; keeping the previous nft sets until retry", "warn");
@@ -4472,7 +4499,7 @@ function list_update() {
     }
     else {
         log_message("Lists update failed", "info");
-        update_list_status(false, false, "failed", "Lists update failed");
+        update_list_status(false, false, "failed", "Could not update lists. Previous lists are kept where available. Check the network and list sources.");
     }
 
     list_update_pid_end();
@@ -4489,8 +4516,6 @@ function list_update_async() {
         });
         return;
     }
-
-    update_list_status(true, null, "starting", "Starting lists update");
 
     let cmd = command_env({
         TACHYON_CONFIG_NAME: CONFIG_NAME,
@@ -4512,29 +4537,19 @@ function list_update_status() {
     let running = (pid != "" && runtime_pid_running(pid));
     let status_data = object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE));
 
-    if (running) {
-        write_json({
-            success: true,
-            running: true,
-            progress: status_data.progress || "updating",
-            message: status_data.message || "Updating lists...",
-            timestamp: status_data.timestamp
-        });
-    } else {
-        write_json({
-            success: status_data.success != null ? status_data.success : true,
-            running: false,
-            progress: status_data.progress || "idle",
-            message: status_data.message || "Idle",
-            timestamp: status_data.timestamp || file_first_line_value(LIST_UPDATE_STATE_FILE)
-        });
-    }
+    status_data.success = running ? true : (status_data.success != null ? status_data.success : true);
+    status_data.running = running;
+    status_data.progress = status_data.progress || (running ? "updating" : "idle");
+    status_data.message = status_data.message || (running ? "Updating lists..." : "Idle");
+    status_data.timestamp = status_data.timestamp || file_first_line_value(LIST_UPDATE_STATE_FILE);
+    status_data.auto_update_enabled = settings_update_interval(uci_settings()) != "";
+    write_json(status_data);
 }
 
 function list_update_if_due() {
     let interval = settings_update_interval(uci_settings());
     if (interval == "")
-        exit(1);
+        return;
 
     let seconds = duration_to_seconds_value(interval);
     if (seconds == null) {
@@ -4542,9 +4557,15 @@ function list_update_if_due() {
         exit(1);
     }
 
-    let status = update_due_status(now_seconds(), file_first_line_value(LIST_UPDATE_STATE_FILE), seconds);
-    if (status == 0)
-        list_update();
+    let previous = object_or_empty(read_json_file(LIST_UPDATE_STATUS_FILE));
+    let now = now_seconds();
+    let status = int(previous.failures || 0) > 0
+        ? (list_update_backoff_active(previous, now) ? 1 : 0)
+        : update_due_status(now, file_first_line_value(LIST_UPDATE_STATE_FILE), seconds);
+    if (status == 0) {
+        list_update("auto");
+        return;
+    }
     if (status == 1)
         exit(0);
 
@@ -4874,7 +4895,7 @@ else if (mode == "refresh-cron-fixture")
 else if (mode == "remove-cron-jobs")
     remove_cron_jobs(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "list-update")
-    list_update();
+    list_update(ARGV[1]);
 else if (mode == "download-to-file-fixture") {
     // <dir> <proxy address or ""> <url>...: one run over several files, as
     // list_update does; prints how many were obtained (download or cache).

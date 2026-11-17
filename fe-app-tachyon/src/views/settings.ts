@@ -5072,7 +5072,10 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     'update_interval',
     _('List Update Frequency'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _tr(
+      'Интервал: 1d, 12h или 30m. Значение 0 отключает автообновления, но не ручное обновление.',
+      'Interval: 1d, 12h or 30m. Use 0 to disable automatic updates; manual updates remain available.',
+    ),
   );
   o.depends('list_update_enabled', '1');
   o.placeholder = '1d';
@@ -5097,7 +5100,10 @@ function createSettingsContent(section, capabilities) {
       return _('Use sing-box duration format like 1d, 12h or 30m');
     }
 
-    if (isSingBoxDuration(normalized)) {
+    if (
+      ['0', 'off', 'never', 'disabled'].includes(normalized.toLowerCase()) ||
+      isSingBoxDuration(normalized)
+    ) {
       return true;
     }
 
@@ -5113,7 +5119,6 @@ function createSettingsContent(section, capabilities) {
   );
   updateListsBtn.inputtitle = _('Update lists now');
   updateListsBtn.inputstyle = 'action';
-  updateListsBtn.depends('list_update_enabled', '1');
   updateListsBtn.onclick = function () {
     const steps = [
       { key: 'starting', label: _('Preparing') },

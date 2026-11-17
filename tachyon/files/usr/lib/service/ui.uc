@@ -32,6 +32,8 @@ const STATE_UC = LIB_DIR + "/service/state.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 const STATE_DIR = getenv("TACHYON_UI_STATE_DIR") || "/var/run/tachyon/ui-state";
 const PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
+const LIST_UPDATE_STATUS_FILE = getenv("TACHYON_LIST_UPDATE_STATUS_FILE") ||
+    (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/list-update.status";
 const SERVICE_ACTION_DIR = getenv("TACHYON_UI_SERVICE_ACTION_DIR") || STATE_DIR + "/service-actions";
 const SERVICE_ACTION_LOCK_DIR = getenv("TACHYON_UI_SERVICE_ACTION_LOCK_DIR") || STATE_DIR + "/service-actions.lock";
 const LATENCY_ACTION_DIR = getenv("TACHYON_UI_LATENCY_ACTION_DIR") || STATE_DIR + "/latency-actions";
@@ -1721,6 +1723,11 @@ function current_ui_state_json() {
         "/var/run/tachyon_watchdog.supervisor.pid"
     ]);
     let watchdog_is_running = watchdog_pid != null ? 1 : 0;
+    let list_update = read_json_file(LIST_UPDATE_STATUS_FILE) || {};
+    let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    let list_interval = lc(trim(as_string(option(settings, "list_update_interval", option(settings, "update_interval", "1d")))));
+    list_update.auto_update_enabled = bool_option(settings, "list_update_enabled", true) &&
+        index([ "0", "off", "never", "disabled" ], list_interval) < 0;
 
     write_json({
         active_engine: active_engine,
@@ -1772,6 +1779,7 @@ function current_ui_state_json() {
         },
         capabilities,
         ui_prefs: capabilities.ui_prefs,
+        list_update,
         actions: action_state_from_dirs()
     });
 }

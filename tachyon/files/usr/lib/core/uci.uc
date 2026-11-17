@@ -374,11 +374,11 @@ function available() {
     return fixture_enabled() || cursor() != null;
 }
 
-function load(package_name) {
+function load(package_name, force) {
     package_name = as_string(package_name);
     if (fixture_enabled())
         return true;
-    if (loaded_packages[package_name])
+    if (loaded_packages[package_name] && !force)
         return true;
 
     let c = cursor();

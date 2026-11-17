@@ -14635,3 +14635,15 @@ msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."
+
+msgid "Remote list update failed"
+msgstr "Не удалось обновить удалённые списки"
+
+msgid "Previous lists are kept where available. Check connectivity and list sources."
+msgstr "Сохранены прежние списки, для которых есть кэш. Проверьте соединение и доступность источников."
+
+msgid "Next automatic attempt after: %s"
+msgstr "Следующая автоматическая попытка не раньше: %s"
+
+msgid "Automatic updates are disabled. Manual update is still available."
+msgstr "Автообновления отключены. Ручное обновление по-прежнему доступно."

@@ -1499,7 +1499,9 @@ function settings_update_interval(settings) {
     if (!bool_option(settings, "list_update_enabled", true))
         return "";
 
-    let value = option(settings, "update_interval", "1d");
+    let value = option(settings, "list_update_interval", option(settings, "update_interval", "1d"));
+    if (index([ "0", "off", "never", "disabled" ], lc(trim(as_string(value)))) >= 0)
+        return "";
     return value != "" ? value : "1d";
 }
 

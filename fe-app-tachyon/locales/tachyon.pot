@@ -18075,3 +18075,15 @@ msgstr ""
 #: src/views/conditions.ts:2407
 msgid "🇵🇱 Poland (pl)"
 msgstr ""
+
+msgid "Remote list update failed"
+msgstr ""
+
+msgid "Previous lists are kept where available. Check connectivity and list sources."
+msgstr ""
+
+msgid "Next automatic attempt after: %s"
+msgstr ""
+
+msgid "Automatic updates are disabled. Manual update is still available."
+msgstr ""

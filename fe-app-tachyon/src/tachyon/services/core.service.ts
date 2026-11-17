@@ -11,14 +11,16 @@ import { TachyonShellMethods } from '../methods';
 import {
   registerRuntimeStateResumeRefresh,
   startRuntimeUiStatePolling,
+  subscribeRuntimeUiState,
 } from './runtimeUiState.service';
+import type { Tachyon } from '../types';
 
-type CoreServiceOptions = {
+interface CoreServiceOptions {
   waitForLogWatcherStart?: () => Promise<unknown>;
   logWatcherStartDelayMs?: number;
-};
+}
 
-const LOG_WATCHER_INTERVAL_MS = 30000;
+const LOG_WATCHER_INTERVAL_MS = 30_000;
 const LOG_WATCHER_START_DELAY_MS = 5000;
 
 function componentDisplayName(component: string) {
@@ -63,6 +65,64 @@ function showLogNotification(notification: TachyonLogNotification) {
   );
 }
 
+let lastListUpdateNotice = '';
+
+function showListUpdateWarning(state: Tachyon.UiState) {
+  const status = state.list_update;
+  // Running updates have success=null; keep the previous warning until settled.
+  if (!status || typeof status.success !== 'boolean') {
+    return;
+  }
+  const id = 'tachyon-list-update-warning';
+  const stamp = status.success
+    ? ''
+    : `${status.timestamp}:${status.retry_at}:${status.auto_update_enabled}`;
+  // Dismissing a warning must survive polling; a new failure gets a new notice.
+  if (stamp === lastListUpdateNotice) {
+    return;
+  }
+  lastListUpdateNotice = stamp;
+  document.querySelector(`#${id}`)?.remove();
+  if (status.success) {
+    return;
+  }
+  const content = [
+    E(
+      'p',
+      {},
+      _(
+        'Previous lists are kept where available. Check connectivity and list sources.',
+      ),
+    ),
+  ];
+  if (status.auto_update_enabled === false) {
+    content.push(
+      E(
+        'p',
+        {},
+        _('Automatic updates are disabled. Manual update is still available.'),
+      ),
+    );
+  } else if (status.retry_at) {
+    content.push(
+      E(
+        'p',
+        {},
+        _('Next automatic attempt after: %s').replace(
+          '%s',
+          new Date(status.retry_at * 1000).toLocaleString(),
+        ),
+      ),
+    );
+  }
+  const notice = ui.addNotification(
+    _('Remote list update failed'),
+    E('div', { role: 'status' }, content),
+    'warning',
+  );
+  notice.id = id;
+}
+
 export function coreService(options: CoreServiceOptions = {}) {
   TabServiceInstance.onChange((activeId, tabs) => {
     logger.info('[TAB]', activeId);
@@ -73,7 +133,6 @@ export function coreService(options: CoreServiceOptions = {}) {
       },
     });
   });
-
   const watcher = TachyonLogWatcher.getInstance();
   const logNotificationDeduper = new LogNotificationDeduper();
 
@@ -104,22 +163,23 @@ export function coreService(options: CoreServiceOptions = {}) {
     if (options.waitForLogWatcherStart) {
       await Promise.resolve()
         .then(() => options.waitForLogWatcherStart?.())
-        .catch(() => null);
+        .catch((error) => logger.info('[LOG WATCHER]', error));
     }
 
     watcher.start();
   };
   const scheduleStartWatcher = () =>
-    window.setTimeout(() => {
+    globalThis.setTimeout(() => {
       void startWatcher();
     }, options.logWatcherStartDelayMs ?? LOG_WATCHER_START_DELAY_MS);
 
-  if (typeof window !== 'undefined') {
-    scheduleStartWatcher();
-  } else {
+  if (globalThis.window === undefined) {
     void startWatcher();
+  } else {
+    scheduleStartWatcher();
   }
 
   registerRuntimeStateResumeRefresh();
+  subscribeRuntimeUiState(showListUpdateWarning);
   startRuntimeUiStatePolling();
 }

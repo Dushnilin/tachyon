@@ -121,6 +121,7 @@ Tachyon switches between independent routing engines via LuCI or CLI (`tachyon e
   * **Anti-Collapse Shrink Guard**: preserves the working node cache when upstream subscription servers return empty or temporary error responses.
 * **Cloudflare WARP / AmneziaWG Profile Generator**: built-in `tachyon generate_warp` command.
 * **Smart Detect Exclusions (`smart_detect_exclude_lists`)**: under Settings → Services and access, manual domain exclusions can be combined with service presets in Default and Plus modes. Decoded caches are stored in `/etc/tachyon/smart-detect-exclusions/` and refreshed during scheduled list updates using `sing-box rule-set decompile` or `tachyon-core`. When root domain expansion would overlap an excluded subdomain, only the specific detected hostname is retained.
+* **List updates with unreachable sources**: try the original and at most two mirrors; skip unreachable hosts for the rest of the run. Failures preserve previous lists and back off for 1, 2, 4, 8, 16, then 24 hours. A native LuCI warning shows the failure and retry deadline and clears after success. `list_update_enabled=0` or `update_interval=0` disables cron and startup/reload updates, not “Update lists now”; the `list_update_interval` spelling is migrated to `update_interval`. Status and cooldown live in `/var/run/tachyon/list-update.status` (RAM, no flash writes, reset on reboot).
 
 ---
 

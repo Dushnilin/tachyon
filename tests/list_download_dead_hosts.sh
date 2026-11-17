@@ -48,6 +48,9 @@ one_proxy=$( : >"$CURL_LOG"; CURL_RC=28 PATH="$WORK_DIR/bin:$PATH" ucode -L "$TA
 [ "$with_proxy" = "$one_proxy" ] ||
   fail "blocked GitHub via proxy section: 6 files took $with_proxy curl calls, the first alone $one_proxy"
 
+[ "$first" -le 3 ] || fail "more than original plus two mirrors attempted: $first"
+[ "$with_proxy" -le 6 ] || fail "more than three sources per direct/proxy path: $with_proxy"
+
 # HTTP errors (curl 22: the file is missing on one source) say nothing about
 # the host: every file still tries every source.
 http=$(run 22 "")
