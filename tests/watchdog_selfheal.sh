@@ -12,7 +12,8 @@ grep -Fq 'function check_mixed_proxy_port()' "$WD" ||
   fail "watchdog must define check_mixed_proxy_port()"
 grep -Fq 'safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");' "$WD" ||
   fail "slow checks must run check_mixed_proxy_port"
-grep -Fq '/usr/bin/tachyon restart >/dev/null 2>&1' "$WD" ||
+body="$(sed -n '/^function check_mixed_proxy_port()/,/^}/p' "$WD")"
+grep -Fq 'safe_proxy_restart("mixed_port", ESCALATION_LIGHT);' <<<"$body" ||
   fail "mixed port healing must restart the core once"
 grep -Fq 'now - mixed_port_last_notify >= 3600' "$WD" ||
   fail "mixed port notifications must be capped to one per hour"
