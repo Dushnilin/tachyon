@@ -46,6 +46,20 @@ let args = [ "ucode", "-L", getenv("REAL_LIST_TEST_LIB"), getenv("REAL_LIST_TEST
 for (let arg in ARGV) push(args, arg);
 exit(c.command_status(c.command_from_args(args)));
 UC
+# This fixture has no running core. A parallel test's stand-in must not turn
+# cache refresh into a reload of an unrelated process (CI runs with -P4).
+rm "$WORK_DIR/lib/service"
+mkdir "$WORK_DIR/lib/service"
+ln -s "$REAL_LIST_TEST_LIB/service/"* "$WORK_DIR/lib/service/"
+rm "$WORK_DIR/lib/service/state.uc"
+cat >"$WORK_DIR/lib/service/state.uc" <<'UC'
+if (ARGV[0] == "tachyon-core-service-runtime-pid")
+    exit(0);
+let c = require("core.common");
+let args = [ "ucode", "-L", getenv("REAL_LIST_TEST_LIB"), getenv("REAL_LIST_TEST_LIB") + "/service/state.uc" ];
+for (let arg in ARGV) push(args, arg);
+exit(c.command_status(c.command_from_args(args)));
+UC
 export TACHYON_LIB="$WORK_DIR/lib"
 UPDATES="$TACHYON_LIB/components/updates.uc"
 updates() { ucode -L "$TACHYON_LIB" "$UPDATES" "$@"; }

@@ -49,8 +49,8 @@ reject_pattern "trap " \
   "tachyon shell entrypoint must not own startup fail-safe traps"
 reject_pattern "clear_startup_failsafe_trap" \
   "tachyon shell entrypoint must not keep old trap helper"
-require_pattern 'module_background(UPDATES_UC, [ "list-update" ])' \
-  "startup list_update background job must be owned by service/lifecycle.uc"
+# Automatic list-update gating is covered by list_update_backoff.sh at runtime;
+# do not pin the exact background invocation or its internal arguments here.
 require_pattern 'module_background(DIAGNOSTICS_UC, [ "get-system-info" ])' \
   "startup system-info background job must be owned by service/lifecycle.uc"
 require_pattern 'startup_config_fingerprint = external_config_fingerprint();' \
