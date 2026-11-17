@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 11:34+0300\n"
-"PO-Revision-Date: 2026-11-17 11:34+0300\n"
+"POT-Creation-Date: 2026-11-17 11:59+0300\n"
+"PO-Revision-Date: 2026-11-17 11:59+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -200,9 +200,6 @@ msgstr "ИИ Чат & Ассистент Tachyon"
 msgid "AI Chat Assistant"
 msgstr "ИИ Чат-ассистент"
 
-msgid "AI DPI Engineer & Strategy Synthesizer"
-msgstr "ИИ DPI-инженер и синтезатор стратегий"
-
 msgid "AI Diagnostics & Strategy Rationale"
 msgstr "Диагностика ИИ и обоснование стратегий"
 
@@ -223,6 +220,9 @@ msgstr "Модель ИИ"
 
 msgid "AI Provider"
 msgstr "Провайдер ИИ"
+
+msgid "AI Strategy Synthesizer"
+msgstr "ИИ-синтезатор стратегий"
 
 msgid "AI Synthesis Error"
 msgstr "Ошибка генерации ИИ"
@@ -413,8 +413,8 @@ msgstr "Добавить условие"
 msgid "Add Connection (Setup Wizard)"
 msgstr "Добавить подключение (Мастер настройки)"
 
-msgid "Add Custom DPI Strategy"
-msgstr "Добавить стратегию DPI"
+msgid "Add Custom Strategy"
+msgstr "Добавить свою стратегию"
 
 msgid "Add Inbound Server"
 msgstr "Добавить сервер"
@@ -2606,11 +2606,8 @@ msgstr "DPI / Desync"
 msgid "DPI Detected"
 msgstr "DPI обнаружен"
 
-msgid "DPI Engine"
-msgstr "Движок DPI"
-
 msgid "DPI Strategy Fuzzer"
-msgstr "Подбор стратегий обхода DPI"
+msgstr "Подбор стратегий десинхронизации"
 
 msgid "DPI Type"
 msgstr "Тип DPI"
@@ -6341,9 +6338,6 @@ msgstr "Имя в списке уровней приоритета"
 msgid "Native Desync"
 msgstr "Встроенный Desync"
 
-msgid "Native Desync (tachyon-core)"
-msgstr "Встроенный Desync (tachyon-core)"
-
 msgid "Native Desync (tachyon-core) Matrix Patterns"
 msgstr "Матрица шаблонов нативной десинхронизации (tachyon-core)"
 
@@ -6452,8 +6446,8 @@ msgstr "Нет активных записей"
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
-msgid "No applicable rule sections found for this engine"
-msgstr "Для этого движка не найдено подходящих секций правил"
+msgid "No applicable rule sections found"
+msgstr "Подходящие секции правил не найдены"
 
 msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
 msgstr "Данные тестирования отсутствуют. Нажмите \"Запустить тест\" для начала."
@@ -6475,9 +6469,6 @@ msgstr "Цели для проверки не найдены в конфигур
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
-
-msgid "No compatible engines installed"
-msgstr "Нет установленных совместимых движков"
 
 msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
 msgstr "В пробе через прокси не обнаружен настроенный DNS на WAN. Принадлежность резолвера не подтверждает шифрование DNS."
@@ -7081,9 +7072,6 @@ msgstr "Десинхронизация (Desync)"
 
 msgid "Packet Desync (Tachyon Core)"
 msgstr "Десинхронизация пакетов (Desync)"
-
-msgid "Packet Desynchronization Engine"
-msgstr "Движок десинхронизации пакетов"
 
 msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
 msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
@@ -7921,9 +7909,6 @@ msgstr "Пересобранный релиз"
 
 msgid "Recent"
 msgstr "Недавно"
-
-msgid "Recommended"
-msgstr "Рекомендовано"
 
 msgid "Recommended DNS Configuration"
 msgstr "Рекомендованная конфигурация DNS"
@@ -9938,9 +9923,6 @@ msgstr "Бинарник Tachyon Core (адаптивный User-Agent и цеп
 msgid "Tachyon Core Binary (tachyon-core subscription)"
 msgstr "Бинарник Tachyon Core (tachyon-core subscription)"
 
-msgid "Tachyon Core Desync (Built-in Native Engine)"
-msgstr "Tachyon Core Desync (встроенный нативный движок)"
-
 msgid "Tachyon Core Outbound JSON"
 msgstr "Outbound JSON (Tachyon Core)"
 
@@ -11648,6 +11630,9 @@ msgstr "остановлен"
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
 
+msgid "tachyon-core binary is not installed on the router"
+msgstr "Бинарный файл tachyon-core не установлен на роутере"
+
 msgid "timeout"
 msgstr "таймаут"
 
@@ -11878,6 +11863,33 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "AI DPI Engineer & Strategy Synthesizer"
+msgstr "ИИ DPI-инженер и синтезатор стратегий"
+
+msgid "Add Custom DPI Strategy"
+msgstr "Добавить стратегию DPI"
+
+msgid "DPI Engine"
+msgstr "Движок DPI"
+
+msgid "Native Desync (tachyon-core)"
+msgstr "Встроенный Desync (tachyon-core)"
+
+msgid "No applicable rule sections found for this engine"
+msgstr "Для этого движка не найдено подходящих секций правил"
+
+msgid "No compatible engines installed"
+msgstr "Нет установленных совместимых движков"
+
+msgid "Packet Desynchronization Engine"
+msgstr "Движок десинхронизации пакетов"
+
+msgid "Recommended"
+msgstr "Рекомендовано"
+
+msgid "Tachyon Core Desync (Built-in Native Engine)"
+msgstr "Tachyon Core Desync (встроенный нативный движок)"
 
 msgid "Auto Modes (--auto)"
 msgstr "Авто-режимы (--auto)"

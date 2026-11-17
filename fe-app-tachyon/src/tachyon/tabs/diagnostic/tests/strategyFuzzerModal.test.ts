@@ -375,24 +375,22 @@ describe('renderStrategyFuzzerModal', () => {
     expect(renderedText).not.toContain('глобальный фоллбэк');
   });
 
-  it('omits all-engines option and exposes only native desync in the engine selector', () => {
+  it('omits the redundant engine selector when native desync is the only engine', () => {
     renderStrategyFuzzerModal([
       { id: 'youtube_sec', label: 'YouTube Rule', action: 'desync' },
     ]);
     const modalEl = mocks.showModal.mock.calls[0][1];
     const selects = modalEl.querySelectorAll('select');
     const engineSelect = selects.find((sel: any) =>
-      sel.options.some((opt: any) => opt.value === 'desync'),
+      sel.options.some(
+        (opt: any) => opt.value === 'desync' || opt.value === 'all',
+      ),
     );
-    expect(engineSelect).toBeDefined();
-    expect(engineSelect.options).toHaveLength(1);
-    expect(engineSelect.options[0].value).toBe('desync');
-    expect(engineSelect.options.some((opt: any) => opt.value === 'all')).toBe(
-      false,
-    );
+    expect(engineSelect).toBeUndefined();
+    expect(JSON.stringify(modalEl)).not.toContain('DPI Engine');
   });
 
-  it('shows native desync across engine selector and patterns tab', async () => {
+  it('shows native desync patterns tab without engine selector', async () => {
     renderStrategyFuzzerModal(
       [{ id: 'ds_sec', label: 'Desync Sec', action: 'desync' }],
       {
@@ -408,10 +406,7 @@ describe('renderStrategyFuzzerModal', () => {
     const engineSelect = selects.find((sel: any) =>
       sel.options.some((opt: any) => opt.value === 'desync'),
     );
-    expect(engineSelect).toBeDefined();
-    expect(engineSelect.options).toHaveLength(1);
-    expect(engineSelect.options[0].value).toBe('desync');
-    expect(engineSelect.value).toBe('desync');
+    expect(engineSelect).toBeUndefined();
 
     const buttons = modalEl.querySelectorAll('button');
     const patternsTabBtn = buttons.find((b: any) =>

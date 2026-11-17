@@ -445,4 +445,4 @@ assert(index(updater_src, "tachyon_core_asset_is_foreign_platform") >= 0 &&
     "updater.uc must filter out Android/foreign assets and prioritize musl builds");
 UCODE
 
-printf 'PASS: bugreport_rudns_desync_byedpi\n'
+printf 'PASS: bugreport_rudns_desync\n'

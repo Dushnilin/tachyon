@@ -733,8 +733,10 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
         shell_quote(job_id)
     );
     
-    let job_worker_pid = get_job_dir(job_id) + "/worker.pid";
-    system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE) + " && cp " + shell_quote(PID_FILE) + " " + shell_quote(job_worker_pid) + " 2>/dev/null"));
+    let job_dir = get_job_dir(job_id);
+    let job_worker_pid = job_dir + "/worker.pid";
+    let job_worker_log = job_dir ? (job_dir + "/worker.log") : "/dev/null";
+    system(common.background_command_with_pid(cmd, ">" + shell_quote(job_worker_log), ">" + shell_quote(PID_FILE) + " && cp " + shell_quote(PID_FILE) + " " + shell_quote(job_worker_pid) + " 2>/dev/null"));
     
     print(sprintf("%J\n", { success: true, job_id, engine: engine || "desync", target: target || "youtube_suite", mode: mode || "presets" }));
 }

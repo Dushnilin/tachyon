@@ -375,6 +375,39 @@ function probe_curl_cmd(extra_flags, target_flags, url, err_file, connect_timeou
     );
 }
 
+// "ip daddr { a, b } " for the known IPv4 probe targets, or "" when unknown
+// (then the rules fall back to all router traffic on the probe ports).
+function target_scope_match(target_ips) {
+    let ips = [];
+    let seen = {};
+    for (let ip in (type(target_ips) == "array" ? target_ips : [])) {
+        ip = as_string(ip);
+        if (is_valid_public_ip(ip) && !seen[ip]) {
+            seen[ip] = true;
+            push(ips, ip);
+        }
+    }
+    return length(ips) > 0 ? sprintf("ip daddr { %s } ", join(", ", ips)) : "";
+}
+
+// IPv4 addresses the probe will pin with --resolve for these targets.
+function probe_target_ips(urls_list) {
+    let ips = [];
+    for (let item in (type(urls_list) == "array" ? urls_list : [])) {
+        let u = as_string(item.url || "");
+        if (index(u, "udp://") == 0) {
+            let udp_info = parse_udp_target_url(u);
+            if (udp_info && is_valid_public_ip(udp_info.ip))
+                push(ips, udp_info.ip);
+            continue;
+        }
+        let flags = get_resolved_host_flags(u);
+        for (let m in match(flags, /:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) /g) || [])
+            push(ips, m[1]);
+    }
+    return ips;
+}
+
 // Marks probe traffic with FUZZER_OUTBOUND_MARK so TachyonTable's mangle_output
 // returns and it goes DIRECT to WAN. Only unmarked packets are touched: OR-ing
 // the bypass bit onto a section mark would pull that traffic out of its

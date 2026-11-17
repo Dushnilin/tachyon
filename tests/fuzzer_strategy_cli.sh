@@ -29,6 +29,22 @@ if (!Array.isArray(val.desync) || val.desync.length === 0) {
 }
 NODE
 
+# 1b. Check binaries helpers called by targets.uc and probe.uc are exported functions
+ucode -L "$TACHYON_LIB" - <<'UCODE'
+let b = require("diagnostics.fuzzer.binaries");
+for (let fn in ["target_scope_match", "probe_target_ips", "add_bypass_core_chain", "get_desync_bin"]) {
+    if (type(b[fn]) != "function") {
+        warn("Missing exported fuzzer.binaries function: " + fn + "\n");
+        exit(1);
+    }
+}
+let scope = b.target_scope_match(["1.1.1.1", "8.8.8.8", "127.0.0.1"]);
+if (scope != "ip daddr { 1.1.1.1, 8.8.8.8 } ") {
+    warn("Unexpected target_scope_match output: " + scope + "\n");
+    exit(1);
+}
+UCODE
+
 # 2. Check each desync strategy passes desync validator and parser
 desync_args="$(JSON_VALUE="$strategies_json" node - <<'NODE'
 const val = JSON.parse(process.env.JSON_VALUE);

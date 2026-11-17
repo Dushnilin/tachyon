@@ -2520,69 +2520,23 @@ export function openConnectionWizardModal(
         ]),
       );
     } else if (outboundMethod === 'desync') {
-      const allDpiEngines: Array<{
-        id: 'desync';
-        label: string;
-      }> = [
-        {
-          id: 'desync',
-          label: tr(
-            'Tachyon Core Desync (встроенный нативный движок)',
-            'Tachyon Core Desync (Built-in Native Engine)',
-          ),
-        },
-      ];
-      const dpiEngines = allDpiEngines.filter(
-        (eng) => wizardAvailableEngines[eng.id],
-      );
+      const dpiEngineAvailable = Boolean(wizardAvailableEngines.desync);
 
-      formFields.push(
-        E('div', { class: 'tachyon-wizard__field' }, [
+      if (!dpiEngineAvailable) {
+        formFields.push(
           E(
-            'label',
-            { class: 'tachyon-wizard__label' },
-            tr(
-              'Движок десинхронизации пакетов',
-              'Packet Desynchronization Engine',
+            'div',
+            { class: 'tachyon-wizard__field' },
+            E(
+              'span',
+              { class: 'tachyon-wizard__label' },
+              tr(
+                'Бинарный файл tachyon-core не установлен на роутере',
+                'tachyon-core binary is not installed on the router',
+              ),
             ),
           ),
-          E(
-            'select',
-            {
-              class: 'cbi-input-select tachyon-wizard__select',
-              change: (ev: Event) => {
-                dpiEngineType = (ev.target as HTMLSelectElement)
-                  .value as 'desync';
-                rerender();
-              },
-            } as any,
-            dpiEngines.length > 0
-              ? dpiEngines.map((eng) =>
-                  E(
-                    'option',
-                    {
-                      value: eng.id,
-                      selected: eng.id === dpiEngineType ? true : undefined,
-                    },
-                    eng.label,
-                  ),
-                )
-              : [
-                  E(
-                    'option',
-                    { value: '', disabled: true, selected: true },
-                    tr(
-                      'Нет установленных совместимых движков',
-                      'No compatible engines installed',
-                    ),
-                  ),
-                ],
-          ),
-        ]),
-      );
-
-      if (dpiEngines.length === 0) {
-        // No compatible engines installed; skip engine-specific fields
+        );
       } else {
         const presetOptions = [
           {
@@ -2918,7 +2872,7 @@ export function openConnectionWizardModal(
           }
         }
       }
-      if (dpiEngines.length > 0) {
+      if (dpiEngineAvailable) {
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
             E(

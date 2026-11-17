@@ -179,8 +179,25 @@ function get_fuzzer_state() {
         }
         if (!is_alive) {
             state.running = false;
-            if (!state.error && state.progress_pct < 100)
-                state.error = "Worker process exited unexpectedly";
+            if (!state.error && state.progress_pct < 100) {
+                let err_detail = "";
+                if (state.job_id) {
+                    let j_dir = get_job_dir(state.job_id);
+                    let wlog = j_dir ? fs.readfile(j_dir + "/worker.log") : null;
+                    if (wlog) {
+                        for (let ln in split(trim(as_string(wlog)), "\n")) {
+                            let tl = trim(ln);
+                            if (tl != "") {
+                                err_detail = tl;
+                                break;
+                            }
+                        }
+                    }
+                }
+                state.error = err_detail != ""
+                    ? ("Worker process exited unexpectedly: " + substr(err_detail, 0, 180))
+                    : "Worker process exited unexpectedly";
+            }
             if (state.finished_at == 0)
                 state.finished_at = clock()[0];
             save_fuzzer_state(state);

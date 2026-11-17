@@ -75,6 +75,11 @@ function probe_single_target_dpi(target_item, dns_flags) {
         error: metrics.error || ""
     };
 
+    let http_code = metrics.http_code || 0;
+    let handshake = metrics.handshake_ms || 0;
+    let ttfb = metrics.ttfb_ms || 0;
+    let error_str = metrics.error || "";
+
     // Also check for DNS-level blocking
     let domain = target_url;
     let dm = match(domain, /^[a-z]+:\/\/([^/:]+)/);
@@ -92,11 +97,6 @@ function probe_single_target_dpi(target_item, dns_flags) {
             dns_blocked = true;
         }
     }
-
-    let http_code = metrics.http_code || 0;
-    let handshake = metrics.handshake_ms || 0;
-    let ttfb = metrics.ttfb_ms || 0;
-    let error_str = metrics.error || "";
 
     let result = {
         type: "unknown",
