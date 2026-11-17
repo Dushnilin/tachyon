@@ -661,12 +661,14 @@ tachyon.settings.fakeip_enabled=1
 tachyon.settings.source_network_interfaces=br-lan
 EOF_DOC
 BEFORE_DOC="$(cat "$UCI_DOC")"
-DOC_CREATED_PID=0
-if [ ! -e /var/run/tachyon_watchdog.pid ] && [ -w /var/run ]; then
-  printf '%s\n' "$$" > /var/run/tachyon_watchdog.pid
-  DOC_CREATED_PID=1
-fi
 TACHYON_UCI_STATE_FILE="$UCI_DOC" TACHYON_FORCE_IPV6_SUPPORTED=1 ucode -S -L "$TACHYON_LIB" -e '
+  // This fixture has a running watchdog without sharing /var/run with other tests.
+  let fs = require("fs");
+  let readfile = fs.readfile;
+  let pid = fs.readlink("/proc/self");
+  fs.readfile = function(path) {
+    return path == "/var/run/tachyon_watchdog.pid" ? pid : readfile(path);
+  };
   let doc = require("diagnostics.doctor");
   let common = require("core.common");
   let res = doc.run_doctor_checks_impl(false);
@@ -680,9 +682,6 @@ TACHYON_UCI_STATE_FILE="$UCI_DOC" TACHYON_FORCE_IPV6_SUPPORTED=1 ucode -S -L "$T
     exit(1);
   }
 '
-if [ "$DOC_CREATED_PID" = "1" ]; then
-  rm -f /var/run/tachyon_watchdog.pid
-fi
 AFTER_DOC="$(cat "$UCI_DOC")"
 [ "$BEFORE_DOC" = "$AFTER_DOC" ] || fail "doctor dry-run modified UCI state"
 
