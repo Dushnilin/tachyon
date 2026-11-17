@@ -1475,6 +1475,39 @@ function nft_add_priority_rule_pair(table, chain, section, interface_set, localv
         nft_add_rule(table, chain, nft_priority_rule_args(section, 6, localv6_set, match6, mark));
 }
 
+// Fail-Closed section, tproxy mode: only TCP/UDP to its addresses is captured.
+// Anything else (ping, traceroute, GRE, ESP) would be forwarded directly with
+// the client's real address, so new flows of it are dropped. TUN carries it
+// into the core, which answers echo itself.
+function nft_add_fail_closed_other_l4_drop(table, section, interface_set, localv4_set, localv6_set, sets) {
+    let tail = [ "meta", "l4proto", "!=", "{ tcp, udp }", "ct", "state", "new",
+        "counter", "drop", "comment", "\"tachyon-fail-closed-other-l4\"" ];
+    let macs = section_source_macs(section);
+    let by_ip = length(macs) == 0 || section_has_source_ip_matchers(section);
+    for (let family in [ 4, 6 ]) {
+        let daddr = [ family == 6 ? "ip6" : "ip", "daddr", "!=", "@" + as_string(family == 6 ? localv6_set : localv4_set),
+            family == 6 ? "ip6" : "ip", "daddr", "@" + as_string(family == 6 ? sets.subnets6 : sets.subnets) ];
+        let heads = [];
+        if (by_ip) {
+            let h = [ "iifname", "@" + as_string(interface_set) ];
+            append_array(h, nft_source_match_args(section, family, sets));
+            push(heads, h);
+        }
+        if (length(macs) > 0)
+            push(heads, [ "iifname", "@" + as_string(interface_set), "ether", "saddr", length(macs) == 1 ? macs[0] : "{ " + join(", ", macs) + " }" ]);
+        for (let head in heads) {
+            let rule = [];
+            append_array(rule, head);
+            append_array(rule, nft_excluded_source_match_args(section, family));
+            append_array(rule, daddr);
+            append_array(rule, tail);
+            if (!nft_add_rule(table, "priority_rules", rule))
+                return false;
+        }
+    }
+    return true;
+}
+
 function nft_add_section_priority_rules(table, section, interface_set, localv4_set, localv6_set, mark) {
     if (!section_needs_priority_sets(section))
         return true;
@@ -1520,6 +1553,10 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
                 !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark) ||
                 !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_tcp, match_ip6_tcp, mark) ||
                 !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark))
+                return false;
+            if (p_action == "capture" && tproxy_intercept_enabled() &&
+                lc(trim(option(section, "fail_policy", "keep"))) == "block" &&
+                !nft_add_fail_closed_other_l4_drop(table, section, interface_set, localv4_set, localv6_set, sets))
                 return false;
         }
     }
@@ -2834,7 +2871,17 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         return false;
 
     ensure_kernel_module_quiet("nft_fib_inet");
-    if (!nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]))
+    // Replies of connections opened from outside (port forwards, inbound IPv6)
+    // are never intercepted: the peer itself chose the router's real address.
+    // In TUN mode they also carry the core's own mark, so its auto_route rule
+    // (not fwmark 0x2022 lookup 2022) leaves them in main instead of pulling
+    // them into tun, and the TUN kill-switch (kill_switch.uc) lets them out.
+    let reply_rule = [ "iifname", "@" + as_string(interface_set), "ct", "direction", "reply" ];
+    if (fail_closed_guard_tun_if() != null)
+        append_array(reply_rule, [ "meta", "mark", "set", "0x00002022" ]);
+    append_array(reply_rule, [ "counter", "return", "comment", "\"tachyon-inbound-reply\"" ]);
+    if (!nft_add_rule(table, "mangle", reply_rule) ||
+        !nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]))
         return false;
     if (!eff_v6_active) {
         if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "icmpv6", "type", "nd-router-solicit", "counter", "drop", "comment", "\"tachyon-lan-v6-off-rs\"" ]) ||

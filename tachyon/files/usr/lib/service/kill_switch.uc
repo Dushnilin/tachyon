@@ -141,8 +141,12 @@ function ruleset(interfaces) {
 // out directly. These rules sit after the core's: while the core runs they are
 // never reached; once it is gone, LAN packets keep the specific main routes
 // (other LANs, site-to-site VPNs) but have no default route left. The router's
-// own traffic (iif lo) is untouched.
-const TUN_GUARD_PREFS = [ 9500, 9501 ];
+// own traffic (iif lo) is untouched. Replies of connections opened from
+// outside (port forwards, inbound IPv6) carry the core's mark 0x2022 (set in
+// nft/apply.uc) and keep main's default route: the peer already knows the
+// router's address, so nothing leaks.
+const TUN_GUARD_PREFS = [ 9499, 9500, 9501 ];
+const TUN_AUTO_ROUTE_MARK = "0x2022";
 
 function proxy_mode(settings) {
     return lc(trim(common.as_string(common.object_or_empty(settings).proxy_mode || "tproxy")));
@@ -156,8 +160,9 @@ function tun_guard_rules(settings, sections, service_enabled) {
         return rules;
     for (let family in [ "-4", "-6" ]) {
         for (let name in source_interfaces(settings)) {
-            push(rules, [ family, "rule", "add", "iif", name, "lookup", "main", "suppress_prefixlength", "0", "pref", "" + TUN_GUARD_PREFS[0] ]);
-            push(rules, [ family, "rule", "add", "iif", name, "unreachable", "pref", "" + TUN_GUARD_PREFS[1] ]);
+            push(rules, [ family, "rule", "add", "iif", name, "fwmark", TUN_AUTO_ROUTE_MARK, "lookup", "main", "pref", "" + TUN_GUARD_PREFS[0] ]);
+            push(rules, [ family, "rule", "add", "iif", name, "lookup", "main", "suppress_prefixlength", "0", "pref", "" + TUN_GUARD_PREFS[1] ]);
+            push(rules, [ family, "rule", "add", "iif", name, "unreachable", "pref", "" + TUN_GUARD_PREFS[2] ]);
         }
     }
     return rules;

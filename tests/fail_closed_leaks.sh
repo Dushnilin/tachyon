@@ -105,7 +105,7 @@ function name_blocked(path, name) {
             return true;
     return false;
 }
-for (let name in [ "dns.google", "cloudflare-dns.com", "mask.icloud.com" ]) {
+for (let name in [ "dns.google", "cloudflare-dns.com", "mask.icloud.com", "use-application-dns.net", "dns.comss.one" ]) {
     if (!name_blocked(ARGV[0], name))
         die("Fail-Closed (Auto) does not answer NXDOMAIN for " + name + "\n");
     if (name_blocked(ARGV[1], name) || name_blocked(ARGV[2], name))
@@ -150,6 +150,16 @@ run_base 1 tun
 grep -Fq "$GUARD"$'\toifname\t!=\t"tun0"\tcounter\tdrop' "$NFT_LOG" || fail "Fail-Closed tun runtime does not keep marked packets inside tun"
 run_base 1 socks
 if grep -Fq 'fail_closed_forward' "$NFT_LOG"; then fail "forward leak guard installed in socks mode"; fi
+# Replies of connections opened from outside (port forwards, inbound IPv6) are
+# never intercepted; in TUN they carry 0x2022 so auto_route and the TUN
+# kill-switch leave them on main.
+REPLY=$'mangle\tiifname\t@tachyon_interfaces\tct\tdirection\treply'
+run_base 1 tun
+grep -Fq "$REPLY"$'\tmeta\tmark\tset\t0x00002022\tcounter\treturn' "$NFT_LOG" ||
+  fail "TUN: replies of inbound connections are pulled into tun (port forwards break)"
+run_base 1 tproxy
+grep -Fq "$REPLY"$'\tcounter\treturn' "$NFT_LOG" || fail "tproxy: replies of inbound connections are intercepted"
+if grep -F "$REPLY" "$NFT_LOG" | grep -Fq '0x00002022'; then fail "tproxy marks inbound replies with the core mark"; fi
 # Full tunnel: tproxy carries only TCP/UDP, so ICMP/GRE/ESP would go direct.
 FT_RULE=$'iifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tmeta\tmark\t0\tmeta\tl4proto\t!=\t{ tcp, udp }\tct\tstate\tnew'
 run_base 1 tproxy full_tunnel
@@ -300,5 +310,26 @@ for (let c in cases)
 ' || fail "WebRTC leak protection does not follow Fail-Closed"
 grep -Fq 'kill_switch.webrtc_protect_effective(settings, fail_closed) ? "1" : "0",' "$NFT_RUNTIME" ||
   fail "nft runtime does not apply the Fail-Closed WebRTC default"
+
+# --- 10. Split mode: ping/GRE/ESP to a Fail-Closed section's addresses ------
+# tproxy captures only TCP/UDP; anything else to the section's IPs would go
+# out directly with the real address. TUN hands it to the core (echo answered
+# locally), keep sections are unchanged.
+other_l4() { # $1 fail_policy, $2 proxy_mode -> number of drop rules
+  cat >"$WORK_DIR/l4-$1.json" <<JSON
+{ "section": [ { ".name": "vpn", ".type": "section", "enabled": "1", "action": "proxy",
+  "fail_policy": "$1", "ip_cidr": [ "203.0.113.0/24" ] } ] }
+JSON
+  : >"$NFT_LOG"
+  printf 'tachyon.settings=settings\ntachyon.settings.proxy_mode=%s\n' "$2" >"$WORK_DIR/mode.state"
+  TACHYON_UCI_STATE_FILE="$WORK_DIR/mode.state" ucode -L "$TACHYON_LIB" "$NFT_RUNTIME" \
+    nft-add-section-priority-rules-fixture "$WORK_DIR/l4-$1.json" TachyonTable tachyon_interfaces localv4 localv6 0x00100000 >/dev/null ||
+    fail "section priority rules failed ($1, $2)"
+  grep -F 'tachyon-fail-closed-other-l4' "$NFT_LOG" | grep -c 'l4proto'$'\t''!='$'\t''{ tcp, udp }' || true
+}
+[ "$(other_l4 block tproxy)" = 2 ] || fail "Fail-Closed section: ping/GRE/ESP to its IPs is not dropped (v4+v6)"
+grep -F 'tachyon-fail-closed-other-l4' "$NFT_LOG" | grep -Fq $'ip\tdaddr\t@' || fail "other-l4 drop does not match the section's IP set"
+[ "$(other_l4 keep tproxy)" = 0 ] || fail "other-l4 drop installed for a keep section"
+[ "$(other_l4 block tun)" = 0 ] || fail "other-l4 drop installed in TUN mode (the core answers echo there)"
 
 printf 'fail-closed leak tests passed\n'

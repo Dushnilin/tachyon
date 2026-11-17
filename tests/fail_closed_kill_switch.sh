@@ -38,8 +38,9 @@ check(ks.dns_intercept_effective({ dns_intercept_all: "1" }, false), "An explici
 // where the rules would cut the LAN off instead of guarding it.
 let tun = { proxy_mode: "tun", source_network_interfaces: [ "br-lan", "br-guest" ] };
 let tun_rules = map(ks.tun_guard_rules(tun, [ blocked ], true), (r) => join(" ", r));
-check(length(tun_rules) == 8, "TUN guard needs 2 rules x 2 families x 2 interfaces, got " + length(tun_rules));
-check(index(tun_rules, "-4 rule add iif br-lan lookup main suppress_prefixlength 0 pref 9500") >= 0 &&
+check(length(tun_rules) == 12, "TUN guard needs 3 rules x 2 families x 2 interfaces, got " + length(tun_rules));
+check(index(tun_rules, "-4 rule add iif br-lan fwmark 0x2022 lookup main pref 9499") >= 0 &&
+      index(tun_rules, "-4 rule add iif br-lan lookup main suppress_prefixlength 0 pref 9500") >= 0 &&
       index(tun_rules, "-4 rule add iif br-lan unreachable pref 9501") >= 0 &&
       index(tun_rules, "-6 rule add iif br-guest unreachable pref 9501") >= 0,
     "TUN guard does not leave LAN without a default route when the core is gone");
