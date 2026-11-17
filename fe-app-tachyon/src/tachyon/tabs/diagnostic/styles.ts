@@ -137,6 +137,12 @@ export const styles = `
     line-height: 1.3;
 }
 
+.tachyon_diagnostic-summary-banner__title > svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
 .tachyon_diagnostic-summary-banner__subtitle {
     font-size: 11.5px;
     color: var(--tachyon-text-muted, #94a3b8);

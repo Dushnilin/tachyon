@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   function createDummyElement(tag: string): any {
     const classSet = new Set<string>();
     const listeners: Record<string, Array<(...args: any[]) => void>> = {};
+    const attrs: Record<string, string> = {};
     const el: any = {
       tagName: tag.toUpperCase(),
       children: [] as any[],
@@ -21,9 +22,17 @@ const mocks = vi.hoisted(() => {
       textContent: '',
       innerHTML: '',
       isConnected: true,
-      setAttribute() {},
-      getAttribute() {
-        return null;
+      setAttribute(name: string, val: string) {
+        attrs[name] = String(val);
+        if (name === 'class') {
+          String(val)
+            .split(/\s+/)
+            .filter(Boolean)
+            .forEach((n) => classSet.add(n));
+        }
+      },
+      getAttribute(name: string) {
+        return name in attrs ? attrs[name] : null;
       },
       addEventListener(type: string, cb: (...args: any[]) => void) {
         listeners[type] = listeners[type] || [];
@@ -319,5 +328,26 @@ describe('diagnostics auto-expand and modal view', () => {
     expect(
       modalRoot.querySelector('.tachyon_diagnostic_alert--expanded'),
     ).not.toBeNull();
+
+    // Transition to success state and ensure summary SVG icon has explicit dimensions
+    store.set({
+      diagnosticsRunAction: { loading: false },
+      diagnosticsChecks: [
+        {
+          code: 'DNS' as any,
+          order: 1,
+          title: 'DNS checks',
+          description: 'Passed',
+          state: 'success',
+          items: [{ state: 'success', key: 'DNS on router', value: 'OK' }],
+        },
+      ],
+    });
+    updateDiagnosticsModalIfOpen();
+
+    const summarySvg = modalRoot.querySelector('.lucide-circle-check-big');
+    expect(summarySvg).not.toBeNull();
+    expect(summarySvg?.getAttribute('width')).toBe('24');
+    expect(summarySvg?.getAttribute('height')).toBe('24');
   });
 });
