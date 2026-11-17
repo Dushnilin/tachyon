@@ -101,12 +101,12 @@ version="$(printf 'tachyon-core version 0.5.7\nEnvironment: test\n' |
 [ "$version" = "0.5.7" ] ||
   fail "tachyon_core/runtime.uc version-from-output changed"
 
-TACHYON_CORE_VERSION_STATE_FILE="$WORK_DIR/version" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
   ucode -L "$TACHYON_LIB" "$TACHYON_CORE_RUNTIME_UC" write-version-state 0.5.7 >/dev/null ||
   fail "version state write failed"
-[ "$(TACHYON_CORE_VERSION_STATE_FILE="$WORK_DIR/version" ucode -L "$TACHYON_LIB" "$TACHYON_CORE_RUNTIME_UC" read-version-state)" = "0.5.7" ] ||
+[ "$(TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" ucode -L "$TACHYON_LIB" "$TACHYON_CORE_RUNTIME_UC" read-version-state)" = "0.5.7" ] ||
   fail "version state read failed"
-TACHYON_CORE_VERSION_STATE_FILE="$WORK_DIR/version" \
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
   ucode -L "$TACHYON_LIB" "$TACHYON_CORE_RUNTIME_UC" restore-version-state "" >/dev/null ||
   fail "version state restore-clear failed"
 [ ! -e "$WORK_DIR/version" ] ||
