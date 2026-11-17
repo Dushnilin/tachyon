@@ -2413,7 +2413,8 @@ function cleanup_modular_entities_v1(ctx) {
             "desync_tlsrec_first", "desync_split_pos", "desync_seqovl", "desync_syndata",
             "desync_wsize", "desync_ipfrag", "desync_udplen", "desync_fake_ttl",
             "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
-            "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_opts"
+            "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl",
+            "desync_udp_fake_payload", "desync_udp_out_range", "desync_udp_keep_socket", "desync_opts"
         ]) {
             push(sig_parts, dk + "=" + lc(trim(option(src, dk, ""))));
         }

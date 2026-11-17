@@ -894,6 +894,16 @@ tachyon.src_byedpi=outbound_source
 tachyon.src_byedpi.enabled=1
 tachyon.src_byedpi.source_type=byedpi
 tachyon.src_byedpi.byedpi_opts=-o1
+tachyon.src_udp_keep=outbound_source
+tachyon.src_udp_keep.enabled=1
+tachyon.src_udp_keep.source_type=desync
+tachyon.src_udp_keep.desync_preset=custom
+tachyon.src_udp_keep.desync_udp_keep_socket=1
+tachyon.src_udp_rotate=outbound_source
+tachyon.src_udp_rotate.enabled=1
+tachyon.src_udp_rotate.source_type=desync
+tachyon.src_udp_rotate.desync_preset=custom
+tachyon.src_udp_rotate.desync_udp_keep_socket=0
 tachyon.sec_olcrtc=section
 tachyon.sec_olcrtc.enabled=1
 tachyon.sec_olcrtc.action=olcrtc
@@ -982,6 +992,10 @@ must(uci.get("tachyon", "sec_zapret2", "nfqws2_opt") == "", "nfqws2_opt must be 
 must(uci.get("tachyon", "src_zapret2", "enabled") == "1", "src_zapret2 must stay enabled");
 must(uci.get("tachyon", "src_zapret2", "source_type") == "desync", "src_zapret2 must migrate to desync");
 must(uci.get("tachyon", "src_zapret2", "desync_preset") == "auto", "src_zapret2 must set desync_preset=auto");
+must(uci.get("tachyon", "src_udp_keep", "desync_udp_keep_socket") == "1",
+    "migration must preserve the keep-socket Desync source");
+must(uci.get("tachyon", "src_udp_rotate", "desync_udp_keep_socket") == "0",
+    "migration must preserve a Desync source differing only by its UDP socket policy");
 must(uci.get("tachyon", "src_zapret2", "nfqws2_opt") == "", "src_zapret2.nfqws2_opt must be removed");
 
 // olcrtc, external wdtt, external tailscaled become disabled (enabled=0)
