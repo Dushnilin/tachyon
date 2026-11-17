@@ -637,6 +637,11 @@ function settings_update_interval(settings) {
         return "";
 
     let value = option(settings, "update_interval", "1d");
+    // "0" reads as "never" to people (#420). As an invalid duration it used to
+    // fail the whole cron plan, which dropped the subscription and component
+    // jobs along with the list one.
+    if (index([ "0", "off", "never", "disabled" ], lc(trim(as_string(value)))) >= 0)
+        return "";
     return value != "" ? value : "1d";
 }
 
@@ -2722,6 +2727,16 @@ function service_proxy_address(settings, purpose) {
         SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
 }
 
+// Hosts that failed at the network level during this run (no DNS answer,
+// connect refused or timed out, TLS cut), per path: direct or a given proxy.
+// With GitHub blocked by the ISP every list file used to walk all eight
+// sources again, direct and via the proxy, each up to 10 s - tens of minutes
+// and hundreds of warnings per run (#420). A host that is unreachable for one
+// file is unreachable for the next; the run skips it and keeps the cached
+// copy. An HTTP error (curl 22) is about one file and does not count.
+let _download_dead_hosts = {};
+const CURL_NETWORK_FAILURES = [ 5, 6, 7, 28, 35, 52, 56 ];
+
 function download_to_file(url, filepath, proxy_address, allow_empty) {
     let core_url_mod = core_url_module_or_null();
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
@@ -2729,6 +2744,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
     // mktemp creates an empty placeholder, not a usable download fallback.
     let had_existing = existing_stat != null && int(existing_stat.size || 0) > 0;
     let existing_backup = had_existing ? fs.readfile(filepath) : null;
+    let last_rc = 0;
 
     // download_one: try url via the given proxy (or direct if proxy=="")
     function download_one(target_url, proxy_addr) {
@@ -2749,6 +2765,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
                 push(curl_args, target_url, "-o", filepath);
                 let cap = common.command_capture(command_from_args(curl_args));
                 let rc = cap == null ? 1 : int(cap.status);
+                last_rc = rc;
                 if (rc == 0 && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath))) {
                     if (active_doh != "")
                         _curl_working_doh_url = active_doh;
@@ -2767,13 +2784,32 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
             if (as_string(proxy_addr) != "")
                 command = "http_proxy=" + shell_quote("http://" + as_string(proxy_addr)) +
                     " https_proxy=" + shell_quote("http://" + as_string(proxy_addr)) + " " + command;
+            last_rc = -1;
             return command_success(command) && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath));
         }
     }
 
+    // One attempt, skipped when its host already failed at the network level
+    // on the same path during this run.
+    function try_candidate(target_url, proxy_addr) {
+        let h = core_url_mod && type(core_url_mod.host) == "function" ? lc(as_string(core_url_mod.host(target_url))) : "";
+        let key = as_string(proxy_addr) + "|" + (h != "" ? h : as_string(target_url));
+        if (_download_dead_hosts[key])
+            return false;
+        last_rc = 0;
+        if (download_one(target_url, proxy_addr))
+            return true;
+        if (index(CURL_NETWORK_FAILURES, last_rc) >= 0) {
+            _download_dead_hosts[key] = true;
+            log_message("Download: " + (h != "" ? h : as_string(target_url)) + " unreachable" +
+                (as_string(proxy_addr) != "" ? " via proxy section" : "") + " (curl " + last_rc + "); skipping it for the rest of this run", "warn");
+        }
+        return false;
+    }
+
     // 1. Through the configured proxy section first if available
     if (as_string(proxy_address) != "") {
-        if (download_one(url, proxy_address)) {
+        if (try_candidate(url, proxy_address)) {
             log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
             return true;
         }
@@ -2785,7 +2821,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
         let label = i == 0 ? "" : " via mirror " + candidate;
 
         // 2. Direct fallback
-        if (download_one(candidate, "")) {
+        if (try_candidate(candidate, "")) {
             if (candidate != url)
                 log_message("Successfully downloaded " + as_string(url) + label, "info");
             return true;
@@ -2794,7 +2830,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
         // 3. Through the configured proxy section for mirrors if direct failed
         if (as_string(proxy_address) != "" && i > 0) {
             log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
-            if (download_one(candidate, proxy_address)) {
+            if (try_candidate(candidate, proxy_address)) {
                 log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
                 return true;
             }
@@ -4839,6 +4875,15 @@ else if (mode == "remove-cron-jobs")
     remove_cron_jobs(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "list-update")
     list_update();
+else if (mode == "download-to-file-fixture") {
+    // <dir> <proxy address or ""> <url>...: one run over several files, as
+    // list_update does; prints how many were obtained (download or cache).
+    let got = 0;
+    for (let i = 3; i < length(ARGV); i++)
+        if (download_to_file(ARGV[i], ARGV[1] + "/file" + i, ARGV[2] || "", false))
+            got++;
+    print(got, "\n");
+}
 else if (mode == "rebuild-domain-ip-lists-fixture") {
     let data = object_or_empty(read_json_file(ARGV[1]));
     connections.set_item_sections_from_data(data);
