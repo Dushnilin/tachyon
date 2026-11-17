@@ -437,31 +437,6 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    local mem_limit_mb=\"0\"\n" +
-        "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
-        "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
-        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
-        "    fi\n\n" +
-        "    local scale_pct=\"\"\n" +
-        "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
-        "        scale_pct=\"$(awk -v s=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\" 'BEGIN { if (!s) exit; pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
-        "    fi\n\n" +
-        "    local gomemlimit=\"\"\n" +
-        "    local mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
-        "    if [ \"$mem_limit_mb\" -gt 0 ] 2>/dev/null; then\n" +
-        "        gomemlimit=\"$mem_limit_mb\"\n" +
-        "    elif [ \"$mem_total_kb\" -gt 0 ]; then\n" +
-        "        if [ \"$mem_total_kb\" -le 524288 ] || { [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; }; then\n" +
-        "            gomemlimit=$(( mem_total_kb / 1024 * 50 / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 24 ] && gomemlimit=24\n" +
-        "        fi\n" +
-        "    fi\n\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
-        "            gomemlimit=$(( gomemlimit * scale_pct / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
-        "        fi\n" +
-        "    fi\n\n" +
         log_prep +
         "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
@@ -469,11 +444,7 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"0\"\n" +
         "    procd_set_param limits nofile=\"65535 65535\"\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
-        "    else\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
-        "    fi\n" +
+        "    procd_set_param env TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-0}\n" +
         "    procd_close_instance\n" +
@@ -522,7 +493,9 @@ function managed_core_service_installed() {
         ? cp.init_script_kills_itself(s)
         : fallback_init_script_kills_itself(s);
     return index(s, CORE_MANAGED_SERVICE_MARKER) >= 0 &&
-        index(s, "GOGC=\"50\"") >= 0 &&
+        index(s, "GOMEMLIMIT") < 0 &&
+        index(s, "GOGC=") < 0 &&
+        index(s, "GODEBUG=") < 0 &&
         index(s, "stop_service()") >= 0 &&
         index(s, "kill -TERM") >= 0 &&
         index(s, "reload_service()") >= 0 &&

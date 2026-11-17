@@ -2,8 +2,20 @@
 
 let common = require("core.common");
 let fs = require("fs");
-let gomemlimit = require("core.gomemlimit");
 let command_from_args = common.command_from_args;
+const MEMINFO_PATH = getenv("TACHYON_MEMINFO_PATH") || "/proc/meminfo";
+
+function mem_total_kb() {
+    let data = fs.readfile(MEMINFO_PATH);
+    if (data == null)
+        return 0;
+    for (let line in split(data, "\n")) {
+        let m = match(line, /^MemTotal:\s+(\d+)\s+kB/);
+        if (m != null)
+            return int(m[1]);
+    }
+    return 0;
+}
 
 const EMPTY_SRS_B64 = "U1JTAXjaYgAEAAD//wABAAE=";
 const EMPTY_SRS_PATH = "/usr/share/tachyon/rulesets/empty.srs";
@@ -552,7 +564,7 @@ function should_compact_huge_ruleset(name) {
         return false;
     if (getenv("TACHYON_COMPACT_HUGE_RULESETS") == "1")
         return true;
-    let total_kb = gomemlimit.mem_total_kb();
+    let total_kb = mem_total_kb();
     if (total_kb > 0 && total_kb < 786432)
         return true;
     return false;
@@ -793,7 +805,7 @@ function srs_file_parses(path) {
 
     let st = fs.stat(p);
     if (st && int(st.size || 0) > 2097152) {
-        let total_kb = gomemlimit.mem_total_kb();
+        let total_kb = mem_total_kb();
         if (total_kb > 0 && total_kb < 786432)
             return true;
     }
@@ -803,7 +815,6 @@ function srs_file_parses(path) {
         return true;
 
     return common.command_status(
-        gomemlimit.gomemlimit_env() +
         command_from_args([ bin, "rule-set", "match", "--format", "binary", p, "tachyon-validation.invalid" ]) +
         " >/dev/null"
     ) == 0;

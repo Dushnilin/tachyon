@@ -308,7 +308,7 @@ const DOMAIN_BOOST_TERMS = {
     "smart_detect": 1.8, "route_explain": 1.8, "config_plan": 1.8,
     "support_bundle": 1.8, "mcp": 1.7, "telegram": 1.5, "fuzzer": 1.7,
     "bootstrap": 1.6, "resolv": 1.6, "mtu": 1.6, "doh": 1.5, "oom": 1.6,
-    "gomemlimit": 1.7, "youtube": 1.5, "googlevideo": 1.6, "discord": 1.5
+    "youtube": 1.5, "googlevideo": 1.6, "discord": 1.5
 };
 
 function lexical_search(query, idx_obj, top_k) {

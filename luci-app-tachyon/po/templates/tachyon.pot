@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 09:11+0300\n"
-"PO-Revision-Date: 2026-11-17 09:11+0300\n"
+"POT-Creation-Date: 2026-11-17 09:26+0300\n"
+"PO-Revision-Date: 2026-11-17 09:26+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -767,7 +767,7 @@ msgstr ""
 msgid "Address type"
 msgstr ""
 
-#: src/views/settings.ts:6781
+#: src/views/settings.ts:6769
 msgid "Administrator Chat IDs"
 msgstr ""
 
@@ -886,7 +886,7 @@ msgstr ""
 msgid "All URLs must respond (worst latency)"
 msgstr ""
 
-#: src/views/settings.ts:7380
+#: src/views/settings.ts:7368
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr ""
 
@@ -1318,7 +1318,7 @@ msgstr ""
 msgid "Assigned Devices (MAC / IP)"
 msgstr ""
 
-#: src/views/settings.ts:6790
+#: src/views/settings.ts:6778
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
@@ -1410,7 +1410,7 @@ msgstr ""
 msgid "Auto (domain pool / ClientHello clone)"
 msgstr ""
 
-#: src/views/settings.ts:7092
+#: src/views/settings.ts:7080
 msgid "Auto (follow LuCI)"
 msgstr ""
 
@@ -1508,11 +1508,11 @@ msgstr ""
 msgid "Auto-detected Domains"
 msgstr ""
 
-#: src/views/settings.ts:6533
+#: src/views/settings.ts:6521
 msgid "Auto-detected domains"
 msgstr ""
 
-#: src/views/settings.ts:6390
+#: src/views/settings.ts:6378
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr ""
 
@@ -2000,11 +2000,11 @@ msgstr ""
 msgid "Bootstrap DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:7085
+#: src/views/settings.ts:7073
 msgid "Bot Language"
 msgstr ""
 
-#: src/views/settings.ts:6733
+#: src/views/settings.ts:6721
 msgid "Bot Status"
 msgstr ""
 
@@ -2388,7 +2388,7 @@ msgstr ""
 msgid "Checking..."
 msgstr ""
 
-#: src/views/settings.ts:6596
+#: src/views/settings.ts:6584
 #: src/views/settings.ts:850
 msgid "Checking…"
 msgstr ""
@@ -2826,7 +2826,7 @@ msgstr ""
 msgid "Comma-separated Outbound Source IDs (leave empty for all sources)"
 msgstr ""
 
-#: src/views/settings.ts:6782
+#: src/views/settings.ts:6770
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
@@ -3810,7 +3810,7 @@ msgstr ""
 msgid "Daily Quota"
 msgstr ""
 
-#: src/views/settings.ts:7156
+#: src/views/settings.ts:7144
 msgid "Daily Report Hour (0-23)"
 msgstr ""
 
@@ -3819,7 +3819,7 @@ msgstr ""
 msgid "Daily Screen Time Quota (minutes)"
 msgstr ""
 
-#: src/views/settings.ts:7145
+#: src/views/settings.ts:7133
 msgid "Daily Status Report"
 msgstr ""
 
@@ -3923,11 +3923,11 @@ msgstr ""
 msgid "Default (TCP MD5 / Auto)"
 msgstr ""
 
-#: src/views/settings.ts:7055
+#: src/views/settings.ts:7043
 msgid "Default (auto)"
 msgstr ""
 
-#: src/views/settings.ts:6413
+#: src/views/settings.ts:6401
 msgid "Default (upstream)"
 msgstr ""
 
@@ -3953,7 +3953,7 @@ msgstr ""
 msgid "Default vector icon (SVG)"
 msgstr ""
 
-#: src/views/settings.ts:6399
+#: src/views/settings.ts:6387
 msgid "Default: uses Tachyon Core error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
 msgstr ""
 
@@ -4441,7 +4441,7 @@ msgstr ""
 msgid "Domain lists"
 msgstr ""
 
-#: src/views/settings.ts:6447
+#: src/views/settings.ts:6435
 msgid "Domain test sections"
 msgstr ""
 
@@ -4472,7 +4472,7 @@ msgstr ""
 msgid "Domains & Suffixes"
 msgstr ""
 
-#: src/views/settings.ts:6492
+#: src/views/settings.ts:6480
 msgid "Domains and subdomains that should never be automatically proxied by Smart Detect (e.g. yandex.net, mail.ru, vk.com)."
 msgstr ""
 
@@ -4632,10 +4632,6 @@ msgstr ""
 msgid "Duration format like 1m, 3m, 30s."
 msgstr ""
 
-#: src/views/settings.ts:6375
-msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
-msgstr ""
-
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:81
 msgid "EXCELLENT"
 msgstr ""
@@ -4784,11 +4780,11 @@ msgstr ""
 msgid "Enable Smart Cooldowns"
 msgstr ""
 
-#: src/views/settings.ts:6389
+#: src/views/settings.ts:6377
 msgid "Enable Smart Detect"
 msgstr ""
 
-#: src/views/settings.ts:6743
+#: src/views/settings.ts:6731
 msgid "Enable Telegram Bot"
 msgstr ""
 
@@ -4873,7 +4869,7 @@ msgstr ""
 msgid "Enables high-capacity local DNS caching in dnsmasq to accelerate DNS queries and absorb transient latency during service restarts."
 msgstr ""
 
-#: src/views/settings.ts:6744
+#: src/views/settings.ts:6732
 msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
 msgstr ""
 
@@ -5002,12 +4998,12 @@ msgstr ""
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr ""
 
-#: src/views/settings.ts:7134
-#: src/views/settings.ts:7137
+#: src/views/settings.ts:7122
+#: src/views/settings.ts:7125
 msgid "Enter an hour from 0 to 23"
 msgstr ""
 
-#: src/views/settings.ts:6755
+#: src/views/settings.ts:6743
 msgid "Enter the API token obtained from @BotFather."
 msgstr ""
 
@@ -5228,7 +5224,7 @@ msgstr ""
 msgid "Excluded devices"
 msgstr ""
 
-#: src/views/settings.ts:6491
+#: src/views/settings.ts:6479
 msgid "Excluded domains from Smart Detect"
 msgstr ""
 
@@ -5249,7 +5245,7 @@ msgstr ""
 msgid "Expand all"
 msgstr ""
 
-#: src/views/settings.ts:6478
+#: src/views/settings.ts:6466
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
@@ -5655,8 +5651,8 @@ msgstr ""
 msgid "Failed to restore snapshot"
 msgstr ""
 
-#: src/views/settings.ts:7329
-#: src/views/settings.ts:7406
+#: src/views/settings.ts:7317
+#: src/views/settings.ts:7394
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
@@ -5682,7 +5678,7 @@ msgstr ""
 msgid "Failed to start benchmark"
 msgstr ""
 
-#: src/views/settings.ts:6676
+#: src/views/settings.ts:6664
 msgid "Failed to start bot"
 msgstr ""
 
@@ -5703,7 +5699,7 @@ msgstr ""
 msgid "Failed to stop DNS benchmark"
 msgstr ""
 
-#: src/views/settings.ts:6690
+#: src/views/settings.ts:6678
 msgid "Failed to stop bot"
 msgstr ""
 
@@ -5902,7 +5898,7 @@ msgstr ""
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr ""
 
-#: src/views/settings.ts:7110
+#: src/views/settings.ts:7098
 msgid "Fallback SOCKS5 Proxy"
 msgstr ""
 
@@ -6707,7 +6703,7 @@ msgstr ""
 msgid "History cleared"
 msgstr ""
 
-#: src/views/settings.ts:6818
+#: src/views/settings.ts:6806
 msgid "Home Router / Office / Dacha"
 msgstr ""
 
@@ -6732,15 +6728,15 @@ msgstr ""
 msgid "Hosts Lists Update Interval"
 msgstr ""
 
-#: src/views/settings.ts:7157
+#: src/views/settings.ts:7145
 msgid "Hour of the day to send the daily report (default: 8)."
 msgstr ""
 
-#: src/views/settings.ts:7196
+#: src/views/settings.ts:7184
 msgid "Hour when quiet hours begin (default: 23)."
 msgstr ""
 
-#: src/views/settings.ts:7222
+#: src/views/settings.ts:7210
 msgid "Hour when quiet hours end (default: 7)."
 msgstr ""
 
@@ -6776,7 +6772,7 @@ msgstr ""
 msgid "How often to check DNS health in seconds (default 180)."
 msgstr ""
 
-#: src/views/settings.ts:6836
+#: src/views/settings.ts:6824
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
@@ -8240,7 +8236,7 @@ msgstr ""
 msgid "Language for AI Doctor diagnosis responses"
 msgstr ""
 
-#: src/views/settings.ts:7086
+#: src/views/settings.ts:7074
 msgid "Language for Telegram bot replies and notifications."
 msgstr ""
 
@@ -8371,7 +8367,7 @@ msgstr ""
 msgid "List must be an HTTP(S) URL or a local .lst / .txt path"
 msgstr ""
 
-#: src/views/settings.ts:6534
+#: src/views/settings.ts:6522
 msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
 msgstr ""
 
@@ -8871,10 +8867,6 @@ msgstr ""
 msgid "Memory (RAM)"
 msgstr ""
 
-#: src/views/settings.ts:6374
-msgid "Memory Limit (MB)"
-msgstr ""
-
 #: src/views/settings.ts:2365
 msgid "Merge (add to existing routes)"
 msgstr ""
@@ -9118,7 +9110,7 @@ msgstr ""
 msgid "Multiplexing Level"
 msgstr ""
 
-#: src/views/settings.ts:6793
+#: src/views/settings.ts:6781
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
@@ -9379,7 +9371,7 @@ msgstr ""
 msgid "No differences with active configuration (secrets masked)."
 msgstr ""
 
-#: src/views/settings.ts:6551
+#: src/views/settings.ts:6539
 msgid "No domains detected yet"
 msgstr ""
 
@@ -9662,31 +9654,31 @@ msgstr ""
 msgid "Notify in Telegram"
 msgstr ""
 
-#: src/views/settings.ts:6943
+#: src/views/settings.ts:6931
 msgid "Notify on Automatic Updates"
 msgstr ""
 
-#: src/views/settings.ts:6919
+#: src/views/settings.ts:6907
 msgid "Notify on Certificate Warnings"
 msgstr ""
 
-#: src/views/settings.ts:6867
+#: src/views/settings.ts:6855
 msgid "Notify on Core Crashes"
 msgstr ""
 
-#: src/views/settings.ts:6932
+#: src/views/settings.ts:6920
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: src/views/settings.ts:6893
+#: src/views/settings.ts:6881
 msgid "Notify on Server Switches"
 msgstr ""
 
-#: src/views/settings.ts:6880
+#: src/views/settings.ts:6868
 msgid "Notify on Service Restarts"
 msgstr ""
 
-#: src/views/settings.ts:6906
+#: src/views/settings.ts:6894
 msgid "Notify on Subscription Updates"
 msgstr ""
 
@@ -9990,7 +9982,7 @@ msgstr ""
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr ""
 
-#: src/views/settings.ts:7111
+#: src/views/settings.ts:7099
 msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
 msgstr ""
 
@@ -10026,7 +10018,7 @@ msgstr ""
 msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
 msgstr ""
 
-#: src/views/settings.ts:6814
+#: src/views/settings.ts:6802
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr ""
 
@@ -10592,7 +10584,7 @@ msgstr ""
 msgid "Please wait..."
 msgstr ""
 
-#: src/views/settings.ts:6414
+#: src/views/settings.ts:6402
 msgid "Plus"
 msgstr ""
 
@@ -10604,7 +10596,7 @@ msgstr ""
 msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
 msgstr ""
 
-#: src/views/settings.ts:6402
+#: src/views/settings.ts:6390
 msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
 msgstr ""
 
@@ -10624,11 +10616,11 @@ msgstr ""
 msgid "Policy Summary"
 msgstr ""
 
-#: src/views/settings.ts:6835
+#: src/views/settings.ts:6823
 msgid "Polling Interval (seconds)"
 msgstr ""
 
-#: src/views/settings.ts:6848
+#: src/views/settings.ts:6836
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
@@ -10829,7 +10821,7 @@ msgstr ""
 msgid "Prepend a custom badge/prefix to every server imported from this subscription."
 msgstr ""
 
-#: src/views/settings.ts:6503
+#: src/views/settings.ts:6491
 msgid "Preset exclusions for Smart Detect"
 msgstr ""
 
@@ -11116,7 +11108,7 @@ msgstr ""
 msgid "Proxy Outbound"
 msgstr ""
 
-#: src/views/settings.ts:7046
+#: src/views/settings.ts:7034
 msgid "Proxy Section for Bot"
 msgstr ""
 
@@ -11256,15 +11248,15 @@ msgstr ""
 msgid "Quick setup for outbound routing & traffic optimization"
 msgstr ""
 
-#: src/views/settings.ts:7182
+#: src/views/settings.ts:7170
 msgid "Quiet Hours"
 msgstr ""
 
-#: src/views/settings.ts:7221
+#: src/views/settings.ts:7209
 msgid "Quiet Hours End (0-23)"
 msgstr ""
 
-#: src/views/settings.ts:7195
+#: src/views/settings.ts:7183
 msgid "Quiet Hours Start (0-23)"
 msgstr ""
 
@@ -11938,7 +11930,7 @@ msgstr ""
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr ""
 
-#: src/views/settings.ts:7047
+#: src/views/settings.ts:7035
 msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr ""
 
@@ -12037,7 +12029,7 @@ msgstr ""
 msgid "Router DNS queries were observed by the test service."
 msgstr ""
 
-#: src/views/settings.ts:6813
+#: src/views/settings.ts:6801
 msgid "Router Name"
 msgstr ""
 
@@ -12262,8 +12254,8 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:220
 #: src/tachyon/tabs/diagnostic/checks/runTachyonCoreCheck.ts:65
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:428
-#: src/views/settings.ts:6624
-#: src/views/settings.ts:6625
+#: src/views/settings.ts:6612
+#: src/views/settings.ts:6613
 #: src/views/settings.ts:876
 msgid "Running"
 msgstr ""
@@ -12276,7 +12268,7 @@ msgstr ""
 msgid "Running benchmarks..."
 msgstr ""
 
-#: src/views/settings.ts:7299
+#: src/views/settings.ts:7287
 msgid "Running diagnostics…"
 msgstr ""
 
@@ -12653,7 +12645,7 @@ msgid "Select a network interface"
 msgstr ""
 
 #: src/views/section.ts:17233
-#: src/views/settings.ts:6527
+#: src/views/settings.ts:6515
 msgid "Select a predefined domain list"
 msgstr ""
 
@@ -12703,7 +12695,7 @@ msgstr ""
 msgid "Select an intermediate section"
 msgstr ""
 
-#: src/views/settings.ts:6448
+#: src/views/settings.ts:6436
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr ""
 
@@ -12848,7 +12840,7 @@ msgstr ""
 msgid "Selected node"
 msgstr ""
 
-#: src/views/settings.ts:6504
+#: src/views/settings.ts:6492
 msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
 msgstr ""
 
@@ -12896,19 +12888,19 @@ msgstr ""
 msgid "Send Telegram notification when a guest device hits its daily time or traffic quota."
 msgstr ""
 
-#: src/views/settings.ts:6920
+#: src/views/settings.ts:6908
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr ""
 
-#: src/views/settings.ts:6868
+#: src/views/settings.ts:6856
 msgid "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored."
 msgstr ""
 
-#: src/views/settings.ts:6933
+#: src/views/settings.ts:6921
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr ""
 
-#: src/views/settings.ts:6881
+#: src/views/settings.ts:6869
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr ""
 
@@ -12916,19 +12908,19 @@ msgstr ""
 msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
 msgstr ""
 
-#: src/views/settings.ts:6894
+#: src/views/settings.ts:6882
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr ""
 
-#: src/views/settings.ts:6944
+#: src/views/settings.ts:6932
 msgid "Send a Telegram notification when components are automatically updated."
 msgstr ""
 
-#: src/views/settings.ts:6907
+#: src/views/settings.ts:6895
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
-#: src/views/settings.ts:7146
+#: src/views/settings.ts:7134
 msgid "Send a daily summary of system health and proxy status to Telegram."
 msgstr ""
 
@@ -13204,7 +13196,7 @@ msgid "Service availability check"
 msgstr ""
 
 #: src/views/section.ts:17237
-#: src/views/settings.ts:6508
+#: src/views/settings.ts:6496
 msgid "Service list"
 msgstr ""
 
@@ -13458,7 +13450,7 @@ msgstr ""
 msgid "Skipped loopback:"
 msgstr ""
 
-#: src/views/settings.ts:6410
+#: src/views/settings.ts:6398
 msgid "Smart Detect mode"
 msgstr ""
 
@@ -13707,7 +13699,7 @@ msgstr ""
 msgid "Start Time (HH:MM)"
 msgstr ""
 
-#: src/views/settings.ts:6606
+#: src/views/settings.ts:6594
 msgid "Start bot"
 msgstr ""
 
@@ -13735,7 +13727,7 @@ msgstr ""
 msgid "Starting..."
 msgstr ""
 
-#: src/views/settings.ts:6669
+#: src/views/settings.ts:6657
 #: src/views/settings.ts:925
 msgid "Starting…"
 msgstr ""
@@ -13809,7 +13801,7 @@ msgstr ""
 msgid "Stop Tachyon service"
 msgstr ""
 
-#: src/views/settings.ts:6613
+#: src/views/settings.ts:6601
 msgid "Stop bot"
 msgstr ""
 
@@ -13838,7 +13830,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runTachyonCoreCheck.ts:66
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:428
 #: src/tachyon/tabs/updates/initController.ts:1082
-#: src/views/settings.ts:6630
+#: src/views/settings.ts:6618
 #: src/views/settings.ts:882
 msgid "Stopped"
 msgstr ""
@@ -13848,7 +13840,7 @@ msgstr ""
 msgid "Stopping..."
 msgstr ""
 
-#: src/views/settings.ts:6683
+#: src/views/settings.ts:6671
 #: src/views/settings.ts:939
 msgid "Stopping…"
 msgstr ""
@@ -14080,7 +14072,7 @@ msgstr ""
 msgid "Support via SBP"
 msgstr ""
 
-#: src/views/settings.ts:7183
+#: src/views/settings.ts:7171
 msgid "Suppress non-critical Telegram notifications during the configured night window."
 msgstr ""
 
@@ -14655,7 +14647,7 @@ msgstr ""
 msgid "Telegram Bot"
 msgstr ""
 
-#: src/views/settings.ts:6754
+#: src/views/settings.ts:6742
 msgid "Telegram Bot Token"
 msgstr ""
 
@@ -14663,7 +14655,7 @@ msgstr ""
 msgid "Telegram Channel"
 msgstr ""
 
-#: src/views/settings.ts:7262
+#: src/views/settings.ts:7250
 msgid "Test Connection"
 msgstr ""
 
@@ -14676,7 +14668,7 @@ msgstr ""
 msgid "Test DNS speed"
 msgstr ""
 
-#: src/views/settings.ts:7249
+#: src/views/settings.ts:7237
 msgid "Test Telegram Connection"
 msgstr ""
 
@@ -14800,7 +14792,7 @@ msgstr ""
 msgid "Testing:"
 msgstr ""
 
-#: src/views/settings.ts:7262
+#: src/views/settings.ts:7250
 msgid "Testing…"
 msgstr ""
 
@@ -14994,7 +14986,7 @@ msgstr ""
 msgid "Toggle details & servers"
 msgstr ""
 
-#: src/views/settings.ts:6761
+#: src/views/settings.ts:6749
 msgid "Token is required when the bot is enabled"
 msgstr ""
 
@@ -15510,7 +15502,7 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:3719
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1689
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:242
-#: src/views/settings.ts:6660
+#: src/views/settings.ts:6648
 #: src/views/settings.ts:916
 msgid "Unknown"
 msgstr ""
@@ -16396,7 +16388,7 @@ msgstr ""
 msgid "What's new?"
 msgstr ""
 
-#: src/views/settings.ts:6479
+#: src/views/settings.ts:6467
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr ""
 

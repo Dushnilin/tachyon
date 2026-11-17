@@ -6367,18 +6367,6 @@ function createSettingsContent(section, capabilities) {
   o.datatype = 'min(1)';
   o.depends('ai_anomaly_detection_enabled', '1');
 
-  o = section.taboption(
-    'ai',
-    form.Value,
-    'memory_limit_mb',
-    _('Memory Limit (MB)'),
-    _(
-      'Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs).',
-    ),
-  );
-  o.default = '0';
-  o.datatype = 'uinteger';
-
   // ─── End AI Watchdog Settings ──────────────────────────────────────────────
 
   // Smart Detect

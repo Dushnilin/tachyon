@@ -745,7 +745,6 @@ bus.on_error(function(name, event_type, err) {
 // Repair-side pacing. Unlike the observation counters below, these belong to
 // the action: they debounce how often a healer is allowed to act, not how often
 // the world is measured.
-let last_oom_recovery_time = 0;
 let last_restart_time = 0;
 let last_reload_time = 0;
 let pending_smart_domains = {};
@@ -2753,17 +2752,12 @@ function smart_detect_process_pending() {
 }
 
 // ─── OOM response ─────────────────────────────────────────────────────────────
-// Shrinks the memory cap scale by 20% per OOM, floored at 0.2 so tachyon-core is
-// never starved into permanent failure, then restarts to apply it.
+// Inspects the kernel OOM report and notifies without triggering full-service
+// restarts under memory pressure: procd respawns tachyon-core on its own.
 //
-// The arithmetic lives in service/oom_scale.uc so the floor rule can be exercised
-// directly: requiring watchdog.uc runs its subscriptions.
-let oom_scale = require("service.oom_scale");
-let oom_scale_path = oom_scale.oom_scale_path;
-let read_oom_scale = oom_scale.read_oom_scale;
-let oom_scale_at_floor = oom_scale.oom_scale_at_floor;
-let next_oom_scale = oom_scale.next_oom_scale;
-let last_oom_floor_notice_time = 0;
+// The report parser lives in service/oom_report.uc so it can be exercised
+// directly without running watchdog subscriptions.
+let oom_report_mod = require("service.oom_report");
 
 // The syslog line that raises the event is the report's first; the victim comes
 // last and may not be printed yet, so the kernel log is polled briefly for it.
@@ -2771,10 +2765,10 @@ const OOM_REPORT_WAIT_MS = 3000;
 const OOM_REPORT_POLL_MS = 200;
 
 function read_oom_report() {
-    let report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+    let report = oom_report_mod.oom_report(command_output_from_args([ "dmesg" ]));
     for (let waited = 0; !report.complete && waited < OOM_REPORT_WAIT_MS; waited += OOM_REPORT_POLL_MS) {
         sleep(OOM_REPORT_POLL_MS);
-        report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+        report = oom_report_mod.oom_report(command_output_from_args([ "dmesg" ]));
     }
     return report;
 }
@@ -2786,71 +2780,31 @@ function oom_victim_label(report) {
 
 function heal_oom(ev) {
     let report = read_oom_report();
-    let response = oom_scale.oom_response(report);
+    let response = oom_report_mod.oom_response(report);
     let victim = oom_victim_label(report);
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
 
-    // The native tachyon-core ignores GOMEMLIMIT and is respawned directly by
-    // procd; a cgroup/external OOM needs only reporting without dropping
-    // interception across a full restart.
+    // tachyon-core is respawned directly by procd; a cgroup or external OOM
+    // only needs reporting without dropping interception across a full restart.
     if (response == "respawn") {
-        log_message("OOM killed " + victim + "; procd respawns it. Not restarting Tachyon: the native core ignores GOMEMLIMIT", "err");
+        log_message("OOM killed " + victim + "; procd respawns it. Not restarting Tachyon", "err");
         if (notify_enabled(tcfg, "notify_crash")) {
             send_telegram_notification("🚨 *Watchdog:* OOM завершил ядро `" + victim + "`. procd перезапустит его сам; Tachyon целиком не перезапускается.", "oom_respawn", 600);
         }
         return;
     }
-    if (response != "shrink") {
-        let scope = report.memcg ? "inside a memory cgroup (a container or a service with its own limit)"
-            : (report.complete ? "outside Tachyon" : "(kernel report not complete; victim unknown)");
-        log_message("OOM killed " + victim + " " + scope + "; not restarting Tachyon", "warn");
-        let text = "⚠️ *Watchdog:* OOM: ядро завершило процесс `" + victim + "`. Ядро Tachyon не затронуто, Tachyon не перезапускается.";
-        if (report.memcg)
-            text = "⚠️ *Watchdog:* OOM внутри cgroup (контейнер или служба со своим лимитом памяти): завершён процесс `" + victim + "`. Память роутера не исчерпана, Tachyon не перезапускается.";
-        else if (!report.complete)
-            text = "⚠️ *Watchdog:* OOM на роутере, но процесс по журналу ядра определить не удалось. Tachyon не перезапускается; если ядро упало, его перезапустит procd.";
-        if (notify_enabled(tcfg, "notify_crash")) {
-            send_telegram_notification(text, "oom_report", 600);
-        }
-        return;
-    }
 
-    // At the floor there is nothing left to lower, so the restart used to apply the
-    // new value re-applied the same one - and restarting every service under memory
-    // pressure is what produced the next OOM. A router could sit in that loop
-    // indefinitely with a Telegram notification a minute, which is what the log
-    // screenshots showed. Nothing is written and nothing is restarted here.
-    let floor_scale = read_oom_scale();
-    if (oom_scale_at_floor(floor_scale)) {
-        log_message("OOM event with GOMEMLIMIT scale already at the floor (" +
-            sprintf("%.2f", floor_scale) + "): not restarting services again", "err");
-        let floor_now = time();
-        if (floor_now - last_oom_floor_notice_time >= 3600) {
-            last_oom_floor_notice_time = floor_now;
-            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-            if (notify_enabled(tcfg, "notify_crash")) {
-                send_telegram_notification("OOM repeats and GOMEMLIMIT is already at its minimum. Restarting services no longer helps, so it has been stopped - free memory or lower the load.");
-            }
-        }
-        return;
-    }
-
-    log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
-    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    let scope = report.memcg ? "inside a memory cgroup (a container or a service with its own limit)"
+        : (report.complete ? "outside Tachyon" : "(kernel report not complete; victim unknown)");
+    log_message("OOM killed " + victim + " " + scope + "; not restarting Tachyon", "warn");
+    let text = "⚠️ *Watchdog:* OOM: ядро завершило процесс `" + victim + "`. Ядро Tachyon не затронуто, Tachyon не перезапускается.";
+    if (report.memcg)
+        text = "⚠️ *Watchdog:* OOM внутри cgroup (контейнер или служба со своим лимитом памяти): завершён процесс `" + victim + "`. Память роутера не исчерпана, Tachyon не перезапускается.";
+    else if (!report.complete)
+        text = "⚠️ *Watchdog:* OOM на роутере, но процесс по журналу ядра определить не удалось. Tachyon не перезапускается; если ядро упало, его перезапустит procd.";
     if (notify_enabled(tcfg, "notify_crash")) {
-        send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
+        send_telegram_notification(text, "oom_report", 600);
     }
-    let scale = read_oom_scale();
-    let scale_path = oom_scale_path();
-    let new_scale = next_oom_scale(scale);
-    // write_state_file creates the parent directory itself.
-    write_state_file(scale_path, sprintf("%.2f", new_scale), "GOMEMLIMIT scale");
-
-    // No logread -c here. The replay of the historical buffer on start is already
-    // filtered by the controller's syslog_start_time guard, so clearing the buffer
-    // gained nothing and destroyed the only record of what ran the router out of
-    // memory.
-    command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
 }
 
 // Candidate domains are queued here and probed in a batch by
@@ -2924,22 +2878,6 @@ function setup_honeypot_listener() {
         system(hp_cmd);
         return null;
     }
-}
-
-// The "OOM was long enough ago" and "scale is below 1.0" tests are the
-// controller's oom.recovery probe; what is left here is the write-back.
-// The 600s self-cooldown stays local because it paces the healer, not the fact.
-function recover_oom_scale(ev) {
-    let now = time();
-    if (now - last_oom_recovery_time < 600) return;
-    last_oom_recovery_time = now;
-
-    let scale_path = "/etc/tachyon/mem_scale";
-    let current_scale = double(ev.payload.scale);
-    let new_scale = current_scale + 0.05;
-    if (new_scale > 1.0) new_scale = 1.0;
-    log_message("OOM recovery: restoring GOMEMLIMIT scale from " + sprintf("%.2f", current_scale) + " to " + sprintf("%.2f", new_scale), "info");
-    write_state_file(scale_path, sprintf("%.2f", new_scale), "GOMEMLIMIT scale");
 }
 
 function setup_syslog_listener(on_restart) {
@@ -3125,8 +3063,6 @@ function register_subscribers() {
 
     subscribe(EV.OOM_DETECTED, heal_oom,
         { name: "heal_oom", priority: 70 });
-    subscribe(EV.OOM_RECOVERABLE, recover_oom_scale,
-        { name: "recover_oom_scale", priority: 70 });
     subscribe(EV.MEMORY_LOW, heal_low_memory,
         { name: "heal_low_memory", priority: 70 });
     subscribe(EV.RPCD_FD_LEAK, heal_rpcd,

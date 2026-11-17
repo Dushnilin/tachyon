@@ -248,8 +248,8 @@ let re = require("diagnostics.route_explain");
 if (type(re) != "object" || type(re.explain_route) != "function") exit(5);
 let conn = require("config.connections");
 if (type(conn) != "object" || type(conn.option) != "function") exit(6);
-let gml = require("core.gomemlimit");
-if (type(gml) != "object" || type(gml.gomemlimit_mb) != "function") exit(7);
+let oom = require("service.oom_report");
+if (type(oom) != "object" || type(oom.oom_report) != "function") exit(7);
 exit(0);
 UCODE
     ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$TMP_DIR/test_require_worker.uc" worker || \

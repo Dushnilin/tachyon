@@ -6,7 +6,6 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let network_mod = require("diagnostics.network");
-let gomemlimit = require("core.gomemlimit");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -735,9 +734,7 @@ function check_proxy() {
             push(args, "-o");
             push(args, outbound_tag);
         }
-        // A full core run next to the daemon, rulesets included - same ceiling
-        // as `check`, and this one is retried five times.
-        response = command_output(gomemlimit.gomemlimit_env() + command_from_args(args) + " 2>/dev/null");
+        response = command_output(command_from_args(args) + " 2>/dev/null");
         if (status_success([ "proxy-response-is-retryable-error" ], response))
             continue;
 

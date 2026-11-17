@@ -23,22 +23,6 @@ function core_profile() {
     return core_profile_module;
 }
 
-// Lazy for the same reason as core_profile(), and additionally guarded: the
-// partial -L tree that components_updater_job stages has no core/gomemlimit.uc,
-// and a hard require here would break that update path outright. There the
-// ceiling is simply skipped - exactly as it was before - while a full install,
-// which is where a second Go runtime competes with the running daemon, gets it.
-let gomemlimit_module = false;
-function gomemlimit_env_map() {
-    if (gomemlimit_module === false) {
-        try { gomemlimit_module = require("core.gomemlimit"); }
-        catch (e) { gomemlimit_module = null; }
-    }
-    if (gomemlimit_module == null) return {};
-    try { return gomemlimit_module.gomemlimit_env_map(); }
-    catch (e) { return {}; }
-}
-
 // ============================================================================
 // Fingerprints
 // ============================================================================
@@ -298,14 +282,7 @@ function check_core_config_with_binary(binary, config_path, library_dir) {
     if (err_file == "")
         return { ok: true };
 
-    let env_map = {
-        GODEBUG: "madvdontneed=1",
-        GOGC: "30"
-    };
-    // A config check loads every rule-set the config references while the daemon
-    // already holds its own copy. Keep the same memory cap as the daemon.
-    for (let name, value in gomemlimit_env_map())
-        env_map[name] = value;
+    let env_map = {};
     let lib_path = as_string(library_dir || "");
     if (lib_path != "") {
         if (lib_path == "/usr/lib")
@@ -314,6 +291,8 @@ function check_core_config_with_binary(binary, config_path, library_dir) {
             lib_path = lib_path + ":/usr/lib:/lib";
         env_map.LD_LIBRARY_PATH = lib_path;
     }
+    let env_prefix = helpers.command_env(env_map);
+    let env_space = env_prefix != "" ? env_prefix + " " : "";
 
     let ver_out = trim(common.command_output_from_args([ binary, "version" ]));
     let ver_str = common.parse_core_version(ver_out);
@@ -326,16 +305,12 @@ function check_core_config_with_binary(binary, config_path, library_dir) {
     config_path = as_string(config_path || "/etc/tachyon-core/config.json");
 
     if (helpers.file_exists(config_path) && helpers.file_nonempty(config_path)) {
-        let check_cmd = helpers.command_env(env_map) + " " +
+        let check_cmd = env_space +
             common.command_from_args([ binary, "-c", config_path, "check" ]) +
             " >" + common.shell_quote(err_file) + " 2>&1";
         let status = common.command_status(check_cmd);
         if ((status == 247 || status == 137) && fs.stat("/proc/sys/vm/drop_caches") != null) {
             system("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null");
-            env_map.GOGC = "15";
-            check_cmd = helpers.command_env(env_map) + " " +
-                common.command_from_args([ binary, "-c", config_path, "check" ]) +
-                " >" + common.shell_quote(err_file) + " 2>&1";
             status = common.command_status(check_cmd);
         }
 
@@ -369,7 +344,7 @@ function check_core_config_with_binary(binary, config_path, library_dir) {
             helpers.remove_file(err_file);
             let repaired = false;
             for (let attempt = 0; attempt < 16; attempt++) {
-                let cand_check_cmd = helpers.command_env(env_map) + " " +
+                let cand_check_cmd = env_space +
                     common.command_from_args([ binary, "-c", candidate_cfg, "check" ]) +
                     " >" + common.shell_quote(err_file) + " 2>&1";
                 cand_status = common.command_status(cand_check_cmd);

@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 # The OOM healer must act on who the kernel killed, not on the word "OOM".
 #
-# heal_oom() used to run a full `tachyon restart` on any kernel OOM line.
-# On a router running a docker container, hitting the container's own cgroup
-# limit ("Memory cgroup out of memory: Killed process ... (urusai)") restarted
-# Tachyon for nothing while the fail-closed gate held LAN closed.
-#
 # Checked here: oom_report/oom_response decisions against real dmesg samples
-# and heal_oom's check ordering.
+# and heal_oom's non-restarting structure.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
@@ -17,7 +12,7 @@ WATCHDOG_UC="$TACHYON_LIB/service/watchdog.uc"
 uc() { command ucode -L "$TACHYON_LIB" "$@"; }
 
 cat >"$WORK_DIR/decide.uc" <<'UCODE'
-let oom = require("service.oom_scale");
+let oom = require("service.oom_report");
 let errors = [];
 let note = function(m) { push(errors, m); };
 let check = function(label, got, want) {
@@ -28,7 +23,6 @@ let check = function(label, got, want) {
 let memcg = join("\n", [
     "[408668.451740] 4-chrome-macos invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=500",
     "[408668.462245] memory: usage 131088kB, limit 131072kB, failcnt 543",
-    "[408668.464031] tachyon: [err] Watchdog: OOM event detected from syslog! Reducing GOMEMLIMIT scaling...",
     "[408668.477706] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=7f3f7fab6ed1,mems_allowed=0,oom_memcg=/docker/7f3f7fab6ed1,task=urusai,pid=15410,uid=0",
     "[408668.480046] Memory cgroup out of memory: Killed process 15410 (urusai) total-vm:148248kB, anon-rss:130096kB, file-rss:0kB"
 ]);
@@ -76,18 +70,11 @@ out="$(uc "$WORK_DIR/decide.uc" 2>&1)" || fail "OOM decisions:
 $out"
 printf '%s\n' "$out"
 
-# --- the healer decides before any GOMEMLIMIT write or restart ---
 body="$(sed -n '/^function heal_oom/,/^}/p' "$WATCHDOG_UC" | grep -v '^[[:space:]]*//')"
 [ -n "$body" ] || fail "heal_oom not found"
-line_of() { grep -n -- "$1" <<<"$body" | head -1 | cut -d: -f1; }
-decide="$(line_of 'oom_scale.oom_response(')"
-noshrink="$(line_of 'response != "shrink"')"
-write="$(line_of 'write_state_file(')"
-restart="$(line_of 'tachyon restart')"
-[ -n "$decide" ] && [ -n "$noshrink" ] && [ -n "$write" ] && [ -n "$restart" ] ||
-  fail "heal_oom lost a step (decide=$decide noshrink=$noshrink write=$write restart=$restart)"
-[ "$decide" -lt "$write" ] && [ "$noshrink" -lt "$write" ] && [ "$noshrink" -lt "$restart" ] ||
-  fail "heal_oom must decide and return before touching mem_scale or restarting"
+grep -q 'oom_report_mod.oom_response(' <<<"$body" || fail "heal_oom must use oom_report_mod.oom_response"
 grep -q 'read_oom_report()' <<<"$body" || fail "heal_oom must wait for the complete kernel report"
+! grep -qE 'write_state_file|tachyon restart' <<<"$body" ||
+  fail "heal_oom must never write mem_scale or restart Tachyon"
 
 printf 'PASS: watchdog_oom_victim\n'

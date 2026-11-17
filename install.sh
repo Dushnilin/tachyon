@@ -1840,7 +1840,7 @@ migrate_legacy_engine_files() {
         rm -rf /etc/sing-box 2>/dev/null || true
     fi
 
-    rm -f /usr/bin/sing-box /etc/tachyon/sing-box-variant /etc/tachyon/sing-box-version 2>/dev/null || true
+    rm -f /usr/bin/sing-box /etc/tachyon/sing-box-variant /etc/tachyon/sing-box-version /etc/tachyon/mem_scale 2>/dev/null || true
     rm -rf /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
 
     # Silently stop/remove legacy standalone external provider services, binaries, and packages on upgrade

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 12:11+0300\n"
-"PO-Revision-Date: 2026-11-17 12:11+0300\n"
+"POT-Creation-Date: 2026-11-17 12:26+0300\n"
+"PO-Revision-Date: 2026-11-17 12:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3179,9 +3179,6 @@ msgstr "Дубликаты"
 msgid "Duration format like 1m, 3m, 30s."
 msgstr "Формат длительности, например 1m, 3m, 30s."
 
-msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
-msgstr "Динамический лимит памяти в МБ для Tachyon Core. Укажите 0 для автовыбора (50% ОЗУ на устройствах с малым объёмом памяти или при OOM)."
-
 msgid "EXCELLENT"
 msgstr "ОТЛИЧНО"
 
@@ -6130,9 +6127,6 @@ msgstr "Входящие условия"
 
 msgid "Memory (RAM)"
 msgstr "Память (RAM)"
-
-msgid "Memory Limit (MB)"
-msgstr "Лимит памяти (МБ)"
 
 msgid "Merge (add to existing routes)"
 msgstr "Объединить (добавить к существующим маршрутам)"
@@ -11863,6 +11857,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
+msgstr "Динамический лимит памяти в МБ для Tachyon Core. Укажите 0 для автовыбора (50% ОЗУ на устройствах с малым объёмом памяти или при OOM)."
+
+msgid "Memory Limit (MB)"
+msgstr "Лимит памяти (МБ)"
 
 msgid "AI DPI Engineer & Strategy Synthesizer"
 msgstr "ИИ DPI-инженер и синтезатор стратегий"

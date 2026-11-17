@@ -1826,7 +1826,7 @@ function run_doctor_checks_impl(repair) {
                 oom_victim_core ? ("OOM detected, " + binary_name + " was killed") : "OOM detected in system logs",
                 "→ WILL FIX (doctor --fix): очистка логов и сброс кэшей памяти");
         } else {
-            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; logread -c >/dev/null 2>&1; rm -f /etc/tachyon/mem_scale");
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; logread -c >/dev/null 2>&1");
             doc_check("❌", "System OOM checks",
                 oom_victim_core ? ("OOM detected, " + binary_name + " was killed") : "OOM detected in system logs",
                 "→ FIXED: журналы сброшены, кэши памяти освобождены");

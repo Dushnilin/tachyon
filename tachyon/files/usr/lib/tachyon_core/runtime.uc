@@ -81,31 +81,6 @@ function fallback_managed_core_init_script(marker) {
         "    config_get working_directory \"main\" \"workdir\" \"/usr/share/tachyon-core\"\n" +
         "    [ -d \"$working_directory\" ] || mkdir -p \"$working_directory\"\n" +
         "    config_get_bool log_stderr \"main\" \"log_stderr\" \"1\"\n\n" +
-        "    local mem_limit_mb=\"0\"\n" +
-        "    config_get mem_limit_mb \"main\" \"memory_limit_mb\" \"0\"\n" +
-        "    if [ \"$mem_limit_mb\" = \"0\" ] || [ -z \"$mem_limit_mb\" ]; then\n" +
-        "        mem_limit_mb=\"$(uci get tachyon.settings.memory_limit_mb 2>/dev/null || echo 0)\"\n" +
-        "    fi\n\n" +
-        "    local scale_pct=\"\"\n" +
-        "    if [ -s \"/etc/tachyon/mem_scale\" ]; then\n" +
-        "        scale_pct=\"$(awk -v s=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\" 'BEGIN { if (!s) exit; pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
-        "    fi\n\n" +
-        "    local gomemlimit=\"\"\n" +
-        "    local mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
-        "    if [ \"$mem_limit_mb\" -gt 0 ] 2>/dev/null; then\n" +
-        "        gomemlimit=\"$mem_limit_mb\"\n" +
-        "    elif [ \"$mem_total_kb\" -gt 0 ]; then\n" +
-        "        if [ \"$mem_total_kb\" -le 524288 ] || { [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; }; then\n" +
-        "            gomemlimit=$(( mem_total_kb / 1024 * 50 / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 24 ] && gomemlimit=24\n" +
-        "        fi\n" +
-        "    fi\n\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
-        "            gomemlimit=$(( gomemlimit * scale_pct / 100 ))\n" +
-        "            [ \"$gomemlimit\" -lt 16 ] && gomemlimit=16\n" +
-        "        fi\n" +
-        "    fi\n\n" +
         "    _kill_daemon_instances\n\n" +
         "    procd_open_instance\n" +
         "    procd_set_param command \"$PROG\" run -c \"$config_file\" -D \"$working_directory\"\n" +
@@ -116,11 +91,7 @@ function fallback_managed_core_init_script(marker) {
         "    if [ \"$lite_mode\" = \"1\" ] || [ \"$lite_mode\" = \"true\" ]; then\n" +
         "        procd_set_param nice 15\n" +
         "    fi\n" +
-        "    if [ -n \"$gomemlimit\" ] && [ \"$gomemlimit\" -gt 0 ] 2>/dev/null; then\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\" GOMEMLIMIT=\"${gomemlimit}MiB\"\n" +
-        "    else\n" +
-        "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
-        "    fi\n" +
+        "    procd_set_param env TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-0}\n" +
         "    procd_close_instance\n" +
@@ -510,21 +481,22 @@ function owner_pid() {
 
 function managed_service_installed() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
-    return data != null && index(as_string(data), CORE_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC=\"50\"") >= 0;
+    if (data == null)
+        return false;
+    let s = as_string(data);
+    return index(s, CORE_MANAGED_SERVICE_MARKER) >= 0 &&
+        index(s, "GOMEMLIMIT") < 0 &&
+        index(s, "GOGC=") < 0 &&
+        index(s, "GODEBUG=") < 0;
 }
 
-// Маркер и GOGC есть в каждом поколении скрипта, включая сломанный, который
-// читал переименованный UCI-пакет и молча выходил до procd_open_instance.
-// Рабочий скрипт от сломанного отличает только имя пакета - несовпадение
-// считается отсутствием, и скрипт перегенерируется.
+// Скрипт от предыдущей схемы с Go-переменными, завышенными лимитами или
+// самозавершением через killall считается устаревшим и перегенерируется.
 function managed_service_script_stale() {
     let data = fs.readfile("/etc/init.d/tachyon-core");
     if (data == null)
         return false;
     data = as_string(data);
-    // A script from before the limits were lowered (core dump unlimited, a
-    // million descriptors) or before GOMEMLIMIT was wired in, or one that
-    // killall's its own initscript comm, is regenerated.
     let cp = core_process_or_null();
     let kills_self = (cp && type(cp.init_script_kills_itself) == "function")
         ? cp.init_script_kills_itself(data)
@@ -532,7 +504,9 @@ function managed_service_script_stale() {
     return index(data, "config_load \"tachyon-core\"") < 0 ||
         index(data, "core=\"unlimited\"") >= 0 ||
         index(data, "procd_set_param file ") >= 0 ||
-        index(data, "GOMEMLIMIT") < 0 ||
+        index(data, "GOMEMLIMIT") >= 0 ||
+        index(data, "GOGC=") >= 0 ||
+        index(data, "GODEBUG=") >= 0 ||
         index(data, "PROG=\"/usr/bin/tachyon-core\"") < 0 ||
         index(data, "stop_service()") < 0 ||
         index(data, "kill -TERM") < 0 ||
@@ -633,14 +607,6 @@ function configure_service() {
             exit(1);
         changed = true;
         log_message("tachyon-core service config path set to " + config_path, "info");
-    }
-
-    let mem_limit_mb = option(settings, "memory_limit_mb", "0");
-    let current_mem_limit_mb = uci_get_option("tachyon-core", "main", "memory_limit_mb") || "0";
-    if (current_mem_limit_mb != mem_limit_mb) {
-        if (!uci_set_option("tachyon-core", "main", "memory_limit_mb", mem_limit_mb))
-            exit(1);
-        changed = true;
     }
 
     if (changed && !uci_commit("tachyon-core"))
@@ -890,15 +856,11 @@ function core_check(config_path, output_path) {
     let bin = find_core_binary();
     if (bin == "")
         bin = "tachyon-core";
-    let check_cmd = "GODEBUG=\"madvdontneed=1\" GOGC=\"30\" " +
-        command_from_args([ bin, "-c", config_path, "check" ]) +
+    let check_cmd = command_from_args([ bin, "-c", config_path, "check" ]) +
         " >" + shell_quote(output_path) + " 2>&1";
     let status = command_status(check_cmd);
     if ((status == 247 || status == 137) && fs.stat("/proc/sys/vm/drop_caches") != null) {
         system("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null");
-        check_cmd = "GODEBUG=\"madvdontneed=1\" GOGC=\"15\" " +
-            command_from_args([ bin, "-c", config_path, "check" ]) +
-            " >" + shell_quote(output_path) + " 2>&1";
         status = command_status(check_cmd);
     }
     let reason = status == 0 ? "" : first_nonblank_line(output_path);

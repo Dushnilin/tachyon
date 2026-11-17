@@ -61,7 +61,6 @@ const EV = {
     CORE_STOPPED:        "core.stopped",
     FIREWALL_RELOADED:      "firewall.reloaded",
     OOM_DETECTED:           "oom.detected",
-    OOM_RECOVERABLE:        "oom.recoverable",
     SMARTDETECT_CANDIDATE:  "smartdetect.candidate",
     URLTEST_SWITCHED:       "urltest.switched",
     HONEYPOT_HIT:           "honeypot.hit",
@@ -439,7 +438,7 @@ function remember_trace_host(trace, host) {
 //     an array return rather than a single fact.
 //
 // The netlink/nlbwmon discrimination is preserved: misreading a netlink
-// warning as OOM would shrink GOMEMLIMIT for nothing.
+// warning as OOM would trigger false OOM alerts.
 let plus_trace_hosts = {};
 let plus_trace_last_prune = 0;
 function classify_plus_log_line(line) {
@@ -1401,31 +1400,6 @@ function controller(bus, opts) {
             bus.emit(EV.ANOMALY_RECONNECTS, { count: reconnects, threshold: threshold });
     }
 
-    // ── Probe: OOM scale recovery window ──────────────────────────────────────
-    // Half an hour without an OOM means the shrunk GOMEMLIMIT can start
-    // creeping back up; the healer decides by how much.
-    // A scale of 1.0 means there is nothing to restore, so the marker file is
-    // dropped here rather than published as a fact: removing a stale file is an
-    // observation cleanup, not a repair a subscriber should have to schedule.
-    function probe_oom_recovery() {
-        let now = time();
-        if (state.last_oom_time == 0) return;
-        if (now - state.last_oom_time < 1800) return;
-
-        let scale_path = "/etc/tachyon/mem_scale";
-        let scale_data = fs.readfile(scale_path);
-        if (scale_data == null) return;
-        let current_scale = double(trim(as_string(scale_data)));
-        if (current_scale >= 1.0) {
-            // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
-            try { fs.unlink(scale_path); } catch (e) {}
-            return;
-        }
-        if (current_scale < 0.1) return;
-
-        bus.emit(EV.OOM_RECOVERABLE, { last_oom: state.last_oom_time, scale: current_scale });
-    }
-
     // ── Tier drivers ──────────────────────────────────────────────────────────
     // Each probe is wrapped so one failing observation cannot stop the tier;
     // this mirrors the safe_call() isolation the old per-check loop had.
@@ -1484,7 +1458,6 @@ function controller(bus, opts) {
         run_probe(probe_config, "config");
         run_probe(probe_empty_sections, "empty_sections");
         run_probe(probe_anomalies, "anomalies");
-        run_probe(probe_oom_recovery, "oom_recovery");
     };
 
     // Health is graded by how long we go without publishing a fault: after a
