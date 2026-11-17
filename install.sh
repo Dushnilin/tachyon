@@ -48,6 +48,10 @@ INSTALLER_LANG="en"
 TACHYON_I18N_REQUESTED=0
 CORE_INSTALL_CHOICE=""
 CORE_INSTALL_REQUESTED=""
+ENGINE_INSTALL_CHOICE=""
+ENGINE_INSTALL_REQUESTED=""
+SING_BOX_INSTALL_VARIANT=""
+SING_BOX_VARIANT_REQUESTED=""
 ZRAM_INSTALL_REQUESTED=0
 
 ASSUME_YES=0
@@ -142,15 +146,18 @@ Usage: $0 [options]
   -q, --quiet           Suppress informational output
       --repair          Reinstall Tachyon and repair runtime integration
       --reinstall       Force reinstall of the selected release
-      --tag X.Y.Z       Install an exact published release
-      --channel NAME    stable (default) or beta
-      --engine NAME     Routing core: tachyon-core (default), none
-      --tachyon-core    Install tachyon-core routing core
-      --skip-engine     Do not install tachyon-core when none is present
-      --zram            Install zram-swap
-      --no-zram         Never install zram-swap
-      --version         Print installer version
-  -h, --help            Show this help
+      --tag X.Y.Z            Install an exact published release
+      --channel NAME         stable (default) or beta
+      --engine NAME          Routing core: tachyon-core (default for >=1.8.0),
+                             sing-box (releases <1.8.0), or none
+      --tachyon-core         Install tachyon-core routing core
+      --sing-box-variant VAR Variant for <1.8.0 releases (stable, tiny, extended,
+                             extended-compressed, lx, tachyon-core)
+      --skip-engine          Do not install a routing core when none is present
+      --zram                 Install zram-swap
+      --no-zram              Never install zram-swap
+      --version              Print installer version
+  -h, --help                 Show this help
 
 Log: $LOG_FILE
 EOF_USAGE
@@ -167,17 +174,42 @@ parse_args() {
             --reinstall) REINSTALL_MODE=1 ;;
             --engine)
                 shift
-                [ "$#" -gt 0 ] || { err "--engine requires name (tachyon-core, none)"; return 2; }
+                [ "$#" -gt 0 ] || { err "--engine requires name (tachyon-core, sing-box, none)"; return 2; }
                 case "$1" in
-                    tachyon-core|tachyon_core) CORE_INSTALL_REQUESTED="tachyon-core" ;;
+                    tachyon-core|tachyon_core)
+                        CORE_INSTALL_REQUESTED="tachyon-core"
+                        ENGINE_INSTALL_REQUESTED="tachyon-core"
+                        SING_BOX_VARIANT_REQUESTED="tachyon-core"
+                        ;;
+                    sing-box)
+                        ENGINE_INSTALL_REQUESTED="sing-box"
+                        ;;
                     none|skip) SKIP_ENGINE=1 ;;
-                    *) err "Unsupported engine: $1 (allowed: tachyon-core, none)"; return 2 ;;
+                    *) err "Unsupported engine: $1 (allowed: tachyon-core, sing-box, none)"; return 2 ;;
                 esac
                 ;;
             --tachyon-core)
                 CORE_INSTALL_REQUESTED="tachyon-core"
+                ENGINE_INSTALL_REQUESTED="tachyon-core"
+                SING_BOX_VARIANT_REQUESTED="tachyon-core"
                 ;;
-            --skip-engine) SKIP_ENGINE=1 ;;
+            --sing-box-variant)
+                shift
+                [ "$#" -gt 0 ] || { err "--sing-box-variant requires variant name"; return 2; }
+                case "$1" in
+                    stable|tiny|extended|extended-compressed|lx)
+                        ENGINE_INSTALL_REQUESTED="sing-box"
+                        SING_BOX_VARIANT_REQUESTED="$1"
+                        ;;
+                    tachyon-core|tachyon_core)
+                        CORE_INSTALL_REQUESTED="tachyon-core"
+                        ENGINE_INSTALL_REQUESTED="tachyon-core"
+                        SING_BOX_VARIANT_REQUESTED="tachyon-core"
+                        ;;
+                    *) err "Unsupported variant: $1"; return 2 ;;
+                esac
+                ;;
+            --skip-engine|--skip-sing-box|--no-sing-box) SKIP_ENGINE=1 ;;
             --zram) ZRAM_INSTALL_OVERRIDE="yes" ;;
             --no-zram) ZRAM_INSTALL_OVERRIDE="no" ;;
             --tag)
@@ -1102,6 +1134,7 @@ version_ge() {
     while [ "$_vg_i" -lt 3 ]; do
         _vg_pa="${_vg_a%%.*}"; [ "$_vg_pa" = "$_vg_a" ] && _vg_a="" || _vg_a="${_vg_a#*.}"
         _vg_pb="${_vg_b%%.*}"; [ "$_vg_pb" = "$_vg_b" ] && _vg_b="" || _vg_b="${_vg_b#*.}"
+        _vg_pa="${_vg_pa%%-*}"; _vg_pb="${_vg_pb%%-*}"
         case "$_vg_pa" in ''|*[!0-9]*) _vg_pa=0 ;; esac
         case "$_vg_pb" in ''|*[!0-9]*) _vg_pb=0 ;; esac
         [ "$_vg_pa" -gt "$_vg_pb" ] && return 0
@@ -1109,6 +1142,16 @@ version_ge() {
         _vg_i=$((_vg_i + 1))
     done
     return 0
+}
+
+effective_release_tag() {
+    printf '%s' "${TACHYON_RELEASE_TAG:-$RELEASE_TAG_REQUESTED}"
+}
+
+release_is_tachyon_core_only() {
+    _rit_tag="$(effective_release_tag)"
+    [ -n "$_rit_tag" ] || return 0
+    version_ge "$_rit_tag" "1.8.0"
 }
 
 resolve_release() {
@@ -1198,26 +1241,97 @@ core_is_present() {
     command_exists tachyon-core || [ -x /usr/bin/tachyon-core ]
 }
 
+sing_box_is_present() {
+    command_exists sing-box || core_is_present || pkg_is_installed sing-box || pkg_is_installed sing-box-extended || pkg_is_installed sing-box-tiny || pkg_is_installed sing-box-lx
+}
+
 engine_is_present() {
-    core_is_present
+    if release_is_tachyon_core_only; then
+        core_is_present
+    else
+        sing_box_is_present
+    fi
 }
 
 select_core_installation() {
     CORE_INSTALL_CHOICE=""
+    ENGINE_INSTALL_CHOICE=""
+    SING_BOX_INSTALL_VARIANT=""
     [ "$SKIP_ENGINE" -eq 1 ] && return 0
-    if [ -n "$CORE_INSTALL_REQUESTED" ]; then
-        CORE_INSTALL_CHOICE="$CORE_INSTALL_REQUESTED"
+
+    if release_is_tachyon_core_only; then
+        if [ "$ENGINE_INSTALL_REQUESTED" = "sing-box" ]; then
+            err "Release $(effective_release_tag) supports tachyon-core only (use --tag <1.7.x> for sing-box)"
+            return 1
+        fi
+        if [ -n "$SING_BOX_VARIANT_REQUESTED" ] && [ "$SING_BOX_VARIANT_REQUESTED" != "tachyon-core" ] && [ "$SING_BOX_VARIANT_REQUESTED" != "tachyon_core" ]; then
+            err "Release $(effective_release_tag) supports tachyon-core only (--sing-box-variant $SING_BOX_VARIANT_REQUESTED requires < 1.8.0)"
+            return 1
+        fi
+        if [ -n "$CORE_INSTALL_REQUESTED" ]; then
+            CORE_INSTALL_CHOICE="$CORE_INSTALL_REQUESTED"
+            ENGINE_INSTALL_CHOICE="tachyon-core"
+            return 0
+        fi
+        engine_is_present && return 0
+        if ! installer_is_interactive; then
+            CORE_INSTALL_CHOICE="tachyon-core"
+            ENGINE_INSTALL_CHOICE="tachyon-core"
+            return 0
+        fi
+        printf '\ntachyon-core routing core is not installed.\n'
+        printf 'Install tachyon-core? [Y/n]: '
+        read -r _answer || _answer=""
+        case "${_answer:-y}" in
+            n|N|no|NO) CORE_INSTALL_CHOICE=""; ENGINE_INSTALL_CHOICE="" ;;
+            *) CORE_INSTALL_CHOICE="tachyon-core"; ENGINE_INSTALL_CHOICE="tachyon-core" ;;
+        esac
         return 0
     fi
+
+    # Legacy releases (< 1.8.0): retain sing-box variant and tachyon-core selection
+    if [ -n "$ENGINE_INSTALL_REQUESTED" ]; then
+        case "$ENGINE_INSTALL_REQUESTED" in
+            tachyon-core|tachyon_core)
+                ENGINE_INSTALL_CHOICE="tachyon-core"
+                SING_BOX_INSTALL_VARIANT="tachyon-core"
+                CORE_INSTALL_CHOICE="tachyon-core"
+                return 0
+                ;;
+            sing-box)
+                ENGINE_INSTALL_CHOICE="sing-box"
+                SING_BOX_INSTALL_VARIANT="${SING_BOX_VARIANT_REQUESTED:-stable}"
+                return 0
+                ;;
+        esac
+    fi
     engine_is_present && return 0
-    if ! installer_is_interactive; then CORE_INSTALL_CHOICE="tachyon-core"; return 0; fi
-    printf '\ntachyon-core routing core is not installed.\n'
-    printf 'Install tachyon-core? [Y/n]: '
+    if ! installer_is_interactive; then
+        ENGINE_INSTALL_CHOICE="sing-box"
+        SING_BOX_INSTALL_VARIANT="stable"
+        return 0
+    fi
+    printf '\nSelect proxy / routing engine build:\n'
+    printf '  1) sing-box stable (recommended)\n'
+    printf '  2) sing-box tiny (low memory)\n'
+    printf '  3) sing-box extended (xHTTP)\n'
+    printf '  4) sing-box extended-compressed (xHTTP, smaller)\n'
+    printf '  5) sing-box lx\n'
+    printf '  6) tachyon-core (Rust routing core)\n'
+    printf '  7) skip\n'
+    printf 'Choice [1]: '
     read -r _answer || _answer=""
-    case "${_answer:-y}" in
-        n|N|no|NO) CORE_INSTALL_CHOICE="" ;;
-        *) CORE_INSTALL_CHOICE="tachyon-core" ;;
+    case "${_answer:-1}" in
+        1) SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        2) SING_BOX_INSTALL_VARIANT="tiny"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        3) SING_BOX_INSTALL_VARIANT="extended"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        4) SING_BOX_INSTALL_VARIANT="extended-compressed"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        5) SING_BOX_INSTALL_VARIANT="lx"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+        6) SING_BOX_INSTALL_VARIANT="tachyon-core"; ENGINE_INSTALL_CHOICE="tachyon-core"; CORE_INSTALL_CHOICE="tachyon-core" ;;
+        7) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
+        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
     esac
+    return 0
 }
 
 decide_zram() {
@@ -1782,11 +1896,36 @@ migrate_legacy_engine_files() {
 }
 
 install_selected_core() {
-    [ -n "$CORE_INSTALL_CHOICE" ] || return 0
+    [ -n "$CORE_INSTALL_CHOICE" ] || [ -n "$ENGINE_INSTALL_CHOICE" ] || [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
     [ -x /usr/bin/tachyon ] || return 1
-    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install tachyon-core"; return 0; }
-    msg "Installing tachyon-core"
-    run_logged_timeout tachyon-core "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action tachyon-core install || return 1
+
+    if release_is_tachyon_core_only; then
+        [ -n "$CORE_INSTALL_CHOICE" ] || return 0
+        [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install tachyon-core"; return 0; }
+        msg "Installing tachyon-core"
+        run_logged_timeout tachyon-core "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action tachyon-core install || return 1
+        return 0
+    fi
+
+    _variant="$SING_BOX_INSTALL_VARIANT"
+    if [ -z "$_variant" ] && [ "$CORE_INSTALL_CHOICE" = "tachyon-core" ]; then
+        _variant="tachyon-core"
+    fi
+    [ -n "$_variant" ] || return 0
+    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install $_variant for $TACHYON_RELEASE_TAG"; return 0; }
+    case "$_variant" in
+        stable) _action="install_stable"; _uci_engine="sing-box"; _label="sing-box (stable)" ;;
+        tiny) _action="install_tiny"; _uci_engine="sing-box"; _label="sing-box (tiny)" ;;
+        extended) _action="install_extended"; _uci_engine="sing-box"; _label="sing-box (extended)" ;;
+        extended-compressed) _action="install_extended_compressed"; _uci_engine="sing-box"; _label="sing-box (extended-compressed)" ;;
+        lx) _action="install_lx"; _uci_engine="sing-box"; _label="sing-box (lx)" ;;
+        tachyon-core|tachyon_core) _action="install_tachyon_core"; _uci_engine="tachyon-core"; _label="tachyon-core" ;;
+        *) return 1 ;;
+    esac
+    msg "Installing $_label"
+    run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action" || return 1
+    uci set "tachyon.settings.engine=$_uci_engine" 2>/dev/null || true
+    uci commit tachyon 2>/dev/null || true
     return 0
 }
 
@@ -1904,10 +2043,18 @@ system_preflight() {
 print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
-    if [ -n "$CORE_INSTALL_CHOICE" ]; then
-        msg "Routing core: $CORE_INSTALL_CHOICE"
+    if release_is_tachyon_core_only; then
+        if [ -n "$CORE_INSTALL_CHOICE" ]; then
+            msg "Routing core: $CORE_INSTALL_CHOICE"
+        else
+            msg "Routing core: keep existing / skip"
+        fi
     else
-        msg "Routing core: keep existing / skip"
+        case "$SING_BOX_INSTALL_VARIANT" in
+            tachyon-core|tachyon_core) msg "Routing core: tachyon-core" ;;
+            ?*) msg "Routing core: sing-box ($SING_BOX_INSTALL_VARIANT)" ;;
+            *) msg "Routing core: keep existing / skip" ;;
+        esac
     fi
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
@@ -1936,17 +2083,19 @@ main() {
 
     msg "Bootstrapping ucode runtime"
     ensure_bootstrap_ucode_runtime || fail "Could not bootstrap ucode runtime"
-    msg "Detecting language and engine configuration"
+    msg "Detecting language and release selection"
     detect_language_and_i18n
-    select_core_installation
     decide_zram
     record_service_state
+    check_name_resolution || fail "Name resolution is broken - see the message above"
     select_release_version
 
     msg "Resolving release metadata"
-    check_name_resolution || fail "Name resolution is broken - see the message above"
     resolve_release || fail "Could not resolve Tachyon release"
     check_tmp_for_downloads || fail "Temporary storage preflight failed"
+
+    msg "Detecting routing core configuration"
+    select_core_installation || fail "Incompatible engine selection for release $TACHYON_RELEASE_TAG"
     print_plan
     msg "Downloading release files"
     download_release || fail "Release download or verification failed"
@@ -1959,10 +2108,12 @@ main() {
     prepare_transaction || fail "Could not prepare package transaction"
     resolve_legacy_conflicts_before_install
     install_core_transaction || fail "Tachyon package transaction failed"
-    migrate_legacy_engine_files
+    if release_is_tachyon_core_only; then
+        migrate_legacy_engine_files
+    fi
     install_zram_if_requested
     ensure_tcp_bbr_best_effort
-    install_selected_core || fail "tachyon-core installation failed"
+    install_selected_core || fail "Routing core installation failed"
     msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
