@@ -33,6 +33,10 @@ for raw in open(src, encoding="utf-8"):
             cur.setdefault(key, []).append(val)
         else:
             cur[key] = val
+# A bypass section with a stale fail_policy=block (left after an action change):
+# ignored, while the real Fail-Closed section below still turns everything on.
+sections.append({".type": "section", ".name": "ru_direct", "enabled": "1", "action": "bypass",
+                 "fail_policy": "block", "ip_cidr": ["198.51.100.0/24"]})
 sections.append({".type": "section", ".name": "vpn", "enabled": "1", "action": "proxy",
                  "fail_policy": "block", "ip_cidr": ["203.0.113.0/24"],
                  "selector_proxy_links": ["vless://00000000-0000-4000-8000-000000000001@alpha.example:443?encryption=none&security=tls&sni=alpha.example#Alpha"]})
@@ -93,6 +97,12 @@ need 'tachyon-webrtc-leak-guard' "WebRTC STUN/TURN is not dropped"
 need 'tachyon-fail-closed-forward' "marked packets reaching forward are not dropped"
 need 'tachyon-fail-closed-other-l4' "ping/GRE/ESP to the section's IPs is not dropped"
 need 'tachyon-inbound-reply' "inbound replies (port forwards) are intercepted"
+need 'tachyon_rule_vpn_subnets' "the Fail-Closed section's IP rules are missing"
+if grep -F 'tachyon-fail-closed-other-l4' "$NFT_LOG" | grep -Fq 'ru_direct'; then
+  fail "the bypass section with a stale fail_policy got Fail-Closed rules"
+fi
+grep -F 'priority_rules' "$NFT_LOG" | grep -F 'tachyon_rule_ru_direct_subnets' | grep -Fq $'counter\taccept' ||
+  fail "the bypass section next to a Fail-Closed one no longer goes direct"
 
 # --- 3. core config: DoH by name and the canaries, DoH reject ----------------
 mkdir -p "$WORK_DIR/core.json.section-cache"

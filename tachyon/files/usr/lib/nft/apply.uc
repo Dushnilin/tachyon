@@ -112,6 +112,20 @@ function tproxy_intercept_enabled() {
     return mode != "socks" && mode != "tun";
 }
 
+// The tun device in tun mode, null otherwise (forward guard, inbound replies,
+// bypass marking). Declared up here: ucode resolves a function name where the
+// caller is compiled, so every user must come after it.
+function fail_closed_guard_tun_if() {
+    let settings = uci_settings();
+    if (lc(trim(as_string(option(settings, "proxy_mode", "tproxy")))) != "tun")
+        return null;
+    return trim(as_string(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE))) || runtime_constants.TUN_INTERFACE;
+}
+
+function fail_closed_guard_enabled() {
+    return lc(trim(as_string(option(uci_settings(), "proxy_mode", "tproxy")))) != "socks";
+}
+
 // True when at least one enabled server section runs Tailscale in native
 // (tailscaled) mode; those need tailnet bypass rules in the mangle chain.
 function native_tailscale_enabled() {
@@ -1343,8 +1357,17 @@ function nft_create_priority_sets(table, sets) {
 
 function nft_priority_verdict_args(priority_action, mark, match_args) {
     let lite = lite_mode_enabled(null);
-    if (priority_action == "bypass")
-        return lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "accept" ] : [ "counter", "accept" ];
+    if (priority_action == "bypass") {
+        let verdict = lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK ] : [];
+        // TUN: bypass is direct by definition, so it carries the core's own
+        // mark and stays out of tun - the same path the core would pick, and
+        // it keeps working (through the TUN kill-switch's 9499) when the
+        // core is down.
+        if (fail_closed_guard_tun_if() != null)
+            push(verdict, "meta", "mark", "set", "0x00002022");
+        push(verdict, "counter", "accept");
+        return verdict;
+    }
     if (priority_action == "block") {
         if (type(match_args) == "array") {
             for (let tok in match_args) {
@@ -2375,17 +2398,6 @@ function nft_add_fail_closed_full_tunnel_rules(table, interface_set, localv4_set
     return true;
 }
 
-// The forward guard's tun device in tun mode, null in tproxy mode.
-function fail_closed_guard_tun_if() {
-    let settings = uci_settings();
-    if (lc(trim(as_string(option(settings, "proxy_mode", "tproxy")))) != "tun")
-        return null;
-    return trim(as_string(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE))) || runtime_constants.TUN_INTERFACE;
-}
-
-function fail_closed_guard_enabled() {
-    return lc(trim(as_string(option(uci_settings(), "proxy_mode", "tproxy")))) != "socks";
-}
 
 // dns_intercept_all: DNS-over-TLS (853) cannot be redirected to the router
 // resolver, so it is refused and clients fall back to plain DNS, which is.

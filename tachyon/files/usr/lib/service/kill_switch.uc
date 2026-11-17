@@ -34,6 +34,20 @@ const FW4_INCLUDE_FILE = FW4_INCLUDE_DIR + "/90-tachyon-kill-switch.nft";
 const ENABLED_LINK = "/etc/rc.d/S99tachyon";
 const DNS_INBOUND_ADDRESS = require("core.constants").SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
 
+// Actions whose traffic never goes through a proxy: a fail_policy left on
+// them (after an action change, an import, the CLI) means nothing and must
+// not turn the whole router Fail-Closed. Settings hides the option for them.
+const NON_CAPTURING_ACTIONS = [ "bypass", "block", "dns", "hosts" ];
+
+// An enabled section that captures traffic with fail_policy=block. The UI
+// (failClosedSectionNames) mirrors this test.
+function is_fail_closed_section(s) {
+    s = common.object_or_empty(s);
+    return common.bool_option(s, "enabled", true) &&
+        index(NON_CAPTURING_ACTIONS, lc(trim(common.as_string(s.action || "")))) < 0 &&
+        lc(trim(common.as_string(s.fail_policy || ""))) == "block";
+}
+
 // Why Tachyon may NOT fall back to direct WAN / direct DNS on its own, or ""
 // when it may. One fail-closed section vetoes it router-wide because every
 // fallback is router-wide; emergency_direct_bypass='0' vetoes it outright.
@@ -42,8 +56,7 @@ function veto(settings, sections) {
         return "emergency_direct_bypass=0";
     let names = [];
     for (let s in sections || []) {
-        if (common.bool_option(s, "enabled", true) &&
-            lc(trim(common.as_string(s.fail_policy || ""))) == "block")
+        if (is_fail_closed_section(s))
             push(names, common.as_string(s[".name"]));
     }
     if (length(names) == 0)
@@ -319,6 +332,7 @@ return {
     GATE_SET,
     FW4_INCLUDE_FILE,
     veto,
+    is_fail_closed_section,
     uci_veto,
     dns_intercept_mode,
     dns_intercept_effective,

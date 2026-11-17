@@ -65,10 +65,13 @@ function hasFailClosedSection(): boolean {
   try {
     const reader = uciReader();
     if (!reader || typeof reader.sections !== 'function') return false;
+    // Same test as kill_switch.is_fail_closed_section() on the router.
     return (reader.sections('tachyon', 'section') || []).some((s) => {
-      const enabled = `${s.enabled ?? '1'}`.trim().toLowerCase();
+      const enabled = `${s.enabled ?? ''}`.trim().toLowerCase() || '1';
+      const action = `${s.action ?? ''}`.trim().toLowerCase();
       return (
-        !['0', 'false', 'no', 'off'].includes(enabled) &&
+        ['1', 'true', 'yes', 'on'].includes(enabled) &&
+        !['bypass', 'block', 'dns', 'hosts'].includes(action) &&
         `${s.fail_policy ?? ''}`.trim().toLowerCase() === 'block'
       );
     });

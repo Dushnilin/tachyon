@@ -17,6 +17,23 @@ check(ks.veto({ emergency_direct_bypass: "0" }, []) == "emergency_direct_bypass=
 check(ks.veto({}, [ { fail_policy: "keep" }, { fail_policy: "direct" },
                     { ".name": "off", enabled: "0", fail_policy: "block" } ]) == "",
     "Non fail-closed setup was vetoed");
+// A fail_policy left on a section that never proxies must not close the router.
+for (let a in [ "bypass", "block", "dns", "hosts", " Bypass " ])
+    check(ks.veto({}, [ { ".name": "x", action: a, fail_policy: "block" } ]) == "",
+        "fail_policy=block on a non-proxy section (" + a + ") vetoed the router");
+// enabled is read like everywhere else on the router (bool_option).
+check(ks.veto({}, [ { ".name": "x", enabled: "maybe", action: "connection", fail_policy: "block" } ]) == "",
+    "a section with an unreadable enabled value counted as enabled");
+check(ks.veto({}, [ { ".name": "vpn", enabled: "on", action: "awg", fail_policy: " BLOCK " } ]) == "fail_policy=block: vpn",
+    "a Fail-Closed AWG section (enabled=on, padded value) was missed");
+check(ks.veto({}, [ { ".name": "vpn", fail_policy: "block" } ]) == "fail_policy=block: vpn",
+    "a Fail-Closed section without an explicit action was missed");
+// Mixed: the stale value is ignored, the real Fail-Closed sections still count.
+check(ks.veto({}, [ { ".name": "ru", action: "bypass", fail_policy: "block" },
+                    { ".name": "vpn", action: "connection", fail_policy: "block" },
+                    { ".name": "ads", action: "block", fail_policy: "block" },
+                    { ".name": "ai", action: "group", fail_policy: "block" } ]) == "fail_policy=block: vpn, ai",
+    "a stale fail_policy on bypass/block hid or joined the real Fail-Closed sections");
 
 check(join(",", ks.source_interfaces({})) == "br-lan", "Missing source interfaces did not default to br-lan");
 let ifaces = ks.source_interfaces({ source_network_interfaces: [ "br-lan", "br-guest", "br-lan", "x\" } accept", "" ] });

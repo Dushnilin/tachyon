@@ -505,14 +505,18 @@ function refreshDownloadSectionChoices(option, capabilities) {
   }
 }
 
-// Enabled sections with fail_policy=block, as service/kill_switch.uc counts
-// them: these force some global settings at runtime whatever is stored.
+// Enabled sections with fail_policy=block, exactly as
+// kill_switch.is_fail_closed_section() counts them: these force some global
+// settings at runtime whatever is stored. A fail_policy left on a section that
+// never proxies (bypass, block, dns, hosts) does not count.
 function failClosedSectionNames() {
   return (uci.sections(UCI_PACKAGE, 'section') || [])
     .filter(function (s) {
-      const enabled = `${s.enabled ?? '1'}`.trim().toLowerCase();
+      const enabled = `${s.enabled ?? ''}`.trim().toLowerCase() || '1';
+      const action = `${s.action ?? ''}`.trim().toLowerCase();
       return (
-        ['0', 'false', 'no', 'off'].indexOf(enabled) < 0 &&
+        ['1', 'true', 'yes', 'on'].indexOf(enabled) >= 0 &&
+        ['bypass', 'block', 'dns', 'hosts'].indexOf(action) < 0 &&
         `${s.fail_policy || ''}`.trim().toLowerCase() === 'block'
       );
     })

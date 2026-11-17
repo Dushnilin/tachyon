@@ -332,4 +332,34 @@ grep -F 'tachyon-fail-closed-other-l4' "$NFT_LOG" | grep -Fq $'ip\tdaddr\t@' || 
 [ "$(other_l4 keep tproxy)" = 0 ] || fail "other-l4 drop installed for a keep section"
 [ "$(other_l4 block tun)" = 0 ] || fail "other-l4 drop installed in TUN mode (the core answers echo there)"
 
+# --- 11. Bypass in TUN carries the core's mark (direct, survives a dead core) --
+cat >"$WORK_DIR/bypass.json" <<'JSON'
+{ "section": [ { ".name": "ru", ".type": "section", "enabled": "1", "action": "bypass", "ip_cidr": [ "9.9.9.9/32" ] } ] }
+JSON
+bypass_rules() { # $1 proxy_mode
+  : >"$NFT_LOG"
+  printf 'tachyon.settings=settings\ntachyon.settings.proxy_mode=%s\n' "$1" >"$WORK_DIR/mode.state"
+  TACHYON_UCI_STATE_FILE="$WORK_DIR/mode.state" ucode -L "$TACHYON_LIB" "$NFT_RUNTIME" \
+    nft-add-section-priority-rules-fixture "$WORK_DIR/bypass.json" TachyonTable tachyon_interfaces localv4 localv6 0x00100000 >/dev/null ||
+    fail "bypass section rules failed in $1 mode"
+}
+bypass_rules tun
+grep -F 'priority_rules' "$NFT_LOG" | grep -Fq $'meta\tmark\tset\t0x00002022\tcounter\taccept' ||
+  fail "TUN: bypass traffic is pulled into tun (dies with the core)"
+bypass_rules tproxy
+grep -F 'priority_rules' "$NFT_LOG" | grep -Fq $'counter\taccept' || fail "tproxy: bypass rule missing"
+if grep -F 'priority_rules' "$NFT_LOG" | grep -Fq '0x00002022'; then fail "tproxy: bypass carries the TUN mark"; fi
+
+# --- 12. Every Fail-Closed module: no call to a function declared later -------
+# ucode binds a function name where the caller is compiled: a call to one
+# declared further down dies at runtime ("left-hand side is not a function"),
+# e.g. the whole nft build for any setup with a bypass section.
+if command -v node >/dev/null 2>&1; then
+  for f in nft/apply.uc service/kill_switch.uc service/lifecycle.uc service/state.uc service/watchdog.uc \
+           dns/apply.uc config/migration.uc config/validator.uc diagnostics/doctor.uc \
+           tachyon_core/generator.uc tachyon_core/generator_routes.uc tachyon_core/route.uc; do
+    node "$ROOT_DIR/tests/lib/ucode_forward_refs.js" "$TACHYON_LIB/$f" >&2 || fail "forward function reference in $f"
+  done
+fi
+
 printf 'fail-closed leak tests passed\n'

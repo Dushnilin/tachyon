@@ -62,14 +62,17 @@ export TACHYON_WATCHDOG_PID_FILE="$WORK_DIR/wd.pid"
 export TACHYON_WATCHDOG_SUPERVISOR_PID_FILE="$WORK_DIR/wd.sup.pid"
 export TACHYON_WATCHDOG_WORKER_UC="$WORK_DIR/fake_worker.uc"
 export TACHYON_WATCHDOG_RESTART_DELAY_MS=200
-export TACHYON_WATCHDOG_STABLE_SECONDS=2
+# The supervisor polls liveness once a second and time() counts whole seconds,
+# so a worker that dies at once can read as alive for 2 s on a loaded runner
+# and count as stable: 10 s keeps every fast death "early".
+export TACHYON_WATCHDOG_STABLE_SECONDS=10
 export TACHYON_TEST_SPAWN_LOG="$WORK_DIR/spawns.log"
 export TACHYON_TEST_FAKE_MODE=fast
 
 ucode -L "$TACHYON_LIB" "$WATCHDOG" supervise >/dev/null 2>"$WORK_DIR/sup1.err" &
 SUP1=$!
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 300); do
   if [ -f "$TACHYON_TEST_SPAWN_LOG" ] && [ "$(wc -l < "$TACHYON_TEST_SPAWN_LOG")" -ge 3 ]; then
     break
   fi
