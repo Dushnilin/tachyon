@@ -448,32 +448,71 @@ function uci_settings() {
     return uci_core.get_all(CONFIG_NAME, "settings") || {};
 }
 
-function sing_box_standard_ports_listening(netstat) {
+// Whether the core is meant to listen for IPv6 tproxy on ::1:1602. The
+// generated config is the authority: the generator adds that inbound only
+// while IPv6 is effectively active (ipv6_mode auto without a WAN6 route leaves
+// it out). Without a readable config, the same effective-IPv6 rule decides.
+// Kernel support alone does not: it flagged healthy IPv4-only setups (#426).
+function tproxy_inbound6_expected() {
+    let path = trim(as_string(getenv("TACHYON_CORE_CONFIG_PATH") || uci_core.get("tachyon-core.main.conffile") || "")) ||
+        "/etc/tachyon-core/config.json";
+    let raw = fs.readfile(path);
+    let cfg = null;
+    if (raw != null && raw != "")
+        try { cfg = json(raw); } catch (e) { cfg = null; }
+    if (type(cfg) == "object" && type(cfg.inbounds) == "array") {
+        for (let ib in cfg.inbounds) {
+            if (type(ib) == "object" && ib.type == "tproxy" && as_string(ib.listen) == SB_TPROXY_INBOUND6_ADDRESS &&
+                as_string(ib.listen_port) == SB_TPROXY_INBOUND_PORT)
+                return true;
+        }
+        return false;
+    }
+    return core_ip.ipv6_supported() && common.resolve_effective_ipv6_state(uci_settings()).ipv6_active == true;
+}
+
+// The listeners the core should have and does not, as "address:port (what)";
+// empty when everything expected is there.
+function sing_box_missing_listeners(netstat) {
     netstat = as_string(netstat);
-    let port_53_ok = index(netstat, "127.0.0.42:53") >= 0;
+    let missing = [];
+    if (index(netstat, "127.0.0.42:53") < 0)
+        push(missing, "127.0.0.42:53 (DNS)");
     let proxy_mode = lc(trim(as_string(uci_settings().proxy_mode || "tproxy")));
     if (proxy_mode == "tun") {
         let tun_ok = fs.stat("/sys/class/net/tun0") != null ||
             index(command_output_from_args([ "ip", "link", "show", "tun0" ]), "tun0") >= 0;
-        return port_53_ok && tun_ok;
+        if (!tun_ok)
+            push(missing, "tun0 (TUN)");
+        return missing;
     }
     if (proxy_mode == "socks") {
         let socks_port = as_string(uci_settings().socks_port || "1080");
-        return port_53_ok && index(netstat, ":" + socks_port) >= 0;
+        if (index(netstat, ":" + socks_port) < 0)
+            push(missing, ":" + socks_port + " (SOCKS)");
+        return missing;
     }
     let tproxy_suffix = ":" + SB_TPROXY_INBOUND_PORT;
-    let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
-        index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
-    let port_1602_v6_ok = !core_ip.ipv6_supported() ||
-        index(netstat, SB_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
+    if (index(netstat, "0.0.0.0" + tproxy_suffix) < 0 && index(netstat, "127.0.0.1" + tproxy_suffix) < 0)
+        push(missing, "0.0.0.0" + tproxy_suffix + " (IPv4 TProxy)");
+    let v6_ok = index(netstat, SB_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
         index(netstat, "[" + SB_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
         index(netstat, "0:0:0:0:0:0:0:1" + tproxy_suffix) >= 0 ||
         index(netstat, ":::" + SB_TPROXY_INBOUND_PORT) >= 0;
-    return port_53_ok && port_1602_ok && port_1602_v6_ok;
+    if (!v6_ok && tproxy_inbound6_expected())
+        push(missing, "[" + SB_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix + " (IPv6 TProxy)");
+    return missing;
+}
+
+function sing_box_standard_ports_listening(netstat) {
+    return length(sing_box_missing_listeners(netstat)) == 0;
 }
 
 function sing_box_standard_ports_listening_fixture() {
-    exit(sing_box_standard_ports_listening(read_stdin()) ? 0 : 1);
+    let missing = sing_box_missing_listeners(read_stdin());
+    if (length(missing) > 0)
+        print(join(", ", missing), "\n");
+    exit(length(missing) == 0 ? 0 : 1);
 }
 
 function server_required_port_conflict_owners(listen, port, required_proto) {
@@ -637,6 +676,7 @@ return {
     wan_has_ip,
     device_ipv4_address,
     sing_box_standard_ports_listening,
+    sing_box_missing_listeners,
     sing_box_standard_ports_listening_fixture,
     server_required_port_conflict_owners,
     server_required_ports_listening,

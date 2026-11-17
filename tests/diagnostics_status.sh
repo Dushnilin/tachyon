@@ -292,6 +292,21 @@ if printf '%s\n' "$sing_box_netstat" | sed '/0.0.0.0:1602/d' |
   fail "missing sing-box tproxy listener should fail diagnostics"
 fi
 
+# #426: the IPv6 TProxy listener is required only when the generated config has
+# that inbound (ipv6_mode auto without WAN6 leaves it out), whatever the kernel
+# supports; a missing one is named.
+printf '{"inbounds":[{"type":"tproxy","tag":"tproxy-in","listen":"0.0.0.0","listen_port":1602}]}' >"$WORK_DIR/core-v4.json"
+printf '{"inbounds":[{"type":"tproxy","tag":"tproxy-in","listen":"0.0.0.0","listen_port":1602},{"type":"tproxy","tag":"tproxy-in6","listen":"::1","listen_port":1602}]}' >"$WORK_DIR/core-v6.json"
+v4_netstat="$(printf '%s\n' "$sing_box_netstat" | grep -v '::1:1602')"
+printf '%s\n' "$v4_netstat" |
+  TACHYON_CORE_CONFIG_PATH="$WORK_DIR/core-v4.json" TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null ||
+  fail "IPv4-only config: a missing IPv6 TProxy listener must not fail diagnostics (#426)"
+if missing="$(printf '%s\n' "$v4_netstat" |
+  TACHYON_CORE_CONFIG_PATH="$WORK_DIR/core-v6.json" TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture)"; then
+  fail "config with an IPv6 TProxy inbound: its missing listener must fail diagnostics"
+fi
+[ "$missing" = "[::1]:1602 (IPv6 TProxy)" ] || fail "missing listener not named: '$missing'"
+
 netstat_owners="$(cat <<'EOF'
 Active Internet connections (only servers)
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name

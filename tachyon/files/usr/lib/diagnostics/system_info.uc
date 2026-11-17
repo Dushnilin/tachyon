@@ -1087,7 +1087,9 @@ function check_sing_box() {
     if (sing_box_process_is_running())
         sing_box_process_running = 1;
 
-    if (sing_box_standard_ports_listening(command_output_from_args([ "netstat", "-ln" ])))
+    // Name what is missing instead of repeating the full port list (#426).
+    let sing_box_missing = network_mod().sing_box_missing_listeners(command_output_from_args([ "netstat", "-ln" ]));
+    if (length(sing_box_missing) == 0)
         sing_box_ports_listening = 1;
 
     write_json({
@@ -1103,7 +1105,7 @@ function check_sing_box() {
         sing_box_version,
         sing_box_bin_path: command_exists("tachyon-core") ? "/usr/bin/tachyon-core" : "/usr/bin/sing-box",
         sing_box_init_path: "/etc/init.d/tachyon-core",
-        sing_box_listen_ports: "53, 1602, 1603, 9090"
+        sing_box_listen_ports: length(sing_box_missing) == 0 ? "53, 1602, 1603, 9090" : "missing: " + join(", ", sing_box_missing)
     });
     return 0;
 }
