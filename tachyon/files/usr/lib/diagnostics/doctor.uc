@@ -940,6 +940,26 @@ function remote_community_lists() {
     return served;
 }
 
+function odhcpd_ipv6_dns_status(dhcp_lan, eff_v6) {
+    dhcp_lan = object_or_empty(dhcp_lan);
+    let lan_dns_list = list_option(dhcp_lan, "dns");
+    if (length(lan_dns_list) > 0)
+        return { ok: true, detail: "configured (" + join(", ", lan_dns_list) + ")" };
+    let dns_service = trim(as_string(dhcp_lan.dns_service || "1"));
+    let ra_dns = trim(as_string(dhcp_lan.ra_dns || "1"));
+    if (dns_service != "0" && ra_dns != "0") {
+        let mode_label = as_string((type(eff_v6) == "object" ? eff_v6.effective : "") || "");
+        let detail = mode_label != ""
+            ? ("configured via RA (ra_dns=" + ra_dns + ", mode=" + mode_label + ")")
+            : ("configured via RA (ra_dns=" + ra_dns + ")");
+        return { ok: true, detail };
+    }
+    return {
+        ok: false,
+        detail: "no IPv6 DNS announced (dhcp.lan.dns empty, ra_dns or dns_service off) while DHCPv6 server is active"
+    };
+}
+
 function run_doctor_checks_impl(repair) {
     DOCTOR_REPAIR_MODE = (repair == true);
     DOCTOR_PLANNED_FIXES = [];
@@ -2366,23 +2386,23 @@ function run_doctor_checks_impl(repair) {
         }
 
         if (file_executable("/etc/init.d/odhcpd") && as_string(uci_core.get("dhcp.lan.dhcpv6") || "") == "server") {
-            let lan_dns_list = list_option(uci_core.get_all("dhcp", "lan"), "dns");
-            if (length(lan_dns_list) > 0) {
-                doc_check("✅", "odhcpd IPv6 DNS", "configured (" + join(", ", lan_dns_list) + ")", "");
+            let odhcpd_dns = odhcpd_ipv6_dns_status(uci_core.get_all("dhcp", "lan"), eff_v6);
+            if (odhcpd_dns.ok) {
+                doc_check("✅", "odhcpd IPv6 DNS", odhcpd_dns.detail, "");
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
                     doc_plan("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure");
-                    doc_check("⚠️", "odhcpd IPv6 DNS", "dhcp.lan.dns is empty while DHCPv6 server is active",
+                    doc_check("⚠️", "odhcpd IPv6 DNS", odhcpd_dns.detail,
                         "→ WILL FIX (doctor --fix): настроить IPv6 DNS в odhcpd");
                 } else {
                     command_status("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure >/dev/null 2>&1");
-                    let lan_dns_after = list_option(uci_core.get_all("dhcp", "lan"), "dns");
-                    if (length(lan_dns_after) > 0) {
-                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ FIXED: " + join(", ", lan_dns_after));
+                    let odhcpd_dns_after = odhcpd_ipv6_dns_status(uci_core.get_all("dhcp", "lan"), eff_v6);
+                    if (odhcpd_dns_after.ok) {
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ FIXED: " + odhcpd_dns_after.detail);
                         fixed++;
                     } else {
-                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ не удалось настроить dhcp.lan.dns");
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ не удалось настроить IPv6 DNS в odhcpd");
                     }
                 }
             }
@@ -4211,6 +4231,7 @@ return {
     doc_symlink,
     run_recovery_checks,
     has_certificate_pins_configured,
+    odhcpd_ipv6_dns_status,
     run_doctor_checks_impl,
     doctor_lock_try,
     doctor_lock_release,

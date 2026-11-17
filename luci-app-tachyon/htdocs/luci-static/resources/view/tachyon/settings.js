@@ -498,14 +498,18 @@ function refreshDownloadSectionChoices(option, capabilities) {
   }
 }
 
-// Enabled sections with fail_policy=block, as service/kill_switch.uc counts
-// them: these force some global settings at runtime whatever is stored.
+// Enabled sections with fail_policy=block, exactly as
+// kill_switch.is_fail_closed_section() counts them: these force some global
+// settings at runtime whatever is stored. A fail_policy left on a section that
+// never proxies (bypass, block, dns, hosts) does not count.
 function failClosedSectionNames() {
   return (uci.sections(UCI_PACKAGE, "section") || [])
     .filter(function (s) {
-      const enabled = `${s.enabled ?? "1"}`.trim().toLowerCase();
+      const enabled = `${s.enabled ?? ""}`.trim().toLowerCase() || "1";
+      const action = `${s.action ?? ""}`.trim().toLowerCase();
       return (
-        ["0", "false", "no", "off"].indexOf(enabled) < 0 &&
+        ["1", "true", "yes", "on"].indexOf(enabled) >= 0 &&
+        ["bypass", "block", "dns", "hosts"].indexOf(action) < 0 &&
         `${s.fail_policy || ""}`.trim().toLowerCase() === "block"
       );
     })
@@ -4276,9 +4280,32 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
   guardFailClosedChange(
     o,
-    (value) => value === "tun" || value === "socks",
-    _(
-      "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down.",
+    (value) => value === "socks",
+    _("SOCKS mode does not intercept LAN traffic at all."),
+  );
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "tun_kill_switch",
+    _tr(
+      "Kill-switch TUN при падении ядра",
+      "TUN kill-switch if the core fails",
+    ),
+    _tr(
+      "Пока есть секции Fail-Closed: если ядро упало и tun-интерфейс пропал, клиенты LAN не выходят в интернет напрямую (маршрут по умолчанию для LAN закрыт). Локальные сети, VPN-маршруты и сам роутер продолжают работать.",
+      "While a section is Fail-Closed: if the core dies and the tun interface disappears, LAN clients do not reach the Internet directly (their default route is closed). Local networks, VPN routes and the router itself keep working.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "1";
+  o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === "0",
+    _tr(
+      "Без kill-switch TUN весь трафик LAN уходит напрямую, пока ядро не работает.",
+      "Without the TUN kill-switch all LAN traffic leaves directly while the core is down.",
     ),
   );
 
@@ -5842,15 +5869,35 @@ function createSettingsContent(section, capabilities) {
   // Anonymization and Security
   o = section.taboption(
     "advanced",
-    form.Flag,
+    form.ListValue,
     "webrtc_leak_protect",
     _("WebRTC Leak Protection"),
     _(
       "Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC.",
     ),
   );
-  o.default = "0";
+  o.value("auto", _("Auto (on while a section is Fail-Closed)"));
+  o.value("1", _("On"));
+  o.value("0", _("Off"));
+  o.default = "auto";
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === "0",
+    _(
+      "With WebRTC protection off, a site opened through the proxy can learn the real address over STUN.",
+    ),
+  );
+  // Auto follows Fail-Closed at runtime (service/kill_switch.uc).
+  const webrtcFailClosedSections = failClosedSectionNames();
+  if (webrtcFailClosedSections.length > 0) {
+    o.description +=
+      " <strong>" +
+      _(
+        "Fail-Closed is set in sections %h, so in Auto mode WebRTC protection is ON now. Choose Off if direct calls or games need STUN.",
+      ).format(webrtcFailClosedSections.join(", ")) +
+      "</strong>";
+  }
 
   o = section.taboption(
     "advanced",

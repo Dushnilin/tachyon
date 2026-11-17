@@ -3424,6 +3424,18 @@ function migrate_ensure_tcp_bbr_default(ctx) {
     }
 }
 
+// dns_intercept_all and webrtc_leak_protect shipped as '0' checkboxes before
+// 'auto' (on while a section is Fail-Closed) became their default; that stored
+// '0' was the old default, not a choice, so it moves to 'auto' once. A later
+// explicit '0' is kept.
+function migrate_fail_closed_auto_defaults(ctx) {
+    if (!ctx.model || !ctx.model.settings)
+        return;
+    for (let key in [ "dns_intercept_all", "webrtc_leak_protect" ])
+        if (trim(option(ctx.model.settings, key, "")) == "0")
+            set_option(ctx, ctx.model.settings, key, "auto");
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -3436,7 +3448,8 @@ const MIGRATIONS = [
     { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
     { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups },
     { id: "relax_probe_intervals_v1", run: migrate_relax_probe_intervals_v1 },
-    { id: "ensure_tcp_bbr_default", run: migrate_ensure_tcp_bbr_default }
+    { id: "ensure_tcp_bbr_default", run: migrate_ensure_tcp_bbr_default },
+    { id: "fail_closed_auto_defaults", run: migrate_fail_closed_auto_defaults }
 ];
 
 
@@ -3517,7 +3530,7 @@ function migrate_ipv6_and_fakeip_settings(ctx) {
         set_option_if_missing(ctx, settings, "fakeip_enabled", "1");
         set_option_if_missing(ctx, settings, "fakeip_inet4_range", "198.18.0.0/15");
         set_option_if_missing(ctx, settings, "fakeip_inet6_range", "fc00::/18");
-        set_option_if_missing(ctx, settings, "webrtc_leak_protect", "0");
+        set_option_if_missing(ctx, settings, "webrtc_leak_protect", "auto");
         set_option_if_missing(ctx, settings, "tun_inet4", "172.19.0.1/30");
         set_option_if_missing(ctx, settings, "ui_mode", "simple");
     }

@@ -1691,8 +1691,12 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     let quic_mode = common.disable_quic_mode(option(settings, "disable_quic", "0"));
     if (quic_mode != "off")
         body = signature_add_value(body, "settings.disable_quic", quic_mode);
-    if (bool_option(settings, "webrtc_leak_protect", false))
-        body = signature_add_value(body, "settings.webrtc_leak_protect", "1");
+    let webrtc_mode = require("service.kill_switch").webrtc_protect_mode(settings);
+    if (webrtc_mode != "auto")
+        body = signature_add_value(body, "settings.webrtc_leak_protect", webrtc_mode);
+    // The TUN kill-switch rules are synced on every nft rebuild.
+    if (!bool_option(settings, "tun_kill_switch", true))
+        body = signature_add_value(body, "settings.tun_kill_switch", "0");
     if (option(settings, "qos_priority_engine", "1") == "0")
         body = signature_add_value(body, "settings.qos_priority_engine", "0");
     let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 13:06+0300\n"
-"PO-Revision-Date: 2026-11-17 13:06+0300\n"
+"POT-Creation-Date: 2026-11-17 14:45+0300\n"
+"PO-Revision-Date: 2026-11-17 14:45+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3721,6 +3721,9 @@ msgstr "Порог восстановления"
 
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr "Fail-Closed (Блокировка / Kill-switch)"
+
+msgid "Fail-Closed is set in sections %h, so in Auto mode WebRTC protection is ON now. Choose Off if direct calls or games need STUN."
+msgstr ""
 
 msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
 msgstr "В секциях %h включён Fail-Closed, поэтому в режиме «Авто» перехват сейчас ВКЛЮЧЁН. Выберите «Выкл», если клиентам нужен свой DNS (например, VPN-приложение)."
@@ -8525,8 +8528,8 @@ msgstr "SNI"
 msgid "SNI / Host"
 msgstr "SNI / Хост"
 
-msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
-msgstr "Режим SOCKS вообще не перехватывает трафик LAN, а в режиме TUN трафик уходит напрямую, пока ядро не работает."
+msgid "SOCKS mode does not intercept LAN traffic at all."
+msgstr ""
 
 msgid "SSH"
 msgstr "SSH"
@@ -11264,6 +11267,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 msgid "WireGuard private key from your Cloudflare account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare"
 
+msgid "With WebRTC protection off, a site opened through the proxy can learn the real address over STUN."
+msgstr ""
+
 msgid "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections."
 msgstr "Без перехвата клиенты со своим DNS получают реальные адреса и минуют доменные секции."
 
@@ -11857,6 +11863,9 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgstr "Режим SOCKS вообще не перехватывает трафик LAN, а в режиме TUN трафик уходит напрямую, пока ядро не работает."
 
 msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
 msgstr "Динамический лимит памяти в МБ для Tachyon Core. Укажите 0 для автовыбора (50% ОЗУ на устройствах с малым объёмом памяти или при OOM)."

@@ -70,6 +70,7 @@ function parse_json_or_null(text) {
     try { return json(text); } catch (e) { return null; }
 }
 function get_wan_ip_addresses() { return network_mod().get_wan_ip_addresses(); }
+function tachyon_core_missing_standard_ports(netstat) { return network_mod().tachyon_core_missing_standard_ports(netstat); }
 function tachyon_core_standard_ports_listening(netstat) { return network_mod().tachyon_core_standard_ports_listening(netstat); }
 
 function option(cfg, key, fallback) {
@@ -945,8 +946,14 @@ function check_tachyon_core() {
         tachyon_core_process_running = 1;
 
     let netstat_out = command_output_from_args([ "netstat", "-ln" ]);
-    if (tachyon_core_standard_ports_listening(netstat_out))
+    let missing_ports = tachyon_core_missing_standard_ports(netstat_out);
+    if (length(missing_ports) == 0)
         tachyon_core_ports_listening = 1;
+    let listen_ports = resolve_tachyon_core_listen_ports(netstat_out);
+    if (length(missing_ports) > 0) {
+        let missing_str = "missing: " + join(", ", missing_ports);
+        listen_ports = listen_ports != "" ? (listen_ports + " (" + missing_str + ")") : missing_str;
+    }
 
     write_json({
         tachyon_core_installed,
@@ -959,7 +966,7 @@ function check_tachyon_core() {
         tachyon_core_version,
         tachyon_core_bin_path: "/usr/bin/tachyon-core",
         tachyon_core_init_path: "/etc/init.d/tachyon-core",
-        tachyon_core_listen_ports: resolve_tachyon_core_listen_ports(netstat_out)
+        tachyon_core_listen_ports: listen_ports
     });
     return 0;
 }

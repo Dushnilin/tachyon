@@ -155,7 +155,31 @@ if (mod.list_update_in_backoff(now + 10)) { warn("expected backoff cleared\n"); 
 curl_calls="$(wc -l < "$TACHYON_CURL_COUNT_FILE" | tr -d ' ')"
 # Without circuit breaker & dead-mirror tracking: 5 files * 8 candidates = 40+ calls.
 # With dead mirror skip (>=2 failures) + 3-file batch abort: file 0 tries 8, file 1 tries 8, file 2 tries 1 (mirrors skipped), files 3..4 try 0 => ~17 calls!
-[ "$curl_calls" -le 20 ] || fail "expected bounded curl calls (<=20), got $curl_calls"
+[ "$curl_calls" -le 10 ] || fail "expected dead-host skipping to cap curl calls at <=10, got $curl_calls"
+
+# HTTP 22 errors (single missing file) must NOT blacklist the host for subsequent files
+: > "$TACHYON_CURL_COUNT_FILE"
+rm -f "$WORK_DIR/bin/curl"
+cat >"$WORK_DIR/bin/curl" <<'STUB22'
+#!/bin/sh
+url=""; prev=""
+for a in "$@"; do
+  [ "$a" = "-o" ] && url="$prev"
+  prev="$a"
+  case "$a" in
+    *"doh"*|*"dns-query"*) exit 0 ;;
+  esac
+done
+[ -n "$url" ] || exit 0
+printf '%s\n' "$url" >> "$TACHYON_CURL_COUNT_FILE"
+exit 22
+STUB22
+chmod +x "$WORK_DIR/bin/curl"
+got_http22="$(ucode -L "$TACHYON_LIB" "$UPDATES_UC" download-to-file-fixture "$WORK_DIR/tachyon-core/rulesets" "" \
+  "https://example.com/missing-1.txt" "https://example.com/missing-2.txt" 2>/dev/null || true)"
+http22_calls="$(wc -l < "$TACHYON_CURL_COUNT_FILE" | tr -d ' ')"
+[ "$http22_calls" -eq 2 ] || fail "HTTP 22 must not blacklist host (expected 2 curl calls, got $http22_calls)"
+[ "$got_http22" = "0" ] || fail "expected 0 obtained files on HTTP 22, got '$got_http22'"
 
 # Verify list_update_if_due skips running list_update when backoff file is fresh
 : > "$TACHYON_CURL_COUNT_FILE"

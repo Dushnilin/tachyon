@@ -636,11 +636,11 @@ function settings_update_interval(settings) {
     if (!bool_option(settings, "list_update_enabled", true))
         return "";
 
-    if (trim(as_string(option(settings, "list_update_interval", ""))) == "0")
+    if (index([ "0", "off", "never", "disabled" ], lc(trim(as_string(option(settings, "list_update_interval", ""))))) >= 0)
         return "";
 
     let value = trim(option(settings, "update_interval", "1d"));
-    if (value == "0")
+    if (index([ "0", "off", "never", "disabled" ], lc(value)) >= 0)
         return "";
     return value != "" ? value : "1d";
 }
@@ -2714,6 +2714,8 @@ let _preferred_mirror_host = "";
 let _batch_network_fail_streak = 0;
 let _batch_download_aborted = false;
 let _download_batch_had_network_failures = false;
+let _download_dead_hosts = {};
+const CURL_NETWORK_FAILURES = [ 5, 6, 7, 28, 35, 52, 56 ];
 
 function reset_download_batch_state() {
     _mirror_fail_counts = {};
@@ -2721,6 +2723,7 @@ function reset_download_batch_state() {
     _batch_network_fail_streak = 0;
     _batch_download_aborted = false;
     _download_batch_had_network_failures = false;
+    _download_dead_hosts = {};
 }
 
 function list_update_backoff_seconds(streak) {
@@ -2858,18 +2861,35 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
         }
     }
 
+    function try_candidate(target_url, proxy_addr) {
+        let h = candidate_host(target_url);
+        let key = as_string(proxy_addr) + "|" + (h != "" ? h : as_string(target_url));
+        if (_download_dead_hosts[key])
+            return { ok: false, rc: 28, skipped: true };
+        let res = download_one(target_url, proxy_addr);
+        if (res.ok)
+            return { ok: true, rc: 0, skipped: false };
+        if (index(CURL_NETWORK_FAILURES, res.rc) >= 0) {
+            _download_dead_hosts[key] = true;
+            log_message("Download: " + (h != "" ? h : as_string(target_url)) + " unreachable" +
+                (as_string(proxy_addr) != "" ? " via proxy section" : "") + " (curl " + res.rc + "); skipping it for the rest of this run", "warn");
+        }
+        return { ok: false, rc: res.rc, skipped: false };
+    }
+
     let saw_http_only = false;
 
     // 1. Through the configured proxy section first if available
     if (as_string(proxy_address) != "") {
-        let pres = download_one(url, proxy_address);
+        let pres = try_candidate(url, proxy_address);
         if (pres.ok) {
             _batch_network_fail_streak = 0;
             log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
             return finish_download_ok();
         }
         if (pres.rc == 22) saw_http_only = true;
-        log_message("Download via proxy section failed for " + as_string(url) + "; retrying direct and mirrors", "warn");
+        if (!pres.skipped)
+            log_message("Download via proxy section failed for " + as_string(url) + "; retrying direct and mirrors", "warn");
     }
 
     for (let i = 0; i < length(candidates); i++) {
@@ -2882,7 +2902,7 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
         let label = !is_mirror ? "" : " via mirror " + candidate;
 
         // 2. Direct fallback
-        let dres = download_one(candidate, "");
+        let dres = try_candidate(candidate, "");
         if (dres.ok) {
             _batch_network_fail_streak = 0;
             if (is_mirror && chost != "")
@@ -2896,8 +2916,9 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
         // 3. Through the configured proxy section for mirrors if direct failed
         let mirror_transport_failed = (dres.rc != 22);
         if (as_string(proxy_address) != "" && is_mirror) {
-            log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
-            let mres = download_one(candidate, proxy_address);
+            if (!dres.skipped)
+                log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
+            let mres = try_candidate(candidate, proxy_address);
             if (mres.ok) {
                 _batch_network_fail_streak = 0;
                 if (chost != "")
@@ -2909,7 +2930,8 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
                 saw_http_only = true;
                 mirror_transport_failed = false;
             }
-            log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
+            if (!mres.skipped)
+                log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
         }
 
         if (is_mirror && chost != "" && mirror_transport_failed)
@@ -4977,6 +4999,13 @@ else if (mode == "remove-cron-jobs")
     remove_cron_jobs(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "list-update")
     list_update();
+else if (mode == "download-to-file-fixture") {
+    let got = 0;
+    for (let i = 3; i < length(ARGV); i++)
+        if (download_to_file(ARGV[i], ARGV[1] + "/file" + i, ARGV[2] || "", false))
+            got++;
+    print(got, "\n");
+}
 else if (mode == "rebuild-domain-ip-lists-fixture") {
     let data = object_or_empty(read_json_file(ARGV[1]));
     connections.set_item_sections_from_data(data);

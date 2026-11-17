@@ -448,30 +448,127 @@ function uci_settings() {
     return uci_core.get_all(CONFIG_NAME, "settings") || {};
 }
 
-function tachyon_core_standard_ports_listening(netstat) {
+function read_tachyon_core_inbounds(settings) {
+    let cfg_path = trim(as_string(getenv("TACHYON_CORE_CONFIG_PATH") || "")) ||
+        trim(as_string((type(settings) == "object" ? settings.config_path : "") || "")) ||
+        "/etc/tachyon-core/config.json";
+    let raw = fs.readfile(cfg_path);
+    if (raw == null) return null;
+    let parsed = parse_json_or_null(raw);
+    if (type(parsed) != "object" || type(parsed.inbounds) != "array")
+        return null;
+    return parsed.inbounds;
+}
+
+function tproxy4_listening(netstat, listen, port) {
+    let suffix = ":" + as_string(port);
+    listen = trim(as_string(listen));
+    if (listen != "" && index(netstat, listen + suffix) >= 0)
+        return true;
+    return index(netstat, "0.0.0.0" + suffix) >= 0 ||
+        index(netstat, "127.0.0.1" + suffix) >= 0;
+}
+
+function tproxy6_listening(netstat, listen, port) {
+    port = as_string(port);
+    let suffix = ":" + port;
+    listen = trim(as_string(listen || CORE_TPROXY_INBOUND6_ADDRESS)) || CORE_TPROXY_INBOUND6_ADDRESS;
+    return index(netstat, listen + suffix) >= 0 ||
+        index(netstat, "[" + listen + "]" + suffix) >= 0 ||
+        index(netstat, CORE_TPROXY_INBOUND6_ADDRESS + suffix) >= 0 ||
+        index(netstat, "[" + CORE_TPROXY_INBOUND6_ADDRESS + "]" + suffix) >= 0 ||
+        index(netstat, "0:0:0:0:0:0:0:1" + suffix) >= 0 ||
+        index(netstat, ":::" + port) >= 0;
+}
+
+function tun_interface_up(iface_name) {
+    iface_name = trim(as_string(iface_name || "tun0")) || "tun0";
+    return fs.stat("/sys/class/net/" + iface_name) != null ||
+        index(command_output_from_args([ "ip", "link", "show", iface_name ]), iface_name) >= 0;
+}
+
+function tachyon_core_missing_standard_ports(netstat) {
     netstat = as_string(netstat);
-    let port_53_ok = index(netstat, "127.0.0.42:53") >= 0;
-    let proxy_mode = lc(trim(as_string(uci_settings().proxy_mode || "tproxy")));
+    let settings = uci_settings();
+    let inbounds = read_tachyon_core_inbounds(settings);
+    let missing = [];
+
+    if (inbounds != null) {
+        let dns_ib = null;
+        let tun_ib = null;
+        let mixed_ib = null;
+        let tproxy4_ib = null;
+        let tproxy6_ib = null;
+        for (let ib in inbounds) {
+            if (type(ib) != "object") continue;
+            let tag = as_string(ib.tag || "");
+            let ib_type = as_string(ib.type || "");
+            let ib_listen = as_string(ib.listen || "");
+            if (tag == "dns-in" || (ib_type == "direct" && as_string(ib.listen_port || "") == "53"))
+                dns_ib = dns_ib || ib;
+            else if (ib_type == "tun" || tag == "tun-in")
+                tun_ib = tun_ib || ib;
+            else if (ib_type == "mixed" || ib_type == "socks" || tag == "client-mixed-in")
+                mixed_ib = mixed_ib || ib;
+            else if (tag == "tproxy6-in" || (ib_type == "tproxy" && index(ib_listen, ":") >= 0))
+                tproxy6_ib = tproxy6_ib || ib;
+            else if (tag == "tproxy-in" || ib_type == "tproxy")
+                tproxy4_ib = tproxy4_ib || ib;
+        }
+        let dns_ep = (trim(as_string(dns_ib?.listen || "")) || "127.0.0.42") + ":" +
+            (as_string(dns_ib?.listen_port || "") || "53");
+        if (index(netstat, dns_ep) < 0)
+            push(missing, dns_ep);
+        if (tun_ib != null) {
+            let tun_if = trim(as_string(tun_ib.interface_name || "tun0")) || "tun0";
+            if (!tun_interface_up(tun_if))
+                push(missing, tun_if);
+        }
+        if (mixed_ib != null) {
+            let socks_port = as_string(mixed_ib.listen_port || settings.socks_port || "1080");
+            if (index(netstat, ":" + socks_port) < 0)
+                push(missing, ":" + socks_port);
+        }
+        if (tproxy4_ib != null) {
+            let p4 = as_string(tproxy4_ib.listen_port || CORE_TPROXY_INBOUND_PORT);
+            let l4 = trim(as_string(tproxy4_ib.listen || "0.0.0.0")) || "0.0.0.0";
+            if (!tproxy4_listening(netstat, l4, p4))
+                push(missing, l4 + ":" + p4);
+        }
+        if (tproxy6_ib != null) {
+            let p6 = as_string(tproxy6_ib.listen_port || CORE_TPROXY_INBOUND_PORT);
+            let l6 = trim(as_string(tproxy6_ib.listen || CORE_TPROXY_INBOUND6_ADDRESS)) || CORE_TPROXY_INBOUND6_ADDRESS;
+            if (!tproxy6_listening(netstat, l6, p6))
+                push(missing, "[" + l6 + "]:" + p6);
+        }
+        return missing;
+    }
+
+    if (index(netstat, "127.0.0.42:53") < 0)
+        push(missing, "127.0.0.42:53");
+    let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
     if (proxy_mode == "tun") {
-        let tun_ok = fs.stat("/sys/class/net/tun0") != null ||
-            index(command_output_from_args([ "ip", "link", "show", "tun0" ]), "tun0") >= 0;
-        return port_53_ok && tun_ok;
+        if (!tun_interface_up("tun0"))
+            push(missing, "tun0");
+        return missing;
     }
     if (proxy_mode == "socks") {
-        let socks_port = as_string(uci_settings().socks_port || "1080");
-        return port_53_ok && index(netstat, ":" + socks_port) >= 0;
+        let socks_port = as_string(settings.socks_port || "1080");
+        if (index(netstat, ":" + socks_port) < 0)
+            push(missing, ":" + socks_port);
+        return missing;
     }
-    let tproxy_suffix = ":" + CORE_TPROXY_INBOUND_PORT;
-    let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
-        index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
-    let eff_v6 = common.resolve_effective_ipv6_state(uci_settings(), null);
+    if (!tproxy4_listening(netstat, "0.0.0.0", CORE_TPROXY_INBOUND_PORT))
+        push(missing, "0.0.0.0:" + CORE_TPROXY_INBOUND_PORT);
+    let eff_v6 = common.resolve_effective_ipv6_state(settings, null);
     let v6_active = (eff_v6 && eff_v6.ipv6_active) ? true : false;
-    let port_1602_v6_ok = !v6_active ||
-        index(netstat, CORE_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
-        index(netstat, "[" + CORE_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
-        index(netstat, "0:0:0:0:0:0:0:1" + tproxy_suffix) >= 0 ||
-        index(netstat, ":::" + CORE_TPROXY_INBOUND_PORT) >= 0;
-    return port_53_ok && port_1602_ok && port_1602_v6_ok;
+    if (v6_active && !tproxy6_listening(netstat, CORE_TPROXY_INBOUND6_ADDRESS, CORE_TPROXY_INBOUND_PORT))
+        push(missing, "[" + CORE_TPROXY_INBOUND6_ADDRESS + "]:" + CORE_TPROXY_INBOUND_PORT);
+    return missing;
+}
+
+function tachyon_core_standard_ports_listening(netstat) {
+    return length(tachyon_core_missing_standard_ports(netstat)) == 0;
 }
 
 function tachyon_core_standard_ports_listening_fixture() {
@@ -638,6 +735,7 @@ return {
     default_gateway_exists,
     wan_has_ip,
     device_ipv4_address,
+    tachyon_core_missing_standard_ports,
     tachyon_core_standard_ports_listening,
     tachyon_core_standard_ports_listening_fixture,
     server_required_port_conflict_owners,

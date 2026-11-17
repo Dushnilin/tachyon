@@ -230,6 +230,49 @@ TACHYON_FORCE_IPV6_SUPPORTED=1 ucode -S -L "$TACHYON_LIB" -e '
   assert(net_mod.tachyon_core_standard_ports_listening(netstat_v6) == true, "tachyon_core_standard_ports_listening succeeds with dual-stack ports");
 '
 
+cat >"$WORK_DIR/core-v4-only.json" <<'EOF_CORE_V4'
+{
+  "inbounds": [
+    { "type": "tproxy", "tag": "tproxy-in", "listen": "0.0.0.0", "listen_port": 1602 },
+    { "type": "direct", "tag": "dns-in", "listen": "127.0.0.42", "listen_port": 53 }
+  ]
+}
+EOF_CORE_V4
+cat >"$WORK_DIR/core-v6.json" <<'EOF_CORE_V6'
+{
+  "inbounds": [
+    { "type": "tproxy", "tag": "tproxy-in", "listen": "0.0.0.0", "listen_port": 1602 },
+    { "type": "tproxy", "tag": "tproxy6-in", "listen": "::1", "listen_port": 1602 },
+    { "type": "direct", "tag": "dns-in", "listen": "127.0.0.42", "listen_port": 53 }
+  ]
+}
+EOF_CORE_V6
+cat >"$WORK_DIR/uci_ports.state" <<'EOF_UCI_PORTS'
+tachyon.settings=settings
+tachyon.settings.proxy_mode=tproxy
+tachyon.settings.ipv6_mode=full
+EOF_UCI_PORTS
+TACHYON_UCI_STATE_FILE="$WORK_DIR/uci_ports.state" TACHYON_CORE_CONFIG_PATH="$WORK_DIR/core-v4-only.json" \
+  ucode -S -L "$TACHYON_LIB" -e '
+  let net_mod = require("diagnostics.network");
+  let netstat_v4 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\n";
+  if (!net_mod.tachyon_core_standard_ports_listening(netstat_v4))
+    die("config without tproxy6-in must pass even when uci ipv6_mode=full");
+  if (length(net_mod.tachyon_core_missing_standard_ports(netstat_v4)) != 0)
+    die("expected no missing ports without tproxy6-in");
+'
+TACHYON_UCI_STATE_FILE="$WORK_DIR/uci_ports.state" TACHYON_CORE_CONFIG_PATH="$WORK_DIR/core-v6.json" \
+  ucode -S -L "$TACHYON_LIB" -e '
+  let net_mod = require("diagnostics.network");
+  let netstat_v4 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\n";
+  let netstat_v6 = netstat_v4 + "tcp 0 0 [::1]:1602 :::* LISTEN\n";
+  let missing = net_mod.tachyon_core_missing_standard_ports(netstat_v4);
+  if (length(missing) != 1 || missing[0] != "[::1]:1602")
+    die("expected missing [::1]:1602, got " + join(",", missing));
+  if (!net_mod.tachyon_core_standard_ports_listening(netstat_v6))
+    die("expected v6 netstat to pass when [::1]:1602 is bound");
+'
+
 # 2. Validator + Migration + UI prefs
 export TACHYON_CORE_VERSION_FILE="$WORK_DIR/core_version"
 
@@ -470,6 +513,26 @@ assert_file_contains "$UCI_DHCP" "dhcp.lan.dhcpv6=server" "tunnel_over_v4 restor
 assert_file_contains "$UCI_DHCP" "dhcp.lan.ndp=relay" "tunnel_over_v4 restores ndp"
 assert_file_contains "$UCI_DHCP" "dhcp.lan.ra_dns=1" "tunnel_over_v4 sets ra_dns=1"
 assert_file_contains "$UCI_DHCP" "dhcp.lan.ra_default=2" "tunnel_over_v4 sets ra_default=2"
+TACHYON_UCI_STATE_FILE="$UCI_DHCP" TACHYON_FORCE_IPV6_SUPPORTED=1 \
+  ucode -S -L "$TACHYON_LIB" -e '
+  let doc = require("diagnostics.doctor");
+  let uci = require("core.uci");
+  let common = require("core.common");
+  let eff = common.resolve_effective_ipv6_state(uci.get_all("tachyon", "settings"), null);
+  let lan = uci.get_all("dhcp", "lan");
+  let res = doc.odhcpd_ipv6_dns_status(lan, eff);
+  if (!res.ok || index(res.detail, "ra_dns=1") < 0)
+    die("tunnel_over_v4 with ra_dns=1 and deleted dhcp.lan.dns must pass odhcpd_ipv6_dns_status: " + (res.detail || ""));
+  let broken = doc.odhcpd_ipv6_dns_status({ ra_dns: "0" }, eff);
+  if (broken.ok)
+    die("empty dns without ra_dns=1 must still fail odhcpd_ipv6_dns_status");
+  let broken_ds = doc.odhcpd_ipv6_dns_status({ dns_service: "0" }, eff);
+  if (broken_ds.ok)
+    die("empty dns with dns_service=0 must fail odhcpd_ipv6_dns_status");
+  let defaults_ok = doc.odhcpd_ipv6_dns_status({}, eff);
+  if (!defaults_ok.ok)
+    die("odhcpd default RA DNS state must pass odhcpd_ipv6_dns_status");
+'
 
 # Back to off -> then dual_stack triggers soft ubus call network.interface.lan renew when br-lan lacks global/ULA v6
 sed -i 's/tachyon.settings.ipv6_mode=tunnel_over_v4/tachyon.settings.ipv6_mode=off/' "$UCI_DHCP"

@@ -94,7 +94,15 @@ const DOH_BLOCK_DOMAINS = [
     "dns.nextdns.io", "doh.cleanbrowsing.org",
     "doh.mullvad.net", "dns.mullvad.net",
     "dns.controld.com", "freedns.controld.com",
-    "dot.dns.yandex.net", "doh.libredns.gr"
+    "dot.dns.yandex.net", "doh.libredns.gr",
+    "dns1.nextdns.io", "dns2.nextdns.io",
+    "dns.comss.one", "router.comss.one",
+    "dns.sb", "doh.sb", "dns0.eu",
+    "dns.alidns.com", "doh.pub", "dot.pub", "doh.360.cn",
+    "doh.applied-privacy.net", "dns.digitale-gesellschaft.ch", "dns.switch.ch",
+    "doh.ffmuc.net", "dns.njal.la", "doh.xfinity.com", "dns.twnic.tw",
+    // Firefox's documented canary: NXDOMAIN here turns its default DoH off.
+    "use-application-dns.net"
 ];
 
 // Apple's documented signal for "this network does not allow iCloud Private

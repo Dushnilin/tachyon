@@ -1283,11 +1283,15 @@ function validate_ipv6_and_fakeip_settings(settings, sections) {
     ], raw_ipv6_mode))
         fail_validation("Unsupported IPv6 mode '" + raw_ipv6_mode + "'. Use off, auto, dual_stack, or tunnel_over_v4. Aborted.");
 
-    for (let bool_key in [ "ipv6_leak_guard", "fakeip_enabled", "webrtc_leak_protect", "tcp_bbr" ]) {
+    for (let bool_key in [ "ipv6_leak_guard", "fakeip_enabled", "tcp_bbr", "tun_kill_switch" ]) {
         let raw_bool = trim(option(settings, bool_key, ""));
         if (raw_bool != "" && !valid_bool_setting_text(raw_bool))
             fail_validation("Invalid boolean value '" + raw_bool + "' for settings." + bool_key + " (expected 0 or 1). Aborted.");
     }
+    // "auto" = on while a section is Fail-Closed (service/kill_switch.uc).
+    let raw_webrtc = trim(option(settings, "webrtc_leak_protect", ""));
+    if (raw_webrtc != "" && lc(raw_webrtc) != "auto" && !valid_bool_setting_text(raw_webrtc))
+        fail_validation("Invalid value '" + raw_webrtc + "' for settings.webrtc_leak_protect (expected auto, 0 or 1). Aborted.");
 
     let raw_ui_mode = lc(trim(option(settings, "ui_mode", "")));
     if (raw_ui_mode != "" && !contains([ "simple", "advanced", "basic" ], raw_ui_mode))

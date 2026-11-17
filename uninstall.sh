@@ -261,6 +261,8 @@ if command -v nft >/dev/null 2>&1; then
     nft delete table inet TachyonTable >/dev/null 2>&1 || true
     rm -f /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
     nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
+    # TUN kill-switch rules (service/kill_switch.uc)
+    for pref in 9499 9500 9501; do for fam in -4 -6; do while ip $fam rule del pref $pref >/dev/null 2>&1; do :; done; done; done
     nft delete table inet tachyon >/dev/null 2>&1 || true
     nft delete table inet steer >/dev/null 2>&1 || true
     nft delete table inet tachyon_tailscale >/dev/null 2>&1 || true

@@ -34,6 +34,20 @@ const FW4_INCLUDE_FILE = FW4_INCLUDE_DIR + "/90-tachyon-kill-switch.nft";
 const ENABLED_LINK = "/etc/rc.d/S99tachyon";
 const DNS_INBOUND_ADDRESS = require("core.constants").CORE_DNS_INBOUND_ADDRESS || "127.0.0.42";
 
+// Actions whose traffic never goes through a proxy: a fail_policy left on
+// them (after an action change, an import, the CLI) means nothing and must
+// not turn the whole router Fail-Closed. Settings hides the option for them.
+const NON_CAPTURING_ACTIONS = [ "bypass", "block", "dns", "hosts" ];
+
+// An enabled section that captures traffic with fail_policy=block. The UI
+// (failClosedSectionNames) mirrors this test.
+function is_fail_closed_section(s) {
+    s = common.object_or_empty(s);
+    return common.bool_option(s, "enabled", true) &&
+        index(NON_CAPTURING_ACTIONS, lc(trim(common.as_string(s.action || "")))) < 0 &&
+        lc(trim(common.as_string(s.fail_policy || ""))) == "block";
+}
+
 // Why Tachyon may NOT fall back to direct WAN / direct DNS on its own, or ""
 // when it may. One fail-closed section vetoes it router-wide because every
 // fallback is router-wide; emergency_direct_bypass='0' vetoes it outright.
@@ -42,8 +56,7 @@ function veto(settings, sections) {
         return "emergency_direct_bypass=0";
     let names = [];
     for (let s in sections || []) {
-        if (common.bool_option(s, "enabled", true) &&
-            lc(trim(common.as_string(s.fail_policy || ""))) == "block")
+        if (is_fail_closed_section(s))
             push(names, common.as_string(s[".name"]));
     }
     if (length(names) == 0)
@@ -51,11 +64,11 @@ function veto(settings, sections) {
     return sprintf("fail_policy=block: %s", join(", ", names));
 }
 
-// settings.dns_intercept_all: "auto" (default) intercepts LAN DNS while a
-// section is Fail-Closed; "1"/"0" are the user's explicit choice, so clients
-// that need their own resolver (a VPN app, a custom DNS) can still opt out.
-function dns_intercept_mode(settings) {
-    let value = lc(trim(common.as_string(common.object_or_empty(settings).dns_intercept_all || "")));
+// Protections that default to "auto": on while a section is Fail-Closed, off
+// otherwise; "1"/"0" are the user's explicit choice, so a client that needs
+// its own resolver (a VPN app, a custom DNS) or direct WebRTC can opt out.
+function auto_mode(settings, key) {
+    let value = lc(trim(common.as_string(common.object_or_empty(settings)[key] || "")));
     if (index([ "1", "true", "yes", "on" ], value) >= 0)
         return "on";
     if (index([ "0", "false", "no", "off" ], value) >= 0)
@@ -63,9 +76,28 @@ function dns_intercept_mode(settings) {
     return "auto";
 }
 
-function dns_intercept_effective(settings, fail_closed) {
-    let mode = dns_intercept_mode(settings);
+function auto_effective(settings, key, fail_closed) {
+    let mode = auto_mode(settings, key);
     return mode == "on" || (mode == "auto" && !!fail_closed);
+}
+
+// settings.dns_intercept_all: LAN DNS redirect, DoT reject, DoH block.
+function dns_intercept_mode(settings) {
+    return auto_mode(settings, "dns_intercept_all");
+}
+
+function dns_intercept_effective(settings, fail_closed) {
+    return auto_effective(settings, "dns_intercept_all", fail_closed);
+}
+
+// settings.webrtc_leak_protect: drop direct STUN/TURN, which would hand a
+// proxied site the client's real address through WebRTC.
+function webrtc_protect_mode(settings) {
+    return auto_mode(settings, "webrtc_leak_protect");
+}
+
+function webrtc_protect_effective(settings, fail_closed) {
+    return auto_effective(settings, "webrtc_leak_protect", fail_closed);
 }
 
 function uci_settings() {
@@ -116,6 +148,63 @@ function ruleset(interfaces) {
         GUARD_TABLE, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, set, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, GATE_SET);
 }
 
+// TUN mode: the core's auto_route (rules 8999/9000, default dev tun0 in table
+// 2022) is all that keeps LAN traffic off WAN. If the core dies, tun0 and its
+// route vanish and LAN packets fall through to main's default route, i.e.
+// out directly. These rules sit after the core's: while the core runs they are
+// never reached; once it is gone, LAN packets keep the specific main routes
+// (other LANs, site-to-site VPNs) but have no default route left. The router's
+// own traffic (iif lo) is untouched. Replies of connections opened from
+// outside (port forwards, inbound IPv6) carry the core's mark 0x2022 (set in
+// nft/apply.uc) and keep main's default route: the peer already knows the
+// router's address, so nothing leaks.
+const TUN_GUARD_PREFS = [ 9499, 9500, 9501 ];
+const TUN_AUTO_ROUTE_MARK = "0x2022";
+
+function proxy_mode(settings) {
+    return lc(trim(common.as_string(common.object_or_empty(settings).proxy_mode || "tproxy")));
+}
+
+// The ip-rule argument lists the TUN guard needs for this setup ([] = none).
+function tun_guard_rules(settings, sections, service_enabled) {
+    let rules = [];
+    if (!service_enabled || proxy_mode(settings) != "tun" || veto(settings, sections) == "" ||
+        !common.bool_option(settings, "tun_kill_switch", true))
+        return rules;
+    for (let family in [ "-4", "-6" ]) {
+        for (let name in source_interfaces(settings)) {
+            push(rules, [ family, "rule", "add", "iif", name, "fwmark", TUN_AUTO_ROUTE_MARK, "lookup", "main", "pref", "" + TUN_GUARD_PREFS[0] ]);
+            push(rules, [ family, "rule", "add", "iif", name, "lookup", "main", "suppress_prefixlength", "0", "pref", "" + TUN_GUARD_PREFS[1] ]);
+            push(rules, [ family, "rule", "add", "iif", name, "unreachable", "pref", "" + TUN_GUARD_PREFS[2] ]);
+        }
+    }
+    return rules;
+}
+
+function ip(args) {
+    let cmd = [ "ip" ];
+    for (let arg in args)
+        push(cmd, arg);
+    return common.command_success_from_args(cmd);
+}
+
+function tun_guard_clear() {
+    for (let family in [ "-4", "-6" ])
+        for (let pref in TUN_GUARD_PREFS)
+            for (let i = 0; i < 64; i++)
+                if (!ip([ family, "rule", "del", "pref", "" + pref ]))
+                    break;
+}
+
+// Install the TUN guard when the setup needs it, remove it otherwise.
+function tun_guard_sync() {
+    tun_guard_clear();
+    let ok = true;
+    for (let args in tun_guard_rules(uci_settings(), uci_core.section_objects(CONFIG_NAME, "section"), fs.lstat(ENABLED_LINK) != null))
+        ok = ip(args) && ok;
+    return ok;
+}
+
 function nft(args) {
     let cmd = [ "nft" ];
     for (let arg in args)
@@ -151,12 +240,14 @@ function install(text) {
 }
 
 function engage(settings) {
+    tun_guard_sync();
     return install(ruleset(source_interfaces(settings))) &&
         nft([ "flush", "set", "inet", GUARD_TABLE, GATE_SET ]);
 }
 
 // Open the gate: interception is in place, or the user chose direct Internet.
 function release() {
+    tun_guard_sync();
     if (!present())
         return true;
     return nft([ "add", "element", "inet", GUARD_TABLE, GATE_SET, nft_set(source_interfaces(uci_settings())) ]);
@@ -164,6 +255,7 @@ function release() {
 
 // Not fail-closed (any more): no gate at all, now or at the next boot.
 function remove() {
+    tun_guard_clear();
     fs.unlink(FW4_INCLUDE_FILE);
     return !present() || nft([ "delete", "table", "inet", GUARD_TABLE ]);
 }
@@ -240,10 +332,15 @@ return {
     GATE_SET,
     FW4_INCLUDE_FILE,
     veto,
+    is_fail_closed_section,
     uci_veto,
     dns_intercept_mode,
     dns_intercept_effective,
+    webrtc_protect_mode,
+    webrtc_protect_effective,
     source_interfaces,
+    tun_guard_rules,
+    tun_guard_sync,
     ruleset,
     engaged,
     engage,
