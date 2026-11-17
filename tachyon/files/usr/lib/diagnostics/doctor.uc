@@ -98,6 +98,20 @@ function list_option(cfg, key) {
     return [];
 }
 
+// How LAN clients get an IPv6 DNS server from odhcpd, or "" when they get none.
+// Tachyon itself (dns/apply.uc) clears dhcp.lan.dns in every active IPv6 mode
+// and sets ra_dns=1: odhcpd then announces the router's own address (RA RDNSS
+// and DHCPv6), which is the intended setup, not a missing DNS (#424).
+function odhcpd_ipv6_dns_announced(lan) {
+    let dns = list_option(lan, "dns");
+    if (length(dns) > 0)
+        return join(", ", dns);
+    lan = type(lan) == "object" ? lan : {};
+    if (trim(as_string(lan.dns_service || "1")) != "0" && trim(as_string(lan.ra_dns || "1")) != "0")
+        return "router address (ra_dns)";
+    return "";
+}
+
 function settings() { return uci_core.get_all(CONFIG_NAME, "settings") || {}; }
 function uci_sections(type_name) { return uci_core.section_objects(CONFIG_NAME, type_name); }
 
@@ -2495,23 +2509,23 @@ function run_doctor_checks_impl(repair) {
         }
 
         if (file_executable("/etc/init.d/odhcpd") && as_string(uci_core.get("dhcp.lan.dhcpv6") || "") == "server") {
-            let lan_dns_list = list_option(uci_core.get_all("dhcp", "lan"), "dns");
-            if (length(lan_dns_list) > 0) {
-                doc_check("✅", "odhcpd IPv6 DNS", "configured (" + join(", ", lan_dns_list) + ")", "");
+            let lan_dns = odhcpd_ipv6_dns_announced(uci_core.get_all("dhcp", "lan"));
+            if (lan_dns != "") {
+                doc_check("✅", "odhcpd IPv6 DNS", "configured (" + lan_dns + ")", "");
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
                     doc_plan("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure");
-                    doc_check("⚠️", "odhcpd IPv6 DNS", "dhcp.lan.dns is empty while DHCPv6 server is active",
+                    doc_check("⚠️", "odhcpd IPv6 DNS", "no IPv6 DNS announced (dhcp.lan.dns empty, ra_dns or dns_service off) while DHCPv6 server is active",
                         "→ WILL FIX (doctor --fix): настроить IPv6 DNS в odhcpd");
                 } else {
                     command_status("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure >/dev/null 2>&1");
-                    let lan_dns_after = list_option(uci_core.get_all("dhcp", "lan"), "dns");
-                    if (length(lan_dns_after) > 0) {
-                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ FIXED: " + join(", ", lan_dns_after));
+                    let lan_dns_after = odhcpd_ipv6_dns_announced(uci_core.get_all("dhcp", "lan"));
+                    if (lan_dns_after != "") {
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ FIXED: " + lan_dns_after);
                         fixed++;
                     } else {
-                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ не удалось настроить dhcp.lan.dns");
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ не удалось настроить IPv6 DNS в odhcpd");
                     }
                 }
             }
@@ -4384,6 +4398,7 @@ return {
     run_recovery_checks,
     has_certificate_pins_configured,
     run_doctor_checks_impl,
+    odhcpd_ipv6_dns_announced,
     doctor_lock_try,
     doctor_lock_release,
     doctor_history_load,
