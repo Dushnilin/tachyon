@@ -5605,6 +5605,10 @@ msgstr ""
 msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
 msgstr ""
 
+#: src/views/settings.ts:550
+msgid "Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?"
+msgstr ""
+
 #: src/views/section.ts:18838
 msgid "Fail-Open (Direct bypass)"
 msgstr ""
@@ -12691,6 +12695,10 @@ msgstr ""
 msgid "SNI / Host"
 msgstr ""
 
+#: src/views/settings.ts:4346
+msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgstr ""
+
 #: src/views/conditions.ts:2290
 #: src/views/section.ts:20015
 #: src/views/section.ts:20050
@@ -17063,6 +17071,14 @@ msgstr ""
 
 #: src/views/section.ts:15971
 msgid "WireGuard private key from your Cloudflare account"
+msgstr ""
+
+#: src/views/settings.ts:4932
+msgid "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections."
+msgstr ""
+
+#: src/views/settings.ts:5812
+msgid "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections."
 msgstr ""
 
 #: src/tachyon/connectionWizard.ts:4356

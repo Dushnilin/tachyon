@@ -97,6 +97,20 @@ if (doh_rejects(ARGV[1]))
     die("DoH reject appeared without block_doh, dns_intercept_all or Fail-Closed\n");
 if (doh_rejects(ARGV[2]))
     die("dns_intercept_all=0 was overridden by Fail-Closed: clients cannot use their own DNS\n");
+// DoH by name and the iCloud Private Relay canaries: NXDOMAIN with the intercept on.
+function name_blocked(path, name) {
+    for (let r in (json(fs.readfile(path)).dns || {}).rules || [])
+        if (r.action == "predefined" && r.rcode == "NXDOMAIN" &&
+            index(type(r.domain_suffix) == "array" ? r.domain_suffix : [ r.domain_suffix ], name) >= 0)
+            return true;
+    return false;
+}
+for (let name in [ "dns.google", "cloudflare-dns.com", "mask.icloud.com" ]) {
+    if (!name_blocked(ARGV[0], name))
+        die("Fail-Closed (Auto) does not answer NXDOMAIN for " + name + "\n");
+    if (name_blocked(ARGV[1], name) || name_blocked(ARGV[2], name))
+        die(name + " blocked without the LAN DNS intercept\n");
+}
 ' "$WORK_DIR/tcp-only-block-config.json" "$WORK_DIR/tcp-only-keep-config.json" "$WORK_DIR/tcp-only-block-optout-config.json"
 
 # --- 4. nft: forward leak guard, tproxy mode only ----------------------------

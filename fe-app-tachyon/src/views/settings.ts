@@ -535,6 +535,30 @@ function showForcedByFailClosed(option, effective, note) {
   option.description += ' ' + note.format(sections.join(', '));
 }
 
+// Ask before a change that would let Fail-Closed sections leak directly; on
+// "no" the widget goes back to the stored value and nothing is saved.
+function guardFailClosedChange(option, breaks, consequence) {
+  const previous = option.onchange;
+  option.onchange = function (ev, section_id, value) {
+    const sections = failClosedSectionNames();
+    if (
+      sections.length > 0 &&
+      breaks(value) &&
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        _(
+          'Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?',
+        ).format(sections.join(', '), consequence),
+      )
+    ) {
+      const el = this.getUIElement(section_id);
+      if (el) el.setValue(this.cfgvalue(section_id) ?? this.default);
+      return;
+    }
+    if (previous) return previous.apply(this, [ev, section_id, value]);
+  };
+}
+
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.default = '';
   option.rmempty = false;
@@ -4315,6 +4339,13 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = 'tproxy';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === 'tun' || value === 'socks',
+    _(
+      'SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down.',
+    ),
+  );
 
   o = section.taboption(
     'network',
@@ -4894,6 +4925,13 @@ function createSettingsContent(section, capabilities) {
   o.value('0', _('Off'));
   o.default = 'auto';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '0',
+    _(
+      'With the intercept off, clients using their own DNS get real addresses and skip domain-based sections.',
+    ),
+  );
   // Auto follows Fail-Closed at runtime (service/kill_switch.uc); say so loudly,
   // since the stored value alone reads as a plain default.
   const dnsFailClosedSections = failClosedSectionNames();
@@ -5767,6 +5805,13 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = '0';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '1',
+    _(
+      'Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections.',
+    ),
+  );
 
   o = section.taboption(
     'advanced',

@@ -1326,6 +1326,18 @@ function base_config(settings, service_address, runtime_context) {
         diag_fakeip_rule
     ])
         push(dns_rules, rule);
+    // With the LAN DNS intercept on (by default while a section is
+    // Fail-Closed), DoH/DoT hostnames and the iCloud Private Relay canaries get
+    // NXDOMAIN: clients fall back to the router DNS instead of resolving real
+    // addresses past domain sections.
+    if (require("service.kill_switch").dns_intercept_effective(settings, runtime_context && runtime_context.fail_closed)) {
+        let blocked = [];
+        for (let d in runtime_constants.DOH_BLOCK_DOMAINS)
+            push(blocked, d);
+        for (let d in runtime_constants.PRIVATE_RELAY_CANARIES)
+            push(blocked, d);
+        push(dns_rules, { action: "predefined", domain_suffix: blocked, rcode: "NXDOMAIN" });
+    }
 
     let dns_servers = [];
     for (let server in dns_config.servers)

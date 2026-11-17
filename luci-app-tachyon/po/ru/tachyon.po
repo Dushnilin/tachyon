@@ -3842,6 +3842,9 @@ msgstr "Fail-Closed (Блокировка / Kill-switch)"
 msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
 msgstr "В секциях %h включён Fail-Closed, поэтому в режиме «Авто» перехват сейчас ВКЛЮЧЁН. Выберите «Выкл», если клиентам нужен свой DNS (например, VPN-приложение)."
 
+msgid "Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?"
+msgstr "В секциях %s включён Fail-Closed. %s Тогда их трафик может уйти напрямую. Всё равно изменить?"
+
 msgid "Fail-Open (Direct bypass)"
 msgstr "Fail-Open (Прямой обход)"
 
@@ -8753,6 +8756,9 @@ msgstr "SNI"
 msgid "SNI / Host"
 msgstr "SNI / Хост"
 
+msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgstr "Режим SOCKS вообще не перехватывает трафик LAN, а в режиме TUN трафик уходит напрямую, пока ядро не работает."
+
 msgid "SSH"
 msgstr "SSH"
 
@@ -11662,6 +11668,12 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 
 msgid "WireGuard private key from your Cloudflare account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare"
+
+msgid "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections."
+msgstr "Без перехвата клиенты со своим DNS получают реальные адреса и обходят доменные секции."
+
+msgid "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections."
+msgstr "Если Tachyon не управляет dnsmasq, клиенты LAN перестают получать ответы через Tachyon и обходят доменные секции."
 
 msgid "Workers"
 msgstr "Количество воркеров"
