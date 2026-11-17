@@ -587,7 +587,7 @@ function controller(bus, opts) {
                 if (state.syslog_start_time > 0 && (now - state.syslog_start_time > 3) &&
                     (now - state.last_oom_time > 60)) {
                     state.last_oom_time = now;
-                    bus.emit(EV.OOM_DETECTED, {});
+                    bus.emit(EV.OOM_DETECTED, fact.payload || {});
                     push(published, EV.OOM_DETECTED);
                 }
                 continue;

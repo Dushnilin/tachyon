@@ -83,6 +83,24 @@ const DOH_BLOCK_IPV4_CIDRS = [
     "77.88.8.8/32", "77.88.8.1/32"
 ];
 
+// Well-known DoH/DoT hostnames: answered NXDOMAIN while the LAN DNS intercept
+// is on, so DoH cannot come back on an address missing from the CIDR lists.
+const DOH_BLOCK_DOMAINS = [
+    "dns.google", "dns.google.com",
+    "cloudflare-dns.com", "one.one.one.one", "cloudflare-gateway.com",
+    "dns.quad9.net", "quad9.net",
+    "doh.opendns.com", "dns.umbrella.com",
+    "dns.adguard.com", "dns.adguard-dns.com", "adguard-dns.com",
+    "dns.nextdns.io", "doh.cleanbrowsing.org",
+    "doh.mullvad.net", "dns.mullvad.net",
+    "dns.controld.com", "freedns.controld.com",
+    "dot.dns.yandex.net", "doh.libredns.gr"
+];
+
+// Apple's documented signal for "this network does not allow iCloud Private
+// Relay": an NXDOMAIN for these names makes devices fall back to normal DNS.
+const PRIVATE_RELAY_CANARIES = [ "mask.icloud.com", "mask-h2.icloud.com" ];
+
 const DOH_BLOCK_IPV6_CIDRS = [
     "2606:4700:4700::1111/128", "2606:4700:4700::1001/128",
     "2001:4860:4860::8888/128", "2001:4860:4860::8844/128",
@@ -194,6 +212,8 @@ return {
     TMP_RULESET_FOLDER,
     DOH_BLOCK_IPV4_CIDRS,
     DOH_BLOCK_IPV6_CIDRS,
+    DOH_BLOCK_DOMAINS,
+    PRIVATE_RELAY_CANARIES,
     RESERVED_TAGS,
     tag,
     inbound_tag,

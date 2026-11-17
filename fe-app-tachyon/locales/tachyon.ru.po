@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-16 00:54+0300\n"
-"PO-Revision-Date: 2026-11-16 00:54+0300\n"
+"POT-Creation-Date: 2026-11-17 11:34+0300\n"
+"PO-Revision-Date: 2026-11-17 11:34+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -991,6 +991,9 @@ msgstr ""
 
 msgid "Auto (from server link)"
 msgstr "Авто (из ссылки сервера)"
+
+msgid "Auto (on while a section is Fail-Closed)"
+msgstr "Авто (включено, пока есть секция с Fail-Closed)"
 
 msgid "Auto / Adaptive Transformer"
 msgstr "Авто / Адаптивный трансформер (Auto Transformer)"
@@ -3724,6 +3727,12 @@ msgstr "Порог восстановления"
 
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr "Fail-Closed (Блокировка / Kill-switch)"
+
+msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
+msgstr "В секциях %h включён Fail-Closed, поэтому в режиме «Авто» перехват сейчас ВКЛЮЧЁН. Выберите «Выкл», если клиентам нужен свой DNS (например, VPN-приложение)."
+
+msgid "Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?"
+msgstr "В секциях %s включён Fail-Closed. %s Тогда их трафик может уйти напрямую. Всё равно изменить?"
 
 msgid "Fail-Open (Direct bypass)"
 msgstr "Fail-Open (Прямой обход)"
@@ -6746,11 +6755,17 @@ msgstr "Выкл"
 msgid "Off (Allow)"
 msgstr "Выкл (Разрешить)"
 
+msgid "Off now: Fail-Closed is set in sections: %s."
+msgstr "Сейчас выключен: Fail-Closed включён в секциях: %s."
+
 msgid "Offline"
 msgstr "Не отвечает"
 
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
+
+msgid "On"
+msgstr "Вкл"
 
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
@@ -8530,6 +8545,9 @@ msgstr "SNI"
 
 msgid "SNI / Host"
 msgstr "SNI / Хост"
+
+msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgstr "Режим SOCKS вообще не перехватывает трафик LAN, а в режиме TUN трафик уходит напрямую, пока ядро не работает."
 
 msgid "SSH"
 msgstr "SSH"
@@ -11269,6 +11287,12 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 
 msgid "WireGuard private key from your Cloudflare account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare"
+
+msgid "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections."
+msgstr "Без перехвата клиенты со своим DNS получают реальные адреса и минуют доменные секции."
+
+msgid "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections."
+msgstr "Если Tachyon не управляет dnsmasq, клиенты LAN перестают получать ответы через Tachyon и минуют доменные секции."
 
 msgid "Workers"
 msgstr "Количество воркеров"

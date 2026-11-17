@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-16 21:54+0300\n"
-"PO-Revision-Date: 2026-11-16 21:54+0300\n"
+"POT-Creation-Date: 2026-11-17 08:34+0300\n"
+"PO-Revision-Date: 2026-11-17 08:34+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -33,7 +33,7 @@ msgstr ""
 msgid "%s: select an Amnezia .conf file up to 64 KiB"
 msgstr ""
 
-#: src/views/settings.ts:5985
+#: src/views/settings.ts:6074
 msgid "(provider default)"
 msgstr ""
 
@@ -256,15 +256,15 @@ msgstr ""
 msgid "AI & Automated Repair"
 msgstr ""
 
-#: src/views/settings.ts:3310
+#: src/views/settings.ts:3364
 msgid "AI & Watchdog"
 msgstr ""
 
-#: src/views/settings.ts:6003
+#: src/views/settings.ts:6092
 msgid "AI API Key"
 msgstr ""
 
-#: src/views/settings.ts:5934
+#: src/views/settings.ts:6023
 msgid "AI Agent REST API Bearer Token"
 msgstr ""
 
@@ -288,7 +288,7 @@ msgstr ""
 msgid "AI Doctor Diagnosis"
 msgstr ""
 
-#: src/views/settings.ts:5991
+#: src/views/settings.ts:6080
 msgid "AI Doctor Language"
 msgstr ""
 
@@ -302,11 +302,11 @@ msgstr ""
 msgid "AI Doctor failed"
 msgstr ""
 
-#: src/views/settings.ts:5978
+#: src/views/settings.ts:6067
 msgid "AI Model"
 msgstr ""
 
-#: src/views/settings.ts:5960
+#: src/views/settings.ts:6049
 msgid "AI Provider"
 msgstr ""
 
@@ -348,7 +348,7 @@ msgstr ""
 msgid "AND (all selected conditions must match)"
 msgstr ""
 
-#: src/views/settings.ts:6004
+#: src/views/settings.ts:6093
 msgid "API Key for OpenAI (sk-...), Anthropic, DeepSeek, OpenRouter, or Gemini (optional for Ollama / LM Studio)"
 msgstr ""
 
@@ -687,8 +687,8 @@ msgid "Add an outbound source"
 msgstr ""
 
 #: src/views/section.ts:3755
-#: src/views/settings.ts:605
-#: src/views/settings.ts:677
+#: src/views/settings.ts:659
+#: src/views/settings.ts:731
 msgid "Add at least one DNS server"
 msgstr ""
 
@@ -767,7 +767,7 @@ msgstr ""
 msgid "Address type"
 msgstr ""
 
-#: src/views/settings.ts:6683
+#: src/views/settings.ts:6781
 msgid "Administrator Chat IDs"
 msgstr ""
 
@@ -796,7 +796,7 @@ msgid "Advanced Mode"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2133
-#: src/views/settings.ts:3311
+#: src/views/settings.ts:3365
 msgid "Advanced System"
 msgstr ""
 
@@ -886,11 +886,11 @@ msgstr ""
 msgid "All URLs must respond (worst latency)"
 msgstr ""
 
-#: src/views/settings.ts:7282
+#: src/views/settings.ts:7380
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr ""
 
-#: src/views/settings.ts:5536
+#: src/views/settings.ts:5618
 msgid "All components"
 msgstr ""
 
@@ -1037,11 +1037,11 @@ msgstr ""
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr ""
 
-#: src/views/settings.ts:5949
+#: src/views/settings.ts:6038
 msgid "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations."
 msgstr ""
 
-#: src/views/settings.ts:4711
+#: src/views/settings.ts:4772
 msgid "Allows access to YACD from the WAN. Make sure to open the appropriate port in your firewall."
 msgstr ""
 
@@ -1079,9 +1079,9 @@ msgstr ""
 msgid "Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."
 msgstr ""
 
-#: src/views/settings.ts:2964
-#: src/views/settings.ts:3013
-#: src/views/settings.ts:3236
+#: src/views/settings.ts:3018
+#: src/views/settings.ts:3067
+#: src/views/settings.ts:3290
 msgid "Always visible"
 msgstr ""
 
@@ -1257,7 +1257,7 @@ msgstr ""
 msgid "Apply Best Match"
 msgstr ""
 
-#: src/views/settings.ts:2391
+#: src/views/settings.ts:2445
 msgid "Apply Configuration"
 msgstr ""
 
@@ -1296,7 +1296,7 @@ msgstr ""
 msgid "Applying fix"
 msgstr ""
 
-#: src/views/settings.ts:5058
+#: src/views/settings.ts:5140
 msgid "Applying rules"
 msgstr ""
 
@@ -1318,7 +1318,7 @@ msgstr ""
 msgid "Assigned Devices (MAC / IP)"
 msgstr ""
 
-#: src/views/settings.ts:6692
+#: src/views/settings.ts:6790
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
@@ -1402,7 +1402,7 @@ msgstr ""
 msgid "Auto (by rules)"
 msgstr ""
 
-#: src/views/settings.ts:5789
+#: src/views/settings.ts:5878
 msgid "Auto (cooperative with SQM/CAKE)"
 msgstr ""
 
@@ -1410,12 +1410,16 @@ msgstr ""
 msgid "Auto (domain pool / ClientHello clone)"
 msgstr ""
 
-#: src/views/settings.ts:6994
+#: src/views/settings.ts:7092
 msgid "Auto (follow LuCI)"
 msgstr ""
 
 #: src/views/section.ts:16639
 msgid "Auto (from server link)"
+msgstr ""
+
+#: src/views/settings.ts:4860
+msgid "Auto (on while a section is Fail-Closed)"
 msgstr ""
 
 #: src/tachyon/connectionWizard.ts:4042
@@ -1469,7 +1473,7 @@ msgstr ""
 msgid "Auto-TTL (Calculated from kernel RTT hops)"
 msgstr ""
 
-#: src/views/settings.ts:3420
+#: src/views/settings.ts:3474
 msgid "Auto-Tune & Benchmark DNS"
 msgstr ""
 
@@ -1504,15 +1508,15 @@ msgstr ""
 msgid "Auto-detected Domains"
 msgstr ""
 
-#: src/views/settings.ts:6435
+#: src/views/settings.ts:6533
 msgid "Auto-detected domains"
 msgstr ""
 
-#: src/views/settings.ts:6292
+#: src/views/settings.ts:6390
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr ""
 
-#: src/views/settings.ts:5660
+#: src/views/settings.ts:5749
 msgid "Auto-failover of proxy sections"
 msgstr ""
 
@@ -1540,7 +1544,7 @@ msgstr ""
 msgid "Auto-update Subscription"
 msgstr ""
 
-#: src/views/settings.ts:5414
+#: src/views/settings.ts:5496
 msgid "Auto-update mode"
 msgstr ""
 
@@ -1577,15 +1581,15 @@ msgstr ""
 msgid "Automatic User-Agent selection"
 msgstr ""
 
-#: src/views/settings.ts:4572
+#: src/views/settings.ts:4633
 msgid "Automatic WAN Failover"
 msgstr ""
 
-#: src/views/settings.ts:5357
+#: src/views/settings.ts:5439
 msgid "Automatic component update checks"
 msgstr ""
 
-#: src/views/settings.ts:5403
+#: src/views/settings.ts:5485
 msgid "Automatic component updates"
 msgstr ""
 
@@ -1597,11 +1601,11 @@ msgstr ""
 msgid "Automatically allow inbound WAN traffic to the server port in nftables firewall"
 msgstr ""
 
-#: src/views/settings.ts:3416
+#: src/views/settings.ts:3470
 msgid "Automatically benchmark latency, packet loss, and reachability reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
 msgstr ""
 
-#: src/views/settings.ts:5358
+#: src/views/settings.ts:5440
 msgid "Automatically check installed components for new versions"
 msgstr ""
 
@@ -1609,7 +1613,7 @@ msgstr ""
 msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings)."
 msgstr ""
 
-#: src/views/settings.ts:5404
+#: src/views/settings.ts:5486
 msgid "Automatically download and install new versions of components"
 msgstr ""
 
@@ -1617,7 +1621,7 @@ msgstr ""
 msgid "Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings."
 msgstr ""
 
-#: src/views/settings.ts:6239
+#: src/views/settings.ts:6337
 msgid "Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."
 msgstr ""
 
@@ -1625,7 +1629,7 @@ msgstr ""
 msgid "Automatically open port in router firewall (nftables)"
 msgstr ""
 
-#: src/views/settings.ts:4573
+#: src/views/settings.ts:4634
 msgid "Automatically probe the primary WAN interface and switch the default route to the backup WAN interface (e.g. 4G modem or secondary router) when the primary provider loses connectivity, without breaking routing or firewall rules."
 msgstr ""
 
@@ -1708,7 +1712,7 @@ msgstr ""
 msgid "Awaiting measurement"
 msgstr ""
 
-#: src/views/settings.ts:1096
+#: src/views/settings.ts:1150
 msgid "B"
 msgstr ""
 
@@ -1732,7 +1736,7 @@ msgstr ""
 msgid "Background:"
 msgstr ""
 
-#: src/views/settings.ts:4602
+#: src/views/settings.ts:4663
 msgid "Backup WAN Interface"
 msgstr ""
 
@@ -1755,7 +1759,7 @@ msgid "Balancer Type"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1767
-#: src/views/settings.ts:1810
+#: src/views/settings.ts:1864
 #: src/views/tachyon.ts:2606
 #: src/views/tachyon.ts:2860
 msgid "Balancers"
@@ -1866,7 +1870,7 @@ msgstr ""
 msgid "BitTorrent / P2P"
 msgstr ""
 
-#: src/views/settings.ts:4818
+#: src/views/settings.ts:4900
 msgid "BitTorrent / P2P Policy"
 msgstr ""
 
@@ -1898,11 +1902,11 @@ msgstr ""
 msgid "Block Ads, Trackers & Windows Telemetry (Hagezi PRO + WinSpy)"
 msgstr ""
 
-#: src/views/settings.ts:4825
+#: src/views/settings.ts:4907
 msgid "Block BitTorrent Traffic"
 msgstr ""
 
-#: src/views/settings.ts:4782
+#: src/views/settings.ts:4843
 msgid "Block DoH"
 msgstr ""
 
@@ -1936,7 +1940,7 @@ msgstr ""
 msgid "Block listed sites (Standard)"
 msgstr ""
 
-#: src/views/settings.ts:4783
+#: src/views/settings.ts:4844
 msgid "Block well-known DNS-over-HTTPS resolver IPs so LAN clients cannot bypass the router DNS"
 msgstr ""
 
@@ -1992,15 +1996,15 @@ msgstr ""
 msgid "Bootstrap DNS"
 msgstr ""
 
-#: src/views/settings.ts:3523
+#: src/views/settings.ts:3577
 msgid "Bootstrap DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:6987
+#: src/views/settings.ts:7085
 msgid "Bot Language"
 msgstr ""
 
-#: src/views/settings.ts:6635
+#: src/views/settings.ts:6733
 msgid "Bot Status"
 msgstr ""
 
@@ -2033,7 +2037,7 @@ msgstr ""
 
 #: src/views/outbounds.ts:4046
 #: src/views/section.ts:4913
-#: src/views/settings.ts:4944
+#: src/views/settings.ts:5026
 msgid "Built-in Script (curl + ucode)"
 msgstr ""
 
@@ -2061,7 +2065,7 @@ msgstr ""
 msgid "By flag emoji from name"
 msgstr ""
 
-#: src/views/settings.ts:5421
+#: src/views/settings.ts:5503
 msgid "By schedule"
 msgstr ""
 
@@ -2082,7 +2086,7 @@ msgstr ""
 msgid "Bypass FakeIP (resolve real IP addresses)"
 msgstr ""
 
-#: src/views/settings.ts:4903
+#: src/views/settings.ts:4985
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr ""
 
@@ -2149,15 +2153,15 @@ msgstr ""
 msgid "CUSTOM DNS → DIRECT"
 msgstr ""
 
-#: src/views/settings.ts:5705
+#: src/views/settings.ts:5794
 msgid "Cache File Path"
 msgstr ""
 
-#: src/views/settings.ts:5345
+#: src/views/settings.ts:5427
 msgid "Cache all built-in lists, databases, and remote lists configured in sections. Recommended if you have plenty of storage space or USB drive."
 msgstr ""
 
-#: src/views/settings.ts:5719
+#: src/views/settings.ts:5808
 msgid "Cache file path cannot be empty"
 msgstr ""
 
@@ -2182,12 +2186,12 @@ msgstr ""
 #: src/views/outbounds.ts:1873
 #: src/views/section.ts:11988
 #: src/views/server.ts:7396
-#: src/views/settings.ts:1024
-#: src/views/settings.ts:1462
-#: src/views/settings.ts:1513
-#: src/views/settings.ts:1613
-#: src/views/settings.ts:1731
-#: src/views/settings.ts:2325
+#: src/views/settings.ts:1078
+#: src/views/settings.ts:1516
+#: src/views/settings.ts:1567
+#: src/views/settings.ts:1667
+#: src/views/settings.ts:1785
+#: src/views/settings.ts:2379
 msgid "Cancel"
 msgstr ""
 
@@ -2356,7 +2360,7 @@ msgstr ""
 msgid "Checking for updates..."
 msgstr ""
 
-#: src/views/settings.ts:2192
+#: src/views/settings.ts:2246
 msgid "Checking transfer code..."
 msgstr ""
 
@@ -2384,8 +2388,8 @@ msgstr ""
 msgid "Checking..."
 msgstr ""
 
-#: src/views/settings.ts:6498
-#: src/views/settings.ts:796
+#: src/views/settings.ts:6596
+#: src/views/settings.ts:850
 msgid "Checking…"
 msgstr ""
 
@@ -2437,7 +2441,7 @@ msgstr ""
 msgid "Choose from server list"
 msgstr ""
 
-#: src/views/settings.ts:4936
+#: src/views/settings.ts:5018
 msgid "Choose how subscriptions are downloaded and parsed. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent retry cascade, full Xray config array parsing, and multi-hop detour chains, automatically falling back to the built-in ucode script if unavailable."
 msgstr ""
 
@@ -2449,7 +2453,7 @@ msgstr ""
 msgid "Choose whether this server listens on all interfaces, only Local (LAN), or a specific External (WAN) interface IP."
 msgstr ""
 
-#: src/views/settings.ts:5415
+#: src/views/settings.ts:5497
 msgid "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)"
 msgstr ""
 
@@ -2558,8 +2562,8 @@ msgstr ""
 msgid "Click to expand section nodes, balancers and conditions"
 msgstr ""
 
-#: src/views/settings.ts:2966
-#: src/views/settings.ts:3238
+#: src/views/settings.ts:3020
+#: src/views/settings.ts:3292
 msgid "Click to hide"
 msgstr ""
 
@@ -2576,8 +2580,8 @@ msgstr ""
 msgid "Click to remove server from selection"
 msgstr ""
 
-#: src/views/settings.ts:2967
-#: src/views/settings.ts:3239
+#: src/views/settings.ts:3021
+#: src/views/settings.ts:3293
 msgid "Click to show"
 msgstr ""
 
@@ -2735,9 +2739,9 @@ msgstr ""
 #: src/views/section.ts:19981
 #: src/views/section.ts:6522
 #: src/views/server.ts:3328
-#: src/views/settings.ts:1161
-#: src/views/settings.ts:2025
-#: src/views/settings.ts:5217
+#: src/views/settings.ts:1215
+#: src/views/settings.ts:2079
+#: src/views/settings.ts:5299
 msgid "Close"
 msgstr ""
 
@@ -2794,7 +2798,7 @@ msgstr ""
 msgid "Cloudflare account / device ID"
 msgstr ""
 
-#: src/views/settings.ts:2217
+#: src/views/settings.ts:2271
 msgid "Code type"
 msgstr ""
 
@@ -2822,7 +2826,7 @@ msgstr ""
 msgid "Comma-separated Outbound Source IDs (leave empty for all sources)"
 msgstr ""
 
-#: src/views/settings.ts:6684
+#: src/views/settings.ts:6782
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
@@ -2856,7 +2860,7 @@ msgstr ""
 msgid "Component update available"
 msgstr ""
 
-#: src/views/settings.ts:5367
+#: src/views/settings.ts:5449
 msgid "Component update check interval"
 msgstr ""
 
@@ -2916,7 +2920,7 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:3483
 #: src/views/section.ts:10694
-#: src/views/settings.ts:1813
+#: src/views/settings.ts:1867
 #: src/views/tachyon.ts:2604
 #: src/views/tachyon.ts:2824
 msgid "Conditions"
@@ -2935,11 +2939,11 @@ msgstr ""
 msgid "Conditions from Pool"
 msgstr ""
 
-#: src/views/settings.ts:5685
+#: src/views/settings.ts:5774
 msgid "Config File Path"
 msgstr ""
 
-#: src/views/settings.ts:5904
+#: src/views/settings.ts:5993
 msgid "Config Snapshots"
 msgstr ""
 
@@ -3157,7 +3161,7 @@ msgstr ""
 msgid "Control URL must start with http:// or https://"
 msgstr ""
 
-#: src/views/settings.ts:4819
+#: src/views/settings.ts:4901
 msgid "Control how BitTorrent and P2P traffic is handled: allow normal routing, force direct via WAN to prevent VPN bans, or block completely."
 msgstr ""
 
@@ -3205,12 +3209,12 @@ msgstr ""
 msgid "Copy Token"
 msgstr ""
 
-#: src/views/settings.ts:1072
-#: src/views/settings.ts:1963
+#: src/views/settings.ts:1126
+#: src/views/settings.ts:2017
 msgid "Copy Transfer Code"
 msgstr ""
 
-#: src/views/settings.ts:1968
+#: src/views/settings.ts:2022
 msgid "Copy a compact transfer code to move routes or the entire configuration to another router."
 msgstr ""
 
@@ -3241,7 +3245,7 @@ msgstr ""
 msgid "Copy report"
 msgstr ""
 
-#: src/views/settings.ts:2101
+#: src/views/settings.ts:2155
 msgid "Copy to Clipboard"
 msgstr ""
 
@@ -3382,7 +3386,7 @@ msgstr ""
 msgid "Custom"
 msgstr ""
 
-#: src/views/settings.ts:6017
+#: src/views/settings.ts:6106
 msgid "Custom API Endpoint URL"
 msgstr ""
 
@@ -3418,11 +3422,11 @@ msgstr ""
 msgid "Custom MTU, e.g. 1500 (leave empty for default)"
 msgstr ""
 
-#: src/views/settings.ts:5971
+#: src/views/settings.ts:6060
 msgid "Custom OpenAI-Compatible API"
 msgstr ""
 
-#: src/views/settings.ts:6018
+#: src/views/settings.ts:6107
 msgid "Custom OpenAI-compatible API endpoint or base URL (e.g. http://192.168.1.100:1234 or http://192.168.1.100:11434/v1/chat/completions). Leave empty to use official provider URL."
 msgstr ""
 
@@ -3554,7 +3558,7 @@ msgstr ""
 msgid "DNS Auto-Tune completed! Optimal stack selected."
 msgstr ""
 
-#: src/views/settings.ts:3415
+#: src/views/settings.ts:3469
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr ""
 
@@ -3562,19 +3566,19 @@ msgstr ""
 msgid "DNS Blocking"
 msgstr ""
 
-#: src/views/settings.ts:3759
+#: src/views/settings.ts:3813
 msgid "DNS Cache Size (entries)"
 msgstr ""
 
-#: src/views/settings.ts:3641
+#: src/views/settings.ts:3695
 msgid "DNS Check Interval"
 msgstr ""
 
-#: src/views/settings.ts:6131
+#: src/views/settings.ts:6229
 msgid "DNS Check Interval (s)"
 msgstr ""
 
-#: src/views/settings.ts:3673
+#: src/views/settings.ts:3727
 msgid "DNS Failures Before Switching"
 msgstr ""
 
@@ -3588,7 +3592,7 @@ msgstr ""
 msgid "DNS Protocol"
 msgstr ""
 
-#: src/views/settings.ts:3472
+#: src/views/settings.ts:3526
 msgid "DNS Protocol Type"
 msgstr ""
 
@@ -3600,7 +3604,7 @@ msgstr ""
 msgid "DNS Resolver for Direct Games & RU Route"
 msgstr ""
 
-#: src/views/settings.ts:3713
+#: src/views/settings.ts:3767
 msgid "DNS Rewrite TTL"
 msgstr ""
 
@@ -3612,23 +3616,23 @@ msgstr ""
 msgid "DNS Server Address"
 msgstr ""
 
-#: src/views/settings.ts:3504
+#: src/views/settings.ts:3558
 msgid "DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:3306
+#: src/views/settings.ts:3360
 msgid "DNS Settings"
 msgstr ""
 
-#: src/views/settings.ts:3693
+#: src/views/settings.ts:3747
 msgid "DNS Successful Checks Before Recovery"
 msgstr ""
 
-#: src/views/settings.ts:3735
+#: src/views/settings.ts:3789
 msgid "DNS Turbo Cache"
 msgstr ""
 
-#: src/views/settings.ts:3661
+#: src/views/settings.ts:3715
 msgid "DNS Unavailability Timeout"
 msgstr ""
 
@@ -3654,17 +3658,17 @@ msgid "DNS on router"
 msgstr ""
 
 #: src/views/section.ts:3726
-#: src/views/settings.ts:3475
+#: src/views/settings.ts:3529
 msgid "DNS over HTTPS (DoH)"
 msgstr ""
 
 #: src/views/section.ts:3728
-#: src/views/settings.ts:3477
+#: src/views/settings.ts:3531
 msgid "DNS over QUIC (DoQ)"
 msgstr ""
 
 #: src/views/section.ts:3727
-#: src/views/settings.ts:3476
+#: src/views/settings.ts:3530
 msgid "DNS over TLS (DoT)"
 msgstr ""
 
@@ -3679,7 +3683,7 @@ msgid "DNS protocol used by the resolver"
 msgstr ""
 
 #: src/views/section.ts:11126
-#: src/views/settings.ts:4061
+#: src/views/settings.ts:4115
 msgid "DNS requests through section"
 msgstr ""
 
@@ -3717,11 +3721,11 @@ msgstr ""
 msgid "DNS server used by the resolver"
 msgstr ""
 
-#: src/views/settings.ts:3524
+#: src/views/settings.ts:3578
 msgid "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup."
 msgstr ""
 
-#: src/views/settings.ts:3436
+#: src/views/settings.ts:3490
 msgid "DNS speed test"
 msgstr ""
 
@@ -3747,7 +3751,7 @@ msgstr ""
 msgid "DNS strategy is ipv6_only without an active IPv6 transport: IPv4-only domains will fail to resolve."
 msgstr ""
 
-#: src/views/settings.ts:4052
+#: src/views/settings.ts:4106
 msgid "DNS through proxy"
 msgstr ""
 
@@ -3810,7 +3814,7 @@ msgstr ""
 msgid "Daily Quota"
 msgstr ""
 
-#: src/views/settings.ts:7058
+#: src/views/settings.ts:7156
 msgid "Daily Report Hour (0-23)"
 msgstr ""
 
@@ -3819,7 +3823,7 @@ msgstr ""
 msgid "Daily Screen Time Quota (minutes)"
 msgstr ""
 
-#: src/views/settings.ts:7047
+#: src/views/settings.ts:7145
 msgid "Daily Status Report"
 msgstr ""
 
@@ -3908,8 +3912,8 @@ msgstr ""
 msgid "Default (BBR)"
 msgstr ""
 
-#: src/views/settings.ts:5805
-#: src/views/settings.ts:5817
+#: src/views/settings.ts:5894
+#: src/views/settings.ts:5906
 msgid "Default (Direct WAN / Default mixed proxy)"
 msgstr ""
 
@@ -3923,11 +3927,11 @@ msgstr ""
 msgid "Default (TCP MD5 / Auto)"
 msgstr ""
 
-#: src/views/settings.ts:6957
+#: src/views/settings.ts:7055
 msgid "Default (auto)"
 msgstr ""
 
-#: src/views/settings.ts:6315
+#: src/views/settings.ts:6413
 msgid "Default (upstream)"
 msgstr ""
 
@@ -3939,7 +3943,7 @@ msgstr ""
 msgid "Default SVG"
 msgstr ""
 
-#: src/views/settings.ts:5560
+#: src/views/settings.ts:5642
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr ""
 
@@ -3953,7 +3957,7 @@ msgstr ""
 msgid "Default vector icon (SVG)"
 msgstr ""
 
-#: src/views/settings.ts:6301
+#: src/views/settings.ts:6399
 msgid "Default: uses Tachyon Core error logs and HTTPS HEAD probes. Adds the detected hostname after repeated Direct failures confirmed at least 120 seconds apart and a successful shared proxy probe."
 msgstr ""
 
@@ -3965,11 +3969,11 @@ msgstr ""
 msgid "Delay between split TCP segments in milliseconds"
 msgstr ""
 
-#: src/views/settings.ts:4556
+#: src/views/settings.ts:4617
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr ""
 
-#: src/views/settings.ts:4563
+#: src/views/settings.ts:4624
 msgid "Delay value cannot be empty"
 msgstr ""
 
@@ -3982,16 +3986,16 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1537
 #: src/views/outbounds.ts:2710
 #: src/views/server.ts:3354
-#: src/views/settings.ts:1525
-#: src/views/settings.ts:1533
+#: src/views/settings.ts:1579
+#: src/views/settings.ts:1587
 msgid "Delete"
 msgstr ""
 
-#: src/views/settings.ts:1493
+#: src/views/settings.ts:1547
 msgid "Delete Snapshot"
 msgstr ""
 
-#: src/views/settings.ts:1498
+#: src/views/settings.ts:1552
 msgid "Delete the snapshot"
 msgstr ""
 
@@ -4065,7 +4069,7 @@ msgstr ""
 msgid "Detect server country"
 msgstr ""
 
-#: src/views/settings.ts:5761
+#: src/views/settings.ts:5850
 msgid "Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC."
 msgstr ""
 
@@ -4155,7 +4159,7 @@ msgstr ""
 msgid "Diagnostics finished with warnings"
 msgstr ""
 
-#: src/views/settings.ts:1416
+#: src/views/settings.ts:1470
 msgid "Diff"
 msgstr ""
 
@@ -4165,7 +4169,7 @@ msgstr ""
 msgid "Direct"
 msgstr ""
 
-#: src/views/settings.ts:4824
+#: src/views/settings.ts:4906
 msgid "Direct (Bypass Proxy / Leak Protection)"
 msgstr ""
 
@@ -4259,7 +4263,7 @@ msgstr ""
 msgid "Disable Direct"
 msgstr ""
 
-#: src/views/settings.ts:4754
+#: src/views/settings.ts:4815
 msgid "Disable QUIC"
 msgstr ""
 
@@ -4271,7 +4275,7 @@ msgstr ""
 msgid "Disable autostart"
 msgstr ""
 
-#: src/views/settings.ts:4755
+#: src/views/settings.ts:4816
 msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming. Tunneled rejects QUIC for proxied traffic; All rejects every UDP/443 outright."
 msgstr ""
 
@@ -4287,7 +4291,7 @@ msgstr ""
 #: src/views/parental.ts:513
 #: src/views/parental.ts:526
 #: src/views/server.ts:7172
-#: src/views/settings.ts:5791
+#: src/views/settings.ts:5880
 msgid "Disabled"
 msgstr ""
 
@@ -4416,7 +4420,7 @@ msgstr ""
 msgid "Doctor repair completed"
 msgstr ""
 
-#: src/views/settings.ts:5000
+#: src/views/settings.ts:5082
 msgid "Does not look like a GitHub token (expected ghp_… / github_pat_… or a 40-hex classic token)"
 msgstr ""
 
@@ -4441,7 +4445,7 @@ msgstr ""
 msgid "Domain lists"
 msgstr ""
 
-#: src/views/settings.ts:6349
+#: src/views/settings.ts:6447
 msgid "Domain test sections"
 msgstr ""
 
@@ -4472,7 +4476,7 @@ msgstr ""
 msgid "Domains & Suffixes"
 msgstr ""
 
-#: src/views/settings.ts:6394
+#: src/views/settings.ts:6492
 msgid "Domains and subdomains that should never be automatically proxied by Smart Detect (e.g. yandex.net, mail.ru, vk.com)."
 msgstr ""
 
@@ -4491,7 +4495,7 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
-#: src/views/settings.ts:5650
+#: src/views/settings.ts:5732
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
@@ -4512,7 +4516,7 @@ msgstr ""
 msgid "Download .conf"
 msgstr ""
 
-#: src/views/settings.ts:2063
+#: src/views/settings.ts:2117
 msgid "Download File (.json)"
 msgstr ""
 
@@ -4520,27 +4524,27 @@ msgstr ""
 msgid "Download Subscription via Proxy Section"
 msgstr ""
 
-#: src/views/settings.ts:5613
+#: src/views/settings.ts:5695
 msgid "Download component packages via the selected section"
 msgstr ""
 
-#: src/views/settings.ts:5621
+#: src/views/settings.ts:5703
 msgid "Download components through"
 msgstr ""
 
-#: src/views/settings.ts:5612
+#: src/views/settings.ts:5694
 msgid "Download components through a section"
 msgstr ""
 
-#: src/views/settings.ts:5599
+#: src/views/settings.ts:5681
 msgid "Download lists through"
 msgstr ""
 
-#: src/views/settings.ts:5590
+#: src/views/settings.ts:5672
 msgid "Download lists through a section"
 msgstr ""
 
-#: src/views/settings.ts:5591
+#: src/views/settings.ts:5673
 msgid "Download remote lists and rule sets via the selected section"
 msgstr ""
 
@@ -4572,7 +4576,7 @@ msgstr ""
 msgid "Downloading"
 msgstr ""
 
-#: src/views/settings.ts:5057
+#: src/views/settings.ts:5139
 msgid "Downloading lists"
 msgstr ""
 
@@ -4632,7 +4636,7 @@ msgstr ""
 msgid "Duration format like 1m, 3m, 30s."
 msgstr ""
 
-#: src/views/settings.ts:6277
+#: src/views/settings.ts:6375
 msgid "Dynamic memory cap in MB for Tachyon Core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs)."
 msgstr ""
 
@@ -4644,7 +4648,7 @@ msgstr ""
 msgid "EXCLUDED"
 msgstr ""
 
-#: src/views/settings.ts:4867
+#: src/views/settings.ts:4949
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr ""
 
@@ -4669,7 +4673,7 @@ msgstr ""
 msgid "Edit Outbound Group"
 msgstr ""
 
-#: src/views/settings.ts:5532
+#: src/views/settings.ts:5614
 msgid "Eligible components for auto-update"
 msgstr ""
 
@@ -4677,7 +4681,7 @@ msgstr ""
 msgid "Embedded Tailscale is running"
 msgstr ""
 
-#: src/views/settings.ts:6104
+#: src/views/settings.ts:6193
 msgid "Emergency Direct Bypass"
 msgstr ""
 
@@ -4696,23 +4700,23 @@ msgstr ""
 msgid "Enable"
 msgstr ""
 
-#: src/views/settings.ts:5948
+#: src/views/settings.ts:6037
 msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
 msgstr ""
 
-#: src/views/settings.ts:6238
+#: src/views/settings.ts:6336
 msgid "Enable Adaptive Intervals"
 msgstr ""
 
-#: src/views/settings.ts:6252
+#: src/views/settings.ts:6350
 msgid "Enable Anomaly Detection"
 msgstr ""
 
-#: src/views/settings.ts:6196
+#: src/views/settings.ts:6294
 msgid "Enable Config Validation"
 msgstr ""
 
-#: src/views/settings.ts:6118
+#: src/views/settings.ts:6216
 msgid "Enable DNS Continuous Check"
 msgstr ""
 
@@ -4732,11 +4736,11 @@ msgstr ""
 msgid "Enable ESP UDP Tunnel"
 msgstr ""
 
-#: src/views/settings.ts:6143
+#: src/views/settings.ts:6241
 msgid "Enable Firewall Reload Dedup"
 msgstr ""
 
-#: src/views/settings.ts:6210
+#: src/views/settings.ts:6308
 msgid "Enable Graceful Degradation"
 msgstr ""
 
@@ -4756,7 +4760,7 @@ msgstr ""
 msgid "Enable Health Check"
 msgstr ""
 
-#: src/views/settings.ts:6157
+#: src/views/settings.ts:6255
 msgid "Enable Health Metrics"
 msgstr ""
 
@@ -4768,27 +4772,27 @@ msgstr ""
 msgid "Enable Mixed Proxy Authentication"
 msgstr ""
 
-#: src/views/settings.ts:4484
+#: src/views/settings.ts:4545
 msgid "Enable Output Network Interface"
 msgstr ""
 
-#: src/views/settings.ts:6059
+#: src/views/settings.ts:6148
 msgid "Enable Proxy Health Monitor"
 msgstr ""
 
-#: src/views/settings.ts:6031
+#: src/views/settings.ts:6120
 msgid "Enable RAG (Knowledge Base Retrieval)"
 msgstr ""
 
-#: src/views/settings.ts:6182
+#: src/views/settings.ts:6280
 msgid "Enable Smart Cooldowns"
 msgstr ""
 
-#: src/views/settings.ts:6291
+#: src/views/settings.ts:6389
 msgid "Enable Smart Detect"
 msgstr ""
 
-#: src/views/settings.ts:6645
+#: src/views/settings.ts:6743
 msgid "Enable Telegram Bot"
 msgstr ""
 
@@ -4801,23 +4805,23 @@ msgstr ""
 msgid "Enable Virtual HTTP/3 Wrapper (vHTTP)"
 msgstr ""
 
-#: src/views/settings.ts:3614
+#: src/views/settings.ts:3668
 msgid "Enable WAN DNS Fallback for Bootstrap DNS"
 msgstr ""
 
-#: src/views/settings.ts:3603
+#: src/views/settings.ts:3657
 msgid "Enable WAN DNS Fallback for Main DNS"
 msgstr ""
 
-#: src/views/settings.ts:5921
+#: src/views/settings.ts:6010
 msgid "Enable Watchdog"
 msgstr ""
 
-#: src/views/settings.ts:4700
+#: src/views/settings.ts:4761
 msgid "Enable YACD"
 msgstr ""
 
-#: src/views/settings.ts:4710
+#: src/views/settings.ts:4771
 msgid "Enable YACD WAN Access"
 msgstr ""
 
@@ -4825,7 +4829,7 @@ msgstr ""
 msgid "Enable authentication"
 msgstr ""
 
-#: src/views/settings.ts:4953
+#: src/views/settings.ts:5035
 msgid "Enable automatic updates for remote lists and rule sets"
 msgstr ""
 
@@ -4837,7 +4841,7 @@ msgstr ""
 msgid "Enable built-in DNS resolver for domains handled by this section"
 msgstr ""
 
-#: src/views/settings.ts:4952
+#: src/views/settings.ts:5034
 msgid "Enable list updates"
 msgstr ""
 
@@ -4861,7 +4865,7 @@ msgstr ""
 msgid "Enabled (MIPS Eco)"
 msgstr ""
 
-#: src/views/settings.ts:5790
+#: src/views/settings.ts:5879
 msgid "Enabled (always prioritize)"
 msgstr ""
 
@@ -4869,15 +4873,15 @@ msgstr ""
 msgid "Enabled (click to disable)"
 msgstr ""
 
-#: src/views/settings.ts:3748
+#: src/views/settings.ts:3802
 msgid "Enables high-capacity local DNS caching in dnsmasq to accelerate DNS queries and absorb transient latency during service restarts."
 msgstr ""
 
-#: src/views/settings.ts:6646
+#: src/views/settings.ts:6744
 msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
 msgstr ""
 
-#: src/views/settings.ts:5922
+#: src/views/settings.ts:6011
 msgid "Enables the background watchdog process to monitor services and auto-recover on failures."
 msgstr ""
 
@@ -4901,7 +4905,7 @@ msgstr ""
 msgid "End of allowed daily access window in HH:MM format (24-hour clock)."
 msgstr ""
 
-#: src/views/settings.ts:5482
+#: src/views/settings.ts:5564
 msgid "End of the daily update window in HH:MM (24h). An end earlier than the start means the window crosses midnight, e.g. 22:00 to 06:00. Empty means one hour after the start."
 msgstr ""
 
@@ -4978,7 +4982,7 @@ msgstr ""
 msgid "Enter a positive whole number in megabytes"
 msgstr ""
 
-#: src/views/settings.ts:1598
+#: src/views/settings.ts:1652
 msgid "Enter a snapshot name or leave the field empty to assign a unique random ID automatically."
 msgstr ""
 
@@ -4994,8 +4998,8 @@ msgstr ""
 msgid "Enter a valid public host and port, and select at least one enabled server."
 msgstr ""
 
-#: src/views/settings.ts:5446
-#: src/views/settings.ts:5457
+#: src/views/settings.ts:5528
+#: src/views/settings.ts:5539
 msgid "Enter a valid time in HH:MM format (00:00 to 23:59)"
 msgstr ""
 
@@ -5005,12 +5009,12 @@ msgstr ""
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr ""
 
-#: src/views/settings.ts:7036
-#: src/views/settings.ts:7039
+#: src/views/settings.ts:7134
+#: src/views/settings.ts:7137
 msgid "Enter an hour from 0 to 23"
 msgstr ""
 
-#: src/views/settings.ts:6657
+#: src/views/settings.ts:6755
 msgid "Enter the API token obtained from @BotFather."
 msgstr ""
 
@@ -5072,8 +5076,8 @@ msgstr ""
 msgid "Error starting DNS benchmark"
 msgstr ""
 
-#: src/views/settings.ts:5304
-#: src/views/settings.ts:5334
+#: src/views/settings.ts:5386
+#: src/views/settings.ts:5416
 msgid "Error updating lists:"
 msgstr ""
 
@@ -5081,7 +5085,7 @@ msgstr ""
 msgid "Errors"
 msgstr ""
 
-#: src/views/settings.ts:3805
+#: src/views/settings.ts:3859
 msgid "Estimated RAM usage (max):"
 msgstr ""
 
@@ -5231,7 +5235,7 @@ msgstr ""
 msgid "Excluded devices"
 msgstr ""
 
-#: src/views/settings.ts:6393
+#: src/views/settings.ts:6491
 msgid "Excluded domains from Smart Detect"
 msgstr ""
 
@@ -5252,7 +5256,7 @@ msgstr ""
 msgid "Expand all"
 msgstr ""
 
-#: src/views/settings.ts:6380
+#: src/views/settings.ts:6478
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
@@ -5289,7 +5293,7 @@ msgstr ""
 msgid "Expires"
 msgstr ""
 
-#: src/views/settings.ts:1429
+#: src/views/settings.ts:1483
 msgid "Export"
 msgstr ""
 
@@ -5429,6 +5433,14 @@ msgstr ""
 msgid "Fail-Closed (Block / Kill-switch)"
 msgstr ""
 
+#: src/views/settings.ts:4878
+msgid "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app)."
+msgstr ""
+
+#: src/views/settings.ts:544
+msgid "Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?"
+msgstr ""
+
 #: src/views/section.ts:16660
 msgid "Fail-Open (Direct bypass)"
 msgstr ""
@@ -5455,7 +5467,7 @@ msgstr ""
 msgid "Failed to apply strategy"
 msgstr ""
 
-#: src/views/settings.ts:2383
+#: src/views/settings.ts:2437
 msgid "Failed to apply transfer code"
 msgstr ""
 
@@ -5487,7 +5499,7 @@ msgstr ""
 msgid "Failed to communicate with AI provider"
 msgstr ""
 
-#: src/views/settings.ts:1183
+#: src/views/settings.ts:1237
 msgid "Failed to compare snapshot"
 msgstr ""
 
@@ -5504,7 +5516,7 @@ msgstr ""
 msgid "Failed to copy!"
 msgstr ""
 
-#: src/views/settings.ts:1314
+#: src/views/settings.ts:1368
 msgid "Failed to delete snapshot"
 msgstr ""
 
@@ -5526,7 +5538,7 @@ msgstr ""
 msgid "Failed to execute IP and DNS leak check"
 msgstr ""
 
-#: src/views/settings.ts:1272
+#: src/views/settings.ts:1326
 msgid "Failed to export snapshot"
 msgstr ""
 
@@ -5552,7 +5564,7 @@ msgstr ""
 msgid "Failed to generate bug report"
 msgstr ""
 
-#: src/views/settings.ts:1947
+#: src/views/settings.ts:2001
 msgid "Failed to generate transfer code"
 msgstr ""
 
@@ -5576,7 +5588,7 @@ msgstr ""
 msgid "Failed to get fuzzer strategies"
 msgstr ""
 
-#: src/views/settings.ts:1787
+#: src/views/settings.ts:1841
 msgid "Failed to import snapshot profile"
 msgstr ""
 
@@ -5592,7 +5604,7 @@ msgstr ""
 msgid "Failed to load release description."
 msgstr ""
 
-#: src/views/settings.ts:1549
+#: src/views/settings.ts:1603
 msgid "Failed to load snapshots"
 msgstr ""
 
@@ -5637,7 +5649,7 @@ msgstr ""
 msgid "Failed to reset fuzzer patterns"
 msgstr ""
 
-#: src/views/settings.ts:998
+#: src/views/settings.ts:1052
 msgid "Failed to reset settings"
 msgstr ""
 
@@ -5646,12 +5658,12 @@ msgstr ""
 msgid "Failed to restore native internet"
 msgstr ""
 
-#: src/views/settings.ts:1299
+#: src/views/settings.ts:1353
 msgid "Failed to restore snapshot"
 msgstr ""
 
-#: src/views/settings.ts:7231
-#: src/views/settings.ts:7308
+#: src/views/settings.ts:7329
+#: src/views/settings.ts:7406
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
@@ -5663,7 +5675,7 @@ msgstr ""
 msgid "Failed to save patterns"
 msgstr ""
 
-#: src/views/settings.ts:1577
+#: src/views/settings.ts:1631
 msgid "Failed to save snapshot"
 msgstr ""
 
@@ -5677,7 +5689,7 @@ msgstr ""
 msgid "Failed to start benchmark"
 msgstr ""
 
-#: src/views/settings.ts:6578
+#: src/views/settings.ts:6676
 msgid "Failed to start bot"
 msgstr ""
 
@@ -5690,7 +5702,7 @@ msgstr ""
 msgid "Failed to start service check."
 msgstr ""
 
-#: src/views/settings.ts:878
+#: src/views/settings.ts:932
 msgid "Failed to start watchdog"
 msgstr ""
 
@@ -5698,7 +5710,7 @@ msgstr ""
 msgid "Failed to stop DNS benchmark"
 msgstr ""
 
-#: src/views/settings.ts:6592
+#: src/views/settings.ts:6690
 msgid "Failed to stop bot"
 msgstr ""
 
@@ -5706,7 +5718,7 @@ msgstr ""
 msgid "Failed to stop fuzzer"
 msgstr ""
 
-#: src/views/settings.ts:892
+#: src/views/settings.ts:946
 msgid "Failed to stop watchdog"
 msgstr ""
 
@@ -5757,11 +5769,11 @@ msgstr ""
 msgid "Failover Health Check URL"
 msgstr ""
 
-#: src/views/settings.ts:4634
+#: src/views/settings.ts:4695
 msgid "Failover Threshold (failed checks)"
 msgstr ""
 
-#: src/views/settings.ts:5672
+#: src/views/settings.ts:5761
 msgid "Failover failure threshold"
 msgstr ""
 
@@ -5885,23 +5897,23 @@ msgstr ""
 msgid "Fallback DNS"
 msgstr ""
 
-#: src/views/settings.ts:3539
+#: src/views/settings.ts:3593
 msgid "Fallback DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:3555
+#: src/views/settings.ts:3609
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). DoH/DoT URLs are not allowed here."
 msgstr ""
 
-#: src/views/settings.ts:3559
+#: src/views/settings.ts:3613
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr ""
 
-#: src/views/settings.ts:7012
+#: src/views/settings.ts:7110
 msgid "Fallback SOCKS5 Proxy"
 msgstr ""
 
-#: src/views/settings.ts:4603
+#: src/views/settings.ts:4664
 msgid "Fallback internet interface (e.g. wan2, wwan, usb, tethering) activated when the primary WAN fails."
 msgstr ""
 
@@ -5930,7 +5942,7 @@ msgstr ""
 msgid "Fast (>1MB/s)"
 msgstr ""
 
-#: src/views/settings.ts:6119
+#: src/views/settings.ts:6217
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr ""
 
@@ -5950,7 +5962,7 @@ msgstr ""
 msgid "Fastest (Lowest RTT)"
 msgstr ""
 
-#: src/views/settings.ts:1816
+#: src/views/settings.ts:1870
 msgid "Files"
 msgstr ""
 
@@ -6063,7 +6075,7 @@ msgstr ""
 msgid "Flush Conntrack Table"
 msgstr ""
 
-#: src/views/settings.ts:5049
+#: src/views/settings.ts:5131
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr ""
 
@@ -6083,7 +6095,7 @@ msgstr ""
 msgid "Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile."
 msgstr ""
 
-#: src/views/settings.ts:5773
+#: src/views/settings.ts:5862
 msgid "Forces Tachyon Core to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
 msgstr ""
 
@@ -6156,11 +6168,11 @@ msgstr ""
 msgid "Full System Diagnostic"
 msgstr ""
 
-#: src/views/settings.ts:2206
+#: src/views/settings.ts:2260
 msgid "Full configuration"
 msgstr ""
 
-#: src/views/settings.ts:2007
+#: src/views/settings.ts:2061
 msgid "Full configuration (including system settings)"
 msgstr ""
 
@@ -6188,11 +6200,11 @@ msgstr ""
 msgid "GOOD"
 msgstr ""
 
-#: src/views/settings.ts:4914
+#: src/views/settings.ts:4996
 msgid "Game Console IPs"
 msgstr ""
 
-#: src/views/settings.ts:4902
+#: src/views/settings.ts:4984
 msgid "Game Console Optimizer (NAT Type 1)"
 msgstr ""
 
@@ -6274,8 +6286,8 @@ msgstr ""
 msgid "Generated!"
 msgstr ""
 
-#: src/views/settings.ts:1891
-#: src/views/settings.ts:1906
+#: src/views/settings.ts:1945
+#: src/views/settings.ts:1960
 msgid "Generating transfer code..."
 msgstr ""
 
@@ -6317,7 +6329,7 @@ msgstr ""
 msgid "Get global check"
 msgstr ""
 
-#: src/views/settings.ts:4971
+#: src/views/settings.ts:5053
 msgid "GitHub API Token (optional)"
 msgstr ""
 
@@ -6338,7 +6350,7 @@ msgstr ""
 msgid "Go to Servers tab"
 msgstr ""
 
-#: src/views/settings.ts:5968
+#: src/views/settings.ts:6057
 msgid "Google Gemini API (gemini-2.5-flash / pro)"
 msgstr ""
 
@@ -6351,7 +6363,7 @@ msgstr ""
 #: src/views/section.ts:3472
 #: src/views/section.ts:3534
 #: src/views/section.ts:7487
-#: src/views/settings.ts:2586
+#: src/views/settings.ts:2640
 msgid "Group"
 msgstr ""
 
@@ -6688,7 +6700,7 @@ msgstr ""
 msgid "Higher-level check interval"
 msgstr ""
 
-#: src/views/settings.ts:3651
+#: src/views/settings.ts:3705
 msgid "Higher-priority DNS Check"
 msgstr ""
 
@@ -6702,7 +6714,7 @@ msgstr ""
 msgid "History cleared"
 msgstr ""
 
-#: src/views/settings.ts:6720
+#: src/views/settings.ts:6818
 msgid "Home Router / Office / Dacha"
 msgstr ""
 
@@ -6727,15 +6739,15 @@ msgstr ""
 msgid "Hosts Lists Update Interval"
 msgstr ""
 
-#: src/views/settings.ts:7059
+#: src/views/settings.ts:7157
 msgid "Hour of the day to send the daily report (default: 8)."
 msgstr ""
 
-#: src/views/settings.ts:7098
+#: src/views/settings.ts:7196
 msgid "Hour when quiet hours begin (default: 23)."
 msgstr ""
 
-#: src/views/settings.ts:7124
+#: src/views/settings.ts:7222
 msgid "Hour when quiet hours end (default: 7)."
 msgstr ""
 
@@ -6743,7 +6755,7 @@ msgstr ""
 msgid "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated."
 msgstr ""
 
-#: src/views/settings.ts:6171
+#: src/views/settings.ts:6269
 msgid "How many hours of metrics to keep (default 24)."
 msgstr ""
 
@@ -6767,23 +6779,23 @@ msgstr ""
 msgid "How often the currently selected server is checked"
 msgstr ""
 
-#: src/views/settings.ts:6132
+#: src/views/settings.ts:6230
 msgid "How often to check DNS health in seconds (default 180)."
 msgstr ""
 
-#: src/views/settings.ts:6738
+#: src/views/settings.ts:6836
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
-#: src/views/settings.ts:6073
+#: src/views/settings.ts:6162
 msgid "How often to check proxy health in seconds (fast tier, default 60)."
 msgstr ""
 
-#: src/views/settings.ts:3642
+#: src/views/settings.ts:3696
 msgid "How often to check the active DNS servers."
 msgstr ""
 
-#: src/views/settings.ts:3652
+#: src/views/settings.ts:3706
 msgid "How often to check whether a higher-priority DNS server has recovered."
 msgstr ""
 
@@ -6840,7 +6852,7 @@ msgstr ""
 msgid "IP Block (TCP SYN Timeout)"
 msgstr ""
 
-#: src/views/settings.ts:4623
+#: src/views/settings.ts:4684
 msgid "IP addresses pinged through the primary WAN interface to verify internet connectivity (default: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
 msgstr ""
 
@@ -7002,11 +7014,11 @@ msgstr ""
 msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development!"
 msgstr ""
 
-#: src/views/settings.ts:3615
+#: src/views/settings.ts:3669
 msgid "If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr ""
 
-#: src/views/settings.ts:3604
+#: src/views/settings.ts:3658
 msgid "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr ""
 
@@ -7014,18 +7026,18 @@ msgstr ""
 msgid "If omitted, an interactive login URL is printed in the service logs."
 msgstr ""
 
-#: src/views/settings.ts:6211
+#: src/views/settings.ts:6309
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr ""
 
-#: src/views/settings.ts:5420
+#: src/views/settings.ts:5502
 msgid "Immediately upon release"
 msgstr ""
 
 #: src/views/section.ts:11743
 #: src/views/section.ts:11765
 #: src/views/section.ts:11855
-#: src/views/settings.ts:1793
+#: src/views/settings.ts:1847
 msgid "Import"
 msgstr ""
 
@@ -7058,11 +7070,11 @@ msgstr ""
 msgid "Import OpenVPN settings from .ovpn or .conf file"
 msgstr ""
 
-#: src/views/settings.ts:1066
+#: src/views/settings.ts:1120
 msgid "Import Profile"
 msgstr ""
 
-#: src/views/settings.ts:1710
+#: src/views/settings.ts:1764
 msgid "Import Snapshot Profile"
 msgstr ""
 
@@ -7401,15 +7413,15 @@ msgstr ""
 msgid "Instant SBP transfer without fees"
 msgstr ""
 
-#: src/views/settings.ts:4794
+#: src/views/settings.ts:4855
 msgid "Intercept All LAN DNS"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1826
 #: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:564
 #: src/views/section.ts:7417
-#: src/views/settings.ts:5830
-#: src/views/settings.ts:5852
+#: src/views/settings.ts:5919
+#: src/views/settings.ts:5941
 msgid "Interface"
 msgstr ""
 
@@ -7421,11 +7433,11 @@ msgstr ""
 msgid "Interface Mode"
 msgstr ""
 
-#: src/views/settings.ts:4518
+#: src/views/settings.ts:4579
 msgid "Interface Monitoring"
 msgstr ""
 
-#: src/views/settings.ts:4555
+#: src/views/settings.ts:4616
 msgid "Interface Monitoring Delay"
 msgstr ""
 
@@ -7955,7 +7967,7 @@ msgstr ""
 msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr ""
 
-#: src/views/settings.ts:2226
+#: src/views/settings.ts:2280
 msgid "Invalid transfer code"
 msgstr ""
 
@@ -8111,7 +8123,7 @@ msgstr ""
 msgid "Junk size for transport packet"
 msgstr ""
 
-#: src/views/settings.ts:1095
+#: src/views/settings.ts:1149
 msgid "KB"
 msgstr ""
 
@@ -8132,11 +8144,11 @@ msgstr ""
 msgid "Keep only subscription nodes whose name contains any of these keywords (empty keeps all). Case-insensitive, emoji supported."
 msgstr ""
 
-#: src/views/settings.ts:5548
+#: src/views/settings.ts:5630
 msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
 msgstr ""
 
-#: src/views/settings.ts:5584
+#: src/views/settings.ts:5666
 msgid "KeepAlive / Warm Latency (Established Session)"
 msgstr ""
 
@@ -8149,7 +8161,7 @@ msgstr ""
 msgid "KeepaliveTimeout (s)"
 msgstr ""
 
-#: src/views/settings.ts:3736
+#: src/views/settings.ts:3790
 msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
 msgstr ""
 
@@ -8223,7 +8235,7 @@ msgstr ""
 msgid "LIVE CONNECTIVITY PROBER"
 msgstr ""
 
-#: src/views/settings.ts:5970
+#: src/views/settings.ts:6059
 msgid "LM Studio (Local PC / Server)"
 msgstr ""
 
@@ -8231,11 +8243,11 @@ msgstr ""
 msgid "LOCAL LAN"
 msgstr ""
 
-#: src/views/settings.ts:5992
+#: src/views/settings.ts:6081
 msgid "Language for AI Doctor diagnosis responses"
 msgstr ""
 
-#: src/views/settings.ts:6988
+#: src/views/settings.ts:7086
 msgid "Language for Telegram bot replies and notifications."
 msgstr ""
 
@@ -8257,7 +8269,7 @@ msgstr ""
 msgid "Latency"
 msgstr ""
 
-#: src/views/settings.ts:5576
+#: src/views/settings.ts:5658
 msgid "Latency Measurement Mode"
 msgstr ""
 
@@ -8278,7 +8290,7 @@ msgstr ""
 msgid "Latency difference threshold in milliseconds to switch server"
 msgstr ""
 
-#: src/views/settings.ts:5559
+#: src/views/settings.ts:5641
 msgid "Latency test URL"
 msgstr ""
 
@@ -8358,7 +8370,7 @@ msgstr ""
 msgid "Links"
 msgstr ""
 
-#: src/views/settings.ts:5011
+#: src/views/settings.ts:5093
 msgid "List Update Frequency"
 msgstr ""
 
@@ -8366,7 +8378,7 @@ msgstr ""
 msgid "List must be an HTTP(S) URL or a local .lst / .txt path"
 msgstr ""
 
-#: src/views/settings.ts:6436
+#: src/views/settings.ts:6534
 msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
 msgstr ""
 
@@ -8394,16 +8406,16 @@ msgstr ""
 msgid "Lists"
 msgstr ""
 
-#: src/views/settings.ts:5282
-#: src/views/settings.ts:5290
+#: src/views/settings.ts:5364
+#: src/views/settings.ts:5372
 msgid "Lists and rule sets successfully updated!"
 msgstr ""
 
-#: src/views/settings.ts:5212
+#: src/views/settings.ts:5294
 msgid "Lists update is continuing in the background."
 msgstr ""
 
-#: src/views/settings.ts:5271
+#: src/views/settings.ts:5353
 msgid "Lists update is still running in background. You can check system logs."
 msgstr ""
 
@@ -8457,7 +8469,7 @@ msgstr ""
 msgid "Load an AmneziaWG or WireGuard .conf file to auto-fill all tunnel and obfuscation parameters."
 msgstr ""
 
-#: src/views/settings.ts:2285
+#: src/views/settings.ts:2339
 msgid "Load from File (.json)"
 msgstr ""
 
@@ -8543,11 +8555,11 @@ msgstr ""
 msgid "Local Address"
 msgstr ""
 
-#: src/views/settings.ts:3747
+#: src/views/settings.ts:3801
 msgid "Local DNS Cache"
 msgstr ""
 
-#: src/views/settings.ts:3795
+#: src/views/settings.ts:3849
 msgid "Local DNS caching disabled (0 entries)"
 msgstr ""
 
@@ -8592,7 +8604,7 @@ msgstr ""
 msgid "Location"
 msgstr ""
 
-#: src/views/settings.ts:5742
+#: src/views/settings.ts:5831
 msgid "Log Level"
 msgstr ""
 
@@ -8608,7 +8620,7 @@ msgstr ""
 msgid "Low"
 msgstr ""
 
-#: src/views/settings.ts:5539
+#: src/views/settings.ts:5621
 msgid "LuCI Web UI"
 msgstr ""
 
@@ -8644,7 +8656,7 @@ msgstr ""
 msgid "MASQUE URI Template"
 msgstr ""
 
-#: src/views/settings.ts:1094
+#: src/views/settings.ts:1148
 msgid "MB"
 msgstr ""
 
@@ -8670,7 +8682,7 @@ msgstr ""
 msgid "Main DNS"
 msgstr ""
 
-#: src/views/settings.ts:3505
+#: src/views/settings.ts:3559
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr ""
 
@@ -8678,7 +8690,7 @@ msgstr ""
 msgid "Main Subscription"
 msgstr ""
 
-#: src/views/settings.ts:4585
+#: src/views/settings.ts:4646
 msgid "Main internet interface (e.g. wan). Used by default when reachable."
 msgstr ""
 
@@ -8710,7 +8722,7 @@ msgstr ""
 msgid "Manual URL Reachability Tester"
 msgstr ""
 
-#: src/views/settings.ts:5048
+#: src/views/settings.ts:5130
 msgid "Manual list update"
 msgstr ""
 
@@ -8806,15 +8818,15 @@ msgstr ""
 msgid "Max Streams"
 msgstr ""
 
-#: src/views/settings.ts:5515
+#: src/views/settings.ts:5597
 msgid "Max active clients"
 msgstr ""
 
-#: src/views/settings.ts:5498
+#: src/views/settings.ts:5580
 msgid "Max active connections"
 msgstr ""
 
-#: src/views/settings.ts:6266
+#: src/views/settings.ts:6364
 msgid "Max reconnects per hour before alert (default 10)."
 msgstr ""
 
@@ -8834,7 +8846,7 @@ msgstr ""
 msgid "Maximum allowed online time per guest device per day. When reached, access is blocked until midnight. Enter 0 for unlimited."
 msgstr ""
 
-#: src/views/settings.ts:3760
+#: src/views/settings.ts:3814
 msgid "Maximum number of cached domain entries in dnsmasq (default: 10000 ≈ 1.2 MB RAM). Memory is allocated dynamically per request (~120 B per domain), not pre-allocated upfront. Recommended: 10000 for routers with ≥128 MB RAM, 2500–5000 for 64 MB devices."
 msgstr ""
 
@@ -8846,7 +8858,7 @@ msgstr ""
 msgid "Maximum size of junk packets"
 msgstr ""
 
-#: src/views/settings.ts:3662
+#: src/views/settings.ts:3716
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr ""
 
@@ -8866,11 +8878,11 @@ msgstr ""
 msgid "Memory (RAM)"
 msgstr ""
 
-#: src/views/settings.ts:6276
+#: src/views/settings.ts:6374
 msgid "Memory Limit (MB)"
 msgstr ""
 
-#: src/views/settings.ts:2311
+#: src/views/settings.ts:2365
 msgid "Merge (add to existing routes)"
 msgstr ""
 
@@ -8895,7 +8907,7 @@ msgstr ""
 msgid "Method used to ensure injected fake ClientHello is inspected by DPI but dropped by the destination server."
 msgstr ""
 
-#: src/views/settings.ts:6170
+#: src/views/settings.ts:6268
 msgid "Metrics Retention (hours)"
 msgstr ""
 
@@ -8980,7 +8992,7 @@ msgstr ""
 msgid "Mode"
 msgstr ""
 
-#: src/views/settings.ts:5979
+#: src/views/settings.ts:6068
 msgid "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 msgstr ""
 
@@ -8996,11 +9008,11 @@ msgstr ""
 msgid "Monday"
 msgstr ""
 
-#: src/views/settings.ts:4519
+#: src/views/settings.ts:4580
 msgid "Monitor WAN interfaces for state changes, Multi-WAN switching, and automatic proxy reload"
 msgstr ""
 
-#: src/views/settings.ts:4530
+#: src/views/settings.ts:4591
 msgid "Monitored Interfaces"
 msgstr ""
 
@@ -9008,7 +9020,7 @@ msgstr ""
 msgid "Monitoring"
 msgstr ""
 
-#: src/views/settings.ts:6253
+#: src/views/settings.ts:6351
 msgid "Monitors Tachyon Core reconnect frequency. Alerts if too many reconnects per hour."
 msgstr ""
 
@@ -9022,7 +9034,7 @@ msgstr ""
 msgid "Morph Profile"
 msgstr ""
 
-#: src/views/settings.ts:3066
+#: src/views/settings.ts:3120
 msgid "Move Down"
 msgstr ""
 
@@ -9030,7 +9042,7 @@ msgstr ""
 msgid "Move Down (Lower Priority)"
 msgstr ""
 
-#: src/views/settings.ts:3034
+#: src/views/settings.ts:3088
 msgid "Move Up"
 msgstr ""
 
@@ -9113,7 +9125,7 @@ msgstr ""
 msgid "Multiplexing Level"
 msgstr ""
 
-#: src/views/settings.ts:6695
+#: src/views/settings.ts:6793
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
@@ -9194,7 +9206,7 @@ msgstr ""
 msgid "Netherlands (nl)"
 msgstr ""
 
-#: src/views/settings.ts:3307
+#: src/views/settings.ts:3361
 msgid "Network & Interfaces"
 msgstr ""
 
@@ -9252,7 +9264,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:1739
 #: src/tachyon/tabs/dashboard/initController.ts:2055
 #: src/tachyon/tabs/dashboard/initController.ts:3189
-#: src/views/settings.ts:4759
+#: src/views/settings.ts:4820
 msgid "No"
 msgstr ""
 
@@ -9314,7 +9326,7 @@ msgstr ""
 msgid "No active entries"
 msgstr ""
 
-#: src/views/settings.ts:2472
+#: src/views/settings.ts:2526
 msgid "No active routing sections found."
 msgstr ""
 
@@ -9385,11 +9397,11 @@ msgstr ""
 msgid "No diagnostic history available yet."
 msgstr ""
 
-#: src/views/settings.ts:1131
+#: src/views/settings.ts:1185
 msgid "No differences with active configuration (secrets masked)."
 msgstr ""
 
-#: src/views/settings.ts:6453
+#: src/views/settings.ts:6551
 msgid "No domains detected yet"
 msgstr ""
 
@@ -9472,7 +9484,7 @@ msgstr ""
 msgid "No servers matched."
 msgstr ""
 
-#: src/views/settings.ts:1340
+#: src/views/settings.ts:1394
 msgid "No snapshots yet"
 msgstr ""
 
@@ -9519,7 +9531,7 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:3934
 #: src/tachyon/studioDeck.ts:3938
 #: src/tachyon/tabs/dashboard/initController.ts:2632
-#: src/views/settings.ts:1805
+#: src/views/settings.ts:1859
 msgid "Nodes"
 msgstr ""
 
@@ -9672,55 +9684,55 @@ msgstr ""
 msgid "Notify in Telegram"
 msgstr ""
 
-#: src/views/settings.ts:6845
+#: src/views/settings.ts:6943
 msgid "Notify on Automatic Updates"
 msgstr ""
 
-#: src/views/settings.ts:6821
+#: src/views/settings.ts:6919
 msgid "Notify on Certificate Warnings"
 msgstr ""
 
-#: src/views/settings.ts:6769
+#: src/views/settings.ts:6867
 msgid "Notify on Core Crashes"
 msgstr ""
 
-#: src/views/settings.ts:6834
+#: src/views/settings.ts:6932
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: src/views/settings.ts:6795
+#: src/views/settings.ts:6893
 msgid "Notify on Server Switches"
 msgstr ""
 
-#: src/views/settings.ts:6782
+#: src/views/settings.ts:6880
 msgid "Notify on Service Restarts"
 msgstr ""
 
-#: src/views/settings.ts:6808
+#: src/views/settings.ts:6906
 msgid "Notify on Subscription Updates"
 msgstr ""
 
-#: src/views/settings.ts:4635
+#: src/views/settings.ts:4696
 msgid "Number of consecutive failed checks before switching to the backup WAN (1-30, default: 3)."
 msgstr ""
 
-#: src/views/settings.ts:3674
+#: src/views/settings.ts:3728
 msgid "Number of consecutive failed checks required before switching DNS servers."
 msgstr ""
 
-#: src/views/settings.ts:5673
+#: src/views/settings.ts:5762
 msgid "Number of consecutive failed probes before switching sections"
 msgstr ""
 
-#: src/views/settings.ts:6084
+#: src/views/settings.ts:6173
 msgid "Number of consecutive failures before restarting (default 3)."
 msgstr ""
 
-#: src/views/settings.ts:4649
+#: src/views/settings.ts:4710
 msgid "Number of consecutive successful checks on the primary WAN before switching back from backup WAN (1-30, default: 3)."
 msgstr ""
 
-#: src/views/settings.ts:3694
+#: src/views/settings.ts:3748
 msgid "Number of consecutive successful checks required before returning to a higher-priority DNS server."
 msgstr ""
 
@@ -9785,19 +9797,28 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:5800
 #: src/views/outbounds.ts:5848
 #: src/views/server.ts:6087
+#: src/views/settings.ts:4862
 msgid "Off"
 msgstr ""
 
-#: src/views/settings.ts:4823
+#: src/views/settings.ts:4905
 msgid "Off (Allow)"
+msgstr ""
+
+#: src/views/settings.ts:6208
+msgid "Off now: Fail-Closed is set in sections: %s."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2949
 msgid "Offline"
 msgstr ""
 
-#: src/views/settings.ts:5969
+#: src/views/settings.ts:6058
 msgid "Ollama (Local PC / Server)"
+msgstr ""
+
+#: src/views/settings.ts:4861
+msgid "On"
 msgstr ""
 
 #: src/views/server.ts:7353
@@ -9828,7 +9849,7 @@ msgstr ""
 msgid "Online"
 msgstr ""
 
-#: src/views/settings.ts:4760
+#: src/views/settings.ts:4821
 msgid "Only for proxy"
 msgstr ""
 
@@ -9991,7 +10012,7 @@ msgstr ""
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr ""
 
-#: src/views/settings.ts:7013
+#: src/views/settings.ts:7111
 msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
 msgstr ""
 
@@ -10027,7 +10048,7 @@ msgstr ""
 msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
 msgstr ""
 
-#: src/views/settings.ts:6716
+#: src/views/settings.ts:6814
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr ""
 
@@ -10157,7 +10178,7 @@ msgstr ""
 msgid "Outbounds"
 msgstr ""
 
-#: src/views/settings.ts:4494
+#: src/views/settings.ts:4555
 msgid "Output Network Interface"
 msgstr ""
 
@@ -10179,7 +10200,7 @@ msgstr ""
 msgid "Overwrite existing records (if unchecked, merge with existing records)"
 msgstr ""
 
-#: src/views/settings.ts:4848
+#: src/views/settings.ts:4930
 msgid "P2P Client Ports"
 msgstr ""
 
@@ -10264,7 +10285,7 @@ msgstr ""
 msgid "Page"
 msgstr ""
 
-#: src/views/settings.ts:3494
+#: src/views/settings.ts:3548
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr ""
 
@@ -10336,17 +10357,17 @@ msgstr ""
 msgid "Password for auth-user-pass authentication"
 msgstr ""
 
-#: src/views/settings.ts:1078
-#: src/views/settings.ts:2260
+#: src/views/settings.ts:1132
+#: src/views/settings.ts:2314
 msgid "Paste Transfer Code"
 msgstr ""
 
-#: src/views/settings.ts:2159
-#: src/views/settings.ts:2187
+#: src/views/settings.ts:2213
+#: src/views/settings.ts:2241
 msgid "Paste a tachyon://cfg1/... code above to preview its contents."
 msgstr ""
 
-#: src/views/settings.ts:2265
+#: src/views/settings.ts:2319
 msgid "Paste a transfer code from another Tachyon router, review the preview, and choose how to apply it."
 msgstr ""
 
@@ -10387,15 +10408,15 @@ msgstr ""
 msgid "Path cannot be empty"
 msgstr ""
 
-#: src/views/settings.ts:5723
+#: src/views/settings.ts:5812
 msgid "Path must be absolute (start with /)"
 msgstr ""
 
-#: src/views/settings.ts:5732
+#: src/views/settings.ts:5821
 msgid "Path must contain at least one directory (like /tmp/cache.db)"
 msgstr ""
 
-#: src/views/settings.ts:5727
+#: src/views/settings.ts:5816
 msgid "Path must end with cache.db"
 msgstr ""
 
@@ -10473,7 +10494,7 @@ msgstr ""
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr ""
 
-#: src/views/settings.ts:6060
+#: src/views/settings.ts:6149
 msgid "Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures."
 msgstr ""
 
@@ -10486,11 +10507,11 @@ msgstr ""
 msgid "Persistent Keepalive (s)"
 msgstr ""
 
-#: src/views/settings.ts:6224
+#: src/views/settings.ts:6322
 msgid "Persistent Smart Detect"
 msgstr ""
 
-#: src/views/settings.ts:4972
+#: src/views/settings.ts:5054
 msgid "Personal access token to avoid the 60 req/hour per-IP GitHub API limit during update checks. Leave empty if update checks work fine."
 msgstr ""
 
@@ -10510,7 +10531,7 @@ msgstr ""
 msgid "Pick the fastest server of the tier instead of the first working one. On by default - the first node in the filter order is not necessarily the quickest."
 msgstr ""
 
-#: src/views/settings.ts:4849
+#: src/views/settings.ts:4931
 msgid "Pin P2P policy to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is matched."
 msgstr ""
 
@@ -10547,7 +10568,7 @@ msgstr ""
 msgid "Plain TLS"
 msgstr ""
 
-#: src/views/settings.ts:3540
+#: src/views/settings.ts:3594
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr ""
 
@@ -10597,7 +10618,7 @@ msgstr ""
 msgid "Please wait..."
 msgstr ""
 
-#: src/views/settings.ts:6316
+#: src/views/settings.ts:6414
 msgid "Plus"
 msgstr ""
 
@@ -10609,7 +10630,7 @@ msgstr ""
 msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
 msgstr ""
 
-#: src/views/settings.ts:6304
+#: src/views/settings.ts:6402
 msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
 msgstr ""
 
@@ -10629,11 +10650,11 @@ msgstr ""
 msgid "Policy Summary"
 msgstr ""
 
-#: src/views/settings.ts:6737
+#: src/views/settings.ts:6835
 msgid "Polling Interval (seconds)"
 msgstr ""
 
-#: src/views/settings.ts:6750
+#: src/views/settings.ts:6848
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
@@ -10703,7 +10724,7 @@ msgstr ""
 msgid "Port range start must be less than or equal to end"
 msgstr ""
 
-#: src/views/settings.ts:4891
+#: src/views/settings.ts:4973
 msgid "Port range start must not exceed its end"
 msgstr ""
 
@@ -10716,7 +10737,7 @@ msgstr ""
 msgid "Ports"
 msgstr ""
 
-#: src/views/settings.ts:4887
+#: src/views/settings.ts:4969
 msgid "Ports must be between 1 and 65535"
 msgstr ""
 
@@ -10728,7 +10749,7 @@ msgstr ""
 msgid "Post-Quantum Key Exchange (PQC)"
 msgstr ""
 
-#: src/views/settings.ts:6032
+#: src/views/settings.ts:6121
 msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
 msgstr ""
 
@@ -10740,7 +10761,7 @@ msgstr ""
 msgid "Pre-configured packet desynchronization profile for tachyon-core native desync."
 msgstr ""
 
-#: src/views/settings.ts:5344
+#: src/views/settings.ts:5426
 msgid "Pre-download all preset lists"
 msgstr ""
 
@@ -10814,7 +10835,7 @@ msgstr ""
 msgid "Prefix text"
 msgstr ""
 
-#: src/views/settings.ts:5056
+#: src/views/settings.ts:5138
 msgid "Preparing"
 msgstr ""
 
@@ -10834,7 +10855,7 @@ msgstr ""
 msgid "Prepend a custom badge/prefix to every server imported from this subscription."
 msgstr ""
 
-#: src/views/settings.ts:6405
+#: src/views/settings.ts:6503
 msgid "Preset exclusions for Smart Detect"
 msgstr ""
 
@@ -10858,11 +10879,11 @@ msgstr ""
 msgid "Prevents ISP DNS interference when using foreign resolvers like Cloudflare or Google"
 msgstr ""
 
-#: src/views/settings.ts:6144
+#: src/views/settings.ts:6242
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr ""
 
-#: src/views/settings.ts:2336
+#: src/views/settings.ts:2390
 msgid "Preview Code"
 msgstr ""
 
@@ -10882,7 +10903,7 @@ msgstr ""
 msgid "Primary DNS"
 msgstr ""
 
-#: src/views/settings.ts:4584
+#: src/views/settings.ts:4645
 msgid "Primary WAN Interface"
 msgstr ""
 
@@ -10890,7 +10911,7 @@ msgstr ""
 msgid "Primary routing rule"
 msgstr ""
 
-#: src/views/settings.ts:5785
+#: src/views/settings.ts:5874
 msgid "Prioritizes interactive DNS, VoIP/WebRTC and gaming via DSCP marking in nftables. Works cooperatively with OpenWrt SQM (CAKE/FQ_CoDel) without bufferbloat degradation."
 msgstr ""
 
@@ -11086,15 +11107,15 @@ msgstr ""
 msgid "Proxy / VPN Section"
 msgstr ""
 
-#: src/views/settings.ts:6083
+#: src/views/settings.ts:6172
 msgid "Proxy Fail Threshold"
 msgstr ""
 
-#: src/views/settings.ts:6072
+#: src/views/settings.ts:6161
 msgid "Proxy Health Check Interval (s)"
 msgstr ""
 
-#: src/views/settings.ts:6094
+#: src/views/settings.ts:6183
 msgid "Proxy Health Check URL"
 msgstr ""
 
@@ -11121,7 +11142,7 @@ msgstr ""
 msgid "Proxy Outbound"
 msgstr ""
 
-#: src/views/settings.ts:6948
+#: src/views/settings.ts:7046
 msgid "Proxy Section for Bot"
 msgstr ""
 
@@ -11212,7 +11233,7 @@ msgstr ""
 msgid "QUOTA • TRAFFIC CAP"
 msgstr ""
 
-#: src/views/settings.ts:5784
+#: src/views/settings.ts:5873
 msgid "QoS Priority Engine (DSCP)"
 msgstr ""
 
@@ -11261,15 +11282,15 @@ msgstr ""
 msgid "Quick setup for outbound routing & traffic optimization"
 msgstr ""
 
-#: src/views/settings.ts:7084
+#: src/views/settings.ts:7182
 msgid "Quiet Hours"
 msgstr ""
 
-#: src/views/settings.ts:7123
+#: src/views/settings.ts:7221
 msgid "Quiet Hours End (0-23)"
 msgstr ""
 
-#: src/views/settings.ts:7097
+#: src/views/settings.ts:7195
 msgid "Quiet Hours Start (0-23)"
 msgstr ""
 
@@ -11467,7 +11488,7 @@ msgstr ""
 msgid "Recommended Quick Fixes:"
 msgstr ""
 
-#: src/views/settings.ts:6265
+#: src/views/settings.ts:6363
 msgid "Reconnect Threshold"
 msgstr ""
 
@@ -11475,7 +11496,7 @@ msgstr ""
 msgid "Reconnect WAN"
 msgstr ""
 
-#: src/views/settings.ts:6158
+#: src/views/settings.ts:6256
 msgid "Records proxy/DNS latency and health status in hourly buckets for analysis."
 msgstr ""
 
@@ -11487,7 +11508,7 @@ msgstr ""
 msgid "Recovery Check Interval"
 msgstr ""
 
-#: src/views/settings.ts:4648
+#: src/views/settings.ts:4709
 msgid "Recovery Threshold (successful checks)"
 msgstr ""
 
@@ -11495,7 +11516,7 @@ msgstr ""
 msgid "Red"
 msgstr ""
 
-#: src/views/settings.ts:4795
+#: src/views/settings.ts:4856
 msgid "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected."
 msgstr ""
 
@@ -11650,7 +11671,7 @@ msgstr ""
 msgid "Removed from other sections as global: %s"
 msgstr ""
 
-#: src/views/settings.ts:1147
+#: src/views/settings.ts:1201
 msgid "Removed lines (-):"
 msgstr ""
 
@@ -11662,7 +11683,7 @@ msgstr ""
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr ""
 
-#: src/views/settings.ts:2303
+#: src/views/settings.ts:2357
 msgid "Replace current routes"
 msgstr ""
 
@@ -11677,7 +11698,7 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:566
 #: src/tachyon/tabs/monitoring/initController.ts:717
 #: src/views/dns_speed_test.ts:345
-#: src/views/settings.ts:1036
+#: src/views/settings.ts:1090
 msgid "Reset"
 msgstr ""
 
@@ -11685,9 +11706,9 @@ msgstr ""
 msgid "Reset Bootstrap DNS"
 msgstr ""
 
-#: src/views/settings.ts:1005
-#: src/views/settings.ts:5887
-#: src/views/settings.ts:939
+#: src/views/settings.ts:1059
+#: src/views/settings.ts:5976
+#: src/views/settings.ts:993
 msgid "Reset Settings"
 msgstr ""
 
@@ -11715,7 +11736,7 @@ msgstr ""
 msgid "Reset to default"
 msgstr ""
 
-#: src/views/settings.ts:948
+#: src/views/settings.ts:1002
 msgid "Resetting…"
 msgstr ""
 
@@ -11815,9 +11836,9 @@ msgstr ""
 msgid "Restarts"
 msgstr ""
 
-#: src/views/settings.ts:1173
-#: src/views/settings.ts:1474
-#: src/views/settings.ts:1482
+#: src/views/settings.ts:1227
+#: src/views/settings.ts:1528
+#: src/views/settings.ts:1536
 msgid "Restore"
 msgstr ""
 
@@ -11832,7 +11853,7 @@ msgstr ""
 msgid "Restore Native Internet (Stop Tachyon)"
 msgstr ""
 
-#: src/views/settings.ts:1440
+#: src/views/settings.ts:1494
 msgid "Restore Snapshot"
 msgstr ""
 
@@ -11840,7 +11861,7 @@ msgstr ""
 msgid "Restore config backup"
 msgstr ""
 
-#: src/views/settings.ts:5888
+#: src/views/settings.ts:5977
 msgid "Restores the Tachyon factory defaults: all rules, subscriptions, custom DNS servers and other options will be lost."
 msgstr ""
 
@@ -11919,11 +11940,11 @@ msgstr ""
 msgid "Route IP subnets associated with built-in community lists (e.g. Discord voice/media). Disable this if community subnets overlap with CDN/Anycast networks (such as Cloudflare/Google Cloud) and interfere with unrelated services (e.g. game launchers)."
 msgstr ""
 
-#: src/views/settings.ts:4807
+#: src/views/settings.ts:4889
 msgid "Route IPsec IKEv2 / ESP-in-UDP (UDP 500, 4500) directly via WAN so mobile Wi-Fi Calling works reliably without VPN interference"
 msgstr ""
 
-#: src/views/settings.ts:4662
+#: src/views/settings.ts:4723
 msgid "Route Router's Own Traffic"
 msgstr ""
 
@@ -11947,7 +11968,7 @@ msgstr ""
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr ""
 
-#: src/views/settings.ts:6949
+#: src/views/settings.ts:7047
 msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr ""
 
@@ -11967,11 +11988,11 @@ msgstr ""
 msgid "Route games & Russian services directly via ISP with Yandex DNS (77.88.8.8)"
 msgstr ""
 
-#: src/views/settings.ts:4663
+#: src/views/settings.ts:4724
 msgid "Route local traffic originating directly from the router (e.g. wget, curl, opkg, torrent clients on the router) through Tachyon."
 msgstr ""
 
-#: src/views/settings.ts:4053
+#: src/views/settings.ts:4107
 msgid "Route main DNS requests through the selected section."
 msgstr ""
 
@@ -12046,7 +12067,7 @@ msgstr ""
 msgid "Router DNS queries were observed by the test service."
 msgstr ""
 
-#: src/views/settings.ts:6715
+#: src/views/settings.ts:6813
 msgid "Router Name"
 msgstr ""
 
@@ -12064,7 +12085,7 @@ msgstr ""
 msgid "Router Services Resources (RAM)"
 msgstr ""
 
-#: src/views/settings.ts:4673
+#: src/views/settings.ts:4734
 msgid "Router Traffic Target Section"
 msgstr ""
 
@@ -12089,11 +12110,11 @@ msgstr ""
 msgid "Routes new connections to the node with the lowest (active_connections + 1) × RTT score"
 msgstr ""
 
-#: src/views/settings.ts:2207
+#: src/views/settings.ts:2261
 msgid "Routes only"
 msgstr ""
 
-#: src/views/settings.ts:1990
+#: src/views/settings.ts:2044
 msgid "Routes only (sections, nodes, subscriptions, balancers, conditions)"
 msgstr ""
 
@@ -12139,7 +12160,7 @@ msgstr ""
 msgid "Routing mode"
 msgstr ""
 
-#: src/views/settings.ts:2580
+#: src/views/settings.ts:2634
 msgid "Routing rule target: detected domains are saved to the group's rules, and the group's own logic selects the active member."
 msgstr ""
 
@@ -12271,9 +12292,9 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:220
 #: src/tachyon/tabs/diagnostic/checks/runTachyonCoreCheck.ts:65
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:428
-#: src/views/settings.ts:6526
-#: src/views/settings.ts:6527
-#: src/views/settings.ts:822
+#: src/views/settings.ts:6624
+#: src/views/settings.ts:6625
+#: src/views/settings.ts:876
 msgid "Running"
 msgstr ""
 
@@ -12285,7 +12306,7 @@ msgstr ""
 msgid "Running benchmarks..."
 msgstr ""
 
-#: src/views/settings.ts:7201
+#: src/views/settings.ts:7299
 msgid "Running diagnostics…"
 msgstr ""
 
@@ -12346,6 +12367,10 @@ msgstr ""
 msgid "SNI / Host"
 msgstr ""
 
+#: src/views/settings.ts:4282
+msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
+msgstr ""
+
 #: src/views/conditions.ts:2290
 #: src/views/section.ts:17785
 #: src/views/section.ts:17820
@@ -12396,7 +12421,7 @@ msgstr ""
 #: src/views/section.ts:37
 #: src/views/section.ts:6531
 #: src/views/server.ts:7344
-#: src/views/settings.ts:1622
+#: src/views/settings.ts:1676
 #: src/views/settings.ts:39
 msgid "Save"
 msgstr ""
@@ -12417,16 +12442,16 @@ msgstr ""
 msgid "Save Icon"
 msgstr ""
 
-#: src/views/settings.ts:1060
-#: src/views/settings.ts:1593
+#: src/views/settings.ts:1114
+#: src/views/settings.ts:1647
 msgid "Save Snapshot"
 msgstr ""
 
-#: src/views/settings.ts:5905
+#: src/views/settings.ts:5994
 msgid "Save a snapshot of the working config and restore it later if something breaks."
 msgstr ""
 
-#: src/views/settings.ts:5547
+#: src/views/settings.ts:5629
 msgid "Save component backup before update"
 msgstr ""
 
@@ -12449,7 +12474,7 @@ msgstr ""
 msgid "Scheduled Hours (Time window)"
 msgstr ""
 
-#: src/views/settings.ts:5429
+#: src/views/settings.ts:5511
 msgid "Scheduled auto-update time"
 msgstr ""
 
@@ -12478,19 +12503,19 @@ msgstr ""
 msgid "Secret"
 msgstr ""
 
-#: src/views/settings.ts:4724
+#: src/views/settings.ts:4785
 msgid "Secret key for authenticating access to YACD and Clash API (required when YACD WAN access is enabled, optional for LAN)."
 msgstr ""
 
-#: src/views/settings.ts:4745
+#: src/views/settings.ts:4806
 msgid "Secret key is required when YACD WAN access is enabled"
 msgstr ""
 
-#: src/views/settings.ts:5935
+#: src/views/settings.ts:6024
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr ""
 
-#: src/views/settings.ts:1142
+#: src/views/settings.ts:1196
 msgid "Secrets and credentials are masked as ***. Added lines (+):"
 msgstr ""
 
@@ -12499,7 +12524,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:5653
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:840
 #: src/tachyon/tabs/monitoring/filters.ts:627
-#: src/views/settings.ts:5824
+#: src/views/settings.ts:5913
 #: src/views/tachyon.ts:2814
 msgid "Section"
 msgstr ""
@@ -12588,12 +12613,12 @@ msgstr ""
 msgid "Section traffic rule"
 msgstr ""
 
-#: src/views/settings.ts:5801
+#: src/views/settings.ts:5890
 msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy."
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:5207
-#: src/views/settings.ts:1804
+#: src/views/settings.ts:1858
 #: src/views/tachyon.ts:2603
 #: src/views/tachyon.ts:2809
 msgid "Sections"
@@ -12624,11 +12649,11 @@ msgstr ""
 msgid "Select"
 msgstr ""
 
-#: src/views/settings.ts:5961
+#: src/views/settings.ts:6050
 msgid "Select AI LLM provider for diagnostics"
 msgstr ""
 
-#: src/views/settings.ts:3473
+#: src/views/settings.ts:3527
 msgid "Select DNS protocol to use"
 msgstr ""
 
@@ -12658,7 +12683,7 @@ msgid "Select a network interface"
 msgstr ""
 
 #: src/views/section.ts:17233
-#: src/views/settings.ts:6429
+#: src/views/settings.ts:6527
 msgid "Select a predefined domain list"
 msgstr ""
 
@@ -12675,7 +12700,7 @@ msgid "Select a scenario, paste your subscription URL or proxy links, and click 
 msgstr ""
 
 #: src/views/section.ts:11136
-#: src/views/settings.ts:526
+#: src/views/settings.ts:580
 msgid "Select a section"
 msgstr ""
 
@@ -12700,7 +12725,7 @@ msgstr ""
 msgid "Select an existing URLTest or Priority group"
 msgstr ""
 
-#: src/views/settings.ts:1715
+#: src/views/settings.ts:1769
 msgid "Select an exported .tachyon-profile.json file or paste its JSON contents below."
 msgstr ""
 
@@ -12708,7 +12733,7 @@ msgstr ""
 msgid "Select an intermediate section"
 msgstr ""
 
-#: src/views/settings.ts:6350
+#: src/views/settings.ts:6448
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr ""
 
@@ -12752,15 +12777,15 @@ msgstr ""
 msgid "Select or enter a User-Agent"
 msgstr ""
 
-#: src/views/settings.ts:5706
+#: src/views/settings.ts:5795
 msgid "Select or enter path for tachyon-core cache file. Change this ONLY if you know what you are doing"
 msgstr ""
 
-#: src/views/settings.ts:4915
+#: src/views/settings.ts:4997
 msgid "Select or enter the IP addresses of your game consoles."
 msgstr ""
 
-#: src/views/settings.ts:5686
+#: src/views/settings.ts:5775
 msgid "Select path for tachyon-core config file. Change this ONLY if you know what you are doing"
 msgstr ""
 
@@ -12785,7 +12810,7 @@ msgstr ""
 msgid "Select the Local (LAN) or External (WAN / DDNS) router address advertised in client connection links and QR codes."
 msgstr ""
 
-#: src/views/settings.ts:4531
+#: src/views/settings.ts:4592
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
@@ -12800,15 +12825,15 @@ msgstr ""
 msgid "Select the fastest node"
 msgstr ""
 
-#: src/views/settings.ts:5743
+#: src/views/settings.ts:5832
 msgid "Select the log level for Tachyon Core"
 msgstr ""
 
-#: src/views/settings.ts:4461
+#: src/views/settings.ts:4522
 msgid "Select the network interface from which the traffic will originate"
 msgstr ""
 
-#: src/views/settings.ts:4495
+#: src/views/settings.ts:4556
 msgid "Select the network interface to which the traffic will originate"
 msgstr ""
 
@@ -12820,7 +12845,7 @@ msgstr ""
 msgid "Select the routing Section through which this connection will establish its upstream tunnel."
 msgstr ""
 
-#: src/views/settings.ts:4674
+#: src/views/settings.ts:4735
 msgid "Select the section to route router's own traffic through."
 msgstr ""
 
@@ -12828,7 +12853,7 @@ msgstr ""
 msgid "Select whether to disable the target during the schedule or enable it ONLY during the schedule."
 msgstr ""
 
-#: src/views/settings.ts:5533
+#: src/views/settings.ts:5615
 msgid "Select which components are permitted to update automatically"
 msgstr ""
 
@@ -12853,7 +12878,7 @@ msgstr ""
 msgid "Selected node"
 msgstr ""
 
-#: src/views/settings.ts:6406
+#: src/views/settings.ts:6504
 msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
 msgstr ""
 
@@ -12901,19 +12926,19 @@ msgstr ""
 msgid "Send Telegram notification when a guest device hits its daily time or traffic quota."
 msgstr ""
 
-#: src/views/settings.ts:6822
+#: src/views/settings.ts:6920
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr ""
 
-#: src/views/settings.ts:6770
+#: src/views/settings.ts:6868
 msgid "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored."
 msgstr ""
 
-#: src/views/settings.ts:6835
+#: src/views/settings.ts:6933
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr ""
 
-#: src/views/settings.ts:6783
+#: src/views/settings.ts:6881
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr ""
 
@@ -12921,19 +12946,19 @@ msgstr ""
 msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
 msgstr ""
 
-#: src/views/settings.ts:6796
+#: src/views/settings.ts:6894
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr ""
 
-#: src/views/settings.ts:6846
+#: src/views/settings.ts:6944
 msgid "Send a Telegram notification when components are automatically updated."
 msgstr ""
 
-#: src/views/settings.ts:6809
+#: src/views/settings.ts:6907
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
-#: src/views/settings.ts:7048
+#: src/views/settings.ts:7146
 msgid "Send a daily summary of system health and proxy status to Telegram."
 msgstr ""
 
@@ -12949,11 +12974,11 @@ msgstr ""
 msgid "Send fake low-TTL UDP packets before real UDP/QUIC payload"
 msgstr ""
 
-#: src/views/settings.ts:3493
+#: src/views/settings.ts:3547
 msgid "Sequential (one active at a time)"
 msgstr ""
 
-#: src/views/settings.ts:3489
+#: src/views/settings.ts:3543
 msgid "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT."
 msgstr ""
 
@@ -13209,7 +13234,7 @@ msgid "Service availability check"
 msgstr ""
 
 #: src/views/section.ts:17237
-#: src/views/settings.ts:6410
+#: src/views/settings.ts:6508
 msgid "Service list"
 msgstr ""
 
@@ -13223,7 +13248,7 @@ msgstr ""
 msgid "Services"
 msgstr ""
 
-#: src/views/settings.ts:3308
+#: src/views/settings.ts:3362
 msgid "Services & Access"
 msgstr ""
 
@@ -13262,7 +13287,7 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: src/views/settings.ts:961
+#: src/views/settings.ts:1015
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr ""
 
@@ -13443,11 +13468,11 @@ msgstr ""
 msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
 msgstr ""
 
-#: src/views/settings.ts:5516
+#: src/views/settings.ts:5598
 msgid "Skip scheduled updates while more LAN clients have active connections. 0 disables the limit."
 msgstr ""
 
-#: src/views/settings.ts:5499
+#: src/views/settings.ts:5581
 msgid "Skip scheduled updates while the core has more active connections than this. 0 disables the limit."
 msgstr ""
 
@@ -13463,7 +13488,7 @@ msgstr ""
 msgid "Skipped loopback:"
 msgstr ""
 
-#: src/views/settings.ts:6312
+#: src/views/settings.ts:6410
 msgid "Smart Detect mode"
 msgstr ""
 
@@ -13471,15 +13496,15 @@ msgstr ""
 msgid "Smooth weighted round-robin across top healthy nodes proportional to 1/RTT²"
 msgstr ""
 
-#: src/views/settings.ts:1135
+#: src/views/settings.ts:1189
 msgid "Snapshot Diff"
 msgstr ""
 
-#: src/views/settings.ts:1562
+#: src/views/settings.ts:1616
 msgid "Snapshot name (optional)"
 msgstr ""
 
-#: src/views/settings.ts:1286
+#: src/views/settings.ts:1340
 msgid "Snapshot restored. The service restarts and the page will reload."
 msgstr ""
 
@@ -13554,7 +13579,7 @@ msgstr ""
 msgid "Source MAC (e.g. AA:BB:CC:11:22:33)"
 msgstr ""
 
-#: src/views/settings.ts:4460
+#: src/views/settings.ts:4521
 msgid "Source Network Interface"
 msgstr ""
 
@@ -13664,7 +13689,7 @@ msgstr ""
 msgid "Standard"
 msgstr ""
 
-#: src/views/settings.ts:5583
+#: src/views/settings.ts:5665
 msgid "Standard (Handshake + HTTP HEAD)"
 msgstr ""
 
@@ -13672,7 +13697,7 @@ msgstr ""
 msgid "Standard Item"
 msgstr ""
 
-#: src/views/settings.ts:5577
+#: src/views/settings.ts:5659
 msgid "Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT)."
 msgstr ""
 
@@ -13685,7 +13710,7 @@ msgid "Standby / Direct"
 msgstr ""
 
 #: src/tachyon/appShell.ts:1190
-#: src/views/settings.ts:806
+#: src/views/settings.ts:860
 msgid "Start"
 msgstr ""
 
@@ -13712,7 +13737,7 @@ msgstr ""
 msgid "Start Time (HH:MM)"
 msgstr ""
 
-#: src/views/settings.ts:6508
+#: src/views/settings.ts:6606
 msgid "Start bot"
 msgstr ""
 
@@ -13720,7 +13745,7 @@ msgstr ""
 msgid "Start of allowed daily access window in HH:MM format (24-hour clock)."
 msgstr ""
 
-#: src/views/settings.ts:5465
+#: src/views/settings.ts:5547
 msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
 msgstr ""
 
@@ -13732,7 +13757,7 @@ msgstr ""
 msgid "Starting DNS benchmark..."
 msgstr ""
 
-#: src/views/settings.ts:5148
+#: src/views/settings.ts:5230
 msgid "Starting lists update..."
 msgstr ""
 
@@ -13740,8 +13765,8 @@ msgstr ""
 msgid "Starting..."
 msgstr ""
 
-#: src/views/settings.ts:6571
-#: src/views/settings.ts:871
+#: src/views/settings.ts:6669
+#: src/views/settings.ts:925
 msgid "Starting…"
 msgstr ""
 
@@ -13796,7 +13821,7 @@ msgid "Sticky Hash Components"
 msgstr ""
 
 #: src/tachyon/appShell.ts:1121
-#: src/views/settings.ts:813
+#: src/views/settings.ts:867
 msgid "Stop"
 msgstr ""
 
@@ -13814,7 +13839,7 @@ msgstr ""
 msgid "Stop Tachyon service"
 msgstr ""
 
-#: src/views/settings.ts:6515
+#: src/views/settings.ts:6613
 msgid "Stop bot"
 msgstr ""
 
@@ -13843,8 +13868,8 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runTachyonCoreCheck.ts:66
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:428
 #: src/tachyon/tabs/updates/initController.ts:1082
-#: src/views/settings.ts:6532
-#: src/views/settings.ts:828
+#: src/views/settings.ts:6630
+#: src/views/settings.ts:882
 msgid "Stopped"
 msgstr ""
 
@@ -13853,12 +13878,12 @@ msgstr ""
 msgid "Stopping..."
 msgstr ""
 
-#: src/views/settings.ts:6585
-#: src/views/settings.ts:885
+#: src/views/settings.ts:6683
+#: src/views/settings.ts:939
 msgid "Stopping…"
 msgstr ""
 
-#: src/views/settings.ts:6225
+#: src/views/settings.ts:6323
 msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
 msgstr ""
 
@@ -13902,7 +13927,7 @@ msgstr ""
 msgid "Strict"
 msgstr ""
 
-#: src/views/settings.ts:5772
+#: src/views/settings.ts:5861
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr ""
 
@@ -13944,7 +13969,7 @@ msgstr ""
 
 #: src/views/outbounds.ts:4037
 #: src/views/section.ts:4904
-#: src/views/settings.ts:4935
+#: src/views/settings.ts:5017
 msgid "Subscription Fetch & Parse Engine"
 msgstr ""
 
@@ -14015,7 +14040,7 @@ msgid "Subscription updated."
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:1733
-#: src/views/settings.ts:1807
+#: src/views/settings.ts:1861
 msgid "Subscriptions"
 msgstr ""
 
@@ -14085,7 +14110,7 @@ msgstr ""
 msgid "Support via SBP"
 msgstr ""
 
-#: src/views/settings.ts:7085
+#: src/views/settings.ts:7183
 msgid "Suppress non-critical Telegram notifications during the configured night window."
 msgstr ""
 
@@ -14359,11 +14384,11 @@ msgstr ""
 msgid "TTL for fake TLS packets so they expire before the destination server"
 msgstr ""
 
-#: src/views/settings.ts:3725
+#: src/views/settings.ts:3779
 msgid "TTL must be a positive number"
 msgstr ""
 
-#: src/views/settings.ts:3720
+#: src/views/settings.ts:3774
 msgid "TTL value cannot be empty"
 msgstr ""
 
@@ -14414,7 +14439,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:435
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:446
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2883
-#: src/views/settings.ts:5537
+#: src/views/settings.ts:5619
 msgid "Tachyon"
 msgstr ""
 
@@ -14424,11 +14449,11 @@ msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:875
 #: src/tachyon/tabs/monitoring/render.ts:60
-#: src/views/settings.ts:5538
+#: src/views/settings.ts:5620
 msgid "Tachyon Core"
 msgstr ""
 
-#: src/views/settings.ts:4942
+#: src/views/settings.ts:5024
 msgid "Tachyon Core Binary (Adaptive User-Agent & Xray Chains) (Recommended)"
 msgstr ""
 
@@ -14547,7 +14572,7 @@ msgstr ""
 msgid "Tachyon updated to"
 msgstr ""
 
-#: src/views/settings.ts:5651
+#: src/views/settings.ts:5733
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr ""
 
@@ -14664,7 +14689,7 @@ msgstr ""
 msgid "Telegram Bot"
 msgstr ""
 
-#: src/views/settings.ts:6656
+#: src/views/settings.ts:6754
 msgid "Telegram Bot Token"
 msgstr ""
 
@@ -14672,7 +14697,7 @@ msgstr ""
 msgid "Telegram Channel"
 msgstr ""
 
-#: src/views/settings.ts:7164
+#: src/views/settings.ts:7262
 msgid "Test Connection"
 msgstr ""
 
@@ -14685,7 +14710,7 @@ msgstr ""
 msgid "Test DNS speed"
 msgstr ""
 
-#: src/views/settings.ts:7151
+#: src/views/settings.ts:7249
 msgid "Test Telegram Connection"
 msgstr ""
 
@@ -14760,7 +14785,7 @@ msgstr ""
 msgid "Test service reachability, leaks, routing rules and node stability"
 msgstr ""
 
-#: src/views/settings.ts:3437
+#: src/views/settings.ts:3491
 msgid "Test the selected Main, Bootstrap, and Fallback DNS servers from this router without changing settings. Click a ping for details."
 msgstr ""
 
@@ -14809,7 +14834,7 @@ msgstr ""
 msgid "Testing:"
 msgstr ""
 
-#: src/views/settings.ts:7164
+#: src/views/settings.ts:7262
 msgid "Testing…"
 msgstr ""
 
@@ -14879,8 +14904,8 @@ msgstr ""
 #: src/views/server.ts:3614
 #: src/views/server.ts:3776
 #: src/views/server.ts:6313
-#: src/views/settings.ts:3947
-#: src/views/settings.ts:3988
+#: src/views/settings.ts:4001
+#: src/views/settings.ts:4042
 msgid "This field is required"
 msgstr ""
 
@@ -14900,11 +14925,11 @@ msgstr ""
 msgid "This vpn:// key is an Amnezia Cloud API token without embedded WireGuard keys. Export a .conf file or full container config in the Amnezia app."
 msgstr ""
 
-#: src/views/settings.ts:1010
+#: src/views/settings.ts:1064
 msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
 msgstr ""
 
-#: src/views/settings.ts:1445
+#: src/views/settings.ts:1499
 msgid "This will replace the current Tachyon settings with the snapshot"
 msgstr ""
 
@@ -14962,11 +14987,11 @@ msgstr ""
 msgid "Time Window (Schedule)"
 msgstr ""
 
-#: src/views/settings.ts:3714
+#: src/views/settings.ts:3768
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr ""
 
-#: src/views/settings.ts:5430
+#: src/views/settings.ts:5512
 msgid "Time of day to run scheduled component updates in HH:MM (24h) format, e.g. 04:00"
 msgstr ""
 
@@ -15003,7 +15028,7 @@ msgstr ""
 msgid "Toggle details & servers"
 msgstr ""
 
-#: src/views/settings.ts:6663
+#: src/views/settings.ts:6761
 msgid "Token is required when the bot is enabled"
 msgstr ""
 
@@ -15156,11 +15181,11 @@ msgstr ""
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr ""
 
-#: src/views/settings.ts:2367
+#: src/views/settings.ts:2421
 msgid "Transfer code applied. The service restarts and the page will reload."
 msgstr ""
 
-#: src/views/settings.ts:2076
+#: src/views/settings.ts:2130
 msgid "Transfer code copied to clipboard"
 msgstr ""
 
@@ -15297,7 +15322,7 @@ msgstr ""
 msgid "UDP"
 msgstr ""
 
-#: src/views/settings.ts:3478
+#: src/views/settings.ts:3532
 msgid "UDP (Unprotected DNS)"
 msgstr ""
 
@@ -15361,7 +15386,7 @@ msgstr ""
 msgid "URL probed to verify whether the primary connection (e.g. Desync on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG)."
 msgstr ""
 
-#: src/views/settings.ts:6095
+#: src/views/settings.ts:6184
 msgid "URL to test through the proxy (default: Cloudflare 204)."
 msgstr ""
 
@@ -15519,8 +15544,8 @@ msgstr ""
 #: src/tachyon/methods/custom/getDashboardSections.ts:3719
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1689
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:242
-#: src/views/settings.ts:6562
-#: src/views/settings.ts:862
+#: src/views/settings.ts:6660
+#: src/views/settings.ts:916
 msgid "Unknown"
 msgstr ""
 
@@ -15575,7 +15600,7 @@ msgstr ""
 msgid "Untested fleet"
 msgstr ""
 
-#: src/views/settings.ts:2414
+#: src/views/settings.ts:2468
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr ""
 
@@ -15601,8 +15626,8 @@ msgstr ""
 msgid "Update Lists Now"
 msgstr ""
 
-#: src/views/settings.ts:5296
-#: src/views/settings.ts:5306
+#: src/views/settings.ts:5378
+#: src/views/settings.ts:5388
 msgid "Update failed"
 msgstr ""
 
@@ -15624,7 +15649,7 @@ msgstr ""
 msgid "Update is available:"
 msgstr ""
 
-#: src/views/settings.ts:5051
+#: src/views/settings.ts:5133
 msgid "Update lists now"
 msgstr ""
 
@@ -15648,11 +15673,11 @@ msgstr ""
 msgid "Update this subscription now"
 msgstr ""
 
-#: src/views/settings.ts:5481
+#: src/views/settings.ts:5563
 msgid "Update window end"
 msgstr ""
 
-#: src/views/settings.ts:5464
+#: src/views/settings.ts:5546
 msgid "Update window start"
 msgstr ""
 
@@ -15667,7 +15692,7 @@ msgstr ""
 msgid "Updated/duplicates:"
 msgstr ""
 
-#: src/views/settings.ts:3309
+#: src/views/settings.ts:3363
 msgid "Updates & Downloads"
 msgstr ""
 
@@ -15679,7 +15704,7 @@ msgstr ""
 msgid "Updating device routing mode..."
 msgstr ""
 
-#: src/views/settings.ts:5226
+#: src/views/settings.ts:5308
 msgid "Updating lists..."
 msgstr ""
 
@@ -15726,7 +15751,7 @@ msgid "Uploaded"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:228
-#: src/views/settings.ts:3488
+#: src/views/settings.ts:3542
 msgid "Upstream Mode"
 msgstr ""
 
@@ -15740,7 +15765,7 @@ msgstr ""
 msgid "Uptime"
 msgstr ""
 
-#: src/views/settings.ts:6183
+#: src/views/settings.ts:6281
 msgid "Use 3-tier check intervals: fast (15s), normal (120s), slow (300s) instead of a single interval."
 msgstr ""
 
@@ -15836,7 +15861,7 @@ msgstr ""
 msgid "Use domains from section"
 msgstr ""
 
-#: src/views/settings.ts:766
+#: src/views/settings.ts:820
 msgid "Use duration format like 10s, 1m or 2m30s"
 msgstr ""
 
@@ -15848,11 +15873,11 @@ msgstr ""
 #: src/views/section.ts:8430
 #: src/views/section.ts:8437
 #: src/views/section.ts:8444
-#: src/views/settings.ts:5012
-#: src/views/settings.ts:5034
-#: src/views/settings.ts:5041
-#: src/views/settings.ts:5368
-#: src/views/settings.ts:5396
+#: src/views/settings.ts:5094
+#: src/views/settings.ts:5116
+#: src/views/settings.ts:5123
+#: src/views/settings.ts:5450
+#: src/views/settings.ts:5478
 msgid "Use duration format like 1d, 12h or 30m"
 msgstr ""
 
@@ -16059,7 +16084,7 @@ msgstr ""
 msgid "Valid"
 msgstr ""
 
-#: src/views/settings.ts:6197
+#: src/views/settings.ts:6295
 msgid "Validates Tachyon Core config before restart to prevent boot loops on broken configs."
 msgstr ""
 
@@ -16170,7 +16195,7 @@ msgstr ""
 msgid "WAN DNS"
 msgstr ""
 
-#: src/views/settings.ts:4622
+#: src/views/settings.ts:4683
 msgid "WAN Failover Probe Hosts"
 msgstr ""
 
@@ -16211,7 +16236,7 @@ msgstr ""
 msgid "WARP Generation Error"
 msgstr ""
 
-#: src/views/settings.ts:5800
+#: src/views/settings.ts:5889
 msgid "WARP Generator Proxy Section"
 msgstr ""
 
@@ -16338,11 +16363,11 @@ msgstr ""
 msgid "Warnings"
 msgstr ""
 
-#: src/views/settings.ts:6044
+#: src/views/settings.ts:6133
 msgid "Watchdog Status"
 msgstr ""
 
-#: src/views/settings.ts:5661
+#: src/views/settings.ts:5750
 msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
 msgstr ""
 
@@ -16358,7 +16383,7 @@ msgstr ""
 msgid "Watchdog: off"
 msgstr ""
 
-#: src/views/settings.ts:5760
+#: src/views/settings.ts:5849
 msgid "WebRTC Leak Protection"
 msgstr ""
 
@@ -16405,11 +16430,11 @@ msgstr ""
 msgid "What's new?"
 msgstr ""
 
-#: src/views/settings.ts:6381
+#: src/views/settings.ts:6479
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr ""
 
-#: src/views/settings.ts:6105
+#: src/views/settings.ts:6194
 msgid "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
 msgstr ""
 
@@ -16429,7 +16454,7 @@ msgstr ""
 msgid "Why Discord fails?"
 msgstr ""
 
-#: src/views/settings.ts:4806
+#: src/views/settings.ts:4888
 msgid "Wi-Fi Calling Direct (VoWiFi)"
 msgstr ""
 
@@ -16485,6 +16510,14 @@ msgstr ""
 msgid "WireGuard private key from your Cloudflare account"
 msgstr ""
 
+#: src/views/settings.ts:4868
+msgid "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections."
+msgstr ""
+
+#: src/views/settings.ts:5740
+msgid "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections."
+msgstr ""
+
 #: src/tachyon/connectionWizard.ts:4194
 #: src/views/outbounds.ts:6209
 #: src/views/section.ts:14525
@@ -16515,7 +16548,7 @@ msgstr ""
 msgid "XMUX"
 msgstr ""
 
-#: src/views/settings.ts:4723
+#: src/views/settings.ts:4784
 msgid "YACD Secret Key"
 msgstr ""
 
@@ -16523,11 +16556,11 @@ msgstr ""
 msgid "Yes"
 msgstr ""
 
-#: src/views/settings.ts:4761
+#: src/views/settings.ts:4822
 msgid "Yes (all traffic)"
 msgstr ""
 
-#: src/views/settings.ts:4485
+#: src/views/settings.ts:4546
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr ""
 
@@ -16551,11 +16584,11 @@ msgstr ""
 msgid "active"
 msgstr ""
 
-#: src/views/settings.ts:3810
+#: src/views/settings.ts:3864
 msgid "allocated dynamically on demand, not upfront"
 msgstr ""
 
-#: src/views/settings.ts:1943
+#: src/views/settings.ts:1997
 msgid "chars"
 msgstr ""
 
@@ -17029,7 +17062,7 @@ msgstr ""
 msgid "tlsrec (TLS Record Fragmentation)"
 msgstr ""
 
-#: src/views/settings.ts:4238
+#: src/views/settings.ts:4299
 msgid "tun0 (Default)"
 msgstr ""
 

@@ -684,6 +684,8 @@ function run_recovery_checks() {
     // Leftover routing is what breaks internet when the service is down.
     // Idempotent cleanup mirroring uninstall.uc.
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
+        // Without the table a fail-closed setup must be held by the kill-switch.
+        require("service.kill_switch").hold();
         doc_run("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
         mark_fixed("nftables table", "leftover", "удалена");
     } else {
@@ -1165,6 +1167,7 @@ function run_doctor_checks_impl(repair) {
                     doc_plan("delete nft table + /usr/bin/tachyon restart");
                     doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил" + kmod_hint);
                 } else {
+                    require("service.kill_switch").hold();
                     command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
                     let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
                     let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;

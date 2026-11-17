@@ -22,12 +22,26 @@ check(join(",", ks.source_interfaces({})) == "br-lan", "Missing source interface
 let ifaces = ks.source_interfaces({ source_network_interfaces: [ "br-lan", "br-guest", "br-lan", "x\" } accept", "" ] });
 check(join(",", ifaces) == "br-lan,br-guest", "Unsafe or duplicate interface names reached the ruleset");
 
+check(type(ks.stop_hold) == "function" && type(ks.dns_veto) == "function", "Stop/DNS kill-switch helpers missing");
+
+// dns_intercept_all: on by default with Fail-Closed, but always the user's to turn off.
+check(ks.dns_intercept_mode({}) == "auto" && ks.dns_intercept_mode({ dns_intercept_all: "auto" }) == "auto",
+    "Missing dns_intercept_all is not auto");
+check(ks.dns_intercept_mode({ dns_intercept_all: "1" }) == "on" && ks.dns_intercept_mode({ dns_intercept_all: "0" }) == "off",
+    "Explicit dns_intercept_all values are not honoured");
+check(ks.dns_intercept_effective({}, true) && !ks.dns_intercept_effective({}, false),
+    "auto does not follow Fail-Closed");
+check(!ks.dns_intercept_effective({ dns_intercept_all: "0" }, true),
+    "An explicit off was overridden by Fail-Closed (clients could not use their own DNS)");
+check(ks.dns_intercept_effective({ dns_intercept_all: "1" }, false), "An explicit on was ignored");
 let rs = ks.ruleset([ "br-lan", "br-guest" ]);
 check(index(rs, "table inet " + ks.GUARD_TABLE + " {") >= 0, "Guard does not own a separate table");
 check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >= 0, "Guard has no interface gate set");
 check(index(rs, "hook forward") >= 0, "Guard is not on the forward hook");
 check(index(rs, "iifname { \"br-lan\", \"br-guest\" } oifname != { \"br-lan\", \"br-guest\" } iifname != @" + ks.GATE_SET + " counter drop") >= 0,
     "Guard does not drop LAN traffic leaving the LAN while the gate is closed");
+check(index(rs, "hook input") >= 0 && index(rs, "th dport { 53, 853 } iifname != @" + ks.GATE_SET + " counter drop") >= 0,
+    "A closed gate does not shut LAN clients out of the router DNS");
 // An fw4 reload replays this text: deleting the table would wipe an open gate.
 check(index(rs, "delete table") < 0, "Replaying the guard would reset the gate");
 print(rs);
@@ -66,19 +80,36 @@ for fn in 'restart' 'restart_runtime_for_reload'; do
     END { exit ok ? 0 : 1 }
   ' "$LIFECYCLE_UC" || fail "$fn must hold the kill-switch before stop_main drops interception"
 done
+# Stop is also what package upgrades, tachyon-core updates and the installer
+# run: it must hold the gate and decide before any DNS rollback, never open it.
 awk '
   /^function stop_impl\(\)/ { f = 1 }
-  f && /stop_main\(\);/ { stop = 1 }
-  f && /kill_switch\.release\(\)/ && stop { ok = 1; exit }
+  f && /kill_switch\.release\(\)/ { bad = 1 }
+  f && /dnsmasq_restore\(/ && !hold { bad = 1 }
+  f && /kill_switch\.stop_hold\(\)/ { hold = 1 }
+  f && /stop_main\(\);/ { ok = hold; exit }
+  END { exit (ok && !bad) ? 0 : 1 }
+' "$LIFECYCLE_UC" || fail "stop must hold the kill-switch before rolling DNS back or dropping interception"
+awk '
+  /^function uninstall\(\)/ { f = 1 }
+  f && /kill_switch\.remove\(\)/ { ok = 1; exit }
   f && /^}/ { exit }
   END { exit ok ? 0 : 1 }
-' "$LIFECYCLE_UC" || fail "manual stop must release the kill-switch"
+' "$LIFECYCLE_UC" || fail "uninstall must remove the kill-switch"
+awk '
+  /^function failsafe_restore\(\)/ { f = 1 }
+  f && /kill_switch\.dns_veto\(\)/ { veto = 1 }
+  f && /dnsmasq_restore\(/ { ok = veto; exit }
+  END { exit ok ? 0 : 1 }
+' "$TACHYON_LIB/dns/apply.uc" || fail "every automatic DNS rollback must respect Fail-Closed"
+[[ "$(grep -c 'require("service.kill_switch").hold();' "$TACHYON_LIB/diagnostics/doctor.uc")" -ge 2 ]] ||
+  fail "doctor must hold the kill-switch before deleting the interception table"
 awk '
   /^function nft_rebuild_runtime_from_uci\(/ { f = 1 }
   f && /kill_switch\.hold\(\)/ { hold = 1 }
   f && /nft_delete_table\(table\)/ && !hold { exit }
   f && /if \(built\)/ && hold { built = 1 }
-  f && /kill_switch\.release\(\)/ && built { ok = 1; exit }
+  f && /kill_switch\.release_if_ready\(\)/ && built { ok = 1; exit }
   END { exit ok ? 0 : 1 }
 ' "$NFT_UC" || fail "nft rebuild must hold the guard before deleting the table and release it only once built"
 awk '
@@ -89,4 +120,23 @@ awk '
 ' "$TACHYON_LIB/service/watchdog.uc" || fail "a chosen direct bypass must open the kill-switch gate"
 grep -Fq 'require("service.kill_switch").boot()' "$HOTPLUG" ||
   fail "WAN ifup must engage the guard before Tachyon starts"
+# The fw4 include is written at runtime, so no package owns it: every removal
+# path must delete it, or fw4 recreates a closed gate at each boot with nothing
+# left to open it.
+INCLUDE='/usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft'
+[[ "$(grep -cF "$INCLUDE" "$ROOT_DIR/build.sh")" -ge 2 ]] || fail "build.sh removal hooks must delete the kill-switch include"
+for f in "$ROOT_DIR/tachyon/Makefile" "$ROOT_DIR/uninstall.sh" "$TACHYON_LIB/service/uninstall.uc"; do
+  grep -Fq "$INCLUDE" "$f" || fail "${f##*/} must delete the kill-switch include"
+done
+# The router keeps a resolver while the gate is closed (LAN DNS is shut out
+# by the gate itself); only an open gate keeps DNS on the proxy.
+grep -Fq 'if (reason == "" || engaged())' "$TACHYON_LIB/service/kill_switch.uc" ||
+  fail "a closed gate must let the router itself resolve over WAN"
+# Start rebuilds nft before DNS is back on the proxy: the gate may open only after.
+awk '
+  /^function start_impl\(\)/ { f = 1 }
+  f && /dnsmasq_configure\(true\)/ { dns = 1 }
+  f && /kill_switch\.release_if_ready\(\)/ { ok = dns; exit }
+  END { exit ok ? 0 : 1 }
+' "$LIFECYCLE_UC" || fail "start must open the gate only after DNS is back on the proxy"
 printf 'fail-closed kill-switch tests passed\n'

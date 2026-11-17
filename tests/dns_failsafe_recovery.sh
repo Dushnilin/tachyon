@@ -11,6 +11,8 @@ let resolves = false;
 let adguard = false;
 let restore_ok = false;
 uci_available = function() { return true; };
+let dns_veto = "";
+kill_switch.dns_veto = function() { return dns_veto; };
 uci_get = function(path) { return opts[path] || ""; };
 log = function(message, level) {};
 dnsmasq_has_tachyon_managed_state = function() { return true; };
@@ -21,6 +23,13 @@ dnsmasq_default_config_is_complete = function() { return dns_config; };
 common.command_success_from_args = function(args) { return resolves; };
 run = function(cmd) { return adguard; };
 function check(ok, message) { if (!ok) die(message + "\n"); }
+// Fail-Closed: the rollback is skipped (and reported done) without touching dnsmasq.
+let restore_calls = 0;
+let real_restore = dnsmasq_restore;
+dnsmasq_restore = function(force, quiet) { restore_calls++; return real_restore(force, quiet); };
+dns_veto = "fail_policy=block: vpn";
+check(failsafe_restore() && restore_calls == 0, "Fail-Closed setup rolled DNS back to WAN");
+dns_veto = "";
 check(!failsafe_restore(), "Failed DNS rollback was silently reported successful");
 restore_ok = true;
 check(failsafe_restore(), "Successful DNS rollback was rejected");

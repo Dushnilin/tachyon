@@ -498,6 +498,60 @@ function refreshDownloadSectionChoices(option, capabilities) {
   }
 }
 
+// Enabled sections with fail_policy=block, as service/kill_switch.uc counts
+// them: these force some global settings at runtime whatever is stored.
+function failClosedSectionNames() {
+  return (uci.sections(UCI_PACKAGE, "section") || [])
+    .filter(function (s) {
+      const enabled = `${s.enabled ?? "1"}`.trim().toLowerCase();
+      return (
+        ["0", "false", "no", "off"].indexOf(enabled) < 0 &&
+        `${s.fail_policy || ""}`.trim().toLowerCase() === "block"
+      );
+    })
+    .map(function (s) {
+      return s.label || s[".name"];
+    });
+}
+
+// Show a setting that Fail-Closed forces at runtime as its effective value,
+// read-only, without touching the stored value.
+function showForcedByFailClosed(option, effective, note) {
+  const sections = failClosedSectionNames();
+  if (sections.length === 0) return;
+  option.readonly = true;
+  option.cfgvalue = function () {
+    return effective;
+  };
+  option.write = function () {};
+  option.remove = function () {};
+  option.description += " " + note.format(sections.join(", "));
+}
+
+// Ask before a change that would let Fail-Closed sections leak directly; on
+// "no" the widget goes back to the stored value and nothing is saved.
+function guardFailClosedChange(option, breaks, consequence) {
+  const previous = option.onchange;
+  option.onchange = function (ev, section_id, value) {
+    const sections = failClosedSectionNames();
+    if (
+      sections.length > 0 &&
+      breaks(value) &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        _(
+          "Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?",
+        ).format(sections.join(", "), consequence),
+      )
+    ) {
+      const el = this.getUIElement(section_id);
+      if (el) el.setValue(this.cfgvalue(section_id) ?? this.default);
+      return;
+    }
+    if (previous) return previous.apply(this, [ev, section_id, value]);
+  };
+}
+
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.default = "";
   option.rmempty = false;
@@ -4220,6 +4274,13 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "tproxy";
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === "tun" || value === "socks",
+    _(
+      "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down.",
+    ),
+  );
 
   o = section.taboption(
     "network",
@@ -4787,15 +4848,36 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "services",
-    form.Flag,
+    form.ListValue,
     "dns_intercept_all",
     _("Intercept All LAN DNS"),
     _(
       "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected.",
     ),
   );
-  o.default = "0";
+  o.value("auto", _("Auto (on while a section is Fail-Closed)"));
+  o.value("1", _("On"));
+  o.value("0", _("Off"));
+  o.default = "auto";
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === "0",
+    _(
+      "With the intercept off, clients using their own DNS get real addresses and skip domain-based sections.",
+    ),
+  );
+  // Auto follows Fail-Closed at runtime (service/kill_switch.uc); say so loudly,
+  // since the stored value alone reads as a plain default.
+  const dnsFailClosedSections = failClosedSectionNames();
+  if (dnsFailClosedSections.length > 0) {
+    o.description +=
+      " <strong>" +
+      _(
+        "Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app).",
+      ).format(dnsFailClosedSections.join(", ")) +
+      "</strong>";
+  }
 
   o = section.taboption(
     "services",
@@ -5650,6 +5732,13 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "0";
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === "1",
+    _(
+      "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections.",
+    ),
+  );
 
   o = section.taboption(
     "advanced",
@@ -6107,6 +6196,15 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
+  // Fail-Closed sections veto the bypass at runtime (service/kill_switch.uc)
+  // whatever is stored here, so show the effective state instead of a ticked
+  // box. The stored value is left alone: it applies again once no section is
+  // Fail-Closed.
+  showForcedByFailClosed(
+    o,
+    "0",
+    _("Off now: Fail-Closed is set in sections: %s."),
+  );
 
   // DNS Continuous Check
   o = section.taboption(

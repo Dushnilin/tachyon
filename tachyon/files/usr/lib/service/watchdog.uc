@@ -2765,7 +2765,56 @@ let oom_scale_at_floor = oom_scale.oom_scale_at_floor;
 let next_oom_scale = oom_scale.next_oom_scale;
 let last_oom_floor_notice_time = 0;
 
+// The syslog line that raises the event is the report's first; the victim comes
+// last and may not be printed yet, so the kernel log is polled briefly for it.
+const OOM_REPORT_WAIT_MS = 3000;
+const OOM_REPORT_POLL_MS = 200;
+
+function read_oom_report() {
+    let report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+    for (let waited = 0; !report.complete && waited < OOM_REPORT_WAIT_MS; waited += OOM_REPORT_POLL_MS) {
+        sleep(OOM_REPORT_POLL_MS);
+        report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+    }
+    return report;
+}
+
+function oom_victim_label(report) {
+    let name = replace(as_string(report.victim || ""), /[^A-Za-z0-9._:\/-]/g, "");
+    return name != "" ? name : "не определён";
+}
+
 function heal_oom(ev) {
+    let report = read_oom_report();
+    let response = oom_scale.oom_response(report);
+    let victim = oom_victim_label(report);
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+
+    // The native tachyon-core ignores GOMEMLIMIT and is respawned directly by
+    // procd; a cgroup/external OOM needs only reporting without dropping
+    // interception across a full restart.
+    if (response == "respawn") {
+        log_message("OOM killed " + victim + "; procd respawns it. Not restarting Tachyon: the native core ignores GOMEMLIMIT", "err");
+        if (notify_enabled(tcfg, "notify_crash")) {
+            send_telegram_notification("🚨 *Watchdog:* OOM завершил ядро `" + victim + "`. procd перезапустит его сам; Tachyon целиком не перезапускается.", "oom_respawn", 600);
+        }
+        return;
+    }
+    if (response != "shrink") {
+        let scope = report.memcg ? "inside a memory cgroup (a container or a service with its own limit)"
+            : (report.complete ? "outside Tachyon" : "(kernel report not complete; victim unknown)");
+        log_message("OOM killed " + victim + " " + scope + "; not restarting Tachyon", "warn");
+        let text = "⚠️ *Watchdog:* OOM: ядро завершило процесс `" + victim + "`. Ядро Tachyon не затронуто, Tachyon не перезапускается.";
+        if (report.memcg)
+            text = "⚠️ *Watchdog:* OOM внутри cgroup (контейнер или служба со своим лимитом памяти): завершён процесс `" + victim + "`. Память роутера не исчерпана, Tachyon не перезапускается.";
+        else if (!report.complete)
+            text = "⚠️ *Watchdog:* OOM на роутере, но процесс по журналу ядра определить не удалось. Tachyon не перезапускается; если ядро упало, его перезапустит procd.";
+        if (notify_enabled(tcfg, "notify_crash")) {
+            send_telegram_notification(text, "oom_report", 600);
+        }
+        return;
+    }
+
     // At the floor there is nothing left to lower, so the restart used to apply the
     // new value re-applied the same one - and restarting every service under memory
     // pressure is what produced the next OOM. A router could sit in that loop

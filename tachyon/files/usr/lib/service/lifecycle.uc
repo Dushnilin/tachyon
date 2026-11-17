@@ -1189,15 +1189,12 @@ function start_impl() {
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
 
     // Interception is absent until nft is rebuilt below; keep a fail-closed
-    // setup blocked meanwhile.
-    let fail_closed = kill_switch.hold();
+    // setup blocked meanwhile (the gate also shuts LAN DNS, so the rollback
+    // below only gives the router itself a resolver).
+    kill_switch.hold();
     if (!is_planned_restart && config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
-        if (fail_closed == "") {
-            log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
-            dnsmasq_restore_fail_safe();
-        }
-        else
-            log_message("Previous shutdown was unclean; keeping DNS on the proxy (" + fail_closed + ")", "warn");
+        log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
+        dnsmasq_restore_fail_safe();
     }
 
     // Watchdog must start early so auto-healing is active even through a failed boot.
@@ -1226,6 +1223,9 @@ function start_impl() {
         if (status != 0)
             return status;
     }
+    // nft was rebuilt before DNS moved back to the proxy, so the gate is still
+    // closed in a fail-closed setup; it opens only now.
+    kill_switch.release_if_ready();
 
     if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "0"))
         return 1;
@@ -1322,16 +1322,15 @@ function cleanup_failed_runtime() {
     if (stop_status != 0)
         status = stop_status;
 
-    // A fail-closed setup stays blocked (guard on, DNS on the dead proxy) until
-    // a later start succeeds; anything else falls back to direct DNS as before.
+    // A fail-closed setup stays blocked until a later start succeeds: the gate
+    // shuts LAN forwarding and LAN DNS, so the DNS rollback below only gives
+    // the router itself a resolver (updates, subscriptions, NTP).
     let fail_closed = kill_switch.hold();
-    if (fail_closed == "") {
-        let dns_status = dnsmasq_restore_fail_safe();
-        if (dns_status != 0 && status == 0)
-            status = dns_status;
-    }
-    else
-        log_message("Start failed; Internet stays blocked until Tachyon recovers (" + fail_closed + ")", "warn");
+    if (fail_closed != "")
+        log_message("Start failed; LAN stays blocked until Tachyon recovers (" + fail_closed + ")", "warn");
+    let dns_status = dnsmasq_restore_fail_safe();
+    if (dns_status != 0 && status == 0)
+        status = dns_status;
 
     let mark_status = mark_runtime_stopped_clean();
     if (mark_status != 0 && status == 0)
@@ -1391,6 +1390,15 @@ function stop_impl() {
     let status = 0;
     invalidate_reload_hash();
 
+    // Every stop goes through here: the LuCI button, but also package upgrades,
+    // tachyon-core updates and the installer. A fail-closed setup must not get
+    // a direct path out of any of them, so the gate closes and DNS stays on the
+    // proxy; only a disabled or removed service goes direct.
+    // The gate closes first and also shuts LAN DNS, so the rollback below only
+    // gives the router itself a resolver; LAN clients get nothing until start.
+    let fail_closed = kill_switch.stop_hold();
+    if (fail_closed != "")
+        log_message("Stopping with Fail-Closed: LAN stays blocked until Tachyon starts (" + fail_closed + ")", "warn");
     if (!setting_bool("dont_touch_dhcp", false)) {
         let dns_status = dnsmasq_restore(false);
         if (dns_status != 0)
@@ -1405,8 +1413,6 @@ function stop_impl() {
     let runtime_status = stop_main();
     if (runtime_status != 0)
         status = runtime_status;
-    // A manual stop is the user choosing direct Internet.
-    kill_switch.release();
 
     if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
         status = 1;
@@ -1419,7 +1425,9 @@ function stop_impl() {
     module_success(STATE_UC, [ "clear-reload-state", RELOAD_STATE_FILE, RELOAD_STATE_SNAPSHOT_FILE ]);
 
     if (status != 0)
-        dnsmasq_restore_fail_safe();
+        // Removing Tachyon is the one stop that must leave the router usable.
+    kill_switch.remove();
+    dnsmasq_restore_fail_safe();
 
     return status;
 }
@@ -1903,6 +1911,8 @@ function uninstall() {
         command_success_from_args([ SERVICE_INIT, "disable" ]);
     }
 
+    // Removing Tachyon is the one stop that must leave the router usable.
+    kill_switch.remove();
     dnsmasq_restore_fail_safe();
 
     if (fs.stat("/etc/init.d/tachyon") != null) {
