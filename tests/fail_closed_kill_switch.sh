@@ -115,14 +115,55 @@ for fn in 'restart' 'restart_runtime_for_reload'; do
 done
 # Stop is also what package upgrades, tachyon-core updates and the installer
 # run: it must hold the gate and decide before any DNS rollback, never open it.
-awk '
-  /^function stop_impl\(\)/ { f = 1 }
-  f && /kill_switch\.release\(\)/ { bad = 1 }
-  f && /dnsmasq_restore\(/ && !hold { bad = 1 }
-  f && /kill_switch\.stop_hold\(\)/ { hold = 1 }
-  f && /stop_main\(\);/ { ok = hold; exit }
-  END { exit (ok && !bad) ? 0 : 1 }
-' "$LIFECYCLE_UC" || fail "stop must hold the kill-switch before rolling DNS back or dropping interception"
+sed '/^let mode =/,$d' "$LIFECYCLE_UC" >"$WORK_DIR/stop.uc"
+cat >>"$WORK_DIR/stop.uc" <<'UC'
+// Run the real lifecycle functions without CLI dispatch or host side effects.
+let stop_case = {};
+let guard_closed = false;
+function check_stop_guard(stage) {
+    if (!guard_closed)
+        die(stop_case.name + ": Fail-Closed guard is open " + stage + "\n");
+}
+kill_switch = {
+    stop_hold: function() { guard_closed = true; return "fail_policy=block: vpn"; },
+    remove: function() { guard_closed = false; },
+    release: function() { guard_closed = false; }
+};
+invalidate_reload_hash = function() {};
+log_message = function(message, level) {};
+setting_bool = function(key, fallback) { return false; };
+dnsmasq_restore = function(force) {
+    check_stop_guard("before DNS restore");
+    return stop_case.dns_error || 0;
+};
+stop_main = function() {
+    check_stop_guard("before runtime stop");
+    return stop_case.runtime_error || 0;
+};
+config_set = function(key, value) { return !stop_case.set_error; };
+config_commit = function() { return stop_case.commit_error || 0; };
+module_success = function(path, args) { return true; };
+dnsmasq_restore_fail_safe = function() {
+    check_stop_guard("during DNS failsafe");
+    return 0;
+};
+for (let c in [
+    { name: "successful stop", status: 0 },
+    { name: "DNS restore failure", dns_error: 7, status: 7 },
+    { name: "runtime stop failure", runtime_error: 11, status: 11 },
+    { name: "UCI set failure", set_error: true, status: 1 },
+    { name: "UCI commit failure", commit_error: 13, status: 13 }
+]) {
+    stop_case = c;
+    guard_closed = false;
+    let status = stop_impl();
+    check_stop_guard("after stop");
+    if (status != c.status)
+        die(c.name + ": stop lost its exit status (" + status + " != " + c.status + ")\n");
+}
+UC
+ucode -L "$TACHYON_LIB" "$WORK_DIR/stop.uc" ||
+  fail "stop must preserve Fail-Closed on success and on every error path"
 awk '
   /^function uninstall\(\)/ { f = 1 }
   f && /kill_switch\.remove\(\)/ { ok = 1; exit }
