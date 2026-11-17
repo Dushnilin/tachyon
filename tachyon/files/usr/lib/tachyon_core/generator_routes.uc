@@ -38,6 +38,9 @@ let section_leaf_tags = {};
 let section_group_map = {};
 let section_state_map = {};
 let active_group_tags = {};
+// excluded_protocol_matchers() of the section whose route rules are being
+// emitted (add_combined_route_for_section), read by push_section_route_rule.
+let active_excluded_protocols = null;
 let active_remote_custom_rulesets = {};
 let remote_custom_rulesets_state = null;
 
@@ -4040,6 +4043,24 @@ function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, 
         return apply_inverted_subrules(filtered, inv_subrules);
     };
 
+    // The section's excluded protocols, matched on this rule's own matchers,
+    // go direct ahead of it. A rule that already pins that field (a protocol
+    // or network filter of its own) is left to it.
+    if (rule && active_excluded_protocols != null) {
+        for (let key in [ "network", "protocol" ]) {
+            let values = active_excluded_protocols[key];
+            if (length(values) == 0 || rule[key] != null)
+                continue;
+            let excluded = {};
+            for (let k, v in rule)
+                excluded[k] = v;
+            excluded.action = "route";
+            excluded.outbound = runtime_constants.DIRECT_OUTBOUND_TAG;
+            excluded[key] = single_or_array(values);
+            push_route_matcher_rule(config, apply_filters(excluded));
+        }
+    }
+
     if (target_outbound && !outbound_supports_udp(config, target_outbound)) {
         if (rule.network == "tcp") {
             push_route_matcher_rule(config, apply_filters(rule));
@@ -4405,36 +4426,19 @@ function add_excluded_ips_rule(config, section) {
     push(config.route.rules, route_rule);
 }
 
-function add_excluded_protocol_rule(config, section) {
-    let excluded = section_leaf_list_option(section, "excluded_protocol");
-    if (length(excluded) == 0)
-        return;
-
-    let l4_nets = [];
-    let l7_protos = [];
-    for (let p in excluded) {
+// A section's excluded_protocol as route matchers: { network, protocol }, or
+// null when it excludes nothing.
+function excluded_protocol_matchers(section) {
+    let network = [];
+    let protocol = [];
+    for (let p in section_leaf_list_option(section, "excluded_protocol")) {
         let lp = lc(trim(as_string(p)));
         if (lp == "tcp" || lp == "udp" || lp == "icmp")
-            push(l4_nets, lp);
+            push(network, lp);
         else if (lp != "")
-            push(l7_protos, lp);
+            push(protocol, lp);
     }
-    if (length(l4_nets) > 0) {
-        push(config.route.rules, {
-            action: "route",
-            inbound: tproxy_inbound_matcher(),
-            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-            network: single_or_array(l4_nets)
-        });
-    }
-    if (length(l7_protos) > 0) {
-        push(config.route.rules, {
-            action: "route",
-            inbound: tproxy_inbound_matcher(),
-            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-            protocol: single_or_array(l7_protos)
-        });
-    }
+    return length(network) + length(protocol) > 0 ? { network, protocol } : null;
 }
 
 function add_protocol_matchers(rule, section) {
@@ -5075,11 +5079,16 @@ function add_combined_route_for_clause(config, section) {
 }
 
 function add_combined_route_for_section(config, section) {
-    add_excluded_protocol_rule(config, section);
+    // Every rule this section emits gets an excluded-protocol twin with the
+    // same matchers (push_section_route_rule): the exclusion belongs to the
+    // section's own domains and addresses. It used to be one catch-all rule
+    // that sent that protocol direct for every section's traffic (#416).
+    active_excluded_protocols = excluded_protocol_matchers(section);
     add_fully_routed_ips_rule(config, section);
     add_server_domain_rules_for_section(config, section);
     for (let clause in connections.section_effective_clauses(section))
         add_combined_route_for_clause(config, clause);
+    active_excluded_protocols = null;
 }
 
 function unsupported_matcher_key(section) {
