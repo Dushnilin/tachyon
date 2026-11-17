@@ -7495,9 +7495,12 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-studio-create__templates {
     display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
     gap: 8px !important;
     width: 100% !important;
+    max-height: min(52vh, 420px) !important;
+    overflow-y: auto !important;
+    padding-right: 4px !important;
     box-sizing: border-box !important;
 }
 

@@ -60,6 +60,10 @@ function createDummyElement(tag: string): any {
     },
     setAttribute(name: string, val: string) {
       attrs[name] = String(val);
+      if (name === 'style') {
+        el.style.cssText = String(val);
+        return;
+      }
       (el as any)[name] = val;
       if (name === 'class') el.className = String(val);
     },
@@ -78,6 +82,7 @@ function createDummyElement(tag: string): any {
       const cbs = listeners.click || [];
       cbs.forEach((fn) => fn({ preventDefault() {}, stopPropagation() {} }));
     },
+    focus() {},
     appendChild(node: any) {
       if (node !== null && node !== undefined && node !== '') {
         if (typeof node === 'object') {
@@ -1259,5 +1264,119 @@ xiaomi.com`,
       .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
     expect(onlyHiddenBtn).toBeTruthy();
     expect(onlyHiddenBtn.textContent).toContain('(1)');
+  });
+
+  it('offers all supported outbound source architectures including Tailscale and creates Tailscale source defaults', async () => {
+    const uciStore: Record<string, Record<string, any>> = {};
+    let modalContent: any[] = [];
+    const uiMock = {
+      showModal: vi.fn((_title: string, nodes: any[]) => {
+        modalContent = nodes;
+      }),
+      hideModal: vi.fn(),
+    };
+    const uciMock = {
+      sections: vi.fn((_pkg: string, type: string) =>
+        Object.values(uciStore).filter((s) => s['.type'] === type),
+      ),
+      get: vi.fn((_pkg: string, sid: string, opt?: string) => {
+        const entry = uciStore[sid];
+        if (!entry) return opt ? undefined : null;
+        return opt ? entry[opt] : entry;
+      }),
+      set: vi.fn((_pkg: string, sid: string, opt: string, val: any) => {
+        uciStore[sid] = uciStore[sid] || { '.name': sid };
+        uciStore[sid][opt] = val;
+      }),
+      add: vi.fn((_pkg: string, stype: string, sid: string) => {
+        uciStore[sid] = { '.name': sid, '.type': stype };
+      }),
+      unset: vi.fn((_pkg: string, sid: string, opt: string) => {
+        if (uciStore[sid]) delete uciStore[sid][opt];
+      }),
+    };
+    const prevUci = (globalThis as any).uci;
+    const prevUi = (globalThis as any).ui;
+    const prevWindow = (globalThis as any).window;
+    (globalThis as any).uci = uciMock;
+    (globalThis as any).ui = uiMock;
+    (globalThis as any).window = globalThis;
+
+    try {
+      const containerEl = createDummyElement('div');
+      const mockRef = {
+        sectiontype: 'outbound_source',
+        map: { data: uciMock, save: vi.fn(() => Promise.resolve()) },
+        renderMoreOptionsModal: vi.fn(),
+      };
+
+      studioDeckMod.mountTachyonStudioDeck({
+        type: 'outbound_source',
+        sectionRef: mockRef,
+        containerEl,
+      });
+
+      const addBtn = containerEl.querySelectorAll(
+        '.tachyon-studio-btn--primary',
+      )[0];
+      expect(addBtn).toBeTruthy();
+      addBtn.click();
+      expect(uiMock.showModal).toHaveBeenCalledTimes(1);
+
+      const modalRoot = modalContent[0];
+      const titles = modalRoot
+        .querySelectorAll('.tachyon-studio-create__tpl-title')
+        .map((el: any) => String(el.textContent || ''));
+
+      for (const expectedTitle of [
+        'Tailscale Mesh VPN',
+        'OpenVPN (.ovpn)',
+        'CSQTT / WDTT v3',
+        'AnyTLS',
+        'NaiveProxy',
+        'Mieru',
+        'Snell',
+        'Sudoku',
+        'MASQUE (HTTP/3)',
+        'ShadowTLS v3',
+        'TrustTunnel',
+        'TewFai',
+        'Tor (SOCKS5)',
+        'Outbound JSON',
+      ]) {
+        expect(titles).toContain(expectedTitle);
+      }
+
+      const tailscaleCard = modalRoot
+        .querySelectorAll('.tachyon-studio-create__tpl-card')
+        .find((c: any) =>
+          String(c.textContent || '').includes('Tailscale Mesh VPN'),
+        );
+      expect(tailscaleCard).toBeTruthy();
+      tailscaleCard.click();
+
+      const nameInput = modalRoot.querySelectorAll(
+        '.tachyon-studio-create__input',
+      )[0];
+      nameInput.value = 'ts_home';
+
+      const confirmBtn = modalRoot.querySelectorAll('.cbi-button-apply')[0];
+      expect(confirmBtn).toBeTruthy();
+      confirmBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(uciStore.ts_home).toBeTruthy();
+      expect(uciStore.ts_home.source_type).toBe('tailscale');
+      expect(uciStore.ts_home.tailscale_control_url).toBe(
+        'https://controlplane.tailscale.com',
+      );
+      expect(uciStore.ts_home.tailscale_accept_routes).toBe('1');
+      expect(uciStore.ts_home.tailscale_accept_dns).toBe('1');
+    } finally {
+      (globalThis as any).uci = prevUci;
+      (globalThis as any).ui = prevUi;
+      (globalThis as any).window = prevWindow;
+    }
   });
 });

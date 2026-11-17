@@ -924,6 +924,177 @@ function getQuickCreateTemplates(
         ),
         defaults: { enabled: '1', source_type: 'fptn' },
       },
+      {
+        id: 'tailscale',
+        icon: () => renderCompassIcon(20),
+        title: 'Tailscale Mesh VPN',
+        desc: tr(
+          'Встроенный узел Tailscale / Headscale (MagicDNS, подсети и Exit Node)',
+          'Native Tailscale / Headscale node (MagicDNS, subnet routes & Exit Node)',
+        ),
+        defaults: {
+          enabled: '1',
+          source_type: 'tailscale',
+          tailscale_control_url: 'https://controlplane.tailscale.com',
+          tailscale_accept_routes: '1',
+          tailscale_accept_dns: '1',
+          tailscale_ephemeral: '0',
+        },
+      },
+      {
+        id: 'openvpn',
+        icon: () => renderLockIcon(20),
+        title: 'OpenVPN (.ovpn)',
+        desc: tr(
+          'Встроенный клиент OpenVPN с импортом .ovpn или ручными параметрами',
+          'Built-in OpenVPN client via .ovpn import or manual settings',
+        ),
+        defaults: { enabled: '1', source_type: 'openvpn' },
+      },
+      {
+        id: 'interface',
+        icon: () => renderSubRouteIcon(20),
+        title: tr('Сетевой интерфейс', 'Network Interface'),
+        desc: tr(
+          'Вывод трафика в существующий интерфейс роутера (wg0, awg0, tun0, wan)',
+          'Route traffic through an existing router interface (wg0, awg0, tun0, wan)',
+        ),
+        defaults: { enabled: '1', source_type: 'interface' },
+      },
+      {
+        id: 'csqtt',
+        icon: () => renderZapIcon(20),
+        title: 'CSQTT / WDTT v3',
+        desc: tr(
+          'Транспорт CSQTT / WDTT v3 с пулами узлов и гибким маскированием',
+          'CSQTT / WDTT v3 transport with server pools',
+        ),
+        defaults: { enabled: '1', source_type: 'csqtt' },
+      },
+      {
+        id: 'wdtt',
+        icon: () => renderZapIcon(20),
+        title: 'WDTT',
+        desc: tr(
+          'Встроенный транспорт WDTT ядра tachyon-core',
+          'Native WDTT transport in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'wdtt' },
+      },
+      {
+        id: 'anytls',
+        icon: () => renderLockIcon(20),
+        title: 'AnyTLS',
+        desc: tr(
+          'Протокол AnyTLS с поддержкой сессий и мультиплексирования',
+          'AnyTLS protocol with session multiplexing',
+        ),
+        defaults: { enabled: '1', source_type: 'anytls' },
+      },
+      {
+        id: 'naive',
+        icon: () => renderGlobeIcon(20),
+        title: 'NaiveProxy',
+        desc: tr(
+          'Туннель NaiveProxy поверх HTTPS / HTTP/3 QUIC',
+          'NaiveProxy tunnel over HTTPS / HTTP/3 QUIC',
+        ),
+        defaults: { enabled: '1', source_type: 'naive' },
+      },
+      {
+        id: 'mieru',
+        icon: () => renderActivityIcon(20),
+        title: 'Mieru',
+        desc: tr(
+          'Протокол Mieru поверх TCP или UDP с диапазонами портов',
+          'Mieru protocol over TCP or UDP with port ranges',
+        ),
+        defaults: { enabled: '1', source_type: 'mieru' },
+      },
+      {
+        id: 'snell',
+        icon: () => renderRocketIcon(20),
+        title: 'Snell',
+        desc: tr(
+          'Прокси-протокол Snell с поддержкой обфускации',
+          'Snell proxy protocol with optional obfuscation',
+        ),
+        defaults: { enabled: '1', source_type: 'snell' },
+      },
+      {
+        id: 'sudoku',
+        icon: () => renderPuzzleIcon(20),
+        title: 'Sudoku',
+        desc: tr(
+          'Туннель Sudoku в составе ядра tachyon-core',
+          'Native Sudoku tunnel in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'sudoku' },
+      },
+      {
+        id: 'masque',
+        icon: () => renderCloudIcon(20),
+        title: 'MASQUE (HTTP/3)',
+        desc: tr(
+          'IP-туннель MASQUE поверх HTTP/3 QUIC (RFC 9484)',
+          'MASQUE IP tunnel over HTTP/3 QUIC (RFC 9484)',
+        ),
+        defaults: { enabled: '1', source_type: 'masque' },
+      },
+      {
+        id: 'shadowtls',
+        icon: () => renderShieldIcon(20),
+        title: 'ShadowTLS v3',
+        desc: tr(
+          'Маскировка транспортного соединения под TLS 1.3',
+          'ShadowTLS v3 TLS 1.3 handshake transport',
+        ),
+        defaults: { enabled: '1', source_type: 'shadowtls' },
+      },
+      {
+        id: 'trusttunnel',
+        icon: () => renderShieldIcon(20),
+        title: 'TrustTunnel',
+        desc: tr(
+          'HTTP/2 и HTTP/3 транспорт TrustTunnel',
+          'TrustTunnel HTTP/2 and HTTP/3 transport',
+        ),
+        defaults: { enabled: '1', source_type: 'trusttunnel' },
+      },
+      {
+        id: 'tewfai',
+        icon: () => renderZapIcon(20),
+        title: 'TewFai',
+        desc: tr(
+          'Встроенный транспорт TewFai ядра tachyon-core',
+          'Native TewFai transport in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'tewfai' },
+      },
+      {
+        id: 'tor',
+        icon: () => renderGlobeIcon(20),
+        title: 'Tor (SOCKS5)',
+        desc: tr(
+          'Локальный SOCKS5-прокси сети Tor на роутере',
+          'Local Tor SOCKS5 proxy running on router',
+        ),
+        defaults: {
+          enabled: '1',
+          source_type: 'tor',
+          tor_socks_port: '9050',
+        },
+      },
+      {
+        id: 'outbound_json',
+        icon: () => renderFileTextIcon(20),
+        title: 'Outbound JSON',
+        desc: tr(
+          'Произвольный JSON-аутбаунд или эндпоинт для tachyon-core',
+          'Custom raw outbound or endpoint JSON for tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'outbound_json' },
+      },
     ];
   }
   if (type === 'condition') {
@@ -1734,10 +1905,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         { id: 'links', label: tr('Прокси-ссылки', 'Proxy Links') },
         {
           id: 'tunnel',
-          label: tr(
-            'Туннели (WARP / FPTN / AWG)',
-            'Tunnels (WARP / FPTN / AWG)',
-          ),
+          label: tr('Туннели и протоколы', 'Tunnels & Protocols'),
         },
         { id: 'dpi', label: tr('DPI / Desync', 'DPI / Desync') },
       ],
@@ -2877,8 +3045,18 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               'tailscale',
               'csqtt',
               'wdtt',
+              'anytls',
+              'naive',
+              'mieru',
+              'snell',
+              'sudoku',
+              'masque',
+              'shadowtls',
+              'trusttunnel',
+              'tewfai',
               'tor',
               'interface',
+              'outbound_json',
             ].includes(stype);
           }
           if (fid === 'dpi') {

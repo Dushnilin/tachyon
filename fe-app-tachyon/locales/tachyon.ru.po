@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-17 15:09+0300\n"
-"PO-Revision-Date: 2026-11-17 15:09+0300\n"
+"POT-Creation-Date: 2026-11-17 20:28+0300\n"
+"PO-Revision-Date: 2026-11-17 20:28+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -869,6 +869,9 @@ msgstr "Защита от обхода: блокировка Private DNS / DoH /
 msgid "AnyTLS Password"
 msgstr "Пароль AnyTLS"
 
+msgid "AnyTLS protocol with session multiplexing"
+msgstr "Протокол AnyTLS с поддержкой сессий и мультиплексирования"
+
 msgid "App Version"
 msgstr "Версия приложения"
 
@@ -1127,8 +1130,8 @@ msgstr ""
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
 
-msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings)."
-msgstr "Автоматически создавать и поддерживать зону «tailscale» в /etc/config/firewall (интерфейс tailscale0, маскарадинг, фиксация MSS и перенаправления lan/wan)."
+msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings). Only needed with a system tailscale0 interface; built-in tachyon-core runs in userspace."
+msgstr ""
 
 msgid "Automatically download and install new versions of components"
 msgstr "Автоматически загружать и устанавливать новые версии компонентов"
@@ -1427,6 +1430,9 @@ msgstr "Отчёт об ошибке загружен"
 msgid "Built-in Cloudflare WARP tunnel with Amnezia obfuscation"
 msgstr "Встроенный туннель Cloudflare WARP с обфускацией заголовков Amnezia"
 
+msgid "Built-in OpenVPN client via .ovpn import or manual settings"
+msgstr "Встроенный клиент OpenVPN с импортом .ovpn или ручными параметрами"
+
 msgid "Built-in Script (curl + ucode)"
 msgstr "Встроенный скрипт (curl + ucode)"
 
@@ -1498,6 +1504,9 @@ msgstr "Адрес сервера CSQTT / WDTT"
 
 msgid "CSQTT / WDTT URI (optional override)"
 msgstr ""
+
+msgid "CSQTT / WDTT v3 transport with server pools"
+msgstr "Транспорт CSQTT / WDTT v3 с пулами узлов и гибким маскированием"
 
 msgid "CSQTT Mode"
 msgstr "Режим CSQTT"
@@ -2366,6 +2375,9 @@ msgstr "Собственный JSON-аутбаунд (Tachyon Core)"
 msgid "Custom Target URL(s)..."
 msgstr "Свои целевые URL..."
 
+msgid "Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer."
+msgstr "Пользовательское содержимое подставного UDP-пакета. Требуется tachyon-core 0.5.9 или новее."
+
 msgid "Custom User-Agent / Client Profile"
 msgstr "Пользовательский User-Agent / Профиль клиента"
 
@@ -2401,6 +2413,9 @@ msgstr "Пользовательские конфигурации outbound в ф
 
 msgid "Custom parameters (Manual)"
 msgstr "Ручная настройка параметров (Custom)"
+
+msgid "Custom raw outbound or endpoint JSON for tachyon-core"
+msgstr "Произвольный JSON-аутбаунд или эндпоинт для tachyon-core"
 
 msgid "Custom strategy added!"
 msgstr "Пользовательская стратегия добавлена!"
@@ -5615,6 +5630,9 @@ msgstr "Оставить (по умолчанию)"
 msgid "Keep Provider Default"
 msgstr "По умолчанию из подписки"
 
+msgid "Keep UDP Socket"
+msgstr "Сохранять UDP-сокет"
+
 msgid "Keep only subscription nodes whose name contains any of these keywords (empty keeps all). Case-insensitive, emoji supported."
 msgstr "Оставлять только узлы подписки, имя которых содержит любое из этих ключевых слов (пусто — оставить все). Без учёта регистра, поддерживаются эмодзи."
 
@@ -5918,6 +5936,9 @@ msgstr "Локальный SOCKS5-порт демона Tor (127.0.0.1)"
 msgid "Local Tor SOCKS5 port on router (default: 9050)."
 msgstr "Локальный порт Tor SOCKS5 на роутере (по умолчанию: 9050)."
 
+msgid "Local Tor SOCKS5 proxy running on router"
+msgstr "Локальный SOCKS5-прокси сети Tor на роутере"
+
 msgid "Local Tunnel IPv4 CIDR"
 msgstr "Локальный IPv4 адрес туннеля"
 
@@ -5962,6 +5983,9 @@ msgstr "Токен доступа MASQUE"
 
 msgid "MASQUE Account ID"
 msgstr "ID аккаунта MASQUE"
+
+msgid "MASQUE IP tunnel over HTTP/3 QUIC (RFC 9484)"
+msgstr "IP-туннель MASQUE поверх HTTP/3 QUIC (RFC 9484)"
 
 msgid "MASQUE MTU"
 msgstr "MTU для MASQUE"
@@ -6164,6 +6188,9 @@ msgstr "Адрес сервера Mieru"
 msgid "Mieru Transport"
 msgstr "Транспорт Mieru"
 
+msgid "Mieru protocol over TCP or UDP with port ranges"
+msgstr "Протокол Mieru поверх TCP или UDP с диапазонами портов"
+
 msgid "Min Idle Sessions / Timeout"
 msgstr "Мин. пул idle-сессий / Таймаут"
 
@@ -6323,6 +6350,9 @@ msgstr "НЕ (NOT — инвертировать выбранные услови
 msgid "NOT (none of the selected conditions match)"
 msgstr "НЕ (ни одно из выбранных условий не должно совпадать)"
 
+msgid "NaiveProxy tunnel over HTTPS / HTTP/3 QUIC"
+msgstr "Туннель NaiveProxy поверх HTTPS / HTTP/3 QUIC"
+
 msgid "Name"
 msgstr "Имя"
 
@@ -6340,6 +6370,18 @@ msgstr "Матрица шаблонов нативной десинхрониз�
 
 msgid "Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls."
 msgstr "Встроенный алгоритм балансировки ядра Rust для пулов URLTest: «Стабильность» отсеивает узлы с джиттером и потерями, «Привязка потока» закрепляет сессии через хэш Rendezvous HRW, «Наименьшая нагрузка» распределяет параллельные потоки, «Взвешенный» делит трафик пропорционально 1/RTT², «Пассивный предохранитель» отправляет в карантин узлы при раннем обрыве (< 64 КиБ), а «Параллельный резерв» подключает запасной узел при задержке рукопожатия."
+
+msgid "Native Sudoku tunnel in tachyon-core"
+msgstr "Туннель Sudoku в составе ядра tachyon-core"
+
+msgid "Native Tailscale / Headscale node (MagicDNS, subnet routes & Exit Node)"
+msgstr "Встроенный узел Tailscale / Headscale (MagicDNS, подсети и Exit Node)"
+
+msgid "Native TewFai transport in tachyon-core"
+msgstr "Встроенный транспорт TewFai ядра tachyon-core"
+
+msgid "Native WDTT transport in tachyon-core"
+msgstr "Встроенный транспорт WDTT ядра tachyon-core"
 
 msgid "Native internet restored. Tachyon stopped."
 msgstr "Обычный интернет восстановлен. Tachyon остановлен."
@@ -6896,8 +6938,8 @@ msgstr "Необязательные URL HTTP/HTTPS для проверки че
 msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
 msgstr ""
 
-msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server."
-msgstr "Необязательный UDP-порт для работы этого узла в роли ретранслятора Tailscale peer relay."
+msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server. Not yet supported by tachyon-core (leave empty)."
+msgstr ""
 
 msgid "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0)."
 msgstr "Дополнительные URL для одновременной проверки вместе с основным URL. Если ни один сервер не проходит 100% URL, резервный режим (Fallback) выберет сервер с наибольшим числом доступных URL (> 0)."
@@ -6935,8 +6977,8 @@ msgstr ""
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
 
-msgid "Optional static host:port or IP:port endpoints advertised for the peer relay server."
-msgstr "Необязательные статические адреса host:port или IP:port, анонсируемые для сервера peer relay."
+msgid "Optional static host:port or IP:port endpoints advertised for the peer relay server. Not yet supported by tachyon-core (leave empty)."
+msgstr ""
 
 msgid "Optional tailnet peer hostname or Tailscale IP to route outbound endpoint traffic through."
 msgstr "Необязательное имя узла или Tailscale IP в сети Tailnet для маршрутизации исходящего трафика конечной точки."
@@ -8195,6 +8237,9 @@ msgstr "Изолированные пользователи (auth_user)"
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
+msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
+msgstr "Сохранять исходящий сокет, если ответ задерживается. Требуется tachyon-core 0.5.9 или новее."
+
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
@@ -8290,6 +8335,9 @@ msgstr "Направлять исходящий трафик этого подк
 
 msgid "Route traffic arriving from selected local Inbound servers (created in the Server tab) through this condition/section."
 msgstr "Направлять трафик, приходящий от выбранных локальных входящих серверов (созданных во вкладке «Сервер»), через это условие или секцию."
+
+msgid "Route traffic through an existing router interface (wg0, awg0, tun0, wan)"
+msgstr "Вывод трафика в существующий интерфейс роутера (wg0, awg0, tun0, wan)"
 
 msgid "Route via Proxy"
 msgstr "Через прокси"
@@ -8915,6 +8963,9 @@ msgstr "Отправлять уведомления родителям в Telegr
 msgid "Send Telegram notification when a guest device hits its daily time or traffic quota."
 msgstr "Отправлять уведомление в Telegram при исчерпании гостевым устройством лимита времени или трафика."
 
+msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
+msgstr "Отправлять подставные UDP-пакеты перед первыми N пакетами или перед пакетами указанного диапазона включительно. Требуется tachyon-core 0.5.9 или новее."
+
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr "Отправлять уведомление в Telegram, если SSL/TLS-сертификаты скоро истекут."
 
@@ -9158,6 +9209,9 @@ msgstr "Пароль рукопожатия ShadowTLS"
 msgid "ShadowTLS Version"
 msgstr "Версия ShadowTLS"
 
+msgid "ShadowTLS v3 TLS 1.3 handshake transport"
+msgstr "Маскировка транспортного соединения под TLS 1.3"
+
 msgid "ShadowTLS version"
 msgstr "Версия ShadowTLS"
 
@@ -9307,6 +9361,9 @@ msgstr "Версия протокола Snell"
 
 msgid "Snell Version"
 msgstr "Версия Snell"
+
+msgid "Snell proxy protocol with optional obfuscation"
+msgstr "Прокси-протокол Snell с поддержкой обфускации"
 
 msgid "SoC/CPU Temp"
 msgstr "Температура SoC/CPU"
@@ -10460,6 +10517,9 @@ msgstr "Устранение неполадок"
 msgid "TrustTunnel Endpoint Host"
 msgstr "Эндпоинт TrustTunnel (Host / IP)"
 
+msgid "TrustTunnel HTTP/2 and HTTP/3 transport"
+msgstr "HTTP/2 и HTTP/3 транспорт TrustTunnel"
+
 msgid "Trusted Master Devices (MAC / IP)"
 msgstr "Доверенные основные устройства (MAC / IP)"
 
@@ -10481,8 +10541,8 @@ msgstr "MTU туннеля"
 msgid "Tunnel Network (CIDR)"
 msgstr ""
 
-msgid "Tunnels (WARP / FPTN / AWG)"
-msgstr "Туннели (WARP / FPTN / AWG)"
+msgid "Tunnels & Protocols"
+msgstr "Туннели и протоколы"
 
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
@@ -10507,6 +10567,12 @@ msgstr "UDP / QUIC протоколы"
 
 msgid "UDP Fake (QUIC / Voice)"
 msgstr "Фейковые пакеты UDP (QUIC / Голос)"
+
+msgid "UDP Fake Packet Range"
+msgstr "Диапазон для подставных UDP-пакетов"
+
+msgid "UDP Fake Payload (HEX)"
+msgstr "Содержимое подставного UDP-пакета (HEX)"
 
 msgid "UDP Fake Payload Size (udplen)"
 msgstr ""
@@ -11863,6 +11929,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings)."
+msgstr "Автоматически создавать и поддерживать зону «tailscale» в /etc/config/firewall (интерфейс tailscale0, маскарадинг, фиксация MSS и перенаправления lan/wan)."
+
+msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server."
+msgstr "Необязательный UDP-порт для работы этого узла в роли ретранслятора Tailscale peer relay."
+
+msgid "Optional static host:port or IP:port endpoints advertised for the peer relay server."
+msgstr "Необязательные статические адреса host:port или IP:port, анонсируемые для сервера peer relay."
+
+msgid "Tunnels (WARP / FPTN / AWG)"
+msgstr "Туннели (WARP / FPTN / AWG)"
 
 msgid "SOCKS mode does not intercept LAN traffic at all, and in TUN mode traffic leaves directly while the core is down."
 msgstr "Режим SOCKS вообще не перехватывает трафик LAN, а в режиме TUN трафик уходит напрямую, пока ядро не работает."
@@ -14788,21 +14866,3 @@ msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."
-
-msgid "Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer."
-msgstr "Пользовательское содержимое подставного UDP-пакета. Требуется tachyon-core 0.5.9 или новее."
-
-msgid "Keep UDP Socket"
-msgstr "Сохранять UDP-сокет"
-
-msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
-msgstr "Сохранять исходящий сокет, если ответ задерживается. Требуется tachyon-core 0.5.9 или новее."
-
-msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
-msgstr "Отправлять подставные UDP-пакеты перед первыми N пакетами или перед пакетами указанного диапазона включительно. Требуется tachyon-core 0.5.9 или новее."
-
-msgid "UDP Fake Packet Range"
-msgstr "Диапазон для подставных UDP-пакетов"
-
-msgid "UDP Fake Payload (HEX)"
-msgstr "Содержимое подставного UDP-пакета (HEX)"

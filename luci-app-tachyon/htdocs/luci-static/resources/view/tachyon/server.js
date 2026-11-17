@@ -6643,7 +6643,7 @@ function createServerContent(section, options = {}) {
     "tailscale_relay_server_port",
     _("Relay server UDP port"),
     _(
-      "Optional UDP port to expose this endpoint as a Tailscale peer relay server.",
+      "Optional UDP port to expose this endpoint as a Tailscale peer relay server. Not yet supported by tachyon-core (leave empty).",
     ),
   );
   o.modalonly = true;
@@ -6657,7 +6657,7 @@ function createServerContent(section, options = {}) {
     "tailscale_relay_server_static_endpoints",
     _("Relay server static endpoints"),
     _(
-      "Optional static host:port or IP:port endpoints advertised for the peer relay server.",
+      "Optional static host:port or IP:port endpoints advertised for the peer relay server. Not yet supported by tachyon-core (leave empty).",
     ),
   );
   o.modalonly = true;
@@ -6670,7 +6670,7 @@ function createServerContent(section, options = {}) {
     "tailscale_auto_firewall",
     _("Auto-configure Tailscale firewall zone"),
     _(
-      "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings).",
+      "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings). Only needed with a system tailscale0 interface; built-in tachyon-core runs in userspace.",
     ),
   );
   o.default = "1";
