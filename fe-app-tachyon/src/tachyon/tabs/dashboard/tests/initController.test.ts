@@ -428,6 +428,32 @@ describe('dashboard initController', () => {
       },
     );
 
+    it('checks the fallback rule after exhausting a sparse chain', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const chains: string[] = [];
+      chains[2] = 'other-out';
+      const conns = [
+        { chains, rule: 'ROUTE(VPN-OUT)', download: 3 },
+        { chains, rulePayload: 'Rule_Set=VPN-example', upload: 4 },
+        { chains, rule: 'route(vpn-work-out)', download: 5 },
+      ];
+      expect(getSectionConnectionStats('VPN', 2, conns, {})).toEqual({
+        conns: 2,
+        upload: 4,
+        download: 3,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+    });
+
+    it('keeps the conversion error for an invalid chain entry after a match', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const malformed = JSON.parse('["vpn-out", {"toString": null}]');
+      expect(() =>
+        getSectionConnectionStats('vpn', 2, [{ chains: malformed }], {}),
+      ).toThrow(TypeError);
+    });
+
     it('attributes rates to the section selector, not a reused balancer name', async () => {
       const { getSectionConnectionStats } = await import('../initController');
       const conns = [
