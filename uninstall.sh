@@ -276,13 +276,14 @@ _is_tachyon_managed() {
     [ -d "/var/run/tachyon/$_comp" ] && return 0
     return 1
 }
-for _comp in zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
+for _svc in /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc; do
+    _comp="$(basename "$_svc")"
     _comp_marker="$_comp"
     case "$_comp" in wdtt-client) _comp_marker="wdtt" ;; esac
-    if _is_tachyon_managed "$_comp_marker" && [ -f "/etc/init.d/$_comp" ]; then
-        "/etc/init.d/$_comp" stop >/dev/null 2>&1 || true
-        "/etc/init.d/$_comp" disable >/dev/null 2>&1 || true
-        rm -f "/etc/init.d/$_comp" 2>/dev/null || true
+    if _is_tachyon_managed "$_comp_marker" && [ -f "$_svc" ]; then
+        "$_svc" stop >/dev/null 2>&1 || true
+        "$_svc" disable >/dev/null 2>&1 || true
+        rm -f "$_svc" 2>/dev/null || true
     fi
 done
 MANAGED_TAILSCALE=0
