@@ -3375,6 +3375,20 @@ function clean_condition_tokens(src, key) {
     return out;
 }
 
+function is_boolean_flag_token(value) {
+    let v = lc(trim(as_string(value)));
+    return v == "" || v == "0" || v == "1" || v == "true" || v == "false" || v == "yes" || v == "no" || v == "on" || v == "off";
+}
+
+function community_subnet_list_names(src) {
+    let out = [];
+    for (let item in whitespace_list_value(src, "community_subnets")) {
+        if (!is_boolean_flag_token(item))
+            push(out, item);
+    }
+    return out;
+}
+
 function merge_condition_into_section_object(base_section, positive_conds, negative_conds) {
     let merged = {};
     for (let k, v in object_or_empty(base_section))
@@ -3394,6 +3408,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "domain_keyword",
         "domain_regex",
         "user_domains",
+        "excluded_domains",
         "ip_cidr",
         "ip",
         "subnets",
@@ -3424,6 +3439,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "domain_keyword_text",
         "domain_regex_text",
         "user_domains_text",
+        "excluded_domains_text",
         "ip_cidr_text",
         "source_ip_cidr_text",
         "ports_text"
@@ -3439,6 +3455,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         device_mac: true,
         fully_routed_ips: true,
         excluded_ips: true,
+        excluded_domains: true,
         ports: true,
         port: true,
         protocol: true,
@@ -3452,6 +3469,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         preferred_by: true
     };
     let section_filter_text_keys = {
+        excluded_domains_text: true,
         source_ip_cidr_text: true,
         ports_text: true
     };
@@ -3471,6 +3489,12 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         for (let src in key_sources) {
             for (let item in clean_condition_tokens(src, key))
                 push_unique_str(acc, seen, item);
+        }
+        if (key == "community_lists") {
+            for (let src in key_sources) {
+                for (let comm in community_subnet_list_names(src))
+                    push_unique_str(acc, seen, comm);
+            }
         }
         if (key == "source_ip_cidr") {
             for (let src in key_sources) {
@@ -3552,9 +3576,14 @@ function community_lists(section) {
     let seen = {};
     for (let item in whitespace_list_value(section, "community_lists"))
         push_unique_str(result, seen, item);
-    for (let cond in section_leaf_conditions(section))
+    for (let item in community_subnet_list_names(section))
+        push_unique_str(result, seen, item);
+    for (let cond in section_leaf_conditions(section)) {
         for (let item in whitespace_list_value(cond, "community_lists"))
             push_unique_str(result, seen, item);
+        for (let item in community_subnet_list_names(cond))
+            push_unique_str(result, seen, item);
+    }
     return result;
 }
 
@@ -3650,6 +3679,99 @@ function rule_config_or_null() {
     } catch (e) {
         return null;
     }
+}
+
+function excluded_domain_conditions(section) {
+    let result = {
+        domain: [],
+        domain_suffix: [],
+        domain_keyword: [],
+        domain_regex: []
+    };
+    let seen = {
+        domain: {},
+        domain_suffix: {},
+        domain_keyword: {},
+        domain_regex: {}
+    };
+    let rule_config = rule_config_or_null();
+    let split_tokens = function(raw_val) {
+        if (raw_val == null)
+            return [];
+        if (rule_config != null) {
+            if (type(raw_val) == "array") {
+                let out = [];
+                for (let item in raw_val) {
+                    for (let tok in rule_config.text_list_values(item, "comma-space"))
+                        push(out, tok);
+                }
+                return out;
+            }
+            return rule_config.text_list_values(raw_val, "comma-space");
+        }
+        let lines = type(raw_val) == "array" ? raw_val : split(as_string(raw_val), /[\r\n]+/);
+        let out = [];
+        for (let line in lines) {
+            line = replace(as_string(line), /(^|[ \t]+)\/\/.*$/, "");
+            line = replace(line, /(^|[ \t]+)#.*$/, "");
+            for (let tok in split(trim(line), /[ \t,]+/)) {
+                tok = trim(as_string(tok));
+                if (tok != "")
+                    push(out, tok);
+            }
+        }
+        return out;
+    };
+    let sources = [ object_or_empty(section), ...section_leaf_conditions(section) ];
+    let raw_tokens = [];
+    for (let src in sources) {
+        for (let tok in split_tokens(raw_option(src, "excluded_domains")))
+            push(raw_tokens, tok);
+        for (let tok in split_tokens(raw_option(src, "excluded_domains_text")))
+            push(raw_tokens, tok);
+    }
+    for (let raw_tok in raw_tokens) {
+        let tok = trim(as_string(raw_tok));
+        if (tok == "")
+            continue;
+        let colon = index(tok, ":");
+        if (colon > 0) {
+            let prefix = lc(substr(tok, 0, colon));
+            if (prefix == "domain") {
+                let body = trim(substr(tok, colon + 1));
+                while (lc(substr(body, 0, 7)) == "domain:")
+                    body = trim(substr(body, 7));
+                if (body != "" && index(body, ":") < 0) {
+                    let normalized = rule_config != null
+                        ? rule_config.domain_value_for_key(body, "domain_suffix")
+                        : lc(body);
+                    if (normalized != null && normalized != "")
+                        push_unique_str(result.domain_suffix, seen.domain_suffix, normalized);
+                }
+                continue;
+            }
+        }
+        if (rule_config != null) {
+            let parsed = rule_config.prefixed_domain_kind_value(tok);
+            if (parsed != null && result[parsed.kind] != null && parsed.value != "")
+                push_unique_str(result[parsed.kind], seen[parsed.kind], parsed.value);
+            continue;
+        }
+        if (substr(lc(tok), 0, 5) == "full:") {
+            let v = lc(trim(substr(tok, 5)));
+            if (v != "") push_unique_str(result.domain, seen.domain, v);
+        } else if (substr(lc(tok), 0, 8) == "keyword:") {
+            let v = lc(trim(substr(tok, 8)));
+            if (v != "") push_unique_str(result.domain_keyword, seen.domain_keyword, v);
+        } else if (substr(lc(tok), 0, 6) == "regex:") {
+            let v = trim(substr(tok, 6));
+            if (v != "") push_unique_str(result.domain_regex, seen.domain_regex, v);
+        } else {
+            let v = lc(tok);
+            if (v != "") push_unique_str(result.domain_suffix, seen.domain_suffix, v);
+        }
+    }
+    return result;
 }
 
 function global_rule_kinds() {
@@ -3750,6 +3872,7 @@ function rule_condition_csv(section, key, kind) {
 
 function has_dns_matchers_single(section) {
     return length(whitespace_list_value(section, "community_lists")) > 0 ||
+        length(community_subnet_list_names(section)) > 0 ||
         length(whitespace_list_value(section, "rule_set")) > 0 ||
         length(whitespace_list_value(section, "rule_set_with_subnets")) > 0 ||
         option(section, "domain_ip_lists", "") != "" ||
@@ -5430,6 +5553,7 @@ function extract_atomic_matchers(obj) {
         domain_suffixes,
         domain_keywords,
         domain_regexes,
+        excluded_domains: excluded_domain_conditions(obj),
         lists: split_mixed([ "community_lists", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ], []),
         dest_ips: split_mixed([ "ip_cidr", "fully_routed_ips" ], [ "ip_cidr_text" ]),
         excluded_ips: split_mixed([ "excluded_ips" ], []),
@@ -5747,6 +5871,46 @@ function evaluate_atomic_condition_match(obj, query, owner_sec_id) {
                     cat_matched = true;
                     push(presence_hits, "list:" + lst + " (" + ip_hit + ")");
                 }
+            }
+        }
+        if (cat_matched && q_domain != "" && type(m.excluded_domains) == "object") {
+            let is_dom_excluded = false;
+            for (let ed in (m.excluded_domains.domain || [])) {
+                if (lc(ed) == q_domain) {
+                    is_dom_excluded = true;
+                    break;
+                }
+            }
+            if (!is_dom_excluded) {
+                for (let eds in (m.excluded_domains.domain_suffix || [])) {
+                    if (trace_domain_matches_suffix(q_domain, eds)) {
+                        is_dom_excluded = true;
+                        break;
+                    }
+                }
+            }
+            if (!is_dom_excluded) {
+                for (let edk in (m.excluded_domains.domain_keyword || [])) {
+                    let edkl = lc(trim(as_string(edk)));
+                    if (edkl != "" && index(q_domain, edkl) >= 0) {
+                        is_dom_excluded = true;
+                        break;
+                    }
+                }
+            }
+            if (!is_dom_excluded) {
+                for (let edr in (m.excluded_domains.domain_regex || [])) {
+                    try {
+                        if (match(q_domain, regexp(as_string(edr))) != null) {
+                            is_dom_excluded = true;
+                            break;
+                        }
+                    } catch (e) {}
+                }
+            }
+            if (is_dom_excluded) {
+                cat_matched = false;
+                presence_hits = [];
             }
         }
         category_results.domain_or_list = cat_matched;
@@ -6907,6 +7071,7 @@ return {
     dashboard_exclude_ports,
     dashboard_exclude_groups,
     community_lists,
+    excluded_domain_conditions,
     rule_sets,
     rule_sets_with_subnets,
     domain_ip_lists,

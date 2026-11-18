@@ -541,7 +541,7 @@ const COMMUNITY_LIST_DOMAINS = {
     ],
     ads_hagezi_pro: [
         "doubleclick.net", "googlesyndication.com", "googleadservices.com",
-        "adservice.google.com", "an.yandex.ru", "mc.yandex.ru"
+        "adservice.google.com", "an.yandex.ru", "mc.yandex.ru", "metrika.yandex.ru"
     ],
     android_ads_block: [
         "googleadservices.com", "googlesyndication.com", "applovin.com",
@@ -1132,7 +1132,7 @@ function collect_section_conditions(sec, conditions_map) {
             if (v != "" && index(protocols, v) < 0) push(protocols, v);
         }
     }
-    for (let exkey in [ "exclude_domains", "domain_exclude" ]) {
+    for (let exkey in [ "exclude_domains", "domain_exclude", "excluded_domains", "excluded_domains_text" ]) {
         for (let item in words_list(sec[exkey])) {
             let v = normalize_domain_token(item);
             if (v != "" && index(exclude_domains, v) < 0) push(exclude_domains, v);
@@ -1198,7 +1198,7 @@ function collect_section_conditions(sec, conditions_map) {
                     if (v != "" && index(protocols, v) < 0) push(protocols, v);
                 }
             }
-            for (let exkey in [ "exclude_domains", "domain_exclude" ]) {
+            for (let exkey in [ "exclude_domains", "domain_exclude", "excluded_domains", "excluded_domains_text" ]) {
                 for (let item in words_list(cond[exkey])) {
                     let v = normalize_domain_token(item);
                     if (v != "" && index(exclude_domains, v) < 0) push(exclude_domains, v);

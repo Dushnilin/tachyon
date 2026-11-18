@@ -2425,46 +2425,49 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
         }
         config.route.rules = kept_rules;
     }
-    for (let section in sections) {
+    let last_block_idx = -1;
+    for (let i = 0; i < length(sections); i++) {
+        if (option(sections[i], "action", "") == "block")
+            last_block_idx = i;
+    }
+    let aaaa_noerror_emitted = false;
+    let maybe_emit_aaaa_noerror = function() {
+        if (!aaaa_noerror_emitted && !eff_state.ipv6_active && type(config.dns) == "object" && type(config.dns.rules) == "array") {
+            push(config.dns.rules, {
+                action: "predefined",
+                query_type: [ "AAAA" ],
+                rcode: "NOERROR"
+            });
+            aaaa_noerror_emitted = true;
+        }
+    };
+    if (last_block_idx < 0)
+        maybe_emit_aaaa_noerror();
+
+    for (let i = 0; i < length(sections); i++) {
+        let section = sections[i];
         let act = option(section, "action", "");
-        if (act == "block") {
+        if (act == "block" || act == "bypass") {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
             add_route_for_section(config, section);
             record_owner_delta(config, owners, section[".name"], snap);
-        }
-    }
-    if (!eff_state.ipv6_active && type(config.dns) == "object" && type(config.dns.rules) == "array") {
-        push(config.dns.rules, {
-            action: "predefined",
-            query_type: [ "AAAA" ],
-            rcode: "NOERROR"
-        });
-    }
-    for (let section in sections) {
-        let act = option(section, "action", "");
-        if (act == "bypass") {
+        } else if (act == "dns" && bool_option(section, "disable_fakeip", false)) {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
-            add_route_for_section(config, section);
+            add_route_for_section(config, section, "pre_fakeip");
             record_owner_delta(config, owners, section[".name"], snap);
         }
+        if (i == last_block_idx)
+            maybe_emit_aaaa_noerror();
     }
+    maybe_emit_aaaa_noerror();
     for (let r in deferred_base_policy_rules)
         push(config.route.rules, r);
     if (type(config.dns) == "object" && type(config.dns.rules) == "array") {
         let fakeip_ex_ttl = int_option(settings, "dns_rewrite_ttl", "15");
         for (let ex_rule in build_fakeip_exclude_rules(settings, eff_state, fakeip_ex_ttl))
             push(config.dns.rules, ex_rule);
-    }
-    for (let section in sections) {
-        let act = option(section, "action", "");
-        if (act == "dns") {
-            ctx.current_section = section[".name"];
-            let snap = snapshot_config_counts(config);
-            add_route_for_section(config, section, "pre_fakeip");
-            record_owner_delta(config, owners, section[".name"], snap);
-        }
     }
     if (eff_state.fakeip_enabled && type(config.dns) == "object" && type(config.dns.rules) == "array") {
         let server_dns_inbounds = [];
