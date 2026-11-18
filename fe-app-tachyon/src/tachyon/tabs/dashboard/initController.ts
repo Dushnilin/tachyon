@@ -5111,34 +5111,42 @@ export function getSectionConnectionStats(
   rates: ReadonlyMap<string, TrafficSample> = new Map(),
 ) {
   const target = (sectionName || '').toLowerCase();
+  const outbound = `${target}-out`;
+  const urltestPrefix = `${target}-urltest-`;
+  const priorityPrefix = `${target}-priority-`;
+  const outboundRule = `route(${outbound})`;
+  const targetRule = `route(${target})`;
+  const ruleSetPrefix = `rule_set=${target}-`;
+  const bracketPrefix = `[${target}-`;
+  const spacePrefix = ` ${target}-`;
+
   const matchesTarget = (c: ConnectionTrafficSample): boolean => {
     const rawChains = Array.isArray(c.chains)
       ? c.chains
       : Array.isArray((c as any).metadata?.chains)
         ? (c as any).metadata.chains
         : [];
-    const chains = rawChains.map((ch: any) => String(ch).toLowerCase());
-    if (
-      chains.some(
-        (ch: string) =>
-          ch === target ||
-          ch === `${target}-out` ||
-          ch.startsWith(`${target}-urltest-`) ||
-          ch.startsWith(`${target}-priority-`),
-      )
-    ) {
-      return true;
-    }
+    let matched = false;
+    rawChains.forEach((rawTag: unknown) => {
+      const chain = String(rawTag).toLowerCase();
+      matched ||=
+        chain === target ||
+        chain === outbound ||
+        chain.startsWith(urltestPrefix) ||
+        chain.startsWith(priorityPrefix);
+    });
+    if (matched) return true;
+
     const ruleStr = String(
       (c as any).rule || (c as any).rulePayload || '',
     ).toLowerCase();
     if (
       ruleStr &&
-      (ruleStr.includes(`route(${target}-out)`) ||
-        ruleStr.includes(`route(${target})`) ||
-        ruleStr.includes(`rule_set=${target}-`) ||
-        ruleStr.includes(`[${target}-`) ||
-        ruleStr.includes(` ${target}-`))
+      (ruleStr.includes(outboundRule) ||
+        ruleStr.includes(targetRule) ||
+        ruleStr.includes(ruleSetPrefix) ||
+        ruleStr.includes(bracketPrefix) ||
+        ruleStr.includes(spacePrefix))
     ) {
       return true;
     }
