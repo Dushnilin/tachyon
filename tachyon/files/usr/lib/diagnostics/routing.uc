@@ -24,12 +24,14 @@ const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const PROVIDERS_STATUS_UC = LIB_DIR + "/providers/status.uc";
+const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
 const SERVICE_UI_UC = LIB_DIR + "/service/ui.uc";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
+let command_capture = common.command_capture;
 let command_output = common.command_output;
 let command_success = common.command_success;
 let command_output_from_args = common.command_output_from_args;
@@ -689,71 +691,209 @@ function cleanup_check_proxy_dir(dir) {
         command_success_from_args([ "rm", "-rf", dir ]);
 }
 
+function parse_listen_port(value) {
+    let text = trim(as_string(value));
+    if (match(text, /^[0-9]+$/) == null)
+        return 0;
+    let port = int(text, 10);
+    return (port >= 1 && port <= 65535) ? port : 0;
+}
+
+function normalize_proxy_connect_host(listen) {
+    let host = trim(as_string(listen || ""));
+    if (substr(host, 0, 1) == "[" && substr(host, length(host) - 1, 1) == "]")
+        host = substr(host, 1, length(host) - 2);
+    if (host == "" || host == "0.0.0.0" || host == "::")
+        return "127.0.0.1";
+    return host;
+}
+
+function format_proxy_url(scheme, host, port) {
+    let target_host = index(host, ":") >= 0 ? "[" + host + "]" : host;
+    return scheme + "://" + target_host + ":" + as_string(port);
+}
+
+function inbound_proxy_scheme(inbound) {
+    return lc(as_string(inbound.type || "mixed")) == "socks" ? "socks5h" : "http";
+}
+
+function inbound_has_auth(inbound) {
+    return type(inbound.users) == "array" && length(inbound.users) > 0;
+}
+
+function build_proxy_inbound_endpoint(inbound, default_port) {
+    let tag = as_string(inbound.tag || "");
+    let port = parse_listen_port(inbound.listen_port);
+    if (port == 0)
+        port = default_port;
+    if (port == 0)
+        return null;
+    let host = normalize_proxy_connect_host(inbound.listen);
+    let scheme = inbound_proxy_scheme(inbound);
+    return {
+        tag: tag,
+        host: host,
+        port: port,
+        scheme: scheme,
+        url: format_proxy_url(scheme, host, port)
+    };
+}
+
+function resolve_check_proxy_inbound(core_config_path) {
+    let cfg = common.read_json_file(core_config_path);
+    if (type(cfg) != "object" || type(cfg.inbounds) != "array")
+        return null;
+
+    let candidates = [];
+    for (let inb in cfg.inbounds) {
+        if (type(inb) != "object")
+            continue;
+        let tag = as_string(inb.tag || "");
+        if (tag == "direct-bypass-in")
+            continue;
+        let inb_type = lc(as_string(inb.type || ""));
+        if (inb_type != "mixed" && inb_type != "http" && inb_type != "socks" &&
+            tag != "service-mixed-in" && tag != "mixed-in")
+            continue;
+        push(candidates, inb);
+    }
+
+    for (let inb in candidates) {
+        let tag = as_string(inb.tag || "");
+        if (tag == "service-mixed-in" || tag == "mixed-in") {
+            let ep = build_proxy_inbound_endpoint(inb, 4534);
+            if (ep != null)
+                return ep;
+        }
+    }
+
+    for (let inb in candidates) {
+        let tag = as_string(inb.tag || "");
+        if (inbound_has_auth(inb) || substr(tag, 0, 7) == "server-")
+            continue;
+        let listen = trim(as_string(inb.listen || ""));
+        if (listen == "" || listen == "127.0.0.1" || listen == "::1" || listen == "[::1]" ||
+            listen == "0.0.0.0" || listen == "::" || listen == "[::]") {
+            let ep = build_proxy_inbound_endpoint(inb, 0);
+            if (ep != null)
+                return ep;
+        }
+    }
+
+    for (let inb in candidates) {
+        let tag = as_string(inb.tag || "");
+        if (inbound_has_auth(inb) || substr(tag, 0, 7) == "server-")
+            continue;
+        let ep = build_proxy_inbound_endpoint(inb, 0);
+        if (ep != null)
+            return ep;
+    }
+
+    return null;
+}
+
+function core_service_is_running() {
+    let proc = require("core.process");
+    if (length(proc.core_daemon_pids()) > 0)
+        return true;
+    return module_success(SERVICE_STATE_UC, [ "tachyon-core-service-running" ]);
+}
+
 function check_proxy() {
-    let core_config_path = option(settings(), "config_path", "");
+    let core_config_path = trim(as_string(option(settings(), "config_path", ""))) || common.core_config_path();
     let bin = command_exists("tachyon-core") ? "tachyon-core" : "";
     if (bin == "") {
-        nolog("tachyon-core is not installed");
+        print("tachyon-core is not installed\n");
         return 1;
     }
     if (!file_exists(core_config_path)) {
-        nolog("Configuration file not found");
+        print("Configuration file not found\n");
         return 1;
     }
 
-    nolog("Checking " + bin + " configuration...");
-    if (!command_success_from_args([ bin, "-c", core_config_path, "check" ])) {
-        nolog("Invalid configuration");
+    print("Checking " + bin + " configuration...\n");
+    let check_cap = command_capture(command_from_args([ bin, "-c", core_config_path, "check" ]) + " 2>&1");
+    if (!check_cap || check_cap.status != 0) {
+        print("Invalid configuration\n");
+        let err = trim(as_string(check_cap && check_cap.output));
+        if (err != "")
+            print("Error: " + replace(err, /[\r\n]+/g, " | ") + "\n");
         return 1;
     }
 
     print(status_output([ "mask-core-config", core_config_path ], null));
-    nolog("Checking proxy connection...");
+    print("Checking proxy connection...\n");
 
-    let check_proxy_dir = TMP_TACHYON_CORE_FOLDER + "/check-proxy-" + clock()[0] + "-" + clock()[1];
-    let check_proxy_config = check_proxy_dir + "/config.json";
-    let check_proxy_cache = check_proxy_dir + "/cache.db";
-
-    cleanup_check_proxy_dir(check_proxy_dir);
-    common.ensure_dir(check_proxy_dir);
-    if (!status_success([ "prepare-check-proxy-config", core_config_path, check_proxy_config, check_proxy_cache ], null)) {
-        nolog("Failed to prepare temporary configuration");
-        cleanup_check_proxy_dir(check_proxy_dir);
+    let inbound = resolve_check_proxy_inbound(core_config_path);
+    if (inbound == null) {
+        print("Local mixed proxy inbound not found\n");
+        print("Error: No local mixed inbound (service-mixed-in / mixed-in) configured in " + core_config_path + "\n");
         return 1;
     }
 
-    let outbound_tag = replace(status_output(
-        [ "check-proxy-outbound-tag", check_proxy_config, CHECK_PROXY_IP_DOMAIN ],
-        null
-    ), /[\r\n]+$/g, "");
+    if (!core_service_is_running()) {
+        print("tachyon-core is not running\n");
+        print("Error: tachyon-core is not running (expected local mixed proxy at " + inbound.url + ")\n");
+        return 1;
+    }
 
-    let response = "";
-    for (let attempt = 1; attempt <= 5; attempt++) {
-        let args = [ bin, "tools", "fetch", "ifconfig.me", "-c", check_proxy_config, "-D", check_proxy_dir, "--disable-color" ];
-        if (outbound_tag != "") {
-            push(args, "-o");
-            push(args, outbound_tag);
-        }
-        response = command_output(command_from_args(args) + " 2>/dev/null");
-        if (status_success([ "proxy-response-is-retryable-error" ], response))
+    if (!command_exists("curl")) {
+        print("Error: curl is not installed\n");
+        return 1;
+    }
+
+    let probe_urls = [
+        "https://ifconfig.me/ip",
+        "https://api.ipify.org",
+        "https://icanhazip.com"
+    ];
+    let attempts = length(probe_urls);
+    let last_error = "";
+
+    for (let i = 0; i < attempts; i++) {
+        let probe_url = probe_urls[i];
+        let args = [
+            "curl", "-fsSL",
+            "--connect-timeout", "5",
+            "--max-time", "10",
+            "--proxy", inbound.url,
+            probe_url
+        ];
+        let cap = command_capture(command_from_args(args) + " 2>&1");
+        if (!cap) {
+            last_error = "Failed to execute curl for " + probe_url;
             continue;
+        }
 
-        let masked_response_ip = replace(status_output([ "proxy-response-ip-mask" ], response), /[\r\n]+$/g, "");
+        let raw_output = as_string(cap.output || "");
+        let trimmed_output = trim(raw_output);
+
+        if (cap.status != 0) {
+            last_error = trimmed_output != ""
+                ? replace(trimmed_output, /[\r\n]+/g, " | ")
+                : ("curl exited with status " + as_string(cap.status) + " for " + probe_url);
+            continue;
+        }
+
+        if (status_success([ "proxy-response-is-retryable-error" ], raw_output)) {
+            last_error = "Retryable error response from " + probe_url +
+                (trimmed_output != "" ? ": " + replace(substr(trimmed_output, 0, 120), /[\r\n]+/g, " ") : "");
+            continue;
+        }
+
+        let masked_response_ip = replace(status_output([ "proxy-response-ip-mask" ], raw_output), /[\r\n]+$/g, "");
         if (masked_response_ip != "") {
-            nolog(masked_response_ip + " - should match proxy IP");
-            cleanup_check_proxy_dir(check_proxy_dir);
+            print(masked_response_ip + " - should match proxy IP\n");
             return 0;
         }
 
-        if (attempt == 5) {
-            nolog("Failed to get valid IP address after 5 attempts");
-            nolog(response == "" ? "Error: Empty response" : "Error response: " + response);
-            cleanup_check_proxy_dir(check_proxy_dir);
-            return 1;
-        }
+        last_error = trimmed_output == ""
+            ? ("Empty response from " + probe_url)
+            : ("Invalid IP response from " + probe_url + ": " + replace(substr(trimmed_output, 0, 200), /[\r\n]+/g, " "));
     }
 
-    cleanup_check_proxy_dir(check_proxy_dir);
+    print("Failed to get valid IP address after " + as_string(attempts) + " attempts\n");
+    print("Error: " + (last_error != "" ? last_error : "Empty response") + "\n");
     return 1;
 }
 

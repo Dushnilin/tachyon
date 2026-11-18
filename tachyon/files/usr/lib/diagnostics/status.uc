@@ -1015,15 +1015,20 @@ function render_proxy_response_ip_mask() {
     let response = read_stdin();
     let lines = split(response, "\n");
     let ipv4_lines = [];
-    let ipv6_like = false;
+    let ipv6_lines = [];
 
-    for (let line in lines) {
-        let matched = match(line, /^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$/);
-        if (matched)
-            push(ipv4_lines, "X.X.X." + matched[4]);
+    for (let raw_line in lines) {
+        let line = trim(as_string(raw_line));
+        if (line == "")
+            continue;
 
-        if (match(line, /^[0-9a-fA-F:]*::[0-9a-fA-F:]*$/) || match(line, /^[0-9a-fA-F:]+$/))
-            ipv6_like = true;
+        if (core_ip.valid_ipv4(line, false, false)) {
+            let parts = split(line, ".");
+            push(ipv4_lines, "X.X.X." + parts[3]);
+        }
+        else if (core_ip.valid_ipv6(line)) {
+            push(ipv6_lines, mask_ipv6_line(line));
+        }
     }
 
     if (length(ipv4_lines) > 0) {
@@ -1032,12 +1037,9 @@ function render_proxy_response_ip_mask() {
         return;
     }
 
-    if (ipv6_like) {
-        for (let i = 0; i < length(lines); i++) {
-            if (i == length(lines) - 1 && lines[i] == "")
-                continue;
-            print_line(mask_ipv6_line(lines[i]));
-        }
+    if (length(ipv6_lines) > 0) {
+        for (let line in ipv6_lines)
+            print_line(line);
         return;
     }
 
