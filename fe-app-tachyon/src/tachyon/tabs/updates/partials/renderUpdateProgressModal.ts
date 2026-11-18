@@ -402,7 +402,7 @@ export function showUpdateProgressModal(
             if (activeModalJobId) {
               saveHandledJobToSession(activeModalJobId);
             }
-            safeReloadPage();
+            void safeReloadPage();
           },
         });
 
@@ -454,7 +454,7 @@ export function showUpdateProgressModal(
                   saveHandledJobToSession(activeModalJobId);
                 }
                 await new Promise((resolve) => setTimeout(resolve, 800));
-                safeReloadPage();
+                await safeReloadPage();
                 return;
               }
             } catch (_err) {
