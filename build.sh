@@ -638,7 +638,7 @@ if [ -d /www/cgi-bin ]; then
 fi
 
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 
 # Neutralize legacy unshielded postrm scripts on disk if upgrading from 1.3.21/1.3.22
 for p in /usr/lib/opkg/info/tachyon.postrm /usr/lib/opkg/info/luci-app-tachyon.postrm /usr/lib/opkg/info/luci-i18n-tachyon-ru.postrm; do
@@ -721,16 +721,16 @@ EOF
 . ${IPKG_INSTROOT}/lib/functions.sh
 default_postinst $0 $@
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 [ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 EOF
 
   cat > "$control_dir/postinst-pkg" <<'EOF'
 [ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 EOF
 
   cat > "$control_dir/prerm" <<'EOF'
@@ -901,7 +901,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     system("/etc/init.d/rpcd reload >/dev/null 2>&1 || true");
     restore_cfg_from_backup();
     system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /etc/init.d/tachyon enable >/dev/null 2>&1 || true; /usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
-    system("for f in /www/luci-static/resources/view/tachyon/*.js; do [ -f \"$f\" ] && touch \"$f\" 2>/dev/null || true; done; touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true");
+    system("for f in /www/luci-static/resources/view/tachyon/*.js; do [ -f \"$f\" ] && touch \"$f\" 2>/dev/null || true; done; [ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true");
 }
 exit(0);
 EOF
@@ -989,7 +989,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     system("if [ -d /www/cgi-bin ]; then if [ -n \"$(uci -q get tachyon.settings.agent_api_token)\" ]; then ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true; else rm -f /www/cgi-bin/tachyon-agent 2>/dev/null || true; fi; fi");
     restore_cfg_from_backup();
     system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /etc/init.d/tachyon enable >/dev/null 2>&1 || true; /usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
-    system("for f in /www/luci-static/resources/view/tachyon/*.js; do [ -f \"$f\" ] && touch \"$f\" 2>/dev/null || true; done; touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true");
+    system("for f in /www/luci-static/resources/view/tachyon/*.js; do [ -f \"$f\" ] && touch \"$f\" 2>/dev/null || true; done; [ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true");
 }
 exit(0);
 EOF
@@ -1023,6 +1023,7 @@ write_app_apk_scripts() {
 
   cat > "$scripts_dir/app-pre-install.sh" <<'EOF'
 #!/bin/sh
+mkdir -p /www/luci-static/resources/view/tachyon/fonts 2>/dev/null || true
 exit 0
 EOF
 
@@ -1037,7 +1038,7 @@ add_group_and_user
 default_postinst
 [ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 EOF
 
   cat > "$scripts_dir/app-pre-deinstall.sh" <<'EOF'
@@ -1067,7 +1068,7 @@ add_group_and_user
 default_postinst
 [ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 for _f in /www/luci-static/resources/view/tachyon/*.js; do [ -f "$_f" ] && touch "$_f" 2>/dev/null || true; done
-touch /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources 2>/dev/null || true
+[ -f /www/luci-static/resources/luci.js ] && touch /www/luci-static/resources/luci.js 2>/dev/null || true; [ -d /www/luci-static/resources/view/tachyon ] && touch /www/luci-static/resources/view/tachyon 2>/dev/null || true; [ -d /www/luci-static/resources ] && touch /www/luci-static/resources 2>/dev/null || true
 EOF
 
   cat > "$scripts_dir/app-post-deinstall.sh" <<'EOF'

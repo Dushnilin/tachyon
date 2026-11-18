@@ -2602,9 +2602,9 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     if (is_tachyon_core_detected())
         share_wireguard_client_endpoints(config, owners);
     strip_internal_fields(config);
-    apply_settings_tcp_profile(config, settings);
     strip_certificate_pins_if_unsupported(config);
     normalize_hysteria2_server_ports(config);
+    apply_settings_tcp_profile(config, settings);
     finalize_config_owners(config, owners, output_path);
     if (!atomic_write_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");
