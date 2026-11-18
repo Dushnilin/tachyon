@@ -106,7 +106,7 @@ Tachyon's backend is modularized under `tachyon/files/usr/lib/tachyon/`. Modules
 | Module | Key Functions & Responsibilities |
 |---|---|
 | `config/validator.uc` | Strict UCI schema validation: validates IP addresses, ports, UUIDs, private keys, domain names, action modes. |
-| `config/migration.uc` | Automatic migration engine: migrates configurations from legacy Forkop, Podkop Plus, and Podkop configs without data loss. |
+| `config/migration.uc` | Schema migration engine: validates, backs up, and automatically updates `/etc/config/tachyon` schema versions without data loss. |
 | `components/updater.uc` | Background component installer/updater: handles downloading, unpacking, installing, and version checking of binaries. |
 | `components/hosts.uc` | Remote hosts lists ingestor: fetches blocklists, merges into unified `combined.txt`, handles GitHub mirror failovers. |
 | `subscription/cache.uc` | Atomic subscription cache store, prevents redundant network downloads. |

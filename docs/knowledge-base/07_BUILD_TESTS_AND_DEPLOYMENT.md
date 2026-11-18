@@ -31,7 +31,7 @@ wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyo
 ### 2.1. Installer Lifecycle
 1. **Architecture & OS Detection**: Detects OpenWrt version (23.05, 24.10, 25.x, SNAPSHOT), CPU architecture (`mips`, `mipsel`, `arm_cortex-a7`, `aarch64_cortex-a53`, `x86_64`), and package manager (`opkg` vs `apk`).
 2. **Dependency Resolution**: Ensures `ucode`, `ucode-mod-fs`, `ucode-mod-uci`, `ucode-mod-ubus`, `kmod-nft-tproxy`, `ca-bundle` are installed.
-3. **Legacy Migration**: Automatically detects `/etc/config/forkop` or `/etc/config/podkop` and migrates all rules and servers to `/etc/config/tachyon`.
+3. **Configuration & Backup**: Prepares transactional rollback snapshots and updates configuration schema if necessary.
 4. **Binary Provisioning**: Downloads pre-compiled `tachyon-core` for the router's target architecture.
 5. **Zero-Reboot Initialization**: Configures UCI defaults, registers LuCI menus, builds initial rulesets, and starts services without requiring a full router reboot.
 

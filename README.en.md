@@ -49,7 +49,7 @@ sh /tmp/tachyon-setup.sh -y
 | Interactive selection | When run without flags, checks for `tachyon-core`, offers to install it if absent, and prompts for the release version |
 | Transactional snapshots | Saves a configuration backup in `/etc/tachyon/installer-backups/` and records `apk-world` state before changes; automatically rolls back on failure |
 | Memory protection (`zram-swap`) | On devices with ≤ 256 MB RAM, inspects available memory and offers to enable `zram-swap` |
-| Automatic migration | Migrates existing rules and sections from `forkop`, `podkop-plus`, and `podkop` into `/etc/config/tachyon` |
+| Automatic migration | Safe validation, backup, and automatic schema updates for `/etc/config/tachyon` |
 | `--repair` / `--reinstall` | Rebuilds network tables, firewall hooks, and reinstalls packages over the current setup |
 | `--channel beta` / `--tag X.Y.Z` | Switches to pre-release builds or installs a specific tagged version |
 
