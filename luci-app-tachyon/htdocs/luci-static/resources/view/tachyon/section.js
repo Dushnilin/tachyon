@@ -7672,6 +7672,9 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   "excluded_ips",
   "excluded_ips_text",
   "excluded_ips_text_mode",
+  "excluded_domains",
+  "excluded_domains_text",
+  "excluded_domains_text_mode",
   "ports",
   "ports_text",
   "ports_text_mode",
@@ -9260,7 +9263,7 @@ function analyzeTextListValue(value, validateItem, emptyMessage, options = {}) {
   };
 }
 
-function analyzeDomainSuffixText(value) {
+function analyzeDomainConditionText(value, allowDomainPrefix = false) {
   const validateDomainCondition = (domain) => {
     const normalized = `${domain || ""}`.trim();
     if (normalized.includes("/")) {
@@ -9274,17 +9277,25 @@ function analyzeDomainSuffixText(value) {
     value,
     (item) => {
       const colonIndex = item.indexOf(":");
-      const prefix = colonIndex > 0 ? item.slice(0, colonIndex) : "";
+      const prefix =
+        colonIndex > 0 ? item.slice(0, colonIndex).toLowerCase() : "";
       const body = colonIndex > 0 ? item.slice(colonIndex + 1) : item;
 
       if (!prefix) {
         return validateDomainCondition(body);
       }
 
-      if (!["full", "keyword", "regex"].includes(prefix)) {
+      const allowedPrefixes = allowDomainPrefix
+        ? ["full", "domain", "keyword", "regex"]
+        : ["full", "keyword", "regex"];
+      if (!allowedPrefixes.includes(prefix)) {
         return {
           valid: false,
-          message: _("Allowed domain prefixes are full:, keyword:, and regex:"),
+          message: allowDomainPrefix
+            ? _(
+                "Allowed domain prefixes are full:, domain:, keyword:, and regex:",
+              )
+            : _("Allowed domain prefixes are full:, keyword:, and regex:"),
         };
       }
 
@@ -9292,7 +9303,7 @@ function analyzeDomainSuffixText(value) {
         return { valid: false, message: _("Value cannot be empty") };
       }
 
-      if (prefix === "full") {
+      if (prefix === "full" || (allowDomainPrefix && prefix === "domain")) {
         return validateDomainCondition(body);
       }
 
@@ -9320,6 +9331,14 @@ function analyzeDomainSuffixText(value) {
       normalizeDuplicateValue: (item) => `${item}`.toLowerCase(),
     },
   );
+}
+
+function analyzeDomainSuffixText(value) {
+  return analyzeDomainConditionText(value, false);
+}
+
+function analyzeExcludedDomainsText(value) {
+  return analyzeDomainConditionText(value, true);
 }
 
 function domainValuesWithPrefix(section_id, key, prefix) {
@@ -17715,6 +17734,18 @@ function createSectionContent(section) {
   });
   dependsOnRoutingAction(excludedIpsOption);
 
+  const excludedDomainsOption = addTextConditionField(section, {
+    key: "excluded_domains",
+    optionName: "excluded_domains_text",
+    legacyTextOptionName: "excluded_domains_text",
+    label: _("Excluded Domains"),
+    description: _(
+      "Domains excluded from this section even if matched by its domain lists or rules (useful e.g. with Block lists). Use full: for exact host, domain: or bare domain for suffix, keyword: for substring, regex: for regular expression.",
+    ),
+    textAnalyze: analyzeExcludedDomainsText,
+  });
+  dependsOnRoutingAction(excludedDomainsOption);
+
   const matchAllOption = section.taboption(
     "conditions",
     form.Flag,
@@ -18266,6 +18297,9 @@ function matchDomainInList(domain, list) {
     if (item.startsWith("full:")) {
       const target = item.substring(5);
       if (domain === target) return item;
+    } else if (item.startsWith("domain:")) {
+      const target = item.substring(7);
+      if (domain === target || domain.endsWith("." + target)) return item;
     } else if (item.startsWith("keyword:")) {
       const target = item.substring(8);
       if (domain.indexOf(target) !== -1) return item;
@@ -19172,6 +19206,16 @@ async function performTraceRules(query, rulesetSnapshots) {
     }
 
     if (type === "domain") {
+      const excludedDomains = getSectionEffectiveOptionValues(
+        secName,
+        "excluded_domains",
+      );
+      if (
+        excludedDomains.length > 0 &&
+        matchDomainInList(queryForMatching, excludedDomains)
+      ) {
+        continue;
+      }
       const domainSuffixes = getSectionEffectiveOptionValues(
         secName,
         "domain_suffix",
@@ -19331,6 +19375,17 @@ async function performTraceRules(query, rulesetSnapshots) {
       const sec = sections[i];
       const secName = sec[".name"];
       if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") continue;
+
+      const excludedDomains = getSectionEffectiveOptionValues(
+        secName,
+        "excluded_domains",
+      );
+      if (
+        excludedDomains.length > 0 &&
+        matchDomainInList(queryForMatching, excludedDomains)
+      ) {
+        continue;
+      }
 
       const label =
         uci.get(UCI_PACKAGE, secName, "label") ||
@@ -19900,6 +19955,7 @@ function showSectionRulesModal(section_id) {
     ...getCleanList("domain_keyword").map((k) => `keyword:${k}`),
     ...getCleanList("domain_regex").map((r) => `regex:${r}`),
   ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const excludedDomains = getCleanList("excluded_domains");
   const ips = getCleanList("ip_cidr");
   const community = getCleanList("community_lists");
   const ruleSets = [
@@ -19984,6 +20040,9 @@ function showSectionRulesModal(section_id) {
       ]),
       createCard(_("Community Lists"), community),
       createCard(_("Domains"), domains),
+      excludedDomains.length
+        ? createCard(_("Excluded Domains"), excludedDomains)
+        : null,
       createCard(_("IP Addresses (IP CIDR)"), ips),
       createCard(_("Rule Sets (.srs / .json)"), ruleSets),
       createCard(_(".lst Lists"), domainIpLists),

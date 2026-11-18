@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 09:04+0300\n"
-"PO-Revision-Date: 2026-11-18 09:04+0300\n"
+"POT-Creation-Date: 2026-11-18 09:30+0300\n"
+"PO-Revision-Date: 2026-11-18 09:30+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -721,6 +721,9 @@ msgstr "Время окончания доступа"
 
 msgid "Allowed Start Time"
 msgstr "Время начала доступа"
+
+msgid "Allowed domain prefixes are full:, domain:, keyword:, and regex:"
+msgstr "Допустимые префиксы доменов: full:, domain:, keyword:, и regex:"
 
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr "Допустимые префиксы доменов: full:, keyword:, и regex:"
@@ -3089,6 +3092,9 @@ msgstr "Домены и поддомены, которые никогда не �
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
 
+msgid "Domains excluded from this section even if matched by its domain lists or rules (useful e.g. with Block lists). Use full: for exact host, domain: or bare domain for suffix, keyword: for substring, regex: for regular expression."
+msgstr "Домены, исключаемые из этой секции, даже если они совпадают с её списками доменов или правилами (удобно, например, со списками блокировки). Используйте full: для точного хоста, domain: или домен без префикса для суффикса, keyword: для подстроки, regex: для регулярного выражения."
+
 msgid "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."
 msgstr "Домены для блокировки на выбранных устройствах. Оставьте пустым, чтобы заблокировать весь интернет. По одному домену на строку, например youtube.com. Кнопки пресетов быстро добавляют популярные категории."
 
@@ -3590,6 +3596,9 @@ msgstr "Исключено"
 msgid "Excluded Destination IPs / Subnets"
 msgstr "Исключённые целевые IP / подсети"
 
+msgid "Excluded Domains"
+msgstr "Исключённые домены"
+
 msgid "Excluded devices"
 msgstr "Исключённые устройства"
 
@@ -3959,8 +3968,14 @@ msgstr "Не удалось отследить маршрут."
 msgid "Failed to update device"
 msgstr "Не удалось обновить устройство"
 
+msgid "Failed to update subscription."
+msgstr "Не удалось обновить подписку."
+
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
+
+msgid "Failed to update subscriptions."
+msgstr "Не удалось обновить подписки."
 
 msgid "Failover (Pin Current Until Failure)"
 msgstr "Отказоустойчивый (удерживать текущий до сбоя)"
@@ -9692,6 +9707,9 @@ msgstr "Обновление подписки завершилось ошибк�
 msgid "Subscription update interval"
 msgstr "Интервал обновления подписки"
 
+msgid "Subscription update timed out."
+msgstr "Превышено время ожидания обновления подписки."
+
 msgid "Subscription updated."
 msgstr "Подписка обновлена."
 
@@ -10760,6 +10778,9 @@ msgstr "Хранится до 10 снапшотов; самые старые у�
 msgid "Update"
 msgstr "Обновить"
 
+msgid "Update All Subscriptions"
+msgstr "Обновить все подписки"
+
 msgid "Update Interval"
 msgstr "Интервал обновления"
 
@@ -10819,6 +10840,9 @@ msgstr "Обновление режима маршрутизации устро�
 
 msgid "Updating lists..."
 msgstr "Обновление списков..."
+
+msgid "Updating subscriptions..."
+msgstr "Обновление подписок..."
 
 msgid "Updating..."
 msgstr "Обновление..."
@@ -11885,12 +11909,6 @@ msgstr "— стабильно (TProxy)"
 msgid "← Back"
 msgstr "← Назад"
 
-msgid "↻ Update All Subscriptions"
-msgstr "↻ Обновить все подписки"
-
-msgid "↻ Updating subscriptions..."
-msgstr "↻ Обновление подписок..."
-
 msgid "▲ Hide full catalog"
 msgstr "▲ Скрыть полный каталог списков"
 
@@ -11929,6 +11947,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "↻ Update All Subscriptions"
+msgstr "↻ Обновить все подписки"
+
+msgid "↻ Updating subscriptions..."
+msgstr "↻ Обновление подписок..."
 
 msgid "Automatically create and maintain the 'tailscale' zone in /etc/config/firewall (device tailscale0, masquerading, MSS clamping, and lan/wan forwardings)."
 msgstr "Автоматически создавать и поддерживать зону «tailscale» в /etc/config/firewall (интерфейс tailscale0, маскарадинг, фиксация MSS и перенаправления lan/wan)."
