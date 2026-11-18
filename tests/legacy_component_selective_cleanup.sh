@@ -391,4 +391,76 @@ runtime_passes="$(printf '%s\n' "$ucode_output" | grep -c '^PASS:' || true)"
 pass_count=$((pass_count + runtime_passes))
 ok  # for the runtime suite overall
 
+# ==========================================================================
+# Part 3: Live execution of service/package.uc selective-cleanup-test
+# ==========================================================================
+
+PACKAGE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/package.uc"
+grep -q 'function selective_cleanup_legacy_components' "$PACKAGE_UC" ||
+  fail "package.uc must define selective_cleanup_legacy_components()"
+ok
+
+PKG_MOCK_ROOT="$WORK_DIR/pkg_mock_root"
+mkdir -p "$PKG_MOCK_ROOT/etc/init.d" "$PKG_MOCK_ROOT/etc/rc.d" \
+  "$PKG_MOCK_ROOT/etc/config" "$PKG_MOCK_ROOT/etc/sing-box" \
+  "$PKG_MOCK_ROOT/opt/zapret/config" "$PKG_MOCK_ROOT/opt/zapret2/config" \
+  "$PKG_MOCK_ROOT/etc/tachyon/component-backups/byedpi" \
+  "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/zapret"
+
+# Pre-seed an existing backup file to verify non-destructive backup behavior
+echo "PRESERVED_ORIGINAL_BACKUP" > "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/zapret/zapret"
+
+# Standalone zapret (no Tachyon markers) + standalone sing-box
+printf '#!/bin/sh /etc/rc.common\nSTART=99\nstart() { /usr/bin/nfqws; }\n' > "$PKG_MOCK_ROOT/etc/init.d/zapret"
+ln -sf ../init.d/zapret "$PKG_MOCK_ROOT/etc/rc.d/S99zapret"
+echo "config zapret" > "$PKG_MOCK_ROOT/etc/config/zapret"
+echo "user_custom=1" > "$PKG_MOCK_ROOT/opt/zapret/config/custom.cfg"
+
+printf '#!/bin/sh /etc/rc.common\nSTART=99\nstart() { /usr/bin/sing-box run; }\n' > "$PKG_MOCK_ROOT/etc/init.d/sing-box"
+echo '{"inbounds":[]}' > "$PKG_MOCK_ROOT/etc/sing-box/config.json"
+echo "config sing-box" > "$PKG_MOCK_ROOT/etc/config/sing-box"
+
+# Tachyon-managed zapret2 (init marker) & byedpi (component-backups marker)
+printf '#!/bin/sh /etc/rc.common\n# Tachyon managed\nSTART=99\n' > "$PKG_MOCK_ROOT/etc/init.d/zapret2"
+ln -sf ../init.d/zapret2 "$PKG_MOCK_ROOT/etc/rc.d/S99zapret2"
+echo "config zapret2" > "$PKG_MOCK_ROOT/etc/config/zapret2"
+echo "managed=1" > "$PKG_MOCK_ROOT/opt/zapret2/config/main.cfg"
+
+printf '#!/bin/sh /etc/rc.common\nSTART=99\n' > "$PKG_MOCK_ROOT/etc/init.d/byedpi"
+ln -sf ../init.d/byedpi "$PKG_MOCK_ROOT/etc/rc.d/S99byedpi"
+echo "config byedpi" > "$PKG_MOCK_ROOT/etc/config/byedpi"
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$PACKAGE_UC" selective-cleanup-test "$PKG_MOCK_ROOT" ||
+  fail "package.uc selective-cleanup-test failed"
+ok
+
+# Non-destructive backup preserved + new backups created
+[ "$(cat "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/zapret/zapret")" = "PRESERVED_ORIGINAL_BACKUP" ] ||
+  fail "package.uc overwrote existing zapret backup"
+[ -f "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/zapret/config/custom.cfg" ] ||
+  fail "package.uc did not back up standalone /opt/zapret/config"
+[ -f "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ] ||
+  fail "package.uc did not back up /etc/sing-box/config.json"
+[ -f "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/zapret2/zapret2" ] ||
+  fail "package.uc did not back up zapret2 config before cleanup"
+[ -f "$PKG_MOCK_ROOT/etc/tachyon/external-configs-backup/byedpi/byedpi" ] ||
+  fail "package.uc did not back up byedpi config before cleanup"
+ok
+
+# Standalone user components must remain untouched
+[ -f "$PKG_MOCK_ROOT/etc/init.d/zapret" ] && [ -L "$PKG_MOCK_ROOT/etc/rc.d/S99zapret" ] ||
+  fail "package.uc removed standalone user zapret service"
+[ -f "$PKG_MOCK_ROOT/etc/config/zapret" ] && [ -f "$PKG_MOCK_ROOT/opt/zapret/config/custom.cfg" ] ||
+  fail "package.uc removed standalone user zapret configs"
+[ -f "$PKG_MOCK_ROOT/etc/init.d/sing-box" ] && [ -f "$PKG_MOCK_ROOT/etc/sing-box/config.json" ] ||
+  fail "package.uc removed standalone user sing-box"
+ok
+
+# Tachyon-managed zapret2 and byedpi must be removed
+[ ! -e "$PKG_MOCK_ROOT/etc/init.d/zapret2" ] && [ ! -L "$PKG_MOCK_ROOT/etc/rc.d/S99zapret2" ] && [ ! -e "$PKG_MOCK_ROOT/opt/zapret2" ] && [ ! -e "$PKG_MOCK_ROOT/etc/config/zapret2" ] ||
+  fail "package.uc did not remove Tachyon-managed zapret2"
+[ ! -e "$PKG_MOCK_ROOT/etc/init.d/byedpi" ] && [ ! -L "$PKG_MOCK_ROOT/etc/rc.d/S99byedpi" ] && [ ! -e "$PKG_MOCK_ROOT/etc/config/byedpi" ] ||
+  fail "package.uc did not remove Tachyon-managed byedpi"
+ok
+
 printf 'legacy_component_selective_cleanup: %d checks passed\n' "$pass_count"

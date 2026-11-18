@@ -247,12 +247,158 @@ function purge_legacy_steer() {
     command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
 }
 
+function backup_external_config_path(comp, src_rel, root_prefix) {
+    root_prefix = as_string(root_prefix || "");
+    let src_path = root_prefix + as_string(src_rel);
+    if (!path_exists(src_path))
+        return;
+
+    let basename = replace(as_string(src_rel), /^.*\//, "");
+    if (basename == "")
+        return;
+
+    let dest_dir = root_prefix + "/etc/tachyon/external-configs-backup/" + as_string(comp);
+    command_success_from_args([ "mkdir", "-p", dest_dir ]);
+    let dest = dest_dir + "/" + basename;
+    if (!path_exists(dest))
+        command_success_from_args([ "cp", "-a", src_path, dest ]);
+}
+
+function backup_external_configs(root_prefix) {
+    let sources = {
+        zapret: [ "/etc/config/zapret", "/opt/zapret/config", "/opt/zapret/ipset" ],
+        zapret2: [ "/etc/config/zapret2", "/opt/zapret2/config", "/opt/zapret2/ipset" ],
+        byedpi: [ "/etc/config/byedpi", "/etc/byedpi" ],
+        wdtt: [ "/etc/config/wdtt", "/etc/wdtt" ],
+        qwdtt: [ "/etc/qwdtt" ],
+        olcrtc: [ "/etc/config/olcrtc", "/etc/olcrtc" ],
+        "sing-box": [ "/etc/sing-box/config.json", "/etc/config/sing-box" ]
+    };
+    for (let comp in keys(sources)) {
+        for (let src_rel in sources[comp])
+            backup_external_config_path(comp, src_rel, root_prefix);
+    }
+}
+
+function has_tachyon_managed_init(init_rel, root_prefix) {
+    let init_path = as_string(root_prefix || "") + as_string(init_rel);
+    let init_data = fs.readfile(init_path);
+    return init_data != null && index(init_data, "Tachyon managed") >= 0;
+}
+
+function is_tachyon_managed_component(svc, comp_marker, root_prefix) {
+    root_prefix = as_string(root_prefix || "");
+    svc = as_string(svc);
+    comp_marker = as_string(comp_marker || svc);
+
+    if (has_tachyon_managed_init("/etc/init.d/" + svc, root_prefix))
+        return true;
+    if (comp_marker != svc && has_tachyon_managed_init("/etc/init.d/" + comp_marker, root_prefix))
+        return true;
+
+    let marker_names = [ comp_marker ];
+    let alt_marker = replace(svc, /-/g, "_");
+    if (alt_marker != comp_marker)
+        push(marker_names, alt_marker);
+
+    for (let name in marker_names) {
+        if (path_exists(root_prefix + "/etc/tachyon/component-backups/" + name))
+            return true;
+        let run_st = fs.stat(root_prefix + "/var/run/tachyon/" + name);
+        if (run_st != null && as_string(run_st.type || "") == "directory")
+            return true;
+    }
+    return false;
+}
+
+function selective_cleanup_legacy_components(root_prefix) {
+    root_prefix = as_string(root_prefix || "");
+    let mock_mode = root_prefix != "";
+
+    backup_external_configs(root_prefix);
+
+    let ts_init = root_prefix + "/etc/init.d/tailscale";
+    if (has_tachyon_managed_init("/etc/init.d/tailscale", root_prefix)) {
+        if (!mock_mode) {
+            bounded_command_success_from_args([ ts_init, "stop" ], HOOK_COMMAND_TIMEOUT);
+            bounded_command_success_from_args([ ts_init, "disable" ], HOOK_COMMAND_TIMEOUT);
+        }
+        for (let rc in (fs.glob(root_prefix + "/etc/rc.d/*tailscale*") || []))
+            fs.unlink(rc);
+        unlink_if_exists(ts_init);
+        let ts_rm = [ "rm", "-rf", root_prefix + "/var/run/tachyon/tailscale", root_prefix + "/etc/tachyon/component-backups/tailscale" ];
+        for (let p in (fs.glob(root_prefix + "/etc/tachyon/tailscale/*/native") || []))
+            push(ts_rm, p);
+        command_success_from_args(ts_rm);
+        if (!mock_mode)
+            command_success_from_args([ "nft", "delete", "table", "inet", "tachyon_tailscale" ]);
+    }
+
+    let components = [
+        { svc: "zapret", marker: "zapret", procs: [ "nfqws" ], nfts: [ "zapret" ],
+          paths: [ "/usr/bin/nfqws", "/opt/zapret", "/etc/config/zapret", "/var/run/tachyon/zapret", "/etc/tachyon/component-backups/zapret", "/var/run/tachyon/component-update-checks/zapret.json" ],
+          globs: [ "/var/run/tachyon/zapret*" ] },
+        { svc: "zapret2", marker: "zapret2", procs: [ "nfqws2" ], nfts: [ "zapret2" ],
+          paths: [ "/usr/bin/nfqws2", "/opt/zapret2", "/etc/config/zapret2", "/etc/tachyon/component-backups/zapret2", "/var/run/tachyon/component-update-checks/zapret2.json" ],
+          globs: [] },
+        { svc: "byedpi", marker: "byedpi", procs: [ "ciadpi" ], nfts: [],
+          paths: [ "/usr/bin/ciadpi", "/etc/config/byedpi", "/var/run/tachyon/byedpi", "/etc/tachyon/component-backups/byedpi", "/var/run/tachyon/component-update-checks/byedpi.json" ],
+          globs: [] },
+        { svc: "wdtt-client", marker: "wdtt", procs: [ "wdtt", "qwdtt-client" ], nfts: [],
+          paths: [ "/usr/bin/wdtt", "/usr/bin/qwdtt-client", "/usr/sbin/wdtt-genlists", "/usr/sbin/wdtt-resolve", "/etc/qwdtt", "/etc/wdtt", "/etc/config/wdtt", "/var/run/tachyon/wdtt", "/var/run/qwdtt", "/etc/tachyon/component-backups/wdtt", "/var/run/tachyon/component-update-checks/wdtt.json" ],
+          globs: [] },
+        { svc: "qwdtt", marker: "wdtt", procs: [ "wdtt", "qwdtt-client" ], nfts: [],
+          paths: [ "/usr/bin/wdtt", "/usr/bin/qwdtt-client", "/usr/sbin/wdtt-genlists", "/usr/sbin/wdtt-resolve", "/etc/qwdtt", "/etc/wdtt", "/etc/config/wdtt", "/var/run/tachyon/wdtt", "/var/run/qwdtt", "/etc/tachyon/component-backups/wdtt", "/var/run/tachyon/component-update-checks/wdtt.json" ],
+          globs: [] },
+        { svc: "olcrtc", marker: "olcrtc", procs: [ "olcrtc" ], nfts: [],
+          paths: [ "/usr/bin/olcrtc", "/etc/olcrtc", "/etc/config/olcrtc", "/var/run/tachyon/olcrtc", "/etc/tachyon/component-backups/olcrtc", "/var/run/tachyon/component-update-checks/olcrtc.json" ],
+          globs: [] }
+    ];
+
+    for (let item in components) {
+        if (!is_tachyon_managed_component(item.svc, item.marker, root_prefix))
+            continue;
+
+        let svc_init = root_prefix + "/etc/init.d/" + item.svc;
+        for (let rc in (fs.glob(root_prefix + "/etc/rc.d/*" + item.svc + "*") || []))
+            fs.unlink(rc);
+        if (path_exists(svc_init)) {
+            if (!mock_mode) {
+                bounded_command_success_from_args([ svc_init, "stop" ], HOOK_COMMAND_TIMEOUT);
+                bounded_command_success_from_args([ svc_init, "disable" ], HOOK_COMMAND_TIMEOUT);
+            }
+            unlink_if_exists(svc_init);
+        }
+
+        if (!mock_mode) {
+            for (let proc in item.procs)
+                command_success_from_args([ "killall", "-9", proc ]);
+            for (let tbl in item.nfts) {
+                for (let fam in [ "inet", "ip", "ip6" ])
+                    command_success_from_args([ "nft", "delete", "table", fam, tbl ]);
+            }
+        }
+
+        let rm_cmd = [ "rm", "-rf" ];
+        for (let rel_p in item.paths)
+            push(rm_cmd, root_prefix + rel_p);
+        for (let rel_g in item.globs) {
+            for (let matched in (fs.glob(root_prefix + rel_g) || []))
+                push(rm_cmd, matched);
+        }
+        if (length(rm_cmd) > 2)
+            command_success_from_args(rm_cmd);
+    }
+}
+
 function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
 
-    if (!PACKAGE_TEST_MODE)
+    if (!PACKAGE_TEST_MODE) {
         purge_legacy_steer();
+        selective_cleanup_legacy_components("");
+    }
 
     let should_restore = path_exists(PACKAGE_UPGRADE_STATE);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
@@ -401,7 +547,16 @@ else if (mode == "remove-rt-tables-entry")
     exit(remove_rt_tables_entry() ? 0 : 1);
 else if (mode == "luci-postinst")
     exit(luci_postinst() ? 0 : 1);
+else if (mode == "selective-cleanup-test") {
+    let test_root = trim(as_string(ARGV[1] || ""));
+    if (test_root == "" || test_root == "/") {
+        warn("selective-cleanup-test requires a dedicated mock root path\n");
+        exit(1);
+    }
+    selective_cleanup_legacy_components(test_root);
+    exit(0);
+}
 else {
-    warn("Usage: service/package.uc <prerm|postinst|remove-rt-tables-entry|luci-postinst>\n");
+    warn("Usage: service/package.uc <prerm|postinst|remove-rt-tables-entry|luci-postinst|selective-cleanup-test>\n");
     exit(1);
 }
