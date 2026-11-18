@@ -52,6 +52,7 @@ const retiredMissingCurrent = new Set([
   "nfqws2_opt",
   "nfqws_opt",
   "user_domain_list_type",
+  "routing_excluded_ips",
 ]);
 const missing = matrix.fields.filter((field) => field.status === "missing_current" && !retiredMissingCurrent.has(field.name));
 if (missing.length) {

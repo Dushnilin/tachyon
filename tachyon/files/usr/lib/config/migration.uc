@@ -3947,9 +3947,12 @@ function migrate_fixture(path) {
 
 function scan_backup_config_candidates() {
     let base_cfg_dir = CONFIG_DIR;
-    let known = [
-        "/etc/.tachyon/.cfg-backup.pre-install"
-    ];
+    let known = [];
+    if (base_cfg_dir == "/etc/config") {
+        known = [
+            "/etc/.tachyon/.cfg-backup.pre-install"
+        ];
+    }
     let candidates = [];
     let seen = {};
 
@@ -3966,13 +3969,15 @@ function scan_backup_config_candidates() {
         base_cfg_dir + "/tachyon.backup*",
         base_cfg_dir + "/tachyon.bak*",
         base_cfg_dir + "/tachyon.pre-import-*",
-        base_cfg_dir + "/tachyon.pre-install*",
-        "/tmp/*tachyon*",
-        "/etc/.tachyon/*",
-        "/root/*tachyon*",
-        "/root/*.backup*",
-        "/root/*.bak*"
+        base_cfg_dir + "/tachyon.pre-install*"
     ];
+    if (base_cfg_dir == "/etc/config") {
+        push(globs, "/tmp/tachyon.backup*");
+        push(globs, "/tmp/tachyon.bak*");
+        push(globs, "/etc/.tachyon/*");
+        push(globs, "/root/tachyon.backup*");
+        push(globs, "/root/tachyon.bak*");
+    }
     for (let g in globs) {
         let paths = fs.glob(g);
         if (type(paths) == "array") {
