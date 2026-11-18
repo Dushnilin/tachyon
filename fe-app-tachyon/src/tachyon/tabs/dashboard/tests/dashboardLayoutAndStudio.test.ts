@@ -532,7 +532,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     },
   );
 
-  it('mounts Tachyon Studio Deck on GridSection containers and hides legacy Forkop tables', () => {
+  it('mounts Tachyon Studio Deck on GridSection containers and hides legacy LuCI tables', () => {
     const containerEl = createDummyElement('div');
     const mockSectionRef = {
       sectiontype: 'section',

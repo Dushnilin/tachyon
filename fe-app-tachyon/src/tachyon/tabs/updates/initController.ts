@@ -328,41 +328,12 @@ async function refreshSystemInfoAfterMutation() {
 const RELOAD_POLL_INTERVAL_MS = 1000;
 const RELOAD_POLL_MAX_WAIT_MS = 30000;
 
-async function bustCachedLuciViewAssets() {
-  if (
-    typeof performance === 'undefined' ||
-    typeof performance.getEntriesByType !== 'function' ||
-    typeof fetch !== 'function'
-  ) {
-    return;
-  }
-  try {
-    const urls = new Set<string>();
-    for (const entry of performance.getEntriesByType('resource')) {
-      if (
-        entry?.name &&
-        entry.name.includes('/luci-static/resources/view/tachyon/')
-      ) {
-        urls.add(entry.name);
-      }
-    }
-    if (urls.size > 0) {
-      await Promise.allSettled(
-        Array.from(urls).map((url) => fetch(url, { cache: 'reload' })),
-      );
-    }
-  } catch {
-    // Ignore cache-busting fetch errors before reload
-  }
-}
-
 async function waitForTachyonResponsive() {
   const deadline = Date.now() + RELOAD_POLL_MAX_WAIT_MS;
   while (Date.now() < deadline) {
     try {
       const response = await TachyonShellMethods.getUiState();
       if (response.success) {
-        await bustCachedLuciViewAssets();
         return true;
       }
     } catch {
@@ -372,7 +343,6 @@ async function waitForTachyonResponsive() {
       setTimeout(resolve, RELOAD_POLL_INTERVAL_MS),
     );
   }
-  await bustCachedLuciViewAssets();
   return false;
 }
 
@@ -384,7 +354,7 @@ function reloadPageAfterTachyonUpdate(jobId?: string) {
   // a fixed delay either reloaded too early (tab hung on stale component
   // action state) or wasted seconds on fast routers.
   void waitForTachyonResponsive().finally(() => {
-    safeReloadPage();
+    void safeReloadPage();
   });
 }
 

@@ -6550,7 +6550,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
    Balancers, Inbound Servers, Profiles & Schedules)
    ========================================================================== */
 
-/* Hide legacy Forkop/LuCI GridSection tables & raw add bars when Studio Deck is mounted */
+/* Hide legacy LuCI GridSection tables & raw add bars when Studio Deck is mounted */
 .tachyon-has-studio-deck > .cbi-section-node > .cbi-section-table,
 .tachyon-has-studio-deck > .cbi-section-node > .cbi-section-create,
 .tachyon-has-studio-deck > .cbi-section-table,
