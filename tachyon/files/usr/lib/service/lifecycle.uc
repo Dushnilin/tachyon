@@ -1424,10 +1424,9 @@ function stop_impl() {
 
     module_success(STATE_UC, [ "clear-reload-state", RELOAD_STATE_FILE, RELOAD_STATE_SNAPSHOT_FILE ]);
 
+    // Keep stop_hold()'s guard decision even if cleanup or the UCI commit fails.
     if (status != 0)
-        // Removing Tachyon is the one stop that must leave the router usable.
-    kill_switch.remove();
-    dnsmasq_restore_fail_safe();
+        dnsmasq_restore_fail_safe();
 
     return status;
 }

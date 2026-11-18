@@ -38,11 +38,7 @@ MOCK_BIN="$WORK_DIR/bin"
 MOCK_LOG="$WORK_DIR/curl.log"
 mkdir -p "$MOCK_BIN" "$WORK_DIR/tmp"
 
-# Deterministic fast sleep so retry backoff never slows the suite.
-cat >"$MOCK_BIN/sleep" <<'SH'
-#!/bin/sh
-exit 0
-SH
+# Keep real sleep: the download deadline watchdog uses it too.
 
 cat >"$MOCK_BIN/curl" <<'SH'
 #!/bin/sh
@@ -114,7 +110,7 @@ case "$url" in
 esac
 exit 22
 SH
-chmod 0755 "$MOCK_BIN/sleep" "$MOCK_BIN/curl"
+chmod 0755 "$MOCK_BIN/curl"
 
 PATH="$MOCK_BIN:$PATH" \
 MOCK_CURL_LOG="$MOCK_LOG" \
