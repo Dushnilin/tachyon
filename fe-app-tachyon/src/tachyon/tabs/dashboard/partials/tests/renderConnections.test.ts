@@ -131,6 +131,37 @@ import {
 } from '../renderConnections';
 
 describe('renderConnections', () => {
+  it('skips creating the collapsed body and builds it from the latest data on expand', () => {
+    const createElement = vi.spyOn(document, 'createElement');
+    const clients = [{ ip: '192.0.2.1', count: 2, upload: 3, download: 4 }];
+    const domains = [{ domain: 'a.example', count: 2, traffic: 7 }];
+    const toggle = vi.fn();
+    try {
+      const collapsed = renderConnections(clients, true, toggle, domains);
+      const collapsedCalls = createElement.mock.calls.length;
+      expect(collapsed.querySelector('.tachyon-client-row')).toBeNull();
+      expect(
+        collapsed.querySelector('.tachyon_dashboard-page__top-domain-chip'),
+      ).toBeNull();
+
+      createElement.mockClear();
+      renderConnections([], true, toggle);
+      expect(createElement).toHaveBeenCalledTimes(collapsedCalls);
+
+      const latest = [{ ...clients[0], count: 5 }];
+      expect(patchConnections(collapsed, latest, false, domains)).toBe(false);
+      const expanded = renderConnections(latest, false, toggle, domains);
+      expect(
+        expanded.querySelector('.tachyon-client-row__conns')?.textContent,
+      ).toMatch(/^5 /);
+      expect(
+        expanded.querySelector('.tachyon_dashboard-page__top-domain-chip'),
+      ).not.toBeNull();
+    } finally {
+      createElement.mockRestore();
+    }
+  });
+
   it('renders badges for host, mac address, and router correctly', () => {
     const connections: IConnection[] = [
       {

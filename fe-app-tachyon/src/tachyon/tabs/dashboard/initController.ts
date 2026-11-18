@@ -250,6 +250,89 @@ const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
 const handledLatencyJobs = new Set<string>();
+const OWNED_LATENCY_STORAGE_KEY = 'tachyon:owned-latency-actions:v1';
+const ownedLatencyJobs = new Map<string, boolean>();
+
+function readStoredOwnedLatencyJobs(): Record<string, boolean> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    const raw = window.sessionStorage?.getItem(OWNED_LATENCY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result: Record<string, boolean> = {};
+    for (const [jobId, notified] of Object.entries(parsed)) {
+      if (typeof jobId === 'string' && typeof notified === 'boolean') {
+        result[jobId] = notified;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function persistOwnedLatencyJobs() {
+  capMapSize(ownedLatencyJobs, 100);
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    const obj: Record<string, boolean> = {};
+    for (const [k, v] of ownedLatencyJobs) {
+      obj[k] = v;
+    }
+    window.sessionStorage?.setItem(
+      OWNED_LATENCY_STORAGE_KEY,
+      JSON.stringify(obj),
+    );
+  } catch {
+    // In-memory ownership still prevents duplicate toasts this session.
+  }
+}
+
+function markLatencyJobOwned(jobId: string) {
+  if (!jobId) {
+    return;
+  }
+  const stored = readStoredOwnedLatencyJobs();
+  for (const [k, v] of Object.entries(stored)) {
+    if (!ownedLatencyJobs.has(k)) {
+      ownedLatencyJobs.set(k, v);
+    }
+  }
+  if (!ownedLatencyJobs.has(jobId)) {
+    ownedLatencyJobs.set(jobId, false);
+  }
+  persistOwnedLatencyJobs();
+}
+
+function shouldNotifyOwnedLatencyJob(jobId: string): boolean {
+  if (!jobId) {
+    return false;
+  }
+  if (!ownedLatencyJobs.has(jobId)) {
+    const stored = readStoredOwnedLatencyJobs();
+    if (typeof stored[jobId] === 'boolean') {
+      ownedLatencyJobs.set(jobId, stored[jobId]);
+    }
+  }
+  if (ownedLatencyJobs.get(jobId) !== false) {
+    return false;
+  }
+  ownedLatencyJobs.set(jobId, true);
+  persistOwnedLatencyJobs();
+  return true;
+}
+
+function getSectionDisplayName(sectionName: string): string {
+  const section = store
+    .get()
+    .sectionsWidget.data.find((s) => s.sectionName === sectionName);
+  return section?.displayName || sectionName;
+}
 
 // Teardown has to name the exact callbacks it registered. `/connections` is
 // shared with the monitoring tab, so both a whole-manager reset and a
@@ -701,7 +784,12 @@ async function followSubscriptionUpdateState(
   }
 }
 
-async function completeLatencyTestJob(jobId: string, sectionName: string) {
+export async function completeLatencyTestJob(
+  jobId: string,
+  sectionName: string,
+  response?: Tachyon.MethodResponse<Tachyon.LatencyActionState>,
+  testedTags: string[] = [],
+) {
   setLatencyFetching(sectionName, false);
 
   if (pageUnloading) {
@@ -712,19 +800,74 @@ async function completeLatencyTestJob(jobId: string, sectionName: string) {
     return;
   }
 
+  const shouldNotify = jobId ? shouldNotifyOwnedLatencyJob(jobId) : false;
+  const failed = Boolean(
+    response && (!response.success || !response.data.success),
+  );
+  const errorMessage = response
+    ? response.success
+      ? response.data.message
+      : response.error
+    : undefined;
+
   if (jobId) {
     handledLatencyJobs.add(jobId);
     capSetSize(handledLatencyJobs);
   }
 
-  if (jobId) {
+  if (jobId && (!response || response.success)) {
     void TachyonShellMethods.uiActionAck('latency', jobId);
+  }
+
+  const label = getSectionDisplayName(sectionName);
+  if (failed) {
+    if (shouldNotify) {
+      showToast(
+        errorMessage ||
+          tr(
+            `Не удалось проверить задержку (${label})`,
+            `Latency test failed (${label})`,
+          ),
+        'error',
+      );
+    }
+    return;
+  }
+
+  if (shouldNotify) {
+    if (testedTags.length > 0) {
+      const responding = testedTags.filter(
+        (t) => (customProxyLatencies.get(t) ?? 0) > 0,
+      ).length;
+      showToast(
+        responding > 0
+          ? tr(
+              `Задержка (${label}): ответили ${responding}/${testedTags.length}`,
+              `Latency test (${label}): ${responding}/${testedTags.length} responding`,
+            )
+          : tr(
+              `Задержка (${label}): нет ответа (0/${testedTags.length})`,
+              `Latency test (${label}): 0/${testedTags.length} responding`,
+            ),
+        responding > 0 ? 'success' : 'error',
+      );
+    } else {
+      showToast(
+        tr(
+          `Проверка задержки (${label}) завершена`,
+          `Latency test (${label}) completed`,
+        ),
+        'success',
+      );
+    }
   }
 
   void fetchDashboardSections({ force: true });
 }
 
-async function followLatencyTestState(state: Tachyon.LatencyActionState) {
+export async function followLatencyTestState(
+  state: Tachyon.LatencyActionState,
+) {
   const jobId = state.job_id;
   const sectionName = state.section || '';
 
@@ -738,20 +881,34 @@ async function followLatencyTestState(state: Tachyon.LatencyActionState) {
 
   followedLatencyJobs.add(jobId);
   if (shouldShowLoadingForRestoredAction(state)) {
-    setLatencyFetching(sectionName, true);
+    setLatencyFetching(sectionName, true, false, state.progress);
   }
 
   try {
-    if (state.running) {
-      await TachyonShellMethods.waitLatencyTestJob(jobId);
-    }
+    const response: Tachyon.MethodResponse<Tachyon.LatencyActionState> =
+      state.running
+        ? await TachyonShellMethods.waitLatencyTestJob(
+            jobId,
+            Date.now(),
+            (progressState) => {
+              if (progressState.running && progressState.progress) {
+                setLatencyFetching(
+                  sectionName,
+                  true,
+                  false,
+                  progressState.progress,
+                );
+              }
+            },
+          )
+        : { success: true, data: state };
 
     const testedTags = extractTestedTags(
       state.latency_type,
       sectionName,
       state.tag,
     );
-    if (testedTags.length > 0) {
+    if (response.success && response.data.success && testedTags.length > 0) {
       const startedAtMs =
         typeof state.started_at === 'number'
           ? state.started_at > 1e11
@@ -761,11 +918,23 @@ async function followLatencyTestState(state: Tachyon.LatencyActionState) {
       await applyTestedLatenciesResults(testedTags, startedAtMs);
     }
 
-    await completeLatencyTestJob(jobId, sectionName);
+    await completeLatencyTestJob(jobId, sectionName, response, testedTags);
   } catch (error) {
     logger.error('[DASHBOARD]', 'followLatencyTestState failed', error);
     if (!pageUnloading) {
       setLatencyFetching(sectionName, false);
+      if (shouldNotifyOwnedLatencyJob(jobId)) {
+        const label = getSectionDisplayName(sectionName);
+        const errMsg = error instanceof Error ? error.message : '';
+        showToast(
+          errMsg ||
+            tr(
+              `Не удалось проверить задержку (${label})`,
+              `Latency test failed (${label})`,
+            ),
+          'error',
+        );
+      }
     }
   } finally {
     followedLatencyJobs.delete(jobId);
@@ -1474,7 +1643,7 @@ export async function applyTestedLatenciesResults(
   }
 }
 
-async function handleTestLatency(
+export async function handleTestLatency(
   latencyType: Tachyon.LatencyActionState['latency_type'],
   sectionName: string,
   tag: string,
@@ -1496,6 +1665,7 @@ async function handleTestLatency(
   const testedTags = extractTestedTags(latencyType, sectionName, tag);
   const testStartedAt = Date.now();
   const beforeTimes = new Map<string, string>();
+  const label = getSectionDisplayName(sectionName);
   const snapshotBeforePromise =
     testedTags.length > 0 && latencyType !== 'proxy'
       ? TachyonShellMethods.getClashApiProxies()
@@ -1527,25 +1697,48 @@ async function handleTestLatency(
         parsedTag,
         timeout,
       );
+      let measuredDelay = -1;
       if (response.success && response.data) {
         const delay = (response.data as any)?.delay;
         if (typeof delay === 'number' && delay > 0) {
-          customProxyLatencies.set(tag, delay);
+          measuredDelay = delay;
         } else {
           const groupDelays = Object.values(response.data || {}).filter(
             (v): v is number => typeof v === 'number' && v > 0,
           );
-          customProxyLatencies.set(
-            tag,
-            groupDelays.length > 0 ? Math.min(...groupDelays) : -1,
-          );
+          measuredDelay =
+            groupDelays.length > 0 ? Math.min(...groupDelays) : -1;
         }
-      } else {
-        customProxyLatencies.set(tag, -1);
       }
+      customProxyLatencies.set(tag, measuredDelay);
       capMapSize(customProxyLatencies);
       setLatencyFetching(sectionName, false);
       completed = true;
+      if (!pageUnloading) {
+        if (measuredDelay > 0) {
+          showToast(
+            tr(
+              `Задержка (${label}): ${measuredDelay} мс`,
+              `Latency (${label}): ${measuredDelay} ms`,
+            ),
+            'success',
+          );
+        } else if (!response.success) {
+          showToast(
+            response.error ||
+              tr(
+                `Не удалось проверить задержку (${label})`,
+                `Latency test failed (${label})`,
+              ),
+            'error',
+          );
+        } else {
+          showToast(
+            tr(`${label}: узел не отвечает`, `${label}: unreachable`),
+            'error',
+          );
+        }
+      }
       void fetchDashboardSections({ force: true });
     } else {
       await snapshotBeforePromise;
@@ -1556,20 +1749,32 @@ async function handleTestLatency(
         timeout,
       );
 
-      if (!startResponse.success) {
+      if (!startResponse.success || !startResponse.data?.job_id) {
         setLatencyFetching(sectionName, false);
+        completed = true;
+        if (!pageUnloading) {
+          showToast(
+            (!startResponse.success && startResponse.error) ||
+              tr(
+                `Не удалось запустить проверку задержки (${label})`,
+                `Failed to start latency test (${label})`,
+              ),
+            'error',
+          );
+        }
         return;
       }
 
       jobId = startResponse.data.job_id;
-      if (!jobId) {
-        setLatencyFetching(sectionName, false);
+      markLatencyJobOwned(jobId);
+      if (followedLatencyJobs.has(jobId)) {
+        completed = true;
         return;
       }
 
       followedLatencyJobs.add(jobId);
       ownsJobFollow = true;
-      await TachyonShellMethods.waitLatencyTestJob(
+      const waitResponse = await TachyonShellMethods.waitLatencyTestJob(
         jobId,
         Date.now(),
         (state) => {
@@ -1578,12 +1783,37 @@ async function handleTestLatency(
           }
         },
       );
-      await applyTestedLatenciesResults(testedTags, testStartedAt, beforeTimes);
-      await completeLatencyTestJob(jobId, sectionName);
+      if (waitResponse.success && waitResponse.data.success) {
+        await applyTestedLatenciesResults(
+          testedTags,
+          testStartedAt,
+          beforeTimes,
+        );
+      }
+      await completeLatencyTestJob(
+        jobId,
+        sectionName,
+        waitResponse,
+        testedTags,
+      );
       completed = true;
     }
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleTestLatency: failed', error);
+    if (!pageUnloading) {
+      const shouldToast = !jobId || shouldNotifyOwnedLatencyJob(jobId);
+      if (shouldToast) {
+        const errMsg = error instanceof Error ? error.message : '';
+        showToast(
+          errMsg ||
+            tr(
+              `Не удалось проверить задержку (${label})`,
+              `Latency test failed (${label})`,
+            ),
+          'error',
+        );
+      }
+    }
   } finally {
     if (ownsJobFollow) {
       followedLatencyJobs.delete(jobId);
@@ -3598,73 +3828,222 @@ function canUpdateLatencyProgressInline(
   );
 }
 
-function findLatencyTestButton(container: HTMLElement, sectionName: string) {
-  const modalRoot = document.getElementById('tachyon-section-inspector-modal');
-  const roots = modalRoot ? [modalRoot, container] : [container];
-  for (const root of roots) {
-    const found = Array.from(
-      root.querySelectorAll<HTMLButtonElement>(`.${LATENCY_TEST_BUTTON_CLASS}`),
-    ).find((button) => button.dataset.latencySection === sectionName);
-    if (found) return found;
-  }
-  return undefined;
+const CONNECTION_LATENCY_ACTIONS = new Set([
+  'vpn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'naive',
+  'sudoku',
+  'masque',
+  'openvpn',
+  'openconnect',
+  'tewfai',
+  'trusttunnel',
+  'shadowtls',
+  'desync',
+]);
+
+function isConnectionLatencySection(section: Tachyon.OutboundGroup): boolean {
+  return (
+    !section.withTagSelect &&
+    CONNECTION_LATENCY_ACTIONS.has(section.action || '')
+  );
 }
 
-function updateLatencyProgressInline(
+function getActiveLatencyButtonLabel(
+  section: Tachyon.OutboundGroup,
+  latProgress?: Tachyon.LatencyActionProgress,
+): string {
+  return isConnectionLatencySection(section)
+    ? _('Checking Connection...')
+    : getLatencyTestLabel(latProgress);
+}
+
+export function canTestSectionLatency(section: Tachyon.OutboundGroup): boolean {
+  if (isServiceGroup(section)) {
+    return false;
+  }
+  if (section.withTagSelect) {
+    return true;
+  }
+  return (section.outbounds || []).some(
+    (o) => !isNonTestableOutboundType(o.type),
+  );
+}
+
+function triggerSectionLatencyTest(section: Tachyon.OutboundGroup) {
+  if (isServiceGroup(section)) {
+    return;
+  }
+  if (section.withTagSelect) {
+    const tag = section.latencyTestCodes?.length
+      ? section.latencyTestCodes
+      : section.latencyTestCode || section.code;
+    if (Array.isArray(tag)) {
+      const serializedTag = serializeSectionLatencyTag(section, tag);
+      void handleTestLatency(
+        'proxy_list',
+        section.sectionName,
+        serializedTag,
+        section.latencyTestTimeout,
+      );
+      return;
+    }
+    void handleTestLatency(
+      'group',
+      section.sectionName,
+      tag,
+      section.latencyTestTimeout,
+    );
+    return;
+  }
+  const testable = (section.outbounds || []).filter(
+    (o) => !isNonTestableOutboundType(o.type),
+  );
+  if (testable.length) {
+    void handleTestLatency(
+      'proxy',
+      section.sectionName,
+      testable[0].code,
+      section.latencyTestTimeout,
+    );
+  }
+}
+
+function renderSectionSubscriptionButton(
+  section: Tachyon.OutboundGroup,
+  isSubUpdating: boolean,
+): HTMLElement {
+  return E(
+    'button',
+    {
+      type: 'button',
+      class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+      disabled: isSubUpdating ? true : undefined,
+      click: (e: MouseEvent) => {
+        e.preventDefault();
+        if (!isSubUpdating) {
+          void handleUpdateSubscription(section);
+        }
+      },
+    },
+    isSubUpdating
+      ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
+      : [renderRefreshCwIcon(13), E('span', {}, _('Update subscriptions'))],
+  );
+}
+
+function renderSectionLatencyButton(
+  section: Tachyon.OutboundGroup,
+  isLatFetching: boolean,
+  latProgress?: Tachyon.LatencyActionProgress,
+): HTMLElement {
+  return E(
+    'button',
+    {
+      type: 'button',
+      class: `btn cbi-button tachyon-sec-accordion__action-btn ${LATENCY_TEST_BUTTON_CLASS}`,
+      'data-latency-section': section.sectionName,
+      disabled: isLatFetching ? true : undefined,
+      click: (e: MouseEvent) => {
+        e.preventDefault();
+        if (isLatFetching) return;
+        triggerSectionLatencyTest(section);
+      },
+    },
+    isLatFetching
+      ? [
+          renderLoaderCircleIcon24(),
+          E(
+            'span',
+            { class: LATENCY_TEST_BUTTON_LABEL_CLASS },
+            getActiveLatencyButtonLabel(section, latProgress),
+          ),
+        ]
+      : [
+          renderZapIcon(12),
+          E(
+            'span',
+            { class: LATENCY_TEST_BUTTON_LABEL_CLASS },
+            _('Test latency'),
+          ),
+        ],
+  );
+}
+
+function findLatencyTestButtons(
+  sectionName: string,
+  container?: HTMLElement | null,
+): HTMLButtonElement[] {
+  const modalRoot = document.getElementById('tachyon-section-inspector-modal');
+  const roots = [modalRoot, container].filter((root): root is HTMLElement =>
+    Boolean(root),
+  );
+  const seen = new Set<HTMLButtonElement>();
+  const buttons: HTMLButtonElement[] = [];
+
+  for (const root of roots) {
+    for (const button of Array.from(
+      root.querySelectorAll<HTMLButtonElement>(`.${LATENCY_TEST_BUTTON_CLASS}`),
+    )) {
+      const targetSection =
+        button.dataset?.latencySection ??
+        button.getAttribute?.('data-latency-section');
+      if (targetSection === sectionName && !seen.has(button)) {
+        seen.add(button);
+        buttons.push(button);
+      }
+    }
+  }
+
+  return buttons;
+}
+
+export function updateLatencyProgressInline(
   sectionsWidget: StoreType['sectionsWidget'],
 ) {
   const container = document.getElementById('dashboard-sections-grid');
+  const modalRoot = document.getElementById('tachyon-section-inspector-modal');
 
-  if (!container) {
+  if (!container && !modalRoot) {
     return false;
   }
 
+  let allUpdated = true;
   for (const section of sectionsWidget.data) {
     if (!sectionsWidget.latencyFetchingSections[section.sectionName]) {
       continue;
     }
 
-    const button = findLatencyTestButton(container, section.sectionName);
-    const label = button?.querySelector<HTMLElement>(
-      `.${LATENCY_TEST_BUTTON_LABEL_CLASS}`,
-    );
-
-    if (!label) {
-      return false;
+    const buttons = findLatencyTestButtons(section.sectionName, container);
+    if (buttons.length === 0) {
+      allUpdated = false;
+      continue;
     }
 
-    const isConnectionNode =
-      !section.withTagSelect &&
-      [
-        'vpn',
-        'awg',
-        'warp',
-        'anytls',
-        'snell',
-        'mieru',
-        'naive',
-        'sudoku',
-        'masque',
-        'openvpn',
-        'openconnect',
-        'tewfai',
-        'trusttunnel',
-        'shadowtls',
-        'desync',
-      ].includes(section.action || '');
+    const text = getActiveLatencyButtonLabel(
+      section,
+      sectionsWidget.latencyProgressSections[section.sectionName],
+    );
 
-    const text = isConnectionNode
-      ? _('Checking Connection...')
-      : getLatencyTestLabel(
-          sectionsWidget.latencyProgressSections[section.sectionName],
-        );
-
-    if (label.textContent !== text) {
-      label.textContent = text;
+    for (const button of buttons) {
+      const label = button.querySelector<HTMLElement>(
+        `.${LATENCY_TEST_BUTTON_LABEL_CLASS}`,
+      );
+      if (!label) {
+        allUpdated = false;
+        continue;
+      }
+      if (label.textContent !== text) {
+        label.textContent = text;
+      }
     }
   }
 
-  return true;
+  return allUpdated;
 }
 
 // Renderer
@@ -3773,7 +4152,7 @@ function getSectionsWithCustomLatencies(): Tachyon.OutboundGroup[] {
   });
 }
 
-function renderSectionInspectorModalContent(
+export function renderSectionInspectorModalContent(
   section: Tachyon.OutboundGroup,
   allSections: Tachyon.OutboundGroup[],
   proxySectionCount: number,
@@ -3904,89 +4283,11 @@ function renderSectionInspectorModalContent(
       );
     }
     if ((section.subscriptionSourceCount || 0) > 0) {
-      controls.push(
-        E(
-          'button',
-          {
-            type: 'button',
-            class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-            disabled: isSubUpdating ? true : undefined,
-            click: (e: MouseEvent) => {
-              e.preventDefault();
-              if (!isSubUpdating) {
-                void handleUpdateSubscription(section);
-              }
-            },
-          },
-          isSubUpdating
-            ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
-            : [
-                renderRefreshCwIcon(13),
-                E('span', {}, _('Update subscriptions')),
-              ],
-        ),
-      );
+      controls.push(renderSectionSubscriptionButton(section, isSubUpdating));
     }
-    if (
-      !isServiceGroup(section) &&
-      (section.withTagSelect ||
-        (section.outbounds && section.outbounds.length > 0))
-    ) {
+    if (canTestSectionLatency(section)) {
       controls.push(
-        E(
-          'button',
-          {
-            type: 'button',
-            class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-            disabled: isLatFetching ? true : undefined,
-            click: (e: MouseEvent) => {
-              e.preventDefault();
-              if (isLatFetching) return;
-              if (section.withTagSelect) {
-                const tag = section.latencyTestCodes?.length
-                  ? section.latencyTestCodes
-                  : section.latencyTestCode || section.code;
-                if (Array.isArray(tag)) {
-                  const serializedTag = serializeSectionLatencyTag(
-                    section,
-                    tag,
-                  );
-                  void handleTestLatency(
-                    'proxy_list',
-                    section.sectionName,
-                    serializedTag,
-                    section.latencyTestTimeout,
-                  );
-                } else {
-                  void handleTestLatency(
-                    'group',
-                    section.sectionName,
-                    tag,
-                    section.latencyTestTimeout,
-                  );
-                }
-              } else {
-                const testable = (section.outbounds || []).filter(
-                  (o) => !isNonTestableOutboundType(o.type),
-                );
-                if (testable.length) {
-                  void handleTestLatency(
-                    'proxy',
-                    section.sectionName,
-                    testable[0].code,
-                    section.latencyTestTimeout,
-                  );
-                }
-              }
-            },
-          },
-          isLatFetching
-            ? [
-                renderLoaderCircleIcon24(),
-                E('span', {}, getLatencyTestLabel(latProgress)),
-              ]
-            : [renderZapIcon(12), E('span', {}, _('Test latency'))],
-        ),
+        renderSectionLatencyButton(section, isLatFetching, latProgress),
       );
     }
     return controls;
@@ -4200,7 +4501,7 @@ function renderSectionInspectorModalContent(
   );
 }
 
-function renderSectionAccordionBody(
+export function renderSectionAccordionBody(
   section: Tachyon.OutboundGroup,
   proxySectionCount: number,
 ): HTMLElement {
@@ -4263,89 +4564,10 @@ function renderSectionAccordionBody(
         ]
       : []),
     ...(currentTab === 'nodes' && (section.subscriptionSourceCount || 0) > 0
-      ? [
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-              disabled: isSubUpdating ? true : undefined,
-              click: (e: MouseEvent) => {
-                e.preventDefault();
-                if (!isSubUpdating) {
-                  void handleUpdateSubscription(section);
-                }
-              },
-            },
-            isSubUpdating
-              ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
-              : [
-                  renderRefreshCwIcon(13),
-                  E('span', {}, _('Update subscriptions')),
-                ],
-          ),
-        ]
+      ? [renderSectionSubscriptionButton(section, isSubUpdating)]
       : []),
-    ...(currentTab === 'nodes' &&
-    !isServiceGroup(section) &&
-    (section.withTagSelect ||
-      (section.outbounds && section.outbounds.length > 0))
-      ? [
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn cbi-button tachyon-sec-accordion__action-btn',
-              disabled: isLatFetching ? true : undefined,
-              click: (e: MouseEvent) => {
-                e.preventDefault();
-                if (isLatFetching) return;
-                if (section.withTagSelect) {
-                  const tag = section.latencyTestCodes?.length
-                    ? section.latencyTestCodes
-                    : section.latencyTestCode || section.code;
-                  if (Array.isArray(tag)) {
-                    const serializedTag = serializeSectionLatencyTag(
-                      section,
-                      tag,
-                    );
-                    void handleTestLatency(
-                      'proxy_list',
-                      section.sectionName,
-                      serializedTag,
-                      section.latencyTestTimeout,
-                    );
-                  } else {
-                    void handleTestLatency(
-                      'group',
-                      section.sectionName,
-                      tag,
-                      section.latencyTestTimeout,
-                    );
-                  }
-                } else {
-                  const testable = (section.outbounds || []).filter(
-                    (o) => !isNonTestableOutboundType(o.type),
-                  );
-                  if (testable.length) {
-                    void handleTestLatency(
-                      'proxy',
-                      section.sectionName,
-                      testable[0].code,
-                      section.latencyTestTimeout,
-                    );
-                  }
-                }
-              },
-            },
-            isLatFetching
-              ? [
-                  renderLoaderCircleIcon24(),
-                  E('span', {}, getLatencyTestLabel(latProgress)),
-                ]
-              : [renderZapIcon(12), E('span', {}, _('Test latency'))],
-          ),
-        ]
+    ...(currentTab === 'nodes' && canTestSectionLatency(section)
+      ? [renderSectionLatencyButton(section, isLatFetching, latProgress)]
       : []),
     E(
       'button',
@@ -4774,42 +4996,7 @@ async function renderSectionsWidget(forceImmediate = false) {
       void renderSectionsWidget();
     },
     onTestSectionLatency: (section) => {
-      if (isServiceGroup(section)) {
-        return;
-      }
-      if (section.withTagSelect) {
-        const tag = section.latencyTestCodes?.length
-          ? section.latencyTestCodes
-          : section.latencyTestCode || section.code;
-        if (Array.isArray(tag)) {
-          const serializedTag = serializeSectionLatencyTag(section, tag);
-          void handleTestLatency(
-            'proxy_list',
-            section.sectionName,
-            serializedTag,
-            section.latencyTestTimeout,
-          );
-          return;
-        }
-        void handleTestLatency(
-          'group',
-          section.sectionName,
-          tag,
-          section.latencyTestTimeout,
-        );
-        return;
-      }
-      const testable = section.outbounds.filter(
-        (o) => !isNonTestableOutboundType(o.type),
-      );
-      if (testable.length) {
-        void handleTestLatency(
-          'proxy',
-          section.sectionName,
-          testable[0].code,
-          section.latencyTestTimeout,
-        );
-      }
+      triggerSectionLatencyTest(section);
     },
     onTestSingleOutbound: (sectionName, outboundCode) => {
       void handleTestSingleOutbound(sectionName, outboundCode);
@@ -5111,34 +5298,42 @@ export function getSectionConnectionStats(
   rates: ReadonlyMap<string, TrafficSample> = new Map(),
 ) {
   const target = (sectionName || '').toLowerCase();
+  const outbound = `${target}-out`;
+  const urltestPrefix = `${target}-urltest-`;
+  const priorityPrefix = `${target}-priority-`;
+  const outboundRule = `route(${outbound})`;
+  const targetRule = `route(${target})`;
+  const ruleSetPrefix = `rule_set=${target}-`;
+  const bracketPrefix = `[${target}-`;
+  const spacePrefix = ` ${target}-`;
+
   const matchesTarget = (c: ConnectionTrafficSample): boolean => {
     const rawChains = Array.isArray(c.chains)
       ? c.chains
       : Array.isArray((c as any).metadata?.chains)
         ? (c as any).metadata.chains
         : [];
-    const chains = rawChains.map((ch: any) => String(ch).toLowerCase());
-    if (
-      chains.some(
-        (ch: string) =>
-          ch === target ||
-          ch === `${target}-out` ||
-          ch.startsWith(`${target}-urltest-`) ||
-          ch.startsWith(`${target}-priority-`),
-      )
-    ) {
-      return true;
-    }
+    let matched = false;
+    rawChains.forEach((rawTag: unknown) => {
+      const chain = String(rawTag).toLowerCase();
+      matched ||=
+        chain === target ||
+        chain === outbound ||
+        chain.startsWith(urltestPrefix) ||
+        chain.startsWith(priorityPrefix);
+    });
+    if (matched) return true;
+
     const ruleStr = String(
       (c as any).rule || (c as any).rulePayload || '',
     ).toLowerCase();
     if (
       ruleStr &&
-      (ruleStr.includes(`route(${target}-out)`) ||
-        ruleStr.includes(`route(${target})`) ||
-        ruleStr.includes(`rule_set=${target}-`) ||
-        ruleStr.includes(`[${target}-`) ||
-        ruleStr.includes(` ${target}-`))
+      (ruleStr.includes(outboundRule) ||
+        ruleStr.includes(targetRule) ||
+        ruleStr.includes(ruleSetPrefix) ||
+        ruleStr.includes(bracketPrefix) ||
+        ruleStr.includes(spacePrefix))
     ) {
       return true;
     }
@@ -6757,7 +6952,7 @@ export function renderServiceRowItem(
   };
 }
 
-async function onStoreUpdate(
+export async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
   diff: Partial<StoreType>,
@@ -6777,9 +6972,25 @@ async function onStoreUpdate(
           JSON.stringify(prev.sectionsWidget.data) !==
             JSON.stringify(next.sectionsWidget.data));
 
-      if (dataChanged) {
+      const actionStateChanged =
+        !shallowRecordEqual(
+          prev.sectionsWidget.subscriptionUpdatingSections,
+          next.sectionsWidget.subscriptionUpdatingSections,
+        ) ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.latencyFetchingSections,
+          next.sectionsWidget.latencyFetchingSections,
+        ) ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.selectorSwitchingSections,
+          next.sectionsWidget.selectorSwitchingSections,
+        );
+
+      if (dataChanged || actionStateChanged) {
         scheduleSectionsWidgetRender();
-        renderTrafficTotalWidget();
+        if (dataChanged) {
+          renderTrafficTotalWidget();
+        }
       }
     }
   }
