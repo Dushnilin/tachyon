@@ -3631,6 +3631,12 @@ function migrate_tachyon_model(model, is_fixture) {
     migrate_ipv6_and_fakeip_settings(ctx);
     if (option(ctx.model.settings, "cache_flush_interval", "") == "10s")
         set_option(ctx, ctx.model.settings, "cache_flush_interval", "60s");
+    let raw_tcp_prof = lc(trim(option(ctx.model.settings, "tcp_profile", "")));
+    if (raw_tcp_prof != "" &&
+        raw_tcp_prof != "auto" && raw_tcp_prof != "windows" &&
+        raw_tcp_prof != "macos" && raw_tcp_prof != "ios" &&
+        raw_tcp_prof != "android" && raw_tcp_prof != "linux")
+        delete_option(ctx, ctx.model.settings, "tcp_profile");
     return ctx;
 }
 

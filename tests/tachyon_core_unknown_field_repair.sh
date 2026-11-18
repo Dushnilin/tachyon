@@ -97,4 +97,37 @@ out="$(run_repair "$CFG5" 'check: create log factory: parse log level: unknown l
 grep -q '"level": "fatal"' "$CFG5" || fail "log.level was not changed to fatal"
 grep -q '"panic"' "$CFG5" && fail "panic survived the repair"
 
+# --- humanized tachyon-core unknown-field diagnostics (without "json: ") ----
+CFG6="$WORK_DIR/tachyon_route_tcp_profile.json"
+cat >"$CFG6" <<'JSON'
+{ "route": { "tcp_profile": "low_latency", "final": "direct-out" }, "outbounds": [ { "type": "direct", "tag": "direct-out" } ] }
+JSON
+out="$(run_repair "$CFG6" 'check: route: tcp_profile: unknown field "tcp_profile"')"
+[ "$out" = "repaired" ] || fail "humanized route: tcp_profile unknown field must be repaired, got '$out'"
+grep -q '"tcp_profile"' "$CFG6" && fail "route.tcp_profile survived repair"
+grep -q '"final": "direct-out"' "$CFG6" || fail "repair dropped route.final"
+
+CFG7="$WORK_DIR/tachyon_nested_humanized.json"
+make_config "$CFG7"
+out="$(run_repair "$CFG7" 'check: outbounds[1].tls.reality.support_x25519mlkem768: unknown field "support_x25519mlkem768"')"
+[ "$out" = "repaired" ] || fail "humanized nested outbound field must be repaired, got '$out'"
+grep -q support_x25519mlkem768 "$CFG7" && fail "nested field survived humanized repair"
+
+CFG8="$WORK_DIR/tachyon_toplevel_humanized.json"
+cat >"$CFG8" <<'JSON'
+{ "outbounds": [ { "type": "direct", "tag": "a", "bogus_field": true } ] }
+JSON
+out="$(run_repair "$CFG8" 'check: outbounds[0].bogus_field: unknown field "bogus_field"')"
+[ "$out" = "repaired" ] || fail "humanized top-level outbound field must be repaired, got '$out'"
+grep -q bogus_field "$CFG8" && fail "top-level field survived humanized repair"
+
+CFG9="$WORK_DIR/tachyon_log_humanized.json"
+cat >"$CFG9" <<'JSON'
+{ "log": { "level": "warn", "extra_key": "x" }, "outbounds": [ { "type": "direct", "tag": "direct-out" } ] }
+JSON
+out="$(run_repair "$CFG9" 'check: log: extra_key: unknown field "extra_key"')"
+[ "$out" = "repaired" ] || fail "humanized log unknown field must be repaired, got '$out'"
+grep -q extra_key "$CFG9" && fail "log.extra_key survived humanized repair"
+grep -q '"level": "warn"' "$CFG9" || fail "repair dropped log.level"
+
 printf 'tachyon-core unknown-field repair checks passed\n'

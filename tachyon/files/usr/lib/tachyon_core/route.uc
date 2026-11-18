@@ -188,9 +188,6 @@ function config(settings, runtime) {
         result.default_interface = output_network_interface;
     if (bool_option(settings, "smart_queue", false))
         result.smart_queue = true;
-    let tcp_prof = lc(trim(as_string(option(settings, "tcp_profile", ""))));
-    if (tcp_prof == "low_latency" || tcp_prof == "throughput" || tcp_prof == "conservative")
-        result.tcp_profile = tcp_prof;
     if (disable_quic_mode(option(settings, "disable_quic", "0")) != "off") {
         push(result.rules, { action: "reject", network: "udp", port: [ 443 ] });
         push(result.rules, { action: "reject", protocol: "quic", port: [ 443 ] });

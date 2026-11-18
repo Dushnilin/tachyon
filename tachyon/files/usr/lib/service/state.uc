@@ -2613,6 +2613,14 @@ function tachyon_core_signature_body(settings, sections, servers, mwan3_active, 
         body = signature_add_value(body, "settings.lite_mode", "1");
     if (!common.is_tcp_bbr_enabled(settings))
         body = signature_add_value(body, "settings.tcp_bbr", "0");
+    if (bool_option(settings, "smart_queue", false))
+        body = signature_add_value(body, "settings.smart_queue", "1");
+    let tcp_prof_sig = lc(trim(as_string(option(settings, "tcp_profile", ""))));
+    if (tcp_prof_sig == "auto" || tcp_prof_sig == "windows" || tcp_prof_sig == "macos" ||
+        tcp_prof_sig == "ios" || tcp_prof_sig == "android" || tcp_prof_sig == "linux")
+        body = signature_add_value(body, "settings.tcp_profile", tcp_prof_sig);
+    if (bool_option(settings, "selector_auto_failover", false))
+        body = signature_add_value(body, "settings.selector_auto_failover", "1");
     let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
     if (proxy_mode != "" && proxy_mode != "tproxy") {
         body = signature_add_value(body, "settings.proxy_mode", proxy_mode);
@@ -2621,6 +2629,12 @@ function tachyon_core_signature_body(settings, sections, servers, mwan3_active, 
             body = signature_add_value(body, "settings.tun_inet6", option(settings, "tun_inet6", ""));
             body = signature_add_value(body, "settings.tun_mtu", option(settings, "tun_mtu", "9000"));
             body = signature_add_value(body, "settings.tun_stack", option(settings, "tun_stack", "system"));
+            if (option(settings, "tun_gso", "") != "")
+                body = signature_add_value(body, "settings.tun_gso", option(settings, "tun_gso", ""));
+            if (option(settings, "tun_endpoint_independent_nat", "") != "")
+                body = signature_add_value(body, "settings.tun_endpoint_independent_nat", option(settings, "tun_endpoint_independent_nat", ""));
+            if (option(settings, "tun_udp_timeout", "") != "")
+                body = signature_add_value(body, "settings.tun_udp_timeout", option(settings, "tun_udp_timeout", ""));
         } else if (proxy_mode == "socks") {
             body = signature_add_value(body, "settings.socks_port", option(settings, "socks_port", "1080"));
             body = signature_add_value(body, "settings.socks_listen", option(settings, "socks_listen", "0.0.0.0"));

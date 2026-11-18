@@ -1132,7 +1132,7 @@ function repair_outbound_field(temp_config, reason) {
     if (!verifier.repair_unknown_outbound_field(temp_config, reason))
         return false;
     let core_name = "tachyon-core";
-    let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+    let m = match(verifier.normalize_unknown_field_reason(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
     if (m) {
         let bad_index = int(m[1]);
         log_message("Installed " + core_name + " does not support outbound field '" + m[2] +
@@ -1513,9 +1513,10 @@ function check_with_field_repairs(temp_config, runtime_log) {
         // hot-reload fix, issue #15, prefer_ip, tolerate_time_skewness), strip it
         // from all inbounds and retry. Loops to handle multiple unknown fields
         // across retries (e.g. prefer_ip then tolerate_time_skewness).
+        let norm_reason = verifier.normalize_unknown_field_reason(check_result.reason);
         let cert_pin_m = match(check_result.reason, /certificate_sha256/) != null;
-        let user_field_m = match(check_result.reason, /inbounds\[\d+\]\.users\[\d+\]\.(\w+): json: unknown field/);
-        let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
+        let user_field_m = match(norm_reason, /inbounds\[\d+\]\.users\[\d+\]\.(\w+): json: unknown field/);
+        let field_m = match(norm_reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
         if (cert_pin_m) {
             log_message("Installed " + core_name + " rejected tls.certificate_sha256 (this build predates it); stripping certificate pins and retrying", "warn");
@@ -1580,7 +1581,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
             // that node. The dotted path is captured whole and deleted at each
             // level, the same way the endpoints path below already does for
             // `amnezia`.
-            let tls_field_m = match(check_result.reason, /(outbounds|inbounds)\[\d+\]\.tls\.(\w+)\.(\w+): json: unknown field/);
+            let tls_field_m = match(norm_reason, /(outbounds|inbounds)\[\d+\]\.tls\.(\w+)\.(\w+): json: unknown field/);
             if (tls_field_m) {
                 let container = tls_field_m[2];
                 let unknown_field = tls_field_m[3];
@@ -1602,8 +1603,8 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     stripped = true;
                 }
             }
-            let ep_field_m = match(check_result.reason, /endpoints\[\d+\]\.(\w+): json: unknown field/);
-            let out_field_m = match(check_result.reason, /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
+            let ep_field_m = match(norm_reason, /endpoints\[\d+\]\.(\w+): json: unknown field/);
+            let out_field_m = match(norm_reason, /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
             if (ep_field_m) {
                 let unknown_field = ep_field_m[1];
                 log_message("Installed " + core_name + " does not support endpoint field '" + unknown_field + "'; adjusting configuration", "warn");
@@ -1668,8 +1669,8 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     stripped = true;
                 }
             }
-            else if (match(check_result.reason, /experimental\.cache_file\.(\w+): json: unknown field/)) {
-                let cf_m = match(check_result.reason, /experimental\.cache_file\.(\w+): json: unknown field/);
+            else if (match(norm_reason, /experimental\.cache_file\.(\w+): json: unknown field/)) {
+                let cf_m = match(norm_reason, /experimental\.cache_file\.(\w+): json: unknown field/);
                 let unknown_field = cf_m[1];
                 log_message("Installed " + core_name + " does not support cache_file field '" + unknown_field + "'; stripping and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
@@ -1816,8 +1817,8 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     }
                 }
             }
-            else if (match(check_result.reason, /json: unknown field/)) {
-                if (repair_outbound_field(temp_config, check_result.reason))
+            else if (match(norm_reason, /json: unknown field/)) {
+                if (repair_outbound_field(temp_config, norm_reason))
                     stripped = true;
             }
             else if (strip_broken_leaf_outbound(temp_config, check_result.reason)) {

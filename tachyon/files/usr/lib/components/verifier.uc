@@ -108,7 +108,14 @@ function verify_binary_post_install(binary_path, expected_version, version_cmd_a
 //
 // Reports false once no further repair applies, so the caller stops instead of
 // rewriting the same file until it gives up.
+function normalize_unknown_field_reason(reason) {
+    let s = replace(as_string(reason), /: (json: )*unknown field /g, ": json: unknown field ");
+    s = replace(s, /(^|: )(log|ntp|route|dns): ([A-Za-z0-9_.]+): json: unknown field /g, "$1$2.$3: json: unknown field ");
+    return s;
+}
+
 function repair_unknown_outbound_field(config_file, reason) {
+    let norm_reason = normalize_unknown_field_reason(reason);
     if (index(as_string(reason), "unknown log level: panic") >= 0) {
         let cfg_text = as_string(fs.readfile(config_file) || "");
         if (length(cfg_text) == 0) return false;
@@ -120,7 +127,7 @@ function repair_unknown_outbound_field(config_file, reason) {
         }
     }
 
-    let ep_peer_m = match(as_string(reason), /endpoints\[(\d+)\]\.peers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let ep_peer_m = match(norm_reason, /endpoints\[(\d+)\]\.peers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     if (ep_peer_m && ep_peer_m[1] && ep_peer_m[2] && ep_peer_m[3]) {
         let ep_idx = int(ep_peer_m[1]);
         let peer_idx = int(ep_peer_m[2]);
@@ -142,9 +149,9 @@ function repair_unknown_outbound_field(config_file, reason) {
         return true;
     }
 
-    let rrule_m = match(as_string(reason), /route\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
-    let drule_m = match(as_string(reason), /dns\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
-    let dsrv_m = match(as_string(reason), /dns\.servers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let rrule_m = match(norm_reason, /route\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let drule_m = match(norm_reason, /dns\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let dsrv_m = match(norm_reason, /dns\.servers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let sub_m = rrule_m || drule_m || dsrv_m;
     if (sub_m && sub_m[1] && sub_m[2]) {
         let idx = int(sub_m[1]);
@@ -197,9 +204,9 @@ function repair_unknown_outbound_field(config_file, reason) {
         return true;
     }
 
-    let out_m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
-    let ep_m = match(as_string(reason), /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
-    let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let out_m = match(norm_reason, /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let ep_m = match(norm_reason, /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let inb_m = match(norm_reason, /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
 
     let m = out_m || ep_m || inb_m;
     if (m && m[1] && m[2]) {
@@ -247,7 +254,7 @@ function repair_unknown_outbound_field(config_file, reason) {
         return true;
     }
 
-    let gen_m = match(as_string(reason), /([A-Za-z0-9_.]+): json: unknown field/);
+    let gen_m = match(norm_reason, /([A-Za-z0-9_.]+): json: unknown field/);
     if (gen_m && gen_m[1]) {
         let field = gen_m[1];
         let cfg_text = as_string(fs.readfile(config_file) || "");
@@ -414,6 +421,7 @@ function check_core_config_with_binary(binary, config_path, library_dir) {
 function module_exports() {
     return {
         format_fingerprint_human,
+        normalize_unknown_field_reason,
         repair_unknown_outbound_field,
         verify_package_post_install,
         verify_binary_post_install,

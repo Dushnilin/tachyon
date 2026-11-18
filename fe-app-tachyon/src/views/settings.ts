@@ -4501,27 +4501,54 @@ function createSettingsContent(section, capabilities) {
     'network',
     form.ListValue,
     'tcp_profile',
-    _tr('Профиль TCP-стека ядра', 'Core TCP Stack Profile'),
     _tr(
-      'Профиль параметров TCP-сокетов для исходящих соединений tachyon-core.',
-      'TCP socket parameter profile for outbound connections in tachyon-core.',
+      'Профиль TCP-стека исходящих подключений',
+      'Outbound TCP Stack Profile',
+    ),
+    _tr(
+      'Параметры TCP-сокетов (TTL, MSS, окно приёма) для исходящих прокси и адаптивных подключений tachyon-core.',
+      'TCP socket parameters (TTL, MSS, receive window) for outbound proxy and adaptive connections in tachyon-core.',
     ),
   );
-  o.value('', _tr('По умолчанию (сбалансированный)', 'Default (Balanced)'));
+  o.value('', _tr('По умолчанию (системный стек)', 'Default (System Stack)'));
   o.value(
-    'low_latency',
-    _tr('Минимальная задержка (low_latency)', 'Low Latency (low_latency)'),
+    'auto',
+    _tr('Авто (под отпечаток TLS uTLS)', 'Auto (Match TLS uTLS Fingerprint)'),
   );
   o.value(
-    'throughput',
+    'windows',
     _tr(
-      'Максимальная пропускная способность (throughput)',
-      'High Throughput (throughput)',
+      'Windows (TTL 128, MSS 1460, RCVBUF 64K)',
+      'Windows (TTL 128, MSS 1460, RCVBUF 64K)',
     ),
   );
   o.value(
-    'conservative',
-    _tr('Экономия памяти (conservative)', 'Memory Conservative (conservative)'),
+    'macos',
+    _tr(
+      'macOS (TTL 64, MSS 1460, RCVBUF 128K)',
+      'macOS (TTL 64, MSS 1460, RCVBUF 128K)',
+    ),
+  );
+  o.value(
+    'ios',
+    _tr(
+      'iOS (TTL 64, MSS 1460, RCVBUF 64K)',
+      'iOS (TTL 64, MSS 1460, RCVBUF 64K)',
+    ),
+  );
+  o.value(
+    'android',
+    _tr(
+      'Android (TTL 64, MSS 1460, RCVBUF 64K)',
+      'Android (TTL 64, MSS 1460, RCVBUF 64K)',
+    ),
+  );
+  o.value(
+    'linux',
+    _tr(
+      'Linux (TTL 64, MSS 1460, RCVBUF 85K)',
+      'Linux (TTL 64, MSS 1460, RCVBUF 85K)',
+    ),
   );
   o.default = '';
   o.rmempty = true;

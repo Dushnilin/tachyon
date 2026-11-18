@@ -2323,6 +2323,33 @@ function prune_dangling_group_members(config) {
     }
 }
 
+function apply_settings_tcp_profile(config, settings) {
+    if (type(config) != "object")
+        return;
+
+    let tcp_prof = lc(trim(as_string(option(settings, "tcp_profile", ""))));
+    if (tcp_prof != "auto" && tcp_prof != "windows" &&
+        tcp_prof != "macos" && tcp_prof != "ios" &&
+        tcp_prof != "android" && tcp_prof != "linux")
+        return;
+
+    for (let item in array_or_empty(config.outbounds)) {
+        if (type(item) != "object" || item.tcp_profile != null)
+            continue;
+        let t = as_string(item.type || "");
+        if (t == "direct" || t == "selector" || t == "urltest" ||
+            t == "chain" || t == "block" || t == "bridge" || t == "dns")
+            continue;
+        item.tcp_profile = tcp_prof;
+    }
+
+    for (let ep in array_or_empty(config.endpoints)) {
+        if (type(ep) != "object" || ep.tcp_profile != null)
+            continue;
+        ep.tcp_profile = tcp_prof;
+    }
+}
+
 function generate_config_once(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     // Quarantine reuses the same skip set the deferred sections use: every
@@ -2575,6 +2602,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     if (is_tachyon_core_detected())
         share_wireguard_client_endpoints(config, owners);
     strip_internal_fields(config);
+    apply_settings_tcp_profile(config, settings);
     strip_certificate_pins_if_unsupported(config);
     normalize_hysteria2_server_ports(config);
     finalize_config_owners(config, owners, output_path);
