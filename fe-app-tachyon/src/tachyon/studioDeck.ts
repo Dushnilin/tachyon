@@ -48,6 +48,7 @@ import {
   renderActivityIcon,
   renderAlertTriangleIcon,
   renderCommunityListServiceIcon,
+  renderLoaderCircleIcon24,
   renderRefreshCwIcon,
   renderChevronDownIcon,
   renderChevronUpIcon,
@@ -2660,39 +2661,90 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const startRes = await execCmd(args).catch(() => null);
       const jobId = startRes?.job_id;
+      let st: any = null;
       if (jobId) {
         for (let i = 0; i < 40; i++) {
           await new Promise((r) => setTimeout(r, 1500));
-          const st = await execCmd([
+          st = await execCmd([
             'subscription_update_status',
             String(jobId),
           ]).catch(() => null);
           if (!st || !st.running) break;
         }
       }
+      const succeeded = Boolean(
+        startRes?.success && (!st || (st.success !== false && !st.running)),
+      );
       if (
         typeof ui !== 'undefined' &&
         typeof ui.addNotification === 'function'
       ) {
-        ui.addNotification(
-          null,
-          E(
-            'p',
-            {},
-            targetSid
-              ? tr('Подписка обновлена.', 'Subscription updated.')
-              : tr('Все подписки обновлены.', 'All subscriptions updated.'),
-          ),
-          'info',
-        );
+        if (succeeded) {
+          ui.addNotification(
+            null,
+            E(
+              'p',
+              {},
+              targetSid
+                ? tr('Подписка обновлена.', 'Subscription updated.')
+                : tr('Все подписки обновлены.', 'All subscriptions updated.'),
+            ),
+            'info',
+          );
+        } else {
+          const errMsg =
+            st?.message ||
+            startRes?.message ||
+            (st?.running
+              ? tr(
+                  'Превышено время ожидания обновления подписки.',
+                  'Subscription update timed out.',
+                )
+              : targetSid
+                ? tr(
+                    'Не удалось обновить подписку.',
+                    'Failed to update subscription.',
+                  )
+                : tr(
+                    'Не удалось обновить подписки.',
+                    'Failed to update subscriptions.',
+                  ));
+          ui.addNotification(null, E('p', {}, errMsg), 'error');
+        }
       }
-    } catch (_e) {
-      // ignore transient RPC errors
+    } catch (err) {
+      if (
+        typeof ui !== 'undefined' &&
+        typeof ui.addNotification === 'function'
+      ) {
+        const errMsg =
+          (err instanceof Error && err.message) ||
+          (targetSid
+            ? tr(
+                'Не удалось обновить подписку.',
+                'Failed to update subscription.',
+              )
+            : tr(
+                'Не удалось обновить подписки.',
+                'Failed to update subscriptions.',
+              ));
+        ui.addNotification(null, E('p', {}, errMsg), 'error');
+      }
     } finally {
       updatingSubTargets.delete(key);
       await loadSubscriptionCacheMap();
       renderDeck();
     }
+  };
+
+  const renderSubUpdateIcon = (updating: boolean) => {
+    if (!updating) {
+      return renderRefreshCwIcon(12);
+    }
+    const icon = renderLoaderCircleIcon24();
+    icon.setAttribute('width', '12');
+    icon.setAttribute('height', '12');
+    return icon;
   };
 
   const renderDeck = () => {
@@ -2895,12 +2947,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             },
           },
           [
+            renderSubUpdateIcon(isUpdatingAll),
             E(
               'span',
               {},
               isUpdatingAll
-                ? tr('↻ Обновление подписок...', '↻ Updating subscriptions...')
-                : tr('↻ Обновить все подписки', '↻ Update All Subscriptions'),
+                ? tr('Обновление подписок...', 'Updating subscriptions...')
+                : tr('Обновить все подписки', 'Update All Subscriptions'),
             ),
           ],
         ),
@@ -4748,7 +4801,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 },
               },
               [
-                renderRefreshCwIcon(12),
+                renderSubUpdateIcon(isSubUpdating),
                 E(
                   'span',
                   {},
