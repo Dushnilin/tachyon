@@ -242,7 +242,15 @@ function record_runtime_quarantine(target, message) {
 function persist_validator_quarantine() {
     if (!runtime_quarantine_mode)
         return;
+    let prev_quarantined = object_or_empty(read_json_file(VALIDATOR_QUARANTINED_FILE));
     let existing_errors = object_or_empty(read_json_file(SECTION_ERRORS_FILE));
+    let changed_existing = false;
+    for (let k in keys(prev_quarantined)) {
+        if (runtime_quarantined_sections[k] == null && existing_errors[k] != null) {
+            delete existing_errors[k];
+            changed_existing = true;
+        }
+    }
     let has_any = false;
     for (let k in keys(runtime_quarantined_sections)) {
         has_any = true;
@@ -253,6 +261,10 @@ function persist_validator_quarantine() {
         common.write_json_file(SECTION_ERRORS_FILE, existing_errors);
     } else {
         common.remove_file(VALIDATOR_QUARANTINED_FILE);
+        if (length(keys(existing_errors)) == 0)
+            common.remove_file(SECTION_ERRORS_FILE);
+        else if (changed_existing)
+            common.write_json_file(SECTION_ERRORS_FILE, existing_errors);
     }
 }
 
@@ -2070,6 +2082,9 @@ function validate_rule(section, sections, context) {
     for (let value in list_option(section, "domain_suffix"))
         validate_combined_domain_value(value, name);
     validate_combined_domain_text_value(option(section, "domain_suffix_text", ""), name);
+    for (let value in list_option(section, "excluded_domains"))
+        validate_combined_domain_value(value, name);
+    validate_combined_domain_text_value(option(section, "excluded_domains_text", ""), name);
 
     if (connections.routed_dns_enabled(section)) {
         if (action == "dns" || action == "hosts" || action == "block")
@@ -2647,6 +2662,9 @@ function validate_modular_entities(sections, context) {
             validate_dscp_values(cond);
             validate_geoip_country_values(cond);
             validate_interface_address_values(cond);
+            for (let value in list_option(cond, "excluded_domains"))
+                validate_combined_domain_value(value, cname);
+            validate_combined_domain_text_value(option(cond, "excluded_domains_text", ""), cname);
         } catch (e) {
             current_validating_section = "";
             if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)

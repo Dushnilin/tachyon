@@ -61,7 +61,7 @@ function prefixed_domain_kind_value(value) {
     let body = value;
     if (colon > 0) {
         let candidate = domain_config.ascii_lower(substr(value, 0, colon));
-        if (candidate == "full" || candidate == "keyword" || candidate == "regex") {
+        if (candidate == "full" || candidate == "domain" || candidate == "keyword" || candidate == "regex") {
             prefix = candidate;
             body = substr(value, colon + 1);
         }
@@ -77,7 +77,7 @@ function prefixed_domain_kind_value(value) {
     if (body == "" || substr(body, 0, 2) == "//" || substr(body, 0, 1) == "#")
         return null;
 
-    if (prefix == "") {
+    if (prefix == "" || prefix == "domain") {
         let normalized = domain_config.suffix_to_ascii(body);
         return normalized == null ? null : { kind: "domain_suffix", value: normalized };
     }
@@ -161,8 +161,14 @@ function condition_text_csv_value(value, kind) {
 }
 
 function legacy_condition_csv_value(kind, text_mode, conditions_text_mode, text_value, list_value) {
-    if (int(text_mode || 0) == 1 || int(conditions_text_mode || 0) == 1)
+    if (int(text_mode || 0) == 1)
         return condition_text_csv_value(text_value, kind);
+
+    if (int(conditions_text_mode || 0) == 1) {
+        let text_csv = condition_text_csv_value(text_value, kind);
+        if (text_csv != "")
+            return text_csv;
+    }
 
     list_value = as_string(list_value);
     if (list_value != "")
