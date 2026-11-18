@@ -1822,6 +1822,40 @@ function validate_subscription_request_profile(section, entry) {
     fail_validation("Subscription source in rule '" + section_name(section) + "' has manual HWID enabled but HWID is empty. Fill HWID or enable auto-generation. Aborted.");
 }
 
+function validate_fragment_range_value(raw, min_val, suffix_allowed, holder_label, field_name, example) {
+    let val = trim(as_string(raw));
+    if (val == "")
+        return;
+
+    let rx = suffix_allowed ? /^[0-9]+(-[0-9]+)?(ms|s)?$/ : /^[0-9]+(-[0-9]+)?$/;
+    if (match(val, rx) == null)
+        fail_validation(holder_label + " has invalid " + field_name + " '" + val + "'. Expected e.g. '" + example + "'. Aborted.");
+
+    let clean = val;
+    if (suffix_allowed) {
+        if (length(clean) >= 2 && substr(clean, length(clean) - 2) == "ms")
+            clean = substr(clean, 0, length(clean) - 2);
+        else if (length(clean) >= 1 && substr(clean, length(clean) - 1) == "s")
+            clean = substr(clean, 0, length(clean) - 1);
+    }
+
+    let dash = index(clean, "-");
+    let lo = dash >= 0 ? int(substr(clean, 0, dash)) : int(clean);
+    let hi = dash >= 0 ? int(substr(clean, dash + 1)) : lo;
+    if (lo < min_val || hi < lo)
+        fail_validation(holder_label + " has invalid " + field_name + " '" + val + "' (range bounds out of order). Aborted.");
+}
+
+function validate_source_fragment_options(holder, holder_label) {
+    if (type(holder) != "object")
+        return;
+    let mode = lc(trim(option(holder, "tls_fragment_mode", "")));
+    if (mode != "" && !contains([ "tls_record", "tls_fragment", "tcp_fragment" ], mode))
+        fail_validation(holder_label + " has invalid tls_fragment_mode '" + mode + "'. Expected tls_record, tls_fragment, or tcp_fragment. Aborted.");
+    validate_fragment_range_value(option(holder, "tcp_fragment_length", ""), 1, false, holder_label, "tcp_fragment_length", "20-60");
+    validate_fragment_range_value(option(holder, "tcp_fragment_delay", ""), 0, true, holder_label, "tcp_fragment_delay", "0-2ms");
+}
+
 function validate_csqtt_or_wdtt_section(section, label) {
     let name = section_name(section);
     let uri = trim(option(section, "csqtt_uri", option(section, "warp_flow_uri", "")));
@@ -2044,6 +2078,9 @@ function validate_rule(section, sections, context) {
             !bool_option(section, "mixed_proxy_enabled", false))
             fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers, enable Mixed Proxy, or enable Match All explicitly. Aborted.");
     }
+
+    if (connections.is_connections_action(action))
+        validate_source_fragment_options(section, "Rule '" + name + "'");
 
     if (connections.is_connections_action(action) || action == "fptn" || action == "csqtt" || action == "wdtt") {
         validate_section_route_groups(section);
@@ -2681,6 +2718,20 @@ function validate_modular_entities(sections, context) {
             continue;
         let sname = section_name(src);
         let stype = lc(trim(option(src, "source_type", "")));
+        if (stype == "subscription" || stype == "proxy_links") {
+            current_validating_section = runtime_quarantine_mode ? sname : "";
+            try {
+                validate_source_fragment_options(src, "Outbound source '" + sname + "'");
+            } catch (e) {
+                current_validating_section = "";
+                if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                    die(e);
+                broken_sources[sname] = runtime_quarantined_sections[sname] || ("Outbound source '" + sname + "' is invalid");
+                delete runtime_quarantined_sections[sname];
+            }
+            current_validating_section = "";
+            continue;
+        }
         if (stype != "csqtt" && stype != "wdtt")
             continue;
         current_validating_section = runtime_quarantine_mode ? sname : "";

@@ -1644,6 +1644,47 @@ function match_server_interface_override(overrides, candidates) {
     return "";
 }
 
+function apply_source_fragment_overrides(outbound, tls_fp, frag_mode, frag_len, frag_delay) {
+    if (type(outbound) != "object")
+        return;
+    let otype = lc(as_string(outbound.type || ""));
+    if (otype == "" || index([
+        "urltest", "selector", "direct", "block", "dns",
+        "hysteria2", "hysteria", "tuic", "masque",
+        "wireguard", "tailscale", "desync", "wdtt", "csqtt"
+    ], otype) >= 0)
+        return;
+
+    if (type(outbound.tls) == "object") {
+        let tls_copy = {};
+        for (let k, v in outbound.tls)
+            tls_copy[k] = v;
+        outbound.tls = tls_copy;
+    }
+
+    if (tls_fp != "" && type(outbound.tls) == "object" && outbound.tls.enabled === true)
+        outbound.tls.utls = { enabled: true, fingerprint: tls_fp };
+
+    if (frag_mode == "tls_record") {
+        if (type(outbound.tls) == "object" && outbound.tls.enabled === true)
+            outbound.tls.record_fragment = true;
+    } else if (frag_mode == "tls_fragment") {
+        if (type(outbound.tls) == "object" && outbound.tls.enabled === true)
+            outbound.tls.fragment = true;
+    } else if (frag_mode == "tcp_fragment") {
+        let eff_len = frag_len != "" ? frag_len : "20-60";
+        let eff_delay = "0-2ms";
+        if (frag_delay != "")
+            eff_delay = match(frag_delay, /(ms|s)$/) != null ? frag_delay : (frag_delay + "ms");
+        outbound.tcp_fragment = {
+            enabled: true,
+            packets: "tlshello",
+            length: eff_len,
+            delay: eff_delay
+        };
+    }
+}
+
 function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags, source_id) {
     let tag_name = outbound_tag(section_name + "-" + manual_index);
     if (taken[tag_name])
@@ -1662,6 +1703,12 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
         : "";
     let src_bind_iface = src_obj != null ? trim(option(src_obj, "bind_interface", "")) : "";
     let src_srv_overrides = parse_server_interface_overrides([ src_obj ]);
+    let src_tls_fp = src_obj != null ? lc(trim(option(src_obj, "tls_fingerprint", ""))) : "";
+    if (src_tls_fp == "default")
+        src_tls_fp = "";
+    let src_frag_mode = src_obj != null ? connections.source_tls_fragment_mode(src_obj, "") : "";
+    let src_frag_len = src_obj != null ? connections.source_tcp_fragment_length(src_obj, "") : "";
+    let src_frag_delay = src_obj != null ? connections.source_tcp_fragment_delay(src_obj, "") : "";
 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
@@ -1683,6 +1730,7 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     } else if (src_bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "") {
         outbound.bind_interface = src_bind_iface;
     }
+    apply_source_fragment_overrides(outbound, src_tls_fp, src_frag_mode, src_frag_len, src_frag_delay);
     if (outbound.type == "wireguard")
         add_imported_wireguard_endpoint(config, outbound);
     else if (outbound.type == "tailscale")
@@ -2003,6 +2051,9 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     node_prefix = trim(as_string(node_prefix));
     let keyword_filter = subscription_keyword_filter(section, source_entry);
     let sub_tls_fp = connections.subscription_tls_fingerprint(section, source_entry);
+    let sub_frag_mode = connections.source_tls_fragment_mode(section, source_entry);
+    let sub_frag_len = connections.source_tcp_fragment_length(section, source_entry);
+    let sub_frag_delay = connections.source_tcp_fragment_delay(section, source_entry);
     let sub_src_id_for_bind = (connections && connections.source_id_for_manual_item)
         ? connections.source_id_for_manual_item(section, source_entry)
         : "";
@@ -2081,11 +2132,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             as_string(copied_outbound.detour || "") == "" && as_string(copied_outbound.bind_interface || "") == "") {
             copied_outbound.bind_interface = sub_bind_iface;
         }
-        if (type(copied_outbound.tls) == "object" && copied_outbound.tls.enabled === true) {
-            if (sub_tls_fp != "") {
-                copied_outbound.tls.utls = { enabled: true, fingerprint: sub_tls_fp };
-            }
-        }
+        if (!subscription_group_outbound(outbound))
+            apply_source_fragment_overrides(copied_outbound, sub_tls_fp, sub_frag_mode, sub_frag_len, sub_frag_delay);
         push(prepared, copied_outbound);
         push(display_names, display_name);
         let source_link = as_string(outbound.share_link || "");

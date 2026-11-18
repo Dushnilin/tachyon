@@ -2,12 +2,14 @@
 
 let common = require("core.common");
 let core_ip = require("core.ip");
+let uci_core = require("core.uci");
 let runtime_constants = require("tachyon_core.constants");
 let runtime_url = require("core.url");
 let fs = require("fs");
 
 let as_string = common.as_string;
 let bool_option = common.bool_option;
+let command_output_from_args = common.command_output_from_args;
 let list_option = common.list_option;
 let object_or_empty = common.object_or_empty;
 let option = common.option;
@@ -17,20 +19,99 @@ const DNS_FAILOVER_STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || "/v
 const DNS_HEALTH_ADDRESS = getenv("TACHYON_DNS_HEALTH_ADDRESS") || "127.0.0.42";
 const DNS_HEALTH_PORT_BASE = int(getenv("TACHYON_DNS_HEALTH_PORT_BASE") || "10053");
 
+function push_wan_dns_ip(result, seen, raw_ip) {
+    let ip = trim(as_string(raw_ip));
+    if (ip == "" || ip == "0.0.0.0" || ip == "::" || ip == "::1" || substr(ip, 0, 4) == "127.")
+        return;
+    if (!core_ip.valid_ip_with_zone(ip) || seen[ip])
+        return;
+    seen[ip] = true;
+    push(result, ip);
+}
+
+function collect_wan_dns_from_resolv_text(result, seen, text) {
+    if (!text)
+        return;
+    for (let line in split(as_string(text), "\n")) {
+        let hash = index(line, "#");
+        if (hash >= 0)
+            line = substr(line, 0, hash);
+        let parts = split(trim(line), /[ \t]+/);
+        if (length(parts) >= 2 && parts[0] == "nameserver")
+            push_wan_dns_ip(result, seen, parts[1]);
+    }
+}
+
 function get_wan_dns_servers() {
     let result = [];
-    let resolv_data = fs.readfile("/tmp/resolv.conf.d/resolv.conf.auto") || fs.readfile("/tmp/resolv.conf.auto");
-    if (resolv_data) {
-        for (let line in split(resolv_data, "\n")) {
-            let parts = split(trim(line), /[ \t]+/);
-            if (length(parts) >= 2 && parts[0] == "nameserver") {
-                let ip = parts[1];
-                if (ip != "127.0.0.1" && ip != "127.0.0.42" && ip != "::1") {
-                    push(result, ip);
-                }
-            }
+    let seen = {};
+
+    let env_resolv = trim(as_string(getenv("TACHYON_WAN_RESOLV_FILE") || ""));
+    if (env_resolv != "") {
+        collect_wan_dns_from_resolv_text(result, seen, fs.readfile(env_resolv));
+        return result;
+    }
+
+    let candidates = [];
+    let cand_seen = {};
+    let dnsmasq_rf = trim(as_string(uci_core.get("dhcp", "@dnsmasq[0]", "resolvfile") || ""));
+    for (let path in [ dnsmasq_rf, "/tmp/resolv.conf.d/resolv.conf.auto", "/tmp/resolv.conf.auto" ]) {
+        if (path == "" || path == "/tmp/resolv.conf" || path == "/etc/resolv.conf" || cand_seen[path])
+            continue;
+        cand_seen[path] = true;
+        push(candidates, path);
+    }
+
+    for (let path in candidates) {
+        let resolv_data = fs.readfile(path);
+        if (resolv_data) {
+            collect_wan_dns_from_resolv_text(result, seen, resolv_data);
+            if (length(result) > 0)
+                return result;
         }
     }
+
+    let dump_raw = trim(as_string(command_output_from_args([ "ubus", "-S", "call", "network.interface", "dump" ]) || ""));
+    if (dump_raw != "") {
+        let dump = null;
+        try {
+            dump = json(dump_raw);
+        } catch (e) {
+            dump = null;
+        }
+        for (let iface in common.array_or_empty(object_or_empty(dump).interface)) {
+            if (type(iface) != "object" || iface.up !== true)
+                continue;
+            let iface_name = as_string(iface.interface || "");
+            let has_default_route = false;
+            if (iface_name != "wan" && iface_name != "wan6") {
+                for (let route in common.array_or_empty(iface.route)) {
+                    if (type(route) == "object" &&
+                        (route.target == "0.0.0.0" || route.target == "::") &&
+                        route.mask != null && int(route.mask) == 0) {
+                        has_default_route = true;
+                        break;
+                    }
+                }
+            }
+            if (iface_name != "wan" && iface_name != "wan6" && !has_default_route)
+                continue;
+            for (let dns_ip in common.array_or_empty(iface["dns-server"]))
+                push_wan_dns_ip(result, seen, dns_ip);
+        }
+    }
+
+    if (length(result) == 0) {
+        let wan_dns = uci_core.get("network", "wan", "dns");
+        if (type(wan_dns) == "array") {
+            for (let dns_ip in wan_dns)
+                push_wan_dns_ip(result, seen, dns_ip);
+        } else if (wan_dns != null && as_string(wan_dns) != "") {
+            for (let dns_ip in split(trim(as_string(wan_dns)), /[ \t,]+/))
+                push_wan_dns_ip(result, seen, dns_ip);
+        }
+    }
+
     return result;
 }
 

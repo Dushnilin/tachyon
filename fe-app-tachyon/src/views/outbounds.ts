@@ -7359,6 +7359,79 @@ function createOutboundsContent(section) {
   o.value('random', _('Random'));
   o.value('randomized', _('Randomized'));
   o.depends('source_type', 'subscription');
+  o.depends('source_type', 'proxy_links');
+
+  o = section.taboption(
+    'advanced',
+    form.ListValue,
+    'tls_fragment_mode',
+    _('ClientHello / TCP Fragmentation'),
+    _(
+      'Split TLS records or TCP segments during handshake on imported TLS/TCP nodes.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '';
+  o.value('', _('Keep Provider Default'));
+  o.value('tls_record', _('TLS Record Fragmentation (tls.record_fragment)'));
+  o.value('tls_fragment', _('TLS Handshake Fragmentation (tls.fragment)'));
+  o.value('tcp_fragment', _('TCP Segment Fragmentation (tcp_fragment)'));
+  o.depends('source_type', 'subscription');
+  o.depends('source_type', 'proxy_links');
+
+  o = section.taboption(
+    'advanced',
+    form.Value,
+    'tcp_fragment_length',
+    _('TCP Fragment Length (bytes)'),
+    _('Segment length or range in bytes for TCP fragmentation (e.g. 20-60).'),
+  );
+  o.modalonly = true;
+  o.optional = true;
+  o.placeholder = '20-60';
+  o.depends({ source_type: 'subscription', tls_fragment_mode: 'tcp_fragment' });
+  o.depends({ source_type: 'proxy_links', tls_fragment_mode: 'tcp_fragment' });
+  o.validate = function (_section_id: string, value: string) {
+    const val = String(value || '').trim();
+    if (!val) return true;
+    if (!/^[0-9]+(-[0-9]+)?$/.test(val)) {
+      return _('Expected a byte count or range (e.g. 20-60)');
+    }
+    const parts = val.split('-');
+    const lo = Number(parts[0]);
+    const hi = parts.length > 1 ? Number(parts[1]) : lo;
+    if (lo < 1 || hi < lo) {
+      return _('Lower bound must be >= 1 and <= upper bound');
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    'advanced',
+    form.Value,
+    'tcp_fragment_delay',
+    _('TCP Fragment Delay'),
+    _('Delay or range between TCP segments (e.g. 0-2ms).'),
+  );
+  o.modalonly = true;
+  o.optional = true;
+  o.placeholder = '0-2ms';
+  o.depends({ source_type: 'subscription', tls_fragment_mode: 'tcp_fragment' });
+  o.depends({ source_type: 'proxy_links', tls_fragment_mode: 'tcp_fragment' });
+  o.validate = function (_section_id: string, value: string) {
+    const val = String(value || '').trim();
+    if (!val) return true;
+    const m = /^([0-9]+)(?:-([0-9]+))?(ms|s)?$/.exec(val);
+    if (!m) {
+      return _('Expected a duration or range (e.g. 0-2ms)');
+    }
+    const lo = Number(m[1]);
+    const hi = m[2] !== undefined ? Number(m[2]) : lo;
+    if (lo < 0 || hi < lo) {
+      return _('Lower bound must be <= upper bound');
+    }
+    return true;
+  };
 
   o = section.taboption(
     'advanced',

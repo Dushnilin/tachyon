@@ -621,13 +621,13 @@ function collect_proxy_endpoint_domains(config, sections) {
                 add_domain(url_host(sub_url));
         }
     }
-    for (let src in array_or_empty(uci_core.sections(CONFIG_NAME, "outbound_source"))) {
-        if (bool_option(src, "enabled", true) && lc(trim(option(src, "source_type", ""))) == "subscription") {
-            let src_url = trim(option(src, "subscription_url", ""));
+    for (let src in connections.outbound_source_sections()) {
+        if (bool_option(src, "enabled", true)) {
+            let src_url = connections.outbound_source_subscription_url(src);
             let delim_idx = index(src_url, " | ");
             if (delim_idx >= 0)
                 src_url = trim(substr(src_url, 0, delim_idx));
-            if (src_url != "")
+            if (src_url != "" && runtime_url.is_subscription_url(src_url))
                 add_domain(url_host(src_url));
         }
     }

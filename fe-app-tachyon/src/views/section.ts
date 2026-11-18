@@ -11053,6 +11053,11 @@ function createSectionContent(section) {
   o.default = 'udp';
   o.rmempty = false;
   o.modalonly = true;
+  o.load = function (section_id: string) {
+    const val = uci.get(UCI_PACKAGE, section_id, 'dns_type') || 'udp';
+    perRuleDnsTypeState.set(section_id, val);
+    return val;
+  };
   const perRuleDnsTypeOption = o;
 
   o = section.taboption(
@@ -11063,6 +11068,9 @@ function createSectionContent(section) {
     _('DNS server used by the resolver'),
   );
   o.depends('action', 'dns');
+  o.optional = true;
+  o.rmempty = true;
+  o.placeholder = _('Optional when WAN DNS is enabled');
   o.modalonly = true;
   configureLiveDynamicListChoices(o, (section_id) => {
     const dnsType = perRuleDnsTypeState.get(section_id) || 'udp';
@@ -11090,7 +11098,15 @@ function createSectionContent(section) {
         });
         const defaultServers = Object.keys(servers).slice(0, 1);
         widget.choices = defaultLabels;
-        widget.setValue(defaultServers);
+        const wanCb = document.getElementById(
+          `widget.cbid.${UCI_PACKAGE}.${section_id}.dns_use_wan`,
+        ) as HTMLInputElement | null;
+        const useWan = wanCb
+          ? wanCb.checked
+          : uci.get(UCI_PACKAGE, section_id, 'dns_use_wan') === '1';
+        if (!useWan) {
+          widget.setValue(defaultServers);
+        }
       }
     }
 
@@ -17397,7 +17413,7 @@ function createSectionContent(section) {
     'rule_set',
     _('Rule sets'),
     _(
-      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default.',
+      'Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Subnets are ignored by default.',
     ),
   );
   ruleSetOption.modalonly = true;
@@ -17434,7 +17450,7 @@ function createSectionContent(section) {
     '_dns_rule_set',
     _('Rule sets'),
     _(
-      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Only domain rules are supported.',
+      'Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Only domain rules are supported.',
     ),
   );
   dnsRuleSetOption.depends('action', 'dns');
@@ -17526,60 +17542,60 @@ function createSectionContent(section) {
 
   [
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked.srs',
-      'Tachyon Lists: Реестр ограничений РФ и Антизапрет (.srs) — [Маршрут: В Прокси / VPN или Desync]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked.trs',
+      'Tachyon Lists: Реестр ограничений РФ и Антизапрет (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked_all.srs',
-      'Tachyon Lists: Реестр ограничений РФ полный (.srs) — [Маршрут: В Прокси / VPN или Desync]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked_all.trs',
+      'Tachyon Lists: Реестр ограничений РФ полный (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/antifilter.srs',
-      'Tachyon Lists: Antifilter Community (.srs) — [Маршрут: В Прокси / VPN или Desync]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/antifilter.trs',
+      'Tachyon Lists: Antifilter Community (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/refilter.srs',
-      'Tachyon Lists: Re:filter (.srs) — [Маршрут: В Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/refilter.trs',
+      'Tachyon Lists: Re:filter (.trs) — [Маршрут: В Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoblock.srs',
-      'Tachyon Lists: Геоблок зарубежных сервисов (.srs) — [Маршрут: Только в Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/geoblock.trs',
+      'Tachyon Lists: Геоблок зарубежных сервисов (.trs) — [Маршрут: Только в Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ai_all.srs',
-      'Tachyon Lists: Все зарубежные ИИ и нейросети (.srs) — [Маршрут: Только в Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ai_all.trs',
+      'Tachyon Lists: Все зарубежные ИИ и нейросети (.trs) — [Маршрут: Только в Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_whitelist.srs',
-      'Tachyon Lists: Белый список РФ (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs',
+      'Tachyon Lists: Белый список РФ (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_domains.srs',
-      'Tachyon Lists: Домены Рунета и СНГ (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_domains.trs',
+      'Tachyon Lists: Домены Рунета и СНГ (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_only_inside.srs',
-      'Tachyon Lists: Сервисы строго внутри РФ (.srs) — [Маршрут: Строго Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_only_inside.trs',
+      'Tachyon Lists: Сервисы строго внутри РФ (.trs) — [Маршрут: Строго Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/push.srs',
-      'Tachyon Lists: Push-уведомления APNs/FCM (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/push.trs',
+      'Tachyon Lists: Push-уведомления APNs/FCM (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ads_hagezi_pro.srs',
-      'Tachyon Lists: Реклама и трекеры Hagezi Pro (.srs) — [Маршрут: Блокировать (Block)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ads_hagezi_pro.trs',
+      'Tachyon Lists: Реклама и трекеры Hagezi Pro (.trs) — [Маршрут: Блокировать (Block)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/win_spy.srs',
-      'Tachyon Lists: Телеметрия и слежка Windows (.srs) — [Маршрут: Блокировать (Block)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/win_spy.trs',
+      'Tachyon Lists: Телеметрия и слежка Windows (.trs) — [Маршрут: Блокировать (Block)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoip_ru.srs',
-      'Tachyon Lists: GeoIP России (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/geoip_ru.trs',
+      'Tachyon Lists: GeoIP России (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
   ].forEach(([url, label]) => {
     ruleSetOption.value(url, label);
-    if (!url.endsWith('/geoip_ru.srs')) {
+    if (!url.endsWith('/geoip_ru.trs')) {
       dnsRuleSetOption.value(url, label);
     }
   });

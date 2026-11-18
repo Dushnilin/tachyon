@@ -1821,7 +1821,30 @@ function section_subscription_update_interval(section) {
 }
 
 function connection_urls_signature(section) {
-    return sprintf("%J", connections.connection_urls(section));
+    let urls = connections.connection_urls(section);
+    let overrides = [];
+    for (let src in connections.section_effective_outbound_sources(section)) {
+        if (lc(trim(option(src, "source_type", ""))) != "proxy_links")
+            continue;
+        let fp = lc(trim(option(src, "tls_fingerprint", "")));
+        if (fp == "default")
+            fp = "";
+        let fm = connections.source_tls_fragment_mode(src, "");
+        let fl = connections.source_tcp_fragment_length(src, "");
+        let fd = connections.source_tcp_fragment_delay(src, "");
+        if (fp != "" || fm != "" || fl != "" || fd != "") {
+            push(overrides, {
+                id: as_string(src[".name"] || ""),
+                tls_fingerprint: fp,
+                tls_fragment_mode: fm,
+                tcp_fragment_length: fl,
+                tcp_fragment_delay: fd
+            });
+        }
+    }
+    if (length(overrides) > 0)
+        return sprintf("%J", { urls: urls, overrides: overrides });
+    return sprintf("%J", urls);
 }
 
 function subscription_urls_signature(section) {
@@ -1856,6 +1879,18 @@ function subscription_urls_signature(section) {
         let eng = connections.subscription_engine(section, entry);
         if (eng != "core")
             item.subscription_engine = eng;
+        let fp = connections.subscription_tls_fingerprint(section, entry);
+        if (fp != "")
+            item.tls_fingerprint = fp;
+        let fm = connections.source_tls_fragment_mode(section, entry);
+        if (fm != "")
+            item.tls_fragment_mode = fm;
+        let fl = connections.source_tcp_fragment_length(section, entry);
+        if (fl != "")
+            item.tcp_fragment_length = fl;
+        let fd = connections.source_tcp_fragment_delay(section, entry);
+        if (fd != "")
+            item.tcp_fragment_delay = fd;
         push(result, item);
     }
     return sprintf("%J", result);
@@ -2264,6 +2299,10 @@ function append_tachyon_core_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".dns_detour_enabled", bool_option_value(section, "dns_detour_enabled", false));
         if (bool_option(section, "dns_detour_enabled", false))
             body = signature_add_value(body, prefix + ".dns_detour_section", option(section, "dns_detour_section", ""));
+        if (bool_option(section, "dns_use_wan", false))
+            body = signature_add_value(body, prefix + ".dns_use_wan", "1");
+        if (bool_option(section, "disable_fakeip", false))
+            body = signature_add_value(body, prefix + ".disable_fakeip", "1");
     }
     else if (action == "hosts") {
         body = signature_add_value(body, prefix + ".hosts_list_urls", option(section, "hosts_list_urls", ""));

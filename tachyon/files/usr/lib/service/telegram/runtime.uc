@@ -399,7 +399,7 @@ function notify_auto_update_failed_cli(component, old_ver, error_msg) {
 
 function block_schedules_with_notify() {
     let result = [];
-    for (let s in uci_core.sections(CONFIG_NAME, "schedule")) {
+    for (let s in uci_core.section_objects(CONFIG_NAME, "schedule")) {
         s = object_or_empty(s);
         if (option(s, "enabled", "1") != "0" &&
             option(s, "notify", "0") == "1" &&

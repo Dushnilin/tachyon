@@ -4656,6 +4656,33 @@ function subscription_tls_fingerprint(section, value) {
     return "";
 }
 
+function source_option_alias(section, value, keys) {
+    let target = (type(section) == "object" && section[".type"] == "outbound_source")
+        ? section
+        : subscription_source_item(section, value);
+    let raw = "";
+    if (target != null)
+        raw = trim(child_option_alias(target, keys, ""));
+    if (raw == "" && type(section) == "object")
+        raw = trim(child_option_alias(section, keys, ""));
+    return raw;
+}
+
+function source_tls_fragment_mode(section, value) {
+    let mode = lc(source_option_alias(section, value, [ "tls_fragment_mode", "subscription_tls_fragment_mode" ]));
+    if (mode == "tls_record" || mode == "tls_fragment" || mode == "tcp_fragment")
+        return mode;
+    return "";
+}
+
+function source_tcp_fragment_length(section, value) {
+    return source_option_alias(section, value, [ "tcp_fragment_length", "subscription_tcp_fragment_length" ]);
+}
+
+function source_tcp_fragment_delay(section, value) {
+    return source_option_alias(section, value, [ "tcp_fragment_delay", "subscription_tcp_fragment_delay" ]);
+}
+
 function urltest_check_interval(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
@@ -7202,6 +7229,9 @@ return {
     subscription_download_targets,
     subscription_download_target_port,
     subscription_tls_fingerprint,
+    source_tls_fragment_mode,
+    source_tcp_fragment_length,
+    source_tcp_fragment_delay,
     subscription_engine,
     has_dns_matchers,
     routed_dns_enabled,

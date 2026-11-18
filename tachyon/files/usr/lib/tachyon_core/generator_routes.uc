@@ -3477,12 +3477,30 @@ function section_dns_servers(section) {
     let result = [];
     let seen = {};
     if (bool_option(section, "dns_use_wan", false)) {
+        let settings = ctx.runtime_settings ? ctx.runtime_settings() : {};
+        let ipv6_ok = common.resolve_effective_ipv6_state(settings, null).ipv6_active;
+        let dns_strategy = option(settings, "dns_strategy", "prefer_ipv4");
+        let wan_v4 = [];
+        let wan_v6 = [];
         for (let wan_ip in runtime_dns.get_wan_dns_servers()) {
             wan_ip = trim(as_string(wan_ip));
-            if (wan_ip != "" && !seen[wan_ip]) {
-                seen[wan_ip] = true;
+            if (wan_ip == "" || seen[wan_ip])
+                continue;
+            let is_v6 = index(wan_ip, ":") >= 0;
+            if (is_v6 && !ipv6_ok)
+                continue;
+            seen[wan_ip] = true;
+            if (is_v6)
+                push(wan_v6, wan_ip);
+            else
+                push(wan_v4, wan_ip);
+        }
+        let ordered_wan = (dns_strategy == "prefer_ipv6" || dns_strategy == "ipv6_only")
+            ? [ wan_v6, wan_v4 ]
+            : [ wan_v4, wan_v6 ];
+        for (let group in ordered_wan) {
+            for (let wan_ip in group)
                 push(result, wan_ip);
-            }
         }
     }
     let servers = list_option(section, "dns_server");
@@ -3514,7 +3532,10 @@ function add_dns_server_for_section(config, section) {
     let detour = dns_action_detour_tag(section);
     let server_tags = [];
     let wan_set = {};
-    if (bool_option(section, "dns_use_wan", false)) {
+    let use_wan = bool_option(section, "dns_use_wan", false);
+    let explicit_servers = list_option(section, "dns_server");
+    let has_explicit = length(explicit_servers) > 0 || trim(option(section, "dns_server", "")) != "";
+    if (use_wan) {
         for (let wip in runtime_dns.get_wan_dns_servers())
             wan_set[trim(as_string(wip))] = true;
     }
@@ -3524,7 +3545,7 @@ function add_dns_server_for_section(config, section) {
         let tag_name = length(servers) <= 1
             ? dns_action_server_tag(section_name)
             : dns_action_server_tag(section_name, i + 1);
-        let eff_type = wan_set[s_val] ? "udp" : dns_type;
+        let eff_type = (wan_set[s_val] || (use_wan && !has_explicit)) ? "udp" : dns_type;
         let server = runtime_dns.server_from_options(
             tag_name,
             eff_type,

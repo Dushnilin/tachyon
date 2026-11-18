@@ -5662,7 +5662,72 @@ function xray_retag_planned_outbound(planned, tag_map, source_tag, new_base, con
     }
 }
 
-function xray_add_converted_outbound(result, item, tag_map, visible, display_name) {
+function xray_freedom_tcp_fragment(outbound) {
+    if (type(outbound) != "object" || lc(as_string(outbound.protocol || "")) != "freedom")
+        return null;
+
+    let settings = object_or_empty(outbound.settings);
+    let frag = type(settings.fragment) == "object" ? settings.fragment : null;
+    if (frag == null) {
+        let fm = object_or_empty(outbound.streamSettings).finalmask;
+        if (type(fm) == "object") {
+            let tcp_val = fm.tcp != null ? fm.tcp : fm;
+            let items = type(tcp_val) == "array" ? tcp_val : (type(tcp_val) == "object" ? [ tcp_val ] : []);
+            for (let item in items) {
+                if (type(item) == "object" && lc(as_string(item.type || "")) == "fragment") {
+                    frag = type(item.settings) == "object" ? item.settings : item;
+                    break;
+                }
+            }
+        }
+    }
+    if (type(frag) != "object")
+        return null;
+
+    let packets = lc(trim(as_string(frag.packets || "")));
+    if (packets == "" || packets == "tlshello" || packets == "1-1" ||
+        match(packets, /^[1-9][0-9]*(-[1-9][0-9]*)?$/) == null)
+        packets = "tlshello";
+
+    let frag_len = xhttp_range_value(frag.length != null ? frag.length : frag.lengths, true) || "20-60";
+
+    let raw_delay = frag.interval != null ? frag.interval : (frag.delay != null ? frag.delay : frag.delays);
+    let frag_delay = "0-2ms";
+    if (raw_delay != null) {
+        let num_range = xhttp_range_value(raw_delay, false);
+        if (num_range != null) {
+            frag_delay = num_range + "ms";
+        } else {
+            let ds = trim(as_string(raw_delay));
+            if (match(ds, /^[0-9]+(-[0-9]+)?(ms|s)$/) != null)
+                frag_delay = ds;
+        }
+    }
+
+    return {
+        enabled: true,
+        packets: packets,
+        length: frag_len,
+        delay: frag_delay
+    };
+}
+
+function xray_freedom_fragment_map(source_outbounds) {
+    let map = {};
+    for (let outbound in array_or_empty(source_outbounds)) {
+        if (type(outbound) != "object")
+            continue;
+        let tag = as_string(outbound.tag || "");
+        if (tag == "")
+            continue;
+        let frag = xray_freedom_tcp_fragment(outbound);
+        if (frag != null)
+            map[tag] = frag;
+    }
+    return map;
+}
+
+function xray_add_converted_outbound(result, item, tag_map, freedom_fragments, visible, display_name) {
     let converted = convert_xray_outbound(item.outbound, item.tag);
     if (!converted)
         return;
@@ -5673,14 +5738,29 @@ function xray_add_converted_outbound(result, item, tag_map, visible, display_nam
         converted.__tachyon_hidden = true;
 
     let detour = xray_outbound_detour(item.outbound);
-    if (detour != "" && tag_map[detour])
-        converted.detour = tag_map[detour];
+    if (detour != "") {
+        if (tag_map[detour]) {
+            converted.detour = tag_map[detour];
+        } else if (freedom_fragments != null && freedom_fragments[detour] != null &&
+            converted.tcp_fragment == null && converted.fragment == null &&
+            converted.type != "hysteria2" && converted.type != "hysteria" &&
+            converted.type != "tuic" && converted.type != "wireguard") {
+            let src_frag = freedom_fragments[detour];
+            converted.tcp_fragment = {
+                enabled: true,
+                packets: src_frag.packets,
+                length: src_frag.length,
+                delay: src_frag.delay
+            };
+        }
+    }
 
     push(result, converted);
 }
 
 function xray_config_outbounds(config, config_index, config_count, taken) {
     let source_outbounds = array_or_empty(config.outbounds);
+    let freedom_fragments = xray_freedom_fragment_map(source_outbounds);
     let plan = xray_plan_config_outbounds(config, config_index, config_count, taken);
     let planned = array_or_empty(plan.planned);
     let tag_map = object_or_empty(plan.tag_map);
@@ -5737,7 +5817,7 @@ function xray_config_outbounds(config, config_index, config_count, taken) {
             let item_display_name = visible && display_name != ""
                 ? display_name
                 : xray_display_name(item.original_tag);
-            xray_add_converted_outbound(result, item, tag_map, !hidden, item_display_name);
+            xray_add_converted_outbound(result, item, tag_map, freedom_fragments, !hidden, item_display_name);
         }
     }
 

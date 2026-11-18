@@ -4797,6 +4797,7 @@ function subscription_update_common_locked(force, target_section, target_source_
     let failed = arg_number(fields[1] || "0");
     let unchanged = arg_number(fields[2] || "0");
     let superseded = arg_number(fields[3] || "0");
+    let pool_updated = arg_number(fields[4] || "0");
 
     if (updated == 0) {
         if (superseded > 0) {
@@ -4811,6 +4812,14 @@ function subscription_update_common_locked(force, target_section, target_source_
             log_message("Subscription update completed: no changes detected", "info");
         else
             log_message("No subscription rules are due for update", "info");
+        return true;
+    }
+
+    if (pool_updated >= updated) {
+        if (failed > 0)
+            log_message("Subscription cache update applied for standalone source(s); failed sources kept their previous cache", "info");
+        else
+            log_message("Subscription cache update completed for standalone source(s)", "info");
         return true;
     }
 

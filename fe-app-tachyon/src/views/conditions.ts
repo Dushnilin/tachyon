@@ -1837,7 +1837,7 @@ function createConditionsContent(section) {
     'domains',
     form.DynamicList,
     'rule_set',
-    _('Rule Sets (.srs / .json / URL)'),
+    _('Rule Sets (.trs / .srs / .json / URL)'),
     _('Remote or local rule-set URLs or paths (domains only).'),
   );
   o.modalonly = true;

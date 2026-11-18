@@ -2347,16 +2347,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
 
           const servers = Array.from(serverMap.values());
-          if (servers.length > 0 || foundMeta) {
+          const prevSid = subCacheBySid.get(sid);
+          const mergedServers =
+            servers.length > 0 ? servers : prevSid?.servers || [];
+          if (mergedServers.length > 0 || foundMeta) {
             const existingMtime = Math.max(
               (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
-              subCacheBySid.get(sid)?.mtime || 0,
+              prevSid?.mtime || 0,
               foundUpdatedAt,
             );
+            const mergedMeta = foundMeta || prevSid?.metadata;
             const entry: SubCacheEntryInfo = {
               mtime: existingMtime,
-              servers,
-              metadata: foundMeta,
+              servers: mergedServers,
+              metadata: mergedMeta,
             };
             subCacheBySid.set(sid, entry);
             if (subUrl && !subCacheByUrl.has(subUrl)) {
@@ -2387,8 +2391,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         const list = Array.isArray(entries) ? entries : [];
         const rtList = Array.isArray(runtimeEntries) ? runtimeEntries : [];
         const tsList = Array.isArray(tsEntries) ? tsEntries : [];
-        const jsonBases: string[] = [];
+        const jsonBasesSet = new Set<string>();
+        const pJsonSet = new Set<string>();
+        const rtJsonSet = new Set<string>();
         const urlSet = new Set<string>();
+        const rtUrlSet = new Set<string>();
         const metaSet = new Set<string>();
         const rtMetaSet = new Set<string>();
         const tsSet = new Set<string>();
@@ -2408,7 +2415,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             fname.includes('-subscription-')
           ) {
             const base = fname.slice(0, -5);
-            jsonBases.push(base);
+            pJsonSet.add(base);
+            jsonBasesSet.add(base);
             mtimeMap.set(base, Number(ent.mtime || 0));
           }
         });
@@ -2416,7 +2424,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         rtList.forEach((ent: any) => {
           const fname = String((ent && ent.name) || '');
           const mtime = Number(ent?.mtime || 0);
-          if (fname.endsWith('.metadata.json')) {
+          if (fname.endsWith('.url')) {
+            rtUrlSet.add(fname.slice(0, -4));
+          } else if (fname.endsWith('.metadata.json')) {
             const base = fname.slice(0, -14);
             rtMetaSet.add(base);
             if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
@@ -2425,6 +2435,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             fname.includes('-subscription-')
           ) {
             const base = fname.slice(0, -5);
+            rtJsonSet.add(base);
+            jsonBasesSet.add(base);
             if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
           }
         });
@@ -2439,34 +2451,52 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
         });
 
+        const jsonBases = Array.from(jsonBasesSet);
         return Promise.all(
           jsonBases.map((base) =>
             (urlSet.has(base)
               ? readFsText(`${dir}/${base}.url`)
               : Promise.resolve('')
-            ).then((u) => ({
-              base,
-              url: u.trim(),
-              mtime: mtimeMap.get(base) || 0,
-            })),
+            )
+              .then((u) =>
+                u.trim()
+                  ? u
+                  : rtUrlSet.has(base)
+                    ? readFsText(`${runtimeDir}/${base}.url`)
+                    : '',
+              )
+              .then((u) => ({
+                base,
+                url: u.trim(),
+                mtime: mtimeMap.get(base) || 0,
+              })),
           ),
         ).then((infos) => {
-          const byUrl = new Map<
+          const byKey = new Map<
             string,
             { base: string; url: string; mtime: number }
           >();
           infos.forEach((inf) => {
-            if (!inf.url) return;
-            const prev = byUrl.get(inf.url);
+            const key = inf.url || `base:${inf.base}`;
+            const prev = byKey.get(key);
             if (!prev || inf.mtime >= prev.mtime) {
-              byUrl.set(inf.url, inf);
+              byKey.set(key, inf);
             }
           });
-          const chosen = Array.from(byUrl.values());
+          const chosen = Array.from(byKey.values());
           return Promise.all(
             chosen.map((inf) =>
               Promise.all([
-                readFsText(`${dir}/${inf.base}.json`),
+                (pJsonSet.has(inf.base)
+                  ? readFsText(`${dir}/${inf.base}.json`)
+                  : Promise.resolve('')
+                ).then((raw) =>
+                  raw.trim()
+                    ? raw
+                    : rtJsonSet.has(inf.base)
+                      ? readFsText(`${runtimeDir}/${inf.base}.json`)
+                      : '',
+                ),
                 metaSet.has(inf.base)
                   ? readFsText(`${dir}/${inf.base}.metadata.json`)
                   : Promise.resolve(''),
@@ -2529,23 +2559,31 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 const rawOutbounds = Array.isArray(parsedJson?.outbounds)
                   ? parsedJson.outbounds
                   : [];
-                const outbounds = rawOutbounds.filter((ob: any) => {
-                  const name = String(
-                    ob?.remark || ob?.tag || ob?.name || '',
+                const resolveObName = (ob: any): string =>
+                  String(
+                    ob?.remark ||
+                      ob?.tag ||
+                      ob?.name ||
+                      (ob?.server
+                        ? `${ob.server}${ob.server_port ? `:${ob.server_port}` : ''}`
+                        : ''),
                   ).trim();
+                const outbounds = rawOutbounds.filter((ob: any) => {
+                  const name = resolveObName(ob);
                   const proto = String(ob?.type || '').toUpperCase();
                   return (
                     Boolean(name) &&
+                    !ob?.__tachyon_unsupported &&
                     proto !== 'URLTEST' &&
                     proto !== 'SELECTOR' &&
-                    proto !== 'DIRECT'
+                    proto !== 'DIRECT' &&
+                    proto !== 'BLOCK' &&
+                    proto !== 'DNS'
                   );
                 });
                 const servers: SubCacheServerItem[] = [];
                 outbounds.forEach((ob: any, idx: number) => {
-                  const name = String(
-                    ob?.remark || ob?.tag || ob?.name || '',
-                  ).trim();
+                  const name = resolveObName(ob);
                   const proto = String(ob?.type || '').toUpperCase();
                   const trans = String(
                     ob?.transport?.type || 'tcp',
@@ -2563,11 +2601,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   servers.push({ name, proto, trans, link });
                 });
 
-                subCacheByUrl.set(inf.url, {
+                const entry: SubCacheEntryInfo = {
                   mtime: bestMtime,
                   servers,
                   metadata: parsedMeta,
-                });
+                };
+                if (inf.url) {
+                  subCacheByUrl.set(inf.url, entry);
+                }
+                const poolMatch = inf.base.match(
+                  /^Pool_(.+)-subscription-\d+$/,
+                );
+                if (poolMatch && poolMatch[1]) {
+                  subCacheBySid.set(poolMatch[1], entry);
+                }
               }),
             ),
           );
@@ -3996,6 +4043,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ),
           );
         }
+        if (String(raw.tls_fragment_mode || '').trim()) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              'FRAG',
+            ),
+          );
+        }
         const autoUpd = raw.subscription_update_enabled !== '0';
         const updInt = String(raw.subscription_update_interval || '1h').trim();
         typeBadges.push(
@@ -4084,6 +4140,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ),
           ),
         );
+        if (String(raw.tls_fragment_mode || '').trim()) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              'FRAG',
+            ),
+          );
+        }
       } else if (isDpiSource) {
         iconEl = renderShieldIcon(18);
         tone = 'dpi';

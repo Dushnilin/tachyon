@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 14:39+0300\n"
-"PO-Revision-Date: 2026-11-18 14:39+0300\n"
+"POT-Creation-Date: 2026-11-18 16:05+0300\n"
+"PO-Revision-Date: 2026-11-18 16:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -452,11 +452,11 @@ msgstr "Добавьте URL или локальные пути к списка�
 msgid "Add URLs or local paths to .lst lists containing domains. IP entries are ignored."
 msgstr "Добавьте URL или локальные пути к спискам .lst, содержащим домены. IP-записи игнорируются."
 
-msgid "Add URLs or local paths to .srs / .json / .lst / .txt lists. Only domain rules are supported."
-msgstr "Укажите URL или локальные пути к спискам .srs / .json / .lst / .txt. Поддерживаются только правила для доменов."
+msgid "Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Only domain rules are supported."
+msgstr "Укажите URL или локальные пути к спискам .trs / .srs / .json / .lst / .txt. Поддерживаются только правила для доменов."
 
-msgid "Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default."
-msgstr "Укажите URL или локальные пути к спискам .srs / .json / .lst / .txt. Подсети по умолчанию игнорируются."
+msgid "Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Subnets are ignored by default."
+msgstr "Укажите URL или локальные пути к спискам .trs / .srs / .json / .lst / .txt. Подсети по умолчанию игнорируются."
 
 msgid "Add a balancer"
 msgstr "Добавить балансировщик"
@@ -1880,6 +1880,9 @@ msgstr "QR-код клиентской ссылки"
 msgid "Client link is not available yet"
 msgstr "Клиентская ссылка пока недоступна"
 
+msgid "ClientHello / TCP Fragmentation"
+msgstr "Фрагментация ClientHello / TCP"
+
 msgid "Clients"
 msgstr "Клиенты"
 
@@ -2752,6 +2755,9 @@ msgstr "Задержка между разделёнными TCP-сегмент�
 
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
+
+msgid "Delay or range between TCP segments (e.g. 0-2ms)."
+msgstr "Задержка или диапазон между TCP-сегментами (например, 0-2ms)."
 
 msgid "Delay value cannot be empty"
 msgstr "Значение задержки не может быть пустым"
@@ -3631,6 +3637,12 @@ msgstr "Развернуть панель инструментов"
 
 msgid "Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request."
 msgstr "Ожидаемые HTTP-коды ответа для успешной проверки (например, 200, 204). Оставьте пустым для любого завершённого запроса."
+
+msgid "Expected a byte count or range (e.g. 20-60)"
+msgstr "Ожидалось число байт или диапазон (например, 20-60)"
+
+msgid "Expected a duration or range (e.g. 0-2ms)"
+msgstr "Ожидалась длительность или диапазон (например, 0-2ms)"
 
 msgid "Expected an IPv4 CIDR (e.g. 198.18.0.0/15)"
 msgstr "Ожидался IPv4 CIDR (например, 198.18.0.0/15)"
@@ -5987,6 +5999,12 @@ msgstr "Потери"
 msgid "Low"
 msgstr "Низкий"
 
+msgid "Lower bound must be <= upper bound"
+msgstr "Нижняя граница должна быть не больше верхней"
+
+msgid "Lower bound must be >= 1 and <= upper bound"
+msgstr "Нижняя граница должна быть не меньше 1 и не больше верхней"
+
 msgid "LuCI Web UI"
 msgstr "Веб-интерфейс LuCI"
 
@@ -7003,6 +7021,9 @@ msgstr "Необязательное имя узла или Tailscale IP в се
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
+
+msgid "Optional when WAN DNS is enabled"
+msgstr "Необязательно при включённом WAN DNS"
 
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
@@ -8480,11 +8501,11 @@ msgstr "Правило"
 msgid "Rule Name"
 msgstr "Название правила"
 
-msgid "Rule Sets (.srs / .json / URL)"
-msgstr "Наборы правил Rule Sets (.srs / .json / URL)"
-
 msgid "Rule Sets (.srs / .json)"
 msgstr "Наборы правил (.srs / .json)"
+
+msgid "Rule Sets (.trs / .srs / .json / URL)"
+msgstr "Наборы правил Rule Sets (.trs / .srs / .json / URL)"
 
 msgid "Rule Sets with Subnets"
 msgstr "Наборы правил с подсетями"
@@ -8776,6 +8797,9 @@ msgstr "Недоступен криптографический генерато
 
 msgid "Security"
 msgstr "Безопасность"
+
+msgid "Segment length or range in bytes for TCP fragmentation (e.g. 20-60)."
+msgstr "Размер или диапазон сегмента в байтах для TCP-фрагментации (например, 20-60)."
 
 msgid "Select"
 msgstr "Выбрать"
@@ -9461,6 +9485,9 @@ msgstr "Позиция разделения (Split Position)"
 msgid "Split Positions (--split-pos)"
 msgstr "Позиции разделения (--split-pos)"
 
+msgid "Split TLS records or TCP segments during handshake on imported TLS/TCP nodes."
+msgstr "Разбивать TLS-записи или TCP-сегменты при рукопожатии для импортированных TLS/TCP-узлов."
+
 msgid "Stability & Fleet Report"
 msgstr "Отчёт о стабильности"
 
@@ -9839,6 +9866,12 @@ msgstr ""
 msgid "TCP First-Flight Desync (ClientHello Split)"
 msgstr "TCP-десинк первого полёта (First-Flight ClientHello Split)"
 
+msgid "TCP Fragment Delay"
+msgstr "Задержка TCP-фрагментов"
+
+msgid "TCP Fragment Length (bytes)"
+msgstr "Размер TCP-фрагментов (байты)"
+
 msgid "TCP Fragmentation (Split)"
 msgstr "TCP-фрагментация (Split)"
 
@@ -9856,6 +9889,9 @@ msgstr "Получен TCP RST от ТСПУ/DPI — зафиксирована 
 
 msgid "TCP Reset Injection"
 msgstr "Внедрение пакетов TCP Reset (RST)"
+
+msgid "TCP Segment Fragmentation (tcp_fragment)"
+msgstr "Фрагментация TCP-сегментов (tcp_fragment)"
 
 msgid "TCP Sequence Overlap Bytes (seqovl)"
 msgstr ""
@@ -9902,11 +9938,17 @@ msgstr "Переопределение TLS-отпечатка (uTLS)"
 msgid "TLS Handshake Camouflage Domain (SNI)"
 msgstr "Домен маскировки TLS Handshake Server (SNI)"
 
+msgid "TLS Handshake Fragmentation (tls.fragment)"
+msgstr "Фрагментация TLS-рукопожатия (tls.fragment)"
+
 msgid "TLS Handshake SNI"
 msgstr "SNI для TLS-рукопожатия"
 
 msgid "TLS Obfuscation (Default)"
 msgstr "TLS-обфускация (по умолчанию)"
+
+msgid "TLS Record Fragmentation (tls.record_fragment)"
+msgstr "Фрагментация TLS-записей (tls.record_fragment)"
 
 msgid "TLS Record Fragmentation (tlsrec, midsld)"
 msgstr "Фрагментация записей TLS (tlsrec, midsld)"
@@ -11947,6 +11989,15 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Add URLs or local paths to .srs / .json / .lst / .txt lists. Only domain rules are supported."
+msgstr "Укажите URL или локальные пути к спискам .srs / .json / .lst / .txt. Поддерживаются только правила для доменов."
+
+msgid "Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default."
+msgstr "Укажите URL или локальные пути к спискам .srs / .json / .lst / .txt. Подсети по умолчанию игнорируются."
+
+msgid "Rule Sets (.srs / .json / URL)"
+msgstr "Наборы правил Rule Sets (.srs / .json / URL)"
 
 msgid "↻ Update All Subscriptions"
 msgstr "↻ Обновить все подписки"
