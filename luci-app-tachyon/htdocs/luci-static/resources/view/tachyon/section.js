@@ -9925,7 +9925,7 @@ var DOMAIN_LIST_HINTS = {
   deepseek:
     "[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Manus (manus.im) и Dify",
   qwen: "[Маршрут: В Прокси / VPN или Direct] Домены экосистемы ИИ Alibaba Cloud: qwen.ai, chat.qwen.ai, qwenlm.ai, tongyi.com, dashscope.aliyuncs.com и modelscope.cn",
-  kimi: "[Маршрут: В Прокси / VPN или Direct] Домены ИИ-ассистента Kimi и платформы Moonshot AI: kimi.com, kimi.ai, kimi.moonshot.cn и moonshot.cn",
+  kimi: "[Маршрут: В Прокси / VPN или Direct] Домены ИИ-ассистента Kimi и платформы Moonshot / ByteDance: kimi.com, kimi.ai, kimi.moonshot.cn, moonshot.cn, byteoversea.com и volcengine.com",
   midjourney:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы генерации графики, дизайна и 3D: Midjourney (midjourney.com), Civitai (civitai.com), Black Forest Labs / Flux (bfl.ai), Leonardo.ai, Ideogram, Krea, Recraft, Magnific, Stability AI, ComfyUI Registry, OpenArt, Tripo3D и Meshy",
   elevenlabs:

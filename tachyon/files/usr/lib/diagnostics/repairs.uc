@@ -11,6 +11,7 @@ const TACHYON_CONFIG = getenv("TACHYON_CONFIG") || constants.TACHYON_CONFIG || "
 const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const UCI_BACKUP_DIR = "/etc/backup";
 const UCI_BACKUP_PATH = UCI_BACKUP_DIR + "/tachyon_config";
+const SERVICE_INIT = getenv("TACHYON_INIT") || "/etc/init.d/tachyon";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -102,8 +103,12 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? (core_label + " restarted") : (core_label + " restart failed (exit " + rc + ")");
+        } else if (c == "doctor_fix") {
+            let rc = command_status(command_from_args([ TACHYON_BIN, "doctor", "--fix" ]) + " >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Doctor auto-repair completed" : "Doctor auto-repair failed (exit " + rc + ")";
         } else if (c == "rebuild_rules") {
-            let rc = command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
+            let rc = command_status(command_from_args([ SERVICE_INIT, "reload", "force" ]) + " >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Firewall rules rebuilt" : "Firewall reload failed (exit " + rc + ")";
         } else if (c == "fix_dnsmasq") {

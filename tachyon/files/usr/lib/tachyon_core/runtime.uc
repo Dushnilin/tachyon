@@ -1058,6 +1058,18 @@ function restore_dns_config(backup_path) {
 
 const EMPTY_SRS_BINARY = hexdec("5352530278da6200040000ffff00010001");
 
+function file_has_valid_trs_magic(path) {
+    let f = fs.open(path, "r");
+    if (!f)
+        return false;
+    let magic = f.read(4);
+    f.close();
+    if (!magic || length(magic) < 3)
+        return false;
+    let m3 = substr(magic, 0, 3);
+    return m3 == "TRS" || magic == "TSRS" || magic == "TCRS";
+}
+
 function ensure_local_rulesets_exist(temp_config) {
     try {
         let cfg_raw = as_string(fs.readfile(temp_config) || "");
@@ -1066,25 +1078,42 @@ function ensure_local_rulesets_exist(temp_config) {
             command_success_from_args(["mkdir", "-p", TMP_RULESET_FOLDER]);
             let active_local_paths = {};
             let keep_compiled_tags = {};
+            let cfg_modified = false;
             for (let rs in cfg_obj.route.rule_set) {
                 if (type(rs) != "object")
                     continue;
                 let rs_tag = as_string(rs.tag || "");
                 if (rs.type == "local" && rs.path) {
                     let rs_path = as_string(rs.path);
+                    let is_trs_path = match(rs_path, /\.trs$/) != null;
                     active_local_paths[rs_path] = true;
-                    if (!match(rs_path, /\.trs$/) && rs_tag != "")
+                    if (!is_trs_path && rs_tag != "")
                         keep_compiled_tags[rs_tag] = true;
                     let st = fs.stat(rs_path);
-                    if (!st || st.size < 17) {
+                    let needs_repair = !st || st.size < (is_trs_path ? 16 : 17) ||
+                        (is_trs_path && !file_has_valid_trs_magic(rs_path));
+                    if (needs_repair) {
                         let bname = replace(rs_path, /^.*\//, "");
-                        let etc_file = "/etc/tachyon/rulesets/" + bname;
+                        let etc_dir = getenv("TACHYON_PERSISTENT_RULESETS_DIR") || "/etc/tachyon/rulesets";
+                        let etc_file = etc_dir + "/" + bname;
                         let etc_st = fs.stat(etc_file);
-                        if (etc_st && etc_st.size >= 17) {
+                        if (etc_st && etc_st.size >= (is_trs_path ? 16 : 17) &&
+                            (!is_trs_path || file_has_valid_trs_magic(etc_file))) {
                             let content = fs.readfile(etc_file);
                             if (content) fs.writefile(rs_path, content);
                         } else if (rs.format == "source" || match(rs_path, /\.json$/)) {
                             fs.writefile(rs_path, sprintf("%J", { version: 3, rules: [] }));
+                        } else if (is_trs_path) {
+                            // Never write an SRS header stub to a .trs path: switch the temporary
+                            // check entry to an empty JSON source set and delete any corrupt .trs file.
+                            try { fs.unlink(rs_path); } catch (e) {}
+                            let fallback_json = TMP_RULESET_FOLDER + "/" + replace(bname, /\.trs$/, ".empty.json");
+                            fs.writefile(fallback_json, sprintf("%J", { version: 3, rules: [] }));
+                            rs.format = "source";
+                            rs.path = fallback_json;
+                            if (rs_tag != "")
+                                keep_compiled_tags[rs_tag] = true;
+                            cfg_modified = true;
                         } else {
                             fs.writefile(rs_path, EMPTY_SRS_BINARY);
                         }
@@ -1093,6 +1122,8 @@ function ensure_local_rulesets_exist(temp_config) {
                     keep_compiled_tags[rs_tag] = true;
                 }
             }
+            if (cfg_modified)
+                fs.writefile(temp_config, sprintf("%J\n", cfg_obj));
             let rdir = fs.opendir(TMP_RULESET_FOLDER);
             if (rdir) {
                 let entry;
@@ -2033,6 +2064,10 @@ else if (mode == "check-config-fixture") {
     if (result.reason != "")
         print(result.reason, "\n");
     exit(result.status);
+}
+else if (mode == "ensure-local-rulesets-fixture") {
+    ensure_local_rulesets_exist(ARGV[1] || "");
+    exit(0);
 }
 else if (mode == "quarantine-attribution-fixture")
     print(section_from_check_reason(ARGV[1] || "", ARGV[2] || ""), "\n");

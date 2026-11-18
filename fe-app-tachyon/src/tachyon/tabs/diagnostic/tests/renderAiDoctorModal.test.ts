@@ -146,9 +146,13 @@ describe('renderAiDoctorModal helpers', () => {
   });
 
   it('has readable labels for common fixes', () => {
+    expect(FIX_LABELS.doctor_fix).toBeDefined();
     expect(FIX_LABELS.start_tachyon_core).toBeDefined();
     expect(FIX_LABELS.rebuild_rules).toBeDefined();
     expect(FIX_LABELS.restore_native_internet).toBeDefined();
+    expect(getFixLabel('doctor_fix')).toBe(
+      'Auto-repair config & IPv6 rules (doctor --fix)',
+    );
     expect(getFixLabel('start_tachyon_core')).toBe('Start Tachyon Core');
     expect(getFixLabel('restart_tachyon_core_dns')).toBe(
       'Restart Tachyon Core DNS',
@@ -164,7 +168,7 @@ describe('renderAiDoctorModal helpers', () => {
 
     renderAiDoctorModal({
       report: 'All subsystems operational. No issues detected.',
-      quickFixes: ['start_tachyon_core'],
+      quickFixes: ['doctor_fix', 'start_tachyon_core'],
       backendNodes: [
         { name: 'WAN', status: 'OK' },
         { name: 'DNS', status: 'OK' },

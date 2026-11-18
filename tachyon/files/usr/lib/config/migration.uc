@@ -3360,6 +3360,142 @@ function migrate_fail_closed_auto_defaults(ctx) {
             set_option(ctx, ctx.model.settings, key, "auto");
 }
 
+function collect_condition_refs_recursive(cond_by_name, refs, visited, result_map) {
+    for (let cname in (refs || [])) {
+        cname = as_string(cname);
+        if (cname == "" || visited[cname])
+            continue;
+        visited[cname] = true;
+        result_map[cname] = true;
+        let cond = cond_by_name[cname];
+        if (cond)
+            collect_condition_refs_recursive(cond_by_name, list_option(cond, "conditions"), visited, result_map);
+    }
+}
+
+function migrate_ai_lists_1_8(ctx) {
+    if (!ctx || !ctx.model)
+        return;
+
+    let non_proxy_actions = [ "direct", "bypass", "block", "dns", "hosts" ];
+    let per_provider_ai_lists = [
+        "openai", "anthropic", "google_ai", "xai", "openrouter",
+        "cursor", "perplexity", "copilot", "deepseek",
+        "midjourney", "elevenlabs", "ai_video", "ai_cloud_gpu", "huggingface"
+    ];
+
+    let has_google_services_anywhere = false;
+    let cond_by_name = {};
+    for (let cond in (ctx.model.condition || [])) {
+        let cname = section_name(cond);
+        if (cname != "")
+            cond_by_name[cname] = cond;
+        if (list_contains(cond, "community_lists", "google_services"))
+            has_google_services_anywhere = true;
+    }
+    for (let sec in (ctx.model.sections || [])) {
+        if (list_contains(sec, "community_lists", "google_services"))
+            has_google_services_anywhere = true;
+    }
+
+    let cond_in_proxy = {};
+    let cond_in_non_proxy = {};
+    let proxy_sections = [];
+    for (let sec in (ctx.model.sections || [])) {
+        let action = lc(trim(option(sec, "action", "")));
+        let is_non_proxy = index(non_proxy_actions, action) >= 0;
+        let refs_map = {};
+        collect_condition_refs_recursive(cond_by_name, list_option(sec, "condition_refs"), {}, refs_map);
+        for (let cname in keys(refs_map)) {
+            if (is_non_proxy)
+                cond_in_non_proxy[cname] = true;
+            else
+                cond_in_proxy[cname] = true;
+        }
+        if (!is_non_proxy)
+            push(proxy_sections, sec);
+    }
+
+    let targets = [];
+    for (let sec in proxy_sections) {
+        if (length(list_option(sec, "community_lists")) > 0)
+            push(targets, sec);
+    }
+    for (let cond in (ctx.model.condition || [])) {
+        let cname = section_name(cond);
+        if (cname != "" && cond_in_proxy[cname] && !cond_in_non_proxy[cname] &&
+            length(list_option(cond, "community_lists")) > 0)
+            push(targets, cond);
+    }
+
+    for (let target in targets) {
+        let lists = list_option(target, "community_lists");
+        let has_ai_all = index(lists, "ai_all") >= 0;
+        let has_google_ai = index(lists, "google_ai") >= 0;
+        let provider_count = 0;
+        for (let k in per_provider_ai_lists) {
+            if (index(lists, k) >= 0)
+                provider_count++;
+        }
+
+        let updated = [];
+        for (let item in lists)
+            push(updated, item);
+        let changed = false;
+
+        if (!has_ai_all && provider_count >= 2) {
+            if (index(updated, "qwen") < 0) {
+                push(updated, "qwen");
+                changed = true;
+            }
+            if (index(updated, "kimi") < 0) {
+                push(updated, "kimi");
+                changed = true;
+            }
+        }
+
+        if (!has_google_services_anywhere && has_google_ai && (has_ai_all || provider_count >= 2)) {
+            push(updated, "google_services");
+            has_google_services_anywhere = true;
+            changed = true;
+        }
+
+        if (changed)
+            set_list_option(ctx, target, "community_lists", updated);
+    }
+
+    // Handle proxy sections whose ai_all and google_ai live in separate proxy-only conditions.
+    if (!has_google_services_anywhere) {
+        for (let sec in proxy_sections) {
+            if (has_google_services_anywhere)
+                break;
+            let refs_map = {};
+            collect_condition_refs_recursive(cond_by_name, list_option(sec, "condition_refs"), {}, refs_map);
+            let combined = [];
+            for (let x in list_option(sec, "community_lists"))
+                push(combined, x);
+            let google_target = index(combined, "google_ai") >= 0 ? sec : null;
+            for (let cname in keys(refs_map)) {
+                let c = cond_by_name[cname];
+                if (!c)
+                    continue;
+                for (let x in list_option(c, "community_lists"))
+                    push(combined, x);
+                if (!google_target && cond_in_proxy[cname] && !cond_in_non_proxy[cname] && list_contains(c, "community_lists", "google_ai"))
+                    google_target = c;
+            }
+            if (google_target && index(combined, "ai_all") >= 0 && index(combined, "google_ai") >= 0) {
+                let target_lists = list_option(google_target, "community_lists");
+                if (index(target_lists, "google_services") < 0) {
+                    push(target_lists, "google_services");
+                    set_list_option(ctx, google_target, "community_lists", target_lists);
+                    has_google_services_anywhere = true;
+                }
+            }
+        }
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -3373,7 +3509,8 @@ const MIGRATIONS = [
     { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups },
     { id: "relax_probe_intervals_v1", run: migrate_relax_probe_intervals_v1 },
     { id: "ensure_tcp_bbr_default", run: migrate_ensure_tcp_bbr_default },
-    { id: "fail_closed_auto_defaults", run: migrate_fail_closed_auto_defaults }
+    { id: "fail_closed_auto_defaults", run: migrate_fail_closed_auto_defaults },
+    { id: "ai_lists_1_8", run: migrate_ai_lists_1_8 }
 ];
 
 

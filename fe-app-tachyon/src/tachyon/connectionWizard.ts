@@ -3,6 +3,7 @@ import { tr } from './helpers/i18n';
 import { getIPv6ModeLabel, normalizeIpv6Mode } from './helpers/ipv6Summary';
 import { showToast } from '../helpers/showToast';
 import {
+  AI_PRESET_KEYS,
   createInteractiveHintBanner,
   getSubsumedCommunityLists,
 } from '../helpers/communityListPicker';
@@ -358,9 +359,9 @@ const TRAFFIC_PRESETS: Array<{
   },
   {
     id: 'ai',
-    labelRu: 'Нейросети и ИИ (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    labelEn: 'AI Services (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    domains: ['ai_all', 'google_ai'],
+    labelRu: 'Нейросети и ИИ (ChatGPT, Claude, Gemini, Google, Grok, Cursor)',
+    labelEn: 'AI Services (ChatGPT, Claude, Gemini, Google, Grok, Cursor)',
+    domains: [...AI_PRESET_KEYS],
   },
   {
     id: 'social',

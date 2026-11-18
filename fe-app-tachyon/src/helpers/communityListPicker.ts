@@ -79,6 +79,12 @@ export interface CommunityListCategory {
  * suffixes, keywords, regexes, and subnets) are 100% covered by the parent
  * becomes redundant and is visually dimmed + disabled to avoid duplicates.
  */
+export const AI_PRESET_KEYS = [
+  'ai_all',
+  'google_ai',
+  'google_services',
+] as const;
+
 export const COMMUNITY_LIST_SUPERSETS: Readonly<
   Record<string, readonly string[]>
 > = {
@@ -763,9 +769,9 @@ export function attachCommunityListPicker(
               type: 'button',
               class: 'tachyon-ruleset-picker__preset-btn',
               title: ru
-                ? 'Добавить все нейросети (OpenAI, Claude, Gemini, Grok и др.)'
-                : 'Add all AI services (OpenAI, Claude, Gemini, Grok, etc.)',
-              click: () => applyPreset(['ai_all', 'google_ai']),
+                ? 'Добавить все нейросети и базовые сервисы Google (OpenAI, Claude, Gemini, Google, Grok и др.)'
+                : 'Add all AI services & core Google domains (OpenAI, Claude, Gemini, Google, Grok, etc.)',
+              click: () => applyPreset([...AI_PRESET_KEYS]),
             } as any,
             ru ? '+ Весь ИИ' : '+ All AI',
           ),

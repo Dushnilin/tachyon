@@ -57,6 +57,7 @@ export function saveAiDoctorHistory(entry: AiDoctorHistoryEntry): void {
 }
 
 export const FIX_LABELS: Record<string, string> = {
+  doctor_fix: _('Auto-repair config & IPv6 rules (doctor --fix)'),
   start_tachyon_core: _('Start Tachyon Core'),
   rebuild_rules: _('Rebuild firewall rules'),
   fix_dnsmasq: _('Restart dnsmasq'),

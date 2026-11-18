@@ -1420,6 +1420,30 @@ function firewall_repair_worker() {
     return ok ? 0 : 1;
 }
 
+function safe_ipv6_reload() {
+    if (firewall_health.interception_suppressed(settings()) || is_reload_in_progress())
+        return false;
+    if (fs.stat("/var/run/tachyon/starting") != null || fs.stat("/var/run/tachyon/reloading") != null)
+        return false;
+    let now = time();
+    let min_interval = 120;
+    if (now - last_reload_time < min_interval) return false;
+    last_reload_time = now;
+    bg_system(command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "ipv6-sync-worker" ]));
+    return true;
+}
+
+function ipv6_sync_worker() {
+    let ctx = controller.create_tick_context();
+    if (firewall_health.interception_suppressed(ctx.settings)) return 1;
+    let ok = command_success_from_args([ "/etc/init.d/tachyon", "reload", "ipv6_state_change" ]);
+    if (firewall_health.interception_suppressed(controller.create_tick_context().settings)) {
+        restore_interception_bypass();
+        return 1;
+    }
+    return ok ? 0 : 1;
+}
+
 // ─── Escalation Executor (L0–L5) ──────────────────────────────────────────────
 function execute_escalation_level(key, subsystem, reason, incident) {
     let lvl = next_ladder_level(reason);
@@ -3191,6 +3215,26 @@ function ai_full_health_audit() {
     ai_export_status();
 }
 
+function core_config_ipv6_matches(cfg, eff) {
+    if (!eff)
+        return true;
+    let cfg_path = trim(common.as_string((cfg && cfg.config_path) || "")) || common.core_config_path();
+    let runtime = common.read_json_file(cfg_path);
+    if (type(runtime) != "object")
+        return true;
+
+    let want_fakeip6 = !!(eff.ipv6_active && eff.fakeip_enabled);
+    let dns_servers = (type(runtime.dns) == "object" && type(runtime.dns.servers) == "array") ? runtime.dns.servers : [];
+    for (let srv in dns_servers) {
+        if (type(srv) == "object" && srv.type == "fakeip") {
+            let has_fakeip6 = trim(common.as_string(srv.inet6_range || "")) != "";
+            if (has_fakeip6 != want_fakeip6)
+                return false;
+        }
+    }
+    return true;
+}
+
 function worker() {
     // Set by the supervisor after repeated early deaths: every listener and
     // the event-driven branch below gate on this variable, so nulling it here
@@ -3664,7 +3708,11 @@ function check_ipv6_invariants() {
         return;
 
     let health = firewall_health.inspect(cfg);
-    if ((eff.leak_guard_active && !health.ipv6_leak_guard_ok) ||
+    if (!core_config_ipv6_matches(cfg, eff)) {
+        log_message(sprintf("Watchdog: tachyon-core IPv6 config drift detected (state=%s, strategy=%s); scheduling ipv6_state_change reload",
+            eff.effective, as_string(eff.runtime_dns_strategy)), "warn");
+        safe_ipv6_reload();
+    } else if ((eff.leak_guard_active && !health.ipv6_leak_guard_ok) ||
         (eff.ipv6_active && (!health.ipv6_route_ok || !health.fakeip6_ok))) {
         log_message(sprintf("Watchdog: IPv6 runtime invariant drift detected (state=%s, leak_guard=%s, route6=%s, fakeip6=%s); scheduling firewall repair",
             eff.effective, as_string(health.ipv6_leak_guard_ok), as_string(health.ipv6_route_ok), as_string(health.fakeip6_ok)), "warn");
@@ -3928,6 +3976,14 @@ else if (mode == "worker")
     exit(worker());
 else if (mode == "firewall-repair-worker")
     exit(firewall_repair_worker());
+else if (mode == "ipv6-sync-worker")
+    exit(ipv6_sync_worker());
+else if (mode == "core-config-ipv6-matches-fixture") {
+    let cfg = settings();
+    let eff = common.resolve_effective_ipv6_state(cfg, null);
+    print(core_config_ipv6_matches(cfg, eff) ? "1\n" : "0\n");
+    exit(0);
+}
 else if (mode == "status")
     exit(get_status());
 else if (mode == "ai-heal") {

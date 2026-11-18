@@ -3260,10 +3260,11 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         return true;
 
     let url = core_rulesets_module().community_url(service);
+    let persistent_dir = getenv("TACHYON_PERSISTENT_RULESETS_DIR") || "/etc/tachyon/rulesets";
     let cached_file = TMP_RULESET_FOLDER + "/community-" + service + ".srs";
-    let persistent_file = "/etc/tachyon/rulesets/community-" + service + ".srs";
+    let persistent_file = persistent_dir + "/community-" + service + ".srs";
     let cached_trs_file = TMP_RULESET_FOLDER + "/community-" + service + ".trs";
-    let persistent_trs_file = "/etc/tachyon/rulesets/community-" + service + ".trs";
+    let persistent_trs_file = persistent_dir + "/community-" + service + ".trs";
     let tmpfile = temp_path();
     if (tmpfile == "")
         return false;
@@ -3290,7 +3291,7 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 let sz = st != null ? int(st.size || 0) : 0;
                 ensure_dir(TMP_RULESET_FOLDER);
                 if (!skip_flash_persist && sz > 0 && sz <= 524288) {
-                    ensure_dir("/etc/tachyon/rulesets");
+                    ensure_dir(persistent_dir);
                     copy_file(tmpfile, persistent_trs_file);
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
@@ -3316,10 +3317,16 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
         }
         if (type(core_rulesets_module().is_referenceable_trs_file) == "function" &&
             core_rulesets_module().is_referenceable_trs_file(cached_trs_file)) {
+            remove_file(cached_file);
+            remove_file(persistent_file);
             log_message("Keeping existing .trs ruleset in /tmp for " + service + " after download failure", "warn");
             return true;
         }
-        log_message("Could not download .trs preset ruleset " + service + "; falling back to .srs", "info");
+        remove_file(cached_file);
+        remove_file(persistent_file);
+        remove_file(tmpfile);
+        log_message("Failed to download .trs preset ruleset " + service + "; leaving remote .trs reference until next update", "warn");
+        return false;
     }
 
     let srs_base_urls = [ url ];
@@ -4321,6 +4328,22 @@ function local_rulesets_fingerprint(config_path) {
     return fp;
 }
 
+function ruleset_cache_fingerprint(folder) {
+    let dir_path = as_string(folder || TMP_RULESET_FOLDER);
+    let entries = fs.lsdir(dir_path);
+    if (type(entries) != "array")
+        return "";
+    sort(entries);
+    let parts = [];
+    for (let entry in entries) {
+        if (!match(entry, /\.(trs|srs)$/))
+            continue;
+        let st = fs.stat(dir_path + "/" + entry);
+        push(parts, entry + ":" + (st ? (as_string(st.size) + ":" + as_string(st.mtime)) : "missing"));
+    }
+    return join("\n", parts);
+}
+
 function ruleset_api_tag(value) {
     let encoded = "";
     for (let i = 0; i < length(value); i++) {
@@ -4450,6 +4473,7 @@ function list_update() {
     let settings = uci_settings();
     let core_config_path_initial = option(settings, "config_path", "") || "/etc/tachyon-core/config.json";
     list_update_local_rulesets_fp_before = local_rulesets_fingerprint(core_config_path_initial);
+    let ruleset_cache_fp_before = ruleset_cache_fingerprint(TMP_RULESET_FOLDER);
     let proxy_address = service_proxy_address(settings, "lists");
     if (!dns_probe_passed(proxy_address)) {
         write_list_update_backoff(now_seconds(), "dns_probe_failed");
@@ -4571,7 +4595,9 @@ function list_update() {
 
     release_runtime_lock(RELOAD_LOCK_DIR);
 
-    if (ok && !reload_core_after_list_update(true))
+    let ruleset_cache_changed = local_rulesets_fingerprint(core_config_path_initial) != list_update_local_rulesets_fp_before ||
+        ruleset_cache_fingerprint(TMP_RULESET_FOLDER) != ruleset_cache_fp_before;
+    if ((ok || ruleset_cache_changed) && !reload_core_after_list_update(true))
         ok = false;
 
     if (ok) {
@@ -5107,6 +5133,8 @@ else if (mode == "component-auto-update-apply")
     component_auto_update_apply(ARGV[1]);
 else if (mode == "component-update-check-cache")
     component_update_check_cache();
+else if (mode == "import-community-ruleset-fixture")
+    exit(import_community_srs_file(ARGV[1] || "", uci_settings(), arg_bool(ARGV[2] || "0")) ? 0 : 1);
 else {
     warn("Usage: components/updates.uc <operation> ...\n");
     exit(1);

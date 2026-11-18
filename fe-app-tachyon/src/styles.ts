@@ -300,6 +300,43 @@ body.dark .tachyon-wizard {
     color: var(--tachyon-accent-text-hover, #4c1d95) !important;
 }
 
+/* Keep buttons inside LuCI light-yellow alert banners readable across light and dark themes */
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button-apply,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .btn,
+.tachyon-view .alert-message .cbi-button-apply,
+.tachyon-view .alert-message .cbi-button,
+.tachyon-view .alert-message .btn,
+#modal_overlay .alert-message .cbi-button-apply,
+#modal_overlay .alert-message .cbi-button,
+#modal_overlay .alert-message .btn,
+.cbi-modal .alert-message .cbi-button-apply,
+.cbi-modal .alert-message .cbi-button,
+.cbi-modal .alert-message .btn {
+    background: #1f2430 !important;
+    border-color: rgba(15, 23, 42, 0.45) !important;
+    color: #f8fafc !important;
+    font-weight: 600 !important;
+    text-shadow: none !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button-apply:hover:not(:disabled),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button:hover:not(:disabled),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .btn:hover:not(:disabled),
+.tachyon-view .alert-message .cbi-button-apply:hover:not(:disabled),
+.tachyon-view .alert-message .cbi-button:hover:not(:disabled),
+.tachyon-view .alert-message .btn:hover:not(:disabled),
+#modal_overlay .alert-message .cbi-button-apply:hover:not(:disabled),
+#modal_overlay .alert-message .cbi-button:hover:not(:disabled),
+#modal_overlay .alert-message .btn:hover:not(:disabled),
+.cbi-modal .alert-message .cbi-button-apply:hover:not(:disabled),
+.cbi-modal .alert-message .cbi-button:hover:not(:disabled),
+.cbi-modal .alert-message .btn:hover:not(:disabled) {
+    background: #111827 !important;
+    border-color: rgba(15, 23, 42, 0.72) !important;
+    color: #ffffff !important;
+}
+
 /* Negative / Remove buttons stay calm neutral until hovered */
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-button-remove:hover:not(:disabled),
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-button-negative:hover:not(:disabled),

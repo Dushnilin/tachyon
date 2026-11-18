@@ -105,12 +105,10 @@ function emit_reload_plan(previous, current, context) {
         needs.tachyon_core_reload = true;
     }
 
-    if (context.force_runtime_reload &&
-        !needs.tachyon_core_reload &&
-        !needs.nft_rebuild &&
-        !needs.dnsmasq_configure &&
-        !needs.dnsmasq_restore)
+    if (context.force_runtime_reload) {
         needs.tachyon_core_reload = true;
+        needs.nft_rebuild = true;
+    }
 
     let has_work =
         needs.tachyon_core_reload ||

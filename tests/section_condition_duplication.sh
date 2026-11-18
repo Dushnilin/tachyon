@@ -33,7 +33,8 @@ const appliedMigrations = [
   "priority_levels_to_outbound_groups",
   "relax_probe_intervals_v1",
   "ensure_tcp_bbr_default",
-  "fail_closed_auto_defaults"
+  "fail_closed_auto_defaults",
+  "ai_lists_1_8"
 ];
 
 const conditions = [

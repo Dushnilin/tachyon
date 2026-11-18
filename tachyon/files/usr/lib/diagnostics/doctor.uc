@@ -37,6 +37,7 @@ const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OC
 const SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
+const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
 const TACHYON_CORE_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
@@ -960,6 +961,25 @@ function odhcpd_ipv6_dns_status(dhcp_lan, eff_v6) {
     };
 }
 
+function regenerate_core_config_and_reload(reload_reason, restart_core, init_script) {
+    let service_init = getenv("TACHYON_INIT") || ("/etc/init.d/" + TACHYON_SERVICE_NAME);
+    let core_init = init_script || getenv("TACHYON_CORE_INIT") || "/etc/init.d/tachyon-core";
+    let svc_rc = command_status(command_from_args([
+        "ucode", "-L", LIB_DIR, TACHYON_CORE_RUNTIME_UC, "configure-service"
+    ]) + " >/dev/null 2>&1");
+    let cfg_rc = command_status(command_from_args([
+        "ucode", "-L", LIB_DIR, TACHYON_CORE_RUNTIME_UC, "init-config", "0", "0", "1"
+    ]) + " >/dev/null 2>&1");
+    if (reload_reason != null && reload_reason != "") {
+        command_status(command_from_args([
+            service_init, "reload", reload_reason
+        ]) + " >/dev/null 2>&1");
+    } else if (restart_core && core_init != "") {
+        command_status(command_from_args([ core_init, "restart" ]) + " >/dev/null 2>&1");
+    }
+    return svc_rc == 0 && cfg_rc == 0;
+}
+
 function run_doctor_checks_impl(repair) {
     DOCTOR_REPAIR_MODE = (repair == true);
     DOCTOR_PLANNED_FIXES = [];
@@ -1041,8 +1061,9 @@ function run_doctor_checks_impl(repair) {
 
     let active_engine = "tachyon-core";
     let binary_name = "tachyon-core";
-    let init_script = "/etc/init.d/tachyon-core";
-    let config_file_path = "/etc/tachyon-core/config.json";
+    let binary_cmd = getenv("TACHYON_CORE_BIN") || binary_name;
+    let init_script = getenv("TACHYON_CORE_INIT") || "/etc/init.d/tachyon-core";
+    let config_file_path = tachyon_core_config_path();
 
     // 1. Process Check
     let has_sections = false;
@@ -1083,18 +1104,23 @@ function run_doctor_checks_impl(repair) {
 
     // 2. Configuration Check
     if (fs.stat(config_file_path) != null) {
-        let check_res = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
+        let check_res = command_status(command_from_args([ binary_cmd, "check", "-c", config_file_path ]) + " >/dev/null 2>&1");
         if (check_res == 0) {
             doc_check("✅", binary_name + " config", "valid", "");
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("regenerate " + binary_name + " config (configure-service) + restart");
+                doc_plan("regenerate " + binary_name + " config (init-config) + restart");
                 doc_check("⚠️", binary_name + " config", "invalid", "→ WILL FIX (doctor --fix): пересоздание конфига");
             } else {
-                let regen_status = command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-                if (regen_status == 0) {
-                    let check_res2 = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
+                let regen_ok = regenerate_core_config_and_reload(null, false, null);
+                let check_res2 = regen_ok ? command_status(command_from_args([ binary_cmd, "check", "-c", config_file_path ]) + " >/dev/null 2>&1") : 1;
+                if (check_res2 != 0) {
+                    command_status(command_from_args([ TACHYON_BIN, "list_update" ]) + " >/dev/null 2>&1");
+                    regen_ok = regenerate_core_config_and_reload(null, false, null);
+                    check_res2 = regen_ok ? command_status(command_from_args([ binary_cmd, "check", "-c", config_file_path ]) + " >/dev/null 2>&1") : 1;
+                }
+                if (regen_ok) {
                     if (check_res2 == 0) {
                         doc_check("❌", binary_name + " config", "invalid", "→ FIXED: пересоздан и успешно валидирован");
                         fixed++;
@@ -1113,13 +1139,22 @@ function run_doctor_checks_impl(repair) {
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("regenerate " + binary_name + " config (configure-service)");
+                doc_plan("regenerate " + binary_name + " config (init-config)");
                 doc_check("⚠️", binary_name + " config", "missing", "→ WILL FIX (doctor --fix): генерация конфига");
             } else {
-                let regen_status = command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-                if (regen_status == 0 && fs.stat(config_file_path) != null) {
+                let regen_ok = regenerate_core_config_and_reload(null, false, null);
+                let check_res2 = (regen_ok && fs.stat(config_file_path) != null)
+                    ? command_status(command_from_args([ binary_cmd, "check", "-c", config_file_path ]) + " >/dev/null 2>&1") : 1;
+                if (check_res2 != 0) {
+                    command_status(command_from_args([ TACHYON_BIN, "list_update" ]) + " >/dev/null 2>&1");
+                    regen_ok = regenerate_core_config_and_reload(null, false, null);
+                    check_res2 = (regen_ok && fs.stat(config_file_path) != null)
+                        ? command_status(command_from_args([ binary_cmd, "check", "-c", config_file_path ]) + " >/dev/null 2>&1") : 1;
+                }
+                if (regen_ok && fs.stat(config_file_path) != null && check_res2 == 0) {
                     doc_check("❌", binary_name + " config", "missing", "→ FIXED: пересоздан");
                     fixed++;
+                    command_status(init_script + " restart >/dev/null 2>&1");
                 } else {
                     doc_check("❌", binary_name + " config", "missing", "→ не удалось сгенерировать config");
                 }
@@ -1582,15 +1617,16 @@ function run_doctor_checks_impl(repair) {
 
     // 5b2. IPv6 DNS / FakeIPv6 / AAAA NOERROR check
     let eff_v6_dns = common.resolve_effective_ipv6_state(cfg, null);
+    let configured_fakeip6 = trim(option(cfg, "fakeip_inet6_range", "")) || constants.CORE_FAKEIP_INET6_RANGE || "fc00::/18";
     if (has_sections && pid != "" && command_success("command -v dig >/dev/null 2>&1")) {
-        if (eff_v6_dns.ipv6_active && eff_v6_dns.fakeip_enabled) {
+        if (eff_v6_dns.ipv6_active && eff_v6_dns.fakeip_enabled && eff_v6_dns.runtime_dns_strategy != "ipv4_only") {
             let fake6_ans = "";
             let d6 = command_capture(command_from_args([
                 "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
             ]));
             for (let ln in split(as_string(d6.output), "\n")) {
                 ln = lc(trim(as_string(ln)));
-                if (core_ip.valid_ipv6(ln) && match(ln, /^fc[0-3][0-9a-f]:/) != null) {
+                if (core_ip.valid_ipv6(ln) && core_ip.cidrs_overlap(ln + "/128", configured_fakeip6)) {
                     fake6_ans = ln;
                     break;
                 }
@@ -1600,12 +1636,11 @@ function run_doctor_checks_impl(repair) {
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service; /etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change");
-                    doc_check("⚠️", binary_name + " FakeIPv6", "AAAA query did not return FakeIPv6 in fc00::/18",
+                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " init-config 0 0 1; /etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change");
+                    doc_check("⚠️", binary_name + " FakeIPv6", "AAAA query did not return FakeIPv6 in " + configured_fakeip6,
                         "→ WILL FIX (doctor --fix): перегенерировать конфиг и применить IPv6 правила");
                 } else {
-                    command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-                    command_status("/etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change >/dev/null 2>&1");
+                    regenerate_core_config_and_reload("ipv6_state_change", false, init_script);
                     command_status("sleep 1");
                     let d6b = command_capture(command_from_args([
                         "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
@@ -1613,16 +1648,30 @@ function run_doctor_checks_impl(repair) {
                     let fixed_v6 = "";
                     for (let ln in split(as_string(d6b.output), "\n")) {
                         ln = lc(trim(as_string(ln)));
-                        if (core_ip.valid_ipv6(ln) && match(ln, /^fc[0-3][0-9a-f]:/) != null) {
+                        if (core_ip.valid_ipv6(ln) && core_ip.cidrs_overlap(ln + "/128", configured_fakeip6)) {
                             fixed_v6 = ln;
                             break;
+                        }
+                    }
+                    if (fixed_v6 == "") {
+                        regenerate_core_config_and_reload(null, true, init_script);
+                        command_status("sleep 2");
+                        let d6c = command_capture(command_from_args([
+                            "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+                        ]));
+                        for (let ln in split(as_string(d6c.output), "\n")) {
+                            ln = lc(trim(as_string(ln)));
+                            if (core_ip.valid_ipv6(ln) && core_ip.cidrs_overlap(ln + "/128", configured_fakeip6)) {
+                                fixed_v6 = ln;
+                                break;
+                            }
                         }
                     }
                     if (fixed_v6 != "") {
                         doc_check("❌", binary_name + " FakeIPv6", "not returning FakeIPv6", "→ FIXED: " + fixed_v6);
                         fixed++;
                     } else {
-                        doc_check("❌", binary_name + " FakeIPv6", "not returning FakeIPv6 in fc00::/18", "→ проверьте секцию FakeIPv6 и перезапустите сервис");
+                        doc_check("❌", binary_name + " FakeIPv6", "not returning FakeIPv6 in " + configured_fakeip6, "→ проверьте секцию FakeIPv6 и перезапустите сервис");
                     }
                 }
             }
@@ -1643,12 +1692,11 @@ function run_doctor_checks_impl(repair) {
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service; " + init_script + " restart");
+                    doc_plan("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " init-config 0 0 1; " + init_script + " restart");
                     doc_check("⚠️", "IPv6 AAAA suppression", "unexpected AAAA response (" + aaaa_leak + ") in " + eff_v6_dns.effective,
                         "→ WILL FIX (doctor --fix): перегенерировать DNS-правила NOERROR для AAAA");
                 } else {
-                    command_status("ucode -L " + LIB_DIR + " " + TACHYON_CORE_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-                    command_status(init_script + " restart >/dev/null 2>&1");
+                    regenerate_core_config_and_reload(null, true, init_script);
                     command_status("sleep 2");
                     let d6n2 = command_capture(command_from_args([
                         "dig", "+short", "@" + CORE_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
@@ -3322,6 +3370,7 @@ const DOCTOR_FIX_PRIORITIES = {
     "fix_wan_interface": 10,
     "restart_network": 15,
     "fix_gateway": 20,
+    "doctor_fix": 28,
     "fix_resolv_symlink": 30,
     "fix_dnsmasq": 35,
     "fix_bootstrap_dns": 38,
@@ -3705,29 +3754,56 @@ function local_rule_doctor(pre_res, pre_verify) {
         }
     }
 
-    // ── 3. Snapshot check failures not covered above ──
+    // ── 3. Snapshot check failures and auto-fixable warnings not covered above ──
     for (let c in checks) {
-        if (c.status != "fail") continue;
+        if (c.status != "fail" && c.status != "warn") continue;
         let known = false;
         for (let v in verify.checks) {
             if (v.name == c.name) { known = true; break; }
         }
         if (known) continue;
-        if (index(c.name, "nftables") >= 0 || index(c.name, "ip rule") >= 0 || index(c.name, "MSS") >= 0) {
+        if (index(c.name, "FakeIPv6") >= 0 || index(c.name, "AAAA suppression") >= 0) {
+            push(causes, {
+                probability: 88,
+                cause: lang == "en"
+                    ? ("IPv6 DNS / FakeIPv6 configuration in " + engine_label + " is out of sync with active IPv6 state")
+                    : ("Настройки IPv6 DNS / FakeIPv6 в " + engine_label + " рассинхронизированы с состоянием сети"),
+                fix: "doctor_fix"
+            });
+            add_fix("doctor_fix");
+        } else if (c.name == (engine_label + " config")) {
+            push(causes, {
+                probability: 92,
+                cause: lang == "en"
+                    ? (engine_label + " runtime config is missing or invalid")
+                    : ("Конфигурация " + engine_label + " отсутствует или не проходит валидацию"),
+                fix: "doctor_fix"
+            });
+            add_fix("doctor_fix");
+        } else if (c.name == "Community lists" && (c.status == "fail" || index(as_string(c.fix || ""), "WILL FIX") >= 0)) {
+            push(causes, {
+                probability: 85,
+                cause: lang == "en"
+                    ? "Required community rule-sets are missing locally"
+                    : "Отсутствуют локальные файлы требуемых списков маршрутизации",
+                fix: "doctor_fix"
+            });
+            add_fix("doctor_fix");
+        } else if (c.status == "fail" && (index(c.name, "nftables") >= 0 || index(c.name, "ip rule") >= 0 || index(c.name, "MSS") >= 0)) {
             push(causes, {
                 probability: 80,
                 cause: lang == "en" ? "NFTables routing or firewall rules compromised" : "Нарушены правила файрвола nftables или маршрутизация",
                 fix: "rebuild_rules"
             });
             add_fix("rebuild_rules");
-        } else if (index(c.name, "resolv") >= 0) {
+        } else if (c.status == "fail" && index(c.name, "resolv") >= 0) {
             push(causes, {
                 probability: 80,
                 cause: lang == "en" ? "DNS resolv.conf configuration broken" : "Конфигурация /etc/resolv.conf повреждена",
                 fix: "fix_resolv_symlink"
             });
             add_fix("fix_resolv_symlink");
-        } else if (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0) {
+        } else if (c.status == "fail" && (index(c.name, "certificate pinning") >= 0 || index(c.name, "pinning") >= 0)) {
             push(causes, {
                 probability: 90,
                 cause: lang == "en" ? "TLS certificate pin configured in proxy nodes, but the installed tachyon-core does not support certificate_sha256" : "Указан TLS pin сертификата для прокси, но установленный tachyon-core не поддерживает certificate_sha256",
@@ -3827,6 +3903,18 @@ function local_rule_doctor(pre_res, pre_verify) {
         if (c.status == "fail") {
             if (index(c.name, "nftables") >= 0 || index(c.name, "ip rule") >= 0) {
                 nodes[3].status = "WARN";
+            } else if (c.name == (engine_name + " config")) {
+                nodes[2].status = "FAIL";
+            } else if (index(c.name, "FakeIPv6") >= 0 || index(c.name, "AAAA suppression") >= 0) {
+                if (nodes[1].status == "OK") nodes[1].status = "WARN";
+                if (nodes[2].status == "OK") nodes[2].status = "WARN";
+            }
+        } else if (c.status == "warn") {
+            if (c.name == (engine_name + " config") || c.name == "Community lists") {
+                if (nodes[2].status == "OK") nodes[2].status = "WARN";
+            } else if (index(c.name, "FakeIPv6") >= 0 || index(c.name, "AAAA suppression") >= 0) {
+                if (nodes[1].status == "OK") nodes[1].status = "WARN";
+                if (nodes[2].status == "OK") nodes[2].status = "WARN";
             }
         }
     }
@@ -3999,6 +4087,7 @@ function compute_ai_doctor_result(user_query) {
             "FIX: code1, code2\n\n" +
             "IMPORTANT: do NOT report \"everything is fine\" when the Live Verification or Stability section shows any FAIL check, WAN flaps, or repeated service restarts — those are real problems even if the point-in-time checks passed.\n\n" +
             "Available quick fix codes:\n" +
+            "- doctor_fix (run tachyon doctor --fix: regenerate tachyon-core config, resync FakeIPv6/AAAA DNS, repair missing lists)\n" +
             "- start_tachyon_core (tachyon-core process is stopped or missing)\n" +
             "- rebuild_rules (nftables or ip rules damaged)\n" +
             "- fix_dnsmasq (dnsmasq service not responding)\n" +
@@ -4033,6 +4122,7 @@ function compute_ai_doctor_result(user_query) {
             "FIX: код1, код2\n\n" +
             "ВАЖНО: не пишите «всё в порядке», если в секции Live Verification или Stability есть хоть один провал, флапы WAN или повторные перезапуски сервисов — это реальные проблемы, даже если мгновенные проверки прошли.\n\n" +
             "Доступные коды быстрого исправления:\n" +
+            "- doctor_fix (запустить tachyon doctor --fix: перегенерировать конфиг tachyon-core, синхронизировать FakeIPv6/AAAA и восстановить списки)\n" +
             "- start_tachyon_core (tachyon-core упал или остановлен)\n" +
             "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
             "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +

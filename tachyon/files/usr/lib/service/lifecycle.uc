@@ -119,6 +119,7 @@ let subscription_deferred_sections = "";
 let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
+let startup_ipv6_effective = "";
 
 let shell_quote = common.shell_quote;
 
@@ -875,7 +876,7 @@ function prepare_community_rulesets() {
     let core_url_mod = require("core.url");
     let connections = require("config.connections");
     let tmp_dir = TMP_RULESET_FOLDER;
-    let etc_dir = "/etc/tachyon/rulesets";
+    let etc_dir = getenv("TACHYON_PERSISTENT_RULESETS_DIR") || "/etc/tachyon/rulesets";
 
     command_success_from_args(["mkdir", "-p", tmp_dir]);
 
@@ -956,6 +957,7 @@ function prepare_community_rulesets() {
             if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
                 if (common.copy_file_stream(etc_trs_path, tmp_trs_path)) {
                     remove_file(tmp_path);
+                    remove_file(etc_path);
                     continue;
                 }
             }
@@ -998,6 +1000,12 @@ function prepare_community_rulesets() {
             }
             if (trs_ok)
                 continue;
+            // In native .trs mode do not fall through to legacy .srs download or local
+            // empty .srs stubs; leave absent so generator emits remote .trs entries.
+            remove_file(tmp_path);
+            remove_file(etc_path);
+            log_message("Community ruleset '" + service + "' has no local .trs cache; keeping remote .trs entry", "info");
+            continue;
         }
 
         // A fallback stub may be referenced by the generator, but it is not a
@@ -1110,6 +1118,7 @@ function start_main() {
         return status;
 
     let errors_before = section_errors_snapshot();
+    startup_ipv6_effective = as_string(common.resolve_effective_ipv6_state(uci_core.get_all(CONFIG_NAME, "settings"), null).effective || "");
     status = core_init_config();
     if (status != 0)
         return status;
@@ -1283,6 +1292,13 @@ function start_impl() {
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     module_background(TELEGRAM_UC, [ "start-runtime" ]);
     fs.unlink("/var/run/tachyon/starting");
+    let current_ipv6_effective = as_string(common.resolve_effective_ipv6_state(uci_core.get_all(CONFIG_NAME, "settings"), null).effective || "");
+    if (startup_ipv6_effective != "" && current_ipv6_effective != "" && current_ipv6_effective != startup_ipv6_effective) {
+        log_message("IPv6 effective state changed during startup (" + startup_ipv6_effective + " -> " + current_ipv6_effective + "); resynchronizing runtime", "info");
+        let sync_status = module_status(LIB_DIR + "/service/lifecycle.uc", [ "reload", "ipv6_state_change" ]);
+        if (sync_status != 0)
+            log_message("Post-start IPv6 synchronization failed (status " + as_string(sync_status) + ")", "warn");
+    }
     return 0;
 }
 
@@ -1636,10 +1652,9 @@ function reload(reason) {
     log_message("Reloading Tachyon", "info");
 
     // Skip all work when config fingerprint is unchanged since the last reload.
-    // Applies to user-triggered reloads as well as on_config_change; saves ~4
-    // ucode forks (3 validate + 1 plan) when nothing actually changed.
-    if (reason != "force" &&
-        reason != "ipv6_state_change" &&
+    // Applies only to background on_config_change triggers; explicit user reloads
+    // (tachyon reload, /etc/init.d/tachyon reload, force, ipv6_state_change) always execute.
+    if (as_string(reason || "") == "on_config_change" &&
         as_string(getenv("TACHYON_RUNTIME_CACHE_INVALIDATED") || "0") != "1" &&
         current_config_hash() == last_completed_reload_hash() &&
         !module_success(SUBSCRIPTION_CACHE_UC, [ "runtime-cache-needs-rebuild", SECTION_CACHE_DIR ])) {
@@ -2029,6 +2044,10 @@ else if (mode == "selector-state-from-proxies-fixture") {
 }
 else if (mode == "selector-restore-pairs-fixture") {
     write_json(selector_restore_pairs(read_json_file(ARGV[1]), read_json_file(ARGV[2])));
+    status = 0;
+}
+else if (mode == "prepare-community-rulesets-fixture") {
+    prepare_community_rulesets();
     status = 0;
 }
 else if (mode == "dnsmasq-restore" || mode == "restore-dnsmasq")
