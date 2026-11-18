@@ -47,10 +47,22 @@ let candidates = url.download_candidates("https://github.com/owner/repo/blob/mai
 assert(candidates[0] == "https://raw.githubusercontent.com/owner/repo/main/hosts", "download_candidates first entry normalized");
 
 let twitch_candidates = url.download_candidates("https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs");
+assert(length(twitch_candidates) >= 2, "twitch ruleset download_candidates must include canonical GitHub raw and jsDelivr CDN");
 assert(twitch_candidates[0] == "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs", "twitch candidate 0 is raw github");
 assert(twitch_candidates[1] == "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/twitch.srs", "twitch candidate 1 is jsdelivr cdn");
+let allowed_hosts = [
+    "raw.githubusercontent.com",
+    "cdn.jsdelivr.net",
+    "ghfast.top",
+    "gh-proxy.com",
+    "gh.llkk.cc",
+    "ghproxy.net",
+    "mirror.ghproxy.com",
+    "github.moeyy.xyz"
+];
 for (let c in twitch_candidates) {
-    assert(index(c, "forkop") < 0, "no forkop mirrors allowed");
+    let h = url.host(c);
+    assert(index(allowed_hosts, h) >= 0, "unexpected mirror host: " + h);
 }
 
 for (let original in [

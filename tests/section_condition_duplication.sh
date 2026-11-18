@@ -75,7 +75,7 @@ const fixture50 = {
   settings: {
     ".name": "settings",
     ".type": "settings",
-    config_version: "1.0.5",
+    config_version: "1.8.0",
     proxy_mode: "tproxy",
     applied_migrations: appliedMigrations
   },
@@ -104,7 +104,7 @@ const alreadyClean = {
   settings: {
     ".name": "settings",
     ".type": "settings",
-    config_version: "1.0.5",
+    config_version: "1.8.0",
     proxy_mode: "tproxy",
     tun_interface: "tun0",
     tun_inet4: "172.19.0.1/30",

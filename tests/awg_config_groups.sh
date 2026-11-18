@@ -315,7 +315,7 @@ fs.writeFileSync(
     settings: {
       '.name': 'settings',
       '.type': 'settings',
-      config_version: '1.0.5',
+      config_version: '1.8.0',
       applied_migrations: [
         'interface_sections',
         'enable_component_checks',

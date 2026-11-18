@@ -29,325 +29,246 @@ grep -Fq '{ id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_def
 grep -Fq 'release_at_most(ctx, "1.0.1")' "$MIGRATION" ||
   fail "release-specific migrations must use the source release only as a condition"
 grep -Fq 'release_at_most(ctx, "1.0.4")' "$MIGRATION" ||
-  fail "HTTP connection URLs must only migrate from Forkop 1.0.4 and below"
+  fail "HTTP connection URLs must only migrate from 1.0.4 and below"
 
-eval "$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/core/constants.uc" shell-env)"
-export ZAPRET_LEGACY_DEFAULT_NFQWS_OPT ZAPRET_DEFAULT_NFQWS_OPT
-
-node >"$WORK_DIR/fixture.json" <<'NODE'
-const fixture = {
-  settings: {
-    '.name': 'settings',
-    '.type': 'settings',
-    download_lists_via_proxy: '1',
-    download_subscriptions_via_proxy: '1',
-    download_lists_via_proxy_section: 'legacy-urltest',
-    dns_server: '9.9.9.9',
-    bootstrap_dns_server: '1.1.1.1',
-    routing_excluded_ips: [ '192.0.2.0/24' ]
+# Native Tachyon migration semantics: priority_level -> outbound_group (including regex alias),
+# urltest -> balancer, scalar/list domain and domain_text extraction -> condition,
+# validator.uc fixture check, connections.trace_rules verification, and idempotency.
+cat >"$WORK_DIR/native-semantics.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_version": "1.0.4",
+    "dns_server": [ "9.9.9.9" ],
+    "bootstrap_dns_server": [ "1.1.1.1" ]
   },
-  rule: [
+  "section": [
     {
-      '.name': 'legacy-url',
-      '.type': 'rule',
-      enabled: '1',
-      connection_type: 'proxy',
-      proxy_config_type: 'url',
-      proxy_string: 'vless://one\n//commented\n ss://two ',
-      enable_udp_over_tcp: '1',
-      outbound_detour_enabled: '1',
-      outbound_detour_section: 'legacy-sub',
-      urltest_check_interval_disabled: '1',
-      domain: [ 'Example.COM', 'full:Already.EXAMPLE' ],
-      domain_keyword_text_mode: '1',
-      domain_keyword_text: 'Video, Stream # comment',
-      domain_regex_text: '^api[.]example$, ^cdn[.]example$',
-      rule_set: [ 'https://example.com/domains.srs' ],
-      rule_set_with_subnets: [ 'https://example.com/mixed.srs' ]
+      ".name": "main",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000001@example.com:443#Alpha"
+      ],
+      "domain": [
+        "example.com",
+        "full:exact.example.net",
+        "keyword:video",
+        "regex:^api[.]example[.]org$"
+      ]
+    },
+    {
+      ".name": "scalar_dom",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000002@example.com:443#Beta"
+      ],
+      "domain": "scalar.example full:exact-scalar.example"
+    },
+    {
+      ".name": "text_dom",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000003@example.com:443#Gamma"
+      ],
+      "domain_text_mode": "1",
+      "domain_text": "exact-text.example",
+      "domain_suffix_text_mode": "1",
+      "domain_suffix_text": "textdom.example"
     }
   ],
-  section: [
+  "priority_group": [
     {
-      '.name': 'legacy-sub',
-      '.type': 'section',
-      action: 'proxy',
-      proxy_config_type: 'subscription',
-      subscription_url: 'https://example.com/sub.txt',
-      subscription_user_agent: 'Agent/1.0',
-      subscription_update_interval_disabled: '1',
-      urltest_enabled: '1',
-      urltest_filter_mode: 'include',
-      detect_server_country: '1'
+      ".name": "pg_main",
+      ".type": "priority_group",
+      "section": "main",
+      "name": "Primary"
+    }
+  ],
+  "priority_level": [
+    {
+      ".name": "pl_inc",
+      ".type": "priority_level",
+      "group": "pg_main",
+      "order": "1",
+      "name": "Level1",
+      "filter_mode": "include",
+      "include_regex": [ "US.*", "DE.*" ],
+      "exclude_regex": ".*bad.*"
     },
     {
-      '.name': 'legacy-urltest',
-      '.type': 'section',
-      connection_type: 'proxy',
-      proxy_config_type: 'urltest',
-      urltest_proxy_links: [ 'vmess://a', 'vmess://a', 'trojan://b' ],
-      urltest_exclude_regex: [ 'bad.*' ],
-      urltest_enabled: '1',
-      detect_server_country: '0'
-    },
+      ".name": "pl_legacy_re",
+      ".type": "priority_level",
+      "group": "pg_main",
+      "order": "2",
+      "name": "Level2",
+      "filter_mode": "include",
+      "regex": "NL.*"
+    }
+  ],
+  "urltest": [
     {
-      '.name': 'legacy-list-sub',
-      '.type': 'section',
-      action: 'proxy',
-      subscription_urls: [
-        'https://example.com/list.txt | ListAgent/2.0',
-        'https://example.com/auto.txt'
-      ],
-      subscription_update_interval: '6h'
-    },
-    {
-      '.name': 'legacy-direct',
-      '.type': 'section',
-      action: 'direct',
-      ip_cidr: [ '198.51.100.0/24' ]
-    },
-    {
-      '.name': 'legacy-exclusion',
-      '.type': 'section',
-      connection_type: 'exclusion',
-      ip_cidr: [ '203.0.113.0/24' ]
-    },
-    {
-      '.name': 'legacy-zap',
-      '.type': 'section',
-      action: 'zapret',
-      nfqws_opt: process.env.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT,
-      cmd_opts: '--legacy-bye'
-    },
-    {
-      '.name': 'legacy-vpn',
-      '.type': 'section',
-      connection_type: 'vpn',
-      proxy_config_type: 'interface',
-      interface: 'awg0',
-      domain_resolver_enabled: '1',
-      domain_resolver_dns_type: 'doh',
-      domain_resolver_dns_server: 'https://dns.example/dns-query'
-    },
-    {
-      '.name': 'legacy-outbound',
-      '.type': 'section',
-      action: 'outbound',
-      outbound_json: '{"type":"socks","server":"127.0.0.1","server_port":1080,"version":"5"}',
-      outbound_detour_enabled: '1',
-      outbound_detour_section: 'legacy-url'
-    },
-    {
-      '.name': 'legacy-outbound-collision',
-      '.type': 'section',
-      action: 'outbound',
-      outbound_jsons: [ '{"type":"direct","tag":"legacy-outbound-collision-json-2-out"}' ],
-      outbound_json: '{"type":"socks","server":"127.0.0.2","server_port":1080}'
+      ".name": "ut_main",
+      ".type": "urltest",
+      "section": "main",
+      "name": "Fastest",
+      "check_interval": "3m",
+      "tolerance": "50"
     }
   ]
-};
+}
+JSON
 
-process.stdout.write(`${JSON.stringify(fixture, null, 2)}\n`);
-NODE
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/native-semantics.json" >"$WORK_DIR/native-semantics-out.json"
 
-TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/fixture.json" podkop >"$WORK_DIR/output.json"
-
-node - "$WORK_DIR/output.json" <<'NODE'
+node - "$WORK_DIR/native-semantics-out.json" "$WORK_DIR/native-semantics-config.json" <<'NODE'
 const fs = require('fs');
 const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const config = out.config;
-const sections = Object.fromEntries(config.section.map(section => [section['.name'], section]));
-const childByType = type => config[type] || [];
-const subscriptionUrls = childByType('subscription_url');
-const interfaces = childByType('section_interface');
-const urltests = childByType('urltest');
 
-assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']), 'legacy main DNS scalar migrated to ordered list');
-assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
-assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
-assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1', 'ensure_tcp_bbr_default', 'fail_closed_auto_defaults']), 'legacy config should record named migrations');
-
-function assert(condition, message) {
-  if (!condition) {
-    console.error(message);
+function assert(cond, msg) {
+  if (!cond) {
+    console.error(msg);
     process.exit(1);
   }
 }
 
-function absent(object, key, label) {
-  assert(!Object.prototype.hasOwnProperty.call(object, key), `${label}: ${key} should be absent`);
+assert(out.changed === true, '1.0.4 native fixture should migrate');
+assert(config.settings.config_version === '1.8.0', 'migrated config_version must be 1.8.0');
+
+const sections = Object.fromEntries((config.section || []).map(s => [s['.name'], s]));
+const groups = config.outbound_group || [];
+const balancers = config.balancer || [];
+const conditions = config.condition || [];
+
+assert(groups.length >= 2, 'priority_level entries must migrate to outbound_group sections');
+assert(groups.some(g => Array.isArray(g.include_regex) && g.include_regex.includes('US.*') && g.include_regex.includes('DE.*')),
+  'outbound_group must preserve array include_regex');
+assert(groups.some(g => Array.isArray(g.exclude_regex) ? g.exclude_regex.includes('.*bad.*') : g.exclude_regex === '.*bad.*'),
+  'outbound_group must preserve scalar exclude_regex');
+assert(groups.some(g => Array.isArray(g.include_regex) ? g.include_regex.includes('NL.*') : g.include_regex === 'NL.*'),
+  'outbound_group must preserve legacy regex alias as include_regex');
+assert((sections.main.outbound_group_refs || []).length >= 2, 'section must reference migrated outbound_groups');
+
+assert(balancers.some(b => b.name === 'Fastest'), 'urltest must migrate to balancer Fastest');
+assert((sections.main.balancer_refs || []).length >= 1, 'section must reference migrated balancer');
+
+assert(conditions.length >= 3, 'domain/domain_text rules must extract to condition sections');
+for (const name of ['main', 'scalar_dom', 'text_dom']) {
+  assert(Boolean(sections[name].condition_refs && sections[name].condition_refs.length), `${name} must reference extracted condition`);
 }
 
-function childObjects(parent, children) {
-  return children.filter(child => child.section === parent['.name']);
+fs.writeFileSync(process.argv[3], JSON.stringify(config, null, 2) + '\n');
+NODE
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-runtime-fixture "$WORK_DIR/native-semantics-config.json" '{}'
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/native-semantics-config.json" >"$WORK_DIR/native-semantics-out2.json"
+node - "$WORK_DIR/native-semantics-out2.json" <<'NODE'
+const fs = require('fs');
+const out2 = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (out2.changed !== false) {
+  console.error('Second migration pass on migrated native semantics config must be a no-op');
+  process.exit(1);
 }
+NODE
 
-function childValues(parent, children, valueKey) {
-  return childObjects(parent, children).map(child => child[valueKey]).filter(Boolean);
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - "$WORK_DIR/native-semantics-config.json" <<'UCODE'
+let fs = require("fs");
+let connections = require("config.connections");
+let fixture = json(fs.readfile(ARGV[0]));
+for (let s in (fixture.section || [])) {
+    delete s.domain;
+    delete s.domain_text;
+    delete s.domain_text_mode;
+    delete s.domain_suffix_text;
+    delete s.domain_suffix_text_mode;
 }
-
-function childByValue(parent, children, valueKey, value) {
-  return childObjects(parent, children).find(child => child[valueKey] === value);
+connections.set_item_sections_from_data(fixture);
+let check_win = function(domain, expected_id) {
+    let tr = connections.trace_rules({ mode: "exact", domain }, fixture.section);
+    if (tr.winning_section == null || tr.winning_section.id != expected_id) {
+        warn("Expected " + domain + " -> " + expected_id + ", got: " + sprintf("%J", tr.winning_section) + "\n");
+        exit(1);
+    }
+};
+check_win("sub.example.com", "main");
+check_win("exact.example.net", "main");
+check_win("myvideo.net", "main");
+let tr_rx = connections.trace_rules({ mode: "presence", search: "^api[.]example[.]org$" }, fixture.section);
+if (length(tr_rx.presence_sections || []) == 0 || tr_rx.presence_sections[0].id != "main") {
+    warn("Expected presence match for regex:^api[.]example[.]org$ -> main, got: " + sprintf("%J", tr_rx) + "\n");
+    exit(1);
 }
+check_win("sub.scalar.example", "scalar_dom");
+check_win("exact-scalar.example", "scalar_dom");
+check_win("sub.textdom.example", "text_dom");
+check_win("exact-text.example", "text_dom");
+UCODE
 
-function urltestByOwner(parent) {
-  return urltests.find(item => item.section === parent['.name']);
+# Minimal native config (rule section, block_doh, ip_cidr, domain, community_lists) + idempotency
+cat >"$WORK_DIR/native-minimal.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_version": "1.0.3",
+    "block_doh": "1",
+    "dns_server": [ "9.9.9.9" ],
+    "bootstrap_dns_server": [ "1.1.1.1" ]
+  },
+  "rule": [
+    {
+      ".name": "minimal_rule",
+      ".type": "rule",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000001@example.com:443#Minimal"
+      ],
+      "ip_cidr": [ "203.0.113.0/24" ],
+      "domain": [ "minimal.example" ],
+      "community_lists": [ "youtube" ]
+    }
+  ]
 }
+JSON
 
-assert(out.changed === true, 'migration should report changes');
-assert(!config.rule, 'legacy rule sections should be converted');
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/native-minimal.json" >"$WORK_DIR/native-minimal-out.json"
 
-assert(config.settings.list_update_enabled === '0', 'missing list_update_enabled should become disabled');
-assert(config.settings.update_interval === '1d', 'missing update_interval should get 1d default');
-assert(config.settings.download_lists_via_proxy === '1', 'download_lists_via_proxy should be preserved');
-assert(config.settings.download_components_via_proxy === '1', 'download_components_via_proxy should be copied');
-assert(config.settings.download_lists_via_proxy_section === 'legacy-urltest', 'download section should be preserved for lists/components');
-assert(config.settings.download_components_via_proxy_section === 'legacy-urltest', 'component download section should be migrated from the legacy common selector');
-absent(config.settings, 'download_subscriptions_via_proxy', 'settings');
-absent(config.settings, 'routing_excluded_ips', 'settings');
+node - "$WORK_DIR/native-minimal-out.json" "$WORK_DIR/native-minimal-config.json" <<'NODE'
+const fs = require('fs');
+const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const config = out.config;
+if (out.changed !== true || config.settings.config_version !== '1.8.0') {
+  console.error('Minimal native fixture must migrate to 1.8.0');
+  process.exit(1);
+}
+if (config.settings.block_doh !== '1') {
+  console.error('Minimal native fixture must preserve block_doh');
+  process.exit(1);
+}
+if (config.rule || !(config.section && config.section.length === 1 && config.section[0]['.name'] === 'minimal_rule')) {
+  console.error('Minimal native rule section must normalize to section');
+  process.exit(1);
+}
+fs.writeFileSync(process.argv[3], JSON.stringify(config, null, 2) + '\n');
+NODE
 
-const legacyUrl = sections['legacy-url'];
-assert(legacyUrl['.type'] === 'section', 'legacy rule should become section');
-assert(legacyUrl.action === 'connection', 'legacy-url action');
-assert(JSON.stringify(legacyUrl.selector_proxy_links) === JSON.stringify(['vless://one', 'ss://two']), 'proxy_string links');
-assert(legacyUrl.outbound_detour_enabled === '1', 'section cascade enabled preserved');
-assert(legacyUrl.outbound_detour_section === 'legacy-sub', 'section cascade target preserved');
-absent(legacyUrl, 'enable_udp_over_tcp', 'legacy-url');
-const legacyUrlDomains = (legacyUrl.domain || '').split(/\s+/).filter(Boolean);
-assert(legacyUrlDomains.includes('full:Example.COM'), 'full domain list value migrated');
-assert(legacyUrlDomains.includes('full:Already.EXAMPLE'), 'prefixed full domain list value migrated without duplicate prefix');
-assert(!legacyUrlDomains.includes('full:full:Already.EXAMPLE'), 'prefixed full domain list value should not get duplicate prefix');
-assert(legacyUrlDomains.includes('keyword:Video'), 'keyword migrated');
-assert(legacyUrlDomains.includes('keyword:Stream'), 'keyword comment stripped');
-assert(legacyUrlDomains.includes('regex:^api[.]example$'), 'regex migrated');
-assert(legacyUrlDomains.includes('regex:^cdn[.]example$'), 'second regex migrated');
-assert(JSON.stringify(legacyUrl.rule_set) === JSON.stringify(['https://example.com/domains.srs']), 'domain rule set preserved');
-assert(JSON.stringify(legacyUrl.rule_set_with_subnets) === JSON.stringify(['https://example.com/mixed.srs']), 'rule set subnet list preserved');
-absent(legacyUrl, 'proxy_string', 'legacy-url');
-absent(legacyUrl, 'proxy_config_type', 'legacy-url');
-absent(legacyUrl, 'connection_type', 'legacy-url');
-absent(legacyUrl, 'urltest_enabled', 'legacy-url');
-absent(legacyUrl, 'rule_set_settings', 'legacy-url');
-absent(legacyUrl, 'domain_suffix', 'legacy-url');
-absent(legacyUrl, 'rule_set_items', 'legacy-url');
-absent(legacyUrl, 'domain_keyword_text', 'legacy-url');
-absent(legacyUrl, 'domain_regex_text', 'legacy-url');
-
-const legacySub = sections['legacy-sub'];
-assert(JSON.stringify(childValues(legacySub, subscriptionUrls, 'url')) === JSON.stringify(['https://example.com/sub.txt']), 'subscription entry');
-assert(legacySub.action === 'connection', 'legacy-sub action');
-const legacySubSource = childObjects(legacySub, subscriptionUrls)[0];
-assert(legacySubSource.user_agent === 'Agent/1.0', 'subscription user-agent setting');
-assert(legacySubSource.auto_user_agent === '0', 'subscription user-agent manual mode');
-assert(legacySubSource.auto_hwid === '1', 'subscription HWID auto-generation');
-assert(legacySubSource.prefix_nodes === '0', 'subscription node prefix disabled by default');
-assert(legacySubSource.include_urltest_groups === '1', 'subscription URLTest groups import default');
-assert(legacySubSource.hide_urltest_group_outbounds === '1', 'subscription URLTest group member hiding default');
-assert(legacySubSource.hide_detour_outbounds === '1', 'subscription detour hiding default');
-assert(legacySubSource.subscription_update_enabled === '0', 'subscription update disabled flag');
-assert(legacySubSource.download_via_proxy_enabled === '1', 'subscription download through section flag');
-assert(legacySubSource.download_via_proxy_section === 'legacy-urltest', 'subscription download target');
-absent(legacySub, 'urltests', 'legacy-sub');
-const legacySubUrltest = urltestByOwner(legacySub);
-assert(Boolean(legacySubUrltest), 'legacy-sub URLTest child migrated');
-assert(legacySubUrltest.section === 'legacy-sub', 'legacy-sub URLTest owner migrated');
-absent(legacySubUrltest, 'id', 'legacy-sub URLTest');
-absent(legacySubUrltest, 'display_name', 'legacy-sub URLTest');
-assert(legacySubUrltest.name === 'Fastest', 'legacy-sub URLTest name migrated');
-assert(legacySubUrltest.check_interval === '3m', 'legacy-sub URLTest interval default migrated');
-assert(legacySubUrltest.tolerance === '50', 'legacy-sub URLTest tolerance default migrated');
-assert(legacySubUrltest.testing_url === 'https://www.gstatic.com/generate_204', 'legacy-sub URLTest URL default migrated');
-assert(legacySubUrltest.filter_mode === 'include', 'legacy-sub URLTest filter mode migrated');
-assert(legacySubUrltest.detect_server_country === 'flag_emoji', 'legacy-sub detect server country normalized');
-assert(legacySubUrltest.interrupt_exist_connections === '1', 'legacy-sub URLTest interrupt default migrated');
-assert(legacySubUrltest.pin_dashboard === '1', 'legacy-sub URLTest dashboard pin default migrated');
-absent(legacySub, 'subscription_update_enabled', 'legacy-sub');
-absent(legacySub, 'subscription_update_interval', 'legacy-sub');
-absent(legacySub, 'subscription_urls', 'legacy-sub');
-absent(legacySub, 'subscription_url_items', 'legacy-sub');
-absent(legacySub, 'subscription_url_settings', 'legacy-sub');
-absent(legacySub, 'subscription_url', 'legacy-sub');
-absent(legacySub, 'subscription_user_agent', 'legacy-sub');
-absent(legacySub, 'proxy_config_type', 'legacy-sub');
-absent(legacySub, 'urltest_enabled', 'legacy-sub');
-absent(legacySub, 'urltest_filter_mode', 'legacy-sub');
-absent(legacySub, 'detect_server_country', 'legacy-sub');
-
-const legacyListSub = sections['legacy-list-sub'];
-assert(JSON.stringify(childValues(legacyListSub, subscriptionUrls, 'url')) === JSON.stringify(['https://example.com/list.txt', 'https://example.com/auto.txt']), 'legacy list subscription entries normalized');
-const legacyListSubSource = childByValue(legacyListSub, subscriptionUrls, 'url', 'https://example.com/list.txt');
-const legacyListSubAutoSource = childByValue(legacyListSub, subscriptionUrls, 'url', 'https://example.com/auto.txt');
-assert(legacyListSubSource.user_agent === 'ListAgent/2.0', 'legacy list subscription user-agent migrated');
-assert(legacyListSubSource.auto_user_agent === '0', 'legacy list subscription manual user-agent mode');
-assert(legacyListSubSource.subscription_update_interval === '6h', 'legacy list subscription interval migrated');
-assert(legacyListSubAutoSource.auto_user_agent === '1', 'legacy list subscription without User-Agent stays automatic');
-assert(!Object.prototype.hasOwnProperty.call(legacyListSubAutoSource, 'user_agent'), 'automatic legacy list subscription should not get user-agent');
-absent(legacyListSub, 'subscription_url_settings', 'legacy-list-sub');
-absent(legacyListSub, 'subscription_url_items', 'legacy-list-sub');
-
-const legacyUrltest = sections['legacy-urltest'];
-assert(legacyUrltest.action === 'connection', 'legacy-urltest action');
-assert(JSON.stringify(legacyUrltest.selector_proxy_links) === JSON.stringify(['vmess://a', 'trojan://b']), 'urltest links deduped');
-absent(legacyUrltest, 'urltests', 'legacy-urltest');
-const legacyUrltestConfig = urltestByOwner(legacyUrltest);
-assert(Boolean(legacyUrltestConfig), 'legacy-urltest URLTest child migrated');
-absent(legacyUrltestConfig, 'id', 'legacy-urltest URLTest');
-absent(legacyUrltestConfig, 'display_name', 'legacy-urltest URLTest');
-assert(legacyUrltestConfig.name === 'Fastest', 'legacy-urltest URLTest name migrated');
-assert(legacyUrltestConfig.filter_mode === 'exclude', 'legacy-urltest URLTest filter mode migrated');
-assert(legacyUrltestConfig.detect_server_country === 'flag_emoji', 'legacy-urltest detect server country normalized');
-assert(JSON.stringify(legacyUrltestConfig.exclude_regex) === JSON.stringify(['bad.*']), 'legacy-urltest exclude regex migrated');
-absent(legacyUrltest, 'urltest_proxy_links', 'legacy-urltest');
-absent(legacyUrltest, 'urltest_enabled', 'legacy-urltest');
-absent(legacyUrltest, 'urltest_filter_mode', 'legacy-urltest');
-absent(legacyUrltest, 'detect_server_country', 'legacy-urltest');
-absent(legacyUrltest, 'urltest_exclude_regex', 'legacy-urltest');
-
-const legacyDirect = sections['legacy-direct'];
-assert(legacyDirect.action === 'bypass', 'direct action migrated to bypass');
-
-const legacyExclusion = sections['legacy-exclusion'];
-assert(legacyExclusion.action === 'bypass', 'legacy exclusion connection type migrated to bypass');
-absent(legacyExclusion, 'connection_type', 'legacy-exclusion');
-
-const legacyZap = sections['legacy-zap'];
-assert(legacyZap.action === 'desync', 'zapret section migrated to desync');
-assert(legacyZap.desync_preset === 'auto', 'zapret section migrated to desync_preset=auto');
-assert(legacyZap.enabled !== '0', 'migrated zapret section stays enabled');
-absent(legacyZap, 'nfqws_opt', 'legacy-zap');
-absent(legacyZap, 'byedpi_cmd_opts', 'legacy-zap');
-absent(legacyZap, 'cmd_opts', 'legacy-zap');
-
-const legacyVpn = sections['legacy-vpn'];
-assert(legacyVpn.action === 'connection', 'vpn action inferred');
-assert(JSON.stringify(childValues(legacyVpn, interfaces, 'name')) === JSON.stringify(['awg0']), 'vpn interface migrated to interface item');
-const legacyVpnInterface = childObjects(legacyVpn, interfaces)[0];
-assert(legacyVpnInterface.domain_resolver_enabled === '1', 'vpn domain resolver enabled migrated');
-assert(legacyVpnInterface.domain_resolver_dns_type === 'doh', 'vpn domain resolver type migrated');
-assert(legacyVpnInterface.domain_resolver_dns_server === 'https://dns.example/dns-query', 'vpn domain resolver server migrated');
-absent(legacyVpn, 'proxy_config_type', 'legacy-vpn');
-absent(legacyVpn, 'interface', 'legacy-vpn');
-absent(legacyVpn, 'interfaces', 'legacy-vpn');
-absent(legacyVpn, 'interface_items', 'legacy-vpn');
-absent(legacyVpn, 'domain_resolver_enabled', 'legacy-vpn');
-absent(legacyVpn, 'domain_resolver_dns_type', 'legacy-vpn');
-absent(legacyVpn, 'domain_resolver_dns_server', 'legacy-vpn');
-
-const legacyOutbound = sections['legacy-outbound'];
-assert(legacyOutbound.action === 'connection', 'outbound action inferred');
-assert(Array.isArray(legacyOutbound.outbound_jsons) && legacyOutbound.outbound_jsons.length === 1, 'legacy JSON outbound migrated to list');
-const migratedLegacyOutbound = JSON.parse(legacyOutbound.outbound_jsons[0]);
-assert(migratedLegacyOutbound.detour === 'legacy-url-out', 'legacy JSON cascade embedded in outbound');
-assert(migratedLegacyOutbound.tag === 'legacy-outbound-json-1-out', 'legacy tagless JSON outbound gets a stable list tag');
-absent(legacyOutbound, 'outbound_detour_enabled', 'legacy-outbound');
-absent(legacyOutbound, 'outbound_detour_section', 'legacy-outbound');
-
-const legacyOutboundCollision = sections['legacy-outbound-collision'];
-assert(legacyOutboundCollision.outbound_jsons.length === 2, 'legacy JSON outbound is appended to an existing list');
-assert(JSON.parse(legacyOutboundCollision.outbound_jsons[1]).tag === 'legacy-outbound-collision-json-2-out-1', 'legacy JSON outbound tag avoids existing list tags');
-
-assert(out.removed_caches.includes('/tmp/tachyon-core/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
-assert(out.removed_caches.includes('/var/run/tachyon/section-cache/legacy-sub.json'), 'section cache removal');
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/native-minimal-config.json" >"$WORK_DIR/native-minimal-out2.json"
+node - "$WORK_DIR/native-minimal-out2.json" <<'NODE'
+const fs = require('fs');
+const out2 = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (out2.changed !== false) {
+  console.error('Minimal native fixture second migration pass must be idempotent');
+  process.exit(1);
+}
 NODE
 
 cat >"$WORK_DIR/tachyon-1.0.1.json" <<'JSON'
@@ -385,7 +306,7 @@ function assert(condition, message) {
 }
 
 assert(out.changed === true, '1.0.1 config should require migration');
-assert(out.config.settings.config_version === '1.0.5', 'config schema version should advance to 1.0.5');
+assert(out.config.settings.config_version === '1.8.0', 'config schema version should advance to 1.8.0');
 assert(out.config.settings.component_update_check_enabled === '1', 'updates from 1.0.1 and below should enable component update checks');
 assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1', 'ensure_tcp_bbr_default', 'fail_closed_auto_defaults']), 'named migrations should be recorded');
 assert(!Object.prototype.hasOwnProperty.call(section, 'interfaces'), 'parent interface list should be removed');
@@ -424,11 +345,11 @@ function assert(condition, message) {
 }
 
 assert(out.config.settings.component_update_check_enabled === '0', '1.0.2 config must preserve an explicitly disabled component check');
-assert(out.config.settings.config_version === '1.0.5', '1.0.2 config should advance through the HTTP URL migration schema');
+assert(out.config.settings.config_version === '1.8.0', '1.0.2 config should advance through the HTTP URL migration schema');
 assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1', 'ensure_tcp_bbr_default', 'fail_closed_auto_defaults']), 'newer configs should mark skipped migrations');
 NODE
 
-cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
+cat >"$WORK_DIR/tachyon-1.0.4-http.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -454,9 +375,9 @@ cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
 }
 JSON
 
-TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.4-http.json" >"$WORK_DIR/forkop-1.0.4-http-output.json"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/tachyon-1.0.4-http.json" >"$WORK_DIR/tachyon-1.0.4-http-output.json"
 
-node - "$WORK_DIR/forkop-1.0.4-http-output.json" <<'NODE'
+node - "$WORK_DIR/tachyon-1.0.4-http-output.json" <<'NODE'
 const fs = require('fs');
 const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const section = out.config.section[0];
@@ -469,7 +390,7 @@ function assert(condition, message) {
   }
 }
 
-assert(out.config.settings.config_version === '1.0.5', '1.0.4 config should advance to schema 1.0.5');
+assert(out.config.settings.config_version === '1.8.0', '1.0.4 config should advance to schema 1.8.0');
 assert(JSON.stringify(section.selector_proxy_links) === JSON.stringify([
   'vless://00000000-0000-4000-8000-000000000001@example.com:443',
   'https://invalid.example/no-port',
@@ -494,7 +415,7 @@ assert(jsonOutbounds[2].type === 'direct' && jsonOutbounds[2].tag === 'http', 'e
 assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1', 'ensure_tcp_bbr_default', 'fail_closed_auto_defaults']), 'HTTP URL migration should be recorded');
 NODE
 
-cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'
+cat >"$WORK_DIR/tachyon-1.0.5-http.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -512,13 +433,17 @@ cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'
 }
 JSON
 
-TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.5-http.json" >"$WORK_DIR/forkop-1.0.5-http-output.json"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/tachyon-1.0.5-http.json" >"$WORK_DIR/tachyon-1.0.5-http-output.json"
 
-node - "$WORK_DIR/forkop-1.0.5-http-output.json" <<'NODE'
+node - "$WORK_DIR/tachyon-1.0.5-http-output.json" <<'NODE'
 const fs = require('fs');
 const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const section = out.config.section[0];
 
+if (out.changed !== true || out.config.settings.config_version !== '1.8.0') {
+  console.error('1.0.5 config should advance schema version to 1.8.0');
+  process.exit(1);
+}
 if (JSON.stringify(section.selector_proxy_links) !== JSON.stringify(['http://proxy.example:8080']) || section.outbound_jsons) {
   console.error('1.0.5 and newer configs must not run the legacy HTTP URL conversion');
   process.exit(1);
@@ -527,22 +452,18 @@ NODE
 
 cat >"$WORK_DIR/runtime-migrate.state" <<'EOF_UCI'
 tachyon.settings=settings
-tachyon.settings.routing_excluded_ips=192.0.2.0/24
 tachyon.legacy=rule
 tachyon.legacy.enabled=1
 tachyon.legacy.connection_type=proxy
 tachyon.legacy.proxy_config_type=url
 tachyon.legacy.proxy_string=vless://one
-tachyon.old_direct=section
+tachyon.old_direct=rule
 tachyon.old_direct.enabled=1
 tachyon.old_direct.action=direct
 tachyon.vpn=section
 tachyon.vpn.enabled=1
-tachyon.vpn.connection_type=vpn
-tachyon.vpn.interface=awg0
-tachyon.vpn.domain_resolver_enabled=1
-tachyon.vpn.domain_resolver_dns_type=doh
-tachyon.vpn.domain_resolver_dns_server=https://dns.example/dns-query
+tachyon.vpn.action=connection
+tachyon.vpn.interfaces=awg0
 EOF_UCI
 mkdir -p "$WORK_DIR/runtime" "$WORK_DIR/persistent-cache"
 : >"$WORK_DIR/runtime-migrate.log"
@@ -553,14 +474,16 @@ TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
 TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
 TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
 TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-podkop
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 
 grep -Fxq 'tachyon.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert legacy rule type through core.uci"
 grep -Fxq 'tachyon.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must write migrated action through core.uci"
+grep -Fxq 'tachyon.old_direct=section' "$WORK_DIR/runtime-migrate.state" ||
+  fail "runtime migration must convert legacy direct rule type to section"
 grep -Fxq 'tachyon.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
-  fail "runtime migration must convert direct action to bypass through core.uci"
+  fail "runtime migration must convert direct rule action to bypass through core.uci"
 grep -Eq '^tachyon\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
 grep -Fxq 'tachyon.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must keep connection URLs in the parent section"
@@ -571,13 +494,10 @@ grep -Eq '^tachyon\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-migrate.
   fail "runtime migration must create an anonymous interface settings section"
 grep -Eq '^tachyon\.cfg[0-9a-f]+\.section=vpn$' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime interface settings section must reference its parent"
-grep -Eq '^tachyon\.cfg[0-9a-f]+\.name=' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^tachyon\.cfg[0-9a-f]+\.name=awg0$' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime interface settings section must store the interface name"
 if grep -Fq 'tachyon.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete migrated urltest_enabled through core.uci"
-fi
-if grep -Fq 'tachyon.settings.routing_excluded_ips=' "$WORK_DIR/runtime-migrate.state"; then
-  fail "runtime migration must delete removed routing_excluded_ips through core.uci"
 fi
 if grep -Fq 'tachyon.legacy.proxy_string=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete legacy proxy_string through core.uci"
@@ -602,7 +522,7 @@ TACHYON_CONFIG_NAME="tachyon" \
 TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 
-grep -Fxq 'tachyon.settings.config_version=1.0.5' "$WORK_DIR/runtime-version.state" ||
+grep -Fxq 'tachyon.settings.config_version=1.8.0' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must advance config_version"
 grep -Fxq 'tachyon.settings.component_update_check_enabled=1' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must enable component update checks"
@@ -705,7 +625,7 @@ ucode -L "$TACHYON_LIB" "$MIGRATION" commit
 grep -Fxq 'commit tachyon' "$WORK_DIR/uci-commit.log" ||
   fail "commit mode must commit tachyon through core.uci"
 
-# Regression: forkop configs often lack bootstrap_dns_server.
+# Regression: pre-1.0.5 configs often lack bootstrap_dns_server.
 # The ensure_dns_server_defaults migration must inject a default so the validator
 # does not abort Tachyon startup with "At least one Bootstrap DNS server is required".
 cat >"$WORK_DIR/no_bootstrap.state" <<'EOF_UCI'
@@ -725,7 +645,7 @@ ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 grep -Fq 'tachyon.settings.bootstrap_dns_server=77.88.8.8' "$WORK_DIR/no_bootstrap.state" ||
   fail "ensure_dns_server_defaults must inject 77.88.8.8 when bootstrap_dns_server is missing"
 
-# Regression: forkop configs with neither dns_server nor bootstrap_dns_server must
+# Regression: pre-1.0.5 configs with neither dns_server nor bootstrap_dns_server must
 # get both defaults injected.
 cat >"$WORK_DIR/no_dns.state" <<'EOF_UCI'
 tachyon.settings=settings
@@ -1057,5 +977,137 @@ must(uci.get("tachyon", "src_byedpi", "source_type") == "desync", "standalone sr
 must(uci.get("tachyon", "src_byedpi", "desync_preset") == "auto", "standalone src_byedpi must set desync_preset=auto");
 must(uci.get("tachyon", "src_byedpi", "byedpi_opts") == "", "standalone src_byedpi.byedpi_opts must be removed");
 UCODE
+
+# Negative case: standalone user-installed sing-box must be backed up non-destructively
+# without deleting standalone init, binary, config, or cache artifacts.
+STANDALONE_ROOT="$WORK_DIR/cleanup_standalone"
+mkdir -p \
+  "$STANDALONE_ROOT/etc/sing-box" \
+  "$STANDALONE_ROOT/etc/config" \
+  "$STANDALONE_ROOT/etc/init.d" \
+  "$STANDALONE_ROOT/etc/rc.d" \
+  "$STANDALONE_ROOT/usr/bin" \
+  "$STANDALONE_ROOT/tmp/sing-box"
+printf '{"standalone":true,"v":1}\n' >"$STANDALONE_ROOT/etc/sing-box/config.json"
+printf "config sing-box 'standalone'\n" >"$STANDALONE_ROOT/etc/config/sing-box"
+cat >"$STANDALONE_ROOT/etc/init.d/sing-box" <<'EOF_INIT'
+#!/bin/sh
+printf '%s\n' "$*" >>"${0}.invoked"
+EOF_INIT
+chmod +x "$STANDALONE_ROOT/etc/init.d/sing-box"
+printf '#!/bin/sh\n' >"$STANDALONE_ROOT/etc/rc.d/S99sing-box"
+printf 'standalone-bin\n' >"$STANDALONE_ROOT/usr/bin/sing-box"
+printf 'standalone-cache\n' >"$STANDALONE_ROOT/tmp/sing-box/cache.db"
+
+TACHYON_LEGACY_CLEANUP_ROOT="$STANDALONE_ROOT" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let mig = require("config.migration");
+if (mig.has_tachyon_managed_singbox_marker()) {
+    warn("FAIL: standalone sing-box root must not report Tachyon managed marker\n");
+    exit(1);
+}
+mig.cleanup_legacy_core_artifacts();
+UCODE
+
+test -f "$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ||
+  fail "standalone cleanup check must back up /etc/sing-box/config.json"
+test -f "$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/sing-box" ||
+  fail "standalone cleanup check must back up /etc/config/sing-box"
+grep -Fq '"v":1' "$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ||
+  fail "backed up sing-box config.json content mismatch"
+grep -Fq "config sing-box 'standalone'" "$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/sing-box" ||
+  fail "backed up /etc/config/sing-box content mismatch"
+
+for keep_path in \
+  "$STANDALONE_ROOT/etc/sing-box/config.json" \
+  "$STANDALONE_ROOT/etc/config/sing-box" \
+  "$STANDALONE_ROOT/etc/init.d/sing-box" \
+  "$STANDALONE_ROOT/etc/rc.d/S99sing-box" \
+  "$STANDALONE_ROOT/usr/bin/sing-box" \
+  "$STANDALONE_ROOT/tmp/sing-box/cache.db"; do
+  test -f "$keep_path" || fail "standalone sing-box artifact must be preserved: $keep_path"
+done
+test ! -e "$STANDALONE_ROOT/etc/init.d/sing-box.invoked" ||
+  fail "standalone /etc/init.d/sing-box must never be invoked during cleanup"
+
+# Re-running backup/cleanup must preserve pre-existing backups without overwriting
+printf '{"backup":"preserved"}\n' >"$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json"
+printf '{"standalone":true,"v":2}\n' >"$STANDALONE_ROOT/etc/sing-box/config.json"
+TACHYON_LEGACY_CLEANUP_ROOT="$STANDALONE_ROOT" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let mig = require("config.migration");
+mig.cleanup_legacy_core_artifacts();
+UCODE
+grep -Fq '"backup":"preserved"' "$STANDALONE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ||
+  fail "existing external sing-box backup must be preserved across subsequent runs"
+
+# Positive cases: every Tachyon-managed marker creates external backups first and removes managed artifacts
+for marker_case in init_marker version_marker variant_marker backup_marker; do
+  CASE_ROOT="$WORK_DIR/cleanup_${marker_case}"
+  mkdir -p \
+    "$CASE_ROOT/etc/sing-box" \
+    "$CASE_ROOT/etc/config" \
+    "$CASE_ROOT/etc/init.d" \
+    "$CASE_ROOT/etc/rc.d" \
+    "$CASE_ROOT/etc/tachyon/component-backups" \
+    "$CASE_ROOT/usr/bin" \
+    "$CASE_ROOT/tmp/sing-box"
+  printf '{"managed":"%s"}\n' "$marker_case" >"$CASE_ROOT/etc/sing-box/config.json"
+  printf "config sing-box '%s'\n" "$marker_case" >"$CASE_ROOT/etc/config/sing-box"
+  if [ "$marker_case" = "init_marker" ]; then
+    cat >"$CASE_ROOT/etc/init.d/sing-box" <<'EOF_INIT'
+#!/bin/sh
+# Tachyon managed sing-box service
+printf '%s\n' "$*" >>"$(dirname "$0")/sing-box-init-calls.log"
+EOF_INIT
+  else
+    cat >"$CASE_ROOT/etc/init.d/sing-box" <<'EOF_INIT'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname "$0")/sing-box-init-calls.log"
+EOF_INIT
+  fi
+  chmod +x "$CASE_ROOT/etc/init.d/sing-box"
+  printf '#!/bin/sh\n' >"$CASE_ROOT/etc/rc.d/S99sing-box"
+  printf 'managed-bin\n' >"$CASE_ROOT/usr/bin/sing-box"
+  printf 'managed-cache\n' >"$CASE_ROOT/tmp/sing-box/cache.db"
+
+  case "$marker_case" in
+    version_marker) printf '1.10.0\n' >"$CASE_ROOT/etc/tachyon/sing-box-version" ;;
+    variant_marker) printf 'extended\n' >"$CASE_ROOT/etc/tachyon/sing-box-variant" ;;
+    backup_marker) printf 'backup-data\n' >"$CASE_ROOT/etc/tachyon/component-backups/sing_box" ;;
+  esac
+
+  TACHYON_LEGACY_CLEANUP_ROOT="$CASE_ROOT" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let mig = require("config.migration");
+if (!mig.has_tachyon_managed_singbox_marker()) {
+    warn("FAIL: expected Tachyon managed sing-box marker to be detected\n");
+    exit(1);
+}
+mig.cleanup_legacy_core_artifacts();
+UCODE
+
+  test -f "$CASE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ||
+    fail "$marker_case: /etc/sing-box/config.json backup missing"
+  grep -Fq "\"$marker_case\"" "$CASE_ROOT/etc/tachyon/external-configs-backup/sing-box/config.json" ||
+    fail "$marker_case: backed up config.json mismatch"
+  test -f "$CASE_ROOT/etc/tachyon/external-configs-backup/sing-box/sing-box" ||
+    fail "$marker_case: /etc/config/sing-box backup missing"
+  grep -Fq "config sing-box '$marker_case'" "$CASE_ROOT/etc/tachyon/external-configs-backup/sing-box/sing-box" ||
+    fail "$marker_case: backed up /etc/config/sing-box mismatch"
+
+  grep -Fxq 'stop' "$CASE_ROOT/etc/init.d/sing-box-init-calls.log" ||
+    fail "$marker_case: expected /etc/init.d/sing-box stop"
+  grep -Fxq 'disable' "$CASE_ROOT/etc/init.d/sing-box-init-calls.log" ||
+    fail "$marker_case: expected /etc/init.d/sing-box disable"
+
+  test ! -e "$CASE_ROOT/etc/init.d/sing-box" ||
+    fail "$marker_case: managed /etc/init.d/sing-box should be removed"
+  test ! -e "$CASE_ROOT/etc/rc.d/S99sing-box" ||
+    fail "$marker_case: managed rc.d symlink should be removed"
+  test ! -e "$CASE_ROOT/etc/tachyon/sing-box-version" ||
+    fail "$marker_case: sing-box-version marker should be removed"
+  test ! -e "$CASE_ROOT/etc/tachyon/sing-box-variant" ||
+    fail "$marker_case: sing-box-variant marker should be removed"
+  test ! -e "$CASE_ROOT/etc/tachyon/component-backups/sing_box" ||
+    fail "$marker_case: component-backups/sing_box marker should be removed"
+done
 
 printf 'installer config migration checks passed\n'

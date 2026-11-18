@@ -11,7 +11,7 @@ cat >"$WORK_DIR/issue392_input.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_version": "1.0.5",
+    "config_version": "1.8.0",
     "dns_server": "1.1.1.1",
     "applied_migrations": [
       "interface_sections",

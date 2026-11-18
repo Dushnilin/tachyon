@@ -160,11 +160,6 @@ function constants_map() {
 
     c.TACHYON_LISTS_RAW_URL = env("TACHYON_LISTS_RAW_URL", "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release");
     c.GITHUB_RAW_URL = env("GITHUB_RAW_URL", c.TACHYON_LISTS_RAW_URL);
-    c.SRS_MAIN_URL = env("SRS_MAIN_URL", c.TACHYON_LISTS_RAW_URL + "/sing-box");
-    c.SRS_ADS_HAGEZI_PRO_URL = env("SRS_ADS_HAGEZI_PRO_URL", c.TACHYON_LISTS_RAW_URL + "/sing-box/ads_hagezi_pro.srs");
-    c.SRS_SUPERCELL_URL = env("SRS_SUPERCELL_URL", c.TACHYON_LISTS_RAW_URL + "/sing-box/supercell.srs");
-    c.SRS_GITHUB_URL = env("SRS_GITHUB_URL", c.TACHYON_LISTS_RAW_URL + "/sing-box/github.srs");
-    c.SRS_TWITCH_URL = env("SRS_TWITCH_URL", c.TACHYON_LISTS_RAW_URL + "/sing-box/twitch.srs");
     c.SUBNETS_TWITTER = env("SUBNETS_TWITTER", c.TACHYON_LISTS_RAW_URL + "/subnets/twitter.lst");
     c.SUBNETS_META = env("SUBNETS_META", c.TACHYON_LISTS_RAW_URL + "/subnets/meta.lst");
     c.SUBNETS_DISCORD = env("SUBNETS_DISCORD", c.TACHYON_LISTS_RAW_URL + "/subnets/discord.lst");
