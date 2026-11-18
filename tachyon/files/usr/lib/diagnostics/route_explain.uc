@@ -297,11 +297,37 @@ function domain_matches_regex(target_domain, pattern) {
     pattern = trim(as_string(pattern));
     if (pattern == "") return false;
     try {
-        let r = match(target_domain, pattern);
+        let r = match(target_domain, regexp(pattern));
         return r != null;
     } catch (e) {
         return false;
     }
+}
+
+function find_excluded_domain_match(section, target_domain) {
+    let exc = connections.excluded_domain_conditions(section);
+    for (let d in (exc.domain || [])) {
+        if (domain_matches_exact(target_domain, d))
+            return "full:" + d;
+    }
+    for (let s in (exc.domain_suffix || [])) {
+        if (domain_matches_suffix(target_domain, s))
+            return "domain:" + s;
+    }
+    for (let kw in (exc.domain_keyword || [])) {
+        if (domain_matches_keyword(target_domain, kw))
+            return "keyword:" + kw;
+    }
+    for (let rx in (exc.domain_regex || [])) {
+        if (domain_matches_regex(target_domain, rx))
+            return "regex:" + rx;
+    }
+    return null;
+}
+
+function is_boolean_flag_token(value) {
+    let v = lc(trim(as_string(value)));
+    return v == "" || v == "0" || v == "1" || v == "true" || v == "false" || v == "yes" || v == "no" || v == "on" || v == "off";
 }
 
 // ─── Community Services Catalog ───────────────────────────────────────────────
@@ -342,7 +368,7 @@ const KNOWN_COMMUNITY_DOMAINS = {
     rockstar: [ "rockstargames.com", "cfx.re", "fivem.net", "2k.com" ],
     pubg: [ "pubg.com", "krafton.com", "reachthefinals.com", "dayz.com", "vrchat.com", "deadbydaylight.com", "pathofexile.com", "warframe.com", "guildwars2.com", "albiononline.com", "easy.ac", "battleye.com" ],
     supercell: [ "supercell.com", "clashofclans.com", "clashroyale.com", "brawlstars.com" ],
-    ads_hagezi_pro: [ "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com", "an.yandex.ru", "mc.yandex.ru" ],
+    ads_hagezi_pro: [ "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com", "an.yandex.ru", "mc.yandex.ru", "metrika.yandex.ru" ],
     xiaomi_smarttv_ads: [ "api.ad.xiaomi.com", "tracking.miui.com", "mistat.xiaomi.com", "sdkconfig.ad.xiaomi.com", "samsungads.com", "lgad.cjpowercast.com" ],
     meta_ads: [ "an.facebook.com", "pixel.facebook.com", "graph.instagram.com" ],
     netflix: [ "netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com" ],
@@ -961,6 +987,7 @@ function effective_section_for_match(section) {
         "community_lists", "community", "community_subnets", "rule_set",
         "rule_set_with_subnets", "domain_ip_lists", "domain_lists", "custom_domain_lists",
         "domain", "domain_suffix", "domain_keyword", "domain_regex", "user_domains",
+        "excluded_domains", "excluded_domains_text",
         "ip_cidr", "ip", "subnets", "ports", "port", "protocol", "excluded_protocol",
         "source_ip_cidr", "fully_routed_ips", "excluded_ips",
         "device_ip", "devices", "device_mac", "source_macs", "dscp", "source_inbounds",
@@ -1034,7 +1061,7 @@ function resolve_effective_section_action(section, uci_cfg) {
     return act;
 }
 
-function evaluate_atomic_clause_match(section, client_info, target_info, port, proto) {
+function evaluate_atomic_clause_match_inner(section, client_info, target_info, port, proto) {
     if (type(section) != "object" || section.enabled == "0")
         return null;
 
@@ -1241,6 +1268,10 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
 
         // Community lists
         let comm_lists = parse_combined_items(section, [ "community_lists", "community" ]);
+        for (let cs in parse_combined_items(section, [ "community_subnets" ])) {
+            if (!is_boolean_flag_token(cs) && index(comm_lists, cs) < 0)
+                push(comm_lists, cs);
+        }
         for (let comm in comm_lists) {
             if (check_community_domain_match(target_info.host, comm)) {
                 if (check_geo_filter_pass())
@@ -1357,7 +1388,30 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
     return null;
 }
 
-function evaluate_section_match(raw_section, client_info, target_info, port, proto) {
+function evaluate_atomic_clause_match(section, client_info, target_info, port, proto, diag_out) {
+    let raw_match = evaluate_atomic_clause_match_inner(section, client_info, target_info, port, proto);
+    if (raw_match == null)
+        return null;
+    if (target_info.type == "domain") {
+        let exc_by = find_excluded_domain_match(section, target_info.host);
+        if (exc_by != null) {
+            if (type(diag_out) == "array") {
+                push(diag_out, {
+                    section: section[".name"] || "",
+                    section_label: section.label || section[".name"] || "",
+                    action: as_string(section.action || ""),
+                    matched_rule_type: raw_match.rule_type,
+                    matched_rule_value: raw_match.rule_value,
+                    excluded_by: exc_by
+                });
+            }
+            return null;
+        }
+    }
+    return raw_match;
+}
+
+function evaluate_section_match(raw_section, client_info, target_info, port, proto, diag_out) {
     if (type(raw_section) != "object" || raw_section.enabled == "0")
         return null;
     let clauses = connections.section_effective_clauses(raw_section);
@@ -1378,7 +1432,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
             if (neg_hit)
                 continue;
         }
-        let m = evaluate_atomic_clause_match(clause, client_info, target_info, port, proto);
+        let m = evaluate_atomic_clause_match(clause, client_info, target_info, port, proto, diag_out);
         if (m != null)
             return m;
     }
@@ -1754,7 +1808,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         is_fakeip: is_fakeip_ipv4(target_host)
     };
 
-    let uci_cfg = load_uci_tachyon_config();
+    let uci_cfg = type(options.uci_cfg) == "object" ? options.uci_cfg : load_uci_tachyon_config();
     let settings = uci_cfg.settings || {};
     let eff_v6 = common.resolve_effective_ipv6_state(settings, null);
     let fakeip4_range = as_string(settings.fakeip_inet4_range || "198.18.0.0/15");
@@ -1965,9 +2019,10 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     // ─── Stage 3: Section & Rule Matching ─────────────────────────────────────
     let matched_section = null;
     let matched_rule = null;
+    let excluded_matches = [];
 
     for (let sec in uci_cfg.sections) {
-        let match_res = evaluate_section_match(sec, client_info, target_info, port, proto);
+        let match_res = evaluate_section_match(sec, client_info, target_info, port, proto, excluded_matches);
         if (match_res != null) {
             matched_section = sec;
             matched_rule = match_res;
@@ -1979,6 +2034,15 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let section_label = matched_section ? (matched_section.label || matched_section[".name"]) : null;
     let action = matched_section ? resolve_effective_section_action(matched_section, uci_cfg) : "direct";
 
+    let excl_prefix_en = "";
+    if (length(excluded_matches) > 0) {
+        let excl_parts = [];
+        for (let em in excluded_matches) {
+            push(excl_parts, "Excluded from section '" + em.section + "' (" + em.matched_rule_type + " '" + em.matched_rule_value + "') by excluded_domains ('" + em.excluded_by + "').");
+        }
+        excl_prefix_en = join(" ", excl_parts) + " ";
+    }
+
     let stage3 = {
         stage: 3,
         name: "section_matching",
@@ -1987,10 +2051,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         action: action,
         rule_type: matched_rule ? matched_rule.rule_type : "default_fallback",
         rule_value: matched_rule ? matched_rule.rule_value : "none",
-        details: matched_section
+        details: excl_prefix_en + (matched_section
             ? "Matched section '" + section_name + "' (" + action + ") by " + matched_rule.rule_type + " '" + matched_rule.rule_value + "'."
-            : "No explicit section matched. Evaluated under default fallback routing rule."
+            : "No explicit section matched. Evaluated under default fallback routing rule.")
     };
+    if (length(excluded_matches) > 0)
+        stage3.excluded_sections = excluded_matches;
 
     // ─── Stage 4: DNS Resolution Decision ─────────────────────────────────────
     let dns_mode = "direct";
@@ -2206,7 +2272,18 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " ЗАБЛОКИРОВАН секцией «" + (section_label || section_name) + "» (" + rule_desc + ").";
     }
 
-    return {
+    if (length(excluded_matches) > 0) {
+        let en_notes = [];
+        let ru_notes = [];
+        for (let em in excluded_matches) {
+            push(en_notes, "Excluded from section '" + em.section + "' (" + em.matched_rule_type + " '" + em.matched_rule_value + "') due to excluded_domains ('" + em.excluded_by + "').");
+            push(ru_notes, "Исключено из секции «" + (em.section_label || em.section) + "» (" + em.matched_rule_type + " «" + em.matched_rule_value + "») правилом excluded_domains («" + em.excluded_by + "»).");
+        }
+        en_msg += " " + join(" ", en_notes);
+        ru_msg += " " + join(" ", ru_notes);
+    }
+
+    let report_obj = {
         success: true,
         query: {
             client: client_str,
@@ -2238,6 +2315,9 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             ru: ru_msg
         }
     };
+    if (length(excluded_matches) > 0)
+        report_obj.excluded_sections = excluded_matches;
+    return report_obj;
 }
 
 // ─── Formatters & CLI Presentation ────────────────────────────────────────────
@@ -2271,6 +2351,12 @@ function format_text_report(report) {
     let s3 = report.stages["3_section_matching"];
     push(lines, sprintf("  3. Section:     %s (action: %s, rule: %s='%s')",
         s3.matched_section || "(none)", s3.action, s3.rule_type, s3.rule_value));
+    if (type(s3.excluded_sections) == "array" && length(s3.excluded_sections) > 0) {
+        let ex_labels = [];
+        for (let em in s3.excluded_sections)
+            push(ex_labels, em.section + " (" + em.excluded_by + ")");
+        push(lines, sprintf("     Excluded:    %s", join(", ", ex_labels)));
+    }
 
     let s4 = report.stages["4_dns_decision"];
     push(lines, sprintf("  4. DNS Mode:    %s (resolver: %s)", s4.mode, s4.resolver));

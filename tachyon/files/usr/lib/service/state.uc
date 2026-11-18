@@ -1676,6 +1676,11 @@ function tailscale_nft_signature_value(sections, servers) {
     return join("|", parts);
 }
 
+function community_subnets_enabled(section) {
+    let raw = lc(trim(option(section, "community_subnets", "1")));
+    return raw != "0" && raw != "false" && raw != "no" && raw != "off";
+}
+
 function nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes, servers) {
     let body = "";
 
@@ -1747,12 +1752,16 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         s_body = signature_add_value(s_body, "rule." + name + ".ports", section_rule_ports_csv(section));
         s_body = signature_add_value(s_body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
         s_body = signature_add_value(s_body, "rule." + name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+        let excl_domains = trim(section_leaf_option_text(section, "excluded_domains"));
+        let excl_domains_text = trim(section_leaf_option_text(section, "excluded_domains_text"));
+        if (excl_domains != "" || excl_domains_text != "")
+            s_body = signature_add_value(s_body, "rule." + name + ".excluded_domains", excl_domains + "\n" + excl_domains_text);
         s_body = signature_add_value(s_body, "rule." + name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
         s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
         s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_type", option(section, "routed_dns_type", ""));
         s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_server", option(section, "routed_dns_server", ""));
         s_body = signature_add_value(s_body, "rule." + name + ".protocol", section_leaf_option_text(section, "protocol"));
-        let comm_subnets = bool_option(section, "community_subnets", true) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
+        let comm_subnets = community_subnets_enabled(section) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
         s_body = signature_add_value(s_body, "rule." + name + ".community_subnet_lists", comm_subnets);
 
         s_body = signature_add_value(s_body, "rule." + name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
@@ -2315,6 +2324,10 @@ function append_tachyon_core_rule_signature_body(body, section, sections) {
     let user_doms_txt = section_leaf_option_text(section, "user_domains_text");
     if (user_doms != "" || user_doms_txt != "")
         body = signature_add_value(body, prefix + ".user_domains", user_doms + "|" + user_doms_txt);
+    let excl_doms = trim(section_leaf_option_text(section, "excluded_domains"));
+    let excl_doms_txt = trim(section_leaf_option_text(section, "excluded_domains_text"));
+    if (excl_doms != "" || excl_doms_txt != "")
+        body = signature_add_value(body, prefix + ".excluded_domains", excl_doms + "|" + excl_doms_txt);
     for (let if_key in [ "default_interface_address", "interface_address", "network_interface_address", "preferred_by" ]) {
         let if_val = section_leaf_option_text(section, if_key);
         if (if_val != "")

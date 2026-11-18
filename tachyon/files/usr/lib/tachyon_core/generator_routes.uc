@@ -3135,7 +3135,9 @@ function legacy_condition_values(section, key) {
     let text_value = option(section, key + "_text", "");
     let text_values = rule_config.text_list_values(text_value, "comma-space");
 
-    if (bool_option(section, key + "_text_mode", false) || bool_option(section, "conditions_text_mode", false))
+    if (bool_option(section, key + "_text_mode", false))
+        return text_values;
+    if (bool_option(section, "conditions_text_mode", false) && length(text_values) > 0)
         return text_values;
     if (length(list_values) > 0)
         return list_values;
@@ -3198,6 +3200,88 @@ function domain_conditions(section) {
 function add_domain_array(rule, key, values) {
     if (length(values) > 0)
         rule[key] = values;
+}
+
+function build_excluded_domain_subrules(section) {
+    let exc = connections.excluded_domain_conditions(section);
+    let sub = { invert: true };
+    add_domain_array(sub, "domain", exc.domain);
+    add_domain_array(sub, "domain_suffix", exc.domain_suffix);
+    add_domain_array(sub, "domain_keyword", exc.domain_keyword);
+    add_domain_array(sub, "domain_regex", exc.domain_regex);
+    return length(keys(sub)) > 1 ? [ sub ] : [];
+}
+
+function community_subnets_enabled(section) {
+    let raw = lc(trim(option(section, "community_subnets", "1")));
+    return raw != "0" && raw != "false" && raw != "no" && raw != "off";
+}
+
+const ACTION_KEYS = {
+    action: true,
+    outbound: true,
+    server: true,
+    rewrite_ttl: true,
+    client_subnet: true,
+    disable_cache: true,
+    disable_optimistic_cache: true,
+    timeout: true,
+    method: true,
+    no_drop: true,
+    strategy: true,
+    rcode: true,
+    answer: true,
+    ns: true,
+    extra: true
+};
+
+function apply_inverted_subrules(rule, inv_subrules) {
+    if (!rule)
+        return rule;
+    delete rule.__inv_subrules;
+    if (!inv_subrules || length(inv_subrules) == 0)
+        return rule;
+
+    if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
+        let cloned = {};
+        for (let k, v in rule) {
+            if (k == "rules") {
+                cloned.rules = [];
+                for (let r in v) {
+                    if (r && length(keys(r)) > 0)
+                        push(cloned.rules, r);
+                }
+                for (let sub in inv_subrules)
+                    push(cloned.rules, sub);
+            } else {
+                cloned[k] = v;
+            }
+        }
+        return cloned;
+    }
+
+    let match_part = {};
+    for (let k, v in rule) {
+        if (!ACTION_KEYS[k] && substr(k, 0, 2) != "__")
+            match_part[k] = v;
+    }
+
+    let rules_list = [];
+    if (length(keys(match_part)) > 0)
+        push(rules_list, match_part);
+    for (let sub in inv_subrules)
+        push(rules_list, sub);
+
+    let logical_rule = {
+        type: "logical",
+        mode: "and",
+        rules: rules_list
+    };
+    for (let k, v in rule) {
+        if (ACTION_KEYS[k] || substr(k, 0, 2) == "__")
+            logical_rule[k] = v;
+    }
+    return logical_rule;
 }
 
 function sanitize_rule(rule) {
@@ -3533,6 +3617,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
     let server_tag = length(server_tags) > 0 ? server_tags[0] : dns_action_server_tag(section_name);
     let has_inline_domains = length(domain) > 0 || length(domain_suffix) > 0 ||
         length(domain_keyword) > 0 || length(domain_regex) > 0;
+    let exc_dom_subrules = build_excluded_domain_subrules(section);
 
     if (emit_rulesets && length(fully_routed_ips) > 0) {
         let dns_rule = {
@@ -3562,7 +3647,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
             };
             add_domain_array(dns_rule, key, values);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
+            push_dns_matcher_rule(config, apply_inverted_subrules(dns_rule, exc_dom_subrules));
         }
     }
 
@@ -3575,7 +3660,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
                 rule_set: single_or_array(query_rule_set_tags)
             };
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
+            push_dns_matcher_rule(config, apply_inverted_subrules(dns_rule, exc_dom_subrules));
         }
         if (length(response_rule_set_tags) > 0) {
             let eval_rule = {
@@ -3593,7 +3678,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
                 match_response: true
             };
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
+            push_dns_matcher_rule(config, apply_inverted_subrules(dns_rule, exc_dom_subrules));
         }
     }
 
@@ -3727,24 +3812,6 @@ function outbound_supports_udp(config, tag_name, visited) {
     return false;
 }
 
-const ACTION_KEYS = {
-    action: true,
-    outbound: true,
-    server: true,
-    rewrite_ttl: true,
-    client_subnet: true,
-    disable_cache: true,
-    disable_optimistic_cache: true,
-    timeout: true,
-    method: true,
-    no_drop: true,
-    strategy: true,
-    rcode: true,
-    answer: true,
-    ns: true,
-    extra: true
-};
-
 // The two "everything except the selected countries" modes match the inverted
 // set; the other two match the selected countries themselves.
 function geoip_mode_inverts(country_mode) {
@@ -3871,55 +3938,6 @@ function apply_excluded_source_ips(rule, excluded_cidrs) {
     return logical_rule;
 }
 
-function apply_inverted_subrules(rule, inv_subrules) {
-    if (!rule)
-        return rule;
-    delete rule.__inv_subrules;
-    if (!inv_subrules || length(inv_subrules) == 0)
-        return rule;
-
-    if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
-        let cloned = {};
-        for (let k, v in rule) {
-            if (k == "rules") {
-                cloned.rules = [];
-                for (let r in v) {
-                    if (r && length(keys(r)) > 0)
-                        push(cloned.rules, r);
-                }
-                for (let sub in inv_subrules)
-                    push(cloned.rules, sub);
-            } else {
-                cloned[k] = v;
-            }
-        }
-        return cloned;
-    }
-
-    let match_part = {};
-    for (let k, v in rule) {
-        if (!ACTION_KEYS[k] && substr(k, 0, 2) != "__")
-            match_part[k] = v;
-    }
-
-    let rules_list = [];
-    if (length(keys(match_part)) > 0)
-        push(rules_list, match_part);
-    for (let sub in inv_subrules)
-        push(rules_list, sub);
-
-    let logical_rule = {
-        type: "logical",
-        mode: "and",
-        rules: rules_list
-    };
-    for (let k, v in rule) {
-        if (ACTION_KEYS[k] || substr(k, 0, 2) == "__")
-            logical_rule[k] = v;
-    }
-    return logical_rule;
-}
-
 function section_is_dns_block_eligible(section) {
     let override = section_fail_policy_override_target(section);
     let is_block = override != null
@@ -3941,6 +3959,7 @@ function section_is_dns_block_eligible(section) {
 
 function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, domain_rule_set_tags) {
     let dns_excluded_cidrs = core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs);
+    let exc_dom_subrules = build_excluded_domain_subrules(section);
     if (section_is_dns_block_eligible(section)) {
         let ttl_num = int(rule.rewrite_ttl != null ? rule.rewrite_ttl : 60);
         if (ttl_num == null || ttl_num < 0)
@@ -3959,13 +3978,13 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
         rule_a.rcode = "NOERROR";
         rule_a.query_type = [ "A" ];
         rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "*. " + ttl_str + " IN A 0.0.0.0" ];
-        push_dns_matcher_rule(config, apply_excluded_source_ips(rule_a, dns_excluded_cidrs));
+        push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(rule_a, dns_excluded_cidrs), exc_dom_subrules));
 
         rule_aaaa.action = "predefined";
         rule_aaaa.rcode = "NOERROR";
         rule_aaaa.query_type = [ "AAAA" ];
         rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "*. " + ttl_str + " IN AAAA ::" ];
-        push_dns_matcher_rule(config, apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs));
+        push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs), exc_dom_subrules));
         return;
     }
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
@@ -3990,10 +4009,10 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
             fakeip_rule.rule_set = single_or_array(domain_rule_set_tags);
         fakeip_rule.server = runtime_constants.FAKEIP_DNS_SERVER_TAG;
         add_fakeip_query_type(fakeip_rule, fakeip_rule.server, !section_ipv6_supported(section));
-        push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, dns_excluded_cidrs));
+        push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(fakeip_rule, dns_excluded_cidrs), exc_dom_subrules));
     }
     // Retain routed DNS for other query types and non-domain rulesets.
-    push_dns_matcher_rule(config, apply_excluded_source_ips(rule, dns_excluded_cidrs));
+    push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(rule, dns_excluded_cidrs), exc_dom_subrules));
 }
 
 function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, geo_tags, country_mode) {
@@ -4610,14 +4629,17 @@ function add_combined_route_for_clause(config, section) {
     let section_name = section[".name"];
     let base_inv_subrules = build_inverted_subrules(config, section_name, section.__inverted_conditions);
     let exc_proto_subrules = build_excluded_protocol_subrules(section);
+    let exc_dom_subrules = build_excluded_domain_subrules(section);
     let inv_subrules = [];
     for (let sub in base_inv_subrules)
         push(inv_subrules, sub);
     for (let sub in exc_proto_subrules)
         push(inv_subrules, sub);
+    for (let sub in exc_dom_subrules)
+        push(inv_subrules, sub);
 
 
-    let include_community_subnets = bool_option(section, "community_subnets", true);
+    let include_community_subnets = community_subnets_enabled(section);
     let discord_cf_subnets = [];
     for (let community in connections.community_lists(section)) {
         let service = as_string(community);
@@ -4766,7 +4788,7 @@ function add_combined_route_for_clause(config, section) {
             if (type(resolve) == "object" && resolve.warning)
                 warn(resolve.warning, "\n");
             else if (type(resolve) == "object" && resolve.rule)
-                push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+                push_route_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(resolve.rule, excluded_cidrs), exc_dom_subrules));
         }
 
         push_section_route_rule(config, domain_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
@@ -4781,7 +4803,7 @@ function add_combined_route_for_clause(config, section) {
             if (type(resolve) == "object" && resolve.warning)
                 warn(resolve.warning, "\n");
             else if (type(resolve) == "object" && resolve.rule)
-                push_route_matcher_rule(config, apply_excluded_source_ips(resolve.rule, excluded_cidrs));
+                push_route_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(resolve.rule, excluded_cidrs), exc_dom_subrules));
         }
 
         push_section_route_rule(config, rs_rule, target.outbound, excluded_cidrs, geo_tags, country_mode);
@@ -4907,7 +4929,7 @@ function add_combined_route_for_clause(config, section) {
             add_domain_array(dns_rule, key, values);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             if (emit_sec_aaaa_noerror)
-                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
+                push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs), exc_dom_subrules));
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
             if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
                 let aaaa_rule = {
@@ -4918,7 +4940,7 @@ function add_combined_route_for_clause(config, section) {
                 };
                 add_domain_array(aaaa_rule, key, values);
                 add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
+                push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs), exc_dom_subrules));
             }
         }
     }
@@ -4940,7 +4962,7 @@ function add_combined_route_for_clause(config, section) {
         add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
         add_source_dns_matchers(dns_rule, source_ip_cidr);
         if (emit_sec_aaaa_noerror)
-            push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
+            push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs), exc_dom_subrules));
         push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
         if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
             let aaaa_rule = {
@@ -4951,7 +4973,7 @@ function add_combined_route_for_clause(config, section) {
                 rule_set: single_or_array(dns_query_rule_set_tags)
             };
             add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
+            push_dns_matcher_rule(config, apply_inverted_subrules(apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs), exc_dom_subrules));
         }
     }
     if (length(dns_response_rule_set_tags) > 0) {
