@@ -14,9 +14,7 @@ function getSafeBaseLocation(): { href: string; origin: string } | null {
     return null;
   }
   const href =
-    typeof window.location.href === 'string'
-      ? window.location.href.trim()
-      : '';
+    typeof window.location.href === 'string' ? window.location.href.trim() : '';
   let origin =
     typeof window.location.origin === 'string'
       ? window.location.origin.trim()

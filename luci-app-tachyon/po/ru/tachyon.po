@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 09:30+0300\n"
-"PO-Revision-Date: 2026-11-18 09:30+0300\n"
+"POT-Creation-Date: 2026-11-18 11:34+0300\n"
+"PO-Revision-Date: 2026-11-18 11:34+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -12014,83 +12014,11 @@ msgstr "Автоматически замерить задержку, потер
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
 
-msgid "ByeDPI"
-msgstr "ByeDPI"
-
-msgid "ByeDPI (ciadpi SOCKS5 Desync)"
-msgstr "ByeDPI (ciadpi SOCKS5 обход DPI)"
-
-msgid "ByeDPI (ciadpi — local SOCKS5 desync)"
-msgstr "ByeDPI (ciadpi — локальный SOCKS5 десинхронизатор)"
-
-msgid "ByeDPI (ciadpi)"
-msgstr "ByeDPI (ciadpi)"
-
-msgid "ByeDPI (ciadpi) Command Arguments"
-msgstr "Аргументы командной строки ByeDPI (ciadpi)"
-
-msgid "ByeDPI Strategy"
-msgstr "Стратегия ByeDPI"
-
-msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
-msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны задаваться в стратегии."
-
-msgid "ByeDPI option does not accept a compact value: %s"
-msgstr "Параметр ByeDPI не принимает компактное значение: %s"
-
-msgid "ByeDPI option does not accept a value: %s"
-msgstr "Параметр ByeDPI не принимает значение: %s"
-
-msgid "ByeDPI option requires a value: %s"
-msgstr "Параметр ByeDPI требует значение: %s"
-
-msgid "ByeDPI outbound is configured"
-msgstr "Outbound ByeDPI настроен"
-
-msgid "ByeDPI outbound is not configured"
-msgstr "Outbound ByeDPI не настроен"
-
-msgid "ByeDPI package is installed"
-msgstr "Пакет ByeDPI установлен"
-
-msgid "ByeDPI package is not installed"
-msgstr "Пакет ByeDPI не установлен"
-
-msgid "ByeDPI provider binary is available"
-msgstr "Бинарный файл провайдера ByeDPI доступен"
-
-msgid "ByeDPI provider binary is not available"
-msgstr "Бинарный файл провайдера ByeDPI недоступен"
-
-msgid "ByeDPI restarted after exiting; strategy or traffic load may be unstable"
-msgstr "ByeDPI перезапустился после завершения; стратегия или нагрузка трафика могут быть нестабильны"
-
-msgid "ByeDPI strategy cannot be empty"
-msgstr "Стратегия ByeDPI не может быть пустой"
-
 msgid "Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
 msgstr "Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
 
 msgid "Client"
 msgstr "Клиент"
-
-msgid "Command-line strategy arguments for ciadpi (ByeDPI)."
-msgstr "Аргументы командной строки стратегии для ciadpi (ByeDPI)."
-
-msgid "Command-line strategy arguments for nfqws (zapret)."
-msgstr "Аргументы командной строки стратегии для nfqws (zapret)."
-
-msgid "Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."
-msgstr ""
-
-msgid "DPI BYPASS (BYEDPI)"
-msgstr "ОБХОД DPI (BYEDPI)"
-
-msgid "DPI BYPASS (ZAPRET)"
-msgstr "ОБХОД DPI (ZAPRET)"
-
-msgid "DPI Desync / Zapret2 Strategy"
-msgstr "Стратегия DPI Desync / Zapret2"
 
 msgid "Desync (Built-in TCP/UDP DPI Fragmentation)"
 msgstr "Desync (встроенная TCP/UDP фрагментация DPI)"
@@ -12103,12 +12031,6 @@ msgstr "Прямой режим NFQUEUE (мимо прокси-ядра)"
 
 msgid "Direct nfqws binary launch (isolated instance)"
 msgstr "Прямой запуск бинарника nfqws (изолированный инстанс)"
-
-msgid "Direct nfqws2 binary launch (isolated per-section instance)"
-msgstr "Прямой запуск бинарника nfqws2 (изолированный per-section инстанс без /etc/init.d/zapret2)"
-
-msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
-msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
 msgid "Disorder Values (-d)"
 msgstr "Значения Disorder (-d)"
@@ -12143,20 +12065,8 @@ msgstr "Fuzzing не поддерживается здесь, потому чт�
 msgid "IP Frag Bounds (--ip-frag)"
 msgstr "Границы фрагментации IP (--ip-frag)"
 
-msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain."
-msgstr "Обнаружена фильтрация по IP! Ресурс недоступен на сетевом уровне (нет ответа на TCP SYN). Механизмы десинхронизации пакетов (Zapret / ByeDPI) здесь неприменимы — настройте маршрутизацию через прокси или VPN для этого домена."
-
-msgid "Invalid ByeDPI strategy"
-msgstr "Неверная стратегия ByeDPI"
-
 msgid "Jitsi"
 msgstr "Jitsi"
-
-msgid "Legacy zapret runtime paths are still present and should be migrated"
-msgstr "Обнаружены устаревшие пути zapret, требуется миграция"
-
-msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing."
-msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков."
 
 msgid "Masquerade LAN traffic into tailnet"
 msgstr "Маскарадинг LAN-трафика в тейлнет"
@@ -12191,44 +12101,8 @@ msgstr "Нативный Tailscale настроен, но tailscaled запущ�
 msgid "Native tailscaled (tailnet reachable from LAN without client)"
 msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
 
-msgid "No rules use ByeDPI"
-msgstr "Нет правил, использующих ByeDPI"
-
-msgid "No rules use Zapret"
-msgstr "Нет правил, использующих Zapret"
-
-msgid "No rules use Zapret2"
-msgstr "Нет правил, использующих Zapret2"
-
 msgid "OOB Values (-o)"
 msgstr "Значения OOB (-o)"
-
-msgid "OlcRTC (Discord / WebRTC nfqws2)"
-msgstr "OlcRTC (Discord / WebRTC nfqws2)"
-
-msgid "OlcRTC Crypto Key"
-msgstr "Ключ шифрования OlcRTC"
-
-msgid "OlcRTC DNS Server"
-msgstr "DNS-сервер OlcRTC"
-
-msgid "OlcRTC Provider"
-msgstr "Провайдер OlcRTC"
-
-msgid "OlcRTC Room ID"
-msgstr "ID комнаты OlcRTC"
-
-msgid "OlcRTC SOCKS Host"
-msgstr "Хост SOCKS OlcRTC"
-
-msgid "OlcRTC SOCKS Port"
-msgstr "Порт SOCKS OlcRTC"
-
-msgid "OlcRTC Subscription Links"
-msgstr "Ссылки подписок OlcRTC"
-
-msgid "OlcRTC Transport"
-msgstr "Транспорт OlcRTC"
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
 msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws."
@@ -12239,25 +12113,7 @@ msgstr "Опциональные значения должны быть прис
 msgid "Other peers"
 msgstr "Другие пиры"
 
-msgid "Packet Desync (Desync / Zapret2)"
-msgstr "Десинхронизация пакетов (Desync / Zapret2)"
-
-msgid "Packet desync via ByeDPI (ciadpi SOCKS5)"
-msgstr "Десинхронизация через ByeDPI (ciadpi SOCKS5)"
-
-msgid "Packet desync via Zapret (nfqws)"
-msgstr "Десинхронизация через Zapret (nfqws)"
-
-msgid "Packet desync via Zapret2 (nfqws2 + Lua strategies)"
-msgstr "Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)"
-
 msgid "Peer (host:port)"
-msgstr ""
-
-msgid "QWDTT Mode"
-msgstr ""
-
-msgid "Remote endpoint in HOST:PORT format for qwdtt client."
 msgstr ""
 
 msgid "Resource selection by IP or CIDR inside nfqws is not supported here; Tachyon Core selects resources before NFQUEUE."
@@ -12272,23 +12128,14 @@ msgstr "Выбор ресурсов по имени хоста внутри nfqw
 msgid "Resource selection by hostname inside nfqws2 is not supported here; Tachyon Core selects resources before NFQUEUE."
 msgstr "Выбор ресурсов по имени хоста внутри nfqws2 здесь не поддерживается; Tachyon Core выбирает ресурсы до NFQUEUE."
 
-msgid "Restart Zapret/ByeDPI"
-msgstr "Перезапустить Zapret/ByeDPI"
-
 msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
 msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
 
 msgid "Route matched traffic directly into kernel NFQUEUE via nftables without passing through tachyon-core."
 msgstr "Направлять совпавший трафик напрямую в NFQUEUE ядра через nftables без передачи в tachyon-core."
 
-msgid "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client."
-msgstr ""
-
 msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
 msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
-
-msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
-msgstr ""
 
 msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
 msgstr "Выберите любой существующий сетевой интерфейс роутера или готовый пресет (например: wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
@@ -12307,39 +12154,6 @@ msgstr "Позиции разделения (pos)"
 
 msgid "Split Values (-s)"
 msgstr "Значения сплита (-s)"
-
-msgid "Standalone ByeDPI autostart is enabled"
-msgstr "Автозапуск отдельной службы ByeDPI включен"
-
-msgid "Standalone ByeDPI is active together with Tachyon ByeDPI rules"
-msgstr "Отдельная служба ByeDPI активна вместе с правилами ByeDPI в Tachyon"
-
-msgid "Standalone ByeDPI service is active"
-msgstr "Отдельная служба ByeDPI активна"
-
-msgid "Standalone ByeDPI service is inactive"
-msgstr "Отдельная служба ByeDPI неактивна"
-
-msgid "Standalone Zapret is active together with Tachyon Zapret rules"
-msgstr "Отдельная служба Zapret активна вместе с правилами Zapret в Tachyon"
-
-msgid "Standalone Zapret service is active"
-msgstr "Отдельная служба Zapret активна"
-
-msgid "Standalone Zapret service is inactive"
-msgstr "Отдельная служба Zapret неактивна"
-
-msgid "Standalone Zapret2 autostart is enabled"
-msgstr "Автозапуск отдельной службы Zapret2 включён"
-
-msgid "Standalone Zapret2 is active together with Tachyon Zapret2 rules"
-msgstr "Отдельная служба Zapret2 активна вместе с правилами Zapret2 в Tachyon"
-
-msgid "Standalone Zapret2 service is active"
-msgstr "Отдельная служба Zapret2 активна"
-
-msgid "Standalone Zapret2 service is inactive"
-msgstr "Отдельная служба Zapret2 неактивна"
 
 msgid "TCP Window Sizes (wsize)"
 msgstr "Размеры окна TCP (wsize)"
@@ -12413,15 +12227,6 @@ msgstr "Номер NFQUEUE назначается Tachyon для каждого 
 msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
 msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
 
-msgid "There are rules using ByeDPI"
-msgstr "Есть правила, использующие ByeDPI"
-
-msgid "There are rules using Zapret"
-msgstr "Есть правила использующие Zapret"
-
-msgid "There are rules using Zapret2"
-msgstr "Есть правила, использующие Zapret2"
-
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
 
@@ -12449,23 +12254,11 @@ msgstr "Этот параметр требует значение."
 msgid "This router"
 msgstr "Этот роутер"
 
-msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
-msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Tachyon подключается к ciadpi через SOCKS."
-
-msgid "URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG)."
-msgstr "URL для проверки работоспособности основного подключения (например, Zapret2 на YouTube) перед автоматическим переключением на резервное (например, FPTN или AmneziaWG)."
-
-msgid "Unable to validate the ByeDPI strategy through the backend parser."
-msgstr "Не удалось проверить стратегию ByeDPI через парсер бэкенда."
-
 msgid "Unable to validate the NFQWS strategy through the backend parser."
 msgstr "Не удалось проверить стратегию NFQWS через парсер бэкенда."
 
 msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr "Не удалось проверить стратегию NFQWS2 через парсер бэкенда."
-
-msgid "Unexpected ByeDPI strategy argument: %s"
-msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
 
 msgid "Unexpected Tachyon-managed ciadpi runtime is running"
 msgstr "Обнаружен лишний ciadpi Tachyon"
@@ -12479,9 +12272,6 @@ msgstr "Обнаружен лишний NFQWS2 Tachyon"
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
 msgstr "Неожиданный отдельный токен. Используйте явные флаги, такие как --name или --name=value."
 
-msgid "Unknown ByeDPI option: %s"
-msgstr "Неизвестный параметр ByeDPI: %s"
-
 msgid "Unknown NFQWS flag."
 msgstr "Неизвестный флаг NFQWS."
 
@@ -12494,12 +12284,6 @@ msgstr ""
 msgid "Use tailnet exit node for LAN"
 msgstr "Использовать exit-node тейлнета для LAN"
 
-msgid "WDTT (Native / qwdtt)"
-msgstr ""
-
-msgid "WDTT QWDTT Mode"
-msgstr "Режим QWDTT"
-
 msgid "WHEP"
 msgstr "WHEP"
 
@@ -12508,93 +12292,6 @@ msgstr "WHIP"
 
 msgid "WRT"
 msgstr "WRT"
-
-msgid "Zapret"
-msgstr "Zapret"
-
-msgid "Zapret (nfqws DPI Desync)"
-msgstr "Zapret (nfqws обход DPI)"
-
-msgid "Zapret (nfqws — classic NFQUEUE)"
-msgstr "Zapret (nfqws — классический NFQUEUE)"
-
-msgid "Zapret Strategy (nfqws arguments)"
-msgstr "Стратегия Zapret (аргументы nfqws)"
-
-msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
-msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
-
-msgid "Zapret outbound is configured"
-msgstr "Outbound Zapret настроен"
-
-msgid "Zapret outbound is not configured"
-msgstr "Outbound Zapret не настроен"
-
-msgid "Zapret package is installed"
-msgstr "Пакет Zapret установлен"
-
-msgid "Zapret package is not installed"
-msgstr "Пакет Zapret не установлен"
-
-msgid "Zapret provider binary is available"
-msgstr "Бинарник провайдера Zapret доступен"
-
-msgid "Zapret provider binary is not available"
-msgstr "Бинарник провайдера Zapret недоступен"
-
-msgid "Zapret v1"
-msgstr "Zapret v1"
-
-msgid "Zapret v1 (nfqws)"
-msgstr "Zapret v1 (nfqws)"
-
-msgid "Zapret v2"
-msgstr "Zapret v2"
-
-msgid "Zapret v2 (nfqws2)"
-msgstr "Zapret v2 (nfqws2)"
-
-msgid "Zapret2"
-msgstr "Zapret2"
-
-msgid "Zapret2 (nfqws2 DPI Desync)"
-msgstr "Zapret2 (nfqws2 обход DPI)"
-
-msgid "Zapret2 (nfqws2 — Lua strategies & NFQUEUE)"
-msgstr "Zapret2 (nfqws2 — Lua-стратегии и NFQUEUE)"
-
-msgid "Zapret2 Strategy (nfqws2 / Lua arguments)"
-msgstr "Стратегия Zapret2 (аргументы nfqws2 / Lua)"
-
-msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
-msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
-
-msgid "Zapret2 outbound is configured"
-msgstr "Исходящее подключение Zapret2 настроено"
-
-msgid "Zapret2 outbound is not configured"
-msgstr "Исходящее подключение Zapret2 не настроено"
-
-msgid "Zapret2 package is installed"
-msgstr "Пакет Zapret2 установлен"
-
-msgid "Zapret2 package is not installed"
-msgstr "Пакет Zapret2 не установлен"
-
-msgid "Zapret2 provider binary is available"
-msgstr "Бинарник провайдера Zapret2 доступен"
-
-msgid "Zapret2 provider binary is not available"
-msgstr "Бинарник провайдера Zapret2 недоступен"
-
-msgid "Zapret2 routing rules are configured"
-msgstr "Правила маршрутизации Zapret2 настроены"
-
-msgid "Zapret2 routing rules are not configured"
-msgstr "Правила маршрутизации Zapret2 не настроены"
-
-msgid "e.g. Main Subscription, YouTube Zapret2, EU AWG"
-msgstr "например: Основная подписка, YouTube Zapret2, EU AWG"
 
 msgid "peers online"
 msgstr "устр. в сети"
@@ -12650,14 +12347,8 @@ msgstr "не установлен"
 msgid "tiny"
 msgstr "tiny"
 
-msgid "Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."
-msgstr "Аргументы командной строки стратегии для nfqws2 (zapret2 / wdtt / olcrtc)."
-
 msgid "How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails."
 msgstr "Как работают несколько подключений или балансировщиков в секции: в режиме приоритета 2-е подключение включается только при отказе 1-го."
-
-msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails."
-msgstr "Выберите любые подключения из «Пула подключений» (Zapret2, Zapret, ByeDPI, Desync, подписки, AmneziaWG, FPTN, OpenVPN, WARP и др.). Порядок задаёт приоритет: 2-е сработает только после отказа 1-го и т.д."
 
 msgid "WDTT (nfqws2 Preset)"
 msgstr "WDTT (пресет nfqws2)"
@@ -12668,23 +12359,11 @@ msgstr "Обход замедления YouTube, Discord и Telegram без вн
 msgid "Censorship-resistant multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
 msgstr "Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
 
-msgid "DPI Bypass (Desync / Zapret2)"
-msgstr "Обход DPI (Desync / Zapret2)"
-
 msgid "DPI Desync"
 msgstr "Обход DPI (Desync)"
 
 msgid "DPI bypass & desync"
 msgstr "Обход DPI и модификация пакетов"
-
-msgid "DPI bypass via ByeDPI (ciadpi SOCKS5)"
-msgstr "Обход DPI через ByeDPI (ciadpi SOCKS5)"
-
-msgid "DPI bypass via Zapret (nfqws)"
-msgstr "Обход DPI через Zapret (nfqws)"
-
-msgid "DPI bypass via Zapret2 (nfqws2 + Lua strategies)"
-msgstr "Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)"
 
 msgid "Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block"
 msgstr "Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда"
@@ -13027,9 +12706,6 @@ msgstr "midsld, sni или смещение в байтах в ClientHello (1..1
 
 msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes."
 msgstr "Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS и др.) с автогенерацией ключей и QR-кодом."
-
-msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing."
-msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS."
 
 msgid "Select a ready-made scenario, paste your subscription URL or proxy links, and click \"Connect & Launch in 1 Click\" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon."
 msgstr "Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon."
@@ -14104,9 +13780,6 @@ msgstr "Геоблок"
 
 msgid "WDTT"
 msgstr "WDTT"
-
-msgid "OlcRTC"
-msgstr "OlcRTC"
 
 msgid "Time is required (e.g. 22:00)"
 msgstr "Укажите время (например, 22:00)"

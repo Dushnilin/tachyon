@@ -1557,7 +1557,6 @@ const SECTION_TELEMETRY_PROTECTED_TOKENS = new Set([
   "mieru",
   "naive",
   "xray",
-  "sing-box",
   "reality",
   "xtls",
   "grpc",

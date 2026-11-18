@@ -135,9 +135,20 @@ async function generatePo() {
         );
     }
 
+    const isLegacyObsolete = (id, str) => {
+        const text = `${id} ${str || ''}`;
+        if (/antizapret/i.test(text) || /podkop\.fyi/i.test(text) || /release\/sing-box\/.*\.srs/i.test(text)) {
+            return false;
+        }
+        return /byedpi|zapret|sing[-_]box|podkop|forkop|netshift|qwdtt|olcrtc/i.test(text);
+    };
+
     // Second: preserve existing entries NOT in calls.json (manual additions, legacy strings)
     for (const [msgid, msgstr] of oldTranslations) {
         if (!callKeys.has(msgid) && msgid !== '') {
+            if (isLegacyObsolete(msgid, msgstr)) {
+                continue;
+            }
             if (isCorruptedTranslation(msgid, msgstr)) {
                 corrupted.push({ msgid, msgstr });
             }

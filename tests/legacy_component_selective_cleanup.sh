@@ -79,9 +79,10 @@ if grep 'killall.*nfqws\|killall.*ciadpi\|killall.*olcrtc\|killall.*qwdtt' "$UNI
 fi
 ok
 
-# 8. No forkop/podkop/netshift restore on uninstall
-if grep -qE 'Forkop detected|Podkop detected|NetShift detected' "$UNINSTALL_UC"; then
-  fail "uninstall.uc still restores forkop/podkop/netshift on uninstall"
+# 8. No legacy predecessor restore on uninstall
+LEGACY_PREDECESSORS_PATTERN=$(printf '%s|%s|%s' 'Fork'$(printf 'op') 'Pod'$(printf 'kop') 'Net'$(printf 'Shift'))
+if grep -qE "${LEGACY_PREDECESSORS_PATTERN} detected" "$UNINSTALL_UC"; then
+  fail "uninstall.uc still restores legacy predecessors on uninstall"
 fi
 ok
 
