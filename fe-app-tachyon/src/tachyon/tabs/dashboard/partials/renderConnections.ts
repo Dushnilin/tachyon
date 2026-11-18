@@ -26,7 +26,7 @@ export function renderConnections(
       ? false
       : isCollapsed;
   const topDomainsSection =
-    topDomains && topDomains.length > 0
+    !effectiveCollapsed && topDomains && topDomains.length > 0
       ? E('div', { class: 'tachyon_dashboard-page__top-domains-container' }, [
           E(
             'div',
@@ -119,7 +119,7 @@ export function renderConnections(
     );
   }
 
-  const rows = connections.map((c) => {
+  const rows = (effectiveCollapsed ? [] : connections).map((c) => {
     const infoChildren: HTMLElement[] = [];
 
     if (c.name) {
