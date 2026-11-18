@@ -189,20 +189,27 @@ export function aggregateTopDomains(
   }>,
   limit = 6,
 ): ITopDomain[] {
-  const map = new Map<string, { count: number; traffic: number }>();
+  const map = new Map<string, { count: number; traffic: number } | null>();
 
   for (const conn of rawConnections) {
     const rawHost = conn.metadata?.host?.trim();
     if (!rawHost) continue;
-    // Skip raw IPv4/IPv6 addresses (including bracketed IPv6 and zone IDs)
-    if (validateIPWithZone(unbracketHost(rawHost)).valid) continue;
+    const existing = map.get(rawHost);
+    // Cache IP addresses as well as domain totals for this snapshot.
+    if (existing === null) continue;
+    if (
+      existing === undefined &&
+      validateIPWithZone(unbracketHost(rawHost)).valid
+    ) {
+      map.set(rawHost, null);
+      continue;
+    }
 
     const up = Number(conn.upload) || 0;
     const down = Number(conn.download) || 0;
     const traffic = up + down;
 
-    if (map.has(rawHost)) {
-      const existing = map.get(rawHost)!;
+    if (existing) {
       existing.count++;
       existing.traffic += traffic;
     } else {
@@ -210,12 +217,12 @@ export function aggregateTopDomains(
     }
   }
 
-  return Array.from(map.entries())
-    .map(([domain, data]) => ({
-      domain,
-      count: data.count,
-      traffic: data.traffic,
-    }))
+  const domains: ITopDomain[] = [];
+  for (const [domain, data] of map) {
+    if (data)
+      domains.push({ domain, count: data.count, traffic: data.traffic });
+  }
+  return domains
     .sort((a, b) => b.count - a.count || b.traffic - a.traffic)
     .slice(0, limit);
 }
