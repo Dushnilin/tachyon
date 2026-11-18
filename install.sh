@@ -32,11 +32,6 @@ APK_REPOS_DIR="${TACHYON_APK_REPOS_DIR:-/etc/apk/repositories.d}"
 APK_REPO_PROBE_TIMEOUT_SECONDS="${TACHYON_APK_REPO_PROBE_TIMEOUT_SECONDS:-5}"
 APK_FILTERED_REPOS_FILE=""
 APK_REPOS_PREPARED=0
-# Two lists, not one plus a flag: the removal set and the world-scrub set are
-# genuinely different. Duplicating the package names at each call site is how
-# they drift apart, and they had.
-LEGACY_PACKAGES="forkop luci-app-forkop podkop luci-app-podkop forkop_plus luci-app-forkop_plus podkop_plus luci-app-podkop_plus netshift luci-app-netshift"
-WORLD_SCRUB_PACKAGES="$LEGACY_PACKAGES tachyon luci-app-tachyon"
 PACKAGE_INDEX_UPDATED=0
 START_TIME="0"
 TX_ACTIVE=0
@@ -48,10 +43,6 @@ INSTALLER_LANG="en"
 TACHYON_I18N_REQUESTED=0
 CORE_INSTALL_CHOICE=""
 CORE_INSTALL_REQUESTED=""
-ENGINE_INSTALL_CHOICE=""
-ENGINE_INSTALL_REQUESTED=""
-SING_BOX_INSTALL_VARIANT=""
-SING_BOX_VARIANT_REQUESTED=""
 ZRAM_INSTALL_REQUESTED=0
 
 ASSUME_YES=0
@@ -148,11 +139,7 @@ Usage: $0 [options]
       --reinstall       Force reinstall of the selected release
       --tag X.Y.Z            Install an exact published release
       --channel NAME         stable (default) or beta
-      --engine NAME          Routing core: tachyon-core (default for >=1.8.0),
-                             sing-box (releases <1.8.0), or none
       --tachyon-core         Install tachyon-core routing core
-      --sing-box-variant VAR Variant for <1.8.0 releases (stable, tiny, extended,
-                             extended-compressed, lx, tachyon-core)
       --skip-engine          Do not install a routing core when none is present
       --zram                 Install zram-swap
       --no-zram              Never install zram-swap
@@ -174,42 +161,19 @@ parse_args() {
             --reinstall) REINSTALL_MODE=1 ;;
             --engine)
                 shift
-                [ "$#" -gt 0 ] || { err "--engine requires name (tachyon-core, sing-box, none)"; return 2; }
+                [ "$#" -gt 0 ] || { err "--engine requires name (tachyon-core, none)"; return 2; }
                 case "$1" in
                     tachyon-core|tachyon_core)
                         CORE_INSTALL_REQUESTED="tachyon-core"
-                        ENGINE_INSTALL_REQUESTED="tachyon-core"
-                        SING_BOX_VARIANT_REQUESTED="tachyon-core"
-                        ;;
-                    sing-box)
-                        ENGINE_INSTALL_REQUESTED="sing-box"
                         ;;
                     none|skip) SKIP_ENGINE=1 ;;
-                    *) err "Unsupported engine: $1 (allowed: tachyon-core, sing-box, none)"; return 2 ;;
+                    *) err "Unsupported engine: $1 (allowed: tachyon-core, none)"; return 2 ;;
                 esac
                 ;;
             --tachyon-core)
                 CORE_INSTALL_REQUESTED="tachyon-core"
-                ENGINE_INSTALL_REQUESTED="tachyon-core"
-                SING_BOX_VARIANT_REQUESTED="tachyon-core"
                 ;;
-            --sing-box-variant)
-                shift
-                [ "$#" -gt 0 ] || { err "--sing-box-variant requires variant name"; return 2; }
-                case "$1" in
-                    stable|tiny|extended|extended-compressed|lx)
-                        ENGINE_INSTALL_REQUESTED="sing-box"
-                        SING_BOX_VARIANT_REQUESTED="$1"
-                        ;;
-                    tachyon-core|tachyon_core)
-                        CORE_INSTALL_REQUESTED="tachyon-core"
-                        ENGINE_INSTALL_REQUESTED="tachyon-core"
-                        SING_BOX_VARIANT_REQUESTED="tachyon-core"
-                        ;;
-                    *) err "Unsupported variant: $1"; return 2 ;;
-                esac
-                ;;
-            --skip-engine|--skip-sing-box|--no-sing-box) SKIP_ENGINE=1 ;;
+            --skip-engine) SKIP_ENGINE=1 ;;
             --zram) ZRAM_INSTALL_OVERRIDE="yes" ;;
             --no-zram) ZRAM_INSTALL_OVERRIDE="no" ;;
             --tag)
@@ -1241,95 +1205,29 @@ core_is_present() {
     command_exists tachyon-core || [ -x /usr/bin/tachyon-core ]
 }
 
-sing_box_is_present() {
-    command_exists sing-box || core_is_present || pkg_is_installed sing-box || pkg_is_installed sing-box-extended || pkg_is_installed sing-box-tiny || pkg_is_installed sing-box-lx
-}
-
 engine_is_present() {
-    if release_is_tachyon_core_only; then
-        core_is_present
-    else
-        sing_box_is_present
-    fi
+    core_is_present
 }
 
 select_core_installation() {
     CORE_INSTALL_CHOICE=""
-    ENGINE_INSTALL_CHOICE=""
-    SING_BOX_INSTALL_VARIANT=""
     [ "$SKIP_ENGINE" -eq 1 ] && return 0
 
-    if release_is_tachyon_core_only; then
-        if [ "$ENGINE_INSTALL_REQUESTED" = "sing-box" ]; then
-            err "Release $(effective_release_tag) supports tachyon-core only (use --tag <1.7.x> for sing-box)"
-            return 1
-        fi
-        if [ -n "$SING_BOX_VARIANT_REQUESTED" ] && [ "$SING_BOX_VARIANT_REQUESTED" != "tachyon-core" ] && [ "$SING_BOX_VARIANT_REQUESTED" != "tachyon_core" ]; then
-            err "Release $(effective_release_tag) supports tachyon-core only (--sing-box-variant $SING_BOX_VARIANT_REQUESTED requires < 1.8.0)"
-            return 1
-        fi
-        if [ -n "$CORE_INSTALL_REQUESTED" ]; then
-            CORE_INSTALL_CHOICE="$CORE_INSTALL_REQUESTED"
-            ENGINE_INSTALL_CHOICE="tachyon-core"
-            return 0
-        fi
-        engine_is_present && return 0
-        if ! installer_is_interactive; then
-            CORE_INSTALL_CHOICE="tachyon-core"
-            ENGINE_INSTALL_CHOICE="tachyon-core"
-            return 0
-        fi
-        printf '\ntachyon-core routing core is not installed.\n'
-        printf 'Install tachyon-core? [Y/n]: '
-        read -r _answer || _answer=""
-        case "${_answer:-y}" in
-            n|N|no|NO) CORE_INSTALL_CHOICE=""; ENGINE_INSTALL_CHOICE="" ;;
-            *) CORE_INSTALL_CHOICE="tachyon-core"; ENGINE_INSTALL_CHOICE="tachyon-core" ;;
-        esac
+    if [ -n "$CORE_INSTALL_REQUESTED" ]; then
+        CORE_INSTALL_CHOICE="$CORE_INSTALL_REQUESTED"
         return 0
-    fi
-
-    # Legacy releases (< 1.8.0): retain sing-box variant and tachyon-core selection
-    if [ -n "$ENGINE_INSTALL_REQUESTED" ]; then
-        case "$ENGINE_INSTALL_REQUESTED" in
-            tachyon-core|tachyon_core)
-                ENGINE_INSTALL_CHOICE="tachyon-core"
-                SING_BOX_INSTALL_VARIANT="tachyon-core"
-                CORE_INSTALL_CHOICE="tachyon-core"
-                return 0
-                ;;
-            sing-box)
-                ENGINE_INSTALL_CHOICE="sing-box"
-                SING_BOX_INSTALL_VARIANT="${SING_BOX_VARIANT_REQUESTED:-stable}"
-                return 0
-                ;;
-        esac
     fi
     engine_is_present && return 0
     if ! installer_is_interactive; then
-        ENGINE_INSTALL_CHOICE="sing-box"
-        SING_BOX_INSTALL_VARIANT="stable"
+        CORE_INSTALL_CHOICE="tachyon-core"
         return 0
     fi
-    printf '\nSelect proxy / routing engine build:\n'
-    printf '  1) sing-box stable (recommended)\n'
-    printf '  2) sing-box tiny (low memory)\n'
-    printf '  3) sing-box extended (xHTTP)\n'
-    printf '  4) sing-box extended-compressed (xHTTP, smaller)\n'
-    printf '  5) sing-box lx\n'
-    printf '  6) tachyon-core (Rust routing core)\n'
-    printf '  7) skip\n'
-    printf 'Choice [1]: '
+    printf '\ntachyon-core routing core is not installed.\n'
+    printf 'Install tachyon-core? [Y/n]: '
     read -r _answer || _answer=""
-    case "${_answer:-1}" in
-        1) SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        2) SING_BOX_INSTALL_VARIANT="tiny"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        3) SING_BOX_INSTALL_VARIANT="extended"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        4) SING_BOX_INSTALL_VARIANT="extended-compressed"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        5) SING_BOX_INSTALL_VARIANT="lx"; ENGINE_INSTALL_CHOICE="sing-box" ;;
-        6) SING_BOX_INSTALL_VARIANT="tachyon-core"; ENGINE_INSTALL_CHOICE="tachyon-core"; CORE_INSTALL_CHOICE="tachyon-core" ;;
-        7) SING_BOX_INSTALL_VARIANT=""; ENGINE_INSTALL_CHOICE="" ;;
-        *) warn "Unknown choice; using stable"; SING_BOX_INSTALL_VARIANT="stable"; ENGINE_INSTALL_CHOICE="sing-box" ;;
+    case "${_answer:-y}" in
+        n|N|no|NO) CORE_INSTALL_CHOICE="" ;;
+        *) CORE_INSTALL_CHOICE="tachyon-core" ;;
     esac
     return 0
 }
@@ -1364,7 +1262,7 @@ snapshot_state() {
     SNAPSHOT_DIR="/etc/tachyon/installer-backups/$_stamp"
     mkdir -p "$SNAPSHOT_DIR" || return 1
     chmod 0700 "$SNAPSHOT_DIR" 2>/dev/null || true
-    for _f in /etc/config/tachyon /etc/config/netshift /etc/config/forkop /etc/config/forkop_plus /etc/config/podkop /etc/config/podkop_plus; do
+    for _f in /etc/config/tachyon; do
         [ -f "$_f" ] || continue
         cp -a "$_f" "$SNAPSHOT_DIR/$(basename "$_f")" || return 1
     done
@@ -1412,16 +1310,6 @@ restore_snapshot() {
     fi
     if [ "$PKG_IS_APK" -eq 1 ] && [ -f "$SNAPSHOT_DIR/apk-world" ]; then
         cp -a "$SNAPSHOT_DIR/apk-world" "$APK_WORLD_FILE" 2>/dev/null || true
-        # The snapshot predates the legacy removal, so restoring it verbatim
-        # brings back entries for packages this installer uninstalled. apk then
-        # refuses every subsequent operation until the user edits the file by
-        # hand, with no hint that this is why (issue #85).
-        #
-        # Legacy entries only, not the tachyon ones: the legacy packages are
-        # known to be gone, whereas whether tachyon survived a failed install is
-        # not, and dropping a still-installed package out of world would
-        # silently discard the user's choice to have it there.
-        scrub_apk_world "$LEGACY_PACKAGES"
     fi
     if [ "$TACHYON_WAS_INSTALLED" -eq 1 ] && [ -x /usr/bin/tachyon ]; then
         [ "$TACHYON_WAS_ENABLED" -eq 1 ] && /etc/init.d/tachyon enable >/dev/null 2>&1 || /etc/init.d/tachyon disable >/dev/null 2>&1 || true
@@ -1476,17 +1364,8 @@ check_name_resolution() {
     done
     [ "$_resolved" -eq 0 ] && return 0
     err "Cannot resolve host names. Everything from here on will fail."
-    if [ -f "$APK_WORLD_FILE" ] && grep -qE '^(podkop|luci-app-podkop|forkop|luci-app-forkop|netshift|luci-app-netshift)$' "$APK_WORLD_FILE" 2>/dev/null; then
-        err "A legacy resolver package is installed (podkop / forkop / netshift)."
-        err "Podkop and its forks serve DNS on 127.0.0.42:53, and if dnsmasq is"
-        err "pointed there manually ('do not touch my DHCP' in OpenWrt DNS settings)"
-        err "then removing them leaves dnsmasq forwarding to nothing."
-        err "Either remove the manual DNS entry in LuCI, or set the dnsmasq server"
-        err "back to your ISP's resolvers, then run the installer again."
-    else
-        err "Point dnsmasq at a reachable resolver, or check the WAN link, then run"
-        err "the installer again."
-    fi
+    err "Point dnsmasq at a reachable resolver, or check the WAN link, then run"
+    err "the installer again."
     return 1
 }
 
@@ -1511,46 +1390,6 @@ prepare_transaction() {
     release_tachyon_init_lock
 }
 
-remove_legacy_packages() {
-    _legacy_pkgs=""
-    if [ "$PKG_IS_APK" -eq 1 ]; then
-        # Exact installed-name match: 'apk info -e forkop' resolves virtuals to
-        # their provider, so with tachyon's PROVIDES:=forkop it would always
-        # report legacy forkop as installed and trigger a no-op purge.
-        for _pkg in $LEGACY_PACKAGES; do
-            if grep -q "^P:${_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
-                _legacy_pkgs="$_legacy_pkgs $_pkg"
-            fi
-        done
-        if [ -n "$_legacy_pkgs" ]; then
-            msg "Removing legacy packages (config files kept):$_legacy_pkgs"
-            # No --purge. The legacy config is the input to the migration in
-            # config/migration.uc, and destroying it here left the user with
-            # nothing to fall back on if the migration did not cover their
-            # setup. Removing the package is enough to stop the service.
-            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" --no-network --repositories-file /dev/null del $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
-        fi
-        # Legacy names only. The no-argument scrub uses WORLD_SCRUB_PACKAGES,
-        # which also lists tachyon and luci-app-tachyon - the packages this
-        # installer has just installed. Scrubbing them here drops them out of
-        # /etc/apk/world while they are installed, and apk's next transaction
-        # (a tachyon-core component update, say) sees two orphans and purges them,
-        # taking the LuCI menu with them (issue #120). The full scrub still
-        # runs before the next install, where it belongs: it exists to release
-        # stale pinned entries before apk selects anything.
-        scrub_apk_world "$LEGACY_PACKAGES"
-    else
-        for _pkg in $LEGACY_PACKAGES; do
-            if opkg status "$_pkg" 2>/dev/null | grep -q '^Status:'; then
-                _legacy_pkgs="$_legacy_pkgs $_pkg"
-            fi
-        done
-        if [ -n "$_legacy_pkgs" ]; then
-            msg "Removing legacy packages (config files kept):$_legacy_pkgs"
-            opkg remove --force-depends $_legacy_pkgs 2>/dev/null || warn "Could not remove legacy packages"
-        fi
-    fi
-}
 
 # Drop the listed packages from the world file so a later 'apk add' starts from
 # a clean slate. Also used on the rollback path: the snapshot of the world file
@@ -1559,7 +1398,8 @@ remove_legacy_packages() {
 # apk operation would fail with "no such package ... required by world[...]"
 # (issue #85).
 scrub_apk_world() {
-    _scrub_list="${1:-$WORLD_SCRUB_PACKAGES}"
+    _scrub_list="$1"
+    [ -n "$_scrub_list" ] || return 0
     [ -f "$APK_WORLD_FILE" ] || return 0
     for _pkg in $_scrub_list; do
         # Match the bare name and the pinned forms. After a local .apk install
@@ -1575,61 +1415,28 @@ scrub_apk_world() {
     debug "APK world file scrubbed: $_scrub_list"
 }
 
-# apk's solver reads /etc/apk/world before it selects anything. With forkop still
-# listed there, installing tachyon is unsolvable, because tachyon declares both
-# `Conflicts: forkop` and `breaks: world[forkop]`:
-#
-#   forkop-1.0.5: conflicts: tachyon-1.4.3
-#                 satisfies: world[forkop]  luci-app-forkop-1.0.5[forkop]
-#   tachyon-1.4.3: conflicts: forkop-1.0.5[forkop]
-#                  breaks: world[forkop]
-#
-# apk cannot select both halves of that set and aborts with "unable to select
-# packages", rolling the transaction back: forkop stays installed and Tachyon is
-# absent, which is exactly where a migrating user ends up.
-#
-# The scrub used to run after `apk del`, i.e. after the solver had already
-# failed. Releasing the legacy entries *before* the install lets apk drop forkop
-# inside the same transaction, which is atomic, and it keeps the window in which
-# the legacy resolver is gone but Tachy's DNS is not up yet as short as it was
-# meant to be (issue #85). Only the legacy entries are dropped here, and only
-# legacy entries at the end too: the full scrub belongs to the start of the next
-# run, where it releases stale pins before apk selects anything. Scrubbing the
-# freshly installed tachyon entries on the way out is what let the next apk
-# transaction purge Tachyon itself (issue #120).
+# Release stale apk world entries before install so the solver starts clean.
+# Reinstalling over a Tachyon that a previous run installed leaves world entries
+# like `tachyon><Q1xQ...=`, and the new package has to satisfy a constraint
+# describing a build that is no longer on the box (issue #85, #120).
 resolve_legacy_conflicts_before_install() {
     [ "$PKG_IS_APK" -eq 1 ] || return 0
     [ "$DRY_RUN" -eq 1 ] && return 0
-    _present=""
-    for _pkg in $LEGACY_PACKAGES; do
-        if grep -q "^P:${_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
-            _present="$_present $_pkg"
-        fi
-    done
-    if [ -n "$_present" ]; then
-        msg "Releasing legacy packages from apk world:$_present"
-        scrub_apk_world "$LEGACY_PACKAGES"
-    fi
-    if grep -qE "^ip-tiny([ \t<>=~].*)?\$" "$APK_WORLD_FILE" 2>/dev/null; then
+    if grep -qE "^ip-tiny([ \t<>=~].*)?$" "$APK_WORLD_FILE" 2>/dev/null; then
         msg "Releasing conflicting ip-tiny from apk world"
         scrub_apk_world "ip-tiny"
     fi
 
-    # Release this installer's own pinned entries. Reinstalling over a Tachyon
-    # that a previous run installed leaves world entries like
-    # `tachyon><Q1xQ...=`, and the new package has to satisfy a constraint
-    # describing a build that is no longer on the box. This is the common
-    # "install over the existing version" path, so it has to happen before
-    # `apk add`, not only on the legacy-migration path.
+    # Release this installer's own pinned entries.
     _pinned=""
-    for _pkg in $WORLD_SCRUB_PACKAGES; do
+    for _pkg in tachyon luci-app-tachyon; do
         if grep -qE "^${_pkg}[ \t<>=~]" "$APK_WORLD_FILE" 2>/dev/null; then
             _pinned="$_pinned $_pkg"
         fi
     done
     if [ -n "$_pinned" ]; then
         msg "Releasing pinned apk world entries:$_pinned"
-        scrub_apk_world
+        scrub_apk_world "tachyon luci-app-tachyon"
     fi
     return 0
 }
@@ -1804,51 +1611,152 @@ ensure_tcp_bbr_best_effort() {
     return 0
 }
 
+# Non-destructive backup of external configs before any cleanup.
+# Saves copies into /etc/tachyon/external-configs-backup/<component>/ without
+# overwriting existing backups (cp -n).
+backup_external_configs() {
+    _bkup_root="/etc/tachyon/external-configs-backup"
+    for _comp in zapret zapret2 byedpi wdtt qwdtt olcrtc sing-box; do
+        _comp_dir="$_bkup_root/$_comp"
+        case "$_comp" in
+            zapret)
+                _srcs="/etc/config/zapret /opt/zapret/config /opt/zapret/ipset"
+                ;;
+            zapret2)
+                _srcs="/etc/config/zapret2 /opt/zapret2/config /opt/zapret2/ipset"
+                ;;
+            byedpi)
+                _srcs="/etc/config/byedpi /etc/byedpi"
+                ;;
+            wdtt)
+                _srcs="/etc/config/wdtt /etc/wdtt"
+                ;;
+            qwdtt)
+                _srcs="/etc/config/qwdtt /etc/qwdtt"
+                ;;
+            olcrtc)
+                _srcs="/etc/config/olcrtc /etc/olcrtc"
+                ;;
+            sing-box)
+                _srcs="/etc/sing-box/config.json /etc/config/sing-box"
+                ;;
+        esac
+        _has_src=0
+        for _s in $_srcs; do
+            [ -e "$_s" ] && _has_src=1 && break
+        done
+        [ "$_has_src" -eq 1 ] || continue
+        mkdir -p "$_comp_dir" 2>/dev/null || continue
+        for _s in $_srcs; do
+            [ -e "$_s" ] || continue
+            _base="$(basename "$_s")"
+            if [ -d "$_s" ]; then
+                [ -d "$_comp_dir/$_base" ] || cp -a "$_s" "$_comp_dir/$_base" 2>/dev/null || true
+            else
+                [ -f "$_comp_dir/$_base" ] || cp -a "$_s" "$_comp_dir/$_base" 2>/dev/null || true
+            fi
+        done
+    done
+}
+
+# Check whether a component was installed/managed by Tachyon. Returns 0 (true)
+# if a Tachyon marker exists, 1 (false) if the component is standalone.
+is_tachyon_managed_component() {
+    _comp="$1"
+    # Check "Tachyon managed" marker in init script
+    if [ -f "/etc/init.d/$_comp" ] && grep -q "Tachyon managed" "/etc/init.d/$_comp" 2>/dev/null; then
+        return 0
+    fi
+    # Check component-backups marker
+    [ -d "/etc/tachyon/component-backups/$_comp" ] && return 0
+    # Check supervisor runtime dir
+    [ -d "/var/run/tachyon/$_comp" ] && return 0
+    return 1
+}
+
+# Selectively stop/disable/remove a component only if Tachyon-managed.
+selective_cleanup_component() {
+    _comp="$1"
+    _svc="${2:-$_comp}"
+    is_tachyon_managed_component "$_comp" || return 0
+    if [ -f "/etc/init.d/$_svc" ]; then
+        "/etc/init.d/$_svc" stop >/dev/null 2>&1 || true
+        "/etc/init.d/$_svc" disable >/dev/null 2>&1 || true
+        rm -f "/etc/init.d/$_svc" 2>/dev/null || true
+    fi
+}
+
 migrate_legacy_engine_files() {
     [ "$DRY_RUN" -eq 1 ] && return 0
 
-    # Silently stop/remove legacy sing-box init, binary, and state files on upgrade
-    if [ -f /etc/init.d/sing-box ]; then
-        /etc/init.d/sing-box stop >/dev/null 2>&1 || true
-        /etc/init.d/sing-box disable >/dev/null 2>&1 || true
-        rm -f /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
+    # Non-destructive backup of all external configs first
+    backup_external_configs
+
+    # Selective sing-box cleanup: only if Tachyon-managed
+    _sing_box_managed=0
+    if [ -f /etc/init.d/sing-box ] && grep -q "Tachyon managed" /etc/init.d/sing-box 2>/dev/null; then
+        _sing_box_managed=1
     fi
-    killall -9 sing-box >/dev/null 2>&1 || true
+    [ -f /etc/tachyon/sing-box-version ] && _sing_box_managed=1
+    [ -f /etc/tachyon/sing-box-variant ] && _sing_box_managed=1
+    [ -d /etc/tachyon/component-backups/sing_box ] && _sing_box_managed=1
 
-    for _legacy_pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
-        if [ "$PKG_IS_APK" -eq 1 ]; then
-            if grep -q "^P:${_legacy_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
-                scrub_apk_world "$_legacy_pkg"
-                apk del --no-network --repositories-file /dev/null "$_legacy_pkg" >/dev/null 2>&1 || true
-            fi
-        else
-            if opkg status "$_legacy_pkg" 2>/dev/null | grep -q '^Status:'; then
-                opkg remove --force-depends "$_legacy_pkg" >/dev/null 2>&1 || true
-            fi
+    if [ "$_sing_box_managed" -eq 1 ]; then
+        if [ -f /etc/init.d/sing-box ]; then
+            /etc/init.d/sing-box stop >/dev/null 2>&1 || true
+            /etc/init.d/sing-box disable >/dev/null 2>&1 || true
+            rm -f /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
         fi
-    done
+        killall -9 sing-box >/dev/null 2>&1 || true
 
-    if [ -d /etc/sing-box ]; then
-        mkdir -p /etc/tachyon-core 2>/dev/null || true
-        for _legacy_item in /etc/sing-box/*; do
-            [ -e "$_legacy_item" ] || continue
-            _base="$(basename "$_legacy_item")"
-            if [ ! -e "/etc/tachyon-core/$_base" ]; then
-                cp -a "$_legacy_item" "/etc/tachyon-core/$_base" 2>/dev/null || true
+        for _legacy_pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
+            if [ "$PKG_IS_APK" -eq 1 ]; then
+                if grep -q "^P:${_legacy_pkg}$" "$APK_INSTALLED_DB" 2>/dev/null; then
+                    scrub_apk_world "$_legacy_pkg"
+                    apk del --no-network --repositories-file /dev/null "$_legacy_pkg" >/dev/null 2>&1 || true
+                fi
+            else
+                if opkg status "$_legacy_pkg" 2>/dev/null | grep -q '^Status:'; then
+                    opkg remove --force-depends "$_legacy_pkg" >/dev/null 2>&1 || true
+                fi
             fi
         done
-        rm -rf /etc/sing-box 2>/dev/null || true
+
+        if [ -d /etc/sing-box ]; then
+            mkdir -p /etc/tachyon-core 2>/dev/null || true
+            for _legacy_item in /etc/sing-box/*; do
+                [ -e "$_legacy_item" ] || continue
+                _base="$(basename "$_legacy_item")"
+                if [ ! -e "/etc/tachyon-core/$_base" ]; then
+                    cp -a "$_legacy_item" "/etc/tachyon-core/$_base" 2>/dev/null || true
+                fi
+            done
+            rm -rf /etc/sing-box 2>/dev/null || true
+        fi
+
+        rm -f /usr/bin/sing-box /etc/tachyon/sing-box-variant /etc/tachyon/sing-box-version /etc/tachyon/mem_scale 2>/dev/null || true
+        rm -rf /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
     fi
 
-    rm -f /usr/bin/sing-box /etc/tachyon/sing-box-variant /etc/tachyon/sing-box-version /etc/tachyon/mem_scale 2>/dev/null || true
-    rm -rf /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
+    # Tachyon's own internal steer subsystem: always clean up (these are ours)
+    for _steer_svc in tachyon-steer-zapret steer; do
+        if [ -f "/etc/init.d/${_steer_svc}" ]; then
+            "/etc/init.d/${_steer_svc}" stop >/dev/null 2>&1 || true
+            "/etc/init.d/${_steer_svc}" disable >/dev/null 2>&1 || true
+            rm -f "/etc/init.d/${_steer_svc}" 2>/dev/null || true
+        fi
+    done
+    rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true
 
-    # Silently stop/remove legacy standalone external provider services, binaries, and packages on upgrade
-    for _legacy_svc in tachyon-steer-zapret steer zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
-        if [ -f "/etc/init.d/${_legacy_svc}" ]; then
-            "/etc/init.d/${_legacy_svc}" stop >/dev/null 2>&1 || true
-            "/etc/init.d/${_legacy_svc}" disable >/dev/null 2>&1 || true
-            rm -f "/etc/init.d/${_legacy_svc}" 2>/dev/null || true
+    # Selective cleanup of external legacy provider components
+    _managed_legacy_pkgs=""
+    for _comp in zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
+        # Map service name to package/component name for marker check
+        _comp_marker="$_comp"
+        case "$_comp" in wdtt-client) _comp_marker="wdtt" ;; esac
+        selective_cleanup_component "$_comp_marker" "$_comp"
+        if is_tachyon_managed_component "$_comp_marker"; then
+            case "$_comp" in wdtt-client) _managed_legacy_pkgs="$_managed_legacy_pkgs wdtt" ;; *) _managed_legacy_pkgs="$_managed_legacy_pkgs $_comp" ;; esac
         fi
     done
 
@@ -1860,13 +1768,19 @@ migrate_legacy_engine_files() {
         rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true
     fi
 
-    killall -9 nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc steer >/dev/null 2>&1 || true
+    # Only kill processes of Tachyon-managed components
+    killall -9 tachyon-core steer >/dev/null 2>&1 || true
+    for _proc in nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc; do
+        _proc_comp="$_proc"
+        case "$_proc" in nfqws|nfqws2) _proc_comp="zapret" ;; ciadpi) _proc_comp="byedpi" ;; qwdtt-client) _proc_comp="qwdtt" ;; esac
+        is_tachyon_managed_component "$_proc_comp" && killall -9 "$_proc" >/dev/null 2>&1 || true
+    done
 
-    _legacy_provider_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
-    [ "$_managed_tailscale" -eq 1 ] && _legacy_provider_pkgs="$_legacy_provider_pkgs tailscale"
-    for _legacy_pkg in $_legacy_provider_pkgs; do
+    # Remove packages only for Tachyon-managed components
+    [ "$_managed_tailscale" -eq 1 ] && _managed_legacy_pkgs="$_managed_legacy_pkgs tailscale"
+    for _legacy_pkg in $_managed_legacy_pkgs; do
         if [ "$PKG_IS_APK" -eq 1 ]; then
-            if grep -q "^P:${_legacy_pkg}\$" "$APK_INSTALLED_DB" 2>/dev/null; then
+            if grep -q "^P:${_legacy_pkg}$" "$APK_INSTALLED_DB" 2>/dev/null; then
                 scrub_apk_world "$_legacy_pkg"
                 apk del --no-network --repositories-file /dev/null "$_legacy_pkg" >/dev/null 2>&1 || true
             fi
@@ -1877,55 +1791,73 @@ migrate_legacy_engine_files() {
         fi
     done
 
-    rm -f /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* 2>/dev/null || true
-    rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true
-    rm -rf /var/run/tachyon/zapret* /var/run/tachyon/byedpi /var/run/tachyon/wdtt /var/run/tachyon/olcrtc /var/run/tachyon/tailscale /var/run/qwdtt /etc/tachyon/tailscale/*/native 2>/dev/null || true
-    rm -rf /etc/tachyon/component-backups/zapret /etc/tachyon/component-backups/zapret2 /etc/tachyon/component-backups/byedpi /etc/tachyon/component-backups/wdtt /etc/tachyon/component-backups/olcrtc /etc/tachyon/component-backups/tailscale 2>/dev/null || true
-    rm -f /var/run/tachyon/component-update-checks/zapret.json /var/run/tachyon/component-update-checks/zapret2.json /var/run/tachyon/component-update-checks/byedpi.json /var/run/tachyon/component-update-checks/wdtt.json /var/run/tachyon/component-update-checks/olcrtc.json 2>/dev/null || true
-    rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true
+    # Remove rc.d symlinks and runtime state only for Tachyon-managed components
+    for _comp in zapret zapret2 byedpi wdtt qwdtt olcrtc; do
+        if is_tachyon_managed_component "$_comp"; then
+            rm -f /etc/rc.d/*"$_comp"* 2>/dev/null || true
+        fi
+    done
+
+    # Remove binaries, configs, and state only for Tachyon-managed components
+    if is_tachyon_managed_component "zapret"; then
+        rm -rf /opt/zapret /etc/config/zapret /var/run/tachyon/zapret* 2>/dev/null || true
+        rm -f /usr/bin/nfqws /usr/bin/nfqws2 2>/dev/null || true
+        rm -rf /etc/tachyon/component-backups/zapret 2>/dev/null || true
+        rm -f /var/run/tachyon/component-update-checks/zapret.json 2>/dev/null || true
+    fi
+    if is_tachyon_managed_component "zapret2"; then
+        rm -rf /opt/zapret2 /etc/config/zapret2 /var/run/tachyon/zapret2* 2>/dev/null || true
+        rm -rf /etc/tachyon/component-backups/zapret2 2>/dev/null || true
+        rm -f /var/run/tachyon/component-update-checks/zapret2.json 2>/dev/null || true
+    fi
+    if is_tachyon_managed_component "byedpi"; then
+        rm -rf /etc/config/byedpi /var/run/tachyon/byedpi 2>/dev/null || true
+        rm -f /usr/bin/ciadpi 2>/dev/null || true
+        rm -rf /etc/tachyon/component-backups/byedpi 2>/dev/null || true
+        rm -f /var/run/tachyon/component-update-checks/byedpi.json 2>/dev/null || true
+    fi
+    if is_tachyon_managed_component "wdtt"; then
+        rm -rf /etc/wdtt /etc/config/wdtt /var/run/tachyon/wdtt 2>/dev/null || true
+        rm -f /usr/bin/wdtt /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve 2>/dev/null || true
+        rm -rf /etc/tachyon/component-backups/wdtt 2>/dev/null || true
+        rm -f /var/run/tachyon/component-update-checks/wdtt.json 2>/dev/null || true
+    fi
+    if is_tachyon_managed_component "qwdtt"; then
+        rm -rf /etc/qwdtt /var/run/qwdtt 2>/dev/null || true
+        rm -f /usr/bin/qwdtt-client 2>/dev/null || true
+    fi
+    if is_tachyon_managed_component "olcrtc"; then
+        rm -rf /etc/olcrtc /etc/config/olcrtc /var/run/tachyon/olcrtc 2>/dev/null || true
+        rm -f /usr/bin/olcrtc 2>/dev/null || true
+        rm -f /var/run/tachyon/component-update-checks/olcrtc.json 2>/dev/null || true
+    fi
+    if [ "$_managed_tailscale" -eq 1 ]; then
+        rm -rf /var/run/tachyon/tailscale /etc/tachyon/tailscale/*/native 2>/dev/null || true
+        rm -rf /etc/tachyon/component-backups/tailscale 2>/dev/null || true
+        rm -f /etc/tachyon/dnsmasq-tailscale.servers /tmp/dnsmasq.d/tachyon-tailscale.conf 2>/dev/null || true
+    fi
+
     if command_exists nft; then
-        for _legacy_tbl in steer zapret zapret2 tachyon_tailscale; do
-            nft delete table inet "$_legacy_tbl" >/dev/null 2>&1 || true
-        done
+        nft delete table inet steer >/dev/null 2>&1 || true
+        nft delete table inet tachyon_tailscale >/dev/null 2>&1 || true
         for _legacy_tbl in zapret zapret2; do
-            nft delete table ip "$_legacy_tbl" >/dev/null 2>&1 || true
-            nft delete table ip6 "$_legacy_tbl" >/dev/null 2>&1 || true
+            if is_tachyon_managed_component "$_legacy_tbl"; then
+                nft delete table inet "$_legacy_tbl" >/dev/null 2>&1 || true
+                nft delete table ip "$_legacy_tbl" >/dev/null 2>&1 || true
+                nft delete table ip6 "$_legacy_tbl" >/dev/null 2>&1 || true
+            fi
         done
     fi
     return 0
 }
 
+
 install_selected_core() {
-    [ -n "$CORE_INSTALL_CHOICE" ] || [ -n "$ENGINE_INSTALL_CHOICE" ] || [ -n "$SING_BOX_INSTALL_VARIANT" ] || return 0
+    [ -n "$CORE_INSTALL_CHOICE" ] || return 0
     [ -x /usr/bin/tachyon ] || return 1
-
-    if release_is_tachyon_core_only; then
-        [ -n "$CORE_INSTALL_CHOICE" ] || return 0
-        [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install tachyon-core"; return 0; }
-        msg "Installing tachyon-core"
-        run_logged_timeout tachyon-core "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action tachyon-core install || return 1
-        return 0
-    fi
-
-    _variant="$SING_BOX_INSTALL_VARIANT"
-    if [ -z "$_variant" ] && [ "$CORE_INSTALL_CHOICE" = "tachyon-core" ]; then
-        _variant="tachyon-core"
-    fi
-    [ -n "$_variant" ] || return 0
-    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install $_variant for $TACHYON_RELEASE_TAG"; return 0; }
-    case "$_variant" in
-        stable) _action="install_stable"; _uci_engine="sing-box"; _label="sing-box (stable)" ;;
-        tiny) _action="install_tiny"; _uci_engine="sing-box"; _label="sing-box (tiny)" ;;
-        extended) _action="install_extended"; _uci_engine="sing-box"; _label="sing-box (extended)" ;;
-        extended-compressed) _action="install_extended_compressed"; _uci_engine="sing-box"; _label="sing-box (extended-compressed)" ;;
-        lx) _action="install_lx"; _uci_engine="sing-box"; _label="sing-box (lx)" ;;
-        tachyon-core|tachyon_core) _action="install_tachyon_core"; _uci_engine="tachyon-core"; _label="tachyon-core" ;;
-        *) return 1 ;;
-    esac
-    msg "Installing $_label"
-    run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action" || return 1
-    uci set "tachyon.settings.engine=$_uci_engine" 2>/dev/null || true
-    uci commit tachyon 2>/dev/null || true
+    [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install tachyon-core"; return 0; }
+    msg "Installing tachyon-core"
+    run_logged_timeout tachyon-core "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action tachyon-core install || return 1
     return 0
 }
 
@@ -2043,18 +1975,10 @@ system_preflight() {
 print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
-    if release_is_tachyon_core_only; then
-        if [ -n "$CORE_INSTALL_CHOICE" ]; then
-            msg "Routing core: $CORE_INSTALL_CHOICE"
-        else
-            msg "Routing core: keep existing / skip"
-        fi
+    if [ -n "$CORE_INSTALL_CHOICE" ]; then
+        msg "Routing core: $CORE_INSTALL_CHOICE"
     else
-        case "$SING_BOX_INSTALL_VARIANT" in
-            tachyon-core|tachyon_core) msg "Routing core: tachyon-core" ;;
-            ?*) msg "Routing core: sing-box ($SING_BOX_INSTALL_VARIANT)" ;;
-            *) msg "Routing core: keep existing / skip" ;;
-        esac
+        msg "Routing core: keep existing / skip"
     fi
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
@@ -2108,23 +2032,13 @@ main() {
     prepare_transaction || fail "Could not prepare package transaction"
     resolve_legacy_conflicts_before_install
     install_core_transaction || fail "Tachyon package transaction failed"
-    if release_is_tachyon_core_only; then
-        migrate_legacy_engine_files
-    fi
+    migrate_legacy_engine_files
     install_zram_if_requested
     ensure_tcp_bbr_best_effort
     install_selected_core || fail "Routing core installation failed"
     msg "Restoring service state"
     restore_service_intent || fail "Could not restore Tachyon service state"
     healthcheck || fail "Installed Tachyon did not pass healthcheck"
-    # Only now. Podkop binds its local DNS to 127.0.0.42:53 and users point
-    # dnsmasq at it by hand, so removing it first kills the resolver while
-    # Tachy's own DNS is not up yet - everything after that point fails to
-    # resolve and the install dies somewhere unrelated (issue #85). Tachyon's
-    # postinst already stops and disables the legacy services, so keeping the
-    # packages until here costs nothing and closes the window.
-    msg "Checking for legacy packages (forkop/podkop/netshift)"
-    remove_legacy_packages
     commit_transaction
 
     _end="$(date +%s 2>/dev/null || echo 0)"
