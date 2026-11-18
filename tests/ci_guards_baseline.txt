@@ -13,7 +13,7 @@ raw_system|tachyon/files/usr/lib/components/action.uc|3
 raw_system|tachyon/files/usr/lib/components/hosts.uc|2
 raw_system|tachyon/files/usr/lib/components/updates.uc|2
 raw_system|tachyon/files/usr/lib/components/verifier.uc|1
-raw_system|tachyon/files/usr/lib/config/migration.uc|9
+raw_system|tachyon/files/usr/lib/config/migration.uc|7
 raw_system|tachyon/files/usr/lib/config/validator.uc|3
 raw_system|tachyon/files/usr/lib/core/common.uc|2
 raw_system|tachyon/files/usr/lib/core/events.uc|1
