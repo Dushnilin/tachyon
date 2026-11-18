@@ -21,7 +21,7 @@ grep -Fq 'reset_settings [no-start]' "$TACHYON_BIN" ||
 mkdir -p "$WORK_DIR/lib/defaults"
 cat >"$WORK_DIR/default-config" <<'EOF'
 config settings 'settings'
-        option config_version '1.0.5'
+        option config_version '1.8.0'
         option dns_type 'udp'
         option shutdown_correctly '0'
 EOF

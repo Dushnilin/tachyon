@@ -11,25 +11,24 @@ grep -Fq 'import_settings: [ "config/migration.uc", "import-settings", 1 ]' "$TA
 grep -Fq '"import-settings": [ "config/migration.uc", "import-settings", 1 ]' "$TACHYON_BIN" ||
   fail "tachyon CLI must map import-settings alias"
 
-# 2. Test import from explicit legacy Forkop file
+# 2. Test import from explicit Tachyon backup file
 MOCK_ETC="$WORK_DIR/etc"
 mkdir -p "$MOCK_ETC/config"
 
-cat > "$MOCK_ETC/config/forkop" <<'EOF_FORKOP'
+cat > "$WORK_DIR/tachyon-backup.conf" <<'EOF_BACKUP'
 config settings 'settings'
 	option enabled '1'
-	option dns_server '8.8.8.8'
+	option config_version '1.8.0'
+	list dns_server '8.8.8.8'
+	list bootstrap_dns_server '1.1.1.1'
 
-config rule 'youtube'
+config section 'youtube'
 	option enabled '1'
-	option connection_type 'proxy'
-	option proxy_config_type 'url'
-	option proxy_string 'vless://user@1.2.3.4:443?security=tls#node1'
-	list domain 'youtube.com'
-	list domain 'googlevideo.com'
-EOF_FORKOP
+	option action 'connection'
+	list selector_proxy_links 'vless://user@1.2.3.4:443?security=tls#node1'
+	option domain 'youtube.com'
+EOF_BACKUP
 
-# Initial dummy tachyon config
 cat > "$MOCK_ETC/config/tachyon" <<'EOF_TACHYON'
 config settings 'settings'
 	option enabled '0'
@@ -38,12 +37,13 @@ EOF_TACHYON
 cat > "$WORK_DIR/test_import.state" <<'EOF_STATE'
 tachyon.settings=settings
 tachyon.settings.enabled=1
+tachyon.settings.config_version=1.8.0
 tachyon.settings.dns_server=8.8.8.8
+tachyon.settings.bootstrap_dns_server=1.1.1.1
 tachyon.youtube=section
 tachyon.youtube.enabled=1
-tachyon.youtube.action=proxy
-tachyon.youtube.proxy_config_type=url
-tachyon.youtube.proxy_string=vless://user@1.2.3.4:443?security=tls#node1
+tachyon.youtube.action=connection
+tachyon.youtube.selector_proxy_links=vless://user@1.2.3.4:443?security=tls#node1
 EOF_STATE
 
 export TACHYON_SKIP_RESTART="1"
@@ -56,19 +56,39 @@ OUTPUT="$(env \
   TACHYON_UCI_LOG_FILE="$WORK_DIR/test_import.log" \
   TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
   TACHYON_SKIP_RESTART="1" \
-  ucode -L "$TACHYON_LIB" "$MIGRATION" import-settings "$MOCK_ETC/config/forkop")"
+  ucode -L "$TACHYON_LIB" "$MIGRATION" import-settings "$WORK_DIR/tachyon-backup.conf")"
 
 echo "$OUTPUT" | grep -Fq 'SUCCESS: Settings successfully imported' ||
-  fail "import_settings must report success on valid legacy file"
+  fail "import_settings must report success on valid backup file"
 
-echo "$OUTPUT" | grep -Fq 'Legacy Forkop / Podkop' ||
-  fail "import_settings must recognize legacy format"
+echo "$OUTPUT" | grep -Fq 'Detected format: Tachyon' ||
+  fail "import_settings must report Tachyon format"
 
-# 3. Test auto-scan in mock directory
+# 3. Auto-scan must ignore unrelated config filenames and find Tachyon backups
+MOCK_SCAN_ETC="$WORK_DIR/etc_scan"
+mkdir -p "$MOCK_SCAN_ETC/config"
+cp "$MOCK_ETC/config/tachyon" "$MOCK_SCAN_ETC/config/tachyon"
+for legacy_name in legacy_cfg legacy_plus foreign_cfg foreign_plus other_router; do
+  cp "$WORK_DIR/tachyon-backup.conf" "$MOCK_SCAN_ETC/config/$legacy_name"
+done
+
+if env \
+  TACHYON_LIB="$TACHYON_LIB" \
+  TACHYON_CONFIG_FILE="$MOCK_SCAN_ETC/config/tachyon" \
+  TACHYON_CONFIG_DIR="$MOCK_SCAN_ETC/config" \
+  TACHYON_UCI_STATE_FILE="$WORK_DIR/test_import.state" \
+  TACHYON_UCI_LOG_FILE="$WORK_DIR/test_import.log" \
+  TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+  TACHYON_SKIP_RESTART="1" \
+  ucode -L "$TACHYON_LIB" "$MIGRATION" import-settings >/dev/null 2>&1; then
+  fail "import_settings auto-scan must not pick up unrelated config filenames"
+fi
+
+cp "$WORK_DIR/tachyon-backup.conf" "$MOCK_SCAN_ETC/config/tachyon.backup-20261118"
 SCAN_OUTPUT="$(env \
   TACHYON_LIB="$TACHYON_LIB" \
-  TACHYON_CONFIG_FILE="$MOCK_ETC/config/tachyon" \
-  TACHYON_CONFIG_DIR="$MOCK_ETC/config" \
+  TACHYON_CONFIG_FILE="$MOCK_SCAN_ETC/config/tachyon" \
+  TACHYON_CONFIG_DIR="$MOCK_SCAN_ETC/config" \
   TACHYON_UCI_STATE_FILE="$WORK_DIR/test_import.state" \
   TACHYON_UCI_LOG_FILE="$WORK_DIR/test_import.log" \
   TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
@@ -76,7 +96,9 @@ SCAN_OUTPUT="$(env \
   ucode -L "$TACHYON_LIB" "$MIGRATION" import-settings)"
 
 echo "$SCAN_OUTPUT" | grep -Fq 'SUCCESS: Settings successfully imported' ||
-  fail "import_settings auto-scan must import legacy file"
+  fail "import_settings auto-scan must import Tachyon backup file"
+echo "$SCAN_OUTPUT" | grep -Fq 'tachyon.backup-20261118' ||
+  fail "import_settings auto-scan must pick tachyon.backup-20261118"
 
 # 4. Test non-existent file path error handling
 ERR_OUTPUT="$(env \

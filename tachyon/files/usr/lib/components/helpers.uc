@@ -534,7 +534,6 @@ function sanitize_apk_world() {
         return;
     let removable_if_uninstalled = [
         "tachyon-core",
-        "forkop", "luci-app-forkop", "podkop", "luci-app-podkop", "netshift", "luci-app-netshift",
         "luci-i18n-tachyon-ru"
     ];
     for (let pkg in removable_if_uninstalled) {

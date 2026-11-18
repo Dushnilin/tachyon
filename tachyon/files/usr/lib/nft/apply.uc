@@ -5014,17 +5014,9 @@ function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, 
 
     if (can_use_internal_nft_batch()) {
         let tables_out = "\n" + command_output_quiet_from_args([ "nft", "list", "tables" ]) + "\n";
-        for (let legacy_table in [ "NetShiftTable", "PodkopTable", "ForkopTable", "podkop", "forkop", "netshift" ]) {
-            if (legacy_table != table && index(tables_out, "\ntable inet " + legacy_table + "\n") >= 0)
-                nft_delete_table(legacy_table);
-        }
         if (index(tables_out, "\ntable inet " + as_string(table) + "\n") >= 0 && !nft_delete_table(table))
             return false;
     } else {
-        for (let legacy_table in [ "NetShiftTable", "PodkopTable", "ForkopTable", "podkop", "forkop", "netshift" ]) {
-            if (legacy_table != table && nft_table_present(legacy_table))
-                nft_delete_table(legacy_table);
-        }
         if (nft_table_present(table) && !nft_delete_table(table))
             return false;
     }

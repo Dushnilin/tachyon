@@ -272,7 +272,7 @@ for applied in no yes; do
   extra=""
   [ "$applied" = yes ] && extra=', "fail_closed_auto_defaults"'
   cat >"$WORK_DIR/mig-$applied.json" <<JSON
-{ "settings": { ".name": "settings", ".type": "settings", "config_version": "1.0.5", "dns_intercept_all": "0", "webrtc_leak_protect": "0",
+{ "settings": { ".name": "settings", ".type": "settings", "config_version": "1.8.0", "dns_intercept_all": "0", "webrtc_leak_protect": "0",
     "applied_migrations": [ "interface_sections", "enable_component_checks", "http_connection_urls",
       "dns_hosts_to_option", "global_hosts_to_section", "orphan_section_interface_cleanup",
       "ensure_dns_server_defaults", "engine_identity_tachyon_core", "modular_entities_v1",

@@ -168,7 +168,7 @@ function show_help() {
     print("    snapshot_diff <file>    Show secret-masked diff between snapshot and active config\n");
     print("    snapshot_export <file>  Export a config snapshot as a JSON profile\n");
     print("    snapshot_import <file>  Import a config snapshot from a JSON profile\n");
-    print("    import_settings [file]  Scan and import legacy settings from Forkop/Podkop or backup\n");
+    print("    import_settings [file]  Scan and import settings from a Tachyon backup\n");
     print("    dns_benchmark [--json]  Benchmark major DNS servers (UDP/DoH) and display speed ratings\n");
     print("    dns_speed_test_start <json>  Test selected DoH servers and domains without changing settings\n");
     print("    dns_speed_test_status        Read DNS speed test progress and per-domain latency\n");

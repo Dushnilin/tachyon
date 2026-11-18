@@ -354,7 +354,7 @@ cat >"$WORK_DIR/legacy_monolithic.json" <<'JSON'
   "settings": {
     ".name": "settings",
     ".type": "settings",
-    "config_version": "1.0.5",
+    "config_version": "1.8.0",
     "dns_server": [ "77.88.8.8" ],
     "bootstrap_dns_server": [ "77.88.8.8" ]
   },

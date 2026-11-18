@@ -46,7 +46,7 @@ eval "$(ucode -L "$TACHYON_LIB" "$CONSTANTS_UC" shell-env)"
   fail "core/constants.uc shell-env did not derive TMP_RULESET_FOLDER"
 [ "$CORE_TPROXY_INBOUND_PORT" = "1602" ] ||
   fail "core/constants.uc shell-env did not derive CORE_TPROXY_INBOUND_PORT"
-for removed in BYEDPI_PID_DIR ZAPRET_ROUTE_MARK_BASE ZAPRET2_ROUTE_MARK_BASE WDTT_SERVICE_NAME OLCRTC_SERVICE_NAME; do
+for removed in BYEDPI_PID_DIR ZAPRET_ROUTE_MARK_BASE ZAPRET2_ROUTE_MARK_BASE WDTT_SERVICE_NAME OLCRTC_SERVICE_NAME SRS_MAIN_URL SRS_ADS_HAGEZI_PRO_URL SRS_SUPERCELL_URL SRS_GITHUB_URL SRS_TWITCH_URL; do
   if [ -n "${!removed:-}" ]; then
     fail "removed provider constant $removed must not remain in core/constants.uc"
   fi

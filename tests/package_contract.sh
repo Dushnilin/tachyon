@@ -58,7 +58,7 @@ grep -Fq 'APK_INTERNAL_VERSION="$RELEASE_VERSION"' "$BUILD_SCRIPT" ||
   fail "build.sh must use the exact three-part release version for APK metadata"
 grep -Fq "option component_update_check_enabled '1'" "$TACHYON_CONFIG" ||
   fail "new installations must enable component update checks by default"
-grep -Fq "option config_version '1.0.5'" "$TACHYON_CONFIG" ||
+grep -Fq "option config_version '1.8.0'" "$TACHYON_CONFIG" ||
   fail "new installations must start at the current configuration schema version"
 grep -Fq "list applied_migrations 'interface_sections'" "$TACHYON_CONFIG" ||
   fail "new installations must mark the interface section migration as applied"

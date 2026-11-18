@@ -207,7 +207,7 @@ function download_profiles_from_repo() {
 }
 
 function load_profiles_data() {
-    let override = getenv("TACHYON_SC_PROFILES") || getenv("FORKOP_SC_PROFILES");
+    let override = getenv("TACHYON_SC_PROFILES");
     if (as_string(override) != "") {
         let data = fs.readfile(as_string(override));
         if (data != null && length(trim(data)) > 0) return data;
@@ -227,7 +227,7 @@ function load_profiles_data() {
 }
 
 function profiles_file() {
-    let override = getenv("TACHYON_SC_PROFILES") || getenv("FORKOP_SC_PROFILES");
+    let override = getenv("TACHYON_SC_PROFILES");
     if (as_string(override) != "")
         return as_string(override);
     if (fs.stat(PROFILES_OVERRIDE) != null)
@@ -518,7 +518,7 @@ function ipv6_in_any_cidr(ip_str, cidrs) {
     return false;
 }
 
-function forkop_running() {
+function tachyon_running() {
     let backend = backend_id();
     if (backend != "tachyon")
         return false;
@@ -555,7 +555,7 @@ function detect_nc_mode() {
 
 function capabilities() {
     let backend = backend_id();
-    let running = forkop_running();
+    let running = tachyon_running();
     let interface = lan_interface();
     let address = interface_ipv4(interface);
     let nc_mode = detect_nc_mode();
@@ -578,12 +578,8 @@ function capabilities() {
         backend_name: backend_name(backend),
         backend_installed: backend != "none",
         backend_running: running,
-        forkop_installed: false,
-        podkop_installed: false,
         fixes_available: false,
         tachyon_core_config: tachyon_core_config_path(),
-        // Старое поле оставлено для совместимости со страницей предыдущих версий.
-        forkop_running: running,
         profiles_version: int(object_or_empty(read_json_file(profiles_file())).version || 0)
     };
 }
@@ -669,8 +665,8 @@ function profiles_save(payload) {
         return 1;
     }
 
-    if (!run_quiet([ "mkdir", "-p", "/etc/forkop-servicecheck" ])) {
-        write_json({ success: false, message: "не удалось создать /etc/forkop-servicecheck" });
+    if (!run_quiet([ "mkdir", "-p", "/etc/tachyon" ])) {
+        write_json({ success: false, message: "не удалось создать /etc/tachyon" });
         return 1;
     }
 
@@ -1584,7 +1580,6 @@ function build_context(mode, client_ip) {
         backend: caps.backend,
         backend_name: caps.backend_name,
         backend_running: caps.backend_running,
-        forkop_running: caps.forkop_running,
         client_ip: "",
         netns_error: ""
     };
@@ -1748,7 +1743,6 @@ function custom_check(host, port, mode, client_ip) {
         backend: ctx.backend,
         backend_name: ctx.backend_name,
         backend_running: ctx.backend_running,
-        forkop_running: ctx.forkop_running,
         route: {
             status: route_status,
             through_tachyon_core,
@@ -1837,7 +1831,6 @@ function run_check(ids, mode, client_ip, progress_path) {
         backend: ctx.backend,
         backend_name: ctx.backend_name,
         backend_running: ctx.backend_running,
-        forkop_running: ctx.forkop_running,
         tools: ctx.tools,
         fakeip_ranges: ctx.fakeip_ranges,
         progress: { done, total },
@@ -1926,7 +1919,6 @@ function worker(path, ids, mode, client_ip) {
     state.backend = result.backend;
     state.backend_name = result.backend_name;
     state.backend_running = result.backend_running;
-    state.forkop_running = result.forkop_running;
 
     write_state(path, state);
     return 0;

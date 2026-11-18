@@ -646,7 +646,6 @@ function migrate_proxy_rule(ctx, section, proxy_config_type) {
     delete_option(ctx, section, "proxy_config_type");
 }
 
-// Podkop Plus -> Tachyon source migration.
 function migrated_rule_action(section) {
     let action = option(section, "action", "");
     let proxy_config_type = option(section, "proxy_config_type", "");
@@ -1083,7 +1082,7 @@ function migrate_combined_domain_conditions(ctx, section) {
         }
     }
 
-    // Forkop 1.0.5 already stores combined bare/full/keyword/regex entries.
+    // Tachyon 1.0.5+ already stores combined bare/full/keyword/regex entries.
     // Earlier formats use separate domain/domain_suffix fields.
     add_domain_values_with_prefix(values, seen, section, "domain", ctx.combined_domain_conditions ? "" : "full:", "domains");
     add_domain_values_with_prefix(values, seen, section, "domain_keyword", "keyword:", "generic");
@@ -1137,31 +1136,6 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
     delete_option(ctx, section, "subscription_group_prefix_len");
     delete_option(ctx, section, "global_proxy");
 
-    // Migrate legacy domain_list_urls and subnet_list_urls (early Podkop)
-    if (option_exists(section, "domain_list_urls")) {
-        for (let entry in option_list_values(section, "domain_list_urls")) {
-            entry = trim(as_string(entry));
-            if (entry == "") continue;
-            if (match(entry, /\.srs$/i))
-                add_list_unique(ctx, section, "rule_set", entry);
-            else
-                add_list_unique(ctx, section, "remote_domain_lists", entry);
-        }
-        delete_option(ctx, section, "domain_list_urls");
-    }
-
-    if (option_exists(section, "subnet_list_urls")) {
-        for (let entry in option_list_values(section, "subnet_list_urls")) {
-            entry = trim(as_string(entry));
-            if (entry == "") continue;
-            if (match(entry, /\.srs$/i) || match(entry, /\.json$/i))
-                add_list_unique(ctx, section, "rule_set_with_subnets", entry);
-            else
-                add_list_unique(ctx, section, "remote_subnet_lists", entry);
-        }
-        delete_option(ctx, section, "subnet_list_urls");
-    }
-
     if (action == "connection") {
         migrate_urltest_filter_mode(ctx, section);
         migrate_detect_server_country(ctx, section);
@@ -1200,101 +1174,6 @@ function migrate_rule_section(ctx, section, constants) {
     migrate_rule(ctx, section, true, constants);
     migrate_combined_domain_conditions(ctx, section);
     migrate_text_condition(ctx, section, "ip_cidr", "subnets");
-}
-
-function migrate_list_update_enabled(ctx) {
-    let settings = ctx.model.settings;
-    if (option_exists(settings, "list_update_enabled")) {
-        if (bool_option(settings, "list_update_enabled", true) &&
-            option(settings, "update_interval", "") == "") {
-            set_option(ctx, settings, "update_interval", "1d");
-        }
-        return;
-    }
-
-    if (option(settings, "update_interval", "") != "") {
-        set_option(ctx, settings, "list_update_enabled", "1");
-    }
-    else {
-        set_option(ctx, settings, "list_update_enabled", "0");
-        set_option(ctx, settings, "update_interval", "1d");
-    }
-}
-
-function normalize_existing_list_option(ctx, section, key) {
-    let current = object_or_empty(section)[key];
-    if (current == null)
-        return;
-
-    let values = [];
-    if (type(current) == "array") {
-        for (let item in current) {
-            item = trim(as_string(item));
-            if (item != "")
-                push(values, item);
-        }
-    }
-    else {
-        let text = trim(as_string(current));
-        if (text != "") {
-            for (let item in split(text, /[ \t\r\n,]+/)) {
-                item = trim(item);
-                if (item != "")
-                    push(values, item);
-            }
-        }
-    }
-
-    if (type(current) == "array" && length(values) == length(current))
-        return;
-
-    section[key] = values;
-    record_operation(ctx, { op: "set_list", section: section_name(section), option: key, values });
-}
-
-function migrate_dns_server_lists(ctx) {
-    normalize_existing_list_option(ctx, ctx.model.settings, "dns_server");
-    normalize_existing_list_option(ctx, ctx.model.settings, "bootstrap_dns_server");
-}
-
-function migrate_download_via_proxy_flags(ctx) {
-    let settings = ctx.model.settings;
-    let legacy_section = option(settings, "download_lists_via_proxy_section", "");
-    let lists_enabled = bool_option(settings, "download_lists_via_proxy", false);
-    let components_enabled = option_exists(settings, "download_components_via_proxy")
-        ? bool_option(settings, "download_components_via_proxy", false)
-        : lists_enabled;
-
-    set_option(ctx, settings, "download_lists_via_proxy", lists_enabled ? "1" : "0");
-    if (!lists_enabled)
-        delete_option(ctx, settings, "download_lists_via_proxy_section");
-
-    set_option(ctx, settings, "download_components_via_proxy", components_enabled ? "1" : "0");
-    if (components_enabled) {
-        if (option(settings, "download_components_via_proxy_section", "") == "" && legacy_section != "")
-            set_option(ctx, settings, "download_components_via_proxy_section", legacy_section);
-    }
-    else {
-        delete_option(ctx, settings, "download_components_via_proxy_section");
-    }
-}
-
-function migrate_subscription_download_via_proxy_settings(ctx) {
-    let settings_section = ctx.model.settings;
-    let enabled = bool_option(settings_section, "download_subscriptions_via_proxy", false);
-    let target_section = option(settings_section, "download_lists_via_proxy_section", "");
-
-    if (enabled && target_section != "") {
-        for (let child in ctx.model.subscription_url || []) {
-            let name = option(child, "section", "");
-            if (name == "" || name == target_section)
-                continue;
-            set_option(ctx, child, "download_via_proxy_enabled", "1");
-            set_option(ctx, child, "download_via_proxy_section", target_section);
-        }
-    }
-
-    delete_option(ctx, settings_section, "download_subscriptions_via_proxy");
 }
 
 function migrate_rule_set_settings(ctx, section) {
@@ -1461,8 +1340,8 @@ function migrate_http_connection_urls(ctx) {
 }
 
 // Ensure both main and bootstrap DNS server lists have at least one entry.
-// forkop/podkop did not require bootstrap_dns_server, so it is often absent after
-// migration. The validator refuses to start Tachyon when either list is empty.
+// Older configs may omit bootstrap_dns_server or dns_server, while the
+// validator refuses to start Tachyon when either list is empty.
 // The default "77.88.8.8" matches the runtime fallback in tachyon_core/dns.uc.
 function migrate_ensure_dns_server_defaults(ctx) {
     let settings = ctx.model.settings;
@@ -1801,11 +1680,60 @@ function normalize_tachyon_core_uci(ctx) {
     migrate_unify_tachyon_core_providers(ctx);
 }
 
+function legacy_cleanup_root() {
+    return replace(as_string(getenv("TACHYON_LEGACY_CLEANUP_ROOT") || ""), /\/+$/, "");
+}
+
+function legacy_path(path) {
+    return legacy_cleanup_root() + as_string(path);
+}
+
+function legacy_cleanup_host_enabled() {
+    if (legacy_cleanup_root() != "")
+        return true;
+    if (getenv("TACHYON_UCI_STATE_FILE") != null || getenv("UCI_STATE") != null)
+        return false;
+    return TARGET_CONFIG == "/etc/config/" + CONFIG_NAME && getenv("TACHYON_CONFIG_FILE") == null;
+}
+
+function backup_file_non_destructive(src, dst) {
+    let st = fs.stat(src);
+    if (st == null || st.type == "directory")
+        return false;
+    if (fs.stat(dst) != null)
+        return true;
+    return common.copy_file(src, dst);
+}
+
+function backup_external_singbox_configs() {
+    let backup_dir = legacy_path("/etc/tachyon/external-configs-backup/sing-box");
+    backup_file_non_destructive(legacy_path("/etc/sing-box/config.json"), backup_dir + "/config.json");
+    backup_file_non_destructive(legacy_path("/etc/config/sing-box"), backup_dir + "/sing-box");
+}
+
+function has_tachyon_managed_singbox_marker() {
+    let init_path = legacy_path("/etc/init.d/sing-box");
+    if (fs.stat(init_path) != null) {
+        let init_txt = as_string(fs.readfile(init_path) || "");
+        if (index(init_txt, "Tachyon managed") >= 0)
+            return true;
+    }
+    for (let marker_path in [
+        "/etc/tachyon/sing-box-version",
+        "/etc/tachyon/sing-box-variant",
+        "/etc/tachyon/component-backups/sing_box"
+    ]) {
+        if (fs.stat(legacy_path(marker_path)) != null)
+            return true;
+    }
+    return false;
+}
+
 /// The engine became a product of its own: binary, service, config directory
 /// and UCI package all carry `tachyon-core` now. An upgrade from the previous
 /// release has to land on the new names without losing the running config, so
-/// this migration rewrites what UCI stores, moves the config file when the new
-/// path is still empty, and cleans legacy files silently.
+/// this migration rewrites what UCI stores and copies managed configs
+/// non-destructively after saving external config backups.
 function migrate_engine_identity(ctx) {
     let settings = object_or_empty(object_or_empty(ctx.model).settings);
     const OLD_CONFIG_DIR = "/etc/sing-box";
@@ -1816,6 +1744,11 @@ function migrate_engine_identity(ctx) {
     const NEW_SHARE_DIR = "/usr/share/tachyon-core";
 
     normalize_tachyon_core_uci(ctx);
+
+    let can_touch_host = !ctx.fixture_mode && legacy_cleanup_host_enabled();
+    if (can_touch_host)
+        backup_external_singbox_configs();
+    let managed_singbox = can_touch_host ? has_tachyon_managed_singbox_marker() : false;
 
     for (let key in [ "config_path", "cache_path" ]) {
         if (!option_exists(settings, key))
@@ -1833,66 +1766,56 @@ function migrate_engine_identity(ctx) {
         }
         if (updated == "" || updated == value)
             continue;
-        // the file itself follows the option, so an upgrade keeps the proxy's
-        // own configuration instead of silently starting from an empty one
-        if (fs.stat(updated) == null && fs.stat(value) != null) {
-            let slash = rindex(updated, "/");
-            if (slash > 0) {
-                let dir = substr(updated, 0, slash);
-                try {
-                    fs.mkdir(dir, 0755);
-                }
-                catch (e) {
-                }
-            }
-            let moved = false;
-            try {
-                moved = fs.rename(value, updated) == true;
-            }
-            catch (e) {
-            }
-            if (!moved) {
-                try {
-                    let raw = fs.readfile(value);
-                    if (raw != null && fs.writefile(updated, raw) != null)
-                        fs.unlink(value);
-                }
-                catch (e) {
-                }
+        // Copy non-destructively so standalone files are never moved/unlinked here.
+        if (can_touch_host) {
+            let src_path = legacy_path(value);
+            let dst_path = legacy_path(updated);
+            if (fs.stat(dst_path) == null && fs.stat(src_path) != null) {
+                let dir = common.parent_dir(dst_path);
+                if (dir != "")
+                    common.ensure_dir(dir);
+                if (index(updated, NEW_TMP_DIR + "/") == 0 || key == "cache_path")
+                    common.copy_file_stream(src_path, dst_path);
+                else
+                    common.copy_file(src_path, dst_path);
             }
         }
         set_option(ctx, settings, key, updated);
     }
 
-    // the engine's own UCI package
-    if (uci_core.exists("sing-box.main") && !uci_core.exists("tachyon-core.main")) {
-        uci_core.rename_package("sing-box", "tachyon-core");
-        uci_core.commit("tachyon-core");
-    }
+    if (can_touch_host && managed_singbox) {
+        // Copy the engine's own UCI package only when Tachyon-managed.
+        if (legacy_cleanup_root() == "" && uci_core.exists("sing-box.main") && !uci_core.exists("tachyon-core.main")) {
+            let sb_cfg = fs.readfile("/etc/config/sing-box");
+            if (sb_cfg != null) {
+                let tc_cfg = replace(as_string(sb_cfg), "config sing-box ", "config tachyon-core ");
+                tc_cfg = replace(tc_cfg, "config sing-box\t", "config tachyon-core\t");
+                common.write_file("/etc/config/tachyon-core", tc_cfg);
+                uci_core.reload("tachyon-core");
+            }
+        }
 
-    // the managed init script reads conffile and workdir from the engine
-    // package, so a renamed package carrying the old paths would start the
-    // core on a file this migration just moved away
-    if (uci_core.exists("tachyon-core.main")) {
-        for (let pair in [
-            [ "conffile", OLD_CONFIG_DIR + "/", NEW_CONFIG_DIR + "/" ],
-            [ "workdir", "/usr/share/sing-box", "/usr/share/tachyon-core" ]
-        ]) {
-            let value = uci_core.get("tachyon-core", "main", pair[0]);
-            if (value == "" || index(value, pair[1]) != 0)
-                continue;
-            uci_core.set("tachyon-core", "main", pair[0], pair[2] + substr(value, length(pair[1])));
+        // the managed init script reads conffile and workdir from the engine
+        // package, so a copied package carrying the old paths would start the
+        // core on a legacy path
+        if (legacy_cleanup_root() == "" && uci_core.exists("tachyon-core.main")) {
+            for (let pair in [
+                [ "conffile", OLD_CONFIG_DIR + "/", NEW_CONFIG_DIR + "/" ],
+                [ "workdir", "/usr/share/sing-box", "/usr/share/tachyon-core" ]
+            ]) {
+                let value = uci_core.get("tachyon-core", "main", pair[0]);
+                if (value == "" || index(value, pair[1]) != 0)
+                    continue;
+                uci_core.set("tachyon-core", "main", pair[0], pair[2] + substr(value, length(pair[1])));
+            }
+            uci_core.commit("tachyon-core");
         }
-        uci_core.commit("tachyon-core");
-    }
 
-    // preserve version state across upgrade
-    if (fs.stat("/etc/tachyon/tachyon-core-version") == null && fs.stat("/etc/tachyon/sing-box-version") != null) {
-        try {
-            fs.rename("/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version");
-        }
-        catch (e) {
-        }
+        // preserve version state non-destructively across upgrade
+        let old_ver = legacy_path("/etc/tachyon/sing-box-version");
+        let new_ver = legacy_path("/etc/tachyon/tachyon-core-version");
+        if (fs.stat(new_ver) == null && fs.stat(old_ver) != null)
+            common.copy_file(old_ver, new_ver);
     }
 }
 
@@ -3487,8 +3410,8 @@ function apply_migrations(ctx) {
     if (added)
         set_list_option(ctx, ctx.model.settings, APPLIED_MIGRATIONS_OPTION, applied);
 
-    if (release_at_most(ctx, "1.0.4"))
-        set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.0.5");
+    if (compare_versions(ctx.source_release, "1.8.0") < 0)
+        set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.8.0");
 }
 
 function migrate_ipv6_and_fakeip_settings(ctx) {
@@ -3535,53 +3458,6 @@ function migrate_ipv6_and_fakeip_settings(ctx) {
         set_option_if_missing(ctx, settings, "tun_inet4", "172.19.0.1/30");
         set_option_if_missing(ctx, settings, "ui_mode", "simple");
     }
-}
-
-function migrate_podkop_model(model, constants) {
-    let ctx = migration_context(model);
-    ctx.combined_domain_conditions = compare_versions(option(model.settings, CONFIG_VERSION_OPTION, ""), "1.0.5") >= 0;
-    constants = object_or_empty(constants);
-
-    delete_option(ctx, model.settings, "routing_excluded_ips");
-
-    // NetShift: dns_via_outbound and dns_outbound_section
-    if (bool_option(model.settings, "dns_via_outbound", false)) {
-        set_option_if_missing(ctx, model.settings, "dns_detour_enabled", "1");
-        let detour_sec = option(model.settings, "dns_outbound_section", "");
-        if (detour_sec != "")
-            set_option_if_missing(ctx, model.settings, "dns_detour_section", detour_sec);
-    }
-    delete_option(ctx, model.settings, "dns_via_outbound");
-    delete_option(ctx, model.settings, "dns_outbound_section");
-    delete_option(ctx, model.settings, "block_doh");
-    migrate_ipv6_and_fakeip_settings(ctx);
-
-    migrate_dns_server_lists(ctx);
-    migrate_list_update_enabled(ctx);
-
-    let converted_sections = [];
-    for (let section in model.rules) {
-        migrate_rule_section(ctx, section, constants);
-        push(converted_sections, section);
-    }
-    model.rules = [];
-
-    for (let section in model.sections) {
-        migrate_rule(ctx, section, false, constants);
-        migrate_combined_domain_conditions(ctx, section);
-        migrate_text_condition(ctx, section, "ip_cidr", "subnets");
-        migrate_rule_set_settings(ctx, section);
-    }
-    for (let section in converted_sections) {
-        migrate_rule_set_settings(ctx, section);
-        push(model.sections, section);
-    }
-    migrate_subscription_download_via_proxy_settings(ctx);
-    migrate_download_via_proxy_flags(ctx);
-    apply_migrations(ctx);
-    normalize_tachyon_core_uci(ctx);
-
-    return ctx;
 }
 
 function migrate_numeric_wizard_ids(ctx) {
@@ -3719,8 +3595,10 @@ function migrate_numeric_wizard_ids(ctx) {
     }
 }
 
-function migrate_tachyon_model(model) {
+function migrate_tachyon_model(model, is_fixture) {
     let ctx = migration_context(model);
+    ctx.fixture_mode = is_fixture ? true : false;
+    ctx.combined_domain_conditions = compare_versions(option(model.settings, CONFIG_VERSION_OPTION, ""), "1.0.5") >= 0;
     let converted_any_rules = false;
     if (length(model.rules || []) > 0) {
         let constants = constants_context();
@@ -3932,104 +3810,133 @@ function commit_cursor(cursor) {
     return true;
 }
 
-function migrate_model(model, source) {
-    return source == "podkop"
-        ? migrate_podkop_model(model, constants_context())
-        : migrate_tachyon_model(model);
+function migrate_model(model) {
+    return migrate_tachyon_model(model, false);
 }
 
 function cleanup_legacy_core_artifacts() {
-    if (TARGET_CONFIG != "/etc/config/" + CONFIG_NAME || getenv("TACHYON_CONFIG_FILE") != null)
+    if (!legacy_cleanup_host_enabled())
         return;
 
-    // Migrate legacy config/cache/state files if new paths are absent, then remove old paths silently.
+    // Always create a non-destructive backup before touching anything.
+    backup_external_singbox_configs();
+
+    // Never remove standalone user-installed sing-box.
+    if (!has_tachyon_managed_singbox_marker())
+        return;
+
+    // Preserve tachyon-core config/cache/version/backup non-destructively when absent.
     for (let pair in [
-        [ "/etc/sing-box/config.json", "/etc/tachyon-core/config.json" ],
-        [ "/usr/share/sing-box/cache.db", "/usr/share/tachyon-core/cache.db" ],
-        [ "/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version" ]
+        [ "/etc/sing-box/config.json", "/etc/tachyon-core/config.json", false ],
+        [ "/usr/share/sing-box/cache.db", "/usr/share/tachyon-core/cache.db", true ],
+        [ "/etc/tachyon/sing-box-version", "/etc/tachyon/tachyon-core-version", false ]
     ]) {
-        if (fs.stat(pair[1]) == null && fs.stat(pair[0]) != null) {
-            let dir = common.parent_dir(pair[1]);
+        let src = legacy_path(pair[0]);
+        let dst = legacy_path(pair[1]);
+        if (fs.stat(dst) == null && fs.stat(src) != null) {
+            let dir = common.parent_dir(dst);
             if (dir != "")
                 common.ensure_dir(dir);
-            let moved = false;
-            try { moved = fs.rename(pair[0], pair[1]) == true; } catch (e) {}
-            if (!moved)
-                common.copy_file_stream(pair[0], pair[1]);
+            if (pair[2])
+                common.copy_file_stream(src, dst);
+            else
+                common.copy_file(src, dst);
         }
     }
 
-    let old_bkp = "/etc/tachyon/component-backups/sing_box";
-    let new_bkp = "/etc/tachyon/component-backups/tachyon_core";
+    let old_bkp = legacy_path("/etc/tachyon/component-backups/sing_box");
+    let new_bkp = legacy_path("/etc/tachyon/component-backups/tachyon_core");
     if (fs.stat(new_bkp) == null && fs.stat(old_bkp) != null) {
+        let bkp_parent = common.parent_dir(new_bkp);
+        if (bkp_parent != "")
+            common.ensure_dir(bkp_parent);
         try { fs.rename(old_bkp, new_bkp); } catch (e) {}
     }
 
-    if (fs.stat("/etc/init.d/sing-box") != null) {
-        let init_txt = as_string(fs.readfile("/etc/init.d/sing-box") || "");
-        if (index(init_txt, "Tachyon managed") >= 0) {
-            common.command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
-            common.command_status_from_args([ "/etc/init.d/sing-box", "disable" ]);
-            try { fs.unlink("/etc/init.d/sing-box"); } catch (e) {}
-            for (let rc_entry in (fs.glob("/etc/rc.d/*sing-box*") || []))
-                try { fs.unlink(rc_entry); } catch (e) {}
+    let init_script = legacy_path("/etc/init.d/sing-box");
+    if (fs.stat(init_script) != null) {
+        common.command_status_from_args([ init_script, "stop" ]);
+        common.command_status_from_args([ init_script, "disable" ]);
+        try { fs.unlink(init_script); } catch (e) {}
+        for (let rc_entry in (fs.glob(legacy_path("/etc/rc.d/*sing-box*")) || []))
+            try { fs.unlink(rc_entry); } catch (e) {}
+    }
+
+    if (legacy_cleanup_root() == "") {
+        let pkgs = null;
+        try { pkgs = require("core.packages"); } catch (e) {}
+        if (pkgs != null && pkgs.find_lock_holder() == null) {
+            let mgr = pkgs.detect_pkg_manager();
+            for (let pkg in [ "sing-box", "sing-box-extended", "sing-box-tiny", "sing-box-lx" ]) {
+                if (pkgs.installed(pkg)) {
+                    if (mgr == "apk")
+                        common.command_status_from_args([ "apk", "del", "--no-network", "--repositories-file", "/dev/null", "--force-broken-world", pkg ]);
+                    else if (mgr == "opkg")
+                        common.command_status_from_args([ "opkg", "remove", "--force-depends", "--force-remove", pkg ]);
+                }
+            }
         }
     }
 
     for (let stale_file in [
         "/usr/bin/sing-box",
+        "/etc/config/sing-box",
         "/etc/tachyon/sing-box-variant",
         "/etc/tachyon/sing-box-version",
         "/etc/tachyon/tachyon-core-variant"
     ]) {
-        if (fs.stat(stale_file) != null)
-            try { fs.unlink(stale_file); } catch (e) {}
+        let target = legacy_path(stale_file);
+        if (fs.stat(target) != null)
+            try { fs.unlink(target); } catch (e) {}
     }
 
-    for (let stale_dir in [ "/etc/sing-box", "/usr/share/sing-box", "/tmp/sing-box", old_bkp ]) {
-        if (fs.stat(stale_dir) != null)
-            common.remove_tree(stale_dir);
+    for (let stale_dir in [ "/etc/sing-box", "/usr/share/sing-box", "/tmp/sing-box", "/etc/tachyon/component-backups/sing_box" ]) {
+        let target = legacy_path(stale_dir);
+        if (fs.stat(target) != null)
+            common.remove_tree(target);
     }
 }
 
-function migrate_runtime(source) {
+function migrate_runtime() {
     ensure_runtime_cache_format();
     remove_legacy_server_country_cache();
-    cleanup_legacy_core_artifacts();
 
     let cursor = runtime_cursor();
     cursor.load(CONFIG_NAME);
 
-    let ctx = migrate_model(model_from_uci(cursor), source);
-    if (!ctx.changed)
-        return true;
+    let ctx = migrate_tachyon_model(model_from_uci(cursor), false);
+    if (ctx.changed) {
+        try {
+            apply_operations(cursor, ctx.operations);
+        } catch(e) {
+            warn("Migration apply_operations failed: " + as_string(e) + "\n");
+            return false;
+        }
+        if (!commit_cursor(cursor))
+            return false;
+        for (let path in ctx.removed_caches)
+            remove_cache_path(path);
 
-    try {
-        apply_operations(cursor, ctx.operations);
-    } catch(e) {
-        warn("Migration apply_operations failed: " + as_string(e) + "\n");
-        return false;
+        // UCI rewrote the config file; keep the token-bearing mode tight.
+        if (fs.stat("/etc/config/" + CONFIG_NAME) != null)
+            common.command_status_from_args([ "chmod", "0600", "/etc/config/" + CONFIG_NAME ]);
     }
-    let committed = commit_cursor(cursor);
-    for (let path in ctx.removed_caches)
-        remove_cache_path(path);
 
-    // UCI rewrote the config file; keep the token-bearing mode tight.
-    system("chmod 0600 /etc/config/" + CONFIG_NAME + " 2>/dev/null");
-
-    return committed;
+    cleanup_legacy_core_artifacts();
+    return true;
 }
 
 function commit_runtime() {
     let cursor = runtime_cursor();
     cursor.load(CONFIG_NAME);
     let committed = commit_cursor(cursor);
-    system("chmod 0600 /etc/config/" + CONFIG_NAME + " 2>/dev/null");
+    if (fs.stat("/etc/config/" + CONFIG_NAME) != null)
+        common.command_status_from_args([ "chmod", "0600", "/etc/config/" + CONFIG_NAME ]);
     return committed;
 }
 
-function migrate_fixture(path, source) {
-    let ctx = migrate_model(model_from_fixture(path), source);
+function migrate_fixture(path) {
+    let ctx = migrate_tachyon_model(model_from_fixture(path), true);
     write_json({
         changed: ctx.changed,
         config: export_model(ctx.model),
@@ -4038,103 +3945,13 @@ function migrate_fixture(path, source) {
     });
 }
 
-// Config files that are legacy by definition, by name.
-//
-// The name is the only reliable discriminator, and content is not merely
-// unreliable here but structurally incapable. Tachyon is a fork of forkop, so
-// a forkop config carries forkop's OWN config_version and applied_migrations,
-// and a diff of the two default configs shows forkop introducing no option that
-// Tachyon lacks. A forkop install therefore detected as "tachyon" and skipped
-// the migration while reporting success.
-const LEGACY_CONFIG_BASENAMES = {
-    forkop: true,
-    forkop_plus: true,
-    podkop: true,
-    podkop_plus: true,
-    netshift: true
-};
-
-function detect_config_migration_source(path) {
-    path = as_string(path || "");
-
-    // Recognised legacy path means legacy, whatever the contents say. The
-    // scanner already used the name to find this file, so throwing that away
-    // and re-deciding from the text loses the one piece of information that
-    // actually settles it.
-    let slash = rindex(path, "/");
-    let basename = (slash >= 0) ? substr(path, slash + 1) : path;
-    if (LEGACY_CONFIG_BASENAMES[basename])
-        return "podkop";
-
-    let content = fs.readfile(path);
-    if (content == null || content == "")
-        return "tachyon";
-
-    // Unknown path (a backup, most likely) and content is genuinely ambiguous:
-    // Tachyon is a fork of forkop, so the two share config_version and the
-    // applied_migrations names. There is no marker that separates them. So keep
-    // the existing heuristic, which prefers "native" when the new-style
-    // markers are present - running the legacy conversion over a current config
-    // is destructive, whereas skipping it is merely unhelpful, and
-    // migrate-podkop is there for the cases that need a forced conversion.
-    //
-    // Note config[ \t]+rule is BOTH a legacy marker and a current Tachyon
-    // section type, so it only counts on the legacy side.
-    if ((match(content, /option[ \t]+config_version/) || match(content, /list[ \t]+applied_migrations/)) &&
-        !match(content, /option[ \t]+connection_type/) &&
-        !match(content, /option[ \t]+proxy_config_type/)) {
-        return "tachyon";
-    }
-
-    // Only markers Tachyon does NOT support are decisive. `config rule` is
-    // deliberately not one of them: it is both a legacy Podkop section type and
-    // a current Tachyon one, so counting it made a native config with rules
-    // detect as legacy, and the legacy conversion is the destructive direction.
-    if (match(content, /option[ \t]+domain_list_urls/) ||
-        match(content, /option[ \t]+subnet_list_urls/) ||
-        match(content, /option[ \t]+routing_excluded_ips/) ||
-        match(content, /option[ \t]+connection_type/) ||
-        match(content, /option[ \t]+proxy_config_type/) ||
-        match(content, /option[ \t]+proxy_string/) ||
-        match(content, /option[ \t]+subscription_url/) ||
-        match(content, /list[ \t]+subscription_url/) ||
-        match(content, /option[ \t]+dns_via_outbound/) ||
-        match(content, /option[ \t]+global_proxy/) ||
-        match(content, /option[ \t]+enable_udp_over_tcp/)) {
-        return "podkop";
-    }
-
-    return "tachyon";
-}
-
-function scan_legacy_config_candidates() {
+function scan_backup_config_candidates() {
     let base_cfg_dir = CONFIG_DIR;
     let known = [
-        base_cfg_dir + "/forkop",
-        base_cfg_dir + "/forkop_plus",
-        base_cfg_dir + "/podkop",
-        base_cfg_dir + "/podkop_plus",
-        base_cfg_dir + "/netshift",
-        "/tmp/legacy-config.backup",
         "/etc/.tachyon/.cfg-backup.pre-install"
     ];
     let candidates = [];
     let seen = {};
-
-    // 1. Check if current active config itself contains unconverted legacy rules
-    let current_tachyon = TARGET_CONFIG;
-    if (detect_config_migration_source(current_tachyon) == "podkop") {
-        let st = fs.stat(current_tachyon);
-        if (st != null && (st.size || 0) > 10) {
-            push(candidates, {
-                path: current_tachyon,
-                size: st.size || 0,
-                mtime: st.mtime || 0,
-                in_place_legacy: true
-            });
-            seen[current_tachyon] = true;
-        }
-    }
 
     for (let path in known) {
         if (seen[path]) continue;
@@ -4146,23 +3963,12 @@ function scan_legacy_config_candidates() {
     }
 
     let globs = [
-        base_cfg_dir + "/*forkop*",
-        base_cfg_dir + "/*podkop*",
-        base_cfg_dir + "/*netshift*",
         base_cfg_dir + "/tachyon.backup*",
         base_cfg_dir + "/tachyon.bak*",
         base_cfg_dir + "/tachyon.pre-import-*",
         base_cfg_dir + "/tachyon.pre-install*",
-        "/tmp/legacy-config*",
-        "/tmp/*forkop*",
-        "/tmp/*podkop*",
-        "/tmp/*netshift*",
         "/tmp/*tachyon*",
-        "/tmp/tmp.*/legacy-config*",
         "/etc/.tachyon/*",
-        "/root/*forkop*",
-        "/root/*podkop*",
-        "/root/*netshift*",
         "/root/*tachyon*",
         "/root/*.backup*",
         "/root/*.bak*"
@@ -4204,12 +4010,12 @@ function import_settings_cli(source_path) {
         print("[1/3] Using specified configuration file:\n");
         print("  ✓ " + chosen_path + " (" + sprintf("%.1f KB", (st.size || 0) / 1024.0) + ")\n\n");
     } else {
-        print("[1/3] Scanning system for legacy or backup configurations...\n");
-        candidate_list = scan_legacy_config_candidates();
+        print("[1/3] Scanning system for Tachyon backup configurations...\n");
+        candidate_list = scan_backup_config_candidates();
         if (length(candidate_list) == 0) {
-            print("  Notice: No legacy or backup configurations found in standard directories.\n\n");
+            print("  Notice: No backup configurations found in standard directories.\n\n");
             print("To locate any leftover configurations, you can search with:\n");
-            print("  grep -rnE 'vless://|vmess://|ss://|trojan://|config rule' /etc/ /root/ /tmp/ 2>/dev/null\n\n");
+            print("  grep -rnE 'vless://|vmess://|ss://|trojan://|config section' /etc/ /root/ /tmp/ 2>/dev/null\n\n");
             print("And specify the file path directly:\n");
             print("  tachyon import_settings /path/to/backup-file\n\n");
             return false;
@@ -4218,8 +4024,7 @@ function import_settings_cli(source_path) {
         print("  Found candidates:\n");
         for (let i = 0; i < length(candidate_list); i++) {
             let c = candidate_list[i];
-            let note = c.in_place_legacy ? " (unconverted legacy rules in active config)" : "";
-            print("  [" + (i + 1) + "] " + c.path + " (" + sprintf("%.1f KB", c.size / 1024.0) + ")" + note + "\n");
+            print("  [" + (i + 1) + "] " + c.path + " (" + sprintf("%.1f KB", c.size / 1024.0) + ")\n");
         }
         print("\n");
 
@@ -4257,14 +4062,9 @@ function import_settings_cli(source_path) {
     }
     system("chmod 0600 " + shell_quote(target_config) + " 2>/dev/null");
 
-    // Detect on the file the user actually chose, not on the destination. The
-    // two are the same bytes here, but the destination is always named
-    // "tachyon", and now that the file name decides, asking about it would
-    // report the source's format as Tachyon every time.
-    let source_type = detect_config_migration_source(chosen_path);
-    print("  ✓ Detected format: " + (source_type == "podkop" ? "Legacy Forkop / Podkop / NetShift" : "Tachyon") + "\n");
+    print("  ✓ Detected format: Tachyon\n");
 
-    let ok = migrate_runtime(source_type);
+    let ok = migrate_runtime();
     if (!ok) {
         warn("Error: Configuration migration failed during UCI commit.\n");
         return false;
@@ -4290,26 +4090,21 @@ function import_settings_cli(source_path) {
 function main(argv) {
     let mode = argv[0] || "";
 
-    if (mode == "migrate") {
-        let source = detect_config_migration_source(TARGET_CONFIG);
-        return migrate_runtime(source) ? 0 : 1;
-    }
-    if (mode == "migrate-podkop")
-        return migrate_runtime("podkop") ? 0 : 1;
+    if (mode == "migrate")
+        return migrate_runtime() ? 0 : 1;
     if (mode == "import-settings" || mode == "import_settings")
         return import_settings_cli(argv[1]) ? 0 : 1;
     if (mode == "commit")
         return commit_runtime() ? 0 : 1;
     if (mode == "migrate-fixture") {
-        migrate_fixture(argv[1], argv[2] || "tachyon");
+        migrate_fixture(argv[1]);
         return 0;
     }
 
     warn("Usage: config/migration.uc migrate\n");
-    warn("       config/migration.uc migrate-podkop\n");
     warn("       config/migration.uc import-settings [file]\n");
     warn("       config/migration.uc commit\n");
-    warn("       config/migration.uc migrate-fixture <fixture.json> [tachyon|podkop]\n");
+    warn("       config/migration.uc migrate-fixture <fixture.json>\n");
     return 1;
 }
 
@@ -4318,10 +4113,11 @@ function module_exports() {
         main: main,
         migrate_model: migrate_model,
         migrate_tachyon_model: migrate_tachyon_model,
-        migrate_podkop_model: migrate_podkop_model,
         migrate_modular_entities_v1: migrate_modular_entities_v1,
-        scan_legacy_config_candidates: scan_legacy_config_candidates,
-        detect_config_migration_source: detect_config_migration_source,
+        scan_backup_config_candidates: scan_backup_config_candidates,
+        cleanup_legacy_core_artifacts: cleanup_legacy_core_artifacts,
+        backup_external_singbox_configs: backup_external_singbox_configs,
+        has_tachyon_managed_singbox_marker: has_tachyon_managed_singbox_marker,
         import_settings_cli: import_settings_cli,
         mark_internal_config_guard: mark_internal_config_guard
     };
