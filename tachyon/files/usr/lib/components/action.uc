@@ -1309,6 +1309,9 @@ function reinstall_tachyon() {
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
     command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
+    for (let js_file in (fs.glob("/www/luci-static/resources/view/tachyon/*.js") || []))
+        command_status_from_args([ "touch", js_file ]);
+    command_status_from_args([ "touch", "/www/luci-static/resources/luci.js" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -1364,6 +1367,9 @@ function install_tachyon() {
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
     command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
+    for (let js_file in (fs.glob("/www/luci-static/resources/view/tachyon/*.js") || []))
+        command_status_from_args([ "touch", js_file ]);
+    command_status_from_args([ "touch", "/www/luci-static/resources/luci.js" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
@@ -1415,6 +1421,9 @@ function install_tachyon_version(target_tag) {
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
     command_status_from_args([ "touch", "/www/luci-static/resources", "/www/luci-static/resources/view/tachyon" ]);
+    for (let js_file in (fs.glob("/www/luci-static/resources/view/tachyon/*.js") || []))
+        command_status_from_args([ "touch", js_file ]);
+    command_status_from_args([ "touch", "/www/luci-static/resources/luci.js" ]);
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 

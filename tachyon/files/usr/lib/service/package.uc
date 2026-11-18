@@ -373,6 +373,9 @@ function luci_postinst() {
     remove_component_update_cache();
     for (let js_file in (fs.glob("/www/luci-static/resources/view/tachyon/*.js") || []))
         command_success_from_args([ "touch", js_file ]);
+    command_success_from_args([ "touch", "/www/luci-static/resources/luci.js" ]);
+    command_success_from_args([ "touch", "/www/luci-static/resources/view/tachyon" ]);
+    command_success_from_args([ "touch", "/www/luci-static/resources" ]);
     if (!PACKAGE_TEST_MODE) {
         ensure_guest_mode_section();
         ensure_ucitrack_entry();

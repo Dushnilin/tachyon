@@ -171,6 +171,53 @@ fi
 
 CURRENT_STEP=$((CURRENT_STEP + 1))
 
+
+# ─── Non-destructive backup of external configs ──────────────────────────────
+_backup_external_configs() {
+    _bdir="/etc/tachyon/external-configs-backup"
+    for _comp in zapret zapret2 byedpi wdtt qwdtt olcrtc sing-box; do
+        _cdir="$_bdir/$_comp"
+        case "$_comp" in
+            zapret)
+                _srcs="/etc/config/zapret /opt/zapret/config /opt/zapret/ipset"
+                ;;
+            zapret2)
+                _srcs="/etc/config/zapret2 /opt/zapret2/config /opt/zapret2/ipset"
+                ;;
+            byedpi)
+                _srcs="/etc/config/byedpi /etc/byedpi"
+                ;;
+            wdtt|qwdtt)
+                _srcs="/etc/config/wdtt /etc/wdtt /etc/qwdtt"
+                ;;
+            olcrtc)
+                _srcs="/etc/config/olcrtc /etc/olcrtc"
+                ;;
+            sing-box)
+                _srcs="/etc/sing-box/config.json /etc/config/sing-box"
+                ;;
+        esac
+        _has_src=0
+        for _s in $_srcs; do
+            [ -e "$_s" ] && _has_src=1 && break
+        done
+        [ "$_has_src" -eq 0 ] && continue
+        mkdir -p "$_cdir" 2>/dev/null || continue
+        for _s in $_srcs; do
+            [ -e "$_s" ] || continue
+            _dst="$_cdir/$(basename "$_s")"
+            if [ -d "$_s" ]; then
+                cp -a -n "$_s" "$_dst" 2>/dev/null || cp -a "$_s" "${_dst}.new" 2>/dev/null || true
+            else
+                [ -f "$_dst" ] && cmp -s "$_s" "$_dst" 2>/dev/null && continue
+                cp -a "$_s" "$_dst" 2>/dev/null || true
+            fi
+        done
+    done
+}
+
+_backup_external_configs
+
 # ─── STEP 2: Stop Services & Daemons ─────────────────────────────────────────
 tui_step "$CURRENT_STEP" "$TOTAL_STEPS" "Остановка служб и фоновых процессов..."
 
@@ -212,12 +259,30 @@ if [ -f "/etc/init.d/sing-box" ]; then
     fi
 fi
 
-# Stop and remove legacy standalone provider services if present
-for _legacy_svc in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/init.d/zapret /etc/init.d/zapret2 /etc/init.d/byedpi /etc/init.d/wdtt-client /etc/init.d/qwdtt /etc/init.d/olcrtc; do
+# Stop and remove Tachyon's internal steer subsystem
+for _legacy_svc in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer; do
     if [ -f "$_legacy_svc" ]; then
         "$_legacy_svc" stop >/dev/null 2>&1 || true
         "$_legacy_svc" disable >/dev/null 2>&1 || true
         rm -f "$_legacy_svc" 2>/dev/null || true
+    fi
+done
+
+# Selectively stop/remove legacy external provider services only if Tachyon-managed
+_is_tachyon_managed() {
+    _comp="$1"
+    [ -f "/etc/init.d/$_comp" ] && grep -q "Tachyon managed" "/etc/init.d/$_comp" 2>/dev/null && return 0
+    [ -d "/etc/tachyon/component-backups/$_comp" ] && return 0
+    [ -d "/var/run/tachyon/$_comp" ] && return 0
+    return 1
+}
+for _comp in zapret zapret2 byedpi wdtt-client qwdtt olcrtc; do
+    _comp_marker="$_comp"
+    case "$_comp" in wdtt-client) _comp_marker="wdtt" ;; esac
+    if _is_tachyon_managed "$_comp_marker" && [ -f "/etc/init.d/$_comp" ]; then
+        "/etc/init.d/$_comp" stop >/dev/null 2>&1 || true
+        "/etc/init.d/$_comp" disable >/dev/null 2>&1 || true
+        rm -f "/etc/init.d/$_comp" 2>/dev/null || true
     fi
 done
 MANAGED_TAILSCALE=0
@@ -227,19 +292,34 @@ if [ -f "/etc/init.d/tailscale" ] && grep -q "Tachyon managed" "/etc/init.d/tail
     /etc/init.d/tailscale disable >/dev/null 2>&1 || true
     rm -f /etc/init.d/tailscale /etc/rc.d/*tailscale* 2>/dev/null || true
 fi
-rm -rf /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /etc/tachyon/tailscale/*/native /var/run/qwdtt 2>/dev/null || true
+# Always clean Tachyon internal steer subsystem and tailscale native markers
+rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /etc/tachyon/tailscale/*/native /var/run/qwdtt 2>/dev/null || true
+# Selectively clean rc.d symlinks for external components only if Tachyon-managed
+for _comp in zapret zapret2 byedpi wdtt qwdtt olcrtc; do
+    _comp_marker="$_comp"
+    case "$_comp" in wdtt-client) _comp_marker="wdtt" ;; esac
+    if _is_tachyon_managed "$_comp_marker"; then
+        rm -f /etc/rc.d/*"${_comp}"* 2>/dev/null || true
+    fi
+done
 
 # Terminate running core and legacy processes if any
 killall -9 tachyon-core >/dev/null 2>&1 || true
-killall -9 sing-box >/dev/null 2>&1 || true
 killall -9 steer >/dev/null 2>&1 || true
-killall -9 nfqws >/dev/null 2>&1 || true
-killall -9 nfqws2 >/dev/null 2>&1 || true
-killall -9 ciadpi >/dev/null 2>&1 || true
-killall -9 qwdtt-client >/dev/null 2>&1 || true
-killall -9 wdtt >/dev/null 2>&1 || true
-killall -9 olcrtc >/dev/null 2>&1 || true
 killall -9 tachyon >/dev/null 2>&1 || true
+# Kill external component processes only if Tachyon-managed
+if _is_tachyon_managed "sing_box"; then killall -9 sing-box >/dev/null 2>&1 || true; fi
+for _comp in zapret zapret2 byedpi wdtt olcrtc; do
+    if _is_tachyon_managed "$_comp"; then
+        case "$_comp" in
+            zapret)  killall -9 nfqws >/dev/null 2>&1 || true ;;
+            zapret2) killall -9 nfqws2 >/dev/null 2>&1 || true ;;
+            byedpi)  killall -9 ciadpi >/dev/null 2>&1 || true ;;
+            wdtt)    killall -9 wdtt >/dev/null 2>&1 || true; killall -9 qwdtt-client >/dev/null 2>&1 || true ;;
+            olcrtc)  killall -9 olcrtc >/dev/null 2>&1 || true ;;
+        esac
+    fi
+done
 
 # Terminate running background Tachyon daemons (watchdog, telegram, failover, etc.)
 _self_pid="$$"
@@ -394,6 +474,9 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
         _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
         [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
         for _pkg in $_legacy_pkgs; do
+            _comp_marker="$_pkg"
+            case "$_pkg" in wdtt) _comp_marker="wdtt" ;; qwdtt) _comp_marker="qwdtt" ;; esac
+            if ! _is_tachyon_managed "$_comp_marker"; then continue; fi
             if [ -f /etc/apk/world ]; then
                 sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
             fi
@@ -406,20 +489,26 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
         _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
         [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
         for _pkg in $_legacy_pkgs; do
+            _comp_marker="$_pkg"
+            case "$_pkg" in wdtt) _comp_marker="wdtt" ;; qwdtt) _comp_marker="qwdtt" ;; esac
+            if ! _is_tachyon_managed "$_comp_marker"; then continue; fi
             if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
                 opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
             fi
         done
     fi
     if [ "$OPT_PURGE" -eq 1 ]; then
-        for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
-            if [ -f /etc/apk/world ]; then
-                sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
-            fi
-            if apk info -e "$_pkg" >/dev/null 2>&1; then
-                apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
-            fi
-        done
+        # Only remove sing-box packages if Tachyon-managed
+        if _is_tachyon_managed "sing_box"; then
+            for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
+                if [ -f /etc/apk/world ]; then
+                    sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
+                fi
+                if apk info -e "$_pkg" >/dev/null 2>&1; then
+                    apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
+                fi
+            done
+        fi
     fi
     tui_ok "Пакеты удалены через apk-tools"
 elif command -v opkg >/dev/null 2>&1; then
@@ -438,29 +527,23 @@ elif command -v opkg >/dev/null 2>&1; then
         _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
         [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
         for _pkg in $_legacy_pkgs; do
-            if [ -f /etc/apk/world ]; then
-                sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
-            fi
-            if apk info -e "$_pkg" >/dev/null 2>&1; then
-                apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
-            fi
-        done
-    fi
-    if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
-        _legacy_pkgs="zapret zapret2 byedpi wdtt qwdtt olcrtc"
-        [ "$MANAGED_TAILSCALE" -eq 1 ] && _legacy_pkgs="$_legacy_pkgs tailscale"
-        for _pkg in $_legacy_pkgs; do
+            _comp_marker="$_pkg"
+            case "$_pkg" in wdtt) _comp_marker="wdtt" ;; qwdtt) _comp_marker="qwdtt" ;; esac
+            if ! _is_tachyon_managed "$_comp_marker"; then continue; fi
             if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
                 opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
             fi
         done
     fi
     if [ "$OPT_PURGE" -eq 1 ]; then
-        for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
-            if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
-                opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
-            fi
-        done
+        # Only remove sing-box packages if Tachyon-managed
+        if _is_tachyon_managed "sing_box"; then
+            for _pkg in sing-box sing-box-extended sing-box-tiny sing-box-lx; do
+                if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
+                    opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
+                fi
+            done
+        fi
     fi
     tui_ok "Пакеты удалены через opkg"
 fi
@@ -489,8 +572,21 @@ rm -f /usr/lib/cgi-bin/tachyon-agent 2>/dev/null || true
 if [ "$OPT_KEEP_BINARIES" -eq 0 ] || [ "$OPT_PURGE" -eq 1 ]; then
     rm -f /usr/bin/tachyon-core 2>/dev/null || true
     rm -f /usr/lib/libcronet.so 2>/dev/null || true
-    rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc 2>/dev/null || true
-    rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true
+    # Selectively remove external component binaries/configs only if Tachyon-managed
+    for _comp in zapret zapret2 byedpi wdtt olcrtc; do
+        if _is_tachyon_managed "$_comp"; then
+            case "$_comp" in
+                zapret)  rm -f /usr/bin/nfqws 2>/dev/null || true; rm -rf /opt/zapret /etc/config/zapret 2>/dev/null || true ;;
+                zapret2) rm -f /usr/bin/nfqws2 2>/dev/null || true; rm -rf /opt/zapret2 /etc/config/zapret2 2>/dev/null || true ;;
+                byedpi)  rm -f /usr/bin/ciadpi 2>/dev/null || true; rm -rf /etc/config/byedpi 2>/dev/null || true ;;
+                wdtt)    rm -f /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve 2>/dev/null || true; rm -rf /etc/qwdtt /etc/wdtt /etc/config/wdtt 2>/dev/null || true ;;
+                olcrtc)  rm -f /usr/bin/olcrtc 2>/dev/null || true; rm -rf /etc/olcrtc /etc/config/olcrtc 2>/dev/null || true ;;
+            esac
+        fi
+    done
+    if _is_tachyon_managed "sing_box"; then
+        rm -f /usr/bin/sing-box 2>/dev/null || true
+    fi
 fi
 
 # Clean translations
@@ -511,8 +607,12 @@ fi
 
 # Purge configs, persistent state, and any leftover legacy paths if requested
 if [ "$OPT_PURGE" -eq 1 ]; then
-    rm -f /etc/config/tachyon* /usr/bin/sing-box /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
-    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/tachyon-core /usr/share/tachyon-core /var/run/tachyon-core* /etc/sing-box /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
+    rm -f /etc/config/tachyon* 2>/dev/null || true
+    if _is_tachyon_managed "sing_box"; then
+        rm -f /usr/bin/sing-box /etc/init.d/sing-box /etc/rc.d/*sing-box* 2>/dev/null || true
+        rm -rf /etc/sing-box /tmp/sing-box /usr/share/sing-box /var/run/sing-box* 2>/dev/null || true
+    fi
+    rm -rf /etc/tachyon /etc/.tachyon /etc/backup/tachyon_config /etc/tachyon-core /usr/share/tachyon-core /var/run/tachyon-core* 2>/dev/null || true
     tui_ok "Все конфигурации и скрытые состояния Tachyon удалены (--purge)"
 fi
 
@@ -522,21 +622,6 @@ if [ -f "/etc/init.d/rpcd" ]; then
 fi
 if [ -f "/etc/init.d/uhttpd" ]; then
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
-fi
-
-# Check if parent Forkop / Podkop / NetShift services exist and restore them
-if [ -f "/etc/init.d/forkop" ]; then
-    /etc/init.d/forkop enable >/dev/null 2>&1 || true
-    /etc/init.d/forkop restart >/dev/null 2>&1 || true
-    tui_ok "Обнаружен родительский сервис Forkop — восстановлен и запущен"
-elif [ -f "/etc/init.d/podkop" ]; then
-    /etc/init.d/podkop enable >/dev/null 2>&1 || true
-    /etc/init.d/podkop restart >/dev/null 2>&1 || true
-    tui_ok "Обнаружен родительский сервис Podkop — восстановлен и запущен"
-elif [ -f "/etc/init.d/netshift" ]; then
-    /etc/init.d/netshift enable >/dev/null 2>&1 || true
-    /etc/init.d/netshift restart >/dev/null 2>&1 || true
-    tui_ok "Обнаружен родительский сервис NetShift — восстановлен и запущен"
 fi
 
 tui_ok "Кэш LuCI очищен, файлы и остаточные фрагменты полностью удалены"
