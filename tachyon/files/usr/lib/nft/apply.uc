@@ -1145,9 +1145,18 @@ function section_is_failed_in_runtime(section_name) {
     return false;
 }
 
+function community_subnets_enabled(section) {
+    let raw = lc(trim(option(section, "community_subnets", "1")));
+    if (raw == "")
+        return true;
+    return raw != "0" && raw != "false" && raw != "no" && raw != "off";
+}
+
 function section_has_core_only_block_filters(section) {
     if (length(section_leaf_list_option(section, "protocol")) > 0 ||
         length(section_leaf_list_option(section, "excluded_protocol")) > 0 ||
+        length(section_leaf_list_option(section, "excluded_domains")) > 0 ||
+        trim(section_leaf_option_text(section, "excluded_domains_text")) != "" ||
         length(connections.geoip_country_list(section)) > 0)
         return true;
     for (let cond in array_or_empty(section.__inverted_conditions))
@@ -1258,7 +1267,7 @@ function section_plain_rule_sets(section) {
 }
 
 function section_has_subnet_update_sources(section) {
-    let has_community = bool_option(section, "community_subnets", true) && rule_config.has_community_subnet_list(connections.community_lists_value(section));
+    let has_community = community_subnets_enabled(section) && rule_config.has_community_subnet_list(connections.community_lists_value(section));
     let sec_name = as_string(section[".name"]);
     return has_community ||
         length(connections.rule_sets_with_subnets(section)) > 0 ||
@@ -1285,7 +1294,7 @@ function section_priority_needs_plain_ip_rules(section) {
     if (section_has_nft_ip_matchers(section) && section_rule_ports_csv(section) == "")
         return true;
 
-    if (bool_option(section, "community_subnets", true)) {
+    if (community_subnets_enabled(section)) {
         for (let community in connections.community_lists(section)) {
             if (as_string(community) == "discord")
                 return true;
@@ -1296,7 +1305,7 @@ function section_priority_needs_plain_ip_rules(section) {
 }
 
 function section_priority_needs_ip_port_rules(section) {
-    if (bool_option(section, "community_subnets", true)) {
+    if (community_subnets_enabled(section)) {
         for (let community in connections.community_lists(section)) {
             if (as_string(community) == "discord")
                 return true;
@@ -4603,12 +4612,16 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
     body = signature_add_value(body, "rule." + section_name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+    let excl_domains = trim(section_leaf_option_text(section, "excluded_domains"));
+    let excl_domains_text = trim(section_leaf_option_text(section, "excluded_domains_text"));
+    if (excl_domains != "" || excl_domains_text != "")
+        body = signature_add_value(body, "rule." + section_name + ".excluded_domains", excl_domains + "\n" + excl_domains_text);
     body = signature_add_value(body, "rule." + section_name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_type", option(section, "routed_dns_type", ""));
     body = signature_add_value(body, "rule." + section_name + ".routed_dns_server", option(section, "routed_dns_server", ""));
     body = signature_add_value(body, "rule." + section_name + ".protocol", section_leaf_option_text(section, "protocol"));
-    let comm_subnets = bool_option(section, "community_subnets", true) ? filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
+    let comm_subnets = community_subnets_enabled(section) ? filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", comm_subnets);
     body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
     body = signature_add_value(body, "rule." + section_name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
@@ -5086,7 +5099,7 @@ function nft_add_section_source_matchers(section, table, chunk_size_text) {
 // are used when they exist, the shared sets otherwise, exactly like
 // nft_add_community_subnet_file_for_section() does further down.
 function nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set) {
-    if (!bool_option(section, "community_subnets", true))
+    if (!community_subnets_enabled(section))
         return true;
 
     let priority = section_needs_priority_sets(section) ? section_priority_sets(section) : null;
@@ -5171,7 +5184,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
         return false;
 
     let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
-    if (deferred_sections[as_string(section[".name"])] && fail_policy != "block" && fail_policy != "direct")
+    if ((deferred_sections[as_string(section[".name"])] || section_is_failed_in_runtime(section[".name"])) && fail_policy != "block" && fail_policy != "direct")
         return true;
 
     if (section_needs_priority_sets(section)) {
@@ -5579,7 +5592,7 @@ function nft_add_json_ruleset_subnets_for_section(section, json_path, label, tab
 }
 
 function nft_add_community_subnet_file_for_section(section, service, filepath, table, common_set, ip_port_set, interface_set, discord_set, mark, chunk_size_text, common6_set, ip_port6_set, discord6_set) {
-    if (!bool_option(section, "community_subnets", true))
+    if (!community_subnets_enabled(section))
         return true;
 
     let ports = section_rule_ports_csv(section);
@@ -5797,9 +5810,9 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
 
     if (!nft_table_present(table)) {
         log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
-                let rt_table = getenv("RT_TABLE_NAME") || "tachyon";
+        let rt_table = getenv("RT_TABLE_NAME") || "tachyon";
         let localv4 = default_arg(localv4_set, "localv4");
-        let common = default_arg(common_set, "tachyon_subnets");
+        let common_set_eff = default_arg(common_set, "tachyon_subnets");
         let port = default_arg(port_set, "tachyon_ports");
         let ip_port = default_arg(ip_port_set, "tachyon_ip_ports");
         let iface = default_arg(interface_set, "tachyon_interfaces");
@@ -5814,7 +5827,7 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
         let ip_port6 = default_arg(ip_port6_set, "tachyon_ip6_ports");
         let frange6 = trim(option(settings, "fakeip_inet6_range", "")) || "fc00::/18";
         let taddr6 = eff_v6.ipv6_active ? as_string(runtime_constants.TPROXY_INBOUND6_ADDRESS || "::1") : "off";
-        nft_rebuild_runtime_from_uci(rt_table, table, localv4, common, port, ip_port, iface, fmark, omark, frange4, tport, localv6, common6, ip_port6, frange6, taddr6);
+        nft_rebuild_runtime_from_uci(rt_table, table, localv4, common_set_eff, port, ip_port, iface, fmark, omark, frange4, tport, localv6, common6, ip_port6, frange6, taddr6);
     }
 
     let sections = uci_sections("section");

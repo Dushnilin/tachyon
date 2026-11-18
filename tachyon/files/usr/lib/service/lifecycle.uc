@@ -42,6 +42,9 @@ const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIP
 const SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
 const DNS_FAILOVER_STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || RUNTIME_STATE_DIR + "/dns-failover.json";
 const DNS_FAILOVER_PID_FILE = getenv("TACHYON_DNS_FAILOVER_PID_FILE") || RUNTIME_STATE_DIR + "/dns-failover.pid";
+const SECTION_FAIL_STATE_FILE = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || RUNTIME_STATE_DIR + "/section-fail-state.json";
+const SECTION_ERRORS_FILE = getenv("TACHYON_SECTION_ERRORS_FILE") || RUNTIME_STATE_DIR + "/section-errors.json";
+const VALIDATOR_QUARANTINED_FILE = getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || RUNTIME_STATE_DIR + "/validator-quarantined.json";
 const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
 const RELOAD_LOCK_DIR = getenv("TACHYON_RELOAD_LOCK_DIR") || "/var/run/tachyon.reload.lock";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/tachyon.internal-config-change";
@@ -227,6 +230,9 @@ function lifecycle_env() {
         TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE: SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE,
         TACHYON_DNS_FAILOVER_STATE_FILE: DNS_FAILOVER_STATE_FILE,
         TACHYON_DNS_FAILOVER_PID_FILE: DNS_FAILOVER_PID_FILE,
+        TACHYON_SECTION_FAIL_STATE_FILE: SECTION_FAIL_STATE_FILE,
+        TACHYON_SECTION_ERRORS_FILE: SECTION_ERRORS_FILE,
+        TACHYON_VALIDATOR_QUARANTINED_FILE: VALIDATOR_QUARANTINED_FILE,
         TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR: SUBSCRIPTION_UPDATE_LOCK_DIR,
         TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
         TACHYON_RELOAD_LOCK_DIR: RELOAD_LOCK_DIR,
@@ -752,6 +758,17 @@ function core_init_config() {
     return result.status;
 }
 
+function section_errors_snapshot() {
+    let data = object_or_empty(read_json_file(SECTION_ERRORS_FILE));
+    let active = [];
+    for (let k in keys(data)) {
+        if (as_string(data[k] || "") != "")
+            push(active, k);
+    }
+    sort(active);
+    return sprintf("%J", active);
+}
+
 function refresh_cron() {
     return module_status(UPDATES_UC, [
         "refresh-cron-from-uci",
@@ -1092,9 +1109,22 @@ function start_main() {
     if (status != 0)
         return status;
 
+    let errors_before = section_errors_snapshot();
     status = core_init_config();
     if (status != 0)
         return status;
+
+    if (section_errors_snapshot() != errors_before) {
+        log_message("Quarantined sections changed during startup; resyncing nftables rules", "info");
+        status = nft_rebuild_runtime();
+        if (status != 0)
+            return status;
+        if (nft_populate_enabled == 1) {
+            status = nft_populate_runtime_sets();
+            if (status != 0)
+                return status;
+        }
+    }
 
     status = refresh_cron();
     if (status != 0)
@@ -1182,7 +1212,9 @@ function start_impl() {
     let is_planned_restart = planned_restart_active;
     planned_restart_active = false;
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
-    try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
+    remove_file(SECTION_FAIL_STATE_FILE);
+    remove_file(SECTION_ERRORS_FILE);
+    remove_file(VALIDATOR_QUARANTINED_FILE);
     purge_legacy_steer_runtime();
     // (e.g. config generator killed during restart). 30-min threshold is safe since
     // all tachyon temp files are created and deleted within seconds under normal operation.
@@ -1307,6 +1339,8 @@ function stop_main() {
     }
 
     module_success(STATE_UC, [ "cleanup-provenance" ]);
+    remove_file(SECTION_ERRORS_FILE);
+    remove_file(VALIDATOR_QUARANTINED_FILE);
 
     return status;
 }
@@ -1600,9 +1634,8 @@ function dns_failover_apply(candidate_state_path) {
 function reload(reason) {
     let status;
     let force_runtime_reload = as_string(reason || "") == "on_config_change" ? 0 : 1;
-    if (as_string(reason || "") != "section_fail_policy") {
-        try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
-    }
+    if (as_string(reason || "") != "section_fail_policy")
+        remove_file(SECTION_FAIL_STATE_FILE);
     let reload_config_fingerprint = external_config_fingerprint();
     rule_condition_cache_enabled = force_runtime_reload;
 
@@ -1737,10 +1770,27 @@ function reload(reason) {
         restore_rulesets_from_cache();
         prepare_community_rulesets();
         nft_populate_enabled = plan.needs_nft_rebuild == 1 ? 1 : 0;
+        let errors_before = section_errors_snapshot();
         status = core_init_config();
-        if (status != 0)
+        if (status != 0) {
+            nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
             return abort_reload(status, true);
+        }
         nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
+        if (section_errors_snapshot() != errors_before) {
+            log_message("Quarantined sections changed during reload; resyncing nftables rules", "info");
+            status = nft_rebuild_runtime();
+            if (status != 0)
+                return abort_reload(status, true);
+            if (nft_populate_enabled == 1 || plan.needs_nft_rebuild == 1) {
+                let prev_populate = nft_populate_enabled;
+                nft_populate_enabled = 1;
+                status = nft_populate_runtime_sets();
+                nft_populate_enabled = prev_populate;
+                if (status != 0)
+                    return abort_reload(status, true);
+            }
+        }
         status = module_status(STATE_UC, [
             "reload-core-runtime",
             core_pid_before,
