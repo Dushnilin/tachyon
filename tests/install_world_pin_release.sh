@@ -44,8 +44,7 @@ trap 'rm -rf "$SANDBOX"' EXIT HUP INT TERM
 type scrub_apk_world >/dev/null 2>&1 || fail "scrub_apk_world() was not extracted; the test cannot describe the shipped flow"
 
 APK_WORLD_FILE="$SANDBOX/world"
-LEGACY_PACKAGES="forkop luci-app-forkop"
-WORLD_SCRUB_PACKAGES="$LEGACY_PACKAGES tachyon luci-app-tachyon"
+WORLD_SCRUB_PACKAGES="tachyon luci-app-tachyon"
 
 # The world as the test router has it, pins included.
 cat >"$APK_WORLD_FILE" <<'WORLD'
@@ -76,13 +75,13 @@ done
 # --- 3. a bare entry is still removed --------------------------------------
 # The old $ anchor is what made the unpinned case work, and it has to keep
 # working: a world entry with no constraint is just as fatal to the solver.
-printf 'tachyon\nbusybox\nforkop\n' >"$APK_WORLD_FILE"
+printf 'tachyon\nbusybox\nluci-app-tachyon\n' >"$APK_WORLD_FILE"
 scrub_apk_world
 grep -qx "tachyon" "$APK_WORLD_FILE" &&
   fail "a bare 'tachyon' entry must also be removed from world"
 ok
-grep -qx "forkop" "$APK_WORLD_FILE" &&
-  fail "forkop is in WORLD_SCRUB_PACKAGES, so a bare forkop entry is removed too"
+grep -qx "luci-app-tachyon" "$APK_WORLD_FILE" &&
+  fail "luci-app-tachyon is in WORLD_SCRUB_PACKAGES, so a bare entry is removed too"
 ok
 grep -qx "busybox" "$APK_WORLD_FILE" || fail "scrub removed an unrelated package"
 ok
@@ -98,12 +97,7 @@ cmp -s "$SANDBOX/clean.before" "$APK_WORLD_FILE" ||
 ok
 
 # --- 5. the release must happen before the transaction ---------------------
-# apk reads world before it selects, so scrubbing afterwards cannot help. And the
-# only pre-install path used to pass the LEGACY list, which has no Tachyon in it.
-grep -q 'scrub_apk_world "\$LEGACY_PACKAGES"' "$INSTALL_SH" ||
-  fail "the legacy-only scrub is gone; this test no longer describes the flow it guards"
-ok
-
+# apk reads world before it selects, so scrubbing afterwards cannot help.
 grep -qE 'for _pkg in \$WORLD_SCRUB_PACKAGES' "$INSTALL_SH" ||
   fail "install.sh never releases \$WORLD_SCRUB_PACKAGES before apk add, so this installer's own pinned entries survive a reinstall"
 ok

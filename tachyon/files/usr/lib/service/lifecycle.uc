@@ -1130,12 +1130,6 @@ function start_main() {
     if (status != 0)
         return status;
 
-    for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
-        if (fs.stat("/etc/init.d/" + comp_svc) != null) {
-            command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
-        }
-    }
-
     let core_start = command_success_from_args([ "/etc/init.d/tachyon-core", "start" ]);
     if (!core_start) {
         log_message("Failed to start tachyon-core. Aborted.", "fatal");

@@ -2,8 +2,11 @@
 
 // Tachyon Clean Uninstaller Module
 // Fully restores dnsmasq / dhcp, flushes nftables & policy routing,
-// removes Tachyon packages & crontab hooks, restores Forkop/Podkop if present,
-// and safely uninstalls Tachyon without leaving lingering state on OpenWrt.
+// removes Tachyon packages & crontab hooks, and safely uninstalls Tachyon
+// without leaving lingering state on OpenWrt.
+// External legacy components (zapret, byedpi, sing-box, etc.) are only
+// removed when a Tachyon-managed marker proves Tachyon installed them;
+// standalone user installs are backed up and left intact.
 
 let fs = require("fs");
 let common = require("core.common");
@@ -34,6 +37,110 @@ function remove_tree(path) {
         run_shell("rm -rf '" + replace(as_string(path), /'/g, "'\\''") + "'");
 }
 
+const EXTERNAL_BACKUP_DIR = "/etc/tachyon/external-configs-backup";
+
+function backup_config_path(component, source_path) {
+    let dest_dir = EXTERNAL_BACKUP_DIR + "/" + as_string(component);
+    if (fs.stat(source_path) == null)
+        return;
+
+    run_cmd(["mkdir", "-p", dest_dir]);
+    // Preserve directory structure under dest_dir using the basename
+    let basename = replace(as_string(source_path), /^.*\//, "");
+    if (basename == "")
+        return;
+
+    let dest = dest_dir + "/" + basename;
+    let src_stat = fs.stat(source_path);
+    let dst_stat = fs.stat(dest);
+    // Only copy if the destination does not already exist (non-destructive)
+    if (dst_stat == null) {
+        if (src_stat != null && as_string(src_stat.type || "") == "directory")
+            run_shell("cp -a '" + replace(as_string(source_path), /'/g, "'\\''") + "' '" + replace(dest, /'/g, "'\\''") + "'");
+        else
+            run_cmd(["cp", "-a", source_path, dest]);
+    }
+}
+
+function backup_external_configs() {
+    // zapret
+    backup_config_path("zapret", "/etc/config/zapret");
+    for (let p in (fs.glob("/opt/zapret/config") || []))
+        backup_config_path("zapret", p);
+    for (let p in (fs.glob("/opt/zapret/init.d") || []))
+        backup_config_path("zapret", p);
+    for (let p in (fs.glob("/opt/zapret/ipset") || []))
+        backup_config_path("zapret", p);
+
+    // zapret2
+    backup_config_path("zapret2", "/etc/config/zapret2");
+    for (let p in (fs.glob("/opt/zapret2/config") || []))
+        backup_config_path("zapret2", p);
+
+    // byedpi
+    backup_config_path("byedpi", "/etc/config/byedpi");
+    for (let p in (fs.glob("/etc/byedpi*") || []))
+        backup_config_path("byedpi", p);
+
+    // wdtt
+    backup_config_path("wdtt", "/etc/config/wdtt");
+    backup_config_path("wdtt", "/etc/wdtt");
+
+    // qwdtt
+    backup_config_path("qwdtt", "/etc/config/qwdtt");
+    backup_config_path("qwdtt", "/etc/qwdtt");
+
+    // olcrtc
+    backup_config_path("olcrtc", "/etc/config/olcrtc");
+    backup_config_path("olcrtc", "/etc/olcrtc");
+
+    // sing-box
+    backup_config_path("sing-box", "/etc/config/sing-box");
+    backup_config_path("sing-box", "/etc/sing-box");
+}
+
+function is_tachyon_managed_component(component) {
+    component = as_string(component);
+
+    // Check /etc/init.d/<component> for "Tachyon managed" marker
+    let init_path = "/etc/init.d/" + component;
+    let init_data = fs.readfile(init_path);
+    if (init_data != null && index(init_data, "Tachyon managed") >= 0)
+        return true;
+
+    // Normalize component name for backup dir lookup
+    let backup_name = replace(component, /-/g, "_");
+    if (backup_name == "wdtt_client")
+        backup_name = "wdtt";
+
+    // Check /etc/tachyon/component-backups/<component>
+    if (fs.stat("/etc/tachyon/component-backups/" + backup_name) != null)
+        return true;
+
+    // Check /var/run/tachyon/<component> supervisor directory
+    if (fs.stat("/var/run/tachyon/" + backup_name) != null) {
+        let st = fs.stat("/var/run/tachyon/" + backup_name);
+        if (st != null && as_string(st.type || "") == "directory")
+            return true;
+    }
+
+    return false;
+}
+
+function selective_cleanup_component(component, keep_binaries) {
+    component = as_string(component);
+    if (!is_tachyon_managed_component(component))
+        return;
+
+    let init_path = "/etc/init.d/" + component;
+    if (fs.stat(init_path) != null) {
+        run_cmd([init_path, "stop"]);
+        run_cmd([init_path, "disable"]);
+        remove_file(init_path);
+    }
+    run_shell("rm -f /etc/rc.d/*" + component + "* 2>/dev/null || true");
+}
+
 function clean_managed_core(keep_binaries) {
     if (fs.stat("/etc/init.d/tachyon-core") != null) {
         let content = fs.readfile("/etc/init.d/tachyon-core");
@@ -44,18 +151,29 @@ function clean_managed_core(keep_binaries) {
             run_shell("rm -f /etc/rc.d/*tachyon-core* 2>/dev/null || true");
         }
     }
+
+    // Only clean sing-box if it was installed/managed by Tachyon
+    let sing_box_managed = false;
     if (fs.stat("/etc/init.d/sing-box") != null) {
         let legacy_content = fs.readfile("/etc/init.d/sing-box");
         if (legacy_content && index(legacy_content, "Tachyon managed") >= 0) {
+            sing_box_managed = true;
             run_cmd(["/etc/init.d/sing-box", "stop"]);
             run_cmd(["/etc/init.d/sing-box", "disable"]);
             remove_file("/etc/init.d/sing-box");
             run_shell("rm -f /etc/rc.d/*sing-box* 2>/dev/null || true");
         }
     }
-    remove_tree("/etc/sing-box");
+    if (!sing_box_managed &&
+        (fs.stat("/etc/tachyon/sing-box-version") != null ||
+         fs.stat("/etc/tachyon/sing-box-variant") != null ||
+         fs.stat("/etc/tachyon/component-backups/sing_box") != null))
+        sing_box_managed = true;
 
-    if (!keep_binaries) {
+    if (sing_box_managed)
+        remove_tree("/etc/sing-box");
+
+    if (!keep_binaries && sing_box_managed) {
         if (fs.stat("/bin/opkg") != null || fs.stat("/usr/bin/opkg") != null) {
             for (let pkg in [ "sing-box-extended", "sing-box-tiny" ]) {
                 let check = system("opkg list-installed '" + pkg + "' 2>/dev/null | grep -q '^" + pkg + " '");
@@ -66,9 +184,11 @@ function clean_managed_core(keep_binaries) {
                 let check_sb = system("opkg list-installed 'sing-box' 2>/dev/null | grep -q '^sing-box '");
                 if (check_sb == 0)
                     run_cmd(["opkg", "remove", "--force-depends", "--force-remove", "sing-box"]);
-                remove_file("/usr/bin/tachyon-core");
             }
         }
+    }
+    if (!keep_binaries) {
+        remove_file("/usr/bin/tachyon-core");
         remove_file("/usr/lib/libcronet.so");
     }
 }
@@ -280,20 +400,26 @@ function uninstall_tachyon(purge_config, keep_binaries) {
         run_cmd(["/etc/init.d/tachyon", "disable"]);
     }
 
+    // Non-destructive backup of external configs before any cleanup
+    log_step("Backing up external component configurations...");
+    backup_external_configs();
+
     clean_managed_core(keep_binaries);
 
-    for (let svc in [
-        "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer",
-        "/etc/init.d/zapret", "/etc/init.d/zapret2",
-        "/etc/init.d/byedpi", "/etc/init.d/wdtt-client",
-        "/etc/init.d/qwdtt", "/etc/init.d/olcrtc"
-    ]) {
+    // Clean Tachyon's own internal steer remnants (always Tachyon-managed)
+    for (let svc in [ "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer" ]) {
         if (fs.stat(svc) != null) {
             run_cmd([ svc, "stop" ]);
             run_cmd([ svc, "disable" ]);
             remove_file(svc);
         }
     }
+    run_shell("rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true");
+
+    // Selectively remove legacy components ONLY if Tachyon-managed
+    for (let comp in [ "zapret", "zapret2", "byedpi", "wdtt-client", "qwdtt", "olcrtc" ])
+        selective_cleanup_component(comp, keep_binaries);
+
     let managed_tailscale = false;
     if (fs.stat("/etc/init.d/tailscale") != null) {
         let ts_init = fs.readfile("/etc/init.d/tailscale");
@@ -305,11 +431,16 @@ function uninstall_tachyon(purge_config, keep_binaries) {
             run_shell("rm -f /etc/rc.d/*tailscale* 2>/dev/null || true");
         }
     }
-    run_shell("rm -rf /etc/rc.d/*steer* /etc/rc.d/*zapret* /etc/rc.d/*byedpi* /etc/rc.d/*wdtt* /etc/rc.d/*qwdtt* /etc/rc.d/*olcrtc* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true");
-    run_shell("rm -rf /etc/tachyon/tailscale/*/native /var/run/qwdtt 2>/dev/null || true");
+    if (!managed_tailscale &&
+        (fs.stat("/etc/tachyon/component-backups/tailscale") != null ||
+         length(fs.glob("/etc/tachyon/tailscale/*/native") || []) > 0))
+        managed_tailscale = true;
 
-    // Stop core and legacy standalone processes
-    run_shell("killall tachyon-core sing-box steer nfqws nfqws2 ciadpi qwdtt-client wdtt olcrtc 2>/dev/null || true");
+    if (managed_tailscale)
+        run_shell("rm -rf /etc/tachyon/tailscale/*/native 2>/dev/null || true");
+
+    // Stop core and Tachyon background processes
+    run_shell("killall tachyon-core steer 2>/dev/null || true");
     // Stop background daemons safely (excluding self PID)
     run_shell("ps 2>/dev/null | grep -E 'dns_failover|watchdog|telegram' | grep -v grep | awk '{print $1}' | while read _pid; do [ \"$_pid\" != \"$$\" ] && kill -9 \"$_pid\" 2>/dev/null; done; true");
 
@@ -346,28 +477,69 @@ function uninstall_tachyon(purge_config, keep_binaries) {
     }
 
     log_step("Removing Tachyon packages...");
-    let legacy_pkgs = [ "zapret", "zapret2", "byedpi", "wdtt", "qwdtt", "olcrtc" ];
+    // Only remove legacy component packages if they were Tachyon-managed
+    let managed_legacy_pkgs = [];
+    for (let comp in [ "zapret", "zapret2", "byedpi", "wdtt", "qwdtt", "olcrtc" ]) {
+        if (is_tachyon_managed_component(comp))
+            push(managed_legacy_pkgs, comp);
+    }
     if (managed_tailscale)
-        push(legacy_pkgs, "tailscale");
+        push(managed_legacy_pkgs, "tailscale");
 
     if (fs.stat("/bin/opkg") != null || fs.stat("/usr/bin/opkg") != null) {
         run_cmd(["opkg", "remove", "--force-depends", "--force-remove", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
         if (!keep_binaries) {
-            for (let lp in legacy_pkgs)
+            for (let lp in managed_legacy_pkgs)
                 run_cmd(["opkg", "remove", "--force-depends", "--force-remove", lp]);
         }
     } else if (fs.stat("/sbin/apk") != null || fs.stat("/usr/sbin/apk") != null || fs.stat("/usr/bin/apk") != null) {
         run_cmd(["apk", "del", "--no-network", "--repositories-file", "/dev/null", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
         if (!keep_binaries) {
-            for (let lp in legacy_pkgs) {
+            for (let lp in managed_legacy_pkgs) {
                 run_shell("sed -i -E '/^" + lp + "([><= ].*)?$/d' /etc/apk/world 2>/dev/null || true");
                 run_cmd(["apk", "del", "--no-network", "--repositories-file", "/dev/null", lp]);
             }
         }
     }
     if (!keep_binaries) {
-        run_shell("rm -rf /opt/zapret /opt/zapret2 /etc/qwdtt /etc/wdtt /etc/olcrtc /etc/config/zapret /etc/config/zapret2 /etc/config/byedpi /etc/config/wdtt /etc/config/olcrtc 2>/dev/null || true");
-        run_shell("rm -f /usr/bin/nfqws /usr/bin/nfqws2 /usr/bin/ciadpi /usr/bin/wdtt /usr/bin/qwdtt-client /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve /usr/bin/olcrtc 2>/dev/null || true");
+        // Only remove binaries/configs of Tachyon-managed components
+        for (let comp in [ "zapret", "zapret2", "byedpi", "wdtt", "qwdtt", "olcrtc" ]) {
+            if (!is_tachyon_managed_component(comp))
+                continue;
+
+            if (comp == "zapret")
+                run_shell("rm -rf /opt/zapret /etc/config/zapret 2>/dev/null || true");
+            else if (comp == "zapret2")
+                run_shell("rm -rf /opt/zapret2 /etc/config/zapret2 2>/dev/null || true");
+            else if (comp == "byedpi")
+                run_shell("rm -rf /etc/config/byedpi 2>/dev/null || true");
+            else if (comp == "wdtt")
+                run_shell("rm -rf /etc/wdtt /etc/config/wdtt 2>/dev/null || true");
+            else if (comp == "qwdtt")
+                run_shell("rm -rf /etc/qwdtt /etc/config/qwdtt 2>/dev/null || true");
+            else if (comp == "olcrtc")
+                run_shell("rm -rf /etc/olcrtc /etc/config/olcrtc 2>/dev/null || true");
+        }
+        // Remove Tachyon-managed binaries only
+        if (is_tachyon_managed_component("zapret"))
+            run_shell("rm -f /usr/bin/nfqws 2>/dev/null || true");
+        if (is_tachyon_managed_component("zapret2"))
+            run_shell("rm -f /usr/bin/nfqws2 2>/dev/null || true");
+        if (is_tachyon_managed_component("byedpi"))
+            run_shell("rm -f /usr/bin/ciadpi 2>/dev/null || true");
+        if (is_tachyon_managed_component("wdtt") || is_tachyon_managed_component("wdtt-client"))
+            run_shell("rm -f /usr/bin/wdtt /usr/sbin/wdtt-genlists /usr/sbin/wdtt-resolve 2>/dev/null || true");
+        if (is_tachyon_managed_component("qwdtt"))
+            run_shell("rm -f /usr/bin/qwdtt-client 2>/dev/null || true");
+        if (is_tachyon_managed_component("olcrtc"))
+            run_shell("rm -f /usr/bin/olcrtc 2>/dev/null || true");
+    }
+
+    // Clean Tachyon component update state for managed components
+    run_shell("rm -rf /var/run/tachyon/component-update-checks 2>/dev/null || true");
+    for (let comp in [ "zapret", "zapret2", "byedpi", "wdtt", "qwdtt", "olcrtc" ]) {
+        if (is_tachyon_managed_component(comp))
+            run_shell("rm -rf /etc/tachyon/component-backups/" + replace(comp, /-/g, "_") + " 2>/dev/null || true");
     }
 
     // Clean translations and LuCI views
@@ -382,21 +554,6 @@ function uninstall_tachyon(purge_config, keep_binaries) {
         run_cmd(["/etc/init.d/rpcd", "restart"]);
     if (fs.stat("/etc/init.d/uhttpd") != null)
         run_cmd(["/etc/init.d/uhttpd", "restart"]);
-
-    // Restore parent Forkop / Podkop / NetShift services if present
-    if (fs.stat("/etc/init.d/forkop") != null) {
-        log_step("Forkop detected! Restoring Forkop service...");
-        run_cmd(["/etc/init.d/forkop", "enable"]);
-        run_cmd(["/etc/init.d/forkop", "restart"]);
-    } else if (fs.stat("/etc/init.d/podkop") != null) {
-        log_step("Podkop detected! Restoring Podkop service...");
-        run_cmd(["/etc/init.d/podkop", "enable"]);
-        run_cmd(["/etc/init.d/podkop", "restart"]);
-    } else if (fs.stat("/etc/init.d/netshift") != null) {
-        log_step("NetShift detected! Restoring NetShift service...");
-        run_cmd(["/etc/init.d/netshift", "enable"]);
-        run_cmd(["/etc/init.d/netshift", "restart"]);
-    }
 
     log_step("Tachyon has been successfully uninstalled.");
     return 0;

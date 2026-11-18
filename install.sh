@@ -41,6 +41,7 @@ TACHYON_WAS_RUNNING=0
 TACHYON_WAS_ENABLED=0
 INSTALLER_LANG="en"
 TACHYON_I18N_REQUESTED=0
+WORLD_SCRUB_PACKAGES="tachyon luci-app-tachyon"
 CORE_INSTALL_CHOICE=""
 CORE_INSTALL_REQUESTED=""
 ZRAM_INSTALL_REQUESTED=0
@@ -1398,7 +1399,7 @@ prepare_transaction() {
 # apk operation would fail with "no such package ... required by world[...]"
 # (issue #85).
 scrub_apk_world() {
-    _scrub_list="$1"
+    _scrub_list="${1:-$WORLD_SCRUB_PACKAGES}"
     [ -n "$_scrub_list" ] || return 0
     [ -f "$APK_WORLD_FILE" ] || return 0
     for _pkg in $_scrub_list; do
@@ -1429,14 +1430,14 @@ resolve_legacy_conflicts_before_install() {
 
     # Release this installer's own pinned entries.
     _pinned=""
-    for _pkg in tachyon luci-app-tachyon; do
+    for _pkg in $WORLD_SCRUB_PACKAGES; do
         if grep -qE "^${_pkg}[ \t<>=~]" "$APK_WORLD_FILE" 2>/dev/null; then
             _pinned="$_pinned $_pkg"
         fi
     done
     if [ -n "$_pinned" ]; then
         msg "Releasing pinned apk world entries:$_pinned"
-        scrub_apk_world "tachyon luci-app-tachyon"
+        scrub_apk_world "$WORLD_SCRUB_PACKAGES"
     fi
     return 0
 }
