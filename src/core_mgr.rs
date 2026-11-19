@@ -745,7 +745,7 @@ impl CoreManager {
         if !is_running || exe_deleted {
             // Release reload_lock before calling start(), which acquires reload_lock itself.
             drop(reload_guard);
-            return self.start().await;
+            return Box::pin(self.start()).await;
         }
         let store_snapshot = { self.state.data.read().await.clone() };
         let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
@@ -773,7 +773,7 @@ impl CoreManager {
         {
             // Release reload_lock before falling back to start() to avoid self-deadlock.
             drop(reload_guard);
-            return self.start().await;
+            return Box::pin(self.start()).await;
         }
         self.restore_saved_selectors(&store_snapshot).await;
         drop(reload_guard);
@@ -3741,14 +3741,14 @@ mod core_mgr_tests {
         *mgr.proc.lock().await = Some((child, Instant::now()));
 
         // 1. UI idle (last_telemetry_access_ts == 0): must NOT poll `:9090`.
-        mgr.poll_telemetry_and_reconcile(5).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(5)).await;
         assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(state.live.read().await.core_running);
 
         // 2. UI active: tick 5 establishes baseline without division by hardcoded 3.
         state.touch_telemetry_access();
-        mgr.poll_telemetry_and_reconcile(5).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(5)).await;
         assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
         {
@@ -3771,7 +3771,7 @@ mod core_mgr_tests {
             .store(12_000, std::sync::atomic::Ordering::SeqCst);
         mock.down_total
             .store(26_000, std::sync::atomic::Ordering::SeqCst);
-        mgr.poll_telemetry_and_reconcile(6).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(6)).await;
         assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 2);
         {
             let live = state.live.read().await;
@@ -3794,7 +3794,7 @@ mod core_mgr_tests {
             crate::store::unix_now_u64().saturating_sub(30),
             std::sync::atomic::Ordering::Release,
         );
-        mgr.poll_telemetry_and_reconcile(10).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(10)).await;
         assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 2);
         assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
         {
@@ -3830,7 +3830,7 @@ mod core_mgr_tests {
             .store(2_000, std::sync::atomic::Ordering::SeqCst);
         mock.down_total
             .store(4_000, std::sync::atomic::Ordering::SeqCst);
-        mgr.poll_telemetry_and_reconcile(11).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(11)).await;
         {
             let live = state.live.read().await;
             assert_eq!(live.core_pid, Some(pid2));
@@ -3843,7 +3843,7 @@ mod core_mgr_tests {
             let _ = old_child.kill().await;
             let _ = old_child.wait().await;
         }
-        mgr.poll_telemetry_and_reconcile(12).await;
+        Box::pin(mgr.poll_telemetry_and_reconcile(12)).await;
         {
             let live = state.live.read().await;
             assert!(!live.core_running);
@@ -3895,10 +3895,10 @@ mod core_mgr_tests {
         // 1. Four concurrent apply_or_reload calls serialize strictly on reload_lock.
         let batch = tokio::time::timeout(Duration::from_secs(5), async {
             tokio::join!(
-                mgr.apply_or_reload(),
-                mgr.apply_or_reload(),
-                mgr.apply_or_reload(),
-                mgr.apply_or_reload(),
+                Box::pin(mgr.apply_or_reload()),
+                Box::pin(mgr.apply_or_reload()),
+                Box::pin(mgr.apply_or_reload()),
+                Box::pin(mgr.apply_or_reload()),
             )
         })
         .await
@@ -3917,9 +3917,10 @@ mod core_mgr_tests {
             live.core_running = false;
             live.core_pid = None;
         }
-        let res_stopped = tokio::time::timeout(Duration::from_secs(3), mgr.apply_or_reload())
-            .await
-            .expect("fallback !core_running deadlocked/timed out");
+        let res_stopped =
+            tokio::time::timeout(Duration::from_secs(3), Box::pin(mgr.apply_or_reload()))
+                .await
+                .expect("fallback !core_running deadlocked/timed out");
         assert!(res_stopped.is_err());
 
         // 3. Fallback into start() when PUT /configs fails must also drop reload_guard cleanly.
@@ -3936,7 +3937,10 @@ mod core_mgr_tests {
             live.core_pid = Some(dummy_pid);
         }
         let res_put_fail = tokio::time::timeout(Duration::from_secs(5), async {
-            tokio::join!(mgr.apply_or_reload(), mgr.apply_or_reload())
+            tokio::join!(
+                Box::pin(mgr.apply_or_reload()),
+                Box::pin(mgr.apply_or_reload()),
+            )
         })
         .await
         .expect("fallback on PUT error deadlocked/timed out");

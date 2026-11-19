@@ -562,9 +562,15 @@ async fn test_ops_dns_preset_and_bot_settings_persistence() {
     let env = TempTestEnv::new("settings", admin_id).await;
 
     // DNS preset update
-    let dns_ok = ops::try_handle_ops("dns_preset", "cloudflare", admin_id, &env.state, &env.core)
-        .await
-        .expect("dns_preset reply");
+    let dns_ok = Box::pin(ops::try_handle_ops(
+        "dns_preset",
+        "cloudflare",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("dns_preset reply");
     assert!(dns_ok.text.contains("[OK]"));
     {
         let d = env.state.data.read().await;
@@ -572,32 +578,46 @@ async fn test_ops_dns_preset_and_bot_settings_persistence() {
         assert!(d.settings.dns_servers.iter().any(|s| s.contains("1.1.1.1")));
     }
 
-    let dns_bad = ops::try_handle_ops("dns_preset", "invalid_dns", admin_id, &env.state, &env.core)
-        .await
-        .expect("invalid dns_preset reply");
+    let dns_bad = Box::pin(ops::try_handle_ops(
+        "dns_preset",
+        "invalid_dns",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("invalid dns_preset reply");
     assert!(dns_bad.text.contains("[ERR]"));
 
     // Rename router
-    let name_rep = ops::try_handle_ops("/name", "Edge-GW", admin_id, &env.state, &env.core)
-        .await
-        .expect("/name reply");
+    let name_rep = Box::pin(ops::try_handle_ops(
+        "/name", "Edge-GW", admin_id, &env.state, &env.core,
+    ))
+    .await
+    .expect("/name reply");
     assert!(name_rep.text.contains("[OK]"));
     assert_eq!(env.state.data.read().await.telegram.router_name, "Edge-GW");
 
     // Toggle quiet hours & update window via prompt handler
-    let qt_rep = ops::try_handle_ops("bot_quiet_tog", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("bot_quiet_tog reply");
+    let qt_rep = Box::pin(ops::try_handle_ops(
+        "bot_quiet_tog",
+        "",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("bot_quiet_tog reply");
     assert!(qt_rep.text.contains("[ON]"));
     assert!(env.state.data.read().await.telegram.quiet_hours_enabled);
 
-    let qw_rep = ops::handle_ops_prompt(
+    let qw_rep = Box::pin(ops::handle_ops_prompt(
         PendingPromptKind::SetQuietHours,
         "22:30-06:15",
         admin_id,
         &env.state,
         &env.core,
-    )
+    ))
     .await
     .expect("SetQuietHours prompt reply");
     assert!(qw_rep.text.contains("[OK]"));
@@ -609,13 +629,13 @@ async fn test_ops_dns_preset_and_bot_settings_persistence() {
 
     // Toggle notification field & add admin ID via prompt
     let prev_dns_leak = env.state.data.read().await.telegram.notify_dns_leak;
-    let nt_rep = ops::try_handle_ops(
+    let nt_rep = Box::pin(ops::try_handle_ops(
         "bot_notify_tog",
         "notify_dns_leak",
         admin_id,
         &env.state,
         &env.core,
-    )
+    ))
     .await
     .expect("bot_notify_tog reply");
     assert!(nt_rep.text.contains("DNS") || nt_rep.text.contains("утеч"));
@@ -624,13 +644,13 @@ async fn test_ops_dns_preset_and_bot_settings_persistence() {
         !prev_dns_leak
     );
 
-    let adm_rep = ops::handle_ops_prompt(
+    let adm_rep = Box::pin(ops::handle_ops_prompt(
         PendingPromptKind::AddAdminId,
         "555666777",
         admin_id,
         &env.state,
         &env.core,
-    )
+    ))
     .await
     .expect("AddAdminId prompt reply");
     assert!(adm_rep.text.contains("[OK]"));
@@ -931,9 +951,11 @@ async fn test_poll_updates_genuine_proxy_failure_caps_direct_fallback_timeout() 
 #[test]
 fn test_route_alert_quiet_hours_cooldown_and_outbox_dedup() {
     let dir = std::env::temp_dir().join(format!(
-        "tachyon_tg_resilience_{}",
+        "tachyon_tg_resilience_{}_{}",
+        std::process::id(),
         TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
+    let _ = std::fs::remove_dir_all(&dir);
     let outbox_dir = dir.join("outbox");
     let stamp_path = dir.join("route-alert.stamp");
     let token = "123456:test-secret-token";

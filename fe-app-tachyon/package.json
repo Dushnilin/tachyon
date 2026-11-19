@@ -20,9 +20,13 @@
     "locales:actualize": "npm run locales:extract-calls && npm run locales:generate-pot && npm run locales:generate-po:ru && npm run locales:distribute"
   },
   "devDependencies": {
+    "@babel/parser": "7.28.4",
+    "@babel/traverse": "7.28.4",
+    "@babel/types": "7.28.4",
     "@eslint/js": "9.36.0",
     "eslint": "9.36.0",
     "eslint-config-prettier": "10.1.8",
+    "fast-glob": "3.3.3",
     "prettier": "3.6.2",
     "tsup": "8.5.0",
     "typescript": "5.9.3",

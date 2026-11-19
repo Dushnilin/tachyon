@@ -11153,19 +11153,19 @@ mod tests {
             d.settings.proxy_mode = "socks".to_string();
         }
         let core = CoreManager::new(Arc::clone(&state));
-        let parsed = handle_service_action_async("stop", &state, &core).await;
+        let parsed = Box::pin(handle_service_action_async("stop", &state, &core)).await;
         assert_eq!(parsed["success"], true);
         assert_eq!(parsed["action"], "stop");
         assert!(core.is_manually_stopped());
         assert!(!core.is_watchdog_effectively_running().await);
 
         let d_snap = state.data.read().await.clone();
-        let wjson = handle_watchdog_command("watchdog", &d_snap, &state, &core).await;
+        let wjson = Box::pin(handle_watchdog_command("watchdog", &d_snap, &state, &core)).await;
         assert_eq!(wjson["running"], false);
         assert_eq!(wjson["status"], "stopped");
 
         // Ensure background sync helper with trigger_reload=false does not clear manual stop.
-        sync_uci_to_rust_store_with_reload(&state, &core, false)
+        Box::pin(sync_uci_to_rust_store_with_reload(&state, &core, false))
             .await
             .expect("sync without reload");
         assert!(core.is_manually_stopped());

@@ -218,13 +218,19 @@ pub(crate) fn apply_desync_strategy_to_section(sec: &mut RoutingSection, args_st
 type BoxOpsFuture<'a> = Pin<Box<dyn Future<Output = BotReply> + Send + 'a>>;
 
 async fn commit_tx_boxed(state: &Arc<AppState>, candidate: RouterStoreData) -> anyhow::Result<()> {
-    Box::pin(transaction::commit_transaction(state, candidate))
-        .await
-        .map(|_| ())
+    let state = Arc::clone(state);
+    tokio::spawn(async move {
+        Box::pin(transaction::commit_transaction(&state, candidate))
+            .await
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("commit task panicked: {e}"))?
 }
 
 async fn reload_core_boxed(core: &Arc<CoreManager>) {
-    let _ = Box::pin(core.apply_or_reload()).await;
+    let core = Arc::clone(core);
+    let _ = tokio::spawn(async move { Box::pin(core.apply_or_reload()).await }).await;
 }
 
 async fn update_telegram_cfg<F>(
