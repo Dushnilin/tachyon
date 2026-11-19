@@ -80,12 +80,35 @@ export function getConnectionTupleKey(connection: ClashConnection): string {
   return `${proto}|${src}|${sport}|${dst}|${dport}`;
 }
 
+export function getConnectionClientSocketKey(
+  connection: ClashConnection,
+): string {
+  const meta = connection.metadata || {};
+  const proto = normalizeString(meta.network || 'tcp').toLowerCase();
+  const src = normalizeString(meta.sourceIP);
+  const sport = normalizeString(meta.sourcePort);
+  const dport = normalizeString(meta.destinationPort);
+  if (!src || !sport || !dport) {
+    return '';
+  }
+  return `${proto}|${src}|${sport}|${dport}`;
+}
+
+function isFakeIpV4(ip: string): boolean {
+  const parts = normalizeString(ip).split('.');
+  if (parts.length !== 4) return false;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  return nums[0] === 198 && (nums[1] & 0xfe) === 18;
+}
+
 export function mergeCoreAndConntrackConnections(
   coreConnections: ClashConnection[] = [],
   conntrackConnections: ClashConnection[] = [],
 ): ClashConnection[] {
   const result: ClashConnection[] = [];
   const seenTuples = new Set<string>();
+  const seenClientSockets = new Set<string>();
   const seenIds = new Set<string>();
 
   for (const conn of coreConnections) {
@@ -94,6 +117,8 @@ export function mergeCoreAndConntrackConnections(
     if (id) seenIds.add(id);
     const tkey = getConnectionTupleKey(conn);
     if (tkey) seenTuples.add(tkey);
+    const skey = getConnectionClientSocketKey(conn);
+    if (skey) seenClientSockets.add(skey);
     result.push({
       ...conn,
       dataSource: getConnectionDataSource(conn),
@@ -102,12 +127,16 @@ export function mergeCoreAndConntrackConnections(
 
   for (const ct of conntrackConnections) {
     if (!ct || typeof ct !== 'object') continue;
+    if (isFakeIpV4(normalizeString(ct.metadata?.destinationIP))) continue;
     const id = normalizeString(ct.id);
     if (id && seenIds.has(id)) continue;
     const tkey = getConnectionTupleKey(ct);
     if (tkey && seenTuples.has(tkey)) continue;
+    const skey = getConnectionClientSocketKey(ct);
+    if (skey && seenClientSockets.has(skey)) continue;
     if (id) seenIds.add(id);
     if (tkey) seenTuples.add(tkey);
+    if (skey) seenClientSockets.add(skey);
     result.push({
       ...ct,
       dataSource: 'conntrack',
@@ -267,6 +296,31 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
     [];
   const urltestsBySection = new Map<string, string[]>();
+  const balancersBySection = new Map<string, string[]>();
+  const uniqueSourceOwners = new Map<string, string | null>();
+  const SOURCE_TAG_PREFIXES = [
+    'iface-',
+    'desync-',
+    'wg-',
+    'vless-',
+    'vmess-',
+    'trojan-',
+    'ss-',
+    'hy2-',
+    'tuic-',
+    'mieru-',
+    'naive-',
+    'anytls-',
+    'snell-',
+    'sudoku-',
+    'trusttunnel-',
+    'tewfai-',
+    'masque-',
+    'openconnect-',
+    'shadowtls-',
+    'tailscale-',
+    'custom-',
+  ];
 
   sections
     .filter((section) => section['.type'] === 'urltest')
@@ -279,6 +333,22 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
 
       urltestsBySection.set(owner, [
         ...(urltestsBySection.get(owner) || []),
+        id,
+      ]);
+    });
+
+  sections
+    .filter(
+      (section) => section['.type'] === 'balancer' && section.enabled !== '0',
+    )
+    .forEach((section) => {
+      const owner = normalizeString(section.section);
+      const id = normalizeString(section.id) || section['.name'];
+      if (!owner || !id) {
+        return;
+      }
+      balancersBySection.set(owner, [
+        ...(balancersBySection.get(owner) || []),
         id,
       ]);
     });
@@ -321,6 +391,9 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
         routeSectionItems.push({ sectionName, displayName });
       }
       map[getOutboundTagBySection(sectionName)] = displayName;
+      map[`sel-${sectionName}`] = displayName;
+      map[`desync-sec-${sectionName}`] = displayName;
+      map[`tailscale-sec-${sectionName}`] = displayName;
       map[`${sectionName}-dns-server`] = displayName;
       map[`dns-${sectionName}`] = displayName;
       const urltestIds =
@@ -328,6 +401,59 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       urltestIds.forEach((id) => {
         map[getUrlTestTag(sectionName, id)] = displayName;
       });
+      const balIds = new Set<string>([
+        ...(balancersBySection.get(sectionName) || []),
+        ...getListValues(
+          (section as { balancer_refs?: string | string[] }).balancer_refs,
+        ),
+      ]);
+      balIds.forEach((id) => {
+        map[`bal-${sectionName}-${id}`] = displayName;
+        map[`${sectionName}-urltest-${id}`] = displayName;
+        map[`${sectionName}-priority-${id}`] = displayName;
+      });
+      getListValues(section.outbound_source_refs).forEach((srcId) => {
+        if (!uniqueSourceOwners.has(srcId)) {
+          uniqueSourceOwners.set(srcId, displayName);
+        } else if (uniqueSourceOwners.get(srcId) !== displayName) {
+          uniqueSourceOwners.set(srcId, null);
+        }
+      });
+    });
+
+  sections
+    .filter(
+      (section) =>
+        section['.type'] === 'outbound_source' && section.enabled !== '0',
+    )
+    .forEach((source) => {
+      const srcId = source['.name'];
+      if (!srcId) return;
+      const ownerLabel = uniqueSourceOwners.get(srcId) || '';
+      const srcName = normalizeString(source.name || source.label);
+      const label = ownerLabel || srcName;
+      if (!label) return;
+      for (const prefix of SOURCE_TAG_PREFIXES) {
+        const tag = `${prefix}${srcId}`;
+        if (!map[tag]) {
+          map[tag] = label;
+        }
+      }
+      if (source.source_type === 'custom_json' && source.custom_json) {
+        try {
+          const parsed = JSON.parse(String(source.custom_json)) as Record<
+            string,
+            unknown
+          >;
+          const customTag =
+            typeof parsed?.tag === 'string' ? normalizeString(parsed.tag) : '';
+          if (customTag && !map[customTag]) {
+            map[customTag] = label;
+          }
+        } catch {
+          // ignore malformed custom json
+        }
+      }
     });
 
   sections
@@ -369,8 +495,14 @@ export function getRouteDisplayNameByTag(tag: string): string {
   const manualSection = routeSections.find(({ sectionName }) => {
     if (
       tag === sectionName ||
+      tag === `sel-${sectionName}` ||
+      tag === `desync-sec-${sectionName}` ||
+      tag === `tailscale-sec-${sectionName}` ||
       tag === `${sectionName}-dns-server` ||
-      tag === `dns-${sectionName}`
+      tag === `dns-${sectionName}` ||
+      tag.startsWith(`bal-${sectionName}-`) ||
+      tag.startsWith(`${sectionName}-urltest-`) ||
+      tag.startsWith(`${sectionName}-priority-`)
     ) {
       return true;
     }
@@ -546,14 +678,55 @@ export function getTargetCellParts(connection: MonitoredConnection): {
   };
 }
 
+const GENERIC_ROUTE_TAGS = new Set([
+  'direct',
+  'direct-out',
+  'lo-direct-out',
+  'lan-direct-out',
+  'bypass',
+  'bypass-out',
+  'block',
+  'block-out',
+  'reject',
+  'dns',
+  'dns-out',
+  'hijack-dns',
+]);
+
 export function getRoute(connection: MonitoredConnection): string {
   const chains = Array.isArray(connection.chains)
     ? connection.chains
     : Array.isArray(connection.metadata?.chains)
       ? connection.metadata.chains
       : [];
-  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
   const fallbackRouteTag = getRouteTagFromRule(connection.rule);
+  const specificChainTag = chains.find((tag) => {
+    const clean = normalizeString(tag);
+    if (!clean || GENERIC_ROUTE_TAGS.has(clean.toLowerCase())) {
+      return false;
+    }
+    const display = getRouteDisplayNameByTag(clean);
+    return Boolean(display && !GENERIC_ROUTE_TAGS.has(display.toLowerCase()));
+  });
+  if (specificChainTag) {
+    return (
+      getRouteDisplayNameByTag(specificChainTag) ||
+      normalizeString(specificChainTag)
+    );
+  }
+  if (
+    fallbackRouteTag &&
+    !GENERIC_ROUTE_TAGS.has(fallbackRouteTag.toLowerCase())
+  ) {
+    const fallbackDisplay = getRouteDisplayNameByTag(fallbackRouteTag);
+    if (
+      fallbackDisplay &&
+      !GENERIC_ROUTE_TAGS.has(fallbackDisplay.toLowerCase())
+    ) {
+      return fallbackDisplay;
+    }
+  }
+  const routeTag = [...chains].reverse().find(getRouteDisplayNameByTag);
   const route =
     getRouteDisplayNameByTag(routeTag || '') ||
     getRouteDisplayNameByTag(fallbackRouteTag) ||
@@ -647,11 +820,17 @@ export function getRouteTooltip(
       ? connection.metadata.chains
       : [];
   const leafNode = normalizeString(chains[chains.length - 1]);
+  const leafDisplay = getRouteDisplayNameByTag(leafNode);
   if (
     leafNode &&
     leafNode !== resolvedRoute &&
+    leafDisplay !== resolvedRoute &&
     leafNode !== `${resolvedRoute}-out` &&
-    !leafNode.endsWith('-out')
+    !leafNode.endsWith('-out') &&
+    !leafNode.startsWith('sel-') &&
+    !leafNode.startsWith('desync-sec-') &&
+    !leafNode.startsWith('tailscale-sec-') &&
+    !GENERIC_ROUTE_TAGS.has(leafNode.toLowerCase())
   ) {
     lines.push(`${tr('Узел', 'Node')}: ${leafNode}`);
   }

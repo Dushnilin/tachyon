@@ -415,6 +415,376 @@ fn append_lan_ipv6_isolation_chains(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FirewallDnatRedirect {
+    protos: Vec<&'static str>,
+    src_dip: Option<String>,
+    src_dport: String,
+    dest_ip: String,
+    dest_port: Option<String>,
+}
+
+fn unquote_uci_value(raw: &str) -> String {
+    let mut s = raw.trim();
+    if let (Some(first), Some(last)) = (s.chars().next(), s.chars().last())
+        && ((first == '\'' && last == '\'') || (first == '"' && last == '"'))
+        && s.len() >= 2
+    {
+        s = &s[1..s.len() - 1];
+        return s.trim().to_string();
+    }
+    // Strip unquoted trailing inline comment if present
+    if let Some((before, _)) = s.split_once('#') {
+        s = before.trim();
+    }
+    s.trim_matches('\'').trim_matches('"').trim().to_string()
+}
+
+fn normalize_nft_port_spec(raw: &str) -> Option<(String, bool)> {
+    let mut items: Vec<String> = Vec::new();
+    for tok in raw.split([',', ' ', '\t']) {
+        let t = tok.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let norm = t.replace(':', "-");
+        if let Some((a_s, b_s)) = norm.split_once('-') {
+            if let (Ok(lo), Ok(hi)) = (a_s.trim().parse::<u16>(), b_s.trim().parse::<u16>())
+                && lo > 0
+                && hi >= lo
+            {
+                let item = if lo == hi {
+                    lo.to_string()
+                } else {
+                    format!("{lo}-{hi}")
+                };
+                if !items.contains(&item) {
+                    items.push(item);
+                }
+            }
+        } else if let Ok(p) = norm.parse::<u16>()
+            && p > 0
+        {
+            let item = p.to_string();
+            if !items.contains(&item) {
+                items.push(item);
+            }
+        }
+    }
+    match items.len() {
+        0 => None,
+        1 => {
+            let single = !items[0].contains('-');
+            Some((items.into_iter().next()?, single))
+        }
+        _ => Some((format!("{{ {} }}", items.join(", ")), false)),
+    }
+}
+
+fn parse_uci_dnat_protos(raw: &str) -> Vec<&'static str> {
+    let lower = raw.trim().to_ascii_lowercase();
+    if lower.is_empty() || lower == "all" {
+        return vec!["tcp", "udp"];
+    }
+    let mut out = Vec::new();
+    for tok in lower.split(|c: char| c.is_ascii_whitespace() || matches!(c, ',' | '+' | '/')) {
+        match tok.trim() {
+            "tcp" if !out.contains(&"tcp") => out.push("tcp"),
+            "udp" if !out.contains(&"udp") => out.push("udp"),
+            "tcpudp" => {
+                if !out.contains(&"tcp") {
+                    out.push("tcp");
+                }
+                if !out.contains(&"udp") {
+                    out.push("udp");
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn parse_firewall_dnat_redirects(raw: &str) -> Vec<FirewallDnatRedirect> {
+    #[derive(Default)]
+    struct RawSection {
+        is_redirect: bool,
+        opts: HashMap<String, Vec<String>>,
+    }
+
+    let mut sections: Vec<RawSection> = Vec::new();
+    let mut current: Option<RawSection> = None;
+
+    for raw_line in raw.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("config")
+            && rest.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            if let Some(prev) = current.take()
+                && prev.is_redirect
+            {
+                sections.push(prev);
+            }
+            let stype = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"');
+            current = Some(RawSection {
+                is_redirect: stype == "redirect",
+                opts: HashMap::new(),
+            });
+            continue;
+        }
+        let Some(sec) = current.as_mut() else {
+            continue;
+        };
+        if !sec.is_redirect {
+            continue;
+        }
+        let rest = if let Some(r) = line.strip_prefix("option")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else if let Some(r) = line.strip_prefix("list")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else {
+            continue;
+        };
+        let Some((key, val_raw)) = rest.split_once(|c: char| c.is_ascii_whitespace()) else {
+            continue;
+        };
+        let k = key.trim().trim_matches('\'').trim_matches('"');
+        let v = unquote_uci_value(val_raw);
+        if !k.is_empty() && !v.is_empty() {
+            sec.opts.entry(k.to_string()).or_default().push(v);
+        }
+    }
+    if let Some(prev) = current.take()
+        && prev.is_redirect
+    {
+        sections.push(prev);
+    }
+
+    let mut redirects = Vec::new();
+    for sec in sections {
+        let first = |k: &str| {
+            sec.opts
+                .get(k)
+                .and_then(|v| v.first())
+                .map(String::as_str)
+                .unwrap_or("")
+                .trim()
+        };
+        let enabled = first("enabled").to_ascii_lowercase();
+        if matches!(enabled.as_str(), "0" | "false" | "off" | "no") {
+            continue;
+        }
+        let target = first("target").to_ascii_uppercase();
+        if !target.is_empty() && target != "DNAT" {
+            continue;
+        }
+        let reflection = first("reflection").to_ascii_lowercase();
+        if matches!(reflection.as_str(), "0" | "false" | "off" | "no") {
+            continue;
+        }
+        if first("family").eq_ignore_ascii_case("ipv6") {
+            continue;
+        }
+        let src = first("src").to_ascii_lowercase();
+        if !src.is_empty() && src != "wan" && src != "*" && !src.starts_with("wan") {
+            continue;
+        }
+        let src_port = first("src_port");
+        if !src_port.is_empty() && src_port != "*" {
+            continue;
+        }
+        let dest_ip = first("dest_ip");
+        if dest_ip.parse::<std::net::Ipv4Addr>().is_err() {
+            continue;
+        }
+        let src_dip_raw = first("src_dip");
+        let src_dip =
+            if !src_dip_raw.is_empty() && src_dip_raw.parse::<std::net::Ipv4Addr>().is_ok() {
+                Some(src_dip_raw.to_string())
+            } else {
+                None
+            };
+        let raw_src_dport = if !first("src_dport").is_empty() {
+            sec.opts
+                .get("src_dport")
+                .map(|v| v.join(" "))
+                .unwrap_or_default()
+        } else if !first("dest_port").is_empty() {
+            sec.opts
+                .get("dest_port")
+                .map(|v| v.join(" "))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let Some((src_dport, _)) = normalize_nft_port_spec(&raw_src_dport) else {
+            continue;
+        };
+        let dest_port = sec
+            .opts
+            .get("dest_port")
+            .and_then(|v| normalize_nft_port_spec(&v.join(" ")))
+            .and_then(|(spec, is_single)| is_single.then_some(spec));
+        let proto_raw = sec
+            .opts
+            .get("proto")
+            .map(|v| v.join(" "))
+            .unwrap_or_default();
+        let protos = parse_uci_dnat_protos(&proto_raw);
+        if protos.is_empty() {
+            continue;
+        }
+        redirects.push(FirewallDnatRedirect {
+            protos,
+            src_dip,
+            src_dport,
+            dest_ip: dest_ip.to_string(),
+            dest_port,
+        });
+    }
+    redirects
+}
+
+fn collect_lan_router_ipv4s_from_network(raw: &str) -> Vec<String> {
+    let mut ips = Vec::new();
+    let mut in_lan_like = false;
+    for raw_line in raw.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("config")
+            && rest.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            let stype = parts
+                .first()
+                .copied()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"');
+            let sname = parts
+                .get(1)
+                .copied()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"')
+                .to_ascii_lowercase();
+            in_lan_like = stype == "interface"
+                && !sname.is_empty()
+                && sname != "loopback"
+                && !sname.starts_with("wan")
+                && !sname.starts_with("wg")
+                && !sname.starts_with("awg");
+            continue;
+        }
+        if !in_lan_like {
+            continue;
+        }
+        let rest = if let Some(r) = line.strip_prefix("option")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else if let Some(r) = line.strip_prefix("list")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else {
+            continue;
+        };
+        let Some((key, val_raw)) = rest.split_once(|c: char| c.is_ascii_whitespace()) else {
+            continue;
+        };
+        if key.trim().trim_matches('\'').trim_matches('"') != "ipaddr" {
+            continue;
+        }
+        let val = unquote_uci_value(val_raw);
+        let ip_only = val.split('/').next().unwrap_or("").trim();
+        if let Ok(v4) = ip_only.parse::<std::net::Ipv4Addr>()
+            && !v4.is_loopback()
+            && !v4.is_unspecified()
+            && v4.is_private()
+        {
+            let s = v4.to_string();
+            if !ips.contains(&s) {
+                ips.push(s);
+            }
+        }
+    }
+    ips
+}
+
+fn read_runtime_dnat_context() -> (Vec<FirewallDnatRedirect>, Vec<String>) {
+    let redirects = std::fs::read_to_string("/etc/config/firewall")
+        .map(|raw| parse_firewall_dnat_redirects(&raw))
+        .unwrap_or_default();
+    let lan_v4_ips = std::fs::read_to_string("/etc/config/network")
+        .map(|raw| collect_lan_router_ipv4s_from_network(&raw))
+        .unwrap_or_default();
+    (redirects, lan_v4_ips)
+}
+
+fn append_dnat_output_chains(
+    out: &mut String,
+    redirects: &[FirewallDnatRedirect],
+    lan_v4_ips: &[String],
+    lan_ifaces_literal: &str,
+) {
+    if redirects.is_empty() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "    chain dnat_output {{
+        type nat hook output priority dstnat; policy accept;
+        ip daddr 127.0.0.0/8 return"
+    );
+    if !lan_v4_ips.is_empty() {
+        let _ = writeln!(
+            out,
+            "        ip daddr {{ {} }} return",
+            lan_v4_ips.join(", ")
+        );
+    }
+    for r in redirects {
+        let dst_target = match &r.dest_port {
+            Some(dp) => format!("{}:{dp}", r.dest_ip),
+            None => r.dest_ip.clone(),
+        };
+        let daddr_match = match &r.src_dip {
+            Some(ip) => format!("ip daddr {ip}"),
+            None => "fib daddr type local".to_string(),
+        };
+        for proto in &r.protos {
+            let _ = writeln!(
+                out,
+                "        {daddr_match} {proto} dport {} dnat ip to {dst_target} comment \"tachyon-dnat-reflection\"",
+                r.src_dport
+            );
+        }
+    }
+    let _ = writeln!(out, "    }}");
+    let _ = writeln!(
+        out,
+        "    chain postrouting_dnat_output {{
+        type nat hook postrouting priority srcnat; policy accept;
+        fib saddr type local oifname {lan_ifaces_literal} ct status dnat masquerade comment \"tachyon-dnat-output-snat\"
+    }}"
+    );
+}
+
 /// Compile the complete `inet TachyonTable` nftables ruleset from `RouterStoreData`.
 /// With native `tachyon-core` handling all protocols (`desync`, `wdtt`, `fptn`, `tailscale`, `proxy`),
 /// there are zero `NFQUEUE` chains and zero local `ciadpi` redirects — a single clean TProxy contour.
@@ -428,6 +798,23 @@ pub fn compile_nftables_ruleset_with_wan6(
     store: &RouterStoreData,
     wan6_available: bool,
     extra_local_v6: &[String],
+) -> String {
+    let (redirects, lan_v4_ips) = read_runtime_dnat_context();
+    compile_nftables_ruleset_full(
+        store,
+        wan6_available,
+        extra_local_v6,
+        &redirects,
+        &lan_v4_ips,
+    )
+}
+
+fn compile_nftables_ruleset_full(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+    dnat_redirects: &[FirewallDnatRedirect],
+    lan_v4_ips: &[String],
 ) -> String {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
@@ -502,15 +889,17 @@ pub fn compile_nftables_ruleset_with_wan6(
     let eff_dns_intercept = crate::store::effective_dns_intercept_all(store);
     let fail_closed = direct_fallback_veto(store).is_some();
 
+    let lan_ifaces_literal = format_ifname_set_literal(&lan_ifaces);
     if eff_webrtc {
         append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
     }
     append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
+    append_dnat_output_chains(&mut out, dnat_redirects, lan_v4_ips, &lan_ifaces_literal);
 
     let _ = writeln!(
         out,
         "    chain prerouting {{
-        type filter hook prerouting priority mangle; policy accept;"
+        type filter hook prerouting priority -90; policy accept;"
     );
 
     // Exclude virtual tunnel interfaces (Tailscale & FPTN) from self-interception
@@ -524,7 +913,6 @@ pub fn compile_nftables_ruleset_with_wan6(
 
     // Restrict interception to configured LAN interfaces (`br-lan` by default) plus rerouted `lo`
     append_source_iface_guard(&mut out, store);
-    let lan_ifaces_literal = format_ifname_set_literal(&lan_ifaces);
     let _ = writeln!(
         out,
         "        iifname {lan_ifaces_literal} ct direction reply counter return comment \"tachyon-inbound-reply\""
@@ -765,6 +1153,17 @@ pub fn compile_nftables_ruleset_with_wan6(
         let _ = writeln!(out, "        ether saddr {mac} return");
     }
 
+    // Preserve OpenWrt fw4 port-forwarding / NAT reflection (`priority -100` dstnat)
+    // and direct connections to any local router IP (WAN/LAN/PPPoE) before interception.
+    let _ = writeln!(
+        out,
+        "        ct status dnat return comment \"tachyon-dnat-bypass\""
+    );
+    let _ = writeln!(
+        out,
+        "        fib daddr type local return comment \"tachyon-local-bypass\""
+    );
+
     // Exclude FPTN upstream server IPs so FPTN tunnel packets never self-intercept
     let fptn_ips = crate::config_gen::extract_fptn_server_ips(store);
     let fptn_v4: Vec<String> = fptn_ips
@@ -972,6 +1371,8 @@ pub fn compile_nftables_ruleset_with_wan6(
             "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
+    let _ = writeln!(out, "        ct status dnat return");
+    let _ = writeln!(out, "        fib daddr type local return");
     let _ = writeln!(out, "        ip daddr @localv4 return");
     if store.settings.fakeip_enabled {
         let _ = writeln!(
@@ -1042,6 +1443,23 @@ pub fn compile_tun_guard_ruleset_with_wan6(
     wan6_available: bool,
     extra_local_v6: &[String],
 ) -> Option<String> {
+    let (dnat_redirects, lan_v4_ips) = read_runtime_dnat_context();
+    compile_tun_guard_ruleset_full(
+        store,
+        wan6_available,
+        extra_local_v6,
+        &dnat_redirects,
+        &lan_v4_ips,
+    )
+}
+
+fn compile_tun_guard_ruleset_full(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+    dnat_redirects: &[FirewallDnatRedirect],
+    lan_v4_ips: &[String],
+) -> Option<String> {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
     let ipv6_mode_off = crate::store::normalize_ipv6_mode(&store.settings.ipv6_mode) == "off";
@@ -1055,6 +1473,7 @@ pub fn compile_tun_guard_ruleset_with_wan6(
         && !fail_closed
         && ipv6_active
         && !forward_guard
+        && dnat_redirects.is_empty()
     {
         return None;
     }
@@ -1112,6 +1531,7 @@ pub fn compile_tun_guard_ruleset_with_wan6(
         );
     }
     append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
+    append_dnat_output_chains(&mut out, dnat_redirects, lan_v4_ips, &lan_ifaces_literal);
     if eff_dns_intercept || store.settings.block_doh {
         let _ = writeln!(
             out,
@@ -2797,6 +3217,25 @@ pub async fn sync_kill_switch_after_apply(store: &RouterStoreData) {
     }
 }
 
+async fn apply_nft_stdin_with_fib_fallback(ruleset: &str) -> anyhow::Result<()> {
+    try_modprobe_quiet("nft_fib_inet").await;
+    match apply_nft_stdin(ruleset).await {
+        Ok(()) => Ok(()),
+        Err(first_err) if ruleset.contains("fib ") => {
+            eprintln!(
+                "[tachyon] nft apply with fib expressions failed ({first_err:#}); retrying without fib rules"
+            );
+            let stripped: String = ruleset
+                .lines()
+                .filter(|line| !line.contains("fib "))
+                .map(|line| format!("{line}\n"))
+                .collect();
+            apply_nft_stdin(&stripped).await
+        }
+        Err(err) => Err(err),
+    }
+}
+
 /// Apply `inet TachyonTable` atomically via `nft -f -` and configure `ip rule` / `ip route`.
 pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> {
     if cfg!(not(target_os = "linux")) {
@@ -2831,7 +3270,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             wan6_cache.wan6_available,
             &wan6_cache.wan6_prefixes,
         );
-        apply_nft_stdin(&ruleset).await?;
+        apply_nft_stdin_with_fib_fallback(&ruleset).await?;
 
         // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
         cleanup_policy_rules_for(Some(fakeip_v6)).await;
@@ -2933,7 +3372,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             wan6_cache.wan6_available,
             &wan6_cache.wan6_prefixes,
         ) {
-            apply_nft_stdin(&guard_nft).await?;
+            apply_nft_stdin_with_fib_fallback(&guard_nft).await?;
         } else {
             let _ = Command::new("nft")
                 .args(["delete", "table", "inet", "TachyonTable"])
@@ -4494,5 +4933,116 @@ dhcp.cfg01411c.tachyon_cachesize='1000'
             restore.del_opts,
             vec!["tachyon_rebind_protection", "tachyon_cachesize"]
         );
+    }
+
+    #[test]
+    fn test_dnat_port_forwarding_nat_reflection_and_local_router_bypass() {
+        let fw_raw = "\
+config redirect 'jellyfin_https'
+\toption name 'Jellyfin HTTPS'
+\toption src 'wan'
+\toption src_dport '443'
+\toption dest 'lan'
+\toption dest_ip '192.168.1.50'
+\toption dest_port '443'
+\toption proto 'tcp'
+
+config redirect 'alt_web'
+\toption src 'wan'
+\toption src_dport '8443'
+\toption dest_ip '192.168.1.50'
+\toption dest_port '8096'
+\toption proto 'tcp udp'
+
+config redirect 'no_reflect'
+\toption src 'wan'
+\toption src_dport '9000'
+\toption dest_ip '192.168.1.50'
+\toption reflection '0'
+
+config redirect 'disabled_rule'
+\toption enabled '0'
+\toption src 'wan'
+\toption src_dport '8080'
+\toption dest_ip '192.168.1.50'
+";
+        let net_raw = "\
+config interface 'loopback'
+\toption ipaddr '127.0.0.1'
+
+config interface 'lan'
+\toption device 'br-lan'
+\toption ipaddr '192.168.1.1'
+
+config interface 'wan'
+\toption ipaddr '198.51.100.25'
+";
+        let redirects = parse_firewall_dnat_redirects(fw_raw);
+        assert_eq!(redirects.len(), 2);
+        assert_eq!(redirects[0].src_dport, "443");
+        assert_eq!(redirects[0].dest_ip, "192.168.1.50");
+        assert_eq!(redirects[0].dest_port.as_deref(), Some("443"));
+        assert_eq!(redirects[0].protos, vec!["tcp"]);
+        assert_eq!(redirects[1].src_dport, "8443");
+        assert_eq!(redirects[1].dest_port.as_deref(), Some("8096"));
+        assert_eq!(redirects[1].protos, vec!["tcp", "udp"]);
+
+        let lan_ips = collect_lan_router_ipv4s_from_network(net_raw);
+        assert_eq!(lan_ips, vec!["192.168.1.1".to_string()]);
+
+        let mut store = RouterStoreData::default();
+        store.settings.disable_quic = true;
+        let nft = compile_nftables_ruleset_full(&store, false, &[], &redirects, &lan_ips);
+
+        // 1. Prerouting must run after fw4 dstnat (-100) so NAT reflection executes first
+        let pre_start = nft.find("chain prerouting {").expect("chain prerouting");
+        let out_start = nft
+            .find("chain mangle_output {")
+            .expect("chain mangle_output");
+        let pre = &nft[pre_start..out_start];
+        let out = &nft[out_start..];
+        assert!(
+            pre.contains("type filter hook prerouting priority -90; policy accept;"),
+            "prerouting must run after fw4 dstnat (-100): {pre}"
+        );
+        let idx_dnat = pre
+            .find("ct status dnat return")
+            .expect("prerouting ct status dnat return");
+        let idx_fib = pre
+            .find("fib daddr type local return")
+            .expect("prerouting fib daddr type local return");
+        let idx_quic = pre.find("udp dport 443 reject").expect("disable_quic");
+        let idx_tproxy = pre
+            .find("tproxy ip to 127.0.0.1:1602")
+            .expect("tproxy rule");
+        assert!(idx_dnat < idx_quic && idx_fib < idx_quic && idx_fib < idx_tproxy);
+
+        // 2. mangle_output also skips ct status dnat & router local IPs
+        assert!(out.contains("fib daddr type local return"));
+        assert!(out.contains("ct status dnat return"));
+
+        // 3. Router OUTPUT DNAT reflection avoids hitting LuCI uhttpd for FakeIP -> WAN IP:80/443
+        assert!(nft.contains("chain dnat_output {"));
+        assert!(nft.contains("type nat hook output priority dstnat; policy accept;"));
+        assert!(nft.contains("ip daddr 127.0.0.0/8 return"));
+        assert!(nft.contains("ip daddr { 192.168.1.1 } return"));
+        assert!(nft.contains(
+            "fib daddr type local tcp dport 443 dnat ip to 192.168.1.50:443 comment \"tachyon-dnat-reflection\""
+        ));
+        assert!(nft.contains(
+            "fib daddr type local udp dport 8443 dnat ip to 192.168.1.50:8096 comment \"tachyon-dnat-reflection\""
+        ));
+        assert!(!nft.contains("192.168.1.50:9000") && !nft.contains("dport 9000"));
+        assert!(!nft.contains("dport 8080"));
+        assert!(nft.contains("chain postrouting_dnat_output {"));
+        assert!(nft.contains(
+            "fib saddr type local oifname { \"br-lan\" } ct status dnat masquerade comment \"tachyon-dnat-output-snat\""
+        ));
+
+        // 4. TUN mode guard ruleset also emits dnat_output when port forwards exist
+        let tun_nft = compile_tun_guard_ruleset_full(&store, true, &[], &redirects, &lan_ips)
+            .expect("tun guard must emit when dnat redirects exist");
+        assert!(tun_nft.contains("chain dnat_output {"));
+        assert!(tun_nft.contains("chain postrouting_dnat_output {"));
     }
 }

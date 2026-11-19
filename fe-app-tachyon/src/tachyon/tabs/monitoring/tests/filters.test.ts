@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeConnectionsPayload,
+  getConnectionClientSocketKey,
   getConnectionDataSource,
   getConnectionTupleKey,
   mergeCoreAndConntrackConnections,
@@ -10,6 +11,7 @@ import {
   getUrlTestTag,
   getDisplayName,
   buildRouteDisplayNames,
+  getRoute,
   getRouteDisplayNameByTag,
   getRouteTagFromRule,
   getServerDisplayNameByInboundTag,
@@ -590,5 +592,100 @@ describe('monitoring filters and resolution', () => {
         closedConnections: [],
       }).map((c) => c.id),
     ).toEqual(['ct:udp:192.168.1.50:60123:1.1.1.1:443']);
+  });
+
+  it('resolves Tachyon 2.0 sel-*/bal-*/desync-* routes above direct and drops FakeIP/4-tuple conntrack ghosts', () => {
+    buildRouteDisplayNames([
+      {
+        '.name': 'meta',
+        '.type': 'section',
+        label: 'Meta',
+        enabled: '1',
+        balancer_refs: ['bal_meta_fast'],
+        outbound_source_refs: ['src_meta_vless'],
+      },
+      {
+        '.name': 'youtube',
+        '.type': 'section',
+        label: 'YouTube',
+        enabled: '1',
+        outbound_source_refs: ['src_yt_desync'],
+      },
+      {
+        '.name': 'bal_meta_fast',
+        '.type': 'balancer',
+        section: 'meta',
+        enabled: '1',
+        name: 'Fast',
+      },
+      {
+        '.name': 'src_meta_vless',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'VLESS Finland',
+      },
+      {
+        '.name': 'src_yt_desync',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'desync',
+        name: 'Desync YT',
+      },
+    ]);
+
+    expect(getRouteDisplayNameByTag('sel-meta')).toBe('Meta');
+    expect(getRouteDisplayNameByTag('bal-meta-bal_meta_fast')).toBe('Meta');
+    expect(getRouteDisplayNameByTag('desync-src_yt_desync')).toBe('YouTube');
+
+    // Outermost-first chains with direct tail or empty destinationIP (FakeIP/sniffed)
+    const coreInsta = {
+      id: 'insta-1',
+      chains: ['sel-meta', 'bal-meta-bal_meta_fast', 'direct'],
+      metadata: {
+        network: 'tcp',
+        sourceIP: '192.168.1.50',
+        sourcePort: '55111',
+        destinationIP: '',
+        destinationPort: '443',
+        host: 'www.instagram.com',
+      },
+      rule: 'rule_set=meta => route(sel-meta)',
+    };
+    expect(getConnectionClientSocketKey(coreInsta)).toBe(
+      'tcp|192.168.1.50|55111|443',
+    );
+    expect(getRoute({ ...coreInsta, lastSeenAt: 1000 })).toBe('Meta');
+
+    const ctFakeIpGhost = {
+      id: 'ct:tcp:192.168.1.50:55111:198.18.0.42:443',
+      dataSource: 'conntrack' as const,
+      chains: ['direct-out'],
+      metadata: {
+        network: 'tcp',
+        type: 'conntrack',
+        sourceIP: '192.168.1.50',
+        sourcePort: '55111',
+        destinationIP: '198.18.0.42',
+        destinationPort: '443',
+      },
+    };
+    const ctRealIpDup = {
+      id: 'ct:tcp:192.168.1.50:55111:157.240.1.174:443',
+      dataSource: 'conntrack' as const,
+      chains: ['direct-out'],
+      metadata: {
+        network: 'tcp',
+        type: 'conntrack',
+        sourceIP: '192.168.1.50',
+        sourcePort: '55111',
+        destinationIP: '157.240.1.174',
+        destinationPort: '443',
+      },
+    };
+    const merged = mergeCoreAndConntrackConnections(
+      [coreInsta],
+      [ctFakeIpGhost, ctRealIpDup],
+    );
+    expect(merged.map((c) => c.id)).toEqual(['insta-1']);
   });
 });

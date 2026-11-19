@@ -3310,10 +3310,15 @@ async fn handle_pure_rust_clash_api(
                     }
                 }
             }
+            let fakeip_cidr_owned = state.data.read().await.settings.fakeip_inet4_range.clone();
+            let fakeip_cidr =
+                (!fakeip_cidr_owned.trim().is_empty()).then_some(fakeip_cidr_owned.trim());
             if conntrack_only {
                 let ct_conns = read_pure_rust_conntrack_connections(
                     &ip_host_map,
                     &std::collections::HashSet::new(),
+                    &std::collections::HashSet::new(),
+                    fakeip_cidr,
                     150,
                 );
                 let out = json!({ "connections": ct_conns });
@@ -3337,6 +3342,8 @@ async fn handle_pure_rust_clash_api(
                     }
                 }
                 let mut seen_tuples: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                let mut seen_client_sockets: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
                 if let Some(conns) = val.get_mut("connections").and_then(Value::as_array_mut) {
                     for c in conns.iter_mut() {
@@ -3375,6 +3382,10 @@ async fn handle_pure_rust_clash_api(
                                     seen_tuples
                                         .insert(format!("{proto}|{src}|{sport}|{dst}|{dport}"));
                                 }
+                                if !src.is_empty() && !sport.is_empty() && !dport.is_empty() {
+                                    seen_client_sockets
+                                        .insert(format!("{proto}|{src}|{sport}|{dport}"));
+                                }
                                 let cur_host =
                                     meta.get("host").and_then(Value::as_str).unwrap_or("");
                                 if cur_host.is_empty()
@@ -3389,8 +3400,13 @@ async fn handle_pure_rust_clash_api(
                             }
                         }
                     }
-                    let ct_conns =
-                        read_pure_rust_conntrack_connections(&ip_host_map, &seen_tuples, 120);
+                    let ct_conns = read_pure_rust_conntrack_connections(
+                        &ip_host_map,
+                        &seen_tuples,
+                        &seen_client_sockets,
+                        fakeip_cidr,
+                        120,
+                    );
                     conns.extend(ct_conns);
                 }
                 let mut raw = serde_json::to_string(&val)
@@ -3445,6 +3461,8 @@ async fn handle_pure_rust_clash_api(
             let ct_conns = read_pure_rust_conntrack_connections(
                 &ip_host_map,
                 &std::collections::HashSet::new(),
+                &std::collections::HashSet::new(),
+                fakeip_cidr,
                 120,
             );
             let fallback = json!({
@@ -3922,7 +3940,258 @@ fn resolve_subscription_cli_target(
     sel.to_string()
 }
 
-async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+fn clean_balancer_display_id(section_id: &str, raw_bal_id: &str) -> String {
+    let raw = raw_bal_id.trim();
+    if raw.is_empty() || raw == "urltest" || section_id.trim().is_empty() {
+        return raw.to_string();
+    }
+    let s = if let Some(rest) = raw.strip_prefix("bal_prio_") {
+        rest
+    } else if let Some(rest) = raw.strip_prefix("bal_") {
+        rest
+    } else {
+        return raw.to_string();
+    };
+    let sec = section_id.trim();
+    if s.len() > sec.len() + 1
+        && s.get(..sec.len())
+            .is_some_and(|p| p.eq_ignore_ascii_case(sec))
+        && s.as_bytes()[sec.len()] == b'_'
+    {
+        let trimmed = s[sec.len() + 1..].trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let suf_len = sec.len() + 1;
+    if s.len() > suf_len
+        && s.as_bytes()[s.len() - sec.len() - 1] == b'_'
+        && s.get(s.len() - sec.len()..)
+            .is_some_and(|p| p.eq_ignore_ascii_case(sec))
+    {
+        let trimmed = s[..s.len() - suf_len].trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    raw.to_string()
+}
+
+fn build_telemetry_tag_display_map(
+    d: &crate::store::RouterStoreData,
+) -> std::collections::HashMap<String, String> {
+    const SOURCE_PREFIXES: &[&str] = &[
+        "iface-",
+        "desync-",
+        "wg-",
+        "vless-",
+        "vmess-",
+        "trojan-",
+        "ss-",
+        "hy2-",
+        "tuic-",
+        "mieru-",
+        "naive-",
+        "anytls-",
+        "snell-",
+        "sudoku-",
+        "trusttunnel-",
+        "tewfai-",
+        "masque-",
+        "openconnect-",
+        "shadowtls-",
+        "tailscale-",
+        "custom-",
+    ];
+
+    let mut map = std::collections::HashMap::new();
+    let mut unique_source_section: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    for sec in d.sections.iter().filter(|s| s.enabled) {
+        let sec_label = if !sec.label.trim().is_empty() {
+            sec.label.trim().to_string()
+        } else {
+            sec.id.trim().to_string()
+        };
+        if sec_label.is_empty() {
+            continue;
+        }
+        for sref in &sec.outbound_source_refs {
+            let sid = sref.trim();
+            if sid.is_empty() {
+                continue;
+            }
+            match unique_source_section.get_mut(sid) {
+                None => {
+                    unique_source_section.insert(sid.to_string(), Some(sec_label.clone()));
+                }
+                Some(slot) => {
+                    if slot.as_deref() != Some(sec_label.as_str()) {
+                        *slot = None;
+                    }
+                }
+            }
+        }
+    }
+
+    for sec in &d.sections {
+        let sec_id = sec.id.trim();
+        if sec_id.is_empty() {
+            continue;
+        }
+        let sec_label = if !sec.label.trim().is_empty() {
+            sec.label.trim().to_string()
+        } else {
+            sec_id.to_string()
+        };
+        map.insert(format!("sel-{sec_id}"), sec_label.clone());
+        map.insert(format!("{sec_id}-out"), sec_label.clone());
+        map.insert(format!("desync-sec-{sec_id}"), sec_label.clone());
+        map.insert(format!("tailscale-sec-{sec_id}"), sec_label.clone());
+        map.entry(sec_id.to_string()).or_insert(sec_label);
+    }
+
+    for bal in &d.balancers {
+        let bal_id = bal.id.trim();
+        if bal_id.is_empty() {
+            continue;
+        }
+        let named = bal.name.trim();
+        for sec in &d.sections {
+            let sec_id = sec.id.trim();
+            if sec_id.is_empty() {
+                continue;
+            }
+            let bal_label = if !named.is_empty() {
+                named.to_string()
+            } else {
+                clean_balancer_display_id(sec_id, bal_id)
+            };
+            map.insert(format!("bal-{sec_id}-{bal_id}"), bal_label.clone());
+            map.insert(format!("{sec_id}-urltest-{bal_id}"), bal_label.clone());
+            map.insert(format!("{sec_id}-priority-{bal_id}"), bal_label);
+        }
+        if !named.is_empty() {
+            map.insert(bal_id.to_string(), named.to_string());
+        }
+    }
+
+    for src in &d.outbound_sources {
+        let src_id = src.id.trim();
+        if src_id.is_empty() {
+            continue;
+        }
+        let owner_sec_label = unique_source_section.get(src_id).and_then(|v| v.clone());
+        let src_name = src.name.trim();
+        let src_label = if src.source_type == "desync" {
+            owner_sec_label
+                .or_else(|| (!src_name.is_empty()).then(|| src_name.to_string()))
+                .unwrap_or_else(|| src_id.to_string())
+        } else if !src_name.is_empty() {
+            src_name.to_string()
+        } else {
+            owner_sec_label.unwrap_or_else(|| src_id.to_string())
+        };
+        for pfx in SOURCE_PREFIXES {
+            map.insert(format!("{pfx}{src_id}"), src_label.clone());
+        }
+        if src.source_type == "custom_json"
+            && let Ok(parsed) = serde_json::from_str::<Value>(&src.custom_json)
+            && let Some(custom_tag) = parsed
+                .get("tag")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+        {
+            map.insert(custom_tag.to_string(), src_label.clone());
+        }
+        map.entry(src_id.to_string()).or_insert(src_label);
+    }
+
+    map
+}
+
+fn resolve_telemetry_tag_display_name(
+    raw_tag: &str,
+    display_map: &std::collections::HashMap<String, String>,
+    d: &crate::store::RouterStoreData,
+) -> String {
+    let tag = raw_tag.trim();
+    if tag.is_empty() {
+        return String::new();
+    }
+    if let Some(exact) = display_map.get(tag) {
+        return exact.clone();
+    }
+    if let Some((_, matched)) = display_map
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(tag))
+    {
+        return matched.clone();
+    }
+
+    let find_section_label = |sec_id: &str| -> String {
+        d.sections
+            .iter()
+            .find(|s| s.id.eq_ignore_ascii_case(sec_id))
+            .map(|s| {
+                if !s.label.trim().is_empty() {
+                    s.label.trim().to_string()
+                } else {
+                    s.id.trim().to_string()
+                }
+            })
+            .unwrap_or_else(|| sec_id.to_string())
+    };
+
+    if let Some(rest) = tag.strip_prefix("sel-") {
+        return find_section_label(rest);
+    }
+    if let Some(rest) = tag.strip_prefix("desync-sec-") {
+        return find_section_label(rest);
+    }
+    if let Some(rest) = tag.strip_prefix("tailscale-sec-") {
+        return find_section_label(rest);
+    }
+    if let Some(rest) = tag.strip_prefix("bal-") {
+        let mut best_sec: Option<&crate::store::RoutingSection> = None;
+        for sec in &d.sections {
+            let sid = sec.id.trim();
+            if !sid.is_empty()
+                && rest.len() > sid.len() + 1
+                && rest
+                    .get(..sid.len())
+                    .is_some_and(|p| p.eq_ignore_ascii_case(sid))
+                && rest.as_bytes()[sid.len()] == b'-'
+                && best_sec.is_none_or(|prev| sid.len() > prev.id.len())
+            {
+                best_sec = Some(sec);
+            }
+        }
+        if let Some(sec) = best_sec {
+            let bal_part = &rest[sec.id.trim().len() + 1..];
+            if let Some(bal) = d
+                .balancers
+                .iter()
+                .find(|b| b.id.eq_ignore_ascii_case(bal_part))
+                && !bal.name.trim().is_empty()
+            {
+                return bal.name.trim().to_string();
+            }
+            return clean_balancer_display_id(&sec.id, bal_part);
+        }
+        if let Some((sec_part, bal_part)) = rest.split_once('-') {
+            return clean_balancer_display_id(sec_part, bal_part);
+        }
+        return rest.to_string();
+    }
+
+    tag.to_string()
+}
+
+async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let store_snap = state.data.read().await.clone();
+    let tag_display_map = build_telemetry_tag_display_map(&store_snap);
     let (mem_res, dev_res, conn_res, flight_res, failover_res, leak_res) = tokio::join!(
         core.clash_request("GET", "/tachyon/memory", None),
         core.clash_request("GET", "/tachyon/devices", None),
@@ -4111,6 +4380,7 @@ async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreM
                     "host": e.get("host").and_then(Value::as_str).unwrap_or(""),
                     "destination": e.get("destination").and_then(Value::as_str).unwrap_or(""),
                     "outbound": outbound,
+                    "outbound_display_name": resolve_telemetry_tag_display_name(&outbound, &tag_display_map, &store_snap),
                     "rule": short_rule,
                     "upload": up,
                     "download": down,
@@ -4130,8 +4400,11 @@ async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreM
         .into_iter()
         .take(8)
         .map(|(tag, act, up, down, hits)| {
+            let display_name =
+                resolve_telemetry_tag_display_name(&tag, &tag_display_map, &store_snap);
             json!({
                 "tag": tag,
+                "display_name": display_name,
                 "active_connections": act,
                 "upload": up,
                 "download": down,
@@ -4154,12 +4427,18 @@ async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreM
                     .and_then(Value::as_array)
                     .map(|m| m.len())
                     .unwrap_or(0);
+                let raw_tag = g.get("tag").and_then(Value::as_str).unwrap_or("");
+                let raw_primary = g.get("primary").and_then(Value::as_str).unwrap_or("");
+                let raw_current = g.get("current").and_then(Value::as_str).unwrap_or("");
                 failover_groups.push(json!({
-                    "tag": g.get("tag").and_then(Value::as_str).unwrap_or(""),
+                    "tag": raw_tag,
+                    "display_name": resolve_telemetry_tag_display_name(raw_tag, &tag_display_map, &store_snap),
                     "type": g.get("type").and_then(Value::as_str).unwrap_or(""),
                     "mode": g.get("mode").and_then(Value::as_str).unwrap_or(""),
-                    "primary": g.get("primary").and_then(Value::as_str).unwrap_or(""),
-                    "current": g.get("current").and_then(Value::as_str).unwrap_or(""),
+                    "primary": raw_primary,
+                    "primary_display_name": resolve_telemetry_tag_display_name(raw_primary, &tag_display_map, &store_snap),
+                    "current": raw_current,
+                    "current_display_name": resolve_telemetry_tag_display_name(raw_current, &tag_display_map, &store_snap),
                     "on_backup": g.get("on_backup").and_then(Value::as_bool).unwrap_or(false),
                     "primary_healthy": g.get("primary_healthy").and_then(Value::as_bool).unwrap_or(true),
                     "primary_rtt_ms": g.get("primary_rtt_ms").and_then(Value::as_u64),
@@ -4171,7 +4450,7 @@ async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreM
         }
     }
 
-    let leak = leak_res.unwrap_or_else(|_| {
+    let mut leak = leak_res.unwrap_or_else(|_| {
         json!({
             "status": "ok",
             "ipv4": { "outbound": "direct-out", "rule": "final", "is_direct": true },
@@ -4180,6 +4459,23 @@ async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreM
             "dns": { "engine_enabled": true }
         })
     });
+    for key in ["ipv4", "ipv6", "webrtc_stun"] {
+        if let Some(obj) = leak.get_mut(key).and_then(Value::as_object_mut)
+            && let Some(ob_tag) = obj
+                .get("outbound")
+                .and_then(Value::as_str)
+                .map(String::from)
+        {
+            obj.insert(
+                "outbound_display_name".to_string(),
+                json!(resolve_telemetry_tag_display_name(
+                    &ob_tag,
+                    &tag_display_map,
+                    &store_snap
+                )),
+            );
+        }
+    }
 
     json!({
         "success": true,
@@ -5153,7 +5449,8 @@ fn is_public_routable_ip(ip_str: &str) -> bool {
                 || v4.is_multicast()
                 || v4.is_broadcast()
                 || v4.is_unspecified()
-                || (o[0] == 100 && (o[1] & 0xc0) == 64))
+                || (o[0] == 100 && (o[1] & 0xc0) == 64)
+                || (o[0] == 198 && (o[1] & 0xfe) == 18))
         }
         std::net::IpAddr::V6(v6) => {
             if v6.is_loopback() || v6.is_multicast() || v6.is_unspecified() {
@@ -5165,14 +5462,15 @@ fn is_public_routable_ip(ip_str: &str) -> bool {
     }
 }
 
-fn read_pure_rust_conntrack_connections(
+fn parse_conntrack_connections_text(
+    raw: &str,
     ip_host_map: &std::collections::HashMap<String, String>,
     seen_tuples: &std::collections::HashSet<String>,
+    seen_client_sockets: &std::collections::HashSet<String>,
+    fakeip_cidr: Option<&str>,
     max_entries: usize,
 ) -> Vec<Value> {
-    let Ok(raw) = std::fs::read_to_string("/proc/net/nf_conntrack") else {
-        return Vec::new();
-    };
+    let fakeip_cidr = fakeip_cidr.map(str::trim).filter(|c| !c.is_empty());
     for allow_self_src in [false, true] {
         let mut result = Vec::new();
         let mut local_seen = seen_tuples.clone();
@@ -5277,6 +5575,11 @@ fn read_pure_rust_conntrack_connections(
             {
                 continue;
             }
+            if let Some(cidr) = fakeip_cidr
+                && crate::store::ip_in_cidr(orig_dst, cidr)
+            {
+                continue;
+            }
             let src_is_ts = is_tailscale_ip(orig_src);
             let dst_is_ts = is_tailscale_ip(orig_dst);
             let any_ts = src_is_ts || dst_is_ts;
@@ -5287,7 +5590,7 @@ fn read_pure_rust_conntrack_connections(
             {
                 continue;
             }
-            if (mark_val & 0x0c00_0000) != 0 {
+            if (mark_val & 0x5c00_0000) != 0 {
                 continue;
             }
             if !allow_self_src && !reply_dst.is_empty() && reply_dst == orig_src {
@@ -5295,6 +5598,10 @@ fn read_pure_rust_conntrack_connections(
             }
             let tkey = format!("{proto}|{orig_src}|{orig_sport}|{orig_dst}|{orig_dport}");
             if !local_seen.insert(tkey) {
+                continue;
+            }
+            let skey = format!("{proto}|{orig_src}|{orig_sport}|{orig_dport}");
+            if seen_client_sockets.contains(&skey) {
                 continue;
             }
             let route_tag = if any_ts {
@@ -5338,11 +5645,31 @@ fn read_pure_rust_conntrack_connections(
                 break;
             }
         }
-        if !result.is_empty() || !seen_tuples.is_empty() {
+        if allow_self_src || !result.is_empty() {
             return result;
         }
     }
     Vec::new()
+}
+
+fn read_pure_rust_conntrack_connections(
+    ip_host_map: &std::collections::HashMap<String, String>,
+    seen_tuples: &std::collections::HashSet<String>,
+    seen_client_sockets: &std::collections::HashSet<String>,
+    fakeip_cidr: Option<&str>,
+    max_entries: usize,
+) -> Vec<Value> {
+    let Ok(raw) = std::fs::read_to_string("/proc/net/nf_conntrack") else {
+        return Vec::new();
+    };
+    parse_conntrack_connections_text(
+        &raw,
+        ip_host_map,
+        seen_tuples,
+        seen_client_sockets,
+        fakeip_cidr,
+        max_entries,
+    )
 }
 
 use crate::store::url_encode_component;
@@ -11372,5 +11699,113 @@ mod tests {
         assert!(health.get("tachyon_core_listen_ports").is_some());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn telemetry_tag_display_names_resolve_sections_balancers_and_sources() {
+        let d = crate::store::RouterStoreData {
+            sections: vec![
+                crate::store::RoutingSection {
+                    id: "vpn".to_string(),
+                    enabled: true,
+                    label: "VPN".to_string(),
+                    ..Default::default()
+                },
+                crate::store::RoutingSection {
+                    id: "video".to_string(),
+                    enabled: true,
+                    label: "Video".to_string(),
+                    outbound_source_refs: vec!["src_dpi".to_string()],
+                    ..Default::default()
+                },
+            ],
+            balancers: vec![crate::store::BalancerConfig {
+                id: "bal_vpn_Fast".to_string(),
+                name: "Fast".to_string(),
+                ..Default::default()
+            }],
+            outbound_sources: vec![
+                crate::store::OutboundSource {
+                    id: "src_iface_awg_de".to_string(),
+                    name: "AWG Germany".to_string(),
+                    source_type: "iface".to_string(),
+                    ..Default::default()
+                },
+                crate::store::OutboundSource {
+                    id: "src_dpi".to_string(),
+                    name: "Generic Desync".to_string(),
+                    source_type: "desync".to_string(),
+                    ..Default::default()
+                },
+                crate::store::OutboundSource {
+                    id: "src_custom".to_string(),
+                    name: "Remote Router".to_string(),
+                    source_type: "custom_json".to_string(),
+                    custom_json: r#"{"type":"wireguard","tag":"custom-wg-leaf"}"#.to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let map = build_telemetry_tag_display_map(&d);
+        assert_eq!(
+            resolve_telemetry_tag_display_name("sel-vpn", &map, &d),
+            "VPN"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("bal-vpn-bal_vpn_Fast", &map, &d),
+            "Fast"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("iface-src_iface_awg_de", &map, &d),
+            "AWG Germany"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("desync-src_dpi", &map, &d),
+            "Video"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("custom-wg-leaf", &map, &d),
+            "Remote Router"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("🇫🇮 RU | FL | Helsinki", &map, &d),
+            "🇫🇮 RU | FL | Helsinki"
+        );
+        // Dynamic fallback even when the balancer entry is absent from store
+        assert_eq!(
+            resolve_telemetry_tag_display_name("bal-vpn-bal_vpn_Reserve", &map, &d),
+            "Reserve"
+        );
+    }
+
+    #[test]
+    fn conntrack_parser_skips_fakeip_marks_and_core_client_sockets() {
+        let raw = "\
+ipv4 2 tcp 6 431999 ESTABLISHED src=192.168.1.50 dst=198.18.0.42 sport=51111 dport=443 packets=5 bytes=1200 src=198.18.0.42 dst=203.0.113.10 sport=443 dport=51111 packets=5 bytes=3400 [ASSURED] mark=0 use=1
+ipv4 2 tcp 6 431999 ESTABLISHED src=192.168.1.50 dst=93.184.216.34 sport=54321 dport=443 packets=5 bytes=100 src=93.184.216.34 dst=203.0.113.10 sport=443 dport=54321 packets=5 bytes=200 [ASSURED] mark=0 use=1
+ipv4 2 tcp 6 431999 ESTABLISHED src=192.168.1.50 dst=8.8.4.4 sport=52222 dport=443 packets=5 bytes=100 src=8.8.4.4 dst=203.0.113.10 sport=443 dport=52222 packets=5 bytes=200 [ASSURED] mark=0x04000000 use=1
+ipv4 2 tcp 6 431999 ESTABLISHED src=192.168.1.50 dst=9.9.9.9 sport=52223 dport=443 packets=5 bytes=100 src=9.9.9.9 dst=203.0.113.10 sport=443 dport=52223 packets=5 bytes=200 [ASSURED] mark=0x10000000 use=1
+ipv4 2 tcp 6 431999 ESTABLISHED src=192.168.1.50 dst=4.2.2.1 sport=52224 dport=443 packets=5 bytes=100 src=4.2.2.1 dst=203.0.113.10 sport=443 dport=52224 packets=5 bytes=200 [ASSURED] mark=0x40000000 use=1
+ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 bytes=300 src=1.1.1.1 dst=203.0.113.10 sport=443 dport=60123 packets=3 bytes=900 [ASSURED] mark=0 use=1
+";
+        let mut ip_host_map = std::collections::HashMap::new();
+        ip_host_map.insert("198.18.0.42".to_string(), "www.instagram.com".to_string());
+        let seen_tuples = std::collections::HashSet::new();
+        let mut seen_client_sockets = std::collections::HashSet::new();
+        // Matches 93.184.216.34 connection reported by core with empty destinationIP
+        seen_client_sockets.insert("tcp|192.168.1.50|54321|443".to_string());
+
+        let conns = parse_conntrack_connections_text(
+            raw,
+            &ip_host_map,
+            &seen_tuples,
+            &seen_client_sockets,
+            Some("198.18.0.0/15"),
+            50,
+        );
+        assert_eq!(conns.len(), 1, "unexpected conntrack entries: {conns:?}");
+        assert_eq!(conns[0]["id"], "ct:udp:192.168.1.50:60123:1.1.1.1:443");
     }
 }

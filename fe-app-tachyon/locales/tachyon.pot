@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 21:18+0300\n"
-"PO-Revision-Date: 2026-11-19 21:18+0300\n"
+"POT-Creation-Date: 2026-11-19 22:51+0300\n"
+"PO-Revision-Date: 2026-11-19 22:51+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -101,7 +101,7 @@ msgstr ""
 msgid "-- Select server of this section --"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:220
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:261
 msgid "-60s"
 msgstr ""
 
@@ -480,7 +480,7 @@ msgstr ""
 msgid "Active (Blocking)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:781
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:841
 msgid "Active (Core)"
 msgstr ""
 
@@ -543,11 +543,11 @@ msgstr ""
 msgid "Active Route"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:571
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:612
 msgid "Active Routing Outbounds"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:349
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:390
 msgid "Active Sessions"
 msgstr ""
 
@@ -1412,7 +1412,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:2348
 #: src/tachyon/tabs/dashboard/initController.ts:3489
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2050
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:836
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:909
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:36
 msgid "Auto"
 msgstr ""
@@ -1778,7 +1778,7 @@ msgstr ""
 msgid "Background:"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:834
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:907
 msgid "Backup"
 msgstr ""
 
@@ -2567,7 +2567,7 @@ msgstr ""
 msgid "Clean Comments"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:678
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:722
 #: src/views/section.ts:19444
 msgid "Clear"
 msgstr ""
@@ -2765,7 +2765,7 @@ msgstr ""
 msgid "Clients"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:337
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:378
 msgid "Clients in Pool"
 msgstr ""
 
@@ -3322,7 +3322,7 @@ msgstr ""
 msgid "Copy to Clipboard"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:474
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:515
 msgid "Core Resources, DNS Caches & Outbounds"
 msgstr ""
 
@@ -3645,7 +3645,7 @@ msgstr ""
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:522
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:563
 msgid "DNS Cache"
 msgstr ""
 
@@ -3670,7 +3670,7 @@ msgstr ""
 msgid "DNS IPv4 / IPv6 Priority"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:775
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:835
 msgid "DNS Intercept"
 msgstr ""
 
@@ -4185,7 +4185,7 @@ msgstr ""
 msgid "Device OS (x-device-os)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:558
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:599
 msgid "Device Pool"
 msgstr ""
 
@@ -4245,7 +4245,7 @@ msgstr ""
 msgid "Diff"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:368
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:409
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:26
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:33
 #: src/views/server.ts:5534
@@ -4379,7 +4379,7 @@ msgid "DisableCookies (AWG 3.1)"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1409
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:782
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:842
 #: src/tachyon/tabs/updates/initController.ts:1049
 #: src/tachyon/tabs/updates/initController.ts:1073
 #: src/views/outbounds.ts:7124
@@ -5410,7 +5410,7 @@ msgstr ""
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:645
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:689
 msgid "Exposed"
 msgstr ""
 
@@ -5892,7 +5892,7 @@ msgstr ""
 msgid "Failed to update subscriptions."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:792
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:852
 msgid "Failover & Balancer Groups"
 msgstr ""
 
@@ -6010,7 +6010,7 @@ msgstr ""
 msgid "FakeIP DNS works"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:546
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:587
 msgid "FakeIP Table"
 msgstr ""
 
@@ -6209,7 +6209,7 @@ msgstr ""
 msgid "Fleet Latency"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:859
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:932
 msgid "Flight Recorder"
 msgstr ""
 
@@ -6217,7 +6217,7 @@ msgstr ""
 msgid "Flight recorder cleared"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:922
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:1001
 msgid "Flight recorder log is empty"
 msgstr ""
 
@@ -6298,7 +6298,7 @@ msgstr ""
 msgid "France (fr)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:507
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:548
 msgid "Free RAM"
 msgstr ""
 
@@ -7080,7 +7080,7 @@ msgstr ""
 msgid "IPv4 Pool (optional)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:719
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:769
 msgid "IPv4 Route"
 msgstr ""
 
@@ -7125,7 +7125,7 @@ msgstr ""
 msgid "IPv6 N/A"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:736
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:791
 msgid "IPv6 Route"
 msgstr ""
 
@@ -8499,7 +8499,7 @@ msgstr ""
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:689
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:733
 msgid "Leak Guard & Flight Recorder"
 msgstr ""
 
@@ -8507,11 +8507,11 @@ msgstr ""
 msgid "Leak Guard off"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:742
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:797
 msgid "Leak Risk"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:697
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:741
 msgid "Leak protection, failover status and closed session log"
 msgstr ""
 
@@ -8614,7 +8614,7 @@ msgstr ""
 msgid "Lite Eco Mode"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:287
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:328
 msgid "Live 60-second traffic telemetry and route distribution"
 msgstr ""
 
@@ -9000,7 +9000,7 @@ msgstr ""
 msgid "Matched Services, Domains & Subnets"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/filters.ts:634
+#: src/tachyon/tabs/monitoring/filters.ts:807
 msgid "Matched condition"
 msgstr ""
 
@@ -9550,7 +9550,7 @@ msgstr ""
 msgid "No applicable rule sections found"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:848
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:921
 msgid "No balancer groups configured"
 msgstr ""
 
@@ -9656,7 +9656,7 @@ msgstr ""
 msgid "No other marking rules found"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:627
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:671
 msgid "No outbound statistics collected yet"
 msgstr ""
 
@@ -9732,7 +9732,7 @@ msgstr ""
 msgid "No working strategy to apply"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/filters.ts:656
+#: src/tachyon/tabs/monitoring/filters.ts:835
 msgid "Node"
 msgstr ""
 
@@ -9794,7 +9794,7 @@ msgstr ""
 msgid "None (TLS/QUIC only)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:422
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:463
 msgid "Normal"
 msgstr ""
 
@@ -9935,7 +9935,7 @@ msgstr ""
 msgid "Notify on Subscription Updates"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:222
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:263
 msgid "Now"
 msgstr ""
 
@@ -10063,7 +10063,7 @@ msgstr ""
 msgid "On (always trust 100.64.0.0/10)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:710
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:754
 msgid "On Backup"
 msgstr ""
 
@@ -11148,7 +11148,7 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:837
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:910
 msgid "Primary"
 msgstr ""
 
@@ -11289,9 +11289,9 @@ msgstr ""
 msgid "Profile Name"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:648
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:711
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:743
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:692
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:755
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:803
 msgid "Protected"
 msgstr ""
 
@@ -11586,7 +11586,7 @@ msgstr ""
 msgid "RAM (RSS)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:421
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:462
 msgid "RAM Pressure"
 msgstr ""
 
@@ -11666,7 +11666,7 @@ msgstr ""
 msgid "Raw UDP Port (optional)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:459
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:500
 msgid "Re-evaluate Routes"
 msgstr ""
 
@@ -12124,7 +12124,7 @@ msgstr ""
 msgid "Restore Native Internet (Stop Tachyon)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:665
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:709
 msgid "Restore Primary"
 msgstr ""
 
@@ -12473,7 +12473,7 @@ msgid "RuTracker Suite"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2293
-#: src/tachyon/tabs/monitoring/filters.ts:640
+#: src/tachyon/tabs/monitoring/filters.ts:813
 #: src/views/section.ts:19530
 msgid "Rule"
 msgstr ""
@@ -12745,7 +12745,7 @@ msgstr ""
 msgid "Save component backup before update"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:221
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:262
 msgid "Scale peak"
 msgstr ""
 
@@ -12817,7 +12817,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:4876
 #: src/tachyon/tabs/dashboard/initController.ts:6008
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:846
-#: src/tachyon/tabs/monitoring/filters.ts:627
+#: src/tachyon/tabs/monitoring/filters.ts:800
 #: src/views/settings.ts:6283
 #: src/views/tachyon.ts:2817
 msgid "Section"
@@ -15292,7 +15292,7 @@ msgstr ""
 msgid "Throughput"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:279
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:320
 msgid "Throughput & Traffic Split"
 msgstr ""
 
@@ -15412,11 +15412,11 @@ msgstr ""
 msgid "TorrServer Direct"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:313
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:354
 msgid "Total Received"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:325
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:366
 msgid "Total Sent"
 msgstr ""
 
@@ -15618,7 +15618,7 @@ msgstr ""
 msgid "Transports to race (e.g. tcp, quic, h3_datagram, h2, ws)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:443
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:484
 msgid "Trim RAM Caches"
 msgstr ""
 
@@ -16544,7 +16544,7 @@ msgstr ""
 msgid "Via"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:363
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:404
 msgid "Via Tunnels"
 msgstr ""
 
@@ -16553,7 +16553,7 @@ msgstr ""
 msgid "Via country.is"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:647
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:691
 msgid "Via proxy"
 msgstr ""
 
@@ -17385,7 +17385,7 @@ msgstr ""
 msgid "quarantine"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:606
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:650
 msgid "req."
 msgstr ""
 
@@ -17417,7 +17417,7 @@ msgstr ""
 msgid "servers"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:606
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:650
 msgid "sess."
 msgstr ""
 
@@ -17475,7 +17475,7 @@ msgstr ""
 msgid "tachyon-core memory caches trimmed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:482
+#: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:523
 msgid "tachyon-core memory usage, DNS tables state and outbound activity"
 msgstr ""
 

@@ -5,6 +5,7 @@ import {
   renderShieldIcon,
 } from '../../../../icons';
 import { tr } from '../../../helpers/i18n';
+import { cleanBalancerTagId } from '../../../runtimeTags';
 
 function iconMarkup(
   kind: 'activity' | 'cpu' | 'shield' | 'zap' | 'refresh',
@@ -59,6 +60,7 @@ export interface ICoreTelemetryTraffic {
 
 export interface ICoreTelemetryOutbound {
   tag: string;
+  display_name?: string;
   active_connections?: number;
   upload?: number;
   download?: number;
@@ -67,10 +69,13 @@ export interface ICoreTelemetryOutbound {
 
 export interface ICoreTelemetryFailoverGroup {
   tag: string;
+  display_name?: string;
   type?: string;
   mode?: string;
   primary?: string;
+  primary_display_name?: string;
   current?: string;
+  current_display_name?: string;
   on_backup?: boolean;
   primary_healthy?: boolean;
   primary_rtt_ms?: number | null;
@@ -88,6 +93,7 @@ export interface ICoreTelemetryFlightEntry {
   host?: string;
   destination?: string;
   outbound?: string;
+  outbound_display_name?: string;
   rule?: string;
   upload?: number;
   download?: number;
@@ -111,15 +117,22 @@ export interface ICoreTelemetrySnapshot {
   };
   leak?: {
     status?: string;
-    ipv4?: { outbound?: string; rule?: string; is_direct?: boolean };
+    ipv4?: {
+      outbound?: string;
+      display_name?: string;
+      rule?: string;
+      is_direct?: boolean;
+    };
     ipv6?: {
       outbound?: string;
+      display_name?: string;
       rule?: string;
       is_direct?: boolean;
       leak_risk?: boolean;
     };
     webrtc_stun?: {
       outbound?: string;
+      display_name?: string;
       rule?: string;
       is_direct?: boolean;
       leak_risk?: boolean;
@@ -130,6 +143,34 @@ export interface ICoreTelemetrySnapshot {
     count?: number;
     entries?: ICoreTelemetryFlightEntry[];
   };
+}
+
+export function formatTelemetryTagDisplay(
+  rawTag?: string,
+  explicitDisplayName?: string,
+): string {
+  const explicit = String(explicitDisplayName || '').trim();
+  const raw = String(rawTag || '').trim();
+  if (explicit && (!raw || explicit !== raw)) {
+    return explicit;
+  }
+  if (!raw) {
+    return explicit;
+  }
+
+  const balStructured = raw.match(/^bal-(.+?)-(bal_(?:prio_)?.*)$/i);
+  if (balStructured) {
+    return cleanBalancerTagId(balStructured[1], balStructured[2]);
+  }
+  const balSimple = raw.match(/^bal-([^-]+)-(.+)$/i);
+  if (balSimple) {
+    return cleanBalancerTagId(balSimple[1], balSimple[2]);
+  }
+  const secPrefixed = raw.match(/^(?:sel|desync-sec|tailscale-sec)-(.+)$/i);
+  if (secPrefixed?.[1]) {
+    return secPrefixed[1];
+  }
+  return raw;
 }
 
 export interface ICoreTelemetryActions {
@@ -597,8 +638,11 @@ export function renderCoreTelemetry(
                       [
                         E(
                           'span',
-                          { class: 'tachyon_diag-telemetry__outbound-tag' },
-                          ob.tag,
+                          {
+                            class: 'tachyon_diag-telemetry__outbound-tag',
+                            title: ob.tag || undefined,
+                          },
+                          formatTelemetryTagDisplay(ob.tag, ob.display_name),
                         ),
                         E(
                           'span',
@@ -712,22 +756,33 @@ export function renderCoreTelemetry(
       ),
     ]),
     E('div', { class: 'tachyon_diag-telemetry__leak-grid' }, [
-      E('div', { class: 'tachyon_diag-telemetry__leak-chip is-ok' }, [
-        E(
-          'span',
-          { class: 'tachyon_diag-telemetry__leak-name' },
-          tr('IPv4 контур', 'IPv4 Route'),
-        ),
-        E(
-          'strong',
-          { class: 'tachyon_diag-telemetry__leak-val' },
-          String(leak.ipv4?.outbound || 'direct-out'),
-        ),
-      ]),
+      E(
+        'div',
+        {
+          class: 'tachyon_diag-telemetry__leak-chip is-ok',
+          title: leak.ipv4?.outbound || undefined,
+        },
+        [
+          E(
+            'span',
+            { class: 'tachyon_diag-telemetry__leak-name' },
+            tr('IPv4 контур', 'IPv4 Route'),
+          ),
+          E(
+            'strong',
+            { class: 'tachyon_diag-telemetry__leak-val' },
+            formatTelemetryTagDisplay(
+              String(leak.ipv4?.outbound || 'direct-out'),
+              leak.ipv4?.display_name,
+            ),
+          ),
+        ],
+      ),
       E(
         'div',
         {
           class: `tachyon_diag-telemetry__leak-chip ${ipv6LeakRisk ? 'is-warn' : 'is-ok'}`,
+          title: leak.ipv6?.outbound || undefined,
         },
         [
           E(
@@ -740,7 +795,12 @@ export function renderCoreTelemetry(
             { class: 'tachyon_diag-telemetry__leak-val' },
             ipv6LeakRisk
               ? tr('Риск утечки', 'Leak Risk')
-              : String(leak.ipv6?.outbound || tr('Защищено', 'Protected')),
+              : leak.ipv6?.outbound
+                ? formatTelemetryTagDisplay(
+                    leak.ipv6.outbound,
+                    leak.ipv6.display_name,
+                  )
+                : tr('Защищено', 'Protected'),
           ),
         ],
       ),
@@ -800,6 +860,13 @@ export function renderCoreTelemetry(
             failoverGroups.slice(0, 4).map((g) => {
               const rtt =
                 g.primary_rtt_ms != null ? `${g.primary_rtt_ms} ms` : '—';
+              const rawTarget = g.current || g.primary || '';
+              const targetDisplay = rawTarget
+                ? formatTelemetryTagDisplay(
+                    rawTarget,
+                    g.current ? g.current_display_name : g.primary_display_name,
+                  )
+                : '—';
               return E(
                 'div',
                 { class: 'tachyon_diag-telemetry__failover-item' },
@@ -807,13 +874,19 @@ export function renderCoreTelemetry(
                   E('div', { class: 'tachyon_diag-telemetry__failover-main' }, [
                     E(
                       'strong',
-                      { class: 'tachyon_diag-telemetry__failover-tag' },
-                      g.tag,
+                      {
+                        class: 'tachyon_diag-telemetry__failover-tag',
+                        title: g.tag || undefined,
+                      },
+                      formatTelemetryTagDisplay(g.tag, g.display_name),
                     ),
                     E(
                       'span',
-                      { class: 'tachyon_diag-telemetry__failover-node' },
-                      `→ ${g.current || g.primary || '—'}`,
+                      {
+                        class: 'tachyon_diag-telemetry__failover-node',
+                        title: rawTarget || undefined,
+                      },
+                      `→ ${targetDisplay}`,
                     ),
                   ]),
                   E(
@@ -905,8 +978,14 @@ export function renderCoreTelemetry(
                 ),
                 E(
                   'span',
-                  { class: 'tachyon_diag-telemetry__flight-out' },
-                  String(fl.outbound || 'direct'),
+                  {
+                    class: 'tachyon_diag-telemetry__flight-out',
+                    title: String(fl.outbound || 'direct'),
+                  },
+                  formatTelemetryTagDisplay(
+                    String(fl.outbound || 'direct'),
+                    fl.outbound_display_name,
+                  ),
                 ),
                 E(
                   'span',

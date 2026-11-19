@@ -704,6 +704,8 @@ export const styles = `
 .tachyon_diag-telemetry__failover-tag {
     color: #e4e4e7;
     font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
@@ -799,6 +801,10 @@ export const styles = `
 .tachyon_diag-telemetry__flight-out {
     color: #38bdf8;
     font-size: 10px;
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tachyon_diag-telemetry__flight-dur {

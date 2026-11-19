@@ -66,6 +66,7 @@ vi.hoisted(() => {
 });
 
 import {
+  formatTelemetryTagDisplay,
   renderCoreTelemetry,
   type ICoreTelemetrySnapshot,
 } from '../partials/renderCoreTelemetry';
@@ -177,5 +178,97 @@ describe('renderCoreTelemetry localization', () => {
     const ruText = collectAllText(renderCoreTelemetry(SAMPLE_SNAPSHOT));
     expect(ruText).toContain('Пропускная способность и баланс трафика');
     expect(ruText).toContain('Защита контура и Бортовой самописец');
+  });
+
+  it('displays human-readable route and balancer names while keeping raw tags in title', () => {
+    const findByClass = (node: any, className: string): any => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (node.class === className) return node;
+      for (const child of node.children || []) {
+        const hit = findByClass(child, className);
+        if (hit) return hit;
+      }
+      return undefined;
+    };
+
+    const rendered = renderCoreTelemetry({
+      outbounds: [
+        {
+          tag: 'iface-src_iface_awg_de',
+          display_name: 'AWG Germany',
+          active_connections: 3,
+          upload: 100,
+          download: 500,
+        },
+      ],
+      failover: {
+        groups: [
+          {
+            tag: 'bal-vpn-bal_vpn_Fast',
+            display_name: 'Fast',
+            current: '🇫🇮 RU | FL | Helsinki',
+            current_display_name: '🇫🇮 RU | FL | Helsinki',
+            on_backup: true,
+            primary_healthy: true,
+            primary_rtt_ms: 82,
+          },
+          {
+            tag: 'sel-vpn',
+            display_name: 'VPN',
+            current: 'bal-vpn-bal_vpn_Fast',
+            current_display_name: 'Fast',
+          },
+        ],
+      },
+      flight: {
+        count: 1,
+        entries: [
+          {
+            network: 'tcp',
+            host: 'instagram.com',
+            outbound: 'sel-meta',
+            outbound_display_name: 'Meta',
+            upload: 50,
+            download: 200,
+            duration_ms: 15,
+            status: 'ok',
+          },
+        ],
+      },
+    });
+
+    expect(
+      findByClass(rendered, 'tachyon_diag-telemetry__outbound-tag'),
+    ).toMatchObject({
+      textContent: 'AWG Germany',
+      title: 'iface-src_iface_awg_de',
+    });
+    expect(
+      findByClass(rendered, 'tachyon_diag-telemetry__failover-tag'),
+    ).toMatchObject({
+      textContent: 'Fast',
+      title: 'bal-vpn-bal_vpn_Fast',
+    });
+    expect(
+      findByClass(rendered, 'tachyon_diag-telemetry__failover-node'),
+    ).toMatchObject({
+      textContent: '→ 🇫🇮 RU | FL | Helsinki',
+      title: '🇫🇮 RU | FL | Helsinki',
+    });
+    expect(
+      findByClass(rendered, 'tachyon_diag-telemetry__flight-out'),
+    ).toMatchObject({
+      textContent: 'Meta',
+      title: 'sel-meta',
+    });
+
+    // Client-side fallback when backend display_name is absent
+    expect(formatTelemetryTagDisplay('bal-vpn-bal_vpn_Fast')).toBe('Fast');
+    expect(formatTelemetryTagDisplay('bal-my-vpn-bal_my-vpn_Reserve')).toBe(
+      'Reserve',
+    );
+    expect(formatTelemetryTagDisplay('sel-Main')).toBe('Main');
+    expect(formatTelemetryTagDisplay('desync-sec-youtube')).toBe('youtube');
+    expect(formatTelemetryTagDisplay('tailscale-sec-home')).toBe('home');
   });
 });
