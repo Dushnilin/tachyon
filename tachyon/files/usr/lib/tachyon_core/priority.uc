@@ -1180,9 +1180,24 @@ function worker() {
             else if (pid_saw_self || (file_pid != "" && file_pid_alive))
                 return 0;
         }
-        for (let group in groups)
-            tick_group(states[group.tag], group);
-        sleep(min_interval * 1000);
+        let started = clock(true);
+        let confirm_pending = false;
+        for (let group in groups) {
+            let state = states[group.tag];
+            let previous_fail_streak = state.activeFailStreak;
+            tick_group(state, group);
+            if (previous_fail_streak == 0 && state.activeFailStreak == 1)
+                confirm_pending = true;
+        }
+
+        let sleep_ms = min_interval * 1000;
+        if (confirm_pending) {
+            let ended = clock(true);
+            let elapsed_ms = (ended[0] - started[0]) * 1000 + (ended[1] - started[1]) / 1000000;
+            // Shorten just this wait after a newly failed cycle. Keep a pause even if the pass overran.
+            sleep_ms -= min(sleep_ms / 2, int(elapsed_ms));
+        }
+        sleep(sleep_ms);
     }
 }
 
