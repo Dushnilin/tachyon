@@ -22,23 +22,14 @@ function createUiState(
         status: 'starting',
         dns_configured: 0,
       },
-      sing_box: {
+      tachyon_core: {
         running: 0,
         enabled: 1,
         status: 'stopped but enabled',
       },
     },
     capabilities: {
-      sing_box_extended: 1,
-      sing_box_tiny: 0,
-      sing_box_compressed: 0,
-      sing_box_lx: 0,
-      sing_box_tailscale: 1,
-      zapret_installed: 1,
-      zapret2_installed: 0,
-      byedpi_installed: 1,
-      wdtt_installed: 0,
-      olcrtc_installed: 0,
+      tachyon_core_tailscale: 1,
       server_inbounds_enabled_count: 0,
       ...capabilities,
     },
@@ -100,7 +91,7 @@ describe('applyUiStateToStore', () => {
             success: true,
             running: true,
             job_id: 'component-1',
-            component: 'zapret',
+            component: 'tachyon-core',
             action: 'install',
             message: 'Install is running',
             current_version: '',
@@ -124,10 +115,7 @@ describe('applyUiStateToStore', () => {
     });
     expect(state.diagnosticsSystemInfo).toMatchObject({
       providerInfoLoaded: true,
-      sing_box_extended: 1,
-      zapret_installed: 1,
-      zapret2_installed: 0,
-      byedpi_installed: 1,
+      tachyon_core_tailscale: 1,
       server_inbounds_enabled_count: 0,
     });
     expect(state.diagnosticsActions.start.loading).toBe(true);
@@ -144,7 +132,7 @@ describe('applyUiStateToStore', () => {
         failed: 1,
       },
     });
-    expect(state.updatesActions.zapretInstall.loading).toBe(true);
+    expect(state.updatesActions.tachyonCoreInstall.loading).toBe(true);
   });
 
   it('clears finished persisted action flags while preserving local enable actions', () => {
@@ -168,7 +156,7 @@ describe('applyUiStateToStore', () => {
       },
       updatesActions: {
         ...store.get().updatesActions,
-        zapretInstall: { loading: true },
+        tachyonCoreInstall: { loading: true },
       },
     });
 
@@ -181,18 +169,18 @@ describe('applyUiStateToStore', () => {
     expect(state.sectionsWidget.subscriptionUpdatingSections).toEqual({});
     expect(state.sectionsWidget.latencyFetchingSections).toEqual({});
     expect(state.sectionsWidget.latencyProgressSections).toEqual({});
-    expect(state.updatesActions.zapretInstall.loading).toBe(false);
+    expect(state.updatesActions.tachyonCoreInstall.loading).toBe(false);
   });
 
   it('keeps locally started actions loading until their owner clears them', () => {
-    setLocalComponentAction('zapretInstall', true);
+    setLocalComponentAction('tachyonCoreInstall', true);
     setLocalSubscriptionAction('proxy', true);
     setLocalLatencyAction('gemini', true);
     setLocalServiceAction('restart', true);
 
     applyUiStateToStore(createUiState());
 
-    expect(store.get().updatesActions.zapretInstall.loading).toBe(true);
+    expect(store.get().updatesActions.tachyonCoreInstall.loading).toBe(true);
     expect(store.get().sectionsWidget.subscriptionUpdatingSections).toEqual({
       proxy: true,
     });
@@ -204,7 +192,7 @@ describe('applyUiStateToStore', () => {
     clearLocalActionOverlay();
     applyUiStateToStore(createUiState());
 
-    expect(store.get().updatesActions.zapretInstall.loading).toBe(false);
+    expect(store.get().updatesActions.tachyonCoreInstall.loading).toBe(false);
     expect(store.get().sectionsWidget.subscriptionUpdatingSections).toEqual({});
     expect(store.get().sectionsWidget.latencyFetchingSections).toEqual({});
     expect(store.get().diagnosticsActions.restart.loading).toBe(false);
@@ -301,47 +289,13 @@ describe('applyUiStateToStore', () => {
     expect(store.get().diagnosticsActions.restart.loading).toBe(true);
   });
 
-  it('does not combine a stale extended version with tiny capabilities', () => {
-    store.set({
-      diagnosticsSystemInfo: {
-        ...store.get().diagnosticsSystemInfo,
-        sing_box_version: '1.13.12-extended-2.3.2',
-        sing_box_extended: 1,
-        sing_box_tiny: 0,
-      },
-    });
-
-    applyUiStateToStore(
-      createUiState(undefined, {
-        sing_box_extended: 0,
-        sing_box_tiny: 0,
-        sing_box_compressed: 0,
-        sing_box_lx: 0,
-        sing_box_tailscale: 0,
-      }),
-    );
-
-    expect(store.get().diagnosticsSystemInfo).toMatchObject({
-      sing_box_version: '1.13.12-extended-2.3.2',
-      sing_box_extended: 1,
-      sing_box_tiny: 0,
-      sing_box_tailscale: 1,
-    });
-  });
-
-  it('keeps current sing-box variant while a different sing-box install action is running', () => {
+  it('keeps current tachyon-core version while an install action is running', () => {
     store.set({
       diagnosticsSystemInfo: {
         ...store.get().diagnosticsSystemInfo,
         providerInfoLoaded: true,
-        sing_box_version: '1.12.25',
-        sing_box_extended: 0,
-        sing_box_tiny: 1,
-        sing_box_compressed: 0,
-        sing_box_tailscale: 1,
-        zapret_installed: 0,
-        zapret2_installed: 0,
-        byedpi_installed: 1,
+        tachyon_core_version: '0.3.10',
+        tachyon_core_tailscale: 1,
         server_inbounds_enabled_count: 0,
       },
     });
@@ -353,9 +307,9 @@ describe('applyUiStateToStore', () => {
             {
               success: true,
               running: true,
-              job_id: 'sing-box-install',
-              component: 'sing_box',
-              action: 'install_extended_compressed',
+              job_id: 'tachyon-core-install',
+              component: 'tachyon-core',
+              action: 'install',
               message: 'Install is running',
               current_version: '',
               latest_version: '',
@@ -364,13 +318,7 @@ describe('applyUiStateToStore', () => {
           ],
         },
         {
-          sing_box_extended: 0,
-          sing_box_tiny: 1,
-          sing_box_compressed: 0,
-          sing_box_tailscale: 0,
-          zapret_installed: 1,
-          zapret2_installed: 1,
-          byedpi_installed: 0,
+          tachyon_core_tailscale: 0,
           server_inbounds_enabled_count: 2,
         },
       ),
@@ -378,22 +326,14 @@ describe('applyUiStateToStore', () => {
 
     expect(store.get().diagnosticsSystemInfo).toMatchObject({
       providerInfoLoaded: true,
-      sing_box_version: '1.12.25',
-      sing_box_extended: 0,
-      sing_box_tiny: 1,
-      sing_box_compressed: 0,
-      sing_box_tailscale: 0,
-      zapret_installed: 1,
-      zapret2_installed: 1,
-      byedpi_installed: 0,
+      tachyon_core_version: '0.3.10',
+      tachyon_core_tailscale: 0,
       server_inbounds_enabled_count: 2,
     });
-    expect(
-      store.get().updatesActions.singBoxInstallExtendedCompressed.loading,
-    ).toBe(true);
+    expect(store.get().updatesActions.tachyonCoreInstall.loading).toBe(true);
   });
 
-  it('marks the running sing-box install action without pretending it is installed', () => {
+  it('marks the running tachyon-core install action without pretending it is installed', () => {
     applyUiStateToStore(
       createUiState(
         {
@@ -401,9 +341,9 @@ describe('applyUiStateToStore', () => {
             {
               success: true,
               running: true,
-              job_id: 'sing-box-install',
-              component: 'sing_box',
-              action: 'install_extended',
+              job_id: 'tachyon-core-install',
+              component: 'tachyon-core',
+              action: 'install',
               message: 'Install is running',
               current_version: '',
               latest_version: '',
@@ -412,22 +352,14 @@ describe('applyUiStateToStore', () => {
           ],
         },
         {
-          sing_box_extended: 0,
-          sing_box_tiny: 1,
-          sing_box_compressed: 0,
-          sing_box_tailscale: 0,
+          tachyon_core_tailscale: 0,
         },
       ),
     );
 
     expect(store.get().diagnosticsSystemInfo).toMatchObject({
-      sing_box_extended: 0,
-      sing_box_tiny: 1,
-      sing_box_compressed: 0,
-      sing_box_tailscale: 0,
+      tachyon_core_tailscale: 0,
     });
-    expect(store.get().updatesActions.singBoxInstallExtended.loading).toBe(
-      true,
-    );
+    expect(store.get().updatesActions.tachyonCoreInstall.loading).toBe(true);
   });
 });

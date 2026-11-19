@@ -98,24 +98,12 @@ export async function renderStabilityModal(): Promise<void> {
     switch (name) {
       case 'tachyon-core':
         return { title: 'Tachyon Core', subtitle: 'tachyon-core' };
-      case 'sing-box':
-        return { title: 'Sing-Box', subtitle: 'sing-box' };
       case 'tachyon':
-        return { title: 'Tachyon', subtitle: 'ucode helpers' };
+        return { title: 'Tachyon', subtitle: 'tachyon daemon' };
       case 'watchdog':
         return { title: 'Watchdog', subtitle: 'tachyon_watchdog' };
       case 'telegram':
-        return { title: 'Telegram Bot', subtitle: 'bot/main.uc' };
-      case 'nfqws2':
-        return { title: 'Zapret v2', subtitle: 'nfqws2' };
-      case 'nfqws':
-        return { title: 'Zapret', subtitle: 'nfqws' };
-      case 'ciadpi':
-        return { title: 'ByeDPI', subtitle: 'ciadpi' };
-      case 'wdtt':
-        return { title: 'WDTT', subtitle: 'wdtt' };
-      case 'olcrtc':
-        return { title: 'OLCRTC', subtitle: 'olcrtc' };
+        return { title: 'Telegram Bot', subtitle: 'tg_bot' };
       case 'fptn':
         return { title: 'FPTN', subtitle: 'fptn' };
       case 'tailscale':

@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::core_mgr::CoreManager;
@@ -32,6 +33,13 @@ pub fn canonical_component(raw: &str) -> &'static str {
         "lists" | "rulesets" => "lists",
         "subscriptions" => "subscriptions",
         _ => "sing_box",
+    }
+}
+
+pub fn public_component_name(comp: &str) -> &'static str {
+    match canonical_component(comp) {
+        "sing_box" => "tachyon-core",
+        other => other,
     }
 }
 
@@ -199,63 +207,58 @@ pub fn map_arch_str_to_keywords(raw: &str) -> Vec<&'static str> {
     }
 }
 
-pub fn select_release_asset(assets: &[Value], arch_keywords: &[&str]) -> Option<(String, String)> {
-    let is_32bit_x86_target = arch_keywords.iter().any(|k| {
+fn is_32bit_x86_keywords(arch_keywords: &[&str]) -> bool {
+    arch_keywords.iter().any(|k| {
         matches!(
             *k,
             "i386_pentium4" | "386" | "i386" | "i586" | "i686" | "x86"
         )
     }) && !arch_keywords
         .iter()
-        .any(|k| matches!(*k, "x86_64" | "amd64" | "linux-amd64"));
-    let is_excluded_platform_asset = |lower: &str| {
-        (is_32bit_x86_target && (lower.contains("x86_64") || lower.contains("amd64")))
-            || lower.contains("sha256")
-            || lower.ends_with(".sig")
-            || lower.ends_with(".asc")
-            || lower.contains("android")
-            || lower.contains("darwin")
-            || lower.contains("ios")
-            || lower.contains("windows")
-            || lower.contains("xcframework")
-            || lower.ends_with(".exe")
-            || lower.ends_with(".so")
-            || lower.ends_with(".ipk")
-            || lower.ends_with(".apk")
-    };
-    let arch_matches = |lower: &str, kw: &str| {
-        if kw == "mips" && (lower.contains("mipsel") || lower.contains("mips64")) {
-            return false;
-        }
-        if kw == "mipsel" && lower.contains("mips64") {
-            return false;
-        }
-        if kw == "mips64" && lower.contains("mips64el") {
-            return false;
-        }
-        if kw == "arm"
-            && (lower.contains("aarch64") || lower.contains("arm64") || lower.contains("armv7"))
-        {
-            return false;
-        }
-        lower.contains(kw)
-    };
-    for kw in arch_keywords {
-        for a in assets {
-            let name = a.get("name").and_then(Value::as_str).unwrap_or("");
-            let url = a
-                .get("browser_download_url")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let lower = name.to_ascii_lowercase();
-            if url.is_empty() || is_excluded_platform_asset(&lower) {
-                continue;
-            }
-            if arch_matches(&lower, kw) && lower.ends_with(".tar.gz") {
-                return Some((name.to_string(), url.to_string()));
-            }
-        }
+        .any(|k| matches!(*k, "x86_64" | "amd64" | "linux-amd64"))
+}
+
+fn is_excluded_base_asset(lower: &str, is_32bit_x86_target: bool) -> bool {
+    (is_32bit_x86_target && (lower.contains("x86_64") || lower.contains("amd64")))
+        || lower.contains("sha256")
+        || lower.ends_with(".sig")
+        || lower.ends_with(".asc")
+        || lower.contains("android")
+        || lower.contains("darwin")
+        || lower.contains("ios")
+        || lower.contains("windows")
+        || lower.contains("xcframework")
+        || lower.ends_with(".exe")
+        || lower.ends_with(".so")
+}
+
+fn asset_arch_matches(lower: &str, kw: &str) -> bool {
+    if kw == "mips" && (lower.contains("mipsel") || lower.contains("mips64")) {
+        return false;
     }
+    if kw == "mipsel" && lower.contains("mips64") {
+        return false;
+    }
+    if kw == "mips64" && lower.contains("mips64el") {
+        return false;
+    }
+    if kw == "arm"
+        && (lower.contains("aarch64") || lower.contains("arm64") || lower.contains("armv7"))
+    {
+        return false;
+    }
+    lower.contains(kw)
+}
+
+fn find_matching_asset<F>(
+    assets: &[Value],
+    arch_keywords: &[&str],
+    ext_pred: F,
+) -> Option<(String, String)>
+where
+    F: Fn(&str) -> bool,
+{
+    let is_32bit_x86_target = is_32bit_x86_keywords(arch_keywords);
     for kw in arch_keywords {
         for a in assets {
             let name = a.get("name").and_then(Value::as_str).unwrap_or("");
@@ -264,17 +267,49 @@ pub fn select_release_asset(assets: &[Value], arch_keywords: &[&str]) -> Option<
                 .and_then(Value::as_str)
                 .unwrap_or("");
             let lower = name.to_ascii_lowercase();
-            if url.is_empty() || is_excluded_platform_asset(&lower) {
+            if url.is_empty() || is_excluded_base_asset(&lower, is_32bit_x86_target) {
                 continue;
             }
-            if arch_matches(&lower, kw)
-                && (lower.ends_with(".tgz") || lower.ends_with(".zip") || !lower.contains('.'))
-            {
+            if asset_arch_matches(&lower, kw) && ext_pred(&lower) {
                 return Some((name.to_string(), url.to_string()));
             }
         }
     }
     None
+}
+
+pub fn preferred_openwrt_pkg_ext() -> &'static str {
+    if Path::new("/lib/apk/db").is_dir() {
+        ".apk"
+    } else {
+        ".ipk"
+    }
+}
+
+pub fn select_openwrt_package_asset(
+    assets: &[Value],
+    arch_keywords: &[&str],
+    prefer_ext: &str,
+) -> Option<(String, String)> {
+    let fallback_ext = if prefer_ext == ".apk" { ".ipk" } else { ".apk" };
+    find_matching_asset(assets, arch_keywords, |lower| lower.ends_with(prefer_ext))
+        .or_else(|| {
+            find_matching_asset(assets, arch_keywords, |lower| lower.ends_with(fallback_ext))
+        })
+        .or_else(|| select_release_asset(assets, arch_keywords))
+}
+
+pub fn select_release_asset(assets: &[Value], arch_keywords: &[&str]) -> Option<(String, String)> {
+    find_matching_asset(assets, arch_keywords, |lower| {
+        lower.ends_with(".tar.gz") && !lower.ends_with(".ipk") && !lower.ends_with(".apk")
+    })
+    .or_else(|| {
+        find_matching_asset(assets, arch_keywords, |lower| {
+            !lower.ends_with(".ipk")
+                && !lower.ends_with(".apk")
+                && (lower.ends_with(".tgz") || lower.ends_with(".zip") || !lower.contains('.'))
+        })
+    })
 }
 
 pub fn find_sha256sums_url(assets: &[Value]) -> Option<String> {
@@ -661,8 +696,13 @@ pub fn read_component_check_cache() -> Value {
     for name in ["tachyon", "sing_box"] {
         let path = Path::new(CHECK_CACHE_DIR).join(format!("{name}.json"));
         if let Ok(raw) = std::fs::read_to_string(&path)
-            && let Ok(val) = serde_json::from_str::<Value>(&raw)
+            && let Ok(mut val) = serde_json::from_str::<Value>(&raw)
         {
+            if name == "sing_box"
+                && let Some(obj) = val.as_object_mut()
+            {
+                obj.insert("component".to_string(), json!("tachyon-core"));
+            }
             results.push(val);
         }
     }
@@ -1180,7 +1220,7 @@ async fn perform_check_update(core: &Arc<CoreManager>, canon: &str, job_id: Opti
                 "completed": true,
                 "kind": "component",
                 "job_id": job_id.unwrap_or(""),
-                "component": canon,
+                "component": public_component_name(canon),
                 "action": "check_update",
                 "message": msg,
                 "current_version": current,
@@ -1259,6 +1299,14 @@ fn is_ignored_extracted_artifact(lower_name: &str) -> bool {
 }
 
 async fn find_extracted_binary(dir: &Path, expected_name: &str) -> Option<PathBuf> {
+    for direct in [
+        dir.join("usr").join("bin").join(expected_name),
+        dir.join("bin").join(expected_name),
+    ] {
+        if direct.is_file() {
+            return Some(direct);
+        }
+    }
     let mut stack = vec![dir.to_path_buf()];
     let mut prefix_match: Option<PathBuf> = None;
     let prefix = format!("{expected_name}-");
@@ -1271,6 +1319,13 @@ async fn find_extracted_binary(dir: &Path, expected_name: &str) -> Option<PathBu
             if p.is_dir() {
                 stack.push(p);
             } else if p.is_file() {
+                let rel_slash = p
+                    .strip_prefix(dir)
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                if rel_slash.starts_with("etc/init.d/") || rel_slash.starts_with("etc/config/") {
+                    continue;
+                }
                 let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let lower = name.to_ascii_lowercase();
                 if is_ignored_extracted_artifact(&lower) {
@@ -1286,6 +1341,144 @@ async fn find_extracted_binary(dir: &Path, expected_name: &str) -> Option<PathBu
         }
     }
     prefix_match
+}
+
+async fn run_tar_extract(
+    tar_flag: &str,
+    archive_path: &Path,
+    dest_dir: &Path,
+) -> Result<(), String> {
+    let mut cmd = Command::new("tar");
+    cmd.arg(tar_flag)
+        .arg(archive_path)
+        .arg("-C")
+        .arg(dest_dir)
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(Duration::from_secs(60), cmd.output()).await;
+    match out {
+        Ok(Ok(o)) if o.status.success() => Ok(()),
+        Ok(Ok(o)) => {
+            let err = String::from_utf8_lossy(&o.stderr).trim().to_string();
+            Err(format!("Ошибка tar {tar_flag}: {err}"))
+        }
+        Ok(Err(e)) => Err(format!("Не удалось запустить tar: {e}")),
+        Err(_) => Err(format!("Таймаут распаковки архива tar {tar_flag} (60s)")),
+    }
+}
+
+pub async fn extract_package_archive(archive_path: &Path, stage_dir: &Path) -> Result<(), String> {
+    let lower = archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
+        return run_tar_extract("-xzf", archive_path, stage_dir).await;
+    }
+    if lower.ends_with(".ipk") {
+        let outer_dir = stage_dir.join("_ipk_outer");
+        let _ = std::fs::remove_dir_all(&outer_dir);
+        std::fs::create_dir_all(&outer_dir)
+            .map_err(|e| format!("Не удалось создать временный каталог ipk: {e}"))?;
+        let extract_res = async {
+            run_tar_extract("-xzf", archive_path, &outer_dir).await?;
+            let (flag, data_archive) = [
+                ("-xzf", outer_dir.join("data.tar.gz")),
+                ("-xJf", outer_dir.join("data.tar.xz")),
+                ("-xf", outer_dir.join("data.tar")),
+            ]
+            .into_iter()
+            .find(|(_, p)| p.is_file())
+            .ok_or_else(|| "Внутри .ipk не найден data.tar.gz".to_string())?;
+            run_tar_extract(flag, &data_archive, stage_dir).await
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(&outer_dir);
+        return extract_res;
+    }
+    if lower.ends_with(".apk") {
+        let mut gzip_cmd = Command::new("gzip");
+        gzip_cmd
+            .arg("-dc")
+            .arg(archive_path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut gzip_child = gzip_cmd
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить gzip -dc: {e}"))?;
+
+        let mut tar_cmd = Command::new("tar");
+        tar_cmd
+            .arg("-x")
+            .arg("-C")
+            .arg(stage_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut tar_child = tar_cmd
+            .spawn()
+            .map_err(|e| format!("Не удалось запустить tar -x: {e}"))?;
+
+        let mut gzip_out = gzip_child
+            .stdout
+            .take()
+            .ok_or_else(|| "Отсутствует stdout у gzip -dc".to_string())?;
+        let mut gzip_err = gzip_child
+            .stderr
+            .take()
+            .ok_or_else(|| "Отсутствует stderr у gzip -dc".to_string())?;
+        let mut tar_in = tar_child
+            .stdin
+            .take()
+            .ok_or_else(|| "Отсутствует stdin у tar -x".to_string())?;
+        let mut tar_err = tar_child
+            .stderr
+            .take()
+            .ok_or_else(|| "Отсутствует stderr у tar -x".to_string())?;
+
+        let pipe_res = tokio::time::timeout(Duration::from_secs(60), async {
+            let copy_fut = async {
+                let res = tokio::io::copy(&mut gzip_out, &mut tar_in).await;
+                drop(tar_in);
+                res
+            };
+            let mut gz_err_buf = Vec::new();
+            let mut tar_err_buf = Vec::new();
+            let (copy_res, _, _) = tokio::join!(
+                copy_fut,
+                gzip_err.read_to_end(&mut gz_err_buf),
+                tar_err.read_to_end(&mut tar_err_buf),
+            );
+            let gz_status = gzip_child.wait().await;
+            let tar_status = tar_child.wait().await;
+            (copy_res, gz_status, tar_status, gz_err_buf, tar_err_buf)
+        })
+        .await;
+
+        return match pipe_res {
+            Ok((copy_res, Ok(gz_st), Ok(tar_st), gz_err_buf, tar_err_buf)) => {
+                if !gz_st.success() {
+                    let msg = String::from_utf8_lossy(&gz_err_buf).trim().to_string();
+                    return Err(format!("Ошибка gzip -dc для .apk: {msg}"));
+                }
+                if !tar_st.success() {
+                    let msg = String::from_utf8_lossy(&tar_err_buf).trim().to_string();
+                    return Err(format!("Ошибка tar -x для .apk: {msg}"));
+                }
+                if let Err(e) = copy_res {
+                    return Err(format!("Ошибка передачи потока .apk в tar: {e}"));
+                }
+                Ok(())
+            }
+            Ok((_, Err(e), _, _, _)) => Err(format!("Ошибка ожидания gzip -dc: {e}")),
+            Ok((_, _, Err(e), _, _)) => Err(format!("Ошибка ожидания tar -x: {e}")),
+            Err(_) => Err("Таймаут распаковки пакета .apk (60s)".to_string()),
+        };
+    }
+    Err(format!("Неподдерживаемый формат архива: {lower}"))
 }
 
 pub fn collect_staged_luci_sync_pairs(
@@ -1318,6 +1511,8 @@ pub fn collect_staged_luci_sync_pairs(
                 || rel_slash.starts_with("usr/lib/lua/luci/")
                 || rel_slash.starts_with("usr/share/luci/")
                 || rel_slash.starts_with("usr/share/rpcd/")
+                || rel_slash == "etc/init.d/tachyon"
+                || rel_slash == "www/cgi-bin/tachyon-sub"
             {
                 Some(rel_slash)
             } else {
@@ -1336,14 +1531,46 @@ pub fn collect_staged_luci_sync_pairs(
     pairs
 }
 
+fn clear_luci_tmp_caches() {
+    if let Ok(entries) = std::fs::read_dir("/tmp") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with("luci-indexcache") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir("/tmp/luci-modulecache") {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                let _ = std::fs::remove_dir_all(p);
+            } else {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+}
+
 fn sync_staged_luci_assets(stage_dir: &Path, target_root: &Path) -> usize {
     let mut updated = 0usize;
     for (src, dst) in collect_staged_luci_sync_pairs(stage_dir, target_root) {
+        let dst_slash = dst.to_string_lossy().replace('\\', "/");
+        let mode = if dst_slash.ends_with("/etc/init.d/tachyon")
+            || dst_slash.ends_with("/www/cgi-bin/tachyon-sub")
+        {
+            0o755
+        } else {
+            0o644
+        };
         if let Ok(bytes) = std::fs::read(&src)
-            && crypto_gen::write_file_if_changed(&dst, &bytes).unwrap_or(false)
+            && crypto_gen::write_bytes_with_mode_if_changed(&dst, &bytes, mode).unwrap_or(false)
         {
             updated += 1;
         }
+    }
+    if updated > 0 && target_root == Path::new("/") {
+        clear_luci_tmp_caches();
     }
     updated
 }
@@ -1384,6 +1611,7 @@ async fn run_command_checked(bin: &Path, args: &[&str]) -> Result<String, String
 
 struct StagedRelease {
     stage_dir: PathBuf,
+    archive_path: PathBuf,
     extracted_bin: PathBuf,
     target_ver: String,
     release_url: String,
@@ -1406,7 +1634,7 @@ fn component_error_payload(
         "completed": true,
         "kind": "component",
         "job_id": job_id,
-        "component": canon,
+        "component": public_component_name(canon),
         "action": action,
         "message": msg,
         "current_version": current,
@@ -1524,7 +1752,7 @@ async fn stage_release_binary(
             "completed": true,
             "kind": "component",
             "job_id": job_id,
-            "component": canon,
+            "component": public_component_name(canon),
             "action": action,
             "message": msg,
             "current_version": current,
@@ -1546,7 +1774,8 @@ async fn stage_release_binary(
         .map(Vec::as_slice)
         .unwrap_or(&[]);
     let arch_kws = detect_arch_keywords();
-    let Some((asset_name, asset_url)) = select_release_asset(assets, &arch_kws) else {
+    let selected = select_openwrt_package_asset(assets, &arch_kws, preferred_openwrt_pkg_ext());
+    let Some((asset_name, asset_url)) = selected else {
         return Err(component_error_payload(
             canon,
             action,
@@ -1583,7 +1812,7 @@ async fn stage_release_binary(
         ));
     }
 
-    let sums_manifest: Option<String> = if let Some(sums_url) = find_sha256sums_url(assets) {
+    let sums_manifest: String = if let Some(sums_url) = find_sha256sums_url(assets) {
         append_job_log(
             job_id,
             Some("verifying"),
@@ -1601,9 +1830,27 @@ async fn stage_release_binary(
                         format!("Не удалось загрузить SHA256SUMS для проверки: {e}"),
                     )
                 })?;
-        Some(String::from_utf8_lossy(&sums_bytes).into_owned())
+        String::from_utf8_lossy(&sums_bytes).into_owned()
+    } else if let Some(hex_digest) = assets.iter().find_map(|a| {
+        if a.get("name").and_then(Value::as_str) == Some(asset_name.as_str()) {
+            a.get("digest")
+                .and_then(Value::as_str)
+                .and_then(|d| d.strip_prefix("sha256:"))
+                .map(str::trim)
+                .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
+        } else {
+            None
+        }
+    }) {
+        format!("{hex_digest}  {asset_name}\n")
     } else {
-        None
+        return Err(component_error_payload(
+            canon,
+            action,
+            job_id,
+            &current,
+            format!("В релизе {tag} отсутствует файл контрольных сумм SHA256SUMS"),
+        ));
     };
 
     let stage_dir = PathBuf::from(format!("/tmp/tachyon-update-{job_id}"));
@@ -1636,47 +1883,16 @@ async fn stage_release_binary(
         "[INFO] Распаковка и проверка бинарного файла...",
     );
     let lower_asset = asset_name.to_ascii_lowercase();
-    let extracted_bin = if lower_asset.ends_with(".tar.gz") || lower_asset.ends_with(".tgz") {
-        let mut cmd = Command::new("tar");
-        cmd.arg("-xzf")
-            .arg(&archive_path)
-            .arg("-C")
-            .arg(&stage_dir)
-            .kill_on_drop(true);
-        let out = tokio::time::timeout(Duration::from_secs(60), cmd.output()).await;
-        match out {
-            Ok(Ok(o)) if o.status.success() => {}
-            Ok(Ok(o)) => {
-                let err = String::from_utf8_lossy(&o.stderr).trim().to_string();
-                let _ = std::fs::remove_dir_all(&stage_dir);
-                return Err(component_error_payload(
-                    canon,
-                    action,
-                    job_id,
-                    &current,
-                    format!("Ошибка tar -xzf: {err}"),
-                ));
-            }
-            Ok(Err(e)) => {
-                let _ = std::fs::remove_dir_all(&stage_dir);
-                return Err(component_error_payload(
-                    canon,
-                    action,
-                    job_id,
-                    &current,
-                    format!("Не удалось запустить tar: {e}"),
-                ));
-            }
-            Err(_) => {
-                let _ = std::fs::remove_dir_all(&stage_dir);
-                return Err(component_error_payload(
-                    canon,
-                    action,
-                    job_id,
-                    &current,
-                    "Таймаут распаковки архива tar -xzf (60s)".to_string(),
-                ));
-            }
+    let is_archive = lower_asset.ends_with(".tar.gz")
+        || lower_asset.ends_with(".tgz")
+        || lower_asset.ends_with(".ipk")
+        || lower_asset.ends_with(".apk");
+    let extracted_bin = if is_archive {
+        if let Err(err) = extract_package_archive(&archive_path, &stage_dir).await {
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            return Err(component_error_payload(
+                canon, action, job_id, &current, err,
+            ));
         }
         match find_extracted_binary(&stage_dir, expected_bin_name).await {
             Some(p) => p,
@@ -1695,7 +1911,7 @@ async fn stage_release_binary(
         archive_path.clone()
     };
 
-    if let Some(manifest) = &sums_manifest {
+    {
         let bin_name = extracted_bin
             .file_name()
             .and_then(|s| s.to_str())
@@ -1715,7 +1931,7 @@ async fn stage_release_binary(
             };
             candidates.push((bin_name, sha256_hex_bytes(&bin_bytes)));
         }
-        match verify_sha256_for_candidates(manifest, &candidates) {
+        match verify_sha256_for_candidates(&sums_manifest, &candidates) {
             Ok(matched_hash) => append_job_log(
                 job_id,
                 Some("verifying"),
@@ -1759,6 +1975,7 @@ async fn stage_release_binary(
 
     Ok(StagedRelease {
         stage_dir,
+        archive_path,
         extracted_bin,
         target_ver,
         release_url,
@@ -1803,6 +2020,7 @@ async fn install_core_binary_release(
     };
 
     let stage_dir = staged.stage_dir;
+    let archive_path = staged.archive_path;
     let extracted_bin = staged.extracted_bin;
     let target_ver = staged.target_ver;
     let current = staged.current;
@@ -1856,9 +2074,9 @@ async fn install_core_binary_release(
     );
     let _ = core.stop().await;
     let install_res = atomic_swap_binary(&extracted_bin, &core_bin_path);
-    let _ = std::fs::remove_dir_all(&stage_dir);
 
     if let Err(e) = install_res {
+        let _ = std::fs::remove_dir_all(&stage_dir);
         let _ = core.start().await;
         return component_error_payload(
             canon,
@@ -1869,10 +2087,14 @@ async fn install_core_binary_release(
         );
     }
 
-    let _ = crypto_gen::write_file_if_changed(
-        "/etc/tachyon/tachyon-core-version",
-        format!("{target_ver}\n").as_bytes(),
-    );
+    if core_bin_path == Path::new("/usr/bin/tachyon-core") {
+        sync_apk_pkg_db(job_id, &archive_path, true).await;
+    }
+    let _ = std::fs::remove_dir_all(&stage_dir);
+
+    let core_ver_path = store::runtime_state_dir().join("tachyon-core-version");
+    let _ = crypto_gen::write_file_if_changed(&core_ver_path, format!("{target_ver}\n").as_bytes());
+    let _ = std::fs::remove_file("/etc/tachyon/tachyon-core-version");
 
     append_job_log(
         job_id,
@@ -1891,10 +2113,8 @@ async fn install_core_binary_release(
             snapshots::rollback_binary(&dd, "tachyon-core", &dst)
         })
         .await;
-        let _ = crypto_gen::write_file_if_changed(
-            "/etc/tachyon/tachyon-core-version",
-            format!("{current}\n").as_bytes(),
-        );
+        let _ =
+            crypto_gen::write_file_if_changed(&core_ver_path, format!("{current}\n").as_bytes());
         let _ = core.start().await;
         core.refresh_core_version().await;
         return component_error_payload(
@@ -1914,7 +2134,9 @@ async fn install_core_binary_release(
     };
     let msg = format!("{disp} успешно обновлён: {current} -> {display_ver}");
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
-    crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    if core.state.data.read().await.telegram.notify_auto_update {
+        crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    }
 
     let ok = json!({
         "success": true,
@@ -1922,7 +2144,7 @@ async fn install_core_binary_release(
         "completed": true,
         "kind": "component",
         "job_id": job_id,
-        "component": canon,
+        "component": public_component_name(canon),
         "action": action,
         "message": msg,
         "current_version": display_ver,
@@ -1936,6 +2158,78 @@ async fn install_core_binary_release(
     });
     write_component_check_cache(canon, &ok);
     ok
+}
+
+async fn sync_apk_pkg_db(job_id: &str, archive_path: &Path, is_core: bool) {
+    if !archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .is_some_and(|n| n.to_ascii_lowercase().ends_with(".apk"))
+        || !Path::new("/lib/apk/db").is_dir()
+    {
+        return;
+    }
+    let mut cmd = Command::new("apk");
+    cmd.args([
+        "add",
+        "--allow-untrusted",
+        "--no-network",
+        "--repositories-file",
+        "/dev/null",
+        "--force-overwrite",
+        "--force-reinstall",
+        "--scripts=no",
+    ])
+    .arg(archive_path)
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
+    match tokio::time::timeout(Duration::from_secs(30), cmd.output()).await {
+        Ok(Ok(out)) if out.status.success() => {
+            if is_core {
+                let _ = std::fs::remove_file("/etc/tachyon-core/config.json.apk-new");
+                let _ = std::fs::remove_file("/etc/config/tachyon-core.apk-new");
+                if let Ok(entries) = std::fs::read_dir("/etc/rc.d") {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name();
+                        let s = name.to_string_lossy();
+                        if (s.starts_with('S') || s.starts_with('K')) && s.contains("tachyon-core")
+                        {
+                            let _ = std::fs::remove_file(entry.path());
+                        }
+                    }
+                }
+            }
+            append_job_log(
+                job_id,
+                Some("installing"),
+                "[OK] База пакетов apk синхронизирована (--scripts=no)",
+            );
+        }
+        Ok(Ok(out)) => {
+            let detail = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            append_job_log(
+                job_id,
+                Some("installing"),
+                &format!("[WARN] Не удалось обновить базу apk: {detail}"),
+            );
+        }
+        Ok(Err(e)) => {
+            append_job_log(
+                job_id,
+                Some("installing"),
+                &format!("[WARN] Не удалось запустить apk: {e}"),
+            );
+        }
+        Err(_) => {
+            append_job_log(
+                job_id,
+                Some("installing"),
+                "[WARN] Таймаут обновления базы apk (30s)",
+            );
+        }
+    }
 }
 
 fn schedule_tachyon_service_restart() {
@@ -1986,6 +2280,7 @@ async fn install_tachyon_release(
     };
 
     let stage_dir = staged.stage_dir;
+    let archive_path = staged.archive_path;
     let extracted_bin = staged.extracted_bin;
     let target_ver = staged.target_ver;
     let current = staged.current;
@@ -2027,6 +2322,7 @@ async fn install_tachyon_release(
     }
 
     let luci_updated = sync_staged_luci_assets(&stage_dir, Path::new("/"));
+    sync_apk_pkg_db(job_id, &archive_path, false).await;
     let _ = std::fs::remove_dir_all(&stage_dir);
     if luci_updated > 0 {
         append_job_log(
@@ -2038,7 +2334,9 @@ async fn install_tachyon_release(
 
     let msg = format!("{disp} успешно обновлён: {current} -> {target_ver}");
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
-    crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    if core.state.data.read().await.telegram.notify_auto_update {
+        crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    }
 
     let restart_scheduled = Path::new("/etc/init.d/tachyon").exists();
     if restart_scheduled {
@@ -2056,7 +2354,7 @@ async fn install_tachyon_release(
         "completed": true,
         "kind": "component",
         "job_id": job_id,
-        "component": canon,
+        "component": public_component_name(canon),
         "action": action,
         "message": msg,
         "current_version": target_ver,
@@ -2124,7 +2422,7 @@ async fn run_component_job(
                 "completed": true,
                 "kind": "component",
                 "job_id": job_id,
-                "component": canon,
+                "component": public_component_name(&canon),
                 "action": action,
                 "message": msg,
                 "current_version": cur,
@@ -2164,7 +2462,7 @@ pub async fn start_component_action(
         "completed": false,
         "kind": "component",
         "job_id": job_id,
-        "component": canon,
+        "component": public_component_name(canon),
         "action": act,
         "message": format!("Запуск '{act}' для {disp}..."),
         "current_version": cur,
@@ -2220,6 +2518,304 @@ fn write_list_update_status(val: &Value) {
     }
 }
 
+fn list_interval_disabled(spec: &str) -> bool {
+    matches!(
+        spec.trim().to_ascii_lowercase().as_str(),
+        "0" | "off" | "never" | "disabled"
+    )
+}
+
+fn extract_url_host(url: &str) -> String {
+    url.split("://")
+        .nth(1)
+        .unwrap_or(url)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+pub(crate) fn collect_community_sync_targets(
+    d: &crate::store::RouterStoreData,
+) -> (Vec<String>, Vec<String>) {
+    let mut list_names = Vec::new();
+    let mut subnet_services = Vec::new();
+    let push_list = |names: &mut Vec<String>, raw: &str| {
+        let cl = raw.trim().to_string();
+        if !cl.is_empty() && !names.contains(&cl) {
+            names.push(cl);
+        }
+    };
+    let push_subnet = |subs: &mut Vec<String>, raw: &str| {
+        let canonical =
+            crate::config_gen::canonical_community_subnet_service(raw).to_ascii_lowercase();
+        if !canonical.is_empty()
+            && crate::config_gen::community_service_has_subnet_list(&canonical)
+            && !subs.contains(&canonical)
+        {
+            subs.push(canonical);
+        }
+    };
+
+    for c in &d.conditions {
+        for l in &c.community_lists {
+            push_list(&mut list_names, l);
+            if c.community_subnets {
+                push_subnet(&mut subnet_services, l);
+            }
+        }
+        for r in &c.rule_set_with_subnets {
+            if crate::config_gen::is_community_list_token(r) {
+                push_list(&mut list_names, r);
+                push_subnet(&mut subnet_services, r);
+            }
+        }
+    }
+    for s in &d.sections {
+        for l in &s.community_lists {
+            push_list(&mut list_names, l);
+            if s.community_subnets {
+                push_subnet(&mut subnet_services, l);
+            }
+        }
+        for r in &s.rule_set_with_subnets {
+            if crate::config_gen::is_community_list_token(r) {
+                push_list(&mut list_names, r);
+                push_subnet(&mut subnet_services, r);
+            }
+        }
+    }
+    (list_names, subnet_services)
+}
+
+pub(crate) async fn sync_community_subnet_lists(
+    core: &CoreManager,
+    rulesets_dir: &Path,
+    github_mirror: &str,
+    proxy_opt: Option<&str>,
+    subnet_services: &[String],
+    dead_hosts: &mut HashSet<String>,
+) -> (bool, u64) {
+    let mut any_changed = false;
+    let mut synced = 0u64;
+    if subnet_services.is_empty() {
+        return (false, 0);
+    }
+    let _ = std::fs::create_dir_all(rulesets_dir);
+    let tmp_dir = Path::new("/tmp/tachyon-core/rulesets");
+    let use_tmp_dir = cfg!(target_os = "linux") && tmp_dir != rulesets_dir;
+    if use_tmp_dir {
+        let _ = std::fs::create_dir_all(tmp_dir);
+    }
+
+    for canonical in subnet_services {
+        let Some(base_url) = crate::config_gen::community_subnet_url(canonical) else {
+            continue;
+        };
+        let mirrored = apply_github_mirror(github_mirror, &base_url);
+        let base_host = extract_url_host(&base_url);
+        let mirror_host = extract_url_host(&mirrored);
+        let all_dead = (mirrored == base_url || dead_hosts.contains(&mirror_host))
+            && dead_hosts.contains(&base_host);
+        if all_dead {
+            continue;
+        }
+        let mut fetched = None;
+        if mirrored != base_url && !dead_hosts.contains(&mirror_host) {
+            match core
+                .curl_fetch_with_doh_fallback(&mirrored, false, 15, proxy_opt)
+                .await
+            {
+                Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
+                _ => {
+                    if !mirror_host.is_empty() {
+                        dead_hosts.insert(mirror_host);
+                    }
+                }
+            }
+        }
+        if fetched.is_none() && !dead_hosts.contains(&base_host) {
+            match core
+                .curl_fetch_with_doh_fallback(&base_url, false, 15, proxy_opt)
+                .await
+            {
+                Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
+                _ => {
+                    if !base_host.is_empty() {
+                        dead_hosts.insert(base_host);
+                    }
+                }
+            }
+        }
+
+        let file_name = format!("community-subnets-{canonical}.lst");
+        let persist_dst = rulesets_dir.join(&file_name);
+        if let Some(bytes) = fetched
+            && let Ok(text) = std::str::from_utf8(&bytes)
+            && !crate::config_gen::parse_valid_cidr_list(text).is_empty()
+        {
+            if use_tmp_dir
+                && matches!(
+                    crypto_gen::write_file_if_changed(tmp_dir.join(&file_name), &bytes),
+                    Ok(true)
+                )
+            {
+                any_changed = true;
+            }
+            if bytes.len() <= 524_288 {
+                if matches!(
+                    crypto_gen::write_file_if_changed(&persist_dst, &bytes),
+                    Ok(true)
+                ) {
+                    any_changed = true;
+                }
+            } else {
+                let _ = std::fs::remove_file(&persist_dst);
+            }
+            synced += 1;
+        } else if persist_dst.exists() {
+            if use_tmp_dir
+                && let Ok(existing) = std::fs::read(&persist_dst)
+                && !existing.is_empty()
+            {
+                let _ = crypto_gen::write_file_if_changed(tmp_dir.join(&file_name), &existing);
+            }
+            synced += 1;
+        }
+    }
+    (any_changed, synced)
+}
+
+async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
+    let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt) = {
+        let d = core.state.data.read().await;
+        let (names, subnets) = collect_community_sync_targets(&d);
+        let px = if d.settings.download_lists_via_proxy {
+            d.sections
+                .iter()
+                .find(|s| {
+                    s.enabled
+                        && s.id == d.settings.download_lists_via_proxy_section
+                        && s.mixed_proxy_enabled
+                        && s.mixed_proxy_port > 0
+                })
+                .map(|s| format!("http://127.0.0.1:{}", s.mixed_proxy_port))
+        } else {
+            None
+        };
+        (
+            crate::diagnostics::effective_rulesets_dir(&d.settings),
+            d.settings.github_mirror.clone(),
+            names,
+            subnets,
+            px,
+        )
+    };
+    let mut any_changed = false;
+    let mut synced_files = 0u64;
+    let mut dead_hosts: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if !list_names.is_empty() {
+        let _ = std::fs::create_dir_all(&rulesets_dir);
+        for clean in &list_names {
+            let base_url = format!(
+                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
+            );
+            let mirrored = apply_github_mirror(&github_mirror, &base_url);
+            let base_host = extract_url_host(&base_url);
+            let mirror_host = extract_url_host(&mirrored);
+            let all_dead = (mirrored == base_url || dead_hosts.contains(&mirror_host))
+                && dead_hosts.contains(&base_host);
+            if all_dead {
+                continue;
+            }
+            let mut fetched = None;
+            if mirrored != base_url && !dead_hosts.contains(&mirror_host) {
+                match core
+                    .curl_fetch_with_doh_fallback(&mirrored, false, 15, proxy_opt.as_deref())
+                    .await
+                {
+                    Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
+                    _ => {
+                        if !mirror_host.is_empty() {
+                            dead_hosts.insert(mirror_host);
+                        }
+                    }
+                }
+            }
+            if fetched.is_none() && !dead_hosts.contains(&base_host) {
+                match core
+                    .curl_fetch_with_doh_fallback(&base_url, false, 15, proxy_opt.as_deref())
+                    .await
+                {
+                    Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
+                    _ => {
+                        if !base_host.is_empty() {
+                            dead_hosts.insert(base_host);
+                        }
+                    }
+                }
+            }
+            let dst = rulesets_dir.join(format!("{clean}.trs"));
+            let stale_srs = rulesets_dir.join(format!("{clean}.srs"));
+            let _ = std::fs::remove_file(&stale_srs);
+            if let Some(bytes) = fetched {
+                if crate::core_mgr::CoreManager::bytes_have_valid_trs_magic(&bytes) {
+                    if matches!(crypto_gen::write_file_if_changed(&dst, &bytes), Ok(true)) {
+                        any_changed = true;
+                    }
+                    synced_files += 1;
+                } else if !crate::core_mgr::CoreManager::file_has_valid_trs_magic(&dst) {
+                    let _ = std::fs::remove_file(&dst);
+                }
+            } else if crate::core_mgr::CoreManager::file_has_valid_trs_magic(&dst) {
+                synced_files += 1;
+            } else if dst.exists() {
+                let _ = std::fs::remove_file(&dst);
+            }
+        }
+    }
+    let (sub_changed, _sub_synced) = sync_community_subnet_lists(
+        core.as_ref(),
+        &rulesets_dir,
+        &github_mirror,
+        proxy_opt.as_deref(),
+        &subnet_services,
+        &mut dead_hosts,
+    )
+    .await;
+    if sub_changed {
+        any_changed = true;
+    }
+    if any_changed && !core.is_manually_stopped() {
+        let _ = core.apply_or_reload().await;
+    }
+    let cnt = if synced_files > 0 {
+        synced_files
+    } else {
+        std::fs::read_dir(&rulesets_dir)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| {
+                        e.path()
+                            .extension()
+                            .and_then(|x| x.to_str())
+                            .is_some_and(|ext| ext == "trs" || ext == "srs")
+                    })
+                    .count() as u64
+            })
+            .unwrap_or(0)
+    };
+    json!({
+        "ok": true,
+        "result": {
+            "lists_count": cnt,
+            "changed": any_changed,
+            "rulesets_dir": rulesets_dir.to_string_lossy(),
+            "message": format!("Синхронизировано наборов правил (.trs/.srs): {cnt}")
+        }
+    })
+}
+
 pub async fn start_list_update_async(core: &Arc<CoreManager>) -> Value {
     if LIST_UPDATE_IN_FLIGHT.swap(true, Ordering::SeqCst) {
         return read_list_update_status();
@@ -2249,7 +2845,7 @@ pub async fn start_list_update_async(core: &Arc<CoreManager>) -> Value {
             "message": "Скачивание списков и наборов правил...",
             "started_at": now,
         }));
-        let res = core_c.component_action("lists", "update", None).await;
+        let res = perform_list_update(&core_c).await;
         let ok = res.get("ok").and_then(Value::as_bool).unwrap_or(false);
         let msg = res
             .pointer("/result/message")
@@ -2277,6 +2873,72 @@ pub async fn start_list_update_async(core: &Arc<CoreManager>) -> Value {
     initial
 }
 
+pub async fn run_list_updates_if_due(core: &Arc<CoreManager>) -> bool {
+    let (enabled, interval_spec) = {
+        let d = core.state.data.read().await;
+        (
+            d.settings.list_update_enabled,
+            d.settings.update_interval.clone(),
+        )
+    };
+    if !enabled || list_interval_disabled(&interval_spec) {
+        return false;
+    }
+    let interval_secs = interval_to_secs(if interval_spec.trim().is_empty() {
+        "3h"
+    } else {
+        &interval_spec
+    });
+    let now = store::unix_now_secs();
+    let last_updated = read_list_update_status()
+        .get("updated_at")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if last_updated > 0 && now.saturating_sub(last_updated) < interval_secs {
+        return false;
+    }
+    let _ = start_list_update_async(core).await;
+    true
+}
+
+pub async fn start_list_update_if_due_async(core: &Arc<CoreManager>) -> Value {
+    let (enabled, interval_spec) = {
+        let d = core.state.data.read().await;
+        (
+            d.settings.list_update_enabled,
+            d.settings.update_interval.clone(),
+        )
+    };
+    if !enabled || list_interval_disabled(&interval_spec) {
+        return json!({
+            "success": true,
+            "running": false,
+            "completed": true,
+            "due": false,
+            "message": "Автообновление списков отключено"
+        });
+    }
+    let interval_secs = interval_to_secs(if interval_spec.trim().is_empty() {
+        "3h"
+    } else {
+        &interval_spec
+    });
+    let now = store::unix_now_secs();
+    let cur = read_list_update_status();
+    let last_updated = cur.get("updated_at").and_then(Value::as_i64).unwrap_or(0);
+    if last_updated > 0 && now.saturating_sub(last_updated) < interval_secs {
+        return json!({
+            "success": true,
+            "running": false,
+            "completed": true,
+            "due": false,
+            "updated_at": last_updated,
+            "message": "Списки актуальны"
+        });
+    }
+    start_list_update_async(core).await
+}
+
 fn interval_to_secs(spec: &str) -> i64 {
     let s = spec.trim().to_ascii_lowercase();
     if let Some(h) = s.strip_suffix('h').and_then(|n| n.parse::<i64>().ok()) {
@@ -2289,6 +2951,59 @@ fn interval_to_secs(spec: &str) -> i64 {
         return (m.max(5)) * 60;
     }
     12 * 3600
+}
+
+pub(crate) fn should_notify_update_available(d: &store::RouterStoreData, comp: &str) -> bool {
+    if !d.telegram.enabled || !d.telegram.notify_update_available {
+        return false;
+    }
+    if d.settings.component_auto_update_enabled {
+        let canon = canonical_component(comp);
+        if d.settings.component_auto_update_targets.is_empty()
+            || d.settings
+                .component_auto_update_targets
+                .iter()
+                .any(|t| t == "all" || canonical_component(t) == canon)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_check_cache_stale(cache_path: &Path, now: i64, ttl: i64) -> bool {
+    std::fs::read_to_string(cache_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|v| v.get("updated_at").and_then(Value::as_i64))
+        .map(|ts| now.saturating_sub(ts) >= ttl)
+        .unwrap_or(true)
+}
+
+fn is_cache_outdated(cache_path: &Path) -> bool {
+    std::fs::read_to_string(cache_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|v| v.get("status").and_then(Value::as_str).map(str::to_string))
+        .is_some_and(|s| s == "outdated")
+}
+
+async fn run_component_install_and_wait(core: &Arc<CoreManager>, comp: &str) {
+    let job = start_component_action(core, comp, "install", None).await;
+    let jid = job
+        .get("job_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if !jid.is_empty() {
+        for _ in 0..45 {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let st = read_job_status(&jid);
+            if st.get("running").and_then(Value::as_bool) != Some(true) {
+                break;
+            }
+        }
+    }
 }
 
 pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
@@ -2329,16 +3044,39 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
     let now = store::unix_now_secs();
     let check_ttl = interval_to_secs(&check_interval);
     let core_cache = Path::new(CHECK_CACHE_DIR).join("sing_box.json");
-    let cache_stale = std::fs::read_to_string(&core_cache)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .and_then(|v| v.get("updated_at").and_then(Value::as_i64))
-        .map(|ts| now.saturating_sub(ts) >= check_ttl)
-        .unwrap_or(true);
+    let tachyon_cache = Path::new(CHECK_CACHE_DIR).join("tachyon.json");
+    let core_stale = is_check_cache_stale(&core_cache, now, check_ttl);
+    let tachyon_stale = is_check_cache_stale(&tachyon_cache, now, check_ttl);
 
-    if cache_stale {
-        let _ = perform_check_update(core, "sing_box", None).await;
-        let _ = perform_check_update(core, "tachyon", None).await;
+    if core_stale || tachyon_stale {
+        if core_stale {
+            let _ = perform_check_update(core, "sing_box", None).await;
+        }
+        if tachyon_stale {
+            let _ = perform_check_update(core, "tachyon", None).await;
+        }
+
+        let d_snap = core.state.data.read().await.clone();
+        for comp in ["sing_box", "tachyon"] {
+            if !should_notify_update_available(&d_snap, comp) {
+                continue;
+            }
+            let cpath = Path::new(CHECK_CACHE_DIR).join(format!("{comp}.json"));
+            if let Ok(raw) = std::fs::read_to_string(&cpath)
+                && let Ok(v) = serde_json::from_str::<Value>(&raw)
+                && v.get("status").and_then(Value::as_str) == Some("outdated")
+            {
+                let cur = v
+                    .get("current_version")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let latest = v
+                    .get("latest_version")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                crate::tg_bot::submit_update_available_notice(&d_snap, comp, cur, latest);
+            }
+        }
     }
 
     if !auto_enabled {
@@ -2359,31 +3097,15 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
         }
     }
 
-    let wants_core =
-        targets.is_empty() || targets.iter().any(|t| canonical_component(t) == "sing_box");
-    if wants_core {
-        let outdated = std::fs::read_to_string(&core_cache)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-            .and_then(|v| v.get("status").and_then(Value::as_str).map(str::to_string))
-            .is_some_and(|s| s == "outdated");
-        if outdated {
-            let job = start_component_action(core, "sing_box", "install", None).await;
-            let jid = job
-                .get("job_id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if !jid.is_empty() {
-                for _ in 0..45 {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    let st = read_job_status(&jid);
-                    if st.get("running").and_then(Value::as_bool) != Some(true) {
-                        break;
-                    }
-                }
-            }
-        }
+    let wants_all = targets.is_empty() || targets.iter().any(|t| t == "all");
+    let wants_core = wants_all || targets.iter().any(|t| canonical_component(t) == "sing_box");
+    let wants_tachyon = wants_all || targets.iter().any(|t| canonical_component(t) == "tachyon");
+
+    if wants_core && is_cache_outdated(&core_cache) {
+        run_component_install_and_wait(core, "sing_box").await;
+    }
+    if wants_tachyon && is_cache_outdated(&tachyon_cache) {
+        run_component_install_and_wait(core, "tachyon").await;
     }
 }
 
@@ -2608,10 +3330,12 @@ mod tests {
         let target_root = base.join("root");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(stage.join("usr/bin")).unwrap();
+        std::fs::create_dir_all(stage.join("etc/init.d")).unwrap();
         std::fs::create_dir_all(stage.join("usr/share/tachyon")).unwrap();
         std::fs::create_dir_all(stage.join("www/luci-static/resources/view/tachyon")).unwrap();
         std::fs::create_dir_all(stage.join("htdocs/luci-static/resources/view/tachyon")).unwrap();
-        std::fs::write(stage.join("tachyon-aarch64-v2.0.0.tar.gz"), b"tar").unwrap();
+        std::fs::write(stage.join("tachyon-aarch64-v2.0.0.apk"), b"apk").unwrap();
+        std::fs::write(stage.join("etc/init.d/tachyon"), b"#!/bin/sh\n").unwrap();
         std::fs::write(stage.join("usr/bin/tachyon"), b"elf").unwrap();
         std::fs::write(
             stage.join("usr/share/tachyon/tachyon.ru.po"),
@@ -2638,8 +3362,20 @@ mod tests {
             .unwrap();
         assert_eq!(found, stage.join("usr/bin/tachyon"));
 
+        // Verify fallback search skips etc/init.d/tachyon even if etc/init.d/ is present
+        let fallback_stage = base.join("fallback_stage");
+        std::fs::create_dir_all(fallback_stage.join("etc/init.d")).unwrap();
+        std::fs::create_dir_all(fallback_stage.join("opt/tachyon")).unwrap();
+        std::fs::write(fallback_stage.join("etc/init.d/tachyon"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(fallback_stage.join("opt/tachyon/tachyon"), b"elf").unwrap();
+        let found_fallback = rt
+            .block_on(find_extracted_binary(&fallback_stage, "tachyon"))
+            .unwrap();
+        assert_eq!(found_fallback, fallback_stage.join("opt/tachyon/tachyon"));
+
         let first_sync = sync_staged_luci_assets(&stage, &target_root);
-        assert_eq!(first_sync, 3);
+        assert_eq!(first_sync, 4);
+        assert!(target_root.join("etc/init.d/tachyon").exists());
         assert!(target_root.join("usr/share/tachyon/tachyon.ru.po").exists());
         assert!(
             target_root
@@ -2715,6 +3451,77 @@ mod tests {
     }
 
     #[test]
+    fn test_select_openwrt_package_asset_all_arches_apk_and_ipk() {
+        let mut apk_and_ipk_assets = Vec::new();
+        let mut ipk_only_assets = Vec::new();
+        let mut apk_only_assets = Vec::new();
+        for arch in [
+            "x86_64",
+            "i386_pentium4",
+            "aarch64",
+            "armv7",
+            "armv6",
+            "riscv64",
+            "mipsel",
+            "mips",
+        ] {
+            let ipk = json!({
+                "name": format!("tachyon-{arch}-v2.0.0-beta.1.ipk"),
+                "browser_download_url": format!("https://example/tachyon-{arch}.ipk"),
+            });
+            let apk = json!({
+                "name": format!("tachyon-{arch}-v2.0.0-beta.1.apk"),
+                "browser_download_url": format!("https://example/tachyon-{arch}.apk"),
+            });
+            apk_and_ipk_assets.push(ipk.clone());
+            apk_and_ipk_assets.push(apk.clone());
+            ipk_only_assets.push(ipk);
+            apk_only_assets.push(apk);
+        }
+
+        let cases = [
+            ("DISTRIB_ARCH='x86_64'", "x86_64"),
+            ("DISTRIB_ARCH='i386_pentium4'", "i386_pentium4"),
+            ("DISTRIB_ARCH='aarch64_cortex-a53'", "aarch64"),
+            ("DISTRIB_ARCH='arm_cortex-a7_neon-vfpv4'", "armv7"),
+            ("DISTRIB_ARCH='arm_mpcore'", "armv6"),
+            ("DISTRIB_ARCH='riscv64_riscv64'", "riscv64"),
+            ("DISTRIB_ARCH='mipsel_24kc'", "mipsel"),
+            ("DISTRIB_ARCH='mips_24kc'", "mips"),
+        ];
+        for (distrib_arch, arch_name) in cases {
+            let kws = map_arch_str_to_keywords(distrib_arch);
+            assert_eq!(
+                select_openwrt_package_asset(&apk_and_ipk_assets, &kws, ".apk")
+                    .unwrap()
+                    .0,
+                format!("tachyon-{arch_name}-v2.0.0-beta.1.apk"),
+                "failed apk selection for {distrib_arch}"
+            );
+            assert_eq!(
+                select_openwrt_package_asset(&apk_and_ipk_assets, &kws, ".ipk")
+                    .unwrap()
+                    .0,
+                format!("tachyon-{arch_name}-v2.0.0-beta.1.ipk"),
+                "failed ipk selection for {distrib_arch}"
+            );
+            // Cross-format fallback when only one format is uploaded (no .tar.gz in release)
+            assert_eq!(
+                select_openwrt_package_asset(&ipk_only_assets, &kws, ".apk")
+                    .unwrap()
+                    .0,
+                format!("tachyon-{arch_name}-v2.0.0-beta.1.ipk"),
+            );
+            assert_eq!(
+                select_openwrt_package_asset(&apk_only_assets, &kws, ".ipk")
+                    .unwrap()
+                    .0,
+                format!("tachyon-{arch_name}-v2.0.0-beta.1.apk"),
+            );
+        }
+    }
+
+    #[test]
     fn test_select_release_asset_all_openwrt_arches() {
         let mut assets = Vec::new();
         for arch in [
@@ -2783,5 +3590,136 @@ mod tests {
                 "failed for {distrib_arch} (kws={kws:?})"
             );
         }
+    }
+
+    #[test]
+    fn test_should_notify_update_available_respects_auto_update_suppression() {
+        let mut d = store::RouterStoreData::default();
+        d.telegram.enabled = true;
+        d.telegram.notify_update_available = true;
+        d.settings.component_auto_update_enabled = false;
+        assert!(should_notify_update_available(&d, "tachyon"));
+        assert!(should_notify_update_available(&d, "sing_box"));
+
+        // Auto-update active with empty/all targets suppresses notifications
+        d.settings.component_auto_update_enabled = true;
+        assert!(!should_notify_update_available(&d, "tachyon"));
+        assert!(!should_notify_update_available(&d, "sing_box"));
+
+        // Specific target suppresses only matching component
+        d.settings.component_auto_update_targets = vec!["tachyon".to_string()];
+        assert!(!should_notify_update_available(&d, "tachyon"));
+        assert!(should_notify_update_available(&d, "sing_box"));
+
+        d.settings.component_auto_update_enabled = false;
+        d.telegram.notify_update_available = false;
+        assert!(!should_notify_update_available(&d, "sing_box"));
+    }
+
+    #[test]
+    fn test_sync_staged_luci_assets_includes_init_and_cgi_with_modes() {
+        let uniq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("tachyon_luci_modes_{uniq}"));
+        let stage = base.join("stage");
+        let root = base.join("root");
+        std::fs::create_dir_all(stage.join("etc/init.d")).unwrap();
+        std::fs::create_dir_all(stage.join("www/cgi-bin")).unwrap();
+        std::fs::create_dir_all(stage.join("www/luci-static/resources/view/tachyon")).unwrap();
+        std::fs::write(
+            stage.join("etc/init.d/tachyon"),
+            b"#!/bin/sh /etc/rc.common\n",
+        )
+        .unwrap();
+        std::fs::write(stage.join("www/cgi-bin/tachyon-sub"), b"#!/bin/sh\n").unwrap();
+        std::fs::write(
+            stage.join("www/luci-static/resources/view/tachyon/main.js"),
+            b"console.log('ok');",
+        )
+        .unwrap();
+
+        let changed = sync_staged_luci_assets(&stage, &root);
+        assert_eq!(changed, 3);
+        assert!(root.join("etc/init.d/tachyon").exists());
+        assert!(root.join("www/cgi-bin/tachyon-sub").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let init_mode = std::fs::metadata(root.join("etc/init.d/tachyon"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let cgi_mode = std::fs::metadata(root.join("www/cgi-bin/tachyon-sub"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let js_mode =
+                std::fs::metadata(root.join("www/luci-static/resources/view/tachyon/main.js"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777;
+            assert_eq!(init_mode, 0o755);
+            assert_eq!(cgi_mode, 0o755);
+            assert_eq!(js_mode, 0o644);
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_select_openwrt_package_asset_for_tachyon_core_prefers_apk_ipk_then_targz() {
+        let assets = vec![
+            json!({
+                "name": "libtachyon-arm64-v8a.so",
+                "browser_download_url": "https://example/libtachyon-arm64-v8a.so"
+            }),
+            json!({
+                "name": "tachyon-core-aarch64-linux-android-v0.6.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-core-aarch64-linux-android-v0.6.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-core-windows-amd64-v0.6.0.zip",
+                "browser_download_url": "https://example/tachyon-core-windows-amd64-v0.6.0.zip"
+            }),
+            json!({
+                "name": "tachyon-core-aarch64-v0.6.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-core-aarch64-v0.6.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-core-aarch64-v0.6.0.ipk",
+                "browser_download_url": "https://example/tachyon-core-aarch64-v0.6.0.ipk"
+            }),
+            json!({
+                "name": "tachyon-core-aarch64-v0.6.0.apk",
+                "browser_download_url": "https://example/tachyon-core-aarch64-v0.6.0.apk"
+            }),
+            json!({
+                "name": "tachyon-core-mipsel-v0.6.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-core-mipsel-v0.6.0.tar.gz"
+            }),
+        ];
+
+        assert_eq!(
+            select_openwrt_package_asset(&assets, &["aarch64", "arm64"], ".apk")
+                .unwrap()
+                .0,
+            "tachyon-core-aarch64-v0.6.0.apk"
+        );
+        assert_eq!(
+            select_openwrt_package_asset(&assets, &["aarch64", "arm64"], ".ipk")
+                .unwrap()
+                .0,
+            "tachyon-core-aarch64-v0.6.0.ipk"
+        );
+        assert_eq!(
+            select_openwrt_package_asset(&assets, &["mipsel"], ".apk")
+                .unwrap()
+                .0,
+            "tachyon-core-mipsel-v0.6.0.tar.gz"
+        );
     }
 }

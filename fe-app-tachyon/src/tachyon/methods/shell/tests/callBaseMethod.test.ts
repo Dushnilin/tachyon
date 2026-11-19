@@ -35,7 +35,7 @@ describe('callBaseMethod', () => {
 
   it('can return stdout for diagnostic commands with non-zero exit code', async () => {
     mocks.executeShellCommand.mockResolvedValue({
-      stdout: 'Global check run\n[FAIL] Sing-box process running',
+      stdout: 'Global check run\n[FAIL] Tachyon Core process running',
       stderr: '',
       code: 1,
     });
@@ -48,7 +48,7 @@ describe('callBaseMethod', () => {
 
     expect(response).toEqual({
       success: true,
-      data: 'Global check run\n[FAIL] Sing-box process running',
+      data: 'Global check run\n[FAIL] Tachyon Core process running',
     });
   });
 

@@ -62,9 +62,6 @@ const PROTOCOL_CHOICES = [
   ['tailscale', 'Tailscale'],
   ['tor', 'Tor'],
   ['desync', 'Native Desync'],
-  ['zapret2', 'Zapret2 (nfqws2)'],
-  ['zapret', 'Zapret (nfqws)'],
-  ['byedpi', 'ByeDPI (ciadpi)'],
   ['socks', 'SOCKS5 / Tor'],
   ['http', 'HTTP'],
   ['direct', 'Direct'],
@@ -104,7 +101,7 @@ const URLTEST_URL_CHOICES = [
   'https://captive.apple.com/hotspot-detect.html',
 ];
 
-const DPI_SOURCE_TYPES = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+const DPI_SOURCE_TYPES = new Set(['desync']);
 
 let cachedPoolChoices = null;
 let cachedPoolFetchedAt = 0;
@@ -424,7 +421,7 @@ function summarizeBalancer(sectionId) {
   ).toLowerCase();
   const resolveEntityName = (id) => {
     if (id === 'direct') return _('Direct Connection (Fallback)');
-    if (String(id).startsWith('srv:')) return `🎯 ${String(id).slice(4)}`;
+    if (String(id).startsWith('srv:')) return String(id).slice(4);
     return (
       uci.get(UCI_PACKAGE, id, 'name') ||
       uci.get(UCI_PACKAGE, id, 'label') ||

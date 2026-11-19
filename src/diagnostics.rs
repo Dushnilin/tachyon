@@ -329,6 +329,119 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         });
     }
 
+    let resolv_ok = if cfg!(windows) {
+        true
+    } else {
+        std::fs::read_to_string("/etc/resolv.conf")
+            .map(|raw| {
+                let has_ns = raw.lines().any(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with('#') && t.starts_with("nameserver")
+                });
+                if !has_ns {
+                    return false;
+                }
+                if !d.settings.dont_touch_dhcp {
+                    raw.contains("127.0.0.1") || raw.contains("::1")
+                } else {
+                    true
+                }
+            })
+            .unwrap_or(false)
+    };
+    if !resolv_ok {
+        findings.push(DoctorFinding {
+            id: "resolv_conf_invalid".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: "Некорректный системный /etc/resolv.conf".to_string(),
+            detail:
+                "Резолвер хоста роутера не указывает на локальный DNS (127.0.0.1) или отсутствует."
+                    .to_string(),
+            quick_fix_id: "fix_resolv_symlink".to_string(),
+            quick_fix_label: "Починить симлинк".to_string(),
+        });
+    }
+
+    let sub_has_issue = findings.iter().any(|f| f.id.starts_with("sub_empty_"))
+        || d.outbound_sources
+            .iter()
+            .any(|s| s.enabled && !s.sub_last_error.is_empty())
+        || d.outbound_sources.iter().filter(|s| s.enabled).count() == 0;
+    let balancer_has_issue = d
+        .balancers
+        .iter()
+        .any(|b| b.balancer_pool.is_empty() && b.priority_levels.is_empty())
+        || d.sections.iter().any(|s| {
+            s.enabled
+                && s.connection_type == "proxy"
+                && s.outbound_source_refs.is_empty()
+                && s.balancer_refs.is_empty()
+                && s.outbound_group_refs.is_empty()
+        });
+    let server_has_issue = d.servers.iter().any(|s| s.enabled)
+        && (!live.core_running
+            || d.servers.iter().any(|s| {
+                s.enabled
+                    && (s.listen_port == 0
+                        || (s.security == "tls" && s.tls_certificate_path.trim().is_empty()))
+            }));
+    let low_memory = findings.iter().any(|f| f.id == "low_memory");
+    let lkg_ready = state.lkg_path.exists();
+    let honeypot_triggered = !live.honeypot_hits.is_empty();
+    let dnsmasq_cascade_ok = if cfg!(windows) || d.settings.dont_touch_dhcp {
+        live.dns_healthy
+    } else {
+        let dropin_present = net_stack::collect_dnsmasq_conf_dirs_in(std::path::Path::new("/tmp"))
+            .into_iter()
+            .any(|dir| dir.join("tachyon.conf").exists());
+        let dnsmasq_running = sys_info::find_running_process_by_name("dnsmasq").is_some();
+        live.dns_healthy && dropin_present && dnsmasq_running
+    };
+    if !dnsmasq_cascade_ok && !cfg!(windows) {
+        findings.push(DoctorFinding {
+            id: "dnsmasq_cascade_broken".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: "Нарушен каскад dnsmasq -> 127.0.0.42#53".to_string(),
+            detail: "Отсутствует drop-in /tmp/dnsmasq*.d/tachyon.conf или остановлен dnsmasq."
+                .to_string(),
+            quick_fix_id: "fix_dnsmasq".to_string(),
+            quick_fix_label: "Перезапустить dnsmasq".to_string(),
+        });
+    }
+
+    let wan6_doc = crate::store::probe_wan6_runtime_state();
+    let ipv6_state_doc =
+        crate::store::resolve_effective_ipv6_state(&d.settings, wan6_doc.wan6_available);
+    let eff_dns_doc = crate::store::effective_dns_strategy(&d.settings, ipv6_state_doc);
+    let core_cfg_doc =
+        crate::core_mgr::CoreManager::effective_core_config_path_for(state, &d.settings);
+    if live.core_running
+        && d.settings.fakeip_enabled
+        && ipv6_state_doc.is_active()
+        && eff_dns_doc != "ipv4_only"
+        && !crate::core_mgr::CoreManager::core_config_ipv6_matches(
+            &core_cfg_doc,
+            &d,
+            ipv6_state_doc,
+        )
+    {
+        findings.push(DoctorFinding {
+            id: "fakeip6_config_drift".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: "FakeIPv6 в конфиге ядра не синхронизирован с активным IPv6".to_string(),
+            detail: format!(
+                "В {} отсутствует актуальный inet6_range для FakeIPv6 при активном состоянии IPv6 ({}).",
+                core_cfg_doc.display(),
+                ipv6_state_doc.as_str()
+            ),
+            quick_fix_id: "doctor_fix".to_string(),
+            quick_fix_label: "Автовосстановление конфига и IPv6 (doctor --fix)".to_string(),
+        });
+    }
+
     let checks_passed = checks_total.saturating_sub(findings.len());
     let healthy = !findings.iter().any(|f| f.severity == "critical");
     let summary = if findings.is_empty() {
@@ -340,7 +453,6 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         )
     };
 
-    let resolv_ok = cfg!(windows) || std::path::Path::new("/etc/resolv.conf").exists();
     let subsystems = vec![
         json!({"name": "1. Ядро tachyon-core", "status": if live.core_running { "ok" } else { "warn" }, "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024), "fix_id": "restart_core", "fix_label": "Перезапустить"}),
         json!({"name": "2. Таблица nftables TProxy", "status": if live.nft_table_active { "ok" } else { "warn" }, "detail": "inet TachyonTable :1602", "fix_id": "heal_network_stack", "fix_label": "Восстановить стек"}),
@@ -368,14 +480,14 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         }),
         json!({"name": "4. Внешний канал WAN", "status": if live.wan_healthy { "ok" } else { "warn" }, "detail": "Маршрут по умолчанию активен", "fix_id": "fix_wan_interface", "fix_label": "Проверить шлюз"}),
         json!({"name": "5. Секции маршрутизации", "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" }, "detail": format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len()), "fix_id": "enable_default_desync", "fix_label": "Включить секции"}),
-        json!({"name": "6. Источники и Подписки", "status": "ok", "detail": format!("Источников: {}", d.outbound_sources.len()), "fix_id": "update_subscriptions", "fix_label": "Обновить подписки"}),
-        json!({"name": "7. Балансировщики нагрузки", "status": "ok", "detail": format!("Алгоритмов: {}", d.balancers.len()), "fix_id": "restart_core", "fix_label": "Перепроверить"}),
-        json!({"name": "8. Входящие серверы", "status": "ok", "detail": format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len()), "fix_id": "restart_core", "fix_label": "Применить"}),
-        json!({"name": "9. Память ОЗУ и ZRAM", "status": "ok", "detail": format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576), "fix_id": "optimize_memory", "fix_label": "Сжать память"}),
+        json!({"name": "6. Источники и Подписки", "status": if sub_has_issue { "warn" } else { "ok" }, "detail": format!("Активно {} из {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len()), "fix_id": "update_subscriptions", "fix_label": "Обновить подписки"}),
+        json!({"name": "7. Балансировщики нагрузки", "status": if balancer_has_issue { "warn" } else { "ok" }, "detail": format!("Алгоритмов: {}", d.balancers.len()), "fix_id": "restart_core", "fix_label": "Перепроверить"}),
+        json!({"name": "8. Входящие серверы", "status": if server_has_issue { "warn" } else { "ok" }, "detail": format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len()), "fix_id": "restart_core", "fix_label": "Применить"}),
+        json!({"name": "9. Память ОЗУ и ZRAM", "status": if low_memory { "warn" } else { "ok" }, "detail": format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576), "fix_id": "optimize_memory", "fix_label": "Сжать память"}),
         json!({"name": "10. Системное время NTP", "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" }, "detail": "Синхронизировано для TLS 1.3 / Reality", "fix_id": "fix_system_time", "fix_label": "Синхронизировать NTP"}),
-        json!({"name": "11. Снимок LKG Watchdog", "status": "ok", "detail": if state.lkg_path.exists() { "Эталон сохранён" } else { "Готов к записи" }, "fix_id": "rollback_known_good", "fix_label": "Откат к эталону"}),
-        json!({"name": "12. Защита NAND и Honeypot", "status": "ok", "detail": format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len()), "fix_id": "flush_conntrack", "fix_label": "Сбросить сессии"}),
-        json!({"name": "13. Каскад dnsmasq -> FakeIP", "status": "ok", "detail": "noresolv=1 · 127.0.0.42#53", "fix_id": "fix_dnsmasq", "fix_label": "Перезапустить dnsmasq"}),
+        json!({"name": "11. Снимок LKG Watchdog", "status": if lkg_ready { "ok" } else { "warn" }, "detail": if lkg_ready { "Эталон сохранён" } else { "Эталон ещё не сохранён" }, "fix_id": "rollback_known_good", "fix_label": "Откат к эталону"}),
+        json!({"name": "12. Защита NAND и Honeypot", "status": if honeypot_triggered { "warn" } else { "ok" }, "detail": format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len()), "fix_id": "flush_conntrack", "fix_label": "Сбросить сессии"}),
+        json!({"name": "13. Каскад dnsmasq -> FakeIP", "status": if dnsmasq_cascade_ok { "ok" } else { "warn" }, "detail": if dnsmasq_cascade_ok { "noresolv=1 · 127.0.0.42#53" } else { "Проблема каскада dnsmasq/127.0.0.42#53" }, "fix_id": "fix_dnsmasq", "fix_label": "Перезапустить dnsmasq"}),
         json!({"name": "14. Системный /etc/resolv.conf", "status": if resolv_ok { "ok" } else { "warn" }, "detail": "Резолвер хоста роутера", "fix_id": "fix_resolv_symlink", "fix_label": "Починить симлинк"}),
         json!({"name": "15. Конфликты Firewall (Flow Offloading)", "status": if flow_offload_active { "warn" } else { "ok" }, "detail": if flow_offload_active { "Обнаружен Flow Offloading при TProxy/SQM" } else { "Конфликтов с netfilter/TProxy не обнаружено" }, "fix_id": "disable_flow_offloading", "fix_label": "Отключить Flow Offloading"}),
         json!({"name": "16. odhcpd IPv6 DNS", "status": if odhcpd_ok { "ok" } else { "warn" }, "detail": odhcpd_detail, "fix_id": "heal_network_stack", "fix_label": "Настроить стек IPv6/DNS"}),
@@ -399,9 +511,16 @@ pub async fn apply_quick_fix(
     fix_id: &str,
 ) -> anyhow::Result<String> {
     match fix_id {
-        "restart_core" | "start_core" => {
+        "restart_core" | "start_core" | "start_tachyon_core" => {
             core.apply_or_reload().await?;
             Ok("Ядро tachyon-core перезапущено и синхронизировано".to_string())
+        }
+        "doctor_fix" => {
+            if core.apply_or_reload().await.is_err() {
+                let _ = core.component_action("lists", "update", None).await;
+                core.apply_or_reload().await?;
+            }
+            Ok("Выполнено автовосстановление конфигурации, правил IPv6 и списков".to_string())
         }
         "heal_network_stack" | "rebuild_rules" | "reset_firewall" => {
             let snap = state.data.read().await.clone();
@@ -428,7 +547,7 @@ pub async fn apply_quick_fix(
             let _ = core.apply_or_reload().await;
             Ok("DNS переключён на защищённый DoH (Cloudflare + Google)".to_string())
         }
-        "clear_dns_cache" | "restart_core_dns" => {
+        "clear_dns_cache" | "restart_core_dns" | "restart_tachyon_core_dns" => {
             let _ = core
                 .clash_request("POST", "/configs?force=true", Some("{}"))
                 .await;
@@ -450,15 +569,30 @@ pub async fn apply_quick_fix(
             Ok("Служба dnsmasq перезапущена".to_string())
         }
         "fix_resolv_symlink" => {
-            if !cfg!(windows)
-                && std::path::Path::new("/tmp/resolv.conf.d/resolv.conf.auto").exists()
-            {
-                let _ = std::fs::remove_file("/etc/resolv.conf");
-                #[cfg(unix)]
-                let _ = std::os::unix::fs::symlink(
-                    "/tmp/resolv.conf.d/resolv.conf.auto",
-                    "/etc/resolv.conf",
-                );
+            if !cfg!(windows) {
+                let target = if state.data.read().await.settings.dont_touch_dhcp
+                    && std::path::Path::new("/tmp/resolv.conf.d/resolv.conf.auto").exists()
+                {
+                    "/tmp/resolv.conf.d/resolv.conf.auto"
+                } else {
+                    let local_resolv = std::path::Path::new("/tmp/resolv.conf");
+                    let needs_local = std::fs::read_to_string(local_resolv)
+                        .map(|s| s.trim().is_empty())
+                        .unwrap_or(true);
+                    if needs_local {
+                        let _ = crypto_gen::write_file_with_mode_if_changed(
+                            local_resolv,
+                            "search lan\nnameserver 127.0.0.1\nnameserver ::1\n",
+                            0o644,
+                        );
+                    }
+                    "/tmp/resolv.conf"
+                };
+                if std::path::Path::new(target).exists() {
+                    let _ = std::fs::remove_file("/etc/resolv.conf");
+                    #[cfg(unix)]
+                    let _ = std::os::unix::fs::symlink(target, "/etc/resolv.conf");
+                }
             }
             Ok("Симлинк /etc/resolv.conf проверен и восстановлен".to_string())
         }
@@ -466,6 +600,7 @@ pub async fn apply_quick_fix(
             let mut candidate = state.data.read().await.clone();
             candidate.settings.enable_watchdog = true;
             transaction::commit_transaction(state, candidate).await?;
+            core.set_manual_stop(false);
             Ok("Автономный Watchdog включён".to_string())
         }
         "optimize_memory" => {
@@ -947,6 +1082,39 @@ pub fn explain_route(
     explain_route_with_mac_table(store, client_ip, target, port, protocol, &mac_table)
 }
 
+fn domain_matches_excluded_token(target_lower: &str, raw_rule: &str) -> bool {
+    let clean = raw_rule.split('#').next().unwrap_or("").trim();
+    if clean.is_empty() || clean.starts_with("//") {
+        return false;
+    }
+    let lower = clean.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("full:") {
+        let host = rest.trim();
+        !host.is_empty() && target_lower == host
+    } else if let Some(rest) = lower
+        .strip_prefix("domain_keyword:")
+        .or_else(|| lower.strip_prefix("keyword:"))
+    {
+        let kw = rest.trim();
+        !kw.is_empty() && target_lower.contains(kw)
+    } else if let Some(rest) = lower
+        .strip_prefix("domain_regex:")
+        .or_else(|| lower.strip_prefix("regex:"))
+    {
+        let pat = rest.trim().trim_start_matches('^').trim_end_matches('$');
+        !pat.is_empty() && target_lower.contains(pat)
+    } else {
+        let dom = lower
+            .strip_prefix("domain_suffix:")
+            .or_else(|| lower.strip_prefix("domain:"))
+            .unwrap_or(&lower)
+            .trim()
+            .trim_start_matches("*.")
+            .trim_start_matches('.');
+        !dom.is_empty() && (target_lower == dom || target_lower.ends_with(&format!(".{dom}")))
+    }
+}
+
 fn explain_route_with_mac_table(
     store: &RouterStoreData,
     client_ip: &str,
@@ -1025,14 +1193,16 @@ fn explain_route_with_mac_table(
         };
 
         let is_excluded_port = sec.exclude_ports.iter().any(|p| p == &port.to_string());
-        let is_excluded_domain = sec.exclude_domains.iter().any(|d| {
-            let dl = d.trim().to_ascii_lowercase();
-            !dl.is_empty() && (target_lower == dl || target_lower.ends_with(&format!(".{dl}")))
-        });
-        let is_excluded_subnet = sec
-            .exclude_subnets
+        let is_excluded_domain = sec
+            .exclude_domains
             .iter()
-            .any(|s| s.trim().eq_ignore_ascii_case(&target_lower));
+            .any(|d| domain_matches_excluded_token(&target_lower, d));
+        let is_excluded_subnet = sec.exclude_subnets.iter().any(|s| {
+            let clean = s.trim();
+            !clean.is_empty()
+                && (clean.eq_ignore_ascii_case(&target_lower)
+                    || crate::store::ip_in_cidr(target.trim(), clean))
+        });
         if is_excluded_port || is_excluded_domain || is_excluded_subnet {
             continue;
         }
@@ -1134,6 +1304,8 @@ fn explain_route_with_mac_table(
             name: sec.label.clone(),
             condition_type: "atomic".to_string(),
             community_lists: sec.community_lists.clone(),
+            community_subnets: sec.community_subnets,
+            rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
             user_domains: combined_domains,
             exclude_domains: sec.exclude_domains.clone(),
             user_subnets: sec.user_subnets.clone(),
@@ -1270,7 +1442,28 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
             "oaistatic.com",
             "oaiusercontent.com",
         ]),
-        "ai" => has(&[
+        "qwen" => has(&[
+            "qwen.ai",
+            "chat.qwen.ai",
+            "qwenlm.ai",
+            "tongyi.com",
+            "tongyi.aliyun.com",
+            "dashscope.aliyuncs.com",
+            "modelscope.cn",
+        ]),
+        "kimi" => has(&[
+            "kimi.com",
+            "kimi.ai",
+            "kimi.moonshot.cn",
+            "moonshot.cn",
+            "byteoversea.com",
+            "volcengine.com",
+            "volces.com",
+            "bytedance.com",
+        ]),
+        "paas_db" => has(&["vercel.com", "supabase.com", "supabase.co", "neon.tech"]),
+        "kick" => has(&["kick.com"]),
+        "ai" | "ai_all" => has(&[
             "openai.com",
             "chatgpt.com",
             "claude.ai",
@@ -1282,6 +1475,14 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
             "deepseek.com",
             "huggingface.co",
             "mistral.ai",
+            "qwen.ai",
+            "chat.qwen.ai",
+            "qwenlm.ai",
+            "kimi.com",
+            "kimi.ai",
+            "kimi.moonshot.cn",
+            "byteoversea.com",
+            "volcengine.com",
         ]),
         "meta" => has(&[
             "instagram.com",
@@ -1336,6 +1537,102 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
         }
         _ => false,
     }
+}
+
+fn check_community_ip_match_in_dirs(
+    target_ip: &str,
+    community_name: &str,
+    dirs: &[std::path::PathBuf],
+) -> bool {
+    let target_t = target_ip.trim();
+    if target_t.parse::<std::net::IpAddr>().is_err() {
+        return false;
+    }
+    let name_lc = community_name.trim().to_ascii_lowercase();
+    if name_lc.is_empty() {
+        return false;
+    }
+    let canonical =
+        crate::config_gen::canonical_community_subnet_service(&name_lc).to_ascii_lowercase();
+    let mut names = vec![name_lc.as_str()];
+    if canonical != name_lc {
+        names.push(canonical.as_str());
+    }
+    for dir in dirs {
+        for name in &names {
+            let path = dir.join(format!("community-subnets-{name}.lst"));
+            if let Ok(raw) = std::fs::read_to_string(&path) {
+                for cidr in crate::config_gen::parse_valid_cidr_list(&raw) {
+                    if crate::store::ip_in_cidr(target_t, &cidr) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn default_community_subnet_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    for env_key in ["TMP_RULESET_FOLDER", "TACHYON_RULESETS_DIR"] {
+        if let Ok(val) = std::env::var(env_key) {
+            let t = val.trim();
+            if !t.is_empty() {
+                let p = std::path::PathBuf::from(t);
+                if !dirs.contains(&p) {
+                    dirs.push(p);
+                }
+            }
+        }
+    }
+    for fallback in [
+        "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+    ] {
+        let p = std::path::PathBuf::from(fallback);
+        if !dirs.contains(&p) {
+            dirs.push(p);
+        }
+    }
+    dirs
+}
+
+fn match_condition_community_lists_in_dirs(
+    cond: &crate::store::TrafficCondition,
+    target_lower: &str,
+    dirs: &[std::path::PathBuf],
+) -> Option<String> {
+    for list in &cond.community_lists {
+        let ll = list.trim().to_ascii_lowercase();
+        if !ll.is_empty()
+            && (match_list_tag_against_domain(&ll, target_lower)
+                || (cond.community_subnets
+                    && check_community_ip_match_in_dirs(target_lower, &ll, dirs)))
+        {
+            return Some(format!(
+                "Список сообщества trs-{list} в условии «{}»",
+                cond.name
+            ));
+        }
+    }
+
+    for rset in &cond.rule_set_with_subnets {
+        let clean = rset.trim();
+        if crate::config_gen::is_community_list_token(clean) {
+            let ll = clean.to_ascii_lowercase();
+            if match_list_tag_against_domain(&ll, target_lower)
+                || check_community_ip_match_in_dirs(target_lower, &ll, dirs)
+            {
+                return Some(format!(
+                    "Список с подсетями {clean} в условии «{}»",
+                    cond.name
+                ));
+            }
+        }
+    }
+    None
 }
 
 struct RouteMatchTarget<'a> {
@@ -1405,10 +1702,11 @@ fn match_condition_against_target_with_table(
     {
         return None;
     }
-    if cond.exclude_domains.iter().any(|d| {
-        let dl = d.trim().to_ascii_lowercase();
-        !dl.is_empty() && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
-    }) {
+    if cond
+        .exclude_domains
+        .iter()
+        .any(|d| domain_matches_excluded_token(ctx.target_lower, d))
+    {
         return None;
     }
 
@@ -1424,22 +1722,21 @@ fn match_condition_against_target_with_table(
     }
 
     if !cond.user_subnets.is_empty()
-        && cond
-            .user_subnets
-            .iter()
-            .any(|s| s.trim().eq_ignore_ascii_case(ctx.target_lower))
+        && cond.user_subnets.iter().any(|s| {
+            let clean = s.trim();
+            !clean.is_empty()
+                && (clean.eq_ignore_ascii_case(ctx.target_lower)
+                    || crate::store::ip_in_cidr(ctx.target_lower, clean))
+        })
     {
         return Some(format!("Подсеть в условии «{}»", cond.name));
     }
 
-    for list in &cond.community_lists {
-        let ll = list.trim().to_ascii_lowercase();
-        if !ll.is_empty() && match_list_tag_against_domain(&ll, ctx.target_lower) {
-            return Some(format!(
-                "Список сообщества trs-{list} в условии «{}»",
-                cond.name
-            ));
-        }
+    let comm_dirs = default_community_subnet_dirs();
+    if let Some(reason) =
+        match_condition_community_lists_in_dirs(cond, ctx.target_lower, &comm_dirs)
+    {
+        return Some(reason);
     }
 
     for gs in &cond.geosite_codes {
@@ -1454,6 +1751,7 @@ fn match_condition_against_target_with_table(
         && cond.ports.is_empty()
         && cond.user_subnets.is_empty()
         && cond.community_lists.is_empty()
+        && cond.rule_set_with_subnets.is_empty()
         && cond.geosite_codes.is_empty()
     {
         return Some(format!("Устройство/источник в условии «{}»", cond.name));
@@ -1502,15 +1800,186 @@ pub async fn run_dns_speed_test() -> Vec<DnsBenchmarkEntry> {
     out
 }
 
-/// Benchmark native `tachyon-core` desync presets in parallel (`Desync Fuzzer`).
+fn build_tls13_client_hello(sni: &str) -> Vec<u8> {
+    use rand::RngCore;
+    use x25519_dalek::{PublicKey, StaticSecret};
+
+    let mut random = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut random);
+    let mut session_id = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut session_id);
+    let mut raw_secret = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut raw_secret);
+    let secret = StaticSecret::from(raw_secret);
+    let pub_key = PublicKey::from(&secret);
+    let pub_bytes = pub_key.as_bytes();
+
+    let sni_bytes = sni.as_bytes();
+    let sni_ext_len = 5 + sni_bytes.len();
+    let mut exts = Vec::with_capacity(128 + sni_bytes.len());
+    // 0x0000: server_name
+    exts.extend_from_slice(&[0x00, 0x00]);
+    exts.extend_from_slice(&(sni_ext_len as u16).to_be_bytes());
+    exts.extend_from_slice(&((3 + sni_bytes.len()) as u16).to_be_bytes());
+    exts.push(0x00);
+    exts.extend_from_slice(&(sni_bytes.len() as u16).to_be_bytes());
+    exts.extend_from_slice(sni_bytes);
+    // 0x000a: supported_groups (x25519, secp256r1)
+    exts.extend_from_slice(&[0x00, 0x0a, 0x00, 0x06, 0x00, 0x04, 0x00, 0x1d, 0x00, 0x17]);
+    // 0x000d: signature_algorithms
+    exts.extend_from_slice(&[
+        0x00, 0x0d, 0x00, 0x0a, 0x00, 0x08, 0x04, 0x03, 0x08, 0x04, 0x08, 0x07, 0x04, 0x01,
+    ]);
+    // 0x002b: supported_versions (TLS 1.3 only: 0x0304)
+    exts.extend_from_slice(&[0x00, 0x2b, 0x00, 0x03, 0x02, 0x03, 0x04]);
+    // 0x0033: key_share (x25519)
+    exts.extend_from_slice(&[0x00, 0x33, 0x00, 0x26, 0x00, 0x24, 0x00, 0x1d, 0x00, 0x20]);
+    exts.extend_from_slice(pub_bytes);
+
+    let mut body = Vec::with_capacity(80 + exts.len());
+    body.extend_from_slice(&[0x03, 0x03]);
+    body.extend_from_slice(&random);
+    body.push(32);
+    body.extend_from_slice(&session_id);
+    // Cipher suites: TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256
+    body.extend_from_slice(&[0x00, 0x06, 0x13, 0x01, 0x13, 0x02, 0x13, 0x03]);
+    body.extend_from_slice(&[0x01, 0x00]); // legacy compression = null
+    body.extend_from_slice(&(exts.len() as u16).to_be_bytes());
+    body.extend_from_slice(&exts);
+
+    let hs_len = body.len();
+    let mut handshake = Vec::with_capacity(4 + hs_len);
+    handshake.push(0x01); // ClientHello
+    handshake.push(((hs_len >> 16) & 0xff) as u8);
+    handshake.push(((hs_len >> 8) & 0xff) as u8);
+    handshake.push((hs_len & 0xff) as u8);
+    handshake.extend_from_slice(&body);
+
+    let mut record = Vec::with_capacity(5 + handshake.len());
+    record.extend_from_slice(&[0x16, 0x03, 0x01]);
+    record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
+    record.extend_from_slice(&handshake);
+    record
+}
+
+/// Inspect a TLS record buffer for a ServerHello with `supported_versions == 0x0304` (TLS 1.3).
+/// Returns `(got_server_hello, is_tls13)`.
+fn inspect_tls_server_hello(buf: &[u8]) -> (bool, bool) {
+    if buf.len() < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
+        return (false, false);
+    }
+    let rec_len = u16::from_be_bytes([buf[3], buf[4]]) as usize;
+    let end = (5 + rec_len).min(buf.len());
+    let hs = &buf[5..end];
+    if hs.len() < 39 {
+        return (false, false);
+    }
+    let mut pos = 4 + 2 + 32; // hs header (4) + legacy_version (2) + random (32)
+    if pos >= hs.len() {
+        return (true, false);
+    }
+    let sid_len = hs[pos] as usize;
+    pos += 1 + sid_len + 2 + 1; // sid + cipher_suite (2) + compression (1)
+    if pos + 2 > hs.len() {
+        return (true, false);
+    }
+    let exts_len = u16::from_be_bytes([hs[pos], hs[pos + 1]]) as usize;
+    pos += 2;
+    let exts_end = (pos + exts_len).min(hs.len());
+    while pos + 4 <= exts_end {
+        let ext_type = u16::from_be_bytes([hs[pos], hs[pos + 1]]);
+        let ext_len = u16::from_be_bytes([hs[pos + 2], hs[pos + 3]]) as usize;
+        pos += 4;
+        if pos + ext_len > exts_end {
+            break;
+        }
+        if ext_type == 0x002b && ext_len >= 2 && hs[pos] == 0x03 && hs[pos + 1] == 0x04 {
+            return (true, true);
+        }
+        pos += ext_len;
+    }
+    (true, false)
+}
+
+async fn probe_tls_handshake(
+    addr: &str,
+    sni: &str,
+    split_chunks: usize,
+    inter_chunk_ms: u64,
+) -> (bool, bool, u32) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let start = Instant::now();
+    let Ok(Ok(mut stream)) =
+        tokio::time::timeout(Duration::from_millis(1600), TcpStream::connect(addr)).await
+    else {
+        return (false, false, 9999);
+    };
+    let _ = stream.set_nodelay(true);
+    let hello = build_tls13_client_hello(sni);
+    if split_chunks <= 1 || hello.len() <= 16 {
+        if stream.write_all(&hello).await.is_err() || stream.flush().await.is_err() {
+            return (false, false, 9999);
+        }
+    } else {
+        // Send TLS ClientHello across multiple TCP writes to exercise record/SNI segmentation
+        let rec_hdr = &hello[..5];
+        let payload = &hello[5..];
+        let step = (payload.len() / split_chunks).max(1);
+        let mut offset = 0usize;
+        let mut first = true;
+        while offset < payload.len() {
+            let end = (offset + step).min(payload.len());
+            if first {
+                if stream.write_all(rec_hdr).await.is_err() {
+                    return (false, false, 9999);
+                }
+                first = false;
+            }
+            if stream.write_all(&payload[offset..end]).await.is_err()
+                || stream.flush().await.is_err()
+            {
+                return (false, false, 9999);
+            }
+            offset = end;
+            if inter_chunk_ms > 0 && offset < payload.len() {
+                tokio::time::sleep(Duration::from_millis(inter_chunk_ms)).await;
+            }
+        }
+    }
+
+    let mut resp = [0u8; 512];
+    let n = match tokio::time::timeout(Duration::from_millis(1600), stream.read(&mut resp)).await {
+        Ok(Ok(n)) if n > 0 => n,
+        _ => return (false, false, 9999),
+    };
+    let ms = start.elapsed().as_millis().max(1) as u32;
+    let (got_sh, is_tls13) = inspect_tls_server_hello(&resp[..n]);
+    (got_sh, is_tls13, ms)
+}
+
+/// Benchmark native `tachyon-core` transport desync presets in parallel (`Desync Fuzzer`).
 pub async fn run_desync_fuzzer(target_host: &str) -> Vec<FuzzerStrategyResult> {
+    // (preset, label, tcp_split_chunks, inter_chunk_ms, probe_udp_quic)
     let presets = [
-        ("adaptive", "Adaptive Desync 2.0 (Auto-Tune)"),
-        ("tls_split", "TLS Record Split + SNI Fragment (pos=sni)"),
-        ("multisplit", "TCP Multi-Split (pos=1,midsld)"),
-        ("disorder", "TCP Reverse Disorder + Autottl"),
-        ("fake_split", "Cloned ClientHello Fake + Split"),
-        ("quic_fake", "QUIC Initial Fake + UDP Fragmentation"),
+        (
+            "adaptive",
+            "Adaptive Desync 2.0 (Auto-Tune)",
+            1usize,
+            0u64,
+            false,
+        ),
+        (
+            "tls_split",
+            "TLS Record Split + SNI Fragment (pos=sni)",
+            2,
+            2,
+            false,
+        ),
+        ("multisplit", "TCP Multi-Split (pos=1,midsld)", 4, 2, false),
+        ("disorder", "TCP Reverse Disorder + Autottl", 3, 5, false),
+        ("fake_split", "Cloned ClientHello Split", 5, 1, false),
+        ("quic_fake", "QUIC Initial Probe + UDP Framing", 1, 0, true),
     ];
     let host = if target_host.trim().is_empty() {
         "www.youtube.com".to_string()
@@ -1519,22 +1988,42 @@ pub async fn run_desync_fuzzer(target_host: &str) -> Vec<FuzzerStrategyResult> {
     };
 
     let mut handles = Vec::new();
-    for (preset, label) in presets {
+    for (preset, label, chunks, delay_ms, udp_probe) in presets {
         let h = host.clone();
         handles.push(tokio::spawn(async move {
-            let start = Instant::now();
+            let sni = h.split(':').next().unwrap_or(&h).to_string();
             let addr = if h.contains(':') {
-                h
+                h.clone()
             } else {
                 format!("{h}:443")
             };
-            let ok = tokio::time::timeout(Duration::from_millis(1800), TcpStream::connect(&addr))
-                .await
-                .is_ok_and(|r| r.is_ok());
-            let latency_ms = if ok {
-                start.elapsed().as_millis() as u32
+            let (ok, latency_ms) = if udp_probe {
+                let start = Instant::now();
+                let udp_ok = if let Ok(sock) = tokio::net::UdpSocket::bind("0.0.0.0:0").await {
+                    if sock.connect(&addr).await.is_ok() {
+                        // RFC 9000 QUIC v1 Initial-like padding probe (1200 bytes)
+                        let mut pkt = [0u8; 1200];
+                        pkt[0] = 0xc3;
+                        pkt[1..5].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+                        let _ = sock.send(&pkt).await;
+                        let mut rbuf = [0u8; 256];
+                        tokio::time::timeout(Duration::from_millis(1200), sock.recv(&mut rbuf))
+                            .await
+                            .is_ok_and(|r| r.is_ok_and(|n| n > 0))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if udp_ok {
+                    (true, start.elapsed().as_millis().max(1) as u32)
+                } else {
+                    (false, 0)
+                }
             } else {
-                0
+                let (got_sh, _, ms) = probe_tls_handshake(&addr, &sni, chunks, delay_ms).await;
+                (got_sh, if got_sh { ms } else { 0 })
             };
             FuzzerStrategyResult {
                 preset: preset.to_string(),
@@ -1585,24 +2074,14 @@ pub async fn scan_sni_domains(custom: Vec<String>) -> Vec<SniScanEntry> {
                 .next()
                 .unwrap_or(&dom)
                 .to_string();
-            let start = Instant::now();
-            let ok = tokio::time::timeout(
-                Duration::from_millis(1500),
-                TcpStream::connect(format!("{clean}:443")),
-            )
-            .await
-            .is_ok_and(|r| r.is_ok());
-            let ms = if ok {
-                start.elapsed().as_millis() as u32
-            } else {
-                9999
-            };
+            let addr = format!("{clean}:443");
+            let (got_sh, tls13, ms) = probe_tls_handshake(&addr, &clean, 1, 0).await;
             SniScanEntry {
                 domain: clean,
-                reachable: ok,
-                latency_ms: ms,
-                tls13: ok,
-                recommended: ok && ms < 180,
+                reachable: got_sh,
+                latency_ms: if got_sh { ms } else { 9999 },
+                tls13,
+                recommended: got_sh && tls13 && ms < 180,
             }
         }));
     }
@@ -1617,7 +2096,8 @@ pub async fn scan_sni_domains(custom: Vec<String>) -> Vec<SniScanEntry> {
     out
 }
 
-/// Parallel Service Availability & Unlock Probe (`POST /api/diagnostics/unlock-probe`).
+/// Parallel Service Availability & Unlock Probe (`POST /api/diagnostics/unlock-probe`),
+/// testing connectivity through local `service-mixed-in` when active (falling back to TLS probe if stopped).
 pub async fn run_unlock_probe() -> Vec<UnlockProbeEntry> {
     let services = [
         ("YouTube", "Media", "www.youtube.com:443"),
@@ -1630,27 +2110,70 @@ pub async fn run_unlock_probe() -> Vec<UnlockProbeEntry> {
         ("Telegram Web", "VoIP & Chat", "web.telegram.org:443"),
         ("OpenAI / ChatGPT", "AI", "chatgpt.com:443"),
         ("Claude / Anthropic", "AI", "claude.ai:443"),
+        ("Qwen", "AI", "chat.qwen.ai:443"),
+        ("Kimi", "AI", "kimi.com:443"),
+        ("Kick", "Media", "kick.com:443"),
         ("GitHub", "Dev", "github.com:443"),
         ("Docker Hub", "Dev", "hub.docker.com:443"),
+        ("Vercel", "Dev", "vercel.com:443"),
         ("Cloudflare", "CDN", "www.cloudflare.com:443"),
         ("Steam", "Gaming", "store.steampowered.com:443"),
     ];
+    let mixed_port = read_service_mixed_in_port();
+    let proxy_listening = tokio::time::timeout(
+        Duration::from_millis(300),
+        TcpStream::connect(("127.0.0.1", mixed_port)),
+    )
+    .await
+    .is_ok_and(|r| r.is_ok());
+    let proxy_url = format!("http://127.0.0.1:{mixed_port}");
+
     let mut handles = Vec::new();
     for (service, category, addr) in services {
+        let px = proxy_url.clone();
         handles.push(tokio::spawn(async move {
-            let start = Instant::now();
-            let ok = tokio::time::timeout(Duration::from_millis(1800), TcpStream::connect(addr))
-                .await
-                .is_ok_and(|r| r.is_ok());
-            let latency_ms = if ok {
-                start.elapsed().as_millis() as u32
+            let host = crate::config_gen::extract_host_only(addr);
+            let (ok, latency_ms) = if proxy_listening {
+                let start = Instant::now();
+                let mut cmd = Command::new("curl");
+                cmd.kill_on_drop(true).args([
+                    "-sS",
+                    "-o",
+                    "/dev/null",
+                    "-w",
+                    "%{http_code}",
+                    "--connect-timeout",
+                    "3",
+                    "--max-time",
+                    "5",
+                    "-x",
+                    &px,
+                    &format!("https://{host}/"),
+                ]);
+                let curl_ok = tokio::time::timeout(Duration::from_secs(6), cmd.output())
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .is_some_and(|out| {
+                        out.status.success()
+                            && String::from_utf8_lossy(&out.stdout)
+                                .trim()
+                                .parse::<u16>()
+                                .is_ok_and(|code| (200..500).contains(&code))
+                    });
+                if curl_ok {
+                    (true, start.elapsed().as_millis().max(1) as u32)
+                } else {
+                    (false, 0)
+                }
             } else {
-                0
+                let (got_sh, _, ms) = probe_tls_handshake(addr, &host, 1, 0).await;
+                (got_sh, if got_sh { ms } else { 0 })
             };
             UnlockProbeEntry {
                 service: service.to_string(),
                 category: category.to_string(),
-                host: crate::config_gen::extract_host_only(addr),
+                host,
                 reachable: ok,
                 latency_ms,
             }
@@ -2197,6 +2720,20 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
+    if ipv6_leaked {
+        crate::tg_bot::notify_if_enabled(
+            &d,
+            "dns_leak",
+            "Обнаружен риск прямой маршрутизации IPv6 при неактивной таблице nftables",
+        );
+    } else if live.core_running && !dns_port_open {
+        crate::tg_bot::notify_if_enabled(
+            &d,
+            "dns_leak",
+            "Локальный DNS-резолвер ядра 127.0.0.42:53 не отвечает — возможна утечка DNS",
+        );
+    }
+
     let verdict = if !live.core_running {
         "Ядро остановлено — используется системный DNS роутера".to_string()
     } else if ipv6_leaked {
@@ -2462,13 +2999,32 @@ pub(crate) fn parse_dns_a_response(buf: &[u8]) -> (bool, String) {
     (ok, ip)
 }
 
+pub(crate) fn build_dns_query_packet(domain: &str, qtype: u16) -> Option<Vec<u8>> {
+    let clean = domain.trim().trim_end_matches('.');
+    if clean.is_empty() || clean.len() > 253 {
+        return None;
+    }
+    let mut pkt = Vec::with_capacity(clean.len() + 18);
+    pkt.extend_from_slice(&[
+        0x54, 0x43, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ]);
+    for label in clean.split('.') {
+        let bytes = label.as_bytes();
+        if bytes.is_empty() || bytes.len() > 63 {
+            return None;
+        }
+        pkt.push(bytes.len() as u8);
+        pkt.extend_from_slice(bytes);
+    }
+    pkt.push(0x00);
+    pkt.extend_from_slice(&qtype.to_be_bytes());
+    pkt.extend_from_slice(&[0x00, 0x01]);
+    Some(pkt)
+}
+
 async fn send_dns_probe(qtype_low: u8) -> Option<Vec<u8>> {
     let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.ok()?;
-    let query: [u8; 35] = [
-        0x54, 0x43, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 5, b'p', b'r',
-        b'o', b'b', b'e', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
-        0x00, qtype_low, 0x00, 0x01,
-    ];
+    let query = build_dns_query_packet("probe.example.com", u16::from(qtype_low))?;
     tokio::time::timeout(
         Duration::from_millis(800),
         sock.send_to(&query, "127.0.0.42:53"),
@@ -2520,6 +3076,253 @@ pub async fn probe_local_fakeip_dns_with(
     (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed)
 }
 
+fn resolve_check_proxy_inbound_url(cfg_path: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(cfg_path).ok()?;
+    let val: Value = serde_json::from_str(&raw).ok()?;
+    let inbounds = val.get("inbounds")?.as_array()?;
+
+    let format_ep = |inb: &Value, default_port: u16| -> Option<String> {
+        let tag = inb.get("tag").and_then(Value::as_str).unwrap_or("");
+        if tag == "direct-bypass-in" {
+            return None;
+        }
+        let ib_type = inb
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !matches!(ib_type.as_str(), "mixed" | "http" | "socks")
+            && tag != "service-mixed-in"
+            && tag != "mixed-in"
+        {
+            return None;
+        }
+        let port = inb
+            .get("listen_port")
+            .and_then(Value::as_u64)
+            .and_then(|p| u16::try_from(p).ok())
+            .filter(|&p| p > 0)
+            .unwrap_or(default_port);
+        if port == 0 {
+            return None;
+        }
+        let mut host = inb
+            .get("listen")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if host.starts_with('[') && host.ends_with(']') && host.len() >= 2 {
+            host = &host[1..host.len() - 1];
+        }
+        let connect_host = if host.is_empty() || host == "0.0.0.0" || host == "::" {
+            "127.0.0.1"
+        } else {
+            host
+        };
+        let scheme = if ib_type == "socks" {
+            "socks5h"
+        } else {
+            "http"
+        };
+        let bracketed = if connect_host.contains(':') {
+            format!("[{connect_host}]")
+        } else {
+            connect_host.to_string()
+        };
+        Some(format!("{scheme}://{bracketed}:{port}"))
+    };
+
+    for inb in inbounds {
+        let tag = inb.get("tag").and_then(Value::as_str).unwrap_or("");
+        if (tag == "service-mixed-in" || tag == "mixed-in")
+            && let Some(url) = format_ep(inb, 4534)
+        {
+            return Some(url);
+        }
+    }
+    for pass_local in [true, false] {
+        for inb in inbounds {
+            let tag = inb.get("tag").and_then(Value::as_str).unwrap_or("");
+            let has_auth = inb
+                .get("users")
+                .and_then(Value::as_array)
+                .is_some_and(|u| !u.is_empty());
+            if has_auth || tag.starts_with("server-") {
+                continue;
+            }
+            if pass_local {
+                let listen = inb
+                    .get("listen")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if !matches!(
+                    listen,
+                    "" | "127.0.0.1" | "::1" | "[::1]" | "0.0.0.0" | "::" | "[::]"
+                ) {
+                    continue;
+                }
+            }
+            if let Some(url) = format_ep(inb, 0) {
+                return Some(url);
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn mask_proxy_probe_ip(raw_output: &str) -> Option<String> {
+    let mut ipv4_lines = Vec::new();
+    let mut ipv6_lines = Vec::new();
+    for raw_line in raw_output.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(ip) = line.parse::<std::net::IpAddr>() {
+            match ip {
+                std::net::IpAddr::V4(v4) => {
+                    ipv4_lines.push(format!("X.X.X.{}", v4.octets()[3]));
+                }
+                std::net::IpAddr::V6(v6) => {
+                    let segs = v6.segments();
+                    let masked = format!(
+                        "{:x}:{:x}:{:x}:{:x}:xxxx:xxxx:xxxx:xxxx",
+                        segs[0], segs[1], segs[2], segs[3]
+                    );
+                    ipv6_lines.push(masked);
+                }
+            }
+        }
+    }
+    if !ipv4_lines.is_empty() {
+        return Some(ipv4_lines.join("\n"));
+    }
+    if !ipv6_lines.is_empty() {
+        return Some(ipv6_lines.join("\n"));
+    }
+    None
+}
+
+pub(crate) fn is_retryable_proxy_probe_error(raw_output: &str) -> bool {
+    let lower = raw_output.to_ascii_lowercase();
+    lower.contains("rate limit")
+        || lower.contains("too many requests")
+        || lower.contains("429")
+        || lower.contains("timeout")
+        || lower.contains("temporarily unavailable")
+}
+
+/// Probe outbound proxy connectivity via `curl` through the active local mixed inbound (`check_proxy`).
+pub async fn run_proxy_check_cli(d: &RouterStoreData, core_running: bool) -> (i32, String) {
+    let cfg_path = std::env::var("TACHYON_CORE_CONFIG_PATH")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            if d.settings.core_config_path.trim().is_empty() {
+                "/etc/tachyon-core/config.json".to_string()
+            } else {
+                d.settings.core_config_path.clone()
+            }
+        });
+    let mut out_lines = vec![format!("Checking {cfg_path} configuration...")];
+    let Some(proxy_url) = resolve_check_proxy_inbound_url(&cfg_path) else {
+        out_lines.push("Local mixed proxy inbound not found".to_string());
+        out_lines.push(format!(
+            "Error: No local mixed inbound (service-mixed-in / mixed-in) configured in {cfg_path}"
+        ));
+        return (1, format!("{}\n", out_lines.join("\n")));
+    };
+    out_lines.push("Checking proxy connection...".to_string());
+    if !core_running {
+        out_lines.push("tachyon-core is not running".to_string());
+        out_lines.push(format!(
+            "Error: tachyon-core is not running (expected local mixed proxy at {proxy_url})"
+        ));
+        return (1, format!("{}\n", out_lines.join("\n")));
+    }
+
+    let probe_urls = [
+        "https://ifconfig.me/ip",
+        "https://api.ipify.org",
+        "https://icanhazip.com",
+    ];
+    let mut last_error = String::new();
+    for probe_url in probe_urls {
+        let mut cmd = Command::new("curl");
+        cmd.kill_on_drop(true).args([
+            "-fsSL",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "10",
+            "--proxy",
+            &proxy_url,
+            probe_url,
+        ]);
+        match tokio::time::timeout(Duration::from_secs(12), cmd.output()).await {
+            Ok(Ok(res)) => {
+                let stdout_str = String::from_utf8_lossy(&res.stdout);
+                let stderr_str = String::from_utf8_lossy(&res.stderr);
+                let combined = if stderr_str.trim().is_empty() {
+                    stdout_str.to_string()
+                } else if stdout_str.trim().is_empty() {
+                    stderr_str.to_string()
+                } else {
+                    format!("{stdout_str} | {stderr_str}")
+                };
+                let trimmed = combined.trim();
+                if !res.status.success() {
+                    last_error = if trimmed.is_empty() {
+                        format!(
+                            "curl exited with status {:?} for {probe_url}",
+                            res.status.code()
+                        )
+                    } else {
+                        trimmed.replace(['\r', '\n'], " | ")
+                    };
+                    continue;
+                }
+                if is_retryable_proxy_probe_error(&combined) {
+                    let snippet: String = trimmed.chars().take(120).collect();
+                    last_error = format!("Retryable error response from {probe_url}: {snippet}");
+                    continue;
+                }
+                if let Some(masked) = mask_proxy_probe_ip(&stdout_str) {
+                    out_lines.push(format!("{masked} - should match proxy IP"));
+                    return (0, format!("{}\n", out_lines.join("\n")));
+                }
+                let snippet: String = trimmed.chars().take(200).collect();
+                last_error = if snippet.is_empty() {
+                    format!("Empty response from {probe_url}")
+                } else {
+                    format!("Invalid IP response from {probe_url}: {snippet}")
+                };
+            }
+            Ok(Err(e)) => {
+                last_error = format!("Failed to execute curl for {probe_url}: {e}");
+            }
+            Err(_) => {
+                last_error = format!("Timed out probing {probe_url}");
+            }
+        }
+    }
+    out_lines.push(format!(
+        "Failed to get valid IP address after {} attempts",
+        probe_urls.len()
+    ));
+    out_lines.push(format!(
+        "Error: {}",
+        if last_error.is_empty() {
+            "Empty response"
+        } else {
+            &last_error
+        }
+    ));
+    (1, format!("{}\n", out_lines.join("\n")))
+}
+
 fn read_service_mixed_in_port() -> u16 {
     std::fs::read_to_string("/etc/tachyon-core/config.json")
         .ok()
@@ -2540,6 +3343,64 @@ fn read_service_mixed_in_port() -> u16 {
         .unwrap_or(4534)
 }
 
+fn read_fakeip_probe_proxy_port_from_str(raw: &str) -> u16 {
+    let Some(v) = serde_json::from_str::<Value>(raw).ok() else {
+        return 4534;
+    };
+    let Some(arr) = v.get("inbounds").and_then(Value::as_array) else {
+        return 4534;
+    };
+    let port_for_tag = |tag: &str| {
+        arr.iter().find_map(|ib| {
+            if ib.get("tag").and_then(Value::as_str) == Some(tag) {
+                ib.get("listen_port")
+                    .and_then(Value::as_u64)
+                    .and_then(|p| u16::try_from(p).ok())
+                    .filter(|&p| p > 0)
+            } else {
+                None
+            }
+        })
+    };
+    if let Some(p) = port_for_tag("diag-proxy-in") {
+        return p;
+    }
+    if let Some(p) = port_for_tag("tg-bot-in") {
+        let tg_routed_to_proxy = v
+            .get("route")
+            .and_then(|r| r.get("rules"))
+            .and_then(Value::as_array)
+            .is_some_and(|rules| {
+                rules.iter().any(|rule| {
+                    rule.get("inbound")
+                        .and_then(Value::as_array)
+                        .is_some_and(|ibs| ibs.iter().any(|x| x.as_str() == Some("tg-bot-in")))
+                        && rule
+                            .get("outbound")
+                            .and_then(Value::as_str)
+                            .is_some_and(|o| {
+                                o != "direct" && o != "block" && !o.starts_with("desync-")
+                            })
+                })
+            });
+        if tg_routed_to_proxy {
+            return p;
+        }
+    }
+    port_for_tag("service-mixed-in").unwrap_or(4534)
+}
+
+fn read_fakeip_probe_proxy_port(cfg_path: &str) -> u16 {
+    let path = if cfg_path.trim().is_empty() {
+        "/etc/tachyon-core/config.json"
+    } else {
+        cfg_path.trim()
+    };
+    std::fs::read_to_string(path)
+        .map(|raw| read_fakeip_probe_proxy_port_from_str(&raw))
+        .unwrap_or(4534)
+}
+
 fn extract_trace_ip(text: &str) -> Option<String> {
     text.lines().find_map(|line| {
         line.trim()
@@ -2552,7 +3413,7 @@ fn extract_trace_ip(text: &str) -> Option<String> {
 
 async fn run_curl_trace_ip(mut cmd: Command) -> Option<String> {
     cmd.kill_on_drop(true);
-    let out = tokio::time::timeout(Duration::from_secs(4), cmd.output())
+    let out = tokio::time::timeout(Duration::from_secs(9), cmd.output())
         .await
         .ok()?
         .ok()?;
@@ -2624,6 +3485,25 @@ pub(crate) fn format_fakeip_probe_payload(input: FakeIpProbePayloadInput<'_>) ->
     }
 }
 
+/// Resolve effective directory for `.trs`/`.srs` rule lists without wearing NAND flash in `lite_mode`.
+pub fn effective_rulesets_dir(settings: &crate::store::GlobalSettings) -> std::path::PathBuf {
+    let raw = settings.rulesets_dir.trim();
+    if settings.lite_mode && (raw.is_empty() || raw.starts_with("/etc/tachyon")) {
+        return crate::store::runtime_state_dir().join("rulesets");
+    }
+    if raw.is_empty() {
+        std::path::PathBuf::from("/etc/tachyon/rulesets")
+    } else {
+        std::path::PathBuf::from(raw)
+    }
+}
+
+/// Periodic background tick for scheduled `.trs`/`.srs` rule-list updates.
+/// Checks `list_update_enabled` and `update_interval`, downloading into `effective_rulesets_dir`.
+pub async fn tick_list_updates_if_due(core: &Arc<CoreManager>) -> bool {
+    crate::updater::run_list_updates_if_due(core).await
+}
+
 /// Self-contained FakeIP & public exit IP probe for frontend diagnostics.
 pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
     let d = state.data.read().await.clone();
@@ -2632,26 +3512,37 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
         .unwrap_or_default();
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
     if via_proxy {
-        let (v4_ok, dns_ip, v6_ok, v6_ip, aaaa_suppressed) = probe_local_fakeip_dns_with(
+        let (v4_ok, _dns_ip, v6_ok, v6_ip, aaaa_suppressed) = probe_local_fakeip_dns_with(
             &d.settings.fakeip_inet4_range,
             &d.settings.fakeip_inet6_range,
             ipv6_state.is_active(),
         )
         .await;
-        let port = read_service_mixed_in_port();
+        let port = read_fakeip_probe_proxy_port(&d.settings.core_config_path);
         let proxy_url = format!("http://127.0.0.1:{port}");
-        let mut cmd = Command::new("curl");
-        cmd.args([
-            "-fsSL",
-            "--connect-timeout",
-            "2",
-            "--max-time",
-            "4",
-            "-x",
-            &proxy_url,
+        let mut exit_ip = String::new();
+        for url in [
             "https://cloudflare.com/cdn-cgi/trace",
-        ]);
-        let exit_ip = run_curl_trace_ip(cmd).await.unwrap_or(dns_ip);
+            "https://1.1.1.1/cdn-cgi/trace",
+        ] {
+            let mut cmd = Command::new("curl");
+            cmd.args([
+                "-fsSL",
+                "--connect-timeout",
+                "5",
+                "--max-time",
+                "8",
+                "-x",
+                &proxy_url,
+                url,
+            ]);
+            if let Some(ip) = run_curl_trace_ip(cmd).await
+                && !ip.is_empty()
+            {
+                exit_ip = ip;
+                break;
+            }
+        }
         format_fakeip_probe_payload(FakeIpProbePayloadInput {
             d: &d,
             ipv6_state,
@@ -2669,11 +3560,16 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
             "--noproxy",
             "*",
             "--connect-timeout",
-            "2",
-            "--max-time",
             "4",
+            "--max-time",
+            "7",
             "https://1.1.1.1/cdn-cgi/trace",
         ]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            cmd.as_std_mut().gid(net_stack::DIRECT_PROBE_SKGID);
+        }
         let direct_ip = run_curl_trace_ip(cmd).await.unwrap_or_default();
         format_fakeip_probe_payload(FakeIpProbePayloadInput {
             d: &d,
@@ -3020,5 +3916,188 @@ IP address       HW type     Flags       HW address            Mask     Device
         assert_eq!(probe_proxy["IPv4"], "203.0.113.5");
         assert_eq!(probe_proxy["fakeip_inet4_range"], "198.18.0.0/16");
         assert_eq!(probe_proxy["fakeip_inet6_range"], "fd12::/64");
+    }
+
+    #[test]
+    fn test_effective_rulesets_dir_and_tls13_and_cidr_explain() {
+        let mut settings = crate::store::GlobalSettings {
+            lite_mode: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            effective_rulesets_dir(&settings),
+            std::path::PathBuf::from("/etc/tachyon/rulesets")
+        );
+        settings.lite_mode = true;
+        assert_eq!(
+            effective_rulesets_dir(&settings),
+            crate::store::runtime_state_dir().join("rulesets")
+        );
+
+        let hello = build_tls13_client_hello("example.com");
+        assert!(hello.len() > 80);
+        assert_eq!(hello[0], 0x16);
+        assert_eq!(hello[5], 0x01);
+
+        // Synthetic TLS 1.3 ServerHello with supported_versions (0x002b) = 0x0304
+        let mut sh = vec![
+            0x16, 0x03, 0x03, 0x00, 0x30, 0x02, 0x00, 0x00, 0x2c, 0x03, 0x03,
+        ];
+        sh.extend_from_slice(&[0u8; 32]); // random
+        sh.push(0); // sid len
+        sh.extend_from_slice(&[0x13, 0x01, 0x00]); // cipher + comp
+        sh.extend_from_slice(&[0x00, 0x06, 0x00, 0x2b, 0x00, 0x02, 0x03, 0x04]);
+        let payload_len = (sh.len() - 5) as u16;
+        sh[3..5].copy_from_slice(&payload_len.to_be_bytes());
+        let hs_len = (sh.len() - 9) as u32;
+        sh[6] = ((hs_len >> 16) & 0xff) as u8;
+        sh[7] = ((hs_len >> 8) & 0xff) as u8;
+        sh[8] = (hs_len & 0xff) as u8;
+        assert_eq!(inspect_tls_server_hello(&sh), (true, true));
+
+        let mut store = RouterStoreData::default();
+        store.sections[0].enabled = true;
+        store.sections[0].action = "proxy".to_string();
+        store.sections[0].exclude_subnets = vec!["10.20.0.0/16".to_string()];
+        let excl_res = explain_route(&store, "192.168.1.50", "10.20.30.40", 443, "tcp");
+        assert_eq!(excl_res.matched_section, "Прямой маршрут (Direct)");
+    }
+
+    #[test]
+    fn test_excluded_domain_prefixes_and_proxy_probe_helpers() {
+        let store = RouterStoreData {
+            sections: vec![RoutingSection {
+                id: "sec_blk".to_string(),
+                enabled: true,
+                label: "Block".to_string(),
+                action: "block".to_string(),
+                connection_type: "block".to_string(),
+                user_domains: vec!["example.com".to_string()],
+                exclude_domains: vec![
+                    "full:good.example.com".to_string(),
+                    "keyword:safe".to_string(),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let res_good = explain_route(&store, "192.168.1.50", "good.example.com", 443, "tcp");
+        assert_ne!(res_good.selected_outbound, "block");
+        let res_bad = explain_route(&store, "192.168.1.50", "bad.example.com", 443, "tcp");
+        assert_eq!(res_bad.selected_outbound, "block");
+
+        assert_eq!(
+            mask_proxy_probe_ip("203.0.113.42\n").as_deref(),
+            Some("X.X.X.42")
+        );
+        assert!(is_retryable_proxy_probe_error("HTTP 429 Too Many Requests"));
+        assert!(!is_retryable_proxy_probe_error("203.0.113.42"));
+
+        let cfg_with_diag = json!({
+            "inbounds": [
+                { "tag": "service-mixed-in", "listen_port": 4534 },
+                { "tag": "tg-bot-in", "listen_port": 4535 },
+                { "tag": "diag-proxy-in", "listen_port": 4536 }
+            ],
+            "route": {
+                "rules": [
+                    { "inbound": ["tg-bot-in"], "outbound": "direct" },
+                    { "inbound": ["diag-proxy-in"], "outbound": "sel-Main" }
+                ]
+            }
+        })
+        .to_string();
+        assert_eq!(read_fakeip_probe_proxy_port_from_str(&cfg_with_diag), 4536);
+
+        let cfg_fallback = json!({
+            "inbounds": [
+                { "tag": "service-mixed-in", "listen_port": 4534 },
+                { "tag": "tg-bot-in", "listen_port": 4535 }
+            ],
+            "route": {
+                "rules": [
+                    { "inbound": ["tg-bot-in"], "outbound": "direct" }
+                ]
+            }
+        })
+        .to_string();
+        assert_eq!(read_fakeip_probe_proxy_port_from_str(&cfg_fallback), 4534);
+    }
+
+    #[test]
+    fn test_community_subnet_ip_match_refilter_and_aliases() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_diag_sub_{}_{uniq}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("community-subnets-refilter.lst"),
+            "203.0.113.0/24\n2001:db8:4::/48\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("community-subnets-antifilter.lst"),
+            "198.51.100.10\n",
+        )
+        .unwrap();
+
+        let dirs = vec![dir.clone()];
+        assert!(check_community_ip_match_in_dirs(
+            "203.0.113.42",
+            "refilter",
+            &dirs
+        ));
+        assert!(check_community_ip_match_in_dirs(
+            "2001:db8:4::99",
+            "refilter",
+            &dirs
+        ));
+        assert!(check_community_ip_match_in_dirs(
+            "198.51.100.10",
+            "antifilter_community",
+            &dirs
+        ));
+        assert!(!check_community_ip_match_in_dirs(
+            "198.51.100.11",
+            "antifilter_community",
+            &dirs
+        ));
+
+        let cond_on = crate::store::TrafficCondition {
+            id: "c1".to_string(),
+            enabled: true,
+            name: "Refilter".to_string(),
+            community_lists: vec!["refilter".to_string(), "antifilter_community".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        };
+        assert!(match_condition_community_lists_in_dirs(&cond_on, "203.0.113.42", &dirs).is_some());
+
+        let cond_off = crate::store::TrafficCondition {
+            community_subnets: false,
+            ..cond_on
+        };
+        assert!(
+            match_condition_community_lists_in_dirs(&cond_off, "203.0.113.42", &dirs).is_none()
+        );
+
+        let cond_explicit = crate::store::TrafficCondition {
+            id: "c2".to_string(),
+            enabled: true,
+            name: "RefilterSub".to_string(),
+            community_subnets: false,
+            rule_set_with_subnets: vec!["refilter".to_string()],
+            ..Default::default()
+        };
+        assert!(
+            match_condition_community_lists_in_dirs(&cond_explicit, "203.0.113.42", &dirs)
+                .is_some()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

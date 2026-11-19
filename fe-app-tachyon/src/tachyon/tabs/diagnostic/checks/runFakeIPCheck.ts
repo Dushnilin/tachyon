@@ -68,10 +68,14 @@ export async function runFakeIPCheck() {
       routerFakeIPResponse.success && routerFakeIPResponse.data.fakeip,
     browserFakeIP:
       checkFakeIPResponse.success && checkFakeIPResponse.data.fakeip,
-    canComparePublicIP: checkFakeIPResponse.success && checkIPResponse.success,
+    canComparePublicIP:
+      checkFakeIPResponse.success &&
+      checkIPResponse.success &&
+      Boolean(checkFakeIPResponse.data.IP && checkIPResponse.data.IP),
     differentIP:
       checkFakeIPResponse.success &&
       checkIPResponse.success &&
+      Boolean(checkFakeIPResponse.data.IP && checkIPResponse.data.IP) &&
       checkFakeIPResponse.data.IP !== checkIPResponse.data.IP,
   };
 

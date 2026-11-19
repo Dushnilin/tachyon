@@ -150,14 +150,7 @@ export interface RouteExplainResult {
     port: number;
     proto: string;
   };
-  verdict?:
-    | 'proxied'
-    | 'direct'
-    | 'blocked'
-    | 'zapret'
-    | 'byedpi'
-    | 'local'
-    | string;
+  verdict?: 'proxied' | 'direct' | 'blocked' | 'desync' | 'local' | string;
   matched_section?: string | null;
   matched_rule?: {
     type: string;
@@ -242,12 +235,14 @@ export class RuntimeClient {
     }
   }
 
-  async getSingBoxStatus(): Promise<Tachyon.GetSingBoxStatus | undefined> {
+  async getTachyonCoreStatus(): Promise<
+    Tachyon.GetTachyonCoreStatus | undefined
+  > {
     try {
-      const res = await TachyonShellMethods.getSingBoxStatus();
+      const res = await TachyonShellMethods.getTachyonCoreStatus();
       return res.success ? res.data : undefined;
     } catch (err) {
-      logger.error('[RUNTIME_CLIENT] getSingBoxStatus error:', err);
+      logger.error('[RUNTIME_CLIENT] getTachyonCoreStatus error:', err);
       return undefined;
     }
   }

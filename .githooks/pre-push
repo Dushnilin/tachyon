@@ -5,9 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "==> [pre-push] Checking Rust formatting, lints, and unit tests..."
-cargo fmt --all --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+CARGO_INCREMENTAL=0 cargo fmt --all --check
+CARGO_INCREMENTAL=0 cargo clippy --bins -- -D warnings
+CARGO_INCREMENTAL=0 cargo clippy --tests -- -D warnings
+CARGO_INCREMENTAL=0 cargo test --locked
 
 echo "==> [pre-push] Auditing Pure-Rust dependency tree (aarch64-unknown-linux-musl)..."
 bad_deps="$(

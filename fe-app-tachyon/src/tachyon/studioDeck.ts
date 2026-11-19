@@ -3,6 +3,7 @@ import { parseValueList } from '../helpers/parseValueList';
 import { formatSubscriptionBytes } from '../helpers/prettyBytes';
 import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
+import { decodeSubHeaderValue } from '../helpers/decodeSubHeader';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
 import { getRouterUiPrefs, setRouterUiPrefs } from './helpers/uiPrefs';
@@ -52,6 +53,7 @@ import {
   renderActivityIcon,
   renderAlertTriangleIcon,
   renderCommunityListServiceIcon,
+  renderLoaderCircleIcon24,
   renderRefreshCwIcon,
   renderChevronDownIcon,
   renderChevronUpIcon,
@@ -81,6 +83,32 @@ export interface StudioDeckMountOptions {
 
 function asArray(val: unknown): string[] {
   return parseValueList(val);
+}
+
+function isSubUrlString(val: string): boolean {
+  return /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
+}
+
+function getSubUrlsFromSource(src: any): string[] {
+  if (!src || typeof src !== 'object') return [];
+  const rawName = String(src.name || '').trim();
+  const stype = String(
+    src.source_type || src.type || 'subscription',
+  ).toLowerCase();
+  const arr = [
+    ...asArray(src.subscription_urls),
+    ...asArray(src.urls),
+    ...(src.url ? [String(src.url).trim()] : []),
+  ]
+    .map((u) => String(u || '').trim())
+    .filter(Boolean);
+  if (arr.length > 0) {
+    return Array.from(new Set(arr));
+  }
+  if (stype === 'subscription' && isSubUrlString(rawName)) {
+    return [rawName];
+  }
+  return [];
 }
 
 function extractSourceLinks(raw: any): string[] {
@@ -484,12 +512,7 @@ function resolveSectionTelemetry(sid: string): {
   });
 
   const hasDpiSource =
-    ['desync', 'zapret', 'zapret2', 'byedpi'].includes(actionRaw) ||
-    sources.some((s) =>
-      ['desync', 'zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
-        s.type,
-      ),
-    );
+    actionRaw === 'desync' || sources.some((s) => s.type === 'desync');
 
   let actionLabel = tr('Прокси / Туннель', 'Proxy / Tunnel');
   let actionTone: 'proxy' | 'dpi' | 'block' | 'bypass' | 'dns' = 'proxy';
@@ -503,7 +526,7 @@ function resolveSectionTelemetry(sid: string): {
     actionLabel = 'DNS';
     actionTone = 'dns';
   } else if (hasDpiSource) {
-    actionLabel = tr('Обход DPI (Desync)', 'DPI Desync');
+    actionLabel = tr('Десинхронизация (Desync)', 'Packet Desync');
     actionTone = 'dpi';
   } else {
     actionLabel = tr('Туннель / Прокси', 'Connection');
@@ -533,12 +556,8 @@ function resolveSectionTelemetry(sid: string): {
       protoSet.add('WARP');
     } else if (s.type === 'awg' || s.type === 'amnezia_config') {
       protoSet.add('AmneziaWG');
-    } else if (
-      ['desync', 'zapret2', 'zapret', 'byedpi', 'wdtt', 'olcrtc'].includes(
-        s.type,
-      )
-    ) {
-      protoSet.add(s.type.toUpperCase());
+    } else if (s.type === 'desync') {
+      protoSet.add('DESYNC');
     } else if (s.type) {
       protoSet.add(s.type.toUpperCase());
     }
@@ -732,10 +751,41 @@ function getBalancerEngineCapabilities(): {
   supportsNativeTachyonBalancers: boolean;
   supportsPoolModes: boolean;
 } {
+  let sysInfo: Record<string, any> = {};
+  try {
+    const storeMod = (globalThis as any).tachyonStore || null;
+    sysInfo =
+      (storeMod && typeof storeMod.get === 'function'
+        ? storeMod.get()?.systemInfoWidget?.data
+        : null) || {};
+  } catch {
+    // ignore
+  }
+
+  const isTachyonCore = true;
+  const tcVersion = String(sysInfo.tachyon_core_version || '').trim();
+  const parseSemverAtLeast = (
+    ver: string,
+    minMaj: number,
+    minMin: number,
+    minPatch: number,
+  ): boolean => {
+    const m = ver.match(/(\d+)\.(\d+)\.(\d+)/);
+    if (!m) return true;
+    const maj = Number(m[1] || 0);
+    const min = Number(m[2] || 0);
+    const pat = Number(m[3] || 0);
+    if (maj !== minMaj) return maj > minMaj;
+    if (min !== minMin) return min > minMin;
+    return pat >= minPatch;
+  };
+  const supportsNativeTachyonBalancers =
+    Boolean(sysInfo.tachyon_core_native_balancers) ||
+    parseSemverAtLeast(tcVersion, 0, 3, 9);
   return {
-    isTachyonCore: true,
-    supportsNativeTachyonBalancers: true,
-    supportsPoolModes: true,
+    isTachyonCore,
+    supportsNativeTachyonBalancers,
+    supportsPoolModes: supportsNativeTachyonBalancers,
   };
 }
 
@@ -793,12 +843,12 @@ function getQuickCreateTemplates(
         id: 'dpi',
         icon: () => renderShieldIcon(20),
         title: tr(
-          'Обход DPI (Desync / Zapret2)',
-          'DPI Bypass (Desync / Zapret2)',
+          'Десинхронизация пакетов (Desync)',
+          'Packet Desync (Tachyon Core)',
         ),
         desc: tr(
-          'Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера',
-          'Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server',
+          'Фрагментация и коррекция рукопожатий YouTube, Discord и Telegram без внешнего прокси-сервера',
+          'Handshake desynchronization for YouTube, Discord, or Telegram without a proxy server',
         ),
         defaults: { enabled: '1', action: 'connection' },
       },
@@ -863,8 +913,8 @@ function getQuickCreateTemplates(
         id: 'desync',
         icon: () => renderShieldIcon(20),
         title: tr(
-          'Стратегия DPI Desync / Zapret2',
-          'DPI Desync / Zapret2 Strategy',
+          'Стратегия Desync (Adaptive 2.0)',
+          'Desync Strategy (Adaptive 2.0)',
         ),
         desc: tr(
           'Фрагментация пакетов и подмена ClientHello для YouTube, Discord и Telegram',
@@ -881,8 +931,8 @@ function getQuickCreateTemplates(
         icon: () => renderLockIcon(20),
         title: tr('AmneziaWG / WireGuard', 'AmneziaWG / WireGuard'),
         desc: tr(
-          'Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)',
-          'Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)',
+          'Маскированный туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)',
+          'Obfuscated AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)',
         ),
         defaults: { enabled: '1', source_type: 'amnezia_config' },
       },
@@ -901,10 +951,181 @@ function getQuickCreateTemplates(
         icon: () => renderRocketIcon(20),
         title: 'FPTN VPN',
         desc: tr(
-          'Антицензурный VPN FPTN по токену доступа fptn://',
-          'FPTN anti-censorship VPN via fptn:// access token',
+          'Адаптивный VPN-туннель FPTN по токену доступа fptn://',
+          'FPTN adaptive VPN tunnel via fptn:// access token',
         ),
         defaults: { enabled: '1', source_type: 'fptn' },
+      },
+      {
+        id: 'tailscale',
+        icon: () => renderCompassIcon(20),
+        title: 'Tailscale Mesh VPN',
+        desc: tr(
+          'Встроенный узел Tailscale / Headscale (MagicDNS, подсети и Exit Node)',
+          'Native Tailscale / Headscale node (MagicDNS, subnet routes & Exit Node)',
+        ),
+        defaults: {
+          enabled: '1',
+          source_type: 'tailscale',
+          tailscale_control_url: 'https://controlplane.tailscale.com',
+          tailscale_accept_routes: '1',
+          tailscale_accept_dns: '1',
+          tailscale_ephemeral: '0',
+        },
+      },
+      {
+        id: 'openvpn',
+        icon: () => renderLockIcon(20),
+        title: 'OpenVPN (.ovpn)',
+        desc: tr(
+          'Встроенный клиент OpenVPN с импортом .ovpn или ручными параметрами',
+          'Built-in OpenVPN client via .ovpn import or manual settings',
+        ),
+        defaults: { enabled: '1', source_type: 'openvpn' },
+      },
+      {
+        id: 'interface',
+        icon: () => renderSubRouteIcon(20),
+        title: tr('Сетевой интерфейс', 'Network Interface'),
+        desc: tr(
+          'Вывод трафика в существующий интерфейс роутера (wg0, awg0, tun0, wan)',
+          'Route traffic through an existing router interface (wg0, awg0, tun0, wan)',
+        ),
+        defaults: { enabled: '1', source_type: 'interface' },
+      },
+      {
+        id: 'csqtt',
+        icon: () => renderZapIcon(20),
+        title: 'CSQTT / WDTT v3',
+        desc: tr(
+          'Транспорт CSQTT / WDTT v3 с пулами узлов и гибким маскированием',
+          'CSQTT / WDTT v3 transport with server pools',
+        ),
+        defaults: { enabled: '1', source_type: 'csqtt' },
+      },
+      {
+        id: 'wdtt',
+        icon: () => renderZapIcon(20),
+        title: 'WDTT',
+        desc: tr(
+          'Встроенный транспорт WDTT ядра tachyon-core',
+          'Native WDTT transport in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'wdtt' },
+      },
+      {
+        id: 'anytls',
+        icon: () => renderLockIcon(20),
+        title: 'AnyTLS',
+        desc: tr(
+          'Протокол AnyTLS с поддержкой сессий и мультиплексирования',
+          'AnyTLS protocol with session multiplexing',
+        ),
+        defaults: { enabled: '1', source_type: 'anytls' },
+      },
+      {
+        id: 'naive',
+        icon: () => renderGlobeIcon(20),
+        title: 'NaiveProxy',
+        desc: tr(
+          'Туннель NaiveProxy поверх HTTPS / HTTP/3 QUIC',
+          'NaiveProxy tunnel over HTTPS / HTTP/3 QUIC',
+        ),
+        defaults: { enabled: '1', source_type: 'naive' },
+      },
+      {
+        id: 'mieru',
+        icon: () => renderActivityIcon(20),
+        title: 'Mieru',
+        desc: tr(
+          'Протокол Mieru поверх TCP или UDP с диапазонами портов',
+          'Mieru protocol over TCP or UDP with port ranges',
+        ),
+        defaults: { enabled: '1', source_type: 'mieru' },
+      },
+      {
+        id: 'snell',
+        icon: () => renderRocketIcon(20),
+        title: 'Snell',
+        desc: tr(
+          'Прокси-протокол Snell с поддержкой обфускации',
+          'Snell proxy protocol with optional obfuscation',
+        ),
+        defaults: { enabled: '1', source_type: 'snell' },
+      },
+      {
+        id: 'sudoku',
+        icon: () => renderPuzzleIcon(20),
+        title: 'Sudoku',
+        desc: tr(
+          'Туннель Sudoku в составе ядра tachyon-core',
+          'Native Sudoku tunnel in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'sudoku' },
+      },
+      {
+        id: 'masque',
+        icon: () => renderCloudIcon(20),
+        title: 'MASQUE (HTTP/3)',
+        desc: tr(
+          'IP-туннель MASQUE поверх HTTP/3 QUIC (RFC 9484)',
+          'MASQUE IP tunnel over HTTP/3 QUIC (RFC 9484)',
+        ),
+        defaults: { enabled: '1', source_type: 'masque' },
+      },
+      {
+        id: 'shadowtls',
+        icon: () => renderShieldIcon(20),
+        title: 'ShadowTLS v3',
+        desc: tr(
+          'Маскировка транспортного соединения под TLS 1.3',
+          'ShadowTLS v3 TLS 1.3 handshake transport',
+        ),
+        defaults: { enabled: '1', source_type: 'shadowtls' },
+      },
+      {
+        id: 'trusttunnel',
+        icon: () => renderShieldIcon(20),
+        title: 'TrustTunnel',
+        desc: tr(
+          'HTTP/2 и HTTP/3 транспорт TrustTunnel',
+          'TrustTunnel HTTP/2 and HTTP/3 transport',
+        ),
+        defaults: { enabled: '1', source_type: 'trusttunnel' },
+      },
+      {
+        id: 'tewfai',
+        icon: () => renderZapIcon(20),
+        title: 'TewFai',
+        desc: tr(
+          'Встроенный транспорт TewFai ядра tachyon-core',
+          'Native TewFai transport in tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'tewfai' },
+      },
+      {
+        id: 'tor',
+        icon: () => renderGlobeIcon(20),
+        title: 'Tor (SOCKS5)',
+        desc: tr(
+          'Локальный SOCKS5-прокси сети Tor на роутере',
+          'Local Tor SOCKS5 proxy running on router',
+        ),
+        defaults: {
+          enabled: '1',
+          source_type: 'tor',
+          tor_socks_port: '9050',
+        },
+      },
+      {
+        id: 'outbound_json',
+        icon: () => renderFileTextIcon(20),
+        title: 'Outbound JSON',
+        desc: tr(
+          'Произвольный JSON-аутбаунд или эндпоинт для tachyon-core',
+          'Custom raw outbound or endpoint JSON for tachyon-core',
+        ),
+        defaults: { enabled: '1', source_type: 'outbound_json' },
       },
     ];
   }
@@ -1269,8 +1490,8 @@ function getQuickCreateTemplates(
         icon: () => renderShieldIcon(20),
         title: 'Mieru (TCP / UDP Multi-Port)',
         desc: tr(
-          'Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием',
-          'Censorship-resistant multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing',
+          'Устойчивый мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием',
+          'Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing',
         ),
         defaults: {
           enabled: '1',
@@ -1531,7 +1752,7 @@ function openStudioCreateModal(
         } else if (
           type === 'outbound_source' &&
           selectedTemplate.id === 'subscription' &&
-          /^https?:\/\//i.test(rawName)
+          isSubUrlString(rawName)
         ) {
           uci.set(UCI_PACKAGE, uciId, 'url', rawName);
         }
@@ -1697,7 +1918,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       filters: [
         { id: 'all', label: tr('Все секции', 'All Sections') },
         { id: 'proxy', label: tr('Прокси / VPN', 'Proxy / VPN') },
-        { id: 'dpi', label: tr('Обход DPI (Desync)', 'DPI Desync') },
+        { id: 'dpi', label: tr('Десинхронизация (Desync)', 'Packet Desync') },
         { id: 'system', label: 'DNS / Bypass / Block' },
       ],
     },
@@ -1706,8 +1927,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       title: tr('Настройки узлов и подписок', 'Nodes & Subscriptions Settings'),
       panelTitle: tr('Узлы и подписки', 'Nodes & Subscriptions'),
       subtitle: tr(
-        'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI.',
-        'Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and DPI strategies.',
+        'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации.',
+        'Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies.',
       ),
       addLabel: `+ ${tr('Добавить источник', 'Add Source')}`,
       filters: [
@@ -1716,10 +1937,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         { id: 'links', label: tr('Прокси-ссылки', 'Proxy Links') },
         {
           id: 'tunnel',
-          label: tr(
-            'Туннели (WARP / FPTN / AWG)',
-            'Tunnels (WARP / FPTN / AWG)',
-          ),
+          label: tr('Туннели и протоколы', 'Tunnels & Protocols'),
         },
         { id: 'dpi', label: tr('DPI / Desync', 'DPI / Desync') },
       ],
@@ -1951,10 +2169,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           const srcStype = String(
             src.source_type || src.type || 'subscription',
           ).toLowerCase();
-          const rawSubName = String(src.name || '').trim();
-          const subUrl = String(
-            src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
-          ).trim();
+          const subUrls = getSubUrlsFromSource(src);
+          const subUrl = subUrls[0] || '';
           const existingByUrl =
             srcStype === 'subscription' && subUrl
               ? subCacheByUrl.get(subUrl)
@@ -2020,27 +2236,44 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
             subInfos.forEach((si: any) => {
               if (!si || typeof si !== 'object') return;
-              const siTitle = String(si.title || '').trim();
+              const siTitle = decodeSubHeaderValue(
+                String(si.title || '').trim(),
+              );
               const siSec = String(
                 si.sourceSection || si.source_section || '',
               ).trim();
+              const siSourceId = String(
+                si.sourceId || si.source_id || '',
+              ).trim();
+              const siUrl = String(si.url || '').trim();
+              const siUrls = Array.isArray(si.urls)
+                ? si.urls.map((u: any) => String(u || '').trim())
+                : [];
               if (
                 singleSub ||
+                (sid && siSourceId === sid) ||
+                (subUrls.length > 0 &&
+                  ((siUrl && subUrls.includes(siUrl)) ||
+                    siUrls.some((u: string) => subUrls.includes(u)))) ||
                 (sid &&
                   (siSec === `${sid}-subscription-1` ||
+                    siSec.startsWith(`${sid}-subscription-`) ||
                     siSec === `Pool_${sid}-subscription-1`)) ||
                 (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
                 (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
               ) {
                 const siUpd = Number(si.updatedAt || 0);
                 if (siUpd > foundUpdatedAt) foundUpdatedAt = siUpd;
+                const decodedAnnounce = si.announce
+                  ? decodeSubHeaderValue(String(si.announce))
+                  : undefined;
                 foundMeta = {
                   title: siTitle || foundMeta?.title || undefined,
                   traffic: si.traffic ?? foundMeta?.traffic,
                   expire: si.expire ?? foundMeta?.expire,
                   webPageUrl: si.webPageUrl || foundMeta?.webPageUrl,
                   supportUrl: si.supportUrl || foundMeta?.supportUrl,
-                  announce: si.announce || foundMeta?.announce,
+                  announce: decodedAnnounce || foundMeta?.announce,
                   updatedAt: siUpd > 0 ? siUpd : foundMeta?.updatedAt,
                 };
               }
@@ -2160,16 +2393,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
 
           const servers = Array.from(serverMap.values());
-          if (servers.length > 0 || foundMeta) {
+          const prevSid = subCacheBySid.get(sid);
+          const mergedServers =
+            servers.length > 0 ? servers : prevSid?.servers || [];
+          if (mergedServers.length > 0 || foundMeta) {
             const existingMtime = Math.max(
               (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
-              subCacheBySid.get(sid)?.mtime || 0,
+              prevSid?.mtime || 0,
               foundUpdatedAt,
             );
+            const mergedMeta = foundMeta || prevSid?.metadata;
             const entry: SubCacheEntryInfo = {
               mtime: existingMtime,
-              servers,
-              metadata: foundMeta,
+              servers: mergedServers,
+              metadata: mergedMeta,
             };
             subCacheBySid.set(sid, entry);
             if (subUrl && !subCacheByUrl.has(subUrl)) {
@@ -2200,8 +2437,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         const list = Array.isArray(entries) ? entries : [];
         const rtList = Array.isArray(runtimeEntries) ? runtimeEntries : [];
         const tsList = Array.isArray(tsEntries) ? tsEntries : [];
-        const jsonBases: string[] = [];
+        const jsonBasesSet = new Set<string>();
+        const pJsonSet = new Set<string>();
+        const rtJsonSet = new Set<string>();
         const urlSet = new Set<string>();
+        const rtUrlSet = new Set<string>();
         const metaSet = new Set<string>();
         const rtMetaSet = new Set<string>();
         const tsSet = new Set<string>();
@@ -2221,7 +2461,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             fname.includes('-subscription-')
           ) {
             const base = fname.slice(0, -5);
-            jsonBases.push(base);
+            pJsonSet.add(base);
+            jsonBasesSet.add(base);
             mtimeMap.set(base, Number(ent.mtime || 0));
           }
         });
@@ -2229,7 +2470,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         rtList.forEach((ent: any) => {
           const fname = String((ent && ent.name) || '');
           const mtime = Number(ent?.mtime || 0);
-          if (fname.endsWith('.metadata.json')) {
+          if (fname.endsWith('.url')) {
+            rtUrlSet.add(fname.slice(0, -4));
+          } else if (fname.endsWith('.metadata.json')) {
             const base = fname.slice(0, -14);
             rtMetaSet.add(base);
             if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
@@ -2238,6 +2481,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             fname.includes('-subscription-')
           ) {
             const base = fname.slice(0, -5);
+            rtJsonSet.add(base);
+            jsonBasesSet.add(base);
             if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
           }
         });
@@ -2252,34 +2497,52 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
         });
 
+        const jsonBases = Array.from(jsonBasesSet);
         return Promise.all(
           jsonBases.map((base) =>
             (urlSet.has(base)
               ? readFsText(`${dir}/${base}.url`)
               : Promise.resolve('')
-            ).then((u) => ({
-              base,
-              url: u.trim(),
-              mtime: mtimeMap.get(base) || 0,
-            })),
+            )
+              .then((u) =>
+                u.trim()
+                  ? u
+                  : rtUrlSet.has(base)
+                    ? readFsText(`${runtimeDir}/${base}.url`)
+                    : '',
+              )
+              .then((u) => ({
+                base,
+                url: u.trim(),
+                mtime: mtimeMap.get(base) || 0,
+              })),
           ),
         ).then((infos) => {
-          const byUrl = new Map<
+          const byKey = new Map<
             string,
             { base: string; url: string; mtime: number }
           >();
           infos.forEach((inf) => {
-            if (!inf.url) return;
-            const prev = byUrl.get(inf.url);
+            const key = inf.url || `base:${inf.base}`;
+            const prev = byKey.get(key);
             if (!prev || inf.mtime >= prev.mtime) {
-              byUrl.set(inf.url, inf);
+              byKey.set(key, inf);
             }
           });
-          const chosen = Array.from(byUrl.values());
+          const chosen = Array.from(byKey.values());
           return Promise.all(
             chosen.map((inf) =>
               Promise.all([
-                readFsText(`${dir}/${inf.base}.json`),
+                (pJsonSet.has(inf.base)
+                  ? readFsText(`${dir}/${inf.base}.json`)
+                  : Promise.resolve('')
+                ).then((raw) =>
+                  raw.trim()
+                    ? raw
+                    : rtJsonSet.has(inf.base)
+                      ? readFsText(`${runtimeDir}/${inf.base}.json`)
+                      : '',
+                ),
                 metaSet.has(inf.base)
                   ? readFsText(`${dir}/${inf.base}.metadata.json`)
                   : Promise.resolve(''),
@@ -2342,23 +2605,31 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 const rawOutbounds = Array.isArray(parsedJson?.outbounds)
                   ? parsedJson.outbounds
                   : [];
-                const outbounds = rawOutbounds.filter((ob: any) => {
-                  const name = String(
-                    ob?.remark || ob?.tag || ob?.name || '',
+                const resolveObName = (ob: any): string =>
+                  String(
+                    ob?.remark ||
+                      ob?.tag ||
+                      ob?.name ||
+                      (ob?.server
+                        ? `${ob.server}${ob.server_port ? `:${ob.server_port}` : ''}`
+                        : ''),
                   ).trim();
+                const outbounds = rawOutbounds.filter((ob: any) => {
+                  const name = resolveObName(ob);
                   const proto = String(ob?.type || '').toUpperCase();
                   return (
                     Boolean(name) &&
+                    !ob?.__tachyon_unsupported &&
                     proto !== 'URLTEST' &&
                     proto !== 'SELECTOR' &&
-                    proto !== 'DIRECT'
+                    proto !== 'DIRECT' &&
+                    proto !== 'BLOCK' &&
+                    proto !== 'DNS'
                   );
                 });
                 const servers: SubCacheServerItem[] = [];
                 outbounds.forEach((ob: any, idx: number) => {
-                  const name = String(
-                    ob?.remark || ob?.tag || ob?.name || '',
-                  ).trim();
+                  const name = resolveObName(ob);
                   const proto = String(ob?.type || '').toUpperCase();
                   const trans = String(
                     ob?.transport?.type || 'tcp',
@@ -2376,11 +2647,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   servers.push({ name, proto, trans, link });
                 });
 
-                subCacheByUrl.set(inf.url, {
+                const entry: SubCacheEntryInfo = {
                   mtime: bestMtime,
                   servers,
                   metadata: parsedMeta,
-                });
+                };
+                if (inf.url) {
+                  subCacheByUrl.set(inf.url, entry);
+                }
+                const poolMatch = inf.base.match(
+                  /^Pool_(.+)-subscription-\d+$/,
+                );
+                if (poolMatch && poolMatch[1]) {
+                  subCacheBySid.set(poolMatch[1], entry);
+                }
               }),
             ),
           );
@@ -2474,39 +2754,90 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const startRes = await execCmd(args).catch(() => null);
       const jobId = startRes?.job_id;
+      let st: any = null;
       if (jobId) {
         for (let i = 0; i < 40; i++) {
           await new Promise((r) => setTimeout(r, 1500));
-          const st = await execCmd([
+          st = await execCmd([
             'subscription_update_status',
             String(jobId),
           ]).catch(() => null);
           if (!st || !st.running) break;
         }
       }
+      const succeeded = Boolean(
+        startRes?.success && (!st || (st.success !== false && !st.running)),
+      );
       if (
         typeof ui !== 'undefined' &&
         typeof ui.addNotification === 'function'
       ) {
-        ui.addNotification(
-          null,
-          E(
-            'p',
-            {},
-            targetSid
-              ? tr('Подписка обновлена.', 'Subscription updated.')
-              : tr('Все подписки обновлены.', 'All subscriptions updated.'),
-          ),
-          'info',
-        );
+        if (succeeded) {
+          ui.addNotification(
+            null,
+            E(
+              'p',
+              {},
+              targetSid
+                ? tr('Подписка обновлена.', 'Subscription updated.')
+                : tr('Все подписки обновлены.', 'All subscriptions updated.'),
+            ),
+            'info',
+          );
+        } else {
+          const errMsg =
+            st?.message ||
+            startRes?.message ||
+            (st?.running
+              ? tr(
+                  'Превышено время ожидания обновления подписки.',
+                  'Subscription update timed out.',
+                )
+              : targetSid
+                ? tr(
+                    'Не удалось обновить подписку.',
+                    'Failed to update subscription.',
+                  )
+                : tr(
+                    'Не удалось обновить подписки.',
+                    'Failed to update subscriptions.',
+                  ));
+          ui.addNotification(null, E('p', {}, errMsg), 'error');
+        }
       }
-    } catch (_e) {
-      // ignore transient RPC errors
+    } catch (err) {
+      if (
+        typeof ui !== 'undefined' &&
+        typeof ui.addNotification === 'function'
+      ) {
+        const errMsg =
+          (err instanceof Error && err.message) ||
+          (targetSid
+            ? tr(
+                'Не удалось обновить подписку.',
+                'Failed to update subscription.',
+              )
+            : tr(
+                'Не удалось обновить подписки.',
+                'Failed to update subscriptions.',
+              ));
+        ui.addNotification(null, E('p', {}, errMsg), 'error');
+      }
     } finally {
       updatingSubTargets.delete(key);
       await loadSubscriptionCacheMap();
       renderDeck();
     }
+  };
+
+  const renderSubUpdateIcon = (updating: boolean) => {
+    if (!updating) {
+      return renderRefreshCwIcon(12);
+    }
+    const icon = renderLoaderCircleIcon24();
+    icon.setAttribute('width', '12');
+    icon.setAttribute('height', '12');
+    return icon;
   };
 
   const renderDeck = () => {
@@ -2709,12 +3040,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             },
           },
           [
+            renderSubUpdateIcon(isUpdatingAll),
             E(
               'span',
               {},
               isUpdatingAll
-                ? tr('↻ Обновление подписок...', '↻ Updating subscriptions...')
-                : tr('↻ Обновить все подписки', '↻ Update All Subscriptions'),
+                ? tr('Обновление подписок...', 'Updating subscriptions...')
+                : tr('Обновить все подписки', 'Update All Subscriptions'),
             ),
           ],
         ),
@@ -2857,19 +3189,24 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               'amnezia_config',
               'openvpn',
               'tailscale',
+              'csqtt',
+              'wdtt',
+              'anytls',
+              'naive',
+              'mieru',
+              'snell',
+              'sudoku',
+              'masque',
+              'shadowtls',
+              'trusttunnel',
+              'tewfai',
               'tor',
               'interface',
+              'outbound_json',
             ].includes(stype);
           }
           if (fid === 'dpi') {
-            return [
-              'desync',
-              'zapret',
-              'zapret2',
-              'byedpi',
-              'wdtt',
-              'olcrtc',
-            ].includes(stype);
+            return stype === 'desync';
           }
           return true;
         });
@@ -3562,14 +3899,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     if (type === 'outbound_source') {
       const name = raw.name || raw.label || sid;
       const stype = String(raw.source_type || 'subscription').toLowerCase();
-      const isDpiSource = [
-        'desync',
-        'zapret',
-        'zapret2',
-        'byedpi',
-        'wdtt',
-        'olcrtc',
-      ].includes(stype);
+      const isDpiSource = stype === 'desync';
       const usedIn = (uci.sections(UCI_PACKAGE, 'section') || [])
         .filter((s: any) => asArray(s.outbound_source_refs).includes(sid))
         .map((s: any) => ({
@@ -3589,18 +3919,19 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             }))
         : [];
 
-      const rawSubName = String(raw.name || '').trim();
-      const subUrl = String(
-        raw.url ||
-          (stype === 'subscription' && /^https?:\/\//i.test(rawSubName)
-            ? rawSubName
-            : ''),
-      ).trim();
+      const subUrls = getSubUrlsFromSource(raw);
+      const subUrl = subUrls[0] || '';
       const resolveSubscriptionCache = (): SubCacheEntryInfo | undefined => {
         if (stype !== 'subscription') return undefined;
-        const fromUrl = subUrl ? subCacheByUrl.get(subUrl) : undefined;
-        if (fromUrl && (fromUrl.servers.length > 0 || fromUrl.metadata)) {
-          return fromUrl;
+        let firstFromUrl: SubCacheEntryInfo | undefined = undefined;
+        for (const u of subUrls) {
+          const hit = subCacheByUrl.get(u);
+          if (!firstFromUrl && hit) {
+            firstFromUrl = hit;
+          }
+          if (hit && (hit.servers.length > 0 || hit.metadata)) {
+            return hit;
+          }
         }
         const fromSid = subCacheBySid.get(sid);
         if (fromSid && (fromSid.servers.length > 0 || fromSid.metadata)) {
@@ -3629,14 +3960,36 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
 
           for (const sec of Object.values(sectionsObj) as any[]) {
-            const subInfos = Array.isArray(sec?.subscriptionInfos)
-              ? sec.subscriptionInfos
-              : [];
+            const subInfos = [
+              ...(Array.isArray(sec?.subscriptionMetadata)
+                ? sec.subscriptionMetadata
+                : []),
+              ...(Array.isArray(sec?.subscriptionInfos)
+                ? sec.subscriptionInfos
+                : []),
+            ];
             for (const si of subInfos) {
               if (!si || typeof si !== 'object') continue;
-              const siTitle = String(si.title || '').trim();
+              const siTitle = decodeSubHeaderValue(
+                String(si.title || '').trim(),
+              );
+              const siSourceId = String(
+                si.sourceId || si.source_id || '',
+              ).trim();
+              const siSec = String(
+                si.sourceSection || si.source_section || '',
+              ).trim();
+              const siUrl = String(si.url || '').trim();
+              const siUrls = Array.isArray(si.urls)
+                ? si.urls.map((u: any) => String(u || '').trim())
+                : [];
               if (
                 singleSub ||
+                (sid && siSourceId === sid) ||
+                (subUrls.length > 0 &&
+                  ((siUrl && subUrls.includes(siUrl)) ||
+                    siUrls.some((u: string) => subUrls.includes(u)))) ||
+                (sid && siSec.startsWith(`${sid}-subscription-`)) ||
                 (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
                 (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
               ) {
@@ -3646,7 +3999,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   expire: si.expire,
                   webPageUrl: si.webPageUrl,
                   supportUrl: si.supportUrl,
-                  announce: si.announce,
+                  announce: si.announce
+                    ? decodeSubHeaderValue(String(si.announce))
+                    : undefined,
                 };
               }
             }
@@ -3664,6 +4019,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 continue;
               }
               const obPrefix = String(ob.prefix || ob.sourceGroup || '').trim();
+              const obSourceId = String(
+                ob.sourceId || ob.source_id || '',
+              ).trim();
               const disp = String(ob.displayName || ob.name || code).trim();
               const link = String(ob.link || '').trim();
               const obType = String(ob.type || '').toUpperCase();
@@ -3677,7 +4035,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               }
               let matches = false;
               let cleanName = disp;
-              if (prefix) {
+              if (sid && (obSourceId === sid || ob.sourceGroup === sid)) {
+                matches = true;
+              } else if (prefix) {
                 if (obPrefix.toLowerCase() === prefix.toLowerCase()) {
                   matches = true;
                 } else if (disp.startsWith(`${prefix}: `)) {
@@ -3710,7 +4070,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
           if (srvMap.size > 0 || foundMeta) {
             return {
-              mtime: fromUrl?.mtime || fromSid?.mtime || 0,
+              mtime: firstFromUrl?.mtime || fromSid?.mtime || 0,
               servers: Array.from(srvMap.values()),
               metadata: foundMeta,
             };
@@ -3718,7 +4078,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         } catch {
           // ignore store lookup errors
         }
-        return fromUrl || fromSid;
+        return firstFromUrl || fromSid;
       };
       const subCache = resolveSubscriptionCache();
       const formatBytes = formatSubscriptionBytes;
@@ -3768,6 +4128,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               'span',
               { class: 'tachyon-studio-badge tachyon-studio-badge--proto' },
               `${tr('Узлов', 'Nodes')}: ${subCache.servers.length}`,
+            ),
+          );
+        }
+        if (String(raw.tls_fragment_mode || '').trim()) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              'FRAG',
             ),
           );
         }
@@ -3859,6 +4228,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ),
           ),
         );
+        if (String(raw.tls_fragment_mode || '').trim()) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              'FRAG',
+            ),
+          );
+        }
       } else if (isDpiSource) {
         iconEl = renderShieldIcon(18);
         tone = 'dpi';
@@ -4239,7 +4617,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           const md = subCache?.metadata || {};
           const infoParts: string[] = [];
           if (md.title)
-            infoParts.push(`${tr('Провайдер', 'Title')}: ${md.title}`);
+            infoParts.push(
+              `${tr('Провайдер', 'Title')}: ${decodeSubHeaderValue(md.title)}`,
+            );
           if (md.traffic) {
             const q = md.traffic.isUnlimited
               ? tr('Безлимит (∞)', 'Unlimited (∞)')
@@ -4281,7 +4661,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             );
           }
           if (md.announce && String(md.announce).trim()) {
-            const rawAnnounce = String(md.announce).trim();
+            const rawAnnounce = decodeSubHeaderValue(
+              String(md.announce).trim(),
+            );
             const lines = rawAnnounce
               .split(/\r?\n/)
               .map((l) => l.trim())
@@ -4305,7 +4687,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'span',
                   {
                     style:
-                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                      'margin-left: 6px; font-size: 11px; color: var(--tachyon-accent-text, var(--tachyon-accent, #3b82f6)); font-weight: 500; cursor: pointer; white-space: nowrap;',
                   },
                   tr('Ещё', 'Show more'),
                 )
@@ -4576,7 +4958,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 },
               },
               [
-                renderRefreshCwIcon(12),
+                renderSubUpdateIcon(isSubUpdating),
                 E(
                   'span',
                   {},
@@ -5133,7 +5515,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             lvlRef === 'direct'
               ? 'Direct (WAN)'
               : lvlRef.startsWith('srv:')
-                ? `🎯 ${lvlRef.slice(4)}`
+                ? lvlRef.slice(4)
                 : uci.get(UCI_PACKAGE, lvlRef, 'name') ||
                   uci.get(UCI_PACKAGE, lvlRef, 'label') ||
                   lvlRef;

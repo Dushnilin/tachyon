@@ -386,7 +386,7 @@ export const styles = `
     margin-top: 0;
 }
 
-/* The runtime quarantined this section: sing-box refused the config it
+/* The runtime quarantined this section: tachyon-core refused the config it
    produced, so the section is not loaded while everything else runs. */
 .tachyon_dashboard-page__outbound-section--error {
     border-color: var(--error-color-medium, red);
@@ -1020,6 +1020,27 @@ export const styles = `
     color: var(--tachyon-accent-text);
     letter-spacing: 0.01em;
     white-space: nowrap;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__hidden-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(148, 163, 184, 0.16);
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    color: #64748b;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+.tachyon_dashboard-page__outbound-grid__item--hidden,
+.tachyon-dashboard-nodes-table__row.is-dashboard-hidden {
+    opacity: 0.72;
 }
 
 .tachyon_proto-popover-trigger {
@@ -3215,6 +3236,99 @@ body.dark-theme .tachyon_proto-popover__desc {
 .btn.tachyon-sec-accordion__action-btn[disabled] {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    .tachyon-sec-accordion__header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .tachyon-sec-accordion__tabs {
+        width: 100%;
+        display: flex;
+    }
+
+    .tachyon_dashboard-page .btn.tachyon-sec-accordion__tab-btn,
+    .tachyon-section-inspector-modal .btn.tachyon-sec-accordion__tab-btn,
+    .tachyon-sec-accordion__tab-btn {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        padding: 0 6px !important;
+        font-size: 11px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    .tachyon-sec-accordion__actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .tachyon-sec-accordion__actions > .tachyon-nodes-view-switch {
+        order: 1;
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+    }
+
+    .tachyon-sec-accordion__actions > .tachyon-nodes-view-switch > .btn.tachyon-nodes-view-switch__btn {
+        flex: 1 1 0 !important;
+        padding: 0 6px !important;
+        font-size: 11px !important;
+    }
+
+    .tachyon_dashboard-page .btn.tachyon-sec-accordion__action-btn--sm,
+    .tachyon-section-inspector-modal .btn.tachyon-sec-accordion__action-btn--sm,
+    .btn.tachyon-sec-accordion__action-btn--sm {
+        order: 2;
+        flex: 0 0 34px !important;
+        width: 34px !important;
+        padding: 0 !important;
+    }
+
+    .tachyon_dashboard-page .btn.tachyon-sec-accordion__action-btn:not(.tachyon-sec-accordion__action-btn--sm),
+    .tachyon-section-inspector-modal .btn.tachyon-sec-accordion__action-btn:not(.tachyon-sec-accordion__action-btn--sm),
+    .btn.tachyon-sec-accordion__action-btn:not(.tachyon-sec-accordion__action-btn--sm) {
+        order: 3;
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}
+
+.tachyon-section-order-warning__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    align-self: center;
+    flex-wrap: wrap;
+}
+
+.tachyon-section-order-warning__btn--primary {
+    border-color: rgba(217, 119, 6, 0.58);
+    background: rgba(217, 119, 6, 0.2);
+}
+
+.tachyon-section-order-warning__btn--primary:hover:not([disabled]) {
+    border-color: rgba(217, 119, 6, 0.78);
+    background: rgba(217, 119, 6, 0.3);
+}
+
+.tachyon-section-order-warning__btn[disabled] {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+@media (max-width: 640px) {
+    .tachyon-section-order-warning__actions {
+        margin-left: 25px;
+    }
 }
 
 `;

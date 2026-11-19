@@ -47,7 +47,11 @@ describe('autostart and runtime status on slow routers', () => {
     const uiState = {
       service: {
         tachyon: { running: 1, enabled: 1, status: 'running & enabled' },
-        sing_box: { running: 1, enabled: 0, status: 'running but disabled' },
+        tachyon_core: {
+          running: 1,
+          enabled: 0,
+          status: 'running but disabled',
+        },
       },
       capabilities: {},
       actions: { service: [], latency: [], component: [], subscription: [] },
@@ -70,7 +74,7 @@ describe('autostart and runtime status on slow routers', () => {
       tachyonRunning: 1,
       tachyonEnabled: 1,
       tachyonStatus: 'running & enabled',
-      singbox: 1,
+      tachyonCore: 1,
     });
   });
 });

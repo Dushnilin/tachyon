@@ -41,7 +41,7 @@ describe('diagnostic run persistence', () => {
     savePersistedDiagnosticRun(
       {
         nextRunnerIndex: 2,
-        providerOptions: { includeZapret: true },
+        providerOptions: { includeInbounds: true },
         diagnosticsChecks: [
           {
             order: 1,
@@ -58,7 +58,7 @@ describe('diagnostic run persistence', () => {
 
     expect(readPersistedDiagnosticRun(storage)).toMatchObject({
       nextRunnerIndex: 2,
-      providerOptions: { includeZapret: true },
+      providerOptions: { includeInbounds: true },
       diagnosticsChecks: [
         {
           code: 'DNS',

@@ -122,3 +122,18 @@ class TabService {
 }
 
 export const TabServiceInstance = TabService.getInstance();
+
+let appShellNavActivator: ((navKey: string) => boolean) | null = null;
+
+export function registerAppShellNavActivator(
+  fn: ((navKey: string) => boolean) | null,
+): void {
+  appShellNavActivator = fn;
+}
+
+export function activateAppShellNavKey(navKey: string): boolean {
+  if (!navKey || typeof appShellNavActivator !== 'function') {
+    return false;
+  }
+  return appShellNavActivator(navKey);
+}

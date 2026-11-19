@@ -55,12 +55,6 @@ export const styles = `
         grid-template-columns: 1fr;
     }
 
-    .tachyon_updates-page__engine-card {
-        flex: 1 1 100%;
-        width: 100%;
-        margin-bottom: 10px;
-    }
-
     .tachyon_updates-page__components-column {
         width: 100%;
         min-width: 0;
@@ -243,41 +237,6 @@ export const styles = `
     letter-spacing: 0.02em;
 }
 
-.tachyon_updates-page__engine-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    flex-wrap: nowrap;
-}
-
-.tachyon_updates-page__engine-bar > select.cbi-input-select {
-    flex: 1 1 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    height: 32px !important;
-    min-height: 32px !important;
-    padding: 4px 10px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    border-radius: 8px !important;
-    margin: 0 !important;
-}
-
-.tachyon_updates-page__engine-bar > .btn,
-.tachyon_updates-page__engine-bar > .cbi-button,
-.tachyon_updates-page__engine-bar > .tachyon-partial-button {
-    flex-shrink: 0 !important;
-    padding: 5px 12px !important;
-    min-height: 32px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    border-radius: 8px !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-
 .tachyon_updates-page__component__actions {
     display: flex;
     flex-direction: column;
@@ -318,25 +277,6 @@ export const styles = `
     font-size: 12px !important;
     border-radius: 8px !important;
     margin: 0 !important;
-}
-
-.tachyon_updates-page__component__variants {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 4px;
-}
-
-.tachyon_updates-page__component__variants-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-color-medium, gray);
-}
-
-.tachyon_updates-page__component__variants-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
 }
 
 .tachyon-update-modal__body {

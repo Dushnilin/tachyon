@@ -247,18 +247,6 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.NftRulesCheckResult>(
       Tachyon.AvailableMethods.CHECK_NFT_RULES,
     ),
-  checkZapretRuntime: async () =>
-    callBaseMethod<Tachyon.ZapretCheckResult>(
-      Tachyon.AvailableMethods.CHECK_ZAPRET_RUNTIME,
-    ),
-  checkZapret2Runtime: async () =>
-    callBaseMethod<Tachyon.Zapret2CheckResult>(
-      Tachyon.AvailableMethods.CHECK_ZAPRET2_RUNTIME,
-    ),
-  checkByedpiRuntime: async () =>
-    callBaseMethod<Tachyon.ByedpiCheckResult>(
-      Tachyon.AvailableMethods.CHECK_BYEDPI_RUNTIME,
-    ),
   checkInboundsConfig: async () =>
     callBaseMethod<Tachyon.InboundsConfigCheckResult>(
       Tachyon.AvailableMethods.CHECK_INBOUNDS_CONFIG,
@@ -274,9 +262,9 @@ export const TachyonShellMethods = {
     callBaseMethod<
       Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[]
     >(Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA, [section]),
-  checkSingBox: async () =>
-    callBaseMethod<Tachyon.SingBoxCheckResult>(
-      Tachyon.AvailableMethods.CHECK_SING_BOX,
+  checkTachyonCore: async () =>
+    callBaseMethod<Tachyon.TachyonCoreCheckResult>(
+      Tachyon.AvailableMethods.CHECK_TACHYON_CORE,
     ),
   checkInbounds: async () =>
     callBaseMethod<Tachyon.InboundsCheckResult>(
@@ -284,9 +272,9 @@ export const TachyonShellMethods = {
       [],
       { timeout: 30000 },
     ),
-  getSingBoxStatus: async () =>
-    callBaseMethod<Tachyon.GetSingBoxStatus>(
-      Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+  getTachyonCoreStatus: async () =>
+    callBaseMethod<Tachyon.GetTachyonCoreStatus>(
+      Tachyon.AvailableMethods.GET_TACHYON_CORE_STATUS,
       [],
       { allowNonZeroWithStdout: true },
     ),
@@ -299,36 +287,6 @@ export const TachyonShellMethods = {
   getTailscalePeers: async () =>
     callBaseMethod<Tachyon.GetTailscalePeers>(
       Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
-      [],
-      { allowNonZeroWithStdout: true },
-    ),
-  getZapretStatus: async () =>
-    callBaseMethod<Tachyon.GetZapretStatus>(
-      Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
-      [],
-      { allowNonZeroWithStdout: true },
-    ),
-  getZapret2Status: async () =>
-    callBaseMethod<Tachyon.GetZapret2Status>(
-      Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
-      [],
-      { allowNonZeroWithStdout: true },
-    ),
-  getByedpiStatus: async () =>
-    callBaseMethod<Tachyon.GetByedpiStatus>(
-      Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
-      [],
-      { allowNonZeroWithStdout: true },
-    ),
-  getWdttStatus: async () =>
-    callBaseMethod<Tachyon.GetWdttStatus>(
-      Tachyon.AvailableMethods.GET_WDTT_STATUS,
-      [],
-      { allowNonZeroWithStdout: true },
-    ),
-  getOlcrtcStatus: async () =>
-    callBaseMethod<Tachyon.GetOlcrtcStatus>(
-      Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
       [],
       { allowNonZeroWithStdout: true },
     ),
@@ -571,14 +529,14 @@ export const TachyonShellMethods = {
       mode: 'proxied' | 'direct';
       message: string;
     }>(Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS, [ip], { timeout: 15000 }),
-  showSingBoxConfig: async (masked = true) =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
+  showTachyonCoreConfig: async (masked = true) =>
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_TACHYON_CORE_CONFIG, [
       masked ? 'masked' : 'raw',
     ]),
   checkLogs: async () =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.CHECK_LOGS),
-  checkSingBoxLogs: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.CHECK_SING_BOX_LOGS),
+  checkTachyonCoreLogs: async () =>
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CHECK_TACHYON_CORE_LOGS),
   getSystemInfo: async () =>
     callBaseMethod<Tachyon.GetSystemInfo>(
       Tachyon.AvailableMethods.GET_SYSTEM_INFO,
@@ -590,12 +548,6 @@ export const TachyonShellMethods = {
       Tachyon.AvailableMethods.ENGINE_INFO,
       [],
       { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
-    ),
-  getEnginePlan: async (engine: string) =>
-    callBaseMethod<Tachyon.EngineSwitchPlan>(
-      Tachyon.AvailableMethods.ENGINE_PLAN,
-      [engine],
-      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
     ),
   getServerCapabilities: async () =>
     callBaseMethod<Tachyon.GetServerCapabilities>(
@@ -1213,11 +1165,16 @@ export const TachyonShellMethods = {
       return jobDoneResult(parsedResponse);
     }
   },
-  subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
+  subscriptionUpdateStart: async (
+    section?: string,
+    sourceIndex?: number | string,
+  ) => {
     const startArgs = [
       Tachyon.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
       ...(section ? [section] : []),
-      ...(section && sourceIndex !== undefined ? [String(sourceIndex)] : []),
+      ...(section && sourceIndex !== undefined && sourceIndex !== ''
+        ? [String(sourceIndex)]
+        : []),
     ];
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
@@ -1343,7 +1300,7 @@ export const TachyonShellMethods = {
   },
 
   startFuzzer: async (
-    engine: Tachyon.FuzzerEngine = 'zapret2',
+    engine: Tachyon.FuzzerEngine = 'desync',
     target: Tachyon.FuzzerTarget = 'youtube',
     customUrl?: string,
     ruleSection?: string,
@@ -1362,8 +1319,10 @@ export const TachyonShellMethods = {
     else args.push('');
     if (customFile) args.push(customFile);
     else args.push('');
-    if (mode) args.push(mode);
-    if (timeoutSeconds) args.push(String(timeoutSeconds));
+    if (mode || timeoutSeconds !== undefined) args.push(mode || '');
+    if (timeoutSeconds !== undefined && timeoutSeconds !== null) {
+      args.push(String(timeoutSeconds));
+    }
 
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
@@ -1470,27 +1429,15 @@ export const TachyonShellMethods = {
   ): Promise<
     Tachyon.MethodResponse<{
       available_engines?: {
-        zapret2: boolean;
-        zapret: boolean;
-        byedpi: boolean;
         desync?: boolean;
       };
-      zapret2: Tachyon.FuzzerStrategyDefinition[];
-      zapret: Tachyon.FuzzerStrategyDefinition[];
-      byedpi: Tachyon.FuzzerStrategyDefinition[];
       desync?: Tachyon.FuzzerStrategyDefinition[];
     }>
   > => {
     type FuzzerStrategiesData = {
       available_engines?: {
-        zapret2: boolean;
-        zapret: boolean;
-        byedpi: boolean;
         desync?: boolean;
       };
-      zapret2: Tachyon.FuzzerStrategyDefinition[];
-      zapret: Tachyon.FuzzerStrategyDefinition[];
-      byedpi: Tachyon.FuzzerStrategyDefinition[];
       desync?: Tachyon.FuzzerStrategyDefinition[];
     };
     const args: string[] = [Tachyon.AvailableMethods.FUZZER_STRATEGIES];

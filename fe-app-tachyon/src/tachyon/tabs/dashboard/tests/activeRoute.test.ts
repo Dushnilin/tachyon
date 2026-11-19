@@ -10,7 +10,7 @@ import { Tachyon } from '../../../types';
 describe('activeRoute helpers', () => {
   it('correctly identifies service groups', () => {
     const serviceGroup = {
-      action: 'zapret',
+      action: 'desync',
       outbounds: [],
     } as unknown as Tachyon.OutboundGroup;
     expect(isServiceGroup(serviceGroup)).toBe(true);
@@ -123,7 +123,7 @@ describe('activeRoute helpers', () => {
         ],
       },
       {
-        action: 'zapret',
+        action: 'desync',
         outbounds: [],
       },
       {

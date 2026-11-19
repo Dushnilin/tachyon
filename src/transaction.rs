@@ -33,6 +33,93 @@ fn valid_bool_setting_text(raw: &str) -> bool {
     )
 }
 
+fn validate_fragment_range_value(
+    raw: &str,
+    min_val: u64,
+    suffix_allowed: bool,
+    holder_label: &str,
+    field_name: &str,
+    example: &str,
+    errors: &mut Vec<String>,
+) {
+    let val = raw.trim();
+    if val.is_empty() {
+        return;
+    }
+    let clean = if suffix_allowed {
+        val.strip_suffix("ms")
+            .or_else(|| val.strip_suffix('s'))
+            .unwrap_or(val)
+    } else {
+        val
+    };
+    let parsed = if let Some((lo_s, hi_s)) = clean.split_once('-') {
+        if lo_s.is_empty()
+            || hi_s.is_empty()
+            || !lo_s.bytes().all(|b| b.is_ascii_digit())
+            || !hi_s.bytes().all(|b| b.is_ascii_digit())
+        {
+            None
+        } else {
+            lo_s.parse::<u64>().ok().zip(hi_s.parse::<u64>().ok())
+        }
+    } else if clean.bytes().all(|b| b.is_ascii_digit()) {
+        clean.parse::<u64>().ok().map(|n| (n, n))
+    } else {
+        None
+    };
+
+    let Some((lo, hi)) = parsed else {
+        errors.push(format!(
+            "{holder_label} has invalid {field_name} '{val}'. Expected e.g. '{example}'."
+        ));
+        return;
+    };
+    if lo < min_val || hi < lo {
+        errors.push(format!(
+            "{holder_label} has invalid {field_name} '{val}' (range bounds out of order)."
+        ));
+    }
+}
+
+fn validate_source_fragment_options(
+    tls_fragment_mode: &str,
+    tcp_fragment_length: &str,
+    tcp_fragment_delay: &str,
+    holder_label: &str,
+    errors: &mut Vec<String>,
+) {
+    let mode = tls_fragment_mode.trim().to_ascii_lowercase();
+    if !mode.is_empty()
+        && !matches!(
+            mode.as_str(),
+            "tls_record" | "tls_fragment" | "tcp_fragment"
+        )
+    {
+        errors.push(format!(
+            "{holder_label} has invalid tls_fragment_mode '{mode}'. Expected tls_record, tls_fragment, or tcp_fragment."
+        ));
+    }
+    validate_fragment_range_value(
+        tcp_fragment_length,
+        1,
+        false,
+        holder_label,
+        "tcp_fragment_length",
+        "20-60",
+        errors,
+    );
+    validate_fragment_range_value(
+        tcp_fragment_delay,
+        0,
+        true,
+        holder_label,
+        "tcp_fragment_delay",
+        "0-2ms",
+        errors,
+    );
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigPlanReport {
     pub valid: bool,
@@ -153,7 +240,8 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
     }
 
     for src in candidate.outbound_sources.iter().filter(|s| s.enabled) {
-        if src.source_type.trim().eq_ignore_ascii_case("tailscale")
+        let stype = src.source_type.trim().to_ascii_lowercase();
+        if stype == "tailscale"
             && let Err(msg) = crate::store::validate_tailscale_network_options(
                 &src.tailscale_relay_server_port,
                 &src.tailscale_system_interface_mtu,
@@ -161,6 +249,15 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
             )
         {
             errors.push(msg);
+        }
+        if matches!(stype.as_str(), "subscription" | "proxy_links") {
+            validate_source_fragment_options(
+                &src.tls_fragment_mode,
+                &src.tcp_fragment_length,
+                &src.tcp_fragment_delay,
+                &format!("Outbound source '{}'", src.id),
+                &mut errors,
+            );
         }
     }
 
@@ -332,7 +429,7 @@ pub async fn commit_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::InboundServer;
+    use crate::store::{InboundServer, OutboundSource};
 
     #[test]
     fn test_section_disable_cascades_to_bound_server() {
@@ -559,5 +656,38 @@ mod tests {
         drop(committed);
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_source_fragment_options_validation() {
+        let mut ok_store = RouterStoreData::default();
+        ok_store.outbound_sources.push(OutboundSource {
+            id: "sub_frag_ok".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            tls_fragment_mode: "tcp_fragment".to_string(),
+            tcp_fragment_length: "20-60".to_string(),
+            tcp_fragment_delay: "0-2ms".to_string(),
+            ..Default::default()
+        });
+        let report_ok = analyze_config_plan(&ok_store);
+        assert!(report_ok.valid, "unexpected errors: {:?}", report_ok.errors);
+
+        let mut bad_store = RouterStoreData::default();
+        bad_store.outbound_sources.push(OutboundSource {
+            id: "sub_frag_bad".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            tls_fragment_mode: "bogus_mode".to_string(),
+            tcp_fragment_length: "60-20".to_string(),
+            tcp_fragment_delay: "bad".to_string(),
+            ..Default::default()
+        });
+        let report_bad = analyze_config_plan(&bad_store);
+        assert!(!report_bad.valid);
+        let joined = report_bad.errors.join("\n");
+        assert!(joined.contains("tls_fragment_mode"));
+        assert!(joined.contains("tcp_fragment_length"));
+        assert!(joined.contains("tcp_fragment_delay"));
     }
 }

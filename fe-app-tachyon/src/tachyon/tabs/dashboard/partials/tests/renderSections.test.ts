@@ -129,7 +129,7 @@ describe('renderSections', () => {
       code: 'discord',
       sectionName: 'discord',
       displayName: 'Discord',
-      action: 'zapret2',
+      action: 'desync',
       withTagSelect: false,
       serviceStatus: undefined,
       outbounds: [
@@ -137,7 +137,7 @@ describe('renderSections', () => {
           code: 'discord',
           displayName: 'Unknown',
           latency: 0,
-          type: 'ZAPRET2',
+          type: 'DESYNC',
           selected: true,
           canCopyLink: false,
         },
@@ -182,10 +182,10 @@ describe('renderSections', () => {
       code: 'youtube',
       sectionName: 'youtube',
       displayName: 'Youtube',
-      action: 'zapret2',
+      action: 'desync',
       withTagSelect: false,
       serviceStatus: {
-        serviceType: 'zapret2',
+        serviceType: 'desync',
         configured: true,
         ready: true,
         conflict: false,
@@ -193,7 +193,7 @@ describe('renderSections', () => {
         expectedProcesses: 1,
         restartCount: 0,
         unstable: false,
-        statusMessage: 'zapret2 provider status is normal',
+        statusMessage: 'desync status is normal',
       },
       outbounds: [],
     };
@@ -221,8 +221,8 @@ describe('renderSections', () => {
     expect(buttons).toHaveLength(0);
   });
 
-  it('renders zapret and byedpi service sections without latency button', () => {
-    for (const action of ['zapret', 'byedpi']) {
+  it('renders desync and fptn service sections without latency button', () => {
+    for (const action of ['desync', 'fptn']) {
       const section: any = {
         code: action,
         sectionName: action,
@@ -1347,5 +1347,152 @@ describe('renderSections', () => {
 
     expect(el.textContent).toContain('164.3 GB / 800.0 GB');
     expect(el.textContent).not.toContain('176 GB / 859 GB');
+  });
+
+  it('hides hidden outbounds and metadata by default and reveals them when showHidden is true (#405)', () => {
+    const section: any = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'VisibleSub',
+          sourceIndex: 1,
+          sourceSection: 'main',
+        },
+        {
+          title: 'SecretSub',
+          sourceIndex: 2,
+          sourceSection: 'main',
+          hidden: true,
+        },
+      ],
+      outbounds: [
+        {
+          code: 'vis-1',
+          displayName: 'Visible Node',
+          selected: true,
+          latency: 20,
+          sourceGroup: 'sub:1',
+        },
+        {
+          code: 'hid-sub-1',
+          displayName: 'Hidden Sub Node',
+          selected: false,
+          latency: 35,
+          sourceGroup: 'sub:2',
+          hidden: true,
+        },
+        {
+          code: 'hid-manual-1',
+          displayName: 'Hidden Manual Server',
+          selected: false,
+          latency: 50,
+          sourceGroup: 'manual',
+          hidden: true,
+        },
+      ],
+    };
+
+    const baseProps = {
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    };
+
+    const defaultEl = renderSections(baseProps);
+    expect(defaultEl.textContent).toContain('Visible Node');
+    expect(defaultEl.textContent).not.toContain('SecretSub');
+    expect(defaultEl.textContent).not.toContain('Hidden Sub Node');
+    expect(defaultEl.textContent).not.toContain('Hidden Manual Server');
+
+    const revealedEl = renderSections({ ...baseProps, showHidden: true });
+    expect(revealedEl.textContent).toContain('Visible Node');
+    expect(revealedEl.textContent).toContain('SecretSub');
+    expect(revealedEl.textContent).toContain('Hidden Sub Node');
+    expect(revealedEl.textContent).toContain('Hidden Manual Server');
+    expect(revealedEl.textContent).toContain('Hidden');
+  });
+
+  it('passes sourceIndex and sourceId when updating an individual subscription card, vs section-only on header button', () => {
+    const onUpdateSubscription = vi.fn();
+    const section: any = {
+      code: 'Main',
+      sectionName: 'Main',
+      displayName: 'Main',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'Sub A',
+          sourceIndex: 1,
+          sourceSection: 'Main-subscription-1',
+          sourceId: 'src_a',
+        },
+        {
+          title: 'Sub B',
+          sourceIndex: 2,
+          sourceSection: 'Main-subscription-2',
+          sourceId: 'src_b',
+        },
+      ],
+      outbounds: [
+        {
+          code: 'n1',
+          displayName: 'Node 1',
+          type: 'VLESS',
+          sourceGroup: 'sub:1',
+          sourceId: 'src_a',
+          selected: true,
+        },
+        {
+          code: 'n2',
+          displayName: 'Node 2',
+          type: 'VLESS',
+          sourceGroup: 'sub:2',
+          sourceId: 'src_b',
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription,
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const cardBtns = Array.from(
+      el.querySelectorAll('.tachyon_dashboard-page__subscription-meta__action'),
+    ) as HTMLButtonElement[];
+    expect(cardBtns.length).toBeGreaterThanOrEqual(2);
+    cardBtns[1].click();
+    expect(onUpdateSubscription).toHaveBeenCalledWith(section, 2, 'src_b');
+
+    onUpdateSubscription.mockClear();
+    const headerBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-section__subscription-update',
+    ) as HTMLButtonElement | null;
+    if (headerBtn) {
+      headerBtn.click();
+      expect(onUpdateSubscription).toHaveBeenCalledWith(section);
+    }
   });
 });

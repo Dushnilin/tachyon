@@ -2,7 +2,7 @@
      width="1200" height="148" viewBox="0 0 1200 148"
      role="img" aria-labelledby="title desc">
   <title id="title">Терминал установки Tachyon 2.0 Installer</title>
-  <desc id="desc">Однострочная команда установки Tachyon 2.0 на роутер OpenWrt с поддержкой пакетов apk/ipk/tar.gz для 8 архитектур и автоматическим импортом настроек Tachyon 1.x.</desc>
+  <desc id="desc">Однострочная команда установки Tachyon 2.0 на роутер OpenWrt с поддержкой пакетов apk и ipk для 8 архитектур и автоматическим импортом настроек Tachyon 1.x.</desc>
 
   <rect width="1200" height="148" rx="16" fill="#141415"/>
   <rect x="0.5" y="0.5" width="1199" height="147" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
@@ -16,7 +16,7 @@
   <circle cx="38" cy="18" r="4" fill="#2e2e32"/>
   <circle cx="52" cy="18" r="4" fill="#2e2e32"/>
   <text x="72" y="22" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">root@openwrt:~ — установщик Tachyon 2.0 (install.sh)</text>
-  <text x="1176" y="22" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">apk / ipk / tar.gz</text>
+  <text x="1176" y="22" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">apk / ipk</text>
 
   <!-- Command row -->
   <rect x="20" y="52" width="1160" height="44" rx="8" fill="#0f0f10" stroke="#2e2e32" stroke-width="1"/>

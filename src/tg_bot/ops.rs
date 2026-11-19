@@ -2684,8 +2684,12 @@ async fn render_bot_settings(state: &Arc<AppState>) -> BotReply {
         ],
         vec![
             cb_btn(tr(ru, "Уведомления", "Notifications"), "bot_notify_menu"),
-            cb_btn(tr(ru, "Добавить Admin ID", "Add Admin ID"), "bot_admin_ask"),
+            cb_btn(tr(ru, "Переключатели", "Quick Toggles"), "bot_toggles_menu"),
         ],
+        vec![cb_btn(
+            tr(ru, "Добавить Admin ID", "Add Admin ID"),
+            "bot_admin_ask",
+        )],
         vec![cb_btn(tr(ru, "Главное меню", "Main Menu"), "menu")],
     ]);
     BotReply::with_kb(text, kb)
@@ -2931,7 +2935,13 @@ async fn render_notify_menu(state: &Arc<AppState>) -> BotReply {
     let ru = is_ru(&d);
     let tg = &d.telegram;
 
-    let items: [(&str, &str, &str, bool); 9] = [
+    let items: [(&str, &str, &str, bool); 14] = [
+        (
+            "smart_detect",
+            "Smart Detect",
+            "Smart Detect",
+            tg.notify_smart_detect,
+        ),
         ("crash", "Сбои ядра", "Core Crash", tg.notify_crash),
         ("restart", "Перезапуски", "Restarts", tg.notify_restart),
         (
@@ -2940,22 +2950,36 @@ async fn render_notify_menu(state: &Arc<AppState>) -> BotReply {
             "Server Switch",
             tg.notify_server_switch,
         ),
+        ("failover", "Failover", "Failover", tg.notify_failover),
+        ("wan", "Статус WAN", "WAN Status", tg.notify_wan),
+        ("dns_leak", "DNS / Утечки", "DNS Leak", tg.notify_dns_leak),
         (
             "subscription",
             "Подписки",
             "Subscriptions",
             tg.notify_subscription,
         ),
-        ("dns_leak", "DNS / Утечки", "DNS Leak", tg.notify_dns_leak),
-        ("cert", "Сертификаты", "Certificates", tg.notify_cert),
+        (
+            "update_available",
+            "Новые версии",
+            "Updates Available",
+            tg.notify_update_available,
+        ),
         (
             "auto_update",
             "Автообновление",
             "Auto Update",
             tg.notify_auto_update,
         ),
-        ("honeypot", "Honeypot", "Honeypot", tg.notify_honeypot),
         ("parental", "Семейный режим", "Parental", tg.notify_parental),
+        ("cert", "Сертификаты", "Certificates", tg.notify_cert),
+        (
+            "route_alert",
+            "Проблемы маршрута",
+            "Route Alerts",
+            tg.notify_route_alert,
+        ),
+        ("honeypot", "Honeypot", "Honeypot", tg.notify_honeypot),
     ];
 
     let mut lines = vec![format!(
@@ -2975,9 +2999,14 @@ async fn render_notify_menu(state: &Arc<AppState>) -> BotReply {
 
     let mut rows: Vec<Vec<Value>> = btns.chunks(2).map(<[Value]>::to_vec).collect();
     rows.push(vec![
-        cb_btn(tr(ru, "Настройки бота", "Bot Settings"), "bot_cfg"),
-        cb_btn(tr(ru, "Главное меню", "Main Menu"), "menu"),
+        cb_btn(tr(ru, "Включить все", "Enable All"), "bot_notify_all 1"),
+        cb_btn(tr(ru, "Выключить все", "Disable All"), "bot_notify_all 0"),
     ]);
+    rows.push(vec![
+        cb_btn(tr(ru, "Переключатели", "Quick Toggles"), "bot_toggles_menu"),
+        cb_btn(tr(ru, "Настройки бота", "Bot Settings"), "bot_cfg"),
+    ]);
+    rows.push(vec![cb_btn(tr(ru, "Главное меню", "Main Menu"), "menu")]);
     BotReply::with_kb(lines.join("\n"), inline_kb(rows))
 }
 
@@ -2985,19 +3014,28 @@ async fn toggle_notify_field_reply(state: &Arc<AppState>, field: &str) -> BotRep
     let key = field.trim().to_ascii_lowercase();
     let res = update_telegram_cfg(state, |tg| {
         match key.as_str() {
+            "smart_detect" | "notify_smart_detect" => {
+                tg.notify_smart_detect = !tg.notify_smart_detect
+            }
             "crash" | "notify_crash" => tg.notify_crash = !tg.notify_crash,
             "restart" | "notify_restart" => tg.notify_restart = !tg.notify_restart,
             "server_switch" | "notify_server_switch" => {
                 tg.notify_server_switch = !tg.notify_server_switch
             }
+            "failover" | "notify_failover" => tg.notify_failover = !tg.notify_failover,
+            "wan" | "notify_wan" => tg.notify_wan = !tg.notify_wan,
             "subscription" | "notify_subscription" => {
                 tg.notify_subscription = !tg.notify_subscription
             }
             "dns_leak" | "notify_dns_leak" => tg.notify_dns_leak = !tg.notify_dns_leak,
             "cert" | "notify_cert" => tg.notify_cert = !tg.notify_cert,
+            "update_available" | "notify_update_available" => {
+                tg.notify_update_available = !tg.notify_update_available
+            }
             "auto_update" | "notify_auto_update" => tg.notify_auto_update = !tg.notify_auto_update,
             "honeypot" | "notify_honeypot" => tg.notify_honeypot = !tg.notify_honeypot,
             "parental" | "notify_parental" => tg.notify_parental = !tg.notify_parental,
+            "route_alert" | "notify_route_alert" => tg.notify_route_alert = !tg.notify_route_alert,
             _ => anyhow::bail!("Unknown notification flag: {key}"),
         }
         Ok(())
@@ -3010,6 +3048,372 @@ async fn toggle_notify_field_reply(state: &Arc<AppState>, field: &str) -> BotRep
         );
     }
     render_notify_menu(state).await
+}
+
+async fn set_all_notify_reply(state: &Arc<AppState>, arg: &str) -> BotReply {
+    let target = arg.trim() != "0";
+    let _ = update_telegram_cfg(state, |tg| {
+        tg.notify_smart_detect = target;
+        tg.notify_crash = target;
+        tg.notify_restart = target;
+        tg.notify_server_switch = target;
+        tg.notify_failover = target;
+        tg.notify_wan = target;
+        tg.notify_subscription = target;
+        tg.notify_dns_leak = target;
+        tg.notify_cert = target;
+        tg.notify_update_available = target;
+        tg.notify_auto_update = target;
+        tg.notify_honeypot = target;
+        tg.notify_parental = target;
+        tg.notify_route_alert = target;
+        Ok(())
+    })
+    .await;
+    render_notify_menu(state).await
+}
+
+#[derive(Clone, Copy)]
+enum ToggleApplyKind {
+    None,
+    Firewall,
+    Reload,
+}
+
+#[derive(Clone, Copy)]
+struct QuickToggleSpec {
+    key: &'static str,
+    group: &'static str,
+    ru: &'static str,
+    en: &'static str,
+    apply: ToggleApplyKind,
+}
+
+const QUICK_TOGGLE_SPECS: &[QuickToggleSpec] = &[
+    QuickToggleSpec {
+        key: "tcp_bbr",
+        group: "core",
+        ru: "TCP BBR",
+        en: "TCP BBR",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "enable_watchdog",
+        group: "core",
+        ru: "Watchdog",
+        en: "Watchdog",
+        apply: ToggleApplyKind::None,
+    },
+    QuickToggleSpec {
+        key: "emergency_direct_bypass",
+        group: "core",
+        ru: "Аварийный прямой обход",
+        en: "Emergency Direct Bypass",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "list_update_enabled",
+        group: "core",
+        ru: "Автообновление списков",
+        en: "Rule Lists Auto-Update",
+        apply: ToggleApplyKind::None,
+    },
+    QuickToggleSpec {
+        key: "component_update_check_enabled",
+        group: "core",
+        ru: "Проверка обновлений",
+        en: "Check Updates",
+        apply: ToggleApplyKind::None,
+    },
+    QuickToggleSpec {
+        key: "component_auto_update_enabled",
+        group: "core",
+        ru: "Автообновление компонентов",
+        en: "Auto-Update Components",
+        apply: ToggleApplyKind::None,
+    },
+    QuickToggleSpec {
+        key: "fakeip_enabled",
+        group: "net",
+        ru: "FakeIP",
+        en: "FakeIP",
+        apply: ToggleApplyKind::Reload,
+    },
+    QuickToggleSpec {
+        key: "ipv6_leak_guard",
+        group: "net",
+        ru: "Защита утечек IPv6",
+        en: "IPv6 Leak Guard",
+        apply: ToggleApplyKind::Reload,
+    },
+    QuickToggleSpec {
+        key: "dns_intercept_all",
+        group: "net",
+        ru: "Перехват всего DNS",
+        en: "Intercept All LAN DNS",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "block_doh",
+        group: "net",
+        ru: "Блок стороннего DoH",
+        en: "Block 3rd-Party DoH",
+        apply: ToggleApplyKind::Reload,
+    },
+    QuickToggleSpec {
+        key: "disable_quic",
+        group: "net",
+        ru: "Блок QUIC (UDP 443)",
+        en: "Block QUIC (UDP 443)",
+        apply: ToggleApplyKind::Reload,
+    },
+    QuickToggleSpec {
+        key: "webrtc_leak_protect",
+        group: "net",
+        ru: "Защита WebRTC",
+        en: "WebRTC Protection",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "isolate_p2p",
+        group: "net",
+        ru: "Изоляция P2P/Torrent",
+        en: "Isolate P2P/Torrent",
+        apply: ToggleApplyKind::Reload,
+    },
+    QuickToggleSpec {
+        key: "route_router_traffic",
+        group: "net",
+        ru: "Трафик самого роутера",
+        en: "Route Router Traffic",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "smart_queue",
+        group: "net",
+        ru: "SQM / Антибуферизация",
+        en: "Smart Queue (SQM)",
+        apply: ToggleApplyKind::Firewall,
+    },
+    QuickToggleSpec {
+        key: "direct_bypass_enabled",
+        group: "net",
+        ru: "Порт прямого обхода",
+        en: "Direct Bypass Port",
+        apply: ToggleApplyKind::Reload,
+    },
+];
+
+fn read_quick_toggle_val(s: &crate::store::GlobalSettings, key: &str) -> bool {
+    match key {
+        "tcp_bbr" => s.tcp_bbr,
+        "enable_watchdog" => s.enable_watchdog,
+        "emergency_direct_bypass" => s.emergency_direct_bypass,
+        "list_update_enabled" => s.list_update_enabled,
+        "component_update_check_enabled" => s.component_update_check_enabled,
+        "component_auto_update_enabled" => s.component_auto_update_enabled,
+        "fakeip_enabled" => s.fakeip_enabled,
+        "ipv6_leak_guard" => s.ipv6_leak_guard,
+        "dns_intercept_all" => s.dns_intercept_all,
+        "block_doh" => s.block_doh,
+        "disable_quic" => s.disable_quic,
+        "webrtc_leak_protect" => s.webrtc_leak_protect,
+        "isolate_p2p" => s.isolate_p2p,
+        "route_router_traffic" => s.route_router_traffic,
+        "smart_queue" => s.smart_queue,
+        "direct_bypass_enabled" => s.direct_bypass_enabled,
+        _ => false,
+    }
+}
+
+fn flip_quick_toggle_val(s: &mut crate::store::GlobalSettings, key: &str) -> bool {
+    match key {
+        "tcp_bbr" => {
+            s.tcp_bbr = !s.tcp_bbr;
+            true
+        }
+        "enable_watchdog" => {
+            s.enable_watchdog = !s.enable_watchdog;
+            true
+        }
+        "emergency_direct_bypass" => {
+            s.emergency_direct_bypass = !s.emergency_direct_bypass;
+            true
+        }
+        "list_update_enabled" => {
+            s.list_update_enabled = !s.list_update_enabled;
+            true
+        }
+        "component_update_check_enabled" => {
+            s.component_update_check_enabled = !s.component_update_check_enabled;
+            true
+        }
+        "component_auto_update_enabled" => {
+            s.component_auto_update_enabled = !s.component_auto_update_enabled;
+            true
+        }
+        "fakeip_enabled" => {
+            s.fakeip_enabled = !s.fakeip_enabled;
+            true
+        }
+        "ipv6_leak_guard" => {
+            s.ipv6_leak_guard = !s.ipv6_leak_guard;
+            true
+        }
+        "dns_intercept_all" => {
+            s.dns_intercept_all = !s.dns_intercept_all;
+            s.dns_intercept_all_mode = if s.dns_intercept_all { "1" } else { "0" }.to_string();
+            true
+        }
+        "block_doh" => {
+            s.block_doh = !s.block_doh;
+            true
+        }
+        "disable_quic" => {
+            s.disable_quic = !s.disable_quic;
+            true
+        }
+        "webrtc_leak_protect" => {
+            s.webrtc_leak_protect = !s.webrtc_leak_protect;
+            s.webrtc_leak_protect_mode = if s.webrtc_leak_protect { "1" } else { "0" }.to_string();
+            true
+        }
+        "isolate_p2p" => {
+            s.isolate_p2p = !s.isolate_p2p;
+            true
+        }
+        "route_router_traffic" => {
+            s.route_router_traffic = !s.route_router_traffic;
+            true
+        }
+        "smart_queue" => {
+            s.smart_queue = !s.smart_queue;
+            true
+        }
+        "direct_bypass_enabled" => {
+            s.direct_bypass_enabled = !s.direct_bypass_enabled;
+            true
+        }
+        _ => false,
+    }
+}
+
+async fn render_toggles_menu(
+    state: &Arc<AppState>,
+    group_arg: &str,
+    notice: Option<String>,
+) -> BotReply {
+    let group = if group_arg.trim().eq_ignore_ascii_case("net") {
+        "net"
+    } else {
+        "core"
+    };
+    let d = state.data.read().await.clone();
+    let ru = is_ru(&d);
+
+    let mut lines = vec![format!(
+        "<b>{}</b> ({})",
+        tr(ru, "Быстрые переключатели", "Quick Toggles"),
+        if group == "net" {
+            tr(ru, "Сеть и DNS", "Network & DNS")
+        } else {
+            tr(ru, "Ядро и система", "Core & System")
+        }
+    )];
+    if let Some(n) = notice {
+        lines.push(n);
+    }
+
+    let mut btns: Vec<Value> = Vec::new();
+    for spec in QUICK_TOGGLE_SPECS.iter().filter(|sp| sp.group == group) {
+        let val = read_quick_toggle_val(&d.settings, spec.key);
+        let lbl = if ru { spec.ru } else { spec.en };
+        let st = if val { "[ON]" } else { "[OFF]" };
+        lines.push(format!("{st} {lbl}"));
+        btns.push(cb_btn(
+            &format!("{st} {lbl}"),
+            &format!("bot_feat_tog {group} {}", spec.key),
+        ));
+    }
+
+    let mut rows: Vec<Vec<Value>> = vec![vec![
+        cb_btn(
+            if group == "core" {
+                "• Ядро / Система"
+            } else {
+                "Ядро / Система"
+            },
+            "bot_toggles_menu core",
+        ),
+        cb_btn(
+            if group == "net" {
+                "• Сеть / DNS"
+            } else {
+                "Сеть / DNS"
+            },
+            "bot_toggles_menu net",
+        ),
+    ]];
+    rows.extend(btns.chunks(2).map(<[Value]>::to_vec));
+    rows.push(vec![
+        cb_btn(tr(ru, "Уведомления", "Notifications"), "bot_notify_menu"),
+        cb_btn(tr(ru, "Главное меню", "Main Menu"), "menu"),
+    ]);
+    BotReply::with_kb(lines.join("\n"), inline_kb(rows))
+}
+
+async fn toggle_feature_setting_reply(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    arg: &str,
+) -> BotReply {
+    let mut parts = arg.split_whitespace();
+    let (group, key) = match (parts.next(), parts.next()) {
+        (Some(g), Some(k)) => (g, k),
+        (Some(k), None) => ("core", k),
+        _ => return render_toggles_menu(state, "core", None).await,
+    };
+
+    let mut candidate = state.data.read().await.clone();
+    let ru = is_ru(&candidate);
+    if !flip_quick_toggle_val(&mut candidate.settings, key) {
+        return render_toggles_menu(
+            state,
+            group,
+            Some(format!("[ERR] Unknown toggle: {}", escape_html(key))),
+        )
+        .await;
+    }
+
+    let apply_kind = QUICK_TOGGLE_SPECS
+        .iter()
+        .find(|sp| sp.key == key)
+        .map_or(ToggleApplyKind::None, |sp| sp.apply);
+
+    let save_res = crate::transaction::commit_transaction(state, candidate).await;
+    let notice = match save_res {
+        Ok(_report) => {
+            let saved = state.data.read().await.clone();
+            match apply_kind {
+                ToggleApplyKind::Reload => {
+                    let _ = core.apply_or_reload().await;
+                }
+                ToggleApplyKind::Firewall => {
+                    let _ = crate::net_stack::apply_network_stack(&saved).await;
+                }
+                ToggleApplyKind::None => {}
+            }
+            let new_val = read_quick_toggle_val(&saved.settings, key);
+            let badge = if new_val { "[ON]" } else { "[OFF]" };
+            format!("[OK] <code>{}</code> -> {badge}", escape_html(key))
+        }
+        Err(e) => format!(
+            "[ERR] {}: {}",
+            tr(ru, "Ошибка сохранения", "Save failed"),
+            escape_html(&e.to_string())
+        ),
+    };
+    render_toggles_menu(state, group, Some(notice)).await
 }
 
 async fn render_bot_proxy_menu(state: &Arc<AppState>) -> BotReply {
@@ -3459,8 +3863,13 @@ async fn dispatch_bot_cfg_ops(
             "Enter quiet hours range as <code>HH:MM-HH:MM</code> (e.g. <code>23:00-07:00</code>):",
             "bot_cfg",
         )),
-        "/notify" | "bot_notify_menu" => Box::pin(render_notify_menu(state)),
+        "/notify" | "/notifications" | "bot_notify_menu" => Box::pin(render_notify_menu(state)),
         "bot_notify_tog" => Box::pin(toggle_notify_field_reply(state, arg)),
+        "bot_notify_all" => Box::pin(set_all_notify_reply(state, arg)),
+        "/toggles" | "/features" | "bot_toggles_menu" => {
+            Box::pin(render_toggles_menu(state, arg, None))
+        }
+        "bot_feat_tog" => Box::pin(toggle_feature_setting_reply(state, core, arg)),
         "bot_proxy_menu" => Box::pin(render_bot_proxy_menu(state)),
         "bot_proxy_set" => Box::pin(set_bot_proxy_reply(state, core, arg)),
         "bot_admin_ask" => Box::pin(set_prompt_reply(

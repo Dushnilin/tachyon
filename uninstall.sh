@@ -4,7 +4,7 @@
 
 set -u
 
-UNINSTALLER_VERSION="2.0.0"
+UNINSTALLER_VERSION="2.0.0-beta.1"
 
 OPT_PURGE=0
 OPT_YES=0
@@ -87,17 +87,19 @@ done
 
 killall -9 tachyon >/dev/null 2>&1 || true
 killall -9 tachyon-core >/dev/null 2>&1 || true
-killall -9 sing-box nfqws nfqws2 ciadpi >/dev/null 2>&1 || true
 printf '[OK] Services and daemon processes stopped\n'
 
 # Step 3: Clean nftables & IP policy routing
 if command -v nft >/dev/null 2>&1; then
     nft delete table inet tachyon >/dev/null 2>&1 || true
     nft delete table inet TachyonTable >/dev/null 2>&1 || true
+    nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
+    # TUN kill-switch rules
+    for _p in 9499 9500 9501; do for _fam in -4 -6; do while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done; done; done
     nft delete table inet steer >/dev/null 2>&1 || true
     nft delete table ip tachyon >/dev/null 2>&1 || true
     nft delete table ip6 tachyon >/dev/null 2>&1 || true
-    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /etc/nftables.d/10-tachyon.nft 2>/dev/null || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /etc/nftables.d/10-tachyon.nft /etc/sysctl.d/99-tachyon-bbr.conf 2>/dev/null || true
     printf '[OK] nftables tables cleaned\n'
 fi
 
@@ -145,7 +147,7 @@ fi
 
 # Step 4: Restore DNS & dnsmasq
 rm -f /etc/dnsmasq.d/tachyon*.conf /tmp/dnsmasq.d/tachyon*.conf /tmp/dnsmasq.*.d/tachyon*.conf 2>/dev/null || true
-rm -f /etc/tachyon/dnsmasq-tailscale.servers 2>/dev/null || true
+rm -f /etc/tachyon/dnsmasq-tailscale.servers /var/run/tachyon/dnsmasq-tailscale.servers /var/run/tachyon/tachyon-core-version 2>/dev/null || true
 
 if command -v uci >/dev/null 2>&1 && [ -f /etc/config/dhcp ]; then
     uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.42" 2>/dev/null || true
@@ -252,12 +254,12 @@ rm -rf /usr/lib/tachyon /usr/share/tachyon /www/luci-static/resources/view/tachy
 rm -f /www/yacd 2>/dev/null || rm -rf /www/yacd 2>/dev/null || true
 rm -f /usr/share/luci/menu.d/tachyon-launcher.json /usr/share/rpcd/acl.d/tachyon-launcher.json 2>/dev/null || true
 rm -f /usr/share/luci/menu.d/luci-app-tachyon.json /usr/share/rpcd/acl.d/luci-app-tachyon.json 2>/dev/null || true
-rm -f /usr/libexec/rpcd/tachyon /etc/uci-defaults/50_luci-tachyon /etc/tachyon_commit 2>/dev/null || true
+rm -f /usr/libexec/rpcd/tachyon /etc/uci-defaults/50_luci-tachyon /etc/tachyon_commit /lib/upgrade/keep.d/tachyon /usr/lib/lua/luci/i18n/tachyon.ru.lmo 2>/dev/null || true
 rm -f /usr/bin/tachyon /usr/bin/tachyon.new /etc/init.d/tachyon /etc/rc.d/*tachyon* 2>/dev/null || true
 rm -f /etc/hotplug.d/iface/99-tachyon-wan-monitor /www/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-sub /usr/lib/cgi-bin/tachyon-agent 2>/dev/null || true
 
 if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
-    rm -f /usr/bin/tachyon-core /usr/bin/tachyon-core.new /etc/init.d/tachyon-core /usr/bin/sing-box 2>/dev/null || true
+    rm -f /usr/bin/tachyon-core /usr/bin/tachyon-core.new /etc/init.d/tachyon-core 2>/dev/null || true
 fi
 
 rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/tachyon* /tmp/tachyon-core /tmp/ai_doctor* /tmp/tg_* /tmp/warp_* /tmp/luci-modulecache 2>/dev/null || true

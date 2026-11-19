@@ -44,7 +44,8 @@ export function render() {
                   'button',
                   {
                     id: 'monitoring-datasource-all',
-                    class: 'btn cbi-button tachyon_monitoring-page__tab',
+                    class:
+                      'btn cbi-button tachyon_monitoring-page__tab tachyon_monitoring-page__tab--active',
                     type: 'button',
                   },
                   _('All'),
@@ -53,8 +54,7 @@ export function render() {
                   'button',
                   {
                     id: 'monitoring-datasource-core',
-                    class:
-                      'btn cbi-button tachyon_monitoring-page__tab tachyon_monitoring-page__tab--active',
+                    class: 'btn cbi-button tachyon_monitoring-page__tab',
                     type: 'button',
                   },
                   _('Tachyon Core'),

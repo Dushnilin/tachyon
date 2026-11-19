@@ -252,7 +252,10 @@ fn dispatch_menu_sources<'a>(
             let page = parse_usize_or(arg, 0);
             Some(Box::pin(render_sources_list(state, page, None)))
         }
-        "src_view" => Some(Box::pin(render_source_view(state, arg.trim(), None))),
+        "src_view" => {
+            let (src_id, page) = split_id_page(arg);
+            Some(Box::pin(render_source_view(state, src_id, page, None)))
+        }
         "src_refresh" => Some(Box::pin(handle_src_refresh(arg.trim(), state, core))),
         "src_refresh_all" => Some(Box::pin(handle_src_refresh("", state, core))),
         "src_tog" => Some(Box::pin(handle_src_toggle(arg.trim(), state, core))),
@@ -675,7 +678,7 @@ async fn render_main_menu(state: &Arc<AppState>) -> BotReply {
             cb_btn(tr(ru, "Обновления", "Updates"), "/updates"),
         ],
         vec![
-            cb_btn(tr(ru, "Снапшоты и LKG", "Snapshots & LKG"), "/snapshots"),
+            cb_btn(tr(ru, "Переключатели", "Quick Toggles"), "bot_toggles_menu"),
             cb_btn(tr(ru, "Настройки бота", "Bot Settings"), "/bot_settings"),
         ],
         vec![
@@ -1399,6 +1402,62 @@ async fn handle_sec_mode(
     render_section_view(state, core, sec_id, Some(note)).await
 }
 
+fn url_encode_proxy_tag(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for b in raw.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char);
+            }
+            _ => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    out
+}
+
+fn candidate_section_group_tags(
+    sec: &RoutingSection,
+    clash_proxies: Option<&Value>,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for bal_id in &sec.balancer_refs {
+        let tag = format!("bal-{}-{bal_id}", sec.id);
+        if !candidates.contains(&tag) {
+            candidates.push(tag);
+        }
+    }
+    if let Some(map) = clash_proxies
+        .and_then(|v| v.get("proxies"))
+        .and_then(Value::as_object)
+    {
+        let prefix = format!("bal-{}-", sec.id);
+        let mut matched: Vec<String> = map
+            .keys()
+            .filter(|k| k.starts_with(&prefix))
+            .cloned()
+            .collect();
+        matched.sort();
+        for tag in matched {
+            if !candidates.contains(&tag) {
+                candidates.push(tag);
+            }
+        }
+    }
+    for tag in [
+        format!("sel-{}", sec.id),
+        format!("{}-out", sec.id),
+        sec.id.clone(),
+    ] {
+        if !candidates.contains(&tag) {
+            candidates.push(tag);
+        }
+    }
+    candidates
+}
+
 fn resolve_section_outbounds(
     d: &RouterStoreData,
     sec: &RoutingSection,
@@ -1406,15 +1465,23 @@ fn resolve_section_outbounds(
 ) -> Vec<String> {
     let mut tags = Vec::new();
     let sel_name = format!("sel-{}", sec.id);
+    let group_candidates = candidate_section_group_tags(sec, clash_proxies);
 
-    if let Some(px) = clash_proxies
-        && let Some(arr) = px
-            .pointer(&format!("/proxies/{sel_name}/all"))
-            .and_then(Value::as_array)
+    if let Some(px_map) = clash_proxies
+        .and_then(|v| v.get("proxies"))
+        .and_then(Value::as_object)
     {
-        for item in arr.iter().filter_map(Value::as_str) {
-            if !tags.iter().any(|t| t == item) {
-                tags.push(item.to_string());
+        for group_tag in &group_candidates {
+            if let Some(arr) = px_map
+                .get(group_tag)
+                .and_then(|g| g.get("all"))
+                .and_then(Value::as_array)
+            {
+                for item in arr.iter().filter_map(Value::as_str) {
+                    if !tags.iter().any(|t| t == item) {
+                        tags.push(item.to_string());
+                    }
+                }
             }
         }
     }
@@ -1424,22 +1491,18 @@ fn resolve_section_outbounds(
     {
         for ob in outbounds {
             let tag = ob.get("tag").and_then(Value::as_str).unwrap_or("");
-            if tag == sel_name
+            if (tag == sel_name
+                || tag == format!("{}-out", sec.id)
+                || tag == sec.id
+                || tag.starts_with(&format!("bal-{}-", sec.id)))
                 && let Some(arr) = ob.get("outbounds").and_then(Value::as_array)
             {
+                if tag.starts_with(&format!("bal-{}-", sec.id)) && !tags.iter().any(|t| t == tag) {
+                    tags.push(tag.to_string());
+                }
                 for m in arr.iter().filter_map(Value::as_str) {
                     if !tags.iter().any(|t| t == m) {
                         tags.push(m.to_string());
-                    }
-                }
-            } else if tag.starts_with(&format!("bal-{}-", sec.id)) && !tags.iter().any(|t| t == tag)
-            {
-                tags.push(tag.to_string());
-                if let Some(arr) = ob.get("outbounds").and_then(Value::as_array) {
-                    for m in arr.iter().filter_map(Value::as_str) {
-                        if !tags.iter().any(|t| t == m) {
-                            tags.push(m.to_string());
-                        }
                     }
                 }
             }
@@ -1499,13 +1562,22 @@ async fn render_section_nodes(
     };
     let nodes = resolve_section_outbounds(&d, sec, clash_proxies.as_ref());
     let mut active = sec.active_selected_tag.clone();
-    if active.is_empty()
-        && let Some(px) = clash_proxies.as_ref()
-        && let Some(now_tag) = px
-            .pointer(&format!("/proxies/sel-{}/now", sec.id))
-            .and_then(Value::as_str)
+    if let Some(px_map) = clash_proxies
+        .as_ref()
+        .and_then(|v| v.get("proxies"))
+        .and_then(Value::as_object)
     {
-        active = now_tag.to_string();
+        for group_tag in candidate_section_group_tags(sec, clash_proxies.as_ref()) {
+            if let Some(now_tag) = px_map
+                .get(&group_tag)
+                .and_then(|g| g.get("now"))
+                .and_then(Value::as_str)
+                && !now_tag.is_empty()
+            {
+                active = now_tag.to_string();
+                break;
+            }
+        }
     }
 
     let (safe_page, total_pages, start, end) = paginate(nodes.len(), page, PER_PAGE);
@@ -1578,12 +1650,53 @@ async fn handle_sec_pick(
     core: &Arc<CoreManager>,
 ) -> BotReply {
     let ru = current_is_ru(state).await;
+    let sec_opt = state
+        .data
+        .read()
+        .await
+        .sections
+        .iter()
+        .find(|s| s.id == sec_id)
+        .cloned();
     let note = match Box::pin(core.select_section_node(sec_id, tag)).await {
-        Ok(()) => format!(
-            "[OK] {} -> <code>{}</code>",
-            tr(ru, "Узел выбран", "Selected node"),
-            escape_html(tag)
-        ),
+        Ok(()) => {
+            if let Some(sec) = sec_opt {
+                let clash_proxies = Box::pin(core.clash_request("GET", "/proxies", None))
+                    .await
+                    .ok();
+                let payload = serde_json::json!({ "name": tag }).to_string();
+                let candidates = candidate_section_group_tags(&sec, clash_proxies.as_ref());
+                let mut switched_via_group = false;
+                for group_tag in candidates {
+                    if let Some(px_map) = clash_proxies
+                        .as_ref()
+                        .and_then(|v| v.get("proxies"))
+                        .and_then(Value::as_object)
+                        && !px_map.contains_key(&group_tag)
+                    {
+                        continue;
+                    }
+                    let encoded = url_encode_proxy_tag(&group_tag);
+                    if Box::pin(core.clash_request(
+                        "PUT",
+                        &format!("/proxies/{encoded}"),
+                        Some(&payload),
+                    ))
+                    .await
+                    .is_ok()
+                    {
+                        switched_via_group = true;
+                        break;
+                    }
+                }
+                let _ = switched_via_group;
+            }
+            format!(
+                "[OK] {} -> <code>{}</code>",
+                tr(ru, "Узел выбран", "Selected node"),
+                escape_html(tag)
+            )
+        }
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
     render_section_nodes(state, core, sec_id, 0, Some(note)).await
@@ -2408,6 +2521,7 @@ fn collect_all_source_node_tags(d: &RouterStoreData) -> Vec<String> {
 async fn render_source_view(
     state: &Arc<AppState>,
     src_id: &str,
+    page: usize,
     notice: Option<String>,
 ) -> BotReply {
     let d = state.data.read().await.clone();
@@ -2506,12 +2620,13 @@ async fn render_source_view(
     rows.push(action_row);
 
     if !src_nodes.is_empty() {
+        let (safe_page, total_pages, start, end) = paginate(src_nodes.len(), page, PER_PAGE);
         lines.push(format!(
             "\n<b>{} ({}):</b>",
             tr(ru, "Узлы", "Nodes"),
             src_nodes.len()
         ));
-        for tag in src_nodes.iter().take(6) {
+        for tag in &src_nodes[start..end] {
             let lat = live
                 .node_latencies_ms
                 .get(tag)
@@ -2525,9 +2640,12 @@ async fn render_source_view(
                 )]);
             }
         }
-        if src_nodes.len() > 6 {
-            lines.push(format!("... +{}", src_nodes.len() - 6));
-        }
+        add_pagination_row(
+            &mut rows,
+            &format!("src_view {}", src.id),
+            safe_page,
+            total_pages,
+        );
     }
 
     rows.push(vec![
@@ -2567,7 +2685,7 @@ async fn handle_src_toggle(
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
-    render_source_view(state, src_id, Some(note)).await
+    render_source_view(state, src_id, 0, Some(note)).await
 }
 
 async fn render_source_delete_confirm(state: &Arc<AppState>, src_id: &str) -> BotReply {
@@ -2657,7 +2775,7 @@ async fn handle_src_refresh(
     if src_id.is_empty() {
         render_sources_list(state, 0, Some(note)).await
     } else {
-        render_source_view(state, src_id, Some(note)).await
+        render_source_view(state, src_id, 0, Some(note)).await
     }
 }
 
@@ -2673,7 +2791,7 @@ async fn handle_src_warp(state: &Arc<AppState>, core: &Arc<CoreManager>) -> BotR
                 escape_html(ipv4),
                 escape_html(ep)
             );
-            render_source_view(state, "warp_cf", Some(note)).await
+            render_source_view(state, "warp_cf", 0, Some(note)).await
         }
         Err(e) => {
             let note = format!("[ERR] WARP: {}", escape_html(&e.to_string()));
@@ -2941,7 +3059,7 @@ async fn handle_import_subscription_or_uri(
             tr(ru, "Источник добавлен", "Source added"),
             escape_html(&created_ids.join(", "))
         );
-        return render_source_view(state, first_id, Some(note)).await;
+        return render_source_view(state, first_id, 0, Some(note)).await;
     }
     render_sources_list(state, 0, None).await
 }

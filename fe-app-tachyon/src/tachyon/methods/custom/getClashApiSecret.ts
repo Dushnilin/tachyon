@@ -7,3 +7,7 @@ export async function getClashApiSecret() {
 
   return settings?.yacd_secret_key || '';
 }
+
+export async function isDirectClashApiExposed(): Promise<boolean> {
+  return false;
+}

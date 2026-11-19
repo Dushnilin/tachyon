@@ -1,12 +1,20 @@
+[env]
+RUSTC_BOOTSTRAP = { value = "1", force = true }
+
 [target.aarch64-unknown-linux-musl]
 linker = "rust-lld"
 rustflags = [
     "--cfg", "aes_armv8",
     "--cfg", "polyval_armv8",
     "--cfg", "chacha20_force_neon",
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",
@@ -16,12 +24,17 @@ rustflags = [
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"
 rustflags = [
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "target-feature=+crt-static",
     "-C", "relocation-model=static",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "target-cpu=x86-64",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",
@@ -31,12 +44,17 @@ rustflags = [
 [target.i686-unknown-linux-musl]
 linker = "rust-lld"
 rustflags = [
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "target-feature=+crt-static",
     "-C", "relocation-model=static",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "target-cpu=pentium4",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",
@@ -46,9 +64,14 @@ rustflags = [
 [target.armv7-unknown-linux-musleabihf]
 linker = "rust-lld"
 rustflags = [
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",
@@ -58,9 +81,14 @@ rustflags = [
 [target.arm-unknown-linux-musleabi]
 linker = "rust-lld"
 rustflags = [
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",
@@ -70,11 +98,16 @@ rustflags = [
 [target.riscv64gc-unknown-linux-musl]
 linker = "rust-lld"
 rustflags = [
+    "-Z", "location-detail=none",
+    "-Z", "fmt-debug=shallow",
+    "-Z", "remap-cwd-prefix=.",
     "-C", "target-feature=+crt-static",
     "-C", "relocation-model=static",
     "-C", "force-unwind-tables=no",
     "-C", "link-self-contained=yes",
     "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=--no-eh-frame-hdr",
+    "-C", "link-arg=-Topenwrt/discard-eh.ld",
     "-C", "link-arg=-z",
     "-C", "link-arg=noseparate-code",
     "-C", "link-arg=-z",

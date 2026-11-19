@@ -25,7 +25,7 @@ pub async fn handle_mcp_rpc(state: &Arc<AppState>, core: &Arc<CoreManager>, req:
                 "protocolVersion": "2024-11-05",
                 "serverInfo": {
                     "name": "tachyon-mcp",
-                    "version": "2.0.0"
+                    "version": crate::store::TACHYON_VERSION
                 },
                 "capabilities": {
                     "tools": {}

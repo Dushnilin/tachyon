@@ -58,9 +58,15 @@ for pair in $TACHYON_TARGETS; do
   if [[ -n "${TACHYON_CARGO_EXTRA_ARGS:-}" ]]; then
     read -r -a extra_args <<< "${TACHYON_CARGO_EXTRA_ARGS}"
   fi
+  TACHYON_BUILD_STD="${TACHYON_BUILD_STD:-1}"
+  build_env=(TACHYON_BUILD_VERSION="$RELEASE_VERSION")
+  if [[ "$TACHYON_BUILD_STD" == "1" && " ${TACHYON_CARGO_EXTRA_ARGS:-} " != *"build-std"* ]]; then
+    build_env+=(RUSTC_BOOTSTRAP=1 CARGO_PROFILE_RELEASE_PANIC=immediate-abort)
+    extra_args+=(-Z panic-immediate-abort -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size)
+  fi
   (
     cd "$ROOT_DIR"
-    TACHYON_BUILD_VERSION="$RELEASE_VERSION" cargo build --manifest-path "$ROOT_DIR/Cargo.toml" --release --target "$triple" "${extra_args[@]}"
+    env "${build_env[@]}" cargo build --manifest-path "$ROOT_DIR/Cargo.toml" --release --target "$triple" ${extra_args[@]+"${extra_args[@]}"}
   )
 
   bin_path="$ROOT_DIR/target/$triple/release/tachyon"
@@ -75,12 +81,10 @@ for pair in $TACHYON_TARGETS; do
     --arch "$arch" \
     --version "$RELEASE_VERSION" \
     --init "$ROOT_DIR/openwrt/tachyon.init" \
-    --po "$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po" \
     --views-dir "$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon" \
     --launcher-js "$ROOT_DIR/openwrt/launcher.js" \
     --launcher-menu "$ROOT_DIR/openwrt/tachyon-launcher.menu.json" \
     --launcher-acl "$ROOT_DIR/openwrt/tachyon-launcher.acl.json" \
-    --out-tar "$OUTPUT_DIR/${base_name}.tar.gz" \
     --out-ipk "$OUTPUT_DIR/${base_name}.ipk" \
     --out-apk "$OUTPUT_DIR/${base_name}.apk"
 done
@@ -91,7 +95,7 @@ cp -f "$ROOT_DIR/install.sh" "$ROOT_DIR/uninstall.sh" "$OUTPUT_DIR/"
   cd "$OUTPUT_DIR"
   rm -f SHA256SUMS
   sha256_files=()
-  for f in tachyon-*.tar.gz tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh; do
+  for f in tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh; do
     [[ -e "$f" ]] && sha256_files+=("$f")
   done
   if [[ ${#sha256_files[@]} -gt 0 ]]; then

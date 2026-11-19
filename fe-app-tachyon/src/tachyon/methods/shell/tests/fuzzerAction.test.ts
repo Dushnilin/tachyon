@@ -24,21 +24,21 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       stdout: JSON.stringify({
         success: true,
         job_id: 'fuzz_12345',
-        engine: 'zapret2',
+        engine: 'desync',
         target: 'youtube',
       }),
       stderr: '',
       code: 0,
     });
 
-    const res = await TachyonShellMethods.startFuzzer('zapret2', 'youtube');
+    const res = await TachyonShellMethods.startFuzzer('desync', 'youtube');
     expect(res.success).toBe(true);
     if (res.success) {
       expect(res.data.job_id).toBe('fuzz_12345');
     }
     expect(mocks.executeShellCommand).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: ['fuzzer_start', 'zapret2', 'youtube', '', '', ''],
+        args: ['fuzzer_start', 'desync', 'youtube', '', '', ''],
       }),
     );
   });
@@ -48,7 +48,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       stdout: JSON.stringify({
         success: true,
         job_id: 'fuzz_combo_1',
-        engine: 'zapret2',
+        engine: 'desync',
         target: 'youtube',
         mode: 'combinatorial',
       }),
@@ -57,7 +57,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     });
 
     const res = await TachyonShellMethods.startFuzzer(
-      'zapret2',
+      'desync',
       'youtube',
       '',
       '',
@@ -69,7 +69,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       expect.objectContaining({
         args: [
           'fuzzer_start',
-          'zapret2',
+          'desync',
           'youtube',
           '',
           '',
@@ -80,21 +80,51 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     );
   });
 
+  it('starts fuzzer with unlimited timeout (0)', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        job_id: 'fuzz_unlim_1',
+        engine: 'desync',
+        target: 'youtube',
+        mode: 'presets',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.startFuzzer(
+      'desync',
+      'youtube',
+      '',
+      '',
+      '',
+      'presets',
+      0,
+    );
+    expect(res.success).toBe(true);
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ['fuzzer_start', 'desync', 'youtube', '', '', '', 'presets', '0'],
+      }),
+    );
+  });
+
   it('gets fuzzer status and results', async () => {
     mocks.executeShellCommand.mockResolvedValueOnce({
       stdout: JSON.stringify({
         running: false,
         job_id: 'fuzz_12345',
-        engine: 'zapret2',
+        engine: 'desync',
         target: 'youtube',
         target_url: 'https://www.youtube.com',
         progress_pct: 100,
         results: [
           {
-            id: 'z2_yt_multisplit_midsld',
+            id: 'desync_yt_multisplit_midsld',
             name: 'YouTube 4K Multisplit + MidSLD',
-            engine: 'zapret2',
-            args: '--dpi-desync=multisplit',
+            engine: 'desync',
+            args: 'desync_mode=multisplit',
             success: true,
             http_code: 200,
             ttfb_ms: 120,
@@ -104,7 +134,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
           },
         ],
         best_strategy: {
-          id: 'z2_yt_multisplit_midsld',
+          id: 'desync_yt_multisplit_midsld',
           score: 180,
         },
       }),
@@ -186,15 +216,15 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     mocks.executeShellCommand.mockResolvedValueOnce({
       stdout: JSON.stringify({
         success: true,
-        engine: 'zapret2',
+        engine: 'desync',
         target: 'youtube',
         analysis: 'Transit packet filter blocks SNI on first chunk',
         strategies: [
           {
             id: 'ai_1',
             name: 'AI Strategy 1',
-            engine: 'zapret2',
-            args: '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq',
+            engine: 'desync',
+            args: 'desync_mode=multisplit',
             description: 'AI multisplit',
           },
         ],
@@ -204,7 +234,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     });
 
     const res = await TachyonShellMethods.fuzzerAiSynthesize(
-      'zapret2',
+      'desync',
       'youtube',
       '',
       'Rostelecom',
@@ -223,7 +253,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       stdout: JSON.stringify({
         success: true,
         job_id: 'fuzz_ai_42',
-        engine: 'zapret2',
+        engine: 'desync',
         target: 'youtube',
       }),
       stderr: '',
@@ -231,7 +261,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     });
 
     const res = await TachyonShellMethods.startFuzzer(
-      'zapret2',
+      'desync',
       'youtube',
       '',
       'rule_1',
@@ -243,7 +273,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       expect.objectContaining({
         args: [
           'fuzzer_start',
-          'zapret2',
+          'desync',
           'youtube',
           '',
           'rule_1',
@@ -259,9 +289,10 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       stdout: JSON.stringify({
         success: true,
         patterns: {
-          zapret2: { splits: ['1', '2', 'midsld'] },
-          zapret: { splits: ['1', '2'] },
-          byedpi: { splits: ['1'] },
+          desync: {
+            modes: ['auto', 'multisplit'],
+            split_poses: ['1', 'midsld'],
+          },
           custom_strategies: [],
         },
       }),
@@ -272,7 +303,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     const res = await TachyonShellMethods.getFuzzerPatterns();
     expect(res.success).toBe(true);
     if (res.success) {
-      expect(res.data.patterns.zapret2.splits).toEqual(['1', '2', 'midsld']);
+      expect(res.data.patterns.desync?.split_poses).toEqual(['1', 'midsld']);
     }
   });
 
@@ -287,9 +318,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     });
 
     const patternsPayload = {
-      zapret2: { splits: ['1', '2', 'midsld'] },
-      zapret: { splits: ['1'] },
-      byedpi: { splits: ['1'] },
+      desync: { modes: ['auto', 'multisplit'], split_poses: ['1', 'midsld'] },
       custom_strategies: [],
     } as unknown as Parameters<
       typeof TachyonShellMethods.saveFuzzerPatterns
@@ -310,7 +339,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
         success: true,
         message: 'Patterns reset to factory defaults',
         patterns: {
-          zapret2: { splits: ['1', '2', '3', 'midsld'] },
+          desync: { modes: ['auto'], split_poses: ['1', 'midsld'] },
         },
       }),
       stderr: '',

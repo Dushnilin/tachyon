@@ -31,7 +31,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+          targets: x86_64-unknown-linux-musl, i686-unknown-linux-musl, aarch64-unknown-linux-musl, armv7-unknown-linux-musleabihf, arm-unknown-linux-musleabi, riscv64gc-unknown-linux-musl
 
       - name: Cache Cargo registry and artifacts
         uses: Swatinem/rust-cache@v2
@@ -62,10 +62,26 @@ jobs:
             fi
           done
 
+      - name: Verify MIPS32 64-bit atomic compatibility
+        run: |
+          set -euo pipefail
+          bad="$(grep -rnE --include='*.rs' '(^|[^A-Za-z0-9_])Atomic[UI]64([^A-Za-z0-9_]|$)' src/ \
+            | grep -v -E '^src/store\.rs:.*std::sync::atomic::AtomicU64' \
+            || true)"
+          if [[ -n "$bad" ]]; then
+            echo "Direct 64-bit atomics forbidden outside PortableAtomicU64 in src/store.rs (breaks MIPS32):" >&2
+            printf '%s\n' "$bad" >&2
+            exit 1
+          fi
+
       - name: Check musl cross-compilation targets
         run: |
-          cargo check --target x86_64-unknown-linux-musl
-          cargo check --target aarch64-unknown-linux-musl
+          cargo check --locked --target x86_64-unknown-linux-musl
+          cargo check --locked --target i686-unknown-linux-musl
+          cargo check --locked --target aarch64-unknown-linux-musl
+          cargo check --locked --target armv7-unknown-linux-musleabihf
+          cargo check --locked --target arm-unknown-linux-musleabi
+          cargo check --locked --target riscv64gc-unknown-linux-musl
 
   frontend:
     name: Frontend CI & Locale Sync

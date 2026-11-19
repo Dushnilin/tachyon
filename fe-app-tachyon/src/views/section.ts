@@ -49,11 +49,7 @@ const ROUTING_ACTIONS = [
   'vpn',
   'bypass',
   'block',
-  'zapret',
-  'zapret2',
-  'byedpi',
   'wdtt',
-  'olcrtc',
   'fptn',
   'awg',
   'warp',
@@ -221,18 +217,13 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       'trusttunnel',
       'tewfai',
       'csqtt',
+      'wdtt',
       'group',
     ].includes(action)
   ) {
     return true;
   }
-  if (action === 'zapret') {
-    return isZapretInstalledForUi();
-  }
-  if (action === 'zapret2') {
-    return isZapret2InstalledForUi();
-  }
-  return action === 'byedpi' && isByedpiInstalledForUi();
+  return false;
 }
 
 function refreshDnsDetourSectionOptionValues(option, sectionId) {
@@ -279,285 +270,12 @@ function dependsOnRuleConditions(option) {
   return option;
 }
 
-const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT =
-  '--filter-tcp=80 <HOSTLIST> --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --hostlist=/opt/zapret/ipset/zapret-hosts-google.txt --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin --new --filter-udp=443 <HOSTLIST_NOAUTO> --dpi-desync=fake --dpi-desync-repeats=11 --new --filter-tcp=443 <HOSTLIST> --dpi-desync=multidisorder --dpi-desync-split-pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1';
-
-const ZAPRET_DEFAULT_NFQWS_OPT =
-  '--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin';
-
-const ZAPRET2_DEFAULT_NFQWS2_OPT =
-  '--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6';
-
-const BYEDPI_DEFAULT_CMD_OPTS = '-o 2 --auto=t,r,a,s -d 2';
 const ANNOTATED_TEXTAREA_STYLE_ID = 'fkp-annotated-textarea-styles';
 const CONNECTIONS_DYNLIST_STYLE_ID = 'fkp-connections-dynlist-styles';
-const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
-const NFQWS_VALIDATION_COMMAND = '/usr/bin/tachyon';
-const nfqwsRemoteValidationCache = new Map();
-const nfqwsRemoteValidationInflight = new Map();
-const nfqws2RemoteValidationCache = new Map();
-const nfqws2RemoteValidationInflight = new Map();
-const byedpiRemoteValidationCache = new Map();
-const byedpiRemoteValidationInflight = new Map();
-const BYEDPI_LONG_VALUE_OPTIONS = new Set([
-  '--max-conn',
-  '--conn-ip',
-  '--buf-size',
-  '--debug',
-  '--def-ttl',
-  '--auto',
-  '--auto-mode',
-  '--cache-ttl',
-  '--cache-dump',
-  '--timeout',
-  '--proto',
-  '--hosts',
-  '--ipset',
-  '--pf',
-  '--round',
-  '--split',
-  '--disorder',
-  '--oob',
-  '--disoob',
-  '--fake',
-  '--fake-sni',
-  '--ttl',
-  '--fake-offset',
-  '--fake-data',
-  '--fake-tls-mod',
-  '--oob-data',
-  '--mod-http',
-  '--tlsrec',
-  '--tlsminor',
-  '--udp-fake',
-]);
-const BYEDPI_LONG_FLAG_OPTIONS = new Set([
-  '--md5sig',
-  '--tfo',
-  '--drop-sack',
-  '--no-domain',
-  '--no-udp',
-]);
-const BYEDPI_SHORT_VALUE_OPTIONS = new Set([
-  '-c',
-  '-I',
-  '-b',
-  '-x',
-  '-g',
-  '-A',
-  '-L',
-  '-u',
-  '-y',
-  '-T',
-  '-K',
-  '-H',
-  '-j',
-  '-V',
-  '-R',
-  '-s',
-  '-d',
-  '-o',
-  '-q',
-  '-f',
-  '-n',
-  '-t',
-  '-O',
-  '-l',
-  '-Q',
-  '-e',
-  '-M',
-  '-r',
-  '-m',
-  '-a',
-]);
-const BYEDPI_SHORT_FLAG_OPTIONS = new Set(['-N', '-U', '-F', '-S', '-Y']);
-const NFQWS_OPTIONAL_ARG_OPTIONS = new Set([
-  '--comment',
-  '--ctrack-disable',
-  '--debug',
-  '--dpi-desync-any-protocol',
-  '--dpi-desync-autottl',
-  '--dpi-desync-autottl6',
-  '--dpi-desync-skip-nosni',
-  '--dpi-desync-tcp-flags-set',
-  '--dpi-desync-tcp-flags-unset',
-  '--dup-autottl',
-  '--dup-autottl6',
-  '--dup-replace',
-  '--dup-tcp-flags-set',
-  '--dup-tcp-flags-unset',
-  '--ipcache-hostname',
-  '--orig-autottl',
-  '--orig-autottl6',
-  '--orig-tcp-flags-set',
-  '--orig-tcp-flags-unset',
-  '--synack-split',
-]);
-const NFQWS_NO_ARG_OPTIONS = new Set([
-  '--bind-fix4',
-  '--bind-fix6',
-  '--daemon',
-  '--domcase',
-  '--dry-run',
-  '--hostcase',
-  '--hostnospace',
-  '--methodeol',
-  '--new',
-  '--skip',
-  '--version',
-]);
-const NFQWS_REQUIRED_ARG_OPTIONS = new Set([
-  '--ctrack-timeouts',
-  '--dpi-desync',
-  '--dpi-desync-badack-increment',
-  '--dpi-desync-badseq-increment',
-  '--dpi-desync-cutoff',
-  '--dpi-desync-fake-dht',
-  '--dpi-desync-fake-discord',
-  '--dpi-desync-fake-http',
-  '--dpi-desync-fake-quic',
-  '--dpi-desync-fake-stun',
-  '--dpi-desync-fake-syndata',
-  '--dpi-desync-fake-tcp-mod',
-  '--dpi-desync-fake-tls',
-  '--dpi-desync-fake-tls-mod',
-  '--dpi-desync-fake-unknown',
-  '--dpi-desync-fake-unknown-udp',
-  '--dpi-desync-fake-wireguard',
-  '--dpi-desync-fakedsplit-mod',
-  '--dpi-desync-fakedsplit-pattern',
-  '--dpi-desync-fooling',
-  '--dpi-desync-fwmark',
-  '--dpi-desync-hostfakesplit-midhost',
-  '--dpi-desync-hostfakesplit-mod',
-  '--dpi-desync-ipfrag-pos-tcp',
-  '--dpi-desync-ipfrag-pos-udp',
-  '--dpi-desync-repeats',
-  '--dpi-desync-split-http-req',
-  '--dpi-desync-split-pos',
-  '--dpi-desync-split-seqovl',
-  '--dpi-desync-split-seqovl-pattern',
-  '--dpi-desync-split-tls',
-  '--dpi-desync-start',
-  '--dpi-desync-ts-increment',
-  '--dpi-desync-ttl',
-  '--dpi-desync-ttl6',
-  '--dpi-desync-udplen-increment',
-  '--dpi-desync-udplen-pattern',
-  '--dup',
-  '--dup-badack-increment',
-  '--dup-badseq-increment',
-  '--dup-cutoff',
-  '--dup-fooling',
-  '--dup-ip-id',
-  '--dup-start',
-  '--dup-ts-increment',
-  '--dup-ttl',
-  '--dup-ttl6',
-  '--filter-l3',
-  '--filter-l7',
-  '--filter-tcp',
-  '--filter-udp',
-  '--hostlist',
-  '--hostlist-auto',
-  '--hostlist-auto-debug',
-  '--hostlist-auto-fail-threshold',
-  '--hostlist-auto-fail-time',
-  '--hostlist-auto-retrans-threshold',
-  '--hostlist-domains',
-  '--hostlist-exclude',
-  '--hostlist-exclude-domains',
-  '--hostspell',
-  '--ip-id',
-  '--ipcache-lifetime',
-  '--ipset',
-  '--ipset-exclude',
-  '--ipset-exclude-ip',
-  '--ipset-ip',
-  '--orig-mod-cutoff',
-  '--orig-mod-start',
-  '--orig-ttl',
-  '--orig-ttl6',
-  '--pidfile',
-  '--qnum',
-  '--uid',
-  '--user',
-  '--wsize',
-  '--wssize',
-  '--wssize-cutoff',
-  '--wssize-forced-cutoff',
-]);
-const NFQWS2_OPTIONAL_ARG_OPTIONS = new Set([
-  '--chdir',
-  '--comment',
-  '--ctrack-disable',
-  '--debug',
-  '--hostlist-auto-retrans-reset',
-  '--intercept',
-  '--ipcache-hostname',
-  '--new',
-  '--payload-disable',
-  '--reasm-disable',
-  '--server',
-  '--template',
-  '--writeable',
-]);
-const NFQWS2_NO_ARG_OPTIONS = new Set([
-  '--bind-fix4',
-  '--bind-fix6',
-  '--daemon',
-  '--dry-run',
-  '--skip',
-  '--version',
-]);
-const NFQWS2_REQUIRED_ARG_OPTIONS = new Set([
-  '--blob',
-  '--cookie',
-  '--ctrack-timeouts',
-  '--filter-l3',
-  '--filter-l7',
-  '--filter-tcp',
-  '--filter-udp',
-  '--fwmark',
-  '--fuzz',
-  '--hostlist',
-  '--hostlist-auto',
-  '--hostlist-auto-debug',
-  '--hostlist-auto-fail-threshold',
-  '--hostlist-auto-fail-time',
-  '--hostlist-auto-retrans-threshold',
-  '--hostlist-domains',
-  '--hostlist-exclude',
-  '--hostlist-exclude-domains',
-  '--import',
-  '--in-range',
-  '--ipcache-lifetime',
-  '--ipset',
-  '--ipset-exclude',
-  '--ipset-exclude-ip',
-  '--ipset-ip',
-  '--lua-gc',
-  '--lua-init',
-  '--lua-desync',
-  '--name',
-  '--out-range',
-  '--payload',
-  '--pidfile',
-  '--qnum',
-  '--uid',
-  '--user',
-]);
 const actionProvidersAvailabilityState = {
   loaded: false,
-  zapretInstalled: false,
-  zapret2Installed: false,
-  byedpiInstalled: false,
-  wdttInstalled: false,
-  olcrtcInstalled: false,
   fptnInstalled: false,
   torInstalled: false,
-  singBoxExtended: false,
-  singBoxTachyonCore: false,
 };
 let actionProvidersAvailabilityPromise = null;
 let actionProvidersAvailabilityLoader = null;
@@ -727,51 +445,9 @@ function updateActionProvidersAvailabilityState(nextState) {
 
   actionProvidersAvailabilityState.loaded = true;
 
-  if (typeof nextState.zapretInstalled !== 'undefined') {
-    actionProvidersAvailabilityState.zapretInstalled = Boolean(
-      nextState.zapretInstalled,
-    );
-  }
-
-  if (typeof nextState.zapret2Installed !== 'undefined') {
-    actionProvidersAvailabilityState.zapret2Installed = Boolean(
-      nextState.zapret2Installed,
-    );
-  }
-
-  if (typeof nextState.byedpiInstalled !== 'undefined') {
-    actionProvidersAvailabilityState.byedpiInstalled = Boolean(
-      nextState.byedpiInstalled,
-    );
-  }
-
-  if (typeof nextState.wdttInstalled !== 'undefined') {
-    actionProvidersAvailabilityState.wdttInstalled = Boolean(
-      nextState.wdttInstalled,
-    );
-  }
-
-  if (typeof nextState.olcrtcInstalled !== 'undefined') {
-    actionProvidersAvailabilityState.olcrtcInstalled = Boolean(
-      nextState.olcrtcInstalled,
-    );
-  }
-
   if (typeof nextState.fptnInstalled !== 'undefined') {
     actionProvidersAvailabilityState.fptnInstalled = Boolean(
       nextState.fptnInstalled,
-    );
-  }
-
-  if (typeof nextState.singBoxTachyonCore !== 'undefined') {
-    actionProvidersAvailabilityState.singBoxTachyonCore = Boolean(
-      nextState.singBoxTachyonCore,
-    );
-  }
-
-  if (typeof nextState.singBoxExtended !== 'undefined') {
-    actionProvidersAvailabilityState.singBoxExtended = Boolean(
-      nextState.singBoxExtended,
     );
   }
 
@@ -790,18 +466,8 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
   }
 
   updateActionProvidersAvailabilityState({
-    zapretInstalled: Boolean(systemInfo.zapret_installed),
-    zapret2Installed: Boolean(systemInfo.zapret2_installed),
-    byedpiInstalled: Boolean(systemInfo.byedpi_installed),
-    wdttInstalled: Boolean(systemInfo.wdtt_installed),
-    olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
-    // FPTN is compiled into tachyon-core itself, so the built-in flag makes
-    // the action available even with no fptn package on disk.
-    fptnInstalled: Boolean(
-      systemInfo.fptn_installed || systemInfo.sing_box_fptn,
-    ),
-    singBoxExtended: Boolean(systemInfo.sing_box_extended),
-    singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core),
+    // FPTN is built into tachyon-core.
+    fptnInstalled: Boolean(systemInfo.tachyon_core_fptn ?? 1),
     torInstalled: Boolean(systemInfo.tor_installed),
   });
 }
@@ -820,7 +486,7 @@ if (typeof window !== 'undefined') {
 function refreshVpnUrlHints() {
   if (typeof document === 'undefined') return;
   const supported = main.supportsVpnUrl();
-  const hint = supported ? '; vpn:// (AWG, LX / tachyon-core)' : '';
+  const hint = supported ? '; vpn:// (AWG, tachyon-core)' : '';
   document.querySelectorAll('[data-tachyon-vpn-url-hint]').forEach((node) => {
     node.textContent = hint;
   });
@@ -1157,14 +823,7 @@ function readSingleSectionCacheMetadata(targetId) {
 
 function resolveEffectiveSectionOutboundSourceIds(section_id) {
   const targetId = section_id || 'Main';
-  const dpiTypes = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
+  const dpiTypes = new Set(['desync']);
   const isNonDpiSource = (srcObj) => {
     if (!srcObj || srcObj.enabled === '0') return false;
     const stype = String(srcObj.source_type || 'subscription')
@@ -1693,7 +1352,6 @@ const SECTION_TELEMETRY_PROTECTED_TOKENS = new Set([
   'mieru',
   'naive',
   'xray',
-  'sing-box',
   'reality',
   'xtls',
   'grpc',
@@ -2529,10 +2187,10 @@ function ensureConnectionsDynamicListStyles() {
 
 .fkp-button-add-dynlist > .add-item > .cbi-button-add {
   align-items: center !important;
-  background: linear-gradient(var(--background-color-high) 0%, var(--border-color-low) 100%) !important;
+  background: var(--background-color-high) !important;
   border: 1px solid var(--border-color-high) !important;
   border-radius: 3px !important;
-  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01) !important;
+  box-shadow: none !important;
   box-sizing: border-box !important;
   color: var(--text-color-medium) !important;
   cursor: pointer !important;
@@ -2547,15 +2205,15 @@ function ensureConnectionsDynamicListStyles() {
   overflow: hidden !important;
   padding: 0 4px !important;
   text-overflow: ellipsis !important;
-  transition: border linear .2s, box-shadow linear .2s !important;
+  transition: border-color linear .15s, box-shadow linear .15s !important;
   white-space: nowrap !important;
   width: 100% !important;
 }
 
 .fkp-button-add-dynlist > .add-item > .cbi-button-add:hover,
 .fkp-button-add-dynlist > .add-item > .cbi-button-add:focus {
-  border-color: rgba(82, 168, 236, .8) !important;
-  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01), 0 0 8px rgba(82, 168, 236, .6) !important;
+  border-color: var(--tachyon-accent, #3b82f6) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16) !important;
   outline: 0;
 }
 
@@ -3488,11 +3146,7 @@ function currentDraftOutboundNames(section_id) {
       `${uci.get(UCI_PACKAGE, sid, 'source_type') || 'subscription'}`
         .trim()
         .toLowerCase();
-    if (
-      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        stype,
-      )
-    ) {
+    if (stype === 'desync') {
       return;
     }
     const rawLinks = [
@@ -3588,14 +3242,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     result.push({ value: v, label: `${label || v}`.trim() });
   };
 
-  const dpiTypes = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
+  const dpiTypes = new Set(['desync']);
 
   const secGroupRefs = new Set(
     currentSourceOptionValues(section_id, 'outbound_group_refs'),
@@ -3604,7 +3251,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
   const appendGroup = (g) => {
     const gid = g && g['.name'];
     if (!gid || g.enabled === '0') return;
-    pushChoice(gid, `📦 ${_('Group')}: ${g.name || g.label || gid}`);
+    pushChoice(gid, `${_('Group')}: ${g.name || g.label || gid}`);
   };
   allGroups.forEach((g) => {
     if (g && secGroupRefs.has(g['.name'])) appendGroup(g);
@@ -3620,10 +3267,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     if (!bid || b.enabled === '0') return;
     const btype = String(b.balancer_type || 'urltest').toLowerCase();
     if (btype === 'priority') return;
-    pushChoice(
-      bid,
-      `⚖️ ${_('Balancer')}: ${b.name || b.label || bid} [URLTEST]`,
-    );
+    pushChoice(bid, `${_('Balancer')}: ${b.name || b.label || bid} [URLTEST]`);
   };
   allBalancers.forEach((b) => {
     if (b && secBalancerRefs.has(b['.name'])) appendUrlTestBalancer(b);
@@ -3641,7 +3285,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     if (dpiTypes.has(stypeLower)) return;
     const stype = stypeLower.toUpperCase();
     const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-    pushChoice(sid, `📡 ${_('Source')}: ${src.name || src.label || sid}${pfx}`);
+    pushChoice(sid, `${_('Source')}: ${src.name || src.label || sid}${pfx}`);
   };
   allSources.forEach((src) => {
     if (src && secSourceRefs.has(src['.name'])) appendSource(src);
@@ -3650,7 +3294,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
 
   currentOutboundNameChoices(section_id, []).forEach((s) => {
     if (!s || !s.value) return;
-    pushChoice(`srv:${s.value}`, `🎯 ${_('Server')}: ${s.label || s.value}`);
+    pushChoice(`srv:${s.value}`, `${_('Server')}: ${s.label || s.value}`);
   });
 
   pushChoice('direct', _('Direct Connection (Fallback)'));
@@ -3661,7 +3305,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     if (val === 'direct') {
       pushChoice('direct', _('Direct Connection (Fallback)'));
     } else if (val.startsWith('srv:')) {
-      pushChoice(val, `🎯 ${_('Server')}: ${val.slice(4)}`);
+      pushChoice(val, `${_('Server')}: ${val.slice(4)}`);
     } else {
       const secType = uci.get(UCI_PACKAGE, val, '.type');
       const name =
@@ -3669,11 +3313,11 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
         uci.get(UCI_PACKAGE, val, 'label') ||
         val;
       if (secType === 'outbound_group') {
-        pushChoice(val, `📦 ${_('Group')}: ${name}`);
+        pushChoice(val, `${_('Group')}: ${name}`);
       } else if (secType === 'balancer') {
-        pushChoice(val, `⚖️ ${_('Balancer')}: ${name} [URLTEST]`);
+        pushChoice(val, `${_('Balancer')}: ${name} [URLTEST]`);
       } else if (secType === 'outbound_source') {
-        pushChoice(val, `📡 ${_('Source')}: ${name}`);
+        pushChoice(val, `${_('Source')}: ${name}`);
       } else {
         pushChoice(val, name);
       }
@@ -3829,30 +3473,11 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       'trusttunnel',
       'tewfai',
       'csqtt',
+      'wdtt',
       'group',
     ].includes(action)
   ) {
     return true;
-  }
-
-  if (action === 'zapret') {
-    return isZapretInstalledForUi();
-  }
-
-  if (action === 'zapret2') {
-    return isZapret2InstalledForUi();
-  }
-
-  if (action === 'byedpi') {
-    return isByedpiInstalledForUi();
-  }
-
-  if (action === 'wdtt') {
-    return isWdttInstalledForUi();
-  }
-
-  if (action === 'olcrtc') {
-    return isOlcrtcInstalledForUi();
   }
 
   if (action === 'fptn') {
@@ -4736,6 +4361,7 @@ function subscriptionUrlSettingsKeys() {
     'device_locale',
     'app_version',
     'accept_language',
+    'hidden',
     'show_dashboard_metadata',
     'prefix_nodes',
     'node_prefix',
@@ -4746,7 +4372,6 @@ function subscriptionUrlSettingsKeys() {
     'urltest_idle_timeout',
     'hide_detour_outbounds',
     'subscription_insecure',
-    'subscription_engine',
   ];
 }
 
@@ -4768,6 +4393,7 @@ function defaultSubscriptionUrlSettings() {
     device_locale: '',
     app_version: '',
     accept_language: '',
+    hidden: '0',
     show_dashboard_metadata: '1',
     prefix_nodes: '0',
     node_prefix: '',
@@ -4778,7 +4404,6 @@ function defaultSubscriptionUrlSettings() {
     urltest_idle_timeout: '',
     hide_detour_outbounds: '1',
     subscription_insecure: '0',
-    subscription_engine: 'auto',
   };
 }
 
@@ -4800,7 +4425,7 @@ function defaultInterfaceSettings() {
 
 function subscriptionUserAgentChoices() {
   return [
-    'sing-box',
+    'TachyonCore',
     'Happ',
     'v2rayN',
     'v2rayNG',
@@ -4989,6 +4614,17 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
 
   o = itemSection.option(
     form.Flag,
+    'hidden',
+    _('Hide on Dashboard'),
+    _(
+      'Hide this subscription on the Dashboard while keeping it active in routing',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
     'subscription_update_enabled',
     _('Subscription auto update'),
     _('Update this subscription automatically'),
@@ -5000,14 +4636,14 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     form.Value,
     'subscription_update_interval',
     _('Subscription update interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.depends('subscription_update_enabled', '1');
   o.placeholder = '1h';
   o.validate = function (itemId, value) {
     return optionMapValue(this, itemId, 'subscription_update_enabled') === '1'
-      ? validateRequiredSingBoxDuration(value)
-      : validateOptionalSingBoxDuration(value);
+      ? validateRequiredCoreDuration(value)
+      : validateOptionalCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5040,20 +4676,6 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     }
     return true;
   };
-
-  o = itemSection.option(
-    form.ListValue,
-    'subscription_engine',
-    _('Subscription Fetch & Parse Engine'),
-    _(
-      'Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support.',
-    ),
-  );
-  o.default = 'auto';
-  o.rmempty = false;
-  o.value('auto', _('Default (From Global Settings)'));
-  o.value('core', _('Tachyon Core Binary (tachyon-core subscription)'));
-  o.value('ucode', _('Built-in Script (curl + ucode)'));
 
   o = itemSection.option(
     form.Flag,
@@ -5142,7 +4764,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   );
   o.rmempty = true;
   o.validate = function (_itemId, value) {
-    return value ? validateOptionalSingBoxDuration(value) : true;
+    return value ? validateOptionalCoreDuration(value) : true;
   };
 
   o = itemSection.option(
@@ -5153,7 +4775,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   );
   o.rmempty = true;
   o.validate = function (_itemId, value) {
-    return value ? validateOptionalSingBoxDuration(value) : true;
+    return value ? validateOptionalCoreDuration(value) : true;
   };
 
   o.rmempty = false;
@@ -5184,6 +4806,17 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     _('Show subscription metadata for this source on the dashboard'),
   );
   o.default = '1';
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    'hidden',
+    _('Hide on Dashboard'),
+    _(
+      'Hide this subscription on the Dashboard while keeping it active in routing',
+    ),
+  );
+  o.default = '0';
   o.rmempty = false;
 
   o = itemSection.option(
@@ -5455,7 +5088,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.rmempty = true;
   o.validate = function (_itemId, value) {
     if (value == null || `${value}`.trim() === '') return true;
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5544,12 +5177,12 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     form.Value,
     'check_interval',
     _('Check interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.default = '3m';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -5584,13 +5217,13 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     'idle_timeout',
     _('Idle timeout'),
     _(
-      'Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m.',
+      'Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m.',
     ),
   );
   o.default = '30m';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6052,7 +5685,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = '15s';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6064,7 +5697,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = '2s';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6078,7 +5711,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.default = '15s';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = itemSection.option(
@@ -6107,7 +5740,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
     form.Value,
     'fastest_check_interval',
     _('Faster server search interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.depends('switch_to_faster_same_priority', '1');
   o.default = '3m';
@@ -6115,7 +5748,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
   o.validate = function (itemId, value) {
     return optionMapValue(this, itemId, 'switch_to_faster_same_priority') ===
       '1'
-      ? validateRequiredSingBoxDuration(value)
+      ? validateRequiredCoreDuration(value)
       : true;
   };
 
@@ -7481,11 +7114,7 @@ function ensureActionProvidersAvailabilityLoaded() {
     actionProvidersAvailabilityPromise = actionProvidersAvailabilityLoader()
       .then((capabilities) => {
         updateActionProvidersAvailabilityState({
-          zapretInstalled: Boolean(capabilities?.zapretInstalled),
-          zapret2Installed: Boolean(capabilities?.zapret2Installed),
-          byedpiInstalled: Boolean(capabilities?.byedpiInstalled),
-          singBoxExtended: Boolean(capabilities?.singBoxExtended),
-          singBoxTachyonCore: Boolean(capabilities?.singBoxTachyonCore),
+          fptnInstalled: Boolean(capabilities?.fptnInstalled ?? true),
         });
         return actionProvidersAvailabilityState;
       })
@@ -7501,87 +7130,12 @@ function ensureActionProvidersAvailabilityLoaded() {
     return actionProvidersAvailabilityPromise;
   }
 
-  actionProvidersAvailabilityPromise = Promise.allSettled([
-    main.TachyonShellMethods.checkZapretRuntime(),
-    main.TachyonShellMethods.checkZapret2Runtime(),
-    main.TachyonShellMethods.checkByedpiRuntime(),
-  ])
-    .then(([zapretResult, zapret2Result, byedpiResult]) => {
-      const zapret =
-        zapretResult && zapretResult.status === 'fulfilled'
-          ? zapretResult.value
-          : null;
-      const zapret2 =
-        zapret2Result && zapret2Result.status === 'fulfilled'
-          ? zapret2Result.value
-          : null;
-      const byedpi =
-        byedpiResult && byedpiResult.status === 'fulfilled'
-          ? byedpiResult.value
-          : null;
-
-      actionProvidersAvailabilityState.loaded = true;
-      actionProvidersAvailabilityState.zapretInstalled = Boolean(
-        zapret && zapret.success && zapret.data && zapret.data.zapret_installed,
-      );
-      actionProvidersAvailabilityState.zapret2Installed = Boolean(
-        zapret2 &&
-          zapret2.success &&
-          zapret2.data &&
-          zapret2.data.zapret2_installed,
-      );
-      actionProvidersAvailabilityState.byedpiInstalled = Boolean(
-        byedpi && byedpi.success && byedpi.data && byedpi.data.byedpi_installed,
-      );
-
-      return actionProvidersAvailabilityState;
-    })
-    .catch(() => {
-      actionProvidersAvailabilityState.loaded = true;
-      actionProvidersAvailabilityState.zapretInstalled = false;
-      actionProvidersAvailabilityState.zapret2Installed = false;
-      actionProvidersAvailabilityState.byedpiInstalled = false;
-
-      // singBoxExtended is set via systemInfo, keep existing value
-      return actionProvidersAvailabilityState;
-    })
-    .finally(() => {
-      actionProvidersAvailabilityPromise = null;
-    });
-
-  return actionProvidersAvailabilityPromise;
-}
-
-function isZapretInstalledForUi() {
-  return actionProvidersAvailabilityState.zapretInstalled;
-}
-
-function isZapret2InstalledForUi() {
-  return actionProvidersAvailabilityState.zapret2Installed;
-}
-
-function isByedpiInstalledForUi() {
-  return actionProvidersAvailabilityState.byedpiInstalled;
-}
-
-function isWdttInstalledForUi() {
-  return actionProvidersAvailabilityState.wdttInstalled;
-}
-
-function isOlcrtcInstalledForUi() {
-  return actionProvidersAvailabilityState.olcrtcInstalled;
+  actionProvidersAvailabilityState.loaded = true;
+  return Promise.resolve(actionProvidersAvailabilityState);
 }
 
 function isFptnInstalledForUi() {
   return actionProvidersAvailabilityState.fptnInstalled;
-}
-
-function isSingBoxExtendedForUi() {
-  return actionProvidersAvailabilityState.singBoxExtended;
-}
-
-function isTachyonCoreForUi() {
-  return actionProvidersAvailabilityState.singBoxTachyonCore;
 }
 
 function getRuleConfiguredAction(section_id) {
@@ -7596,18 +7150,10 @@ function getRuleResolvedAction(section_id) {
 // Returns a human-readable label for a given outbound_source source_type.
 function getSourceTypeLabel(stype) {
   switch (`${stype}`.toLowerCase()) {
-    case 'zapret':
-      return 'Zapret';
-    case 'zapret2':
-      return 'Zapret2';
-    case 'byedpi':
-      return 'ByeDPI';
     case 'desync':
       return 'Desync';
     case 'wdtt':
       return 'WDTT';
-    case 'olcrtc':
-      return 'OlcRTC';
     case 'fptn':
       return 'FPTN';
     case 'awg':
@@ -7668,9 +7214,6 @@ function getSectionConnectionTypeBadges(section_id) {
     'awg',
     'fptn',
     'desync',
-    'zapret',
-    'zapret2',
-    'byedpi',
     'group',
   ];
   if (!connectionActions.includes(action)) return null;
@@ -7718,16 +7261,8 @@ function getActionOptionLabel(action) {
       return 'DNS';
     case 'vpn':
       return 'VPN';
-    case 'zapret':
-      return 'Zapret';
-    case 'zapret2':
-      return 'Zapret2';
-    case 'byedpi':
-      return 'ByeDPI';
     case 'wdtt':
       return 'WDTT';
-    case 'olcrtc':
-      return 'OlcRTC';
     case 'fptn':
       return 'FPTN';
 
@@ -7744,9 +7279,11 @@ function getActionOptionLabel(action) {
     case 'naive':
       return 'NaiveProxy';
     case 'sudoku':
-      return isTachyonCoreForUi() ? _('Sudoku (не реализован)') : 'Sudoku';
+      return _('Sudoku (не реализован)');
     case 'masque':
       return 'MASQUE';
+    case 'csqtt':
+      return 'CSQTT';
     case 'openvpn':
       return 'OpenVPN';
     case 'openconnect':
@@ -7759,8 +7296,6 @@ function getActionOptionLabel(action) {
       return 'TrustTunnel';
     case 'tewfai':
       return 'TewFai';
-    case 'csqtt':
-      return 'CSQTT';
     case 'hosts':
       return _('Hosts');
     case 'outbound':
@@ -7774,24 +7309,8 @@ function getActionOptionLabel(action) {
 function getRuleActionDisplayValue(section_id) {
   const action = getRuleResolvedAction(section_id);
 
-  if (action === 'zapret') {
-    return 'Zapret';
-  }
-
-  if (action === 'zapret2') {
-    return 'Zapret2';
-  }
-
-  if (action === 'byedpi') {
-    return 'ByeDPI';
-  }
-
   if (action === 'wdtt') {
     return 'WDTT';
-  }
-
-  if (action === 'olcrtc') {
-    return 'OlcRTC';
   }
 
   if (action === 'fptn') {
@@ -7836,9 +7355,7 @@ function getRuleActionDisplayValue(section_id) {
 function getRuleActionDisplayMarkup(section_id) {
   const base = getRuleActionDisplayValue(section_id);
   const action = getRuleResolvedAction(section_id);
-  if (
-    !['connection', 'desync', 'zapret', 'zapret2', 'byedpi'].includes(action)
-  ) {
+  if (!['connection', 'desync'].includes(action)) {
     return base;
   }
   const srcRefs = normalizeOptionValues(
@@ -7871,42 +7388,24 @@ function populateActionOptionValues(option) {
   // NaiveProxy ships an outbound in every core we support, so it needs no
   // variant gate of its own.
   option.value('naive', getActionOptionLabel('naive'));
-  if (isSingBoxExtendedForUi() || isTachyonCoreForUi()) {
-    option.value('awg', getActionOptionLabel('awg'));
-    option.value('warp', getActionOptionLabel('warp'));
-    option.value('masque', getActionOptionLabel('masque'));
-    option.value('openvpn', getActionOptionLabel('openvpn'));
-    option.value('anytls', getActionOptionLabel('anytls'));
-    option.value('snell', getActionOptionLabel('snell'));
-    option.value('mieru', getActionOptionLabel('mieru'));
-    option.value('sudoku', getActionOptionLabel('sudoku'));
-  }
-  if (isTachyonCoreForUi()) {
-    option.value('openconnect', getActionOptionLabel('openconnect'));
-    option.value('desync', getActionOptionLabel('desync'));
-    option.value('shadowtls', getActionOptionLabel('shadowtls'));
-    option.value('trusttunnel', getActionOptionLabel('trusttunnel'));
-    option.value('tewfai', getActionOptionLabel('tewfai'));
-    option.value('csqtt', getActionOptionLabel('csqtt'));
-  }
+  option.value('awg', getActionOptionLabel('awg'));
+  option.value('warp', getActionOptionLabel('warp'));
+  option.value('masque', getActionOptionLabel('masque'));
+  option.value('openvpn', getActionOptionLabel('openvpn'));
+  option.value('anytls', getActionOptionLabel('anytls'));
+  option.value('snell', getActionOptionLabel('snell'));
+  option.value('mieru', getActionOptionLabel('mieru'));
+  option.value('sudoku', getActionOptionLabel('sudoku'));
+  option.value('openconnect', getActionOptionLabel('openconnect'));
+  option.value('desync', getActionOptionLabel('desync'));
+  option.value('shadowtls', getActionOptionLabel('shadowtls'));
+  option.value('trusttunnel', getActionOptionLabel('trusttunnel'));
+  option.value('tewfai', getActionOptionLabel('tewfai'));
+  option.value('csqtt', getActionOptionLabel('csqtt'));
+  option.value('wdtt', getActionOptionLabel('wdtt'));
   option.value('bypass', getActionOptionLabel('bypass'));
   option.value('block', getActionOptionLabel('block'));
   option.value('dns', 'DNS');
-  if (isZapretInstalledForUi()) {
-    option.value('zapret', getActionOptionLabel('zapret'));
-  }
-  if (isZapret2InstalledForUi()) {
-    option.value('zapret2', getActionOptionLabel('zapret2'));
-  }
-  if (isByedpiInstalledForUi()) {
-    option.value('byedpi', getActionOptionLabel('byedpi'));
-  }
-  if (isWdttInstalledForUi()) {
-    option.value('wdtt', getActionOptionLabel('wdtt'));
-  }
-  if (isOlcrtcInstalledForUi()) {
-    option.value('olcrtc', getActionOptionLabel('olcrtc'));
-  }
   if (isFptnInstalledForUi()) {
     option.value('fptn', getActionOptionLabel('fptn'));
   }
@@ -7947,6 +7446,9 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   'excluded_ips',
   'excluded_ips_text',
   'excluded_ips_text_mode',
+  'excluded_domains',
+  'excluded_domains_text',
+  'excluded_domains_text_mode',
   'ports',
   'ports_text',
   'ports_text_mode',
@@ -8672,7 +8174,7 @@ function validateKeyword(_section_id, value) {
   return true;
 }
 
-function isSingBoxDuration(value) {
+function isCoreDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
@@ -8689,32 +8191,32 @@ function writeOptionalDurationOption(section_id, key, value) {
   }
 }
 
-function validateOptionalSingBoxDuration(value) {
+function validateOptionalCoreDuration(value) {
   const normalized = value ? `${value}`.trim() : '';
 
   if (!normalized.length) {
     return true;
   }
 
-  if (isSingBoxDuration(normalized)) {
+  if (isCoreDuration(normalized)) {
     return true;
   }
 
-  return _('Use sing-box duration format like 1d, 12h or 30m');
+  return _('Use duration format like 1d, 12h or 30m');
 }
 
-function validateRequiredSingBoxDuration(value) {
+function validateRequiredCoreDuration(value) {
   const normalized = value ? `${value}`.trim() : '';
 
   if (!normalized.length) {
-    return _('Use sing-box duration format like 1d, 12h or 30m');
+    return _('Use duration format like 1d, 12h or 30m');
   }
 
-  if (isSingBoxDuration(normalized)) {
+  if (isCoreDuration(normalized)) {
     return true;
   }
 
-  return _('Use sing-box duration format like 1d, 12h or 30m');
+  return _('Use duration format like 1d, 12h or 30m');
 }
 
 function parseSubscriptionUrlEntry(value) {
@@ -9380,102 +8882,6 @@ function refreshAnnotatedTextareaValidation(option, section_id, textarea) {
   }
 }
 
-function attachNfqwsRemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__tachyonNfqwsRemoteValidationAttached) {
-    return;
-  }
-
-  textarea.__tachyonNfqwsRemoteValidationAttached = true;
-  textarea.__tachyonNfqwsRemoteValidationRequestId = 0;
-  textarea.__tachyonNfqwsRemoteValidationTimer = null;
-
-  const runValidation = () => {
-    const value = textarea.value;
-    const localAnalysis = buildNfqwsLocalAnalysis(value);
-    if (!localAnalysis.valid) {
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-      return;
-    }
-
-    const requestId =
-      (textarea.__tachyonNfqwsRemoteValidationRequestId || 0) + 1;
-    textarea.__tachyonNfqwsRemoteValidationRequestId = requestId;
-
-    validateNfqwsStrategyRemotely(value).then(() => {
-      if (textarea.__tachyonNfqwsRemoteValidationRequestId !== requestId) {
-        return;
-      }
-
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-    });
-  };
-
-  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__tachyonNfqwsRemoteValidationTimer) {
-      window.clearTimeout(textarea.__tachyonNfqwsRemoteValidationTimer);
-    }
-
-    textarea.__tachyonNfqwsRemoteValidationTimer = window.setTimeout(() => {
-      textarea.__tachyonNfqwsRemoteValidationTimer = null;
-      runValidation();
-    }, delay);
-  };
-
-  textarea.addEventListener('input', () => scheduleValidation());
-  textarea.addEventListener('change', () => scheduleValidation(0));
-  textarea.addEventListener('blur', () => scheduleValidation(0));
-
-  scheduleValidation(0);
-}
-
-function attachNfqws2RemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__tachyonNfqws2RemoteValidationAttached) {
-    return;
-  }
-
-  textarea.__tachyonNfqws2RemoteValidationAttached = true;
-  textarea.__tachyonNfqws2RemoteValidationRequestId = 0;
-  textarea.__tachyonNfqws2RemoteValidationTimer = null;
-
-  const runValidation = () => {
-    const value = textarea.value;
-    const localAnalysis = buildNfqws2LocalAnalysis(value);
-    if (!localAnalysis.valid) {
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-      return;
-    }
-
-    const requestId =
-      (textarea.__tachyonNfqws2RemoteValidationRequestId || 0) + 1;
-    textarea.__tachyonNfqws2RemoteValidationRequestId = requestId;
-
-    validateNfqws2StrategyRemotely(value).then(() => {
-      if (textarea.__tachyonNfqws2RemoteValidationRequestId !== requestId) {
-        return;
-      }
-
-      refreshAnnotatedTextareaValidation(option, section_id, textarea);
-    });
-  };
-
-  const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__tachyonNfqws2RemoteValidationTimer) {
-      window.clearTimeout(textarea.__tachyonNfqws2RemoteValidationTimer);
-    }
-
-    textarea.__tachyonNfqws2RemoteValidationTimer = window.setTimeout(() => {
-      textarea.__tachyonNfqws2RemoteValidationTimer = null;
-      runValidation();
-    }, delay);
-  };
-
-  textarea.addEventListener('input', () => scheduleValidation());
-  textarea.addEventListener('change', () => scheduleValidation(0));
-  textarea.addEventListener('blur', () => scheduleValidation(0));
-
-  scheduleValidation(0);
-}
-
 function parseCommentAwareListTokens(value) {
   const text = value ? `${value}` : '';
   const tokens = [];
@@ -9631,7 +9037,7 @@ function analyzeTextListValue(value, validateItem, emptyMessage, options = {}) {
   };
 }
 
-function analyzeDomainSuffixText(value) {
+function analyzeDomainConditionText(value, allowDomainPrefix = false) {
   const validateDomainCondition = (domain) => {
     const normalized = `${domain || ''}`.trim();
     if (normalized.includes('/')) {
@@ -9645,17 +9051,25 @@ function analyzeDomainSuffixText(value) {
     value,
     (item) => {
       const colonIndex = item.indexOf(':');
-      const prefix = colonIndex > 0 ? item.slice(0, colonIndex) : '';
+      const prefix =
+        colonIndex > 0 ? item.slice(0, colonIndex).toLowerCase() : '';
       const body = colonIndex > 0 ? item.slice(colonIndex + 1) : item;
 
       if (!prefix) {
         return validateDomainCondition(body);
       }
 
-      if (!['full', 'keyword', 'regex'].includes(prefix)) {
+      const allowedPrefixes = allowDomainPrefix
+        ? ['full', 'domain', 'keyword', 'regex']
+        : ['full', 'keyword', 'regex'];
+      if (!allowedPrefixes.includes(prefix)) {
         return {
           valid: false,
-          message: _('Allowed domain prefixes are full:, keyword:, and regex:'),
+          message: allowDomainPrefix
+            ? _(
+                'Allowed domain prefixes are full:, domain:, keyword:, and regex:',
+              )
+            : _('Allowed domain prefixes are full:, keyword:, and regex:'),
         };
       }
 
@@ -9663,7 +9077,7 @@ function analyzeDomainSuffixText(value) {
         return { valid: false, message: _('Value cannot be empty') };
       }
 
-      if (prefix === 'full') {
+      if (prefix === 'full' || (allowDomainPrefix && prefix === 'domain')) {
         return validateDomainCondition(body);
       }
 
@@ -9691,6 +9105,14 @@ function analyzeDomainSuffixText(value) {
       normalizeDuplicateValue: (item) => `${item}`.toLowerCase(),
     },
   );
+}
+
+function analyzeDomainSuffixText(value) {
+  return analyzeDomainConditionText(value, false);
+}
+
+function analyzeExcludedDomainsText(value) {
+  return analyzeDomainConditionText(value, true);
 }
 
 function domainValuesWithPrefix(section_id, key, prefix) {
@@ -9834,1328 +9256,6 @@ function validatePortCondition(_section_id, value) {
   return true;
 }
 
-function getNfqwsOptionArgumentMode(option) {
-  if (NFQWS_REQUIRED_ARG_OPTIONS.has(option)) {
-    return 'required';
-  }
-
-  if (NFQWS_OPTIONAL_ARG_OPTIONS.has(option)) {
-    return 'optional';
-  }
-
-  if (NFQWS_NO_ARG_OPTIONS.has(option)) {
-    return 'none';
-  }
-
-  return 'unknown';
-}
-
-function getNfqws2OptionArgumentMode(option) {
-  if (NFQWS2_REQUIRED_ARG_OPTIONS.has(option)) {
-    return 'required';
-  }
-
-  if (NFQWS2_OPTIONAL_ARG_OPTIONS.has(option)) {
-    return 'optional';
-  }
-
-  if (NFQWS2_NO_ARG_OPTIONS.has(option)) {
-    return 'none';
-  }
-
-  return 'unknown';
-}
-
-function normalizeNfqwsStrategyWhitespace(value) {
-  return value ? `${value}`.replace(/\s+/g, ' ').trim() : '';
-}
-
-function parseNfqwsRuntimeTokens(value) {
-  const text = value ? `${value}` : '';
-  const tokens = [];
-  const matcher = /\S+/g;
-  let match;
-
-  while ((match = matcher.exec(text)) !== null) {
-    tokens.push({
-      value: match[0],
-      start: match.index,
-      end: match.index + match[0].length,
-    });
-  }
-
-  return tokens;
-}
-function normalizeNfqwsStrategyValue(value) {
-  const normalized = normalizeNfqwsStrategyWhitespace(value);
-  if (!normalized.length) {
-    return '';
-  }
-
-  return normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-    ? ZAPRET_DEFAULT_NFQWS_OPT
-    : normalized;
-}
-
-function getCachedNfqwsRemoteValidation(value) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-  return normalized.length
-    ? nfqwsRemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheNfqwsRemoteValidation(value, result) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : '',
-    needle: result && result.needle ? `${result.needle}` : '',
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (nfqwsRemoteValidationCache.size >= 100) {
-    nfqwsRemoteValidationCache.delete(
-      nfqwsRemoteValidationCache.keys().next().value,
-    );
-  }
-  nfqwsRemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildNfqwsRemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _('Unable to validate the NFQWS strategy through the backend parser.');
-
-  return {
-    valid: false,
-    message: _('Backend validation failed: %s').format(message),
-    needle: '',
-    needles: [],
-  };
-}
-
-function validateNfqwsStrategyRemotely(value) {
-  const normalized = normalizeNfqwsStrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: '',
-      needle: '',
-      needles: [],
-    });
-  }
-
-  if (nfqwsRemoteValidationCache.has(normalized)) {
-    return Promise.resolve(nfqwsRemoteValidationCache.get(normalized));
-  }
-
-  if (nfqwsRemoteValidationInflight.has(normalized)) {
-    return nfqwsRemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      'validate_nfqws_strategy_json',
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
-      );
-      return cacheNfqwsRemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || '',
-        needle: payload.needle || '',
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheNfqwsRemoteValidation(
-        normalized,
-        buildNfqwsRemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      nfqwsRemoteValidationInflight.delete(normalized);
-    });
-
-  nfqwsRemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getNfqwsForbiddenTokenInfo(token, index) {
-  const configFileMessage = _(
-    'External nfqws config files bypass Tachyon queue management and explicit validation.',
-  );
-  const hostSelectionMessage = _(
-    'Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE.',
-  );
-  const ipSelectionMessage = _(
-    'Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE.',
-  );
-  const placeholderMessage = _(
-    'Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies.',
-  );
-  const queueMessage = _(
-    'The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.',
-  );
-  const fwmarkMessage = _(
-    'The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.',
-  );
-  const daemonMessage = _(
-    'Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here.',
-  );
-  const dryRunMessage = _(
-    'This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here.',
-  );
-  const versionMessage = _(
-    'This field must start a working nfqws strategy; --version exits immediately and is not allowed here.',
-  );
-
-  if (index === 0 && (token.startsWith('@') || token.startsWith('$'))) {
-    return {
-      reason: configFileMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '<HOSTLIST>' || token === '<HOSTLIST_NOAUTO>') {
-    return {
-      reason: placeholderMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === '--hostlist' ||
-    token.startsWith('--hostlist=') ||
-    token === '--hostlist-domains' ||
-    token.startsWith('--hostlist-domains=') ||
-    token === '--hostlist-exclude' ||
-    token.startsWith('--hostlist-exclude=') ||
-    token === '--hostlist-exclude-domains' ||
-    token.startsWith('--hostlist-exclude-domains=') ||
-    token === '--hostlist-auto' ||
-    token.startsWith('--hostlist-auto=') ||
-    token === '--hostlist-auto-fail-threshold' ||
-    token.startsWith('--hostlist-auto-fail-threshold=') ||
-    token === '--hostlist-auto-fail-time' ||
-    token.startsWith('--hostlist-auto-fail-time=') ||
-    token === '--hostlist-auto-retrans-threshold' ||
-    token.startsWith('--hostlist-auto-retrans-threshold=') ||
-    token === '--hostlist-auto-debug' ||
-    token.startsWith('--hostlist-auto-debug=')
-  ) {
-    return {
-      reason: hostSelectionMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (
-    token === '--ipset' ||
-    token.startsWith('--ipset=') ||
-    token === '--ipset-ip' ||
-    token.startsWith('--ipset-ip=') ||
-    token === '--ipset-exclude' ||
-    token.startsWith('--ipset-exclude=') ||
-    token === '--ipset-exclude-ip' ||
-    token.startsWith('--ipset-exclude-ip=')
-  ) {
-    return {
-      reason: ipSelectionMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (token === '--qnum' || token.startsWith('--qnum=')) {
-    return {
-      reason: queueMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (
-    token === '--dpi-desync-fwmark' ||
-    token.startsWith('--dpi-desync-fwmark=')
-  ) {
-    return {
-      reason: fwmarkMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (token === '--daemon') {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '--dry-run') {
-    return {
-      reason: dryRunMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '--version') {
-    return {
-      reason: versionMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function buildNfqwsLocalAnalysis(value) {
-  const text = value ? `${value}` : '';
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _('NFQWS strategy cannot be empty'),
-      annotations: [],
-    };
-  }
-
-  if (text.trim() === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
-    return { valid: true, message: '', annotations: [] };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const bareToken = token.value.includes('=')
-      ? token.value.slice(0, token.value.indexOf('='))
-      : token.value;
-    const nextToken = tokens[index + 1] || null;
-
-    const forbidden = getNfqwsForbiddenTokenInfo(token.value, index);
-    if (forbidden) {
-      addAnnotationIssue(annotationMap, token, forbidden.reason);
-
-      let displayToken = token.value;
-
-      if (
-        forbidden.captureNextValue &&
-        nextToken &&
-        !nextToken.value.startsWith('--')
-      ) {
-        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
-        displayToken = `${displayToken} ${nextToken.value}`;
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      errors.push(`${displayToken}: ${forbidden.reason}`);
-      continue;
-    }
-
-    if (!token.value.startsWith('--')) {
-      const reason = _(
-        'Unexpected standalone token. Use explicit flags such as --name or --name=value.',
-      );
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    const mode = getNfqwsOptionArgumentMode(bareToken);
-    if (mode === 'unknown') {
-      const reason = _('Unknown NFQWS flag.');
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    if (mode === 'none') {
-      if (token.value.includes('=')) {
-        const reason = _('This flag does not accept a value.');
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-      }
-
-      index += 1;
-      continue;
-    }
-
-    if (mode === 'optional') {
-      if (
-        nextToken &&
-        !token.value.includes('=') &&
-        !nextToken.value.startsWith('--')
-      ) {
-        const reason = _(
-          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws.",
-        );
-        addAnnotationIssue(annotationMap, token, reason);
-        addAnnotationIssue(annotationMap, nextToken, reason);
-        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (!token.value.includes('=')) {
-      if (!nextToken || nextToken.value.startsWith('--')) {
-        const reason = _('This option requires a value.');
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-        index += 1;
-        continue;
-      }
-
-      index += 2;
-      continue;
-    }
-
-    index += 1;
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: '', annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function addNfqwsRemoteValidationNeedleAnnotations(
-  annotationMap,
-  tokens,
-  remoteValidation,
-  needle,
-) {
-  if (!needle.length) {
-    return;
-  }
-
-  let matched = false;
-
-  tokens.forEach((token) => {
-    const tokenValue = token.value || '';
-    const optionMatch =
-      needle.startsWith('--') &&
-      (tokenValue === needle || tokenValue.startsWith(`${needle}=`));
-    const valueMatch =
-      tokenValue === needle ||
-      tokenValue.endsWith(`=${needle}`) ||
-      (!needle.startsWith('--') && tokenValue.includes(`=${needle},`)) ||
-      (!needle.startsWith('--') && tokenValue.endsWith(`=${needle}`));
-
-    if (optionMatch || valueMatch) {
-      addAnnotationIssue(annotationMap, token, remoteValidation.message);
-      matched = true;
-    }
-  });
-
-  if (matched) {
-    return;
-  }
-
-  if (needle.startsWith('--')) {
-    tokens
-      .filter((token) => token.value && token.value.startsWith(needle))
-      .forEach((token) =>
-        addAnnotationIssue(annotationMap, token, remoteValidation.message),
-      );
-  }
-}
-
-function addNfqwsRemoteValidationAnnotations(
-  annotationMap,
-  tokens,
-  remoteValidation,
-) {
-  const needles =
-    remoteValidation &&
-    Array.isArray(remoteValidation.needles) &&
-    remoteValidation.needles.length
-      ? remoteValidation.needles.map((needle) => `${needle}`)
-      : remoteValidation && remoteValidation.needle
-        ? [`${remoteValidation.needle}`]
-        : [];
-
-  needles.forEach((needle) =>
-    addNfqwsRemoteValidationNeedleAnnotations(
-      annotationMap,
-      tokens,
-      remoteValidation,
-      needle,
-    ),
-  );
-}
-
-function analyzeNfqwsStrategy(value) {
-  const localAnalysis = buildNfqwsLocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedNfqwsRemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : '';
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function normalizeNfqws2StrategyValue(value) {
-  const normalized = normalizeNfqwsStrategyWhitespace(value);
-  return normalized.length ? normalized : ZAPRET2_DEFAULT_NFQWS2_OPT;
-}
-
-function getCachedNfqws2RemoteValidation(value) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-  return normalized.length
-    ? nfqws2RemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheNfqws2RemoteValidation(value, result) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : '',
-    needle: result && result.needle ? `${result.needle}` : '',
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (nfqws2RemoteValidationCache.size >= 100) {
-    nfqws2RemoteValidationCache.delete(
-      nfqws2RemoteValidationCache.keys().next().value,
-    );
-  }
-  nfqws2RemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildNfqws2RemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _('Unable to validate the NFQWS2 strategy through the backend parser.');
-
-  return {
-    valid: false,
-    message: _('Backend validation failed: %s').format(message),
-    needle: '',
-    needles: [],
-  };
-}
-
-function validateNfqws2StrategyRemotely(value) {
-  const normalized = normalizeNfqws2StrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: '',
-      needle: '',
-      needles: [],
-    });
-  }
-
-  if (nfqws2RemoteValidationCache.has(normalized)) {
-    return Promise.resolve(nfqws2RemoteValidationCache.get(normalized));
-  }
-
-  if (nfqws2RemoteValidationInflight.has(normalized)) {
-    return nfqws2RemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      'validate_nfqws2_strategy_json',
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
-      );
-      return cacheNfqws2RemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || '',
-        needle: payload.needle || '',
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheNfqws2RemoteValidation(
-        normalized,
-        buildNfqws2RemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      nfqws2RemoteValidationInflight.delete(normalized);
-    });
-
-  nfqws2RemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getNfqws2ForbiddenTokenInfo(token, index, nextToken) {
-  const configFileMessage = _(
-    'External nfqws2 config files bypass Tachyon queue management and explicit validation.',
-  );
-  const hostSelectionMessage = _(
-    'Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.',
-  );
-  const ipSelectionMessage = _(
-    'Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.',
-  );
-  const placeholderMessage = _(
-    'Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.',
-  );
-  const queueMessage = _(
-    'The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.',
-  );
-  const fwmarkMessage = _(
-    'The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.',
-  );
-  const fuzzMessage = _(
-    'Fuzzing is not supported here because Tachyon needs deterministic runtime validation.',
-  );
-  const interceptMessage = _(
-    'Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE.',
-  );
-  const daemonMessage = _(
-    'Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here.',
-  );
-  const dryRunMessage = _(
-    'This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here.',
-  );
-  const versionMessage = _(
-    'This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here.',
-  );
-
-  if (index === 0 && (token.startsWith('@') || token.startsWith('$'))) {
-    return {
-      reason: configFileMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '<HOSTLIST>' || token === '<HOSTLIST_NOAUTO>') {
-    return {
-      reason: placeholderMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === '--hostlist' ||
-    token.startsWith('--hostlist=') ||
-    token === '--hostlist-domains' ||
-    token.startsWith('--hostlist-domains=') ||
-    token === '--hostlist-exclude' ||
-    token.startsWith('--hostlist-exclude=') ||
-    token === '--hostlist-exclude-domains' ||
-    token.startsWith('--hostlist-exclude-domains=') ||
-    token === '--hostlist-auto' ||
-    token.startsWith('--hostlist-auto=') ||
-    token === '--hostlist-auto-fail-threshold' ||
-    token.startsWith('--hostlist-auto-fail-threshold=') ||
-    token === '--hostlist-auto-fail-time' ||
-    token.startsWith('--hostlist-auto-fail-time=') ||
-    token === '--hostlist-auto-retrans-threshold' ||
-    token.startsWith('--hostlist-auto-retrans-threshold=') ||
-    token === '--hostlist-auto-debug' ||
-    token.startsWith('--hostlist-auto-debug=') ||
-    token === '--hostlist-auto-retrans-reset' ||
-    token.startsWith('--hostlist-auto-retrans-reset=')
-  ) {
-    return {
-      reason: hostSelectionMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (
-    token === '--ipset' ||
-    token.startsWith('--ipset=') ||
-    token === '--ipset-ip' ||
-    token.startsWith('--ipset-ip=') ||
-    token === '--ipset-exclude' ||
-    token.startsWith('--ipset-exclude=') ||
-    token === '--ipset-exclude-ip' ||
-    token.startsWith('--ipset-exclude-ip=')
-  ) {
-    return {
-      reason: ipSelectionMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (token === '--qnum' || token.startsWith('--qnum=')) {
-    return {
-      reason: queueMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (
-    token === '--fwmark' ||
-    token.startsWith('--fwmark=') ||
-    token === '--dpi-desync-fwmark' ||
-    token.startsWith('--dpi-desync-fwmark=')
-  ) {
-    return {
-      reason: fwmarkMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (token === '--fuzz' || token.startsWith('--fuzz=')) {
-    return {
-      reason: fuzzMessage,
-      captureNextValue: !token.includes('='),
-    };
-  }
-
-  if (
-    token === '--intercept=0' ||
-    token === '--intercept=false' ||
-    token === '--intercept=no' ||
-    (token === '--intercept' && nextToken && nextToken.value === '0')
-  ) {
-    return {
-      reason: interceptMessage,
-      captureNextValue: token === '--intercept',
-    };
-  }
-
-  if (token === '--daemon') {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '--dry-run') {
-    return {
-      reason: dryRunMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '--version') {
-    return {
-      reason: versionMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function buildNfqws2LocalAnalysis(value) {
-  const text = value ? `${value}` : '';
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _('NFQWS2 strategy cannot be empty'),
-      annotations: [],
-    };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const bareToken = token.value.includes('=')
-      ? token.value.slice(0, token.value.indexOf('='))
-      : token.value;
-    const nextToken = tokens[index + 1] || null;
-
-    const forbidden = getNfqws2ForbiddenTokenInfo(
-      token.value,
-      index,
-      nextToken,
-    );
-    if (forbidden) {
-      addAnnotationIssue(annotationMap, token, forbidden.reason);
-
-      let displayToken = token.value;
-
-      if (
-        forbidden.captureNextValue &&
-        nextToken &&
-        !nextToken.value.startsWith('--')
-      ) {
-        addAnnotationIssue(annotationMap, nextToken, forbidden.reason);
-        displayToken = `${displayToken} ${nextToken.value}`;
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      errors.push(`${displayToken}: ${forbidden.reason}`);
-      continue;
-    }
-
-    if (!token.value.startsWith('--')) {
-      const reason = _(
-        'Unexpected standalone token. Use explicit flags such as --name or --name=value.',
-      );
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    const mode = getNfqws2OptionArgumentMode(bareToken);
-    if (mode === 'unknown') {
-      const reason = _('Unknown NFQWS2 flag.');
-      addAnnotationIssue(annotationMap, token, reason);
-      errors.push(`${token.value}: ${reason}`);
-      index += 1;
-      continue;
-    }
-
-    if (mode === 'none') {
-      if (token.value.includes('=')) {
-        const reason = _('This flag does not accept a value.');
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-      }
-
-      index += 1;
-      continue;
-    }
-
-    if (mode === 'optional') {
-      if (
-        nextToken &&
-        !token.value.includes('=') &&
-        !nextToken.value.startsWith('--')
-      ) {
-        const reason = _(
-          "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2.",
-        );
-        addAnnotationIssue(annotationMap, token, reason);
-        addAnnotationIssue(annotationMap, nextToken, reason);
-        errors.push(`${token.value} ${nextToken.value}: ${reason}`);
-        index += 2;
-      } else {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (!token.value.includes('=')) {
-      if (!nextToken || nextToken.value.startsWith('--')) {
-        const reason = _('This option requires a value.');
-        addAnnotationIssue(annotationMap, token, reason);
-        errors.push(`${token.value}: ${reason}`);
-        index += 1;
-        continue;
-      }
-
-      index += 2;
-      continue;
-    }
-
-    index += 1;
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: '', annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function analyzeNfqws2Strategy(value) {
-  const localAnalysis = buildNfqws2LocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedNfqws2RemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : '';
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function normalizeByedpiStrategyWhitespace(value) {
-  return value ? `${value}`.replace(/\s+/g, ' ').trim() : '';
-}
-
-function normalizeByedpiStrategyValue(value) {
-  const normalized = normalizeByedpiStrategyWhitespace(value);
-  return normalized.length ? normalized : BYEDPI_DEFAULT_CMD_OPTS;
-}
-
-function getCachedByedpiRemoteValidation(value) {
-  const normalized = normalizeByedpiStrategyValue(value);
-  return normalized.length
-    ? byedpiRemoteValidationCache.get(normalized) || null
-    : null;
-}
-
-function cacheByedpiRemoteValidation(value, result) {
-  const normalized = normalizeByedpiStrategyValue(value);
-  if (!normalized.length) {
-    return result;
-  }
-
-  const cached = {
-    valid: result && result.valid === true,
-    message: result && result.message ? `${result.message}` : '',
-    needle: result && result.needle ? `${result.needle}` : '',
-    needles:
-      result && Array.isArray(result.needles)
-        ? result.needles.filter(Boolean).map((item) => `${item}`)
-        : result && result.needle
-          ? [`${result.needle}`]
-          : [],
-  };
-
-  if (byedpiRemoteValidationCache.size >= 100) {
-    byedpiRemoteValidationCache.delete(
-      byedpiRemoteValidationCache.keys().next().value,
-    );
-  }
-  byedpiRemoteValidationCache.set(normalized, cached);
-  return cached;
-}
-
-function buildByedpiRemoteValidationFallback(error) {
-  const message =
-    error && error.message
-      ? `${error.message}`
-      : _('Unable to validate the ByeDPI strategy through the backend parser.');
-
-  return {
-    valid: false,
-    message: _('Backend validation failed: %s').format(message),
-    needle: '',
-    needles: [],
-  };
-}
-
-function validateByedpiStrategyRemotely(value) {
-  const normalized = normalizeByedpiStrategyValue(value);
-
-  if (!normalized.length) {
-    return Promise.resolve({
-      valid: true,
-      message: '',
-      needle: '',
-      needles: [],
-    });
-  }
-
-  if (byedpiRemoteValidationCache.has(normalized)) {
-    return Promise.resolve(byedpiRemoteValidationCache.get(normalized));
-  }
-
-  if (byedpiRemoteValidationInflight.has(normalized)) {
-    return byedpiRemoteValidationInflight.get(normalized);
-  }
-
-  const validationTask = fs
-    .exec(NFQWS_VALIDATION_COMMAND, [
-      'validate_byedpi_strategy_json',
-      normalized,
-    ])
-    .then((result) => {
-      const payload = JSON.parse(
-        (result && result.stdout ? result.stdout : '{}').trim() || '{}',
-      );
-      return cacheByedpiRemoteValidation(normalized, {
-        valid: payload.valid === true,
-        message: payload.message || '',
-        needle: payload.needle || '',
-        needles: Array.isArray(payload.needles)
-          ? payload.needles.filter(Boolean)
-          : payload.needle
-            ? [payload.needle]
-            : [],
-      });
-    })
-    .catch((error) =>
-      cacheByedpiRemoteValidation(
-        normalized,
-        buildByedpiRemoteValidationFallback(error),
-      ),
-    )
-    .finally(() => {
-      byedpiRemoteValidationInflight.delete(normalized);
-    });
-
-  byedpiRemoteValidationInflight.set(normalized, validationTask);
-  return validationTask;
-}
-
-function getByedpiShortOptionName(token) {
-  return token.length > 2 ? token.slice(0, 2) : token;
-}
-
-function byedpiTokenLooksLikeOption(token) {
-  return /^--.+/.test(token) || /^-[A-Za-z].*/.test(token);
-}
-
-function getByedpiControlledTokenInfo(token) {
-  const listenMessage = _(
-    'ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy.',
-  );
-  const transparentMessage = _(
-    'Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS.',
-  );
-  const daemonMessage = _(
-    'Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here.',
-  );
-  const pidfileMessage = _(
-    'Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here.',
-  );
-  const exitMessage = _(
-    'This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here.',
-  );
-
-  if (
-    token === '--ip' ||
-    token.startsWith('--ip=') ||
-    token === '-i' ||
-    /^-i.+/.test(token) ||
-    token === '--port' ||
-    token.startsWith('--port=') ||
-    token === '-p' ||
-    /^-p.+/.test(token)
-  ) {
-    return {
-      reason: listenMessage,
-      captureNextValue:
-        token === '--ip' ||
-        token === '-i' ||
-        token === '--port' ||
-        token === '-p',
-    };
-  }
-
-  if (token === '--transparent' || token === '-E' || /^-E.+/.test(token)) {
-    return {
-      reason: transparentMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (token === '--daemon' || token === '-D' || /^-D.+/.test(token)) {
-    return {
-      reason: daemonMessage,
-      captureNextValue: false,
-    };
-  }
-
-  if (
-    token === '--pidfile' ||
-    token.startsWith('--pidfile=') ||
-    token === '-w' ||
-    /^-w.+/.test(token)
-  ) {
-    return {
-      reason: pidfileMessage,
-      captureNextValue: token === '--pidfile' || token === '-w',
-    };
-  }
-
-  if (
-    token === '--help' ||
-    token === '-h' ||
-    /^-h.+/.test(token) ||
-    token === '--version' ||
-    token === '-v' ||
-    /^-v.+/.test(token)
-  ) {
-    return {
-      reason: exitMessage,
-      captureNextValue: false,
-    };
-  }
-
-  return null;
-}
-
-function validateByedpiStrategyToken(token, nextToken) {
-  const controlled = getByedpiControlledTokenInfo(token);
-  if (controlled) {
-    return {
-      valid: false,
-      reason: controlled.reason,
-      captureNextValue: controlled.captureNextValue,
-    };
-  }
-
-  if (/^--[^=]+=/.test(token)) {
-    const base = token.split('=', 1)[0];
-    const value = token.slice(base.length + 1);
-
-    if (BYEDPI_LONG_VALUE_OPTIONS.has(base)) {
-      return value.length
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _('ByeDPI option requires a value: %s').format(base),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_LONG_FLAG_OPTIONS.has(base)) {
-      return {
-        valid: false,
-        reason: _('ByeDPI option does not accept a value: %s').format(base),
-        captureNextValue: false,
-      };
-    }
-
-    return {
-      valid: false,
-      reason: _('Unknown ByeDPI option: %s').format(base),
-      captureNextValue: false,
-    };
-  }
-
-  if (/^--.+/.test(token)) {
-    if (BYEDPI_LONG_VALUE_OPTIONS.has(token)) {
-      return nextToken && !byedpiTokenLooksLikeOption(nextToken)
-        ? { valid: true, consumeNext: true }
-        : {
-            valid: false,
-            reason: _('ByeDPI option requires a value: %s').format(token),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_LONG_FLAG_OPTIONS.has(token)) {
-      return { valid: true, consumeNext: false };
-    }
-
-    return {
-      valid: false,
-      reason: _('Unknown ByeDPI option: %s').format(token),
-      captureNextValue: false,
-    };
-  }
-
-  if (/^-./.test(token)) {
-    if (token === '-') {
-      return {
-        valid: false,
-        reason: _('Unexpected ByeDPI strategy argument: %s').format(token),
-        captureNextValue: false,
-      };
-    }
-
-    const short = getByedpiShortOptionName(token);
-    const compactValue = token.slice(short.length);
-
-    if (BYEDPI_SHORT_VALUE_OPTIONS.has(short)) {
-      if (token === short) {
-        return nextToken && !byedpiTokenLooksLikeOption(nextToken)
-          ? { valid: true, consumeNext: true }
-          : {
-              valid: false,
-              reason: _('ByeDPI option requires a value: %s').format(short),
-              captureNextValue: false,
-            };
-      }
-
-      return compactValue.length
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _('ByeDPI option requires a value: %s').format(short),
-            captureNextValue: false,
-          };
-    }
-
-    if (BYEDPI_SHORT_FLAG_OPTIONS.has(short)) {
-      return token === short
-        ? { valid: true, consumeNext: false }
-        : {
-            valid: false,
-            reason: _(
-              'ByeDPI option does not accept a compact value: %s',
-            ).format(short),
-            captureNextValue: false,
-          };
-    }
-
-    return {
-      valid: false,
-      reason: _('Unknown ByeDPI option: %s').format(short),
-      captureNextValue: false,
-    };
-  }
-
-  return {
-    valid: false,
-    reason: _('Unexpected ByeDPI strategy argument: %s').format(token),
-    captureNextValue: false,
-  };
-}
-
-function buildByedpiLocalAnalysis(value) {
-  const text = value ? `${value}` : '';
-  if (!text.trim().length) {
-    return {
-      valid: false,
-      message: _('ByeDPI strategy cannot be empty'),
-      annotations: [],
-    };
-  }
-
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-  const errors = [];
-
-  for (let index = 0; index < tokens.length; ) {
-    const token = tokens[index];
-    const nextToken = tokens[index + 1] || null;
-    const tokenValidation = validateByedpiStrategyToken(
-      token.value,
-      nextToken ? nextToken.value : null,
-    );
-
-    if (tokenValidation.valid) {
-      index += tokenValidation.consumeNext ? 2 : 1;
-      continue;
-    }
-
-    addAnnotationIssue(annotationMap, token, tokenValidation.reason);
-    let displayToken = token.value;
-
-    if (
-      tokenValidation.captureNextValue &&
-      nextToken &&
-      !nextToken.value.startsWith('-')
-    ) {
-      addAnnotationIssue(annotationMap, nextToken, tokenValidation.reason);
-      displayToken = `${displayToken} ${nextToken.value}`;
-      index += 2;
-    } else {
-      index += 1;
-    }
-
-    errors.push(`${displayToken}: ${tokenValidation.reason}`);
-  }
-
-  if (!errors.length) {
-    return { valid: true, message: '', annotations: [] };
-  }
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), ...errors].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
-function analyzeByedpiStrategy(value) {
-  const localAnalysis = buildByedpiLocalAnalysis(value);
-  if (!localAnalysis.valid) {
-    return localAnalysis;
-  }
-
-  const remoteValidation = getCachedByedpiRemoteValidation(value);
-  if (!remoteValidation || remoteValidation.valid) {
-    return localAnalysis;
-  }
-
-  const text = value ? `${value}` : '';
-  const tokens = parseNfqwsRuntimeTokens(text);
-  const annotationMap = new Map();
-
-  localAnalysis.annotations.forEach((annotation) =>
-    addAnnotationIssue(annotationMap, annotation, annotation.message),
-  );
-  addNfqwsRemoteValidationAnnotations(annotationMap, tokens, remoteValidation);
-
-  return {
-    valid: false,
-    message: [getValidationHeaderText(), remoteValidation.message].join('\n'),
-    annotations: finalizeAnnotations(annotationMap),
-  };
-}
-
 function configureTextareaOption(
   option,
   analyzer,
@@ -11244,91 +9344,6 @@ function getOptionTextarea(option, section_id) {
   return node && typeof node.querySelector === 'function'
     ? node.querySelector('textarea')
     : null;
-}
-
-function rejectStrategyValidation(option, section_id, message) {
-  const title = option.stripTags(option.title).trim();
-  const error = message || option.getValidationError(section_id) || '';
-
-  return Promise.reject(
-    new TypeError(
-      `${_('Option "%s" contains an invalid input value.').format(title || option.option)} ${error}`,
-    ),
-  );
-}
-
-function parseStrategyWithRemoteValidation(section_id, config) {
-  const active = this.isActive(section_id);
-
-  if (active) {
-    if (typeof this.triggerValidation === 'function') {
-      this.triggerValidation(section_id);
-    }
-
-    if (!this.isValid(section_id)) {
-      return rejectStrategyValidation(
-        this,
-        section_id,
-        this.getValidationError(section_id),
-      );
-    }
-
-    const cval = this.cfgvalue(section_id);
-    const fval = this.formvalue(section_id);
-    const cvalString = cval == null ? '' : `${cval}`;
-    const fvalString = fval == null ? '' : `${fval}`;
-    const shouldWrite = this.forcewrite || cvalString !== fvalString;
-
-    if (!shouldWrite) {
-      return Promise.resolve();
-    }
-
-    return config.remoteValidate(fvalString).then((result) => {
-      const textarea = getOptionTextarea(this, section_id);
-
-      if (textarea) {
-        refreshAnnotatedTextareaValidation(this, section_id, textarea);
-      }
-
-      if (typeof this.triggerValidation === 'function') {
-        this.triggerValidation(section_id);
-      }
-
-      if (!result || result.valid !== true) {
-        return rejectStrategyValidation(
-          this,
-          section_id,
-          result && result.message ? result.message : config.invalidMessage,
-        );
-      }
-
-      return Promise.resolve(this.write(section_id, fvalString));
-    });
-  }
-
-  if (!this.retain) {
-    return Promise.resolve(this.remove(section_id));
-  }
-
-  return Promise.resolve();
-}
-
-function parseNfqwsStrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
-    remoteValidate: validateNfqwsStrategyRemotely,
-    invalidMessage: _(
-      'Unable to validate the NFQWS strategy through the backend parser.',
-    ),
-  });
-}
-
-function parseNfqws2StrategyOnSave(section_id) {
-  return parseStrategyWithRemoteValidation.call(this, section_id, {
-    remoteValidate: validateNfqws2StrategyRemotely,
-    invalidMessage: _(
-      'Unable to validate the NFQWS2 strategy through the backend parser.',
-    ),
-  });
 }
 
 function addDynamicConditionField(section, config) {
@@ -11635,23 +9650,23 @@ function addTextConditionField(section, config) {
 
 var DOMAIN_LIST_HINTS = {
   russia_inside:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
   ukraine_inside:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Сводный список заблокированных и ограниченных в Украине ресурсов и сервисов',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный список заблокированных и ограниченных в Украине ресурсов и сервисов',
   belarus_inside:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Сводный список заблокированных и ограниченных в Беларуси ресурсов, независимых СМИ и сервисов с геоблоком для РБ',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный список заблокированных и ограниченных в Беларуси ресурсов, независимых СМИ и сервисов с геоблоком для РБ',
   geoblock:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab',
   block:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Домены и сайты из официальной выгрузки запрещённых ресурсов Роскомнадзора',
+    '[Маршрут: В Прокси / VPN или Desync] Домены и сайты из официальной сводной выгрузки ограниченных в РФ ресурсов',
   ru_blocked:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РКН без мёртвых сайтов)',
+    '[Маршрут: В Прокси / VPN или Desync] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РФ без мёртвых сайтов)',
   ru_blocked_all:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Полная выгрузка доменов и зеркал из реестра блокировок РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
+    '[Маршрут: В Прокси / VPN или Desync] Полная выгрузка доменов и зеркал из реестра блокировок РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
   antifilter:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Народный список доменов и сервисов, заблокированных РКН или замедляемых на ТСПУ в России',
+    '[Маршрут: В Прокси / VPN или Desync] Народный список доменов и сервисов, ограниченных на маршруте или замедляемых на транзитных узлах в России',
   refilter:
-    '[Маршрут: В Прокси / VPN] Выверенный список реальных блокировок РКН и геоблока западных сервисов без избыточных доменов',
+    '[Маршрут: В Прокси / VPN] Выверенный список реальных сетевых ограничений РФ и геоблока западных сервисов без избыточных доменов',
   russia_outside:
     '[Маршрут: В Прокси с IP РФ (из-за рубежа) или Direct (в РФ)] Сервисы РФ: Госуслуги, банки, Ozon, WB, Кинопоиск, Иви, Wink, РЖД',
   ru_whitelist:
@@ -11666,7 +9681,7 @@ var DOMAIN_LIST_HINTS = {
   captive_ntp_stun:
     '[Маршрут: Напрямую (Direct)] Системные проверки интернета (Captive Portal Apple/Android/Windows/Firefox), синхронизация времени NTP и STUN-серверы NAT',
   ai_all:
-    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face',
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Qwen, Kimi, Hugging Face',
   openai:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)',
   anthropic:
@@ -11683,7 +9698,9 @@ var DOMAIN_LIST_HINTS = {
   copilot:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все домены автодополнения кода GitHub Copilot (githubcopilot.com, copilot-proxy.githubusercontent.com) и ассистента Microsoft Copilot в Windows, Edge и Office 365 (copilot.microsoft.com, sydney.bing.com)',
   deepseek:
-    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Moonshot Kimi (kimi.ai), Alibaba Qwen Chat (chat.qwen.ai), MiniMax, Z.ai, Manus (manus.im) и Dify',
+    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Manus (manus.im) и Dify',
+  qwen: '[Маршрут: В Прокси / VPN или Direct] Домены экосистемы ИИ Alibaba Cloud: qwen.ai, chat.qwen.ai, qwenlm.ai, tongyi.com, dashscope.aliyuncs.com и modelscope.cn',
+  kimi: '[Маршрут: В Прокси / VPN или Direct] Домены ИИ-ассистента Kimi и платформы Moonshot / ByteDance: kimi.com, kimi.ai, kimi.moonshot.cn, moonshot.cn, byteoversea.com и volcengine.com',
   midjourney:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы генерации графики, дизайна и 3D: Midjourney (midjourney.com), Civitai (civitai.com), Black Forest Labs / Flux (bfl.ai), Leonardo.ai, Ideogram, Krea, Recraft, Magnific, Stability AI, ComfyUI Registry, OpenArt, Tripo3D и Meshy',
   elevenlabs:
@@ -11695,27 +9712,28 @@ var DOMAIN_LIST_HINTS = {
   huggingface:
     '[Маршрут: В Прокси / VPN] Репозитории моделей и датасетов Hugging Face (huggingface.co, hf.co), каталоги локальных LLM (ollama.com, lmstudio.ai, openwebui.com), платформы ролевых ИИ-персонажей (Character.AI, JanitorAI, Chub, NovelAI) и ML-инфраструктура (Weights & Biases, Kaggle, LangChain)',
   youtube:
-    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
+    '[Маршрут: В Desync (фрагментация пакетов) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)',
   youtube_images:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Только серверы обложек, превью роликов и аватарок каналов YouTube (i.ytimg.com, yt3.ggpht.com, yt3.googleusercontent.com) без проксирования самого видеопотока',
+    '[Маршрут: В Прокси / VPN или Desync] Только серверы обложек, превью роликов и аватарок каналов YouTube (i.ytimg.com, yt3.ggpht.com, yt3.googleusercontent.com) без проксирования самого видеопотока',
   twitch:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
+    '[Маршрут: В Прокси / VPN или Desync] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
   twitch_ads:
     '[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока',
+  kick: '[Маршрут: В Прокси / VPN или Direct] Домены стриминговой платформы Kick (kick.com, files.kick.com и CDN видеотрансляций)',
   spotify:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)',
   soundcloud_music:
-    '[Маршрут: В Прокси / VPN] Музыкальные сервисы и энциклопедии, заблокированные РКН или закрытые геоблоком: SoundCloud (soundcloud.com, sndcdn.com), Deezer (deezer.com, dzcdn.net), Tidal (tidal.com), Qobuz, Bandcamp, Genius (genius.com), Last.fm, Mixcloud, TuneIn и Discogs',
+    '[Маршрут: В Прокси / VPN] Музыкальные сервисы и энциклопедии, ограниченные на маршруте или закрытые геоблоком: SoundCloud (soundcloud.com, sndcdn.com), Deezer (deezer.com, dzcdn.net), Tidal (tidal.com), Qobuz, Bandcamp, Genius (genius.com), Last.fm, Mixcloud, TuneIn и Discogs',
   netflix:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)',
   streaming_west:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Зарубежные онлайн-кинотеатры и ТВ-платформы: Disney+, Max (HBO), Amazon Prime Video, Apple TV+, Hulu, Paramount+, Peacock, BBC iPlayer, Plex и Roku',
   tmdb_metadata:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Базы постеров, описаний фильмов и метаданных для Lampa, Kodi, Plex и Jellyfin: TMDB (themoviedb.org, image.tmdb.org), TheTVDB, Trakt.tv, IMDb, Fanart.tv и OMDb',
+    '[Маршрут: В Прокси / VPN или Desync] Базы постеров, описаний фильмов и метаданных для Lampa, Kodi, Plex и Jellyfin: TMDB (themoviedb.org, image.tmdb.org), TheTVDB, Trakt.tv, IMDb, Fanart.tv и OMDb',
   rutracker_lampa:
-    "[Маршрут: В Прокси / VPN или Обход DPI] Народный набор для дома и Android TV: зеркала RuTracker, Rutor, NNM-Club, Kinozal, LostFilm, KinoPub, балансеры и плагины Lampa (Filmix, Cub, BWA, Zetflix), а также книжные и научные библиотеки (Flibusta, Coollib, Z-Library, Anna's Archive, LibGen, Sci-Hub)",
+    "[Маршрут: В Прокси / VPN или Desync] Народный набор для дома и Android TV: зеркала RuTracker, Rutor, NNM-Club, Kinozal, LostFilm, KinoPub, балансеры и плагины Lampa (Filmix, Cub, BWA, Zetflix), а также книжные и научные библиотеки (Flibusta, Coollib, Z-Library, Anna's Archive, LibGen, Sci-Hub)",
   books_archives:
-    "[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие электронные библиотеки, архивы книг, аудиокниг и научных статей: Флибуста (flibusta.is), Z-Library, Anna's Archive, LibGen, Sci-Hub, RoyalRoad, AO3, Ficbook, Goodreads и Audible",
+    "[Маршрут: В Прокси / VPN или Desync] Крупнейшие электронные библиотеки, архивы книг, аудиокниг и научных статей: Флибуста (flibusta.is), Z-Library, Anna's Archive, LibGen, Sci-Hub, RoyalRoad, AO3, Ficbook, Goodreads и Audible",
   podcasts_radio:
     '[Маршрут: В Прокси / VPN] Платформы подкастов, хостинги аудиовыпусков и интернет-радио: Pocket Casts, Overcast, Castro, Podbean, Buzzsprout, Anchor, Libsyn, Megaphone, TuneIn и iHeartRadio',
   patreon_creators:
@@ -11723,26 +9741,26 @@ var DOMAIN_LIST_HINTS = {
   tiktok:
     '[Маршрут: Только в Прокси / VPN — региональный блок РФ] Приложение, веб-версия и медиа-CDN ByteDance (tiktok.com, tiktokv.com, tiktokcdn.com) для снятия ограничений на новые видео',
   hdrezka:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Онлайн-кинотеатр HDRezka, видео-балансеры (Voidboost) и актуальные зеркала (rezka.ag, hdrezka.ag, voidboost.cc)',
+    '[Маршрут: В Прокси / VPN или Desync] Онлайн-кинотеатр HDRezka, видео-балансеры (Voidboost) и актуальные зеркала (rezka.ag, hdrezka.ag, voidboost.cc)',
   anime:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Популярные аниме-порталы и плееры: Shikimori, AnimeGO, Jut.su, Kodik, Anilibria, Crunchyroll, MyAnimeList',
+    '[Маршрут: В Прокси / VPN или Desync] Популярные аниме-порталы и плееры: Shikimori, AnimeGO, Jut.su, Kodik, Anilibria, Crunchyroll, MyAnimeList',
   pinterest:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на ТСПУ)',
+    '[Маршрут: В Прокси / VPN или Desync] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на транзитных узлах)',
   discord:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)',
+    '[Маршрут: В Прокси / VPN или Desync] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)',
   discord_voice:
-    '[Маршрут: В Обход DPI (Desync) или быстрый UDP-Прокси] Голосовые и WebRTC-шлюзы Discord (discord.media + UDP IP-подсети голосовых серверов) для точечной починки звонков и стримов экрана',
+    '[Маршрут: В Desync (фрагментация) или быстрый UDP-Прокси] Голосовые и WebRTC-шлюзы Discord (discord.media + UDP IP-подсети голосовых серверов) для точечной починки звонков и стримов экрана',
   telegram:
     '[Маршрут: В Прокси / VPN] Мессенджер, веб-клиенты, Telegraph и IPv4/IPv6-подсети всех датацентров DC1–DC5 (telegram.org, t.me, telesco.pe)',
   meta: '[Маршрут: В Прокси / VPN] Instagram, Facebook, Threads, Messenger и медиа-серверы (instagram.com, facebook.com, fbcdn.net, cdninstagram.com + подсети)',
   whatsapp:
     '[Маршрут: В Прокси / VPN или Direct] Все домены WhatsApp (whatsapp.com, whatsapp.net, wa.me) отдельно от Instagram и Facebook: позволяет точечно маршрутизировать звонки и сообщения WhatsApp без проксирования тяжёлого видео-трафика Instagram',
   messengers:
-    '[Маршрут: В Прокси / VPN] Мессенджеры и голосовые серверы, заблокированные РКН или используемые как замена Discord: Signal (signal.org, whispersystems.org), Viber (viber.com), TeamSpeak 3/5 (teamspeak.com, myteamspeak.com), Guilded, Element / Matrix, Threema, Session, SimpleX и Wire',
+    '[Маршрут: В Прокси / VPN] Мессенджеры и голосовые серверы, ограниченные в РФ или используемые как замена Discord: Signal (signal.org, whispersystems.org), Viber (viber.com), TeamSpeak 3/5 (teamspeak.com, myteamspeak.com), Guilded, Element / Matrix, Threema, Session, SimpleX и Wire',
   twitter:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Соцсеть X / Twitter, короткие ссылки и медиа-CDN (x.com, twitter.com, t.co, twimg.com + подсети)',
+    '[Маршрут: В Прокси / VPN или Desync] Соцсеть X / Twitter, короткие ссылки и медиа-CDN (x.com, twitter.com, t.co, twimg.com + подсети)',
   reddit:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Все домены и медиа-CDN платформы Reddit: reddit.com, redd.it, v.redd.it, i.redd.it, redditmedia.com и redditstatic.com (устраняет зависание видео и картинок)',
+    '[Маршрут: В Прокси / VPN или Desync] Все домены и медиа-CDN платформы Reddit: reddit.com, redd.it, v.redd.it, i.redd.it, redditmedia.com и redditstatic.com (устраняет зависание видео и картинок)',
   zoom_teams:
     '[Маршрут: Напрямую (Direct) или в Прокси при геоблоке] Платформы удалённой работы и видеозвонков: Zoom (zoom.us), Google Meet (meet.google.com + STUN/TURN подсети), Microsoft Teams, Cisco Webex, Slack (slack.com), Loom, Gather, Whereby и Jitsi',
   google_meet:
@@ -11802,15 +9820,15 @@ var DOMAIN_LIST_HINTS = {
   gaming_mods_stats:
     '[Маршрут: В Прокси / VPN] Крупнейшие каталоги модов, сборок, вики и киберспортивной статистики: NexusMods, ModDB, CurseForge, Modrinth, Thunderstore, Wago.io, Overwolf, HLTV, Liquipedia, Dotabuff, OP.GG, Tracker.gg и SteamDB',
   game_backends:
-    '[Маршрут: В Прокси / VPN] Облачные бэкенды мультиплеера, лобби, голосового чата и античитов, из-за блокировки которых на ТСПУ игры не пускают в матч: Epic Online Services (EOS), Azure PlayFab, Photon Engine, Vivox Voice, BattlEye, EasyAntiCheat, Denuvo и Faceit AC (+ подсети)',
+    '[Маршрут: В Прокси / VPN] Облачные бэкенды мультиплеера, лобби, голосового чата и античитов, из-за блокировки которых на транзитных узлах игры не пускают в матч: Epic Online Services (EOS), Azure PlayFab, Photon Engine, Vivox Voice, BattlEye, EasyAntiCheat, Denuvo и Faceit AC (+ подсети)',
   roblox:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)',
+    '[Маршрут: В Прокси / VPN или Desync] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)',
   supercell:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (обход геоблока для РФ и РБ)',
   escapefromtarkov:
     '[Маршрут: В Прокси / VPN или Direct] Лаунчер, сайт, API профилей и серверы Battlestate Games (escapefromtarkov.com, tarkov.com, battlestategames.com)',
   faceit:
-    '[Маршрут: В Прокси / VPN или Обход DPI] Киберспортивная платформа CS2, античит и матчмейкинг (faceit.com, faceit-cdn.net)',
+    '[Маршрут: В Прокси / VPN или Desync] Киберспортивная платформа CS2, античит и матчмейкинг (faceit.com, faceit-cdn.net)',
   apple:
     '[Маршрут: Напрямую (Direct) или в Прокси для Apple Intelligence] App Store, iCloud, обновления iOS/macOS, Apple Music, TV+ и Apple Intelligence (apple.com, icloud.com, mzstatic.com, cdn-apple.com)',
   microsoft:
@@ -11820,7 +9838,7 @@ var DOMAIN_LIST_HINTS = {
   google_play:
     '[Маршрут: В Прокси / VPN (для платных приложений и смены региона) или Direct] Магазин приложений Android и серверы скачивания APK (play.google.com, gvt1.com, gvt2.com)',
   github:
-    '[Маршрут: В Прокси / VPN (для Copilot и при сбоях ТСПУ) или Direct] Репозитории, GitHub Actions, Packages, Pages, Raw и Gist (github.com, githubusercontent.com, githubassets.com, ghcr.io)',
+    '[Маршрут: В Прокси / VPN (для Copilot и при сбоях на маршруте) или Direct] Репозитории, GitHub Actions, Packages, Pages, Raw и Gist (github.com, githubusercontent.com, githubassets.com, ghcr.io)',
   docker:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Docker Hub, реестр контейнеров и пакеты (docker.com, docker.io, registry-1.docker.io, download.docker.com)',
   jetbrains:
@@ -11833,6 +9851,8 @@ var DOMAIN_LIST_HINTS = {
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Игровые движки, маркетплейсы ассетов и 3D-платформы: Unity (unity.com, assetstore.unity.com), Unreal Engine / Fab / Quixel, Blender, Godot, Maxon (Cinema 4D), Chaos (V-Ray), SideFX (Houdini), Sketchfab, PolyHaven и Itch.io',
   pkg_registries:
     '[Маршрут: В Прокси / VPN] Репозитории пакетов, библиотек и дистрибутивов: HashiCorp (Terraform, Vagrant, Vault — геоблок РФ), npm, Yarn, pnpm, Bun, Deno, jsDelivr, PyPI, Anaconda, PyTorch, Rust Crates.io, Go Proxy, NuGet, Packagist, Homebrew, GHCR, Quay.io, k8s.io, Arch, Alpine, Debian/Ubuntu и OpenWrt',
+  paas_db:
+    '[Маршрут: В Прокси / VPN] Домены облачных платформ развёртывания и управляемых баз данных с региональными ограничениями доступа: Vercel (vercel.com, vercel.app), Supabase (supabase.com, supabase.co), Fly.io (fly.io, fly.dev), Render (render.com, onrender.com), Netlify (netlify.com, netlify.app), Heroku (heroku.com), MongoDB Atlas (mongodb.com, mongodb.net), Redis Cloud и Railway / Neon',
   linux_repos:
     '[Маршрут: В Прокси / VPN или Direct] Официальные зеркала дистрибутивов Linux, роутерных ОС и репозиториев пакетов: OpenWrt, ImmortalWrt, Entware, Debian, Ubuntu, Arch, Fedora, Alpine, Proxmox, Flathub и Snapcraft',
   captcha_auth:
@@ -11854,18 +9874,18 @@ var DOMAIN_LIST_HINTS = {
   hodca:
     '[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)',
   cloudflare:
-    '[Маршрут: В Прокси / VPN или Обход DPI] IPv4/IPv6-подсети и домены Cloudflare CDN (обход блокировки TLS ECH и сайтов за Cloudflare на ТСПУ)',
+    '[Маршрут: В Прокси / VPN или Desync] IPv4/IPv6-подсети и домены Cloudflare CDN (обход фильтрации TLS ECH и сайтов за Cloudflare на транзитных узлах)',
   cloudfront:
     '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки',
   fastly:
     '[Маршрут: В Прокси / VPN] Домены и подсети CDN-провайдера Fastly (fastly.net, fastlylb.net, fsdn.com), используемого множеством зарубежных сайтов',
   hetzner:
-    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на ТСПУ целыми диапазонами',
+    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на транзитных узлах целыми диапазонами',
   ovh: '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты',
   digitalocean:
     '[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ',
   vps_clouds:
-    '[Маршрут: В Прокси / VPN] IP-подсети популярных зарубежных VPS/облачных хостингов, часто блокируемые на ТСПУ: Vultr (Choopa), Linode (Akamai Connected Cloud), Scaleway (Online.net), Contabo и Leaseweb',
+    '[Маршрут: В Прокси / VPN] IP-подсети популярных зарубежных VPS/облачных хостингов, часто блокируемые на транзитных узлах: Vultr (Choopa), Linode (Akamai Connected Cloud), Scaleway (Online.net), Contabo и Leaseweb',
   speedtest:
     '[Маршрут: В Прокси / VPN (для теста скорости туннеля) или Direct] Сервисы замера скорости интернета, проверки внешнего IP-адреса и DNS-утечек: Speedtest (speedtest.net, ookla.com), Fast.com, Cloudflare Speed, 2ip.ru / 2ip.io, Whoer.net, BrowserLeaks, IPLeak, IPinfo, Check-Host и Ping.pe',
   crypto:
@@ -11882,11 +9902,11 @@ var DOMAIN_LIST_HINTS = {
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Международные биржи фриланса и удалённой работы: Upwork, Fiverr, Freelancer.com, Toptal, Guru, 99designs, Behance Jobs, Dribbble и Deel',
   sports_fitness:
     '[Маршрут: В Прокси / VPN] Спортивные трекеры, велосимуляторы, результаты матчей и трансляции: Strava (заблокирована в РФ), Garmin Connect, Zwift, Komoot, Nike Run Club, Flashscore, SofaScore, Transfermarkt, UFC Fight Pass, NBA, F1 TV и NHL',
-  news: '[Маршрут: В Прокси / VPN или Обход DPI] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
+  news: '[Маршрут: В Прокси / VPN или Desync] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
   torrent:
-    '[Маршрут: В Обход DPI (Desync / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
+    '[Маршрут: В Desync (фрагментация пакетов) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
   tor: '[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров',
-  porn: '[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate',
+  porn: '[Маршрут: В Прокси / VPN или Desync] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate',
   ads_hagezi_pro:
     '[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO',
   android_ads_block:
@@ -11902,7 +9922,7 @@ var DOMAIN_LIST_HINTS = {
   xiaomi_smarttv_ads:
     '[Маршрут: Блокировать (Block)] Вырезает встроенную системную рекламу и телеметрию в прошивках Xiaomi / Poco / Redmi (MIUI и HyperOS: api.ad.xiaomi.com, tracking.miui.com, mistat.xiaomi.com), а также рекламные баннеры и ACR-слежку на телевизорах Samsung Smart TV (Tizen) и LG webOS',
   et_spamhaus_block:
-    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, feodo и dshield в banIP): управляющие C2-серверы ботнетов Abuse.ch Feodo Tracker, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
+    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, firehol_level2 и dshield в banIP): атакующие и ботнет-адреса FireHOL Level 2, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
   hagezi_tif_ip_block:
     '[Маршрут: Блокировать (Block)] Расширенный исходящий список опасных IP-адресов и подсетей (аналог профилей hagezi и webclient в banIP): серверы распространения вредоносного ПО, крипто-дрейнеров, троянов, командные узлы C2 и вредоносные веб-узлы по данным HaGeZi Threat Intelligence IP Feed и FireHOL Webclient. Блокирует прямое подключение по IP даже при обращениях мимо системного DNS.',
   botnet_attackers_ip_block:
@@ -12471,6 +10491,17 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.editable = true;
   o.width = '6rem';
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'hidden',
+    _('Hide on Dashboard'),
+    _('Hide this section on the Dashboard while keeping it active in routing'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.modalonly = true;
   const originalEnabledRenderWidget = o.renderWidget;
   o.renderWidget = function () {
     // GridSection creates a separate map for the modal and copies the option.
@@ -12478,6 +10509,17 @@ function createSectionContent(section) {
     configureDependentServerDisable(this.map);
     return originalEnabledRenderWidget.apply(this, arguments);
   };
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'hidden',
+    _('Hide on Dashboard'),
+    _('Hide this section on the Dashboard while keeping it active in routing'),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.modalonly = true;
 
   o = section.taboption(
     'settings',
@@ -12524,9 +10566,6 @@ function createSectionContent(section) {
       'awg',
       'fptn',
       'desync',
-      'zapret',
-      'zapret2',
-      'byedpi',
       'group',
     ];
     if (!connectionActions.includes(action)) return '';
@@ -12633,7 +10672,7 @@ function createSectionContent(section) {
   o.validate = function (section_id, value) {
     // mieru is implemented in tachyon-core (outbound/mieru.rs + inbound/mieru.rs
     // and its type is in KNOWN_OUTBOUND_TYPES), so only sudoku stays blocked.
-    if (isTachyonCoreForUi() && value === 'sudoku') {
+    if (value === 'sudoku') {
       return _('This protocol is not implemented in tachyon-core yet');
     }
     return super_validate
@@ -12644,21 +10683,17 @@ function createSectionContent(section) {
   const originalActionRenderWidget = o.renderWidget;
   o.renderWidget = function (section_id, option_index, cfgvalue) {
     const node = originalActionRenderWidget.apply(this, arguments);
-    if (isTachyonCoreForUi()) {
-      Promise.resolve(node).then((elem) => {
-        if (!elem) return;
-        const disabledItems = elem.querySelectorAll
-          ? elem.querySelectorAll(
-              '[data-value="sudoku"], option[value="sudoku"]',
-            )
-          : [];
-        disabledItems.forEach((opt) => {
-          opt.disabled = true;
-          opt.setAttribute('disabled', 'disabled');
-          opt.classList.add('disabled');
-        });
+    Promise.resolve(node).then((elem) => {
+      if (!elem) return;
+      const disabledItems = elem.querySelectorAll
+        ? elem.querySelectorAll('[data-value="sudoku"], option[value="sudoku"]')
+        : [];
+      disabledItems.forEach((opt) => {
+        opt.disabled = true;
+        opt.setAttribute('disabled', 'disabled');
+        opt.classList.add('disabled');
       });
-    }
+    });
     return node;
   };
 
@@ -12737,7 +10772,7 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.validate = function (section_id, value) {
     if (!value) return true;
-    return validateRequiredSingBoxDuration(value);
+    return validateRequiredCoreDuration(value);
   };
 
   o = section.taboption(
@@ -12785,7 +10820,7 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.validate = function (section_id, value) {
     if (!value) return true;
-    return validateOptionalSingBoxDuration(value);
+    return validateOptionalCoreDuration(value);
   };
 
   o = section.taboption(
@@ -12800,6 +10835,11 @@ function createSectionContent(section) {
   o.default = 'udp';
   o.rmempty = false;
   o.modalonly = true;
+  o.load = function (section_id: string) {
+    const val = uci.get(UCI_PACKAGE, section_id, 'dns_type') || 'udp';
+    perRuleDnsTypeState.set(section_id, val);
+    return val;
+  };
   const perRuleDnsTypeOption = o;
 
   o = section.taboption(
@@ -12810,6 +10850,9 @@ function createSectionContent(section) {
     _('DNS server used by the resolver'),
   );
   o.depends('action', 'dns');
+  o.optional = true;
+  o.rmempty = true;
+  o.placeholder = _('Optional when WAN DNS is enabled');
   o.modalonly = true;
   configureLiveDynamicListChoices(o, (section_id) => {
     const dnsType = perRuleDnsTypeState.get(section_id) || 'udp';
@@ -12837,7 +10880,15 @@ function createSectionContent(section) {
         });
         const defaultServers = Object.keys(servers).slice(0, 1);
         widget.choices = defaultLabels;
-        widget.setValue(defaultServers);
+        const wanCb = document.getElementById(
+          `widget.cbid.${UCI_PACKAGE}.${section_id}.dns_use_wan`,
+        ) as HTMLInputElement | null;
+        const useWan = wanCb
+          ? wanCb.checked
+          : uci.get(UCI_PACKAGE, section_id, 'dns_use_wan') === '1';
+        if (!useWan) {
+          widget.setValue(defaultServers);
+        }
       }
     }
 
@@ -12901,49 +10952,8 @@ function createSectionContent(section) {
     return value ? true : _('Select a section');
   };
 
-  let sectionScannerEnginesPromise = null;
   function resolveSectionScannerEngines() {
-    return ensureActionProvidersAvailabilityLoaded().then((av) => {
-      const sysInfo =
-        main.store && typeof main.store.get === 'function'
-          ? main.store.get().diagnosticsSystemInfo
-          : null;
-      const base = {
-        zapret2: Boolean(av?.zapret2Installed || sysInfo?.zapret2_installed),
-        zapret: Boolean(av?.zapretInstalled || sysInfo?.zapret_installed),
-        byedpi: Boolean(av?.byedpiInstalled || sysInfo?.byedpi_installed),
-        desync: Boolean(
-          av?.singBoxTachyonCore || sysInfo?.sing_box_tachyon_core,
-        ),
-      };
-      if (sysInfo?.providerInfoLoaded || sysInfo?.loaded || base.desync) {
-        return base;
-      }
-      if (
-        !sectionScannerEnginesPromise &&
-        main.TachyonShellMethods &&
-        typeof main.TachyonShellMethods.getFuzzerStrategies === 'function'
-      ) {
-        sectionScannerEnginesPromise =
-          main.TachyonShellMethods.getFuzzerStrategies()
-            .then((res) =>
-              res && res.success ? res.data?.available_engines : null,
-            )
-            .catch(() => null);
-      }
-      if (!sectionScannerEnginesPromise) {
-        return base;
-      }
-      return sectionScannerEnginesPromise.then((srv) => {
-        if (!srv) return base;
-        return {
-          zapret2: base.zapret2 || Boolean(srv.zapret2),
-          zapret: base.zapret || Boolean(srv.zapret),
-          byedpi: base.byedpi || Boolean(srv.byedpi),
-          desync: base.desync || Boolean(srv.desync),
-        };
-      });
-    });
+    return Promise.resolve({ desync: true });
   }
 
   function pushCleanDomainsFromRaw(rawVal, outSet) {
@@ -13190,157 +11200,6 @@ function createSectionContent(section) {
     return null;
   }
 
-  o = section.taboption(
-    'settings',
-    form.TextValue,
-    'nfqws_opt',
-    _('NFQWS Strategy'),
-  );
-  o.depends('action', 'zapret');
-  o.rows = 6;
-  o.wrap = 'soft';
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, 'zapret');
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, 'nfqws_opt')
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, 'nfqws_opt');
-    const value =
-      secVal &&
-      secVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
-      secVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-        ? secVal
-        : srcVal &&
-            srcVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
-            srcVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-          ? srcVal
-          : secVal || srcVal;
-    if (!value || value === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
-      return ZAPRET_DEFAULT_NFQWS_OPT;
-    }
-
-    return value;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeNfqwsStrategyValue(value);
-    const nextValue =
-      !normalized.length || normalized === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
-        ? ZAPRET_DEFAULT_NFQWS_OPT
-        : normalized;
-
-    uci.set(UCI_PACKAGE, section_id, 'nfqws_opt', nextValue);
-    const linkedSrcId = findLinkedProviderSourceId(section_id, 'zapret');
-    if (linkedSrcId) {
-      uci.set(UCI_PACKAGE, linkedSrcId, 'nfqws_opt', nextValue);
-    }
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeNfqwsStrategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  attachSectionStrategyScannerButton(o, 'zapret', 'nfqws_opt');
-
-  o = section.taboption(
-    'settings',
-    form.TextValue,
-    'nfqws2_opt',
-    _('NFQWS2 Strategy'),
-  );
-  o.depends('action', 'zapret2');
-  o.rows = 6;
-  o.wrap = 'soft';
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, 'zapret2');
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, 'nfqws2_opt')
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, 'nfqws2_opt');
-    if (secVal && secVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
-      return secVal;
-    }
-    if (srcVal && srcVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
-      return srcVal;
-    }
-    return secVal || srcVal || ZAPRET2_DEFAULT_NFQWS2_OPT;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeNfqws2StrategyValue(value);
-    uci.set(UCI_PACKAGE, section_id, 'nfqws2_opt', normalized);
-    const linkedSrcId = findLinkedProviderSourceId(section_id, 'zapret2');
-    if (linkedSrcId) {
-      uci.set(UCI_PACKAGE, linkedSrcId, 'nfqws2_opt', normalized);
-    }
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeNfqws2Strategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  attachSectionStrategyScannerButton(o, 'zapret2', 'nfqws2_opt');
-
-  o = section.taboption(
-    'settings',
-    form.TextValue,
-    'byedpi_cmd_opts',
-    _('ByeDPI Strategy'),
-  );
-  o.depends('action', 'byedpi');
-  o.rows = 6;
-  o.wrap = 'soft';
-  o.textarea = true;
-  o.modalonly = true;
-  o.load = function (section_id) {
-    const linkedSrcId = findLinkedProviderSourceId(section_id, 'byedpi');
-    const srcVal = linkedSrcId
-      ? uci.get(UCI_PACKAGE, linkedSrcId, 'byedpi_cmd_opts')
-      : null;
-    const secVal = uci.get(UCI_PACKAGE, section_id, 'byedpi_cmd_opts');
-    if (secVal && secVal !== BYEDPI_DEFAULT_CMD_OPTS) {
-      return secVal;
-    }
-    if (srcVal && srcVal !== BYEDPI_DEFAULT_CMD_OPTS) {
-      return srcVal;
-    }
-    return secVal || srcVal || BYEDPI_DEFAULT_CMD_OPTS;
-  };
-  o.cfgvalue = function (section_id) {
-    return this.load(section_id);
-  };
-  o.write = function (section_id, value) {
-    const normalized = normalizeByedpiStrategyValue(value);
-
-    return validateByedpiStrategyRemotely(normalized).then((result) => {
-      if (!result || result.valid !== true) {
-        throw new TypeError(
-          result && result.message
-            ? result.message
-            : _('Invalid ByeDPI strategy'),
-        );
-      }
-
-      uci.set(UCI_PACKAGE, section_id, 'byedpi_cmd_opts', normalized);
-      const linkedSrcId = findLinkedProviderSourceId(section_id, 'byedpi');
-      if (linkedSrcId) {
-        uci.set(UCI_PACKAGE, linkedSrcId, 'byedpi_cmd_opts', normalized);
-      }
-    });
-  };
-  o.validate = function (_section_id, value) {
-    const analysis = analyzeByedpiStrategy(value);
-    return analysis.valid ? true : analysis.message;
-  };
-  configureTextareaOption(o, analyzeByedpiStrategy);
-  attachSectionStrategyScannerButton(o, 'byedpi', 'byedpi_cmd_opts');
-
   // ─── WDTT Fields ──────────────────────────────────────────────────────
 
   o = section.taboption(
@@ -13438,18 +11297,6 @@ function createSectionContent(section) {
 
   o = section.taboption(
     'settings',
-    form.ListValue,
-    'warp_flow_qwdtt_mode',
-    _('WDTT QWDTT Mode'),
-  );
-  o.depends('action', 'wdtt');
-  o.value('', _('Default'));
-  o.value('client', _('Client'));
-  o.value('server', _('Server'));
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
     form.DynamicList,
     'warp_flow_subscription_links',
     _('WDTT Subscription Links'),
@@ -13473,88 +11320,6 @@ function createSectionContent(section) {
     _('WDTT Remote Domain List'),
   );
   o.depends('action', 'wdtt');
-  o.modalonly = true;
-
-  // ─── OlcRTC Fields ────────────────────────────────────────────────────
-
-  o = section.taboption(
-    'settings',
-    form.ListValue,
-    'olcrtc_provider',
-    _('OlcRTC Provider'),
-  );
-  o.depends('action', 'olcrtc');
-  o.value('jitsi', _('Jitsi'));
-  o.value('wrt', _('WRT'));
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.ListValue,
-    'olcrtc_transport',
-    _('OlcRTC Transport'),
-  );
-  o.depends('action', 'olcrtc');
-  o.value('whep', _('WHEP'));
-  o.value('whip', _('WHIP'));
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.Value,
-    'olcrtc_room_id',
-    _('OlcRTC Room ID'),
-  );
-  o.depends('action', 'olcrtc');
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.Value,
-    'olcrtc_crypto_key',
-    _('OlcRTC Crypto Key'),
-  );
-  o.depends('action', 'olcrtc');
-  o.password = true;
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.Value,
-    'olcrtc_socks_host',
-    _('OlcRTC SOCKS Host'),
-  );
-  o.depends('action', 'olcrtc');
-  o.default = '127.0.0.1';
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.Value,
-    'olcrtc_socks_port',
-    _('OlcRTC SOCKS Port'),
-  );
-  o.depends('action', 'olcrtc');
-  o.default = '1082';
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.Value,
-    'olcrtc_dns_server',
-    _('OlcRTC DNS Server'),
-  );
-  o.depends('action', 'olcrtc');
-  o.default = '8.8.8.8:53';
-  o.modalonly = true;
-
-  o = section.taboption(
-    'settings',
-    form.DynamicList,
-    'olcrtc_subscription_links',
-    _('OlcRTC Subscription Links'),
-  );
-  o.depends('action', 'olcrtc');
   o.modalonly = true;
 
   // ─── FPTN Fields ───────────────────────────────────────────────────────
@@ -14479,7 +12244,7 @@ function createSectionContent(section) {
     form.Value,
     'hosts_list_update_interval',
     _('Hosts Lists Update Interval'),
-    _('Use sing-box duration format like 1d, 12h or 6h'),
+    _('Use duration format like 1d, 12h or 6h'),
   );
   o.depends('action', 'hosts');
   o.depends({ action: 'hosts', hosts_list_auto_update: '1' });
@@ -14491,7 +12256,7 @@ function createSectionContent(section) {
     if (!value) return true;
     return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value)
       ? true
-      : _('Use sing-box duration format like 1d, 12h or 6h');
+      : _('Use duration format like 1d, 12h or 6h');
   };
 
   // Keep tag chains (<b 0x..>, <t>, <r..>, etc.) and plain hex intact
@@ -15362,7 +13127,7 @@ function createSectionContent(section) {
   o.default = '0';
   o.depends({ action: 'awg', awg_version: '3.1' });
 
-  // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
+  // ── WARP (Cloudflare WARP) ────────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -15416,7 +13181,7 @@ function createSectionContent(section) {
     return optionMapValue(this, itemId, 'warp_detour') || '';
   };
 
-  // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
+  // ── AnyTLS ────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -15474,7 +13239,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends('action', 'anytls');
 
-  // ── Snell (sing-box-extended) ─────────────────────────────────────────────
+  // ── Snell ─────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -15526,7 +13291,7 @@ function createSectionContent(section) {
   o.default = '4';
   o.depends('action', 'snell');
 
-  // ── Mieru (sing-box-extended, tachyon-core) ──────────────────────────────
+  // ── Mieru ─────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -15670,7 +13435,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends('action', 'naive');
 
-  // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
+  // ── Sudoku ────────────────────────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -15712,7 +13477,7 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends('action', 'sudoku');
 
-  // ── MASQUE (Cloudflare MASQUE via sing-box-extended) ──────────────────────
+  // ── MASQUE (Cloudflare MASQUE) ────────────────────────────────────────────
 
   o = section.taboption(
     'settings',
@@ -16115,6 +13880,48 @@ function createSectionContent(section) {
   o = section.taboption(
     'settings',
     form.Value,
+    'desync_udp_fake_payload',
+    _('UDP Fake Payload (HEX)'),
+    _('Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer.'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '0x0001';
+  o.depends({ action: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_udp_out_range',
+    _('UDP Fake Packet Range'),
+    _(
+      'Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '1-2';
+  o.depends({ action: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'settings',
+    form.ListValue,
+    'desync_udp_keep_socket',
+    _('Keep UDP Socket'),
+    _(
+      'Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Default'));
+  o.value('1', _('Enabled'));
+  o.value('0', _('Disabled'));
+  o.depends('action', 'desync');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
     'desync_udp_fake_ttl',
     _('UDP Fake TTL'),
   );
@@ -16149,7 +13956,7 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = true;
-  o.depends('action', 'desync');
+  o.depends({ action: 'desync', desync_preset: 'custom' });
   attachSectionStrategyScannerButton(o, 'desync', 'desync_opts');
 
   // ── ShadowTLS (tachyon-core) ──────────────────────────────────────────────
@@ -16543,6 +14350,29 @@ function createSectionContent(section) {
 
   o = section.taboption(
     'settings',
+    form.Value,
+    'csqtt_wg_port',
+    _('WireGuard Port (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'port';
+  o.placeholder = '56000';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_local_port',
+    _('Local UDP Port (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'port';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
     form.DynamicList,
     'csqtt_hashes',
     _('Peer Hashes / Keys'),
@@ -16585,9 +14415,43 @@ function createSectionContent(section) {
 
   o = section.taboption(
     'settings',
+    form.DynamicList,
+    'csqtt_turn_urls',
+    _('TURN URLs (optional)'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'turn:turn.example.com:3478?transport=udp';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_turn_username',
+    _('TURN Username (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_turn_password',
+    _('TURN Password (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
     form.ListValue,
     'csqtt_vk_auth_mode',
     _('VK Auth Mode'),
+    _(
+      'VK anonymous token endpoints may require captcha or cookies under rate-limiting. For higher reliability, supply VK Cookie in cookie mode, configure a custom TURN server/URLs, or use wg / raw direct UDP mode.',
+    ),
   );
   o.modalonly = true;
   o.value('', _('Default'));
@@ -16600,11 +14464,44 @@ function createSectionContent(section) {
   o.value('telemost', 'telemost');
   o.depends('action', 'csqtt');
 
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_vk_cookie',
+    _('VK Cookie (for cookie auth mode)'),
+    _(
+      'VK session Cookie header value used when VK Auth Mode is cookie (or auto-detected when non-empty).',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'csqtt_vk_client_ids',
+    _('VK Client IDs (optional)'),
+  );
+  o.modalonly = true;
+  o.depends('action', 'csqtt');
+
   o = section.taboption('settings', form.Value, 'csqtt_mtu', _('MTU'));
   o.modalonly = true;
   o.rmempty = true;
   o.datatype = 'uinteger';
   o.placeholder = '1350';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'csqtt_chunk1',
+    _('Chunk1 Framing (chunk1)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
   o.depends('action', 'csqtt');
 
   o = section.taboption(
@@ -16615,6 +14512,38 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_private_key',
+    _('WireGuard Private Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_peer_public_key',
+    _('WireGuard Peer Public Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_address',
+    _('WireGuard Tunnel Address (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '10.66.0.2/32';
   o.depends('action', 'csqtt');
 
   o = section.taboption(
@@ -16779,7 +14708,7 @@ function createSectionContent(section) {
   o.placeholder = '1400';
   o.depends('action', 'openconnect');
 
-  // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
+  // ── OpenVPN ───────────────────────────────────────────────────────────────
 
   const parseOpenvpnConfig = (text) => {
     const result = {
@@ -17282,7 +15211,7 @@ function createSectionContent(section) {
     'outbound_source_refs',
     _('Connections from Pool (in Priority Order)'),
     _(
-      'Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails.',
+      'Select any connections from the Connections Pool (Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route.',
     ),
   );
   o.modalonly = true;
@@ -17314,9 +15243,11 @@ function createSectionContent(section) {
       uci.set(UCI_PACKAGE, sectionId, 'outbound_source_refs', refs);
     else unsetIfPresent(sectionId, 'outbound_source_refs');
     const attachedUrls = new Set(
-      refs
-        .map((id) => String(uci.get(UCI_PACKAGE, id, 'url') || '').trim())
-        .filter(Boolean),
+      refs.flatMap((id) => {
+        const single = String(uci.get(UCI_PACKAGE, id, 'url') || '').trim();
+        const multi = asArray(uci.get(UCI_PACKAGE, id, 'subscription_urls'));
+        return [single, ...multi].filter(Boolean);
+      }),
     );
     (uci.sections(UCI_PACKAGE, 'subscription_url') || []).forEach((sub) => {
       const subId = sub ? sub['.name'] : null;
@@ -17907,7 +15838,7 @@ function createSectionContent(section) {
     'section_selection_mode',
     _('Multi-Connection Selection Mode'),
     _(
-      'How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails.',
+      'How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails (recommended when chaining heterogeneous transports such as CSQTT/WDTT -> TrustTunnel).',
     ),
   );
   o.modalonly = true;
@@ -17950,7 +15881,7 @@ function createSectionContent(section) {
     'section_health_url',
     _('Failover Health Check URL'),
     _(
-      'URL probed to verify whether the primary connection (e.g. Zapret2 on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG).',
+      'URL probed to verify whether the primary connection (e.g. Desync on YouTube) is working before failing over to the backup connection (e.g. FPTN or AmneziaWG).',
     ),
   );
   o.modalonly = true;
@@ -18051,9 +15982,7 @@ function createSectionContent(section) {
     ButtonAddSettingsDynamicList,
     'selector_amnezia_configs',
     _('Amnezia configurations'),
-    _(
-      'Import .conf files for AmneziaWG 2.0, 3.0 and 3.1. Available with tachyon-core.',
-    ),
+    _('Import .conf files for AmneziaWG 2.0, 3.0 and 3.1.'),
   );
   o.depends('action', 'awg');
   o.rmempty = true;
@@ -18449,6 +16378,7 @@ function createSectionContent(section) {
   o.depends('action', 'connection');
   o.depends('action', 'fptn');
   o.depends('action', 'awg');
+  o.depends('action', 'csqtt');
   o.modalonly = true;
   o.write = function (section_id, value) {
     if (value === '1') {
@@ -18486,6 +16416,7 @@ function createSectionContent(section) {
   o.depends({ action: 'connection', outbound_detour_enabled: '1' });
   o.depends({ action: 'fptn', outbound_detour_enabled: '1' });
   o.depends({ action: 'awg', outbound_detour_enabled: '1' });
+  o.depends({ action: 'csqtt', outbound_detour_enabled: '1' });
   o.modalonly = true;
   o.load = function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
@@ -18541,7 +16472,7 @@ function createSectionContent(section) {
     'fail_policy',
     _('Section Fail Policy'),
     _(
-      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly).",
+      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly). Fail-Closed also disables the router-wide emergency direct bypass: if Tachyon fails completely, DNS and proxied traffic stay blocked until it recovers, and normal Internet access is not restored automatically.",
     ),
   );
   o.value('keep', _('Keep (default behavior)'));
@@ -18552,12 +16483,8 @@ function createSectionContent(section) {
   o.depends('action', 'connection');
   o.depends('action', 'fptn');
   o.depends('action', 'awg');
-  o.depends('action', 'byedpi');
   o.depends('action', 'wdtt');
   o.depends('action', 'csqtt');
-  o.depends('action', 'olcrtc');
-  o.depends('action', 'zapret');
-  o.depends('action', 'zapret2');
   o.depends('action', 'outbound');
   o.depends('action', 'group');
   o.modalonly = true;
@@ -18712,12 +16639,8 @@ function createSectionContent(section) {
   o.depends('action', 'connection');
   o.depends('action', 'fptn');
   o.depends('action', 'awg');
-  o.depends('action', 'byedpi');
   o.depends('action', 'wdtt');
   o.depends('action', 'csqtt');
-  o.depends('action', 'olcrtc');
-  o.depends('action', 'zapret');
-  o.depends('action', 'zapret2');
   o.depends('action', 'group');
   o.modalonly = true;
 
@@ -18732,9 +16655,6 @@ function createSectionContent(section) {
   o.depends({ action: 'connection', mixed_proxy_enabled: '1' });
   o.depends({ action: 'fptn', mixed_proxy_enabled: '1' });
   o.depends({ action: 'awg', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'byedpi', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'zapret', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'zapret2', mixed_proxy_enabled: '1' });
   o.depends({ action: 'group', mixed_proxy_enabled: '1' });
   o.modalonly = true;
   o.validate = function (_section_id, value) {
@@ -18762,9 +16682,6 @@ function createSectionContent(section) {
   o.depends({ action: 'connection', mixed_proxy_enabled: '1' });
   o.depends({ action: 'fptn', mixed_proxy_enabled: '1' });
   o.depends({ action: 'awg', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'byedpi', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'zapret', mixed_proxy_enabled: '1' });
-  o.depends({ action: 'zapret2', mixed_proxy_enabled: '1' });
   o.depends({ action: 'group', mixed_proxy_enabled: '1' });
   o.modalonly = true;
 
@@ -18787,21 +16704,6 @@ function createSectionContent(section) {
   });
   o.depends({
     action: 'awg',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'byedpi',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'zapret',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'zapret2',
     mixed_proxy_enabled: '1',
     mixed_proxy_auth_enabled: '1',
   });
@@ -18838,21 +16740,6 @@ function createSectionContent(section) {
   });
   o.depends({
     action: 'awg',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'byedpi',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'zapret',
-    mixed_proxy_enabled: '1',
-    mixed_proxy_auth_enabled: '1',
-  });
-  o.depends({
-    action: 'zapret2',
     mixed_proxy_enabled: '1',
     mixed_proxy_auth_enabled: '1',
   });
@@ -18895,7 +16782,7 @@ function createSectionContent(section) {
       return value;
     }
 
-    return getRuleResolvedAction(section_id) === 'byedpi' ? '1' : '0';
+    return '0';
   };
 
   // Modular Reusable Conditions (#242)
@@ -19019,11 +16906,7 @@ function createSectionContent(section) {
     'trusttunnel',
     'tewfai',
     'csqtt',
-    'zapret',
-    'zapret2',
-    'byedpi',
     'wdtt',
-    'olcrtc',
     'fptn',
     'bypass',
     'group',
@@ -19097,11 +16980,7 @@ function createSectionContent(section) {
     'trusttunnel',
     'tewfai',
     'csqtt',
-    'zapret',
-    'zapret2',
-    'byedpi',
     'wdtt',
-    'olcrtc',
     'fptn',
     'bypass',
     'group',
@@ -19278,7 +17157,7 @@ function createSectionContent(section) {
     'rule_set',
     _('Rule sets'),
     _(
-      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Subnets are ignored by default.',
+      'Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Subnets are ignored by default.',
     ),
   );
   ruleSetOption.modalonly = true;
@@ -19315,7 +17194,7 @@ function createSectionContent(section) {
     '_dns_rule_set',
     _('Rule sets'),
     _(
-      'Add URLs or local paths to .srs / .json / .lst / .txt lists. Only domain rules are supported.',
+      'Add URLs or local paths to .trs / .srs / .json / .lst / .txt lists. Only domain rules are supported.',
     ),
   );
   dnsRuleSetOption.depends('action', 'dns');
@@ -19407,60 +17286,60 @@ function createSectionContent(section) {
 
   [
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked.srs',
-      'Tachyon Lists: Реестр РКН и Антизапрет (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked.trs',
+      'Tachyon Lists: Реестр ограничений РФ и Антизапрет (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_blocked_all.srs',
-      'Tachyon Lists: Реестр РКН полный (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked_all.trs',
+      'Tachyon Lists: Реестр ограничений РФ полный (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/antifilter.srs',
-      'Tachyon Lists: Antifilter Community (.srs) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/antifilter.trs',
+      'Tachyon Lists: Antifilter Community (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/refilter.srs',
-      'Tachyon Lists: Re:filter (.srs) — [Маршрут: В Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/refilter.trs',
+      'Tachyon Lists: Re:filter (.trs) — [Маршрут: В Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoblock.srs',
-      'Tachyon Lists: Геоблок зарубежных сервисов (.srs) — [Маршрут: Только в Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/geoblock.trs',
+      'Tachyon Lists: Геоблок зарубежных сервисов (.trs) — [Маршрут: Только в Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ai_all.srs',
-      'Tachyon Lists: Все зарубежные ИИ и нейросети (.srs) — [Маршрут: Только в Прокси / VPN]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ai_all.trs',
+      'Tachyon Lists: Все зарубежные ИИ и нейросети (.trs) — [Маршрут: Только в Прокси / VPN]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_whitelist.srs',
-      'Tachyon Lists: Белый список РФ (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_whitelist.trs',
+      'Tachyon Lists: Белый список РФ (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_domains.srs',
-      'Tachyon Lists: Домены Рунета и СНГ (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_domains.trs',
+      'Tachyon Lists: Домены Рунета и СНГ (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ru_only_inside.srs',
-      'Tachyon Lists: Сервисы строго внутри РФ (.srs) — [Маршрут: Строго Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_only_inside.trs',
+      'Tachyon Lists: Сервисы строго внутри РФ (.trs) — [Маршрут: Строго Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/push.srs',
-      'Tachyon Lists: Push-уведомления APNs/FCM (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/push.trs',
+      'Tachyon Lists: Push-уведомления APNs/FCM (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/ads_hagezi_pro.srs',
-      'Tachyon Lists: Реклама и трекеры Hagezi Pro (.srs) — [Маршрут: Блокировать (Block)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ads_hagezi_pro.trs',
+      'Tachyon Lists: Реклама и трекеры Hagezi Pro (.trs) — [Маршрут: Блокировать (Block)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/win_spy.srs',
-      'Tachyon Lists: Телеметрия и слежка Windows (.srs) — [Маршрут: Блокировать (Block)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/win_spy.trs',
+      'Tachyon Lists: Телеметрия и слежка Windows (.trs) — [Маршрут: Блокировать (Block)]',
     ],
     [
-      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/geoip_ru.srs',
-      'Tachyon Lists: GeoIP России (.srs) — [Маршрут: Напрямую (Direct)]',
+      'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/geoip_ru.trs',
+      'Tachyon Lists: GeoIP России (.trs) — [Маршрут: Напрямую (Direct)]',
     ],
   ].forEach(([url, label]) => {
     ruleSetOption.value(url, label);
-    if (!url.endsWith('/geoip_ru.srs')) {
+    if (!url.endsWith('/geoip_ru.trs')) {
       dnsRuleSetOption.value(url, label);
     }
   });
@@ -19468,15 +17347,15 @@ function createSectionContent(section) {
   [
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked.lst',
-      'Tachyon Lists: Реестр РКН и Антизапрет — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'Tachyon Lists: Реестр ограничений РФ и Антизапрет — домены (.lst) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked_all.lst',
-      'Tachyon Lists: Реестр РКН полный — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'Tachyon Lists: Реестр ограничений РФ полный — домены (.lst) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/antifilter.lst',
-      'Tachyon Lists: Antifilter Community — домены (.lst) — [Маршрут: В Прокси / VPN или Обход DPI]',
+      'Tachyon Lists: Antifilter Community — домены (.lst) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/refilter.lst',
@@ -19492,7 +17371,7 @@ function createSectionContent(section) {
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/ru_blocked.lst',
-      'Tachyon Lists: Реестр РКН — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]',
+      'Tachyon Lists: Реестр ограничений РФ — подсети CIDR (.lst) — [Маршрут: В Прокси / VPN]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets/antifilter.lst',
@@ -19618,6 +17497,18 @@ function createSectionContent(section) {
     ),
   });
   dependsOnRoutingAction(excludedIpsOption);
+
+  const excludedDomainsOption = addTextConditionField(section, {
+    key: 'excluded_domains',
+    optionName: 'excluded_domains_text',
+    legacyTextOptionName: 'excluded_domains_text',
+    label: _('Excluded Domains'),
+    description: _(
+      'Domains excluded from this section even if matched by its domain lists or rules (useful e.g. with Block lists). Use full: for exact host, domain: or bare domain for suffix, keyword: for substring, regex: for regular expression.',
+    ),
+    textAnalyze: analyzeExcludedDomainsText,
+  });
+  dependsOnRoutingAction(excludedDomainsOption);
 
   const matchAllOption = section.taboption(
     'conditions',
@@ -19894,11 +17785,7 @@ const ACTION_COLORS = {
   vpn: '#1abc9c',
   bypass: '#27ae60',
   block: '#c0392b',
-  zapret: '#8e44ad',
-  zapret2: '#9b59b6',
-  byedpi: '#d35400',
   wdtt: '#27ae60',
-  olcrtc: '#2980b9',
   fptn: '#e74c3c',
   awg: '#008080',
   warp: '#e67e22',
@@ -20106,12 +17993,23 @@ async function readSubnetListFile(service, snapshots) {
   if (!service) return [];
   if (_subnetListCache[service]) return _subnetListCache[service];
 
-  const paths = [
-    `/tmp/tachyon-core/rulesets/community-subnets-${service}.lst`,
-    `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
-    `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
-    `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
-  ];
+  const communitySubnetAliases: Record<string, string> = {
+    antifilter_community: 'antifilter',
+    runetfreedom_blocked: 'ru_blocked',
+    runetfreedom_blocked_all: 'ru_blocked_all',
+    roscomvpn_whitelist: 'ru_whitelist',
+    roscomvpn_ru: 'ru_domains',
+  };
+  const canonical = communitySubnetAliases[service] || service;
+  const names = canonical !== service ? [service, canonical] : [service];
+  const paths: string[] = [];
+  for (const name of names) {
+    paths.push(`/tmp/tachyon-core/rulesets/community-subnets-${name}.lst`);
+  }
+  for (const name of names) {
+    paths.push(`/etc/tachyon/rulesets/community-subnets-${name}.lst`);
+    paths.push(`/usr/share/tachyon/rulesets/community-subnets-${name}.lst`);
+  }
 
   for (const p of paths) {
     try {
@@ -20175,6 +18073,9 @@ function matchDomainInList(domain, list) {
     if (item.startsWith('full:')) {
       const target = item.substring(5);
       if (domain === target) return item;
+    } else if (item.startsWith('domain:')) {
+      const target = item.substring(7);
+      if (domain === target || domain.endsWith('.' + target)) return item;
     } else if (item.startsWith('keyword:')) {
       const target = item.substring(8);
       if (domain.indexOf(target) !== -1) return item;
@@ -20276,28 +18177,15 @@ function detectQueryType(query) {
 }
 
 async function readRulesetFile(path, snapshots) {
-  const cachePath = path.replace(
-    '/tmp/sing-box/rulesets/',
-    '/tmp/tachyon-core/rulesets/',
-  );
+  const cachePath = path;
   const rulesetFiles = snapshots?.rulesetFiles;
   if (rulesetFiles?.has(cachePath)) return rulesetFiles.get(cachePath);
 
   const read = async () => {
     const candidates = [path];
-    if (path.startsWith('/tmp/sing-box/rulesets/')) {
-      candidates.unshift(
-        path.replace('/tmp/sing-box/rulesets/', '/tmp/tachyon-core/rulesets/'),
-      );
-      candidates.push(
-        path.replace('/tmp/sing-box/rulesets/', '/etc/tachyon/rulesets/'),
-      );
-    } else if (path.startsWith('/tmp/tachyon-core/rulesets/')) {
+    if (path.startsWith('/tmp/tachyon-core/rulesets/')) {
       candidates.push(
         path.replace('/tmp/tachyon-core/rulesets/', '/etc/tachyon/rulesets/'),
-      );
-      candidates.push(
-        path.replace('/tmp/tachyon-core/rulesets/', '/tmp/sing-box/rulesets/'),
       );
     }
     for (const candidate of candidates) {
@@ -20336,10 +18224,8 @@ async function findCachedRulesetFile(
 ) {
   const candidates = [
     `/tmp/tachyon-core/rulesets/community-${community}.trs`,
-    `/tmp/sing-box/rulesets/community-${community}.trs`,
     `/etc/tachyon/rulesets/community-${community}.trs`,
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
-    `/tmp/sing-box/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
 
@@ -20398,11 +18284,7 @@ async function matchCommunityList(secName, community, query, type, snapshots) {
           ? ['--ip', query]
           : ['--domain', (query || '').toLowerCase()]),
       ];
-      for (const bin of [
-        '/usr/bin/tachyon-core',
-        '/usr/bin/sing-box',
-        '/usr/sbin/sing-box',
-      ]) {
+      for (const bin of ['/usr/bin/tachyon-core', '/usr/sbin/tachyon-core']) {
         const res = await fs.exec(bin, matchArgs).catch(() => null);
         if (!res || res.code !== 0) continue;
         return checkMatch(res);
@@ -20484,12 +18366,7 @@ async function matchConfiguredRulesets(secName, query, type, snapshots) {
       ...(type === 'ip' ? ['--ip', query] : ['--domain', query.toLowerCase()]),
     ];
     let checked = false;
-    for (const bin of [
-      '/usr/bin/tachyon-core',
-      '/usr/sbin/tachyon-core',
-      '/usr/bin/sing-box',
-      '/usr/sbin/sing-box',
-    ]) {
+    for (const bin of ['/usr/bin/tachyon-core', '/usr/sbin/tachyon-core']) {
       const result = await fs.exec(bin, args).catch(() => null);
       if (!result || result.code !== 0) continue;
       const output = (result.stdout || '') + (result.stderr || '');
@@ -21110,6 +18987,16 @@ async function performTraceRules(query, rulesetSnapshots) {
     }
 
     if (type === 'domain') {
+      const excludedDomains = getSectionEffectiveOptionValues(
+        secName,
+        'excluded_domains',
+      );
+      if (
+        excludedDomains.length > 0 &&
+        matchDomainInList(queryForMatching, excludedDomains)
+      ) {
+        continue;
+      }
       const domainSuffixes = getSectionEffectiveOptionValues(
         secName,
         'domain_suffix',
@@ -21269,6 +19156,17 @@ async function performTraceRules(query, rulesetSnapshots) {
       const sec = sections[i];
       const secName = sec['.name'];
       if (uci.get(UCI_PACKAGE, secName, 'enabled') === '0') continue;
+
+      const excludedDomains = getSectionEffectiveOptionValues(
+        secName,
+        'excluded_domains',
+      );
+      if (
+        excludedDomains.length > 0 &&
+        matchDomainInList(queryForMatching, excludedDomains)
+      ) {
+        continue;
+      }
 
       const label =
         uci.get(UCI_PACKAGE, secName, 'label') ||
@@ -21838,6 +19736,7 @@ function showSectionRulesModal(section_id) {
     ...getCleanList('domain_keyword').map((k) => `keyword:${k}`),
     ...getCleanList('domain_regex').map((r) => `regex:${r}`),
   ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+  const excludedDomains = getCleanList('excluded_domains');
   const ips = getCleanList('ip_cidr');
   const community = getCleanList('community_lists');
   const ruleSets = [
@@ -21922,6 +19821,9 @@ function showSectionRulesModal(section_id) {
       ]),
       createCard(_('Community Lists'), community),
       createCard(_('Domains'), domains),
+      excludedDomains.length
+        ? createCard(_('Excluded Domains'), excludedDomains)
+        : null,
       createCard(_('IP Addresses (IP CIDR)'), ips),
       createCard(_('Rule Sets (.srs / .json)'), ruleSets),
       createCard(_('.lst Lists'), domainIpLists),

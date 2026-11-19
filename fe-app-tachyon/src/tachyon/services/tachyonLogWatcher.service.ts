@@ -19,13 +19,15 @@ export class TachyonLogWatcher {
   private running = false;
   private paused = false;
   private checking = false;
+  private visibilityHandler?: () => void;
 
   private constructor() {
     if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
+      this.visibilityHandler = () => {
         if (document.hidden) this.pause();
         else this.resume();
-      });
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
     }
   }
 
@@ -107,6 +109,7 @@ export class TachyonLogWatcher {
 
     this.running = true;
     void this.checkOnce();
+    if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => this.checkOnce(), this.intervalMs);
     logger.info(
       '[TachyonLogWatcher]',
@@ -115,9 +118,12 @@ export class TachyonLogWatcher {
   }
 
   stop(): void {
-    if (!this.running) return;
+    if (!this.running && !this.timer) return;
     this.running = false;
-    if (this.timer) clearInterval(this.timer);
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
     logger.info('[TachyonLogWatcher]', 'stopped');
   }
 

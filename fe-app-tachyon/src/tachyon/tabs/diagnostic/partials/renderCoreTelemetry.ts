@@ -4,6 +4,7 @@ import {
   renderServerIcon,
   renderShieldIcon,
 } from '../../../../icons';
+import { tr } from '../../../helpers/i18n';
 
 function iconMarkup(
   kind: 'activity' | 'cpu' | 'shield' | 'zap' | 'refresh',
@@ -237,7 +238,6 @@ export function renderCoreTelemetry(
   const failoverGroups = Array.isArray(snapshot?.failover?.groups)
     ? snapshot!.failover!.groups!
     : [];
-  const anyOnBackup = Boolean(snapshot?.failover?.any_on_backup);
   const leak = snapshot?.leak || {};
   const flightEntries = Array.isArray(snapshot?.flight?.entries)
     ? snapshot!.flight!.entries!
@@ -622,7 +622,17 @@ export function renderCoreTelemetry(
   // Card 3: Leak Audit, Failover & Flight Recorder
   const ipv6LeakRisk = Boolean(leak.ipv6?.leak_risk);
   const stunLeakRisk = Boolean(leak.webrtc_stun?.leak_risk);
+  const stunOutbound = String(leak.webrtc_stun?.outbound || '').trim();
+  const stunStatusText = stunLeakRisk
+    ? tr('Открыт', 'Exposed')
+    : !leak.webrtc_stun?.is_direct && stunOutbound
+      ? tr('Через прокси', 'Via proxy')
+      : tr('Под контролем', 'Protected');
   const dnsEnabled = leak.dns?.engine_enabled !== false;
+  const isBackupWarn = (g: (typeof failoverGroups)[number]): boolean =>
+    Boolean(g.on_backup) &&
+    (!g.primary_healthy || String(g.type || '').toLowerCase() !== 'urltest');
+  const anyWarnBackup = failoverGroups.some(isBackupWarn);
 
   const restoreBtn = E(
     'button',
@@ -672,9 +682,9 @@ export function renderCoreTelemetry(
       E(
         'span',
         {
-          class: `tachyon_diag-telemetry__status-badge ${anyOnBackup || ipv6LeakRisk || stunLeakRisk ? 'is-warn' : 'is-ok'}`,
+          class: `tachyon_diag-telemetry__status-badge ${anyWarnBackup || ipv6LeakRisk || stunLeakRisk ? 'is-warn' : 'is-ok'}`,
         },
-        anyOnBackup ? _('На резерве') : _('Защищено'),
+        anyWarnBackup ? _('На резерве') : _('Защищено'),
       ),
     ]),
     E('div', { class: 'tachyon_diag-telemetry__leak-grid' }, [
@@ -714,6 +724,7 @@ export function renderCoreTelemetry(
         'div',
         {
           class: `tachyon_diag-telemetry__leak-chip ${stunLeakRisk ? 'is-warn' : 'is-ok'}`,
+          title: stunOutbound || undefined,
         },
         [
           E(
@@ -724,9 +735,7 @@ export function renderCoreTelemetry(
           E(
             'strong',
             { class: 'tachyon_diag-telemetry__leak-val' },
-            stunLeakRisk
-              ? _('Открыт')
-              : String(leak.webrtc_stun?.outbound || 'Под контролем'),
+            stunStatusText,
           ),
         ],
       ),
@@ -793,9 +802,13 @@ export function renderCoreTelemetry(
                       E(
                         'span',
                         {
-                          class: `tachyon_diag-telemetry__backup-pill ${g.on_backup ? 'is-warn' : 'is-ok'}`,
+                          class: `tachyon_diag-telemetry__backup-pill ${isBackupWarn(g) ? 'is-warn' : 'is-ok'}`,
                         },
-                        g.on_backup ? _('Резерв') : _('Основной'),
+                        isBackupWarn(g)
+                          ? tr('Резерв', 'Backup')
+                          : g.on_backup
+                            ? tr('Автовыбор', 'Auto')
+                            : tr('Основной', 'Primary'),
                       ),
                     ],
                   ),
@@ -825,7 +838,14 @@ export function renderCoreTelemetry(
             flightEntries.slice(0, 8).map((fl) => {
               const st = String(fl.status || 'ok').toLowerCase();
               const isZero = st === 'zero_transfer';
-              const isErr = st !== 'ok' && !isZero;
+              const isOk =
+                st === 'ok' ||
+                st === 'completed' ||
+                st === 'closed' ||
+                st === 'done' ||
+                st === 'success' ||
+                st === 'finished';
+              const isErr = !isOk && !isZero;
               const badgeText = isErr ? 'ERR' : isZero ? '0 B' : 'OK';
               const badgeTone = isErr
                 ? 'is-danger'

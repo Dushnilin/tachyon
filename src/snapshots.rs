@@ -1031,7 +1031,13 @@ pub async fn snapshot_restore(
     }
     restore_certs(state, &prof.certs);
     transaction::commit_transaction(state, prof.store_data.clone()).await?;
-    let sections = prof.config_sections.clone();
+    let committed = state.data.read().await.clone();
+    let existing_val = Value::Object(prof.config_sections.clone());
+    let sections = match crate::store::sync_store_to_json_sections(&committed, Some(&existing_val))
+    {
+        Value::Object(map) => map,
+        _ => prof.config_sections.clone(),
+    };
     Ok((prof, sections))
 }
 
@@ -1357,11 +1363,16 @@ fn apply_profile_to_state_data(
         if next_store.sections.is_empty() && !incoming.config_sections.is_empty() {
             next_store.import_from_json_sections(&incoming.config_sections);
         }
-        let next_sections = if incoming.config_sections.is_empty() {
-            current_sections.clone()
+        let existing_opt = if incoming.config_sections.is_empty() {
+            None
         } else {
-            incoming.config_sections.clone()
+            Some(Value::Object(incoming.config_sections.clone()))
         };
+        let next_sections =
+            match crate::store::sync_store_to_json_sections(&next_store, existing_opt.as_ref()) {
+                Value::Object(map) => map,
+                _ => incoming.config_sections.clone(),
+            };
         return (next_store, next_sections);
     }
 
@@ -1688,21 +1699,12 @@ pub async fn reset_settings_to_defaults(
         .to_string();
 
     let default_store = RouterStoreData::default();
-    transaction::commit_transaction(state, default_store).await?;
+    transaction::commit_transaction(state, default_store.clone()).await?;
 
-    let mut default_sections = Map::new();
-    default_sections.insert(
-        "settings".to_string(),
-        json!({
-            ".anonymous": false,
-            ".type": "settings",
-            ".name": "settings",
-            ".index": 0,
-            "proxy_mode": "tproxy",
-            "dns_type": "doh",
-            "engine": "tachyon-core"
-        }),
-    );
+    let default_sections = match crate::store::sync_store_to_json_sections(&default_store, None) {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
 
     let resp = json!({
         "success": true,

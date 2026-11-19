@@ -41,9 +41,13 @@ export function parseCommunityHint(rawHint: string): ParsedCommunityHint {
   ) {
     routeKind = 'direct';
     routeShort = 'Direct';
-  } else if (lower.includes('обход dpi') || lower.includes('zapret')) {
+  } else if (
+    lower.includes('десинхронизац') ||
+    lower.includes('desync') ||
+    lower.includes('фрагментац')
+  ) {
     routeKind = 'dpi';
-    routeShort = 'VPN / DPI';
+    routeShort = 'VPN / Desync';
   } else if (
     lower.includes('прокси') ||
     lower.includes('vpn') ||
@@ -75,6 +79,12 @@ export interface CommunityListCategory {
  * suffixes, keywords, regexes, and subnets) are 100% covered by the parent
  * becomes redundant and is visually dimmed + disabled to avoid duplicates.
  */
+export const AI_PRESET_KEYS = [
+  'ai_all',
+  'google_ai',
+  'google_services',
+] as const;
+
 export const COMMUNITY_LIST_SUPERSETS: Readonly<
   Record<string, readonly string[]>
 > = {
@@ -101,6 +111,8 @@ export const COMMUNITY_LIST_SUPERSETS: Readonly<
     'perplexity',
     'copilot',
     'deepseek',
+    'qwen',
+    'kimi',
     'midjourney',
     'elevenlabs',
     'ai_video',
@@ -239,6 +251,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'perplexity',
       'copilot',
       'deepseek',
+      'qwen',
+      'kimi',
       'midjourney',
       'elevenlabs',
       'ai_video',
@@ -267,6 +281,7 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'linkedin',
       'twitch',
       'twitch_ads',
+      'kick',
       'spotify',
       'soundcloud_music',
       'podcasts_radio',
@@ -343,6 +358,7 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'figma_adobe',
       'gamedev_3d',
       'pkg_registries',
+      'paas_db',
       'linux_repos',
       'apple',
       'microsoft',
@@ -753,9 +769,9 @@ export function attachCommunityListPicker(
               type: 'button',
               class: 'tachyon-ruleset-picker__preset-btn',
               title: ru
-                ? 'Добавить все нейросети (OpenAI, Claude, Gemini, Grok и др.)'
-                : 'Add all AI services (OpenAI, Claude, Gemini, Grok, etc.)',
-              click: () => applyPreset(['ai_all', 'google_ai']),
+                ? 'Добавить все нейросети и базовые сервисы Google (OpenAI, Claude, Gemini, Google, Grok и др.)'
+                : 'Add all AI services & core Google domains (OpenAI, Claude, Gemini, Google, Grok, etc.)',
+              click: () => applyPreset([...AI_PRESET_KEYS]),
             } as any,
             ru ? '+ Весь ИИ' : '+ All AI',
           ),

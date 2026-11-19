@@ -953,9 +953,16 @@ export const styles = `
     line-height: 1.25;
 }
 
-.tachyon_diagnostic-summary-banner__title svg {
-    width: 15px;
-    height: 15px;
+.tachyon_diagnostic-summary-banner__title svg,
+.tachyon_diagnostic-summary-banner__title > svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.tachyon_diagnostic-summary-banner__title > svg {
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
 }
 

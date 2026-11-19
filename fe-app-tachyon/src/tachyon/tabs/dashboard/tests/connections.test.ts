@@ -177,4 +177,33 @@ describe('dashboard connections', () => {
     expect(result[1].domain).toBe('discord.com');
     expect(result[1].count).toBe(1);
   });
+
+  it('keeps the order and totals for repeated domains around IP literals', () => {
+    const hosts = [
+      ' [fe80::1%eth0] ',
+      'a.example',
+      '[fe80::1%eth0]',
+      'b.example',
+      ' a.example ',
+      '192.0.2.1',
+      'b.example',
+      '192.0.2.1',
+      'fe80::1%',
+      ' ',
+    ];
+    const connections = hosts.map((host) => ({
+      metadata: { host },
+      upload: '2',
+      download: 3,
+    }));
+
+    expect(aggregateTopDomains(connections)).toEqual([
+      { domain: 'a.example', count: 2, traffic: 10 },
+      { domain: 'b.example', count: 2, traffic: 10 },
+      { domain: 'fe80::1%', count: 1, traffic: 5 },
+    ]);
+    expect(aggregateTopDomains(connections.slice(1, 2))).toEqual([
+      { domain: 'a.example', count: 1, traffic: 5 },
+    ]);
+  });
 });

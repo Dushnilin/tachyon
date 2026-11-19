@@ -59,12 +59,10 @@ const PROTOCOL_CHOICES = [
   'warp',
   'tewfai',
   'csqtt',
+  'wdtt',
   'tailscale',
   'tor',
   'desync',
-  'zapret2',
-  'zapret',
-  'byedpi',
   'socks',
   'http',
   'direct',
@@ -93,15 +91,7 @@ const PORT_CHOICES = [
   '8080',
 ];
 
-const DPI_SOURCE_TYPES = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
-
-const ZAPRET_DEFAULT_NFQWS_OPT =
-  '--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin';
-
-const ZAPRET2_DEFAULT_NFQWS2_OPT =
-  '--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6';
-
-const BYEDPI_DEFAULT_CMD_OPTS = '-o 2 --auto=t,r,a,s -d 2';
+const DPI_SOURCE_TYPES = new Set(['desync']);
 
 function isoToFlagEmoji(iso) {
   const code = String(iso || '')
@@ -457,14 +447,22 @@ function loadGlobalPoolChoices() {
         const stype = String(src.source_type || 'subscription').toLowerCase();
 
         if (stype === 'subscription') {
-          const rawUrl = String(src.url || '').trim();
+          const urls = [
+            ...asArray(src.subscription_urls),
+            ...(src.url ? [String(src.url).trim()] : []),
+          ].filter(Boolean);
           const fallbackName = String(src.name || '').trim();
-          const u =
-            rawUrl || (/^https?:\/\//i.test(fallbackName) ? fallbackName : '');
-          if (u) {
+          if (
+            urls.length === 0 &&
+            (/^https?:\/\//i.test(fallbackName) ||
+              /^(happ:\/\/)?crypt[2-5]?\//i.test(fallbackName))
+          ) {
+            urls.push(fallbackName);
+          }
+          urls.forEach((u) => {
             if (!urlToSources.has(u)) urlToSources.set(u, []);
             urlToSources.get(u).push({ sid, prefix: pfx });
-          }
+          });
         }
 
         const sname = String(src.name || src['.name'] || '').trim();
@@ -1290,34 +1288,6 @@ function shortenMiddle(str, maxLen) {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
-function isNativeTailscaleOutboundSection(sectionId) {
-  const rawMode = String(
-    uci.get(UCI_PACKAGE, sectionId, 'tailscale_mode') || '',
-  )
-    .trim()
-    .toLowerCase();
-  if (rawMode === 'native') {
-    return true;
-  }
-  if (rawMode === 'embedded') {
-    return false;
-  }
-  const iface = String(
-    uci.get(UCI_PACKAGE, sectionId, 'interface_name') || '',
-  ).trim();
-  const hasEmbeddedFields = Boolean(
-    uci.get(UCI_PACKAGE, sectionId, 'tailscale_auth_key') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_control_url') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_hostname') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_exit_node') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_accept_routes') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_accept_dns') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_exit_node_allow_lan_access') ||
-      uci.get(UCI_PACKAGE, sectionId, 'tailscale_ephemeral'),
-  );
-  return Boolean(iface) && !hasEmbeddedFields;
-}
-
 function summarizeOutboundSource(sectionId) {
   const stype = (
     uci.get(UCI_PACKAGE, sectionId, 'source_type') || 'subscription'
@@ -1326,9 +1296,13 @@ function summarizeOutboundSource(sectionId) {
   const prefixTag = prefix ? ` [${_('Prefix')}: ${prefix}]` : '';
 
   if (stype === 'subscription') {
-    const url = uci.get(UCI_PACKAGE, sectionId, 'url') || '';
+    const subUrls = asArray(
+      uci.get(UCI_PACKAGE, sectionId, 'subscription_urls'),
+    );
+    const url = uci.get(UCI_PACKAGE, sectionId, 'url') || subUrls[0] || '';
     const shortUrl = url ? shortenMiddle(url, 48) : _('Not set');
-    return `${_('Subscription')}: ${shortUrl}${prefixTag}`;
+    const extraCount = subUrls.length > 1 ? ` (+${subUrls.length - 1})` : '';
+    return `${_('Subscription')}: ${shortUrl}${extraCount}${prefixTag}`;
   }
   if (stype === 'proxy_links' || stype === 'links') {
     const links = asArray(
@@ -1364,13 +1338,6 @@ function summarizeOutboundSource(sectionId) {
     return `Tor SOCKS5 (127.0.0.1:${port})${prefixTag}`;
   }
   if (stype === 'tailscale') {
-    if (isNativeTailscaleOutboundSection(sectionId)) {
-      const iface =
-        String(
-          uci.get(UCI_PACKAGE, sectionId, 'interface_name') || '',
-        ).trim() || 'tailscale0';
-      return `Tailscale Mesh (${iface})${prefixTag}`;
-    }
     const hostname = String(
       uci.get(UCI_PACKAGE, sectionId, 'tailscale_hostname') || '',
     ).trim();
@@ -1385,7 +1352,7 @@ function summarizeOutboundSource(sectionId) {
       hostPart &&
       controlUrl !== 'https://controlplane.tailscale.com'
         ? `${hostname} @ ${hostPart}`
-        : hostname || hostPart || _('Embedded');
+        : hostname || hostPart || _('Tailscale');
     return `Tailscale Mesh (${detail})${prefixTag}`;
   }
   if (stype === 'interface') {
@@ -1399,31 +1366,25 @@ function summarizeOutboundSource(sectionId) {
     const jsons = asRawList(uci.get(UCI_PACKAGE, sectionId, 'outbound_jsons'));
     return `${_('JSON Outbounds')}: ${jsons.length || 1}${prefixTag}`;
   }
-  if (stype === 'zapret2') {
-    const direct =
-      uci.get(UCI_PACKAGE, sectionId, 'direct_nfqws') === '1'
-        ? ' [Direct NFQUEUE]'
-        : '';
-    return `Zapret2 (nfqws2)${direct}`;
-  }
-  if (stype === 'zapret') {
-    const direct =
-      uci.get(UCI_PACKAGE, sectionId, 'direct_nfqws') === '1'
-        ? ' [Direct NFQUEUE]'
-        : '';
-    return `Zapret (nfqws)${direct}`;
-  }
-  if (stype === 'byedpi') {
-    const opts =
-      uci.get(UCI_PACKAGE, sectionId, 'byedpi_cmd_opts') ||
-      BYEDPI_DEFAULT_CMD_OPTS;
-    return `ByeDPI: ${shortenMiddle(opts, 42)}`;
-  }
   if (stype === 'desync') {
     const preset = uci.get(UCI_PACKAGE, sectionId, 'desync_preset') || 'auto';
     const fooling = uci.get(UCI_PACKAGE, sectionId, 'desync_fooling') || '';
     const label = preset === 'auto' ? 'Adaptive 2.0' : preset;
     return `Desync (${label}${fooling ? ', ' + fooling : ''})`;
+  }
+  if (stype === 'wdtt') {
+    const uri = String(
+      uci.get(UCI_PACKAGE, sectionId, 'warp_flow_uri') ||
+        uci.get(UCI_PACKAGE, sectionId, 'csqtt_uri') ||
+        '',
+    ).trim();
+    const srv = String(
+      uci.get(UCI_PACKAGE, sectionId, 'server') ||
+        uci.get(UCI_PACKAGE, sectionId, 'csqtt_server') ||
+        '',
+    ).trim();
+    const detail = srv ? `: ${srv}` : uri ? ' (URI)' : '';
+    return `WDTT${detail}${prefixTag}`;
   }
   const srv =
     uci.get(UCI_PACKAGE, sectionId, 'server') ||
@@ -1431,6 +1392,7 @@ function summarizeOutboundSource(sectionId) {
     '';
   const port =
     uci.get(UCI_PACKAGE, sectionId, 'server_port') ||
+    uci.get(UCI_PACKAGE, sectionId, `${stype}_server_port`) ||
     uci.get(UCI_PACKAGE, sectionId, `${stype}_port`) ||
     '';
   return `${stype.toUpperCase()}${srv ? `: ${srv}${port ? ':' + port : ''}` : ''}${prefixTag}`;
@@ -3360,11 +3322,26 @@ const PREFIX_COLOR_PRESETS = [
   { label: _('Dark'), bg: '#1e293b', color: '#f8fafc' },
 ];
 
-const WDTT_DEFAULT_NFQWS2_OPT =
-  '--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multisplit:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6';
-
-const OLCRTC_DEFAULT_NFQWS2_OPT =
-  '--filter-udp=50000-65535 --filter-l7=stun,discord --lua-desync=fake:repeats=6 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multidisorder:pos=1,midsld';
+function getOutboundOptionSourceType(optionInstance, sectionId) {
+  let raw = '';
+  try {
+    if (
+      optionInstance &&
+      optionInstance.section &&
+      typeof optionInstance.section.formvalue === 'function'
+    ) {
+      raw = String(
+        optionInstance.section.formvalue(sectionId, 'source_type') || '',
+      );
+    }
+  } catch {
+    // Fallback to UCI value when formvalue is unavailable
+  }
+  if (!raw) {
+    raw = String(uci.get(UCI_PACKAGE, sectionId, 'source_type') || '');
+  }
+  return raw.trim().toLowerCase();
+}
 
 function setModalFieldValue(sectionRef, sectionId, optName, value) {
   uci.set(UCI_PACKAGE, sectionId, optName, value);
@@ -3436,10 +3413,7 @@ function resolveOutboundScannerEngines() {
       : null;
   if (sysInfo && (sysInfo.providerInfoLoaded || sysInfo.loaded)) {
     return Promise.resolve({
-      zapret2: Boolean(sysInfo.zapret2_installed),
-      zapret: Boolean(sysInfo.zapret_installed),
-      byedpi: Boolean(sysInfo.byedpi_installed),
-      desync: Boolean(sysInfo.sing_box_tachyon_core),
+      desync: true,
     });
   }
   if (
@@ -3452,52 +3426,26 @@ function resolveOutboundScannerEngines() {
         .then((res) => {
           const av = res && res.success ? res.data?.available_engines : null;
           return {
-            zapret2: Boolean(av?.zapret2),
-            zapret: Boolean(av?.zapret),
-            byedpi: Boolean(av?.byedpi),
             desync: Boolean(av?.desync),
           };
         })
         .catch(() => ({
-          zapret2: false,
-          zapret: false,
-          byedpi: false,
           desync: false,
         }));
   }
   return (
     outboundScannerEnginesPromise ||
     Promise.resolve({
-      zapret2: false,
-      zapret: false,
-      byedpi: false,
       desync: false,
     })
   );
-}
-
-function getModalSourceType(sectionId) {
-  if (typeof document !== 'undefined') {
-    const modalRoot = document.querySelector('.cbi-modal') || document;
-    const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
-    const el =
-      modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
-      modalRoot.querySelector(`select[id="${fieldId}"]`) ||
-      modalRoot.querySelector(`[data-field="${fieldId}"] select`);
-    if (el && 'value' in el && el.value) {
-      return String(el.value).trim().toLowerCase();
-    }
-  }
-  return String(uci.get(UCI_PACKAGE, sectionId, 'source_type') || '')
-    .trim()
-    .toLowerCase();
 }
 
 function attachOutboundStrategyScannerButton(
   sectionRef,
   option,
   engineKey,
-  optName,
+  _optName,
 ) {
   const origRender = option.renderWidget;
   option.renderWidget = function (sectionId, optionIndex, cfgvalue) {
@@ -3521,34 +3469,12 @@ function attachOutboundStrategyScannerButton(
         scanBtn.style.display = 'none';
         return;
       }
-      if (optName === 'nfqws2_opt') {
-        scanBtn.style.display =
-          getModalSourceType(sectionId) === 'zapret2' ? 'inline-flex' : 'none';
-        return;
-      }
       scanBtn.style.display = 'inline-flex';
     };
 
-    let cachedEngines = null;
     resolveOutboundScannerEngines()
       .then((av) => {
-        cachedEngines = av;
         updateBtnVisibility(av);
-        if (optName === 'nfqws2_opt' && typeof document !== 'undefined') {
-          setTimeout(() => {
-            const modalRoot = document.querySelector('.cbi-modal') || document;
-            const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
-            const sourceSel =
-              modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
-              modalRoot.querySelector(`select[id="${fieldId}"]`) ||
-              modalRoot.querySelector(`[data-field="${fieldId}"] select`);
-            if (sourceSel) {
-              sourceSel.addEventListener('change', () => {
-                updateBtnVisibility(cachedEngines);
-              });
-            }
-          }, 0);
-        }
       })
       .catch(() => {});
 
@@ -3561,17 +3487,13 @@ function attachOutboundStrategyScannerButton(
           availableEngines,
           nestedModal: true,
           onApplyStrategy: (_eng, args) => {
-            if (engineKey === 'desync') {
-              setModalFieldValue(
-                sectionRef,
-                sectionId,
-                'desync_preset',
-                'custom',
-              );
-              setModalFieldValue(sectionRef, sectionId, 'desync_opts', args);
-            } else {
-              setModalFieldValue(sectionRef, sectionId, optName, args);
-            }
+            setModalFieldValue(
+              sectionRef,
+              sectionId,
+              'desync_preset',
+              'custom',
+            );
+            setModalFieldValue(sectionRef, sectionId, 'desync_opts', args);
           },
         });
       });
@@ -3603,6 +3525,20 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
+    form.Flag,
+    'hidden',
+    _('Hide on Dashboard'),
+    _(
+      'Hide this subscription or server on the Dashboard while keeping it active in routing',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+  o.editable = true;
+  o.width = '6rem';
+
+  o = section.taboption(
+    'general',
     form.Value,
     'name',
     _('Connection Name'),
@@ -3610,7 +3546,7 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.rmempty = false;
-  o.placeholder = _('e.g. Main Subscription, YouTube Zapret2, EU AWG');
+  o.placeholder = _('e.g. Main Subscription, YouTube Desync, EU AWG');
 
   o = section.taboption(
     'general',
@@ -3644,12 +3580,8 @@ function createOutboundsContent(section) {
   o.value('trusttunnel', 'TrustTunnel');
   o.value('tewfai', 'TewFai');
   o.value('csqtt', 'CSQTT / WDTT v3');
-  o.value('zapret2', _('Zapret2 (nfqws2 DPI Desync)'));
-  o.value('zapret', _('Zapret (nfqws DPI Desync)'));
-  o.value('byedpi', _('ByeDPI (ciadpi SOCKS5 Desync)'));
-  o.value('desync', _('Desync (Built-in TCP/UDP DPI Fragmentation)'));
-  o.value('wdtt', _('WDTT (nfqws2 Preset)'));
-  o.value('olcrtc', _('OlcRTC (Discord / WebRTC nfqws2)'));
+  o.value('desync', _('Desync (Built-in TCP/UDP Fragmentation)'));
+  o.value('wdtt', _('WDTT (tachyon-core native)'));
   o.value('tor', _('Tor Network (SOCKS5)'));
   o.value('tailscale', _('Tailscale Mesh VPN'));
   o.value('interface', _('Network Interface (WireGuard / OpenVPN / TUN)'));
@@ -3661,6 +3593,7 @@ function createOutboundsContent(section) {
     uci.set(UCI_PACKAGE, sectionId, 'source_type', st);
     if (st !== 'subscription') {
       uci.unset(UCI_PACKAGE, sectionId, 'url');
+      uci.unset(UCI_PACKAGE, sectionId, 'subscription_urls');
     }
     if (st !== 'proxy_links' && st !== 'links') {
       uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
@@ -3691,9 +3624,52 @@ function createOutboundsContent(section) {
       uci.unset(UCI_PACKAGE, sectionId, 'tailscale_exit_node_allow_lan_access');
       uci.unset(UCI_PACKAGE, sectionId, 'tailscale_ephemeral');
     }
-    if (st !== 'interface' && st !== 'tailscale') {
+    if (st !== 'interface') {
       uci.unset(UCI_PACKAGE, sectionId, 'interface_name');
       uci.unset(UCI_PACKAGE, sectionId, 'interface');
+    }
+    if (st !== 'csqtt') {
+      [
+        'csqtt_server',
+        'csqtt_server_port',
+        'csqtt_port',
+        'csqtt_password',
+        'csqtt_mode',
+        'csqtt_obfs',
+        'csqtt_raw_port',
+        'csqtt_wg_port',
+        'csqtt_local_port',
+        'csqtt_hashes',
+        'csqtt_workers',
+        'csqtt_turn_transport',
+        'csqtt_turn_server',
+        'csqtt_turn_urls',
+        'csqtt_turn_username',
+        'csqtt_turn_password',
+        'csqtt_vk_auth_mode',
+        'csqtt_vk_cookie',
+        'csqtt_vk_client_ids',
+        'csqtt_mtu',
+        'csqtt_device_id',
+        'csqtt_chunk1',
+        'csqtt_wg_private_key',
+        'csqtt_wg_peer_public_key',
+        'csqtt_wg_address',
+        'csqtt_uri',
+      ].forEach((k) => uci.unset(UCI_PACKAGE, sectionId, k));
+    }
+    if (st !== 'wdtt') {
+      [
+        'wdtt_native',
+        'peer',
+        'qwdtt_mode',
+        'wdtt_workers',
+        'wdtt_mtu',
+        'warp_flow_device_id',
+      ].forEach((k) => uci.unset(UCI_PACKAGE, sectionId, k));
+      if (st !== 'csqtt') {
+        uci.unset(UCI_PACKAGE, sectionId, 'warp_flow_uri');
+      }
     }
   };
 
@@ -3844,7 +3820,11 @@ function createOutboundsContent(section) {
   o.rawhtml = true;
   o.cfgvalue = function (sectionId) {
     const text = summarizeOutboundSource(sectionId);
-    const fullUrl = uci.get(UCI_PACKAGE, sectionId, 'url') || text;
+    const subUrls = asArray(
+      uci.get(UCI_PACKAGE, sectionId, 'subscription_urls'),
+    );
+    const fullUrl =
+      uci.get(UCI_PACKAGE, sectionId, 'url') || subUrls.join(', ') || text;
     return `<span style="display:inline-block;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;" title="${escapeHtml(fullUrl)}">${escapeHtml(text)}</span>`;
   };
   o.textvalue = function (sectionId) {
@@ -3865,13 +3845,44 @@ function createOutboundsContent(section) {
   o.cfgvalue = function (section_id: string) {
     const val = uci.get('tachyon', section_id, 'url');
     if (val) return val;
+    const subUrls = asArray(
+      uci.get('tachyon', section_id, 'subscription_urls'),
+    );
+    if (subUrls.length > 0) return subUrls[0];
     const st = uci.get('tachyon', section_id, 'source_type') || 'subscription';
     const nm = String(uci.get('tachyon', section_id, 'name') || '').trim();
-    if (st === 'subscription' && /^https?:\/\//i.test(nm)) {
+    if (
+      st === 'subscription' &&
+      (/^https?:\/\//i.test(nm) || /^(happ:\/\/)?crypt[2-5]?\//i.test(nm))
+    ) {
       uci.set('tachyon', section_id, 'url', nm);
       return nm;
     }
     return '';
+  };
+  o.write = function (section_id: string, value: string) {
+    const trimmed = String(value || '').trim();
+    if (trimmed) {
+      uci.set('tachyon', section_id, 'url', trimmed);
+      const existingList = asArray(
+        uci.get('tachyon', section_id, 'subscription_urls'),
+      );
+      if (existingList.length <= 1) {
+        uci.set('tachyon', section_id, 'subscription_urls', [trimmed]);
+      } else if (!existingList.includes(trimmed)) {
+        uci.set('tachyon', section_id, 'subscription_urls', [
+          trimmed,
+          ...existingList.slice(1),
+        ]);
+      }
+    } else {
+      uci.unset('tachyon', section_id, 'url');
+      uci.unset('tachyon', section_id, 'subscription_urls');
+    }
+  };
+  o.remove = function (section_id: string) {
+    uci.unset('tachyon', section_id, 'url');
+    uci.unset('tachyon', section_id, 'subscription_urls');
   };
 
   o = section.taboption(
@@ -3991,7 +4002,7 @@ function createOutboundsContent(section) {
     form.Value,
     'subscription_update_interval',
     _('Update Interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.modalonly = true;
   o.default = '1h';
@@ -4054,22 +4065,6 @@ function createOutboundsContent(section) {
     });
     return uci.get(UCI_PACKAGE, sectionId, 'download_via_proxy_section');
   };
-
-  o = section.taboption(
-    'general',
-    form.ListValue,
-    'subscription_engine',
-    _('Subscription Fetch & Parse Engine'),
-    _(
-      'Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support.',
-    ),
-  );
-  o.modalonly = true;
-  o.default = 'auto';
-  o.value('auto', _('Default (From Global Settings)'));
-  o.value('core', _('Tachyon Core Binary (tachyon-core subscription)'));
-  o.value('ucode', _('Built-in Script (curl + ucode)'));
-  o.depends('source_type', 'subscription');
 
   // ── 2. Proxy Share Links ──────────────────────────────────────────────────
   const getSourceProxyLinks = (sectionId) => {
@@ -5539,12 +5534,86 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.placeholder = 'example.com';
   directProtoTypes.forEach((t) => o.depends('source_type', t));
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, 'csqtt_server') ||
+          uci.get(UCI_PACKAGE, sectionId, 'server') ||
+          '',
+      );
+    }
+    return String(uci.get(UCI_PACKAGE, sectionId, 'server') || '');
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || '').trim();
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, 'server', val);
+        uci.set(UCI_PACKAGE, sectionId, 'csqtt_server', val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, 'server');
+        uci.unset(UCI_PACKAGE, sectionId, 'csqtt_server');
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, 'server', val);
+    else uci.unset(UCI_PACKAGE, sectionId, 'server');
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'server');
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      uci.unset(UCI_PACKAGE, sectionId, 'csqtt_server');
+    }
+  };
 
   o = section.taboption('general', form.Value, 'server_port', _('Server Port'));
   o.modalonly = true;
   o.default = '443';
   o.placeholder = '443, 2000-2010';
   directProtoTypes.forEach((t) => o.depends('source_type', t));
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, 'csqtt_server_port') ||
+          uci.get(UCI_PACKAGE, sectionId, 'csqtt_port') ||
+          uci.get(UCI_PACKAGE, sectionId, 'server_port') ||
+          '46000',
+      );
+    }
+    const stored = uci.get(UCI_PACKAGE, sectionId, 'server_port');
+    return stored != null && stored !== ''
+      ? String(stored)
+      : String(this.default || '443');
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || '').trim();
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      uci.unset(UCI_PACKAGE, sectionId, 'csqtt_port');
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, 'server_port', val);
+        uci.set(UCI_PACKAGE, sectionId, 'csqtt_server_port', val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, 'server_port');
+        uci.unset(UCI_PACKAGE, sectionId, 'csqtt_server_port');
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, 'server_port', val);
+    else uci.unset(UCI_PACKAGE, sectionId, 'server_port');
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'server_port');
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      uci.unset(UCI_PACKAGE, sectionId, 'csqtt_server_port');
+      uci.unset(UCI_PACKAGE, sectionId, 'csqtt_port');
+    }
+  };
   o.validate = function (_sectionId, value) {
     const raw = `${value || ''}`.trim();
     if (!raw) return true;
@@ -5590,6 +5659,41 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.password = true;
   directProtoTypes.forEach((t) => o.depends('source_type', t));
+  o.depends('source_type', 'wdtt');
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, 'csqtt_password') ||
+          uci.get(UCI_PACKAGE, sectionId, 'password') ||
+          '',
+      );
+    }
+    return String(uci.get(UCI_PACKAGE, sectionId, 'password') || '');
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || '').trim();
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, 'password', val);
+        uci.set(UCI_PACKAGE, sectionId, 'csqtt_password', val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, 'password');
+        uci.unset(UCI_PACKAGE, sectionId, 'csqtt_password');
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, 'password', val);
+    else uci.unset(UCI_PACKAGE, sectionId, 'password');
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'password');
+    if (getOutboundOptionSourceType(this, sectionId) === 'csqtt') {
+      uci.unset(UCI_PACKAGE, sectionId, 'csqtt_password');
+    }
+  };
 
   o = section.taboption(
     'general',
@@ -6061,6 +6165,27 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
+    form.Value,
+    'csqtt_wg_port',
+    _('WireGuard Port (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.datatype = 'port';
+  o.placeholder = '56000';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_local_port',
+    _('Local UDP Port (optional)'),
+  );
+  o.modalonly = true;
+  o.datatype = 'port';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
     form.DynamicList,
     'csqtt_hashes',
     _('Peer Hashes / Keys'),
@@ -6101,9 +6226,41 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
+    form.DynamicList,
+    'csqtt_turn_urls',
+    _('TURN URLs (optional)'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'turn:turn.example.com:3478?transport=udp';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_turn_username',
+    _('TURN Username (optional)'),
+  );
+  o.modalonly = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_turn_password',
+    _('TURN Password (optional)'),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
     form.ListValue,
     'csqtt_vk_auth_mode',
     _('VK Auth Mode'),
+    _(
+      'VK anonymous token endpoints may require captcha or cookies under rate-limiting. For higher reliability, supply VK Cookie in cookie mode, configure a custom TURN server/URLs, or use wg / raw direct UDP mode.',
+    ),
   );
   o.modalonly = true;
   o.value('', _('Default'));
@@ -6116,10 +6273,42 @@ function createOutboundsContent(section) {
   o.value('telemost', 'telemost');
   o.depends('source_type', 'csqtt');
 
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_vk_cookie',
+    _('VK Cookie (for cookie auth mode)'),
+    _(
+      'VK session Cookie header value used when VK Auth Mode is cookie (or auto-detected when non-empty).',
+    ),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    'csqtt_vk_client_ids',
+    _('VK Client IDs (optional)'),
+  );
+  o.modalonly = true;
+  o.depends('source_type', 'csqtt');
+
   o = section.taboption('general', form.Value, 'csqtt_mtu', _('MTU'));
   o.modalonly = true;
   o.datatype = 'uinteger';
   o.placeholder = '1350';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'csqtt_chunk1',
+    _('Chunk1 Framing (chunk1)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
   o.depends('source_type', 'csqtt');
 
   o = section.taboption(
@@ -6134,12 +6323,53 @@ function createOutboundsContent(section) {
   o = section.taboption(
     'general',
     form.Value,
+    'csqtt_wg_private_key',
+    _('WireGuard Private Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_wg_peer_public_key',
+    _('WireGuard Peer Public Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_wg_address',
+    _('WireGuard Tunnel Address (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.placeholder = '10.66.0.2/32';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
     'csqtt_uri',
     _('CSQTT / WDTT URI (optional override)'),
   );
   o.modalonly = true;
   o.placeholder = 'csqtt://... or qwdtt://...';
   o.depends('source_type', 'csqtt');
+
+  // WDTT (Native tachyon-core)
+  o = section.taboption(
+    'general',
+    form.Value,
+    'warp_flow_uri',
+    _('WDTT / CSQTT URI'),
+    _('Connection URI (wdtt://..., csqtt://..., or qwdtt://...).'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'wdtt://... or csqtt://...';
+  o.depends('source_type', 'wdtt');
 
   // ── 9. Network Interface / Tailscale / Tor / JSON ─────────────────────────
   o = section.taboption(
@@ -6218,33 +6448,6 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
-    form.ListValue,
-    'tailscale_mode',
-    _('Tailscale mode'),
-    _(
-      'Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface.',
-    ),
-  );
-  o.value('embedded', _('Embedded (tachyon-core / sing-box, default)'));
-  o.value('native', _('Native (system tailscaled / tailscale0)'));
-  o.default = 'embedded';
-  o.modalonly = true;
-  o.rmempty = false;
-  o.depends('source_type', 'tailscale');
-  o.cfgvalue = function (sectionId) {
-    return isNativeTailscaleOutboundSection(sectionId) ? 'native' : 'embedded';
-  };
-  o.write = function (sectionId, value) {
-    const mode = value === 'native' ? 'native' : 'embedded';
-    uci.set(UCI_PACKAGE, sectionId, 'tailscale_mode', mode);
-    if (mode !== 'native') {
-      uci.unset(UCI_PACKAGE, sectionId, 'interface_name');
-      uci.unset(UCI_PACKAGE, sectionId, 'interface');
-    }
-  };
-
-  o = section.taboption(
-    'general',
     form.Value,
     'tailscale_auth_key',
     _('Tailscale auth key (optional)'),
@@ -6258,7 +6461,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = 'tskey-auth-...';
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6277,7 +6480,7 @@ function createOutboundsContent(section) {
       ? true
       : _('Control URL must start with http:// or https://');
   };
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6289,7 +6492,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = 'tachyon-router';
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6301,7 +6504,7 @@ function createOutboundsContent(section) {
   o.default = '1';
   o.modalonly = true;
   o.rmempty = false;
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6313,7 +6516,7 @@ function createOutboundsContent(section) {
   o.default = '1';
   o.modalonly = true;
   o.rmempty = false;
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6327,7 +6530,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = '100.64.0.10';
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6341,7 +6544,7 @@ function createOutboundsContent(section) {
   o.default = '0';
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6355,7 +6558,7 @@ function createOutboundsContent(section) {
   o.default = '0';
   o.modalonly = true;
   o.rmempty = true;
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+  o.depends('source_type', 'tailscale');
 
   o = section.taboption(
     'general',
@@ -6363,14 +6566,13 @@ function createOutboundsContent(section) {
     'interface_name',
     _('Network Interface Name'),
     _(
-      'Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan).',
+      'Select any existing router interface or preset (e.g. wg0, awg0, tun0, wan, eth0, br-lan).',
     ),
   );
   o.modalonly = true;
   o.rmempty = false;
   o.placeholder = 'wg0';
   o.depends('source_type', 'interface');
-  o.depends({ source_type: 'tailscale', tailscale_mode: 'native' });
   o.validate = function (sectionId, value) {
     const st = String(
       this.section.formvalue(sectionId, 'source_type') ||
@@ -6379,16 +6581,7 @@ function createOutboundsContent(section) {
     )
       .trim()
       .toLowerCase();
-    const mode = String(
-      this.section.formvalue(sectionId, 'tailscale_mode') ||
-        uci.get(UCI_PACKAGE, sectionId, 'tailscale_mode') ||
-        'embedded',
-    )
-      .trim()
-      .toLowerCase();
-    const needsInterface =
-      st === 'interface' || (st === 'tailscale' && mode === 'native');
-    if (needsInterface && !String(value || '').trim()) {
+    if (st === 'interface' && !String(value || '').trim()) {
       return _('Network Interface Name is required');
     }
     return true;
@@ -6518,127 +6711,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.depends('source_type', 'outbound_json');
 
-  // ── 10. DPI Desync Sources (Zapret2, Zapret, ByeDPI, Native Desync, WDTT, OlcRTC)
-  o = section.taboption(
-    'general',
-    form.TextValue,
-    'nfqws2_opt',
-    _('NFQWS2 Strategy'),
-    _('Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc).'),
-  );
-  o.modalonly = true;
-  o.rows = 6;
-  o.wrap = 'soft';
-  o.default = ZAPRET2_DEFAULT_NFQWS2_OPT;
-  o.depends('source_type', 'zapret2');
-  o.depends('source_type', 'wdtt');
-  o.depends('source_type', 'olcrtc');
-  function syncStrategyToReferencingSections(
-    sourceId: string,
-    optionKey: string,
-    val: string,
-  ) {
-    const sections = uci.sections(UCI_PACKAGE, 'section') || [];
-    for (const sec of sections) {
-      const secId = sec['.name'];
-      if (!secId) continue;
-      const refs = sec.outbound_source_refs;
-      const refList = Array.isArray(refs) ? refs : refs ? [String(refs)] : [];
-      if (refList.includes(sourceId) && sec[optionKey] !== undefined) {
-        uci.set(UCI_PACKAGE, secId, optionKey, val);
-      }
-    }
-  }
-
-  o.load = function (sectionId) {
-    const existing = uci.get(UCI_PACKAGE, sectionId, 'nfqws2_opt');
-    if (existing) return existing;
-    const stype = uci.get(UCI_PACKAGE, sectionId, 'source_type');
-    if (stype === 'wdtt') return WDTT_DEFAULT_NFQWS2_OPT;
-    if (stype === 'olcrtc') return OLCRTC_DEFAULT_NFQWS2_OPT;
-    return ZAPRET2_DEFAULT_NFQWS2_OPT;
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || '').trim() || ZAPRET2_DEFAULT_NFQWS2_OPT;
-    uci.set(UCI_PACKAGE, sectionId, 'nfqws2_opt', nextVal);
-    syncStrategyToReferencingSections(sectionId, 'nfqws2_opt', nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, 'zapret2', 'nfqws2_opt');
-
-  o = section.taboption(
-    'general',
-    form.TextValue,
-    'nfqws_opt',
-    _('NFQWS Strategy'),
-    _('Command-line strategy arguments for nfqws (zapret).'),
-  );
-  o.modalonly = true;
-  o.rows = 6;
-  o.wrap = 'soft';
-  o.default = ZAPRET_DEFAULT_NFQWS_OPT;
-  o.depends('source_type', 'zapret');
-  o.load = function (sectionId) {
-    return (
-      uci.get(UCI_PACKAGE, sectionId, 'nfqws_opt') || ZAPRET_DEFAULT_NFQWS_OPT
-    );
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || '').trim() || ZAPRET_DEFAULT_NFQWS_OPT;
-    uci.set(UCI_PACKAGE, sectionId, 'nfqws_opt', nextVal);
-    syncStrategyToReferencingSections(sectionId, 'nfqws_opt', nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, 'zapret', 'nfqws_opt');
-
-  o = section.taboption(
-    'general',
-    form.Flag,
-    'direct_nfqws',
-    _('Direct NFQUEUE Mode (Bypass Proxy Core)'),
-    _(
-      'Route matched traffic directly into kernel NFQUEUE via nftables without passing through tachyon-core.',
-    ),
-  );
-  o.modalonly = true;
-  o.default = '0';
-  o.depends('source_type', 'zapret2');
-  o.depends('source_type', 'zapret');
-  o.depends('source_type', 'wdtt');
-  o.depends('source_type', 'olcrtc');
-
-  o = section.taboption(
-    'general',
-    form.TextValue,
-    'byedpi_cmd_opts',
-    _('ByeDPI Strategy'),
-    _('Command-line strategy arguments for ciadpi (ByeDPI).'),
-  );
-  o.modalonly = true;
-  o.rows = 5;
-  o.wrap = 'soft';
-  o.default = BYEDPI_DEFAULT_CMD_OPTS;
-  o.depends('source_type', 'byedpi');
-  o.load = function (sectionId) {
-    return (
-      uci.get(UCI_PACKAGE, sectionId, 'byedpi_cmd_opts') ||
-      BYEDPI_DEFAULT_CMD_OPTS
-    );
-  };
-  o.cfgvalue = function (sectionId) {
-    return this.load(sectionId);
-  };
-  o.write = function (sectionId, value) {
-    const nextVal = String(value || '').trim() || BYEDPI_DEFAULT_CMD_OPTS;
-    uci.set(UCI_PACKAGE, sectionId, 'byedpi_cmd_opts', nextVal);
-    syncStrategyToReferencingSections(sectionId, 'byedpi_cmd_opts', nextVal);
-  };
-  attachOutboundStrategyScannerButton(section, o, 'byedpi', 'byedpi_cmd_opts');
-
+  // ── 10. Native Desync Sources
   o = section.taboption(
     'general',
     form.ListValue,
@@ -6983,6 +7056,48 @@ function createOutboundsContent(section) {
   o = section.taboption(
     'general',
     form.Value,
+    'desync_udp_fake_payload',
+    _('UDP Fake Payload (HEX)'),
+    _('Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer.'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '0x0001';
+  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_udp_out_range',
+    _('UDP Fake Packet Range'),
+    _(
+      'Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '1-2';
+  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'desync_udp_keep_socket',
+    _('Keep UDP Socket'),
+    _(
+      'Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Default'));
+  o.value('1', _('Enabled'));
+  o.value('0', _('Disabled'));
+  o.depends('source_type', 'desync');
+
+  o = section.taboption(
+    'general',
+    form.Value,
     'desync_udp_fake_ttl',
     _('UDP Fake TTL'),
   );
@@ -7003,6 +7118,48 @@ function createOutboundsContent(section) {
     desync_preset: 'discord',
     desync_udp_fake: '1',
   });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_udp_fake_payload',
+    _('UDP Fake Payload (HEX)'),
+    _('Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer.'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '0x0001';
+  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_udp_out_range',
+    _('UDP Fake Packet Range'),
+    _(
+      'Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '1-2';
+  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'desync_udp_keep_socket',
+    _('Keep UDP Socket'),
+    _(
+      'Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value('', _('Default'));
+  o.value('1', _('Enabled'));
+  o.value('0', _('Disabled'));
+  o.depends('source_type', 'desync');
 
   o = section.taboption(
     'general',
@@ -7216,7 +7373,7 @@ function createOutboundsContent(section) {
     'tls_fingerprint',
     _('TLS Fingerprint Override (uTLS)'),
     _(
-      "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes.",
+      "Override the provider's uTLS fingerprint (fp) on imported TLS/REALITY nodes (for example, switching to Chrome if another fingerprint fails verification with REALITY + ML-KEM).",
     ),
   );
   o.modalonly = true;
@@ -7231,6 +7388,79 @@ function createOutboundsContent(section) {
   o.value('random', _('Random'));
   o.value('randomized', _('Randomized'));
   o.depends('source_type', 'subscription');
+  o.depends('source_type', 'proxy_links');
+
+  o = section.taboption(
+    'advanced',
+    form.ListValue,
+    'tls_fragment_mode',
+    _('ClientHello / TCP Fragmentation'),
+    _(
+      'Split TLS records or TCP segments during handshake on imported TLS/TCP nodes.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '';
+  o.value('', _('Keep Provider Default'));
+  o.value('tls_record', _('TLS Record Fragmentation (tls.record_fragment)'));
+  o.value('tls_fragment', _('TLS Handshake Fragmentation (tls.fragment)'));
+  o.value('tcp_fragment', _('TCP Segment Fragmentation (tcp_fragment)'));
+  o.depends('source_type', 'subscription');
+  o.depends('source_type', 'proxy_links');
+
+  o = section.taboption(
+    'advanced',
+    form.Value,
+    'tcp_fragment_length',
+    _('TCP Fragment Length (bytes)'),
+    _('Segment length or range in bytes for TCP fragmentation (e.g. 20-60).'),
+  );
+  o.modalonly = true;
+  o.optional = true;
+  o.placeholder = '20-60';
+  o.depends({ source_type: 'subscription', tls_fragment_mode: 'tcp_fragment' });
+  o.depends({ source_type: 'proxy_links', tls_fragment_mode: 'tcp_fragment' });
+  o.validate = function (_section_id: string, value: string) {
+    const val = String(value || '').trim();
+    if (!val) return true;
+    if (!/^[0-9]+(-[0-9]+)?$/.test(val)) {
+      return _('Expected a byte count or range (e.g. 20-60)');
+    }
+    const parts = val.split('-');
+    const lo = Number(parts[0]);
+    const hi = parts.length > 1 ? Number(parts[1]) : lo;
+    if (lo < 1 || hi < lo) {
+      return _('Lower bound must be >= 1 and <= upper bound');
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    'advanced',
+    form.Value,
+    'tcp_fragment_delay',
+    _('TCP Fragment Delay'),
+    _('Delay or range between TCP segments (e.g. 0-2ms).'),
+  );
+  o.modalonly = true;
+  o.optional = true;
+  o.placeholder = '0-2ms';
+  o.depends({ source_type: 'subscription', tls_fragment_mode: 'tcp_fragment' });
+  o.depends({ source_type: 'proxy_links', tls_fragment_mode: 'tcp_fragment' });
+  o.validate = function (_section_id: string, value: string) {
+    const val = String(value || '').trim();
+    if (!val) return true;
+    const m = /^([0-9]+)(?:-([0-9]+))?(ms|s)?$/.exec(val);
+    if (!m) {
+      return _('Expected a duration or range (e.g. 0-2ms)');
+    }
+    const lo = Number(m[1]);
+    const hi = m[2] !== undefined ? Number(m[2]) : lo;
+    if (lo < 0 || hi < lo) {
+      return _('Lower bound must be <= upper bound');
+    }
+    return true;
+  };
 
   o = section.taboption(
     'advanced',

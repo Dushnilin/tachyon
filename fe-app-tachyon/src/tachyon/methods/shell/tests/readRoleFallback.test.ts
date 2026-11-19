@@ -77,7 +77,7 @@ describe('read-only fallback', () => {
   });
 
   it('never falls back for a write account, whose first call is allowed', async () => {
-    exec.mockResolvedValue(ok({ engine: 'sing-box' }));
+    exec.mockResolvedValue(ok({ engine: 'tachyon-core' }));
     const { callBaseMethod: fresh } = await withFreshModule();
 
     await fresh(Tachyon.AvailableMethods.SERVICE_ACTION_ASYNC);
@@ -94,7 +94,7 @@ describe('read-only fallback', () => {
   it('does not switch when the call failed for an unrelated reason', async () => {
     exec.mockResolvedValue({
       stdout: '',
-      stderr: 'sing-box: config parse error',
+      stderr: 'tachyon-core: config parse error',
       code: 1,
     });
     const { callBaseMethod: fresh } = await withFreshModule();

@@ -60,6 +60,10 @@ function createDummyElement(tag: string): any {
     },
     setAttribute(name: string, val: string) {
       attrs[name] = String(val);
+      if (name === 'style') {
+        el.style.cssText = String(val);
+        return;
+      }
       (el as any)[name] = val;
       if (name === 'class') el.className = String(val);
     },
@@ -78,6 +82,7 @@ function createDummyElement(tag: string): any {
       const cbs = listeners.click || [];
       cbs.forEach((fn) => fn({ preventDefault() {}, stopPropagation() {} }));
     },
+    focus() {},
     appendChild(node: any) {
       if (node !== null && node !== undefined && node !== '') {
         if (typeof node === 'object') {
@@ -414,8 +419,8 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
         {
           code: 'media_dpi',
           sectionName: 'media_dpi',
-          displayName: 'Zapret2 (Direct DPI Bypass)',
-          action: 'zapret2',
+          displayName: 'Core Desync (Direct)',
+          action: 'desync',
           outbounds: [],
           configError: false,
         },
@@ -461,10 +466,10 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     expect(sectionNames).toEqual([
       'Youtube',
       'Discord',
-      'Zapret2 (Direct DPI Bypass)',
+      'Core Desync (Direct)',
       'Geo Block',
     ]);
-    expect(sectionNames).toContain('Zapret2 (Direct DPI Bypass)');
+    expect(sectionNames).toContain('Core Desync (Direct)');
     expect(sectionNames).not.toContain('block');
     expect(sectionNames).not.toContain('ByPass');
     expect(sectionNames).not.toContain('YandexDns');
@@ -491,7 +496,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     ['reject', 'Proxy'],
     ['dns_proxy', 'Proxy'],
     ['direct', 'Proxy'],
-    ['zapret_proxy', 'Proxy'],
+    ['desync_proxy', 'Proxy'],
   ])(
     'classifies connection section %s (%s) by its action',
     (sectionName, displayName) => {
@@ -508,7 +513,6 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
   );
 
   it.each([
-    ['ZAPRET2', 'dpi'],
     ['DESYNC', 'dpi'],
     ['BLOCK', 'block'],
     ['DNS', 'dns'],
@@ -528,7 +532,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     },
   );
 
-  it('mounts Tachyon Studio Deck on GridSection containers and hides default GridSection tables', () => {
+  it('mounts Tachyon Studio Deck on GridSection containers and hides legacy LuCI tables', () => {
     const containerEl = createDummyElement('div');
     const mockSectionRef = {
       sectiontype: 'section',
@@ -630,7 +634,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
       resolveSectionCategory({ action: 'dns', '.name': 'YandexDns' } as any),
     ).toBe('dns');
     expect(
-      resolveSectionCategory({ action: 'zapret2', '.name': 'yt' } as any),
+      resolveSectionCategory({ action: 'desync', '.name': 'yt' } as any),
     ).toBe('dpi');
     expect(
       resolveSectionCategory({
@@ -806,5 +810,683 @@ xiaomi.com`,
       '/var/run/tachyon/section-cache/Main.json',
       '/var/run/tachyon/section-cache/Section_1.json',
     ]);
+  });
+
+  it('hides sections marked hidden until Show hidden is toggled (#405)', () => {
+    const sectionsWithHidden: any[] = [
+      {
+        code: 'sec_vis-out',
+        sectionName: 'sec_vis',
+        displayName: 'Visible Section',
+        action: 'connection',
+        withTagSelect: true,
+        outbounds: [
+          {
+            code: 'n1',
+            displayName: 'NL Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 40,
+          },
+          {
+            code: 'n2',
+            displayName: 'Hidden Manual',
+            type: 'VLESS',
+            selected: false,
+            latency: 60,
+            hidden: true,
+          },
+        ],
+      },
+      {
+        code: 'sec_hid-out',
+        sectionName: 'sec_hid',
+        displayName: 'Secret Section',
+        action: 'connection',
+        withTagSelect: true,
+        hidden: true,
+        outbounds: [
+          {
+            code: 'n3',
+            displayName: 'DE Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 55,
+          },
+        ],
+      },
+    ];
+
+    const onToggleShowHidden = vi.fn();
+    const commonProps = {
+      sections: sectionsWithHidden,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onToggleShowHidden,
+    };
+
+    const hiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: false,
+    });
+    const hiddenWrap = createDummyElement('div');
+    hiddenBlocks.forEach((b: any) => hiddenWrap.appendChild(b));
+
+    const visibleNames = hiddenWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(visibleNames).toEqual(['Visible Section']);
+
+    const toggleBtn = hiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(toggleBtn).toBeTruthy();
+    expect(toggleBtn.textContent).toContain('(2)');
+    toggleBtn.click();
+    expect(onToggleShowHidden).toHaveBeenCalledTimes(1);
+
+    const revealedBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: true,
+    });
+    const revealedWrap = createDummyElement('div');
+    revealedBlocks.forEach((b: any) => revealedWrap.appendChild(b));
+    const revealedNames = revealedWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(revealedNames).toEqual(['Visible Section', 'Secret Section']);
+
+    const onlyHiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      sections: [sectionsWithHidden[1]],
+      showHidden: false,
+    });
+    const onlyHiddenWrap = createDummyElement('div');
+    onlyHiddenBlocks.forEach((b: any) => onlyHiddenWrap.appendChild(b));
+    const onlyHiddenBtn = onlyHiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(onlyHiddenBtn).toBeTruthy();
+    expect(onlyHiddenBtn.textContent).toContain('(1)');
+  });
+
+  it('shows warning banner when block or bypass section is placed below other routing sections', () => {
+    // 1. Correct order (block & bypass at top): no warning
+    const okIssues = renderOverviewMod.detectMisorderedPolicySections([
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Ads',
+        action: 'block',
+        outbounds: [],
+      },
+      {
+        code: 'ByPass',
+        sectionName: 'ByPass',
+        displayName: 'RU Direct',
+        action: 'bypass',
+        outbounds: [],
+      },
+      {
+        code: 'YandexDns',
+        sectionName: 'YandexDns',
+        displayName: 'YandexDns',
+        action: 'dns',
+        outbounds: [],
+      },
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [],
+      },
+    ]);
+    expect(okIssues).toEqual([]);
+
+    // 2. Misordered: block and bypass placed after Main Proxy and Youtube desync
+    const misorderedSections = [
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [
+          {
+            code: 'node-1',
+            displayName: 'NL 1',
+            type: 'vless',
+            selected: true,
+            latency: 40,
+          },
+        ],
+      },
+      {
+        code: 'Youtube',
+        sectionName: 'Youtube',
+        displayName: 'Youtube',
+        action: 'desync',
+        outbounds: [],
+      },
+      {
+        code: 'ByPass',
+        sectionName: 'ByPass',
+        displayName: 'RU Direct',
+        action: 'bypass',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Telemetry',
+        action: 'block',
+        outbounds: [],
+      },
+    ];
+
+    const detected =
+      renderOverviewMod.detectMisorderedPolicySections(misorderedSections);
+    expect(detected).toHaveLength(2);
+    expect(detected[0]).toMatchObject({
+      sectionName: 'ByPass',
+      displayName: 'RU Direct',
+      kind: 'bypass',
+    });
+    expect(detected[1]).toMatchObject({
+      sectionName: 'block',
+      displayName: 'Block Telemetry',
+      kind: 'block',
+    });
+
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections: misorderedSections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+    });
+
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const warnings = wrap.querySelectorAll('.tachyon-section-order-warning');
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].textContent).toContain(
+      'Block / Bypass section priority violated',
+    );
+    expect(warnings[0].textContent).toContain('RU Direct');
+    expect(warnings[0].textContent).toContain('Block Telemetry');
+    expect(warnings[0].textContent).toContain('Main Proxy');
+    expect(warnings[0].textContent).toContain('Youtube');
+    expect(warnings[0].textContent).toContain('Move above');
+    expect(warnings[0].textContent).toContain('To sections');
+  });
+
+  it('ignores disabled block/bypass or disabled routing sections and builds singular/plural reorder plans', () => {
+    // Disabled block section after Main Proxy must not trigger warning
+    const disabledOnly = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Ads',
+        action: 'block',
+        enabled: '0',
+        outbounds: [],
+      },
+    ]);
+    expect(disabledOnly.issues).toEqual([]);
+    expect(disabledOnly.moves).toEqual([]);
+
+    // Disabled routing section before block must not trigger warning
+    const disabledRoute = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'OldVpn',
+        sectionName: 'OldVpn',
+        displayName: 'Old VPN',
+        action: 'connection',
+        enabled: '0',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ]);
+    expect(disabledRoute.issues).toEqual([]);
+
+    // Singular violation after multiple routing sections (Discord, YouTube)
+    const singular = renderOverviewMod.analyzePolicySectionPriority([
+      {
+        code: 'discord',
+        sectionName: 'discord',
+        displayName: 'Discord',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'youtube',
+        sectionName: 'youtube',
+        displayName: 'YouTube',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ]);
+    expect(singular.misplacedLabels).toEqual(['block']);
+    expect(singular.precedingLabels).toEqual(['Discord', 'YouTube']);
+    expect(singular.firstRoutingSectionName).toBe('discord');
+    expect(singular.moves).toEqual([{ from: 'block', to: 'discord' }]);
+
+    const singularDescEn =
+      renderOverviewMod.formatPolicySectionOrderWarningDescription(singular);
+    expect(singularDescEn).toContain('Section «block»');
+    expect(singularDescEn).toContain('«Discord», «YouTube»');
+
+    const prevLang = (globalThis as any).L?.env?.lang;
+    (globalThis as any).L = { env: { lang: 'ru' } };
+    try {
+      const singularDescRu =
+        renderOverviewMod.formatPolicySectionOrderWarningDescription(singular);
+      expect(singularDescRu).toContain('Секция «block»');
+      expect(singularDescRu).toContain('«Discord», «YouTube»');
+    } finally {
+      (globalThis as any).L = { env: { lang: prevLang || 'en' } };
+    }
+  });
+
+  it('reorders UCI sections on Move above click, saves, applies, and disables button while saving', async () => {
+    const onMovePolicySectionsAbove = vi.fn();
+    const sections = [
+      {
+        code: 'discord',
+        sectionName: 'discord',
+        displayName: 'Discord',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'youtube',
+        sectionName: 'youtube',
+        displayName: 'YouTube',
+        action: 'connection',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'block',
+        action: 'block',
+        outbounds: [],
+      },
+    ];
+
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onMovePolicySectionsAbove,
+      isMovingPolicySections: false,
+    });
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const moveBtn = wrap
+      .querySelectorAll('.tachyon-section-order-warning__btn')
+      .find((b: any) => b.textContent.includes('Move above'));
+    expect(moveBtn).toBeDefined();
+    moveBtn.click({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(onMovePolicySectionsAbove).toHaveBeenCalledWith([
+      { from: 'block', to: 'discord' },
+    ]);
+
+    // Busy state disables button to prevent double clicks
+    const busyBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onMovePolicySectionsAbove,
+      isMovingPolicySections: true,
+    });
+    const busyWrap = createDummyElement('div');
+    busyBlocks.forEach((b: any) => busyWrap.appendChild(b));
+    const busyBtn = busyWrap
+      .querySelectorAll('.tachyon-section-order-warning__btn')
+      .find((b: any) => b.textContent.includes('Moving...'));
+    expect(busyBtn).toBeDefined();
+    expect(busyBtn.disabled).toBeTruthy();
+
+    // applyPolicySectionPriorityMoves executes uci.move -> uci.save -> ui.changes.apply
+    const order = ['discord', 'youtube', 'block', 'bypass'];
+    const moveCalls: Array<[string, string, string]> = [];
+    const uciMock = {
+      sections: vi.fn(() => order.map((name) => ({ '.name': name }))),
+      move: vi.fn((pkg: string, from: string, to: string) => {
+        moveCalls.push([pkg, from, to]);
+        const fromIdx = order.indexOf(from);
+        const [item] = order.splice(fromIdx, 1);
+        const toIdx = order.indexOf(to);
+        order.splice(toIdx, 0, item);
+        return true;
+      }),
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    const uiMock = {
+      changes: {
+        init: vi.fn().mockResolvedValue(undefined),
+        apply: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const onSuccess = vi.fn().mockResolvedValue(undefined);
+    const onNotify = vi.fn();
+
+    const ok = await renderOverviewMod.applyPolicySectionPriorityMoves(
+      [
+        { from: 'block', to: 'discord' },
+        { from: 'bypass', to: 'discord' },
+      ],
+      { uciObj: uciMock, uiObj: uiMock, onSuccess, onNotify },
+    );
+
+    expect(ok).toBe(true);
+    expect(moveCalls).toEqual([
+      ['tachyon', 'block', 'discord'],
+      ['tachyon', 'bypass', 'discord'],
+    ]);
+    expect(order).toEqual(['block', 'bypass', 'discord', 'youtube']);
+    expect(uciMock.save).toHaveBeenCalledTimes(1);
+    expect(uiMock.changes.init).toHaveBeenCalledTimes(1);
+    expect(uiMock.changes.apply).toHaveBeenCalledWith(true);
+    expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(onNotify).toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
+  it('hides sections marked hidden until Show hidden is toggled (#405)', () => {
+    const sectionsWithHidden: any[] = [
+      {
+        code: 'sec_vis-out',
+        sectionName: 'sec_vis',
+        displayName: 'Visible Section',
+        action: 'connection',
+        withTagSelect: true,
+        outbounds: [
+          {
+            code: 'n1',
+            displayName: 'NL Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 40,
+          },
+          {
+            code: 'n2',
+            displayName: 'Hidden Manual',
+            type: 'VLESS',
+            selected: false,
+            latency: 60,
+            hidden: true,
+          },
+        ],
+      },
+      {
+        code: 'sec_hid-out',
+        sectionName: 'sec_hid',
+        displayName: 'Secret Section',
+        action: 'connection',
+        withTagSelect: true,
+        hidden: true,
+        outbounds: [
+          {
+            code: 'n3',
+            displayName: 'DE Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 55,
+          },
+        ],
+      },
+    ];
+
+    const onToggleShowHidden = vi.fn();
+    const commonProps = {
+      sections: sectionsWithHidden,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onToggleShowHidden,
+    };
+
+    const hiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: false,
+    });
+    const hiddenWrap = createDummyElement('div');
+    hiddenBlocks.forEach((b: any) => hiddenWrap.appendChild(b));
+
+    const visibleNames = hiddenWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(visibleNames).toEqual(['Visible Section']);
+
+    const toggleBtn = hiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(toggleBtn).toBeTruthy();
+    expect(toggleBtn.textContent).toContain('(2)');
+    toggleBtn.click();
+    expect(onToggleShowHidden).toHaveBeenCalledTimes(1);
+
+    const revealedBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: true,
+    });
+    const revealedWrap = createDummyElement('div');
+    revealedBlocks.forEach((b: any) => revealedWrap.appendChild(b));
+    const revealedNames = revealedWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(revealedNames).toEqual(['Visible Section', 'Secret Section']);
+
+    const onlyHiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      sections: [sectionsWithHidden[1]],
+      showHidden: false,
+    });
+    const onlyHiddenWrap = createDummyElement('div');
+    onlyHiddenBlocks.forEach((b: any) => onlyHiddenWrap.appendChild(b));
+    const onlyHiddenBtn = onlyHiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(onlyHiddenBtn).toBeTruthy();
+    expect(onlyHiddenBtn.textContent).toContain('(1)');
+  });
+
+  it('offers all supported outbound source architectures including Tailscale and creates Tailscale source defaults', async () => {
+    const uciStore: Record<string, Record<string, any>> = {};
+    let modalContent: any[] = [];
+    const uiMock = {
+      showModal: vi.fn((_title: string, nodes: any[]) => {
+        modalContent = nodes;
+      }),
+      hideModal: vi.fn(),
+    };
+    const uciMock = {
+      sections: vi.fn((_pkg: string, type: string) =>
+        Object.values(uciStore).filter((s) => s['.type'] === type),
+      ),
+      get: vi.fn((_pkg: string, sid: string, opt?: string) => {
+        const entry = uciStore[sid];
+        if (!entry) return opt ? undefined : null;
+        return opt ? entry[opt] : entry;
+      }),
+      set: vi.fn((_pkg: string, sid: string, opt: string, val: any) => {
+        uciStore[sid] = uciStore[sid] || { '.name': sid };
+        uciStore[sid][opt] = val;
+      }),
+      add: vi.fn((_pkg: string, stype: string, sid: string) => {
+        uciStore[sid] = { '.name': sid, '.type': stype };
+      }),
+      unset: vi.fn((_pkg: string, sid: string, opt: string) => {
+        if (uciStore[sid]) delete uciStore[sid][opt];
+      }),
+    };
+    const prevUci = (globalThis as any).uci;
+    const prevUi = (globalThis as any).ui;
+    const prevWindow = (globalThis as any).window;
+    (globalThis as any).uci = uciMock;
+    (globalThis as any).ui = uiMock;
+    (globalThis as any).window = globalThis;
+
+    try {
+      const containerEl = createDummyElement('div');
+      const mockRef = {
+        sectiontype: 'outbound_source',
+        map: { data: uciMock, save: vi.fn(() => Promise.resolve()) },
+        renderMoreOptionsModal: vi.fn(),
+      };
+      studioDeckMod.mountTachyonStudioDeck({
+        type: 'outbound_source',
+        sectionRef: mockRef,
+        containerEl,
+      });
+
+      const addBtn = containerEl.querySelectorAll(
+        '.tachyon-studio-btn--primary',
+      )[0];
+      expect(addBtn).toBeTruthy();
+      addBtn.click();
+      expect(uiMock.showModal).toHaveBeenCalledTimes(1);
+
+      const modalRoot = modalContent[0];
+      const titles = modalRoot
+        .querySelectorAll('.tachyon-studio-create__tpl-title')
+        .map((el: any) => String(el.textContent || ''));
+
+      for (const expectedTitle of [
+        'Tailscale Mesh VPN',
+        'OpenVPN (.ovpn)',
+        'CSQTT / WDTT v3',
+        'AnyTLS',
+        'NaiveProxy',
+        'Mieru',
+        'Snell',
+        'Sudoku',
+        'MASQUE (HTTP/3)',
+        'ShadowTLS v3',
+        'TrustTunnel',
+        'TewFai',
+        'Tor (SOCKS5)',
+        'Outbound JSON',
+      ]) {
+        expect(titles).toContain(expectedTitle);
+      }
+
+      const tailscaleCard = modalRoot
+        .querySelectorAll('.tachyon-studio-create__tpl-card')
+        .find((c: any) =>
+          String(c.textContent || '').includes('Tailscale Mesh VPN'),
+        );
+      expect(tailscaleCard).toBeTruthy();
+      tailscaleCard.click();
+
+      const nameInput = modalRoot.querySelectorAll(
+        '.tachyon-studio-create__input',
+      )[0];
+      nameInput.value = 'ts_home';
+
+      const confirmBtn = modalRoot.querySelectorAll('.cbi-button-apply')[0];
+      expect(confirmBtn).toBeTruthy();
+      confirmBtn.click();
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(uciStore.ts_home).toBeTruthy();
+      expect(uciStore.ts_home.source_type).toBe('tailscale');
+      expect(uciStore.ts_home.tailscale_control_url).toBe(
+        'https://controlplane.tailscale.com',
+      );
+      expect(uciStore.ts_home.tailscale_accept_routes).toBe('1');
+      expect(uciStore.ts_home.tailscale_accept_dns).toBe('1');
+    } finally {
+      (globalThis as any).uci = prevUci;
+      (globalThis as any).ui = prevUi;
+      (globalThis as any).window = prevWindow;
+    }
   });
 });

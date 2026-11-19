@@ -97,10 +97,20 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     let params = parse_query_params(query_str);
 
     let (userinfo, host_port_path) = match authority_and_path.rsplit_once('@') {
-        Some((u, hp)) => (url_decode(u), hp),
-        None => (String::new(), authority_and_path),
+        Some((u, hp)) => (url_decode(u), hp.to_string()),
+        None if scheme_lower == "ss" || scheme_lower == "shadowsocks" => {
+            if let Some(decoded) = decode_b64_flex(authority_and_path.trim_end_matches('/'))
+                .and_then(|b| String::from_utf8(b).ok())
+                && let Some((u, hp)) = decoded.rsplit_once('@')
+            {
+                (u.to_string(), hp.to_string())
+            } else {
+                (String::new(), authority_and_path.to_string())
+            }
+        }
+        None => (String::new(), authority_and_path.to_string()),
     };
-    let host_port = host_port_path.split('/').next().unwrap_or(host_port_path);
+    let host_port = host_port_path.split('/').next().unwrap_or(&host_port_path);
     let (host, port) = split_host_port(host_port, 443)?;
 
     let tag = if !raw_tag.trim().is_empty() {
@@ -142,7 +152,7 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             obj.insert("server".into(), json!(host));
             obj.insert("server_port".into(), json!(port));
             obj.insert("password".into(), json!(userinfo));
-            if let Some(tls) = build_tls_object(&params, &host) {
+            if let Some(tls) = build_tls_object_with_default(&params, &host, true) {
                 obj.insert("tls".into(), tls);
             }
             if let Some(tr) = build_transport_object(&params) {
@@ -152,14 +162,30 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
         }
         "ss" | "shadowsocks" => {
             let (method, password) = decode_ss_userinfo(&userinfo)?;
-            json!({
-                "type": "shadowsocks",
-                "tag": tag,
-                "server": host,
-                "server_port": port,
-                "method": method,
-                "password": password,
-            })
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("shadowsocks"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("method".into(), json!(method));
+            obj.insert("password".into(), json!(password));
+            if let Some(plugin_raw) = params
+                .get("plugin")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                let (plugin, plugin_opts) = plugin_raw
+                    .split_once(';')
+                    .map(|(p, o)| (p.trim(), o.trim()))
+                    .unwrap_or((plugin_raw, ""));
+                if !plugin.is_empty() {
+                    obj.insert("plugin".into(), json!(plugin));
+                }
+                if !plugin_opts.is_empty() {
+                    obj.insert("plugin_opts".into(), json!(plugin_opts));
+                }
+            }
+            Value::Object(obj)
         }
         "hysteria2" | "hy2" => {
             let sni = params.get("sni").cloned().unwrap_or_else(|| host.clone());
@@ -194,21 +220,59 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
         }
         "tuic" => {
             let (uuid, password) = userinfo.split_once(':').unwrap_or((userinfo.as_str(), ""));
-            let sni = params.get("sni").cloned().unwrap_or_else(|| host.clone());
-            json!({
-                "type": "tuic",
-                "tag": tag,
-                "server": host,
-                "server_port": port,
-                "uuid": uuid,
-                "password": password,
-                "congestion_control": params.get("congestion_control").cloned().unwrap_or_else(|| "bbr".to_string()),
-                "tls": {
-                    "enabled": true,
-                    "server_name": sni,
-                    "alpn": ["h3"]
-                }
-            })
+            let sni = params
+                .get("sni")
+                .map(String::as_str)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&host);
+            let insecure = params
+                .get("allowInsecure")
+                .or_else(|| params.get("allow_insecure"))
+                .or_else(|| params.get("insecure"))
+                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+            let alpn: Vec<String> = params
+                .get("alpn")
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .map(String::from)
+                        .collect()
+                })
+                .filter(|v: &Vec<String>| !v.is_empty())
+                .unwrap_or_else(|| vec!["h3".to_string()]);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("tuic"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("uuid".into(), json!(uuid));
+            obj.insert("password".into(), json!(password));
+            obj.insert(
+                "congestion_control".into(),
+                json!(
+                    params
+                        .get("congestion_control")
+                        .cloned()
+                        .unwrap_or_else(|| "bbr".to_string())
+                ),
+            );
+            if let Some(udp_mode) = params
+                .get("udp_relay_mode")
+                .map(String::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("udp_relay_mode".into(), json!(udp_mode));
+            }
+            let mut tls = Map::new();
+            tls.insert("enabled".into(), json!(true));
+            tls.insert("server_name".into(), json!(sni));
+            tls.insert("alpn".into(), json!(alpn));
+            if insecure {
+                tls.insert("insecure".into(), json!(true));
+            }
+            obj.insert("tls".into(), Value::Object(tls));
+            Value::Object(obj)
         }
         "anytls" => {
             let sni = params.get("sni").cloned().unwrap_or_else(|| host.clone());
@@ -234,11 +298,50 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             if let Some(pk) = params.get("publickey").or_else(|| params.get("public_key")) {
                 obj.insert("peer_public_key".into(), json!(pk));
             }
-            let addr = params
+            if let Some(psk) = params
+                .get("presharedkey")
+                .or_else(|| params.get("preshared_key"))
+                .or_else(|| params.get("psk"))
+                .filter(|s| !s.trim().is_empty())
+            {
+                obj.insert("pre_shared_key".into(), json!(psk.trim()));
+            }
+            let addrs: Vec<String> = params
                 .get("address")
-                .cloned()
-                .unwrap_or_else(|| "10.0.0.2/32".to_string());
-            obj.insert("local_address".into(), json!([addr]));
+                .map(|raw| {
+                    raw.split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect()
+                })
+                .filter(|v: &Vec<String>| !v.is_empty())
+                .unwrap_or_else(|| vec!["10.0.0.2/32".to_string()]);
+            obj.insert("local_address".into(), json!(addrs));
+            if let Some(mtu) = params
+                .get("mtu")
+                .and_then(|s| s.trim().parse::<u16>().ok())
+                .filter(|&m| m >= 576)
+            {
+                obj.insert("mtu".into(), json!(mtu));
+            }
+            if let Some(res_raw) = params.get("reserved").filter(|s| !s.trim().is_empty()) {
+                let bytes: Vec<u8> = res_raw
+                    .split(',')
+                    .filter_map(|p| p.trim().parse::<u8>().ok())
+                    .collect();
+                if !bytes.is_empty() {
+                    obj.insert("reserved".into(), json!(bytes));
+                }
+            }
+            if let Some(ka) = params
+                .get("keepalive")
+                .or_else(|| params.get("persistent_keepalive"))
+                .and_then(|s| s.trim().parse::<u16>().ok())
+                .filter(|&k| k > 0)
+            {
+                obj.insert("persistent_keepalive".into(), json!(ka));
+            }
             if let Some(ports) = params.get("server_ports").filter(|s| !s.is_empty()) {
                 let list: Vec<&str> = ports.split(',').collect();
                 obj.insert("server_ports".into(), json!(list));
@@ -268,12 +371,25 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
                 "sni": params.get("sni").cloned().unwrap_or_else(|| host.clone()),
             })
         }
-        "socks" | "socks5" | "http" => {
-            let (u, p) = userinfo.split_once(':').unwrap_or((userinfo.as_str(), ""));
+        "socks" | "socks5" | "http" | "https" => {
+            let decoded_userinfo = if !userinfo.is_empty()
+                && !userinfo.contains(':')
+                && matches!(scheme_lower.as_str(), "socks" | "socks5")
+            {
+                decode_b64_flex(&userinfo)
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .filter(|s| s.contains(':'))
+                    .unwrap_or_else(|| userinfo.clone())
+            } else {
+                userinfo.clone()
+            };
+            let (u, p) = decoded_userinfo
+                .split_once(':')
+                .unwrap_or((decoded_userinfo.as_str(), ""));
             let mut obj = Map::new();
             obj.insert(
                 "type".into(),
-                json!(if scheme_lower == "http" {
+                json!(if scheme_lower == "http" || scheme_lower == "https" {
                     "http"
                 } else {
                     "socks"
@@ -285,6 +401,24 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             if !u.is_empty() {
                 obj.insert("username".into(), json!(u));
                 obj.insert("password".into(), json!(p));
+            }
+            if scheme_lower == "https" {
+                let sni = params
+                    .get("sni")
+                    .map(String::as_str)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&host);
+                let insecure = params
+                    .get("allowInsecure")
+                    .or_else(|| params.get("insecure"))
+                    .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+                let mut tls = Map::new();
+                tls.insert("enabled".into(), json!(true));
+                tls.insert("server_name".into(), json!(sni));
+                if insecure {
+                    tls.insert("insecure".into(), json!(true));
+                }
+                obj.insert("tls".into(), Value::Object(tls));
             }
             Value::Object(obj)
         }
@@ -1267,11 +1401,7 @@ fn parse_wdtt_uri(
 }
 
 fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedProxyNode> {
-    let clean = b64_part.trim();
-    let decoded = B64_STD
-        .decode(clean)
-        .or_else(|_| B64_URL.decode(clean))
-        .ok()?;
+    let decoded = decode_b64_flex(b64_part)?;
     let v: Value = serde_json::from_slice(&decoded).ok()?;
     let host = v.get("add")?.as_str()?.to_string();
     let port = v.get("port").and_then(|p| {
@@ -1286,13 +1416,36 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
         format!("vmess-{host}:{port}-{idx}")
     };
     let country = detect_country_code(&tag);
-    let net = v.get("net").and_then(Value::as_str).unwrap_or("tcp");
-    let tls_on = v.get("tls").and_then(Value::as_str).unwrap_or("") == "tls";
+    let net = v
+        .get("net")
+        .and_then(Value::as_str)
+        .unwrap_or("tcp")
+        .trim()
+        .to_ascii_lowercase();
+    let tls_on = v
+        .get("tls")
+        .and_then(Value::as_str)
+        .is_some_and(|s| s.eq_ignore_ascii_case("tls"));
     let sni = v
         .get("sni")
-        .or_else(|| v.get("host"))
         .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            v.get("host")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+        })
         .unwrap_or(&host);
+    let security = v
+        .get("scy")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("auto");
+    let alter_id = v.get("aid").and_then(|a| {
+        a.as_u64()
+            .or_else(|| a.as_str().and_then(|s| s.trim().parse::<u64>().ok()))
+    });
 
     let mut obj = Map::new();
     obj.insert("type".into(), json!("vmess"));
@@ -1300,32 +1453,139 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
     obj.insert("server".into(), json!(host));
     obj.insert("server_port".into(), json!(port));
     obj.insert("uuid".into(), json!(uuid));
-    obj.insert("security".into(), json!("auto"));
-    if tls_on {
-        obj.insert(
-            "tls".into(),
-            json!({
-                "enabled": true,
-                "server_name": sni
-            }),
-        );
+    obj.insert("security".into(), json!(security));
+    if let Some(aid) = alter_id
+        && aid > 0
+    {
+        obj.insert("alter_id".into(), json!(aid));
     }
-    if net == "ws" {
-        obj.insert(
-            "transport".into(),
-            json!({
-                "type": "ws",
-                "path": v.get("path").and_then(Value::as_str).unwrap_or("/")
-            }),
-        );
-    } else if net == "grpc" {
-        obj.insert(
-            "transport".into(),
-            json!({
-                "type": "grpc",
-                "service_name": v.get("path").and_then(Value::as_str).unwrap_or("")
-            }),
-        );
+    if tls_on {
+        let mut tls = Map::new();
+        tls.insert("enabled".into(), json!(true));
+        tls.insert("server_name".into(), json!(sni));
+        if let Some(fp) = v
+            .get("fp")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
+        }
+        if let Some(alpn_raw) = v
+            .get("alpn")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let alpn: Vec<&str> = alpn_raw
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !alpn.is_empty() {
+                tls.insert("alpn".into(), json!(alpn));
+            }
+        }
+        let insecure = v
+            .get("allowInsecure")
+            .or_else(|| v.get("insecure"))
+            .is_some_and(|iv| {
+                iv.as_bool() == Some(true)
+                    || iv.as_u64() == Some(1)
+                    || iv
+                        .as_str()
+                        .is_some_and(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+            });
+        if insecure {
+            tls.insert("insecure".into(), json!(true));
+        }
+        obj.insert("tls".into(), Value::Object(tls));
+    }
+    let tr_host = v
+        .get("host")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    let tr_path = v
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    match net.as_str() {
+        "ws" => {
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("ws"));
+            tr.insert(
+                "path".into(),
+                json!(if tr_path.is_empty() { "/" } else { tr_path }),
+            );
+            if !tr_host.is_empty() {
+                tr.insert("headers".into(), json!({ "Host": tr_host }));
+            }
+            obj.insert("transport".into(), Value::Object(tr));
+        }
+        "grpc" => {
+            obj.insert(
+                "transport".into(),
+                json!({
+                    "type": "grpc",
+                    "service_name": tr_path
+                }),
+            );
+        }
+        "http" | "h2" => {
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("http"));
+            tr.insert(
+                "path".into(),
+                json!(if tr_path.is_empty() { "/" } else { tr_path }),
+            );
+            if !tr_host.is_empty() {
+                let hosts: Vec<&str> = tr_host
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !hosts.is_empty() {
+                    tr.insert("host".into(), json!(hosts));
+                }
+            }
+            obj.insert("transport".into(), Value::Object(tr));
+        }
+        "httpupgrade" => {
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("httpupgrade"));
+            tr.insert(
+                "path".into(),
+                json!(if tr_path.is_empty() { "/" } else { tr_path }),
+            );
+            if !tr_host.is_empty() {
+                tr.insert("host".into(), json!(tr_host));
+            }
+            obj.insert("transport".into(), Value::Object(tr));
+        }
+        "xhttp" | "splithttp" => {
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("xhttp"));
+            tr.insert(
+                "path".into(),
+                json!(if tr_path.is_empty() { "/" } else { tr_path }),
+            );
+            tr.insert(
+                "mode".into(),
+                json!(
+                    v.get("mode")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.trim().is_empty())
+                        .unwrap_or("auto")
+                ),
+            );
+            if !tr_host.is_empty() {
+                tr.insert("host".into(), json!(tr_host));
+            }
+            obj.insert("transport".into(), Value::Object(tr));
+        }
+        _ => {}
     }
 
     Some(ParsedProxyNode {
@@ -2900,6 +3160,178 @@ fn first_port_from_specs(specs: &[String]) -> Option<u16> {
     })
 }
 
+fn append_mieru_port_specs(
+    raw: &str,
+    query_specs: &mut Vec<String>,
+    seen_specs: &mut HashSet<String>,
+    has_explicit_range: &mut bool,
+    force_range: bool,
+) -> bool {
+    if force_range {
+        *has_explicit_range = true;
+    }
+    for raw_tok in raw.split(|c: char| c == ',' || c.is_whitespace()) {
+        let norm = raw_tok.trim().replace(':', "-");
+        if norm.is_empty() {
+            continue;
+        }
+        let spec = if let Some((lo_s, hi_s)) = norm.split_once('-') {
+            if lo_s.is_empty()
+                || hi_s.is_empty()
+                || !lo_s.bytes().all(|b| b.is_ascii_digit())
+                || !hi_s.bytes().all(|b| b.is_ascii_digit())
+            {
+                return false;
+            }
+            let Ok(lo) = lo_s.parse::<u32>() else {
+                return false;
+            };
+            let Ok(hi) = hi_s.parse::<u32>() else {
+                return false;
+            };
+            if !(1..=65535).contains(&lo) || !(1..=65535).contains(&hi) || lo > hi {
+                return false;
+            }
+            if lo == hi {
+                lo.to_string()
+            } else {
+                *has_explicit_range = true;
+                format!("{lo}-{hi}")
+            }
+        } else {
+            if !norm.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            let Ok(p) = norm.parse::<u16>() else {
+                return false;
+            };
+            if p == 0 {
+                return false;
+            }
+            p.to_string()
+        };
+        if seen_specs.insert(spec.clone()) {
+            query_specs.push(spec);
+        }
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_mieru_parsed_node(
+    full_uri: &str,
+    scheme_lower: &str,
+    host: String,
+    auth_port: Option<u16>,
+    query_specs: Vec<String>,
+    has_explicit_range: bool,
+    username: String,
+    password: String,
+    transport_raw: Option<&str>,
+    multiplexing: Option<&str>,
+    traffic_pattern: Option<&str>,
+    handshake_mode: Option<&str>,
+    tag_override: &str,
+    profile: Option<&str>,
+) -> Option<ParsedProxyNode> {
+    if host.is_empty() || username.is_empty() || password.is_empty() {
+        return None;
+    }
+
+    let single_port: Option<u16>;
+    let mut port_ranges: Vec<String> = Vec::new();
+    if !query_specs.is_empty() {
+        let single_query_port = if query_specs.len() == 1
+            && !has_explicit_range
+            && query_specs[0].bytes().all(|b| b.is_ascii_digit())
+        {
+            query_specs[0].parse::<u16>().ok().filter(|&p| p >= 1)
+        } else {
+            None
+        };
+        if let Some(sqp) = single_query_port {
+            if auth_port.is_none() || auth_port == Some(sqp) || scheme_lower == "mierus" {
+                single_port = Some(sqp);
+            } else {
+                single_port = auth_port;
+                port_ranges = query_specs;
+            }
+        } else {
+            port_ranges = query_specs;
+            single_port = auth_port;
+        }
+    } else {
+        single_port = Some(auth_port?);
+    }
+
+    let transport = if transport_raw
+        .map(|s| s.trim().eq_ignore_ascii_case("UDP"))
+        .unwrap_or(false)
+    {
+        "UDP"
+    } else {
+        "TCP"
+    };
+
+    let display_port = port_ranges
+        .first()
+        .cloned()
+        .or_else(|| single_port.map(|p| p.to_string()))
+        .unwrap_or_default();
+    let tag_trim = tag_override.trim();
+    let tag = if !tag_trim.is_empty() {
+        tag_trim.to_string()
+    } else if let Some(prof) = profile.map(str::trim).filter(|s| !s.is_empty()) {
+        prof.to_string()
+    } else {
+        format!("{host}:{display_port}")
+    };
+    let country = detect_country_code(&tag);
+
+    let mut obj = Map::new();
+    obj.insert("type".into(), json!("mieru"));
+    obj.insert("tag".into(), json!(tag));
+    obj.insert("server".into(), json!(host));
+    obj.insert("transport".into(), json!(transport));
+    obj.insert("username".into(), json!(username));
+    obj.insert("password".into(), json!(password));
+    if !port_ranges.is_empty() {
+        obj.insert("server_ports".into(), json!(port_ranges));
+    }
+    if let Some(sp) = single_port {
+        obj.insert("server_port".into(), json!(sp));
+    }
+    if let Some(mux) = multiplexing.map(str::trim).filter(|s| !s.is_empty()) {
+        obj.insert("multiplexing".into(), json!(mux));
+    }
+    if let Some(tp) = traffic_pattern.map(str::trim).filter(|s| !s.is_empty()) {
+        obj.insert("traffic_pattern".into(), json!(tp));
+    }
+    if let Some(hm) = handshake_mode.map(str::trim).filter(|s| !s.is_empty()) {
+        obj.insert("handshake_mode".into(), json!(hm));
+    }
+
+    let summary_port = single_port
+        .or_else(|| first_port_from_specs(&port_ranges))
+        .unwrap_or(0);
+    let out_val = Value::Object(obj);
+    let raw_uri = if full_uri.is_empty() {
+        serialize_mieru_outbound(&out_val).unwrap_or_else(|| "clash:mieru".to_string())
+    } else {
+        full_uri.to_string()
+    };
+
+    Some(ParsedProxyNode {
+        tag,
+        protocol: "mieru".to_string(),
+        server: host,
+        server_port: summary_port,
+        country,
+        raw_uri,
+        outbound_json: out_val,
+    })
+}
+
 fn parse_mieru_uri(full_uri: &str, scheme_lower: &str, rest: &str) -> Option<ParsedProxyNode> {
     let (before_hash, raw_fragment) = match rest.split_once('#') {
         Some((b, f)) => (b, url_decode_percent(f).trim().to_string()),
@@ -2939,54 +3371,33 @@ fn parse_mieru_uri(full_uri: &str, scheme_lower: &str, rest: &str) -> Option<Par
         }
         let (raw_k, raw_v) = pair.split_once('=').unwrap_or((pair, ""));
         let key = url_decode(raw_k).trim().to_ascii_lowercase();
-        let val = url_decode(raw_v).trim().to_string();
         if key.is_empty() {
             continue;
         }
+        let val = if matches!(
+            key.as_str(),
+            "traffic-pattern" | "traffic_pattern" | "password" | "pass"
+        ) {
+            url_decode_percent(raw_v)
+        } else {
+            url_decode(raw_v)
+        }
+        .trim()
+        .to_string();
         if !val.is_empty()
             && matches!(
                 key.as_str(),
                 "port" | "ports" | "port-range" | "server_ports"
             )
+            && !append_mieru_port_specs(
+                &val,
+                &mut query_specs,
+                &mut seen_specs,
+                &mut has_explicit_range,
+                key != "port",
+            )
         {
-            if key != "port" {
-                has_explicit_range = true;
-            }
-            for raw_tok in val.split(|c: char| c == ',' || c.is_whitespace()) {
-                let norm = raw_tok.trim().replace(':', "-");
-                if norm.is_empty() {
-                    continue;
-                }
-                let spec = if let Some((lo_s, hi_s)) = norm.split_once('-') {
-                    if lo_s.is_empty()
-                        || hi_s.is_empty()
-                        || !lo_s.bytes().all(|b| b.is_ascii_digit())
-                        || !hi_s.bytes().all(|b| b.is_ascii_digit())
-                    {
-                        return None;
-                    }
-                    let lo = lo_s.parse::<u32>().ok()?;
-                    let hi = hi_s.parse::<u32>().ok()?;
-                    if !(1..=65535).contains(&lo) || !(1..=65535).contains(&hi) || lo > hi {
-                        return None;
-                    }
-                    if lo == hi {
-                        lo.to_string()
-                    } else {
-                        has_explicit_range = true;
-                        format!("{lo}-{hi}")
-                    }
-                } else {
-                    if !norm.bytes().all(|b| b.is_ascii_digit()) {
-                        return None;
-                    }
-                    let p = norm.parse::<u16>().ok().filter(|&p| p >= 1)?;
-                    p.to_string()
-                };
-                if seen_specs.insert(spec.clone()) {
-                    query_specs.push(spec);
-                }
-            }
+            return None;
         }
         params.insert(key, val);
     }
@@ -2998,105 +3409,36 @@ fn parse_mieru_uri(full_uri: &str, scheme_lower: &str, rest: &str) -> Option<Par
             .cloned()
             .unwrap_or_default();
     }
-    if host.is_empty() || username.is_empty() || password.is_empty() {
-        return None;
-    }
 
-    let single_port: Option<u16>;
-    let mut port_ranges: Vec<String> = Vec::new();
-    if !query_specs.is_empty() {
-        let single_query_port = if query_specs.len() == 1
-            && !has_explicit_range
-            && query_specs[0].bytes().all(|b| b.is_ascii_digit())
-        {
-            query_specs[0].parse::<u16>().ok().filter(|&p| p >= 1)
-        } else {
-            None
-        };
-        if let Some(sqp) = single_query_port {
-            if auth_port.is_none() || auth_port == Some(sqp) || scheme_lower == "mierus" {
-                single_port = Some(sqp);
-            } else {
-                single_port = auth_port;
-                port_ranges = query_specs;
-            }
-        } else {
-            port_ranges = query_specs;
-            single_port = auth_port;
-        }
-    } else {
-        single_port = Some(auth_port?);
-    }
-
-    let transport_raw = params
-        .get("protocol")
-        .or_else(|| params.get("transport"))
-        .or_else(|| params.get("network"))
-        .map(|s| s.trim().to_ascii_uppercase())
-        .unwrap_or_else(|| "TCP".to_string());
-    let transport = if transport_raw == "UDP" { "UDP" } else { "TCP" };
-
-    let display_port = port_ranges
-        .first()
-        .cloned()
-        .or_else(|| single_port.map(|p| p.to_string()))
-        .unwrap_or_default();
-    let tag = if !raw_fragment.is_empty() {
-        raw_fragment
-    } else if let Some(prof) = params
-        .get("profile")
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        prof.to_string()
-    } else {
-        format!("{host}:{display_port}")
-    };
-    let country = detect_country_code(&tag);
-
-    let mut obj = Map::new();
-    obj.insert("type".into(), json!("mieru"));
-    obj.insert("tag".into(), json!(tag));
-    obj.insert("server".into(), json!(host));
-    obj.insert("transport".into(), json!(transport));
-    obj.insert("username".into(), json!(username));
-    obj.insert("password".into(), json!(password));
-    if !port_ranges.is_empty() {
-        obj.insert("server_ports".into(), json!(port_ranges));
-    }
-    if let Some(sp) = single_port {
-        obj.insert("server_port".into(), json!(sp));
-    }
-    if let Some(mux) = params
-        .get("multiplexing")
-        .or_else(|| params.get("mux"))
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        obj.insert("multiplexing".into(), json!(mux));
-    }
-    if let Some(tp) = params
-        .get("traffic-pattern")
-        .or_else(|| params.get("traffic_pattern"))
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        obj.insert("traffic_pattern".into(), json!(tp));
-    }
-
-    let summary_port = single_port
-        .or_else(|| first_port_from_specs(&port_ranges))
-        .unwrap_or(0);
-
-    Some(ParsedProxyNode {
-        tag,
-        protocol: "mieru".to_string(),
-        server: host,
-        server_port: summary_port,
-        country,
-        raw_uri: full_uri.to_string(),
-        outbound_json: Value::Object(obj),
-    })
+    build_mieru_parsed_node(
+        full_uri,
+        scheme_lower,
+        host,
+        auth_port,
+        query_specs,
+        has_explicit_range,
+        username,
+        password,
+        params
+            .get("protocol")
+            .or_else(|| params.get("transport"))
+            .or_else(|| params.get("network"))
+            .map(String::as_str),
+        params
+            .get("multiplexing")
+            .or_else(|| params.get("mux"))
+            .map(String::as_str),
+        params
+            .get("traffic-pattern")
+            .or_else(|| params.get("traffic_pattern"))
+            .map(String::as_str),
+        params
+            .get("handshake-mode")
+            .or_else(|| params.get("handshake_mode"))
+            .map(String::as_str),
+        &raw_fragment,
+        params.get("profile").map(String::as_str),
+    )
 }
 
 pub(crate) fn extract_host_only(raw: &str) -> String {
@@ -3230,6 +3572,14 @@ pub fn serialize_mieru_outbound(outbound: &Value) -> Option<String> {
     {
         query_parts.push(format!("multiplexing={}", url_encode_component(mux)));
     }
+    if let Some(hm) = outbound
+        .get("handshake_mode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        query_parts.push(format!("handshake-mode={}", url_encode_component(hm)));
+    }
     if let Some(tp) = outbound
         .get("traffic_pattern")
         .and_then(Value::as_str)
@@ -3262,28 +3612,40 @@ fn decode_ss_userinfo(userinfo: &str) -> Option<(String, String)> {
     if let Some((m, p)) = userinfo.split_once(':') {
         return Some((m.to_string(), p.to_string()));
     }
-    let decoded = B64_URL
-        .decode(userinfo)
-        .or_else(|_| B64_STD.decode(userinfo))
-        .ok()?;
+    let decoded = decode_b64_flex(userinfo)?;
     let s = String::from_utf8(decoded).ok()?;
     let (m, p) = s.split_once(':')?;
     Some((m.to_string(), p.to_string()))
 }
 
 fn build_tls_object(params: &HashMap<String, String>, default_host: &str) -> Option<Value> {
-    let sec = params.get("security").map(String::as_str).unwrap_or("none");
+    build_tls_object_with_default(params, default_host, false)
+}
+
+fn build_tls_object_with_default(
+    params: &HashMap<String, String>,
+    default_host: &str,
+    default_tls: bool,
+) -> Option<Value> {
+    let default_sec = if default_tls { "tls" } else { "none" };
+    let sec = params
+        .get("security")
+        .map(String::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(default_sec);
     if sec != "tls" && sec != "reality" {
         return None;
     }
     let sni = params
         .get("sni")
         .or_else(|| params.get("serverName"))
-        .cloned()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default_host.to_string());
     let fp = params
         .get("fp")
-        .cloned()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "chrome".to_string());
     let mut tls = Map::new();
     tls.insert("enabled".into(), json!(true));
@@ -3295,6 +3657,41 @@ fn build_tls_object(params: &HashMap<String, String>, default_host: &str) -> Opt
             "fingerprint": fp
         }),
     );
+    if let Some(alpn_raw) = params.get("alpn").filter(|s| !s.trim().is_empty()) {
+        let alpn: Vec<&str> = alpn_raw
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !alpn.is_empty() {
+            tls.insert("alpn".into(), json!(alpn));
+        }
+    }
+    if params
+        .get("allowInsecure")
+        .or_else(|| params.get("insecure"))
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    {
+        tls.insert("insecure".into(), json!(true));
+    }
+    let has_fm_fragment = params.get("fm").is_some_and(|raw| {
+        serde_json::from_str::<Value>(raw)
+            .ok()
+            .and_then(|v| v.get("fragment").cloned())
+            .is_some_and(|f| match f {
+                Value::Bool(b) => b,
+                Value::String(s) => !s.trim().is_empty() && !s.eq_ignore_ascii_case("false"),
+                Value::Object(_) => true,
+                _ => false,
+            })
+    });
+    let has_param_fragment = params.get("fragment").is_some_and(|s| {
+        let t = s.trim();
+        !t.is_empty() && t != "0" && !t.eq_ignore_ascii_case("false")
+    });
+    if has_fm_fragment || has_param_fragment {
+        tls.insert("fragment".into(), json!(true));
+    }
     if sec == "reality" {
         tls.insert(
             "reality".into(),
@@ -3309,25 +3706,98 @@ fn build_tls_object(params: &HashMap<String, String>, default_host: &str) -> Opt
 }
 
 fn build_transport_object(params: &HashMap<String, String>) -> Option<Value> {
-    let t = params.get("type").map(String::as_str).unwrap_or("tcp");
-    match t {
-        "ws" => Some(json!({
-            "type": "ws",
-            "path": params.get("path").cloned().unwrap_or_else(|| "/".to_string()),
-        })),
+    let t = params
+        .get("type")
+        .map(String::as_str)
+        .unwrap_or("tcp")
+        .trim()
+        .to_ascii_lowercase();
+    let path = params
+        .get("path")
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .unwrap_or_else(|| "/".to_string());
+    let host = params
+        .get("host")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    match t.as_str() {
+        "ws" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("ws"));
+            obj.insert("path".into(), json!(path));
+            if let Some(h) = host {
+                obj.insert("headers".into(), json!({ "Host": h }));
+            }
+            Some(Value::Object(obj))
+        }
+        "httpupgrade" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("httpupgrade"));
+            obj.insert("path".into(), json!(path));
+            if let Some(h) = host {
+                obj.insert("host".into(), json!(h));
+            }
+            Some(Value::Object(obj))
+        }
         "grpc" => Some(json!({
             "type": "grpc",
             "service_name": params.get("serviceName").or_else(|| params.get("path")).cloned().unwrap_or_default(),
         })),
-        "xhttp" | "splithttp" => Some(json!({
-            "type": "xhttp",
-            "path": params.get("path").cloned().unwrap_or_else(|| "/".to_string()),
-            "mode": params.get("mode").cloned().unwrap_or_else(|| "auto".to_string()),
-        })),
-        "http" | "h2" => Some(json!({
-            "type": "http",
-            "path": params.get("path").cloned().unwrap_or_else(|| "/".to_string()),
-        })),
+        "xhttp" | "splithttp" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("xhttp"));
+            obj.insert("path".into(), json!(path));
+            obj.insert(
+                "mode".into(),
+                json!(
+                    params
+                        .get("mode")
+                        .filter(|s| !s.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| "auto".to_string())
+                ),
+            );
+            if let Some(h) = host {
+                obj.insert("host".into(), json!(h));
+            }
+            if let Some(pad) = params
+                .get("xPaddingBytes")
+                .or_else(|| params.get("x_padding_bytes"))
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("x_padding_bytes".into(), json!(pad));
+            }
+            if params
+                .get("noGRPCHeader")
+                .or_else(|| params.get("no_grpc_header"))
+                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            {
+                obj.insert("no_grpc_header".into(), json!(true));
+            }
+            if let Some(extra_raw) = params.get("extra").filter(|s| !s.trim().is_empty())
+                && let Ok(extra_val) = serde_json::from_str::<Value>(extra_raw)
+            {
+                obj.insert("extra".into(), extra_val);
+            }
+            Some(Value::Object(obj))
+        }
+        "http" | "h2" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("http"));
+            obj.insert("path".into(), json!(path));
+            if let Some(h) = host {
+                let hosts: Vec<&str> = h
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !hosts.is_empty() {
+                    obj.insert("host".into(), json!(hosts));
+                }
+            }
+            Some(Value::Object(obj))
+        }
         _ => None,
     }
 }
@@ -3533,12 +4003,27 @@ struct DesyncParams<'a> {
     udp_fake: bool,
     udp_repeats: u8,
     udp_fake_ttl: u8,
+    udp_fake_payload: &'a str,
+    udp_out_range: &'a str,
+    udp_keep_socket: &'a str,
     udplen: u16,
 }
 
 fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bool) -> Value {
     if !p.opts.trim().is_empty() {
-        return crate::fuzzer::parse_desync_args_to_outbound(p.opts, tag, false);
+        let mut parsed = crate::fuzzer::parse_desync_args_to_outbound(p.opts, tag, false);
+        if let Some(obj) = parsed.as_object_mut() {
+            if !obj.contains_key("udp_fake_payload") {
+                crate::fuzzer::insert_desync_udp_fake_payload(obj, p.udp_fake_payload);
+            }
+            if !obj.contains_key("udp_out_range") {
+                crate::fuzzer::insert_desync_udp_out_range(obj, p.udp_out_range);
+            }
+            if !obj.contains_key("udp_keep_socket") {
+                crate::fuzzer::insert_desync_udp_keep_socket(obj, p.udp_keep_socket);
+            }
+        }
+        return parsed;
     }
     let mut obj = Map::new();
     obj.insert("type".into(), json!("desync"));
@@ -3653,6 +4138,9 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
     if p.udp_fake_ttl > 0 {
         obj.insert("udp_fake_ttl".into(), json!(p.udp_fake_ttl.min(128)));
     }
+    crate::fuzzer::insert_desync_udp_fake_payload(&mut obj, p.udp_fake_payload);
+    crate::fuzzer::insert_desync_udp_out_range(&mut obj, p.udp_out_range);
+    crate::fuzzer::insert_desync_udp_keep_socket(&mut obj, p.udp_keep_socket);
     if p.udplen > 0 {
         obj.insert("udplen".into(), json!(p.udplen));
     }
@@ -3660,7 +4148,7 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
 }
 
 /// Build outbound JSON objects for an `OutboundSource` and return `(tag, json, visible_in_selector)` tuples.
-fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value, bool)> {
+pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value, bool)> {
     let mut raw_out: Vec<(String, Value)> = Vec::new();
     if !src.enabled {
         return Vec::new();
@@ -3694,6 +4182,9 @@ fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value, bool)> {
                     udp_fake: src.desync_quic_fake,
                     udp_repeats: src.desync_udp_repeats,
                     udp_fake_ttl: src.desync_udp_fake_ttl,
+                    udp_fake_payload: &src.desync_udp_fake_payload,
+                    udp_out_range: &src.desync_udp_out_range,
+                    udp_keep_socket: &src.desync_udp_keep_socket,
                     udplen: src.desync_udplen,
                 },
                 true,
@@ -4216,6 +4707,18 @@ fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value, bool)> {
                 if !src.mieru_multiplexing.trim().is_empty() {
                     obj.insert("multiplexing".into(), json!(src.mieru_multiplexing.trim()));
                 }
+                if !src.mieru_handshake_mode.trim().is_empty() {
+                    obj.insert(
+                        "handshake_mode".into(),
+                        json!(src.mieru_handshake_mode.trim()),
+                    );
+                }
+                if !src.mieru_traffic_pattern.trim().is_empty() {
+                    obj.insert(
+                        "traffic_pattern".into(),
+                        json!(src.mieru_traffic_pattern.trim()),
+                    );
+                }
             }
             if !src.username.is_empty() {
                 obj.insert("username".into(), json!(src.username));
@@ -4717,7 +5220,7 @@ fn json_port_at(vals: &[Option<&Value>]) -> Option<u16> {
     None
 }
 
-fn make_unique_tag(base: &str, taken: &mut HashSet<String>) -> String {
+pub(crate) fn make_unique_tag(base: &str, taken: &mut HashSet<String>) -> String {
     let base = if base.trim().is_empty() {
         "server"
     } else {
@@ -4733,6 +5236,16 @@ fn make_unique_tag(base: &str, taken: &mut HashSet<String>) -> String {
         }
     }
     format!("{base}-overflow")
+}
+
+pub(crate) fn assign_unique_node_tag(node: &mut ParsedProxyNode, taken: &mut HashSet<String>) {
+    let unique = make_unique_tag(&node.tag, taken);
+    if unique != node.tag {
+        node.tag = unique.clone();
+        if let Some(obj) = node.outbound_json.as_object_mut() {
+            obj.insert("tag".into(), json!(unique));
+        }
+    }
 }
 
 fn has_ascii_digits_with_optional_sep(s: &str) -> bool {
@@ -5748,6 +6261,87 @@ pub fn parse_json_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyN
             let obs = m.get("outbounds").and_then(Value::as_array);
             let eps = m.get("endpoints").and_then(Value::as_array);
             if obs.is_none() && eps.is_none() {
+                if let Some(servers) = m.get("servers").and_then(Value::as_array) {
+                    let mut sip_nodes = Vec::new();
+                    let mut taken_tags = HashSet::new();
+                    for (idx, srv) in servers.iter().enumerate() {
+                        let Some(obj) = srv.as_object() else {
+                            continue;
+                        };
+                        let server = obj
+                            .get("server")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let port = parse_json_u16(obj.get("server_port").unwrap_or(&Value::Null))
+                            .or_else(|| parse_json_u16(obj.get("port").unwrap_or(&Value::Null)))
+                            .unwrap_or(0);
+                        let method = obj
+                            .get("method")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let password = obj
+                            .get("password")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        if server.is_empty() || port == 0 || method.is_empty() {
+                            continue;
+                        }
+                        let raw_tag = obj
+                            .get("remarks")
+                            .or_else(|| obj.get("tag"))
+                            .or_else(|| obj.get("name"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim();
+                        let tag = if raw_tag.is_empty() {
+                            format!("ss-{server}:{port}-{idx}")
+                        } else {
+                            raw_tag.to_string()
+                        };
+                        let mut out = Map::new();
+                        out.insert("type".into(), json!("shadowsocks"));
+                        out.insert("tag".into(), json!(tag));
+                        out.insert("server".into(), json!(server));
+                        out.insert("server_port".into(), json!(port));
+                        out.insert("method".into(), json!(method));
+                        out.insert("password".into(), json!(password));
+                        if let Some(plugin) = obj
+                            .get("plugin")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            out.insert("plugin".into(), json!(plugin));
+                        }
+                        if let Some(plugin_opts) = obj
+                            .get("plugin_opts")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                        {
+                            out.insert("plugin_opts".into(), json!(plugin_opts));
+                        }
+                        let mut node = ParsedProxyNode {
+                            country: detect_country_code(&tag),
+                            tag,
+                            protocol: "ss".to_string(),
+                            server,
+                            server_port: port,
+                            raw_uri: String::new(),
+                            outbound_json: Value::Object(out),
+                        };
+                        assign_unique_node_tag(&mut node, &mut taken_tags);
+                        sip_nodes.push(node);
+                    }
+                    if !sip_nodes.is_empty() {
+                        return Some(sip_nodes);
+                    }
+                }
                 return None;
             }
             let mut combined = Vec::new();
@@ -5765,12 +6359,794 @@ pub fn parse_json_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyN
     if nodes.is_empty() { None } else { Some(nodes) }
 }
 
+fn strip_yaml_scalar(raw: &str) -> String {
+    let s = raw.trim();
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        let inner = &s[1..s.len() - 1];
+        let mut out = String::with_capacity(inner.len());
+        let mut chars = inner.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('"') => out.push('"'),
+                    Some('\\') => out.push('\\'),
+                    Some('n') => out.push('\n'),
+                    Some('t') => out.push('\t'),
+                    Some('r') => out.push('\r'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => out.push('\\'),
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        return out;
+    }
+    if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
+        return s[1..s.len() - 1].replace("''", "'");
+    }
+    let mut prev_ws = false;
+    for (idx, ch) in s.char_indices() {
+        if ch == '#' && prev_ws {
+            return s[..idx].trim().to_string();
+        }
+        prev_ws = ch.is_whitespace();
+    }
+    s.to_string()
+}
+
+fn split_yaml_top_level(input: &str, sep: char) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    let mut depth_bracket = 0usize;
+    let mut depth_brace = 0usize;
+
+    for ch in input.chars() {
+        if escape {
+            cur.push(ch);
+            escape = false;
+            continue;
+        }
+        if in_double && ch == '\\' {
+            cur.push(ch);
+            escape = true;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            cur.push(ch);
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            cur.push(ch);
+            continue;
+        }
+        if !in_single && !in_double {
+            match ch {
+                '[' => depth_bracket += 1,
+                ']' => depth_bracket = depth_bracket.saturating_sub(1),
+                '{' => depth_brace += 1,
+                '}' => depth_brace = depth_brace.saturating_sub(1),
+                c if c == sep && depth_bracket == 0 && depth_brace == 0 => {
+                    parts.push(std::mem::take(&mut cur));
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        cur.push(ch);
+    }
+    if !cur.trim().is_empty() {
+        parts.push(cur);
+    }
+    parts
+}
+
+fn parse_yaml_value_items(raw: &str) -> Vec<String> {
+    let s = strip_yaml_scalar(raw);
+    let trimmed = s.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('[') && trimmed.ends_with(']') {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        return split_yaml_top_level(inner, ',')
+            .into_iter()
+            .map(|item| strip_yaml_scalar(&item))
+            .filter(|item| !item.is_empty())
+            .collect();
+    }
+    if trimmed.is_empty() {
+        Vec::new()
+    } else {
+        vec![trimmed.to_string()]
+    }
+}
+
+fn clash_first_scalar(fields: &HashMap<String, Vec<String>>, keys: &[&str]) -> String {
+    for k in keys {
+        if let Some(vals) = fields.get(*k)
+            && let Some(first) = vals.iter().find(|v| !v.trim().is_empty())
+        {
+            return first.trim().to_string();
+        }
+    }
+    String::new()
+}
+
+fn normalize_clash_mieru_proxy(fields: &HashMap<String, Vec<String>>) -> Option<ParsedProxyNode> {
+    let ptype = clash_first_scalar(fields, &["type"]).to_ascii_lowercase();
+    if ptype != "mieru" {
+        return None;
+    }
+    let host = clash_first_scalar(fields, &["server", "host"]);
+    let username = clash_first_scalar(fields, &["username", "user"]);
+    let password = clash_first_scalar(fields, &["password", "pass"]);
+    if host.is_empty() || username.is_empty() || password.is_empty() {
+        return None;
+    }
+
+    let auth_port = clash_first_scalar(fields, &["port", "server_port"])
+        .parse::<u16>()
+        .ok()
+        .filter(|&p| p >= 1);
+
+    let mut query_specs: Vec<String> = Vec::new();
+    let mut seen_specs: HashSet<String> = HashSet::new();
+    let mut has_explicit_range = false;
+    for key in ["port-range", "ports", "server_ports", "server-ports"] {
+        if let Some(vals) = fields.get(key) {
+            for raw_val in vals {
+                if !append_mieru_port_specs(
+                    raw_val,
+                    &mut query_specs,
+                    &mut seen_specs,
+                    &mut has_explicit_range,
+                    true,
+                ) {
+                    return None;
+                }
+            }
+        }
+    }
+    if query_specs.is_empty() && auth_port.is_none() {
+        return None;
+    }
+
+    let transport = clash_first_scalar(fields, &["protocol", "transport", "network"]);
+    let multiplexing = clash_first_scalar(fields, &["multiplexing", "mux"]);
+    let traffic_pattern = clash_first_scalar(fields, &["traffic-pattern", "traffic_pattern"]);
+    let handshake_mode = clash_first_scalar(fields, &["handshake-mode", "handshake_mode"]);
+    let tag_override = clash_first_scalar(fields, &["name", "tag"]);
+
+    build_mieru_parsed_node(
+        "",
+        "mierus",
+        host,
+        auth_port,
+        query_specs,
+        has_explicit_range,
+        username,
+        password,
+        (!transport.is_empty()).then_some(transport.as_str()),
+        (!multiplexing.is_empty()).then_some(multiplexing.as_str()),
+        (!traffic_pattern.is_empty()).then_some(traffic_pattern.as_str()),
+        (!handshake_mode.is_empty()).then_some(handshake_mode.as_str()),
+        &tag_override,
+        None,
+    )
+}
+
+fn split_yaml_kv(line: &str) -> Option<(String, String)> {
+    let (raw_k, raw_v) = line.split_once(':')?;
+    let key = strip_yaml_scalar(raw_k).trim().to_ascii_lowercase();
+    if key.is_empty() {
+        return None;
+    }
+    Some((key, raw_v.trim().to_string()))
+}
+
+fn clash_bool(fields: &HashMap<String, Vec<String>>, keys: &[&str]) -> Option<bool> {
+    let val = clash_first_scalar(fields, keys);
+    if val.is_empty() {
+        return None;
+    }
+    match val.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn build_clash_tls(
+    fields: &HashMap<String, Vec<String>>,
+    default_host: &str,
+    default_tls: bool,
+) -> Option<Value> {
+    let tls_on = clash_bool(fields, &["tls"]).unwrap_or(default_tls);
+    let pbk = clash_first_scalar(
+        fields,
+        &["reality-opts.public-key", "reality-opts.pbk", "public-key"],
+    );
+    let sid = clash_first_scalar(
+        fields,
+        &["reality-opts.short-id", "reality-opts.sid", "short-id"],
+    );
+    if !tls_on && pbk.is_empty() {
+        return None;
+    }
+    let sni = {
+        let v = clash_first_scalar(fields, &["servername", "sni", "peer"]);
+        if v.is_empty() {
+            default_host.to_string()
+        } else {
+            v
+        }
+    };
+    let fp = {
+        let v = clash_first_scalar(fields, &["client-fingerprint", "fingerprint", "fp"]);
+        if v.is_empty() {
+            "chrome".to_string()
+        } else {
+            v
+        }
+    };
+    let mut tls = Map::new();
+    tls.insert("enabled".into(), json!(true));
+    tls.insert("server_name".into(), json!(sni));
+    tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
+    if clash_bool(fields, &["skip-cert-verify", "insecure"]).unwrap_or(false) {
+        tls.insert("insecure".into(), json!(true));
+    }
+    if let Some(alpn) = fields.get("alpn").filter(|v| !v.is_empty()) {
+        tls.insert("alpn".into(), json!(alpn));
+    }
+    if !pbk.is_empty() {
+        tls.insert(
+            "reality".into(),
+            json!({
+                "enabled": true,
+                "public_key": pbk,
+                "short_id": sid
+            }),
+        );
+    }
+    Some(Value::Object(tls))
+}
+
+fn build_clash_transport(fields: &HashMap<String, Vec<String>>) -> Option<Value> {
+    let net = clash_first_scalar(fields, &["network", "transport"]).to_ascii_lowercase();
+    match net.as_str() {
+        "ws" => {
+            let path = {
+                let p = clash_first_scalar(fields, &["ws-opts.path", "path"]);
+                if p.is_empty() { "/".to_string() } else { p }
+            };
+            let host =
+                clash_first_scalar(fields, &["ws-opts.headers.host", "ws-opts.host", "host"]);
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("ws"));
+            tr.insert("path".into(), json!(path));
+            if !host.is_empty() {
+                tr.insert("headers".into(), json!({ "Host": host }));
+            }
+            Some(Value::Object(tr))
+        }
+        "grpc" => {
+            let svc = clash_first_scalar(
+                fields,
+                &[
+                    "grpc-opts.grpc-service-name",
+                    "grpc-opts.service-name",
+                    "grpc-service-name",
+                    "servicename",
+                ],
+            );
+            Some(json!({
+                "type": "grpc",
+                "service_name": svc
+            }))
+        }
+        "h2" | "http" => {
+            let path = {
+                let p = clash_first_scalar(fields, &["h2-opts.path", "http-opts.path", "path"]);
+                if p.is_empty() { "/".to_string() } else { p }
+            };
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("http"));
+            tr.insert("path".into(), json!(path));
+            if let Some(hosts) = fields
+                .get("h2-opts.host")
+                .or_else(|| fields.get("http-opts.headers.host"))
+                .filter(|v| !v.is_empty())
+            {
+                tr.insert("host".into(), json!(hosts));
+            }
+            Some(Value::Object(tr))
+        }
+        "httpupgrade" => {
+            let path = {
+                let p =
+                    clash_first_scalar(fields, &["httpupgrade-opts.path", "ws-opts.path", "path"]);
+                if p.is_empty() { "/".to_string() } else { p }
+            };
+            let host = clash_first_scalar(
+                fields,
+                &[
+                    "httpupgrade-opts.host",
+                    "httpupgrade-opts.headers.host",
+                    "ws-opts.headers.host",
+                    "host",
+                ],
+            );
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("httpupgrade"));
+            tr.insert("path".into(), json!(path));
+            if !host.is_empty() {
+                tr.insert("host".into(), json!(host));
+            }
+            Some(Value::Object(tr))
+        }
+        "xhttp" | "splithttp" => {
+            let path = {
+                let p = clash_first_scalar(fields, &["xhttp-opts.path", "path"]);
+                if p.is_empty() { "/".to_string() } else { p }
+            };
+            let mode = {
+                let m = clash_first_scalar(fields, &["xhttp-opts.mode", "mode"]);
+                if m.is_empty() { "auto".to_string() } else { m }
+            };
+            let host = clash_first_scalar(fields, &["xhttp-opts.host", "host"]);
+            let mut tr = Map::new();
+            tr.insert("type".into(), json!("xhttp"));
+            tr.insert("path".into(), json!(path));
+            tr.insert("mode".into(), json!(mode));
+            if !host.is_empty() {
+                tr.insert("host".into(), json!(host));
+            }
+            Some(Value::Object(tr))
+        }
+        _ => None,
+    }
+}
+
+fn normalize_clash_proxy(
+    fields: &HashMap<String, Vec<String>>,
+    idx: usize,
+) -> Option<ParsedProxyNode> {
+    let ptype = clash_first_scalar(fields, &["type"]).to_ascii_lowercase();
+    if ptype == "mieru" {
+        return normalize_clash_mieru_proxy(fields);
+    }
+    let host = clash_first_scalar(fields, &["server", "host"]);
+    let port = clash_first_scalar(fields, &["port", "server_port"])
+        .parse::<u16>()
+        .ok()
+        .filter(|&p| p >= 1)?;
+    if host.is_empty() {
+        return None;
+    }
+    let raw_tag = clash_first_scalar(fields, &["name", "tag"]);
+    let tag = if raw_tag.is_empty() {
+        format!("{ptype}-{host}:{port}-{idx}")
+    } else {
+        raw_tag
+    };
+    let country = detect_country_code(&tag);
+
+    let (protocol, outbound_json) = match ptype.as_str() {
+        "vless" => {
+            let uuid = clash_first_scalar(fields, &["uuid"]);
+            if uuid.is_empty() {
+                return None;
+            }
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("vless"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("uuid".into(), json!(uuid));
+            let flow = clash_first_scalar(fields, &["flow"]);
+            if !flow.is_empty() {
+                obj.insert("flow".into(), json!(flow));
+            }
+            let enc = clash_first_scalar(fields, &["encryption"]);
+            if !enc.is_empty() && enc != "none" {
+                obj.insert("encryption".into(), json!(enc));
+            }
+            if let Some(tls) = build_clash_tls(fields, &host, false) {
+                obj.insert("tls".into(), tls);
+            }
+            if let Some(tr) = build_clash_transport(fields) {
+                obj.insert("transport".into(), tr);
+            }
+            ("vless".to_string(), Value::Object(obj))
+        }
+        "vmess" => {
+            let uuid = clash_first_scalar(fields, &["uuid"]);
+            if uuid.is_empty() {
+                return None;
+            }
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("vmess"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("uuid".into(), json!(uuid));
+            let cipher = clash_first_scalar(fields, &["cipher", "security"]);
+            obj.insert(
+                "security".into(),
+                json!(if cipher.is_empty() { "auto" } else { &cipher }),
+            );
+            if let Some(aid) = clash_first_scalar(fields, &["alterid", "alter_id"])
+                .parse::<u64>()
+                .ok()
+                .filter(|&a| a > 0)
+            {
+                obj.insert("alter_id".into(), json!(aid));
+            }
+            if let Some(tls) = build_clash_tls(fields, &host, false) {
+                obj.insert("tls".into(), tls);
+            }
+            if let Some(tr) = build_clash_transport(fields) {
+                obj.insert("transport".into(), tr);
+            }
+            ("vmess".to_string(), Value::Object(obj))
+        }
+        "trojan" => {
+            let password = clash_first_scalar(fields, &["password"]);
+            if password.is_empty() {
+                return None;
+            }
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("trojan"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("password".into(), json!(password));
+            if let Some(tls) = build_clash_tls(fields, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            if let Some(tr) = build_clash_transport(fields) {
+                obj.insert("transport".into(), tr);
+            }
+            ("trojan".to_string(), Value::Object(obj))
+        }
+        "ss" | "shadowsocks" => {
+            let method = clash_first_scalar(fields, &["cipher", "method"]);
+            let password = clash_first_scalar(fields, &["password"]);
+            if method.is_empty() {
+                return None;
+            }
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("shadowsocks"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("method".into(), json!(method));
+            obj.insert("password".into(), json!(password));
+            let plugin = clash_first_scalar(fields, &["plugin"]);
+            if !plugin.is_empty() {
+                obj.insert("plugin".into(), json!(plugin));
+            }
+            ("ss".to_string(), Value::Object(obj))
+        }
+        "hysteria2" | "hy2" => {
+            let password = clash_first_scalar(fields, &["password", "auth"]);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("hysteria2"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("password".into(), json!(password));
+            let mut tls = build_clash_tls(fields, &host, true)
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default();
+            if !tls.contains_key("alpn") {
+                tls.insert("alpn".into(), json!(["h3"]));
+            }
+            obj.insert("tls".into(), Value::Object(tls));
+            let obfs = clash_first_scalar(fields, &["obfs"]);
+            if !obfs.is_empty() && obfs != "none" {
+                obj.insert(
+                    "obfs".into(),
+                    json!({
+                        "type": obfs,
+                        "password": clash_first_scalar(fields, &["obfs-password"])
+                    }),
+                );
+            }
+            ("hysteria2".to_string(), Value::Object(obj))
+        }
+        "tuic" => {
+            let uuid = clash_first_scalar(fields, &["uuid"]);
+            let password = clash_first_scalar(fields, &["password"]);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("tuic"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("uuid".into(), json!(uuid));
+            obj.insert("password".into(), json!(password));
+            let cc = clash_first_scalar(fields, &["congestion-controller", "congestion_control"]);
+            obj.insert(
+                "congestion_control".into(),
+                json!(if cc.is_empty() { "bbr" } else { &cc }),
+            );
+            let udp_mode = clash_first_scalar(fields, &["udp-relay-mode", "udp_relay_mode"]);
+            if !udp_mode.is_empty() {
+                obj.insert("udp_relay_mode".into(), json!(udp_mode));
+            }
+            let mut tls = build_clash_tls(fields, &host, true)
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default();
+            if !tls.contains_key("alpn") {
+                tls.insert("alpn".into(), json!(["h3"]));
+            }
+            obj.insert("tls".into(), Value::Object(tls));
+            ("tuic".to_string(), Value::Object(obj))
+        }
+        "wireguard" | "wg" => {
+            let priv_key = clash_first_scalar(fields, &["private-key", "private_key"]);
+            let pub_key = clash_first_scalar(fields, &["public-key", "public_key"]);
+            if priv_key.is_empty() || pub_key.is_empty() {
+                return None;
+            }
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("wireguard"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("private_key".into(), json!(priv_key));
+            obj.insert("peer_public_key".into(), json!(pub_key));
+            let psk = clash_first_scalar(fields, &["pre-shared-key", "preshared-key", "psk"]);
+            if !psk.is_empty() {
+                obj.insert("pre_shared_key".into(), json!(psk));
+            }
+            let mut addrs = Vec::new();
+            let ip4 = clash_first_scalar(fields, &["ip"]);
+            if !ip4.is_empty() {
+                addrs.push(if ip4.contains('/') {
+                    ip4
+                } else {
+                    format!("{ip4}/32")
+                });
+            }
+            let ip6 = clash_first_scalar(fields, &["ipv6"]);
+            if !ip6.is_empty() {
+                addrs.push(if ip6.contains('/') {
+                    ip6
+                } else {
+                    format!("{ip6}/128")
+                });
+            }
+            if addrs.is_empty() {
+                addrs.push("10.0.0.2/32".to_string());
+            }
+            obj.insert("local_address".into(), json!(addrs));
+            if let Some(mtu) = clash_first_scalar(fields, &["mtu"])
+                .parse::<u16>()
+                .ok()
+                .filter(|&m| m >= 576)
+            {
+                obj.insert("mtu".into(), json!(mtu));
+            }
+            if let Some(res_vals) = fields.get("reserved") {
+                let bytes: Vec<u8> = res_vals
+                    .iter()
+                    .filter_map(|v| v.trim().parse::<u8>().ok())
+                    .collect();
+                if !bytes.is_empty() {
+                    obj.insert("reserved".into(), json!(bytes));
+                }
+            }
+            ("wireguard".to_string(), Value::Object(obj))
+        }
+        "socks5" | "socks" | "http" => {
+            let mut obj = Map::new();
+            let mapped = if ptype == "http" { "http" } else { "socks" };
+            obj.insert("type".into(), json!(mapped));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            let u = clash_first_scalar(fields, &["username", "user"]);
+            let p = clash_first_scalar(fields, &["password", "pass"]);
+            if !u.is_empty() {
+                obj.insert("username".into(), json!(u));
+                obj.insert("password".into(), json!(p));
+            }
+            if let Some(tls) = build_clash_tls(fields, &host, false) {
+                obj.insert("tls".into(), tls);
+            }
+            (mapped.to_string(), Value::Object(obj))
+        }
+        _ => return None,
+    };
+
+    Some(ParsedProxyNode {
+        tag,
+        protocol,
+        server: host,
+        server_port: port,
+        country,
+        raw_uri: String::new(),
+        outbound_json,
+    })
+}
+
+fn insert_clash_yaml_kv(
+    fields: &mut HashMap<String, Vec<String>>,
+    prefix: &str,
+    key: &str,
+    raw_val: &str,
+) -> Option<String> {
+    let full_key = if prefix.is_empty() {
+        key.to_string()
+    } else {
+        format!("{prefix}.{key}")
+    };
+    let val_trim = raw_val.trim();
+    if val_trim.starts_with('{') && val_trim.ends_with('}') {
+        let inner = &val_trim[1..val_trim.len() - 1];
+        for pair in split_yaml_top_level(inner, ',') {
+            if let Some((ik, iv)) = split_yaml_kv(&pair) {
+                insert_clash_yaml_kv(fields, &full_key, &ik, &iv);
+            }
+        }
+        return None;
+    }
+    let items = parse_yaml_value_items(raw_val);
+    if items.is_empty() {
+        Some(full_key)
+    } else {
+        fields.insert(full_key, items);
+        None
+    }
+}
+
+pub(crate) fn parse_clash_yaml_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyNode>> {
+    let text = decoded.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+    let mut in_proxies = false;
+    let mut item_indent: Option<usize> = None;
+    let mut base_key_indent: Option<usize> = None;
+    let mut sub_map_stack: Vec<(usize, String)> = Vec::new();
+    let mut pending_parent: Option<(usize, String)> = None;
+    let mut current: Option<HashMap<String, Vec<String>>> = None;
+    let mut current_list_key: Option<String> = None;
+    let mut nodes: Vec<ParsedProxyNode> = Vec::new();
+    let mut taken_tags: HashSet<String> = HashSet::new();
+
+    for raw_line in text.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "---" {
+            continue;
+        }
+        let indent = raw_line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .count();
+
+        if !in_proxies {
+            if indent == 0 && trimmed.starts_with("proxies:") {
+                in_proxies = true;
+            }
+            continue;
+        }
+
+        if indent == 0 && !trimmed.starts_with('-') {
+            break;
+        }
+
+        let is_dash = trimmed == "-" || trimmed.starts_with("- ");
+        if is_dash && item_indent.is_none_or(|expected| indent == expected) {
+            if let Some(fields) = current.take()
+                && let Some(mut node) = normalize_clash_proxy(&fields, nodes.len())
+            {
+                assign_unique_node_tag(&mut node, &mut taken_tags);
+                nodes.push(node);
+            }
+            item_indent = Some(indent);
+            base_key_indent = None;
+            sub_map_stack.clear();
+            pending_parent = None;
+            current_list_key = None;
+            let mut fields: HashMap<String, Vec<String>> = HashMap::new();
+            let after_dash = trimmed.strip_prefix('-').unwrap_or("").trim();
+            if after_dash.starts_with('{') && after_dash.ends_with('}') {
+                let inner = &after_dash[1..after_dash.len() - 1];
+                for pair in split_yaml_top_level(inner, ',') {
+                    if let Some((k, v)) = split_yaml_kv(&pair) {
+                        insert_clash_yaml_kv(&mut fields, "", &k, &v);
+                    }
+                }
+            } else if !after_dash.is_empty()
+                && let Some((k, v)) = split_yaml_kv(after_dash)
+            {
+                base_key_indent = Some(indent + 2);
+                if let Some(list_k) = insert_clash_yaml_kv(&mut fields, "", &k, &v) {
+                    current_list_key = Some(list_k.clone());
+                    pending_parent = Some((indent + 2, list_k));
+                }
+            }
+            current = Some(fields);
+            continue;
+        }
+
+        let Some(fields) = current.as_mut() else {
+            continue;
+        };
+
+        if is_dash {
+            if let Some(list_key) = current_list_key.as_ref() {
+                let val_str = trimmed.strip_prefix('-').unwrap_or("").trim();
+                let item = strip_yaml_scalar(val_str);
+                if !item.is_empty() {
+                    fields.entry(list_key.clone()).or_default().push(item);
+                }
+            }
+            continue;
+        }
+
+        let base_k = *base_key_indent.get_or_insert(indent);
+        while sub_map_stack
+            .last()
+            .is_some_and(|(parent_ind, _)| indent <= *parent_ind)
+        {
+            sub_map_stack.pop();
+        }
+        if let Some((pend_ind, pend_name)) = pending_parent.take()
+            && indent > pend_ind
+        {
+            sub_map_stack.push((pend_ind, pend_name));
+        }
+        if sub_map_stack.is_empty() && indent > base_k {
+            continue;
+        }
+
+        let prefix = sub_map_stack.last().map(|(_, p)| p.as_str()).unwrap_or("");
+        current_list_key = None;
+        if let Some((k, v)) = split_yaml_kv(trimmed)
+            && let Some(sub_k) = insert_clash_yaml_kv(fields, prefix, &k, &v)
+        {
+            current_list_key = Some(sub_k.clone());
+            pending_parent = Some((indent, sub_k));
+        }
+    }
+
+    if let Some(fields) = current.take()
+        && let Some(mut node) = normalize_clash_proxy(&fields, nodes.len())
+    {
+        assign_unique_node_tag(&mut node, &mut taken_tags);
+        nodes.push(node);
+    }
+
+    if nodes.is_empty() { None } else { Some(nodes) }
+}
+
 fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool)> {
     let mut nodes: Vec<ParsedProxyNode> = src.cached_nodes.clone();
+    let mut taken_tags: HashSet<String> = HashSet::new();
+    let mut seen_raw_uris: HashSet<String> = HashSet::new();
+    for node in &mut nodes {
+        assign_unique_node_tag(node, &mut taken_tags);
+        if !node.raw_uri.trim().is_empty() {
+            seen_raw_uris.insert(node.raw_uri.trim().to_string());
+        }
+    }
     for (idx, link) in src.proxy_links.iter().enumerate() {
-        if let Some(node) = parse_proxy_uri(link, idx)
-            && !nodes.iter().any(|n| n.tag == node.tag)
-        {
+        let trimmed = link.trim();
+        if !trimmed.is_empty() && seen_raw_uris.contains(trimmed) {
+            continue;
+        }
+        if let Some(mut node) = parse_proxy_uri(link, idx) {
+            assign_unique_node_tag(&mut node, &mut taken_tags);
+            if !node.raw_uri.trim().is_empty() {
+                seen_raw_uris.insert(node.raw_uri.trim().to_string());
+            }
             nodes.push(node);
         }
     }
@@ -6043,15 +7419,69 @@ fn apply_outbound_common_opts(src: &OutboundSource, v: &mut Value) {
     {
         obj.insert("detour".into(), json!(src.outbound_detour_section.trim()));
     }
-    if !src.tls_fingerprint.trim().is_empty()
-        && let Some(tls_obj) = obj.get_mut("tls").and_then(Value::as_object_mut)
+    let frag_mode = src.tls_fragment_mode.trim().to_ascii_lowercase();
+    let skip_frag = matches!(
+        obj.get("type").and_then(Value::as_str).unwrap_or(""),
+        "urltest"
+            | "selector"
+            | "direct"
+            | "block"
+            | "dns"
+            | "hysteria2"
+            | "hysteria"
+            | "tuic"
+            | "masque"
+            | "wireguard"
+            | "tailscale"
+            | "desync"
+            | "wdtt"
+            | "csqtt"
+    );
+    if let Some(tls_obj) = obj.get_mut("tls").and_then(Value::as_object_mut)
         && tls_obj.get("enabled").and_then(Value::as_bool) == Some(true)
     {
-        tls_obj.insert(
-            "utls".into(),
+        if !src.tls_fingerprint.trim().is_empty() {
+            tls_obj.insert(
+                "utls".into(),
+                json!({
+                    "enabled": true,
+                    "fingerprint": src.tls_fingerprint.trim()
+                }),
+            );
+        }
+        if !skip_frag {
+            match frag_mode.as_str() {
+                "tls_record" => {
+                    tls_obj.insert("record_fragment".into(), json!(true));
+                }
+                "tls_fragment" => {
+                    tls_obj.insert("fragment".into(), json!(true));
+                }
+                _ => {}
+            }
+        }
+    }
+    if !skip_frag && frag_mode == "tcp_fragment" {
+        let eff_len = if src.tcp_fragment_length.trim().is_empty() {
+            "20-60".to_string()
+        } else {
+            src.tcp_fragment_length.trim().to_string()
+        };
+        let raw_delay = src.tcp_fragment_delay.trim();
+        let eff_delay = if raw_delay.is_empty() {
+            "0-2ms".to_string()
+        } else if raw_delay.ends_with("ms") || raw_delay.ends_with('s') {
+            raw_delay.to_string()
+        } else {
+            format!("{raw_delay}ms")
+        };
+        obj.insert(
+            "tcp_fragment".into(),
             json!({
                 "enabled": true,
-                "fingerprint": src.tls_fingerprint.trim()
+                "packets": "tlshello",
+                "length": eff_len,
+                "delay": eff_delay
             }),
         );
     }
@@ -7097,6 +8527,105 @@ fn server_tag_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> boo
     server_filter_name_matches(tag, filter, known_prefixes)
 }
 
+pub fn canonical_community_subnet_service(service: &str) -> &str {
+    let key = service.trim();
+    if key.eq_ignore_ascii_case("antifilter_community") {
+        "antifilter"
+    } else if key.eq_ignore_ascii_case("runetfreedom_blocked") {
+        "ru_blocked"
+    } else if key.eq_ignore_ascii_case("runetfreedom_blocked_all") {
+        "ru_blocked_all"
+    } else if key.eq_ignore_ascii_case("roscomvpn_whitelist") {
+        "ru_whitelist"
+    } else if key.eq_ignore_ascii_case("roscomvpn_ru") {
+        "ru_domains"
+    } else {
+        key
+    }
+}
+
+pub fn community_service_has_subnet_list(service: &str) -> bool {
+    let canonical = canonical_community_subnet_service(service).to_ascii_lowercase();
+    matches!(
+        canonical.as_str(),
+        "twitter"
+            | "meta"
+            | "discord"
+            | "roblox"
+            | "telegram"
+            | "cloudflare"
+            | "hetzner"
+            | "ovh"
+            | "digitalocean"
+            | "cloudfront"
+            | "google_meet"
+            | "zoom_teams"
+            | "discord_voice"
+            | "callofduty"
+            | "game_backends"
+            | "cs2_dota2"
+            | "doh_dot_dns"
+            | "vps_clouds"
+            | "et_spamhaus_block"
+            | "hagezi_tif_ip_block"
+            | "botnet_attackers_ip_block"
+            | "antifilter"
+            | "refilter"
+            | "ru_blocked"
+            | "ru_blocked_all"
+            | "ru_domains"
+            | "ru_whitelist"
+            | "fastly"
+            | "games_all"
+            | "geoip_cn"
+            | "geoip_ru"
+            | "geoip_us"
+            | "netflix"
+            | "origin"
+            | "pubg"
+            | "tor"
+    )
+}
+
+pub fn community_subnet_url(service: &str) -> Option<String> {
+    if !community_service_has_subnet_list(service) {
+        return None;
+    }
+    let canonical = canonical_community_subnet_service(service).to_ascii_lowercase();
+    let base = std::env::var("TACHYON_LISTS_SUBNETS_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/subnets"
+                .to_string()
+        });
+    Some(format!("{}/{canonical}.lst", base.trim_end_matches('/')))
+}
+
+pub fn is_community_list_token(token: &str) -> bool {
+    let t = token.trim();
+    !t.is_empty()
+        && !t.starts_with("http://")
+        && !t.starts_with("https://")
+        && !t.starts_with('/')
+        && !t.chars().any(char::is_whitespace)
+}
+
+pub fn parse_valid_cidr_list(raw: &str) -> Vec<String> {
+    let mut cidrs = Vec::new();
+    for raw_line in raw.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(cidr) = parse_valid_cidr_token(line) {
+            cidrs.push(cidr);
+        }
+    }
+    cidrs
+}
+
 fn parse_valid_cidr_token(raw: &str) -> Option<String> {
     let tok = raw.trim();
     if tok.is_empty() {
@@ -7256,6 +8785,313 @@ fn allocate_loopback_port(preferred: u16, used_ports: &mut HashSet<u16>) -> u16 
         }
     }
     preferred
+}
+
+fn server_effective_inbound_tag(srv: &InboundServer) -> String {
+    if srv.protocol == "shadowtls" {
+        format!("srv-{}-inner", srv.id)
+    } else {
+        format!("srv-{}", srv.id)
+    }
+}
+
+fn build_excluded_protocol_subrules(excluded: &[String]) -> Vec<Value> {
+    if excluded.is_empty() {
+        return Vec::new();
+    }
+    let mut l4_nets: Vec<String> = Vec::new();
+    let mut l7_protos: Vec<String> = Vec::new();
+    for raw in excluded {
+        let lp = raw.trim().to_ascii_lowercase();
+        if matches!(lp.as_str(), "tcp" | "udp" | "icmp") {
+            if !l4_nets.contains(&lp) {
+                l4_nets.push(lp);
+            }
+        } else if !lp.is_empty() && !l7_protos.contains(&lp) {
+            l7_protos.push(lp);
+        }
+    }
+    let mut subs = Vec::new();
+    if !l4_nets.is_empty() {
+        subs.push(json!({ "invert": true, "network": l4_nets }));
+    }
+    if !l7_protos.is_empty() {
+        subs.push(json!({ "invert": true, "protocol": l7_protos }));
+    }
+    subs
+}
+
+fn build_excluded_domain_subrules(excluded: &[String]) -> Vec<Value> {
+    if excluded.is_empty() {
+        return Vec::new();
+    }
+    let mut exact: Vec<String> = Vec::new();
+    let mut suffix: Vec<String> = Vec::new();
+    let mut keyword: Vec<String> = Vec::new();
+    let mut regex: Vec<String> = Vec::new();
+    let push_uniq = |dst: &mut Vec<String>, raw: &str, lowercase: bool| {
+        let mut s = raw.trim().to_string();
+        if s.is_empty() {
+            return;
+        }
+        if lowercase {
+            s.make_ascii_lowercase();
+        }
+        if !dst.contains(&s) {
+            dst.push(s);
+        }
+    };
+    for raw in excluded {
+        for line in raw.lines() {
+            let trimmed = line.split('#').next().unwrap_or("").trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") {
+                continue;
+            }
+            for tok in trimmed.split([',', ' ', '\t']) {
+                let t = tok.trim();
+                if t.is_empty() {
+                    continue;
+                }
+                let lower = t.to_ascii_lowercase();
+                if lower.starts_with("full:") {
+                    push_uniq(&mut exact, &t[5..], true);
+                } else if lower.starts_with("domain:") {
+                    push_uniq(&mut suffix, &t[7..], true);
+                } else if lower.starts_with("domain_suffix:") {
+                    push_uniq(&mut suffix, &t[14..], true);
+                } else if lower.starts_with("keyword:") {
+                    push_uniq(&mut keyword, &t[8..], true);
+                } else if lower.starts_with("domain_keyword:") {
+                    push_uniq(&mut keyword, &t[15..], true);
+                } else if lower.starts_with("regex:") {
+                    push_uniq(&mut regex, &t[6..], false);
+                } else if lower.starts_with("domain_regex:") {
+                    push_uniq(&mut regex, &t[13..], false);
+                } else if let Some(rest) = t.strip_prefix("*.") {
+                    push_uniq(&mut suffix, rest, true);
+                } else if let Some(rest) = t.strip_prefix('.') {
+                    push_uniq(&mut suffix, rest, true);
+                } else {
+                    push_uniq(&mut suffix, t, true);
+                }
+            }
+        }
+    }
+    let mut sub = Map::new();
+    sub.insert("invert".into(), json!(true));
+    if !exact.is_empty() {
+        sub.insert("domain".into(), json!(exact));
+    }
+    if !suffix.is_empty() {
+        sub.insert("domain_suffix".into(), json!(suffix));
+    }
+    if !keyword.is_empty() {
+        sub.insert("domain_keyword".into(), json!(keyword));
+    }
+    if !regex.is_empty() {
+        sub.insert("domain_regex".into(), json!(regex));
+    }
+    if sub.len() > 1 {
+        vec![Value::Object(sub)]
+    } else {
+        Vec::new()
+    }
+}
+
+const RULE_ACTION_KEYS: &[&str] = &[
+    "outbound",
+    "action",
+    "server",
+    "rcode",
+    "rewrite_ttl",
+    "client_subnet",
+    "disable_cache",
+    "disable_optimistic_cache",
+    "timeout",
+    "method",
+    "no_drop",
+    "strategy",
+    "answer",
+    "ns",
+];
+
+fn wrap_rule_with_inverted_subrules(
+    mut rule: Value,
+    exc_dom_subs: &[Value],
+    exc_proto_subs: &[Value],
+) -> Value {
+    let is_resolve = rule.get("action").and_then(Value::as_str) == Some("resolve");
+    let effective_proto = if is_resolve { &[][..] } else { exc_proto_subs };
+    if exc_dom_subs.is_empty() && effective_proto.is_empty() {
+        return rule;
+    }
+    let Some(obj) = rule.as_object_mut() else {
+        return rule;
+    };
+    let saved_actions: Vec<(&str, Value)> = RULE_ACTION_KEYS
+        .iter()
+        .filter_map(|&k| obj.remove(k).map(|v| (k, v)))
+        .collect();
+    let is_logical_and = obj.get("type").and_then(Value::as_str) == Some("logical")
+        && obj.get("mode").and_then(Value::as_str) == Some("and")
+        && obj.get("rules").is_some_and(Value::is_array);
+    if is_logical_and {
+        if let Some(arr) = obj.get_mut("rules").and_then(Value::as_array_mut) {
+            arr.extend(exc_dom_subs.iter().cloned());
+            arr.extend(effective_proto.iter().cloned());
+        }
+        for (k, v) in saved_actions {
+            obj.insert(k.to_string(), v);
+        }
+        return rule;
+    }
+
+    let mut sub_rules: Vec<Value> = Vec::new();
+    if !obj.is_empty() {
+        sub_rules.push(Value::Object(std::mem::take(obj)));
+    }
+    sub_rules.extend(exc_dom_subs.iter().cloned());
+    sub_rules.extend(effective_proto.iter().cloned());
+    let mut wrapper = Map::new();
+    wrapper.insert("type".into(), json!("logical"));
+    wrapper.insert("mode".into(), json!("and"));
+    wrapper.insert("rules".into(), Value::Array(sub_rules));
+    for (k, v) in saved_actions {
+        wrapper.insert(k.to_string(), v);
+    }
+    Value::Object(wrapper)
+}
+
+fn canonical_wireguard_json(val: &Value, strip_tag: bool) -> String {
+    match val {
+        Value::Array(arr) => {
+            let items: Vec<String> = arr
+                .iter()
+                .map(|v| canonical_wireguard_json(v, false))
+                .collect();
+            format!("[{}]", items.join(","))
+        }
+        Value::Object(map) => {
+            let mut entries: Vec<(&String, &Value)> = map
+                .iter()
+                .filter(|(k, _)| !(strip_tag && k.as_str() == "tag") && !k.starts_with("__"))
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(b.0));
+            let parts: Vec<String> = entries
+                .into_iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap_or_default(),
+                        canonical_wireguard_json(v, false)
+                    )
+                })
+                .collect();
+            format!("{{{}}}", parts.join(","))
+        }
+        _ => serde_json::to_string(val).unwrap_or_default(),
+    }
+}
+
+fn is_shareable_wireguard_client(obj: &Value) -> bool {
+    obj.get("type").and_then(Value::as_str) == Some("wireguard")
+        && obj.get("system").and_then(Value::as_bool) != Some(true)
+        && obj.get("listen_port").is_none()
+        && obj
+            .get("tag")
+            .and_then(Value::as_str)
+            .is_some_and(|t| !t.is_empty() && !t.starts_with("srv-"))
+}
+
+fn apply_settings_tcp_profile(outbounds: &mut [Value], endpoints: &mut [Value], raw_profile: &str) {
+    let prof = raw_profile.trim().to_ascii_lowercase();
+    if !matches!(
+        prof.as_str(),
+        "auto" | "windows" | "macos" | "ios" | "android" | "linux"
+    ) {
+        return;
+    }
+    for ob in outbounds.iter_mut() {
+        let Some(map) = ob.as_object_mut() else {
+            continue;
+        };
+        if map.contains_key("tcp_profile") {
+            continue;
+        }
+        let otype = map.get("type").and_then(Value::as_str).unwrap_or("");
+        if matches!(
+            otype,
+            "direct" | "selector" | "urltest" | "chain" | "block" | "bridge" | "dns"
+        ) {
+            continue;
+        }
+        map.insert("tcp_profile".into(), json!(prof));
+    }
+    for ep in endpoints.iter_mut() {
+        if let Some(map) = ep.as_object_mut()
+            && !map.contains_key("tcp_profile")
+        {
+            map.insert("tcp_profile".into(), json!(prof));
+        }
+    }
+}
+
+fn share_wireguard_client_outbounds(outbounds: &mut Vec<Value>, endpoints: &mut Vec<Value>) {
+    let mut first_by_options: HashMap<String, String> = HashMap::new();
+    let mut retained_endpoints: Vec<Value> = Vec::with_capacity(endpoints.len());
+    for ep in endpoints.drain(..) {
+        if is_shareable_wireguard_client(&ep) {
+            let tag = ep
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let key = canonical_wireguard_json(&ep, true);
+            if let Some(first_tag) = first_by_options.get(&key) {
+                outbounds.push(json!({
+                    "type": "selector",
+                    "tag": tag,
+                    "outbounds": [first_tag],
+                    "default": first_tag
+                }));
+                continue;
+            }
+            first_by_options.insert(key, tag);
+        }
+        retained_endpoints.push(ep);
+    }
+    *endpoints = retained_endpoints;
+
+    for out in outbounds.iter_mut() {
+        if !is_shareable_wireguard_client(out) {
+            continue;
+        }
+        let tag = out
+            .get("tag")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let key = canonical_wireguard_json(out, true);
+        if let Some(first_tag) = first_by_options.get(&key) {
+            *out = json!({
+                "type": "selector",
+                "tag": tag,
+                "outbounds": [first_tag],
+                "default": first_tag
+            });
+        } else {
+            first_by_options.insert(key, tag);
+        }
+    }
+}
+
+fn is_usable_external_sub_host(raw: &str) -> bool {
+    let bare = extract_host_only(raw.trim()).to_ascii_lowercase();
+    !bare.is_empty()
+        && !matches!(
+            bare.as_str(),
+            "0.0.0.0" | "127.0.0.1" | "localhost" | "::" | "::1"
+        )
 }
 
 pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
@@ -7492,6 +9328,12 @@ pub fn compile_core_config_with_wan6(
         &source_tag_map,
     );
 
+    let client_intercept_inbounds: Vec<&'static str> = match store.settings.proxy_mode.as_str() {
+        "tun" => vec!["tun-in"],
+        "socks" => vec!["mixed-in"],
+        _ => vec!["tproxy-in"],
+    };
+
     // Protocol sniff + DNS hijack rule first
     rules.push(json!({
         "action": "sniff"
@@ -7500,6 +9342,39 @@ pub fn compile_core_config_with_wan6(
         "inbound": ["dns-in"],
         "action": "hijack-dns"
     }));
+    if store.settings.block_doh || crate::store::effective_dns_intercept_all(store) {
+        let mut doh_cidrs = vec![
+            "1.1.1.1/32",
+            "1.0.0.1/32",
+            "8.8.8.8/32",
+            "8.8.4.4/32",
+            "9.9.9.9/32",
+            "149.112.112.112/32",
+            "77.88.8.8/32",
+            "77.88.8.1/32",
+            "94.140.14.14/32",
+            "94.140.15.15/32",
+        ];
+        if ipv6_active {
+            doh_cidrs.extend([
+                "2606:4700:4700::1111/128",
+                "2606:4700:4700::1001/128",
+                "2001:4860:4860::8888/128",
+                "2001:4860:4860::8844/128",
+                "2620:fe::fe/128",
+                "2620:fe::9/128",
+                "2a02:6b8::feed:0ff/128",
+                "2a02:6b8:0:1::feed:0ff/128",
+            ]);
+        }
+        rules.push(json!({
+            "inbound": client_intercept_inbounds,
+            "network": "tcp",
+            "port": [443, 853],
+            "ip_cidr": doh_cidrs,
+            "action": "reject"
+        }));
+    }
 
     if !store.settings.excluded_ips.is_empty() {
         let global_excl = resolve_device_targets_to_cidrs(&store.settings.excluded_ips);
@@ -7694,9 +9569,13 @@ pub fn compile_core_config_with_wan6(
     };
 
     let ts_route_insert_idx = rules.len();
+    let mut section_outbound_tags: HashMap<String, String> = HashMap::new();
+    let mut section_order_ids: Vec<(String, String)> = Vec::new();
     let mut per_sec_aaaa_dns_rules: Vec<Value> = Vec::new();
+    let mut custom_dns_sections: Vec<&RoutingSection> = Vec::new();
     for sec in store.sections.iter().filter(|s| s.enabled) {
         if sec.action == "dns" || sec.connection_type == "dns" {
+            custom_dns_sections.push(sec);
             continue;
         }
         let mut visited_secs = Vec::new();
@@ -7712,6 +9591,22 @@ pub fn compile_core_config_with_wan6(
             &mut seen_outbound_tags,
             &mut visited_secs,
         );
+        section_outbound_tags.insert(sec.id.clone(), target_outbound_tag.clone());
+        section_order_ids.push((sec.id.clone(), sec.connection_type.clone()));
+        let sec_exc_proto_subs = build_excluded_protocol_subrules(&sec.excluded_protocol);
+        let mut sec_exc_domains = sec.exclude_domains.clone();
+        for cref in &sec.condition_refs {
+            if let Some(cond) = cond_map.get(cref.as_str()).copied()
+                && cond.enabled
+            {
+                for d in &cond.exclude_domains {
+                    if !sec_exc_domains.contains(d) {
+                        sec_exc_domains.push(d.clone());
+                    }
+                }
+            }
+        }
+        let sec_exc_dom_subs = build_excluded_domain_subrules(&sec_exc_domains);
 
         if target_outbound_tag != "direct" && target_outbound_tag != "block" {
             emit_base_policy(&mut rules, &mut base_policy_emitted);
@@ -7758,7 +9653,9 @@ pub fn compile_core_config_with_wan6(
             }));
         }
 
-        // Section-level Exclusions (excluded LAN devices, domains, subnets) -> bypass to `direct`
+        // Section-level Exclusions (excluded LAN devices, subnets, ports) -> bypass to `direct`.
+        // Domain exclusions (`exclude_domains` / `excluded_domains`) are attached as inverted
+        // subrules on this section's rules so later sections can still match them.
         if !sec.excluded_ips.is_empty() {
             let mut cidrs = resolve_device_targets_to_cidrs(&sec.excluded_ips);
             if !ipv6_active {
@@ -7770,12 +9667,6 @@ pub fn compile_core_config_with_wan6(
                     "outbound": "direct"
                 }));
             }
-        }
-        if !sec.exclude_domains.is_empty() {
-            rules.push(json!({
-                "domain_suffix": sec.exclude_domains,
-                "outbound": "direct"
-            }));
         }
         if !sec.exclude_subnets.is_empty() {
             let filtered: Vec<String> = sec
@@ -7824,10 +9715,14 @@ pub fn compile_core_config_with_wan6(
                 cidrs.retain(|s| !s.contains(':'));
             }
             if !cidrs.is_empty() {
-                rules.push(json!({
-                    "source_ip_cidr": cidrs,
-                    "outbound": target_outbound_tag
-                }));
+                rules.push(wrap_rule_with_inverted_subrules(
+                    json!({
+                        "source_ip_cidr": cidrs,
+                        "outbound": target_outbound_tag
+                    }),
+                    &sec_exc_dom_subs,
+                    &sec_exc_proto_subs,
+                ));
             }
         }
 
@@ -7854,7 +9749,13 @@ pub fn compile_core_config_with_wan6(
                 &mut outbounds,
             );
             if !cond_rules.is_empty() {
-                rules.extend(cond_rules);
+                for rule in cond_rules {
+                    rules.push(wrap_rule_with_inverted_subrules(
+                        rule,
+                        &sec_exc_dom_subs,
+                        &sec_exc_proto_subs,
+                    ));
+                }
                 section_matched_any = true;
             }
         }
@@ -7866,17 +9767,17 @@ pub fn compile_core_config_with_wan6(
                 combined_domains.push(d.clone());
             }
         }
-        if !section_matched_any
-            && (!sec.community_lists.is_empty()
-                || !combined_domains.is_empty()
-                || !sec.user_subnets.is_empty()
-                || !sec.geoip_codes.is_empty()
-                || !sec.geosite_codes.is_empty()
-                || !sec.ports.is_empty()
-                || !sec.source_ip_cidr.is_empty()
-                || !sec.source_ports.is_empty()
-                || !sec.protocol.is_empty()
-                || !sec.dscp.is_empty())
+        if !sec.community_lists.is_empty()
+            || !sec.rule_set_with_subnets.is_empty()
+            || !combined_domains.is_empty()
+            || !sec.user_subnets.is_empty()
+            || !sec.geoip_codes.is_empty()
+            || !sec.geosite_codes.is_empty()
+            || !sec.ports.is_empty()
+            || !sec.source_ip_cidr.is_empty()
+            || !sec.source_ports.is_empty()
+            || !sec.protocol.is_empty()
+            || !sec.dscp.is_empty()
         {
             let synthetic = TrafficCondition {
                 id: format!("inline-{}", sec.id),
@@ -7885,6 +9786,7 @@ pub fn compile_core_config_with_wan6(
                 condition_type: "atomic".to_string(),
                 community_lists: sec.community_lists.clone(),
                 community_subnets: sec.community_subnets,
+                rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
                 user_domains: combined_domains,
                 user_subnets: sec.user_subnets.clone(),
                 geoip_codes: sec.geoip_codes.clone(),
@@ -7910,15 +9812,25 @@ pub fn compile_core_config_with_wan6(
                 &mut outbounds,
             );
             if !cond_rules.is_empty() {
-                rules.extend(cond_rules);
+                for rule in cond_rules {
+                    rules.push(wrap_rule_with_inverted_subrules(
+                        rule,
+                        &sec_exc_dom_subs,
+                        &sec_exc_proto_subs,
+                    ));
+                }
                 section_matched_any = true;
             }
         }
 
         if (!section_matched_any && sec.condition_refs.is_empty()) || sec.match_all {
-            rules.push(json!({
-                "outbound": target_outbound_tag
-            }));
+            rules.push(wrap_rule_with_inverted_subrules(
+                json!({
+                    "outbound": target_outbound_tag
+                }),
+                &sec_exc_dom_subs,
+                &sec_exc_proto_subs,
+            ));
         }
 
         if ipv6_active
@@ -7926,7 +9838,9 @@ pub fn compile_core_config_with_wan6(
             && sec.action != "block"
             && sec.connection_type != "block"
             && target_outbound_tag != "block"
+            && sec_exc_proto_subs.is_empty()
         {
+            let prev_aaaa_len = per_sec_aaaa_dns_rules.len();
             collect_section_aaaa_noerror_dns_rules(
                 sec,
                 &cond_map,
@@ -7938,6 +9852,13 @@ pub fn compile_core_config_with_wan6(
                 section_matched_any,
                 &mut per_sec_aaaa_dns_rules,
             );
+            if !sec_exc_dom_subs.is_empty() {
+                for r in &mut per_sec_aaaa_dns_rules[prev_aaaa_len..] {
+                    let wrapped =
+                        wrap_rule_with_inverted_subrules(r.clone(), &sec_exc_dom_subs, &[]);
+                    *r = wrapped;
+                }
+            }
         }
     }
 
@@ -8018,9 +9939,145 @@ pub fn compile_core_config_with_wan6(
         rules.splice(ts_route_insert_idx..ts_route_insert_idx, ts_route_rules);
     }
 
+    let mut server_mode_rules: Vec<Value> = Vec::new();
+    for srv in store.servers.iter().filter(|s| s.enabled) {
+        let inb_tag = server_effective_inbound_tag(srv);
+        match srv.routing_mode.trim().to_ascii_lowercase().as_str() {
+            "direct" => {
+                server_mode_rules.push(json!({
+                    "inbound": [inb_tag],
+                    "outbound": "direct"
+                }));
+            }
+            "section" => {
+                let sec_ref = srv.routing_section.trim();
+                if !sec_ref.is_empty()
+                    && let Some(sec_out) = section_outbound_tags.get(sec_ref)
+                {
+                    server_mode_rules.push(json!({
+                        "inbound": [inb_tag],
+                        "outbound": sec_out
+                    }));
+                }
+            }
+            _ => {}
+        }
+    }
+    if !server_mode_rules.is_empty() {
+        rules.splice(ts_route_insert_idx..ts_route_insert_idx, server_mode_rules);
+    }
+
     if !base_policy_emitted {
         emit_base_policy(&mut rules, &mut base_policy_emitted);
     }
+
+    let def_sec_id = store.settings.default_tunnel_section.trim();
+    let diag_proxy_outbound = section_outbound_tags
+        .get(def_sec_id)
+        .filter(|t| *t != "direct" && *t != "block" && !t.starts_with("desync-"))
+        .cloned()
+        .or_else(|| {
+            section_order_ids
+                .iter()
+                .filter(|(_, ctype)| {
+                    let c = ctype.trim().to_ascii_lowercase();
+                    !matches!(c.as_str(), "direct" | "block" | "desync" | "dns")
+                })
+                .find_map(|(id, _)| {
+                    section_outbound_tags
+                        .get(id)
+                        .filter(|t| *t != "direct" && *t != "block" && !t.starts_with("desync-"))
+                        .cloned()
+                })
+        });
+    if let Some(diag_out) = diag_proxy_outbound {
+        let diag_proxy_port = allocate_loopback_port(4536, &mut used_ports);
+        inbounds.push(json!({
+            "type": "mixed",
+            "tag": "diag-proxy-in",
+            "listen": "127.0.0.1",
+            "listen_port": diag_proxy_port
+        }));
+        rules.insert(
+            ts_route_insert_idx,
+            json!({
+                "inbound": ["diag-proxy-in"],
+                "outbound": diag_out
+            }),
+        );
+    }
+
+    if store
+        .settings
+        .routing_strategy
+        .trim()
+        .eq_ignore_ascii_case("full_tunnel")
+    {
+        let def_sec_id = store.settings.default_tunnel_section.trim();
+        let def_sec_obj = store.sections.iter().find(|s| s.id == def_sec_id);
+        let def_fail_closed_down = def_sec_obj.is_some_and(|s| {
+            s.enabled
+                && crate::store::is_fail_closed_section(s)
+                && section_outbound_tags
+                    .get(&s.id)
+                    .is_none_or(|t| t == "block" || t == "direct")
+        });
+        let any_fail_closed_down = store.sections.iter().any(|s| {
+            s.enabled
+                && crate::store::is_fail_closed_section(s)
+                && section_outbound_tags
+                    .get(&s.id)
+                    .is_none_or(|t| t == "block" || t == "direct")
+        });
+        if def_fail_closed_down || any_fail_closed_down {
+            rules.push(json!({
+                "inbound": client_intercept_inbounds,
+                "action": "reject"
+            }));
+        } else {
+            let mut full_tunnel_target = section_outbound_tags
+                .get(def_sec_id)
+                .filter(|t| *t != "direct" && *t != "block")
+                .cloned();
+            if full_tunnel_target.is_none() {
+                full_tunnel_target = section_order_ids
+                    .iter()
+                    .filter(|(_, ctype)| ctype != "desync")
+                    .find_map(|(id, _)| {
+                        section_outbound_tags
+                            .get(id)
+                            .filter(|t| *t != "direct" && *t != "block")
+                            .cloned()
+                    })
+                    .or_else(|| {
+                        section_order_ids.iter().find_map(|(id, _)| {
+                            section_outbound_tags
+                                .get(id)
+                                .filter(|t| *t != "direct" && *t != "block")
+                                .cloned()
+                        })
+                    });
+            }
+            if let Some(target_tag) = full_tunnel_target {
+                rules.push(json!({
+                    "inbound": client_intercept_inbounds,
+                    "outbound": target_tag
+                }));
+            } else if crate::store::has_fail_closed_section(store)
+                || !store.settings.emergency_direct_bypass
+            {
+                rules.push(json!({
+                    "inbound": client_intercept_inbounds,
+                    "action": "reject"
+                }));
+            }
+        }
+    }
+
+    if is_tachyon_core {
+        share_wireguard_client_outbounds(&mut outbounds, &mut endpoints);
+    }
+    apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
 
     // Built-in `direct` and `block` outbounds
     outbounds.push(json!({
@@ -8181,6 +10238,18 @@ pub fn compile_core_config_with_wan6(
         dns_servers_vec.push(fakeip_srv);
     }
     let mut dns_rules_vec: Vec<Value> = Vec::new();
+    let endpoint_domains = collect_proxy_endpoint_domains(&outbounds, &endpoints, store);
+    if !endpoint_domains.is_empty() {
+        let mut ep_rule = json!({
+            "domain": endpoint_domains,
+            "action": "route",
+            "server": "dns-bootstrap"
+        });
+        if !ipv6_active {
+            ep_rule["query_type"] = json!(["A"]);
+        }
+        dns_rules_vec.push(ep_rule);
+    }
     let ntp_domains = collect_system_ntp_domains();
     if !ntp_domains.is_empty() {
         dns_rules_vec.push(json!({
@@ -8198,6 +10267,31 @@ pub fn compile_core_config_with_wan6(
         "domain_suffix": [".use-application-dns.net"],
         "action": "reject"
     }));
+    if crate::store::effective_dns_intercept_all(store) {
+        dns_rules_vec.push(json!({
+            "action": "predefined",
+            "domain_suffix": [
+                "dns.google", "dns.google.com",
+                "cloudflare-dns.com", "one.one.one.one", "cloudflare-gateway.com",
+                "dns.quad9.net", "quad9.net",
+                "doh.opendns.com", "dns.umbrella.com",
+                "dns.adguard.com", "dns.adguard-dns.com", "adguard-dns.com",
+                "dns.nextdns.io", "doh.cleanbrowsing.org",
+                "doh.mullvad.net", "dns.mullvad.net",
+                "dns.controld.com", "freedns.controld.com",
+                "dot.dns.yandex.net", "doh.libredns.gr",
+                "dns1.nextdns.io", "dns2.nextdns.io",
+                "dns.comss.one", "router.comss.one",
+                "dns.sb", "doh.sb", "dns0.eu",
+                "dns.alidns.com", "doh.pub", "dot.pub", "doh.360.cn",
+                "doh.applied-privacy.net", "dns.digitale-gesellschaft.ch", "dns.switch.ch",
+                "doh.ffmuc.net", "dns.njal.la", "doh.xfinity.com", "dns.twnic.tw",
+                "use-application-dns.net",
+                "mask.icloud.com", "mask-h2.icloud.com"
+            ],
+            "rcode": "NXDOMAIN"
+        }));
+    }
     if !safe_search_ips.is_empty() {
         dns_servers_vec.push(json!({
             "type": "hosts",
@@ -8247,6 +10341,60 @@ pub fn compile_core_config_with_wan6(
             Some(store.settings.dns_rewrite_ttl),
         ));
     }
+    if !custom_dns_sections.is_empty() {
+        let wan_dns = get_wan_dns_servers();
+        let eff_dns_strategy = crate::store::effective_dns_strategy(&store.settings, ipv6_state);
+        for sec in &custom_dns_sections {
+            let (servers, wan_set, has_explicit) =
+                resolve_section_dns_servers(sec, &wan_dns, ipv6_active, &eff_dns_strategy);
+            if servers.is_empty() {
+                continue;
+            }
+            let raw_dns_type = if sec.routed_dns_type.trim().is_empty() {
+                "udp"
+            } else {
+                sec.routed_dns_type.trim()
+            };
+            let detour = if sec.dns_detour_enabled {
+                let target = sec.dns_detour_section.trim();
+                section_outbound_tags
+                    .get(target)
+                    .map(|t| t.as_str())
+                    .or((!target.is_empty()).then_some(target))
+            } else {
+                Some("direct")
+            };
+            let mut server_tags = Vec::new();
+            for (i, srv_val) in servers.iter().enumerate() {
+                let tag_name = if servers.len() <= 1 {
+                    format!("dns-sec-{}", sec.id)
+                } else {
+                    format!("dns-sec-{}-{}", sec.id, i + 1)
+                };
+                let eff_type = if wan_set.contains(srv_val) || (sec.dns_use_wan && !has_explicit) {
+                    "udp"
+                } else {
+                    raw_dns_type
+                };
+                dns_servers_vec.push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
+                server_tags.push(tag_name);
+            }
+            if let Some(primary_tag) = server_tags.first() {
+                collect_custom_dns_section_rules(
+                    sec,
+                    primary_tag,
+                    store.settings.dns_rewrite_ttl,
+                    &cond_map,
+                    &store.settings.rulesets_dir,
+                    &store.settings.github_mirror,
+                    &mut rule_sets,
+                    &mut seen_rule_sets,
+                    ipv6_active,
+                    &mut dns_rules_vec,
+                );
+            }
+        }
+    }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
         for meta in &ts_dns_metas {
@@ -8288,6 +10436,23 @@ pub fn compile_core_config_with_wan6(
         }
     }
     if store.settings.fakeip_enabled {
+        let mut server_dns_inbounds: Vec<String> = Vec::new();
+        for srv in store.servers.iter().filter(|s| s.enabled) {
+            if srv.protocol == "tailscale" || srv.is_native_tailscale() {
+                continue;
+            }
+            let inb_tag = server_effective_inbound_tag(srv);
+            if !server_dns_inbounds.contains(&inb_tag) {
+                server_dns_inbounds.push(inb_tag);
+            }
+        }
+        if !server_dns_inbounds.is_empty() {
+            dns_rules_vec.push(json!({
+                "action": "route",
+                "inbound": server_dns_inbounds,
+                "server": "dns-remote"
+            }));
+        }
         dns_rules_vec.push(json!({
             "query_type": if ipv6_active {
                 json!(["A", "AAAA"])
@@ -8601,7 +10766,11 @@ fn extract_dns_domain_rule_sets(branch: &Map<String, Value>) -> Option<Vec<Strin
     };
     let domain_only: Vec<String> = tags
         .into_iter()
-        .filter(|t| !t.starts_with("geoip-"))
+        .filter(|t| {
+            !t.starts_with("geoip-")
+                && !t.starts_with("trs-geoip_")
+                && !t.ends_with("-subnets-ruleset")
+        })
         .collect();
     if domain_only.is_empty() {
         None
@@ -8815,11 +10984,11 @@ fn collect_section_aaaa_noerror_dns_rules(
             combined_domains.push(d.clone());
         }
     }
-    if (!section_matched_any || out.len() == before_len)
-        && (!sec.community_lists.is_empty()
-            || !combined_domains.is_empty()
-            || !sec.geosite_codes.is_empty()
-            || !sec.source_ip_cidr.is_empty())
+    if !sec.community_lists.is_empty()
+        || !sec.rule_set_with_subnets.is_empty()
+        || !combined_domains.is_empty()
+        || !sec.geosite_codes.is_empty()
+        || !sec.source_ip_cidr.is_empty()
     {
         let synthetic = TrafficCondition {
             id: format!("inline-dns-{}", sec.id),
@@ -8828,6 +10997,7 @@ fn collect_section_aaaa_noerror_dns_rules(
             condition_type: "atomic".to_string(),
             community_lists: sec.community_lists.clone(),
             community_subnets: sec.community_subnets,
+            rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
             user_domains: combined_domains,
             geoip_codes: sec.geoip_codes.clone(),
             geoip_mode: sec.geoip_mode.clone(),
@@ -8856,6 +11026,380 @@ fn collect_section_aaaa_noerror_dns_rules(
             "action": "predefined",
             "rcode": "NOERROR"
         }));
+    }
+}
+
+fn push_wan_dns_ip(result: &mut Vec<String>, seen: &mut HashSet<String>, raw_ip: &str) {
+    let ip = raw_ip.trim();
+    if ip.is_empty() || ip == "0.0.0.0" || ip == "::" || ip == "::1" || ip.starts_with("127.") {
+        return;
+    }
+    if crate::store::valid_ip_with_zone(ip) && seen.insert(ip.to_string()) {
+        result.push(ip.to_string());
+    }
+}
+
+fn collect_wan_dns_from_resolv_text(
+    result: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    text: &str,
+) {
+    for raw_line in text.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        let mut parts = line.split_whitespace();
+        if parts.next() == Some("nameserver")
+            && let Some(ip) = parts.next()
+        {
+            push_wan_dns_ip(result, seen, ip);
+        }
+    }
+}
+
+pub fn get_wan_dns_servers() -> Vec<String> {
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Ok(env_path) = std::env::var("TACHYON_WAN_RESOLV_FILE") {
+        let trimmed = env_path.trim();
+        if !trimmed.is_empty() {
+            if let Ok(text) = std::fs::read_to_string(trimmed) {
+                collect_wan_dns_from_resolv_text(&mut result, &mut seen, &text);
+            }
+            return result;
+        }
+    }
+
+    if cfg!(windows) {
+        return result;
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(dhcp_cfg) = std::fs::read_to_string("/etc/config/dhcp") {
+        for line in dhcp_cfg.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("option resolvfile") {
+                let p = rest.trim().trim_matches('\'').trim_matches('"');
+                if !p.is_empty() && p != "/tmp/resolv.conf" && p != "/etc/resolv.conf" {
+                    candidates.push(p.to_string());
+                }
+            }
+        }
+    }
+    for def in [
+        "/tmp/resolv.conf.d/resolv.conf.auto",
+        "/tmp/resolv.conf.auto",
+    ] {
+        if !candidates.iter().any(|c| c == def) {
+            candidates.push(def.to_string());
+        }
+    }
+    for path in candidates {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            collect_wan_dns_from_resolv_text(&mut result, &mut seen, &text);
+            if !result.is_empty() {
+                return result;
+            }
+        }
+    }
+
+    if let Ok(out) = std::process::Command::new("ubus")
+        .args(["-S", "call", "network.interface", "dump"])
+        .output()
+        && out.status.success()
+        && let Ok(dump) = serde_json::from_slice::<Value>(&out.stdout)
+        && let Some(ifaces) = dump.get("interface").and_then(Value::as_array)
+    {
+        for iface in ifaces {
+            if iface.get("up").and_then(Value::as_bool) != Some(true) {
+                continue;
+            }
+            let iname = iface.get("interface").and_then(Value::as_str).unwrap_or("");
+            let has_default_route =
+                iface
+                    .get("route")
+                    .and_then(Value::as_array)
+                    .is_some_and(|routes| {
+                        routes.iter().any(|r| {
+                            let target = r.get("target").and_then(Value::as_str).unwrap_or("");
+                            let mask = r.get("mask").and_then(Value::as_i64);
+                            (target == "0.0.0.0" || target == "::") && mask == Some(0)
+                        })
+                    });
+            if iname != "wan" && iname != "wan6" && !has_default_route {
+                continue;
+            }
+            if let Some(dns_arr) = iface.get("dns-server").and_then(Value::as_array) {
+                for dip in dns_arr {
+                    if let Some(s) = dip.as_str() {
+                        push_wan_dns_ip(&mut result, &mut seen, s);
+                    }
+                }
+            }
+        }
+    }
+
+    if result.is_empty()
+        && let Ok(out) = std::process::Command::new("uci")
+            .args(["-q", "get", "network.wan.dns"])
+            .output()
+        && out.status.success()
+    {
+        for tok in
+            String::from_utf8_lossy(&out.stdout).split(|c: char| c == ',' || c.is_whitespace())
+        {
+            push_wan_dns_ip(&mut result, &mut seen, tok);
+        }
+    }
+
+    result
+}
+
+fn resolve_section_dns_servers(
+    sec: &RoutingSection,
+    wan_dns: &[String],
+    ipv6_active: bool,
+    dns_strategy: &str,
+) -> (Vec<String>, HashSet<String>, bool) {
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    let mut wan_set = HashSet::new();
+
+    if sec.dns_use_wan {
+        let mut wan_v4 = Vec::new();
+        let mut wan_v6 = Vec::new();
+        for wip in wan_dns {
+            let trimmed = wip.trim();
+            if trimmed.is_empty() || seen.contains(trimmed) {
+                continue;
+            }
+            let is_v6 = trimmed.contains(':');
+            if is_v6 && !ipv6_active {
+                continue;
+            }
+            seen.insert(trimmed.to_string());
+            wan_set.insert(trimmed.to_string());
+            if is_v6 {
+                wan_v6.push(trimmed.to_string());
+            } else {
+                wan_v4.push(trimmed.to_string());
+            }
+        }
+        let ordered = if dns_strategy == "prefer_ipv6" || dns_strategy == "ipv6_only" {
+            [wan_v6, wan_v4]
+        } else {
+            [wan_v4, wan_v6]
+        };
+        for group in ordered {
+            for wip in group {
+                result.push(wip);
+            }
+        }
+    }
+
+    let mut has_explicit = false;
+    for srv in &sec.dns_servers {
+        for tok in srv.split([',', '\n', ' ', '\t']) {
+            let trimmed = tok.trim();
+            if !trimmed.is_empty() {
+                has_explicit = true;
+                if seen.insert(trimmed.to_string()) {
+                    result.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    if result.is_empty() && sec.dns_use_wan {
+        result.push("77.88.8.8".to_string());
+    }
+
+    (result, wan_set, has_explicit)
+}
+
+fn build_dns_server_entry(
+    tag: &str,
+    eff_type: &str,
+    raw_server: &str,
+    detour: Option<&str>,
+) -> Value {
+    let host_owned = extract_host_only(raw_server);
+    let host = if host_owned.is_empty() {
+        raw_server.trim()
+    } else {
+        host_owned.as_str()
+    };
+    let is_ip = crate::store::valid_ip_with_zone(host);
+    let known_sni = lookup_known_dns_server_name(host);
+    let make_tls = || -> Value {
+        let mut t = json!({ "enabled": true });
+        if is_ip {
+            if let Some(sni) = known_sni {
+                t["server_name"] = json!(sni);
+            }
+        } else {
+            t["server_name"] = json!(host);
+        }
+        t
+    };
+
+    let mut obj = match eff_type.trim().to_ascii_lowercase().as_str() {
+        "doh" | "https" => {
+            let mut o = json!({
+                "type": "https",
+                "tag": tag,
+                "server": host,
+                "server_port": extract_url_port(raw_server, 443),
+                "tls": make_tls(),
+            });
+            let path = extract_url_path(raw_server).unwrap_or_else(|| "/dns-query".to_string());
+            o["path"] = json!(if path == "/" { "/dns-query" } else { &path });
+            o
+        }
+        "dot" | "tls" => json!({
+            "type": "tls",
+            "tag": tag,
+            "server": host,
+            "server_port": extract_url_port(raw_server, 853),
+            "tls": make_tls(),
+        }),
+        "doq" | "quic" => json!({
+            "type": "quic",
+            "tag": tag,
+            "server": host,
+            "server_port": extract_url_port(raw_server, 784),
+            "tls": make_tls(),
+        }),
+        _ => json!({
+            "type": "udp",
+            "tag": tag,
+            "server": host,
+            "server_port": extract_url_port(raw_server, 53),
+        }),
+    };
+    if let Some(det) = detour
+        && !det.trim().is_empty()
+    {
+        obj["detour"] = json!(det.trim());
+    }
+    if !is_ip && obj.get("type").and_then(Value::as_str) != Some("udp") {
+        obj["domain_resolver"] = json!("dns-bootstrap");
+    }
+    obj
+}
+
+fn collect_proxy_endpoint_domains(
+    outbounds: &[Value],
+    endpoints: &[Value],
+    store: &RouterStoreData,
+) -> Vec<String> {
+    let mut domains = Vec::new();
+    let mut seen = HashSet::new();
+    let mut add_domain = |raw: &str| {
+        let host = extract_host_only(raw);
+        let key = host.trim().trim_end_matches('.').to_ascii_lowercase();
+        if key.is_empty()
+            || key == "localhost"
+            || !key.contains('.')
+            || crate::store::valid_ip_with_zone(&key)
+        {
+            return;
+        }
+        if seen.insert(key.clone()) {
+            domains.push(key);
+        }
+    };
+
+    for item in outbounds.iter().chain(endpoints.iter()) {
+        if let Some(srv) = item.get("server").and_then(Value::as_str) {
+            add_domain(srv);
+        }
+        if let Some(peers) = item.get("peers").and_then(Value::as_array) {
+            for peer in peers {
+                if let Some(addr) = peer
+                    .get("address")
+                    .or_else(|| peer.get("server"))
+                    .and_then(Value::as_str)
+                {
+                    add_domain(addr);
+                }
+            }
+        }
+    }
+    for src in store.outbound_sources.iter().filter(|s| s.enabled) {
+        if !src.server.trim().is_empty() {
+            add_domain(&src.server);
+        }
+        for raw_url in &src.subscription_urls {
+            let u = raw_url.split(" | ").next().unwrap_or(raw_url).trim();
+            if !u.is_empty() {
+                add_domain(u);
+            }
+        }
+    }
+    domains
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_custom_dns_section_rules(
+    sec: &RoutingSection,
+    server_tag: &str,
+    rewrite_ttl: u32,
+    cond_map: &HashMap<&str, &TrafficCondition>,
+    rulesets_dir: &str,
+    github_mirror: &str,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+    enable_ipv6: bool,
+    out: &mut Vec<Value>,
+) {
+    let before = out.len();
+    let mut tmp = Vec::new();
+    collect_section_aaaa_noerror_dns_rules(
+        sec,
+        cond_map,
+        rulesets_dir,
+        github_mirror,
+        rule_sets,
+        seen_rule_sets,
+        enable_ipv6,
+        false,
+        &mut tmp,
+    );
+
+    fn rewrite_rule_target(rule: &mut Value, server_tag: &str, rewrite_ttl: u32) {
+        if let Some(obj) = rule.as_object_mut() {
+            if let Some(sub_arr) = obj.get_mut("rules").and_then(Value::as_array_mut) {
+                sub_arr.retain(|sub| sub.get("query_type").is_none());
+            }
+            if obj.contains_key("query_type") {
+                obj.remove("query_type");
+            }
+            if obj.get("rcode").is_some() {
+                obj.remove("rcode");
+            }
+            obj.insert("action".into(), json!("route"));
+            obj.insert("server".into(), json!(server_tag));
+            if rewrite_ttl > 0 {
+                obj.insert("rewrite_ttl".into(), json!(rewrite_ttl));
+            }
+        }
+    }
+
+    for mut rule in tmp {
+        rewrite_rule_target(&mut rule, server_tag, rewrite_ttl);
+        if rule.as_object().is_some_and(|o| o.len() > 3) {
+            out.push(rule);
+        }
+    }
+    if (out.len() == before && sec.condition_refs.is_empty()) || sec.match_all {
+        let mut fallback = json!({
+            "action": "route",
+            "server": server_tag
+        });
+        if rewrite_ttl > 0 {
+            fallback["rewrite_ttl"] = json!(rewrite_ttl);
+        }
+        out.push(fallback);
     }
 }
 
@@ -9307,6 +11851,9 @@ fn resolve_section_outbound(
                 || sec.desync_wscale.is_some()
                 || !sec.desync_fake_payload.trim().is_empty()
                 || !sec.desync_fake_tls.trim().is_empty()
+                || !sec.desync_udp_fake_payload.trim().is_empty()
+                || !sec.desync_udp_out_range.trim().is_empty()
+                || !sec.desync_udp_keep_socket.trim().is_empty()
             {
                 let sec_tag = format!("desync-sec-{}", sec.id);
                 if !seen_outbound_tags.contains_key(&sec_tag) {
@@ -9336,6 +11883,9 @@ fn resolve_section_outbound(
                             udp_fake: sec.desync_udp_fake,
                             udp_repeats: sec.desync_udp_repeats,
                             udp_fake_ttl: sec.desync_udp_fake_ttl,
+                            udp_fake_payload: &sec.desync_udp_fake_payload,
+                            udp_out_range: &sec.desync_udp_out_range,
+                            udp_keep_socket: &sec.desync_udp_keep_socket,
                             udplen: sec.desync_udplen,
                         },
                         false,
@@ -9394,6 +11944,7 @@ fn resolve_section_outbound(
     // If balancers are attached to this section, synthesize section-scoped balancer outbounds
     // populated strictly with `candidate_tags` from this section across all 14 algorithms!
     let mut built_bal_tags = Vec::new();
+    let mut priority_bal_tag: Option<String> = None;
     for bal_id in &sec.balancer_refs {
         if let Some(bal) = bal_map.get(bal_id.as_str()).copied()
             && bal.enabled
@@ -9407,20 +11958,56 @@ fn resolve_section_outbound(
                     candidate_tags.clone(),
                 ));
             }
+            let raw_mode = if !bal.mode.trim().is_empty() {
+                bal.mode.trim().to_ascii_lowercase()
+            } else {
+                bal.balancer_type.trim().to_ascii_lowercase()
+            };
+            if priority_bal_tag.is_none()
+                && (bal.balancer_type == "priority"
+                    || matches!(raw_mode.as_str(), "priority" | "failover"))
+            {
+                priority_bal_tag = Some(bal_tag.clone());
+            }
             built_bal_tags.push(bal_tag);
         }
     }
-    if built_bal_tags.len() == 1 {
-        return built_bal_tags.remove(0);
-    } else if built_bal_tags.len() > 1 {
+    if !built_bal_tags.is_empty() {
         let sel_tag = format!("sel-{}", sec.id);
         if !seen_outbound_tags.contains_key(&sel_tag) {
             seen_outbound_tags.insert(sel_tag.clone(), true);
+            let sel_mode = sec.section_selection_mode.trim().to_ascii_lowercase();
+            let is_priority_failover = matches!(
+                sel_mode.as_str(),
+                "priority_failover" | "priority" | "failover"
+            );
+            let mut sel_outbounds = built_bal_tags.clone();
+            for t in &candidate_tags {
+                if !sel_outbounds.iter().any(|existing| existing == t) {
+                    sel_outbounds.push(t.clone());
+                }
+            }
+            let active_sel = sec.active_selected_tag.trim();
+            let default_bal = if !active_sel.is_empty()
+                && let Some(matched) = sel_outbounds.iter().find(|t| t.as_str() == active_sel)
+            {
+                matched.clone()
+            } else if !active_sel.is_empty()
+                && let Some(matched) = sel_outbounds
+                    .iter()
+                    .find(|t| server_filter_name_matches(t, active_sel, &[]))
+            {
+                matched.clone()
+            } else if is_priority_failover && let Some(prio_tag) = priority_bal_tag {
+                prio_tag
+            } else {
+                built_bal_tags[0].clone()
+            };
             outbounds.push(json!({
                 "type": "selector",
                 "tag": sel_tag,
-                "outbounds": built_bal_tags,
-                "default": built_bal_tags[0],
+                "outbounds": sel_outbounds,
+                "default": default_bal,
                 "interrupt_exist_connections": false
             }));
         }
@@ -9497,6 +12084,14 @@ fn build_balancer_outbound(bal_tag: &str, bal: &BalancerConfig, mut tags: Vec<St
     let fb = bal.fallback_section.trim();
     if !fb.is_empty() && !tags.iter().any(|t| t == fb) {
         tags.push(fb.to_string());
+    }
+    if bal.balancer_type.eq_ignore_ascii_case("selector") {
+        return json!({
+            "type": "selector",
+            "tag": bal_tag,
+            "outbounds": tags,
+            "interrupt_exist_connections": bal.interrupt_exist_connections
+        });
     }
     let raw_mode = if !bal.mode.trim().is_empty() {
         bal.mode.trim().to_ascii_lowercase()
@@ -9638,6 +12233,96 @@ fn register_remote_ruleset(
     }
 }
 
+fn ensure_community_subnet_ruleset(
+    rs_tags: &mut Vec<String>,
+    service: &str,
+    rulesets_dir: &str,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+    enable_ipv6: bool,
+) {
+    let service_lc = service.trim().to_ascii_lowercase();
+    if service_lc.is_empty() || !community_service_has_subnet_list(&service_lc) {
+        return;
+    }
+    let canonical = canonical_community_subnet_service(&service_lc).to_ascii_lowercase();
+    let sub_tag = format!("builtin-{canonical}-subnets-ruleset");
+    if seen_rule_sets.contains_key(&sub_tag) {
+        if !rs_tags.contains(&sub_tag) {
+            rs_tags.push(sub_tag);
+        }
+        return;
+    }
+
+    let mut search_dirs: Vec<String> = Vec::new();
+    for d in [
+        rulesets_dir.trim(),
+        "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+    ] {
+        if !d.is_empty() && !search_dirs.iter().any(|x| x == d) {
+            search_dirs.push(d.to_string());
+        }
+    }
+
+    let mut names = vec![service_lc.as_str()];
+    if canonical != service_lc {
+        names.push(canonical.as_str());
+    }
+
+    let mut content: Option<String> = None;
+    'outer: for dir in &search_dirs {
+        for name in &names {
+            let path = std::path::Path::new(dir).join(format!("community-subnets-{name}.lst"));
+            if let Ok(raw) = std::fs::read_to_string(&path)
+                && !raw.trim().is_empty()
+            {
+                content = Some(raw);
+                break 'outer;
+            }
+        }
+    }
+    let Some(raw) = content else {
+        return;
+    };
+
+    let mut cidrs: Vec<String> = parse_valid_cidr_list(&raw);
+    if !enable_ipv6 {
+        cidrs.retain(|c| !c.contains(':'));
+    }
+    if cidrs.is_empty() {
+        return;
+    }
+
+    let out_dir = if !rulesets_dir.trim().is_empty() && !rulesets_dir.trim().starts_with("/etc/") {
+        rulesets_dir.trim()
+    } else {
+        "/tmp/tachyon-core/rulesets"
+    };
+    let json_path =
+        std::path::Path::new(out_dir).join(format!("community-subnets-{canonical}-ruleset.json"));
+    let doc = json!({
+        "version": 3,
+        "rules": [ { "ip_cidr": cidrs } ]
+    });
+    if let Ok(payload) = serde_json::to_vec(&doc)
+        && crate::crypto_gen::write_file_if_changed(&json_path, &payload).is_ok()
+    {
+        let json_path_str = json_path.to_string_lossy().into_owned();
+        seen_rule_sets.insert(sub_tag.clone(), true);
+        rule_sets.push(json!({
+            "tag": sub_tag,
+            "type": "local",
+            "format": "source",
+            "path": json_path_str
+        }));
+        if !rs_tags.contains(&sub_tag) {
+            rs_tags.push(sub_tag);
+        }
+    }
+}
+
 fn enable_desync_udp_fake(outbounds: &mut [Value], outbound_tag: &str) {
     for ob in outbounds.iter_mut() {
         if ob.get("tag").and_then(|v| v.as_str()) == Some(outbound_tag)
@@ -9671,7 +12356,7 @@ fn collect_atomic_condition_parts(
 
 fn collect_atomic_condition_parts_with_tables(
     cond: &TrafficCondition,
-    _rulesets_dir: &str,
+    rulesets_dir: &str,
     github_mirror: &str,
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
@@ -9738,15 +12423,18 @@ fn collect_atomic_condition_parts_with_tables(
     let mut rs_tags = Vec::new();
     let mut has_telegram = false;
     let mut has_discord = false;
+    let mut has_telegram_with_subnets = false;
+    let mut has_discord_with_subnets = false;
     for list_name in &cond.community_lists {
         let clean = list_name.trim();
         if clean.is_empty() {
             continue;
         }
-        if clean.eq_ignore_ascii_case("telegram") {
+        let clean_lc = clean.to_ascii_lowercase();
+        if clean_lc == "telegram" {
             has_telegram = true;
         }
-        if clean.eq_ignore_ascii_case("discord") {
+        if clean_lc == "discord" {
             has_discord = true;
         }
         register_remote_ruleset(
@@ -9760,6 +12448,57 @@ fn collect_atomic_condition_parts_with_tables(
             rule_sets,
             seen_rule_sets,
         );
+        if cond.community_subnets
+            && clean_lc != "telegram"
+            && clean_lc != "discord"
+            && community_service_has_subnet_list(&clean_lc)
+        {
+            ensure_community_subnet_ruleset(
+                &mut rs_tags,
+                &clean_lc,
+                rulesets_dir,
+                rule_sets,
+                seen_rule_sets,
+                enable_ipv6,
+            );
+        }
+    }
+    for rset_sub in &cond.rule_set_with_subnets {
+        let clean = rset_sub.trim();
+        if clean.is_empty() || !is_community_list_token(clean) {
+            continue;
+        }
+        let clean_lc = clean.to_ascii_lowercase();
+        if clean_lc == "telegram" {
+            has_telegram_with_subnets = true;
+        }
+        if clean_lc == "discord" {
+            has_discord_with_subnets = true;
+        }
+        register_remote_ruleset(
+            &mut rs_tags,
+            format!("trs-{clean}"),
+            format!(
+                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
+            ),
+            "6h",
+            github_mirror,
+            rule_sets,
+            seen_rule_sets,
+        );
+        if clean_lc != "telegram"
+            && clean_lc != "discord"
+            && community_service_has_subnet_list(&clean_lc)
+        {
+            ensure_community_subnet_ruleset(
+                &mut rs_tags,
+                &clean_lc,
+                rulesets_dir,
+                rule_sets,
+                seen_rule_sets,
+                enable_ipv6,
+            );
+        }
     }
     for code in &cond.geoip_codes {
         let clean = code.trim().to_ascii_lowercase();
@@ -9770,7 +12509,7 @@ fn collect_atomic_condition_parts_with_tables(
             &mut rs_tags,
             format!("geoip-{clean}"),
             format!(
-                "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-{clean}.srs"
+                "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{clean}.srs"
             ),
             "24h",
             github_mirror,
@@ -9787,7 +12526,7 @@ fn collect_atomic_condition_parts_with_tables(
             &mut rs_tags,
             format!("geosite-{clean}"),
             format!(
-                "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-{clean}.srs"
+                "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/{clean}.srs"
             ),
             "24h",
             github_mirror,
@@ -9801,13 +12540,52 @@ fn collect_atomic_condition_parts_with_tables(
         branches.push(b);
     }
 
-    let mut domains = Vec::new();
-    for d in &cond.user_domains {
-        push_unique_str(&mut domains, d);
+    let mut exact_domains = Vec::new();
+    let mut suffix_domains = Vec::new();
+    let mut keyword_domains = Vec::new();
+    let mut regex_domains = Vec::new();
+    for raw in &cond.user_domains {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("full:") {
+            push_unique_str(&mut exact_domains, &trimmed[5..].to_ascii_lowercase());
+        } else if lower.starts_with("domain:") {
+            push_unique_str(&mut suffix_domains, &trimmed[7..].to_ascii_lowercase());
+        } else if lower.starts_with("domain_suffix:") {
+            push_unique_str(&mut suffix_domains, &trimmed[14..].to_ascii_lowercase());
+        } else if lower.starts_with("keyword:") {
+            push_unique_str(&mut keyword_domains, &trimmed[8..].to_ascii_lowercase());
+        } else if lower.starts_with("domain_keyword:") {
+            push_unique_str(&mut keyword_domains, &trimmed[15..].to_ascii_lowercase());
+        } else if lower.starts_with("regex:") {
+            push_unique_str(&mut regex_domains, &trimmed[6..]);
+        } else if lower.starts_with("domain_regex:") {
+            push_unique_str(&mut regex_domains, &trimmed[13..]);
+        } else {
+            push_unique_str(&mut suffix_domains, trimmed);
+        }
     }
-    if !domains.is_empty() {
+    if !exact_domains.is_empty()
+        || !suffix_domains.is_empty()
+        || !keyword_domains.is_empty()
+        || !regex_domains.is_empty()
+    {
         let mut b = Map::new();
-        b.insert("domain_suffix".into(), json!(domains));
+        if !exact_domains.is_empty() {
+            b.insert("domain".into(), json!(exact_domains));
+        }
+        if !suffix_domains.is_empty() {
+            b.insert("domain_suffix".into(), json!(suffix_domains));
+        }
+        if !keyword_domains.is_empty() {
+            b.insert("domain_keyword".into(), json!(keyword_domains));
+        }
+        if !regex_domains.is_empty() {
+            b.insert("domain_regex".into(), json!(regex_domains));
+        }
         branches.push(b);
     }
 
@@ -9820,19 +12598,17 @@ fn collect_atomic_condition_parts_with_tables(
             push_unique_str(&mut ip_cidrs, &cidr);
         }
     }
-    if cond.community_subnets {
-        if has_telegram {
-            for sub in DEFAULT_TELEGRAM_SUBNETS {
-                if enable_ipv6 || !sub.contains(':') {
-                    push_unique_str(&mut ip_cidrs, sub);
-                }
+    if (cond.community_subnets && has_telegram) || has_telegram_with_subnets {
+        for sub in DEFAULT_TELEGRAM_SUBNETS {
+            if enable_ipv6 || !sub.contains(':') {
+                push_unique_str(&mut ip_cidrs, sub);
             }
         }
-        if has_discord {
-            for sub in DISCORD_DEDICATED_SUBNETS {
-                if enable_ipv6 || !sub.contains(':') {
-                    push_unique_str(&mut ip_cidrs, sub);
-                }
+    }
+    if (cond.community_subnets && has_discord) || has_discord_with_subnets {
+        for sub in DISCORD_DEDICATED_SUBNETS {
+            if enable_ipv6 || !sub.contains(':') {
+                push_unique_str(&mut ip_cidrs, sub);
             }
         }
     }
@@ -9842,7 +12618,9 @@ fn collect_atomic_condition_parts_with_tables(
         branches.push(b);
     }
 
-    if has_discord && cond.community_subnets && cond.ports.is_empty() {
+    if ((has_discord && cond.community_subnets) || has_discord_with_subnets)
+        && cond.ports.is_empty()
+    {
         let mut voice_cidrs: Vec<String> = DEFAULT_DISCORD_VOICE_SUBNETS_V4
             .iter()
             .map(|s| (*s).to_string())
@@ -10056,6 +12834,8 @@ fn build_condition_rules(
     pre_resolve_ip: bool,
     outbounds: &mut [Value],
 ) -> Vec<Value> {
+    let cond_exc_subs = build_excluded_protocol_subrules(&cond.excluded_protocol);
+    let cond_exc_dom_subs = build_excluded_domain_subrules(&cond.exclude_domains);
     let ctype = cond.condition_type.trim().to_ascii_lowercase();
     if matches!(ctype.as_str(), "all" | "any" | "not") && !cond.children.is_empty() {
         return build_condition_rule(
@@ -10071,6 +12851,7 @@ fn build_condition_rules(
             0,
         )
         .into_iter()
+        .map(|r| wrap_rule_with_inverted_subrules(r, &cond_exc_dom_subs, &cond_exc_subs))
         .collect();
     }
 
@@ -10091,11 +12872,13 @@ fn build_condition_rules(
     if cond.invert {
         return build_atomic_single_rule(parts, true, Some(outbound_tag))
             .into_iter()
+            .map(|r| wrap_rule_with_inverted_subrules(r, &cond_exc_dom_subs, &cond_exc_subs))
             .collect();
     }
     if parts.branches.is_empty() {
         return build_atomic_single_rule(parts, false, Some(outbound_tag))
             .into_iter()
+            .map(|r| wrap_rule_with_inverted_subrules(r, &cond_exc_dom_subs, &cond_exc_subs))
             .collect();
     }
 
@@ -10110,7 +12893,11 @@ fn build_condition_rules(
             }
             resolve_rule.insert("action".into(), json!("resolve"));
             resolve_rule.insert("server".into(), json!("dns-remote"));
-            out_rules.push(Value::Object(resolve_rule));
+            out_rules.push(wrap_rule_with_inverted_subrules(
+                Value::Object(resolve_rule),
+                &cond_exc_dom_subs,
+                &[],
+            ));
         }
 
         let mut route_rule = parts.scope.clone();
@@ -10118,7 +12905,11 @@ fn build_condition_rules(
             route_rule.insert(k, v);
         }
         route_rule.insert("outbound".into(), json!(outbound_tag));
-        out_rules.push(Value::Object(route_rule));
+        out_rules.push(wrap_rule_with_inverted_subrules(
+            Value::Object(route_rule),
+            &cond_exc_dom_subs,
+            &cond_exc_subs,
+        ));
     }
     out_rules
 }
@@ -10316,7 +13107,13 @@ fn build_inbound_servers(srv: &InboundServer) -> Vec<Value> {
     {
         Some(json!({
             "enabled": true,
-            "server_name": if srv.tls_server_name.is_empty() { "192.168.1.205" } else { &srv.tls_server_name },
+            "server_name": if !srv.tls_server_name.is_empty() {
+                &srv.tls_server_name
+            } else if !srv.public_host.is_empty() {
+                &srv.public_host
+            } else {
+                "localhost"
+            },
             "certificate_path": cert_path,
             "key_path": key_path,
             "alpn": if srv.tls_alpn.is_empty() { vec!["h3".to_string()] } else { srv.tls_alpn.clone() }
@@ -10832,14 +13629,14 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
         .map(str::trim)
         .unwrap_or_else(|| {
             if srv.public_host.is_empty() {
-                "192.168.1.205"
+                "localhost"
             } else {
                 srv.public_host.trim()
             }
         });
     let bare_host_owned = extract_host_only(raw_host);
     let bare_host = if bare_host_owned.is_empty() {
-        "192.168.1.205"
+        "localhost"
     } else {
         bare_host_owned.as_str()
     };
@@ -11240,14 +14037,14 @@ pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) ->
         .map(str::trim)
         .unwrap_or_else(|| {
             if srv.public_host.is_empty() {
-                "192.168.1.205"
+                "localhost"
             } else {
                 srv.public_host.trim()
             }
         });
     let bare_host = extract_host_only(raw_host);
     let host_clean = if bare_host.is_empty() {
-        "192.168.1.205"
+        "localhost"
     } else {
         bare_host.as_str()
     };
@@ -11329,6 +14126,15 @@ pub fn build_router_subscription_payload(
     host_override: Option<&str>,
     format: &str,
 ) -> String {
+    let effective_host = host_override
+        .map(str::trim)
+        .filter(|h| is_usable_external_sub_host(h))
+        .or_else(|| {
+            let sub_host = store.settings.server_subscription_host.trim();
+            is_usable_external_sub_host(sub_host).then_some(sub_host)
+        })
+        .or_else(|| host_override.map(str::trim).filter(|h| !h.is_empty()));
+
     let fmt = format.trim().to_ascii_lowercase();
     let enabled_servers: Vec<&InboundServer> = store.servers.iter().filter(|s| s.enabled).collect();
 
@@ -11338,12 +14144,12 @@ pub fn build_router_subscription_payload(
             .find(|s| s.protocol == "awg" || s.protocol == "wireguard")
             .or_else(|| enabled_servers.first())
     {
-        return build_server_wg_conf(wg_srv, host_override);
+        return build_server_wg_conf(wg_srv, effective_host);
     }
 
     let uris: Vec<String> = enabled_servers
         .iter()
-        .map(|s| build_server_share_uri(s, host_override))
+        .map(|s| build_server_share_uri(s, effective_host))
         .collect();
 
     if fmt == "clash" || fmt == "yaml" {
@@ -13732,5 +16538,584 @@ config timeserver 'ntp'
             leaked_rules.is_empty(),
             "unresolved source_macs condition must never degrade into an unscoped rule"
         );
+    }
+
+    #[test]
+    fn test_mieru_subscription_query_decode_and_duplicate_tags() {
+        let uri1 = "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.47?profile=default&port=2012-2022&protocol=TCP&multiplexing=MULTIPLEXING_HIGH&traffic-pattern=GgQIARAK&handshake-mode=HANDSHAKE_STANDARD#Mieru";
+        let uri2 = "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.48?port=2030-2040&protocol=UDP&traffic-pattern=GgQI+RAK#Mieru";
+
+        let n1 = parse_proxy_uri(uri1, 0).expect("parse mieru uri1");
+        assert_eq!(n1.tag, "Mieru");
+        assert_eq!(n1.server, "198.51.100.47");
+        assert_eq!(n1.server_port, 2012);
+        assert_eq!(
+            n1.outbound_json["password"],
+            "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ="
+        );
+        assert_eq!(n1.outbound_json["server_ports"], json!(["2012-2022"]));
+        assert!(n1.outbound_json.get("server_port").is_none());
+        assert_eq!(n1.outbound_json["traffic_pattern"], "GgQIARAK");
+        assert_eq!(n1.outbound_json["handshake_mode"], "HANDSHAKE_STANDARD");
+        assert_eq!(n1.outbound_json["multiplexing"], "MULTIPLEXING_HIGH");
+
+        let n2 = parse_proxy_uri(uri2, 1).expect("parse mieru uri2");
+        assert_eq!(n2.outbound_json["traffic_pattern"], "GgQI+RAK");
+
+        let roundtrip = serialize_mieru_outbound(&n1.outbound_json).expect("serialize mieru");
+        assert!(roundtrip.contains("handshake-mode=HANDSHAKE_STANDARD"));
+        assert!(roundtrip.contains("traffic-pattern=GgQIARAK"));
+        assert!(roundtrip.contains("port=2012-2022"));
+
+        let src = OutboundSource {
+            id: "src_mieru_dup".to_string(),
+            enabled: true,
+            name: "Mieru Links".to_string(),
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![uri1.to_string(), uri2.to_string()],
+            ..Default::default()
+        };
+        let built = build_filtered_source_nodes(&src);
+        assert_eq!(built.len(), 2);
+        assert_eq!(built[0].0, "Mieru");
+        assert_eq!(built[1].0, "Mieru-1");
+        assert_eq!(built[1].1["tag"], "Mieru-1");
+        assert_eq!(built[1].1["server"], "198.51.100.48");
+    }
+
+    #[test]
+    fn test_wireguard_sharing_full_tunnel_server_dns_excluded_protocol_and_metacubex() {
+        let mut store = RouterStoreData::default();
+        store.settings.routing_strategy = "full_tunnel".to_string();
+        store.settings.default_tunnel_section = "Main".to_string();
+        store.settings.block_doh = true;
+        store.settings.fakeip_enabled = true;
+        store.settings.server_subscription_host = "192.168.1.205".to_string();
+
+        let wg_json = json!({
+            "type": "wireguard",
+            "tag": "WG-Alpha",
+            "server": "198.51.100.10",
+            "server_port": 51820,
+            "local_address": ["10.0.0.2/32"],
+            "private_key": "PRIV",
+            "peer_public_key": "PUB"
+        });
+        let wg_json2 = json!({
+            "type": "wireguard",
+            "tag": "WG-Beta",
+            "private_key": "PRIV",
+            "peer_public_key": "PUB",
+            "local_address": ["10.0.0.2/32"],
+            "server_port": 51820,
+            "server": "198.51.100.10"
+        });
+        store.outbound_sources.push(OutboundSource {
+            id: "src_wg1".to_string(),
+            enabled: true,
+            source_type: "custom_json".to_string(),
+            custom_json: wg_json.to_string(),
+            ..Default::default()
+        });
+        store.outbound_sources.push(OutboundSource {
+            id: "src_wg2".to_string(),
+            enabled: true,
+            source_type: "custom_json".to_string(),
+            custom_json: wg_json2.to_string(),
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(RoutingSection {
+            id: "YouTube".to_string(),
+            enabled: true,
+            label: "YouTube".to_string(),
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_wg1".to_string()],
+            user_domains: vec!["youtube.com".to_string()],
+            excluded_protocol: vec!["quic".to_string()],
+            geoip_codes: vec!["ru".to_string()],
+            geosite_codes: vec!["google".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_wg2".to_string()],
+            ..Default::default()
+        });
+        store.servers.push(InboundServer {
+            id: "vless_srv".to_string(),
+            enabled: true,
+            label: "Home".to_string(),
+            protocol: "vless".to_string(),
+            listen_port: 8443,
+            server_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            routing_mode: "direct".to_string(),
+            ..Default::default()
+        });
+        store.servers.push(InboundServer {
+            id: "st_srv".to_string(),
+            enabled: true,
+            label: "Shadow".to_string(),
+            protocol: "shadowtls".to_string(),
+            listen_port: 9443,
+            password: "pw".to_string(),
+            routing_mode: "rules".to_string(),
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile config");
+        let outs = cfg["outbounds"].as_array().unwrap();
+        let real_wg_count = outs.iter().filter(|o| o["type"] == "wireguard").count();
+        assert_eq!(
+            real_wg_count, 1,
+            "identical WG clients must share one WG outbound"
+        );
+        assert!(outs.iter().any(|o| {
+            o["tag"] == "WG-Beta"
+                && o["type"] == "selector"
+                && o["outbounds"] == json!(["WG-Alpha"])
+        }));
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(rules.iter().any(|r| {
+            r["inbound"] == json!(["tproxy-in"])
+                && r["action"] == "reject"
+                && r["port"] == json!([443, 853])
+        }));
+        assert!(
+            rules
+                .iter()
+                .any(|r| { r["inbound"] == json!(["srv-vless_srv"]) && r["outbound"] == "direct" })
+        );
+        assert!(
+            rules
+                .iter()
+                .any(|r| { r["inbound"] == json!(["tproxy-in"]) && r["outbound"] == "WG-Beta" })
+        );
+        assert!(
+            !rules
+                .iter()
+                .any(|r| { r["outbound"] == "direct" && r["protocol"] == json!(["quic"]) })
+        );
+        assert!(rules.iter().any(|r| {
+            r["type"] == "logical"
+                && r["mode"] == "and"
+                && r["outbound"] == "WG-Alpha"
+                && r["rules"].as_array().is_some_and(|subs| {
+                    subs.iter()
+                        .any(|s| s["invert"] == true && s["protocol"] == json!(["quic"]))
+                })
+        }));
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_srv_dns = dns_rules
+            .iter()
+            .position(|r| {
+                r["server"] == "dns-remote"
+                    && r["inbound"] == json!(["srv-vless_srv", "srv-st_srv-inner"])
+            })
+            .expect("server inbound real DNS rule before dns-fakeip");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_srv_dns < idx_fakeip);
+
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+        assert!(rule_sets.iter().any(|rs| {
+            rs["url"]
+                .as_str()
+                .is_some_and(|u| u.contains("MetaCubeX/meta-rules-dat/sing/geo/geoip/ru.srs"))
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["url"]
+                .as_str()
+                .is_some_and(|u| u.contains("MetaCubeX/meta-rules-dat/sing/geo/geosite/google.srs"))
+        }));
+
+        let sub_plain = build_router_subscription_payload(&store, Some("127.0.0.1:1680"), "plain");
+        assert!(sub_plain.contains("@192.168.1.205:8443"));
+        assert!(!sub_plain.contains("@127.0.0.1"));
+    }
+
+    #[test]
+    fn test_fail_closed_auto_doh_private_relay_and_full_tunnel_reject() {
+        let mut store = RouterStoreData::default();
+        store.settings.routing_strategy = "full_tunnel".to_string();
+        store.settings.default_tunnel_section = "sec_fc".to_string();
+        store.sections = vec![RoutingSection {
+            id: "sec_fc".to_string(),
+            enabled: true,
+            label: "FailClosed".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "vless".to_string(),
+            fail_policy: "block".to_string(),
+            ..Default::default()
+        }];
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile fail-closed cfg");
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        assert!(dns_rules.iter().any(|r| {
+            r["action"] == "predefined"
+                && r["rcode"] == "NXDOMAIN"
+                && r["domain_suffix"].as_array().is_some_and(|arr| {
+                    arr.iter().any(|d| d == "mask.icloud.com")
+                        && arr.iter().any(|d| d == "dns.google")
+                })
+        }));
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(
+            route_rules
+                .iter()
+                .any(|r| { r["inbound"] == json!(["tproxy-in"]) && r["action"] == "reject" })
+        );
+    }
+
+    #[test]
+    fn test_excluded_domains_on_block_section_and_desync_udp_059_options() {
+        let store = RouterStoreData {
+            sections: vec![
+                RoutingSection {
+                    id: "sec_block".to_string(),
+                    enabled: true,
+                    label: "Block".to_string(),
+                    action: "block".to_string(),
+                    connection_type: "block".to_string(),
+                    user_domains: vec!["ads.example.com".to_string()],
+                    exclude_domains: vec![
+                        "full:allow.ads.example.com".to_string(),
+                        "keyword:goodword".to_string(),
+                        "domain:ok.example.org".to_string(),
+                    ],
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "sec_desync_udp".to_string(),
+                    enabled: true,
+                    label: "DesyncUDP".to_string(),
+                    action: "desync".to_string(),
+                    connection_type: "desync".to_string(),
+                    desync_preset: "tls_split".to_string(),
+                    desync_udp_fake: true,
+                    desync_udp_fake_payload: "0x0001".to_string(),
+                    desync_udp_out_range: "2".to_string(),
+                    desync_udp_keep_socket: "1".to_string(),
+                    user_domains: vec!["allow.ads.example.com".to_string()],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile block+desync cfg");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(
+            !rules
+                .iter()
+                .any(|r| r["outbound"] == "direct" && r["domain_suffix"].is_array()),
+            "block section excluded_domains must not emit premature outbound:direct rule"
+        );
+        let block_rule = rules
+            .iter()
+            .find(|r| r["outbound"] == "block")
+            .expect("block logical rule");
+        assert_eq!(block_rule["type"], "logical");
+        assert_eq!(block_rule["mode"], "and");
+        let sub_arr = block_rule["rules"].as_array().unwrap();
+        assert!(sub_arr.iter().any(|sub| {
+            sub["invert"] == json!(true)
+                && sub["domain"] == json!(["allow.ads.example.com"])
+                && sub["domain_keyword"] == json!(["goodword"])
+                && sub["domain_suffix"] == json!(["ok.example.org"])
+        }));
+        let ob = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "desync-sec-sec_desync_udp")
+            .expect("desync-sec-sec_desync_udp outbound");
+        assert_eq!(ob["udp_fake_payload"], "0x0001");
+        assert_eq!(ob["udp_out_range"], json!(2));
+        assert_eq!(ob["udp_keep_socket"], json!(true));
+    }
+
+    #[test]
+    fn test_tcp_profile_propagation_and_source_tls_fragment_mode() {
+        let mut store = RouterStoreData::default();
+        store.settings.tcp_profile = "windows".to_string();
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_vless".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@203.0.113.5:443?security=tls&sni=example.com#FragNode".to_string(),
+            ],
+            tls_fragment_mode: "tls_record".to_string(),
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            action: "connection".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vless".to_string()],
+            match_all: true,
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile tcp_profile cfg");
+        let obs = cfg["outbounds"].as_array().unwrap();
+        let vless = obs
+            .iter()
+            .find(|o| o["type"] == "vless")
+            .expect("vless outbound");
+        assert_eq!(vless["tcp_profile"], "windows");
+        assert_eq!(vless["tls"]["record_fragment"], json!(true));
+        let direct = obs
+            .iter()
+            .find(|o| o["tag"] == "direct")
+            .expect("direct outbound");
+        assert!(direct.get("tcp_profile").is_none());
+
+        store.outbound_sources[0].tls_fragment_mode = "tcp_fragment".to_string();
+        store.outbound_sources[0].tcp_fragment_length = "24-48".to_string();
+        store.outbound_sources[0].tcp_fragment_delay = "3".to_string();
+        let cfg_tcp_frag =
+            compile_core_config_with_wan6(&store, false).expect("compile tcp_fragment cfg");
+        let obs2 = cfg_tcp_frag["outbounds"].as_array().unwrap();
+        let vless2 = obs2
+            .iter()
+            .find(|o| o["type"] == "vless")
+            .expect("vless outbound");
+        assert_eq!(
+            vless2["tcp_fragment"],
+            json!({
+                "enabled": true,
+                "packets": "tlshello",
+                "length": "24-48",
+                "delay": "3ms"
+            })
+        );
+    }
+
+    #[test]
+    fn test_dns_section_use_wan_ipv4_ipv6_ordering_and_udp_transport() {
+        let wan = vec!["192.0.2.10".to_string(), "2001:db8::10".to_string()];
+        let sec = RoutingSection {
+            id: "dns_wan".to_string(),
+            enabled: true,
+            action: "dns".to_string(),
+            connection_type: "dns".to_string(),
+            routed_dns_type: "doh".to_string(),
+            dns_use_wan: true,
+            dns_servers: vec![],
+            user_domains: vec!["corp.internal".to_string()],
+            ..Default::default()
+        };
+        let (v4_only, wan_set4, has_explicit4) =
+            resolve_section_dns_servers(&sec, &wan, false, "prefer_ipv4");
+        assert!(!has_explicit4);
+        assert_eq!(v4_only, vec!["192.0.2.10"]);
+        assert!(wan_set4.contains("192.0.2.10"));
+
+        let (v6_first, _, _) = resolve_section_dns_servers(&sec, &wan, true, "prefer_ipv6");
+        assert_eq!(v6_first, vec!["2001:db8::10", "192.0.2.10"]);
+
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.dns_strategy = "prefer_ipv6".to_string();
+        store.outbound_sources = vec![OutboundSource {
+            id: "sub1".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            subscription_urls: vec!["https://sub.example.net/feed".to_string()],
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "dns_explicit_wan".to_string(),
+            enabled: true,
+            action: "dns".to_string(),
+            connection_type: "dns".to_string(),
+            routed_dns_type: "doh".to_string(),
+            dns_use_wan: true,
+            dns_servers: vec![],
+            user_domains: vec!["lan.example".to_string()],
+            ..Default::default()
+        }];
+
+        // Explicit `resolve_section_dns_servers` + `build_dns_server_entry` must emit `udp` when `dns_use_wan && !has_explicit`.
+        let wan_srv = build_dns_server_entry(
+            "dns-sec-dns_explicit_wan-1",
+            "udp",
+            &v6_first[0],
+            Some("direct"),
+        );
+        assert_eq!(wan_srv["type"], "udp");
+        assert_eq!(wan_srv["server"], "2001:db8::10");
+
+        let cfg = compile_core_config_with_wan6(&store, true).expect("compile custom dns");
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_sub = dns_rules
+            .iter()
+            .position(|r| {
+                r["server"] == "dns-bootstrap" && r["domain"] == json!(["sub.example.net"])
+            })
+            .expect("subscription host routed to dns-bootstrap");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_sub < idx_fakeip);
+        assert!(
+            dns_rules
+                .iter()
+                .any(|r| r["domain_suffix"] == json!(["lan.example"]))
+        );
+    }
+
+    #[test]
+    fn test_diag_proxy_in_emitted_when_proxy_section_exists_and_routes_ahead_of_rules() {
+        let mut store = RouterStoreData::default();
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.default_tunnel_section = "Main".to_string();
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_vless".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@203.0.113.5:443?security=tls&sni=example.com#DiagNode".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            action: "connection".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vless".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile split diag proxy");
+        let inbounds = cfg["inbounds"].as_array().unwrap();
+        assert!(inbounds.iter().any(|i| i["tag"] == "diag-proxy-in"));
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let diag_idx = rules
+            .iter()
+            .position(|r| r["inbound"] == json!(["diag-proxy-in"]))
+            .expect("diag-proxy-in rule");
+        let domain_idx = rules
+            .iter()
+            .position(|r| r.get("domain").is_some() || r.get("domain_suffix").is_some())
+            .expect("section domain rule");
+        assert!(diag_idx < domain_idx);
+        assert_ne!(rules[diag_idx]["outbound"], "direct");
+        assert_ne!(rules[diag_idx]["outbound"], "block");
+    }
+
+    #[test]
+    fn test_refilter_and_subnet_aliases_attach_to_route_only_and_respect_flags() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_refilter_{}_{uniq}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("community-subnets-refilter.lst"),
+            "203.0.113.0/24\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("community-subnets-antifilter.lst"),
+            "198.51.100.42\n2001:db8:2::/48\n",
+        )
+        .unwrap();
+
+        let dir_str = dir.to_string_lossy().into_owned();
+        let make_store = |comm_subnets: bool, with_subnets: Vec<String>| {
+            let mut store = RouterStoreData::default();
+            store.settings.routing_strategy = "split".to_string();
+            store.settings.rulesets_dir = dir_str.clone();
+            store.outbound_sources = vec![OutboundSource {
+                id: "src_vless".to_string(),
+                enabled: true,
+                source_type: "proxy_links".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-1111-1111-111111111111@203.0.113.5:443?security=tls&sni=example.com#Node".to_string(),
+                ],
+                ..Default::default()
+            }];
+            store.conditions = vec![TrafficCondition {
+                id: "cond_ref".to_string(),
+                enabled: true,
+                name: "Refilter".to_string(),
+                condition_type: "atomic".to_string(),
+                community_lists: vec!["refilter".to_string(), "antifilter_community".to_string()],
+                community_subnets: comm_subnets,
+                rule_set_with_subnets: with_subnets,
+                ..Default::default()
+            }];
+            store.sections = vec![RoutingSection {
+                id: "Main".to_string(),
+                enabled: true,
+                action: "connection".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_vless".to_string()],
+                condition_refs: vec!["cond_ref".to_string()],
+                ..Default::default()
+            }];
+            store
+        };
+
+        let cfg_on = compile_core_config_with_wan6(&make_store(true, vec![]), true).unwrap();
+        let rsets = cfg_on["route"]["rule_set"].as_array().unwrap();
+        assert!(
+            rsets
+                .iter()
+                .any(|rs| rs["tag"] == "builtin-refilter-subnets-ruleset" && rs["type"] == "local")
+        );
+        assert!(rsets.iter().any(|rs| {
+            rs["tag"] == "builtin-antifilter-subnets-ruleset" && rs["type"] == "local"
+        }));
+        let route_str = serde_json::to_string(&cfg_on["route"]["rules"]).unwrap();
+        assert!(route_str.contains("builtin-refilter-subnets-ruleset"));
+        assert!(route_str.contains("builtin-antifilter-subnets-ruleset"));
+        let dns_str = serde_json::to_string(&cfg_on["dns"]["rules"]).unwrap();
+        assert!(!dns_str.contains("-subnets-ruleset"));
+
+        let anti_json: Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("community-subnets-antifilter-ruleset.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            anti_json["rules"][0]["ip_cidr"],
+            json!(["198.51.100.42/32", "2001:db8:2::/48"])
+        );
+
+        let cfg_off = compile_core_config_with_wan6(&make_store(false, vec![]), true).unwrap();
+        let route_off_str = serde_json::to_string(&cfg_off["route"]["rules"]).unwrap();
+        assert!(!route_off_str.contains("-subnets-ruleset"));
+
+        let cfg_explicit =
+            compile_core_config_with_wan6(&make_store(false, vec!["refilter".to_string()]), true)
+                .unwrap();
+        let route_exp_str = serde_json::to_string(&cfg_explicit["route"]["rules"]).unwrap();
+        assert!(route_exp_str.contains("builtin-refilter-subnets-ruleset"));
+
+        assert_eq!(
+            canonical_community_subnet_service("ANTIFILTER_COMMUNITY"),
+            "antifilter"
+        );
+        assert!(community_service_has_subnet_list("refilter"));
+        assert!(community_subnet_url("roscomvpn_whitelist").is_some());
+        assert!(!community_service_has_subnet_list("youtube"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -131,5 +131,26 @@ describe('renderSupportModal & renderWikiDisclaimer', () => {
 
     const modalContent = mocks.showModal.mock.calls[0][1];
     expect(modalContent).toBeDefined();
+
+    const buttons: any[] = [];
+    const walk = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.tagName === 'BUTTON') buttons.push(node);
+      if (Array.isArray(node.children)) node.children.forEach(walk);
+    };
+    walk(modalContent);
+
+    const openSpy = vi.fn();
+    (globalThis as any).window = { open: openSpy };
+
+    buttons.forEach((btn) => {
+      if (typeof btn.click === 'function') btn.click();
+    });
+
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5',
+      '_blank',
+      'noopener,noreferrer',
+    );
   });
 });

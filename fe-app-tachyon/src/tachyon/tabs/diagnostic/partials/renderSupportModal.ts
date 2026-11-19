@@ -6,10 +6,12 @@ import {
   renderHeartIcon24,
   renderSparklesIcon,
   renderCreditCardIcon,
+  renderQrCodeIcon,
   renderCoinsIcon,
   renderGemIcon,
 } from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
+import { tr } from '../../../helpers/i18n';
 
 interface CryptoItem {
   name: string;
@@ -51,6 +53,8 @@ const CRYPTO_LIST: CryptoItem[] = [
 ];
 
 const CLOUDTIPS_URL = 'https://pay.cloudtips.ru/p/449c5ef9';
+const OZON_SBP_URL =
+  'https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5';
 const BOOSTY_URL = 'https://boosty.to/tachyon';
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -109,6 +113,14 @@ export function renderSupportModal(): void {
     ],
   );
 
+  const stylePrimarySupportButton = (btn: HTMLElement): HTMLElement => {
+    btn.style.width = '100%';
+    btn.style.justifyContent = 'center';
+    btn.style.whiteSpace = 'nowrap';
+    btn.style.minHeight = '34px';
+    return btn;
+  };
+
   // Boosty card (primary Bento tile)
   const boostyCard = E(
     'div',
@@ -156,14 +168,16 @@ export function renderSupportModal(): void {
           ),
         ],
       ),
-      renderButton({
-        classNames: ['cbi-button-apply'],
-        icon: renderLinkIcon24,
-        text: _('Support on Boosty'),
-        onClick: () => {
-          window.open(BOOSTY_URL, '_blank', 'noopener,noreferrer');
-        },
-      }),
+      stylePrimarySupportButton(
+        renderButton({
+          classNames: ['cbi-button-apply'],
+          icon: renderLinkIcon24,
+          text: tr('Открыть Boosty', 'Support on Boosty'),
+          onClick: () => {
+            window.open(BOOSTY_URL, '_blank', 'noopener,noreferrer');
+          },
+        }),
+      ),
     ],
   );
 
@@ -200,7 +214,7 @@ export function renderSupportModal(): void {
                   style:
                     'font-weight: 600; font-size: 14px; color: var(--tachyon-text-main, inherit);',
                 },
-                _('Credit Cards / SBP / Tinkoff Pay'),
+                tr('Карты РФ / СБП', 'Cards / SBP'),
               ),
               E(
                 'div',
@@ -214,14 +228,79 @@ export function renderSupportModal(): void {
           ),
         ],
       ),
-      renderButton({
-        classNames: ['cbi-button-save'],
-        icon: renderLinkIcon24,
-        text: _('Support on CloudTips'),
-        onClick: () => {
-          window.open(CLOUDTIPS_URL, '_blank', 'noopener,noreferrer');
-        },
-      }),
+      stylePrimarySupportButton(
+        renderButton({
+          classNames: ['cbi-button-save'],
+          icon: renderLinkIcon24,
+          text: tr('Открыть CloudTips', 'Support on CloudTips'),
+          onClick: () => {
+            window.open(CLOUDTIPS_URL, '_blank', 'noopener,noreferrer');
+          },
+        }),
+      ),
+    ],
+  );
+
+  // Ozon Bank SBP card (primary Bento tile)
+  const ozonSbpCard = E(
+    'div',
+    {
+      style:
+        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 10px; background: var(--tachyon-bg-card-elevated, rgba(148, 163, 184, 0.05)); border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2));',
+    },
+    [
+      E(
+        'div',
+        { style: 'display: flex; align-items: flex-start; gap: 12px;' },
+        [
+          E(
+            'div',
+            {
+              style:
+                'width: 36px; height: 36px; border-radius: 8px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.26); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #3b82f6;',
+            },
+            [renderQrCodeIcon(18)],
+          ),
+          E(
+            'div',
+            {
+              style:
+                'display: flex; flex-direction: column; gap: 3px; min-width: 0;',
+            },
+            [
+              E(
+                'div',
+                {
+                  style:
+                    'font-weight: 600; font-size: 14px; color: var(--tachyon-text-main, inherit);',
+                },
+                tr('СБП (Ozon Банк)', 'SBP (Ozon Bank)'),
+              ),
+              E(
+                'div',
+                {
+                  style:
+                    'font-size: 12px; line-height: 1.4; color: var(--tachyon-text-muted, var(--text-color-medium, #94a3b8));',
+                },
+                tr(
+                  'Мгновенный перевод по СБП без комиссии',
+                  'Instant SBP transfer without fees',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      stylePrimarySupportButton(
+        renderButton({
+          classNames: ['cbi-button-save'],
+          icon: renderLinkIcon24,
+          text: tr('Открыть СБП', 'Support via SBP'),
+          onClick: () => {
+            window.open(OZON_SBP_URL, '_blank', 'noopener,noreferrer');
+          },
+        }),
+      ),
     ],
   );
 
@@ -229,9 +308,9 @@ export function renderSupportModal(): void {
     'div',
     {
       style:
-        'display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;',
+        'display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 12px;',
     },
-    [boostyCard, cloudTipsCard],
+    [boostyCard, ozonSbpCard, cloudTipsCard],
   );
 
   // Crypto 2x2 Bento grid
@@ -291,12 +370,15 @@ export function renderSupportModal(): void {
           'div',
           {
             style:
-              'display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;',
+              'display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; min-width: 0;',
           },
           [
             E(
               'div',
-              { style: 'display: flex; align-items: center; gap: 8px;' },
+              {
+                style:
+                  'display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto;',
+              },
               [
                 E(
                   'span',
@@ -306,18 +388,29 @@ export function renderSupportModal(): void {
                   typeof item.icon === 'function' ? [item.icon()] : item.icon,
                 ),
                 E(
-                  'span',
-                  { style: 'font-weight: 600; font-size: 13px;' },
-                  item.name,
-                ),
-                E(
-                  'span',
+                  'div',
                   {
-                    class: 'badge cbi-value-title',
                     style:
-                      'font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px; opacity: 0.9;',
+                      'display: flex; flex-direction: column; gap: 1px; min-width: 0;',
                   },
-                  item.badge,
+                  [
+                    E(
+                      'span',
+                      {
+                        style:
+                          'font-weight: 600; font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+                      },
+                      item.name,
+                    ),
+                    E(
+                      'span',
+                      {
+                        style:
+                          'font-size: 10.5px; font-weight: 500; line-height: 1.2; color: var(--tachyon-text-muted, #94a3b8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+                      },
+                      item.badge,
+                    ),
+                  ],
                 ),
               ],
             ),

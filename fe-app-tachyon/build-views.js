@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Module from 'node:module';
 import ts from 'typescript';
-import prettier from 'prettier';
+import * as esbuild from 'esbuild';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,18 +62,25 @@ async function buildViews() {
     );
 
     const strippedJs = stripTsTypes(cleanedTs, tsFile);
-    const formattedJs = await prettier.format(strippedJs, {
-      parser: 'babel',
-      singleQuote: false,
-      tabWidth: 2,
-      printWidth: 80,
-      semi: true,
-      trailingComma: 'all',
+    const { code: minifiedJs } = await esbuild.transform(strippedJs, {
+      loader: 'js',
+      target: 'es2020',
+      minifyWhitespace: true,
+      minifySyntax: false,
+      minifyIdentifiers: false,
+      legalComments: 'none',
     });
 
-    const luciJs = formattedJs
-      .replace(/\n*\/\/# sourceURL=[^\n]+\n*/g, '\n')
-      .replace(/^export default /m, 'return ');
+    const cleanedJs = minifiedJs.replace(/\n*\/\/# sourceURL=[^\n]+\n*/g, '\n');
+    const luciJs = cleanedJs.replace(
+      /(^|[;}\n])export default(?=\s|[{([])/,
+      '$1return',
+    );
+    if (luciJs === cleanedJs) {
+      throw new Error(
+        `Missing top-level export default in generated LuCI view ${outFile}`,
+      );
+    }
 
     try {
       new Function(luciJs);

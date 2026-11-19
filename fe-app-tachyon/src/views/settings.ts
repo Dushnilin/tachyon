@@ -40,7 +40,7 @@ function _tr(ru, en) {
   return isRu ? ru : en;
 }
 
-function isSingBoxDuration(value) {
+function isCoreDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
@@ -485,14 +485,9 @@ function isDownloadSectionAction(action, capabilities) {
     case 'masque':
     case 'tewfai':
     case 'csqtt':
+    case 'wdtt':
     case 'openvpn':
       return true;
-    case 'zapret':
-      return !capabilities?.loaded || Boolean(capabilities.zapretInstalled);
-    case 'zapret2':
-      return !capabilities?.loaded || Boolean(capabilities.zapret2Installed);
-    case 'byedpi':
-      return !capabilities?.loaded || Boolean(capabilities.byedpiInstalled);
     default:
       return false;
   }
@@ -514,6 +509,64 @@ function refreshDownloadSectionChoices(option, capabilities) {
       option.value(secName, sec.label || secName);
     }
   }
+}
+
+// Enabled sections with fail_policy=block, exactly as
+// kill_switch.is_fail_closed_section() counts them: these force some global
+// settings at runtime whatever is stored. A fail_policy left on a section that
+// never proxies (bypass, block, dns, hosts) does not count.
+function failClosedSectionNames() {
+  return (uci.sections(UCI_PACKAGE, 'section') || [])
+    .filter(function (s) {
+      const enabled = `${s.enabled ?? ''}`.trim().toLowerCase() || '1';
+      const action = `${s.action ?? ''}`.trim().toLowerCase();
+      return (
+        ['1', 'true', 'yes', 'on'].indexOf(enabled) >= 0 &&
+        ['bypass', 'block', 'dns', 'hosts'].indexOf(action) < 0 &&
+        `${s.fail_policy || ''}`.trim().toLowerCase() === 'block'
+      );
+    })
+    .map(function (s) {
+      return s.label || s['.name'];
+    });
+}
+
+// Show a setting that Fail-Closed forces at runtime as its effective value,
+// read-only, without touching the stored value.
+function showForcedByFailClosed(option, effective, note) {
+  const sections = failClosedSectionNames();
+  if (sections.length === 0) return;
+  option.readonly = true;
+  option.cfgvalue = function () {
+    return effective;
+  };
+  option.write = function () {};
+  option.remove = function () {};
+  option.description += ' ' + note.format(sections.join(', '));
+}
+
+// Ask before a change that would let Fail-Closed sections leak directly; on
+// "no" the widget goes back to the stored value and nothing is saved.
+function guardFailClosedChange(option, breaks, consequence) {
+  const previous = option.onchange;
+  option.onchange = function (ev, section_id, value) {
+    const sections = failClosedSectionNames();
+    if (
+      sections.length > 0 &&
+      breaks(value) &&
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        _(
+          'Fail-Closed is set in sections: %s. %s Their traffic could then leave directly. Change it anyway?',
+        ).format(sections.join(', '), consequence),
+      )
+    ) {
+      const el = this.getUIElement(section_id);
+      if (el) el.setValue(this.cfgvalue(section_id) ?? this.default);
+      return;
+    }
+    if (previous) return previous.apply(this, [ev, section_id, value]);
+  };
 }
 
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
@@ -778,8 +831,8 @@ function configureDnsDuration(
   option.rmempty = false;
   option.validate = function (_section_id, value) {
     const normalized = `${value || ''}`.trim();
-    if (!normalized || !isSingBoxDuration(normalized)) {
-      return _('Use sing-box duration format like 10s, 1m or 2m30s');
+    if (!normalized || !isCoreDuration(normalized)) {
+      return _('Use duration format like 10s, 1m or 2m30s');
     }
     return true;
   };
@@ -2456,7 +2509,6 @@ function createSmartDetectSectionsWidget(section_id) {
     'csqtt',
     'openvpn',
     'wdtt',
-    'olcrtc',
     'fptn',
   ];
   const sectionActionByName = {};
@@ -2793,8 +2845,8 @@ function createMenuTabsOrderWidget(option, section_id) {
       group: _tr('Настройки', 'Settings'),
       label: _tr('Система и бэкап', 'System & Backup'),
       desc: _tr(
-        'Выбор ядра, резервное копирование конфигурации и логирование',
-        'Engine selection, configuration backup and logging',
+        'Параметры ядра, резервное копирование конфигурации и логирование',
+        'Core settings, configuration backup and logging',
       ),
       defaultVisible: true,
       fixed: false,
@@ -3431,68 +3483,14 @@ function createComponentsVisibilityWidget(option, section_id) {
       fixed: true,
     },
     {
-      id: 'sing_box',
+      id: 'tachyon_core',
       label: 'Tachyon Core',
       desc: _tr(
-        'Универсальная платформа и движок маршрутизации',
-        'Universal proxy platform routing engine',
+        'Универсальный нативный движок маршрутизации',
+        'Native proxy routing core engine',
       ),
       defaultVisible: true,
       fixed: true,
-    },
-    {
-      id: 'zapret',
-      label: 'Zapret',
-      desc: _tr(
-        'Движок десинхронизации пакетов (nfqws v1)',
-        'Packet desynchronization engine (nfqws v1)',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'zapret2',
-      label: 'Zapret2',
-      desc: _tr(
-        'Продвинутый движок десинхронизации пакетов со скриптами Lua (nfqws2)',
-        'Advanced packet desynchronization engine with Lua scripts (nfqws2)',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'byedpi',
-      label: 'ByeDPI',
-      desc: _tr(
-        'Локальный десинхронизатор SOCKS (ciadpi)',
-        'Local SOCKS proxy desynchronizer (ciadpi)',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'wdtt',
-      label: 'WDTT',
-      desc: _tr('Туннель WireGuard поверх TURN', 'WireGuard over TURN Tunnel'),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'olcrtc',
-      label: 'OlcRTC',
-      desc: _tr('WebRTC-туннель реального времени', 'Real-time WebRTC tunnel'),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'tailscale',
-      label: 'Tailscale',
-      desc: _tr(
-        'Mesh VPN демон с автоматической настройкой',
-        'Zero config mesh VPN daemon',
-      ),
-      defaultVisible: true,
-      fixed: false,
     },
     {
       id: 'direct_bypass',
@@ -3765,7 +3763,7 @@ function createSettingsContent(section, capabilities) {
     '_dns_benchmark_btn',
     _('DNS Auto-Tuner & Benchmark'),
     _(
-      'Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.',
+      'Automatically benchmark latency, packet loss, and reachability reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.',
     ),
   );
   dnsBenchmarkBtn.inputtitle = _('Auto-Tune & Benchmark DNS');
@@ -4577,6 +4575,36 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = 'tproxy';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === 'socks',
+    _('SOCKS mode does not intercept LAN traffic at all.'),
+  );
+
+  o = section.taboption(
+    'network',
+    form.Flag,
+    'tun_kill_switch',
+    _tr(
+      'Kill-switch TUN при падении ядра',
+      'TUN kill-switch if the core fails',
+    ),
+    _tr(
+      'Пока есть секции Fail-Closed: если ядро упало и tun-интерфейс пропал, клиенты LAN не выходят в интернет напрямую (маршрут по умолчанию для LAN закрыт). Локальные сети, VPN-маршруты и сам роутер продолжают работать.',
+      'While a section is Fail-Closed: if the core dies and the tun interface disappears, LAN clients do not reach the Internet directly (their default route is closed). Local networks, VPN routes and the router itself keep working.',
+    ),
+  );
+  o.depends('proxy_mode', 'tun');
+  o.default = '1';
+  o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '0',
+    _tr(
+      'Без kill-switch TUN весь трафик LAN уходит напрямую, пока ядро не работает.',
+      'Without the TUN kill-switch all LAN traffic leaves directly while the core is down.',
+    ),
+  );
 
   o = section.taboption(
     'network',
@@ -4768,27 +4796,54 @@ function createSettingsContent(section, capabilities) {
     'network',
     form.ListValue,
     'tcp_profile',
-    _tr('Профиль TCP-стека ядра', 'Core TCP Stack Profile'),
     _tr(
-      'Профиль параметров TCP-сокетов для исходящих соединений tachyon-core.',
-      'TCP socket parameter profile for outbound connections in tachyon-core.',
+      'Профиль TCP-стека исходящих подключений',
+      'Outbound TCP Stack Profile',
+    ),
+    _tr(
+      'Параметры TCP-сокетов (TTL, MSS, окно приёма) для исходящих прокси и адаптивных подключений tachyon-core.',
+      'TCP socket parameters (TTL, MSS, receive window) for outbound proxy and adaptive connections in tachyon-core.',
     ),
   );
-  o.value('', _tr('По умолчанию (сбалансированный)', 'Default (Balanced)'));
+  o.value('', _tr('По умолчанию (системный стек)', 'Default (System Stack)'));
   o.value(
-    'low_latency',
-    _tr('Минимальная задержка (low_latency)', 'Low Latency (low_latency)'),
+    'auto',
+    _tr('Авто (под отпечаток TLS uTLS)', 'Auto (Match TLS uTLS Fingerprint)'),
   );
   o.value(
-    'throughput',
+    'windows',
     _tr(
-      'Максимальная пропускная способность (throughput)',
-      'High Throughput (throughput)',
+      'Windows (TTL 128, MSS 1460, RCVBUF 64K)',
+      'Windows (TTL 128, MSS 1460, RCVBUF 64K)',
     ),
   );
   o.value(
-    'conservative',
-    _tr('Экономия памяти (conservative)', 'Memory Conservative (conservative)'),
+    'macos',
+    _tr(
+      'macOS (TTL 64, MSS 1460, RCVBUF 128K)',
+      'macOS (TTL 64, MSS 1460, RCVBUF 128K)',
+    ),
+  );
+  o.value(
+    'ios',
+    _tr(
+      'iOS (TTL 64, MSS 1460, RCVBUF 64K)',
+      'iOS (TTL 64, MSS 1460, RCVBUF 64K)',
+    ),
+  );
+  o.value(
+    'android',
+    _tr(
+      'Android (TTL 64, MSS 1460, RCVBUF 64K)',
+      'Android (TTL 64, MSS 1460, RCVBUF 64K)',
+    ),
+  );
+  o.value(
+    'linux',
+    _tr(
+      'Linux (TTL 64, MSS 1460, RCVBUF 85K)',
+      'Linux (TTL 64, MSS 1460, RCVBUF 85K)',
+    ),
   );
   o.default = '';
   o.rmempty = true;
@@ -4963,6 +5018,19 @@ function createSettingsContent(section, capabilities) {
   o.multiple = false;
   o.default = 'wan2';
   o.rmempty = true;
+
+  o = section.taboption(
+    'network',
+    form.Flag,
+    'tcp_bbr',
+    _tr('TCP BBR (контроль перегрузки ядра)', 'TCP BBR Congestion Control'),
+    _tr(
+      'Включает алгоритм управления перегрузкой TCP BBR на уровне ядра Linux (при наличии поддержки bbr и планировщика fq или fq_codel) для более стабильной пропускной способности на каналах с потерями и высокой задержкой. Если модуль ядра отсутствует, настройка безопасно пропускается.',
+      'Enables Linux kernel TCP BBR congestion control (when bbr and fq or fq_codel qdisc are supported by the kernel) for higher throughput on high-latency or lossy links. Safely skipped if kernel support is unavailable.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
   o.filter = function (section_id, value) {
     if (['lan', 'loopback'].includes(value) || value.startsWith('@')) {
       return false;
@@ -5034,6 +5102,34 @@ function createSettingsContent(section, capabilities) {
     'route_router_traffic_section',
     capabilities,
   );
+
+  o = section.taboption(
+    'network',
+    form.Flag,
+    'tcp_bbr',
+    _tr('TCP BBR (контроль перегрузки ядра)', 'TCP BBR Congestion Control'),
+    _tr(
+      'Включает алгоритм управления перегрузкой TCP BBR на уровне ядра Linux (при наличии поддержки bbr и планировщика fq или fq_codel) для более стабильной пропускной способности на каналах с потерями и высокой задержкой. Если модуль ядра отсутствует, настройка безопасно пропускается.',
+      'Enables Linux kernel TCP BBR congestion control (when bbr and fq or fq_codel qdisc are supported by the kernel) for higher throughput on high-latency or lossy links. Safely skipped if kernel support is unavailable.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.taboption(
+    'services',
+    form.ListValue,
+    'tailscale_web_access',
+    _('Tailscale Web UI Access (:1680)'),
+    _(
+      'Trust Tailscale peers (100.64.0.0/10 and fd7a:115c:a1e0::/48) to open the Web UI on port 1680 without a password or token. In Auto mode this is active only when a Tailscale interface, firewall zone, or Tailscale node is configured on the router.',
+    ),
+  );
+  o.value('auto', _('Auto (when Tailscale is active)'));
+  o.value('1', _('On (always trust 100.64.0.0/10)'));
+  o.value('0', _('Off (require password or token)'));
+  o.default = 'auto';
+  o.rmempty = false;
 
   o = section.taboption(
     'services',
@@ -5118,6 +5214,39 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = '0';
   o.rmempty = false;
+
+  o = section.taboption(
+    'services',
+    form.ListValue,
+    'dns_intercept_all',
+    _('Intercept All LAN DNS'),
+    _(
+      'Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected.',
+    ),
+  );
+  o.value('auto', _('Auto (on while a section is Fail-Closed)'));
+  o.value('1', _('On'));
+  o.value('0', _('Off'));
+  o.default = 'auto';
+  o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '0',
+    _(
+      'With the intercept off, clients using their own DNS get real addresses and skip domain-based sections.',
+    ),
+  );
+  // Auto follows Fail-Closed at runtime (service/kill_switch.uc); say so loudly,
+  // since the stored value alone reads as a plain default.
+  const dnsFailClosedSections = failClosedSectionNames();
+  if (dnsFailClosedSections.length > 0) {
+    o.description +=
+      ' <strong>' +
+      _(
+        'Fail-Closed is set in sections %h, so in Auto mode the intercept is ON now. Choose Off if clients need their own DNS (for example a VPN app).',
+      ).format(dnsFailClosedSections.join(', ')) +
+      '</strong>';
+  }
 
   o = section.taboption(
     'services',
@@ -5250,23 +5379,6 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     'updates',
-    form.ListValue,
-    'subscription_engine',
-    _('Subscription Fetch & Parse Engine'),
-    _(
-      'Choose how subscriptions are downloaded and parsed. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent retry cascade, full Xray config array parsing, and multi-hop detour chains, automatically falling back to the built-in ucode script if unavailable.',
-    ),
-  );
-  o.value(
-    'core',
-    _('Tachyon Core Binary (Adaptive User-Agent & Xray Chains) (Recommended)'),
-  );
-  o.value('ucode', _('Built-in Script (curl + ucode)'));
-  o.default = 'core';
-  o.rmempty = false;
-
-  o = section.taboption(
-    'updates',
     form.Flag,
     'list_update_enabled',
     _('Enable list updates'),
@@ -5329,7 +5441,7 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     'update_interval',
     _('List Update Frequency'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.depends('list_update_enabled', '1');
   o.placeholder = '1d';
@@ -5351,14 +5463,14 @@ function createSettingsContent(section, capabilities) {
     const normalized = value ? `${value}`.trim() : '';
 
     if (!normalized.length) {
-      return _('Use sing-box duration format like 1d, 12h or 30m');
+      return _('Use duration format like 1d, 12h or 30m');
     }
 
-    if (isSingBoxDuration(normalized)) {
+    if (isCoreDuration(normalized)) {
       return true;
     }
 
-    return _('Use sing-box duration format like 1d, 12h or 30m');
+    return _('Use duration format like 1d, 12h or 30m');
   };
 
   const updateListsBtn = section.taboption(
@@ -5685,7 +5797,7 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     'component_update_check_interval',
     _('Component update check interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
+    _('Use duration format like 1d, 12h or 30m'),
   );
   o.depends('component_update_check_enabled', '1');
   o.placeholder = '1d';
@@ -5709,11 +5821,11 @@ function createSettingsContent(section, capabilities) {
   o.validate = function (_section_id, value) {
     const normalized = value ? `${value}`.trim() : '';
 
-    if (normalized.length && isSingBoxDuration(normalized)) {
+    if (normalized.length && isCoreDuration(normalized)) {
       return true;
     }
 
-    return _('Use sing-box duration format like 1d, 12h or 30m');
+    return _('Use duration format like 1d, 12h or 30m');
   };
 
   o = section.taboption(
@@ -5857,10 +5969,6 @@ function createSettingsContent(section, capabilities) {
   o.value('tachyon', _('Tachyon'));
   o.value('tachyon-core', _('Tachyon Core'));
   o.value('luci_app_tachyon', _('LuCI Web UI'));
-  o.value('zapret', _('Zapret'));
-  o.value('zapret2', _('Zapret2'));
-  o.value('byedpi', _('ByeDPI'));
-  o.value('tailscale', _('Tailscale'));
   o.default = ['all'];
   o.rmempty = false;
 
@@ -5899,16 +6007,13 @@ function createSettingsContent(section, capabilities) {
     'latency_test_mode',
     _('Latency Measurement Mode'),
     _(
-      'Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (supported on Tachyon Core via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT).',
+      'Standard measures full connection establishment + HTTP HEAD request. KeepAlive / Warm Latency (via experimental.unified_delay) measures the 2nd HTTP HEAD request over an already established TLS session (similar to Happ KeepAlive mode; does not reflect initial handshake RTT).',
     ),
   );
   o.default = 'standard';
   o.rmempty = false;
   o.value('standard', _('Standard (Handshake + HTTP HEAD)'));
-  o.value(
-    'keepalive',
-    _('KeepAlive / Warm Latency (Established Session, Tachyon Core)'),
-  );
+  o.value('keepalive', _('KeepAlive / Warm Latency (Established Session)'));
 
   o = section.taboption(
     'updates',
@@ -5979,6 +6084,13 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = '0';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '1',
+    _(
+      'Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections.',
+    ),
+  );
 
   o = section.taboption(
     'advanced',
@@ -6082,15 +6194,35 @@ function createSettingsContent(section, capabilities) {
   // Anonymization and Security
   o = section.taboption(
     'advanced',
-    form.Flag,
+    form.ListValue,
     'webrtc_leak_protect',
     _('WebRTC Leak Protection'),
     _(
       'Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC.',
     ),
   );
-  o.default = '0';
+  o.value('auto', _('Auto (on while a section is Fail-Closed)'));
+  o.value('1', _('On'));
+  o.value('0', _('Off'));
+  o.default = 'auto';
   o.rmempty = false;
+  guardFailClosedChange(
+    o,
+    (value) => value === '0',
+    _(
+      'With WebRTC protection off, a site opened through the proxy can learn the real address over STUN.',
+    ),
+  );
+  // Auto follows Fail-Closed at runtime (service/kill_switch.uc).
+  const webrtcFailClosedSections = failClosedSectionNames();
+  if (webrtcFailClosedSections.length > 0) {
+    o.description +=
+      ' <strong>' +
+      _(
+        'Fail-Closed is set in sections %h, so in Auto mode WebRTC protection is ON now. Choose Off if direct calls or games need STUN.',
+      ).format(webrtcFailClosedSections.join(', ')) +
+      '</strong>';
+  }
 
   o = section.taboption(
     'advanced',
@@ -6424,6 +6556,28 @@ function createSettingsContent(section, capabilities) {
   o.default = 'https://cp.cloudflare.com/generate_204';
   o.depends('ai_proxy_health_enabled', '1');
 
+  o = section.taboption(
+    'ai',
+    form.Flag,
+    'emergency_direct_bypass',
+    _('Emergency Direct Bypass'),
+    _(
+      'When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+  o.depends('enable_watchdog', '1');
+  // Fail-Closed sections veto the bypass at runtime (service/kill_switch.uc)
+  // whatever is stored here, so show the effective state instead of a ticked
+  // box. The stored value is left alone: it applies again once no section is
+  // Fail-Closed.
+  showForcedByFailClosed(
+    o,
+    '0',
+    _('Off now: Fail-Closed is set in sections: %s.'),
+  );
+
   // DNS Continuous Check
   o = section.taboption(
     'ai',
@@ -6582,18 +6736,6 @@ function createSettingsContent(section, capabilities) {
   o.default = '10';
   o.datatype = 'min(1)';
   o.depends('ai_anomaly_detection_enabled', '1');
-
-  o = section.taboption(
-    'ai',
-    form.Value,
-    'memory_limit_mb',
-    _('Memory Limit (MB)'),
-    _(
-      'Dynamic memory cap in MB for tachyon-core. Set 0 for auto (50% RAM on low-memory devices or when OOM occurs).',
-    ),
-  );
-  o.default = '0';
-  o.datatype = 'uinteger';
 
   // ─── End AI Watchdog Settings ──────────────────────────────────────────────
 
@@ -7053,6 +7195,7 @@ function createTelegramStatusWidget() {
       if (tgVisibilityObserver) tgVisibilityObserver.disconnect();
       return;
     }
+    if (typeof document !== 'undefined' && document.hidden) return;
     refreshStatus(false);
   }, 10000);
 
@@ -7285,6 +7428,96 @@ function createTelegramContent(section) {
   o.rmempty = false;
 
   o = section.option(
+    form.Flag,
+    'notify_smart_detect',
+    _tr('Уведомления Smart Detect', 'Notify on Smart Detect'),
+    _tr(
+      'Отправлять сообщение в Telegram при автоматическом добавлении домена через Smart Detect.',
+      'Send a Telegram notification when Smart Detect automatically adds a domain.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_failover',
+    _tr(
+      'Уведомления Failover и Fail Policy',
+      'Notify on Failover & Fail Policy',
+    ),
+    _tr(
+      'Отправлять сообщение при переключении активной секции или срабатывании политики отказа.',
+      'Send a Telegram notification on section failover switches or fail policy transitions.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_wan',
+    _tr('Уведомления WAN и интерфейсов', 'Notify on WAN & Interfaces'),
+    _tr(
+      'Отправлять сообщение при изменении состояния интерфейсов WAN, WAN Failover и попытках восстановления шлюза.',
+      'Send a Telegram notification on WAN interface up/down events, WAN Failover, and gateway recovery.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_update_available',
+    _tr('Уведомления о доступных обновлениях', 'Notify on Available Updates'),
+    _tr(
+      'Отправлять сообщение в Telegram при обнаружении новых версий компонентов.',
+      'Send a Telegram notification when component updates become available.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_parental',
+    _tr('Уведомления квот и расписаний', 'Notify on Quotas & Schedules'),
+    _tr(
+      'Отправлять сообщения при превышении квот устройств, гостевого режима и срабатывании расписаний.',
+      'Send Telegram notifications for device/guest quota events and schedule activity.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_route_alert',
+    _tr(
+      'Уведомления о сбоях связи с API бота',
+      'Notify on Bot API Route Alerts',
+    ),
+    _tr(
+      'Отправлять предупреждение при повторяющихся ошибках соединения с Telegram Bot API.',
+      'Send a warning when Telegram Bot API polling fails repeatedly.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
     form.ListValue,
     'bot_proxy_section',
     _('Proxy Section for Bot'),
@@ -7362,6 +7595,168 @@ function createTelegramContent(section) {
   };
   o.remove = function () {
     uci.unset(UCI_PACKAGE, 'telegram', 'bot_proxy_section');
+  };
+
+  o = section.option(
+    form.ListValue,
+    'language',
+    _('Bot Language'),
+    _('Language for Telegram bot replies and notifications.'),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '';
+  o.rmempty = true;
+  o.value('', _('Auto (follow LuCI)'));
+  o.value('en', 'English');
+  o.value('ru', 'Русский');
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, 'language', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'language');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'language');
+  };
+
+  o = section.option(
+    form.Value,
+    'fallback_socks',
+    _('Fallback SOCKS5 Proxy'),
+    _(
+      'Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.placeholder = '127.0.0.1:1080';
+  o.rmempty = true;
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, 'fallback_socks', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'fallback_socks');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'fallback_socks');
+  };
+
+  const validateHourOption = (value: string) => {
+    const raw = value ? `${value}`.trim() : '';
+    if (!raw) return true;
+    if (!/^[0-9]+$/.test(raw)) return _('Enter an hour from 0 to 23');
+    const num = parseInt(raw, 10);
+    if (isNaN(num) || num < 0 || num > 23) {
+      return _('Enter an hour from 0 to 23');
+    }
+    return true;
+  };
+
+  o = section.option(
+    form.Flag,
+    'daily_report_enabled',
+    _('Daily Status Report'),
+    _('Send a daily summary of system health and proxy status to Telegram.'),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    'daily_report_hour',
+    _('Daily Report Hour (0-23)'),
+    _('Hour of the day to send the daily report (default: 8).'),
+  );
+  o.depends({ enabled: '1', daily_report_enabled: '1' });
+  o.retain = true;
+  o.default = '8';
+  o.placeholder = '8';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '8') {
+      uci.set(UCI_PACKAGE, section_id, 'daily_report_hour', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'daily_report_hour');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'daily_report_hour');
+  };
+
+  o = section.option(
+    form.Flag,
+    'quiet_hours_enabled',
+    _('Quiet Hours'),
+    _(
+      'Suppress non-critical Telegram notifications during the configured night window.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    'quiet_hours_start',
+    _('Quiet Hours Start (0-23)'),
+    _('Hour when quiet hours begin (default: 23).'),
+  );
+  o.depends({ enabled: '1', quiet_hours_enabled: '1' });
+  o.retain = true;
+  o.default = '23';
+  o.placeholder = '23';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '23') {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_start', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_start');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_start');
+  };
+
+  o = section.option(
+    form.Value,
+    'quiet_hours_end',
+    _('Quiet Hours End (0-23)'),
+    _('Hour when quiet hours end (default: 7).'),
+  );
+  o.depends({ enabled: '1', quiet_hours_enabled: '1' });
+  o.retain = true;
+  o.default = '7';
+  o.placeholder = '7';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '7') {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_end', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_end');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_end');
   };
 
   // ── Telegram API Connection Test ──────────────────────────────────────────

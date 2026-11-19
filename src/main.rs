@@ -132,8 +132,7 @@ fn main() -> anyhow::Result<()> {
     let state = AppState::load_or_create(&store_path)?;
     let core = CoreManager::new(Arc::clone(&state));
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+    let rt = tokio::runtime::Builder::new_current_thread()
         .max_blocking_threads(4)
         .thread_stack_size(512 * 1024)
         .enable_all()
@@ -241,6 +240,7 @@ fn main() -> anyhow::Result<()> {
             "stop" => core.stop().await,
             "reload" | "restart" => core.apply_or_reload().await,
             "daemon" | "serve" | "--daemon" => {
+                ubus_bridge::mark_daemon_mode();
                 eprintln!("[tachyon] store path: {store_path}");
                 if let Some((ext_pid, _)) = sys_info::find_running_process_by_name("tachyon-core") {
                     let expected_bin = core.resolve_bin_path().await;
@@ -272,11 +272,17 @@ fn main() -> anyhow::Result<()> {
                         live.core_identity = identity;
                         live.nft_table_active = nft_ok;
                     }
-                } else if let Err(e) = core.start().await {
+                } else if !core.is_manually_stopped()
+                    && let Err(e) = core.start().await
+                {
                     eprintln!("[tachyon] initial core start skipped: {e:#}");
                 }
                 core.refresh_core_version().await;
                 core.poll_telemetry_and_reconcile(0).await;
+                {
+                    let d_snap = state.data.read().await;
+                    ubus_bridge::sync_section_cache(&d_snap);
+                }
                 core.ensure_initial_binary_backups().await;
                 core.spawn_background_loop();
                 tg_bot::spawn_tg_bot_loop(Arc::clone(&state), Arc::clone(&core));

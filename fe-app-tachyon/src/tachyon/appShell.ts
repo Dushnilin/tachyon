@@ -16,7 +16,13 @@ import {
 import { TachyonShellMethods } from './methods/shell';
 import { fetchServicesInfo } from './fetchers/fetchServicesInfo';
 import { store } from './services/store.service';
+import {
+  activateAppShellNavKey,
+  registerAppShellNavActivator,
+} from './services/tab.service';
 import { openConnectionWizardModal } from './connectionWizard';
+
+export { activateAppShellNavKey };
 import {
   mountLanguageSelector,
   UiLanguageCapabilities,
@@ -598,7 +604,7 @@ const NAV_ITEMS: NavItemDef[] = [
     labelEn: 'Components & Core',
     subtitleRu:
       'Управление ядром Tachyon Core, модулями и обновлениями системы',
-    subtitleEn: 'Manage Tachyon Core, engine components and updates',
+    subtitleEn: 'Manage Tachyon Core, components and updates',
     iconPaths: [
       {
         tag: 'path',
@@ -670,8 +676,9 @@ const NAV_ITEMS: NavItemDef[] = [
     simpleVisible: true,
     labelRu: 'Расширенные настройки',
     labelEn: 'Advanced Settings',
-    subtitleRu: 'Выбор ядра, резервное копирование конфигурации и логирование',
-    subtitleEn: 'Engine selection, configuration backup and logging',
+    subtitleRu:
+      'Параметры ядра, резервное копирование конфигурации и логирование',
+    subtitleEn: 'Core settings, configuration backup and logging',
     iconPaths: [
       {
         tag: 'path',
@@ -861,17 +868,45 @@ export function installModalHeaderCloseEnhancements(): void {
   scanOverlay();
 
   if (typeof MutationObserver === 'function' && document.body) {
-    const observer = new MutationObserver(() => {
+    let scanScheduled = false;
+    const scheduleScan = () => {
+      if (scanScheduled) return;
+      scanScheduled = true;
+      const run = () => {
+        scanScheduled = false;
+        if (document.body?.classList.contains('modal-overlay-active')) {
+          scanOverlay();
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(run);
+      } else {
+        setTimeout(run, 16);
+      }
+    };
+
+    const bodyObserver = new MutationObserver(() => {
       if (document.body.classList.contains('modal-overlay-active')) {
-        scanOverlay();
+        scheduleScan();
       }
     });
-    observer.observe(document.body, {
+    bodyObserver.observe(document.body, {
       attributes: true,
       attributeFilter: ['class'],
       childList: true,
-      subtree: true,
     });
+
+    const overlayRoot = document.getElementById('modal_overlay');
+    if (overlayRoot) {
+      const overlayObserver = new MutationObserver(() => {
+        if (document.body.classList.contains('modal-overlay-active')) {
+          scheduleScan();
+        }
+      });
+      overlayObserver.observe(overlayRoot, {
+        childList: true,
+      });
+    }
   }
 
   document.addEventListener('keydown', (ev: KeyboardEvent) => {
@@ -1009,9 +1044,15 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             } else if (g.L?.uci?.save) {
               await g.L.uci.save();
             }
-            await fetch('/cgi-bin/luci/admin/uci/apply_unchecked', {
-              method: 'POST',
-            }).catch(() => {});
+            const applyRes = await fetch(
+              '/cgi-bin/luci/admin/uci/apply_unchecked',
+              {
+                method: 'POST',
+              },
+            );
+            if (!applyRes.ok) {
+              throw new Error(`HTTP ${applyRes.status}`);
+            }
             if (g.L?.ui?.changes) {
               g.L.ui.changes.changes = {};
               if (typeof g.L.ui.changes.setIndicator === 'function') {
@@ -1126,7 +1167,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     const state = store.get();
     const srv = state.servicesInfoWidget;
     const diagActions = state.diagnosticsActions;
-    const running = Boolean(srv?.data?.tachyonRunning || srv?.data?.singbox);
+    const running = Boolean(
+      srv?.data?.tachyonRunning || srv?.data?.tachyonCore,
+    );
     const statusStr = String(srv?.data?.tachyonStatus || '');
     const activeAction: 'start' | 'stop' | 'restart' | null =
       topbarServiceActionInFlight ||
@@ -1531,6 +1574,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       lastChildByParent[item.parentMenu] = item.key;
     }
     sidebarEl.classList.remove('is-mobile-open');
+    mapEl.setAttribute('data-mobile-menu-open', 'false');
     if (sidebarPos === 'top') {
       expandedMenus.clear();
       saveExpandedMenus(expandedMenus);
@@ -1634,6 +1678,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       }
     });
   }
+
+  const langSlot = E('div', { class: 'tachyon-topbar__lang-slot' }, []);
 
   const renderSidebarAndTopbar = () => {
     uiMode = getUiMode();
@@ -1788,7 +1834,19 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       );
     }
 
-    // 2. Parent Menus (flat top-level tabs in Top mode, collapsible tree in Left sidebar mode)
+    // 2. Parent Menus (flat top-level tabs in desktop Top mode, collapsible tree on mobile <= 860px or Left sidebar mode)
+    const isMobileMenuOpen = sidebarEl.classList.contains('is-mobile-open');
+    const isCompactViewport =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 860px)').matches;
+    const showNestedMenu =
+      sidebarPos !== 'top' || isCompactViewport || isMobileMenuOpen;
+    mapEl.setAttribute(
+      'data-mobile-menu-open',
+      isMobileMenuOpen ? 'true' : 'false',
+    );
+
     for (const parent of PARENT_MENUS) {
       const children = sortByTabOrder(
         visibleItems.filter((i) => i.parentMenu === parent.id),
@@ -1802,10 +1860,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         lastChildByParent[parent.id] = activeChild.key;
       }
       const hasActiveChild = Boolean(activeChild);
-      const isMenuExpanded =
-        sidebarPos === 'top'
-          ? false
-          : expandedMenus.has(parent.id) || hasActiveChild;
+      const isMenuExpanded = !showNestedMenu
+        ? false
+        : expandedMenus.has(parent.id) || hasActiveChild;
       const parentLabel = tr(parent.labelRu, parent.labelEn);
 
       const parentBtnChildren: any[] = [
@@ -1813,7 +1870,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         E('span', { class: 'tachyon-sidebar__nav-label' }, parentLabel),
       ];
 
-      if (sidebarPos !== 'top') {
+      if (showNestedMenu) {
         const chevronSvg = svgEl(
           'svg',
           {
@@ -1853,13 +1910,13 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             .join(' '),
           title: parentLabel,
           'data-parent-menu': parent.id,
-          ...(sidebarPos !== 'top'
+          ...(showNestedMenu
             ? { 'aria-expanded': isMenuExpanded ? 'true' : 'false' }
             : {}),
           click: (ev: MouseEvent) => {
             ev.preventDefault();
             ev.stopPropagation();
-            if (sidebarPos === 'top') {
+            if (!showNestedMenu) {
               const rememberedKey = lastChildByParent[parent.id];
               const targetChild =
                 (rememberedKey
@@ -1870,7 +1927,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               }
               return;
             }
-            if (sidebarCollapsed) {
+            if (sidebarPos !== 'top' && sidebarCollapsed) {
               sidebarCollapsed = false;
               setSidebarCollapsed(false);
               expandedMenus.add(parent.id);
@@ -1890,7 +1947,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             } else {
               expandedMenus.add(parent.id);
               saveExpandedMenus(expandedMenus);
-              if (!hasActiveChild && children[0]) {
+              if (!isMobileMenuOpen && !hasActiveChild && children[0]) {
                 activateNavItem(children[0]);
               } else {
                 renderSidebarAndTopbar();
@@ -1901,7 +1958,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         parentBtnChildren,
       );
 
-      if (sidebarPos === 'top') {
+      if (!showNestedMenu) {
         navElements.push(parentBtn);
         continue;
       }
@@ -1953,7 +2010,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     // Service live status
     const srvState = store.get().servicesInfoWidget;
     const isRunning = Boolean(
-      srvState?.data?.tachyonRunning || srvState?.data?.singbox,
+      srvState?.data?.tachyonRunning || srvState?.data?.tachyonCore,
     );
     const isReloading = srvState?.data?.tachyonStatus === 'reloading';
     const isLiteMode = Boolean(srvState?.data?.liteMode);
@@ -1981,7 +2038,6 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       activeNavItemDef.labelRu,
       activeNavItemDef.labelEn,
     );
-    const isMobileMenuOpen = sidebarEl.classList.contains('is-mobile-open');
 
     if (
       typeof document !== 'undefined' &&
@@ -1990,9 +2046,12 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       (sidebarEl as any)._mobileOutsideListener = true;
       document.addEventListener('click', (ev: MouseEvent) => {
         const target = ev.target as Node | null;
+        let changed = false;
         if (sidebarEl.classList.contains('is-mobile-open')) {
           if (target && !sidebarEl.contains(target)) {
             sidebarEl.classList.remove('is-mobile-open');
+            mapEl.setAttribute('data-mobile-menu-open', 'false');
+            changed = true;
           }
         }
         if (
@@ -2003,12 +2062,40 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         ) {
           expandedMenus.clear();
           saveExpandedMenus(expandedMenus);
+          changed = true;
+        }
+        if (changed) {
           renderSidebarAndTopbar();
         }
       });
+      document.addEventListener('keydown', (ev: KeyboardEvent) => {
+        if (
+          ev.key === 'Escape' &&
+          sidebarEl.classList.contains('is-mobile-open')
+        ) {
+          sidebarEl.classList.remove('is-mobile-open');
+          mapEl.setAttribute('data-mobile-menu-open', 'false');
+          renderSidebarAndTopbar();
+        }
+      });
+      if (
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function'
+      ) {
+        const mq = window.matchMedia('(max-width: 860px)');
+        const onMqChange = () => {
+          if (!mq.matches && sidebarEl.classList.contains('is-mobile-open')) {
+            sidebarEl.classList.remove('is-mobile-open');
+            mapEl.setAttribute('data-mobile-menu-open', 'false');
+          }
+          renderSidebarAndTopbar();
+        };
+        if (typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', onMqChange);
+        }
+      }
     }
 
-    const langSlot = E('div', { class: 'tachyon-topbar__lang-slot' }, []);
     const liteTooltip = tr(
       'Эко-режим (Tachyon Lite) для слабых роутеров: пониженный приоритет прокси (nice 15), ct mark Short-Circuit + connlimit и гибернация фоновых проверок при нагрузке',
       'Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load',
@@ -2231,12 +2318,24 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           'button',
           {
             type: 'button',
-            class: 'tachyon-sidebar__mobile-toggle',
-            title: tr('Открыть меню разделов', 'Open navigation menu'),
+            class: `tachyon-sidebar__mobile-toggle${isMobileMenuOpen ? ' is-open' : ''}`,
+            'aria-expanded': isMobileMenuOpen ? 'true' : 'false',
+            'aria-label': isMobileMenuOpen
+              ? tr('Закрыть меню', 'Close menu')
+              : tr('Открыть меню разделов', 'Open navigation menu'),
+            title: isMobileMenuOpen
+              ? tr('Закрыть меню', 'Close menu')
+              : tr('Открыть меню разделов', 'Open navigation menu'),
             click: (ev: MouseEvent) => {
               ev.preventDefault();
               ev.stopPropagation();
-              sidebarEl.classList.toggle('is-mobile-open');
+              const nextOpen = !sidebarEl.classList.contains('is-mobile-open');
+              sidebarEl.classList.toggle('is-mobile-open', nextOpen);
+              mapEl.setAttribute(
+                'data-mobile-menu-open',
+                nextOpen ? 'true' : 'false',
+              );
+              renderSidebarAndTopbar();
             },
           } as any,
           [
@@ -2252,21 +2351,26 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               'svg',
               {
                 viewBox: '0 0 24 24',
-                width: '13',
-                height: '13',
+                width: '16',
+                height: '16',
                 fill: 'none',
                 stroke: 'currentColor',
                 'stroke-width': '2',
                 'stroke-linecap': 'round',
                 'stroke-linejoin': 'round',
+                class: 'tachyon-sidebar__mobile-toggle-icon',
+                'aria-hidden': 'true',
               },
-              [
-                svgEl('polyline', {
-                  points: isMobileMenuOpen
-                    ? '18 15 12 9 6 15'
-                    : '6 9 12 15 18 9',
-                }),
-              ],
+              isMobileMenuOpen
+                ? [
+                    svgEl('line', { x1: '6', y1: '6', x2: '18', y2: '18' }),
+                    svgEl('line', { x1: '18', y1: '6', x2: '6', y2: '18' }),
+                  ]
+                : [
+                    svgEl('line', { x1: '4', y1: '6', x2: '20', y2: '6' }),
+                    svgEl('line', { x1: '4', y1: '12', x2: '20', y2: '12' }),
+                    svgEl('line', { x1: '4', y1: '18', x2: '20', y2: '18' }),
+                  ],
             ),
           ],
         ),
@@ -2727,6 +2831,14 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   };
 
   activeShellState.renderFn = renderSidebarAndTopbar;
+  registerAppShellNavActivator((navKey: string): boolean => {
+    const item = NAV_ITEMS.find(
+      (i) => i.key === navKey || i.luciTab === navKey,
+    );
+    if (!item) return false;
+    activateNavItem(item);
+    return true;
+  });
   renderSidebarAndTopbar();
 
   const targetItem =

@@ -26,19 +26,14 @@ describe('fetchServicesInfo', () => {
           status: 'restarting',
           dns_configured: 1,
         },
-        sing_box: {
+        tachyon_core: {
           running: 1,
           enabled: 0,
           status: 'running but disabled',
         },
       },
       capabilities: {
-        sing_box_extended: 1,
-        sing_box_tiny: 0,
-        sing_box_tailscale: 1,
-        zapret_installed: 1,
-        zapret2_installed: 0,
-        byedpi_installed: 0,
+        tachyon_core_tailscale: 1,
         server_inbounds_enabled_count: 0,
       },
       actions: {
@@ -77,7 +72,7 @@ describe('fetchServicesInfo', () => {
         loading: false,
         failed: false,
         data: {
-          singbox: 1,
+          tachyonCore: 1,
           tachyonRunning: 1,
           tachyonEnabled: 1,
           tachyonStatus: 'running & enabled',
@@ -113,7 +108,7 @@ describe('fetchServicesInfo', () => {
 
     expect(state.servicesInfoWidget.failed).toBe(true);
     expect(state.servicesInfoWidget.data).toEqual({
-      singbox: 0,
+      tachyonCore: 0,
       tachyonRunning: 1,
       tachyonEnabled: 1,
       tachyonStatus: 'running & enabled',

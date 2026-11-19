@@ -88,7 +88,7 @@ describe('TachyonShellMethods.componentAction', () => {
     });
 
     await expect(
-      TachyonShellMethods.componentActionStart('zapret', 'install'),
+      TachyonShellMethods.componentActionStart('tachyon-core', 'install'),
     ).resolves.toEqual({
       success: false,
       error: 'Another component action is already running',
@@ -105,7 +105,7 @@ describe('TachyonShellMethods.componentAction', () => {
             ? {
                 success: true,
                 running: true,
-                component: 'sing_box',
+                component: 'tachyon-core',
                 action: 'check_update',
                 message: 'Component action is running',
                 job_id: 'job-1',
@@ -113,11 +113,11 @@ describe('TachyonShellMethods.componentAction', () => {
             : {
                 success: true,
                 running: false,
-                component: 'sing_box',
+                component: 'tachyon-core',
                 action: 'check_update',
-                message: 'sing-box is up to date',
-                current_version: '1.13.12-extended-2.3.2',
-                latest_version: '1.13.12-extended-2.3.2',
+                message: 'tachyon-core is up to date',
+                current_version: '0.3.10',
+                latest_version: '0.3.10',
                 changed: false,
                 status: 'latest',
               },
@@ -131,7 +131,7 @@ describe('TachyonShellMethods.componentAction', () => {
           stdout: JSON.stringify({
             success: true,
             running: true,
-            component: 'sing_box',
+            component: 'tachyon-core',
             action: 'check_update',
             message: 'Component action is running',
             job_id: 'job-1',
@@ -150,7 +150,7 @@ describe('TachyonShellMethods.componentAction', () => {
 
     const responsePromise = TachyonShellMethods.waitComponentActionJob(
       'job-1',
-      'sing_box',
+      'tachyon-core',
       'check_update',
     );
 
@@ -161,11 +161,11 @@ describe('TachyonShellMethods.componentAction', () => {
       data: {
         success: true,
         running: false,
-        component: 'sing_box',
+        component: 'tachyon-core',
         action: 'check_update',
-        message: 'sing-box is up to date',
-        current_version: '1.13.12-extended-2.3.2',
-        latest_version: '1.13.12-extended-2.3.2',
+        message: 'tachyon-core is up to date',
+        current_version: '0.3.10',
+        latest_version: '0.3.10',
         changed: false,
         status: 'latest',
       },
@@ -179,11 +179,11 @@ describe('TachyonShellMethods.componentAction', () => {
         JSON.stringify({
           success: true,
           running: false,
-          component: 'sing_box',
-          action: 'install_extended',
-          message: 'sing-box-extended has been installed',
-          current_version: '1.13.12-extended-2.3.2',
-          latest_version: '1.13.12-extended-2.3.2',
+          component: 'tachyon-core',
+          action: 'install',
+          message: 'tachyon-core has been installed',
+          current_version: '0.3.10',
+          latest_version: '0.3.10',
           changed: true,
           status: 'latest',
         }),
@@ -208,20 +208,14 @@ describe('TachyonShellMethods.componentAction', () => {
                 status: 'stopped but enabled',
                 dns_configured: 0,
               },
-              sing_box: {
+              tachyon_core: {
                 running: 0,
                 enabled: 1,
                 status: 'stopped but enabled',
               },
             },
             capabilities: {
-              sing_box_extended: 0,
-              sing_box_tiny: 1,
-              sing_box_compressed: 0,
-              sing_box_tailscale: 0,
-              zapret_installed: 1,
-              zapret2_installed: 1,
-              byedpi_installed: 0,
+              tachyon_core_tailscale: 0,
               server_inbounds_enabled_count: 0,
             },
             actions: {
@@ -231,8 +225,8 @@ describe('TachyonShellMethods.componentAction', () => {
                 {
                   success: true,
                   running: true,
-                  component: 'sing_box',
-                  action: 'install_extended',
+                  component: 'tachyon-core',
+                  action: 'install',
                   message: 'Component action is running',
                   job_id: 'job-1',
                 },
@@ -254,8 +248,8 @@ describe('TachyonShellMethods.componentAction', () => {
 
     const responsePromise = TachyonShellMethods.waitComponentActionJob(
       'job-1',
-      'sing_box',
-      'install_extended',
+      'tachyon-core',
+      'install',
     );
 
     await vi.advanceTimersByTimeAsync(3000);
@@ -265,11 +259,11 @@ describe('TachyonShellMethods.componentAction', () => {
       data: {
         success: true,
         running: false,
-        component: 'sing_box',
-        action: 'install_extended',
-        message: 'sing-box-extended has been installed',
-        current_version: '1.13.12-extended-2.3.2',
-        latest_version: '1.13.12-extended-2.3.2',
+        component: 'tachyon-core',
+        action: 'install',
+        message: 'tachyon-core has been installed',
+        current_version: '0.3.10',
+        latest_version: '0.3.10',
         changed: true,
         status: 'latest',
       },
@@ -288,11 +282,11 @@ describe('TachyonShellMethods.componentAction', () => {
         JSON.stringify({
           success: true,
           running: false,
-          component: 'zapret',
+          component: 'tachyon-core',
           action: 'check_update',
-          message: 'zapret is up to date',
-          current_version: '70.2',
-          latest_version: '70.2',
+          message: 'tachyon-core is up to date',
+          current_version: '0.3.10',
+          latest_version: '0.3.10',
           changed: false,
           status: 'latest',
         }),
@@ -324,7 +318,7 @@ describe('TachyonShellMethods.componentAction', () => {
 
     const responsePromise = TachyonShellMethods.waitComponentActionJob(
       'job-1',
-      'zapret',
+      'tachyon-core',
       'check_update',
     );
 
@@ -335,11 +329,11 @@ describe('TachyonShellMethods.componentAction', () => {
       data: {
         success: true,
         running: false,
-        component: 'zapret',
+        component: 'tachyon-core',
         action: 'check_update',
-        message: 'zapret is up to date',
-        current_version: '70.2',
-        latest_version: '70.2',
+        message: 'tachyon-core is up to date',
+        current_version: '0.3.10',
+        latest_version: '0.3.10',
         changed: false,
         status: 'latest',
       },

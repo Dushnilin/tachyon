@@ -28,7 +28,7 @@ describe('runInboundsCheck', () => {
       success: true,
       data: {
         enabled_count: 1,
-        config_path: '/etc/sing-box/config.json',
+        config_path: '/etc/tachyon-core/config.json',
         wan_ip: '192.168.1.60',
         wan_public: 0,
         requires_public_wan: 0,
@@ -82,7 +82,7 @@ describe('runInboundsCheck', () => {
       success: true,
       data: {
         enabled_count: 1,
-        config_path: '/etc/sing-box/config.json',
+        config_path: '/etc/tachyon-core/config.json',
         wan_ip: '192.168.1.60',
         wan_public: 0,
         requires_public_wan: 1,
@@ -133,7 +133,7 @@ describe('runInboundsCheck', () => {
       success: true,
       data: {
         enabled_count: 0,
-        config_path: '/etc/sing-box/config.json',
+        config_path: '/etc/tachyon-core/config.json',
         wan_ip: '192.168.1.60',
         wan_public: 0,
         requires_public_wan: 0,
@@ -154,7 +154,7 @@ describe('runInboundsCheck', () => {
       success: true,
       data: {
         enabled_count: 1,
-        config_path: '/etc/sing-box/config.json',
+        config_path: '/etc/tachyon-core/config.json',
         wan_ip: '203.0.113.10',
         wan_ipv6: '2001:db8::10',
         wan_public: 1,
@@ -206,7 +206,7 @@ describe('runInboundsCheck', () => {
       success: true,
       data: {
         enabled_count: 1,
-        config_path: '/etc/sing-box/config.json',
+        config_path: '/etc/tachyon-core/config.json',
         wan_ip: '203.0.113.10, 2001:db8::10',
         wan_ipv6: '2001:db8::10',
         wan_public: 1,

@@ -38,12 +38,8 @@ function formatRouteType(routeType: string): string {
   if (clean === 'hosts' || clean === 'dns') {
     return 'Hosts / DNS';
   }
-  if (
-    clean.startsWith('desync') ||
-    clean.startsWith('zapret') ||
-    clean.startsWith('byedpi')
-  ) {
-    return 'Desync';
+  if (clean.startsWith('desync')) {
+    return clean.replace(/^desync/, 'Desync');
   }
 
   return clean;
@@ -334,11 +330,11 @@ export function renderServiceCheckModal() {
                 'small',
                 {
                   style:
-                    'display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #a1a1aa;',
+                    'display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #a1a1aa;',
                 },
                 [
                   E('span', {
-                    style: `width: 6px; height: 6px; border-radius: 999px; background: ${dotColor}; flex-shrink: 0;`,
+                    style: `width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; flex-shrink: 0;`,
                   }),
                   title,
                 ],

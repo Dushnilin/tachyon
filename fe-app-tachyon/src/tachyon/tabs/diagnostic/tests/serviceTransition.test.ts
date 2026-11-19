@@ -160,7 +160,7 @@ describe('diagnostic service transitions', () => {
     expect(
       hasComponentActionLoading({
         tachyonCheck: { loading: false },
-        zapretInstall: { loading: true },
+        tachyonCoreInstall: { loading: true },
       }),
     ).toBe(true);
   });

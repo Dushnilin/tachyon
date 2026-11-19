@@ -1,9 +1,9 @@
 use super::*;
-use crate::store::RoutingSection;
+use crate::store::{PortableAtomicU64, RoutingSection};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 
-static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
+static TEST_DIR_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
 
 fn prompt_test_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
@@ -1043,4 +1043,88 @@ async fn test_sleep_with_heartbeat_writes_fresh_epoch_and_version() {
     assert!(v["ts"].as_i64().unwrap_or(0) > 0);
     assert_eq!(v["version"], crate::store::TACHYON_VERSION);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn test_ops_notifications_all_and_quick_toggles() {
+    let admin_id: i64 = 444_555_666;
+    let env = TempTestEnv::new("tg_toggles_notif", admin_id).await;
+
+    let notif_menu = ops::try_handle_ops("/notifications", "", admin_id, &env.state, &env.core)
+        .await
+        .expect("/notifications reply");
+    assert!(notif_menu.text.contains("Smart Detect"));
+    assert!(notif_menu.text.contains("Failover"));
+
+    // Toggle individual new notification flags
+    let _ = ops::try_handle_ops(
+        "bot_notify_tog",
+        "route_alert",
+        admin_id,
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("toggle route_alert");
+    assert!(!env.state.data.read().await.telegram.notify_route_alert);
+
+    // Disable all then enable all
+    let _ = ops::try_handle_ops("bot_notify_all", "0", admin_id, &env.state, &env.core)
+        .await
+        .expect("disable all notifications");
+    {
+        let tg = &env.state.data.read().await.telegram;
+        assert!(
+            !tg.notify_smart_detect
+                && !tg.notify_failover
+                && !tg.notify_wan
+                && !tg.notify_update_available
+        );
+    }
+    let _ = ops::try_handle_ops("bot_notify_all", "1", admin_id, &env.state, &env.core)
+        .await
+        .expect("enable all notifications");
+    {
+        let tg = &env.state.data.read().await.telegram;
+        assert!(
+            tg.notify_smart_detect
+                && tg.notify_failover
+                && tg.notify_wan
+                && tg.notify_update_available
+                && tg.notify_route_alert
+        );
+    }
+
+    // Quick toggles (/toggles + /features)
+    let tog_menu = ops::try_handle_ops("/toggles", "net", admin_id, &env.state, &env.core)
+        .await
+        .expect("/toggles reply");
+    assert!(tog_menu.text.contains("DNS"));
+
+    let prev_bbr = env.state.data.read().await.settings.tcp_bbr;
+    let _ = ops::try_handle_ops(
+        "bot_feat_tog",
+        "core tcp_bbr",
+        admin_id,
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("toggle tcp_bbr");
+    assert_eq!(env.state.data.read().await.settings.tcp_bbr, !prev_bbr);
+
+    let prev_intercept = env.state.data.read().await.settings.dns_intercept_all;
+    let _ = ops::try_handle_ops(
+        "bot_feat_tog",
+        "net dns_intercept_all",
+        admin_id,
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("toggle dns_intercept_all");
+    assert_eq!(
+        env.state.data.read().await.settings.dns_intercept_all,
+        !prev_intercept
+    );
 }

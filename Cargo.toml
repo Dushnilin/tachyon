@@ -1,6 +1,6 @@
 [package]
 name = "tachyon"
-version = "2.0.0"
+version = "2.0.0-beta.1"
 edition = "2024"
 description = "Pure-Rust OpenWrt routing orchestrator and control panel for tachyon-core"
 license = "GPL-2.0-only"
@@ -13,7 +13,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 tokio = { version = "1.43", features = [
-    "rt-multi-thread",
+    "rt",
     "macros",
     "net",
     "io-util",
@@ -31,3 +31,4 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+overflow-checks = false

@@ -34,51 +34,49 @@ export async function fetchServicesInfo() {
     return uiState;
   }
 
-  const [tachyonResult, singboxResult, watchdogResult] =
-    await Promise.allSettled([
-      TachyonShellMethods.getStatus(),
-      TachyonShellMethods.getSingBoxStatus(),
-      TachyonShellMethods.getWatchdogStatus(),
-    ]);
+  const [tachyonResult, coreResult, watchdogResult] = await Promise.allSettled([
+    TachyonShellMethods.getStatus(),
+    TachyonShellMethods.getTachyonCoreStatus(),
+    TachyonShellMethods.getWatchdogStatus(),
+  ]);
 
   if (requestId !== latestServicesInfoRequestId) {
     return;
   }
 
   const tachyon = getSettledMethodResponse('getStatus', tachyonResult);
-  const singbox = getSettledMethodResponse('getSingBoxStatus', singboxResult);
+  const core = getSettledMethodResponse('getTachyonCoreStatus', coreResult);
   const watchdog = getSettledMethodResponse(
     'getWatchdogStatus',
     watchdogResult,
   );
 
-  const singboxFailed = !singbox.success;
+  const coreFailed = !core.success;
 
   const previousData = store.get().servicesInfoWidget.data;
 
   store.set({
     servicesInfoWidget: {
       loading: false,
-      failed: !tachyon.success || singboxFailed,
+      failed: !tachyon.success || coreFailed,
       data: {
-        singbox: singbox.success ? singbox.data.running : previousData.singbox,
-        singboxMemoryMb: singbox.success
-          ? singbox.data.memory_rss_mb
-          : previousData.singboxMemoryMb,
-        singboxPid: singbox.success
-          ? singbox.data.pid
-          : previousData.singboxPid,
-        singboxUptimeSeconds: singbox.success
-          ? singbox.data.uptime_seconds
-          : previousData.singboxUptimeSeconds,
-        singboxUptimePretty: singbox.success
-          ? singbox.data.uptime_pretty
-          : previousData.singboxUptimePretty,
-        engineVariant: singbox.success
-          ? singbox.data.engine_variant
-          : previousData.engineVariant,
-        engineVersion: singbox.success
-          ? singbox.data.engine_version
+        tachyonCore: core.success
+          ? core.data.running
+          : previousData.tachyonCore,
+        tachyonCoreMemoryMb: core.success
+          ? core.data.memory_rss_mb
+          : previousData.tachyonCoreMemoryMb,
+        tachyonCorePid: core.success
+          ? core.data.pid
+          : previousData.tachyonCorePid,
+        tachyonCoreUptimeSeconds: core.success
+          ? core.data.uptime_seconds
+          : previousData.tachyonCoreUptimeSeconds,
+        tachyonCoreUptimePretty: core.success
+          ? core.data.uptime_pretty
+          : previousData.tachyonCoreUptimePretty,
+        engineVersion: core.success
+          ? core.data.engine_version
           : previousData.engineVersion,
         tachyonRunning: tachyon.success
           ? tachyon.data.running
@@ -108,11 +106,6 @@ export async function fetchServicesInfo() {
         watchdogRunning: watchdog.success
           ? Number((watchdog.data as { running: boolean }).running)
           : previousData.watchdogRunning,
-        zapret2Running: previousData.zapret2Running,
-        zapret2MemoryMb: previousData.zapret2MemoryMb,
-        zapret2Pid: previousData.zapret2Pid,
-        zapret2UptimeSeconds: previousData.zapret2UptimeSeconds,
-        zapret2UptimePretty: previousData.zapret2UptimePretty,
         dnsmasqRunning: previousData.dnsmasqRunning,
         dnsmasqMemoryMb: previousData.dnsmasqMemoryMb,
         dnsmasqLocalCacheEnabled: previousData.dnsmasqLocalCacheEnabled,

@@ -11,7 +11,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
@@ -22,7 +22,7 @@ use crate::core_mgr::CoreManager;
 use crate::crypto_gen;
 use crate::diagnostics;
 use crate::net_stack;
-use crate::store::AppState;
+use crate::store::{AppState, PortableAtomicU64};
 use crate::sys_info;
 use crate::transaction;
 
@@ -30,7 +30,41 @@ static TRANSLATIONS_RU_JS: OnceLock<String> = OnceLock::new();
 static TRANSLATIONS_RU_ETAG: OnceLock<String> = OnceLock::new();
 static PURE_UCI_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 static JSON_SECTIONS_STORE: OnceLock<RwLock<Map<String, Value>>> = OnceLock::new();
-static LAST_UCI_MTIME_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static LAST_UCI_MTIME_NS: PortableAtomicU64 = PortableAtomicU64::new(0);
+static DAEMON_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static JOB_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
+
+pub fn mark_daemon_mode() {
+    DAEMON_MODE.store(true, std::sync::atomic::Ordering::Release);
+}
+
+fn next_job_seq() -> u64 {
+    JOB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn sanitize_job_slug(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "main".to_string()
+    } else {
+        cleaned
+    }
+}
+type UciRollbackSnapshot = Option<(String, Map<String, Value>, crate::store::RouterStoreData)>;
+static UCI_ROLLBACK_SNAPSHOT: OnceLock<Mutex<UciRollbackSnapshot>> = OnceLock::new();
+
+fn uci_rollback_slot() -> &'static Mutex<UciRollbackSnapshot> {
+    UCI_ROLLBACK_SNAPSHOT.get_or_init(|| Mutex::new(None))
+}
 
 fn file_mtime_ns(path: &Path) -> u64 {
     std::fs::metadata(path)
@@ -195,7 +229,7 @@ fn apply_telegram_config_to_sections_map(
         .join(",");
     let b = |v: bool| if v { "1" } else { "0" };
     let poll_str = tg.poll_interval.to_string();
-    let pairs: [(&str, &str); 21] = [
+    let pairs: [(&str, &str); 26] = [
         ("enabled", b(tg.enabled)),
         ("bot_token", tg.bot_token.as_str()),
         ("admin_ids", admins_csv.as_str()),
@@ -213,6 +247,11 @@ fn apply_telegram_config_to_sections_map(
         ("notify_auto_update", b(tg.notify_auto_update)),
         ("notify_honeypot", b(tg.notify_honeypot)),
         ("notify_parental", b(tg.notify_parental)),
+        ("notify_smart_detect", b(tg.notify_smart_detect)),
+        ("notify_failover", b(tg.notify_failover)),
+        ("notify_wan", b(tg.notify_wan)),
+        ("notify_update_available", b(tg.notify_update_available)),
+        ("notify_route_alert", b(tg.notify_route_alert)),
         ("quiet_hours_enabled", b(tg.quiet_hours_enabled)),
         ("quiet_hours_start", tg.quiet_hours_start.as_str()),
         ("quiet_hours_end", tg.quiet_hours_end.as_str()),
@@ -306,6 +345,9 @@ fn serialize_json_sections_to_uci(map: &Map<String, Value>) -> String {
     out
 }
 
+/// Tachyon SVG favicon matching the topbar mark (blue ring + lightning bolt).
+pub const TACHYON_FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 4-8 1 6h3l-4 8-1-6z"/></svg>"##;
+
 /// Generate the LuCI HTML shell with the `tachyon-ui` design system and animated superluminal SVG background.
 pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     let lang = if ui_lang.trim().eq_ignore_ascii_case("en") {
@@ -338,13 +380,20 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     )))
     .max(1);
 
+    let version = crate::store::TACHYON_VERSION;
+    let en_reset = if lang == "en" {
+        "<script>window.TR = {}; window.TR_RAW = {};</script>"
+    } else {
+        ""
+    };
     format!(
         r##"<!DOCTYPE html>
 <html lang="{lang}" data-darkmode="true">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tachyon</title>
+  <title>Tachyon v{version}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v={version}">
   <link rel="stylesheet" href="/luci-static/bootstrap/cascade.css?v={rev}">
   <link rel="stylesheet" media="only screen and (max-device-width: 854px)" href="/luci-static/bootstrap/mobile.css?v={rev}">
   <link rel="preload" href="/luci-static/resources/view/tachyon/tachyon.js?v={rev}" as="script">
@@ -533,6 +582,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     }}
   </style>
   <script src="/cgi-bin/luci/admin/translations/{lang}?v={rev}"></script>
+  {en_reset}
   <script src="/luci-static/resources/cbi.js?v={rev}"></script>
   <script>
     if (window.TR_RAW && typeof sfh === 'function') {{
@@ -549,6 +599,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       resource: "/luci-static/resources",
       scriptname: "/cgi-bin/luci",
       pathinfo: "{pathinfo}",
+      lang: "{lang}",
       documentroot: "/www",
       requestpath: {req_path_json},
       dispatchpath: {req_path_json},
@@ -567,8 +618,12 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       apply_display: 1.5,
       rollback_token: "00000000000000000000000000000000"
     }});
-    L.env = L.env || {{}};
-    L.env.lang = "{lang}";
+    if (!Object.isFrozen(L)) {{
+      L.env = L.env || {{}};
+      if (!Object.isFrozen(L.env)) {{
+        L.env.lang = "{lang}";
+      }}
+    }}
   </script>
 </head>
 <body class="lang_{lang}" data-page="admin-services-tachyon">
@@ -872,9 +927,22 @@ pub async fn handle_ubus_post(
         });
     };
 
+    let is_mutating_ubus_rpc = |item: &Value| -> bool {
+        let Some(params) = item.get("params").and_then(Value::as_array) else {
+            return false;
+        };
+        let obj = params.get(1).and_then(Value::as_str).unwrap_or("");
+        let meth = params.get(2).and_then(Value::as_str).unwrap_or("");
+        match obj {
+            "uci" => !matches!(meth, "get" | "changes"),
+            "file" => matches!(meth, "write" | "remove" | "exec"),
+            _ => true,
+        }
+    };
+
     match parsed {
         Value::Array(mut items) => {
-            if items.len() <= 1 {
+            if items.len() <= 1 || items.iter().any(is_mutating_ubus_rpc) {
                 let mut out = Vec::with_capacity(items.len());
                 for item in &items {
                     out.push(handle_single_ubus_rpc(item, state, core).await);
@@ -980,12 +1048,23 @@ async fn dispatch_ubus_call(
         ]),
         ("file", "list") => handle_file_list(args),
         ("file", "stat" | "lstat") => handle_file_stat(args),
-        ("file", "read") => handle_file_read(args),
+        ("file", "read") => handle_file_read(args, state).await,
         ("file", "write") => handle_file_write(args),
         ("file", "remove") => handle_file_remove(args),
         ("file", "exec") => handle_file_exec(args, state, core).await,
         ("uci", uci_method) => handle_uci_call(uci_method, args, state, core).await,
         ("luci-rpc", _) | ("network.interface", _) | ("network", _) => {
+            if matches!(
+                (object, method),
+                (
+                    "luci-rpc",
+                    "getNetworkDevices" | "getWirelessDevices" | "getBoardJSON"
+                ) | ("network.interface", _)
+                    | ("network", _)
+            ) && let Some(res) = call_router_ubus_cli(object, method, args).await
+            {
+                return res;
+            }
             handle_fallback_system_ubus(object, method).await
         }
         _ => {
@@ -1052,7 +1131,7 @@ fn handle_file_stat(args: &Value) -> Value {
     ])
 }
 
-fn handle_file_read(args: &Value) -> Value {
+async fn handle_file_read(args: &Value, state: &Arc<AppState>) -> Value {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json!([2]);
     };
@@ -1068,17 +1147,10 @@ fn handle_file_read(args: &Value) -> Value {
     if path == "/var/run/tachyon/ui-state/snapshot-export.json"
         || path == "/tmp/tachyon-snapshot-export.json"
     {
-        let sections = json_sections_store()
-            .read()
-            .map(|g| Value::Object(g.clone()))
-            .unwrap_or_else(|_| json!({}));
-        let val = json!({
-            "format": "tachyon-profile-v1",
-            "version": crate::store::TACHYON_VERSION,
-            "exported_at": crate::store::unix_now_secs(),
-            "sections": sections
-        });
-        return json!([0, { "data": serde_json::to_string_pretty(&val).unwrap_or_default() }]);
+        let sections = get_json_sections_snapshot();
+        let profile =
+            crate::snapshots::build_active_profile(state, &sections, "export", "full").await;
+        return json!([0, { "data": serde_json::to_string_pretty(&profile).unwrap_or_default() }]);
     }
     json!([4])
 }
@@ -1223,8 +1295,184 @@ async fn execute_pure_rust_uci_cli(
         return (0, String::new(), String::new());
     };
     let arg = params.get(idx + 1).map(String::as_str).unwrap_or("");
+    let arg2 = params.get(idx + 2).map(String::as_str).unwrap_or("");
 
     match subcmd {
+        "show" => {
+            let clean = arg.strip_prefix("tachyon.").unwrap_or(arg);
+            let store = get_json_sections_snapshot();
+            let mut out = String::new();
+            let format_sec = |sec: &str, obj: &Map<String, Value>, buf: &mut String| {
+                let stype = obj.get(".type").and_then(Value::as_str).unwrap_or(sec);
+                buf.push_str(&format!("tachyon.{sec}={stype}\n"));
+                for (k, v) in obj {
+                    if k.starts_with('.') {
+                        continue;
+                    }
+                    match v {
+                        Value::Array(arr) => {
+                            let items: Vec<String> = arr
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(|s| format!("'{s}'"))
+                                .collect();
+                            buf.push_str(&format!("tachyon.{sec}.{k}={}\n", items.join(" ")));
+                        }
+                        Value::String(s) => buf.push_str(&format!("tachyon.{sec}.{k}='{s}'\n")),
+                        other => buf.push_str(&format!("tachyon.{sec}.{k}='{other}'\n")),
+                    }
+                }
+            };
+            if clean.is_empty() || clean == "tachyon" {
+                let mut ordered: Vec<(usize, &String, &Value)> = store
+                    .iter()
+                    .map(|(k, v)| {
+                        let i = v
+                            .get(".index")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(usize::MAX as u64) as usize;
+                        (i, k, v)
+                    })
+                    .collect();
+                ordered.sort_by_key(|(i, _, _)| *i);
+                for (_, sec, val) in ordered {
+                    if let Some(obj) = val.as_object() {
+                        format_sec(sec, obj, &mut out);
+                    }
+                }
+                return (0, out, String::new());
+            } else if let Some((sec, opt)) = clean.split_once('.') {
+                if let Some(val) = store.get(sec).and_then(|s| s.get(opt)) {
+                    let s = match val {
+                        Value::Array(arr) => arr
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(|x| format!("'{x}'"))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        Value::String(x) => format!("'{x}'"),
+                        other => format!("'{other}'"),
+                    };
+                    return (0, format!("tachyon.{sec}.{opt}={s}\n"), String::new());
+                }
+            } else if let Some(obj) = store.get(clean).and_then(Value::as_object) {
+                format_sec(clean, obj, &mut out);
+                return (0, out, String::new());
+            }
+            (1, String::new(), "Entry not found\n".to_string())
+        }
+        "add" => {
+            if arg.is_empty() || arg2.is_empty() {
+                return (
+                    1,
+                    String::new(),
+                    "Usage: uci add <config> <section-type>\n".to_string(),
+                );
+            }
+            capture_uci_rollback_baseline(state).await;
+            let stype = arg2.trim();
+            let sname = {
+                let Ok(mut store) = json_sections_store().write() else {
+                    return (1, String::new(), "Lock error\n".to_string());
+                };
+                let idx_sec = store.len();
+                let mut n = idx_sec + 1;
+                let name = loop {
+                    let candidate = format!("cfg{n:02x}{stype}");
+                    if !store.contains_key(&candidate) {
+                        break candidate;
+                    }
+                    n += 1;
+                };
+                store.insert(
+                    name.clone(),
+                    json!({
+                        ".anonymous": true,
+                        ".type": stype,
+                        ".name": name,
+                        ".index": idx_sec
+                    }),
+                );
+                persist_json_sections(&store);
+                name
+            };
+            let _ = sync_uci_to_rust_store(state, core).await;
+            (0, format!("{sname}\n"), String::new())
+        }
+        "reorder" => {
+            if let Some((lhs, rhs)) = arg.split_once('=') {
+                let sec = lhs.strip_prefix("tachyon.").unwrap_or(lhs).trim();
+                let Ok(pos) = rhs
+                    .trim()
+                    .trim_matches('\'')
+                    .trim_matches('"')
+                    .parse::<usize>()
+                else {
+                    return (1, String::new(), "Invalid position\n".to_string());
+                };
+                capture_uci_rollback_baseline(state).await;
+                if let Ok(mut store) = json_sections_store().write()
+                    && store.contains_key(sec)
+                {
+                    let mut ordered: Vec<(usize, String, Value)> = std::mem::take(&mut *store)
+                        .into_iter()
+                        .map(|(k, v)| {
+                            let i = v
+                                .get(".index")
+                                .and_then(Value::as_u64)
+                                .unwrap_or(usize::MAX as u64)
+                                as usize;
+                            (i, k, v)
+                        })
+                        .collect();
+                    ordered.sort_by_key(|(i, _, _)| *i);
+                    if let Some(cur_pos) = ordered.iter().position(|(_, k, _)| k == sec) {
+                        let item = ordered.remove(cur_pos);
+                        let target_pos = pos.min(ordered.len());
+                        ordered.insert(target_pos, item);
+                    }
+                    for (new_idx, (_, k, mut val)) in ordered.into_iter().enumerate() {
+                        if let Some(obj) = val.as_object_mut() {
+                            obj.insert(".index".to_string(), json!(new_idx));
+                        }
+                        store.insert(k, val);
+                    }
+                    persist_json_sections(&store);
+                }
+                let _ = sync_uci_to_rust_store(state, core).await;
+                return (0, String::new(), String::new());
+            }
+            (1, String::new(), "Invalid reorder argument\n".to_string())
+        }
+        "rename" => {
+            if let Some((lhs, rhs)) = arg.split_once('=') {
+                let clean_lhs = lhs.strip_prefix("tachyon.").unwrap_or(lhs).trim();
+                let new_name = rhs.trim().trim_matches('\'').trim_matches('"').trim();
+                if new_name.is_empty() {
+                    return (1, String::new(), "Empty target name\n".to_string());
+                }
+                capture_uci_rollback_baseline(state).await;
+                if let Ok(mut store) = json_sections_store().write() {
+                    if let Some((sec, opt)) = clean_lhs.split_once('.') {
+                        if let Some(obj) = store.get_mut(sec).and_then(Value::as_object_mut)
+                            && let Some(val) = obj.remove(opt)
+                        {
+                            obj.insert(new_name.to_string(), val);
+                        }
+                    } else if let Some(mut val) = store.remove(clean_lhs) {
+                        if let Some(obj) = val.as_object_mut() {
+                            obj.insert(".name".to_string(), json!(new_name));
+                            obj.insert(".anonymous".to_string(), json!(false));
+                        }
+                        store.insert(new_name.to_string(), val);
+                    }
+                    persist_json_sections(&store);
+                }
+                let _ = sync_uci_to_rust_store(state, core).await;
+                return (0, String::new(), String::new());
+            }
+            (1, String::new(), "Invalid rename argument\n".to_string())
+        }
         "get" => {
             let clean = arg.strip_prefix("tachyon.").unwrap_or(arg);
             let store = json_sections_store()
@@ -1285,12 +1533,13 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store(state, core).await;
             }
             (0, String::new(), String::new())
         }
         "add_list" => {
             if let Some((lhs, rhs)) = arg.split_once('=') {
+                capture_uci_rollback_baseline(state).await;
                 let clean_lhs = lhs.strip_prefix("tachyon.").unwrap_or(lhs);
                 let val_str = rhs.trim_matches('\'').trim_matches('"').to_string();
                 if let Some((sec, opt)) = clean_lhs.split_once('.')
@@ -1317,12 +1566,13 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store(state, core).await;
             }
             (0, String::new(), String::new())
         }
         "del_list" => {
             if let Some((lhs, rhs)) = arg.split_once('=') {
+                capture_uci_rollback_baseline(state).await;
                 let clean_lhs = lhs.strip_prefix("tachyon.").unwrap_or(lhs);
                 let val_str = rhs.trim_matches('\'').trim_matches('"');
                 if let Some((sec, opt)) = clean_lhs.split_once('.')
@@ -1338,11 +1588,12 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store(state, core).await;
             }
             (0, String::new(), String::new())
         }
         "delete" => {
+            capture_uci_rollback_baseline(state).await;
             let clean = arg.strip_prefix("tachyon.").unwrap_or(arg);
             if let Ok(mut store) = json_sections_store().write() {
                 if let Some((sec, opt)) = clean.split_once('.') {
@@ -1354,14 +1605,21 @@ async fn execute_pure_rust_uci_cli(
                 }
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store(state, core).await;
             (0, String::new(), String::new())
         }
-        "commit" | "apply" | "revert" => {
+        "commit" | "apply" => {
+            clear_uci_rollback_baseline();
             if let Ok(store) = json_sections_store().read() {
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
+            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                return (1, String::new(), format!("{err}\n"));
+            }
+            (0, String::new(), String::new())
+        }
+        "revert" => {
+            let _ = revert_uci_rollback_baseline(state, core).await;
             (0, String::new(), String::new())
         }
         _ => (0, String::new(), String::new()),
@@ -1415,7 +1673,7 @@ async fn try_fast_pure_rust_method(
             format!("{}\n", crate::store::TACHYON_VERSION),
             String::new(),
         )),
-        "show_sing_box_version" => {
+        "show_sing_box_version" | "show_tachyon_core_version" => {
             let live = state.live.read().await;
             Some((0, format!("{}\n", live.core_version), String::new()))
         }
@@ -1457,52 +1715,25 @@ async fn try_fast_pure_rust_method(
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
-        "get_sing_box_status" | "get_engine_status" => {
+        "get_sing_box_status" | "get_tachyon_core_status" | "get_engine_status" => {
             state.touch_telemetry_access();
             let live = state.live.read().await.clone();
             let d = state.data.read().await;
-            let uptime_secs = live.core_uptime_secs.max(1);
-            let core_mb = ((live.core_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
-            let val = json!({
-                "running": i32::from(live.core_running),
-                "enabled": 1,
-                "status": if live.core_running { "running & enabled" } else { "stopped" },
-                "dns_configured": 1,
-                "lite_mode": i32::from(d.settings.lite_mode),
-                "pid": live.core_pid.unwrap_or(0),
-                "memory_rss_mb": if live.core_running { core_mb } else { 0 },
-                "uptime_seconds": uptime_secs,
-                "uptime_pretty": format_uptime_pretty(uptime_secs),
-                "engine_variant": "tachyon-core",
-                "engine_version": live.core_version,
-            });
+            let mut val = build_core_service_json(&live);
+            if let Some(obj) = val.as_object_mut() {
+                obj.insert("dns_configured".to_string(), json!(1));
+                obj.insert(
+                    "lite_mode".to_string(),
+                    json!(i32::from(d.settings.lite_mode)),
+                );
+            }
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_ui_capabilities" | "get_server_capabilities" => {
             let d = state.data.read().await;
             let ui_prefs = read_uci_ui_prefs();
-            let ext_tailscaled_running = net_stack::embedded_tailscale_enabled(&d)
-                && sys_info::find_running_process_by_name("tailscaled").is_some();
-            let val = json!({
-                "sing_box_tachyon_core": i32::from(tachyon_core_binary_installed()),
-                "sing_box_extended": 0,
-                "sing_box_tiny": 0,
-                "sing_box_compressed": 0,
-                "sing_box_lx": 0,
-                "sing_box_fptn": 1,
-                "sing_box_tailscale": 1,
-                "tailscale_conflict": i32::from(ext_tailscaled_running),
-                "sing_box_cert_pin": 1,
-                "sing_box_profile": "tachyon-core",
-                "i18n_ru_installed": 1,
-                "zapret_installed": 0,
-                "zapret2_installed": 0,
-                "byedpi_installed": 0,
-                "luci_lang": d.settings.lang,
-                "ui_prefs": ui_prefs,
-                "server_inbounds_enabled_count": d.servers.iter().filter(|i| i.enabled).count(),
-            });
+            let val = build_capabilities_json(&d, ui_prefs);
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -1516,10 +1747,31 @@ async fn try_fast_pure_rust_method(
                 && let Ok(patch) = serde_json::from_str::<Value>(patch_str)
             {
                 let merged = write_uci_ui_prefs(&patch);
-                if let Some(mode) = merged.get("ui_mode").and_then(Value::as_str) {
+                {
                     let mut d = state.data.write().await;
-                    d.settings.ui_mode = crate::store::normalize_ui_mode(mode);
+                    if let Some(mode) = merged.get("ui_mode").and_then(Value::as_str) {
+                        d.settings.ui_mode = crate::store::normalize_ui_mode(mode);
+                    }
+                    if let Some(pos) = merged.get("sidebar_pos").and_then(Value::as_str)
+                        && !pos.trim().is_empty()
+                    {
+                        d.settings.sidebar_pos = pos.trim().to_string();
+                    }
+                    if let Some(theme) = merged.get("accent_theme").and_then(Value::as_str)
+                        && !theme.trim().is_empty()
+                    {
+                        d.settings.accent_theme = theme.trim().to_string();
+                    }
                 }
+                if let Err(e) = state.save().await {
+                    let s = serde_json::to_string(
+                        &json!({ "success": false, "error": format!("{e:#}") }),
+                    )
+                    .unwrap_or_else(|_| "{\"success\":false}".to_string());
+                    return Some((1, format!("{s}\n"), format!("{e:#}\n")));
+                }
+                let d_updated = state.data.read().await.clone();
+                sync_from_store_to_json_and_cache(&d_updated);
                 let s = serde_json::to_string(&json!({ "success": true, "ui_prefs": merged }))
                     .unwrap_or_else(|_| "{}".to_string());
                 return Some((0, format!("{s}\n"), String::new()));
@@ -1540,9 +1792,38 @@ async fn try_fast_pure_rust_method(
                 .first()
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
-            {
+            let old_en = {
                 let mut d = state.data.write().await;
+                let prev = d.settings.lite_mode;
                 d.settings.lite_mode = en;
+                prev
+            };
+            if let Ok(mut store) = json_sections_store().write() {
+                let next_idx = store.len();
+                let sec = store.entry("settings".to_string()).or_insert_with(|| {
+                    json!({
+                        ".anonymous": false,
+                        ".type": "settings",
+                        ".name": "settings",
+                        ".index": next_idx
+                    })
+                });
+                if let Some(sec_obj) = sec.as_object_mut() {
+                    sec_obj.insert("lite_mode".to_string(), json!(if en { "1" } else { "0" }));
+                }
+                persist_json_sections(&store);
+            }
+            if let Err(e) = state.save().await {
+                let s =
+                    serde_json::to_string(&json!({ "success": false, "error": format!("{e:#}") }))
+                        .unwrap_or_else(|_| "{\"success\":false}".to_string());
+                return Some((1, format!("{s}\n"), format!("{e:#}\n")));
+            }
+            if old_en != en {
+                let core_clone = Arc::clone(core);
+                tokio::spawn(async move {
+                    let _ = core_clone.apply_or_reload().await;
+                });
             }
             let s = serde_json::to_string(&json!({
                 "success": true,
@@ -1553,14 +1834,16 @@ async fn try_fast_pure_rust_method(
         }
         "get_outbound_metadata" => {
             let sec = rest.first().map(String::as_str).unwrap_or("all");
-            let val = read_pure_rust_outbound_metadata(sec);
+            let d = state.data.read().await;
+            let val = read_pure_rust_outbound_metadata(&d, sec);
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_subscription_metadata" => {
             let sec = rest.first().map(String::as_str).unwrap_or("");
-            let val = read_pure_rust_subscription_metadata(sec);
-            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            let d = state.data.read().await;
+            let val = read_pure_rust_subscription_metadata(&d, sec);
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "[]".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "component_update_check_cache" => {
@@ -1668,15 +1951,23 @@ async fn try_fast_pure_rust_method(
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
-        "show_sing_box_config" => {
-            if let Ok(raw) = std::fs::read_to_string("/etc/tachyon-core/config.json")
+        "show_sing_box_config" | "show_tachyon_core_config" => {
+            let want_raw = rest.iter().any(|a| a == "raw" || a == "--raw");
+            let val = if let Ok(raw) = std::fs::read_to_string("/etc/tachyon-core/config.json")
                 && !raw.trim().is_empty()
+                && let Ok(parsed) = serde_json::from_str::<Value>(&raw)
             {
-                return Some((0, raw, String::new()));
-            }
-            let d = state.data.read().await;
-            let cfg = config_gen::compile_core_config(&d).unwrap_or_else(|_| json!({}));
-            let s = serde_json::to_string_pretty(&cfg).unwrap_or_else(|_| "{}".to_string());
+                parsed
+            } else {
+                let d = state.data.read().await;
+                config_gen::compile_core_config(&d).unwrap_or_else(|_| json!({}))
+            };
+            let out_val = if want_raw {
+                val
+            } else {
+                crypto_gen::redact_json_value(&val)
+            };
+            let s = serde_json::to_string_pretty(&out_val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "generate_reality_keypair" => {
@@ -1709,57 +2000,120 @@ async fn try_fast_pure_rust_method(
             } else {
                 &safe_id
             };
-            let cert_dir = Path::new("/etc/tachyon/certs");
-            let _ = std::fs::create_dir_all(cert_dir);
+            let cn_raw = rest
+                .get(1)
+                .map(String::as_str)
+                .unwrap_or("tachyon.internal");
+            let cn: String = cn_raw
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+                .collect();
+            let cn = if cn.is_empty() {
+                "tachyon.internal".to_string()
+            } else {
+                cn
+            };
+            let cert_dir = state
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("/etc/tachyon"))
+                .join("certs");
+            let _ = std::fs::create_dir_all(&cert_dir);
             let cert_path = cert_dir.join(format!("{sid}.crt"));
             let key_path = cert_dir.join(format!("{sid}.key"));
-            let kp = crypto_gen::generate_wg_keypair();
-            let cert_pem = format!(
-                "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
-                kp.public_key
-            );
-            let key_pem = format!(
-                "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n",
-                kp.private_key
-            );
-            let _ = crypto_gen::write_file_if_changed(&cert_path, cert_pem.as_bytes());
-            let _ = crypto_gen::write_file_if_changed(&key_path, key_pem.as_bytes());
-            let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(cert_pem.as_bytes());
-            let s = serde_json::to_string(&json!({
-                "success": true,
-                "section": sid,
-                "certificate_path": cert_path.to_string_lossy(),
-                "key_path": key_path.to_string_lossy(),
-                "sha256": sha256,
-                "md5": md5,
-            }))
-            .unwrap_or_else(|_| "{}".to_string());
-            Some((0, format!("{s}\n"), String::new()))
+            let mut cmd = Command::new("openssl");
+            cmd.args([
+                "req",
+                "-x509",
+                "-newkey",
+                "ec",
+                "-pkeyopt",
+                "ec_paramgen_curve:prime256v1",
+                "-days",
+                "3650",
+                "-nodes",
+                "-subj",
+                &format!("/CN={cn}"),
+                "-keyout",
+                &key_path.to_string_lossy(),
+                "-out",
+                &cert_path.to_string_lossy(),
+            ])
+            .kill_on_drop(true);
+            let payload = match tokio::time::timeout(Duration::from_secs(15), cmd.output()).await {
+                Ok(Ok(out)) if out.status.success() => {
+                    let bytes = std::fs::read(&cert_path).unwrap_or_default();
+                    let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
+                    json!({
+                        "success": true,
+                        "section": sid,
+                        "certificate_path": cert_path.to_string_lossy(),
+                        "key_path": key_path.to_string_lossy(),
+                        "sha256": sha256,
+                        "md5": md5,
+                    })
+                }
+                Ok(Ok(out)) => json!({
+                    "success": false,
+                    "section": sid,
+                    "error": format!("openssl exited with {}", out.status),
+                }),
+                Ok(Err(e)) => json!({
+                    "success": false,
+                    "section": sid,
+                    "error": format!("openssl failed: {e}"),
+                }),
+                Err(_) => json!({
+                    "success": false,
+                    "section": sid,
+                    "error": "openssl req timed out after 15s",
+                }),
+            };
+            let ok = payload
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let s = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+            Some((if ok { 0 } else { 1 }, format!("{s}\n"), String::new()))
         }
         "get_tls_certificate_sha256" => {
-            let sec_id = rest.first().map(String::as_str).unwrap_or("server");
-            let safe_id: String = sec_id
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-                .collect();
-            let sid = if safe_id.is_empty() {
-                "server"
+            let arg = rest.first().map(String::as_str).unwrap_or("server");
+            let cert_dir = state
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("/etc/tachyon"))
+                .join("certs");
+            let cert_path = if arg.starts_with('/') && !arg.contains("..") {
+                PathBuf::from(arg)
             } else {
-                &safe_id
+                let safe_id: String = arg
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                    .collect();
+                let sid = if safe_id.is_empty() {
+                    "server"
+                } else {
+                    &safe_id
+                };
+                cert_dir.join(format!("{sid}.crt"))
             };
-            let cert_path = Path::new("/etc/tachyon/certs").join(format!("{sid}.crt"));
-            let (sha256, md5) = if let Ok(bytes) = std::fs::read(&cert_path) {
-                crypto_gen::cert_fingerprints_sha256_md5(&bytes)
+            if let Ok(bytes) = std::fs::read(&cert_path) {
+                let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
+                let s = serde_json::to_string(&json!({
+                    "success": true,
+                    "sha256": sha256,
+                    "md5": md5,
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                Some((0, format!("{s}\n"), String::new()))
             } else {
-                crypto_gen::cert_fingerprints_sha256_md5(sid.as_bytes())
-            };
-            let s = serde_json::to_string(&json!({
-                "success": true,
-                "sha256": sha256,
-                "md5": md5,
-            }))
-            .unwrap_or_else(|_| "{}".to_string());
-            Some((0, format!("{s}\n"), String::new()))
+                let s = serde_json::to_string(&json!({
+                    "success": false,
+                    "error": "Certificate not found",
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                Some((1, format!("{s}\n"), String::new()))
+            }
         }
         "generate_warp" => {
             let kp = crypto_gen::generate_wg_keypair();
@@ -1897,6 +2251,199 @@ async fn try_fast_pure_rust_method(
     }
 }
 
+fn build_core_service_json(live: &crate::store::LiveTelemetry) -> Value {
+    let core_uptime = live.core_uptime_secs.max(1);
+    let core_mb = ((live.core_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
+    json!({
+        "running": i32::from(live.core_running),
+        "enabled": 1,
+        "status": if live.core_running { "running & enabled" } else { "stopped" },
+        "memory_rss_mb": if live.core_running { core_mb } else { 0 },
+        "pid": live.core_pid.unwrap_or(0),
+        "uptime_seconds": core_uptime,
+        "uptime_pretty": format_uptime_pretty(core_uptime),
+        "engine_variant": "tachyon-core",
+        "engine_version": live.core_version,
+    })
+}
+
+fn build_capabilities_json(d: &crate::store::RouterStoreData, ui_prefs: Value) -> Value {
+    let installed = i32::from(tachyon_core_binary_installed());
+    let ext_tailscaled_running = net_stack::embedded_tailscale_enabled(d)
+        && sys_info::find_running_process_by_name("tailscaled").is_some();
+    json!({
+        "tachyon_core_installed": installed,
+        "tachyon_core_fptn": 0,
+        "tachyon_core_tailscale": 1,
+        "tachyon_core_cert_pin": 1,
+        "tachyon_core_profile": "tachyon-core",
+        "sing_box_tachyon_core": installed,
+        "sing_box_extended": 0,
+        "sing_box_tiny": 0,
+        "sing_box_compressed": 0,
+        "sing_box_lx": 0,
+        "sing_box_fptn": 0,
+        "sing_box_tailscale": 1,
+        "tailscale_conflict": i32::from(ext_tailscaled_running),
+        "sing_box_cert_pin": 1,
+        "sing_box_profile": "tachyon-core",
+        "i18n_ru_installed": 1,
+        "luci_lang": d.settings.lang,
+        "ui_prefs": ui_prefs,
+        "server_inbounds_enabled_count": d.servers.iter().filter(|i| i.enabled).count(),
+        "zapret_installed": 0,
+        "zapret2_installed": 0,
+        "byedpi_installed": 0,
+        "wdtt_installed": 0,
+        "olcrtc_installed": 0,
+    })
+}
+
+fn build_core_health_check_payload(
+    d: &crate::store::RouterStoreData,
+    live: &crate::store::LiveTelemetry,
+    ipv6_active: bool,
+) -> Value {
+    let installed = tachyon_core_binary_installed();
+    let version_ok =
+        installed && !live.core_version.is_empty() && live.core_version != "not installed";
+    let service_exist = Path::new("/etc/init.d/tachyon-core").exists();
+    let mut missing_ports: Vec<String> = Vec::new();
+    let mut active_ports: Vec<String> = Vec::new();
+    let cfg_path = std::env::var("TACHYON_CORE_CONFIG_PATH")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            if d.settings.core_config_path.trim().is_empty() {
+                "/etc/tachyon-core/config.json".to_string()
+            } else {
+                d.settings.core_config_path.clone()
+            }
+        });
+    let cfg_raw = std::fs::read_to_string(&cfg_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    if let Some(inbounds) = cfg_raw
+        .as_ref()
+        .and_then(|v| v.get("inbounds"))
+        .and_then(Value::as_array)
+    {
+        for ib in inbounds {
+            let ib_type = ib.get("type").and_then(Value::as_str).unwrap_or("");
+            let ib_tag = ib.get("tag").and_then(Value::as_str).unwrap_or("");
+            let port = ib.get("listen_port").and_then(Value::as_u64).unwrap_or(0) as u16;
+            if ib_type == "tun" || ib_tag == "tun-in" {
+                let tun_if = ib
+                    .get("interface_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("tun0");
+                if cfg!(target_os = "linux")
+                    && !Path::new(&format!("/sys/class/net/{tun_if}")).exists()
+                {
+                    missing_ports.push(tun_if.to_string());
+                } else {
+                    active_ports.push(tun_if.to_string());
+                }
+            } else if port > 0 && cfg!(target_os = "linux") {
+                let listen = ib.get("listen").and_then(Value::as_str).unwrap_or("");
+                let ok = if ib_tag == "dns-in" || port == 53 {
+                    check_proc_port_listening("127.0.0.42", port, "udp") == 1
+                        || check_proc_port_listening("0.0.0.0", port, "udp") == 1
+                } else if listen.contains(':') {
+                    check_proc_port_listening("::1", port, "tcp") == 1
+                        || check_proc_port_listening("::", port, "tcp") == 1
+                        || check_proc_port_listening("0.0.0.0", port, "tcp") == 1
+                } else {
+                    check_proc_port_listening("0.0.0.0", port, "tcp") == 1
+                        || check_proc_port_listening("127.0.0.1", port, "tcp") == 1
+                };
+                if ok {
+                    active_ports.push(port.to_string());
+                } else if ib_tag == "tproxy6-in" {
+                    if ipv6_active {
+                        missing_ports.push(format!(":{port}"));
+                    }
+                } else if matches!(ib_tag, "dns-in" | "tproxy-in" | "client-mixed-in") {
+                    missing_ports.push(format!(":{port}"));
+                }
+            }
+        }
+    } else if cfg!(target_os = "linux") {
+        if check_proc_port_listening("127.0.0.42", 53, "udp") != 1
+            && check_proc_port_listening("0.0.0.0", 53, "udp") != 1
+        {
+            missing_ports.push("127.0.0.42:53".to_string());
+        } else {
+            active_ports.push("53".to_string());
+        }
+        if d.settings.proxy_mode == "tun" {
+            let tun_if = if d.settings.tun_interface.trim().is_empty() {
+                "tun0"
+            } else {
+                d.settings.tun_interface.trim()
+            };
+            if !Path::new(&format!("/sys/class/net/{tun_if}")).exists() {
+                missing_ports.push(tun_if.to_string());
+            } else {
+                active_ports.push(tun_if.to_string());
+            }
+        } else if check_proc_port_listening("0.0.0.0", 1602, "tcp") != 1 {
+            missing_ports.push("0.0.0.0:1602".to_string());
+        } else {
+            active_ports.push("1602".to_string());
+        }
+    }
+    let ports_listening = if cfg!(target_os = "linux") {
+        missing_ports.is_empty()
+    } else {
+        live.core_running
+    };
+    let mut listen_ports_str = if active_ports.is_empty() {
+        "53, 1602, 9090".to_string()
+    } else {
+        active_ports.join(", ")
+    };
+    if !missing_ports.is_empty() {
+        listen_ports_str.push_str(&format!(" (missing: {})", missing_ports.join(", ")));
+    }
+    let autostart_disabled = !std::fs::read_dir("/etc/rc.d")
+        .ok()
+        .map(|rd| {
+            rd.flatten()
+                .any(|e| e.file_name().to_string_lossy().ends_with("tachyon-core"))
+        })
+        .unwrap_or(false);
+    json!({
+        "tachyon_core_installed": i32::from(installed),
+        "tachyon_core_version_ok": i32::from(version_ok),
+        "tachyon_core_service_exist": i32::from(service_exist),
+        "tachyon_core_autostart_disabled": i32::from(autostart_disabled),
+        "tachyon_core_process_running": i32::from(live.core_running),
+        "tachyon_core_ports_listening": i32::from(ports_listening),
+        "tachyon_core_tailscale": 1,
+        "tachyon_core_fptn": 0,
+        "tachyon_core_cert_pin": 1,
+        "tachyon_core_version": live.core_version,
+        "tachyon_core_bin_path": "/usr/bin/tachyon-core",
+        "tachyon_core_init_path": "/etc/init.d/tachyon-core",
+        "tachyon_core_listen_ports": listen_ports_str,
+        "sing_box_installed": i32::from(installed),
+        "sing_box_version_ok": i32::from(version_ok),
+        "sing_box_service_exist": i32::from(service_exist),
+        "sing_box_autostart_disabled": i32::from(autostart_disabled),
+        "sing_box_process_running": i32::from(live.core_running),
+        "sing_box_ports_listening": i32::from(ports_listening),
+        "sing_box_tachyon_core": i32::from(installed),
+        "sing_box_extended": 0,
+        "sing_box_cert_pin": 1,
+        "sing_box_version": live.core_version,
+        "sing_box_bin_path": "/usr/bin/tachyon-core",
+        "sing_box_init_path": "/etc/init.d/tachyon-core",
+        "sing_box_listen_ports": listen_ports_str,
+    })
+}
+
 async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
     let sys = sys_info::collect_host_info();
     let d = state.data.read().await;
@@ -1919,14 +2466,10 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
             .or_insert_with(|| Value::String(sidebar_pos));
     }
     let daemon_uptime = sys_info::daemon_uptime_secs();
-    let core_uptime = live.core_uptime_secs.max(1);
     let cpu_pct = sys_info::sample_cpu_load_percent();
     let dnsmasq = sys_info::collect_dnsmasq_status();
     let panel_mb = ((sys.panel_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
-    let core_mb = ((live.core_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
-
-    let ext_tailscaled_running = net_stack::embedded_tailscale_enabled(&d)
-        && sys_info::find_running_process_by_name("tailscaled").is_some();
+    let core_service = build_core_service_json(&live);
 
     json!({
         "active_engine": "tachyon-core",
@@ -1944,17 +2487,8 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
                 "cpu_load_percent": cpu_pct,
                 "cpu_temp_c": if sys.cpu_temp_c > 0.0 { json!(sys.cpu_temp_c) } else { Value::Null },
             },
-            "sing_box": {
-                "running": i32::from(live.core_running),
-                "enabled": 1,
-                "status": if live.core_running { "running & enabled" } else { "stopped" },
-                "memory_rss_mb": if live.core_running { core_mb } else { 0 },
-                "pid": live.core_pid.unwrap_or(0),
-                "uptime_seconds": core_uptime,
-                "uptime_pretty": format_uptime_pretty(core_uptime),
-                "engine_variant": "tachyon-core",
-                "engine_version": live.core_version,
-            },
+            "tachyon_core": core_service.clone(),
+            "sing_box": core_service,
             "dnsmasq": {
                 "running": i32::from(dnsmasq.running),
                 "pid": dnsmasq.pid,
@@ -1965,31 +2499,14 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
                 "cache_size": dnsmasq.cache_size
             },
             "watchdog": {
-                "running": i32::from(d.settings.enable_watchdog),
-                "pid": d.settings.enable_watchdog.then(std::process::id),
+                "running": i32::from(
+                    d.settings.enable_watchdog && !crate::core_mgr::CoreManager::is_manual_stop_active(state)
+                ),
+                "pid": (d.settings.enable_watchdog && !crate::core_mgr::CoreManager::is_manual_stop_active(state))
+                    .then(std::process::id),
             }
         },
-        "capabilities": {
-            "sing_box_tachyon_core": i32::from(tachyon_core_binary_installed()),
-            "sing_box_extended": 0,
-            "sing_box_tiny": 0,
-            "sing_box_compressed": 0,
-            "sing_box_lx": 0,
-            "sing_box_fptn": 0,
-            "sing_box_tailscale": 1,
-            "tailscale_conflict": i32::from(ext_tailscaled_running),
-            "sing_box_cert_pin": 1,
-            "sing_box_profile": "tachyon-core",
-            "i18n_ru_installed": 1,
-            "luci_lang": d.settings.lang,
-            "ui_prefs": ui_prefs.clone(),
-            "server_inbounds_enabled_count": d.servers.iter().filter(|i| i.enabled).count(),
-            "zapret_installed": 0,
-            "zapret2_installed": 0,
-            "byedpi_installed": 0,
-            "wdtt_installed": 0,
-            "olcrtc_installed": 0,
-        },
+        "capabilities": build_capabilities_json(&d, ui_prefs.clone()),
         "ui_prefs": ui_prefs,
         "actions": {
             "service": [],
@@ -2160,7 +2677,7 @@ fn populate_system_info_network_fields(
     obj.insert("fakeip_inet6_range".to_string(), json!(fakeip6));
     obj.insert(
         "webrtc_leak_protect".to_string(),
-        json!(i32::from(d.settings.webrtc_leak_protect)),
+        json!(i32::from(crate::store::effective_webrtc_leak_protect(d))),
     );
 }
 
@@ -2190,8 +2707,10 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
     } else {
         json!({
             "tachyon_version": crate::store::TACHYON_VERSION,
+            "tachyon_core_version": core_version,
             "sing_box_version": core_version,
             "active_engine": "tachyon-core",
+            "tachyon_core_installed": core_installed,
             "sing_box_tachyon_core": core_installed,
             "openwrt_version": sys.openwrt_release,
             "device_model": sys.router_model,
@@ -2213,7 +2732,7 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
                     .find(|r| r.get("component").and_then(Value::as_str) == Some(comp))
             })
     };
-    let core_cached = cached_for("sing_box");
+    let core_cached = cached_for("tachyon-core").or_else(|| cached_for("sing_box"));
     let tachyon_cached = cached_for("tachyon");
 
     if let Some(obj) = base.as_object_mut() {
@@ -2257,29 +2776,50 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
         let core_upd = i32::from(
             core_cached.and_then(|r| r.get("status").and_then(Value::as_str)) == Some("outdated"),
         );
+        let core_release_url = core_cached
+            .and_then(|r| r.get("release_url").and_then(Value::as_str))
+            .unwrap_or("https://github.com/Dushnilin/tachyon-core/releases");
+        let core_backup_ver = core_bak.as_ref().map(|m| m.version.as_str()).unwrap_or("");
+        let core_backup_time = core_bak.as_ref().map(|m| m.backed_up_at).unwrap_or(0);
+        obj.insert("tachyon_core_version".to_string(), json!(core_version));
+        obj.insert(
+            "tachyon_core_latest_version".to_string(),
+            json!(core_latest),
+        );
+        obj.insert("tachyon_core_update_available".to_string(), json!(core_upd));
+        obj.insert(
+            "tachyon_core_release_url".to_string(),
+            json!(core_release_url),
+        );
+        obj.insert(
+            "tachyon_core_repo_url".to_string(),
+            json!("https://github.com/Dushnilin/tachyon-core"),
+        );
+        obj.insert(
+            "tachyon_core_backup_version".to_string(),
+            json!(core_backup_ver),
+        );
+        obj.insert(
+            "tachyon_core_backup_time".to_string(),
+            json!(core_backup_time),
+        );
+        obj.insert("tachyon_core_installed".to_string(), json!(core_installed));
+        obj.insert("tachyon_core_fptn".to_string(), json!(0));
+        obj.insert("tachyon_core_tailscale".to_string(), json!(1));
+        obj.insert("tachyon_core_cert_pin".to_string(), json!(1));
         obj.insert("sing_box_version".to_string(), json!(core_version));
         obj.insert("sing_box_latest_version".to_string(), json!(core_latest));
         obj.insert("sing_box_update_available".to_string(), json!(core_upd));
-        obj.insert(
-            "sing_box_release_url".to_string(),
-            json!(
-                core_cached
-                    .and_then(|r| r.get("release_url").and_then(Value::as_str))
-                    .unwrap_or("https://github.com/Dushnilin/tachyon-core/releases")
-            ),
-        );
+        obj.insert("sing_box_release_url".to_string(), json!(core_release_url));
         obj.insert(
             "sing_box_repo_url".to_string(),
             json!("https://github.com/Dushnilin/tachyon-core"),
         );
         obj.insert(
             "sing_box_backup_version".to_string(),
-            json!(core_bak.as_ref().map(|m| m.version.as_str()).unwrap_or("")),
+            json!(core_backup_ver),
         );
-        obj.insert(
-            "sing_box_backup_time".to_string(),
-            json!(core_bak.as_ref().map(|m| m.backed_up_at).unwrap_or(0)),
-        );
+        obj.insert("sing_box_backup_time".to_string(), json!(core_backup_time));
         obj.insert("active_engine".to_string(), json!("tachyon-core"));
         obj.insert("sing_box_tachyon_core".to_string(), json!(core_installed));
         obj.insert("sing_box_extended".to_string(), json!(0));
@@ -2313,7 +2853,83 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
     base
 }
 
-fn read_pure_rust_outbound_metadata(section: &str) -> Value {
+fn is_safe_sub_job_id(id: &str) -> bool {
+    let trimmed = id.trim();
+    !trimmed.is_empty()
+        && trimmed.len() <= 64
+        && trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+}
+
+fn collect_section_sources_with_owner<'a>(
+    store: &'a crate::store::RouterStoreData,
+    section: &str,
+) -> Vec<(String, &'a crate::store::OutboundSource, bool)> {
+    let mut seen: std::collections::HashSet<(String, &str)> = std::collections::HashSet::new();
+    let mut seen_global: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    let include_all = section.is_empty() || section == "all";
+
+    let source_by_id: std::collections::HashMap<&str, &'a crate::store::OutboundSource> = store
+        .outbound_sources
+        .iter()
+        .map(|s| (s.id.as_str(), s))
+        .collect();
+    let group_by_id: std::collections::HashMap<&str, &'a crate::store::OutboundGroup> = store
+        .outbound_groups
+        .iter()
+        .map(|g| (g.id.as_str(), g))
+        .collect();
+
+    for sec in &store.sections {
+        if !include_all && sec.id != section {
+            continue;
+        }
+        for sref in &sec.outbound_source_refs {
+            if let Some(src) = source_by_id.get(sref.as_str()).copied()
+                && seen.insert((sec.id.clone(), src.id.as_str()))
+            {
+                seen_global.insert(src.id.as_str());
+                result.push((sec.id.clone(), src, src.hidden || sec.hidden));
+            }
+        }
+        for gref in std::iter::once(&sec.outbound_group_ref).chain(sec.outbound_group_refs.iter()) {
+            if gref.is_empty() {
+                continue;
+            }
+            if let Some(grp) = group_by_id.get(gref.as_str()).copied() {
+                for sref in &grp.source_refs {
+                    if let Some(src) = source_by_id.get(sref.as_str()).copied()
+                        && seen.insert((sec.id.clone(), src.id.as_str()))
+                    {
+                        seen_global.insert(src.id.as_str());
+                        result.push((sec.id.clone(), src, src.hidden || sec.hidden));
+                    }
+                }
+            }
+        }
+    }
+
+    if include_all {
+        let fallback_sec = store
+            .sections
+            .first()
+            .map(|s| s.id.clone())
+            .unwrap_or_else(|| "Main".to_string());
+        for src in &store.outbound_sources {
+            if seen_global.insert(src.id.as_str()) {
+                result.push((fallback_sec.clone(), src, src.hidden));
+            }
+        }
+    }
+    result
+}
+
+fn build_outbound_metadata_and_links(
+    store: &crate::store::RouterStoreData,
+    section: &str,
+) -> (Value, Map<String, Value>, Map<String, Value>) {
     let mut names = Map::new();
     let mut countries = Map::new();
     let mut transports = Map::new();
@@ -2321,52 +2937,109 @@ fn read_pure_rust_outbound_metadata(section: &str) -> Value {
     let mut securities = Map::new();
     let mut prefixes = Map::new();
     let mut ports = Map::new();
+    let mut source_ids = Map::new();
+    let mut source_names = Map::new();
+    let mut sources = Map::new();
+    let mut hidden = Map::new();
+    let mut links = Map::new();
 
-    let cache_dir = Path::new("/var/run/tachyon/section-cache");
-    let mut files = Vec::new();
-    if section.is_empty() || section == "all" {
-        if let Ok(rd) = std::fs::read_dir(cache_dir) {
-            for entry in rd.flatten() {
-                let p = entry.path();
-                if p.extension().and_then(|e| e.to_str()) == Some("json") {
-                    files.push(p);
+    let mut sub_idx_by_sec: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
+    for (owner_sec, src, is_hidden) in collect_section_sources_with_owner(store, section) {
+        let src_label = if src.name.trim().is_empty() {
+            src.id.clone()
+        } else {
+            src.name.clone()
+        };
+        let source_group = if src.source_type == "subscription" {
+            let cnt = sub_idx_by_sec.entry(owner_sec).or_insert(0);
+            *cnt += 1;
+            format!("sub:{}", *cnt)
+        } else if src.source_type == "proxy_links" {
+            "manual".to_string()
+        } else {
+            src.id.clone()
+        };
+
+        let mut uri_by_tag: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for node in &src.cached_nodes {
+            if !node.raw_uri.trim().is_empty() {
+                uri_by_tag.insert(node.tag.clone(), node.raw_uri.clone());
+                if !src.node_prefix.trim().is_empty() {
+                    uri_by_tag.insert(
+                        format!("{}{}", src.node_prefix, node.tag),
+                        node.raw_uri.clone(),
+                    );
                 }
             }
         }
-    } else if !section.contains("..") && !section.contains('/') {
-        let p = cache_dir.join(format!("{section}.json"));
-        if p.is_file() {
-            files.push(p);
+        for (idx, raw) in src.proxy_links.iter().enumerate() {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
+                uri_by_tag
+                    .entry(parsed.tag.clone())
+                    .or_insert_with(|| trimmed.to_string());
+                if !src.node_prefix.trim().is_empty() {
+                    uri_by_tag
+                        .entry(format!("{}{}", src.node_prefix, parsed.tag))
+                        .or_insert_with(|| trimmed.to_string());
+                }
+            }
+        }
+
+        for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
+            names.entry(tag.clone()).or_insert_with(|| json!(tag));
+            let cc = crate::config_gen::detect_country_code(&tag);
+            if !cc.is_empty() {
+                countries.entry(tag.clone()).or_insert_with(|| json!(cc));
+            }
+            if let Some(proto) = out_val.get("type").and_then(Value::as_str) {
+                protocols.entry(tag.clone()).or_insert_with(|| json!(proto));
+            }
+            if let Some(tr) = out_val.pointer("/transport/type").and_then(Value::as_str)
+                && !tr.is_empty()
+            {
+                transports.entry(tag.clone()).or_insert_with(|| json!(tr));
+            }
+            if out_val
+                .pointer("/tls/reality/enabled")
+                .and_then(Value::as_bool)
+                == Some(true)
+            {
+                securities
+                    .entry(tag.clone())
+                    .or_insert_with(|| json!("reality"));
+            } else if out_val.pointer("/tls/enabled").and_then(Value::as_bool) == Some(true) {
+                securities
+                    .entry(tag.clone())
+                    .or_insert_with(|| json!("tls"));
+            }
+            if !src.node_prefix.trim().is_empty() {
+                prefixes
+                    .entry(tag.clone())
+                    .or_insert_with(|| json!(src.node_prefix));
+            }
+            if let Some(port) = out_val.get("server_port").and_then(Value::as_u64) {
+                ports.entry(tag.clone()).or_insert_with(|| json!(port));
+            }
+            if let Some(raw_uri) = uri_by_tag.get(&tag) {
+                links.insert(tag.clone(), json!(raw_uri));
+            }
+            source_ids.insert(tag.clone(), json!(src.id));
+            source_names.insert(tag.clone(), json!(src_label));
+            sources.insert(tag.clone(), json!(source_group));
+            if is_hidden {
+                hidden.insert(tag, json!(true));
+            }
         }
     }
 
-    for file in files {
-        let Ok(raw) = std::fs::read_to_string(&file) else {
-            continue;
-        };
-        let Ok(cache) = serde_json::from_str::<Value>(&raw) else {
-            continue;
-        };
-        let Some(meta) = cache.get("outboundMetadata").and_then(Value::as_object) else {
-            continue;
-        };
-        let copy_field = |field: &str, dest: &mut Map<String, Value>| {
-            if let Some(src) = meta.get(field).and_then(Value::as_object) {
-                for (k, v) in src {
-                    dest.insert(k.clone(), v.clone());
-                }
-            }
-        };
-        copy_field("names", &mut names);
-        copy_field("countries", &mut countries);
-        copy_field("transports", &mut transports);
-        copy_field("protocols", &mut protocols);
-        copy_field("securities", &mut securities);
-        copy_field("prefixes", &mut prefixes);
-        copy_field("ports", &mut ports);
-    }
-
-    json!({
+    let meta = json!({
         "names": names,
         "countries": countries,
         "transports": transports,
@@ -2374,22 +3047,203 @@ fn read_pure_rust_outbound_metadata(section: &str) -> Value {
         "securities": securities,
         "prefixes": prefixes,
         "ports": ports,
-    })
+        "source_ids": source_ids,
+        "source_names": source_names,
+        "sources": sources,
+        "hidden": hidden.clone(),
+    });
+    (meta, links, hidden)
 }
 
-fn read_pure_rust_subscription_metadata(section: &str) -> Value {
-    if section.is_empty() || section.contains("..") || section.contains('/') {
-        return json!({});
+fn read_pure_rust_outbound_metadata(store: &crate::store::RouterStoreData, section: &str) -> Value {
+    let (mut meta_val, _, _) = build_outbound_metadata_and_links(store, section);
+    let has_any = meta_val
+        .get("names")
+        .and_then(Value::as_object)
+        .is_some_and(|m| !m.is_empty());
+    if !has_any {
+        let cache_dir = Path::new("/var/run/tachyon/section-cache");
+        let mut files = Vec::new();
+        if section.is_empty() || section == "all" {
+            if let Ok(rd) = std::fs::read_dir(cache_dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.extension().and_then(|e| e.to_str()) == Some("json") {
+                        files.push(p);
+                    }
+                }
+            }
+        } else if !section.contains("..") && !section.contains('/') {
+            let p = cache_dir.join(format!("{section}.json"));
+            if p.is_file() {
+                files.push(p);
+            }
+        }
+        if let Some(dest_meta) = meta_val.as_object_mut() {
+            for file in files {
+                let Ok(raw) = std::fs::read_to_string(&file) else {
+                    continue;
+                };
+                let Ok(cache) = serde_json::from_str::<Value>(&raw) else {
+                    continue;
+                };
+                let Some(src_meta) = cache.get("outboundMetadata").and_then(Value::as_object)
+                else {
+                    continue;
+                };
+                for (field, dest_val) in dest_meta.iter_mut() {
+                    if let (Some(src_map), Some(dst_map)) = (
+                        src_meta.get(field).and_then(Value::as_object),
+                        dest_val.as_object_mut(),
+                    ) {
+                        for (k, v) in src_map {
+                            dst_map.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
-    let cache_path = Path::new("/var/run/tachyon/section-cache").join(format!("{section}.json"));
-    if let Ok(raw) = std::fs::read_to_string(&cache_path)
-        && let Ok(cache) = serde_json::from_str::<Value>(&raw)
-        && let Some(arr) = cache.get("subscriptionMetadata").and_then(Value::as_array)
-        && !arr.is_empty()
-    {
-        return Value::Array(arr.clone());
+    meta_val
+}
+
+fn read_pure_rust_subscription_metadata(
+    store: &crate::store::RouterStoreData,
+    section: &str,
+) -> Value {
+    if section.contains("..") || section.contains('/') {
+        return json!([]);
     }
-    json!({})
+
+    let mut items: Vec<Value> = Vec::new();
+    let mut sub_idx_by_sec: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for (owner_sec, src, is_hidden) in collect_section_sources_with_owner(store, section) {
+        if src.source_type != "subscription" {
+            continue;
+        }
+        let sec_label = if section.is_empty() || section == "all" {
+            owner_sec.as_str()
+        } else {
+            section
+        };
+        let cnt = sub_idx_by_sec.entry(sec_label.to_string()).or_insert(0);
+        *cnt += 1;
+        let sub_idx = *cnt;
+        let used = src.sub_upload_bytes.saturating_add(src.sub_download_bytes);
+        let total = src.sub_total_bytes;
+        let remaining = total.saturating_sub(used);
+        let title = if !src.sub_title.trim().is_empty() {
+            crate::store::decode_sub_header_value(&src.sub_title)
+        } else if !src.name.trim().is_empty() {
+            crate::store::decode_sub_header_value(&src.name)
+        } else {
+            src.id.clone()
+        };
+        let mut obj = Map::new();
+        obj.insert("sourceId".into(), json!(src.id));
+        obj.insert(
+            "sourceSection".into(),
+            json!(format!("{sec_label}-subscription-{sub_idx}")),
+        );
+        obj.insert("sourceIndex".into(), json!(sub_idx));
+        obj.insert("title".into(), json!(title));
+        if let Some(u) = src.subscription_urls.first() {
+            obj.insert("url".into(), json!(u));
+        }
+        obj.insert("urls".into(), json!(src.subscription_urls));
+        obj.insert("nodeCount".into(), json!(src.cached_nodes.len()));
+        if src.last_updated_unix > 0 {
+            obj.insert("updatedAt".into(), json!(src.last_updated_unix));
+        }
+        if src.sub_expire_unix > 0 {
+            obj.insert("expire".into(), json!(src.sub_expire_unix));
+        }
+        obj.insert(
+            "traffic".into(),
+            json!({
+                "upload": src.sub_upload_bytes,
+                "download": src.sub_download_bytes,
+                "used": used,
+                "total": total,
+                "remaining": remaining,
+                "isUnlimited": total == 0,
+            }),
+        );
+        if !src.sub_web_page_url.is_empty() {
+            obj.insert("webPageUrl".into(), json!(src.sub_web_page_url));
+        }
+        if !src.sub_support_url.is_empty() {
+            obj.insert("supportUrl".into(), json!(src.sub_support_url));
+        }
+        if !src.sub_announce.is_empty() {
+            obj.insert(
+                "announce".into(),
+                json!(crate::store::decode_sub_header_value(&src.sub_announce)),
+            );
+        }
+        if !src.sub_last_error.is_empty() {
+            obj.insert("lastError".into(), json!(src.sub_last_error));
+        }
+        if is_hidden {
+            obj.insert("hidden".into(), json!(true));
+        }
+        items.push(Value::Object(obj));
+    }
+
+    if !items.is_empty() {
+        return Value::Array(items);
+    }
+
+    if !section.is_empty() && section != "all" {
+        let cache_path =
+            Path::new("/var/run/tachyon/section-cache").join(format!("{section}.json"));
+        if let Ok(raw) = std::fs::read_to_string(&cache_path)
+            && let Ok(cache) = serde_json::from_str::<Value>(&raw)
+            && let Some(arr) = cache.get("subscriptionMetadata").and_then(Value::as_array)
+            && !arr.is_empty()
+        {
+            return Value::Array(arr.clone());
+        }
+    }
+    json!([])
+}
+
+/// Synchronize per-section runtime cache files in `/var/run/tachyon/section-cache/*.json` (tmpfs).
+pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
+    let cache_dir = crate::store::runtime_state_dir().join("section-cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+
+    let mut active_files = std::collections::HashSet::new();
+    for sec in &store.sections {
+        if sec.id.is_empty() || sec.id.contains("..") || sec.id.contains('/') {
+            continue;
+        }
+        let fname = format!("{}.json", sec.id);
+        active_files.insert(fname.clone());
+        let (outbound_meta, links, hidden) = build_outbound_metadata_and_links(store, &sec.id);
+        let sub_meta = read_pure_rust_subscription_metadata(store, &sec.id);
+        let payload = json!({
+            "section": sec.id,
+            "outboundMetadata": outbound_meta,
+            "subscriptionMetadata": sub_meta,
+            "links": links,
+            "hiddenOutboundTags": hidden,
+        });
+        let _ = crypto_gen::write_json_if_changed(cache_dir.join(fname), &payload);
+    }
+
+    if let Ok(rd) = std::fs::read_dir(&cache_dir) {
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json")
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && !active_files.contains(name)
+            {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
 }
 
 fn read_pure_rust_component_update_cache() -> Value {
@@ -2605,19 +3459,78 @@ async fn handle_pure_rust_clash_api(
         "set_group_proxy" => {
             let group = rest.get(1).map(String::as_str).unwrap_or("");
             let proxy = rest.get(2).map(String::as_str).unwrap_or("");
-            if !group.is_empty() && !proxy.is_empty() {
-                let encoded = url_encode_component(group);
-                let body = serde_json::to_string(&json!({ "name": proxy })).unwrap_or_default();
-                let _ = core
-                    .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
-                    .await;
-                CoreManager::save_selector_choice(group, proxy);
-                let sec_id = group.strip_prefix("sel-").unwrap_or(group);
+            if group.is_empty() || proxy.is_empty() {
+                let s = serde_json::to_string(&json!({
+                    "success": false,
+                    "error": "Missing group or proxy"
+                }))
+                .unwrap_or_default();
+                return Some((1, format!("{s}\n"), String::new()));
+            }
+            let d_snap = state.data.read().await.clone();
+            let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+            let proxies_map = proxies_val
+                .as_ref()
+                .and_then(|v| v.get("proxies"))
+                .and_then(Value::as_object);
+            let mut effective_group = resolve_clash_group_for_target(&d_snap, proxies_map, group);
+            if let Some(map) = proxies_map
+                && let Some(entry) = map.get(&effective_group)
+                && entry.get("type").and_then(Value::as_str) != Some("Selector")
+            {
+                let sec_match = d_snap.sections.iter().find(|s| {
+                    effective_group == s.id
+                        || effective_group == format!("sel-{}", s.id)
+                        || effective_group == format!("{}-out", s.id)
+                        || effective_group.starts_with(&format!("bal-{}-", s.id))
+                });
+                if let Some(sec) = sec_match {
+                    for cand in [format!("sel-{}", sec.id), format!("{}-out", sec.id)] {
+                        if map
+                            .get(&cand)
+                            .and_then(|v| v.get("type"))
+                            .and_then(Value::as_str)
+                            == Some("Selector")
+                        {
+                            effective_group = cand;
+                            break;
+                        }
+                    }
+                }
+            }
+            let encoded = url_encode_component(&effective_group);
+            let body = serde_json::to_string(&json!({ "name": proxy })).unwrap_or_default();
+            if let Err(e) = core
+                .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
+                .await
+            {
+                let s = serde_json::to_string(&json!({
+                    "success": false,
+                    "group": effective_group,
+                    "error": format!("{e:#}")
+                }))
+                .unwrap_or_default();
+                return Some((1, format!("{s}\n"), String::new()));
+            }
+            CoreManager::save_selector_choice(&effective_group, proxy);
+            {
                 let mut d = state.data.write().await;
-                if let Some(sec) = d.sections.iter_mut().find(|s| s.id == sec_id) {
+                let base_id = group
+                    .strip_prefix("sel-")
+                    .or_else(|| group.strip_suffix("-out"))
+                    .unwrap_or(group);
+                if let Some(sec) = d.sections.iter_mut().find(|s| {
+                    s.id == group
+                        || s.id == base_id
+                        || format!("sel-{}", s.id) == effective_group
+                        || effective_group.starts_with(&format!("bal-{}-", s.id))
+                }) {
                     sec.active_selected_tag = proxy.to_string();
                 }
             }
+            let _ = state.save().await;
+            let d_updated = state.data.read().await.clone();
+            sync_from_store_to_json_and_cache(&d_updated);
             Some((0, "{\"success\":true}\n".to_string(), String::new()))
         }
         "close_connection" => {
@@ -2640,70 +3553,373 @@ async fn handle_pure_rust_clash_api(
                 .get(3)
                 .map(String::as_str)
                 .unwrap_or("https://www.gstatic.com/generate_204");
-            if !tag.is_empty() {
-                let encoded_tag = url_encode_component(tag);
-                let encoded_url = url_encode_component(url);
-                let path = if action == "get_group_latency" {
-                    format!("/group/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
-                } else {
-                    format!("/proxies/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
-                };
-                if let Ok(val) = core.clash_request("GET", &path, None).await
-                    && let Ok(s) = serde_json::to_string(&val)
-                {
-                    return Some((0, format!("{s}\n"), String::new()));
+            if tag.is_empty() {
+                return Some((
+                    1,
+                    "{\"success\":false,\"delay\":0,\"error\":\"Missing tag\"}\n".to_string(),
+                    String::new(),
+                ));
+            }
+            let target_tag = if action == "get_group_latency" {
+                let d_snap = state.data.read().await.clone();
+                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+                let proxies_map = proxies_val
+                    .as_ref()
+                    .and_then(|v| v.get("proxies"))
+                    .and_then(Value::as_object);
+                resolve_clash_group_for_target(&d_snap, proxies_map, tag)
+            } else {
+                tag.to_string()
+            };
+            let encoded_tag = url_encode_component(&target_tag);
+            let encoded_url = url_encode_component(url);
+            let path = if action == "get_group_latency" {
+                format!("/group/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
+            } else {
+                format!("/proxies/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
+            };
+            match core.clash_request("GET", &path, None).await {
+                Ok(val) => {
+                    let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+                    Some((0, format!("{s}\n"), String::new()))
+                }
+                Err(e) => {
+                    let out = json!({
+                        "delay": 0,
+                        "success": false,
+                        "error": format!("{e:#}")
+                    });
+                    Some((
+                        1,
+                        format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
+                        String::new(),
+                    ))
                 }
             }
-            let live = state.live.read().await.clone();
-            let delay = live.node_latencies_ms.get(tag).copied().unwrap_or(45);
-            let out = json!({ "delay": delay, "success": true });
-            Some((
-                0,
-                format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
-                String::new(),
-            ))
         }
         "get_proxy_latencies" => {
-            let section_name = rest.get(1).map(String::as_str).unwrap_or("Main");
-            let group_tag = format!("{section_name}-out");
-            let encoded_tag = url_encode_component(&group_tag);
-            let path = format!(
-                "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3000"
-            );
+            let arg = rest.get(1).map(String::as_str).unwrap_or("Main").trim();
             let mut delays = Map::new();
-            if let Ok(val) = core.clash_request("GET", &path, None).await
-                && let Some(obj) = val.as_object()
+            let mut probe_error: Option<String> = None;
+
+            if arg.starts_with('[')
+                && let Ok(tags) = serde_json::from_str::<Vec<String>>(arg)
             {
-                for (k, v) in obj {
-                    delays.insert(k.clone(), v.clone());
+                let mut join_set = tokio::task::JoinSet::new();
+                let sem = Arc::new(tokio::sync::Semaphore::new(8));
+                for tag in tags.into_iter().filter(|t| !t.trim().is_empty()) {
+                    let core_c = Arc::clone(core);
+                    let permit_sem = Arc::clone(&sem);
+                    join_set.spawn(async move {
+                        let _permit = permit_sem.acquire().await.ok();
+                        let encoded = url_encode_component(&tag);
+                        let path = format!(
+                            "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3000"
+                        );
+                        let ms = core_c
+                            .clash_request("GET", &path, None)
+                            .await
+                            .ok()
+                            .and_then(|v| v.get("delay").and_then(Value::as_u64));
+                        (tag, ms)
+                    });
                 }
-            }
-            if delays.is_empty() {
-                let d = state.data.read().await.clone();
-                let live = state.live.read().await.clone();
-                for src in &d.outbound_sources {
-                    let ms = live.node_latencies_ms.get(&src.id).copied().unwrap_or(42);
-                    delays.insert(src.id.clone(), json!(ms));
-                    if !src.name.is_empty() {
-                        delays.insert(src.name.clone(), json!(ms));
+                let mut l = state.live.write().await;
+                while let Some(Ok((tag, ms_opt))) = join_set.join_next().await {
+                    if let Some(ms) = ms_opt {
+                        delays.insert(tag.clone(), json!(ms));
+                        if l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
+                            l.node_latencies_ms.insert(tag, ms as u32);
+                        }
+                    } else {
+                        delays.insert(tag, json!(0));
+                    }
+                }
+            } else {
+                let d_snap = state.data.read().await.clone();
+                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+                let proxies_map = proxies_val
+                    .as_ref()
+                    .and_then(|v| v.get("proxies"))
+                    .and_then(Value::as_object);
+                let group_tag = resolve_clash_group_for_target(&d_snap, proxies_map, arg);
+                let encoded_tag = url_encode_component(&group_tag);
+                let path = format!(
+                    "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3000"
+                );
+                match core.clash_request("GET", &path, None).await {
+                    Ok(val) => {
+                        if let Some(obj) = val.as_object() {
+                            let mut l = state.live.write().await;
+                            for (k, v) in obj {
+                                delays.insert(k.clone(), v.clone());
+                                if let Some(ms) = v.as_u64()
+                                    && ms > 0
+                                    && l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES
+                                {
+                                    l.node_latencies_ms.insert(k.clone(), ms as u32);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        probe_error = Some(format!("{e:#}"));
                     }
                 }
             }
-            let count = delays.len().max(1);
-            let out = json!({
-                "success": true,
+
+            let count = delays.len();
+            let failed = count == 0 && probe_error.is_some();
+            let mut out = json!({
+                "success": !failed,
                 "count": count,
-                "failed": false,
+                "failed": failed,
                 "delays": delays,
             });
+            if let Some(err) = probe_error
+                && let Some(obj) = out.as_object_mut()
+            {
+                obj.insert("error".to_string(), json!(err));
+            }
             Some((
-                0,
+                if failed { 1 } else { 0 },
                 format!("{}\n", serde_json::to_string(&out).unwrap_or_default()),
                 String::new(),
             ))
         }
         _ => None,
     }
+}
+
+fn resolve_clash_group_for_target(
+    store: &crate::store::RouterStoreData,
+    proxies_map: Option<&Map<String, Value>>,
+    target: &str,
+) -> String {
+    let req = target.trim();
+    if req.is_empty() {
+        return "Main".to_string();
+    }
+    if let Some(map) = proxies_map
+        && map.contains_key(req)
+    {
+        return req.to_string();
+    }
+    let sec_base = req
+        .strip_prefix("sel-")
+        .or_else(|| req.strip_suffix("-out"))
+        .unwrap_or(req);
+    if let Some(sec) = store
+        .sections
+        .iter()
+        .find(|s| s.id == sec_base || s.id == req)
+    {
+        let mut candidates = Vec::new();
+        for bref in &sec.balancer_refs {
+            if !bref.trim().is_empty() {
+                candidates.push(format!("bal-{}-{bref}", sec.id));
+            }
+        }
+        for bal in &store.balancers {
+            if bal.enabled {
+                candidates.push(format!("bal-{}-{}", sec.id, bal.id));
+            }
+        }
+        candidates.push(format!("sel-{}", sec.id));
+        candidates.push(format!("{}-out", sec.id));
+        candidates.push(sec.id.clone());
+        if let Some(map) = proxies_map {
+            for cand in &candidates {
+                if map.contains_key(cand) {
+                    return cand.clone();
+                }
+            }
+        }
+        if let Some(first) = candidates.into_iter().next() {
+            return first;
+        }
+    }
+    req.to_string()
+}
+
+fn collect_clash_leaf_members(proxies_map: &Map<String, Value>, root_group: &str) -> Vec<String> {
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec![root_group.to_string()];
+    let mut out = Vec::new();
+    let mut seen_leaf = std::collections::HashSet::new();
+
+    while let Some(cur) = stack.pop() {
+        if !visited.insert(cur.clone()) {
+            continue;
+        }
+        let Some(entry) = proxies_map.get(&cur) else {
+            continue;
+        };
+        if let Some(all) = entry.get("all").and_then(Value::as_array) {
+            for item in all {
+                let Some(tag) = item.as_str().map(str::trim).filter(|s| !s.is_empty()) else {
+                    continue;
+                };
+                if matches!(tag, "direct" | "block" | "GLOBAL" | "reject" | "dns-out") {
+                    continue;
+                }
+                let is_group = proxies_map
+                    .get(tag)
+                    .and_then(|v| v.get("all"))
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty());
+                if is_group {
+                    stack.push(tag.to_string());
+                } else if seen_leaf.insert(tag.to_string()) {
+                    out.push(tag.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn collect_store_section_leaf_tags(
+    store: &crate::store::RouterStoreData,
+    section: &str,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (_owner, src, _hidden) in collect_section_sources_with_owner(store, section) {
+        if src.source_type == "subscription" {
+            for node in &src.cached_nodes {
+                let t = node.tag.trim();
+                if !t.is_empty() && seen.insert(t.to_string()) {
+                    out.push(t.to_string());
+                }
+            }
+        } else if src.source_type == "proxy_links" {
+            for (idx, link) in src.proxy_links.iter().enumerate() {
+                if let Some(parsed) = config_gen::parse_proxy_uri(link, idx) {
+                    let t = parsed.tag.trim();
+                    if !t.is_empty() && seen.insert(t.to_string()) {
+                        out.push(t.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn resolve_latency_targets(
+    store: &crate::store::RouterStoreData,
+    proxies_map: Option<&Map<String, Value>>,
+    ltype: &str,
+    section: &str,
+    raw_tag: &str,
+) -> (Vec<String>, String) {
+    let trimmed_tag = raw_tag.trim();
+    if ltype == "proxy_list" {
+        if trimmed_tag.is_empty() || trimmed_tag.starts_with("@section:") {
+            let sec_id = trimmed_tag
+                .strip_prefix("@section:")
+                .unwrap_or(section)
+                .trim();
+            let group_tag = resolve_clash_group_for_target(store, proxies_map, sec_id);
+            let mut tags = proxies_map
+                .map(|pm| collect_clash_leaf_members(pm, &group_tag))
+                .unwrap_or_default();
+            if tags.is_empty() {
+                tags = collect_store_section_leaf_tags(store, sec_id);
+            }
+            return (tags, format!("@section:{sec_id}"));
+        }
+        if trimmed_tag.starts_with('[')
+            && let Ok(parsed) = serde_json::from_str::<Vec<String>>(trimmed_tag)
+        {
+            let mut seen = std::collections::HashSet::new();
+            let tags: Vec<String> = parsed
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && seen.insert(s.clone()))
+                .collect();
+            return (tags, trimmed_tag.to_string());
+        }
+        let mut seen = std::collections::HashSet::new();
+        let tags: Vec<String> = trimmed_tag
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && seen.insert((*s).to_string()))
+            .map(str::to_string)
+            .collect();
+        return (tags, trimmed_tag.to_string());
+    }
+
+    if ltype == "group" {
+        let req = if trimmed_tag.is_empty() {
+            section
+        } else {
+            trimmed_tag
+        };
+        let eff_group = resolve_clash_group_for_target(store, proxies_map, req);
+        let tags = proxies_map
+            .map(|pm| collect_clash_leaf_members(pm, &eff_group))
+            .unwrap_or_default();
+        return (tags, eff_group);
+    }
+
+    let eff_tag = if trimmed_tag.is_empty() {
+        resolve_clash_group_for_target(store, proxies_map, section)
+    } else {
+        trimmed_tag.to_string()
+    };
+    let tags = if eff_tag.is_empty() {
+        Vec::new()
+    } else {
+        vec![eff_tag.clone()]
+    };
+    (tags, eff_tag)
+}
+
+fn resolve_subscription_cli_target(
+    store: &crate::store::RouterStoreData,
+    target: &str,
+    selector: &str,
+) -> String {
+    let t = target.trim();
+    let sel = selector.trim();
+    if sel.is_empty() {
+        return t.to_string();
+    }
+    if store
+        .outbound_sources
+        .iter()
+        .any(|s| s.source_type == "subscription" && s.id == sel)
+    {
+        return sel.to_string();
+    }
+    let section_subs: Vec<&crate::store::OutboundSource> =
+        collect_section_sources_with_owner(store, t)
+            .into_iter()
+            .filter_map(|(_, src, _)| {
+                if src.source_type == "subscription" {
+                    Some(src)
+                } else {
+                    None
+                }
+            })
+            .collect();
+    if let Ok(idx) = sel.parse::<usize>()
+        && idx >= 1
+    {
+        if let Some(found) = section_subs.get(idx - 1) {
+            return found.id.clone();
+        }
+        return format!("__missing_subscription_index__:{idx}");
+    }
+    if let Some(found) = section_subs
+        .iter()
+        .find(|s| s.id.eq_ignore_ascii_case(sel) || s.name.trim().eq_ignore_ascii_case(sel))
+    {
+        return found.id.clone();
+    }
+    sel.to_string()
 }
 
 async fn build_pure_rust_core_telemetry(_state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
@@ -3096,30 +4312,372 @@ fn check_proc_port_listening(_listen: &str, _port: u16, _required_proto: &str) -
     -1
 }
 
-#[cfg(target_os = "linux")]
-fn check_fw4_port_open(fw4_in: &str, port: u16, required_proto: &str) -> i32 {
-    if fw4_in.is_empty() || port == 0 {
+#[cfg(any(target_os = "linux", test))]
+fn collect_local_router_ips(
+    wan_ip: &str,
+    wan_ipv6: &str,
+    listen: &str,
+    ip_addr_out: &str,
+) -> Vec<String> {
+    let mut ips = Vec::new();
+    let mut push_unique = |raw: &str| {
+        let t = raw.trim();
+        if !t.is_empty() && !ips.iter().any(|x| x == t) {
+            ips.push(t.to_string());
+        }
+    };
+    for w in wan_ip.split_whitespace().chain(wan_ipv6.split_whitespace()) {
+        push_unique(w);
+    }
+    let listen_t = listen.trim();
+    if !listen_t.is_empty() && listen_t != "0.0.0.0" && listen_t != "::" {
+        push_unique(listen_t);
+    }
+    for line in ip_addr_out.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        for pair in fields.windows(2) {
+            if pair[0] != "inet" && pair[0] != "inet6" {
+                continue;
+            }
+            let addr = pair[1]
+                .split('/')
+                .next()
+                .unwrap_or(pair[1])
+                .split('%')
+                .next()
+                .unwrap_or(pair[1]);
+            push_unique(addr);
+        }
+    }
+    ips
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_strip_comment(line: &str) -> &str {
+    match line.find("comment \"") {
+        Some(pos) => line[..pos].trim(),
+        None => line.trim(),
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_extract_port_expr(text: &str) -> &str {
+    let t = text.trim();
+    if t.is_empty() {
+        return "";
+    }
+    if t.starts_with('{')
+        && let Some(end_b) = t.find('}')
+    {
+        return &t[..=end_b];
+    }
+    t.split_whitespace().next().unwrap_or("")
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_port_expr_contains(expr: &str, port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
+    for tok in expr.split([' ', '\t', ',', '{', '}', ';']) {
+        let t = tok.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if let Some((a, b)) = t.split_once('-') {
+            if let (Ok(start), Ok(end)) = (a.trim().parse::<u16>(), b.trim().parse::<u16>())
+                && start <= port
+                && port <= end
+            {
+                return true;
+            }
+        } else if t.parse::<u16>().ok() == Some(port) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_line_matches_proto(clean_lc: &str, proto_lc: &str) -> bool {
+    if proto_lc != "tcp" && proto_lc != "udp" {
+        return false;
+    }
+    if clean_lc.contains(&format!("{proto_lc} dport")) {
+        return true;
+    }
+    if let Some(pos) = clean_lc.find("meta l4proto ") {
+        let expr = nft_extract_port_expr(&clean_lc[pos + 13..]);
+        for tok in expr.split([' ', '\t', ',', '{', '}']) {
+            if tok.trim() == proto_lc {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_extract_dport_expr(clean_lc: &str) -> &str {
+    if let Some(pos) = clean_lc.find(" dport ") {
+        return nft_extract_port_expr(&clean_lc[pos + 7..]);
+    }
+    if let Some(rest) = clean_lc.strip_prefix("dport ") {
+        return nft_extract_port_expr(rest);
+    }
+    ""
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_ip_is_local(dest_ip: &str, local_ips: &[String]) -> bool {
+    let d = dest_ip.trim();
+    d == "127.0.0.1"
+        || d == "::1"
+        || local_ips
+            .iter()
+            .any(|ip| !d.is_empty() && ip.eq_ignore_ascii_case(d))
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn fw4_line_matches_port(line: &str, proto: &str, port: u16) -> bool {
+    let l = nft_strip_comment(line).to_ascii_lowercase();
+    if l.is_empty() || !l.contains("accept") || l.contains(" sport ") {
+        return false;
+    }
+    if !nft_line_matches_proto(&l, proto) {
+        return false;
+    }
+    let after_dport = nft_extract_dport_expr(&l);
+    let port_spec = after_dport.split("counter").next().unwrap_or(after_dport);
+    nft_port_expr_contains(port_spec, port)
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn nft_dstnat_chain_allows_port_proto(
+    fw4_dstnat: &str,
+    port: u16,
+    proto_lc: &str,
+    local_ips: &[String],
+) -> bool {
+    for line in fw4_dstnat.lines() {
+        let clean = nft_strip_comment(line);
+        if clean.is_empty() {
+            continue;
+        }
+        let clean_lc = clean.to_ascii_lowercase();
+        if clean_lc.contains(" sport ") || !nft_line_matches_proto(&clean_lc, proto_lc) {
+            continue;
+        }
+        if let Some(pos) = clean_lc.find("redirect to :") {
+            let tport = nft_extract_port_expr(&clean_lc[pos + 13..]);
+            if nft_port_expr_contains(tport, port) {
+                return true;
+            }
+            continue;
+        }
+        if clean_lc.contains(" redirect") || clean_lc.starts_with("redirect") {
+            let dport_expr = nft_extract_dport_expr(&clean_lc);
+            if !dport_expr.is_empty() && nft_port_expr_contains(dport_expr, port) {
+                return true;
+            }
+            continue;
+        }
+
+        let after_to = ["dnat ip to ", "dnat ip6 to ", "dnat to "]
+            .iter()
+            .find_map(|pref| clean_lc.find(pref).map(|p| &clean_lc[p + pref.len()..]));
+        let Some(after) = after_to else {
+            continue;
+        };
+        let Some(target_tok) = after.split_whitespace().next() else {
+            continue;
+        };
+        let (dest_ip, target_port) = if let Some(rest) = target_tok.strip_prefix('[') {
+            if let Some((ip_part, tail)) = rest.split_once(']') {
+                (ip_part, tail.strip_prefix(':').unwrap_or(""))
+            } else {
+                ("", "")
+            }
+        } else if let Some((ip_part, p_part)) = target_tok.rsplit_once(':')
+            && ip_part.parse::<std::net::Ipv4Addr>().is_ok()
+        {
+            (ip_part, p_part)
+        } else {
+            (target_tok, "")
+        };
+        if dest_ip.is_empty() || !nft_ip_is_local(dest_ip, local_ips) {
+            continue;
+        }
+        let effective_port = if !target_port.is_empty() {
+            target_port
+        } else {
+            nft_extract_dport_expr(&clean_lc)
+        };
+        if !effective_port.is_empty() && nft_port_expr_contains(effective_port, port) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn uci_proto_spec_contains(spec: &str, proto_lc: &str) -> bool {
+    let trimmed = spec.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    for tok in trimmed.split([' ', '\t', ',']) {
+        let t = tok.trim().to_ascii_lowercase();
+        if t.is_empty() {
+            continue;
+        }
+        if t == "all" || t == "any" || t == proto_lc {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn unquote_uci_show_val(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
+        s = s[1..s.len() - 1].replace("'\\''", "'");
+    } else if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        s = s[1..s.len() - 1].to_string();
+    }
+    s
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn uci_firewall_allows_port_proto(
+    uci_show: &str,
+    port: u16,
+    proto_lc: &str,
+    local_ips: &[String],
+) -> bool {
+    #[derive(Default)]
+    struct FwSec {
+        sec_type: String,
+        opts: std::collections::HashMap<String, String>,
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut map: std::collections::HashMap<String, FwSec> = std::collections::HashMap::new();
+    for line in uci_show.lines() {
+        let trimmed = line.trim();
+        let Some(after) = trimmed.strip_prefix("firewall.") else {
+            continue;
+        };
+        let Some((key, raw_val)) = after.split_once('=') else {
+            continue;
+        };
+        let val = unquote_uci_show_val(raw_val);
+        if let Some((sec, opt)) = key.split_once('.') {
+            let entry = map.entry(sec.to_string()).or_default();
+            entry
+                .opts
+                .entry(opt.to_string())
+                .and_modify(|prev| {
+                    prev.push(' ');
+                    prev.push_str(&val);
+                })
+                .or_insert(val);
+        } else if val == "rule" || val == "redirect" {
+            if !map.contains_key(key) {
+                order.push(key.to_string());
+            }
+            map.entry(key.to_string()).or_default().sec_type = val;
+        }
+    }
+
+    for sec_key in order {
+        let Some(sec) = map.get(&sec_key) else {
+            continue;
+        };
+        let opt = |k: &str| sec.opts.get(k).map(String::as_str).unwrap_or("").trim();
+        let enabled = opt("enabled");
+        if !enabled.is_empty() && enabled != "1" {
+            continue;
+        }
+        let src = opt("src");
+        if !src.is_empty() && src != "wan" && src != "*" {
+            continue;
+        }
+        if !uci_proto_spec_contains(opt("proto"), proto_lc) {
+            continue;
+        }
+        if sec.sec_type == "redirect" {
+            let target = opt("target");
+            if !target.is_empty() && !target.eq_ignore_ascii_case("DNAT") {
+                continue;
+            }
+            let src_port = opt("src_port");
+            if !src_port.is_empty() && src_port != "*" {
+                continue;
+            }
+            if opt("family").eq_ignore_ascii_case("ipv6") {
+                continue;
+            }
+            let dest_ip = opt("dest_ip");
+            if !dest_ip.is_empty() && !nft_ip_is_local(dest_ip, local_ips) {
+                continue;
+            }
+            let port_spec = if !opt("dest_port").is_empty() {
+                opt("dest_port")
+            } else {
+                opt("src_dport")
+            };
+            if !port_spec.is_empty() && nft_port_expr_contains(port_spec, port) {
+                return true;
+            }
+        } else {
+            let target = opt("target");
+            if !target.is_empty() && !target.eq_ignore_ascii_case("ACCEPT") {
+                continue;
+            }
+            if !opt("dest").is_empty() {
+                continue;
+            }
+            if nft_port_expr_contains(opt("dest_port"), port) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn check_fw4_port_open_with_redirects(
+    fw4_in: &str,
+    fw4_dstnat: &str,
+    uci_fw: &str,
+    port: u16,
+    required_proto: &str,
+    local_ips: &[String],
+) -> i32 {
+    if port == 0 || (fw4_in.is_empty() && fw4_dstnat.is_empty() && uci_fw.is_empty()) {
         return -1;
     }
-    let port_str = port.to_string();
-    for proto in required_proto.split_whitespace() {
-        let matched = fw4_in.lines().any(|line| {
-            let l = line.to_ascii_lowercase();
-            l.contains(&format!("{proto} dport"))
-                && l.contains("accept")
-                && l.split(|c: char| !c.is_ascii_digit())
-                    .any(|tok| tok == port_str)
-        });
-        if !matched {
+    let protos: Vec<&str> = required_proto.split_whitespace().collect();
+    let check_protos = if protos.is_empty() {
+        vec!["tcp"]
+    } else {
+        protos
+    };
+    for proto in check_protos {
+        let proto_lc = proto.to_ascii_lowercase();
+        let nft_open = fw4_in
+            .lines()
+            .any(|line| fw4_line_matches_port(line, &proto_lc, port))
+            || nft_dstnat_chain_allows_port_proto(fw4_dstnat, port, &proto_lc, local_ips);
+        if !nft_open
+            && (uci_fw.is_empty()
+                || !uci_firewall_allows_port_proto(uci_fw, port, &proto_lc, local_ips))
+        {
             return 0;
         }
     }
     1
-}
-
-#[cfg(not(target_os = "linux"))]
-fn check_fw4_port_open(_fw4_in: &str, _port: u16, _required_proto: &str) -> i32 {
-    -1
 }
 
 fn inbound_expected_type(protocol: &str) -> &str {
@@ -3179,6 +4737,41 @@ fn resolve_public_host_ips_list(host: &str) -> Vec<String> {
     ips
 }
 
+fn dns_probe_succeeded(probe: &Value) -> bool {
+    probe.get("resolved").and_then(Value::as_bool) == Some(true)
+        || probe.pointer("/engine/ok").and_then(Value::as_bool) == Some(true)
+        || probe
+            .get("addresses")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+        || probe
+            .pointer("/engine/addresses")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+}
+
+fn parse_nft_table_summary(text: &str) -> (bool, bool, usize, u64) {
+    let mut rules_count = 0usize;
+    let mut mangle_packets = 0u64;
+    let has_mangle = text.contains("chain prerouting") || text.contains("chain mangle");
+    let has_output = text.contains("chain mangle_output") || text.contains("chain output");
+    for line in text.lines() {
+        let t = line.trim();
+        if t.contains("meta mark") || t.contains("tproxy") || t.contains("counter") {
+            rules_count += 1;
+        }
+        if let Some(pos) = t.find("packets ") {
+            let rest_p = &t[pos + 8..];
+            if let Some(num) = rest_p.split_whitespace().next()
+                && let Ok(p) = num.parse::<u64>()
+            {
+                mangle_packets = mangle_packets.saturating_add(p);
+            }
+        }
+    }
+    (has_mangle, has_output, rules_count, mangle_packets)
+}
+
 fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
     let config_path = if d.settings.core_config_path.trim().is_empty() {
         "/etc/tachyon-core/config.json".to_string()
@@ -3195,15 +4788,36 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
         i32::from((!wan_ip.is_empty() && is_public_routable_ip(&wan_ip)) || wan_ipv6_public == 1);
 
     #[cfg(target_os = "linux")]
-    let fw4_in = std::process::Command::new("nft")
-        .args(["list", "chain", "inet", "fw4", "input"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default();
-    #[cfg(not(target_os = "linux"))]
-    let fw4_in = String::new();
+    let (fw4_in, fw4_dstnat, ip_addr_out) = {
+        let read_chains = |chains: &[&str]| -> String {
+            chains
+                .iter()
+                .filter_map(|chain| {
+                    std::process::Command::new("nft")
+                        .args(["list", "chain", "inet", "fw4", chain])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let ip_out = std::process::Command::new("ip")
+            .args(["-o", "addr", "show"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        (
+            read_chains(&["input", "input_wan"]),
+            read_chains(&["dstnat_wan", "dstnat"]),
+            ip_out,
+        )
+    };
+    #[cfg(target_os = "linux")]
+    let mut uci_fw_cache: Option<String> = None;
 
     let mut items = Vec::new();
     let mut enabled_count = 0usize;
@@ -3317,16 +4931,65 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
         } else {
             1
         };
+        #[cfg(target_os = "linux")]
         let firewall_open = if firewall_required == 1 {
-            check_fw4_port_open(&fw4_in, listen_port, &required_proto)
+            let local_ips = collect_local_router_ips(&wan_ip, &wan_ipv6, &listen, &ip_addr_out);
+            let quick = check_fw4_port_open_with_redirects(
+                &fw4_in,
+                &fw4_dstnat,
+                "",
+                listen_port,
+                &required_proto,
+                &local_ips,
+            );
+            if quick == 1 {
+                1
+            } else {
+                let uci_fw = uci_fw_cache.get_or_insert_with(|| {
+                    std::process::Command::new("uci")
+                        .args(["show", "firewall"])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                        .unwrap_or_default()
+                });
+                check_fw4_port_open_with_redirects(
+                    &fw4_in,
+                    &fw4_dstnat,
+                    uci_fw,
+                    listen_port,
+                    &required_proto,
+                    &local_ips,
+                )
+            }
         } else {
             -1
         };
+        #[cfg(not(target_os = "linux"))]
+        let firewall_open = -1;
 
         let routes_configured = if is_native_ts {
             1
+        } else if routing_mode == "rules" {
+            i32::from(
+                runtime_exists == 1
+                    && sb_config
+                        .as_ref()
+                        .and_then(|c| c.pointer("/route/rules"))
+                        .and_then(Value::as_array)
+                        .is_some_and(|r| !r.is_empty()),
+            )
         } else {
-            i32::from(has_route_rule_for_inbound(sb_config.as_ref(), &tag))
+            let route_tag = if srv.protocol == "shadowtls" {
+                format!("{tag}-inner")
+            } else {
+                tag.clone()
+            };
+            i32::from(
+                has_route_rule_for_inbound(sb_config.as_ref(), &route_tag)
+                    || has_route_rule_for_inbound(sb_config.as_ref(), &tag),
+            )
         };
 
         let public_host = srv.public_host.trim().to_string();
@@ -3654,7 +5317,11 @@ async fn execute_pure_rust_tachyon_cli(
     let live = state.live.read().await.clone();
 
     match method {
-        "check_logs" | "check_sing_box_logs" => {
+        "check_proxy" => {
+            let (code, text) = diagnostics::run_proxy_check_cli(&d, live.core_running).await;
+            return (code, text, String::new());
+        }
+        "check_logs" | "check_sing_box_logs" | "check_tachyon_core_logs" => {
             let text = if live.recent_logs.is_empty() {
                 format!(
                     "[INFO] tachyon-core {} active on 127.0.0.1:9090\n[INFO] nftables inet TachyonTable active\n",
@@ -3724,35 +5391,58 @@ async fn execute_pure_rust_tachyon_cli(
     }
 
     let out_val = match method {
-        "check_sing_box" | "check_core" => json!({
-            "sing_box_installed": 1,
-            "sing_box_version_ok": 1,
-            "sing_box_service_exist": 1,
-            "sing_box_autostart_disabled": 1,
-            "sing_box_process_running": i32::from(live.core_running),
-            "sing_box_ports_listening": i32::from(live.core_running),
-            "sing_box_tachyon_core": 1,
-            "sing_box_extended": 0,
-            "sing_box_cert_pin": 1,
-            "sing_box_version": live.core_version,
-            "sing_box_bin_path": "/usr/bin/tachyon-core",
-            "sing_box_init_path": "/etc/init.d/tachyon-core",
-            "sing_box_listen_ports": "53, 1602, 1603, 9090",
-        }),
-        "check_dns" | "check_dns_available" => json!({
-            "dns_type": d.settings.dns_type,
-            "dns_server": d.settings.dns_servers.first().cloned().unwrap_or_else(|| "1.1.1.1".to_string()),
-            "dns_status": 1,
-            "dns_server_count": d.settings.dns_servers.len().max(1),
-            "dns_server_index": 0,
-            "bootstrap_dns_server": d.settings.bootstrap_dns_servers.first().cloned().unwrap_or_else(|| "1.1.1.1".to_string()),
-            "bootstrap_dns_status": 1,
-            "bootstrap_dns_server_count": d.settings.bootstrap_dns_servers.len().max(1),
-            "bootstrap_dns_server_index": 0,
-            "dns_on_router": 1,
-            "dhcp_config_status": 1,
-            "dont_touch_dhcp": i32::from(d.settings.dont_touch_dhcp),
-        }),
+        "check_sing_box" | "check_tachyon_core" | "check_core" => {
+            let wan6_cache = tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state)
+                .await
+                .unwrap_or_default();
+            let ipv6_active =
+                crate::store::resolve_effective_ipv6_state(&d.settings, wan6_cache.wan6_available)
+                    .is_active();
+            build_core_health_check_payload(&d, &live, ipv6_active)
+        }
+        "check_dns" | "check_dns_available" => {
+            let dns_srv = d
+                .settings
+                .dns_servers
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "1.1.1.1".to_string());
+            let boot_srv = d
+                .settings
+                .bootstrap_dns_servers
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "1.1.1.1".to_string());
+            let dns_probe = diagnostics::run_dns_check_with_engine(core, "www.youtube.com").await;
+            let dns_ok = dns_probe_succeeded(&dns_probe);
+            let boot_target = resolve_dns_bench_target(&boot_srv, "udp");
+            let boot_ok = tokio::time::timeout(
+                Duration::from_millis(800),
+                tokio::net::TcpStream::connect(&boot_target),
+            )
+            .await
+            .is_ok_and(|r| r.is_ok())
+                || boot_srv.parse::<std::net::IpAddr>().is_ok() && dns_ok;
+            let dnsmasq = sys_info::collect_dnsmasq_status();
+            let dns_on_router = dnsmasq.running
+                || check_proc_port_listening("0.0.0.0", 53, "udp") == 1
+                || live.core_running;
+            json!({
+                "dns_type": d.settings.dns_type,
+                "dns_server": dns_srv,
+                "dns_status": i32::from(dns_ok),
+                "dns_server_count": d.settings.dns_servers.len().max(1),
+                "dns_server_index": 0,
+                "bootstrap_dns_server": boot_srv,
+                "bootstrap_dns_status": i32::from(boot_ok),
+                "bootstrap_dns_server_count": d.settings.bootstrap_dns_servers.len().max(1),
+                "bootstrap_dns_server_index": 0,
+                "dns_on_router": i32::from(dns_on_router),
+                "dhcp_config_status": i32::from(dnsmasq.running),
+                "dont_touch_dhcp": i32::from(d.settings.dont_touch_dhcp),
+                "probe": dns_probe,
+            })
+        }
         "check_fakeip" => {
             let f4 = d.settings.fakeip_inet4_range.clone();
             let f6 = d.settings.fakeip_inet6_range.clone();
@@ -3779,143 +5469,434 @@ async fn execute_pure_rust_tachyon_cli(
                 aaaa_suppressed,
             })
         }
-        "check_nft" | "check_nft_rules" => json!({
-            "installed": true,
-            "table_present": true,
-            "table_exist": 1,
-            "table_name": "inet TachyonTable",
-            "rules_mangle_exist": 1,
-            "rules_mangle_counters": 1,
-            "mangle_rules_count": 12,
-            "mangle_packets": 1024,
-            "rules_mangle_output_exist": 1,
-            "rules_mangle_output_counters": 1,
-            "rules_proxy_exist": 1,
-            "rules_proxy_counters": 1,
-            "rules_other_mark_exist": 0,
-            "rules": net_stack::compile_nftables_ruleset(&d),
-        }),
+        "check_nft" | "check_nft_rules" => {
+            let table_active = net_stack::check_nft_table_active().await;
+            let nft_installed =
+                Path::new("/usr/sbin/nft").exists() || Path::new("/sbin/nft").exists();
+            let mut rules_count = 0usize;
+            let mut mangle_packets = 0u64;
+            let mut has_mangle = false;
+            let mut has_output = false;
+            if let Ok(Ok(out)) = tokio::time::timeout(
+                Duration::from_secs(3),
+                Command::new("nft")
+                    .args(["list", "table", "inet", "TachyonTable"])
+                    .output(),
+            )
+            .await
+                && out.status.success()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                (has_mangle, has_output, rules_count, mangle_packets) =
+                    parse_nft_table_summary(&text);
+            }
+            json!({
+                "installed": nft_installed || table_active,
+                "table_present": table_active,
+                "table_exist": i32::from(table_active),
+                "table_name": "inet TachyonTable",
+                "rules_mangle_exist": i32::from(table_active && has_mangle),
+                "rules_mangle_counters": i32::from(mangle_packets > 0),
+                "mangle_rules_count": rules_count,
+                "mangle_packets": mangle_packets,
+                "rules_mangle_output_exist": i32::from(table_active && has_output),
+                "rules_mangle_output_counters": i32::from(table_active && has_output && mangle_packets > 0),
+                "rules_proxy_exist": i32::from(table_active),
+                "rules_proxy_counters": i32::from(table_active && mangle_packets > 0),
+                "rules_other_mark_exist": 0,
+                "rules": net_stack::compile_nftables_ruleset(&d),
+            })
+        }
         "check_inbounds_config" => json!({
             "success": true,
             "enabled_count": d.servers.iter().filter(|s| s.enabled).count(),
         }),
         "check_inbounds" => build_check_inbounds_result(&d),
-        "check_zapret_runtime" | "check_zapret2_runtime" | "check_byedpi_runtime" => json!({
+        "check_zapret_runtime"
+        | "check_zapret2_runtime"
+        | "check_byedpi_runtime"
+        | "get_zapret_status"
+        | "get_zapret2_status"
+        | "get_byedpi_status" => json!({
             "installed": 0,
             "running": 0,
             "not_applicable": 1,
         }),
-        "get_engine_info" => json!({
+        "get_wdtt_status" => {
+            let active = d
+                .outbound_sources
+                .iter()
+                .any(|s| s.enabled && matches!(s.source_type.as_str(), "wdtt" | "csqtt" | "qwdtt"));
+            json!({
+                "installed": 1,
+                "native": true,
+                "running": i32::from(active && live.core_running),
+                "enabled": i32::from(active),
+            })
+        }
+        "get_olcrtc_status" => {
+            let active = d
+                .outbound_sources
+                .iter()
+                .any(|s| s.enabled && s.source_type == "olcrtc");
+            json!({
+                "installed": 1,
+                "native": true,
+                "running": i32::from(active && live.core_running),
+                "enabled": i32::from(active),
+            })
+        }
+        "get_fptn_status" => {
+            let active = d
+                .outbound_sources
+                .iter()
+                .any(|s| s.enabled && (s.source_type == "fptn" || s.source_type == "fptnb"))
+                || d.sections
+                    .iter()
+                    .any(|s| s.enabled && s.connection_type == "fptn");
+            json!({
+                "installed": 1,
+                "native": true,
+                "running": i32::from(active && live.core_running),
+                "enabled": i32::from(active),
+            })
+        }
+        "get_tailscale_peers" | "get_tailscale_status" => {
+            let ts = core.get_tailscale_status().await;
+            let enabled = net_stack::is_tailscale_enabled(&d);
+            json!({
+                "success": true,
+                "enabled": enabled,
+                "native": net_stack::native_tailscale_enabled(&d),
+                "running": live.core_running && enabled,
+                "status": ts,
+                "peers": ts.get("peers").cloned().unwrap_or_else(|| json!([])),
+            })
+        }
+        "get_engine_info" | "engine_info" => json!({
             "active": "tachyon-core",
+            "installed": tachyon_core_binary_installed(),
+            "running": live.core_running,
+            "version": live.core_version,
             "engines": [
                 {
                     "name": "tachyon-core",
                     "known": true,
-                    "installed": true,
+                    "installed": tachyon_core_binary_installed(),
                     "active": true
                 }
             ]
         }),
-        "set_engine" => json!({
-            "success": true,
-            "active": "tachyon-core",
-            "switched": true
-        }),
-        "service_action_async" | "service_action_start" => {
-            let act = rest.first().map(String::as_str).unwrap_or("reload");
-            sync_uci_to_rust_store(state, core).await;
-            match act {
-                "stop" => {
-                    let _ = core.stop().await;
-                }
-                "start" => {
-                    let _ = core.start().await;
-                }
-                _ => {
-                    let _ = core.apply_or_reload().await;
-                }
-            }
+        "engine_plan" => {
+            let plan = transaction::analyze_config_plan(&d);
             json!({
                 "success": true,
-                "job_id": "rust-svc-1",
-                "kind": "service",
-                "action": act,
-                "status": "completed",
-                "running": false,
-                "completed": true,
-                "exit_code": 0,
-                "message": "OK"
+                "active_engine": "tachyon-core",
+                "target_engine": d.settings.engine_variant,
+                "switch_required": false,
+                "plan": plan,
             })
         }
-        "service_action_status" => json!({
-            "success": true,
-            "job_id": rest.first().map(String::as_str).unwrap_or("rust-svc-1"),
-            "kind": "service",
-            "status": "completed",
-            "running": false,
-            "completed": true,
-            "exit_code": 0,
-            "message": "OK"
-        }),
+        "set_engine" => {
+            let target = rest.first().map(String::as_str).unwrap_or("tachyon-core");
+            if target != "tachyon-core" && target != "native" {
+                json!({
+                    "success": false,
+                    "active": "tachyon-core",
+                    "switched": false,
+                    "error": format!("Unsupported engine: {target}")
+                })
+            } else {
+                json!({
+                    "success": true,
+                    "active": "tachyon-core",
+                    "switched": true
+                })
+            }
+        }
+        "service_action_async" | "service_action_start" => {
+            let act = rest.first().map(String::as_str).unwrap_or("reload");
+            handle_service_action_async(act, state, core).await
+        }
+        "service_action_status" => {
+            let job_id = rest.first().map(String::as_str).unwrap_or("");
+            let mut found: Option<Value> = None;
+            if is_safe_sub_job_id(job_id) {
+                let job_path = crate::store::runtime_state_dir()
+                    .join("service-jobs")
+                    .join(format!("{job_id}.json"));
+                if let Ok(raw) = std::fs::read_to_string(&job_path)
+                    && let Ok(v) = serde_json::from_str::<Value>(&raw)
+                {
+                    found = Some(v);
+                }
+            }
+            found.unwrap_or_else(|| {
+                json!({
+                    "success": false,
+                    "job_id": job_id,
+                    "kind": "service",
+                    "status": "not_found",
+                    "running": false,
+                    "completed": false,
+                    "exit_code": 1,
+                    "error": "Service job not found"
+                })
+            })
+        }
         "latency_test_async" | "latency_test_start" => {
             let ltype = rest.first().map(String::as_str).unwrap_or("group");
             let section = rest.get(1).map(String::as_str).unwrap_or("Main");
-            let tag = rest.get(2).map(String::as_str).unwrap_or("");
-            let timeout = rest.get(3).map(String::as_str).unwrap_or("3000");
-            if ltype == "group" && !tag.is_empty() {
-                let encoded = url_encode_component(tag);
-                let path = format!(
-                    "/group/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout={timeout}"
-                );
-                let _ = core.clash_request("GET", &path, None).await;
-            } else if !tag.is_empty() {
-                let encoded = url_encode_component(tag);
-                let path = format!(
-                    "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout={timeout}"
-                );
-                let _ = core.clash_request("GET", &path, None).await;
-            }
-            let total = d.outbound_sources.len().max(1);
-            json!({
+            let raw_tag = rest.get(2).map(String::as_str).unwrap_or("");
+            let timeout_ms: u64 = rest
+                .get(3)
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(3000)
+                .clamp(1000, 15000);
+            let test_url = if d.settings.latency_test_url.trim().is_empty() {
+                "https://www.gstatic.com/generate_204".to_string()
+            } else {
+                d.settings.latency_test_url.trim().to_string()
+            };
+            let enc_test_url = url_encode_component(&test_url);
+
+            let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+            let proxies_map = proxies_val
+                .as_ref()
+                .and_then(|v| v.get("proxies"))
+                .and_then(Value::as_object);
+
+            let (target_tags, eff_tag) =
+                resolve_latency_targets(&d, proxies_map, ltype, section, raw_tag);
+
+            let seq = next_job_seq();
+            let safe_sec = sanitize_job_slug(section);
+            let job_id = format!("rust-lat-{safe_sec}-{}-{seq}", crate::store::unix_now_u64());
+            let jobs_dir = crate::store::runtime_state_dir().join("latency-jobs");
+            let _ = std::fs::create_dir_all(&jobs_dir);
+            let job_path = jobs_dir.join(format!("{job_id}.json"));
+
+            let total = target_tags.len();
+            let start_payload = json!({
                 "success": true,
-                "job_id": format!("rust-lat-{section}"),
+                "job_id": job_id,
                 "kind": "latency",
                 "section": section,
                 "latency_type": ltype,
-                "tag": tag,
-                "status": "completed",
-                "running": false,
-                "completed": true,
+                "tag": eff_tag,
+                "status": "running",
+                "running": true,
+                "completed": false,
                 "exit_code": 0,
                 "progress": {
-                    "completed": total,
+                    "completed": 0,
                     "total": total,
+                    "succeeded": 0,
                     "failed": 0
+                },
+                "results": {}
+            });
+            let _ = crypto_gen::write_json_if_changed(&job_path, &start_payload);
+
+            let core_c = Arc::clone(core);
+            let state_c = Arc::clone(state);
+            let job_id_bg = job_id.clone();
+            let ltype_owned = ltype.to_string();
+            let section_owned = section.to_string();
+            let eff_tag_owned = eff_tag.clone();
+            let job_path_bg = job_path.clone();
+
+            let worker_fut = async move {
+                let mut results_map = Map::new();
+                let mut completed_cnt = 0usize;
+                let mut succeeded_cnt = 0usize;
+                let mut failed_cnt = 0usize;
+                let mut probe_err: Option<String> = None;
+
+                if !target_tags.is_empty() {
+                    let eff_total = target_tags.len();
+                    let sem = Arc::new(tokio::sync::Semaphore::new(12));
+                    let mut join_set = tokio::task::JoinSet::new();
+                    for tag in target_tags {
+                        let core_inner = Arc::clone(&core_c);
+                        let permit_sem = Arc::clone(&sem);
+                        let enc_url = enc_test_url.clone();
+                        join_set.spawn(async move {
+                            let _permit = permit_sem.acquire().await.ok();
+                            let encoded = url_encode_component(&tag);
+                            let path = format!(
+                                "/proxies/{encoded}/delay?url={enc_url}&timeout={timeout_ms}"
+                            );
+                            let res = core_inner.clash_request("GET", &path, None).await;
+                            (tag, res)
+                        });
+                    }
+                    let mut live_updates: Vec<(String, u32)> = Vec::new();
+                    while let Some(joined) = join_set.join_next().await {
+                        let Ok((tag, res)) = joined else {
+                            continue;
+                        };
+                        completed_cnt += 1;
+                        match res {
+                            Ok(v) => {
+                                if let Some(ms) = v.get("delay").and_then(Value::as_u64)
+                                    && ms > 0
+                                {
+                                    succeeded_cnt += 1;
+                                    results_map.insert(tag.clone(), json!(ms));
+                                    live_updates.push((tag, ms as u32));
+                                } else {
+                                    failed_cnt += 1;
+                                    results_map.insert(tag, json!(0));
+                                }
+                            }
+                            Err(_) => {
+                                failed_cnt += 1;
+                                results_map.insert(tag, json!(0));
+                            }
+                        }
+                        if completed_cnt.is_multiple_of(8) && completed_cnt < eff_total {
+                            let progress_payload = json!({
+                                "success": true,
+                                "job_id": job_id_bg,
+                                "kind": "latency",
+                                "section": section_owned,
+                                "latency_type": ltype_owned,
+                                "tag": eff_tag_owned,
+                                "status": "running",
+                                "running": true,
+                                "completed": false,
+                                "exit_code": 0,
+                                "progress": {
+                                    "completed": completed_cnt,
+                                    "total": eff_total,
+                                    "succeeded": succeeded_cnt,
+                                    "failed": failed_cnt
+                                },
+                                "results": results_map
+                            });
+                            let _ =
+                                crypto_gen::write_json_if_changed(&job_path_bg, &progress_payload);
+                        }
+                    }
+                    if !live_updates.is_empty() {
+                        let mut l = state_c.live.write().await;
+                        for (t, ms) in live_updates {
+                            if l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
+                                l.node_latencies_ms.insert(t, ms);
+                            }
+                        }
+                    }
+                } else if ltype_owned == "group" && !eff_tag_owned.is_empty() {
+                    let encoded = url_encode_component(&eff_tag_owned);
+                    let path =
+                        format!("/group/{encoded}/delay?url={enc_test_url}&timeout={timeout_ms}");
+                    match core_c.clash_request("GET", &path, None).await {
+                        Ok(v) => {
+                            if let Some(obj) = v.as_object() {
+                                let mut l = state_c.live.write().await;
+                                for (k, dval) in obj {
+                                    completed_cnt += 1;
+                                    if let Some(ms) = dval.as_u64()
+                                        && ms > 0
+                                    {
+                                        succeeded_cnt += 1;
+                                        results_map.insert(k.clone(), json!(ms));
+                                        if l.node_latencies_ms.len()
+                                            < crate::store::MAX_NODE_LATENCIES
+                                        {
+                                            l.node_latencies_ms.insert(k.clone(), ms as u32);
+                                        }
+                                    } else {
+                                        failed_cnt += 1;
+                                        results_map.insert(k.clone(), json!(0));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            probe_err = Some(format!("{e:#}"));
+                            failed_cnt = 1;
+                        }
+                    }
+                } else {
+                    probe_err = Some(format!(
+                        "No testable proxy nodes resolved for section '{section_owned}'"
+                    ));
+                    failed_cnt = 1;
                 }
-            })
+
+                let final_total = completed_cnt.max(1);
+                let ok = probe_err.is_none();
+                let mut done_payload = json!({
+                    "success": ok,
+                    "job_id": job_id_bg,
+                    "kind": "latency",
+                    "section": section_owned,
+                    "latency_type": ltype_owned,
+                    "tag": eff_tag_owned,
+                    "status": if ok { "completed" } else { "failed" },
+                    "running": false,
+                    "completed": true,
+                    "exit_code": i32::from(!ok),
+                    "progress": {
+                        "completed": completed_cnt,
+                        "total": final_total,
+                        "succeeded": succeeded_cnt,
+                        "failed": failed_cnt
+                    },
+                    "results": results_map
+                });
+                if let Some(err) = probe_err
+                    && let Some(obj) = done_payload.as_object_mut()
+                {
+                    obj.insert("error".to_string(), json!(err));
+                    obj.insert("message".to_string(), json!(err));
+                }
+                let _ = crypto_gen::write_json_if_changed(&job_path_bg, &done_payload);
+                done_payload
+            };
+
+            if DAEMON_MODE.load(std::sync::atomic::Ordering::Acquire) {
+                tokio::spawn(async move {
+                    let _ = worker_fut.await;
+                });
+                start_payload
+            } else {
+                worker_fut.await
+            }
         }
         "latency_test_status" => {
-            let total = d.outbound_sources.len().max(1);
-            json!({
-                "success": true,
-                "job_id": rest.first().map(String::as_str).unwrap_or("rust-lat-Main"),
-                "kind": "latency",
-                "status": "completed",
-                "running": false,
-                "completed": true,
-                "exit_code": 0,
-                "progress": {
-                    "completed": total,
-                    "total": total,
-                    "failed": 0
+            let job_id = rest.first().map(String::as_str).unwrap_or("rust-lat-Main");
+            let mut found: Option<Value> = None;
+            if is_safe_sub_job_id(job_id) {
+                let job_path = crate::store::runtime_state_dir()
+                    .join("latency-jobs")
+                    .join(format!("{job_id}.json"));
+                if let Ok(raw) = std::fs::read_to_string(&job_path)
+                    && let Ok(v) = serde_json::from_str::<Value>(&raw)
+                {
+                    found = Some(v);
                 }
+            }
+            found.unwrap_or_else(|| {
+                json!({
+                    "success": false,
+                    "job_id": job_id,
+                    "kind": "latency",
+                    "status": "not_found",
+                    "running": false,
+                    "completed": false,
+                    "exit_code": 1,
+                    "error": "Latency job not found"
+                })
             })
         }
         "ui_action_ack" | "component_action_ack" => json!({
             "success": true
         }),
         "component_install_version" => {
-            let comp = rest.first().map(String::as_str).unwrap_or("sing_box");
+            let comp = rest.first().map(String::as_str).unwrap_or("tachyon-core");
             let tag = rest.get(1).map(String::as_str);
             crate::updater::start_component_action(core, comp, "install_version", tag).await
         }
@@ -3931,6 +5912,11 @@ async fn execute_pure_rust_tachyon_cli(
                 } else {
                     "ru"
                 };
+                {
+                    let mut d = state.data.write().await;
+                    d.settings.lang = lang.to_string();
+                }
+                let _ = state.save().await;
                 if let Ok(mut store) = json_sections_store().write() {
                     if let Some(sec) = store.get_mut("settings").and_then(Value::as_object_mut) {
                         sec.insert("lang".to_string(), json!(lang));
@@ -3940,14 +5926,12 @@ async fn execute_pure_rust_tachyon_cli(
                     }
                     persist_json_sections(&store);
                 }
-                {
-                    let mut d = state.data.write().await;
-                    d.settings.lang = lang.to_string();
-                }
-                let _ = state.save().await;
-                json!({
+                let job_id = format!("rust-lang-{lang}");
+                let job_payload = json!({
                     "success": true,
-                    "job_id": format!("rust-lang-{lang}"),
+                    "job_id": job_id,
+                    "status": "completed",
+                    "phase": "completed",
                     "running": false,
                     "completed": true,
                     "component": comp,
@@ -3955,7 +5939,28 @@ async fn execute_pure_rust_tachyon_cli(
                     "changed": true,
                     "exit_code": 0,
                     "message": if lang == "en" { "Interface language updated" } else { "Язык интерфейса обновлён" }
-                })
+                });
+                let action_dir = crate::store::runtime_state_dir().join("component-actions");
+                if std::fs::create_dir_all(&action_dir).is_ok() {
+                    let _ = crypto_gen::write_json_if_changed(
+                        action_dir.join(format!("{job_id}.json")),
+                        &job_payload,
+                    );
+                }
+                if cfg!(target_os = "linux") {
+                    let arg_set = format!("luci.main.lang={lang}");
+                    let _ = tokio::time::timeout(
+                        Duration::from_secs(3),
+                        Command::new("uci").args(["-q", "set", &arg_set]).status(),
+                    )
+                    .await;
+                    let _ = tokio::time::timeout(
+                        Duration::from_secs(3),
+                        Command::new("uci").args(["-q", "commit", "luci"]).status(),
+                    )
+                    .await;
+                }
+                job_payload
             } else if method != "component_action"
                 || matches!(
                     act,
@@ -3980,9 +5985,14 @@ async fn execute_pure_rust_tachyon_cli(
                     .or_else(|| v.pointer("/result/error"))
                     .and_then(Value::as_str)
                     .unwrap_or("OK");
+                let public_comp = match comp.trim().to_ascii_lowercase().as_str() {
+                    "tachyon-core" | "tachyon_core" | "tachyoncore" | "sing-box" | "sing_box"
+                    | "singbox" => "tachyon-core",
+                    _ => comp,
+                };
                 json!({
                     "success": ok,
-                    "component": comp,
+                    "component": public_comp,
                     "action": act,
                     "status": if ok { "completed" } else { "failed" },
                     "running": false,
@@ -4030,102 +6040,324 @@ async fn execute_pure_rust_tachyon_cli(
                 .unwrap_or(1);
             crate::updater::list_releases(core, comp, count, page).await
         }
-        "list_update" | "list_update_async" | "list_update_if_due" => {
-            crate::updater::start_list_update_async(core).await
-        }
+        "list_update" | "list_update_async" => crate::updater::start_list_update_async(core).await,
+        "list_update_if_due" => crate::updater::start_list_update_if_due_async(core).await,
         "list_update_status" => crate::updater::read_list_update_status(),
-        "subscription_update" | "subscription_update_async" => {
-            let _ = core.refresh_all_subscriptions().await;
+        "subscription_update" => {
+            let target = rest.first().map(String::as_str).unwrap_or("");
+            let selector = rest.get(1).map(String::as_str).unwrap_or("");
+            let eff_target = resolve_subscription_cli_target(&d, target, selector);
+            match core.refresh_subscription_source(&eff_target).await {
+                Ok(cnt) => {
+                    let d_now = state.data.read().await.clone();
+                    sync_section_cache(&d_now);
+                    json!({
+                        "success": true,
+                        "job_id": "rust-sub-1",
+                        "section": target,
+                        "source_selector": selector,
+                        "resolved_target": eff_target,
+                        "status": "completed",
+                        "running": false,
+                        "completed": true,
+                        "updated_sources": cnt,
+                        "exit_code": 0
+                    })
+                }
+                Err(e) => json!({
+                    "success": false,
+                    "job_id": "rust-sub-1",
+                    "section": target,
+                    "source_selector": selector,
+                    "status": "failed",
+                    "running": false,
+                    "completed": true,
+                    "exit_code": 1,
+                    "error": e.to_string()
+                }),
+            }
+        }
+        "subscription_update_async" => {
+            let target = rest.first().map(String::as_str).unwrap_or("").to_string();
+            let selector = rest.get(1).map(String::as_str).unwrap_or("").to_string();
+            let eff_target = resolve_subscription_cli_target(&d, &target, &selector);
+            let seq = next_job_seq();
+            let job_id = format!(
+                "rust-sub-{}-{}-{seq}",
+                sanitize_job_slug(if target.is_empty() { "all" } else { &target }),
+                crate::store::unix_now_u64()
+            );
+            let jobs_dir = crate::store::runtime_state_dir().join("subscription-jobs");
+            let _ = std::fs::create_dir_all(&jobs_dir);
+            let job_path = jobs_dir.join(format!("{job_id}.json"));
+            let start_payload = json!({
+                "success": true,
+                "job_id": job_id,
+                "section": target,
+                "source_selector": selector,
+                "resolved_target": eff_target,
+                "status": "running",
+                "running": true,
+                "completed": false,
+                "message": "Subscription update started"
+            });
+            let _ = crypto_gen::write_json_if_changed(&job_path, &start_payload);
+            let core_clone = Arc::clone(core);
+            let state_clone = Arc::clone(state);
+            let job_id_bg = job_id.clone();
+            let job_path_bg = job_path.clone();
+            let target_bg = target.clone();
+            let selector_bg = selector.clone();
+            let eff_bg = eff_target.clone();
+            let work = async move {
+                let done_payload = match core_clone.refresh_subscription_source(&eff_bg).await {
+                    Ok(cnt) => {
+                        let d_now = state_clone.data.read().await.clone();
+                        sync_section_cache(&d_now);
+                        json!({
+                            "success": true,
+                            "job_id": job_id_bg,
+                            "section": target_bg,
+                            "source_selector": selector_bg,
+                            "resolved_target": eff_bg,
+                            "status": "completed",
+                            "running": false,
+                            "completed": true,
+                            "updated_sources": cnt,
+                            "exit_code": 0,
+                            "message": "Subscription update completed"
+                        })
+                    }
+                    Err(e) => json!({
+                        "success": false,
+                        "job_id": job_id_bg,
+                        "section": target_bg,
+                        "source_selector": selector_bg,
+                        "resolved_target": eff_bg,
+                        "status": "failed",
+                        "running": false,
+                        "completed": true,
+                        "exit_code": 1,
+                        "message": e.to_string()
+                    }),
+                };
+                let _ = crypto_gen::write_json_if_changed(&job_path_bg, &done_payload);
+                done_payload
+            };
+            if DAEMON_MODE.load(std::sync::atomic::Ordering::Acquire) {
+                tokio::spawn(async move {
+                    let _ = work.await;
+                });
+                start_payload
+            } else {
+                work.await
+            }
+        }
+        "subscription_update_if_due" => {
+            let target = rest.first().map(String::as_str);
+            let selector = rest.get(1).map(String::as_str).unwrap_or("");
+            let eff_target = target.map(|t| resolve_subscription_cli_target(&d, t, selector));
+            match core.refresh_due_subscriptions(eff_target.as_deref()).await {
+                Ok(cnt) => {
+                    if cnt > 0 {
+                        let d_now = state.data.read().await.clone();
+                        sync_section_cache(&d_now);
+                    }
+                    json!({
+                        "success": true,
+                        "updated_sources": cnt,
+                        "exit_code": 0
+                    })
+                }
+                Err(e) => json!({
+                    "success": false,
+                    "updated_sources": 0,
+                    "exit_code": 1,
+                    "error": e.to_string()
+                }),
+            }
+        }
+        "component_updates_if_due" => {
+            crate::updater::maybe_run_auto_update_tick(core).await;
             json!({
                 "success": true,
-                "job_id": "rust-sub-1",
-                "status": "completed",
-                "running": false,
-                "completed": true,
                 "exit_code": 0
             })
         }
-        "subscription_update_status" => json!({
-            "success": true,
-            "job_id": rest.first().map(String::as_str).unwrap_or("rust-sub-1"),
-            "status": "completed",
-            "running": false,
-            "completed": true,
-            "exit_code": 0
-        }),
-        "start" => {
-            let _ = core.start().await;
-            json!({ "success": true })
+        "subscription_update_status" => {
+            let job_id = rest.first().map(String::as_str).unwrap_or("");
+            let mut result_val: Option<Value> = None;
+            if is_safe_sub_job_id(job_id) {
+                let job_path = crate::store::runtime_state_dir()
+                    .join("subscription-jobs")
+                    .join(format!("{job_id}.json"));
+                if let Ok(raw) = std::fs::read_to_string(&job_path)
+                    && let Ok(val) = serde_json::from_str::<Value>(&raw)
+                {
+                    result_val = Some(val);
+                }
+            }
+            result_val.unwrap_or_else(|| {
+                json!({
+                    "success": false,
+                    "job_id": job_id,
+                    "status": "not_found",
+                    "running": false,
+                    "completed": false,
+                    "exit_code": 1,
+                    "error": "Subscription job not found"
+                })
+            })
         }
-        "stop" => {
-            let _ = core.stop().await;
-            json!({ "success": true })
-        }
-        "restart" | "reload" => {
-            let _ = core.apply_or_reload().await;
-            json!({ "success": true })
-        }
+        "start" => match core.start().await {
+            Ok(()) => {
+                let d_now = state.data.read().await.clone();
+                sync_section_cache(&d_now);
+                json!({ "success": true })
+            }
+            Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+        },
+        "stop" => match core.stop().await {
+            Ok(()) => json!({ "success": true }),
+            Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+        },
+        "restart" | "reload" => match core.apply_or_reload().await {
+            Ok(()) => {
+                let d_now = state.data.read().await.clone();
+                sync_section_cache(&d_now);
+                json!({ "success": true })
+            }
+            Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+        },
         "enable" | "disable" => json!({ "success": true }),
         "apply_quick_fix" => {
             let fix_id = rest.first().map(String::as_str).unwrap_or("restart_core");
-            let msg = diagnostics::apply_quick_fix(state, core, fix_id)
-                .await
-                .unwrap_or_default();
-            json!({ "success": true, "message": msg })
+            match diagnostics::apply_quick_fix(state, core, fix_id).await {
+                Ok(msg) => json!({ "success": true, "message": msg }),
+                Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+            }
         }
         "ai_doctor" | "ai_doctor_last" => {
-            let doc = diagnostics::run_local_doctor(state).await;
-            let score = ((doc.checks_passed * 100) / doc.checks_total.max(1)) as u32;
-            let mut lines = vec![format!(
-                "Диагностика Tachyon Core ({}) завершена. Оценка состояния: {score}/100 ({}).",
-                live.core_version, doc.summary
-            )];
-            let mut quick_fixes = Vec::new();
-            for f in &doc.findings {
-                lines.push(format!("- [{}] {}: {}", f.severity, f.title, f.detail));
-                if !f.quick_fix_id.is_empty() {
-                    quick_fixes.push(json!({
-                        "id": f.quick_fix_id,
-                        "label": f.quick_fix_label,
-                        "description": f.detail,
-                        "safe": true
-                    }));
-                }
-            }
-            let nodes: Vec<Value> = d
-                .outbound_sources
+            let last_path = crate::store::runtime_state_dir()
+                .join("ui-state")
+                .join("ai-doctor-last.json");
+            let wants_status =
+                method == "ai_doctor_last" || rest.iter().any(|a| a == "--status" || a == "status");
+            let wants_async = rest.iter().any(|a| a == "--async" || a == "async");
+            let user_query = rest
                 .iter()
-                .map(|s| {
-                    let ms = live.node_latencies_ms.get(&s.id).copied().unwrap_or(42);
-                    json!({
-                        "key": s.id,
-                        "label": if s.name.is_empty() { &s.id } else { &s.name },
-                        "protocol": s.source_type,
-                        "latency_ms": ms,
-                        "healthy": true
-                    })
-                })
-                .collect();
-            let payload = json!({
-                "success": true,
-                "async": false,
-                "running": false,
-                "completed": true,
-                "status": "completed",
-                "job_id": "rust-ai-doc-1",
-                "score": score,
-                "report": lines.join("\n"),
-                "quick_fixes": quick_fixes,
-                "nodes": nodes
-            });
-            let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
-            if let Ok(raw) = serde_json::to_string(&payload) {
-                let _ = crypto_gen::write_file_if_changed(
-                    Path::new("/var/run/tachyon/ui-state/ai-doctor-last.json"),
-                    raw.as_bytes(),
+                .filter(|a| !a.starts_with('-') && a.as_str() != "async" && a.as_str() != "status")
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if wants_status
+                && let Ok(raw) = std::fs::read_to_string(&last_path)
+                && let Ok(val) = serde_json::from_str::<Value>(&raw)
+            {
+                return (
+                    0,
+                    format!("{}\n", serde_json::to_string(&val).unwrap_or_default()),
+                    String::new(),
                 );
             }
-            payload
+            let build_ai_doc_payload = |ai_val: Value,
+                                        store_snap: &crate::store::RouterStoreData,
+                                        live_snap: &crate::store::LiveTelemetry,
+                                        job_id: &str| {
+                let score = ai_val.get("score").and_then(Value::as_u64).unwrap_or(0);
+                let report = ai_val
+                    .get("analysis")
+                    .or_else(|| ai_val.get("summary"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let recommendations = ai_val
+                    .get("recommendations")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                let quick_fixes: Vec<Value> = recommendations
+                    .iter()
+                    .filter_map(|r| {
+                        let id = r.get("fix_id").and_then(Value::as_str)?;
+                        if id.is_empty() {
+                            return None;
+                        }
+                        Some(json!({
+                            "id": id,
+                            "label": r.get("label").and_then(Value::as_str).unwrap_or(id),
+                            "description": r.get("reason").and_then(Value::as_str).unwrap_or(""),
+                            "severity": r.get("severity").and_then(Value::as_str).unwrap_or("info"),
+                            "safe": true
+                        }))
+                    })
+                    .collect();
+                let nodes: Vec<Value> = store_snap
+                    .outbound_sources
+                    .iter()
+                    .map(|s| {
+                        let ms_opt = live_snap.node_latencies_ms.get(&s.id).copied();
+                        json!({
+                            "key": s.id,
+                            "label": if s.name.is_empty() { &s.id } else { &s.name },
+                            "protocol": s.source_type,
+                            "latency_ms": ms_opt.unwrap_or(0),
+                            "tested": ms_opt.is_some(),
+                            "healthy": ms_opt.is_some_and(|m| m > 0)
+                        })
+                    })
+                    .collect();
+                json!({
+                    "success": true,
+                    "async": false,
+                    "running": false,
+                    "completed": true,
+                    "status": "completed",
+                    "job_id": job_id,
+                    "score": score,
+                    "report": report,
+                    "analysis": report,
+                    "quick_fixes": quick_fixes,
+                    "recommendations": recommendations,
+                    "nodes": nodes
+                })
+            };
+            if wants_async {
+                let job_id = format!("rust-ai-doc-{}", crate::store::unix_now_u64());
+                let running_payload = json!({
+                    "success": true,
+                    "async": true,
+                    "running": true,
+                    "completed": false,
+                    "status": "running",
+                    "job_id": job_id,
+                });
+                if let Some(parent) = last_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = crypto_gen::write_json_if_changed(&last_path, &running_payload);
+                let state_c = Arc::clone(state);
+                let q_opt = (!user_query.trim().is_empty()).then_some(user_query);
+                let job_id_bg = job_id.clone();
+                let last_path_bg = last_path.clone();
+                tokio::spawn(async move {
+                    let ai_val = diagnostics::run_ai_doctor(&state_c, q_opt.as_deref()).await;
+                    let d_snap = state_c.data.read().await.clone();
+                    let l_snap = state_c.live.read().await.clone();
+                    let payload = build_ai_doc_payload(ai_val, &d_snap, &l_snap, &job_id_bg);
+                    let _ = crypto_gen::write_json_if_changed(&last_path_bg, &payload);
+                });
+                running_payload
+            } else {
+                let q_opt = (!user_query.trim().is_empty()).then_some(user_query);
+                let ai_val = diagnostics::run_ai_doctor(state, q_opt.as_deref()).await;
+                let payload = build_ai_doc_payload(ai_val, &d, &live, "rust-ai-doc-1");
+                if let Some(parent) = last_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = crypto_gen::write_json_if_changed(&last_path, &payload);
+                payload
+            }
         }
         "service_health_check" => {
             let sub = rest.first().map(String::as_str).unwrap_or("get-targets");
@@ -4223,122 +6455,75 @@ async fn execute_pure_rust_tachyon_cli(
             }
         }
         "leak_check_async" | "leak_check_status" | "leak_check" => {
-            let now = crate::store::unix_now_secs();
+            let jobs_dir = crate::store::runtime_state_dir().join("leak-jobs");
+            let _ = std::fs::create_dir_all(&jobs_dir);
             if method == "leak_check_async" {
-                json!({
+                let now = crate::store::unix_now_secs();
+                let job_id = format!("rust-leak-{}", crate::store::unix_now_u64());
+                let job_path = jobs_dir.join(format!("{job_id}.json"));
+                let latest_path = jobs_dir.join("latest.json");
+                let init_payload = json!({
                     "success": true,
-                    "job_id": "rust-leak-1"
-                })
-            } else {
-                let (ip_res, ip6_res) = tokio::join!(
-                    tokio::task::spawn_blocking(crate::sys_info::detect_router_ips),
-                    tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips),
-                );
-                let (_lan_ip, wan_ip) = ip_res.unwrap_or_default();
-                let (_lan_v6, wan_ipv6, _) = ip6_res.unwrap_or_default();
-                let ipv6_state =
-                    crate::store::resolve_effective_ipv6_state(&d.settings, !wan_ipv6.is_empty());
-                let mut exit_ip = String::new();
-                let mut exit_org = "Tachyon Outbound".to_string();
-                let mut exit_country = "Encrypted Tunnel".to_string();
-                for src in &d.outbound_sources {
-                    if !src.enabled {
-                        continue;
-                    }
-                    if !src.server.is_empty() {
-                        exit_ip = src.server.clone();
-                        exit_org = if src.name.is_empty() {
-                            src.source_type.to_uppercase()
-                        } else {
-                            src.name.clone()
-                        };
-                        break;
-                    }
-                    if let Some(node) = src.cached_nodes.first()
-                        && !node.server.is_empty()
-                    {
-                        exit_ip = node.server.clone();
-                        exit_org = if node.tag.is_empty() {
-                            src.name.clone()
-                        } else {
-                            node.tag.clone()
-                        };
-                        if !node.country.is_empty() {
-                            exit_country = node.country.clone();
-                        }
-                        break;
-                    }
-                }
-                if exit_ip.is_empty() {
-                    exit_ip = if live.core_running {
-                        "198.18.0.1".to_string()
-                    } else {
-                        "—".to_string()
-                    };
-                    exit_country = "Router".to_string();
-                }
-                let dns_srv = d
-                    .settings
-                    .dns_servers
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "1.1.1.1".to_string());
-                let direct_ipv6 = wan_ipv6.clone();
-                let proxy_ipv6 = if ipv6_state.is_active() && live.core_running {
-                    d.outbound_sources
-                        .iter()
-                        .filter(|s| s.enabled)
-                        .find_map(|s| {
-                            let host = if !s.server.trim().is_empty() {
-                                crate::config_gen::extract_host_only(&s.server)
-                            } else {
-                                s.cached_nodes
-                                    .first()
-                                    .map(|n| crate::config_gen::extract_host_only(&n.server))
-                                    .unwrap_or_default()
-                            };
-                            host.parse::<std::net::Ipv6Addr>()
-                                .ok()
-                                .map(|ip| ip.to_string())
-                        })
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-                let leak_data = build_ubus_leak_check_payload(
-                    &d,
-                    &wan_ip,
-                    &exit_ip,
-                    &exit_country,
-                    &exit_org,
-                    &dns_srv,
-                    &direct_ipv6,
-                    &proxy_ipv6,
-                    ipv6_state,
-                    live.core_running,
-                    live.nft_table_active,
-                );
-                if method == "leak_check_status" {
-                    json!({
+                    "job_id": job_id,
+                    "status": "running",
+                    "running": true,
+                    "progress": 10,
+                    "stage": "probing",
+                    "started_at": now,
+                });
+                let _ = crypto_gen::write_json_if_changed(&job_path, &init_payload);
+                let _ = crypto_gen::write_json_if_changed(&latest_path, &init_payload);
+                let state_c = Arc::clone(state);
+                let core_c = Arc::clone(core);
+                let job_id_bg = job_id.clone();
+                tokio::spawn(async move {
+                    let data = run_full_ubus_leak_check(&state_c, &core_c).await;
+                    let finished = crate::store::unix_now_secs();
+                    let done_payload = json!({
+                        "success": true,
+                        "job_id": job_id_bg,
                         "status": "done",
                         "running": false,
                         "progress": 100,
                         "stage": "done",
-                        "started_at": now - 1,
-                        "finished_at": now,
-                        "success": true,
-                        "data": leak_data
-                    })
+                        "started_at": now,
+                        "finished_at": finished,
+                        "data": data,
+                    });
+                    let _ = crypto_gen::write_json_if_changed(&job_path, &done_payload);
+                    let _ = crypto_gen::write_json_if_changed(&latest_path, &done_payload);
+                });
+                init_payload
+            } else if method == "leak_check_status" {
+                let job_id = rest.first().map(String::as_str).unwrap_or("");
+                let target_path = if !job_id.is_empty() && is_safe_sub_job_id(job_id) {
+                    jobs_dir.join(format!("{job_id}.json"))
                 } else {
-                    leak_data
+                    jobs_dir.join("latest.json")
+                };
+                if let Ok(raw) = std::fs::read_to_string(&target_path)
+                    && let Ok(val) = serde_json::from_str::<Value>(&raw)
+                {
+                    val
+                } else {
+                    json!({
+                        "success": false,
+                        "job_id": job_id,
+                        "status": "not_found",
+                        "running": false,
+                        "progress": 0,
+                        "error": "Leak check job not found"
+                    })
                 }
+            } else {
+                run_full_ubus_leak_check(state, core).await
             }
         }
         "dns_benchmark_async" | "dns_benchmark_status" | "dns_benchmark" => {
             let now = crate::store::unix_now_secs();
-            const CACHE_PATH: &str = "/tmp/tachyon-dns-benchmark-cache.json";
+            let cache_path = crate::store::runtime_state_dir().join("dns-benchmark-cache.json");
             let cached_val = if method == "dns_benchmark_status" {
-                std::fs::read_to_string(CACHE_PATH)
+                std::fs::read_to_string(&cache_path)
                     .ok()
                     .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
             } else {
@@ -4347,7 +6532,7 @@ async fn execute_pure_rust_tachyon_cli(
             if let Some(cached) = cached_val {
                 cached
             } else {
-                let candidates: &[(&str, &str, &str, &str, &str, &str, u64)] = &[
+                let candidates: &[(&str, &str, &str, &str, &str, &str)] = &[
                     (
                         "yandex_udp",
                         "Yandex",
@@ -4355,7 +6540,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "77.88.8.8",
                         "77.88.8.8",
-                        16,
                     ),
                     (
                         "yandex_udp2",
@@ -4364,7 +6548,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "77.88.8.1",
                         "77.88.8.1",
-                        17,
                     ),
                     (
                         "yandex_doh",
@@ -4373,7 +6556,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://common.dot.dns.yandex.net/dns-query",
                         "77.88.8.8",
-                        20,
                     ),
                     (
                         "cloudflare_udp",
@@ -4382,7 +6564,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "1.1.1.1",
                         "1.1.1.1",
-                        14,
                     ),
                     (
                         "cloudflare_udp2",
@@ -4391,7 +6572,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "1.0.0.1",
                         "1.0.0.1",
-                        15,
                     ),
                     (
                         "cloudflare_doh",
@@ -4400,7 +6580,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://cloudflare-dns.com/dns-query",
                         "1.1.1.1",
-                        18,
                     ),
                     (
                         "google_udp",
@@ -4409,7 +6588,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "8.8.8.8",
                         "8.8.8.8",
-                        21,
                     ),
                     (
                         "google_udp2",
@@ -4418,7 +6596,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "8.8.4.4",
                         "8.8.4.4",
-                        22,
                     ),
                     (
                         "google_doh",
@@ -4427,7 +6604,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.google/dns-query",
                         "8.8.8.8",
-                        25,
                     ),
                     (
                         "adguard_udp",
@@ -4436,7 +6612,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "94.140.14.14",
                         "94.140.14.14",
-                        24,
                     ),
                     (
                         "adguard_doh",
@@ -4445,7 +6620,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.adguard-dns.com/dns-query",
                         "94.140.14.14",
-                        28,
                     ),
                     (
                         "comss_udp",
@@ -4454,7 +6628,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "92.223.109.31",
                         "92.223.109.31",
-                        29,
                     ),
                     (
                         "comss_doh",
@@ -4463,7 +6636,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.comss.one/dns-query",
                         "92.223.109.31",
-                        33,
                     ),
                     (
                         "controld_udp",
@@ -4472,7 +6644,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "76.76.2.0",
                         "76.76.2.0",
-                        30,
                     ),
                     (
                         "controld_doh",
@@ -4481,17 +6652,8 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://freedns.controld.com/p0",
                         "76.76.2.0",
-                        34,
                     ),
-                    (
-                        "quad9_udp",
-                        "Quad9",
-                        "Primary",
-                        "udp",
-                        "9.9.9.9",
-                        "9.9.9.9",
-                        26,
-                    ),
+                    ("quad9_udp", "Quad9", "Primary", "udp", "9.9.9.9", "9.9.9.9"),
                     (
                         "quad9_doh",
                         "Quad9",
@@ -4499,7 +6661,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.quad9.net/dns-query",
                         "9.9.9.9",
-                        30,
                     ),
                     (
                         "mullvad_udp",
@@ -4508,7 +6669,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "194.242.2.2",
                         "194.242.2.2",
-                        35,
                     ),
                     (
                         "mullvad_doh",
@@ -4517,7 +6677,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.mullvad.net/dns-query",
                         "194.242.2.2",
-                        39,
                     ),
                     (
                         "opendns_udp",
@@ -4526,7 +6685,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "udp",
                         "208.67.222.222",
                         "208.67.222.222",
-                        31,
                     ),
                     (
                         "opendns_doh",
@@ -4535,7 +6693,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.opendns.com/dns-query",
                         "208.67.222.222",
-                        35,
                     ),
                     (
                         "alidns_doh",
@@ -4544,7 +6701,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.alidns.com/dns-query",
                         "223.5.5.5",
-                        72,
                     ),
                     (
                         "dnssb_doh",
@@ -4553,7 +6709,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.dns.sb/dns-query",
                         "185.222.222.222",
-                        38,
                     ),
                     (
                         "dnspod_doh",
@@ -4562,7 +6717,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.pub/dns-query",
                         "119.29.29.29",
-                        78,
                     ),
                     (
                         "nextdns_doh",
@@ -4571,7 +6725,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.nextdns.io",
                         "45.90.28.0",
-                        36,
                     ),
                     (
                         "dns4eu_doh",
@@ -4580,7 +6733,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://unfiltered.joindns4.eu/dns-query",
                         "86.54.11.100",
-                        41,
                     ),
                     (
                         "360_doh",
@@ -4589,7 +6741,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.360.cn/dns-query",
                         "101.226.4.6",
-                        84,
                     ),
                     (
                         "canadian_shield_doh",
@@ -4598,7 +6749,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://private.canadianshield.cira.ca/dns-query",
                         "149.112.121.10",
-                        48,
                     ),
                     (
                         "digitale_gesellschaft_doh",
@@ -4607,7 +6757,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.digitale-gesellschaft.ch/dns-query",
                         "185.95.218.42",
-                        44,
                     ),
                     (
                         "restena_doh",
@@ -4616,7 +6765,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dnspub.restena.lu/dns-query",
                         "158.64.1.29",
-                        46,
                     ),
                     (
                         "iij_doh",
@@ -4625,7 +6773,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://public.dns.iij.jp/dns-query",
                         "103.2.57.5",
-                        92,
                     ),
                     (
                         "libredns_doh",
@@ -4634,7 +6781,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.libredns.gr/dns-query",
                         "116.202.176.26",
-                        43,
                     ),
                     (
                         "switch_doh",
@@ -4643,7 +6789,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://dns.switch.ch/dns-query",
                         "130.59.31.248",
-                        45,
                     ),
                     (
                         "applied_privacy_doh",
@@ -4652,7 +6797,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.applied-privacy.net/query",
                         "146.255.56.98",
-                        47,
                     ),
                     (
                         "uncensoreddns_doh",
@@ -4661,7 +6805,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://anycast.uncensoreddns.org/dns-query",
                         "91.239.100.100",
-                        42,
                     ),
                     (
                         "rethinkdns_doh",
@@ -4670,7 +6813,6 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://sky.rethinkdns.com/dns-query",
                         "104.21.83.62",
-                        37,
                     ),
                     (
                         "xfinity_doh",
@@ -4679,11 +6821,10 @@ async fn execute_pure_rust_tachyon_cli(
                         "doh",
                         "https://doh.xfinity.com/dns-query",
                         "75.75.75.75",
-                        64,
                     ),
                 ];
                 let mut join_set = tokio::task::JoinSet::new();
-                for &(id, provider, tag, dtype, address, ip, fallback_ms) in candidates {
+                for &(id, provider, tag, dtype, address, ip) in candidates {
                     let id_s = id.to_string();
                     let provider_s = provider.to_string();
                     let tag_s = tag.to_string();
@@ -4691,29 +6832,39 @@ async fn execute_pure_rust_tachyon_cli(
                     let address_s = address.to_string();
                     let ip_s = ip.to_string();
                     join_set.spawn(async move {
-                        let port = if dtype_s == "doh" { 443 } else { 53 };
-                        let target = format!("{ip_s}:{port}");
-                        let start = std::time::Instant::now();
-                        let latency = match tokio::time::timeout(
-                            std::time::Duration::from_millis(320),
-                            tokio::net::TcpStream::connect(&target),
-                        )
-                        .await
-                        {
-                            Ok(Ok(_)) => {
-                                let base = (start.elapsed().as_millis() as u64).max(3);
-                                if dtype_s == "doh" { base + 3 } else { base }
-                            }
-                            _ => fallback_ms,
+                        let measured: Option<u64> = if dtype_s == "udp" {
+                            probe_udp_dns_rtt_ms(&format!("{ip_s}:53"), "google.com")
+                                .await
+                                .ok()
+                                .map(|ms| ms.round().max(1.0) as u64)
+                        } else {
+                            let target = format!("{ip_s}:443");
+                            let start = std::time::Instant::now();
+                            tokio::time::timeout(
+                                Duration::from_millis(800),
+                                tokio::net::TcpStream::connect(&target),
+                            )
+                            .await
+                            .ok()
+                            .and_then(|r| r.ok())
+                            .map(|_| (start.elapsed().as_millis() as u64).max(1))
                         };
-                        let status = if latency <= 35 {
+                        let ok = measured.is_some();
+                        let latency = measured.unwrap_or(0);
+                        let status = if !ok {
+                            "unreachable"
+                        } else if latency <= 35 {
                             "excellent"
                         } else if latency <= 85 {
                             "good"
                         } else {
                             "slow"
                         };
-                        let score = 100u64.saturating_sub(latency / 2).max(50);
+                        let score = if ok {
+                            100u64.saturating_sub(latency / 2).max(20)
+                        } else {
+                            0
+                        };
                         json!({
                             "id": id_s,
                             "name": provider_s,
@@ -4722,16 +6873,17 @@ async fn execute_pure_rust_tachyon_cli(
                             "type": dtype_s,
                             "address": address_s,
                             "ip": ip_s,
+                            "reachable": ok,
                             "latency": latency,
                             "latency_ms": latency,
                             "avg_ms": latency,
-                            "min_ms": latency.saturating_sub(2).max(1),
-                            "max_ms": latency + 4,
-                            "lossPct": 0,
-                            "success_rate": 100,
+                            "min_ms": latency,
+                            "max_ms": latency,
+                            "lossPct": if ok { 0 } else { 100 },
+                            "success_rate": if ok { 100 } else { 0 },
                             "status": status,
                             "score": score,
-                            "recommended": id_s == "cloudflare_doh"
+                            "recommended": false
                         })
                     });
                 }
@@ -4739,7 +6891,53 @@ async fn execute_pure_rust_tachyon_cli(
                 while let Some(Ok(row)) = join_set.join_next().await {
                     rows.push(row);
                 }
-                rows.sort_by_key(|r| r.get("latency").and_then(Value::as_u64).unwrap_or(999));
+                rows.sort_by_key(|r| {
+                    let ok = r.get("reachable").and_then(Value::as_bool).unwrap_or(false);
+                    let lat = r.get("latency").and_then(Value::as_u64).unwrap_or(9999);
+                    (if ok { 0 } else { 1 }, lat)
+                });
+                let fastest_doh: Vec<String> = rows
+                    .iter()
+                    .filter(|r| {
+                        r.get("reachable").and_then(Value::as_bool) == Some(true)
+                            && r.get("type").and_then(Value::as_str) == Some("doh")
+                    })
+                    .take(2)
+                    .filter_map(|r| {
+                        r.get("address")
+                            .and_then(Value::as_str)
+                            .map(|s| s.trim_start_matches("https://").to_string())
+                    })
+                    .collect();
+                let fastest_udp: Vec<String> = rows
+                    .iter()
+                    .filter(|r| {
+                        r.get("reachable").and_then(Value::as_bool) == Some(true)
+                            && r.get("type").and_then(Value::as_str) == Some("udp")
+                    })
+                    .take(2)
+                    .filter_map(|r| r.get("ip").and_then(Value::as_str).map(String::from))
+                    .collect();
+                if let Some(first_ok) = rows
+                    .iter_mut()
+                    .find(|r| r.get("reachable").and_then(Value::as_bool) == Some(true))
+                    && let Some(obj) = first_ok.as_object_mut()
+                {
+                    obj.insert("recommended".to_string(), json!(true));
+                }
+                let rec_doh = if fastest_doh.is_empty() {
+                    vec![
+                        "cloudflare-dns.com/dns-query".to_string(),
+                        "dns.google/dns-query".to_string(),
+                    ]
+                } else {
+                    fastest_doh
+                };
+                let rec_udp = if fastest_udp.is_empty() {
+                    vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()]
+                } else {
+                    fastest_udp
+                };
                 let resp = json!({
                     "success": true,
                     "message": "Бенчмарк DNS выполнен",
@@ -4749,37 +6947,29 @@ async fn execute_pure_rust_tachyon_cli(
                     "completed": true,
                     "progress": 100,
                     "current_server": "",
-                    "started_at": now - 1,
+                    "started_at": now.saturating_sub(1),
                     "finished_at": now,
                     "error": null,
                     "results": rows,
                     "recommendation": {
                         "dns_type": "doh",
                         "dns_upstream_mode": "parallel",
-                        "dns_server": [
-                            "cloudflare-dns.com/dns-query",
-                            "dns.google/dns-query"
-                        ],
-                        "bootstrap_dns_server": [
-                            "1.1.1.1",
-                            "8.8.8.8"
-                        ],
-                        "dns_fallback_server": [
-                            "77.88.8.8",
-                            "9.9.9.9"
-                        ],
-                        "reason": "Минимальная задержка отклика и 0% потерь пакетов при прямой проверке с роутера"
+                        "dns_server": rec_doh,
+                        "bootstrap_dns_server": rec_udp,
+                        "dns_fallback_server": ["77.88.8.8", "9.9.9.9"],
+                        "reason": "Отобраны резолверы с наименьшей измеренной задержкой отклика"
                     }
                 });
-                if let Ok(serialized) = serde_json::to_string(&resp) {
-                    let _ = std::fs::write(CACHE_PATH, serialized);
+                if let Some(parent) = cache_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
                 }
+                let _ = crypto_gen::write_json_if_changed(&cache_path, &resp);
                 resp
             }
         }
         "dns_speed_test_start" => {
             let now = crate::store::unix_now_secs();
-            const SPEED_TEST_STATE_PATH: &str = "/tmp/tachyon-dns-speed-test.json";
+            let state_path = crate::store::runtime_state_dir().join("dns-speed-test.json");
             let payload_str = rest.first().map(String::as_str).unwrap_or("{}");
             let req: Value = serde_json::from_str(payload_str).unwrap_or_else(|_| json!({}));
             let protocol = req
@@ -4834,46 +7024,70 @@ async fn execute_pure_rust_tachyon_cli(
                     let doms = domains.clone();
                     join_set.spawn(async move {
                         let target = resolve_dns_bench_target(&srv_val, &proto);
-                        let t0 = std::time::Instant::now();
-                        let base_ms = match tokio::time::timeout(
-                            std::time::Duration::from_millis(450),
-                            tokio::net::TcpStream::connect(&target),
-                        )
-                        .await
-                        {
-                            Ok(Ok(_)) => (t0.elapsed().as_secs_f64() * 1000.0).max(2.5),
-                            _ => 12.0 + (srv_idx as f64) * 3.2,
-                        };
                         let mut samples = Vec::with_capacity(doms.len());
                         let mut vals = Vec::with_capacity(doms.len());
-                        for (d_idx, dom) in doms.iter().enumerate() {
-                            let jitter = ((d_idx * 7 + srv_idx * 3) % 9) as f64 * 0.65;
-                            let ms = ((base_ms + jitter) * 100.0).round() / 100.0;
-                            vals.push(ms);
-                            samples.push(json!({
-                                "domain": dom,
-                                "ok": true,
-                                "ms": ms,
-                                "error": null
-                            }));
+                        for dom in &doms {
+                            let res: Result<f64, String> = if proto == "udp" {
+                                probe_udp_dns_rtt_ms(&target, dom).await
+                            } else {
+                                let t0 = std::time::Instant::now();
+                                match tokio::time::timeout(
+                                    Duration::from_millis(900),
+                                    tokio::net::TcpStream::connect(&target),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(_)) => Ok((t0.elapsed().as_secs_f64() * 1000.0).max(0.5)),
+                                    Ok(Err(e)) => Err(e.to_string()),
+                                    Err(_) => Err("timeout".to_string()),
+                                }
+                            };
+                            match res {
+                                Ok(ms) => {
+                                    let rounded = (ms * 100.0).round() / 100.0;
+                                    vals.push(rounded);
+                                    samples.push(json!({
+                                        "domain": dom,
+                                        "ok": true,
+                                        "ms": rounded,
+                                        "error": null
+                                    }));
+                                }
+                                Err(err_msg) => {
+                                    samples.push(json!({
+                                        "domain": dom,
+                                        "ok": false,
+                                        "ms": null,
+                                        "error": err_msg
+                                    }));
+                                }
+                            }
                         }
                         vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                        let total = vals.len();
+                        let total_doms = doms.len();
+                        let ok_cnt = vals.len();
                         let min_v = vals.first().copied().unwrap_or(0.0);
                         let max_v = vals.last().copied().unwrap_or(0.0);
                         let sum_v: f64 = vals.iter().sum();
-                        let avg_v = if total > 0 {
-                            ((sum_v / total as f64) * 100.0).round() / 100.0
+                        let avg_v = if ok_cnt > 0 {
+                            ((sum_v / ok_cnt as f64) * 100.0).round() / 100.0
                         } else {
                             0.0
                         };
-                        let median_v = if total == 0 {
+                        let median_v = if ok_cnt == 0 {
                             0.0
-                        } else if total % 2 == 1 {
-                            vals[total / 2]
+                        } else if ok_cnt % 2 == 1 {
+                            vals[ok_cnt / 2]
                         } else {
-                            (((vals[total / 2 - 1] + vals[total / 2]) / 2.0) * 100.0).round()
+                            (((vals[ok_cnt / 2 - 1] + vals[ok_cnt / 2]) / 2.0) * 100.0).round()
                                 / 100.0
+                        };
+                        let srv_status = if ok_cnt == 0 {
+                            "unreachable"
+                        } else if ok_cnt < total_doms {
+                            "degraded"
+                        } else {
+                            "healthy"
                         };
                         (
                             srv_idx,
@@ -4881,9 +7095,9 @@ async fn execute_pure_rust_tachyon_cli(
                                 "server": srv_val,
                                 "samples": samples,
                                 "stats": {
-                                    "success": total,
-                                    "total": total,
-                                    "status": "healthy",
+                                    "success": ok_cnt,
+                                    "total": total_doms,
+                                    "status": srv_status,
                                     "min": min_v,
                                     "median": median_v,
                                     "avg": avg_v,
@@ -4908,15 +7122,16 @@ async fn execute_pure_rust_tachyon_cli(
                     "running": false,
                     "progress": 100,
                     "started_at": now,
-                    "finished_at": now,
+                    "finished_at": crate::store::unix_now_secs(),
                     "domains": domains,
                     "servers": servers_list,
                     "results": results,
                     "error": null
                 });
-                if let Ok(serialized) = serde_json::to_string(&state_json) {
-                    let _ = std::fs::write(SPEED_TEST_STATE_PATH, serialized);
+                if let Some(parent) = state_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
                 }
+                let _ = crypto_gen::write_json_if_changed(&state_path, &state_json);
                 json!({
                     "success": true,
                     "id": job_id
@@ -4924,8 +7139,8 @@ async fn execute_pure_rust_tachyon_cli(
             }
         }
         "dns_speed_test_status" => {
-            const SPEED_TEST_STATE_PATH: &str = "/tmp/tachyon-dns-speed-test.json";
-            std::fs::read_to_string(SPEED_TEST_STATE_PATH)
+            let state_path = crate::store::runtime_state_dir().join("dns-speed-test.json");
+            std::fs::read_to_string(&state_path)
                 .ok()
                 .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
                 .unwrap_or_else(|| {
@@ -4973,14 +7188,20 @@ async fn execute_pure_rust_tachyon_cli(
                 }
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
-            json!({
-                "success": true,
-                "message": "Рекомендованная конфигурация DNS применена",
-                "dns_type": dtype,
-                "dns_server": daddr,
-                "recommendation": rec
-            })
+            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                json!({
+                    "success": false,
+                    "error": err
+                })
+            } else {
+                json!({
+                    "success": true,
+                    "message": "Рекомендованная конфигурация DNS применена",
+                    "dns_type": dtype,
+                    "dns_server": daddr,
+                    "recommendation": rec
+                })
+            }
         }
         "fuzzer_strategies" => {
             let mode = rest.first().map(String::as_str).unwrap_or("presets");
@@ -4996,10 +7217,8 @@ async fn execute_pure_rust_tachyon_cli(
             let rule_section = rest.get(3).map(String::as_str).unwrap_or("");
             let custom_file = rest.get(4).map(String::as_str).unwrap_or("");
             let mode = rest.get(5).map(String::as_str).unwrap_or("presets");
-            let timeout_secs = rest
-                .get(6)
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(2700);
+            let timeout_secs =
+                crate::fuzzer::parse_fuzzer_timeout_secs(rest.get(6).map(String::as_str), 2700);
             let bin_path = core.resolve_bin_path().await;
             crate::fuzzer::start_benchmark(
                 bin_path,
@@ -5096,18 +7315,24 @@ async fn execute_pure_rust_tachyon_cli(
 
             match apply_res {
                 Ok(applied_section) => {
-                    sync_uci_to_rust_store(state, core).await;
-                    let _ = core.apply_or_reload().await;
+                    if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                        json!({
+                            "success": false,
+                            "error": err
+                        })
+                    } else {
+                        let _ = core.apply_or_reload().await;
 
-                    json!({
-                        "success": true,
-                        "applied": true,
-                        "engine": "desync",
-                        "args": args_str,
-                        "strategy_name": strat_name,
-                        "target_rule": applied_section,
-                        "message": "Профиль десинхронизации tachyon-core сохранён и применён"
-                    })
+                        json!({
+                            "success": true,
+                            "applied": true,
+                            "engine": "desync",
+                            "args": args_str,
+                            "strategy_name": strat_name,
+                            "target_rule": applied_section,
+                            "message": "Профиль десинхронизации tachyon-core сохранён и применён"
+                        })
+                    }
                 }
                 Err(err) => json!({
                     "success": false,
@@ -5227,43 +7452,66 @@ async fn execute_pure_rust_tachyon_cli(
                 .unwrap_or("https://www.gstatic.com/generate_204");
             let encoded_url = url_encode_component(url);
             let mut effective_tag = tag.to_string();
-            let mut latency_ms = None;
+            let mut latency_ms: Option<u64> = None;
+            let mut last_err = String::new();
             let direct_path = format!(
                 "/proxies/{}/delay?url={encoded_url}&timeout=5000",
                 url_encode_component(tag)
             );
-            if let Ok(val) = core.clash_request("GET", &direct_path, None).await
-                && let Some(ms) = val.get("delay").and_then(Value::as_u64)
-            {
-                latency_ms = Some(ms);
-            } else if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
-                && let Some(proxies_map) = proxies_val.get("proxies").and_then(Value::as_object)
-            {
-                let candidates: Vec<String> = proxies_map.keys().cloned().collect();
-                if let Some(matched) =
-                    resolve_outbound_tag_with_telemetry_fallback(tag, &candidates)
-                {
-                    let retry_path = format!(
-                        "/proxies/{}/delay?url={encoded_url}&timeout=5000",
-                        url_encode_component(&matched)
-                    );
-                    effective_tag = matched;
-                    if let Ok(val) = core.clash_request("GET", &retry_path, None).await
-                        && let Some(ms) = val.get("delay").and_then(Value::as_u64)
+            match core.clash_request("GET", &direct_path, None).await {
+                Ok(val) => {
+                    latency_ms = val.get("delay").and_then(Value::as_u64);
+                }
+                Err(e) => {
+                    last_err = format!("{e:#}");
+                    if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
+                        && let Some(proxies_map) =
+                            proxies_val.get("proxies").and_then(Value::as_object)
                     {
-                        latency_ms = Some(ms);
+                        let candidates: Vec<String> = proxies_map.keys().cloned().collect();
+                        if let Some(matched) =
+                            resolve_outbound_tag_with_telemetry_fallback(tag, &candidates)
+                        {
+                            let retry_path = format!(
+                                "/proxies/{}/delay?url={encoded_url}&timeout=5000",
+                                url_encode_component(&matched)
+                            );
+                            effective_tag = matched;
+                            match core.clash_request("GET", &retry_path, None).await {
+                                Ok(val) => {
+                                    latency_ms = val.get("delay").and_then(Value::as_u64);
+                                    last_err.clear();
+                                }
+                                Err(e2) => last_err = format!("{e2:#}"),
+                            }
+                        }
                     }
                 }
             }
-            json!({
-                "success": true,
-                "status": "ok",
-                "tag": effective_tag,
-                "requested_tag": tag,
-                "target_url": url,
-                "http_code": 204,
-                "latency_ms": latency_ms.unwrap_or(42)
-            })
+            if let Some(ms) = latency_ms
+                && ms > 0
+            {
+                json!({
+                    "success": true,
+                    "status": "ok",
+                    "tag": effective_tag,
+                    "requested_tag": tag,
+                    "target_url": url,
+                    "http_code": 204,
+                    "latency_ms": ms
+                })
+            } else {
+                json!({
+                    "success": false,
+                    "status": "failed",
+                    "tag": effective_tag,
+                    "requested_tag": tag,
+                    "target_url": url,
+                    "http_code": 0,
+                    "latency_ms": 0,
+                    "error": if last_err.is_empty() { "timeout".to_string() } else { last_err }
+                })
+            }
         }
         "resolve_domain" => {
             let domain = rest
@@ -5302,14 +7550,80 @@ async fn execute_pure_rust_tachyon_cli(
                 "latency_ms": latency_ms.max(2)
             })
         }
-        "hosts_list_update" | "hosts_list_status" => json!({
-            "success": true,
-            "status": "completed",
-            "running": false,
-            "completed": true,
-            "entries": d.settings.static_hosts.len(),
-            "updated_at": crate::store::unix_now_secs()
-        }),
+        "hosts_list_update" => {
+            let rt_dir = crate::store::runtime_state_dir();
+            let _ = std::fs::create_dir_all(&rt_dir);
+            let hosts_path = rt_dir.join("hosts-list.txt");
+            let status_path = rt_dir.join("hosts-list-status.json");
+            let mut urls: Vec<String> = d.settings.hosts_list_urls.clone();
+            for sec in &d.sections {
+                for u in &sec.hosts_list_urls {
+                    if !u.trim().is_empty() && !urls.contains(u) {
+                        urls.push(u.clone());
+                    }
+                }
+            }
+            let mut collected: Vec<String> = d.settings.static_hosts.clone();
+            let mut errors: Vec<String> = Vec::new();
+            for u in &urls {
+                let u_trim = u.trim();
+                if u_trim.is_empty() {
+                    continue;
+                }
+                match core
+                    .curl_fetch_with_doh_fallback(u_trim, false, 15, None)
+                    .await
+                {
+                    Ok(bytes) => {
+                        let text = String::from_utf8_lossy(&bytes);
+                        for line in text.lines() {
+                            let l = line.trim();
+                            if l.is_empty() || l.starts_with('#') {
+                                continue;
+                            }
+                            collected.push(l.to_string());
+                        }
+                    }
+                    Err(e) => errors.push(format!("{u_trim}: {e:#}")),
+                }
+            }
+            collected.sort();
+            collected.dedup();
+            let entries = collected.len();
+            let body = collected.join("\n");
+            let _ = crypto_gen::write_file_if_changed(&hosts_path, body.as_bytes());
+            let ok = errors.is_empty();
+            let payload = json!({
+                "success": ok,
+                "status": if ok { "completed" } else { "partial" },
+                "running": false,
+                "completed": true,
+                "entries": entries,
+                "urls_count": urls.len(),
+                "errors": errors,
+                "updated_at": crate::store::unix_now_secs()
+            });
+            let _ = crypto_gen::write_json_if_changed(&status_path, &payload);
+            payload
+        }
+        "hosts_list_status" => {
+            let status_path = crate::store::runtime_state_dir().join("hosts-list-status.json");
+            if let Ok(raw) = std::fs::read_to_string(&status_path)
+                && let Ok(val) = serde_json::from_str::<Value>(&raw)
+            {
+                val
+            } else {
+                json!({
+                    "success": true,
+                    "status": "idle",
+                    "running": false,
+                    "completed": false,
+                    "entries": d.settings.static_hosts.len(),
+                    "urls_count": d.settings.hosts_list_urls.len(),
+                    "updated_at": 0
+                })
+            }
+        }
         "toggle_client_bypass" => {
             let ip = rest.first().map(String::as_str).unwrap_or("");
             let mode = rest.get(1).map(String::as_str).unwrap_or("toggle");
@@ -5333,47 +7647,34 @@ async fn execute_pure_rust_tachyon_cli(
             } else {
                 false
             };
-            let _ = transaction::commit_transaction(state, cand).await;
-            let mode_str = if bypassed { "direct" } else { "proxied" };
-            json!({
-                "success": true,
-                "ip": ip,
-                "bypassed": bypassed,
-                "mode": mode_str,
-                "message": if bypassed {
-                    format!("Клиент {ip} переведен в режим прямого соединения")
-                } else {
-                    format!("Клиент {ip} переведен в режим маршрутизации через Tachyon")
-                }
-            })
+            if let Err(e) = transaction::commit_transaction(state, cand.clone()).await {
+                json!({
+                    "success": false,
+                    "ip": ip,
+                    "error": format!("{e:#}")
+                })
+            } else {
+                sync_from_store_to_json_and_cache(&cand);
+                let core_c = Arc::clone(core);
+                tokio::spawn(async move {
+                    let _ = core_c.apply_or_reload().await;
+                });
+                let mode_str = if bypassed { "direct" } else { "proxied" };
+                json!({
+                    "success": true,
+                    "ip": ip,
+                    "bypassed": bypassed,
+                    "mode": mode_str,
+                    "message": if bypassed {
+                        format!("Клиент {ip} переведен в режим прямого соединения")
+                    } else {
+                        format!("Клиент {ip} переведен в режим маршрутизации через Tachyon")
+                    }
+                })
+            }
         }
         "watchdog" | "watchdog_start" | "watchdog_stop" => {
-            let enabled = if method == "watchdog_start" || method == "watchdog_stop" {
-                let target = method == "watchdog_start";
-                let mut candidate = d.clone();
-                candidate.settings.enable_watchdog = target;
-                let _ = transaction::commit_transaction(state, candidate).await;
-                if let Ok(mut store) = json_sections_store().write() {
-                    if let Some(sec) = store.get_mut("settings").and_then(Value::as_object_mut) {
-                        sec.insert(
-                            "watchdog_enable".to_string(),
-                            json!(if target { "1" } else { "0" }),
-                        );
-                    }
-                    persist_json_sections(&store);
-                }
-                target
-            } else {
-                d.settings.enable_watchdog
-            };
-            json!({
-                "success": true,
-                "enabled": enabled,
-                "running": enabled,
-                "pid": std::process::id(),
-                "uptime_seconds": sys_info::daemon_uptime_secs(),
-                "status": if enabled { "running" } else { "stopped" }
-            })
+            handle_watchdog_command(method, &d, state, core).await
         }
         "telegram" | "telegram_status" | "telegram_start" | "telegram_stop"
         | "telegram_diagnose" | "telegram_test" | "telegram_set_lang" => {
@@ -5494,6 +7795,8 @@ async fn execute_pure_rust_tachyon_cli(
             match crate::snapshots::snapshot_restore(state, file_arg).await {
                 Ok((prof, restored_secs)) => {
                     set_json_sections_snapshot(restored_secs);
+                    let cur = state.data.read().await.clone();
+                    sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     state.live.write().await.push_event(
                         "info",
@@ -5542,6 +7845,8 @@ async fn execute_pure_rust_tachyon_cli(
                     new_sections,
                 } => {
                     set_json_sections_snapshot(new_sections);
+                    let cur = state.data.read().await.clone();
+                    sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     state.live.write().await.push_event(
                         "info",
@@ -5557,6 +7862,8 @@ async fn execute_pure_rust_tachyon_cli(
             match crate::snapshots::reset_settings_to_defaults(state, &cur_secs).await {
                 Ok((resp, default_secs)) => {
                     set_json_sections_snapshot(default_secs);
+                    let cur = state.data.read().await.clone();
+                    sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     state.live.write().await.push_event(
                         "warn",
@@ -5667,11 +7974,11 @@ async fn execute_pure_rust_tachyon_cli(
             Value::Array(items)
         }
         "job_query" => {
-            let now = crate::store::unix_now_secs();
             let jid = rest.first().map(String::as_str).unwrap_or("");
             if let Some(j) = live.jobs.iter().find(|x| x.id == jid) {
                 json!({
                     "id": j.id,
+                    "found": true,
                     "kind": j.kind,
                     "action": j.kind,
                     "phase": j.status,
@@ -5687,15 +7994,12 @@ async fn execute_pure_rust_tachyon_cli(
             } else {
                 json!({
                     "id": jid,
-                    "kind": "service",
-                    "action": "reload",
-                    "phase": "completed",
-                    "status": "completed",
-                    "progress": 100,
-                    "message": "OK",
-                    "created_at": now - 1,
-                    "started_at": now - 1,
-                    "finished_at": now
+                    "found": false,
+                    "status": "not_found",
+                    "phase": "not_found",
+                    "progress": 0,
+                    "message": "Job not found",
+                    "error": "Job not found"
                 })
             }
         }
@@ -5737,6 +8041,11 @@ async fn execute_pure_rust_tachyon_cli(
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(now);
+            let checks_passed = u32::from(has_lkg)
+                + u32::from(live.core_running)
+                + u32::from(live.nft_table_active)
+                + u32::from(!live.lkg_observing)
+                + u32::from(is_same);
             json!({
                 "has_known_good": has_lkg,
                 "is_active_config_known_good": is_same,
@@ -5749,13 +8058,13 @@ async fn execute_pure_rust_tachyon_cli(
                     "sha256": lkg_sha
                 },
                 "observation": {
-                    "status": if live.lkg_observing { "observing" } else { "healthy" },
-                    "reason": if live.lkg_observing { "observation_window" } else { "all_probes_passed" },
+                    "status": if live.lkg_observing { "observing" } else if live.core_running { "healthy" } else { "degraded" },
+                    "reason": if live.lkg_observing { "observation_window" } else if live.core_running { "all_probes_passed" } else { "core_stopped" },
                     "started_at": now.saturating_sub(60),
                     "window_seconds": live.lkg_remaining_secs.max(120),
                     "remaining_seconds": live.lkg_remaining_secs,
-                    "checks_passed": 5,
-                    "all_passed": !live.lkg_observing && live.core_running
+                    "checks_passed": checks_passed,
+                    "all_passed": !live.lkg_observing && live.core_running && live.nft_table_active
                 }
             })
         }
@@ -5765,9 +8074,13 @@ async fn execute_pure_rust_tachyon_cli(
         }
         "known_good_restore" => {
             if let Ok(restored) = transaction::load_known_good(&state.lkg_path) {
-                let _ = transaction::commit_transaction(state, restored).await;
-                let _ = core.apply_or_reload().await;
-                json!({ "success": true, "ok": true })
+                if let Err(e) = transaction::commit_transaction(state, restored.clone()).await {
+                    json!({ "success": false, "ok": false, "error": format!("{e:#}") })
+                } else {
+                    sync_from_store_to_json_and_cache(&restored);
+                    let _ = core.apply_or_reload().await;
+                    json!({ "success": true, "ok": true })
+                }
             } else {
                 json!({ "success": false, "ok": false, "error": "Снимок Last Known Good не найден" })
             }
@@ -5776,79 +8089,179 @@ async fn execute_pure_rust_tachyon_cli(
             let _ = std::fs::remove_file(&state.lkg_path);
             json!({ "success": true, "ok": true })
         }
-        "escalation_status" => json!({
-            "level": 0,
-            "level_name": "nominal",
-            "active": false,
-            "reasons": [],
-            "cooldown_remaining": 0
-        }),
-        "emergency_status" => json!({
-            "active": false,
-            "failsafe_active": false,
-            "recovery_attempts": 0
-        }),
+        "escalation_status" => {
+            let mut reasons = Vec::new();
+            let mut level = 0u32;
+            if d.settings.emergency_direct_bypass {
+                level = 2;
+                reasons.push("emergency_direct_bypass");
+            } else if !live.core_running {
+                level = 1;
+                reasons.push("core_not_running");
+            } else if !live.nft_table_active {
+                level = 1;
+                reasons.push("nft_table_inactive");
+            }
+            let level_name = match level {
+                0 => "nominal",
+                1 => "elevated",
+                _ => "critical",
+            };
+            json!({
+                "level": level,
+                "level_name": level_name,
+                "active": level > 0,
+                "reasons": reasons,
+                "cooldown_remaining": live.lkg_remaining_secs
+            })
+        }
+        "emergency_status" => {
+            let recovery_attempts = live
+                .events
+                .iter()
+                .filter(|e| e.subsystem == "recovery" || e.subsystem == "watchdog")
+                .count();
+            json!({
+                "active": d.settings.emergency_direct_bypass,
+                "failsafe_active": d.settings.emergency_direct_bypass || !live.core_running,
+                "recovery_attempts": recovery_attempts
+            })
+        }
         "server_stats" | "server_query" | "server_best" => {
             let now = crate::store::unix_now_secs();
-            let default_sec = d
-                .sections
-                .first()
-                .map(|s| s.id.clone())
-                .unwrap_or_else(|| "Main".to_string());
             let mut entries = Vec::new();
             let mut sec_counts = Map::new();
             let mut proto_counts = Map::new();
             let mut sum_lat = 0u64;
             let mut measured_cnt = 0usize;
-            for src in &d.outbound_sources {
-                let ms_opt = live.node_latencies_ms.get(&src.id).copied();
-                let ms = ms_opt.unwrap_or(0);
-                if ms > 0 {
-                    sum_lat += u64::from(ms);
-                    measured_cnt += 1;
-                }
-                let proto = if src.source_type.is_empty() {
-                    "vless".to_string()
+            let mut seen_tags = std::collections::HashSet::new();
+            let mut best_cand: Option<(String, u32, String, String)> = None;
+
+            for (owner_sec, src, _) in collect_section_sources_with_owner(&d, "all") {
+                let nodes = crate::config_gen::build_source_outbounds(src);
+                if nodes.is_empty() {
+                    let tag = src.id.clone();
+                    if !seen_tags.insert(tag.clone()) {
+                        continue;
+                    }
+                    let ms_opt = live.node_latencies_ms.get(&tag).copied();
+                    let ms = ms_opt.unwrap_or(0);
+                    if ms > 0 {
+                        sum_lat += u64::from(ms);
+                        measured_cnt += 1;
+                        if best_cand.as_ref().is_none_or(|b| ms < b.1) {
+                            best_cand =
+                                Some((tag.clone(), ms, owner_sec.clone(), src.source_type.clone()));
+                        }
+                    }
+                    let proto = if src.source_type.is_empty() {
+                        "vless".to_string()
+                    } else {
+                        src.source_type.clone()
+                    };
+                    *sec_counts
+                        .entry(owner_sec.clone())
+                        .or_insert_with(|| json!(0)) = json!(
+                        sec_counts
+                            .get(&owner_sec)
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0)
+                            + 1
+                    );
+                    *proto_counts
+                        .entry(proto.clone())
+                        .or_insert_with(|| json!(0)) = json!(
+                        proto_counts
+                            .get(&proto)
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0)
+                            + 1
+                    );
+                    entries.push(json!({
+                        "tag": tag,
+                        "name": if src.name.is_empty() { &src.id } else { &src.name },
+                        "type": proto,
+                        "section": owner_sec,
+                        "last_status": if ms_opt.is_some() { "ok" } else { "untested" },
+                        "last_latency": ms,
+                        "last_checked": now,
+                        "last_error": "",
+                        "total_probes": usize::from(ms_opt.is_some()),
+                        "successful_probes": usize::from(ms > 0),
+                        "failed_probes": 0,
+                        "consecutive_failures": 0,
+                        "avg_latency": ms,
+                        "min_latency": ms,
+                        "max_latency": ms,
+                        "jitter": 0,
+                        "success_rate": if ms > 0 { 100 } else { 0 }
+                    }));
                 } else {
-                    src.source_type.clone()
-                };
-                *sec_counts
-                    .entry(default_sec.clone())
-                    .or_insert_with(|| json!(0)) = json!(
-                    sec_counts
-                        .get(&default_sec)
-                        .and_then(Value::as_u64)
-                        .unwrap_or(0)
-                        + 1
-                );
-                *proto_counts
-                    .entry(proto.clone())
-                    .or_insert_with(|| json!(0)) = json!(
-                    proto_counts
-                        .get(&proto)
-                        .and_then(Value::as_u64)
-                        .unwrap_or(0)
-                        + 1
-                );
-                entries.push(json!({
-                    "tag": src.id,
-                    "name": if src.name.is_empty() { &src.id } else { &src.name },
-                    "type": proto,
-                    "section": default_sec,
-                    "last_status": if ms_opt.is_some() { "ok" } else { "untested" },
-                    "last_latency": ms,
-                    "last_checked": now,
-                    "last_error": "",
-                    "total_probes": usize::from(ms_opt.is_some()),
-                    "successful_probes": usize::from(ms > 0),
-                    "failed_probes": 0,
-                    "consecutive_failures": 0,
-                    "avg_latency": ms,
-                    "min_latency": ms,
-                    "max_latency": ms,
-                    "jitter": 0,
-                    "success_rate": if ms > 0 { 100 } else { 0 }
-                }));
+                    for (tag, out_val, _) in nodes {
+                        if !seen_tags.insert(tag.clone()) {
+                            continue;
+                        }
+                        let ms_opt = live.node_latencies_ms.get(&tag).copied();
+                        let ms = ms_opt.unwrap_or(0);
+                        let proto = out_val
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| {
+                                if src.source_type.is_empty() {
+                                    "vless"
+                                } else {
+                                    &src.source_type
+                                }
+                            })
+                            .to_string();
+                        if ms > 0 {
+                            sum_lat += u64::from(ms);
+                            measured_cnt += 1;
+                            if best_cand.as_ref().is_none_or(|b| ms < b.1) {
+                                best_cand =
+                                    Some((tag.clone(), ms, owner_sec.clone(), proto.clone()));
+                            }
+                        }
+                        *sec_counts
+                            .entry(owner_sec.clone())
+                            .or_insert_with(|| json!(0)) = json!(
+                            sec_counts
+                                .get(&owner_sec)
+                                .and_then(Value::as_u64)
+                                .unwrap_or(0)
+                                + 1
+                        );
+                        *proto_counts
+                            .entry(proto.clone())
+                            .or_insert_with(|| json!(0)) = json!(
+                            proto_counts
+                                .get(&proto)
+                                .and_then(Value::as_u64)
+                                .unwrap_or(0)
+                                + 1
+                        );
+                        entries.push(json!({
+                            "tag": tag,
+                            "name": tag,
+                            "type": proto,
+                            "section": owner_sec,
+                            "last_status": if ms_opt.is_some() { "ok" } else { "untested" },
+                            "last_latency": ms,
+                            "last_checked": now,
+                            "last_error": "",
+                            "total_probes": usize::from(ms_opt.is_some()),
+                            "successful_probes": usize::from(ms > 0),
+                            "failed_probes": 0,
+                            "consecutive_failures": 0,
+                            "avg_latency": ms,
+                            "min_latency": ms,
+                            "max_latency": ms,
+                            "jitter": 0,
+                            "success_rate": if ms > 0 { 100 } else { 0 }
+                        }));
+                    }
+                }
             }
             if method == "server_query" || method == "server_best" {
                 Value::Array(entries)
@@ -5859,19 +8272,14 @@ async fn execute_pure_rust_tachyon_cli(
                 } else {
                     0
                 };
-                let best_srv = d
-                    .outbound_sources
-                    .iter()
-                    .filter_map(|s| live.node_latencies_ms.get(&s.id).map(|&ms| (s, ms)))
-                    .min_by_key(|(_, ms)| *ms)
-                    .map(|(s, ms)| {
-                        json!({
-                            "tag": s.id,
-                            "latency_ms": ms,
-                            "section": default_sec,
-                            "type": if s.source_type.is_empty() { "vless" } else { &s.source_type }
-                        })
-                    });
+                let best_srv = best_cand.map(|(tag, ms, sec, p)| {
+                    json!({
+                        "tag": tag,
+                        "latency_ms": ms,
+                        "section": sec,
+                        "type": p
+                    })
+                });
                 json!({
                     "total_servers": total,
                     "healthy_count": measured_cnt,
@@ -5921,16 +8329,25 @@ async fn execute_pure_rust_tachyon_cli(
             }
         }
         "server_probe_all" => {
-            let default_sec = d
-                .sections
-                .first()
-                .map(|s| s.id.clone())
-                .unwrap_or_else(|| "Main".to_string());
             let test_url = url_encode_component(&d.settings.latency_test_url);
+            let mut targets: Vec<(String, String, String)> = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for (owner_sec, src, _) in collect_section_sources_with_owner(&d, "all") {
+                for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
+                    if seen.insert(tag.clone()) {
+                        let p = out_val
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .unwrap_or("vless")
+                            .to_string();
+                        targets.push((tag, owner_sec.clone(), p));
+                    }
+                }
+            }
             let mut results = Vec::new();
             let mut ok_count = 0usize;
-            for s in &d.outbound_sources {
-                let encoded_tag = url_encode_component(&s.id);
+            for (tag, owner_sec, proto) in targets {
+                let encoded_tag = url_encode_component(&tag);
                 let path = format!("/proxies/{encoded_tag}/delay?url={test_url}&timeout=2500");
                 let (ok, ms, err_msg) = match core.clash_request("GET", &path, None).await {
                     Ok(v) => {
@@ -5939,7 +8356,7 @@ async fn execute_pure_rust_tachyon_cli(
                             ok_count += 1;
                             let mut l = state.live.write().await;
                             if l.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
-                                l.node_latencies_ms.insert(s.id.clone(), d_ms);
+                                l.node_latencies_ms.insert(tag.clone(), d_ms);
                             }
                             (true, d_ms, String::new())
                         } else {
@@ -5949,9 +8366,9 @@ async fn execute_pure_rust_tachyon_cli(
                     Err(e) => (false, 0, format!("{e}")),
                 };
                 results.push(json!({
-                    "tag": s.id,
-                    "section": default_sec,
-                    "type": if s.source_type.is_empty() { "vless" } else { &s.source_type },
+                    "tag": tag,
+                    "section": owner_sec,
+                    "type": proto,
                     "ok": ok,
                     "latency_ms": ms,
                     "error": err_msg
@@ -5975,9 +8392,10 @@ async fn execute_pure_rust_tachyon_cli(
             let dnsmasq = sys_info::collect_dnsmasq_status();
             let daemon_up = sys_info::daemon_uptime_secs();
             let total_srv = d.outbound_sources.len();
+            let healthy_srv = live.node_latencies_ms.values().filter(|&&v| v > 0).count();
             let used_pct = (sys.memory_used_mb * 100)
                 .checked_div(sys.memory_total_mb)
-                .unwrap_or(35) as u32;
+                .unwrap_or(0) as u32;
             let pressure = if used_pct >= 90 {
                 "critical"
             } else if used_pct >= 75 {
@@ -5995,37 +8413,72 @@ async fn execute_pure_rust_tachyon_cli(
                     .sum::<u64>()
                     / (live.node_latencies_ms.len() as u64)
             };
+            let watchdog_restarts = live
+                .events
+                .iter()
+                .filter(|e| e.subsystem == "watchdog" && e.message.contains("restarted"))
+                .count();
+            let engine_crashes = live
+                .events
+                .iter()
+                .filter(|e| e.level == "error" && e.subsystem == "core")
+                .count();
+            let config_rollbacks = live
+                .events
+                .iter()
+                .filter(|e| e.subsystem == "rollback" || e.message.contains("rollback"))
+                .count();
+            let mut score: i32 = 100;
+            let mut penalties: Vec<&str> = Vec::new();
+            if !live.core_running {
+                score -= 35;
+                penalties.push("core_stopped");
+            }
+            if !live.nft_table_active {
+                score -= 15;
+                penalties.push("nft_inactive");
+            }
+            if used_pct >= 90 {
+                score -= 15;
+                penalties.push("high_memory_pressure");
+            }
+            let score = score.clamp(0, 100) as u32;
+            let grade = if score >= 90 {
+                "optimal"
+            } else if score >= 65 {
+                "degraded"
+            } else {
+                "critical"
+            };
             if method == "stability_status" {
                 json!({
                     "timestamp": now,
-                    "score": if live.core_running { 100 } else { 65 },
-                    "grade": if live.core_running { "optimal" } else { "degraded" },
+                    "score": score,
+                    "grade": grade,
                     "system_uptime": uptime_pretty,
                     "wan_flaps": 0,
-                    "watchdog_restarts": 0,
+                    "watchdog_restarts": watchdog_restarts,
                     "memory_used_pct": used_pct,
                     "memory_pressure": pressure,
-                    "healthy_servers": total_srv,
+                    "healthy_servers": healthy_srv,
                     "total_servers": total_srv,
                     "avg_latency_ms": avg_lat
                 })
             } else {
-                let default_sec = d
-                    .sections
-                    .first()
-                    .map(|s| s.id.clone())
-                    .unwrap_or_else(|| "Main".to_string());
-                let best_srv = d
-                    .outbound_sources
+                let mut sec_counts = Map::new();
+                for sec in &d.sections {
+                    let cnt = collect_section_sources_with_owner(&d, &sec.id).len();
+                    sec_counts.insert(sec.id.clone(), json!(cnt));
+                }
+                let best_srv = live
+                    .node_latencies_ms
                     .iter()
-                    .filter_map(|s| live.node_latencies_ms.get(&s.id).map(|&ms| (s, ms)))
-                    .min_by_key(|(_, ms)| *ms)
-                    .map(|(s, ms)| {
+                    .filter(|&(_, &ms)| ms > 0)
+                    .min_by_key(|&(_, &ms)| ms)
+                    .map(|(tag, &ms)| {
                         json!({
-                            "tag": s.id,
-                            "latency_ms": ms,
-                            "section": default_sec,
-                            "type": if s.source_type.is_empty() { "vless" } else { &s.source_type }
+                            "tag": tag,
+                            "latency_ms": ms
                         })
                     });
                 let total_kb = sys.memory_total_mb * 1024;
@@ -6066,9 +8519,9 @@ async fn execute_pure_rust_tachyon_cli(
                 json!({
                     "timestamp": now,
                     "health": {
-                        "score": if live.core_running { 100 } else { 65 },
-                        "grade": if live.core_running { "optimal" } else { "degraded" },
-                        "penalties": []
+                        "score": score,
+                        "grade": grade,
+                        "penalties": penalties
                     },
                     "uptimes": {
                         "system": {
@@ -6083,8 +8536,8 @@ async fn execute_pure_rust_tachyon_cli(
                                 "pretty": format_uptime_pretty(live.core_uptime_secs)
                             },
                             "watchdog": {
-                                "running": d.settings.enable_watchdog,
-                                "pid": d.settings.enable_watchdog.then(std::process::id),
+                                "running": core.is_watchdog_effectively_running().await,
+                                "pid": core.is_watchdog_effectively_running().await.then(std::process::id),
                                 "uptime_seconds": daemon_up,
                                 "pretty": format_uptime_pretty(daemon_up)
                             },
@@ -6098,11 +8551,11 @@ async fn execute_pure_rust_tachyon_cli(
                     },
                     "restarts_and_flaps": {
                         "wan_flaps": 0,
-                        "watchdog_restarts": 0,
-                        "engine_crashes": 0,
+                        "watchdog_restarts": watchdog_restarts,
+                        "engine_crashes": engine_crashes,
                         "dnsmasq_restarts": 0,
                         "dns_failovers": 0,
-                        "config_rollbacks": 0
+                        "config_rollbacks": config_rollbacks
                     },
                     "resources": {
                         "memory": {
@@ -6143,14 +8596,12 @@ async fn execute_pure_rust_tachyon_cli(
                     },
                     "server_fleet": {
                         "total_servers": total_srv,
-                        "healthy_count": total_srv,
+                        "healthy_count": healthy_srv,
                         "unhealthy_count": 0,
-                        "untested_count": 0,
+                        "untested_count": total_srv.saturating_sub(healthy_srv),
                         "avg_latency_ms": avg_lat,
                         "best_server": best_srv,
-                        "sections": {
-                            default_sec: total_srv
-                        }
+                        "sections": sec_counts
                     },
                     "recent_incidents": recent_incidents
                 })
@@ -6173,6 +8624,43 @@ async fn handle_uci_call(
     handle_pure_rust_uci(uci_method, args, state, core).await
 }
 
+async fn capture_uci_rollback_baseline(state: &Arc<AppState>) {
+    let already_pending = uci_rollback_slot()
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if already_pending {
+        return;
+    }
+    let sections = get_json_sections_snapshot();
+    let store_snap = state.data.read().await.clone();
+    let token = crypto_gen::generate_hex(16);
+    if let Ok(mut guard) = uci_rollback_slot().lock()
+        && guard.is_none()
+    {
+        *guard = Some((token, sections, store_snap));
+    }
+}
+
+fn clear_uci_rollback_baseline() {
+    if let Ok(mut guard) = uci_rollback_slot().lock() {
+        *guard = None;
+    }
+}
+
+async fn revert_uci_rollback_baseline(state: &Arc<AppState>, core: &Arc<CoreManager>) -> bool {
+    let saved = uci_rollback_slot().lock().ok().and_then(|mut g| g.take());
+    if let Some((_token, pre_sections, pre_store)) = saved {
+        set_json_sections_snapshot(pre_sections);
+        let _ = transaction::commit_transaction(state, pre_store.clone()).await;
+        sync_section_cache(&pre_store);
+        let _ = core.apply_or_reload().await;
+        true
+    } else {
+        false
+    }
+}
+
 /// Handle HTTP POST `/cgi-bin/luci/admin/uci/<action>` (`apply_rollback`, `apply_unchecked`, `confirm`, `revert`).
 pub async fn handle_uci_http_action(
     action: &str,
@@ -6182,43 +8670,190 @@ pub async fn handle_uci_http_action(
     let _guard = uci_mutex().lock().await;
     match action {
         "apply_rollback" => {
-            sync_uci_to_rust_store(state, core).await;
-            (
-                200,
-                Some(json!({ "token": "00000000000000000000000000000000" })),
-            )
+            capture_uci_rollback_baseline(state).await;
+            let token = uci_rollback_slot()
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|(t, _, _)| t.clone()))
+                .unwrap_or_else(|| crypto_gen::generate_hex(16));
+            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                return (400, Some(json!({ "error": err })));
+            }
+            (200, Some(json!({ "token": token })))
         }
         "apply_unchecked" => {
-            sync_uci_to_rust_store(state, core).await;
+            clear_uci_rollback_baseline();
+            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                return (400, Some(json!({ "error": err })));
+            }
             (204, None)
         }
-        "confirm" => (204, None),
-        "revert" => (200, Some(json!({ "reverted": true }))),
+        "confirm" => {
+            clear_uci_rollback_baseline();
+            (204, None)
+        }
+        "revert" => {
+            let reverted = revert_uci_rollback_baseline(state, core).await;
+            (200, Some(json!({ "reverted": reverted })))
+        }
         _ => (404, Some(json!({ "error": "unknown uci action" }))),
     }
 }
 
+async fn handle_service_action_async(
+    act: &str,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Value {
+    let act = act.to_string();
+    let job_id = format!("rust-svc-{}", crate::store::unix_now_u64());
+    let jobs_dir = crate::store::runtime_state_dir().join("service-jobs");
+    let _ = std::fs::create_dir_all(&jobs_dir);
+    let job_path = jobs_dir.join(format!("{job_id}.json"));
+    let sync_err = if act == "stop" {
+        core.set_manual_stop(true);
+        sync_uci_to_rust_store_with_reload(state, core, false)
+            .await
+            .err()
+    } else {
+        sync_uci_to_rust_store(state, core).await.err()
+    };
+    let action_res: Result<(), String> = if let Some(err) = sync_err {
+        Err(err)
+    } else {
+        match act.as_str() {
+            "stop" => core.stop().await.map_err(|e| format!("{e:#}")),
+            "start" => core.start().await.map_err(|e| format!("{e:#}")),
+            _ => core.apply_or_reload().await.map_err(|e| format!("{e:#}")),
+        }
+    };
+    let payload = match action_res {
+        Ok(()) => {
+            let d_now = state.data.read().await.clone();
+            sync_section_cache(&d_now);
+            json!({
+                "success": true,
+                "job_id": job_id,
+                "kind": "service",
+                "action": act,
+                "status": "completed",
+                "running": false,
+                "completed": true,
+                "exit_code": 0,
+                "message": "OK"
+            })
+        }
+        Err(err) => json!({
+            "success": false,
+            "job_id": job_id,
+            "kind": "service",
+            "action": act,
+            "status": "failed",
+            "running": false,
+            "completed": true,
+            "exit_code": 1,
+            "error": err,
+            "message": err
+        }),
+    };
+    let _ = crypto_gen::write_json_if_changed(&job_path, &payload);
+    payload
+}
+
+async fn handle_watchdog_command(
+    method: &str,
+    d: &crate::store::RouterStoreData,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Value {
+    let enabled = if method == "watchdog_start" || method == "watchdog_stop" {
+        let target = method == "watchdog_start";
+        let mut candidate = d.clone();
+        candidate.settings.enable_watchdog = target;
+        let _ = transaction::commit_transaction(state, candidate).await;
+        if target {
+            core.set_manual_stop(false);
+        }
+        if let Ok(mut store) = json_sections_store().write() {
+            if let Some(sec) = store.get_mut("settings").and_then(Value::as_object_mut) {
+                sec.insert(
+                    "watchdog_enable".to_string(),
+                    json!(if target { "1" } else { "0" }),
+                );
+            }
+            persist_json_sections(&store);
+        }
+        target
+    } else {
+        d.settings.enable_watchdog
+    };
+    let running = enabled && !core.is_manually_stopped();
+    json!({
+        "success": true,
+        "enabled": enabled,
+        "running": running,
+        "pid": running.then(std::process::id),
+        "uptime_seconds": sys_info::daemon_uptime_secs(),
+        "status": if running { "running" } else { "stopped" }
+    })
+}
+
 /// Synchronize pure-Rust JSON sections (`config_sections.json`) into `TachyonStore` (`tachyon.json`) and reload core.
-pub async fn sync_uci_to_rust_store(state: &Arc<AppState>, core: &Arc<CoreManager>) {
-    let snapshot = json_sections_store()
-        .read()
-        .map(|g| g.clone())
-        .unwrap_or_default();
+pub async fn sync_uci_to_rust_store(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Result<(), String> {
+    sync_uci_to_rust_store_with_reload(state, core, true).await
+}
+
+pub async fn sync_uci_to_rust_store_with_reload(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    trigger_reload: bool,
+) -> Result<(), String> {
+    let snapshot = get_json_sections_snapshot();
     let mut candidate = state.data.read().await.clone();
     let old_telegram = candidate.telegram.clone();
     let imported = candidate.import_from_json_sections(&snapshot);
     if imported > 0 {
         let tg_changed = candidate.telegram != old_telegram;
-        let _ = transaction::commit_transaction(state, candidate).await;
+        let has_empty_sub = candidate.outbound_sources.iter().any(|s| {
+            s.enabled
+                && s.source_type == "subscription"
+                && !s.subscription_urls.is_empty()
+                && s.cached_nodes.is_empty()
+        });
+        if let Err(e) = transaction::commit_transaction(state, candidate.clone()).await {
+            let msg = format!("{e:#}");
+            eprintln!("[tachyon] sync_uci_to_rust_store failed: {msg}");
+            let mut live = state.live.write().await;
+            live.push_event(
+                "error",
+                "uci",
+                &format!("Ошибка синхронизации конфигурации: {msg}"),
+            );
+            return Err(msg);
+        }
+        sync_section_cache(&candidate);
         if tg_changed {
             crate::tg_bot::set_runtime_override(None);
             crate::tg_bot::notify_bot_wakeup();
         }
-        let core_clone = Arc::clone(core);
-        tokio::spawn(async move {
-            let _ = core_clone.apply_or_reload().await;
-        });
+        if trigger_reload && !core.is_manually_stopped() {
+            let core_clone = Arc::clone(core);
+            tokio::spawn(async move {
+                if !core_clone.is_manually_stopped()
+                    && let Err(e) = core_clone.apply_or_reload().await
+                {
+                    eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
+                }
+                if has_empty_sub && !core_clone.is_manually_stopped() {
+                    let _ = core_clone.refresh_all_subscriptions().await;
+                }
+            });
+        }
     }
+    Ok(())
 }
 
 async fn call_router_ubus_cli(object: &str, method: &str, args: &Value) -> Option<Value> {
@@ -6356,6 +8991,7 @@ async fn handle_pure_rust_uci(
             json!([0, { "values": Value::Object(store) }])
         }
         "add" => {
+            capture_uci_rollback_baseline(state).await;
             let stype = args
                 .get("type")
                 .and_then(Value::as_str)
@@ -6402,7 +9038,7 @@ async fn handle_pure_rust_uci(
                 persist_json_sections(&store);
                 name
             };
-            sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store(state, core).await;
             json!([0, { "section": sname }])
         }
         "set" => {
@@ -6412,6 +9048,7 @@ async fn handle_pure_rust_uci(
             let Some(vals) = args.get("values").and_then(Value::as_object) else {
                 return json!([2]);
             };
+            capture_uci_rollback_baseline(state).await;
             {
                 let mut store = match json_sections_store().write() {
                     Ok(g) => g,
@@ -6440,13 +9077,14 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store(state, core).await;
             json!([0])
         }
         "delete" => {
             let Some(sec_name) = args.get("section").and_then(Value::as_str) else {
                 return json!([2]);
             };
+            capture_uci_rollback_baseline(state).await;
             let single_opt = args.get("option").and_then(Value::as_str);
             let multi_opts = args.get("options").and_then(Value::as_array);
             {
@@ -6487,10 +9125,11 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store(state, core).await;
             json!([0])
         }
         "order" => {
+            capture_uci_rollback_baseline(state).await;
             if let Some(order_arr) = args.get("sections").and_then(Value::as_array) {
                 let mut store = match json_sections_store().write() {
                     Ok(g) => g,
@@ -6529,12 +9168,19 @@ async fn handle_pure_rust_uci(
                 *store = new_map;
                 persist_json_sections(&store);
             }
-            sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store(state, core).await;
             json!([0])
         }
         "changes" => json!([0, { "changes": {} }]),
-        "apply" | "commit" | "confirm" | "revert" => {
-            sync_uci_to_rust_store(state, core).await;
+        "apply" | "commit" | "confirm" => {
+            clear_uci_rollback_baseline();
+            if sync_uci_to_rust_store(state, core).await.is_err() {
+                return json!([5]);
+            }
+            json!([0])
+        }
+        "revert" => {
+            let _ = revert_uci_rollback_baseline(state, core).await;
             json!([0])
         }
         _ => json!([0]),
@@ -6629,16 +9275,10 @@ pub async fn handle_cgi_direct(
         if filepath == "/var/run/tachyon/ui-state/snapshot-export.json"
             || filepath == "/tmp/tachyon-snapshot-export.json"
         {
-            let store = json_sections_store()
-                .read()
-                .map(|g| g.clone())
-                .unwrap_or_default();
-            let payload = json!({
-                "version": crate::store::TACHYON_VERSION,
-                "exported_at": crate::store::unix_now_secs(),
-                "sections": store
-            });
-            let raw = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string());
+            let sections = get_json_sections_snapshot();
+            let profile =
+                crate::snapshots::build_active_profile(state, &sections, "export", "full").await;
+            let raw = serde_json::to_string_pretty(&profile).unwrap_or_else(|_| "{}".to_string());
             return (200, "application/octet-stream", raw.into_bytes());
         }
         (404, "text/plain; charset=utf-8", b"Not found".to_vec())
@@ -6771,6 +9411,10 @@ fn map_list_key_to_service(list_key: &str) -> Option<(&'static str, &'static [&'
         "openai" | "chatgpt" => Some(("ChatGPT / OpenAI", &["chatgpt.com", "api.openai.com"])),
         "anthropic" | "claude" => Some(("Claude / Anthropic", &["claude.ai"])),
         "gemini" | "google-gemini" | "bard" => Some(("Gemini / Google AI", &["gemini.google.com"])),
+        "qwen" => Some(("Qwen", &["qwen.ai", "chat.qwen.ai"])),
+        "kimi" => Some(("Kimi", &["kimi.com", "kimi.ai"])),
+        "paas_db" => Some(("PaaS / Cloud DB", &["vercel.com", "supabase.com"])),
+        "kick" => Some(("Kick", &["kick.com"])),
         "github" => Some(("GitHub", &["github.com", "api.github.com"])),
         "instagram" | "meta" | "facebook" => Some(("Instagram / Meta", &["www.instagram.com"])),
         "twitter" | "x" => Some(("X / Twitter", &["x.com"])),
@@ -7625,124 +10269,229 @@ fn resolve_outbound_tag_with_telemetry_fallback(
     None
 }
 
+pub fn sync_from_store_to_json_and_cache(store: &crate::store::RouterStoreData) {
+    let existing = Value::Object(get_json_sections_snapshot());
+    if let Value::Object(new_map) =
+        crate::store::sync_store_to_json_sections(store, Some(&existing))
+    {
+        set_json_sections_snapshot(new_map);
+    }
+    sync_section_cache(store);
+}
+
+async fn probe_udp_dns_rtt_ms(target: &str, domain: &str) -> Result<f64, String> {
+    let mut pkt = Vec::with_capacity(64);
+    let tx_id: u16 = 0x5441;
+    pkt.extend_from_slice(&tx_id.to_be_bytes());
+    pkt.extend_from_slice(&0x0100u16.to_be_bytes()); // standard query, recursion desired
+    pkt.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT = 1
+    pkt.extend_from_slice(&[0u8; 6]); // AN/NS/AR = 0
+    for label in domain.trim_end_matches('.').split('.') {
+        let bytes = label.as_bytes();
+        if bytes.is_empty() || bytes.len() > 63 {
+            return Err("invalid domain label".to_string());
+        }
+        pkt.push(bytes.len() as u8);
+        pkt.extend_from_slice(bytes);
+    }
+    pkt.push(0); // root label
+    pkt.extend_from_slice(&1u16.to_be_bytes()); // QTYPE = A
+    pkt.extend_from_slice(&1u16.to_be_bytes()); // QCLASS = IN
+
+    let bind_addr = if target.starts_with('[') {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
+    let sock = tokio::net::UdpSocket::bind(bind_addr)
+        .await
+        .map_err(|e| e.to_string())?;
+    sock.connect(target).await.map_err(|e| e.to_string())?;
+    let t0 = std::time::Instant::now();
+    sock.send(&pkt).await.map_err(|e| e.to_string())?;
+    let mut buf = [0u8; 512];
+    let n = tokio::time::timeout(Duration::from_millis(900), sock.recv(&mut buf))
+        .await
+        .map_err(|_| "timeout".to_string())?
+        .map_err(|e| e.to_string())?;
+    if n < 12 || u16::from_be_bytes([buf[0], buf[1]]) != tx_id {
+        return Err("invalid DNS response".to_string());
+    }
+    Ok((t0.elapsed().as_secs_f64() * 1000.0).max(0.5))
+}
+
 #[allow(clippy::too_many_arguments)]
-fn build_ubus_leak_check_payload(
+fn finalize_ubus_leak_check_payload(
+    base_report: Value,
     d: &crate::store::RouterStoreData,
     wan_ip: &str,
     exit_ip: &str,
     exit_country: &str,
     exit_org: &str,
     dns_srv: &str,
-    direct_ipv6: &str,
-    proxy_ipv6: &str,
-    ipv6_state: crate::store::EffectiveIpv6State,
+    resolved_first: &str,
     core_running: bool,
-    nft_table_active: bool,
 ) -> Value {
+    let ip_leaked = !wan_ip.is_empty() && !exit_ip.is_empty() && wan_ip == exit_ip;
+    let dns_reachable = base_report
+        .get("dns_listener_reachable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let fakeip_v4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
         "198.18.0.0/15"
     } else {
         d.settings.fakeip_inet4_range.trim()
     };
-    let fakeip_v6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
-        "fc00::/18"
-    } else {
-        d.settings.fakeip_inet6_range.trim()
-    };
-    let ipv6_leak = crate::diagnostics::build_ipv6_leak_summary(
-        d,
-        ipv6_state,
-        direct_ipv6,
-        proxy_ipv6,
-        nft_table_active,
-    );
-    let ipv6_leaked = ipv6_leak
+    let ipv6_leaked = base_report
         .get("ipv6_leaked")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let dns_leaked = !dns_reachable
+        || (d.settings.fakeip_enabled
+            && !resolved_first.is_empty()
+            && !resolved_first.starts_with("198.18.")
+            && !resolved_first.starts_with("198.19."));
 
-    json!({
-        "ip_leak": {
+    let mut warnings = Vec::new();
+    if !core_running {
+        warnings.push("Ядро tachyon-core не запущено");
+    }
+    if ip_leaked {
+        warnings.push("Внешний IP совпадает с WAN-адресом провайдера");
+    }
+    if dns_leaked {
+        warnings.push("DNS-резолвер не отвечает через защищённый контур");
+    }
+    if ipv6_leaked {
+        warnings.push("Обнаружена возможная утечка IPv6");
+    }
+
+    let overall = if !warnings.is_empty() {
+        "warning"
+    } else {
+        "safe"
+    };
+    let mut out = base_report.as_object().cloned().unwrap_or_default();
+    out.insert(
+        "ip_leak".to_string(),
+        json!({
             "direct_ip": wan_ip,
             "direct_country": "WAN",
             "direct_isp": "Router WAN Interface",
             "proxy_ip": exit_ip,
             "proxy_country": exit_country,
             "proxy_org": exit_org,
-            "leaked": false,
-            "proxy_online": core_running,
-            "details": [
-                "Внешний адрес туннеля отличается от прямого WAN-адреса провайдера",
-                "Маршрутизация трафика через Tachyon Core активна и изолирована"
-            ]
-        },
-        "dns_leak": {
-            "leaked": false,
-            "fakeip_working": d.settings.fakeip_enabled,
+            "leaked": ip_leaked,
+            "proxy_online": core_running && !exit_ip.is_empty(),
+            "details": if exit_ip.is_empty() {
+                vec!["Не удалось определить внешний IP выходного узла"]
+            } else if ip_leaked {
+                vec!["Внешний IP совпадает с WAN-адресом"]
+            } else {
+                vec!["Внешний IP выходного узла отличается от прямого WAN-адреса"]
+            }
+        }),
+    );
+    out.insert(
+        "dns_leak".to_string(),
+        json!({
+            "leaked": dns_leaked,
+            "fakeip_working": d.settings.fakeip_enabled && dns_reachable,
             "fakeip_enabled": d.settings.fakeip_enabled,
             "fakeip_subnet": fakeip_v4,
-            "resolved_ip": "198.18.0.25",
-            "dns_through_tunnel": true,
-            "dns_servers": [
-                {
-                    "ip": dns_srv,
-                    "isp": "Cloudflare, Inc.",
-                    "organization": "Encrypted Upstream Resolver",
-                    "country": "Anycast",
-                    "country_code": "US",
-                    "city": "Frankfurt"
-                }
-            ],
-            "direct_dns_servers": [
-                {
-                    "ip": "1.1.1.1",
-                    "isp": "Cloudflare, Inc.",
-                    "organization": "Bootstrap Resolver",
-                    "country": "Anycast",
-                    "country_code": "US"
-                }
-            ],
-            "router_dns_servers": [
-                {
-                    "ip": "127.0.0.1#53",
-                    "isp": "Tachyon Core",
-                    "organization": "Local FakeIP DNS Engine",
-                    "country": "Router",
-                    "country_code": "LO"
-                }
-            ],
-            "configured_dns": [
-                {
-                    "tag": "dns-remote",
-                    "type": d.settings.dns_type,
-                    "server": dns_srv,
-                    "detour": "Main-out"
-                }
-            ],
-            "details": [
-                if d.settings.fakeip_enabled {
-                    format!("FakeIP перехватывает DNS-запросы локальной сети ({fakeip_v4})")
-                } else {
-                    "Используется режим DNS RealIP (FakeIP отключён)".to_string()
-                },
-                "Запросы к внешним резолверам направляются через защищенный профиль"
-            ]
-        },
-        "direct_ipv6": direct_ipv6,
-        "proxy_ipv6": proxy_ipv6,
-        "ipv6_leak_guard": d.settings.ipv6_leak_guard,
-        "ipv6_leaked": ipv6_leaked,
-        "ipv6_effective_state": ipv6_state.as_str(),
-        "ipv6_mode": d.settings.ipv6_mode,
-        "fakeip_inet4_range": fakeip_v4,
-        "fakeip_inet6_range": fakeip_v6,
-        "ipv6_leak": ipv6_leak,
-        "summary": {
-            "overall": if ipv6_leaked { "warning" } else { "safe" },
-            "warnings": [],
+            "resolved_ip": resolved_first,
+            "dns_through_tunnel": dns_reachable && core_running,
+            "dns_servers": [{ "ip": dns_srv, "type": d.settings.dns_type }],
+            "router_dns_servers": [{ "ip": "127.0.0.42#53", "organization": "Tachyon Core DNS" }],
+            "details": [out.get("verdict").and_then(Value::as_str).unwrap_or("")]
+        }),
+    );
+    out.insert(
+        "summary".to_string(),
+        json!({
+            "overall": overall,
+            "warnings": warnings,
             "recommendations": []
+        }),
+    );
+    Value::Object(out)
+}
+
+async fn run_full_ubus_leak_check(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let base_report = diagnostics::run_leak_check(state, Some(core)).await;
+    let d = state.data.read().await.clone();
+    let live = state.live.read().await.clone();
+
+    let (_lan_ip, wan_ip) = tokio::task::spawn_blocking(sys_info::detect_router_ips)
+        .await
+        .unwrap_or_default();
+    let dns_probe = diagnostics::run_dns_check_with_engine(core, "www.youtube.com").await;
+
+    let mut exit_tag = resolve_clash_group_for_target(&d, None, "Main");
+    if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
+        && let Some(proxies_map) = proxies_val.get("proxies").and_then(Value::as_object)
+    {
+        exit_tag = resolve_clash_group_for_target(&d, Some(proxies_map), "Main");
+        if let Some(now_node) = proxies_map
+            .get(&exit_tag)
+            .and_then(|v| v.get("now"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            exit_tag = now_node.to_string();
         }
-    })
+    }
+    let exit_info = if live.core_running && !exit_tag.is_empty() {
+        core.probe_node_exit_ip(&exit_tag).await
+    } else {
+        json!({ "ok": false })
+    };
+    let exit_ip = exit_info
+        .get("ip")
+        .or_else(|| exit_info.get("query"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let exit_country = exit_info
+        .get("country")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let exit_org = exit_info
+        .get("org")
+        .or_else(|| exit_info.get("isp"))
+        .and_then(Value::as_str)
+        .unwrap_or(exit_tag.as_str())
+        .to_string();
+
+    let resolved_ips = dns_probe
+        .get("addresses")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let resolved_first = resolved_ips
+        .first()
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let dns_srv = d
+        .settings
+        .dns_servers
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "1.1.1.1".to_string());
+
+    finalize_ubus_leak_check_payload(
+        base_report,
+        &d,
+        &wan_ip,
+        &exit_ip,
+        &exit_country,
+        &exit_org,
+        &dns_srv,
+        &resolved_first,
+        live.core_running,
+    )
 }
 
 #[cfg(test)]
@@ -8032,6 +10781,97 @@ mod tests {
         let inbounds = build_check_inbounds_result(&store);
         assert!(inbounds.get("wan_ipv6_public").is_some());
         assert_eq!(inbounds["wan_ipv6_public"], 0);
+
+        let dns_probe_engine = json!({
+            "domain": "www.youtube.com",
+            "status": "udp53_blocked_engine_ok",
+            "engine": { "ok": true, "delay": 1, "addresses": ["198.18.0.19"] }
+        });
+        assert!(dns_probe_succeeded(&dns_probe_engine));
+        assert!(!dns_probe_succeeded(
+            &json!({"engine": {"ok": false, "addresses": []}})
+        ));
+
+        let nft_sample = "table inet TachyonTable {\n\tchain prerouting {\n\t\tmeta mark 0x100 counter packets 42 bytes 1000\n\t}\n\tchain mangle_output {\n\t\ttype route hook output priority mangle;\n\t}\n}\n";
+        let (has_mangle, has_output, rules_cnt, pkts) = parse_nft_table_summary(nft_sample);
+        assert!(has_mangle);
+        assert!(has_output);
+        assert_eq!(rules_cnt, 1);
+        assert_eq!(pkts, 42);
+
+        assert!(fw4_line_matches_port(
+            "\t\tmeta l4proto tcp th dport 8443 accept",
+            "tcp",
+            8443
+        ));
+        assert!(fw4_line_matches_port(
+            "\t\tudp dport 2012-2022 counter accept",
+            "udp",
+            2015
+        ));
+        assert!(!fw4_line_matches_port(
+            "\t\tudp dport 2012-2022 counter accept",
+            "tcp",
+            2015
+        ));
+        assert!(!fw4_line_matches_port(
+            "\t\ttcp sport 8443 accept",
+            "tcp",
+            8443
+        ));
+
+        let local_ips = collect_local_router_ips(
+            "203.0.113.10",
+            "",
+            "0.0.0.0",
+            "2: br-lan inet 192.168.1.1/24 brd 192.168.1.255 scope global\n",
+        );
+        assert!(local_ips.contains(&"203.0.113.10".to_string()));
+        assert!(local_ips.contains(&"192.168.1.1".to_string()));
+        assert!(!local_ips.contains(&"0.0.0.0".to_string()));
+
+        assert_eq!(
+            check_fw4_port_open_with_redirects(
+                "",
+                "\t\ttcp dport 8443 redirect to :8443",
+                "",
+                8443,
+                "tcp",
+                &local_ips
+            ),
+            1
+        );
+        assert_eq!(
+            check_fw4_port_open_with_redirects(
+                "",
+                "\t\ttcp dport 8443 dnat ip to 192.168.1.1:8443",
+                "",
+                8443,
+                "tcp",
+                &local_ips
+            ),
+            1
+        );
+        assert_eq!(
+            check_fw4_port_open_with_redirects(
+                "",
+                "\t\ttcp dport 8443 dnat ip to 192.168.1.50:8443",
+                "",
+                8443,
+                "tcp",
+                &local_ips
+            ),
+            0
+        );
+        let uci_redirect = "firewall.r1=redirect\nfirewall.r1.target='DNAT'\nfirewall.r1.src='wan'\nfirewall.r1.proto='tcp'\nfirewall.r1.src_dport='8444'\nfirewall.r1.dest_ip='192.168.1.1'\nfirewall.r2=redirect\nfirewall.r2.target='DNAT'\nfirewall.r2.src='wan'\nfirewall.r2.proto='tcp'\nfirewall.r2.src_dport='8445'\nfirewall.r2.dest_ip='192.168.1.50'\n";
+        assert_eq!(
+            check_fw4_port_open_with_redirects("", "", uci_redirect, 8444, "tcp", &local_ips),
+            1
+        );
+        assert_eq!(
+            check_fw4_port_open_with_redirects("", "", uci_redirect, 8445, "tcp", &local_ips),
+            0
+        );
     }
 
     #[test]
@@ -8041,18 +10881,29 @@ mod tests {
         store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
         store.settings.fakeip_inet6_range = "fc00::/18".to_string();
 
-        let payload = build_ubus_leak_check_payload(
+        let ipv6_leak = crate::diagnostics::build_ipv6_leak_summary(
+            &store,
+            crate::store::EffectiveIpv6State::LeakGuard,
+            "2001:4860::1",
+            "",
+            false,
+        );
+        let base_report = json!({
+            "dns_listener_reachable": true,
+            "direct_ipv6": "2001:4860::1",
+            "ipv6_leaked": ipv6_leak["ipv6_leaked"],
+            "ipv6_leak": ipv6_leak,
+        });
+        let payload = finalize_ubus_leak_check_payload(
+            base_report,
             &store,
             "203.0.113.2",
             "198.51.100.9",
             "DE",
             "Node",
             "1.1.1.1",
-            "2001:4860::1",
-            "",
-            crate::store::EffectiveIpv6State::LeakGuard,
+            "198.18.0.25",
             true,
-            false,
         );
         assert_eq!(payload["direct_ipv6"], "2001:4860::1");
         assert_eq!(payload["ipv6_leaked"], true);
@@ -8088,5 +10939,285 @@ mod tests {
             resolve_outbound_tag_with_telemetry_fallback("US New York", &candidates),
             None
         );
+    }
+
+    #[test]
+    fn serve_luci_shell_embeds_lang_in_luci_ctor_and_resets_en_dict() {
+        let html_en = serve_luci_shell(None, "en");
+        assert!(html_en.contains("<html lang=\"en\""));
+        assert!(html_en.contains(&format!(
+            "<title>Tachyon v{}</title>",
+            crate::store::TACHYON_VERSION
+        )));
+        assert!(html_en.contains(&format!(
+            "href=\"/favicon.svg?v={}\"",
+            crate::store::TACHYON_VERSION
+        )));
+        assert!(TACHYON_FAVICON_SVG.contains("#0a84ff"));
+        assert!(html_en.contains("lang: \"en\","));
+        assert!(html_en.contains("window.TR = {}; window.TR_RAW = {};"));
+        assert!(html_en.contains("!Object.isFrozen(L.env)"));
+
+        let html_ru = serve_luci_shell(Some("settings"), "ru");
+        assert!(html_ru.contains("<html lang=\"ru\""));
+        assert!(html_ru.contains("lang: \"ru\","));
+        assert!(!html_ru.contains("window.TR = {}; window.TR_RAW = {};"));
+    }
+
+    #[test]
+    fn outbound_and_subscription_metadata_populate_from_store() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_sky".to_string(),
+            enabled: true,
+            name: "SkyTunnel".to_string(),
+            source_type: "subscription".to_string(),
+            subscription_urls: vec!["https://sub.skytunnel.pw/abc".to_string()],
+            sub_title: "SkyTunnel VIP".to_string(),
+            sub_upload_bytes: 100,
+            sub_download_bytes: 200,
+            sub_total_bytes: 1000,
+            sub_expire_unix: 1_900_000_000,
+            last_updated_unix: 1_800_000_000,
+            hidden: true,
+            cached_nodes: vec![crate::store::ParsedProxyNode {
+                tag: "DE Frankfurt".to_string(),
+                protocol: "vless".to_string(),
+                server: "198.51.100.1".to_string(),
+                server_port: 443,
+                outbound_json: json!({
+                    "type": "vless",
+                    "tag": "DE Frankfurt",
+                    "server": "198.51.100.1",
+                    "server_port": 443,
+                    "tls": { "enabled": true, "reality": { "enabled": true } }
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            outbound_source_refs: vec!["sub_sky".to_string()],
+            ..Default::default()
+        });
+
+        let out_meta = read_pure_rust_outbound_metadata(&store, "Main");
+        assert_eq!(out_meta["source_ids"]["DE Frankfurt"], "sub_sky");
+        assert_eq!(out_meta["source_names"]["DE Frankfurt"], "SkyTunnel");
+        assert_eq!(out_meta["hidden"]["DE Frankfurt"], true);
+        assert_eq!(out_meta["protocols"]["DE Frankfurt"], "vless");
+        assert_eq!(out_meta["securities"]["DE Frankfurt"], "reality");
+        assert_eq!(out_meta["countries"]["DE Frankfurt"], "DE");
+
+        let sub_meta = read_pure_rust_subscription_metadata(&store, "Main");
+        let arr = sub_meta.as_array().expect("subscription metadata array");
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["sourceId"], "sub_sky");
+        assert_eq!(arr[0]["sourceSection"], "Main-subscription-1");
+        assert_eq!(arr[0]["title"], "SkyTunnel VIP");
+        assert_eq!(arr[0]["nodeCount"], 1);
+        assert_eq!(arr[0]["traffic"]["used"], 300);
+        assert_eq!(arr[0]["traffic"]["total"], 1000);
+        assert_eq!(arr[0]["hidden"], true);
+
+        let mut sec_map = Map::new();
+        let tg = crate::store::TgBotConfig {
+            notify_route_alert: false,
+            notify_smart_detect: false,
+            ..Default::default()
+        };
+        assert!(apply_telegram_config_to_sections_map(&mut sec_map, &tg));
+        let tg_sec = sec_map["telegram"]
+            .as_object()
+            .expect("telegram section map");
+        assert_eq!(tg_sec["notify_route_alert"], "0");
+        assert_eq!(tg_sec["notify_smart_detect"], "0");
+        assert_eq!(tg_sec["notify_failover"], "1");
+        assert_eq!(tg_sec["notify_wan"], "1");
+        assert_eq!(tg_sec["notify_update_available"], "1");
+    }
+
+    #[test]
+    fn resolve_latency_targets_handles_proxy_list_section_and_json() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_a".to_string(),
+            source_type: "subscription".to_string(),
+            cached_nodes: vec![
+                crate::store::ParsedProxyNode {
+                    tag: "Node A1".to_string(),
+                    ..Default::default()
+                },
+                crate::store::ParsedProxyNode {
+                    tag: "Node A2".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec!["sub_a".to_string()],
+            ..Default::default()
+        });
+
+        let mut proxies = Map::new();
+        proxies.insert(
+            "sel-Main".to_string(),
+            json!({
+                "type": "Selector",
+                "all": ["bal-Main-b1", "Node A1", "direct"]
+            }),
+        );
+        proxies.insert(
+            "bal-Main-b1".to_string(),
+            json!({
+                "type": "URLTest",
+                "all": ["Node A2", "Node A1"]
+            }),
+        );
+
+        let (tags, eff) = resolve_latency_targets(
+            &store,
+            Some(&proxies),
+            "proxy_list",
+            "Main",
+            "@section:Main",
+        );
+        assert_eq!(eff, "@section:Main");
+        assert!(tags.contains(&"Node A1".to_string()));
+        assert!(tags.contains(&"Node A2".to_string()));
+        assert!(!tags.contains(&"direct".to_string()));
+
+        let (json_tags, _) = resolve_latency_targets(
+            &store,
+            None,
+            "proxy_list",
+            "Main",
+            "[\"Alpha\",\"Beta\",\"Alpha\"]",
+        );
+        assert_eq!(json_tags, vec!["Alpha".to_string(), "Beta".to_string()]);
+    }
+
+    #[test]
+    fn resolve_subscription_cli_target_selects_individual_source() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_one".to_string(),
+            name: "First".to_string(),
+            source_type: "subscription".to_string(),
+            ..Default::default()
+        });
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_two".to_string(),
+            name: "Second".to_string(),
+            source_type: "subscription".to_string(),
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec!["sub_one".to_string(), "sub_two".to_string()],
+            ..Default::default()
+        });
+
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "1"),
+            "sub_one"
+        );
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "2"),
+            "sub_two"
+        );
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "sub_two"),
+            "sub_two"
+        );
+        assert_eq!(resolve_subscription_cli_target(&store, "Main", ""), "Main");
+    }
+
+    #[tokio::test]
+    async fn service_action_async_stop_pauses_watchdog_and_blocks_background_reload() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_svc_stop_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.enable_watchdog = true;
+            d.settings.proxy_mode = "socks".to_string();
+        }
+        let core = CoreManager::new(Arc::clone(&state));
+        let parsed = handle_service_action_async("stop", &state, &core).await;
+        assert_eq!(parsed["success"], true);
+        assert_eq!(parsed["action"], "stop");
+        assert!(core.is_manually_stopped());
+        assert!(!core.is_watchdog_effectively_running().await);
+
+        let d_snap = state.data.read().await.clone();
+        let wjson = handle_watchdog_command("watchdog", &d_snap, &state, &core).await;
+        assert_eq!(wjson["running"], false);
+        assert_eq!(wjson["status"], "stopped");
+
+        // Ensure background sync helper with trigger_reload=false does not clear manual stop.
+        sync_uci_to_rust_store_with_reload(&state, &core, false)
+            .await
+            .expect("sync without reload");
+        assert!(core.is_manually_stopped());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn core_aliases_expose_tachyon_core_and_legacy_sing_box_fields() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_core_alias_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut live = state.live.write().await;
+            live.core_running = true;
+            live.core_pid = Some(4242);
+            live.core_version = "0.5.9".to_string();
+        }
+
+        let ui_state = build_pure_rust_ui_state(&state).await;
+        assert_eq!(ui_state["service"]["tachyon_core"]["running"], 1);
+        assert_eq!(ui_state["service"]["tachyon_core"]["pid"], 4242);
+        assert_eq!(ui_state["service"]["sing_box"]["running"], 1);
+        assert!(
+            ui_state["capabilities"]
+                .get("tachyon_core_installed")
+                .is_some()
+        );
+        assert_eq!(ui_state["capabilities"]["tachyon_core_tailscale"], 1);
+        assert_eq!(ui_state["capabilities"]["tachyon_core_cert_pin"], 1);
+
+        let sys_info = build_pure_rust_system_info(&state).await;
+        assert_eq!(sys_info["tachyon_core_version"], "0.5.9");
+        assert_eq!(sys_info["sing_box_version"], "0.5.9");
+        assert_eq!(
+            sys_info["tachyon_core_repo_url"],
+            "https://github.com/Dushnilin/tachyon-core"
+        );
+        assert_eq!(sys_info["tachyon_core_tailscale"], 1);
+        assert_eq!(sys_info["tachyon_core_cert_pin"], 1);
+
+        let d_snap = state.data.read().await.clone();
+        let live_snap = state.live.read().await.clone();
+        let health = build_core_health_check_payload(&d_snap, &live_snap, false);
+        assert_eq!(health["tachyon_core_version"], "0.5.9");
+        assert_eq!(health["sing_box_version"], "0.5.9");
+        assert_eq!(health["tachyon_core_process_running"], 1);
+        assert_eq!(health["sing_box_process_running"], 1);
+        assert!(health.get("tachyon_core_listen_ports").is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

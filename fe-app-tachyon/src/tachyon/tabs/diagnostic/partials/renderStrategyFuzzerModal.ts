@@ -38,33 +38,6 @@ export interface FuzzerModalOptions {
   ) => void | Promise<void>;
 }
 
-const ENGINE_CATALOG: Array<{
-  value: Tachyon.FuzzerEngine;
-  label: () => string;
-  shortLabel: () => string;
-}> = [
-  {
-    value: 'zapret2',
-    label: () => _('Zapret v2 (nfqws2)'),
-    shortLabel: () => _('Zapret v2'),
-  },
-  {
-    value: 'zapret',
-    label: () => _('Zapret v1 (nfqws)'),
-    shortLabel: () => _('Zapret v1'),
-  },
-  {
-    value: 'byedpi',
-    label: () => _('ByeDPI (ciadpi)'),
-    shortLabel: () => _('ByeDPI'),
-  },
-  {
-    value: 'desync',
-    label: () => _('Native Desync (tachyon-core)'),
-    shortLabel: () => _('Native Desync'),
-  },
-];
-
 function normalizeCustomTargetsInput(
   raw: string,
 ):
@@ -167,33 +140,17 @@ export function renderStrategyFuzzerModal(
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
   let isPolling = false;
   let availableEngines: Record<Tachyon.FuzzerEngine, boolean> = {
-    zapret2:
-      typeof options.availableEngines?.zapret2 === 'boolean'
-        ? options.availableEngines.zapret2
-        : true,
-    zapret:
-      typeof options.availableEngines?.zapret === 'boolean'
-        ? options.availableEngines.zapret
-        : true,
-    byedpi:
-      typeof options.availableEngines?.byedpi === 'boolean'
-        ? options.availableEngines.byedpi
-        : true,
     desync:
       typeof options.availableEngines?.desync === 'boolean'
         ? options.availableEngines.desync
         : true,
   };
-  const getFirstInstalledEngine = (): Tachyon.FuzzerEngine | null =>
-    ENGINE_CATALOG.find((e) => availableEngines[e.value])?.value || null;
+  const isEngineAvailable = (): boolean => Boolean(availableEngines.desync);
 
   // Modal State
   let activeTab: 'benchmark' | 'patterns' | 'custom' | 'ai' | 'history' =
     'benchmark';
-  let selectedEngine: Tachyon.FuzzerEngine =
-    options.initialEngine && availableEngines[options.initialEngine]
-      ? options.initialEngine
-      : getFirstInstalledEngine() || 'desync';
+  const selectedEngine: Tachyon.FuzzerEngine = 'desync';
   const initialCustomList = (options.initialCustomDomains || [])
     .map((d) => String(d || '').trim())
     .filter(Boolean);
@@ -217,35 +174,6 @@ export function renderStrategyFuzzerModal(
 
   // Patterns Config State
   let patternsConfig: Tachyon.FuzzerPatternsConfig = {
-    zapret2: {
-      splits: ['1', '2', '3', 'midsld', 'sniext+4', '1,midsld', '1,sniext+2'],
-      foolings: [
-        'tcp_seq=1000000',
-        'tcp_md5',
-        'tcp_ack=-66000',
-        'tcp_flags_unset=ack',
-        'badsum',
-      ],
-      ttls: [2, 3, 4, 5, 6, 8],
-      seqovls: ['1', '2'],
-      wsizes: ['1'],
-      payloads: ['tls_client_hello', 'http_req', 'quic_initial'],
-    },
-    zapret: {
-      splits: ['1', '2', 'midsld', 'sniext+4', '1,midsld'],
-      foolings: ['badseq', 'md5sig', 'badack', 'datanoack'],
-      ttls: [2, 3, 4, 6, 8],
-      split_modes: ['split2', 'disorder2', 'fake,split2', 'fake,disorder2'],
-    },
-    byedpi: {
-      splits: ['1', '2', '1+sniext', 'midsld'],
-      disorders: ['1', '2'],
-      ttls: [2, 3, 4, 6, 8],
-      oobs: ['1', '2'],
-      autos: ['t,r,a,s', 'r,s', 't,a'],
-      tlsrecs: ['1+sniext'],
-      ipfrags: ['24'],
-    },
     desync: {
       modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
       split_poses: ['midsld', 'sni', 1, 2],
@@ -359,7 +287,7 @@ export function renderStrategyFuzzerModal(
     style: selectStyle,
   });
 
-  const dpiActions = ['zapret2', 'zapret', 'byedpi', 'desync'];
+  const dpiActions = ['desync'];
 
   const getApplicableRules = (engine: Tachyon.FuzzerEngine) => {
     const eligible = normalizedRules.filter((r) => {
@@ -392,7 +320,7 @@ export function renderStrategyFuzzerModal(
       const emptyOpt = E(
         'option',
         { value: '', disabled: true, selected: true },
-        _('No applicable rule sections found for this engine'),
+        _('No applicable rule sections found'),
       );
       ruleSelect.appendChild(emptyOpt);
       selectedRuleSection = '';
@@ -451,68 +379,14 @@ export function renderStrategyFuzzerModal(
     }
   });
 
-  // 1. Engine Select (installed engines only)
-  const engineSelect = E('select', {
-    class: 'cbi-input-select',
-    style: selectStyle,
-  });
-
-  const syncEngineOptions = () => {
-    const installed = ENGINE_CATALOG.filter((e) => availableEngines[e.value]);
-    (engineSelect as HTMLSelectElement).replaceChildren();
-
-    if (installed.length === 0) {
-      const emptyOpt = E(
-        'option',
-        { value: '', disabled: true, selected: true },
-        _('No compatible engines installed'),
-      );
-      engineSelect.appendChild(emptyOpt);
-      (engineSelect as HTMLSelectElement).value = '';
-      if (startBtnRef && !isRunning) {
-        (startBtnRef as HTMLButtonElement).disabled = true;
-      }
-      populateRuleSelect();
-      return;
-    }
-
-    if (!availableEngines[selectedEngine]) {
-      selectedEngine = installed[0].value;
-    }
-
-    installed.forEach((eng) => {
-      const isSelected = eng.value === selectedEngine;
-      engineSelect.appendChild(
-        E(
-          'option',
-          isSelected
-            ? { value: eng.value, selected: true }
-            : { value: eng.value },
-          eng.label(),
-        ),
-      );
-    });
-    (engineSelect as HTMLSelectElement).value = selectedEngine;
+  const syncEngineAvailability = () => {
     if (startBtnRef && !isRunning) {
-      (startBtnRef as HTMLButtonElement).disabled = false;
+      (startBtnRef as HTMLButtonElement).disabled = !isEngineAvailable();
     }
     populateRuleSelect();
   };
 
-  syncEngineOptions();
-
-  engineSelect.addEventListener('change', () => {
-    const nextVal = (engineSelect as HTMLSelectElement).value;
-    if (nextVal && availableEngines[nextVal as Tachyon.FuzzerEngine]) {
-      selectedEngine = nextVal as Tachyon.FuzzerEngine;
-      populateRuleSelect();
-    }
-  });
-
-  const engineGroup = E('div', { style: groupStyle }, [
-    E('label', { style: labelStyle }, _('Packet Desync Engine')),
-    engineSelect,
-  ]);
+  syncEngineAvailability();
 
   // 2. Target Multi-Select Checkboxes (allows selecting multiple suites at once, e.g. YouTube + Discord + CS2)
   const targetSuiteOptions: Array<{ value: string; label: string }> = [
@@ -830,6 +704,7 @@ export function renderStrategyFuzzerModal(
         _('45 min — Deep (Recommended)'),
       ),
       E('option', { value: '3600' }, _('60 min — Exhaustive')),
+      E('option', { value: '0' }, _('Unlimited — Wait for all tests')),
     ],
   );
   timeoutSelect.addEventListener('change', () => {
@@ -848,18 +723,14 @@ export function renderStrategyFuzzerModal(
   const ruleGroup = E(
     'div',
     {
-      style: hideSectionPicker ? `${groupStyle} display: none;` : groupStyle,
+      style: hideSectionPicker
+        ? `${groupStyle} display: none;`
+        : `${groupStyle} grid-column: 1 / -1;`,
     },
     [E('label', { style: labelStyle }, _('Apply Strategy To')), ruleSelect],
   );
 
-  controlsGrid.append(
-    engineGroup,
-    modeGroup,
-    timeoutGroup,
-    ruleGroup,
-    targetGroup,
-  );
+  controlsGrid.append(modeGroup, timeoutGroup, ruleGroup, targetGroup);
 
   // Auto-Apply Toggle
   const autoApplyCheckbox = E('input', {
@@ -1062,18 +933,7 @@ export function renderStrategyFuzzerModal(
             ),
             E(
               'th',
-              {
-                class: 'cbi-section-table-cell',
-                style: 'padding: 8px 6px; width: 10%;',
-              },
-              _('Engine'),
-            ),
-            E(
-              'th',
-              {
-                class: 'cbi-section-table-cell',
-                style: 'padding: 8px 8px; width: 32%;',
-              },
+              { class: 'cbi-section-table-cell', style: 'padding: 8px 10px;' },
               _('Strategy & Parameters'),
             ),
             E(
@@ -1126,7 +986,7 @@ export function renderStrategyFuzzerModal(
           E(
             'td',
             {
-              colSpan: 8,
+              colSpan: 7,
               style: 'padding: 24px; text-align: center; opacity: 0.6;',
             },
             _(
@@ -1165,7 +1025,7 @@ export function renderStrategyFuzzerModal(
     icon: () => renderZapIcon(14),
     text: _('Start Benchmark'),
     classNames: ['cbi-button-action'],
-    disabled: !getFirstInstalledEngine(),
+    disabled: !isEngineAvailable(),
     onClick: () => handleToggleRun(),
   });
   startBtnRef = startBtn;
@@ -1279,144 +1139,6 @@ export function renderStrategyFuzzerModal(
     const cardsToShow: HTMLElement[] = [];
     const patternCardStyle =
       'padding: 12px; background: #121215; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 10px;';
-
-    if (availableEngines.zapret2 && patternsConfig.zapret2) {
-      const z2 = patternsConfig.zapret2;
-      cardsToShow.push(
-        E('div', { style: patternCardStyle }, [
-          E(
-            'div',
-            {
-              style:
-                'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-            },
-            [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
-          ),
-          renderChipGroup(
-            _('Split Positions (pos)'),
-            z2.splits,
-            (v) => z2.splits.push(v),
-            (i) => z2.splits.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Fooling Methods (fooling)'),
-            z2.foolings,
-            (v) => z2.foolings.push(v),
-            (i) => z2.foolings.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('TTL Values (ttl)'),
-            z2.ttls,
-            (v) => z2.ttls.push(Number(v) || 4),
-            (i) => z2.ttls.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Sequence Overlaps (seqovl)'),
-            z2.seqovls,
-            (v) => z2.seqovls.push(v),
-            (i) => z2.seqovls.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('TCP Window Sizes (wsize)'),
-            z2.wsizes,
-            (v) => z2.wsizes.push(v),
-            (i) => z2.wsizes.splice(i, 1),
-          ),
-        ]),
-      );
-    }
-
-    if (availableEngines.zapret && patternsConfig.zapret) {
-      const z1 = patternsConfig.zapret;
-      cardsToShow.push(
-        E('div', { style: patternCardStyle }, [
-          E(
-            'div',
-            {
-              style:
-                'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-            },
-            [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
-          ),
-          renderChipGroup(
-            _('Split Modes (dpi-desync)'),
-            z1.split_modes,
-            (v) => z1.split_modes.push(v),
-            (i) => z1.split_modes.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Split Positions (dpi-desync-split-pos)'),
-            z1.splits,
-            (v) => z1.splits.push(v),
-            (i) => z1.splits.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Fooling Methods (dpi-desync-fooling)'),
-            z1.foolings,
-            (v) => z1.foolings.push(v),
-            (i) => z1.foolings.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('TTL Values (dpi-desync-ttl)'),
-            z1.ttls,
-            (v) => z1.ttls.push(Number(v) || 4),
-            (i) => z1.ttls.splice(i, 1),
-          ),
-        ]),
-      );
-    }
-
-    if (availableEngines.byedpi && patternsConfig.byedpi) {
-      const bd = patternsConfig.byedpi;
-      cardsToShow.push(
-        E('div', { style: patternCardStyle }, [
-          E(
-            'div',
-            {
-              style:
-                'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-            },
-            [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
-          ),
-          renderChipGroup(
-            _('Split Values (-s)'),
-            bd.splits,
-            (v) => bd.splits.push(v),
-            (i) => bd.splits.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Disorder Values (-d)'),
-            bd.disorders,
-            (v) => bd.disorders.push(v),
-            (i) => bd.disorders.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('OOB Values (-o)'),
-            bd.oobs,
-            (v) => bd.oobs.push(v),
-            (i) => bd.oobs.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('Auto Modes (--auto)'),
-            bd.autos,
-            (v) => bd.autos.push(v),
-            (i) => bd.autos.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('TLS-Rec Bounds (--tlsrec)'),
-            bd.tlsrecs,
-            (v) => bd.tlsrecs.push(v),
-            (i) => bd.tlsrecs.splice(i, 1),
-          ),
-          renderChipGroup(
-            _('IP Frag Bounds (--ip-frag)'),
-            bd.ipfrags,
-            (v) => bd.ipfrags.push(v),
-            (i) => bd.ipfrags.splice(i, 1),
-          ),
-        ]),
-      );
-    }
 
     if (availableEngines.desync) {
       if (!patternsConfig.desync) {
@@ -1533,7 +1255,7 @@ export function renderStrategyFuzzerModal(
             style:
               'padding: 20px; text-align: center; opacity: 0.7; font-size: 12px;',
           },
-          _('No compatible engines installed'),
+          _('tachyon-core binary is not installed on the router'),
         ),
       );
       return;
@@ -1549,9 +1271,7 @@ export function renderStrategyFuzzerModal(
   const renderCustomTab = () => {
     tabContentCustom.replaceChildren();
 
-    const installedEngines = ENGINE_CATALOG.filter(
-      (eng) => availableEngines[eng.value],
-    );
+    const coreInstalled = isEngineAvailable();
 
     const nameInput = E('input', {
       type: 'text',
@@ -1559,25 +1279,6 @@ export function renderStrategyFuzzerModal(
       placeholder: _('Strategy Name'),
       style: 'flex: 1 1 180px; min-width: 140px;',
     });
-    const engineSel = E(
-      'select',
-      {
-        class: 'cbi-input-select',
-        style: 'flex: 0 1 180px; min-width: 140px;',
-        disabled: installedEngines.length === 0 || undefined,
-      },
-      installedEngines.length > 0
-        ? installedEngines.map((eng) =>
-            E('option', { value: eng.value }, eng.shortLabel()),
-          )
-        : [
-            E(
-              'option',
-              { value: '', disabled: true, selected: true },
-              _('No compatible engines installed'),
-            ),
-          ],
-    );
     const argsInput = E('input', {
       type: 'text',
       class: 'cbi-input-text',
@@ -1588,14 +1289,15 @@ export function renderStrategyFuzzerModal(
     const addBtn = renderButton({
       text: _('+ Add Strategy'),
       classNames: ['cbi-button-action'],
-      disabled: installedEngines.length === 0,
+      disabled: !coreInstalled,
       onClick: async () => {
         const name = (nameInput as HTMLInputElement).value.trim();
-        const eng = (engineSel as HTMLSelectElement)
-          .value as Tachyon.FuzzerEngine;
         const args = (argsInput as HTMLInputElement).value.trim();
-        if (!eng || !availableEngines[eng]) {
-          showToast(_('No compatible engines installed'), 'error');
+        if (!coreInstalled) {
+          showToast(
+            _('tachyon-core binary is not installed on the router'),
+            'error',
+          );
           return;
         }
         if (!name || !args) {
@@ -1608,7 +1310,7 @@ export function renderStrategyFuzzerModal(
         patternsConfig.custom_strategies.push({
           id: `custom_${Date.now()}`,
           name,
-          engine: eng,
+          engine: selectedEngine,
           args,
           description: _('User custom strategy'),
         });
@@ -1631,7 +1333,7 @@ export function renderStrategyFuzzerModal(
         E(
           'div',
           { style: 'font-size: 12px; font-weight: 600;' },
-          _('Add Custom Desync Profile'),
+          _('Add Custom Strategy'),
         ),
         E(
           'div',
@@ -1639,7 +1341,7 @@ export function renderStrategyFuzzerModal(
             style:
               'display: flex; gap: 8px; flex-wrap: wrap; align-items: center;',
           },
-          [nameInput, engineSel, argsInput, addBtn],
+          [nameInput, argsInput, addBtn],
         ),
       ],
     );
@@ -1663,7 +1365,6 @@ export function renderStrategyFuzzerModal(
             E('thead', {}, [
               E('tr', {}, [
                 E('th', { style: 'padding: 8px;' }, _('Name')),
-                E('th', { style: 'padding: 8px; width: 90px;' }, _('Engine')),
                 E('th', { style: 'padding: 8px;' }, _('Arguments')),
                 E(
                   'th',
@@ -1685,7 +1386,7 @@ export function renderStrategyFuzzerModal(
                       E(
                         'td',
                         {
-                          colSpan: 4,
+                          colSpan: 3,
                           style:
                             'padding: 20px; text-align: center; opacity: 0.6;',
                         },
@@ -1699,14 +1400,6 @@ export function renderStrategyFuzzerModal(
                         'td',
                         { style: 'padding: 8px; font-weight: 600;' },
                         cs.name,
-                      ),
-                      E(
-                        'td',
-                        {
-                          style:
-                            'padding: 8px; font-family: monospace; font-size: 11px;',
-                        },
-                        cs.engine,
                       ),
                       E(
                         'td',
@@ -1819,10 +1512,7 @@ export function renderStrategyFuzzerModal(
           E(
             'span',
             { style: 'display: inline-flex; align-items: center; gap: 6px;' },
-            [
-              renderBrainIcon(16),
-              E('span', {}, _('AI Network Engineer & Desync Synthesizer')),
-            ],
+            [renderBrainIcon(16), E('span', {}, _('AI Strategy Synthesizer'))],
           ),
           E(
             'span',
@@ -1918,59 +1608,46 @@ export function renderStrategyFuzzerModal(
               'width: 100%; margin: 0; font-size: 12px; table-layout: fixed; word-break: break-word;',
           },
           [
-            E(
-              'thead',
-              {
-                class: 'cbi-section-table-titles',
-                style:
-                  'background: #16161a; border-bottom: 1px solid rgba(255, 255, 255, 0.08);',
-              },
-              [
-                E('tr', { class: 'cbi-section-table-titles' }, [
-                  E(
-                    'th',
-                    { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
-                    _('Date'),
-                  ),
-                  E(
-                    'th',
-                    { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
-                    _('Engine'),
-                  ),
-                  E(
-                    'th',
-                    { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
-                    _('Target'),
-                  ),
-                  E(
-                    'th',
-                    { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
-                    _('Route Verdict'),
-                  ),
-                  E(
-                    'th',
-                    { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
-                    _('Best Strategy'),
-                  ),
-                  E(
-                    'th',
-                    {
-                      class: 'cbi-section-table-cell',
-                      style: 'padding: 8px; width: 60px;',
-                    },
-                    _('Score'),
-                  ),
-                  E(
-                    'th',
-                    {
-                      class: 'cbi-section-table-cell',
-                      style: 'padding: 8px; width: 70px;',
-                    },
-                    _('Working'),
-                  ),
-                ]),
-              ],
-            ),
+            E('thead', { class: 'cbi-section-table-titles' }, [
+              E('tr', { class: 'cbi-section-table-titles' }, [
+                E(
+                  'th',
+                  { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
+                  _('Date'),
+                ),
+                E(
+                  'th',
+                  { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
+                  _('Target'),
+                ),
+                E(
+                  'th',
+                  { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
+                  _('DPI Type'),
+                ),
+                E(
+                  'th',
+                  { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
+                  _('Best Strategy'),
+                ),
+                E(
+                  'th',
+                  {
+                    class: 'cbi-section-table-cell',
+                    style: 'padding: 8px; width: 60px;',
+                  },
+                  _('Score'),
+                ),
+                E(
+                  'th',
+                  {
+                    class: 'cbi-section-table-cell',
+                    style: 'padding: 8px; width: 70px;',
+                  },
+                  _('Working'),
+                ),
+              ]),
+            ]),
             E(
               'tbody',
               {},
@@ -1993,14 +1670,6 @@ export function renderStrategyFuzzerModal(
                     'td',
                     { class: 'cbi-section-table-cell', style: 'padding: 8px;' },
                     dateStr,
-                  ),
-                  E(
-                    'td',
-                    {
-                      class: 'cbi-section-table-cell',
-                      style: 'padding: 8px; font-family: monospace;',
-                    },
-                    entry.engine,
                   ),
                   E(
                     'td',
@@ -2090,7 +1759,7 @@ export function renderStrategyFuzzerModal(
           E(
             'td',
             {
-              colSpan: 8,
+              colSpan: 7,
               style: 'padding: 24px; text-align: center; opacity: 0.75;',
             },
             emptyMsg,
@@ -2302,15 +1971,6 @@ export function renderStrategyFuzzerModal(
             'td',
             { class: 'cbi-section-table-cell', style: 'padding: 8px 10px;' },
             String(idx + 1),
-          ),
-          E(
-            'td',
-            {
-              class: 'cbi-section-table-cell',
-              style:
-                'padding: 8px 10px; font-family: monospace; font-size: 11px;',
-            },
-            item.engine,
           ),
           E(
             'td',
@@ -2750,22 +2410,13 @@ export function renderStrategyFuzzerModal(
       ],
     );
 
-    const headerRight =
-      detection.recommended_engines.length > 0
-        ? E(
-            'div',
-            { style: 'font-size: 11px; opacity: 0.8;' },
-            `${_('Recommended')}: ${detection.recommended_engines.join(', ')}`,
-          )
-        : null;
-
     const topRow = E(
       'div',
       {
         style:
           'display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 6px;',
       },
-      headerRight ? [headerLeft, headerRight] : [headerLeft],
+      [headerLeft],
     );
 
     const detailsEl = E(
@@ -2790,7 +2441,7 @@ export function renderStrategyFuzzerModal(
             'span',
             {},
             _(
-              'IP-level TCP SYN timeout detected. Packet desynchronization cannot establish a session without L3 reachability — assign this service to a proxy/tunnel outbound.',
+              'IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization (Native Desync) cannot traverse an IP-level limit — configure proxy/VPN routing for this domain.',
             ),
           ),
         ],
@@ -2820,8 +2471,11 @@ export function renderStrategyFuzzerModal(
       return;
     }
 
-    if (!selectedEngine || !availableEngines[selectedEngine]) {
-      showToast(_('No compatible engines installed'), 'error');
+    if (!isEngineAvailable()) {
+      showToast(
+        _('tachyon-core binary is not installed on the router'),
+        'error',
+      );
       return;
     }
 
@@ -2879,7 +2533,7 @@ export function renderStrategyFuzzerModal(
           E(
             'td',
             {
-              colSpan: 8,
+              colSpan: 7,
               style: 'padding: 24px; text-align: center; opacity: 0.85;',
             },
             [
@@ -2947,8 +2601,11 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleAiSynthesize = async () => {
-    if (!selectedEngine || !availableEngines[selectedEngine]) {
-      showToast(_('No compatible engines installed'), 'error');
+    if (!isEngineAvailable()) {
+      showToast(
+        _('tachyon-core binary is not installed on the router'),
+        'error',
+      );
       return;
     }
     if (selectedTargetSet.has('custom')) {
@@ -3129,12 +2786,9 @@ export function renderStrategyFuzzerModal(
       if (res.success && res.data?.available_engines) {
         const av = res.data.available_engines;
         availableEngines = {
-          zapret2: Boolean(av.zapret2),
-          zapret: Boolean(av.zapret),
-          byedpi: Boolean(av.byedpi),
-          desync: Boolean(av.desync),
+          desync: Boolean(av.desync ?? true),
         };
-        syncEngineOptions();
+        syncEngineAvailability();
         if (activeTab === 'patterns') renderPatternsTab();
         if (activeTab === 'custom') renderCustomTab();
       }

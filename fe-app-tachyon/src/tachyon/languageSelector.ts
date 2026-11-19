@@ -47,19 +47,35 @@ export function detectActiveLanguageCode(
         : {}
   ) as { L?: { env?: { lang?: string } } };
   const globalL = globalObj.L;
-  const envLang =
+  const rawEnvLang =
     typeof globalL?.env?.lang === 'string'
       ? globalL.env.lang.trim().toLowerCase()
       : '';
-  const luciLang = (capabilities?.luciLang || envLang || '')
-    .trim()
-    .toLowerCase();
+  const envLang = rawEnvLang && rawEnvLang !== 'auto' ? rawEnvLang : '';
+  const rawDocLang =
+    typeof document !== 'undefined' &&
+    typeof document.documentElement?.lang === 'string'
+      ? document.documentElement.lang.trim().toLowerCase()
+      : '';
+  const docLang = rawDocLang && rawDocLang !== 'auto' ? rawDocLang : '';
+  const rawCapLang = (capabilities?.luciLang || '').trim().toLowerCase();
+  const capLang = rawCapLang && rawCapLang !== 'auto' ? rawCapLang : '';
+  const luciLang = capLang || envLang || docLang;
   const ruInstalled = capabilities?.i18nRuInstalled !== false;
 
-  if (luciLang === 'en') {
+  if (
+    luciLang === 'en' ||
+    luciLang.startsWith('en-') ||
+    luciLang.startsWith('en_')
+  ) {
     return 'en';
   }
-  if (luciLang === 'ru' && ruInstalled) {
+  if (
+    (luciLang === 'ru' ||
+      luciLang.startsWith('ru-') ||
+      luciLang.startsWith('ru_')) &&
+    ruInstalled
+  ) {
     return 'ru';
   }
 
@@ -98,6 +114,13 @@ export function mountLanguageSelector(
   }
 
   let wrapper = mapHeader.querySelector<HTMLElement>('.tachyon-lang-selector');
+  if (
+    wrapper &&
+    (wrapper.classList.contains('is-open') ||
+      Boolean(wrapper.querySelector('.tachyon-lang-btn.is-loading')))
+  ) {
+    return;
+  }
   if (!wrapper) {
     wrapper = document.createElement('div');
     wrapper.className = 'tachyon-lang-selector';
@@ -108,7 +131,7 @@ export function mountLanguageSelector(
   const activeOption =
     TACHYON_LANGUAGES.find((item) => item.code === activeCode) ||
     TACHYON_LANGUAGES[0];
-  const ruInstalled = Boolean(capabilities?.i18nRuInstalled);
+  const ruInstalled = capabilities?.i18nRuInstalled !== false;
 
   wrapper.innerHTML = `
     <button type="button" class="tachyon-lang-btn" title="${_('Change interface language')}" aria-haspopup="listbox" aria-expanded="false">
@@ -157,6 +180,7 @@ export function mountLanguageSelector(
   };
 
   btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
     ev.stopPropagation();
     const willOpen = menu.hidden;
     menu.hidden = !willOpen;
@@ -168,6 +192,7 @@ export function mountLanguageSelector(
     .querySelectorAll<HTMLButtonElement>('.tachyon-lang-option')
     .forEach((optBtn) => {
       optBtn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
         ev.stopPropagation();
         const targetLang = optBtn.getAttribute('data-lang') || 'en';
         const targetOption = TACHYON_LANGUAGES.find(

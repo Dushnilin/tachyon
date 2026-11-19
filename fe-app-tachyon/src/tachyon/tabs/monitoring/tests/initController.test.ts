@@ -68,9 +68,9 @@ describe('monitoring initController', () => {
         enabled: '1',
       } as any,
       {
-        '.name': 'zapret',
+        '.name': 'desync',
         '.type': 'section',
-        label: 'Zapret YouTube',
+        label: 'Desync YouTube',
         enabled: '1',
       } as any,
     ]);
@@ -82,18 +82,18 @@ describe('monitoring initController', () => {
 
     // Section root tags
     expect(getRouteDisplayNameByTag('vpn-out')).toBe('My VPN');
-    expect(getRouteDisplayNameByTag('zapret-out')).toBe('Zapret YouTube');
+    expect(getRouteDisplayNameByTag('desync-out')).toBe('Desync YouTube');
 
     // Section sub-outbounds (numeric, named, priority, json)
     expect(getRouteDisplayNameByTag('vpn-1-out')).toBe('My VPN');
     expect(getRouteDisplayNameByTag('vpn-priority-1-out')).toBe('My VPN');
     expect(getRouteDisplayNameByTag('vpn-json-1-out')).toBe('My VPN');
     expect(getRouteDisplayNameByTag('vpn-interface-1-out')).toBe('My VPN');
-    expect(getRouteDisplayNameByTag('zapret-1-out')).toBe('Zapret YouTube');
+    expect(getRouteDisplayNameByTag('desync-1-out')).toBe('Desync YouTube');
 
     // Direct section name matching
     expect(getRouteDisplayNameByTag('vpn')).toBe('My VPN');
-    expect(getRouteDisplayNameByTag('zapret')).toBe('Zapret YouTube');
+    expect(getRouteDisplayNameByTag('desync')).toBe('Desync YouTube');
 
     // Unknown tag returns empty string
     expect(getRouteDisplayNameByTag('unknown-out')).toBe('');
@@ -112,20 +112,20 @@ describe('monitoring initController', () => {
       getRoute({
         id: '2',
         metadata: {},
-        chains: ['tproxy-in', 'zapret-out'],
+        chains: ['tproxy-in', 'desync-out'],
         lastSeenAt: Date.now(),
       } as any),
-    ).toBe('Zapret YouTube');
+    ).toBe('Desync YouTube');
 
     expect(
       getRoute({
         id: '3',
         metadata: {},
         chains: [],
-        rule: 'rule-1 => route("zapret-out")',
+        rule: 'rule-1 => route("desync-out")',
         lastSeenAt: Date.now(),
       } as any),
-    ).toBe('Zapret YouTube');
+    ).toBe('Desync YouTube');
 
     expect(
       getRoute({
@@ -172,30 +172,30 @@ describe('monitoring initController', () => {
         enabled: '1',
       } as any,
       {
-        '.name': 'zapret_yt',
+        '.name': 'desync_yt',
         '.type': 'section',
-        label: 'Zapret YouTube',
-        action: 'zapret2',
+        label: 'Desync YouTube',
+        action: 'desync',
         enabled: '1',
       } as any,
       {
         '.name': 'media_dpi',
         '.type': 'section',
-        label: 'Zapret2 (Direct DPI Bypass)',
-        action: 'zapret2',
+        label: 'Core Desync (Direct)',
+        action: 'desync',
         enabled: '1',
       } as any,
     ]);
 
     const sections = getRouteSections();
     expect(sections.map((s) => s.displayName)).toEqual([
-      'Zapret YouTube',
-      'Zapret2 (Direct DPI Bypass)',
+      'Desync YouTube',
+      'Core Desync (Direct)',
       'My VPN',
     ]);
   });
 
-  it('should retain DPI bypass sections including Zapret2 (Direct DPI Bypass) in routes filter', async () => {
+  it('should retain packet desync sections including Core Desync (Direct) in routes filter', async () => {
     const { buildRouteDisplayNames, getRouteSections } = await import(
       '../filters'
     );
@@ -203,8 +203,8 @@ describe('monitoring initController', () => {
       {
         '.name': 'media_dpi',
         '.type': 'section',
-        label: 'Zapret2 (Direct DPI Bypass)',
-        action: 'zapret2',
+        label: 'Core Desync (Direct)',
+        action: 'desync',
         enabled: '1',
       } as any,
       {
@@ -247,7 +247,7 @@ describe('monitoring initController', () => {
       return lower !== '-' && !lower.includes('failover');
     });
 
-    expect(routes).toContain('Zapret2 (Direct DPI Bypass)');
+    expect(routes).toContain('Core Desync (Direct)');
     expect(routes).not.toContain('block');
     expect(routes).not.toContain('ByPass');
     expect(routes).not.toContain('YandexDns');

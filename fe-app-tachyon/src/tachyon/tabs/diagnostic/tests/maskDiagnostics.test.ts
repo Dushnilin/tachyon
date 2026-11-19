@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatMaskedSingBoxConfig,
+  formatMaskedCoreConfig,
+  maskCoreConfigValue,
   maskGlobalCheckText,
   maskLogText,
-  maskSingBoxConfigValue,
 } from '../helpers/maskDiagnostics';
 
 describe('diagnostic masking', () => {
-  it('masks sensitive sing-box keys without mutating the original config', () => {
+  it('masks sensitive core config keys without mutating the original config', () => {
     const config = {
       outbounds: [
         {
@@ -32,7 +32,7 @@ describe('diagnostic masking', () => {
       },
     };
 
-    expect(maskSingBoxConfigValue(config)).toEqual({
+    expect(maskCoreConfigValue(config)).toEqual({
       outbounds: [
         {
           type: 'vless',
@@ -58,8 +58,8 @@ describe('diagnostic masking', () => {
     expect(config.outbounds[0].server).toBe('1.2.3.4');
   });
 
-  it('formats masked sing-box config from a raw JSON string', () => {
-    const masked = formatMaskedSingBoxConfig(
+  it('formats masked core config from a raw JSON string', () => {
+    const masked = formatMaskedCoreConfig(
       `{
         "inbounds": [
           {
@@ -133,12 +133,12 @@ describe('diagnostic masking', () => {
 
   it('redacts hosts and URLs from syslog lines while keeping paths and versions readable', () => {
     const raw = [
-      'Mon Sep 28 23:47:07 2026 daemon.err sing-box[405]: [ERROR] dns: exchange failed for openwrt.org. IN A: use of closed network connection',
+      'Mon Sep 28 23:47:07 2026 daemon.err tachyon-core[405]: [ERROR] dns: exchange failed for openwrt.org. IN A: use of closed network connection',
       'tachyon: [debug] Adding 78 elements to nft set tachyon_rule_MAIN_subnets',
       'outbound/vless[SP node] dial tcp l3.itxtech.surf:2083: i/o timeout',
       'subscription updated from https://s.fserv.digital/secret-token?hwid=abc',
-      'tachyon: [info] sing-box 1.14.2-lx.8 started at 10:00:27',
-      'reload /usr/lib/tachyon/service/watchdog.uc from /etc/sing-box/config.json',
+      'tachyon: [info] tachyon-core 0.2.4 started at 10:00:27',
+      'reload /usr/lib/tachyon/service/watchdog.uc from /etc/tachyon-core/config.json',
       '',
     ].join('\n');
 
@@ -154,10 +154,10 @@ describe('diagnostic masking', () => {
     expect(masked).toContain(
       'Adding 78 elements to nft set tachyon_rule_MAIN_subnets',
     );
-    expect(masked).toContain('sing-box 1.14.2-lx.8 started at 10:00:27');
-    expect(masked).toContain('daemon.err sing-box[405]');
+    expect(masked).toContain('tachyon-core 0.2.4 started at 10:00:27');
+    expect(masked).toContain('daemon.err tachyon-core[405]');
     expect(masked).toContain('/usr/lib/tachyon/service/watchdog.uc');
-    expect(masked).toContain('/etc/sing-box/config.json');
+    expect(masked).toContain('/etc/tachyon-core/config.json');
   });
 
   it('masks Amnezia and WireGuard configs and private keys in bug reports', () => {
@@ -177,7 +177,7 @@ describe('diagnostic masking', () => {
     expect(masked).toContain("option amnezia_config '*******'");
 
     const logWithKey =
-      'daemon.info sing-box[123]: Interface generated PrivateKey = dGhpc2lzYXNlY3JldGtleQ==';
+      'daemon.info tachyon-core[123]: Interface generated PrivateKey = dGhpc2lzYXNlY3JldGtleQ==';
     const maskedLog = maskLogText(logWithKey);
     expect(maskedLog).not.toContain('dGhpc2lzYXNlY3JldGtleQ==');
     expect(maskedLog).toContain('PrivateKey = *******');
@@ -208,7 +208,7 @@ describe('diagnostic masking', () => {
     const raw = [
       'hosts: example.com, next example.net',
       'url https://example.org/path and /example.net/path',
-      'daemon.err sing-box[1]: host openwrt.org',
+      'daemon.err tachyon-core[1]: host openwrt.org',
       'embedded x_example.com should remain unchanged',
     ].join('\n');
 
@@ -216,7 +216,7 @@ describe('diagnostic masking', () => {
 
     expect(masked).toContain('hosts: *******, next *******');
     expect(masked).toContain('url ******* and /example.net/path');
-    expect(masked).toContain('daemon.err sing-box[1]: host *******');
+    expect(masked).toContain('daemon.err tachyon-core[1]: host *******');
     expect(masked).toContain('x_example.com');
     expect(masked).not.toContain('example.org');
     expect(masked).not.toContain('openwrt.org');

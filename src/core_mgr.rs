@@ -1,14 +1,18 @@
 //! `tachyon-core` process lifecycle manager, Clash API & `/tachyon/*` client,
 //! Autonomous Watchdog + Reconciler loop, subscription fetcher, and parallel RTT prober.
 
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
-use base64::engine::general_purpose::{STANDARD as B64_STD, URL_SAFE_NO_PAD as B64_URL};
+use base64::engine::general_purpose::{
+    STANDARD as B64_STD, STANDARD_NO_PAD as B64_STD_NO_PAD, URL_SAFE as B64_URL_PAD,
+    URL_SAFE_NO_PAD as B64_URL,
+};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -20,8 +24,8 @@ use crate::config_gen;
 use crate::crypto_gen;
 use crate::net_stack;
 use crate::store::{
-    AppState, MAX_NODE_LATENCIES, MAX_THROUGHPUT_POINTS, ParsedProxyNode, ThroughputSample,
-    unix_now_secs,
+    AppState, MAX_NODE_LATENCIES, MAX_THROUGHPUT_POINTS, ParsedProxyNode, PortableAtomicU64,
+    ThroughputSample, unix_now_secs,
 };
 use crate::sys_info;
 use crate::transaction;
@@ -63,7 +67,10 @@ pub struct CoreManager {
     pub state: Arc<AppState>,
     proc: Mutex<Option<(Child, Instant)>>,
     reload_lock: Mutex<()>,
+    sub_refresh_lock: Mutex<()>,
     prev_totals: Mutex<Option<TrafficSampleBaseline>>,
+    intentional_stop: AtomicBool,
+    last_ipv6_resync_ts: PortableAtomicU64,
 }
 
 impl CoreManager {
@@ -72,8 +79,58 @@ impl CoreManager {
             state,
             proc: Mutex::new(None),
             reload_lock: Mutex::new(()),
+            sub_refresh_lock: Mutex::new(()),
             prev_totals: Mutex::new(None),
+            intentional_stop: AtomicBool::new(false),
+            last_ipv6_resync_ts: PortableAtomicU64::new(0),
         })
+    }
+
+    pub fn manual_stop_marker_path(&self) -> PathBuf {
+        Self::manual_stop_marker_path_for(&self.state)
+    }
+
+    pub fn manual_stop_marker_path_for(state: &AppState) -> PathBuf {
+        #[cfg(test)]
+        {
+            state.path.with_file_name(".manual_stop")
+        }
+        #[cfg(not(test))]
+        {
+            let _ = state;
+            crate::store::runtime_state_dir().join("manual_stop")
+        }
+    }
+
+    pub fn is_manual_stop_active(state: &AppState) -> bool {
+        Self::manual_stop_marker_path_for(state).exists()
+    }
+
+    pub fn set_manual_stop(&self, stopped: bool) {
+        self.intentional_stop.store(stopped, Ordering::SeqCst);
+        let marker = self.manual_stop_marker_path();
+        if stopped {
+            if let Some(parent) = marker.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&marker, b"1\n");
+        } else {
+            let _ = std::fs::remove_file(&marker);
+        }
+    }
+
+    pub fn is_manually_stopped(&self) -> bool {
+        let marker_exists = self.manual_stop_marker_path().exists();
+        if marker_exists {
+            self.intentional_stop.store(true, Ordering::SeqCst);
+            return true;
+        }
+        false
+    }
+
+    pub async fn is_watchdog_effectively_running(&self) -> bool {
+        let enabled = { self.state.data.read().await.settings.enable_watchdog };
+        enabled && !self.is_manually_stopped()
     }
 
     async fn run_command_output_with_timeout(
@@ -125,6 +182,204 @@ impl CoreManager {
         configured
     }
 
+    pub fn normalize_unknown_field_reason(reason: &str) -> String {
+        let mut out = reason.replace(": unknown field ", ": json: unknown field ");
+        while out.contains(": json: json: unknown field ") {
+            out = out.replace(": json: json: unknown field ", ": json: unknown field ");
+        }
+        for section in ["log", "ntp", "route", "dns"] {
+            let needle = format!("{section}: ");
+            let mut rebuilt = String::with_capacity(out.len());
+            let mut rest = out.as_str();
+            while let Some(pos) = rest.find(&needle) {
+                let is_boundary = pos == 0 || rest[..pos].ends_with(": ");
+                rebuilt.push_str(&rest[..pos]);
+                let after = &rest[pos + needle.len()..];
+                if is_boundary && let Some(uk_pos) = after.find(": json: unknown field ") {
+                    let field_part = &after[..uk_pos];
+                    if !field_part.is_empty()
+                        && field_part
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+                    {
+                        rebuilt.push_str(section);
+                        rebuilt.push('.');
+                        rebuilt.push_str(field_part);
+                        rebuilt.push_str(": json: unknown field ");
+                        rest = &after[uk_pos + ": json: unknown field ".len()..];
+                        continue;
+                    }
+                }
+                rebuilt.push_str(&needle);
+                rest = after;
+            }
+            rebuilt.push_str(rest);
+            out = rebuilt;
+        }
+        out
+    }
+
+    pub fn bytes_have_valid_trs_magic(bytes: &[u8]) -> bool {
+        bytes.len() >= 16
+            && (bytes.starts_with(b"TRS")
+                || bytes.starts_with(b"TSRS")
+                || bytes.starts_with(b"TCRS"))
+    }
+
+    pub fn file_has_valid_trs_magic(path: &Path) -> bool {
+        let Ok(mut f) = std::fs::File::open(path) else {
+            return false;
+        };
+        let Ok(meta) = f.metadata() else {
+            return false;
+        };
+        if meta.len() < 16 {
+            return false;
+        }
+        use std::io::Read as _;
+        let mut hdr = [0u8; 4];
+        if f.read_exact(&mut hdr).is_err() {
+            return false;
+        }
+        hdr.starts_with(b"TRS") || hdr == *b"TSRS" || hdr == *b"TCRS"
+    }
+
+    pub fn sanitize_candidate_local_rulesets(candidate_cfg: &mut Value) {
+        let tmp_rs_dir = std::env::temp_dir().join("tachyon-rulesets");
+        let persistent_dir = std::env::var("TACHYON_PERSISTENT_RULESETS_DIR")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/etc/tachyon/rulesets"));
+
+        let Some(rule_sets) = candidate_cfg
+            .pointer_mut("/route/rule_set")
+            .and_then(Value::as_array_mut)
+        else {
+            return;
+        };
+        for rs in rule_sets {
+            let Some(obj) = rs.as_object_mut() else {
+                continue;
+            };
+            if obj.get("type").and_then(Value::as_str) != Some("local") {
+                continue;
+            }
+            let Some(rs_path_str) = obj.get("path").and_then(Value::as_str).map(str::to_string)
+            else {
+                continue;
+            };
+            if !rs_path_str.ends_with(".trs") {
+                continue;
+            }
+            let rs_path = Path::new(&rs_path_str);
+            if Self::file_has_valid_trs_magic(rs_path) {
+                continue;
+            }
+            let fname = rs_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("ruleset.trs");
+            let etc_file = persistent_dir.join(fname);
+            if Self::file_has_valid_trs_magic(&etc_file)
+                && let Ok(bytes) = std::fs::read(&etc_file)
+            {
+                if let Some(parent) = rs_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if std::fs::write(rs_path, &bytes).is_ok() {
+                    continue;
+                }
+            }
+            // Never write an SRS stub to a .trs path: remove corrupt file and switch
+            // the candidate check entry to an empty JSON source rule-set.
+            let _ = std::fs::remove_file(rs_path);
+            let _ = std::fs::create_dir_all(&tmp_rs_dir);
+            let empty_name = fname.strip_suffix(".trs").unwrap_or(fname);
+            let fallback_json = tmp_rs_dir.join(format!("{empty_name}.empty.json"));
+            let _ = std::fs::write(&fallback_json, br#"{"version":3,"rules":[]}"#);
+            obj.insert("format".into(), json!("source"));
+            obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
+        }
+    }
+
+    pub fn effective_core_config_path_for(
+        state: &AppState,
+        settings: &crate::store::GlobalSettings,
+    ) -> PathBuf {
+        let state_dir = state.path.parent().unwrap_or_else(|| Path::new("data"));
+        let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
+            && Path::new("/etc/init.d/tachyon").exists();
+        if is_tmp_staging {
+            return state_dir.join("tachyon-core-config.json");
+        }
+        let configured = settings.core_config_path.trim();
+        if configured.is_empty() {
+            PathBuf::from("/etc/tachyon-core/config.json")
+        } else {
+            PathBuf::from(configured)
+        }
+    }
+
+    pub fn core_config_ipv6_matches(
+        cfg_path: &Path,
+        store_snapshot: &crate::store::RouterStoreData,
+        ipv6_state: crate::store::EffectiveIpv6State,
+    ) -> bool {
+        let Ok(raw) = std::fs::read_to_string(cfg_path) else {
+            return true;
+        };
+        let Ok(runtime) = serde_json::from_str::<Value>(&raw) else {
+            return true;
+        };
+        let Some(dns_servers) = runtime.pointer("/dns/servers").and_then(Value::as_array) else {
+            return true;
+        };
+        let want_fakeip6 = ipv6_state.is_active() && store_snapshot.settings.fakeip_enabled;
+        for srv in dns_servers {
+            if srv.get("type").and_then(Value::as_str) == Some("fakeip") {
+                let has_fakeip6 = srv
+                    .get("inet6_range")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty());
+                if has_fakeip6 != want_fakeip6 {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn strip_optional_unknown_fields(cfg_val: &mut Value, reason: &str) -> bool {
+        let norm = Self::normalize_unknown_field_reason(reason);
+        let mut changed = false;
+        for field in ["tcp_profile", "tcp_fragment"] {
+            if norm.contains(&format!("json: unknown field \"{field}\""))
+                || norm.contains(&format!("unknown field `{field}`"))
+            {
+                if let Some(obs) = cfg_val.get_mut("outbounds").and_then(Value::as_array_mut) {
+                    for ob in obs {
+                        if let Some(map) = ob.as_object_mut()
+                            && map.remove(field).is_some()
+                        {
+                            changed = true;
+                        }
+                    }
+                }
+                if let Some(eps) = cfg_val.get_mut("endpoints").and_then(Value::as_array_mut) {
+                    for ep in eps {
+                        if let Some(map) = ep.as_object_mut()
+                            && map.remove(field).is_some()
+                        {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        changed
+    }
+
     /// Validate candidate config with `tachyon-core check -c` (when binary is present) and write it safely.
     async fn write_validated_core_config(
         &self,
@@ -139,42 +394,50 @@ impl CoreManager {
         let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
             && Path::new("/etc/init.d/tachyon").exists();
 
+        let mut candidate_cfg = cfg_val.clone();
+        Self::sanitize_candidate_local_rulesets(&mut candidate_cfg);
         let tmp_check_path = std::env::temp_dir().join("tachyon-core-candidate.json");
-        crypto_gen::write_json_if_changed(&tmp_check_path, cfg_val)?;
+        crypto_gen::write_json_if_changed(&tmp_check_path, &candidate_cfg)?;
 
         let bin_path = self.resolve_bin_path().await;
         if cfg!(target_os = "linux") && Path::new(&bin_path).exists() {
-            let mut cmd = Command::new(&bin_path);
-            cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
-            match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await {
-                Ok(out) if !out.status.success() => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    let stdout = String::from_utf8_lossy(&out.stdout);
-                    anyhow::bail!(
-                        "tachyon-core check failed: {}{}",
-                        stderr.trim(),
-                        stdout.trim()
-                    );
+            for attempt in 0..=2 {
+                let mut cmd = Command::new(&bin_path);
+                cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
+                match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await
+                {
+                    Ok(out) if !out.status.success() => {
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let combined = format!("{}{}", stderr.trim(), stdout.trim());
+                        if attempt < 2
+                            && Self::strip_optional_unknown_fields(&mut candidate_cfg, &combined)
+                        {
+                            crypto_gen::write_json_if_changed(&tmp_check_path, &candidate_cfg)?;
+                            continue;
+                        }
+                        anyhow::bail!("tachyon-core check failed: {combined}");
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                        anyhow::bail!("tachyon-core check timed out after 15s");
+                    }
+                    _ => break,
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    anyhow::bail!("tachyon-core check timed out after 15s");
-                }
-                _ => {}
             }
         }
 
         if is_tmp_staging {
             let staging_cfg = state_dir.join("tachyon-core-config.json");
-            crypto_gen::write_json_if_changed(&staging_cfg, cfg_val)?;
+            crypto_gen::write_json_if_changed(&staging_cfg, &candidate_cfg)?;
             return Ok(staging_cfg);
         }
 
         let p = Path::new(&store_snapshot.settings.core_config_path);
-        if crypto_gen::write_json_if_changed(p, cfg_val).is_ok() {
+        if crypto_gen::write_json_if_changed(p, &candidate_cfg).is_ok() {
             Ok(p.to_path_buf())
         } else {
             let fallback = state_dir.join("tachyon-core-config.json");
-            crypto_gen::write_json_if_changed(&fallback, cfg_val)?;
+            crypto_gen::write_json_if_changed(&fallback, &candidate_cfg)?;
             Ok(fallback)
         }
     }
@@ -206,20 +469,55 @@ impl CoreManager {
 
     /// Compile `/etc/tachyon-core/config.json`, apply network stack, and start `/usr/bin/tachyon-core`.
     pub async fn start(&self) -> anyhow::Result<()> {
+        self.set_manual_stop(false);
         let _guard = self.reload_lock.lock().await;
+        let store_snapshot = { self.state.data.read().await.clone() };
+        let veto = net_stack::hold_kill_switch(&store_snapshot).await;
         self.stop_locked().await;
 
-        let store_snapshot = { self.state.data.read().await.clone() };
-        let _ = crate::store::probe_wan6_runtime_state();
+        let cleanup_failed_start = |veto_active: bool, msg: String| {
+            let state = Arc::clone(&self.state);
+            async move {
+                net_stack::teardown_network_stack_with_mode(veto_active).await;
+                let mut live = state.live.write().await;
+                live.core_running = false;
+                live.core_pid = None;
+                live.core_identity = None;
+                live.nft_table_active = false;
+                live.push_event("error", "core_mgr", &msg);
+            }
+        };
+
+        let startup_wan6 = crate::store::probe_wan6_runtime_state();
+        let startup_ipv6_state = crate::store::resolve_effective_ipv6_state(
+            &store_snapshot.settings,
+            startup_wan6.wan6_available,
+        );
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
-        let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
-        let cfg_path = self
+        let cfg_val = match config_gen::compile_core_config(&store_snapshot) {
+            Ok(v) => v,
+            Err(e) => {
+                cleanup_failed_start(veto.is_some(), format!("config compile failed: {e:#}")).await;
+                return Err(e);
+            }
+        };
+        let cfg_path = match self
             .write_validated_core_config(&store_snapshot, &cfg_val)
-            .await?;
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                cleanup_failed_start(veto.is_some(), format!("config validation failed: {e:#}"))
+                    .await;
+                return Err(e);
+            }
+        };
 
         let bin_path = self.resolve_bin_path().await;
         if !Path::new(&bin_path).exists() {
-            anyhow::bail!("tachyon-core binary not found at '{bin_path}'");
+            let err = anyhow::anyhow!("tachyon-core binary not found at '{bin_path}'");
+            cleanup_failed_start(veto.is_some(), err.to_string()).await;
+            return Err(err);
         }
 
         let mut cmd = Command::new(&bin_path);
@@ -228,7 +526,14 @@ impl CoreManager {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
-        let mut child = cmd.spawn()?;
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                cleanup_failed_start(veto.is_some(), format!("tachyon-core spawn failed: {e:#}"))
+                    .await;
+                return Err(e.into());
+            }
+        };
         let pid = child.id().unwrap_or(0);
         let identity = sys_info::capture_process_identity(pid);
 
@@ -277,13 +582,70 @@ impl CoreManager {
             }
         }
         self.restore_saved_selectors(&store_snapshot).await;
+        let post_wan6 = crate::store::probe_wan6_runtime_state();
+        let post_ipv6_state = crate::store::resolve_effective_ipv6_state(
+            &store_snapshot.settings,
+            post_wan6.wan6_available,
+        );
+        if post_ipv6_state != startup_ipv6_state && !self.is_manually_stopped() {
+            self.state.live.write().await.push_event(
+                "info",
+                "core_mgr",
+                &format!(
+                    "IPv6 effective state changed during startup ({} -> {}); resynchronizing runtime",
+                    startup_ipv6_state.as_str(),
+                    post_ipv6_state.as_str(),
+                ),
+            );
+            if let Ok(re_cfg_val) = config_gen::compile_core_config(&store_snapshot)
+                && let Ok(re_cfg_path) = self
+                    .write_validated_core_config(&store_snapshot, &re_cfg_val)
+                    .await
+            {
+                let _ = net_stack::apply_network_stack(&store_snapshot).await;
+                let payload = json!({ "path": re_cfg_path, "payload": "" }).to_string();
+                if self
+                    .clash_request("PUT", "/configs?force=true", Some(&payload))
+                    .await
+                    .is_ok()
+                {
+                    self.restore_saved_selectors(&store_snapshot).await;
+                }
+            }
+        }
         Ok(())
     }
 
+    fn service_autostart_enabled() -> bool {
+        if cfg!(not(target_os = "linux")) {
+            return false;
+        }
+        std::fs::read_dir("/etc/rc.d").ok().is_some_and(|rd| {
+            rd.flatten().any(|e| {
+                let name = e.file_name();
+                let s = name.to_string_lossy();
+                s.starts_with('S') && s.ends_with("tachyon") && !s.ends_with("tachyon-core")
+            })
+        })
+    }
+
     pub async fn stop(&self) -> anyhow::Result<()> {
+        self.set_manual_stop(true);
         let _guard = self.reload_lock.lock().await;
+        let store_snapshot = { self.state.data.read().await.clone() };
+        let keep_fail_closed = if Self::service_autostart_enabled() {
+            net_stack::hold_kill_switch(&store_snapshot).await.is_some()
+        } else {
+            net_stack::remove_kill_switch().await;
+            false
+        };
         self.stop_locked().await;
-        net_stack::teardown_network_stack().await;
+        net_stack::teardown_network_stack_with_mode(keep_fail_closed).await;
+        let mut live = self.state.live.write().await;
+        live.core_running = false;
+        live.core_pid = None;
+        live.core_identity = None;
+        live.nft_table_active = false;
         Ok(())
     }
 
@@ -494,7 +856,7 @@ impl CoreManager {
             validated.push((group.clone(), chosen));
         }
         for (group, tag) in &validated {
-            let encoded = group.replace(' ', "%20");
+            let encoded = crate::store::url_encode_component(group);
             let payload = json!({ "name": tag }).to_string();
             let _ = self
                 .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&payload))
@@ -519,7 +881,78 @@ impl CoreManager {
     }
 
     /// Fetch an HTTP(S) URL via `curl` with optional local proxy and automatic DoH fallback
-    /// (`dns.google`, `common.dot.dns.yandex.net`, `1.1.1.1`) when router UDP DNS is degraded.
+    async fn resolve_url_host_via_bootstrap_dns(&self, url: &str) -> Option<String> {
+        let (host, port) = parse_http_url_host_port(url)?;
+        if host.parse::<std::net::IpAddr>().is_ok() {
+            return None;
+        }
+        let (boot_servers, fakeip_v4, fakeip_v6) = {
+            let d = self.state.data.read().await;
+            let v4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
+                "198.18.0.0/15".to_string()
+            } else {
+                d.settings.fakeip_inet4_range.trim().to_string()
+            };
+            let v6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
+                "fc00::/18".to_string()
+            } else {
+                d.settings.fakeip_inet6_range.trim().to_string()
+            };
+            (d.settings.bootstrap_dns_servers.clone(), v4, v6)
+        };
+        let mut servers: Vec<std::net::SocketAddr> = Vec::new();
+        for raw in
+            boot_servers
+                .iter()
+                .map(String::as_str)
+                .chain(["77.88.8.8", "1.1.1.1", "8.8.8.8"])
+        {
+            if let Some(addr) = normalize_bootstrap_dns_addr(raw)
+                && !servers.contains(&addr)
+            {
+                servers.push(addr);
+            }
+        }
+
+        for qtype in [1u16, 28u16] {
+            let query = crate::diagnostics::build_dns_query_packet(&host, qtype)?;
+            for srv in &servers {
+                let bind_addr = if srv.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
+                let Ok(sock) = tokio::net::UdpSocket::bind(bind_addr).await else {
+                    continue;
+                };
+                if tokio::time::timeout(Duration::from_millis(800), sock.send_to(&query, *srv))
+                    .await
+                    .is_err()
+                {
+                    continue;
+                }
+                let mut buf = [0u8; 512];
+                let Ok(Ok((n, _))) =
+                    tokio::time::timeout(Duration::from_millis(900), sock.recv_from(&mut buf))
+                        .await
+                else {
+                    continue;
+                };
+                let (is_fakeip, ip, rcode) = crate::diagnostics::parse_dns_fakeip_response(
+                    &buf[..n],
+                    &fakeip_v4,
+                    &fakeip_v6,
+                );
+                if rcode == 0
+                    && !is_fakeip
+                    && !ip.is_empty()
+                    && ip.parse::<std::net::IpAddr>().is_ok()
+                {
+                    return Some(format!("{host}:{port}:{ip}"));
+                }
+            }
+        }
+        None
+    }
+
+    /// Fetch URL via `curl` with optional HTTP/SOCKS proxy, bootstrap non-FakeIP `--resolve`,
+    /// and multi-resolver DoH fallback (`1.1.1.1`, `dns.google`, `common.dot.dns.yandex.net`).
     pub async fn curl_fetch_with_doh_fallback(
         &self,
         url: &str,
@@ -527,9 +960,25 @@ impl CoreManager {
         timeout_secs: u64,
         proxy_url: Option<&str>,
     ) -> anyhow::Result<Vec<u8>> {
+        self.curl_fetch_with_options(url, include_headers, timeout_secs, proxy_url, None)
+            .await
+    }
+
+    pub async fn curl_fetch_with_options(
+        &self,
+        url: &str,
+        include_headers: bool,
+        timeout_secs: u64,
+        proxy_url: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> anyhow::Result<Vec<u8>> {
         let max_t = timeout_secs.max(4).to_string();
+        let ua = user_agent
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("tachyon-core/2.0");
         let build_base_args = |inc_hdr: bool| -> Vec<String> {
-            let mut a = Vec::with_capacity(12);
+            let mut a = Vec::with_capacity(14);
             if inc_hdr {
                 a.push("-i".to_string());
             }
@@ -540,7 +989,7 @@ impl CoreManager {
                 "--max-time".to_string(),
                 max_t.clone(),
                 "-A".to_string(),
-                "tachyon-core/2.0".to_string(),
+                ua.to_string(),
             ]);
             a
         };
@@ -560,6 +1009,10 @@ impl CoreManager {
         }
 
         let mut direct_args = build_base_args(include_headers);
+        if let Some(resolve_spec) = self.resolve_url_host_via_bootstrap_dns(url).await {
+            direct_args.push("--resolve".to_string());
+            direct_args.push(resolve_spec);
+        }
         direct_args.push(url.to_string());
         if let Ok(out) = Self::run_curl_args(&direct_args, cmd_timeout).await
             && out.status.success()
@@ -697,13 +1150,24 @@ impl CoreManager {
                 {
                     let body_start = hdr_end + 4;
                     let hdr_str = String::from_utf8_lossy(&buf[..hdr_end]);
-                    for line in hdr_str.lines() {
-                        if let Some((k, v)) = line.split_once(':')
-                            && k.trim().eq_ignore_ascii_case("content-length")
-                            && let Ok(cl) = v.trim().parse::<usize>()
-                        {
-                            expected_total = Some(body_start + cl);
-                            break;
+                    let status_code = hdr_str
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().nth(1))
+                        .and_then(|code| code.parse::<u16>().ok())
+                        .unwrap_or(200);
+                    if status_code == 204 || status_code == 304 || (100..200).contains(&status_code)
+                    {
+                        expected_total = Some(body_start);
+                    } else {
+                        for line in hdr_str.lines() {
+                            if let Some((k, v)) = line.split_once(':')
+                                && k.trim().eq_ignore_ascii_case("content-length")
+                                && let Ok(cl) = v.trim().parse::<usize>()
+                            {
+                                expected_total = Some(body_start + cl);
+                                break;
+                            }
                         }
                     }
                 }
@@ -715,7 +1179,42 @@ impl CoreManager {
             }
             Ok::<(), std::io::Error>(())
         };
-        tokio::time::timeout(Duration::from_secs(2), read_fut).await??;
+        let read_timeout = if path.contains("/delay") {
+            let query_ms = path
+                .split_once('?')
+                .and_then(|(_, q)| {
+                    q.split('&').find_map(|kv| {
+                        let (k, v) = kv.split_once('=')?;
+                        if k == "timeout" {
+                            v.parse::<u64>().ok()
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .or_else(|| {
+                    body.and_then(|b| serde_json::from_str::<Value>(b).ok())
+                        .and_then(|v| v.get("timeout").and_then(Value::as_u64))
+                })
+                .unwrap_or(if path.contains("delay-batch") {
+                    5000
+                } else {
+                    3500
+                });
+            if path.contains("/group/") || path.contains("delay-batch") {
+                Duration::from_millis(
+                    query_ms
+                        .saturating_mul(4)
+                        .max(query_ms.saturating_add(12_000))
+                        .clamp(15_000, 45_000),
+                )
+            } else {
+                Duration::from_millis(query_ms.saturating_add(2000).clamp(3000, 30_000))
+            }
+        } else {
+            Duration::from_secs(2)
+        };
+        tokio::time::timeout(read_timeout, read_fut).await??;
         let raw = String::from_utf8_lossy(&buf);
         let (head_part, json_part) = raw.split_once("\r\n\r\n").unwrap_or(("", "{}"));
         let status_code = head_part
@@ -770,10 +1269,17 @@ impl CoreManager {
         };
 
         let mut results = HashMap::new();
-        let names: Vec<String> = nodes.iter().take(128).map(|(t, _, _)| t.clone()).collect();
-        if !names.is_empty() {
+        let mut seen_tags = HashSet::new();
+        let mut unique_nodes = Vec::with_capacity(nodes.len());
+        for item in nodes {
+            if seen_tags.insert(item.0.clone()) {
+                unique_nodes.push(item);
+            }
+        }
+        let names: Vec<String> = unique_nodes.iter().map(|(t, _, _)| t.clone()).collect();
+        for chunk in names.chunks(64) {
             let batch_body = json!({
-                "names": names,
+                "names": chunk,
                 "url": latency_url,
                 "timeout": 3500
             })
@@ -793,12 +1299,15 @@ impl CoreManager {
             }
         }
 
+        let sem = Arc::new(tokio::sync::Semaphore::new(24));
         let mut handles = Vec::new();
-        for (tag, host, port) in nodes.into_iter().take(128) {
+        for (tag, host, port) in unique_nodes {
             if results.contains_key(&tag) || host.is_empty() || port == 0 {
                 continue;
             }
+            let sem = Arc::clone(&sem);
             handles.push(tokio::spawn(async move {
+                let _permit = sem.acquire_owned().await.ok();
                 let start = Instant::now();
                 let addr = format!("{host}:{port}");
                 let ok =
@@ -806,7 +1315,7 @@ impl CoreManager {
                         .await
                         .is_ok_and(|r| r.is_ok());
                 let ms = if ok {
-                    start.elapsed().as_millis() as u32
+                    (start.elapsed().as_millis() as u32).max(1)
                 } else {
                     0
                 };
@@ -864,7 +1373,7 @@ impl CoreManager {
                     && best_tag != cur_now
                     && (cur_delay == 0 || best_delay.saturating_add(50) < cur_delay)
                 {
-                    let encoded = group_name.replace(' ', "%20");
+                    let encoded = crate::store::url_encode_component(group_name);
                     let body = json!({ "name": best_tag }).to_string();
                     let _ = self
                         .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
@@ -878,12 +1387,30 @@ impl CoreManager {
 
     /// Probe RTT for a single node via `tachyon-core` `GET /proxies/:name/delay` with TCP fallback.
     pub async fn probe_single_node_rtt(&self, tag: &str) -> u32 {
-        let latency_url = {
+        let (latency_url, host_port) = {
             let d = self.state.data.read().await;
-            d.settings.latency_test_url.clone()
+            let mut found = None;
+            'outer: for src in &d.outbound_sources {
+                for n in &src.cached_nodes {
+                    if n.tag == tag {
+                        found = Some((n.server.clone(), n.server_port));
+                        break 'outer;
+                    }
+                }
+                for (i, link) in src.proxy_links.iter().enumerate() {
+                    if let Some(n) = config_gen::parse_proxy_uri(link, i)
+                        && n.tag == tag
+                    {
+                        found = Some((n.server, n.server_port));
+                        break 'outer;
+                    }
+                }
+            }
+            (d.settings.latency_test_url.clone(), found)
         };
-        let encoded = tag.replace(' ', "%20");
-        let path = format!("/proxies/{encoded}/delay?url={latency_url}&timeout=3500");
+        let encoded = crate::store::url_encode_component(tag);
+        let encoded_url = crate::store::url_encode_component(&latency_url);
+        let path = format!("/proxies/{encoded}/delay?url={encoded_url}&timeout=3500");
         if let Ok(resp) = self.clash_request("GET", &path, None).await
             && let Some(ms) = resp.get("delay").and_then(Value::as_u64)
             && ms > 0
@@ -897,13 +1424,32 @@ impl CoreManager {
                 .insert(tag.to_string(), ms_u32);
             return ms_u32;
         }
-        let all = self.probe_all_nodes_rtt().await;
-        all.get(tag).copied().unwrap_or(0)
+        if let Some((host, port)) = host_port
+            && !host.is_empty()
+            && port > 0
+        {
+            let start = Instant::now();
+            let addr = format!("{host}:{port}");
+            if tokio::time::timeout(Duration::from_millis(1800), TcpStream::connect(&addr))
+                .await
+                .is_ok_and(|r| r.is_ok())
+            {
+                let ms_u32 = (start.elapsed().as_millis() as u32).max(1);
+                self.state
+                    .live
+                    .write()
+                    .await
+                    .node_latencies_ms
+                    .insert(tag.to_string(), ms_u32);
+                return ms_u32;
+            }
+        }
+        0
     }
 
     /// Probe exit IP of a specific outbound node via `tachyon-core` `GET /proxies/:name/exit`.
     pub async fn probe_node_exit_ip(&self, tag: &str) -> Value {
-        let encoded = tag.replace(' ', "%20");
+        let encoded = crate::store::url_encode_component(tag);
         self.clash_request("GET", &format!("/proxies/{encoded}/exit"), None)
             .await
             .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
@@ -911,32 +1457,58 @@ impl CoreManager {
 
     /// Parse raw subscription content (base64 or newline-separated proxy URIs) into `ParsedProxyNode`s.
     pub fn parse_subscription_payload(raw: &str) -> Vec<ParsedProxyNode> {
-        let decoded = B64_STD
-            .decode(raw.trim())
-            .or_else(|_| B64_URL.decode(raw.trim()))
-            .ok()
-            .and_then(|b| String::from_utf8(b).ok())
-            .unwrap_or_else(|| raw.to_string());
+        let trimmed = raw.trim();
+        let looks_plain = trimmed.contains("://")
+            || trimmed.starts_with('{')
+            || trimmed.starts_with('[')
+            || trimmed.lines().any(|l| l.trim() == "proxies:");
+        let decoded = if looks_plain {
+            raw.to_string()
+        } else {
+            let compact: String = trimmed
+                .chars()
+                .filter(|c| !c.is_ascii_whitespace())
+                .collect();
+            B64_STD
+                .decode(&compact)
+                .or_else(|_| B64_STD_NO_PAD.decode(&compact))
+                .or_else(|_| B64_URL_PAD.decode(&compact))
+                .or_else(|_| B64_URL.decode(&compact))
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok())
+                .unwrap_or_else(|| raw.to_string())
+        };
 
-        if let Some(json_nodes) = config_gen::parse_json_subscription_payload(&decoded) {
-            return json_nodes;
-        }
+        let mut out =
+            if let Some(json_nodes) = config_gen::parse_json_subscription_payload(&decoded) {
+                json_nodes
+            } else if let Some(clash_nodes) =
+                config_gen::parse_clash_yaml_subscription_payload(&decoded)
+            {
+                clash_nodes
+            } else {
+                let mut line_nodes = Vec::new();
+                for (idx, line) in decoded.lines().enumerate() {
+                    if let Some(node) = config_gen::parse_proxy_uri(line, idx) {
+                        line_nodes.push(node);
+                    }
+                }
+                line_nodes
+            };
 
-        let mut out = Vec::new();
-        for (idx, line) in decoded.lines().enumerate() {
-            if let Some(node) = config_gen::parse_proxy_uri(line, idx) {
-                out.push(node);
-            }
+        let mut taken_tags: HashSet<String> = HashSet::new();
+        for node in &mut out {
+            config_gen::assign_unique_node_tag(node, &mut taken_tags);
         }
         out
     }
 
-    /// Refresh a single subscription `OutboundSource` (or all if `source_id` is empty).
+    /// Refresh a single subscription `OutboundSource` (or all sources in a `RoutingSection`, or all if `source_id` is empty).
     /// Syncs both via `tachyon-core` `/providers/proxies` and HTTP headers (`Subscription-Userinfo`).
     pub async fn refresh_subscription_source(&self, source_id: &str) -> anyhow::Result<usize> {
-        let mut candidate = self.state.data.read().await.clone();
-        let mut updated_sources = 0usize;
-        let mut core_reload_needed = false;
+        let _sub_guard = self.sub_refresh_lock.lock().await;
+        let snapshot = self.state.data.read().await.clone();
+        let target_ids = resolve_subscription_target_ids(&snapshot, source_id);
         let now = unix_now_secs();
 
         // Trigger native `tachyon-core` provider refresh if running
@@ -946,29 +1518,44 @@ impl CoreManager {
             .ok();
 
         // Map section ID -> mixed_proxy_port for optional proxy-routed subscription fetches
-        let sec_proxy_ports: HashMap<String, u16> = candidate
+        let sec_proxy_ports: HashMap<String, u16> = snapshot
             .sections
             .iter()
             .filter(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0)
             .map(|s| (s.id.clone(), s.mixed_proxy_port))
             .collect();
-        let global_sub_proxy = if candidate.settings.download_lists_via_proxy {
+        let service_mixed_port =
+            read_service_mixed_port_from_config(&snapshot.settings.core_config_path);
+        let global_sub_proxy = if snapshot.settings.download_lists_via_proxy {
             sec_proxy_ports
-                .get(&candidate.settings.download_lists_via_proxy_section)
+                .get(&snapshot.settings.download_lists_via_proxy_section)
                 .copied()
+                .or(service_mixed_port)
         } else {
             None
         };
 
-        for src in &mut candidate.outbound_sources {
-            if !source_id.is_empty() && src.id != source_id {
+        struct SubFetchResult {
+            id: String,
+            nodes: Vec<ParsedProxyNode>,
+            last_fetch_err: Option<String>,
+            updated_src: crate::store::OutboundSource,
+        }
+
+        let mut fetched_results: Vec<SubFetchResult> = Vec::new();
+        for orig_src in &snapshot.outbound_sources {
+            if let Some(ref ids) = target_ids
+                && !ids.contains(&orig_src.id)
+            {
                 continue;
             }
-            if src.source_type != "subscription" {
+            if orig_src.source_type != "subscription" {
                 continue;
             }
+            let mut src = orig_src.clone();
+            let enc_src_id = crate::store::url_encode_component(&src.id);
             let _ = self
-                .clash_request("PUT", &format!("/providers/proxies/{}", src.id), None)
+                .clash_request("PUT", &format!("/providers/proxies/{enc_src_id}"), None)
                 .await;
 
             // Check if `tachyon-core` `/providers/proxies` has `subscriptionInfo` for this source
@@ -995,48 +1582,131 @@ impl CoreManager {
                     .get(&src.download_via_proxy_section)
                     .copied()
                     .or(global_sub_proxy)
+                    .or(service_mixed_port)
             } else {
                 global_sub_proxy
             }
             .map(|p| format!("http://127.0.0.1:{p}"));
 
             let mut nodes = Vec::new();
+            let mut last_fetch_err: Option<String> = None;
             let urls = src.subscription_urls.clone();
             for url in &urls {
-                if let Ok(stdout) = self
-                    .curl_fetch_with_doh_fallback(url, true, 12, proxy_opt.as_deref())
-                    .await
-                {
-                    let raw_resp = String::from_utf8_lossy(&stdout);
+                let mut fetched = self
+                    .curl_fetch_with_options(url, true, 12, proxy_opt.as_deref(), None)
+                    .await;
+                let mut parsed_for_url = Vec::new();
+                if let Ok(ref stdout) = fetched {
+                    let raw_resp = String::from_utf8_lossy(stdout);
                     let (headers_part, body_part) = split_http_response(&raw_resp);
-                    parse_subscription_headers(headers_part, src);
-                    for n in Self::parse_subscription_payload(body_part) {
-                        if !nodes
-                            .iter()
-                            .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
-                        {
-                            nodes.push(n);
+                    parse_subscription_headers(headers_part, &mut src);
+                    parsed_for_url = Self::parse_subscription_payload(body_part);
+                }
+                if fetched.is_err() || parsed_for_url.is_empty() {
+                    let retry = self
+                        .curl_fetch_with_options(
+                            url,
+                            true,
+                            12,
+                            proxy_opt.as_deref(),
+                            Some("v2rayNG/1.8.19"),
+                        )
+                        .await;
+                    match retry {
+                        Ok(stdout2) => {
+                            let raw_resp2 = String::from_utf8_lossy(&stdout2);
+                            let (headers_part2, body_part2) = split_http_response(&raw_resp2);
+                            parse_subscription_headers(headers_part2, &mut src);
+                            let parsed2 = Self::parse_subscription_payload(body_part2);
+                            if !parsed2.is_empty() {
+                                parsed_for_url = parsed2;
+                                fetched = Ok(stdout2);
+                            } else if fetched.is_ok() {
+                                last_fetch_err = Some(format!(
+                                    "Ответ подписки ({url}) не содержит поддерживаемых узлов"
+                                ));
+                            }
+                        }
+                        Err(e2) => {
+                            if let Err(ref e1) = fetched {
+                                last_fetch_err = Some(format!("{url}: {e1}"));
+                            } else {
+                                last_fetch_err = Some(format!("{url}: {e2}"));
+                            }
                         }
                     }
                 }
+                if let Err(ref e) = fetched
+                    && parsed_for_url.is_empty()
+                    && last_fetch_err.is_none()
+                {
+                    last_fetch_err = Some(format!("{url}: {e}"));
+                }
+                for n in parsed_for_url {
+                    if !nodes
+                        .iter()
+                        .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                    {
+                        nodes.push(n);
+                    }
+                }
             }
-            if !nodes.is_empty() {
-                if !nodes_materially_equal(&src.cached_nodes, &nodes) {
+            fetched_results.push(SubFetchResult {
+                id: src.id.clone(),
+                nodes,
+                last_fetch_err,
+                updated_src: src,
+            });
+        }
+
+        // Re-read fresh state right before committing so concurrent config edits are preserved.
+        let mut candidate = self.state.data.read().await.clone();
+        let mut updated_sources = 0usize;
+        let mut metadata_changed = false;
+        let mut core_reload_needed = false;
+
+        for res in fetched_results {
+            let Some(src) = candidate
+                .outbound_sources
+                .iter_mut()
+                .find(|s| s.id == res.id && s.source_type == "subscription")
+            else {
+                continue;
+            };
+            src.sub_title = res.updated_src.sub_title;
+            src.sub_support_url = res.updated_src.sub_support_url;
+            src.sub_web_page_url = res.updated_src.sub_web_page_url;
+            src.sub_announce = res.updated_src.sub_announce;
+            src.sub_upload_bytes = res.updated_src.sub_upload_bytes;
+            src.sub_download_bytes = res.updated_src.sub_download_bytes;
+            src.sub_total_bytes = res.updated_src.sub_total_bytes;
+            src.sub_expire_unix = res.updated_src.sub_expire_unix;
+            src.subscription_update_interval = res.updated_src.subscription_update_interval;
+
+            if !res.nodes.is_empty() {
+                if !nodes_materially_equal(&src.cached_nodes, &res.nodes) {
                     core_reload_needed = true;
                 }
-                src.cached_nodes = nodes;
+                src.cached_nodes = res.nodes;
                 src.last_updated_unix = now;
                 src.sub_last_error.clear();
                 updated_sources += 1;
-            } else if !src.cached_nodes.is_empty() {
-                src.last_updated_unix = now;
-                updated_sources += 1;
+                metadata_changed = true;
+            } else {
+                src.sub_last_error = res.last_fetch_err.unwrap_or_else(|| {
+                    "Не удалось загрузить или разобрать узлы подписки".to_string()
+                });
+                if !src.cached_nodes.is_empty() {
+                    src.last_updated_unix = now;
+                    updated_sources += 1;
+                }
+                metadata_changed = true;
             }
         }
 
-        if updated_sources > 0 {
+        if metadata_changed || updated_sources > 0 {
             transaction::commit_transaction(&self.state, candidate).await?;
-            if core_reload_needed {
+            if core_reload_needed && !self.is_manually_stopped() {
                 let _ = self.apply_or_reload().await;
             }
         }
@@ -1047,35 +1717,95 @@ impl CoreManager {
         self.refresh_subscription_source("").await
     }
 
-    /// Switch the active node on a `RoutingSection` selector (`PUT /proxies/sel-{id}`).
+    pub async fn refresh_due_subscriptions(&self, target: Option<&str>) -> anyhow::Result<usize> {
+        let candidate = self.state.data.read().await.clone();
+        let target_ids = target
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .and_then(|t| resolve_subscription_target_ids(&candidate, t));
+        let now = unix_now_secs();
+        let mut due_ids: Vec<String> = Vec::new();
+        for src in &candidate.outbound_sources {
+            if !src.enabled
+                || src.source_type != "subscription"
+                || src.subscription_urls.is_empty()
+                || !src.subscription_update_enabled
+            {
+                continue;
+            }
+            if let Some(ref ids) = target_ids
+                && !ids.contains(&src.id)
+            {
+                continue;
+            }
+            let base_interval = parse_subscription_interval_secs(&src.subscription_update_interval);
+            let jitter_offset = compute_subscription_jitter_offset(
+                base_interval,
+                &src.subscription_update_jitter,
+                &src.id,
+            );
+            let interval_secs = (base_interval as i64 + jitter_offset).max(300);
+            if src.cached_nodes.is_empty()
+                || src.last_updated_unix <= 0
+                || now.saturating_sub(src.last_updated_unix) >= interval_secs
+            {
+                due_ids.push(src.id.clone());
+            }
+        }
+        drop(candidate);
+
+        let mut total_updated = 0usize;
+        for id in due_ids {
+            if let Ok(cnt) = self.refresh_subscription_source(&id).await {
+                total_updated += cnt;
+            }
+        }
+        Ok(total_updated)
+    }
+
+    /// Switch the active node on a `RoutingSection` selector (`PUT /proxies/sel-{id}` or `bal-{id}-{bal}`).
     pub async fn select_section_node(
         &self,
         section_id: &str,
         node_tag: &str,
     ) -> anyhow::Result<()> {
         let mut candidate = self.state.data.read().await.clone();
-        let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == section_id) else {
-            anyhow::bail!("Section '{section_id}' not found");
+        let balancer_refs = {
+            let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == section_id) else {
+                anyhow::bail!("Section '{section_id}' not found");
+            };
+            sec.active_selected_tag = node_tag.to_string();
+            sec.balancer_refs.clone()
         };
-        sec.active_selected_tag = node_tag.to_string();
         transaction::commit_transaction(&self.state, candidate).await?;
-        Self::save_selector_choice(&format!("sel-{section_id}"), node_tag);
+
+        let mut selector_names = vec![format!("sel-{section_id}")];
+        for bal_ref in balancer_refs {
+            let b = bal_ref.trim();
+            if !b.is_empty() {
+                selector_names.push(format!("bal-{section_id}-{b}"));
+            }
+        }
+        selector_names.push(section_id.to_string());
+        selector_names.push(format!("{section_id}-out"));
 
         let payload = json!({ "name": node_tag }).to_string();
-        for selector_name in [
-            format!("sel-{section_id}"),
-            section_id.to_string(),
-            format!("{section_id}-out"),
-        ] {
-            let encoded = selector_name.replace(' ', "%20");
+        let mut saved_key = None;
+        for selector_name in &selector_names {
+            let encoded = crate::store::url_encode_component(selector_name);
             if self
                 .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&payload))
                 .await
                 .is_ok()
             {
+                saved_key = Some(selector_name.clone());
                 break;
             }
         }
+        Self::save_selector_choice(
+            saved_key.as_deref().unwrap_or(&format!("sel-{section_id}")),
+            node_tag,
+        );
         Ok(())
     }
 
@@ -1607,25 +2337,9 @@ impl CoreManager {
                 json!({ "ok": true, "component": component, "action": action, "updated_subscriptions": cnt, "message": format!("Обновлено подписок: {cnt}") })
             }
             ("lists" | "rulesets", _) => {
-                let (rulesets_dir, github_mirror, list_names, proxy_opt) = {
+                let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt) = {
                     let d = self.state.data.read().await;
-                    let mut names = Vec::new();
-                    for c in &d.conditions {
-                        for l in &c.community_lists {
-                            let cl = l.trim().to_string();
-                            if !cl.is_empty() && !names.contains(&cl) {
-                                names.push(cl);
-                            }
-                        }
-                    }
-                    for s in &d.sections {
-                        for l in &s.community_lists {
-                            let cl = l.trim().to_string();
-                            if !cl.is_empty() && !names.contains(&cl) {
-                                names.push(cl);
-                            }
-                        }
-                    }
+                    let (names, subnets) = crate::updater::collect_community_sync_targets(&d);
                     let px = if d.settings.download_lists_via_proxy {
                         d.sections
                             .iter()
@@ -1643,6 +2357,7 @@ impl CoreManager {
                         d.settings.rulesets_dir.clone(),
                         d.settings.github_mirror.clone(),
                         names,
+                        subnets,
                         px,
                     )
                 };
@@ -1666,13 +2381,35 @@ impl CoreManager {
                                 proxy_opt.as_deref(),
                             )
                             .await
-                            && !bytes.is_empty()
+                            && Self::bytes_have_valid_trs_magic(&bytes)
                         {
                             let dst = Path::new(&rulesets_dir).join(format!("{clean}.trs"));
+                            let stale_srs = Path::new(&rulesets_dir).join(format!("{clean}.srs"));
+                            let _ = std::fs::remove_file(&stale_srs);
                             if matches!(crypto_gen::write_file_if_changed(dst, &bytes), Ok(true)) {
                                 any_changed = true;
                             }
+                        } else {
+                            let dst = Path::new(&rulesets_dir).join(format!("{clean}.trs"));
+                            let stale_srs = Path::new(&rulesets_dir).join(format!("{clean}.srs"));
+                            let _ = std::fs::remove_file(&stale_srs);
+                            if !Self::file_has_valid_trs_magic(&dst) {
+                                let _ = std::fs::remove_file(&dst);
+                            }
                         }
+                    }
+                    let mut dead_hosts = std::collections::HashSet::new();
+                    let (sub_changed, _) = crate::updater::sync_community_subnet_lists(
+                        self,
+                        Path::new(&rulesets_dir),
+                        &github_mirror,
+                        proxy_opt.as_deref(),
+                        &subnet_services,
+                        &mut dead_hosts,
+                    )
+                    .await;
+                    if sub_changed {
+                        any_changed = true;
                     }
                 }
                 if any_changed {
@@ -1768,6 +2505,7 @@ impl CoreManager {
                             if norm == "tachyon-core" {
                                 let _ = self.stop().await;
                                 let _ = self.start().await;
+                                self.refresh_core_version().await;
                             }
                             json!({
                                 "ok": true,
@@ -1929,6 +2667,18 @@ impl CoreManager {
                 interval.tick().await;
                 tick_count = tick_count.wrapping_add(1);
                 mgr.poll_telemetry_and_reconcile(tick_count).await;
+                if tick_count == 5 || tick_count.is_multiple_of(100) {
+                    let sub_mgr = Arc::clone(&mgr);
+                    tokio::spawn(async move {
+                        let _ = sub_mgr.refresh_due_subscriptions(None).await;
+                    });
+                }
+                if tick_count == 8 || tick_count.is_multiple_of(100) {
+                    let list_mgr = Arc::clone(&mgr);
+                    tokio::spawn(async move {
+                        let _ = crate::diagnostics::tick_list_updates_if_due(&list_mgr).await;
+                    });
+                }
                 if tick_count == 10 || tick_count.is_multiple_of(200) {
                     let upd_mgr = Arc::clone(&mgr);
                     tokio::spawn(async move {
@@ -2330,14 +3080,59 @@ impl CoreManager {
                     live.lan_devices = devices;
                 }
             }
-            if watchdog_on && proxy_mode == "tproxy" && !nft_ok {
+            if watchdog_on && !self.is_manually_stopped() {
                 let store_snapshot = { self.state.data.read().await.clone() };
-                let _ = net_stack::apply_network_stack(&store_snapshot).await;
-                self.state.live.write().await.push_event(
-                    "warn",
-                    "reconciler",
-                    "Repaired inet TachyonTable drift",
-                );
+                if !core_alive && !self.is_manually_stopped() {
+                    let _ = net_stack::hold_kill_switch(&store_snapshot).await;
+                    self.state.live.write().await.push_event(
+                        "warn",
+                        "watchdog",
+                        "tachyon-core process stopped unexpectedly; restarting",
+                    );
+                    let _ = self.start().await;
+                    return;
+                }
+                let needs_nft_table = proxy_mode == "tproxy"
+                    || (proxy_mode == "tun"
+                        && net_stack::compile_tun_guard_ruleset_with_wan6(
+                            &store_snapshot,
+                            true,
+                            &[],
+                        )
+                        .is_some());
+                if needs_nft_table && !nft_ok {
+                    let _ = net_stack::apply_network_stack(&store_snapshot).await;
+                    self.state.live.write().await.push_event(
+                        "warn",
+                        "reconciler",
+                        "Repaired inet TachyonTable drift",
+                    );
+                }
+                if core_alive && tick_count.is_multiple_of(20) {
+                    let wan6 = crate::store::probe_wan6_runtime_state();
+                    let ipv6_state = crate::store::resolve_effective_ipv6_state(
+                        &store_snapshot.settings,
+                        wan6.wan6_available,
+                    );
+                    let cfg_path =
+                        Self::effective_core_config_path_for(&self.state, &store_snapshot.settings);
+                    if !Self::core_config_ipv6_matches(&cfg_path, &store_snapshot, ipv6_state) {
+                        let now_u64 = crate::store::unix_now_u64();
+                        let last_sync = self.last_ipv6_resync_ts.load(Ordering::Acquire);
+                        if now_u64.saturating_sub(last_sync) >= 120 {
+                            self.last_ipv6_resync_ts.store(now_u64, Ordering::Release);
+                            self.state.live.write().await.push_event(
+                                "warn",
+                                "watchdog",
+                                &format!(
+                                    "FakeIPv6 runtime config drifted from {} state; reloading",
+                                    ipv6_state.as_str()
+                                ),
+                            );
+                            let _ = self.apply_or_reload().await;
+                        }
+                    }
+                }
             }
         }
     }
@@ -2385,17 +3180,24 @@ fn parse_subscription_headers(headers: &str, src: &mut crate::store::OutboundSou
                     }
                 }
             }
-            "profile-title" if src.sub_title.is_empty() => {
-                src.sub_title = val.to_string();
+            "profile-title" if !val.is_empty() => {
+                src.sub_title = crate::store::decode_sub_header_value(val);
             }
-            "support-url" if src.sub_support_url.is_empty() => {
+            "support-url" if !val.is_empty() => {
                 src.sub_support_url = val.to_string();
             }
-            "profile-web-page-url" if src.sub_web_page_url.is_empty() => {
+            "profile-web-page-url" if !val.is_empty() => {
                 src.sub_web_page_url = val.to_string();
             }
-            "announce" if src.sub_announce.is_empty() => {
-                src.sub_announce = val.to_string();
+            "announce" if !val.is_empty() => {
+                src.sub_announce = crate::store::decode_sub_header_value(val);
+            }
+            "profile-update-interval" => {
+                if let Ok(hours) = val.trim().parse::<u64>()
+                    && hours >= 1
+                {
+                    src.subscription_update_interval = format!("{}h", hours.min(24 * 30));
+                }
             }
             _ => {}
         }
@@ -2470,6 +3272,236 @@ fn nodes_materially_equal(
         .all(|(a, b)| canonical_node_fingerprint(a) == canonical_node_fingerprint(b))
 }
 
+fn parse_http_url_host_port(url: &str) -> Option<(String, u16)> {
+    let trimmed = url.trim();
+    let (default_port, after_scheme) = if let Some(rest) = trimmed.strip_prefix("https://") {
+        (443u16, rest)
+    } else {
+        let rest = trimmed.strip_prefix("http://")?;
+        (80u16, rest)
+    };
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, hp)| hp)
+        .trim();
+    if host_port.is_empty() {
+        return None;
+    }
+    if let Some(rest) = host_port.strip_prefix('[') {
+        let (ip_part, after_bracket) = rest.split_once(']')?;
+        let port = after_bracket
+            .strip_prefix(':')
+            .and_then(|p| p.parse::<u16>().ok())
+            .filter(|p| *p > 0)
+            .unwrap_or(default_port);
+        return Some((ip_part.trim().to_string(), port));
+    }
+    if let Some((h, p_str)) = host_port.rsplit_once(':')
+        && let Ok(port) = p_str.parse::<u16>()
+        && port > 0
+    {
+        return Some((h.trim().to_string(), port));
+    }
+    Some((host_port.to_string(), default_port))
+}
+
+fn normalize_bootstrap_dns_addr(raw: &str) -> Option<std::net::SocketAddr> {
+    let mut t = raw.trim();
+    for pfx in ["udp://", "tcp://"] {
+        if let Some(rest) = t.strip_prefix(pfx) {
+            t = rest;
+        }
+    }
+    if t.contains("://") || t.is_empty() {
+        return None;
+    }
+    if let Ok(sock) = t.parse::<std::net::SocketAddr>() {
+        return Some(sock);
+    }
+    let ip_str = t.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = ip_str.parse::<std::net::IpAddr>() {
+        return Some(std::net::SocketAddr::new(ip, 53));
+    }
+    None
+}
+
+fn collect_section_source_ids(
+    candidate: &crate::store::RouterStoreData,
+    section_id: &str,
+    visited_sections: &mut HashSet<String>,
+    out_sources: &mut HashSet<String>,
+) {
+    if !visited_sections.insert(section_id.to_string()) {
+        return;
+    }
+    let Some(sec) = candidate.sections.iter().find(|s| s.id == section_id) else {
+        return;
+    };
+    for r in &sec.outbound_source_refs {
+        let t = r.trim();
+        if !t.is_empty() {
+            out_sources.insert(t.to_string());
+        }
+    }
+    let mut group_ids: Vec<&str> = Vec::new();
+    if !sec.outbound_group_ref.trim().is_empty() {
+        group_ids.push(sec.outbound_group_ref.trim());
+    }
+    for gref in &sec.outbound_group_refs {
+        let g = gref.trim();
+        if !g.is_empty() {
+            group_ids.push(g);
+        }
+    }
+    for gid in group_ids {
+        if let Some(grp) = candidate.outbound_groups.iter().find(|g| g.id == gid) {
+            for r in grp
+                .primary_refs
+                .iter()
+                .chain(grp.backup_refs.iter())
+                .chain(grp.source_refs.iter())
+            {
+                let t = r.trim();
+                if !t.is_empty() {
+                    out_sources.insert(t.to_string());
+                }
+            }
+        } else {
+            out_sources.insert(gid.to_string());
+        }
+    }
+    for bref in &sec.balancer_refs {
+        let bid = bref.trim();
+        if let Some(bal) = candidate.balancers.iter().find(|b| b.id == bid) {
+            for r in &bal.balancer_pool {
+                let t = r.trim();
+                if !t.is_empty() {
+                    out_sources.insert(t.to_string());
+                }
+            }
+        }
+    }
+    for sub_sec in &sec.section_refs {
+        let sid = sub_sec.trim();
+        if !sid.is_empty() {
+            collect_section_source_ids(candidate, sid, visited_sections, out_sources);
+        }
+    }
+}
+
+fn resolve_subscription_target_ids(
+    candidate: &crate::store::RouterStoreData,
+    target: &str,
+) -> Option<HashSet<String>> {
+    let t = target.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("all") || t == "*" {
+        return None;
+    }
+    if candidate.outbound_sources.iter().any(|s| s.id == t) {
+        return Some(HashSet::from([t.to_string()]));
+    }
+    if let Some(src_ci) = candidate
+        .outbound_sources
+        .iter()
+        .find(|s| s.id.eq_ignore_ascii_case(t))
+    {
+        return Some(HashSet::from([src_ci.id.clone()]));
+    }
+    if let Some(sec) = candidate
+        .sections
+        .iter()
+        .find(|s| s.id == t || s.id.eq_ignore_ascii_case(t))
+    {
+        let mut visited = HashSet::new();
+        let mut out = HashSet::new();
+        collect_section_source_ids(candidate, &sec.id, &mut visited, &mut out);
+        return Some(out);
+    }
+    Some(HashSet::from([t.to_string()]))
+}
+
+fn compute_subscription_jitter_offset(interval_secs: u64, raw_jitter: &str, seed: &str) -> i64 {
+    let trimmed = raw_jitter.trim().to_ascii_lowercase();
+    if trimmed.is_empty() || trimmed == "0" || trimmed == "0%" {
+        return 0;
+    }
+    let max_jitter = if let Some(pct_str) = trimmed.strip_suffix('%') {
+        let pct = pct_str.trim().parse::<u64>().unwrap_or(0).min(50);
+        interval_secs.saturating_mul(pct) / 100
+    } else if let Some(m) = trimmed.strip_suffix('m') {
+        m.trim().parse::<u64>().unwrap_or(0).saturating_mul(60)
+    } else if let Some(h) = trimmed.strip_suffix('h') {
+        h.trim().parse::<u64>().unwrap_or(0).saturating_mul(3600)
+    } else if let Some(s) = trimmed.strip_suffix('s') {
+        s.trim().parse::<u64>().unwrap_or(0)
+    } else if let Ok(bare) = trimmed.parse::<u64>() {
+        if bare <= 50 {
+            interval_secs.saturating_mul(bare) / 100
+        } else {
+            bare
+        }
+    } else {
+        0
+    }
+    .min(interval_secs / 2);
+    if max_jitter == 0 {
+        return 0;
+    }
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in seed.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    let span = max_jitter.saturating_mul(2).saturating_add(1);
+    (hash % span) as i64 - max_jitter as i64
+}
+
+fn read_service_mixed_port_from_config(config_path: &str) -> Option<u16> {
+    let raw = std::fs::read_to_string(config_path).ok()?;
+    let val: Value = serde_json::from_str(&raw).ok()?;
+    let inbounds = val.get("inbounds")?.as_array()?;
+    inbounds.iter().find_map(|inb| {
+        if inb.get("tag").and_then(Value::as_str) == Some("service-mixed-in") {
+            inb.get("listen_port")
+                .and_then(Value::as_u64)
+                .and_then(|p| u16::try_from(p).ok())
+                .filter(|p| *p > 0)
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_subscription_interval_secs(raw: &str) -> u64 {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return 6 * 3600;
+    }
+    let (num_str, mult) = if let Some(n) = trimmed.strip_suffix('d') {
+        (n, 86_400u64)
+    } else if let Some(n) = trimmed.strip_suffix('h') {
+        (n, 3_600u64)
+    } else if let Some(n) = trimmed.strip_suffix('m') {
+        (n, 60u64)
+    } else if let Some(n) = trimmed.strip_suffix('s') {
+        (n, 1u64)
+    } else {
+        let bare = trimmed.parse::<u64>().unwrap_or(6);
+        let secs = if bare < 200 {
+            bare.saturating_mul(3600)
+        } else {
+            bare
+        };
+        return secs.max(300);
+    };
+    let n = num_str.trim().parse::<u64>().unwrap_or(6);
+    n.saturating_mul(mult).max(300)
+}
+
 #[cfg(test)]
 mod core_mgr_tests {
     use super::*;
@@ -2528,8 +3560,8 @@ mod core_mgr_tests {
 
     #[derive(Default)]
     struct MockClashState {
-        up_total: std::sync::atomic::AtomicU64,
-        down_total: std::sync::atomic::AtomicU64,
+        up_total: PortableAtomicU64,
+        down_total: PortableAtomicU64,
         conns_count: std::sync::atomic::AtomicUsize,
         conn_hits: std::sync::atomic::AtomicUsize,
         dev_hits: std::sync::atomic::AtomicUsize,
@@ -2670,8 +3702,8 @@ mod core_mgr_tests {
     #[tokio::test]
     async fn test_adaptive_telemetry_throttling_real_delta_and_state_cleanup() {
         let mock = Arc::new(MockClashState {
-            up_total: std::sync::atomic::AtomicU64::new(10_000),
-            down_total: std::sync::atomic::AtomicU64::new(20_000),
+            up_total: PortableAtomicU64::new(10_000),
+            down_total: PortableAtomicU64::new(20_000),
             conns_count: std::sync::atomic::AtomicUsize::new(3),
             ..Default::default()
         });
@@ -2961,5 +3993,248 @@ mod core_mgr_tests {
             assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
             assert!(started.elapsed() < Duration::from_secs(3));
         }
+    }
+
+    #[test]
+    fn test_parse_subscription_payload_mieru_base64_and_clash_yaml() {
+        let raw_links = concat!(
+            "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.47?profile=default&port=2012-2022&protocol=TCP&multiplexing=MULTIPLEXING_HIGH&traffic-pattern=GgQIARAK#Mieru\n",
+            "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.48?port=2030-2040&protocol=UDP#Mieru\n"
+        );
+        let encoded_raw = B64_STD_NO_PAD.encode(raw_links);
+        let wrapped = format!("{}\r\n{}", &encoded_raw[..40], &encoded_raw[40..]);
+        let b64_nodes = CoreManager::parse_subscription_payload(&wrapped);
+        assert_eq!(b64_nodes.len(), 2);
+        assert_eq!(b64_nodes[0].tag, "Mieru");
+        assert_eq!(b64_nodes[1].tag, "Mieru-1");
+        assert_eq!(b64_nodes[1].outbound_json["tag"], "Mieru-1");
+        assert_eq!(
+            b64_nodes[0].outbound_json["server_ports"],
+            json!(["2012-2022"])
+        );
+        assert!(b64_nodes[0].outbound_json.get("server_port").is_none());
+        assert_eq!(
+            b64_nodes[0].outbound_json["password"],
+            "dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ="
+        );
+        assert_eq!(b64_nodes[0].outbound_json["traffic_pattern"], "GgQIARAK");
+
+        let clash_yaml = r#"proxies:
+  - name: Mieru
+    type: mieru
+    server: 198.51.100.47
+    port: 0
+    port-range: "2012-2022"
+    username: default
+    password: dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ=
+    protocol: TCP
+    multiplexing: MULTIPLEXING_HIGH
+    traffic-pattern: GgQIARAK
+    handshake-mode: HANDSHAKE_STANDARD
+  - name: Mieru
+    type: mieru
+    server: 198.51.100.48
+    ports:
+      - 2030-2040
+      - 2050
+    username: default
+    password: dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ=
+    protocol: UDP
+"#;
+        let yaml_nodes = CoreManager::parse_subscription_payload(clash_yaml);
+        assert_eq!(yaml_nodes.len(), 2);
+        assert_eq!(yaml_nodes[0].tag, "Mieru");
+        assert_eq!(yaml_nodes[0].server_port, 2012);
+        assert!(yaml_nodes[0].outbound_json.get("server_port").is_none());
+        assert_eq!(
+            yaml_nodes[0].outbound_json["server_ports"],
+            json!(["2012-2022"])
+        );
+        assert_eq!(yaml_nodes[0].outbound_json["traffic_pattern"], "GgQIARAK");
+        assert_eq!(
+            yaml_nodes[0].outbound_json["handshake_mode"],
+            "HANDSHAKE_STANDARD"
+        );
+        assert_eq!(yaml_nodes[1].tag, "Mieru-1");
+        assert_eq!(
+            yaml_nodes[1].outbound_json["server_ports"],
+            json!(["2030-2040", "2050"])
+        );
+    }
+
+    #[test]
+    fn test_subscription_target_resolution_dns_packet_and_interval_helpers() {
+        assert_eq!(
+            parse_http_url_host_port("https://sub.skytunnel.pw/bb6a9d37678a415a"),
+            Some(("sub.skytunnel.pw".to_string(), 443))
+        );
+        assert_eq!(
+            parse_http_url_host_port("http://[::1]:8080/sub"),
+            Some(("::1".to_string(), 8080))
+        );
+        assert_eq!(
+            normalize_bootstrap_dns_addr("udp://77.88.8.8"),
+            Some("77.88.8.8:53".parse().unwrap())
+        );
+
+        let pkt = crate::diagnostics::build_dns_query_packet("sub.skytunnel.pw", 1)
+            .expect("dns query packet");
+        assert!(pkt.len() > 20);
+        // Simulate FakeIP vs Real IP response rejection
+        let mut fake_resp = pkt.clone();
+        fake_resp[2] = 0x81;
+        fake_resp[3] = 0x80;
+        fake_resp[7] = 1; // 1 answer
+        fake_resp.extend_from_slice(&[
+            0xc0, 0x0c, // name ptr
+            0x00, 0x01, // A
+            0x00, 0x01, // IN
+            0x00, 0x00, 0x00, 0x05, // TTL
+            0x00, 0x04, // len 4
+            198, 18, 0, 7, // FakeIP
+        ]);
+        let (is_fake, ip, rcode) =
+            crate::diagnostics::parse_dns_fakeip_response(&fake_resp, "198.18.0.0/15", "fc00::/18");
+        assert_eq!(rcode, 0);
+        assert!(is_fake);
+        assert_eq!(ip, "198.18.0.7");
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_sky".to_string(),
+            source_type: "subscription".to_string(),
+            ..Default::default()
+        });
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec!["sub_sky".to_string(), "src_two".to_string()],
+            ..Default::default()
+        });
+        assert_eq!(
+            resolve_subscription_target_ids(&store, "sub_sky"),
+            Some(HashSet::from(["sub_sky".to_string()]))
+        );
+        assert_eq!(
+            resolve_subscription_target_ids(&store, "Main"),
+            Some(HashSet::from([
+                "sub_sky".to_string(),
+                "src_two".to_string()
+            ]))
+        );
+        assert_eq!(resolve_subscription_target_ids(&store, ""), None);
+
+        assert_eq!(parse_subscription_interval_secs("24h"), 86_400);
+        assert_eq!(parse_subscription_interval_secs("30m"), 1_800);
+        assert_eq!(parse_subscription_interval_secs("12"), 43_200);
+    }
+
+    #[tokio::test]
+    async fn test_manual_stop_persists_across_managers_and_blocks_watchdog_restart() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_manual_stop_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let store_path = dir.join("store.json");
+
+        let cli_state = AppState::load_or_create(store_path.clone()).expect("load cli state");
+        {
+            let mut d = cli_state.data.write().await;
+            d.settings.enable_watchdog = true;
+            d.settings.proxy_mode = "socks".to_string();
+        }
+        let cli_mgr = CoreManager::new(Arc::clone(&cli_state));
+
+        // 1. CLI stop sets cross-process manual stop marker and pauses Watchdog.
+        cli_mgr.stop().await.expect("cli stop succeeds");
+        assert!(cli_mgr.is_manually_stopped());
+        assert!(!cli_mgr.is_watchdog_effectively_running().await);
+
+        // 2. Separate daemon CoreManager observes manual stop and MUST NOT auto-restart core on reconcile.
+        let daemon_state = AppState::load_or_create(store_path.clone()).expect("load daemon state");
+        {
+            let mut d = daemon_state.data.write().await;
+            d.settings.enable_watchdog = true;
+            d.settings.proxy_mode = "socks".to_string();
+            d.settings.core_bin_path = dir
+                .join("missing-tachyon-core")
+                .to_string_lossy()
+                .to_string();
+        }
+        let daemon_mgr = CoreManager::new(Arc::clone(&daemon_state));
+        assert!(daemon_mgr.is_manually_stopped());
+        assert!(!daemon_mgr.is_watchdog_effectively_running().await);
+
+        daemon_mgr.poll_telemetry_and_reconcile(1).await;
+        {
+            let live = daemon_state.live.read().await;
+            assert!(!live.core_running);
+            assert!(
+                !live
+                    .events
+                    .iter()
+                    .any(|e| e.subsystem == "watchdog" && e.message.contains("restarting")),
+                "watchdog must not attempt core restart after manual stop"
+            );
+        }
+
+        // 3. Explicit start clears manual stop marker across processes and re-activates Watchdog.
+        cli_mgr.set_manual_stop(false);
+        assert!(!daemon_mgr.is_manually_stopped());
+        assert!(daemon_mgr.is_watchdog_effectively_running().await);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_trs_magic_validation_reason_normalization_and_fakeip6_drift() {
+        let reason = "config: route: max_idle_timeout: json: unknown field \"bad_key\"";
+        assert_eq!(
+            CoreManager::normalize_unknown_field_reason(reason),
+            "config: route.max_idle_timeout: json: unknown field \"bad_key\""
+        );
+
+        let mut valid_trs = b"TSRS".to_vec();
+        valid_trs.resize(32, 0x01);
+        assert!(CoreManager::bytes_have_valid_trs_magic(&valid_trs));
+        assert!(!CoreManager::bytes_have_valid_trs_magic(b"SRS\x02tiny"));
+        assert!(!CoreManager::bytes_have_valid_trs_magic(b"TSRS"));
+
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_fakeip6_drift_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let cfg_path = dir.join("config.json");
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        let v6_on = crate::store::EffectiveIpv6State::Full;
+        let v6_off = crate::store::EffectiveIpv6State::Disabled;
+
+        std::fs::write(
+            &cfg_path,
+            r#"{"dns":{"servers":[{"type":"fakeip","tag":"dns-fakeip","inet4_range":"198.18.0.0/15"}]}}"#,
+        )
+        .unwrap();
+        assert!(!CoreManager::core_config_ipv6_matches(
+            &cfg_path, &store, v6_on
+        ));
+        assert!(CoreManager::core_config_ipv6_matches(
+            &cfg_path, &store, v6_off
+        ));
+
+        std::fs::write(
+            &cfg_path,
+            r#"{"dns":{"servers":[{"type":"fakeip","tag":"dns-fakeip","inet4_range":"198.18.0.0/15","inet6_range":"fc00::/18"}]}}"#,
+        )
+        .unwrap();
+        assert!(CoreManager::core_config_ipv6_matches(
+            &cfg_path, &store, v6_on
+        ));
+        assert!(!CoreManager::core_config_ipv6_matches(
+            &cfg_path, &store, v6_off
+        ));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

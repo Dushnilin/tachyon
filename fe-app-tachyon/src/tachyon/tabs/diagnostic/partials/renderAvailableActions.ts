@@ -37,7 +37,7 @@ interface IRenderAvailableActionsProps {
   strategyFuzzer?: ActionProps;
   restoreNativeInternet?: ActionProps;
   viewLogs: ActionProps;
-  showSingBoxConfig: ActionProps;
+  showTachyonCoreConfig: ActionProps;
   generateBugReport: ActionProps;
   checkServices: ActionProps;
   testLeaks?: ActionProps;
@@ -79,7 +79,7 @@ export function renderAvailableActions({
   strategyFuzzer,
   restoreNativeInternet,
   viewLogs,
-  showSingBoxConfig,
+  showTachyonCoreConfig,
   generateBugReport,
   checkServices,
   testLeaks,
@@ -248,13 +248,13 @@ export function renderAvailableActions({
         disabled: viewLogs.disabled,
       }),
     ]),
-    ...insertIf(showSingBoxConfig.visible, [
+    ...insertIf(showTachyonCoreConfig.visible, [
       renderButton({
-        onClick: showSingBoxConfig.onClick,
+        onClick: showTachyonCoreConfig.onClick,
         icon: renderCogIcon24,
-        text: showSingBoxConfig.text || _('Show Tachyon Core config'),
-        loading: showSingBoxConfig.loading,
-        disabled: showSingBoxConfig.disabled,
+        text: showTachyonCoreConfig.text || _('Show Tachyon Core config'),
+        loading: showTachyonCoreConfig.loading,
+        disabled: showTachyonCoreConfig.disabled,
       }),
     ]),
     ...insertIf(globalCheck.visible, [

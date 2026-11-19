@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build OpenWrt .tar.gz, .ipk (opkg), and .apk (apk-tools v2) packages for tachyon.
+"""Build OpenWrt .ipk (opkg) and .apk (apk-tools) packages for tachyon.
 
 Uses only Python stdlib (tarfile, gzip, hashlib, io) and produces deterministic
 artifacts for OpenWrt router architectures.
@@ -15,6 +15,8 @@ import tarfile
 import time
 
 
+SYSUPGRADE_KEEP_FILE = "/etc/tachyon/\n/etc/tachyon-core/\n/usr/bin/tachyon-core\n"
+
 PREINST_SCRIPT = """#!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
 if [ -s /etc/config/tachyon ] && [ ! -s /etc/tachyon/backup-pre-2.0/tachyon.uci ]; then
@@ -22,12 +24,53 @@ if [ -s /etc/config/tachyon ] && [ ! -s /etc/tachyon/backup-pre-2.0/tachyon.uci 
     cp -af /etc/config/tachyon /etc/tachyon/backup-pre-2.0/tachyon.uci 2>/dev/null || true
     chmod 600 /etc/tachyon/backup-pre-2.0/tachyon.uci 2>/dev/null || true
 fi
+_is_v1=0
 if [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/hotplug.d/iface/99-tachyon-wan-monitor ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
+    _is_v1=1
+elif [ -x /usr/bin/tachyon ] && head -c 2 /usr/bin/tachyon 2>/dev/null | grep -q '^#!'; then
+    _is_v1=1
+fi
+if [ "$_is_v1" -eq 1 ]; then
+    __anc=" "
+    __p=$$
+    while [ -n "$__p" ] && [ "$__p" -gt 1 ] 2>/dev/null; do
+        __anc="$__anc$__p "
+        __p=$(awk '{ sub(/.*\\) /, ""); print $2 }' "/proc/$__p/stat" 2>/dev/null)
+    done
+    for __pdir in /proc/[0-9]*; do
+        __pid="${__pdir##*/}"
+        case "$__anc" in *" $__pid "*) continue;; esac
+        if [ -r "$__pdir/cmdline" ]; then
+            __cmd="$(tr '\\0' ' ' < "$__pdir/cmdline" 2>/dev/null)"
+            case "$__cmd" in
+                *99-tachyon-wan*|*"flock 1000"*|*"/etc/init.d/tachyon"*)
+                    kill -9 "$__pid" >/dev/null 2>&1 || true
+                    continue
+                    ;;
+            esac
+        fi
+        if [ -e "$__pdir/fd/1000" ]; then
+            case "$(readlink "$__pdir/fd/1000" 2>/dev/null)" in
+                *procd_tachyon*) kill -9 "$__pid" >/dev/null 2>&1 || true ;;
+            esac
+        fi
+    done
+    _to=""
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 1 /bin/true >/dev/null 2>&1; then
+            _to="timeout 15"
+        elif timeout -t 1 /bin/true >/dev/null 2>&1; then
+            _to="timeout -t 15"
+        fi
+    fi
+    if [ -x /usr/bin/tachyon ]; then
+        $_to /usr/bin/tachyon stop >/dev/null 2>&1 || true
+    fi
     if [ -x /etc/init.d/tachyon ]; then
-        /etc/init.d/tachyon stop >/dev/null 2>&1 || true
+        $_to /etc/init.d/tachyon stop >/dev/null 2>&1 || true
     fi
     if [ -x /etc/init.d/tachyon-core ]; then
-        /etc/init.d/tachyon-core stop >/dev/null 2>&1 || true
+        $_to /etc/init.d/tachyon-core stop >/dev/null 2>&1 || true
     fi
     : > /tmp/tachyon-upgrading-from-v1 2>/dev/null || true
 fi
@@ -45,58 +88,196 @@ if [ ! -s /etc/config/tachyon ] && [ -s /etc/tachyon/backup-pre-2.0/tachyon.uci 
 fi
 
 # Migrate 1.x (ucode + rpcd) -> 2.0 (Pure-Rust daemon): clean legacy hooks/services/tables,
-# preserving /etc/config/tachyon so the daemon auto-imports it on first start.
+# preserving /etc/config/tachyon for automatic store import.
+_is_v1=0
 if [ -f /tmp/tachyon-upgrading-from-v1 ] || [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/hotplug.d/iface/99-tachyon-wan-monitor ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
-    for _old_svc in /etc/init.d/tachyon-torrserver-direct /etc/init.d/tachyon-steer-zapret /etc/init.d/tachyon-core; do
+    _is_v1=1
+fi
+if [ "$_is_v1" -eq 1 ]; then
+    _to=""
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 1 /bin/true >/dev/null 2>&1; then
+            _to="timeout 15"
+        elif timeout -t 1 /bin/true >/dev/null 2>&1; then
+            _to="timeout -t 15"
+        fi
+    fi
+
+    for _old_svc in /etc/init.d/tachyon-torrserver-direct /etc/init.d/tachyon-core; do
         if [ -x "$_old_svc" ]; then
-            "$_old_svc" stop >/dev/null 2>&1 || true
+            $_to "$_old_svc" stop >/dev/null 2>&1 || true
             "$_old_svc" disable >/dev/null 2>&1 || true
         fi
     done
     rm -f /etc/rc.d/*tachyon-core* /etc/rc.d/*tachyon-torrserver-direct* 2>/dev/null || true
 
-    killall -9 sing-box nfqws nfqws2 ciadpi >/dev/null 2>&1 || true
-for p in /proc/[0-9]*; do
-    [ -r "$p/cmdline" ] || continue
-    case "$(tr '\\0' ' ' < "$p/cmdline" 2>/dev/null)" in
-        *"/usr/lib/tachyon/"*|*"/usr/bin/tachyon-core"*)
-            kill -9 "${p##*/}" >/dev/null 2>&1 || true
-            ;;
-    esac
-done
-
-    if command -v crontab >/dev/null 2>&1; then
-        _crontmp="$(mktemp /tmp/tachyon-cron.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cron.$$")"
-        if crontab -l 2>/dev/null | grep -q -E 'tachyon|parental_quota_tick'; then
-            crontab -l 2>/dev/null | grep -v -E 'tachyon|parental_quota_tick' > "$_crontmp" || true
-            crontab "$_crontmp" 2>/dev/null || true
-        fi
-        rm -f "$_crontmp" 2>/dev/null || true
-    fi
+    for p in /proc/[0-9]*; do
+        [ -r "$p/cmdline" ] || continue
+        case "$(tr '\\0' ' ' < "$p/cmdline" 2>/dev/null)" in
+            *"/usr/lib/tachyon/"*|*"/usr/bin/tachyon-core"*)
+                kill -9 "${p##*/}" >/dev/null 2>&1 || true
+                ;;
+        esac
+    done
 
     if command -v nft >/dev/null 2>&1; then
         nft delete table inet tachyon >/dev/null 2>&1 || true
-nft delete table inet TachyonTable >/dev/null 2>&1 || true
-        nft delete table inet steer >/dev/null 2>&1 || true
+        nft delete table inet TachyonTable >/dev/null 2>&1 || true
+        nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
         nft delete table ip tachyon >/dev/null 2>&1 || true
         nft delete table ip6 tachyon >/dev/null 2>&1 || true
     fi
-    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
+
+    if command -v ip >/dev/null 2>&1; then
+        for _p in 9499 9500 9501; do
+            for _fam in -4 -6; do
+                while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
+            done
+        done
+        for _fam in -4 -6; do
+            ip "$_fam" rule del fwmark 0x04000000/0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000/0x10000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000 lookup 100 >/dev/null 2>&1 || true
+        done
+    fi
+
+    if command -v uci >/dev/null 2>&1 && [ -f /etc/config/dhcp ]; then
+        _dont_touch="$(uci -q get tachyon.settings.dont_touch_dhcp 2>/dev/null || echo '0')"
+        if [ "$_dont_touch" != "1" ]; then
+            _had_v1_dns=0
+            if uci -q get dhcp.@dnsmasq[0].server 2>/dev/null | grep -q '127\\.0\\.0\\.42'; then
+                _had_v1_dns=1
+            fi
+            if [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_noresolv 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_cachesize 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.tachyon 2>/dev/null || true)" ]; then
+                _had_v1_dns=1
+            fi
+            uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.42" 2>/dev/null || true
+            _orig_servers="$(uci -q get dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true)"
+            if [ -n "$_orig_servers" ]; then
+                uci -q delete dhcp.@dnsmasq[0].server 2>/dev/null || true
+                for _srv in $_orig_servers; do
+                    [ "$_srv" != "127.0.0.42" ] && uci -q add_list dhcp.@dnsmasq[0].server="$_srv" 2>/dev/null || true
+                done
+                uci -q delete dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true
+            fi
+            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface serversfile localservice; do
+                _val="$(uci -q get "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true)"
+                if [ -n "$_val" ]; then
+                    if [ "$_val" = "__tachyon_unset__" ] || [ "$_val" = "__absent__" ] || [ "$_val" = "unset" ]; then
+                        uci -q delete "dhcp.@dnsmasq[0].${_opt}" 2>/dev/null || true
+                    else
+                        uci -q set "dhcp.@dnsmasq[0].${_opt}=${_val}" 2>/dev/null || true
+                    fi
+                    uci -q delete "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true
+                fi
+            done
+            if [ "$_had_v1_dns" -eq 1 ]; then
+                if [ "$(uci -q get dhcp.@dnsmasq[0].noresolv 2>/dev/null)" = "1" ]; then
+                    uci -q set dhcp.@dnsmasq[0].noresolv="0" 2>/dev/null || true
+                fi
+                if [ "$(uci -q get dhcp.@dnsmasq[0].cachesize 2>/dev/null)" = "0" ]; then
+                    uci -q set dhcp.@dnsmasq[0].cachesize="150" 2>/dev/null || true
+                fi
+            fi
+            uci -q delete dhcp.tachyon 2>/dev/null || true
+            uci -q commit dhcp 2>/dev/null || true
+            if [ "$_had_v1_dns" -eq 1 ] && [ -x /etc/init.d/dnsmasq ]; then
+                /etc/init.d/dnsmasq reload >/dev/null 2>&1 || /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
 
     rm -rf /usr/lib/tachyon /var/run/tachyon/section-cache /var/run/tachyon/ui-state 2>/dev/null || true
-    rm -f /usr/libexec/rpcd/tachyon /usr/bin/tachyon-read /etc/hotplug.d/iface/99-tachyon-wan-monitor /etc/init.d/tachyon-torrserver-direct /www/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-sub /usr/lib/cgi-bin/tachyon-agent /etc/uci-defaults/50_luci-tachyon /usr/share/luci/menu.d/luci-app-tachyon.json /usr/share/rpcd/acl.d/luci-app-tachyon.json 2>/dev/null || true
+    rm -f /usr/libexec/rpcd/tachyon /usr/bin/tachyon-read /etc/hotplug.d/iface/99-tachyon-wan-monitor /etc/init.d/tachyon-torrserver-direct /www/cgi-bin/tachyon-agent /usr/lib/cgi-bin/tachyon-agent /etc/uci-defaults/50_luci-tachyon /usr/share/luci/menu.d/luci-app-tachyon.json /usr/share/rpcd/acl.d/luci-app-tachyon.json /usr/lib/lua/luci/i18n/tachyon.ru.lmo 2>/dev/null || true
     rm -f /tmp/tachyon-upgrading-from-v1 2>/dev/null || true
 fi
 
-rm -f /tmp/luci-indexcache* 2>/dev/null || true
+if command -v crontab >/dev/null 2>&1; then
+    _crontmp="$(mktemp /tmp/tachyon-cron.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cron.$$")"
+    if crontab -l 2>/dev/null | grep -q -E 'tachyon|parental_quota_tick'; then
+        crontab -l 2>/dev/null | grep -v -E 'tachyon|parental_quota_tick' > "$_crontmp" || true
+        crontab "$_crontmp" 2>/dev/null || true
+    fi
+    rm -f "$_crontmp" 2>/dev/null || true
+fi
+
+rm -f /tmp/luci-indexcache* /usr/share/tachyon/tachyon.ru.po 2>/dev/null || true
 rm -rf /tmp/luci-modulecache 2>/dev/null || true
+for _js in /www/luci-static/resources/view/tachyon/*.js /www/luci-static/resources/luci.js /www/luci-static/resources/view/tachyon /www/luci-static/resources; do
+    [ -e "$_js" ] && touch "$_js" 2>/dev/null || true
+done
 [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 
-chmod 755 /usr/bin/tachyon /etc/init.d/tachyon 2>/dev/null || true
+chmod 755 /usr/bin/tachyon /etc/init.d/tachyon /www/cgi-bin/tachyon-sub 2>/dev/null || true
 if [ -x /etc/init.d/tachyon ]; then
     /etc/init.d/tachyon enable >/dev/null 2>&1 || true
-    /etc/init.d/tachyon restart >/dev/null 2>&1 || true
+    /etc/init.d/tachyon stop >/dev/null 2>&1 || true
+    _wait_i=0
+    while [ "$_wait_i" -lt 6 ]; do
+        _alive=0
+        for _p in /proc/[0-9]*; do
+            [ -r "$_p/comm" ] || continue
+            if [ "$(cat "$_p/comm" 2>/dev/null)" = "tachyon" ]; then
+                _alive=1
+                break
+            fi
+        done
+        [ "$_alive" -eq 0 ] && break
+        _wait_i=$((_wait_i + 1))
+        sleep 1
+    done
+    killall -9 tachyon >/dev/null 2>&1 || true
+    /etc/init.d/tachyon start >/dev/null 2>&1 || true
 fi
+exit 0
+"""
+
+CGI_SUB_SCRIPT = """#!/bin/sh
+_port="1680"
+if [ -s /etc/tachyon/tachyon.json ]; then
+    _jport="$(sed -n 's/.*"web_port"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /etc/tachyon/tachyon.json | head -n 1)"
+    [ -n "$_jport" ] && _port="$_jport"
+elif command -v uci >/dev/null 2>&1; then
+    _uport="$(uci -q get tachyon.settings.web_port 2>/dev/null)"
+    case "$_uport" in
+        ''|*[!0-9]*) ;;
+        *) _port="$_uport" ;;
+    esac
+fi
+_url="http://127.0.0.1:${_port}/cgi-bin/tachyon-sub${PATH_INFO:-}${QUERY_STRING:+?${QUERY_STRING}}"
+_tmp="$(mktemp /tmp/tachyon-cgi-sub.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cgi-sub.$$")"
+trap 'rm -f "$_tmp" 2>/dev/null || true' EXIT INT TERM
+_ok=0
+if [ -n "${HTTP_HOST:-}" ] && [ -n "${HTTP_USER_AGENT:-}" ]; then
+    curl -sS -i --max-time 10 -H "Host: ${HTTP_HOST}" -H "User-Agent: ${HTTP_USER_AGENT}" "$_url" > "$_tmp" 2>/dev/null && _ok=1
+elif [ -n "${HTTP_HOST:-}" ]; then
+    curl -sS -i --max-time 10 -H "Host: ${HTTP_HOST}" "$_url" > "$_tmp" 2>/dev/null && _ok=1
+elif [ -n "${HTTP_USER_AGENT:-}" ]; then
+    curl -sS -i --max-time 10 -H "User-Agent: ${HTTP_USER_AGENT}" "$_url" > "$_tmp" 2>/dev/null && _ok=1
+else
+    curl -sS -i --max-time 10 "$_url" > "$_tmp" 2>/dev/null && _ok=1
+fi
+if [ "$_ok" -eq 1 ]; then
+    awk '
+        NR==1 && $1 ~ /^HTTP\\// {
+            code=$2;
+            sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, "");
+            sub(/\\r$/, "");
+            printf "Status: %s %s\\r\\n", code, $0;
+            next;
+        }
+        { print }
+    ' "$_tmp"
+    rm -f "$_tmp" 2>/dev/null || true
+    exit 0
+fi
+rm -f "$_tmp" 2>/dev/null || true
+printf "Status: 502 Bad Gateway\\r\\nContent-Type: text/plain\\r\\n\\r\\nTachyon web daemon unavailable\\n"
 exit 0
 """
 
@@ -108,10 +289,18 @@ case "${1:-remove}" in
             /etc/init.d/tachyon stop >/dev/null 2>&1 || true
             /etc/init.d/tachyon disable >/dev/null 2>&1 || true
         fi
-        rm -f /etc/nftables.d/10-tachyon.nft /tmp/luci-indexcache* 2>/dev/null || true
+        rm -f /etc/nftables.d/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /etc/sysctl.d/99-tachyon-bbr.conf /www/cgi-bin/tachyon-sub /tmp/luci-indexcache* 2>/dev/null || true
         if command -v nft >/dev/null 2>&1; then
             nft delete table inet TachyonTable >/dev/null 2>&1 || true
+            nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
             nft delete table inet tachyon >/dev/null 2>&1 || true
+        fi
+        if command -v ip >/dev/null 2>&1; then
+            for _p in 9499 9500 9501; do
+                for _fam in -4 -6; do
+                    while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
+                done
+            done
         fi
         ;;
 esac
@@ -216,22 +405,6 @@ def _collect_view_assets(views_dir: str) -> list[tuple[str, bytes]]:
             with open(full, "rb") as f:
                 assets.append((entry, f.read()))
     return assets
-
-
-def build_tar_bundle(
-    out_path: str,
-    files: list[tuple[str, bytes, int]],
-    dirs: list[str],
-    mtime: int,
-) -> None:
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
-        for d in dirs:
-            _add_ustar_dir(tf, d, mtime)
-        for rel_path, content, mode in files:
-            _add_ustar_file(tf, rel_path, content, mode, mtime)
-    with open(out_path, "wb") as f:
-        f.write(_gzip_bytes(buf.getvalue(), mtime))
 
 
 def _format_ipk_version(ver_clean: str) -> str:
@@ -378,7 +551,7 @@ def main() -> None:
     ap.add_argument("--arch", required=True, help="Architecture name (e.g. aarch64, x86_64)")
     ap.add_argument("--version", required=True, help="Version tag (e.g. v2.0.0 or 2.0.0)")
     ap.add_argument("--init", default="openwrt/tachyon.init", help="Path to tachyon procd init script")
-    ap.add_argument("--po", default="fe-app-tachyon/locales/tachyon.ru.po", help="Path to Russian .po dictionary")
+    ap.add_argument("--po", default="", help="Optional path to Russian .po dictionary (unused when i18n_ru.js is precompiled)")
     ap.add_argument(
         "--views-dir",
         default="luci-app-tachyon/htdocs/luci-static/resources/view/tachyon",
@@ -395,7 +568,6 @@ def main() -> None:
         default="openwrt/tachyon-launcher.acl.json",
         help="Path to rpcd ACL JSON definition",
     )
-    ap.add_argument("--out-tar", required=True, help="Output .tar.gz path")
     ap.add_argument("--out-ipk", required=True, help="Output .ipk path")
     ap.add_argument("--out-apk", required=True, help="Output .apk path")
     args = ap.parse_args()
@@ -409,6 +581,9 @@ def main() -> None:
         init_bytes = f.read().replace(b"\r\n", b"\n")
 
     dirs = [
+        "lib",
+        "lib/upgrade",
+        "lib/upgrade/keep.d",
         "usr",
         "usr/bin",
         "usr/share",
@@ -420,14 +595,17 @@ def main() -> None:
         "etc",
         "etc/init.d",
         "www",
+        "www/cgi-bin",
         "www/luci-static",
         "www/luci-static/resources",
         "www/luci-static/resources/view",
         "www/luci-static/resources/view/tachyon",
     ]
     files: list[tuple[str, bytes, int]] = [
+        ("lib/upgrade/keep.d/tachyon", SYSUPGRADE_KEEP_FILE.encode("utf-8"), 0o644),
         ("usr/bin/tachyon", bin_bytes, 0o755),
         ("etc/init.d/tachyon", init_bytes, 0o755),
+        ("www/cgi-bin/tachyon-sub", CGI_SUB_SCRIPT.replace("\r\n", "\n").encode("utf-8"), 0o755),
     ]
     if args.po and os.path.isfile(args.po):
         with open(args.po, "rb") as f:
@@ -460,17 +638,15 @@ def main() -> None:
 
     installed_size = sum(len(content) for _, content, _ in files)
 
-    for p in (args.out_tar, args.out_ipk, args.out_apk):
+    for p in (args.out_ipk, args.out_apk):
         parent = os.path.dirname(os.path.abspath(p))
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-    build_tar_bundle(args.out_tar, files, dirs, mtime)
     build_ipk(args.out_ipk, ver_clean, args.arch, files, dirs, installed_size, mtime)
     build_apk(args.out_apk, ver_clean, args.arch, files, dirs, installed_size, mtime)
     print(
-        f"Built {args.out_tar} ({os.path.getsize(args.out_tar)} bytes), "
-        f"{args.out_ipk} ({os.path.getsize(args.out_ipk)} bytes), "
+        f"Built {args.out_ipk} ({os.path.getsize(args.out_ipk)} bytes), "
         f"{args.out_apk} ({os.path.getsize(args.out_apk)} bytes)"
     )
 

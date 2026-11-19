@@ -4,12 +4,13 @@
 //! configuration writes pass through `write_json_if_changed`, and all runtime telemetry rings/maps
 //! have strict capacity caps and automatic TTL eviction.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
@@ -27,6 +28,70 @@ pub const MAX_SESSIONS: usize = 64;
 pub const MAX_NODE_LATENCIES: usize = 2048;
 pub const MAX_JOBS: usize = 16;
 pub const LEGACY_UCI_BACKUP_PATH: &str = "/etc/tachyon/backup-pre-2.0/tachyon.uci";
+pub const LEGACY_UCI_IMPORTED_MIGRATION: &str = "legacy_uci_imported_v1";
+
+#[cfg(any(not(target_has_atomic = "64"), test))]
+struct FallbackAtomicU64(std::sync::Mutex<u64>);
+
+#[cfg(any(not(target_has_atomic = "64"), test))]
+impl FallbackAtomicU64 {
+    const fn new(val: u64) -> Self {
+        Self(std::sync::Mutex::new(val))
+    }
+
+    fn load(&self, _order: Ordering) -> u64 {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn store(&self, val: u64, _order: Ordering) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = val;
+    }
+
+    fn fetch_add(&self, val: u64, _order: Ordering) -> u64 {
+        let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = *guard;
+        *guard = prev.wrapping_add(val);
+        prev
+    }
+}
+
+/// Drop-in `AtomicU64` wrapper that uses native `std::sync::atomic::AtomicU64`
+/// when `target_has_atomic = "64"` and falls back to `Mutex<u64>` on MIPS32.
+pub struct PortableAtomicU64(
+    #[cfg(target_has_atomic = "64")] std::sync::atomic::AtomicU64,
+    #[cfg(not(target_has_atomic = "64"))] FallbackAtomicU64,
+);
+
+impl Default for PortableAtomicU64 {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+impl PortableAtomicU64 {
+    pub const fn new(val: u64) -> Self {
+        #[cfg(target_has_atomic = "64")]
+        {
+            Self(std::sync::atomic::AtomicU64::new(val))
+        }
+        #[cfg(not(target_has_atomic = "64"))]
+        {
+            Self(FallbackAtomicU64::new(val))
+        }
+    }
+
+    pub fn load(&self, order: Ordering) -> u64 {
+        self.0.load(order)
+    }
+
+    pub fn store(&self, val: u64, order: Ordering) {
+        self.0.store(val, order);
+    }
+
+    pub fn fetch_add(&self, val: u64, order: Ordering) -> u64 {
+        self.0.fetch_add(val, order)
+    }
+}
 
 /// Effective Tachyon daemon version (supports prerelease SemVer via `TACHYON_BUILD_VERSION`).
 pub const TACHYON_VERSION: &str = match option_env!("TACHYON_BUILD_VERSION") {
@@ -39,6 +104,44 @@ pub fn unix_now_secs() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Decodes subscription header metadata (`profile-title`, `announce`) that carries a
+/// `base64:` prefix (standard or URL-safe base64, padded or unpadded) into UTF-8 text.
+/// Returns the original string untouched if it has no `base64:` prefix or fails to decode.
+pub fn decode_sub_header_value(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let Some(prefix) = trimmed.get(..7) else {
+        return raw.to_string();
+    };
+    if !prefix.eq_ignore_ascii_case("base64:") {
+        return raw.to_string();
+    }
+    let payload = trimmed[7..].trim();
+    if payload.is_empty() {
+        return raw.to_string();
+    }
+    let try_decode = |s: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(s)
+            .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(s))
+            .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(s))
+            .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s))
+    };
+    let decoded = try_decode(payload).or_else(|_| {
+        let compact: String = payload
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
+        try_decode(&compact)
+    });
+    match decoded {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(_) => raw.to_string(),
+        },
+        Err(_) => raw.to_string(),
+    }
 }
 
 fn default_true() -> bool {
@@ -85,6 +188,15 @@ pub fn normalize_dns_strategy(raw: &str) -> String {
         "prefer_ipv6" => "prefer_ipv6".to_string(),
         "ipv6_only" => "ipv6_only".to_string(),
         _ => "prefer_ipv4".to_string(),
+    }
+}
+
+pub fn normalize_tcp_profile(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "auto" | "windows" | "macos" | "ios" | "android" | "linux" | "default" => {
+            raw.trim().to_ascii_lowercase()
+        }
+        _ => String::new(),
     }
 }
 
@@ -687,6 +799,62 @@ fn default_off_str() -> String {
     "off".to_string()
 }
 
+fn default_auto_str() -> String {
+    "auto".to_string()
+}
+
+pub fn normalize_auto_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => "1".to_string(),
+        "0" | "false" | "no" | "off" => "0".to_string(),
+        _ => "auto".to_string(),
+    }
+}
+
+/// Enabled sections whose traffic is captured/proxied and set `fail_policy = "block"`.
+/// Actions that never proxy (`bypass`, `block`, `dns`, `hosts`) never trigger router-wide Fail-Closed.
+pub fn is_fail_closed_section(sec: &RoutingSection) -> bool {
+    if !sec.enabled {
+        return false;
+    }
+    let act = sec.action.trim().to_ascii_lowercase();
+    if matches!(act.as_str(), "bypass" | "block" | "dns" | "hosts") {
+        return false;
+    }
+    sec.fail_policy.trim().eq_ignore_ascii_case("block")
+}
+
+pub fn has_fail_closed_section(store: &RouterStoreData) -> bool {
+    store.sections.iter().any(is_fail_closed_section)
+}
+
+fn effective_auto_flag(flag: bool, mode: &str, fail_closed: bool) -> bool {
+    if flag {
+        return true;
+    }
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => true,
+        "0" | "false" | "no" | "off" => false,
+        _ => fail_closed,
+    }
+}
+
+pub fn effective_dns_intercept_all(store: &RouterStoreData) -> bool {
+    effective_auto_flag(
+        store.settings.dns_intercept_all,
+        &store.settings.dns_intercept_all_mode,
+        has_fail_closed_section(store),
+    )
+}
+
+pub fn effective_webrtc_leak_protect(store: &RouterStoreData) -> bool {
+    effective_auto_flag(
+        store.settings.webrtc_leak_protect,
+        &store.settings.webrtc_leak_protect_mode,
+        has_fail_closed_section(store),
+    )
+}
+
 fn default_snapshot_max() -> u32 {
     10
 }
@@ -793,6 +961,8 @@ pub struct GlobalSettings {
     pub tun_endpoint_independent_nat: bool,
     #[serde(default = "default_tun_udp_timeout")]
     pub tun_udp_timeout: String,
+    #[serde(default = "default_true")]
+    pub tun_kill_switch: bool,
     #[serde(default, alias = "sqm_enabled")]
     pub smart_queue: bool,
     #[serde(default)]
@@ -803,6 +973,8 @@ pub struct GlobalSettings {
     pub sqm_interface: String,
     #[serde(default = "default_tcp_profile")]
     pub tcp_profile: String,
+    #[serde(default = "default_true")]
+    pub tcp_bbr: bool,
     #[serde(default = "default_true")]
     pub selector_auto_failover: bool,
     pub source_network_interfaces: Vec<String>,
@@ -837,7 +1009,13 @@ pub struct GlobalSettings {
     #[serde(default)]
     pub block_doh: bool,
     #[serde(default)]
+    pub dns_intercept_all: bool,
+    #[serde(default = "default_auto_str")]
+    pub dns_intercept_all_mode: String,
+    #[serde(default)]
     pub webrtc_leak_protect: bool,
+    #[serde(default = "default_auto_str")]
+    pub webrtc_leak_protect_mode: String,
     #[serde(default)]
     pub route_router_traffic: bool,
     #[serde(default)]
@@ -868,6 +1046,8 @@ pub struct GlobalSettings {
     pub torrserver_ports: Vec<u16>,
     #[serde(default)]
     pub tailscale_enabled: bool,
+    #[serde(default = "default_auto_str")]
+    pub tailscale_web_access: String,
 
     #[serde(default = "default_dns_type")]
     pub dns_type: String,
@@ -929,6 +1109,8 @@ pub struct GlobalSettings {
 
     #[serde(default = "default_true")]
     pub enable_watchdog: bool,
+    #[serde(default = "default_true")]
+    pub emergency_direct_bypass: bool,
     #[serde(default)]
     pub wan_failover_enabled: bool,
     #[serde(default)]
@@ -1167,11 +1349,13 @@ impl Default for GlobalSettings {
             tun_gso: false,
             tun_endpoint_independent_nat: true,
             tun_udp_timeout: "5m".to_string(),
+            tun_kill_switch: true,
             smart_queue: false,
             sqm_download_kbps: 0,
             sqm_upload_kbps: 0,
             sqm_interface: "wan".to_string(),
             tcp_profile: "default".to_string(),
+            tcp_bbr: true,
             selector_auto_failover: true,
             source_network_interfaces: vec!["br-lan".to_string()],
             enable_output_network_interface: false,
@@ -1189,7 +1373,10 @@ impl Default for GlobalSettings {
             disable_quic: false,
             disable_quic_mode: "off".to_string(),
             block_doh: false,
+            dns_intercept_all: false,
+            dns_intercept_all_mode: "auto".to_string(),
             webrtc_leak_protect: false,
+            webrtc_leak_protect_mode: "auto".to_string(),
             route_router_traffic: false,
             route_router_traffic_section: String::new(),
             wifi_calling_direct: false,
@@ -1205,6 +1392,7 @@ impl Default for GlobalSettings {
             torrserver_direct_enabled: false,
             torrserver_ports: vec![8090],
             tailscale_enabled: false,
+            tailscale_web_access: "auto".to_string(),
             dns_type: "udp".to_string(),
             dns_servers: vec!["77.88.8.8".to_string(), "77.88.8.1".to_string(), "9.9.9.9".to_string()],
             bootstrap_dns_servers: vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()],
@@ -1235,6 +1423,7 @@ impl Default for GlobalSettings {
             github_mirror: String::new(),
             github_token: String::new(),
             enable_watchdog: true,
+            emergency_direct_bypass: true,
             wan_failover_enabled: false,
             wan_failover_primary: "wan".to_string(),
             wan_failover_backup: "wan2".to_string(),
@@ -1275,7 +1464,7 @@ impl Default for GlobalSettings {
             engine_variant: "tachyon-core".to_string(),
             server_subscription_enabled: true,
             server_subscription_token: crypto_gen::generate_hex(24),
-            server_subscription_host: "192.168.1.205".to_string(),
+            server_subscription_host: String::new(),
             server_subscription_format: "base64".to_string(),
             server_subscription_title: "Tachyon Router".to_string(),
             honeypot_enabled: true,
@@ -1330,6 +1519,8 @@ pub struct RoutingSection {
     #[serde(default)]
     pub icon: String,
     #[serde(default)]
+    pub icon_domain: String,
+    #[serde(default)]
     pub description: String,
     #[serde(default)]
     pub prefix_text: String,
@@ -1337,6 +1528,8 @@ pub struct RoutingSection {
     pub prefix_bg: String,
     #[serde(default)]
     pub prefix_color: String,
+    #[serde(default)]
+    pub dashboard_filter_mode: String,
     /// `proxy`, `desync`, `zapret2`, `zapret`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `awg`, `warp`, `tailscale`, `openvpn`, `openconnect`, `tewfai`, `direct`, `block`, `hosts`, `dns`
     #[serde(default, alias = "action_mode")]
     pub connection_type: String,
@@ -1404,6 +1597,10 @@ pub struct RoutingSection {
     pub exclude_securities: Vec<String>,
     #[serde(default)]
     pub dashboard_hide_na_servers: bool,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub subscription_url_settings: Vec<String>,
 
     // Traffic filters (Domains, Lists, Subnets, GeoIP, LAN devices, Ports, Protocols, DSCP)
     #[serde(default)]
@@ -1413,12 +1610,14 @@ pub struct RoutingSection {
     #[serde(default)]
     pub rule_set_urls: Vec<String>,
     #[serde(default)]
+    pub rule_set_with_subnets: Vec<String>,
+    #[serde(default)]
     pub domain_ip_lists: Vec<String>,
     #[serde(default)]
     pub domains: Vec<String>,
     #[serde(default)]
     pub user_domains: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "excluded_domains")]
     pub exclude_domains: Vec<String>,
     #[serde(default)]
     pub user_subnets: Vec<String>,
@@ -1592,6 +1791,12 @@ pub struct RoutingSection {
     #[serde(default)]
     pub desync_udp_fake_ttl: u8,
     #[serde(default)]
+    pub desync_udp_fake_payload: String,
+    #[serde(default)]
+    pub desync_udp_out_range: String,
+    #[serde(default)]
+    pub desync_udp_keep_socket: String,
+    #[serde(default)]
     pub desync_udplen: u16,
     #[serde(default)]
     pub desync_host_fake: bool,
@@ -1731,7 +1936,7 @@ pub struct TrafficCondition {
     pub community_subnets: bool,
     #[serde(default, alias = "domains")]
     pub user_domains: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "excluded_domains")]
     pub exclude_domains: Vec<String>,
     #[serde(default, alias = "ip_cidrs")]
     pub user_subnets: Vec<String>,
@@ -1930,6 +2135,12 @@ pub struct OutboundSource {
     #[serde(default)]
     pub desync_udp_fake_ttl: u8,
     #[serde(default)]
+    pub desync_udp_fake_payload: String,
+    #[serde(default)]
+    pub desync_udp_out_range: String,
+    #[serde(default)]
+    pub desync_udp_keep_socket: String,
+    #[serde(default)]
     pub desync_host_fake: bool,
     #[serde(default)]
     pub desync_wscale: Option<u8>,
@@ -2095,6 +2306,8 @@ pub struct OutboundSource {
     pub mieru_multiplexing: String,
     #[serde(default)]
     pub mieru_handshake_mode: String,
+    #[serde(default)]
+    pub mieru_traffic_pattern: String,
 
     /// NaiveProxy
     #[serde(default)]
@@ -2313,6 +2526,12 @@ pub struct OutboundSource {
     #[serde(default)]
     pub tls_fingerprint: String,
     #[serde(default)]
+    pub tls_fragment_mode: String,
+    #[serde(default)]
+    pub tcp_fragment_length: String,
+    #[serde(default)]
+    pub tcp_fragment_delay: String,
+    #[serde(default)]
     pub outbound_detour_enabled: bool,
     #[serde(default)]
     pub outbound_detour_section: String,
@@ -2354,6 +2573,8 @@ pub struct OutboundSource {
     pub cached_nodes: Vec<ParsedProxyNode>,
     #[serde(default)]
     pub last_updated_unix: i64,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -2441,6 +2662,46 @@ pub struct BalancerConfig {
     pub fastest_check_interval: String,
     #[serde(default)]
     pub priority_levels: Vec<PriorityLevelConfig>,
+    #[serde(default)]
+    pub filter_mode: String,
+    #[serde(default = "default_true")]
+    pub detect_server_country: bool,
+    #[serde(default)]
+    pub pin_dashboard: bool,
+    #[serde(default)]
+    pub exclude_proxy_parameters: bool,
+    #[serde(default)]
+    pub include_prefixes: Vec<String>,
+    #[serde(default)]
+    pub include_country_flags: Vec<String>,
+    #[serde(default)]
+    pub include_servers: Vec<String>,
+    #[serde(default)]
+    pub include_name_regex: String,
+    #[serde(default)]
+    pub include_protocols: Vec<String>,
+    #[serde(default)]
+    pub include_transports: Vec<String>,
+    #[serde(default)]
+    pub include_security_types: Vec<String>,
+    #[serde(default)]
+    pub include_ports: Vec<String>,
+    #[serde(default)]
+    pub exclude_prefixes: Vec<String>,
+    #[serde(default)]
+    pub exclude_country_flags: Vec<String>,
+    #[serde(default)]
+    pub exclude_servers: Vec<String>,
+    #[serde(default)]
+    pub exclude_name_regex: String,
+    #[serde(default)]
+    pub exclude_protocols: Vec<String>,
+    #[serde(default)]
+    pub exclude_transports: Vec<String>,
+    #[serde(default)]
+    pub exclude_security_types: Vec<String>,
+    #[serde(default)]
+    pub exclude_ports: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -3027,10 +3288,20 @@ pub struct TgBotConfig {
     pub notify_cert: bool,
     #[serde(default)]
     pub notify_auto_update: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub notify_honeypot: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub notify_parental: bool,
+    #[serde(default = "default_true")]
+    pub notify_smart_detect: bool,
+    #[serde(default = "default_true")]
+    pub notify_failover: bool,
+    #[serde(default = "default_true")]
+    pub notify_wan: bool,
+    #[serde(default = "default_true")]
+    pub notify_update_available: bool,
+    #[serde(default = "default_true")]
+    pub notify_route_alert: bool,
     #[serde(default)]
     pub bot_proxy_section: String,
     #[serde(default = "default_true")]
@@ -3064,6 +3335,11 @@ impl Default for TgBotConfig {
             notify_auto_update: true,
             notify_honeypot: true,
             notify_parental: true,
+            notify_smart_detect: true,
+            notify_failover: true,
+            notify_wan: true,
+            notify_update_available: true,
+            notify_route_alert: true,
             bot_proxy_section: String::new(),
             bot_direct_fallback: true,
             language: "ru".to_string(),
@@ -3125,6 +3401,8 @@ impl Default for RouterStoreData {
             s.seed_defaults();
         }
         s.apply_relax_probe_intervals_v1();
+        s.apply_fail_closed_auto_defaults();
+        s.apply_ai_lists_1_8();
         s
     }
 }
@@ -3538,6 +3816,25 @@ impl RouterStoreData {
         }
     }
 
+    fn mark_legacy_uci_imported(&mut self) {
+        if !self
+            .applied_migrations
+            .iter()
+            .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION)
+        {
+            self.applied_migrations
+                .push(LEGACY_UCI_IMPORTED_MIGRATION.to_string());
+        }
+    }
+
+    fn is_seeded_default_store(&self) -> bool {
+        self.sections.len() == 1
+            && self.sections[0].id == "sec_media_desync"
+            && self.servers.is_empty()
+            && self.outbound_sources.len() == 1
+            && self.outbound_sources[0].id == "src_adaptive_desync"
+    }
+
     /// Apply one-shot probe interval relaxation (`relax_probe_intervals_v1`) idempotently.
     /// Returns `true` when `applied_migrations` was updated so callers can persist the marker.
     pub fn apply_relax_probe_intervals_v1(&mut self) -> bool {
@@ -3574,6 +3871,242 @@ impl RouterStoreData {
                 bal.check_interval = 30;
             }
         }
+        self.applied_migrations.push(MIGRATION_ID.to_string());
+        true
+    }
+
+    /// Apply one-shot migration for `dns_intercept_all` and `webrtc_leak_protect`
+    /// from legacy `'0'` default to `'auto'` (`fail_closed_auto_defaults`).
+    pub fn apply_fail_closed_auto_defaults(&mut self) -> bool {
+        const MIGRATION_ID: &str = "fail_closed_auto_defaults";
+        if self.applied_migrations.iter().any(|m| m == MIGRATION_ID) {
+            return false;
+        }
+        if !self.settings.dns_intercept_all {
+            self.settings.dns_intercept_all_mode = "auto".to_string();
+        }
+        if !self.settings.webrtc_leak_protect {
+            self.settings.webrtc_leak_protect_mode = "auto".to_string();
+        }
+        self.applied_migrations.push(MIGRATION_ID.to_string());
+        true
+    }
+
+    /// Apply one-shot migration for AI rule-sets (`ai_lists_1_8`):
+    /// - Add `qwen` and `kimi` when a proxy section or proxy-only condition has >=2
+    ///   per-provider AI lists and no `ai_all`.
+    /// - Add `google_services` when absent everywhere and `google_ai` + (`ai_all` or
+    ///   >=2 AI lists) are present (including split across proxy-only conditions).
+    pub fn apply_ai_lists_1_8(&mut self) -> bool {
+        const MIGRATION_ID: &str = "ai_lists_1_8";
+        if self.applied_migrations.iter().any(|m| m == MIGRATION_ID) {
+            return false;
+        }
+
+        const NON_PROXY_ACTIONS: [&str; 5] = ["direct", "bypass", "block", "dns", "hosts"];
+        const PER_PROVIDER_AI_LISTS: [&str; 14] = [
+            "openai",
+            "anthropic",
+            "google_ai",
+            "xai",
+            "openrouter",
+            "cursor",
+            "perplexity",
+            "copilot",
+            "deepseek",
+            "midjourney",
+            "elevenlabs",
+            "ai_video",
+            "ai_cloud_gpu",
+            "huggingface",
+        ];
+
+        fn collect_cond_refs_recursive(
+            conds: &[TrafficCondition],
+            cond_idx_by_id: &HashMap<&str, usize>,
+            refs: &[String],
+            visited: &mut HashSet<String>,
+        ) {
+            for cname in refs {
+                let cname = cname.trim();
+                if cname.is_empty() || !visited.insert(cname.to_string()) {
+                    continue;
+                }
+                if let Some(&idx) = cond_idx_by_id.get(cname) {
+                    collect_cond_refs_recursive(
+                        conds,
+                        cond_idx_by_id,
+                        &conds[idx].children,
+                        visited,
+                    );
+                }
+            }
+        }
+
+        fn update_target_lists(lists: &mut Vec<String>, has_google_services_anywhere: &mut bool) {
+            let has_ai_all = lists.iter().any(|x| x == "ai_all");
+            let has_google_ai = lists.iter().any(|x| x == "google_ai");
+            let provider_count = PER_PROVIDER_AI_LISTS
+                .iter()
+                .filter(|&&k| lists.iter().any(|x| x == k))
+                .count();
+
+            if !has_ai_all && provider_count >= 2 {
+                if !lists.iter().any(|x| x == "qwen") {
+                    lists.push("qwen".to_string());
+                }
+                if !lists.iter().any(|x| x == "kimi") {
+                    lists.push("kimi".to_string());
+                }
+            }
+
+            if !*has_google_services_anywhere
+                && has_google_ai
+                && (has_ai_all || provider_count >= 2)
+                && !lists.iter().any(|x| x == "google_services")
+            {
+                lists.push("google_services".to_string());
+                *has_google_services_anywhere = true;
+            }
+        }
+
+        let mut has_google_services_anywhere = self
+            .conditions
+            .iter()
+            .any(|c| c.community_lists.iter().any(|x| x == "google_services"))
+            || self
+                .sections
+                .iter()
+                .any(|s| s.community_lists.iter().any(|x| x == "google_services"));
+
+        let cond_idx_by_id: HashMap<&str, usize> = self
+            .conditions
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, c)| {
+                let id = c.id.trim();
+                (!id.is_empty()).then_some((id, idx))
+            })
+            .collect();
+
+        let mut cond_in_proxy: HashSet<String> = HashSet::new();
+        let mut cond_in_non_proxy: HashSet<String> = HashSet::new();
+        let mut proxy_sec_indices: Vec<usize> = Vec::new();
+
+        for (sec_idx, sec) in self.sections.iter().enumerate() {
+            let act_raw = if !sec.action.trim().is_empty() {
+                sec.action.trim().to_ascii_lowercase()
+            } else {
+                sec.connection_type.trim().to_ascii_lowercase()
+            };
+            let is_non_proxy = NON_PROXY_ACTIONS.contains(&act_raw.as_str());
+            let mut refs_map = HashSet::new();
+            collect_cond_refs_recursive(
+                &self.conditions,
+                &cond_idx_by_id,
+                &sec.condition_refs,
+                &mut refs_map,
+            );
+            for cname in refs_map {
+                if is_non_proxy {
+                    cond_in_non_proxy.insert(cname);
+                } else {
+                    cond_in_proxy.insert(cname);
+                }
+            }
+            if !is_non_proxy {
+                proxy_sec_indices.push(sec_idx);
+            }
+        }
+
+        for &sec_idx in &proxy_sec_indices {
+            if !self.sections[sec_idx].community_lists.is_empty() {
+                update_target_lists(
+                    &mut self.sections[sec_idx].community_lists,
+                    &mut has_google_services_anywhere,
+                );
+            }
+        }
+        for cond in &mut self.conditions {
+            let cname = cond.id.trim();
+            if !cname.is_empty()
+                && cond_in_proxy.contains(cname)
+                && !cond_in_non_proxy.contains(cname)
+                && !cond.community_lists.is_empty()
+            {
+                update_target_lists(&mut cond.community_lists, &mut has_google_services_anywhere);
+            }
+        }
+
+        // Handle proxy sections whose `ai_all` and `google_ai` live in separate proxy-only conditions.
+        if !has_google_services_anywhere {
+            let cond_idx_by_id_owned: HashMap<String, usize> = self
+                .conditions
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, c)| {
+                    let id = c.id.trim().to_string();
+                    (!id.is_empty()).then_some((id, idx))
+                })
+                .collect();
+            for &sec_idx in &proxy_sec_indices {
+                if has_google_services_anywhere {
+                    break;
+                }
+                let mut refs_map = HashSet::new();
+                collect_cond_refs_recursive(
+                    &self.conditions,
+                    &cond_idx_by_id_owned
+                        .iter()
+                        .map(|(k, &v)| (k.as_str(), v))
+                        .collect(),
+                    &self.sections[sec_idx].condition_refs,
+                    &mut refs_map,
+                );
+                let mut combined: Vec<String> = self.sections[sec_idx].community_lists.clone();
+                enum GoogleTarget {
+                    Section(usize),
+                    Condition(usize),
+                }
+                let mut google_target = self.sections[sec_idx]
+                    .community_lists
+                    .iter()
+                    .any(|x| x == "google_ai")
+                    .then_some(GoogleTarget::Section(sec_idx));
+
+                let mut sorted_refs: Vec<String> = refs_map.into_iter().collect();
+                sorted_refs.sort();
+                for cname in sorted_refs {
+                    if let Some(&c_idx) = cond_idx_by_id_owned.get(&cname) {
+                        combined.extend(self.conditions[c_idx].community_lists.iter().cloned());
+                        if google_target.is_none()
+                            && cond_in_proxy.contains(&cname)
+                            && !cond_in_non_proxy.contains(&cname)
+                            && self.conditions[c_idx]
+                                .community_lists
+                                .iter()
+                                .any(|x| x == "google_ai")
+                        {
+                            google_target = Some(GoogleTarget::Condition(c_idx));
+                        }
+                    }
+                }
+                if combined.iter().any(|x| x == "ai_all")
+                    && combined.iter().any(|x| x == "google_ai")
+                    && let Some(target) = google_target
+                {
+                    let lists = match target {
+                        GoogleTarget::Section(idx) => &mut self.sections[idx].community_lists,
+                        GoogleTarget::Condition(idx) => &mut self.conditions[idx].community_lists,
+                    };
+                    if !lists.iter().any(|x| x == "google_services") {
+                        lists.push("google_services".to_string());
+                        has_google_services_anywhere = true;
+                    }
+                }
+            }
+        }
+
         self.applied_migrations.push(MIGRATION_ID.to_string());
         true
     }
@@ -3713,7 +4246,11 @@ impl RouterStoreData {
             return 0;
         };
         let blocks = parse_legacy_uci_blocks(&raw);
-        self.import_from_blocks_with_cache(&blocks, sub_cache_dir)
+        let imported = self.import_from_blocks_with_cache(&blocks, sub_cache_dir);
+        if imported > 0 {
+            self.mark_legacy_uci_imported();
+        }
+        imported
     }
 
     /// Import router configuration from `primary` (`/etc/config/tachyon`), falling back to `backup`
@@ -3741,6 +4278,10 @@ impl RouterStoreData {
         &mut self,
         sections_map: &serde_json::Map<String, Value>,
     ) -> usize {
+        let had_legacy_marker = self
+            .applied_migrations
+            .iter()
+            .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION);
         let mut indexed: Vec<(usize, &String, &serde_json::Map<String, Value>)> = sections_map
             .iter()
             .filter_map(|(k, v)| {
@@ -3818,7 +4359,19 @@ impl RouterStoreData {
                 lists,
             });
         }
-        self.import_from_blocks(&blocks)
+        let imported = self.import_from_blocks(&blocks);
+        if had_legacy_marker || imported > 0 {
+            self.mark_legacy_uci_imported();
+        }
+        imported
+    }
+
+    /// Reverse-convert `RouterStoreData` (`tachyon.json`) back into a UCI-compatible JSON
+    /// sections map (`config_sections.json`), preserving frontend-only fields (e.g.
+    /// `ui_prefs_json`) present in `existing`.
+    #[allow(dead_code)]
+    pub fn to_json_sections(&self, existing: Option<&Value>) -> Value {
+        sync_store_to_json_sections(self, existing)
     }
 
     fn import_from_blocks(&mut self, blocks: &[LegacyUciBlock]) -> usize {
@@ -3841,9 +4394,14 @@ impl RouterStoreData {
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
 
+        let prev_sources: HashMap<String, OutboundSource> = self
+            .outbound_sources
+            .drain(..)
+            .map(|s| (s.id.clone(), s))
+            .collect();
+
         self.sections.clear();
         self.conditions.clear();
-        self.outbound_sources.clear();
         self.outbound_groups.clear();
         self.balancers.clear();
         self.servers.clear();
@@ -3874,6 +4432,9 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("tun_auto_route") {
                         self.settings.tun_auto_route = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("tun_kill_switch") {
+                        self.settings.tun_kill_switch = parse_bool(v);
                     }
                     if let Some(v) = b.opt("tun_mtu").and_then(|s| s.parse().ok()) {
                         self.settings.tun_mtu = v;
@@ -3909,7 +4470,10 @@ impl RouterStoreData {
                         self.settings.sqm_interface = v.to_string();
                     }
                     if let Some(v) = b.opt("tcp_profile") {
-                        self.settings.tcp_profile = v.to_string();
+                        self.settings.tcp_profile = normalize_tcp_profile(v);
+                    }
+                    if let Some(v) = b.opt("tcp_bbr") {
+                        self.settings.tcp_bbr = parse_bool(v);
                     }
                     if let Some(v) = b.opt("selector_auto_failover") {
                         self.settings.selector_auto_failover = parse_bool(v);
@@ -4072,6 +4636,64 @@ impl RouterStoreData {
                     if !t_order.is_empty() {
                         self.settings.tab_order = t_order;
                     }
+                    if let Some(v) = b.opt("sidebar_collapsed") {
+                        self.settings.sidebar_collapsed = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("dashboard_preset") {
+                        self.settings.dashboard_preset = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dashboard_widgets_json") {
+                        self.settings.dashboard_widgets_json = v.to_string();
+                    }
+                    if let Some(v) = b.opt("studio_views_json") {
+                        self.settings.studio_views_json = v.to_string();
+                    }
+                    if b.lists.contains_key("hidden_tabs") || b.options.contains_key("hidden_tabs")
+                    {
+                        self.settings.hidden_tabs = b.list("hidden_tabs");
+                    }
+                    if let Some(v) = b.opt("show_tab_dashboard") {
+                        self.settings.show_tab_dashboard = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("show_tab_section")
+                        .or_else(|| b.opt("show_tab_sections"))
+                    {
+                        self.settings.show_tab_section = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("show_tab_server")
+                        .or_else(|| b.opt("show_tab_servers"))
+                    {
+                        self.settings.show_tab_server = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("show_tab_profile")
+                        .or_else(|| b.opt("show_tab_profiles"))
+                    {
+                        self.settings.show_tab_profile = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_schedule") {
+                        self.settings.show_tab_schedule = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_guest_mode") {
+                        self.settings.show_tab_guest_mode = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_local_devices") {
+                        self.settings.show_tab_local_devices = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_monitoring") {
+                        self.settings.show_tab_monitoring = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_diagnostic") {
+                        self.settings.show_tab_diagnostic = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_updates") {
+                        self.settings.show_tab_updates = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("show_tab_telegram") {
+                        self.settings.show_tab_telegram = parse_bool(v);
+                    }
                     if let Some(v) = b.opt("disable_quic") {
                         self.settings.disable_quic = parse_bool(v);
                     }
@@ -4081,8 +4703,18 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("block_doh") {
                         self.settings.block_doh = parse_bool(v);
                     }
+                    if let Some(v) = b.opt("dns_intercept_all") {
+                        let mode = normalize_auto_mode(v);
+                        self.settings.dns_intercept_all_mode = mode.clone();
+                        self.settings.dns_intercept_all = mode == "1";
+                    }
                     if let Some(v) = b.opt("webrtc_leak_protect") {
-                        self.settings.webrtc_leak_protect = parse_bool(v);
+                        let mode = normalize_auto_mode(v);
+                        self.settings.webrtc_leak_protect_mode = mode.clone();
+                        self.settings.webrtc_leak_protect = mode == "1";
+                    }
+                    if let Some(v) = b.opt("tailscale_web_access") {
+                        self.settings.tailscale_web_access = normalize_auto_mode(v);
                     }
                     if let Some(v) = b.opt("route_router_traffic") {
                         self.settings.route_router_traffic = parse_bool(v);
@@ -4129,6 +4761,9 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("enable_watchdog") {
                         self.settings.enable_watchdog = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("emergency_direct_bypass") {
+                        self.settings.emergency_direct_bypass = parse_bool(v);
                     }
                     if let Some(v) = b.opt("wan_failover_enabled") {
                         self.settings.wan_failover_enabled = parse_bool(v);
@@ -4272,6 +4907,30 @@ impl RouterStoreData {
                     {
                         self.settings.ai_metrics_retention_hours = v;
                     }
+                    if let Some(v) = b.opt("ai_proxy_health_enabled") {
+                        self.settings.ai_proxy_health_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("ai_proxy_health_interval")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.ai_proxy_health_interval = v;
+                    }
+                    if let Some(v) = b
+                        .opt("ai_proxy_health_fail_threshold")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.ai_proxy_health_fail_threshold = v;
+                    }
+                    if let Some(v) = b.opt("ai_proxy_health_url") {
+                        self.settings.ai_proxy_health_url = v.to_string();
+                    }
+                    if let Some(v) = b.opt("ai_dns_continuous_enabled") {
+                        self.settings.ai_dns_continuous_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("ai_dns_interval").and_then(|s| s.parse().ok()) {
+                        self.settings.ai_dns_interval = v;
+                    }
                     if let Some(v) = b.opt("server_subscription_enabled") {
                         self.settings.server_subscription_enabled = parse_bool(v);
                     }
@@ -4311,6 +4970,7 @@ impl RouterStoreData {
                         self.settings.session_ttl_secs = v;
                     }
                     self.applied_migrations = b.list("applied_migrations");
+                    self.settings.subscription_engine = "core".to_string();
                     imported += 1;
                 }
                 "telegram" => {
@@ -4366,6 +5026,21 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("notify_parental") {
                         self.telegram.notify_parental = parse_bool(v);
                     }
+                    if let Some(v) = b.opt("notify_smart_detect") {
+                        self.telegram.notify_smart_detect = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_failover") {
+                        self.telegram.notify_failover = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_wan") {
+                        self.telegram.notify_wan = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_update_available") {
+                        self.telegram.notify_update_available = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_route_alert") {
+                        self.telegram.notify_route_alert = parse_bool(v);
+                    }
                     if let Some(v) = b.opt("quiet_hours_enabled") {
                         self.telegram.quiet_hours_enabled = parse_bool(v);
                     }
@@ -4412,6 +5087,13 @@ impl RouterStoreData {
                             format!("{} {}-{}", days.join(","), st.trim(), et.trim())
                         };
                     }
+                    let (comm_subnets, extra_comm_lists) = b.community_subnets_and_lists();
+                    let mut comm_lists = b.list("community_lists");
+                    for c in extra_comm_lists {
+                        if !comm_lists.contains(&c) {
+                            comm_lists.push(c);
+                        }
+                    }
                     self.conditions.push(TrafficCondition {
                         id: b.name.clone(),
                         enabled: b.opt("enabled").is_none_or(parse_bool),
@@ -4422,10 +5104,10 @@ impl RouterStoreData {
                             .unwrap_or("atomic")
                             .to_string(),
                         children,
-                        community_lists: b.list("community_lists"),
-                        community_subnets: b.opt("community_subnets").is_none_or(parse_bool),
+                        community_lists: comm_lists,
+                        community_subnets: comm_subnets,
                         user_domains,
-                        exclude_domains: b.clean_tokens(&["exclude_domains"]),
+                        exclude_domains: b.excluded_domain_tokens(),
                         user_subnets,
                         exclude_subnets: b.clean_tokens(&["exclude_subnets"]),
                         asn_list: b.clean_tokens(&["asn_list"]),
@@ -4434,6 +5116,7 @@ impl RouterStoreData {
                             "remote_domain_lists",
                             "rule_set_urls",
                         ]),
+                        rule_set_with_subnets: b.clean_tokens(&["rule_set_with_subnets"]),
                         remote_subnet_lists: b
                             .clean_tokens(&["domain_ip_lists", "remote_subnet_lists"]),
                         geoip_codes: b.clean_tokens(&["geoip_country"]),
@@ -4568,10 +5251,12 @@ impl RouterStoreData {
                             .to_string(),
                         quota_mib: b.opt("quota_mib").and_then(|s| s.parse().ok()).unwrap_or(0),
                         fallback_section: b.opt("fallback_section").unwrap_or("").to_string(),
+                        balancer_pool: b.list("balancer_pool"),
                         passive_check: b.opt("passive_check").is_none_or(parse_bool),
                         interrupt_exist_connections: b
                             .opt("interrupt_exist_connections")
                             .is_some_and(parse_bool),
+                        health_urls: b.list("health_urls"),
                         active_check_interval: b
                             .opt("active_check_interval")
                             .unwrap_or("15s")
@@ -4589,6 +5274,30 @@ impl RouterStoreData {
                             .opt("fastest_check_interval")
                             .unwrap_or("10m")
                             .to_string(),
+                        filter_mode: b.opt("filter_mode").unwrap_or("").to_string(),
+                        detect_server_country: b
+                            .opt("detect_server_country")
+                            .is_none_or(|v| v.trim().is_empty() || parse_bool(v)),
+                        pin_dashboard: b.opt("pin_dashboard").is_some_and(parse_bool),
+                        exclude_proxy_parameters: b
+                            .opt("exclude_proxy_parameters")
+                            .is_some_and(parse_bool),
+                        include_prefixes: b.list("include_prefixes"),
+                        include_country_flags: b.list("include_country_flags"),
+                        include_servers: b.list("include_servers"),
+                        include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
+                        include_protocols: b.list("include_protocols"),
+                        include_transports: b.list("include_transports"),
+                        include_security_types: b.list("include_security_types"),
+                        include_ports: b.list("include_ports"),
+                        exclude_prefixes: b.list("exclude_prefixes"),
+                        exclude_country_flags: b.list("exclude_country_flags"),
+                        exclude_servers: b.list("exclude_servers"),
+                        exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
+                        exclude_protocols: b.list("exclude_protocols"),
+                        exclude_transports: b.list("exclude_transports"),
+                        exclude_security_types: b.list("exclude_security_types"),
+                        exclude_ports: b.list("exclude_ports"),
                         ..Default::default()
                     });
                     imported += 1;
@@ -4596,11 +5305,10 @@ impl RouterStoreData {
                 "outbound_source" => {
                     let stype = b.opt("source_type").unwrap_or("subscription").to_string();
                     let mut urls = b.list("subscription_urls");
-                    if let Some(u) = b.opt("url")
-                        && !u.is_empty()
-                        && !urls.contains(&u.to_string())
+                    if let Some(u) = b.opt("url").map(str::trim).filter(|s| !s.is_empty())
+                        && urls.len() <= 1
                     {
-                        urls.push(u.to_string());
+                        urls = vec![u.to_string()];
                     }
                     let mut proxy_links = b.list("proxy_links");
                     for opt_key in ["links", "uri", "proxy_uri"] {
@@ -4701,6 +5409,21 @@ impl RouterStoreData {
                         tls_fingerprint: b
                             .opt("tls_fingerprint")
                             .or_else(|| b.opt("client_fingerprint"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tls_fragment_mode: b
+                            .opt("tls_fragment_mode")
+                            .or_else(|| b.opt("subscription_tls_fragment_mode"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tcp_fragment_length: b
+                            .opt("tcp_fragment_length")
+                            .or_else(|| b.opt("subscription_tcp_fragment_length"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tcp_fragment_delay: b
+                            .opt("tcp_fragment_delay")
+                            .or_else(|| b.opt("subscription_tcp_fragment_delay"))
                             .unwrap_or("")
                             .to_string(),
                         outbound_detour_enabled: b
@@ -4850,6 +5573,10 @@ impl RouterStoreData {
                         mieru_multiplexing: b.opt("mieru_multiplexing").unwrap_or("").to_string(),
                         mieru_handshake_mode: b
                             .opt("mieru_handshake_mode")
+                            .unwrap_or("")
+                            .to_string(),
+                        mieru_traffic_pattern: b
+                            .opt("mieru_traffic_pattern")
                             .unwrap_or("")
                             .to_string(),
                         naive_quic: b.opt("naive_quic").is_some_and(parse_bool),
@@ -5010,6 +5737,30 @@ impl RouterStoreData {
                         user_agent: b.opt("user_agent").unwrap_or("").to_string(),
                         auto_hwid: b.opt("auto_hwid").is_none_or(parse_bool),
                         hwid: b.opt("hwid").unwrap_or("").to_string(),
+                        custom_device_headers: b
+                            .opt("custom_device_headers")
+                            .is_some_and(parse_bool),
+                        device_os: b.opt("device_os").unwrap_or("").to_string(),
+                        ver_os: b.opt("ver_os").unwrap_or("").to_string(),
+                        device_model: b.opt("device_model").unwrap_or("").to_string(),
+                        device_locale: b.opt("device_locale").unwrap_or("").to_string(),
+                        app_version: b.opt("app_version").unwrap_or("").to_string(),
+                        accept_language: b.opt("accept_language").unwrap_or("").to_string(),
+                        show_dashboard_metadata: b
+                            .opt("show_dashboard_metadata")
+                            .is_some_and(parse_bool),
+                        server_interfaces: b.list("server_interfaces"),
+                        domain_resolver_enabled: b
+                            .opt("domain_resolver_enabled")
+                            .is_some_and(parse_bool),
+                        domain_resolver_dns_type: b
+                            .opt("domain_resolver_dns_type")
+                            .unwrap_or("")
+                            .to_string(),
+                        domain_resolver_dns_server: b
+                            .opt("domain_resolver_dns_server")
+                            .unwrap_or("")
+                            .to_string(),
                         urltest_idle_timeout: b
                             .opt("urltest_idle_timeout")
                             .unwrap_or("")
@@ -5077,6 +5828,9 @@ impl RouterStoreData {
                             .opt("desync_udp_fake_ttl")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
+                        desync_udp_fake_payload: b.opt_str("desync_udp_fake_payload"),
+                        desync_udp_out_range: b.opt_str("desync_udp_out_range"),
+                        desync_udp_keep_socket: b.desync_keep_socket_str(),
                         desync_host_fake: b.opt("desync_host_fake").is_some_and(parse_bool),
                         desync_wscale: b
                             .opt("desync_wscale")
@@ -5086,12 +5840,45 @@ impl RouterStoreData {
                         desync_fake_payload: b.opt("desync_fake_payload").unwrap_or("").to_string(),
                         desync_fake_tls: b.opt("desync_fake_tls").unwrap_or("").to_string(),
                         desync_opts: b.opt("desync_opts").unwrap_or("").to_string(),
-                        last_updated_unix: unix_now_secs(),
+                        subscription_engine: "core".to_string(),
+                        hidden: b.opt("hidden").is_some_and(parse_bool),
+                        last_updated_unix: 0,
                         ..Default::default()
                     };
 
                     if stype == "subscription" {
-                        load_cached_subscription_nodes_from(&mut src, sub_cache_dir);
+                        if let Some(prev) = prev_sources.get(&src.id) {
+                            let mut prev_urls: Vec<&str> = prev
+                                .subscription_urls
+                                .iter()
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            let mut cur_urls: Vec<&str> = src
+                                .subscription_urls
+                                .iter()
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            prev_urls.sort_unstable();
+                            cur_urls.sort_unstable();
+                            if prev_urls == cur_urls {
+                                src.cached_nodes = prev.cached_nodes.clone();
+                                src.sub_title = decode_sub_header_value(&prev.sub_title);
+                                src.sub_support_url = prev.sub_support_url.clone();
+                                src.sub_web_page_url = prev.sub_web_page_url.clone();
+                                src.sub_announce = decode_sub_header_value(&prev.sub_announce);
+                                src.sub_upload_bytes = prev.sub_upload_bytes;
+                                src.sub_download_bytes = prev.sub_download_bytes;
+                                src.sub_total_bytes = prev.sub_total_bytes;
+                                src.sub_expire_unix = prev.sub_expire_unix;
+                                src.sub_last_error = prev.sub_last_error.clone();
+                                src.last_updated_unix = prev.last_updated_unix;
+                            }
+                        }
+                        if src.cached_nodes.is_empty() {
+                            load_cached_subscription_nodes_from(&mut src, sub_cache_dir);
+                        }
                     }
                     self.outbound_sources.push(src);
                     imported += 1;
@@ -5191,7 +5978,14 @@ impl RouterStoreData {
                         }
                     };
                     let user_domains = b.clean_tokens(&["user_domains", "domain", "domains"]);
-                    let exclude_domains = b.clean_tokens(&["exclude_domains", "excluded_domains"]);
+                    let exclude_domains = b.excluded_domain_tokens();
+                    let (sec_comm_subnets, sec_extra_comm_lists) = b.community_subnets_and_lists();
+                    let mut sec_comm_lists = b.clean_tokens(&["community_lists"]);
+                    for c in sec_extra_comm_lists {
+                        if !sec_comm_lists.contains(&c) {
+                            sec_comm_lists.push(c);
+                        }
+                    }
                     let user_subnets =
                         b.clean_tokens(&["user_subnets", "ip_cidr", "ip_cidrs", "subnets"]);
                     let exclude_subnets = b.clean_tokens(&["exclude_subnets", "excluded_ip_cidr"]);
@@ -5206,6 +6000,15 @@ impl RouterStoreData {
                         enabled: b.opt("enabled").is_none_or(parse_bool),
                         label: b.opt("label").unwrap_or(&b.name).to_string(),
                         icon: b.opt("icon").unwrap_or("").to_string(),
+                        icon_domain: b.opt("icon_domain").unwrap_or("").to_string(),
+                        description: b.opt("description").unwrap_or("").to_string(),
+                        prefix_text: b.opt("prefix_text").unwrap_or("").to_string(),
+                        prefix_bg: b.opt("prefix_bg").unwrap_or("").to_string(),
+                        prefix_color: b.opt("prefix_color").unwrap_or("").to_string(),
+                        dashboard_filter_mode: b
+                            .opt("dashboard_filter_mode")
+                            .unwrap_or("")
+                            .to_string(),
                         connection_type: conn_type.to_string(),
                         action: raw_action.to_string(),
                         condition_refs: b.list("condition_refs"),
@@ -5254,9 +6057,12 @@ impl RouterStoreData {
                         dashboard_hide_na_servers: b
                             .opt("dashboard_hide_na_servers")
                             .is_some_and(parse_bool),
-                        community_lists: b.clean_tokens(&["community_lists"]),
-                        community_subnets: b.opt("community_subnets").is_none_or(parse_bool),
+                        hidden: b.opt("hidden").is_some_and(parse_bool),
+                        subscription_url_settings: b.list("subscription_url_settings"),
+                        community_lists: sec_comm_lists,
+                        community_subnets: sec_comm_subnets,
                         rule_set_urls: b.clean_tokens(&["rule_set"]),
+                        rule_set_with_subnets: b.clean_tokens(&["rule_set_with_subnets"]),
                         domain_ip_lists: b.clean_tokens(&["domain_ip_lists"]),
                         user_domains,
                         exclude_domains,
@@ -5429,6 +6235,9 @@ impl RouterStoreData {
                             .opt("desync_udp_fake_ttl")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
+                        desync_udp_fake_payload: b.opt_str("desync_udp_fake_payload"),
+                        desync_udp_out_range: b.opt_str("desync_udp_out_range"),
+                        desync_udp_keep_socket: b.desync_keep_socket_str(),
                         desync_udplen: b
                             .opt("desync_udplen")
                             .and_then(|s| s.parse().ok())
@@ -6133,8 +6942,436 @@ impl RouterStoreData {
             }
         }
         self.apply_relax_probe_intervals_v1();
+        self.apply_fail_closed_auto_defaults();
+        self.apply_ai_lists_1_8();
         imported
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn struct_to_json_section<T: Serialize>(
+    kind: &str,
+    name: &str,
+    idx: usize,
+    item: &T,
+    rename_keys: &[(&str, &str)],
+    skip_keys: &[&str],
+    extra_omit_existing: &[&str],
+    existing_obj: Option<&serde_json::Map<String, Value>>,
+    extra_fields: &[(&str, Value)],
+) -> Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert(".anonymous".to_string(), json!(false));
+    obj.insert(".type".to_string(), json!(kind));
+    obj.insert(".name".to_string(), json!(name));
+    obj.insert(".index".to_string(), json!(idx));
+
+    let mut owned_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    owned_keys.insert("id".to_string());
+    for &k in skip_keys {
+        owned_keys.insert(k.to_string());
+    }
+    for &k in extra_omit_existing {
+        owned_keys.insert(k.to_string());
+    }
+
+    if let Ok(Value::Object(raw_map)) = serde_json::to_value(item) {
+        for (k, v) in raw_map {
+            owned_keys.insert(k.clone());
+            if k == "id" || skip_keys.contains(&k.as_str()) {
+                continue;
+            }
+            let out_key = rename_keys
+                .iter()
+                .find(|(from, _)| *from == k.as_str())
+                .map(|(_, to)| *to)
+                .unwrap_or(k.as_str());
+            owned_keys.insert(out_key.to_string());
+
+            match v {
+                Value::Bool(b) => {
+                    obj.insert(
+                        out_key.to_string(),
+                        Value::String(if b { "1" } else { "0" }.to_string()),
+                    );
+                }
+                Value::Number(n) => {
+                    obj.insert(out_key.to_string(), Value::String(n.to_string()));
+                }
+                Value::String(s) => {
+                    if !s.is_empty() {
+                        obj.insert(out_key.to_string(), Value::String(s));
+                    }
+                }
+                Value::Array(arr) => {
+                    if !arr.is_empty() {
+                        let all_scalar = arr.iter().all(|el| {
+                            matches!(el, Value::String(_) | Value::Bool(_) | Value::Number(_))
+                        });
+                        if all_scalar {
+                            let converted: Vec<Value> = arr
+                                .into_iter()
+                                .filter_map(|el| match el {
+                                    Value::String(s) => Some(Value::String(s)),
+                                    Value::Number(n) => Some(Value::String(n.to_string())),
+                                    Value::Bool(b) => {
+                                        Some(Value::String(if b { "1" } else { "0" }.to_string()))
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            if !converted.is_empty() {
+                                obj.insert(out_key.to_string(), Value::Array(converted));
+                            }
+                        } else {
+                            obj.insert(out_key.to_string(), Value::Array(arr));
+                        }
+                    }
+                }
+                Value::Object(m) => {
+                    if !m.is_empty() {
+                        obj.insert(out_key.to_string(), Value::Object(m));
+                    }
+                }
+                Value::Null => {}
+            }
+        }
+    }
+
+    for (ek, ev) in extra_fields {
+        owned_keys.insert((*ek).to_string());
+        if !matches!(ev, Value::Null) {
+            obj.insert((*ek).to_string(), ev.clone());
+        }
+    }
+
+    // Preserve frontend-only keys (e.g. `ui_prefs_json`) present in `existing_obj`.
+    if let Some(ex) = existing_obj {
+        for (ek, ev) in ex {
+            if ek.starts_with('.') || owned_keys.contains(ek) {
+                continue;
+            }
+            obj.insert(ek.clone(), ev.clone());
+        }
+    }
+
+    Value::Object(obj)
+}
+
+/// Reverse-converts `RouterStoreData` (`tachyon.json`) back into a UCI-compatible
+/// `config_sections.json` map (`Value::Object`), preserving frontend-only fields
+/// (such as `ui_prefs_json`) and non-managed custom section types from `existing`.
+pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Value>) -> Value {
+    let existing_map = existing.and_then(Value::as_object);
+    let mut out = serde_json::Map::new();
+    let mut idx = 0usize;
+
+    let existing_obj = |key: &str| -> Option<&serde_json::Map<String, Value>> {
+        existing_map
+            .and_then(|m| m.get(key))
+            .and_then(Value::as_object)
+    };
+
+    let mut settings_extra: Vec<(&str, Value)> = Vec::new();
+    if !store.applied_migrations.is_empty() {
+        settings_extra.push(("applied_migrations", json!(store.applied_migrations)));
+    }
+    let eff_mode = |mode: &str, flag: bool| -> &'static str {
+        if flag {
+            "1"
+        } else if mode.trim().eq_ignore_ascii_case("0") {
+            "0"
+        } else {
+            "auto"
+        }
+    };
+    settings_extra.push((
+        "dns_intercept_all",
+        json!(eff_mode(
+            &store.settings.dns_intercept_all_mode,
+            store.settings.dns_intercept_all,
+        )),
+    ));
+    settings_extra.push((
+        "webrtc_leak_protect",
+        json!(eff_mode(
+            &store.settings.webrtc_leak_protect_mode,
+            store.settings.webrtc_leak_protect,
+        )),
+    ));
+    out.insert(
+        "settings".to_string(),
+        struct_to_json_section(
+            "settings",
+            "settings",
+            idx,
+            &store.settings,
+            &[
+                ("dns_servers", "dns_server"),
+                ("bootstrap_dns_servers", "bootstrap_dns_server"),
+                ("dns_fallback_servers", "dns_fallback_server"),
+            ],
+            &[
+                "admin_pass_hash",
+                "admin_pass_salt",
+                "session_secret",
+                "dns_intercept_all_mode",
+                "webrtc_leak_protect_mode",
+            ],
+            &[],
+            existing_obj("settings"),
+            &settings_extra,
+        ),
+    );
+    idx += 1;
+
+    out.insert(
+        "telegram".to_string(),
+        struct_to_json_section(
+            "telegram",
+            "telegram",
+            idx,
+            &store.telegram,
+            &[],
+            &[],
+            &[],
+            existing_obj("telegram"),
+            &[],
+        ),
+    );
+    idx += 1;
+
+    out.insert(
+        "guest_mode".to_string(),
+        struct_to_json_section(
+            "guest_mode",
+            "guest_mode",
+            idx,
+            &store.guest_mode,
+            &[],
+            &[],
+            &[],
+            existing_obj("guest_mode"),
+            &[],
+        ),
+    );
+    idx += 1;
+
+    for sec in &store.sections {
+        if sec.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            sec.id.clone(),
+            struct_to_json_section(
+                "section",
+                &sec.id,
+                idx,
+                sec,
+                &[
+                    ("rule_set_urls", "rule_set"),
+                    ("geoip_codes", "geoip_country"),
+                    ("dns_servers", "dns_server"),
+                    ("exclude_domains", "excluded_domains"),
+                ],
+                &[],
+                &[],
+                existing_obj(&sec.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for cond in &store.conditions {
+        if cond.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            cond.id.clone(),
+            struct_to_json_section(
+                "condition",
+                &cond.id,
+                idx,
+                cond,
+                &[
+                    ("remote_domain_lists", "rule_set"),
+                    ("remote_subnet_lists", "domain_ip_lists"),
+                    ("geoip_codes", "geoip_country"),
+                    ("exclude_client_ips", "excluded_ips"),
+                    ("exclude_domains", "excluded_domains"),
+                ],
+                &[],
+                &[],
+                existing_obj(&cond.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for src in &store.outbound_sources {
+        if src.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            src.id.clone(),
+            struct_to_json_section(
+                "outbound_source",
+                &src.id,
+                idx,
+                src,
+                &[],
+                &["cached_nodes"],
+                &["url"],
+                existing_obj(&src.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for bal in &store.balancers {
+        if bal.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            bal.id.clone(),
+            struct_to_json_section(
+                "balancer",
+                &bal.id,
+                idx,
+                bal,
+                &[],
+                &[],
+                &[],
+                existing_obj(&bal.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for grp in &store.outbound_groups {
+        if grp.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            grp.id.clone(),
+            struct_to_json_section(
+                "outbound_group",
+                &grp.id,
+                idx,
+                grp,
+                &[],
+                &[],
+                &[],
+                existing_obj(&grp.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for srv in &store.servers {
+        if srv.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            srv.id.clone(),
+            struct_to_json_section(
+                "server",
+                &srv.id,
+                idx,
+                srv,
+                &[],
+                &[],
+                &[],
+                existing_obj(&srv.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for prof in &store.profiles {
+        if prof.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            prof.id.clone(),
+            struct_to_json_section(
+                "profile",
+                &prof.id,
+                idx,
+                prof,
+                &[],
+                &[],
+                &[],
+                existing_obj(&prof.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    for sched in &store.schedules {
+        if sched.id.trim().is_empty() {
+            continue;
+        }
+        out.insert(
+            sched.id.clone(),
+            struct_to_json_section(
+                "schedule",
+                &sched.id,
+                idx,
+                sched,
+                &[],
+                &[],
+                &[],
+                existing_obj(&sched.id),
+                &[],
+            ),
+        );
+        idx += 1;
+    }
+
+    if let Some(ex_map) = existing_map {
+        for (k, v) in ex_map {
+            if out.contains_key(k) {
+                continue;
+            }
+            let Some(obj) = v.as_object() else {
+                continue;
+            };
+            let stype = obj.get(".type").and_then(Value::as_str).unwrap_or("");
+            let is_managed = matches!(
+                stype,
+                "settings"
+                    | "telegram"
+                    | "guest_mode"
+                    | "section"
+                    | "condition"
+                    | "outbound_source"
+                    | "balancer"
+                    | "urltest"
+                    | "priority_group"
+                    | "outbound_group"
+                    | "server"
+                    | "profile"
+                    | "schedule"
+                    | "parental_schedule"
+            );
+            if !is_managed && !stype.is_empty() {
+                let mut cloned = obj.clone();
+                cloned.insert(".index".to_string(), json!(idx));
+                out.insert(k.clone(), Value::Object(cloned));
+                idx += 1;
+            }
+        }
+    }
+
+    Value::Object(out)
 }
 
 struct LegacyUciBlock {
@@ -6230,6 +7467,54 @@ impl LegacyUciBlock {
     }
     fn opt_str(&self, key: &str) -> String {
         self.opt(key).unwrap_or("").to_string()
+    }
+    fn excluded_domain_tokens(&self) -> Vec<String> {
+        let is_truthy = |s: &str| {
+            matches!(
+                s.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        };
+        let text_mode = self
+            .opt("excluded_domains_text_mode")
+            .or_else(|| self.opt("conditions_text_mode"))
+            .is_some_and(is_truthy);
+        let text_vals = self.clean_tokens(&["excluded_domains_text", "exclude_domains_text"]);
+        if text_mode && !text_vals.is_empty() {
+            return text_vals;
+        }
+        let list_vals = self.clean_tokens(&["exclude_domains", "excluded_domains"]);
+        if !list_vals.is_empty() {
+            list_vals
+        } else {
+            text_vals
+        }
+    }
+    fn community_subnets_and_lists(&self) -> (bool, Vec<String>) {
+        let mut enabled = true;
+        let mut extra_lists = Vec::new();
+        for tok in self.clean_tokens(&["community_subnets"]) {
+            let lc = tok.to_ascii_lowercase();
+            if matches!(
+                lc.as_str(),
+                "0" | "1" | "true" | "false" | "yes" | "no" | "on" | "off"
+            ) {
+                enabled = matches!(lc.as_str(), "1" | "true" | "yes" | "on");
+            } else if !extra_lists.iter().any(|x| x == &tok) {
+                extra_lists.push(tok);
+            }
+        }
+        (enabled, extra_lists)
+    }
+    fn desync_keep_socket_str(&self) -> String {
+        let raw = self.opt_str("desync_udp_keep_socket");
+        let trimmed = raw.trim();
+        match trimmed.to_ascii_lowercase().as_str() {
+            "" => String::new(),
+            "1" | "true" | "yes" | "on" => "1".to_string(),
+            "0" | "false" | "no" | "off" => "0".to_string(),
+            _ => trimmed.to_string(),
+        }
     }
     fn list(&self, key: &str) -> Vec<String> {
         if let Some(l) = self.lists.get(key) {
@@ -6480,7 +7765,7 @@ pub fn load_cached_subscription_nodes_from(src: &mut OutboundSource, cache_dir: 
                 && let Ok(v) = serde_json::from_str::<Value>(&raw)
             {
                 if let Some(t) = v.get("title").and_then(Value::as_str) {
-                    src.sub_title = t.to_string();
+                    src.sub_title = decode_sub_header_value(t);
                 }
                 if let Some(u) = v.get("supportUrl").and_then(Value::as_str) {
                     src.sub_support_url = u.to_string();
@@ -6489,7 +7774,7 @@ pub fn load_cached_subscription_nodes_from(src: &mut OutboundSource, cache_dir: 
                     src.sub_web_page_url = u.to_string();
                 }
                 if let Some(a) = v.get("announce").and_then(Value::as_str) {
-                    src.sub_announce = a.to_string();
+                    src.sub_announce = decode_sub_header_value(a);
                 }
             }
             continue;
@@ -6753,7 +8038,7 @@ pub struct AppState {
     /// Session token -> expiry unix timestamp (bounded to `MAX_SESSIONS`).
     pub sessions: RwLock<HashMap<String, i64>>,
     pub dirty: AtomicBool,
-    pub last_telemetry_access_ts: AtomicU64,
+    pub last_telemetry_access_ts: PortableAtomicU64,
 }
 
 impl AppState {
@@ -6823,17 +8108,26 @@ impl AppState {
                 parsed.settings.dns_strategy = norm_dns;
                 migrated = true;
             }
+            let norm_tcp = normalize_tcp_profile(&parsed.settings.tcp_profile);
+            if norm_tcp != parsed.settings.tcp_profile {
+                parsed.settings.tcp_profile = norm_tcp;
+                migrated = true;
+            }
             let safe_cache = sanitize_cache_path(&parsed.settings.cache_path);
             if safe_cache != parsed.settings.cache_path {
                 parsed.settings.cache_path = safe_cache;
                 migrated = true;
             }
 
-            // If store only has the initial demo sections/servers and `/etc/config/tachyon`
-            // (or `/etc/tachyon/backup-pre-2.0/tachyon.uci`) exists, auto-import the router's
-            // full configuration so nothing is missing.
-            if parsed.sections.len() <= 2
-                && parsed.servers.len() <= 1
+            // If store still matches the unedited initial template (e.g. a package hook
+            // initialized `tachyon.json` before legacy backup/config was restored) and has not
+            // yet recorded `legacy_uci_imported_v1`, perform a one-shot UCI import.
+            let already_imported = parsed
+                .applied_migrations
+                .iter()
+                .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION);
+            if !already_imported
+                && parsed.is_seeded_default_store()
                 && (Path::new("/etc/config/tachyon").exists()
                     || Path::new(LEGACY_UCI_BACKUP_PATH).exists())
             {
@@ -6844,6 +8138,32 @@ impl AppState {
             }
             if parsed.apply_relax_probe_intervals_v1() {
                 migrated = true;
+            }
+            if parsed.apply_fail_closed_auto_defaults() {
+                migrated = true;
+            }
+            if parsed.apply_ai_lists_1_8() {
+                migrated = true;
+            }
+            if parsed.settings.subscription_engine != "core" {
+                parsed.settings.subscription_engine = "core".to_string();
+                migrated = true;
+            }
+            for src in &mut parsed.outbound_sources {
+                if src.subscription_engine != "core" {
+                    src.subscription_engine = "core".to_string();
+                    migrated = true;
+                }
+                let dec_title = decode_sub_header_value(&src.sub_title);
+                if dec_title != src.sub_title {
+                    src.sub_title = dec_title;
+                    migrated = true;
+                }
+                let dec_announce = decode_sub_header_value(&src.sub_announce);
+                if dec_announce != src.sub_announce {
+                    src.sub_announce = dec_announce;
+                    migrated = true;
+                }
             }
             if migrated {
                 let _ = crypto_gen::write_json_if_changed(&path, &parsed);
@@ -6877,7 +8197,7 @@ impl AppState {
             live: RwLock::new(live),
             sessions: RwLock::new(HashMap::new()),
             dirty: AtomicBool::new(false),
-            last_telemetry_access_ts: AtomicU64::new(0),
+            last_telemetry_access_ts: PortableAtomicU64::new(0),
         }))
     }
 
@@ -7208,6 +8528,9 @@ config schedule 'Nahui'
         assert!(nft.contains("ether saddr aa:bb:cc:dd:ee:01 return"));
         assert!(nft.contains("ether saddr aa:bb:cc:dd:ee:02 drop"));
 
+        let mac_drop_pos = nft
+            .find("ether saddr aa:bb:cc:dd:ee:02 drop")
+            .expect("paused MAC drop rule must exist");
         let localv4_pos = nft
             .find("ip daddr @localv4 return")
             .expect("@localv4 return must exist");
@@ -7215,8 +8538,8 @@ config schedule 'Nahui'
             .find("ether saddr 3e:83:67:22:fe:65 return")
             .expect("MAC bypass rule must exist");
         assert!(
-            mac_bypass_pos > localv4_pos,
-            "direct section MAC bypass must appear after @localv4 return"
+            mac_drop_pos < mac_bypass_pos && mac_bypass_pos < localv4_pos,
+            "direct section MAC bypass must appear after blocked MAC drops and before @localv4 return"
         );
     }
 
@@ -7738,5 +9061,238 @@ config guest_mode 'guest'
         );
 
         assert_eq!(store.deduplicate_cloned_conditions(), 0);
+    }
+
+    #[test]
+    fn test_normalize_tcp_profile_and_ai_lists_1_8_migration() {
+        assert_eq!(normalize_tcp_profile("low_latency"), "");
+        assert_eq!(normalize_tcp_profile("throughput"), "");
+        assert_eq!(normalize_tcp_profile("conservative"), "");
+        assert_eq!(normalize_tcp_profile("Windows"), "windows");
+        assert_eq!(normalize_tcp_profile("default"), "default");
+
+        let mut store = RouterStoreData {
+            sections: vec![
+                RoutingSection {
+                    id: "sec_proxy".to_string(),
+                    enabled: true,
+                    action: "proxy".to_string(),
+                    condition_refs: vec!["cond_a".to_string(), "cond_b".to_string()],
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "sec_direct".to_string(),
+                    enabled: true,
+                    action: "direct".to_string(),
+                    condition_refs: vec!["cond_direct".to_string()],
+                    ..Default::default()
+                },
+            ],
+            conditions: vec![
+                TrafficCondition {
+                    id: "cond_a".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["openai".to_string(), "anthropic".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "cond_b".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["ai_all".to_string(), "google_ai".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "cond_direct".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["openai".to_string(), "google_ai".to_string()],
+                    ..Default::default()
+                },
+            ],
+            applied_migrations: Vec::new(),
+            ..Default::default()
+        };
+
+        assert!(store.apply_ai_lists_1_8());
+        let cond_a = store.conditions.iter().find(|c| c.id == "cond_a").unwrap();
+        assert!(cond_a.community_lists.iter().any(|x| x == "qwen"));
+        assert!(cond_a.community_lists.iter().any(|x| x == "kimi"));
+
+        let cond_b = store.conditions.iter().find(|c| c.id == "cond_b").unwrap();
+        assert!(
+            cond_b
+                .community_lists
+                .iter()
+                .any(|x| x == "google_services")
+        );
+
+        // Non-proxy condition must remain untouched
+        let cond_direct = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_direct")
+            .unwrap();
+        assert!(!cond_direct.community_lists.iter().any(|x| x == "qwen"));
+        assert!(!cond_direct.community_lists.iter().any(|x| x == "kimi"));
+
+        // Repeat call must be idempotent
+        assert!(!store.apply_ai_lists_1_8());
+
+        // Split case: ai_all and google_ai in separate proxy-only conditions
+        let mut split_store = RouterStoreData {
+            sections: vec![RoutingSection {
+                id: "sec_proxy".to_string(),
+                enabled: true,
+                action: "proxy".to_string(),
+                condition_refs: vec!["c_all".to_string(), "c_google".to_string()],
+                ..Default::default()
+            }],
+            conditions: vec![
+                TrafficCondition {
+                    id: "c_all".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["ai_all".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_google".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["google_ai".to_string()],
+                    ..Default::default()
+                },
+            ],
+            applied_migrations: Vec::new(),
+            ..Default::default()
+        };
+        assert!(split_store.apply_ai_lists_1_8());
+        let c_google = split_store
+            .conditions
+            .iter()
+            .find(|c| c.id == "c_google")
+            .unwrap();
+        assert!(
+            c_google
+                .community_lists
+                .iter()
+                .any(|x| x == "google_services")
+        );
+    }
+
+    #[test]
+    fn test_portable_and_fallback_atomic_u64() {
+        let p = PortableAtomicU64::default();
+        assert_eq!(p.load(Ordering::Acquire), 0);
+        p.store(42, Ordering::Release);
+        assert_eq!(p.load(Ordering::Acquire), 42);
+        assert_eq!(p.fetch_add(8, Ordering::AcqRel), 42);
+        assert_eq!(p.load(Ordering::Acquire), 50);
+
+        let fb = FallbackAtomicU64::new(u64::MAX - 1);
+        assert_eq!(fb.load(Ordering::Acquire), u64::MAX - 1);
+        assert_eq!(fb.fetch_add(1, Ordering::AcqRel), u64::MAX - 1);
+        assert_eq!(fb.load(Ordering::Acquire), u64::MAX);
+        assert_eq!(fb.fetch_add(2, Ordering::AcqRel), u64::MAX);
+        assert_eq!(fb.load(Ordering::Acquire), 1);
+        fb.store(99, Ordering::Release);
+        assert_eq!(fb.load(Ordering::Acquire), 99);
+    }
+
+    #[test]
+    fn test_legacy_uci_import_marks_migration_and_does_not_overwrite_edits() {
+        let mut seeded = RouterStoreData {
+            settings: GlobalSettings::default(),
+            ..Default::default()
+        };
+        seeded.sections.clear();
+        seeded.outbound_sources.clear();
+        seeded.conditions.clear();
+        seeded.balancers.clear();
+        seeded.seed_defaults();
+        assert!(seeded.is_seeded_default_store());
+
+        // Deleting default entries or editing user 1-section setup must not look like unedited seed
+        let mut user_single_section = seeded.clone();
+        user_single_section.sections[0].id = "custom_main".to_string();
+        assert!(!user_single_section.is_seeded_default_store());
+
+        let tmp = std::env::temp_dir().join(format!(
+            "tachyon_legacy_import_marker_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let uci_path = tmp.join("tachyon.uci");
+        let missing_primary = tmp.join("missing.uci");
+
+        std::fs::write(
+            &uci_path,
+            r#"
+config settings 'settings'
+        option proxy_mode 'tproxy'
+        option show_tab_sections '0'
+        option show_tab_servers '0'
+        option show_tab_profiles '0'
+
+config condition 'cond_refilter'
+        option name 'Refilter Subnets'
+        list rule_set_with_subnets 'refilter'
+
+config section 'sec_user'
+        option label 'User Proxy'
+        option action 'proxy'
+        list rule_set_with_subnets 'telegram'
+"#,
+        )
+        .unwrap();
+
+        let mut store = RouterStoreData {
+            settings: GlobalSettings::default(),
+            ..Default::default()
+        };
+        let imported = store.import_legacy_router_files_from(&missing_primary, &uci_path);
+        assert!(imported >= 3);
+        assert!(
+            store
+                .applied_migrations
+                .iter()
+                .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION),
+            "legacy import must set {LEGACY_UCI_IMPORTED_MIGRATION} marker"
+        );
+        assert!(!store.settings.show_tab_section);
+        assert!(!store.settings.show_tab_server);
+        assert!(!store.settings.show_tab_profile);
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_refilter")
+            .unwrap();
+        assert_eq!(cond.rule_set_with_subnets, vec!["refilter".to_string()]);
+        let sec = store.sections.iter().find(|s| s.id == "sec_user").unwrap();
+        assert_eq!(sec.rule_set_with_subnets, vec!["telegram".to_string()]);
+        assert!(!store.is_seeded_default_store());
+
+        // Subsequent Web UI JSON sections sync must preserve the legacy import marker
+        let mut json_sec = serde_json::Map::new();
+        json_sec.insert(
+            "settings".to_string(),
+            serde_json::json!({
+                ".type": "settings",
+                ".name": "settings",
+                ".index": 0,
+                "proxy_mode": "tun"
+            }),
+        );
+        store.import_from_json_sections(&json_sec);
+        assert!(
+            store
+                .applied_migrations
+                .iter()
+                .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION)
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

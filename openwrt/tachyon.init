@@ -16,6 +16,7 @@ start_service() {
     modprobe tun 2>/dev/null || true
     modprobe inet_diag 2>/dev/null || true
     mkdir -p "$DATA_DIR" /etc/tachyon-core /tmp/dnsmasq.d
+    rm -f /var/run/tachyon/manual_stop /tmp/tachyon-rs/manual_stop 2>/dev/null || true
 
     procd_open_instance "tachyon"
     procd_set_param command "$PROG" daemon

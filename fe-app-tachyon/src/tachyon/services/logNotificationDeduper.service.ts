@@ -74,7 +74,7 @@ export function isErrorLogLine(line: string) {
   return (
     lower.includes('[error]') ||
     lower.includes('[fatal]') ||
-    (lower.includes('sing-box') &&
+    (lower.includes('tachyon-core') &&
       lower.includes('rule-set') &&
       /\b(error|fatal)\b/.test(lower))
   );
@@ -88,7 +88,7 @@ export function getTachyonLogNotification(
   }
 
   const update = line.match(
-    /\[component-update\]\s+(tachyon|tachyon-core|sing_box|zapret|zapret2|byedpi|wdtt|olcrtc|fptn)\s+(\S+)/i,
+    /\[component-update\]\s+(tachyon|tachyon-core)\s+(\S+)/i,
   );
 
   if (!update) {

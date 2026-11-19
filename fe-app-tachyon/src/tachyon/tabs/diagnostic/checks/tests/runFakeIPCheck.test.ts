@@ -63,7 +63,7 @@ describe('runFakeIPCheck', () => {
     mocks.getDashboardSections.mockResolvedValue({
       success: true,
       data: [
-        { sectionName: 'Discord', action: 'zapret2' },
+        { sectionName: 'Discord', action: 'desync' },
         { sectionName: 'Main', action: 'connection' },
       ],
     });
@@ -133,8 +133,8 @@ describe('runFakeIPCheck', () => {
     mocks.getDashboardSections.mockResolvedValue({
       success: true,
       data: [
-        { sectionName: 'Discord', action: 'zapret2' },
-        { sectionName: 'YouTube', action: 'zapret2' },
+        { sectionName: 'Discord', action: 'desync' },
+        { sectionName: 'YouTube', action: 'desync' },
       ],
     });
 
@@ -184,6 +184,39 @@ describe('runFakeIPCheck', () => {
             state: 'success',
             key: 'FakeIP DNS works',
             value: 'IPv4: 198.18.0.5 · IPv6: fc00::5',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('reports inconclusive when public IP strings are empty', async () => {
+    mocks.checkFakeIP.mockResolvedValue({
+      success: true,
+      data: { fakeip: true, IP: '198.18.0.5' },
+    });
+    mocks.getFakeIpCheck.mockResolvedValue({
+      success: true,
+      data: { fakeip: true, IP: '' },
+    });
+    mocks.getIpCheck.mockResolvedValue({
+      success: true,
+      data: { fakeip: false, IP: '' },
+    });
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [{ sectionName: 'Main', action: 'connection' }],
+    });
+
+    await runFakeIPCheck();
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'warning',
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            state: 'warning',
+            key: 'Could not compare FakeIP and control public IPs',
           }),
         ]),
       }),

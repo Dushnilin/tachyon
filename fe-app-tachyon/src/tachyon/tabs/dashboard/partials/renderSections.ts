@@ -20,6 +20,7 @@ import {
   formatSubscriptionBytes,
   prettyBytes,
 } from '../../../../helpers/prettyBytes';
+import { decodeSubHeaderValue } from '../../../../helpers/decodeSubHeader';
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods/shell';
 import { Tachyon } from '../../../types';
@@ -459,7 +460,11 @@ interface IRenderSectionsProps {
     section: Tachyon.OutboundGroup,
     outbound: Tachyon.Outbound,
   ) => void;
-  onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
+  onUpdateSubscription: (
+    section: Tachyon.OutboundGroup,
+    sourceIndex?: number,
+    sourceId?: string,
+  ) => void;
   latencyFetching: boolean;
   latencyProgress?: Tachyon.LatencyActionProgress;
   subscriptionUpdating: boolean;
@@ -476,6 +481,7 @@ interface IRenderSectionsProps {
   hideSectionHeader?: boolean;
   nodesViewMode?: 'table' | 'tiles';
   onChangeNodesViewMode?: (mode: 'table' | 'tiles') => void;
+  showHidden?: boolean;
 }
 
 const CONNECTION_ACTION_LABELS: Record<string, string> = {
@@ -492,10 +498,22 @@ const CONNECTION_ACTION_LABELS: Record<string, string> = {
   tewfai: 'TewFai',
   trusttunnel: 'TrustTunnel',
   shadowtls: 'ShadowTLS',
+  csqtt: 'CSQTT / WDTT',
   desync: 'Native Desync',
   fptn: 'FPTN',
   vpn: 'VPN',
 };
+
+function renderHiddenBadge() {
+  return E(
+    'span',
+    {
+      class: 'tachyon_dashboard-page__outbound-grid__item__hidden-badge',
+      title: _('Hidden on Dashboard while remaining active in routing'),
+    },
+    _('Hidden'),
+  );
+}
 
 function renderFailedState() {
   return E(
@@ -622,7 +640,8 @@ function renderSubscriptionMetadata(
     }
   }
 
-  const title = metadata?.title || metadata?.fileName;
+  const rawTitle = metadata?.title || metadata?.fileName;
+  const title = rawTitle ? decodeSubHeaderValue(rawTitle) : undefined;
   const traffic = metadata?.traffic;
   const used = formatBytes(traffic?.used) || '0 B';
   const total = traffic?.isUnlimited
@@ -680,9 +699,9 @@ function renderSubscriptionMetadata(
           title: _('Update subscriptions'),
           'aria-label': _('Update subscriptions'),
           disabled: options.subscriptionUpdating ? true : undefined,
-          click: (event: MouseEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
+          click: (event?: MouseEvent) => {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
             if (!options.subscriptionUpdating) {
               options.onUpdateSubscription?.();
             }
@@ -828,6 +847,7 @@ function renderSubscriptionMetadata(
                       },
                       _('Subscription'),
                     ),
+                metadata?.hidden ? renderHiddenBadge() : '',
                 typeof options?.groupCount === 'number'
                   ? E(
                       'span',
@@ -922,7 +942,9 @@ function renderSubscriptionMetadata(
       ]),
       !isGroupCollapsed && metadata?.announce
         ? (() => {
-            const rawAnnounce = String(metadata.announce || '').trim();
+            const rawAnnounce = decodeSubHeaderValue(
+              String(metadata.announce || '').trim(),
+            );
             const lines = rawAnnounce
               .split(/\r?\n/)
               .map((l) => l.trim())
@@ -946,7 +968,7 @@ function renderSubscriptionMetadata(
                   'span',
                   {
                     style:
-                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                      'margin-left: 6px; font-size: 11px; color: var(--tachyon-accent-text, var(--tachyon-accent, #3b82f6)); font-weight: 500; cursor: pointer; white-space: nowrap;',
                   },
                   _('Show more'),
                 )
@@ -984,7 +1006,11 @@ function renderSubscriptionMetadata(
 function renderSubscriptionUpdateAction(
   section: Tachyon.OutboundGroup,
   subscriptionUpdating: boolean,
-  onUpdateSubscription: (section: Tachyon.OutboundGroup) => void,
+  onUpdateSubscription: (
+    section: Tachyon.OutboundGroup,
+    sourceIndex?: number,
+    sourceId?: string,
+  ) => void,
 ) {
   if (!section.subscriptionSourceCount) {
     return undefined;
@@ -998,9 +1024,9 @@ function renderSubscriptionUpdateAction(
         'btn tachyon_dashboard-page__outbound-section__subscription-update',
       'aria-label': _('Update subscriptions'),
       disabled: subscriptionUpdating ? true : undefined,
-      click: (event: MouseEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
+      click: (event?: MouseEvent) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
         if (subscriptionUpdating) {
           return;
         }
@@ -1626,6 +1652,7 @@ function renderDefaultState({
   sectionStats,
   hideSectionHeader,
   nodesViewMode,
+  showHidden = false,
 }: IRenderSectionsProps) {
   const isConnectionNode =
     !section.withTagSelect &&
@@ -1644,35 +1671,16 @@ function renderDefaultState({
       'tewfai',
       'trusttunnel',
       'shadowtls',
+      'csqtt',
     ].includes(section.action || '');
   const isServiceNode =
-    ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-      section.action || '',
-    ) || Boolean(section.serviceStatus);
+    section.action === 'desync' || Boolean(section.serviceStatus);
 
   if (isServiceNode) {
     const ss = section.serviceStatus;
     const serviceType =
-      ss?.serviceType ||
-      (['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        section.action || '',
-      )
-        ? (section.action as Tachyon.ServiceStatus['serviceType'])
-        : 'zapret');
-    const typeLabel =
-      serviceType === 'zapret'
-        ? 'Zapret'
-        : serviceType === 'zapret2'
-          ? 'Zapret2'
-          : serviceType === 'byedpi'
-            ? 'ByeDPI'
-            : serviceType === 'wdtt'
-              ? 'WDTT'
-              : serviceType === 'olcrtc'
-                ? 'OlcRTC'
-                : serviceType === 'desync'
-                  ? _('Native Desync')
-                  : 'FPTN';
+      ss?.serviceType || (section.action === 'desync' ? 'desync' : 'fptn');
+    const typeLabel = serviceType === 'desync' ? _('Native Desync') : 'FPTN';
     const statusColor = ss
       ? ss.ready
         ? 'var(--success-color-medium, green)'
@@ -1852,7 +1860,7 @@ function renderDefaultState({
       }
 
       if (!outbound.latency) {
-        // Service nodes (desync, zapret2, …) have no measurable latency;
+        // Service nodes (desync, fptn, …) have no measurable latency;
         // colour the badge green when bypass is active, red when stopped.
         if (isServiceNode) {
           return section.serviceStatus?.ready
@@ -1913,6 +1921,9 @@ function renderDefaultState({
         : '',
       outboundSwitching
         ? 'tachyon_dashboard-page__outbound-grid__item--switching'
+        : '',
+      outbound.hidden
+        ? 'tachyon_dashboard-page__outbound-grid__item--hidden'
         : '',
     ]
       .filter(Boolean)
@@ -2127,6 +2138,7 @@ function renderDefaultState({
                       ),
                     ]
                   : []),
+                ...(outbound.hidden ? [renderHiddenBadge()] : []),
                 ...(pinnedDomains.length > 0
                   ? [
                       E(
@@ -2393,6 +2405,7 @@ function renderDefaultState({
             'tachyon-dashboard-nodes-table__row',
             outbound.selected ? 'is-selected' : '',
             canChooseOutbound ? 'is-selectable' : '',
+            outbound.hidden ? 'is-dashboard-hidden' : '',
           ]
             .filter(Boolean)
             .join(' '),
@@ -2437,6 +2450,7 @@ function renderDefaultState({
                     ),
                   ]
                 : []),
+              ...(outbound.hidden ? [renderHiddenBadge()] : []),
               ...(pinnedDomains.length > 0
                 ? [
                     E(
@@ -2741,8 +2755,13 @@ function renderDefaultState({
       });
     }
 
-    const outbounds = effectiveOutbounds;
-    const metadataList = section.subscriptionMetadata || [];
+    const outbounds = showHidden
+      ? effectiveOutbounds
+      : effectiveOutbounds.filter((ob) => !ob.hidden);
+    const rawMetadataList = section.subscriptionMetadata || [];
+    const metadataList = showHidden
+      ? rawMetadataList
+      : rawMetadataList.filter((m) => !m.hidden);
     const subSourceCount = section.subscriptionSourceCount || 0;
     const countryGrouping =
       section.dashboardSettings?.countryGrouping || 'chips';
@@ -2805,10 +2824,21 @@ function renderDefaultState({
           metadata.title || metadata.fileName
             ? metadata
             : { ...metadata, title: fallbackTitle };
+        const metaAny = metadata as Tachyon.SubscriptionMetadata & {
+          sourceId?: string;
+          source_id?: string;
+        };
+        const targetIndex =
+          typeof metadata.sourceIndex === 'number'
+            ? metadata.sourceIndex
+            : idx + 1;
+        const targetSourceId =
+          String(metaAny.sourceId || metaAny.source_id || '').trim() ||
+          undefined;
         return renderSubscriptionMetadata(enrichedMeta, {
           onUpdateSubscription:
             subSourceCount > 0
-              ? () => onUpdateSubscription(section)
+              ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
               : undefined,
           subscriptionUpdating,
         });
@@ -2817,6 +2847,19 @@ function renderDefaultState({
 
     const subMap = new Map<string, Tachyon.Outbound[]>();
     const manualOutbounds: Tachyon.Outbound[] = [];
+    const sourceIdToSubKey = new Map<string, string>();
+    metadataList.forEach((meta, idx) => {
+      const sourceIdx =
+        typeof meta.sourceIndex === 'number' ? meta.sourceIndex : idx + 1;
+      const metaAny = meta as Tachyon.SubscriptionMetadata & {
+        sourceId?: string;
+        source_id?: string;
+      };
+      const sid = String(metaAny.sourceId || metaAny.source_id || '').trim();
+      if (sid) {
+        sourceIdToSubKey.set(sid, `sub:${sourceIdx}`);
+      }
+    });
 
     for (const ob of outbounds) {
       if (ob.urlTestInfo || ob.priorityInfo) {
@@ -2825,6 +2868,21 @@ function renderDefaultState({
         const list = subMap.get(ob.sourceGroup) || [];
         list.push(ob);
         subMap.set(ob.sourceGroup, list);
+      } else if (ob.sourceId && sourceIdToSubKey.has(ob.sourceId)) {
+        const mappedKey = sourceIdToSubKey.get(ob.sourceId)!;
+        const list = subMap.get(mappedKey) || [];
+        list.push(ob);
+        subMap.set(mappedKey, list);
+      } else if (ob.sourceGroup && sourceIdToSubKey.has(ob.sourceGroup)) {
+        const mappedKey = sourceIdToSubKey.get(ob.sourceGroup)!;
+        const list = subMap.get(mappedKey) || [];
+        list.push(ob);
+        subMap.set(mappedKey, list);
+      } else if (ob.sourceGroup && ob.sourceGroup !== 'manual') {
+        const key = `src:${ob.sourceGroup}`;
+        const list = subMap.get(key) || [];
+        list.push(ob);
+        subMap.set(key, list);
       } else {
         manualOutbounds.push(ob);
       }
@@ -2832,7 +2890,9 @@ function renderDefaultState({
 
     const hasSubTaggedOutbounds = subMap.size > 0;
     const hasMultipleSources =
-      subSourceCount > 1 ||
+      (!showHidden && rawMetadataList.some((m) => m.hidden)
+        ? Math.max(metadataList.length, subMap.size) > 1
+        : subSourceCount > 1) ||
       subMap.size > 1 ||
       (hasSubTaggedOutbounds && manualOutbounds.length > 0);
 
@@ -2981,9 +3041,9 @@ function renderDefaultState({
         ...Array.from(metadataBySubKey.keys()),
       ]),
     ).sort((a, b) => {
-      const na = Number(a.slice(4)) || 0;
-      const nb = Number(b.slice(4)) || 0;
-      return na - nb;
+      const na = a.startsWith('sub:') ? Number(a.slice(4)) || 0 : 9999;
+      const nb = b.startsWith('sub:') ? Number(b.slice(4)) || 0 : 9999;
+      return na !== nb ? na - nb : a.localeCompare(b);
     });
 
     const hasActiveCountryOrRegionFilter = Boolean(
@@ -3005,11 +3065,14 @@ function renderDefaultState({
       const collapseKey = `subgrp:${section.code}:${subKey}`;
       const isGroupCollapsed = Boolean(collapsedSourceGroups?.has(collapseKey));
       const selectedMember = visibleMembers.find((m) => m.selected);
-      const subNumber = Number(subKey.slice(4)) || 1;
+      const subNumber = subKey.startsWith('sub:')
+        ? Number(subKey.slice(4)) || 1
+        : 1;
       const fallbackSubTitle =
-        allSubKeys.length > 1
+        members[0]?.sourceName ||
+        (allSubKeys.length > 1 && subKey.startsWith('sub:')
           ? `${_('Subscription')} #${subNumber}`
-          : _('Subscription');
+          : _('Subscription'));
 
       const resolvedSubTitle =
         meta?.title || members[0]?.prefix || meta?.fileName || fallbackSubTitle;
@@ -3024,6 +3087,21 @@ function renderDefaultState({
               sourceIndex: subNumber,
             };
 
+      const headerAny = headerMeta as Tachyon.SubscriptionMetadata & {
+        sourceId?: string;
+        source_id?: string;
+      };
+      const targetIndex =
+        typeof headerMeta.sourceIndex === 'number'
+          ? headerMeta.sourceIndex
+          : subNumber;
+      const targetSourceId =
+        String(
+          headerAny.sourceId ||
+            headerAny.source_id ||
+            members[0]?.sourceId ||
+            '',
+        ).trim() || undefined;
       const metaHeader = renderSubscriptionMetadata(headerMeta, {
         groupCount: visibleMembers.length,
         selectedOutbound: selectedMember,
@@ -3033,7 +3111,9 @@ function renderDefaultState({
             ? () => onToggleSourceGroupCollapse?.(collapseKey)
             : undefined,
         onUpdateSubscription:
-          subSourceCount > 0 ? () => onUpdateSubscription(section) : undefined,
+          subSourceCount > 0
+            ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
+            : undefined,
         subscriptionUpdating,
       });
 

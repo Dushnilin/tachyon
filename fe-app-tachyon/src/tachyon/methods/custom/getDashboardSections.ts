@@ -7,6 +7,7 @@ import {
   getProxyUrlTransport,
   isCopyableProxyLink,
 } from '../../../helpers';
+import { decodeSubHeaderValue } from '../../../helpers/decodeSubHeader';
 import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { TachyonShellMethods } from '../shell';
 import { detectOutboundCountry } from '../../helpers/country';
@@ -37,7 +38,7 @@ type DashboardSectionCache = {
     | Tachyon.SubscriptionMetadata
     | Tachyon.SubscriptionMetadata[];
   // Tags that belong to a URLTest/selector group and should not be shown
-  // as standalone nodes in the UI (mirrors hiddenOutboundTags in sing-box).
+  // as standalone nodes in the UI (mirrors hiddenOutboundTags in tachyon-core).
   hiddenOutboundTags?: Record<string, boolean>;
 };
 
@@ -141,8 +142,9 @@ type ChildType =
   | 'balancer';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
-// Written by singbox/runtime.uc when it quarantines a section that sing-box
-// refused to load; absent (or stale-empty) when every section loaded fine.
+// Written by tachyon_core/runtime.uc when it quarantines a section that
+// tachyon-core refused to load; absent (or stale-empty) when every section
+// loaded fine.
 const SECTION_ERRORS_FILE = '/var/run/tachyon/section-errors.json';
 const CLASH_API_FETCH_TIMEOUT_MS = 2500;
 let directClashApiFailedAt = 0;
@@ -237,6 +239,59 @@ async function getClashApiProxies(
   return rpcRes;
 }
 
+function isSubUrlValue(val: string) {
+  return /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
+}
+
+function getSourceSubscriptionUrls(src: Tachyon.ConfigSection): string[] {
+  const srcAny = src as Tachyon.ConfigSection & {
+    subscription_urls?: string[] | string;
+    urls?: string[] | string;
+  };
+  const urls = uniqueCodes([
+    ...getListValues(srcAny.subscription_urls),
+    ...getListValues(srcAny.urls),
+    ...(src.url ? [String(src.url).trim()] : []),
+  ]).filter(Boolean);
+
+  if (urls.length > 0) {
+    return urls;
+  }
+
+  const stype = (src.source_type || 'subscription').toLowerCase();
+  const rawSubName = (src.name || '').trim();
+  if (stype === 'subscription' && isSubUrlValue(rawSubName)) {
+    return [rawSubName];
+  }
+  return [];
+}
+
+function resolveSectionRuntimeSelector(
+  proxyByCode: Map<string, ClashProxyEntry>,
+  sectionName: string,
+  section: Tachyon.ConfigSection,
+): ClashProxyEntry | undefined {
+  const primary = proxyByCode.get(getOutboundTagBySection(sectionName));
+  if (primary) return primary;
+
+  const sel = proxyByCode.get(`sel-${sectionName}`);
+  if (sel) return sel;
+
+  const balRefs = getListValues(section.balancer_refs);
+  for (const bid of balRefs) {
+    const balEntry = proxyByCode.get(`bal-${sectionName}-${bid}`);
+    if (balEntry) return balEntry;
+  }
+
+  const balPrefix = `bal-${sectionName}-`;
+  for (const entry of proxyByCode.values()) {
+    if (entry.code.startsWith(balPrefix)) {
+      return entry;
+    }
+  }
+  return undefined;
+}
+
 function getListValues(value?: string[] | string) {
   if (!value) {
     return [];
@@ -295,11 +350,17 @@ function compactSettingsMap(settings: Record<string, ItemSettings>) {
 }
 
 const manualLinkPrefixMap = new Map<string, string>();
+const hiddenManualLinks = new Set<string>();
+const hiddenSourceIds = new Set<string>();
+const sectionSourcesHiddenMap = new Map<string, boolean>();
 let latestSourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
   {};
 
 function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   manualLinkPrefixMap.clear();
+  hiddenManualLinks.clear();
+  hiddenSourceIds.clear();
+  sectionSourcesHiddenMap.clear();
   latestSourcePrefixStyles = {};
   const subscriptionUrls = childSections(configSections, 'subscription_url');
   const interfaces = childSections(configSections, 'section_interface');
@@ -307,6 +368,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   const priorityGroups = childSections(configSections, 'priority_group');
   const priorityLevels = childSections(configSections, 'priority_level');
   const outboundSources = childSections(configSections, 'outbound_source');
+  outboundSources.forEach((src) => {
+    if (src.hidden === '1' && src['.name']) {
+      hiddenSourceIds.add(src['.name']);
+    }
+  });
   const outboundGroups = childSections(configSections, 'outbound_group');
   const balancers = childSections(configSections, 'balancer');
 
@@ -332,19 +398,30 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     // Collect effective modular outbound_source items (mirrors connections.uc:section_effective_outbound_sources)
     const effectiveSources: Tachyon.ConfigSection[] = [];
     const seenSrcIds = new Set<string>();
-    const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+    const dpiSourceTypes = new Set(['desync']);
+    const hasDirectNonDpiSourceRefs =
+      outboundSources.length > 0 &&
+      getListValues(next.outbound_source_refs).some((sid) => {
+        const s = sourceById.get(sid);
+        return (
+          Boolean(s) &&
+          !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
+        );
+      });
     const hasInlineConnectionItems =
-      getListValues(next.selector_proxy_links).length > 0 ||
-      getListValues(next.proxy_links).length > 0 ||
-      getListValues(next.connection_urls).length > 0 ||
-      Boolean((next.selector_proxy_links_text || '').trim()) ||
-      Boolean((next.proxy_links_text || '').trim()) ||
-      Boolean((next.urltest_proxy_links_text || '').trim()) ||
-      getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
-        .length > 0 ||
-      Boolean((next.amnezia_conf_text || '').trim()) ||
-      getRawListValues(next.outbound_jsons || next.outbound_json).length > 0 ||
-      Boolean((next.access_token || '').trim());
+      !hasDirectNonDpiSourceRefs &&
+      (getListValues(next.selector_proxy_links).length > 0 ||
+        getListValues(next.proxy_links).length > 0 ||
+        getListValues(next.connection_urls).length > 0 ||
+        Boolean((next.selector_proxy_links_text || '').trim()) ||
+        Boolean((next.proxy_links_text || '').trim()) ||
+        Boolean((next.urltest_proxy_links_text || '').trim()) ||
+        getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
+          .length > 0 ||
+        Boolean((next.amnezia_conf_text || '').trim()) ||
+        getRawListValues(next.outbound_jsons || next.outbound_json).length >
+          0 ||
+        Boolean((next.access_token || '').trim()));
     const addSource = (src?: Tachyon.ConfigSection) => {
       if (!src || src.enabled === '0') return;
       const sid = src['.name'];
@@ -357,15 +434,6 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       addSource(sourceById.get(sid)),
     );
 
-    const hasDirectNonDpiSourceRefs = getListValues(
-      next.outbound_source_refs,
-    ).some((sid) => {
-      const s = sourceById.get(sid);
-      return (
-        Boolean(s) && !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
-      );
-    });
-
     let hasExplicitNonDpiSources =
       hasInlineConnectionItems ||
       hasDirectNonDpiSourceRefs ||
@@ -373,7 +441,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
       );
 
-    const addGroupSources = (grpId: string) => {
+    const addGroupSources = (grpId: string, allowWhenExplicit = false) => {
       const grp = groupById.get(grpId);
       if (!grp || grp.enabled === '0') return;
       const gSources = getListValues(grp.source_refs);
@@ -385,12 +453,14 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             }
           });
         }
-      } else if (!hasExplicitNonDpiSources) {
+      } else if (allowWhenExplicit || !hasExplicitNonDpiSources) {
         gSources.forEach((sid) => addSource(sourceById.get(sid)));
       }
     };
 
-    getListValues(next.outbound_group_refs).forEach(addGroupSources);
+    getListValues(next.outbound_group_refs).forEach((gid) =>
+      addGroupSources(gid, true),
+    );
 
     if (!hasExplicitNonDpiSources) {
       hasExplicitNonDpiSources = effectiveSources.some(
@@ -405,7 +475,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         getListValues(bal.source_refs).forEach((sid) =>
           addSource(sourceById.get(sid)),
         );
-        getListValues(bal.group_refs).forEach(addGroupSources);
+        getListValues(bal.group_refs).forEach((gid) => addGroupSources(gid));
       }
       const balSettings = itemSettingsMap(next.balancer_settings)[bid];
       const balLvls = getRawListValues(
@@ -456,19 +526,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       });
     });
 
-    const serviceSourceTypes = new Set([
-      'zapret',
-      'zapret2',
-      'byedpi',
-      'desync',
-      'wdtt',
-      'olcrtc',
-    ]);
+    const serviceSourceTypes = new Set(['desync']);
+    const isServiceSource = (src: Tachyon.ConfigSection) =>
+      serviceSourceTypes.has((src.source_type || '').toLowerCase());
     const allSourcesAreService =
-      effectiveSources.length > 0 &&
-      effectiveSources.every((src) =>
-        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
-      );
+      effectiveSources.length > 0 && effectiveSources.every(isServiceSource);
 
     const seenSubUrls = new Set<string>();
     const extraProxyLinks: string[] = [];
@@ -480,6 +542,9 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
 
     const pushSourceLink = (src: Tachyon.ConfigSection, rawLink: string) => {
       extraProxyLinks.push(rawLink);
+      if (src.hidden === '1' && rawLink) {
+        hiddenManualLinks.add(rawLink);
+      }
       const pfx =
         src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
           ? src.node_prefix.trim()
@@ -512,19 +577,14 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           latestSourcePrefixStyles[srcPfx] = sourcePrefixStyles[srcPfx];
         }
       }
-      if (stype === 'subscription' || src.url) {
-        const isSubUrl = (val: string) =>
-          /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
-        const rawSubName = (src.name || '').trim();
-        const u = (
-          src.url ||
-          (stype === 'subscription' && isSubUrl(rawSubName)
-            ? rawSubName
-            : '') ||
-          ''
-        ).trim();
-        if (u) {
-          if (isSubUrl(u)) {
+      if (
+        stype === 'subscription' ||
+        src.url ||
+        getSourceSubscriptionUrls(src).length > 0
+      ) {
+        const urls = getSourceSubscriptionUrls(src);
+        urls.forEach((u) => {
+          if (isSubUrlValue(u)) {
             if (!seenSubUrls.has(u)) {
               seenSubUrls.add(u);
               subscriptionUrlItems.push({ ...src, url: u });
@@ -535,7 +595,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               u.includes('#') || !src.name ? u : `${u}#${src.name}`,
             );
           }
-        }
+        });
       } else if (stype === 'proxy_links' || stype === 'links') {
         getListValues(src.proxy_links || src.selector_proxy_links).forEach(
           (l) => pushSourceLink(src, l),
@@ -641,12 +701,8 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         const port = (src.tor_socks_port || '9050').trim() || '9050';
         const tname = (src.name || 'Tor').trim() || 'Tor';
         pushSourceLink(src, `socks5://127.0.0.1:${port}#${tname}`);
-      } else if (stype === 'interface' || stype === 'tailscale') {
-        const iname = (
-          src.interface_name ||
-          src.interface ||
-          (stype === 'tailscale' ? 'tailscale0' : '')
-        ).trim();
+      } else if (stype === 'interface') {
+        const iname = (src.interface_name || src.interface || '').trim();
         if (iname) extraInterfaces.push(iname);
       } else if (stype === 'outbound_json' || stype === 'json') {
         getRawListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
@@ -665,6 +721,9 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'shadowtls',
           'trusttunnel',
           'tewfai',
+          'csqtt',
+          'wdtt',
+          'tailscale',
           'openvpn',
         ].includes(stype) ||
         (stype === 'desync' && !allSourcesAreService)
@@ -677,18 +736,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     });
 
     const allModularSubUrls = new Set(
-      outboundSources
-        .map((src) => {
-          const st = (src.source_type || 'subscription').toLowerCase();
-          return (
-            src.url ||
-            (st === 'subscription' && /^https?:\/\//i.test(src.name || '')
-              ? src.name
-              : '') ||
-            ''
-          ).trim();
-        })
-        .filter(Boolean),
+      outboundSources.flatMap((src) => getSourceSubscriptionUrls(src)),
     );
     legacySubscriptionUrlItems.forEach((it) => {
       const u = (it.url || '').trim();
@@ -705,23 +753,49 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       subscriptionUrlItems.push(it);
     });
 
-    if (extraProxyLinks.length) {
-      next.selector_proxy_links = uniqueCodes([
-        ...getListValues(next.selector_proxy_links),
-        ...extraProxyLinks,
-      ]);
-    }
-    if (extraAmneziaConfigs.length) {
-      next.selector_amnezia_configs = uniqueCodes([
-        ...getRawListValues(next.selector_amnezia_configs),
-        ...extraAmneziaConfigs,
-      ]);
-    }
-    if (extraOutboundJsons.length) {
-      next.outbound_jsons = uniqueCodes([
-        ...getRawListValues(next.outbound_jsons),
-        ...extraOutboundJsons,
-      ]);
+    if (hasDirectNonDpiSourceRefs) {
+      if (extraProxyLinks.length) {
+        next.selector_proxy_links = uniqueCodes(extraProxyLinks);
+      } else {
+        delete next.selector_proxy_links;
+      }
+      delete next.proxy_links;
+      delete next.selector_proxy_links_text;
+      delete next.proxy_links_text;
+
+      if (extraAmneziaConfigs.length) {
+        next.selector_amnezia_configs = uniqueCodes(extraAmneziaConfigs);
+      } else {
+        delete next.selector_amnezia_configs;
+      }
+      delete next.amnezia_configs;
+      delete next.amnezia_conf_text;
+
+      if (extraOutboundJsons.length) {
+        next.outbound_jsons = uniqueCodes(extraOutboundJsons);
+      } else {
+        delete next.outbound_jsons;
+      }
+      delete next.outbound_json;
+    } else {
+      if (extraProxyLinks.length) {
+        next.selector_proxy_links = uniqueCodes([
+          ...getListValues(next.selector_proxy_links),
+          ...extraProxyLinks,
+        ]);
+      }
+      if (extraAmneziaConfigs.length) {
+        next.selector_amnezia_configs = uniqueCodes([
+          ...getRawListValues(next.selector_amnezia_configs),
+          ...extraAmneziaConfigs,
+        ]);
+      }
+      if (extraOutboundJsons.length) {
+        next.outbound_jsons = uniqueCodes([
+          ...getRawListValues(next.outbound_jsons),
+          ...extraOutboundJsons,
+        ]);
+      }
     }
 
     // Hydrate urltests from balancer_refs + legacy urltest child sections (mirrors connections.uc:urltests)
@@ -812,8 +886,22 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       allSourcesAreService
     ) {
       next.action = (
-        effectiveSources[0].source_type || 'zapret2'
+        effectiveSources[0].source_type || 'desync'
       ).toLowerCase() as Tachyon.ConfigSection['action'];
+    }
+
+    const hasAnyAttachedSource =
+      effectiveSources.length > 0 || subscriptionUrlItems.length > 0;
+    const allAttachedSourcesHidden =
+      hasAnyAttachedSource &&
+      !hasInlineConnectionItems &&
+      interfaceItems.length === 0 &&
+      legacyUrltestItems.length === 0 &&
+      legacyPriorityGroupItems.length === 0 &&
+      effectiveSources.every((s) => s.hidden === '1') &&
+      subscriptionUrlItems.every((it) => it.hidden === '1');
+    if (allAttachedSourcesHidden && next['.name']) {
+      sectionSourcesHiddenMap.set(next['.name'], true);
     }
 
     if (subscriptionUrlItems.length) {
@@ -854,6 +942,12 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           device_locale: item.device_locale,
           app_version: item.app_version,
           accept_language: item.accept_language,
+          hidden:
+            item.hidden === '1' || item.hidden === '0'
+              ? item.hidden
+              : undefined,
+          source_id:
+            item['.type'] === 'outbound_source' ? item['.name'] : undefined,
           show_dashboard_metadata: item.show_dashboard_metadata,
           prefix_nodes:
             item.prefix_nodes ?? (item.node_prefix ? '1' : undefined),
@@ -1014,20 +1108,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               if (src) {
                 const stype = (src.source_type || 'subscription').toLowerCase();
                 let srcMarker = `source:${ref}`;
-                if (stype === 'subscription' || src.url) {
-                  const isSubUrl = (val: string) =>
-                    /^https?:\/\//i.test(val) ||
-                    /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
-                  const rawSubName = (src.name || '').trim();
-                  const u = (
-                    src.url ||
-                    (stype === 'subscription' && isSubUrl(rawSubName)
-                      ? rawSubName
-                      : '') ||
-                    ''
-                  ).trim();
-                  const subIdx = subscriptionUrlItems.findIndex(
-                    (s) => (s.url || '').trim() === u,
+                const urls = getSourceSubscriptionUrls(src);
+                if (stype === 'subscription' || urls.length > 0) {
+                  const subIdx = subscriptionUrlItems.findIndex((s) =>
+                    urls.includes((s.url || '').trim()),
                   );
                   if (subIdx >= 0) {
                     srcMarker = `sub:${subIdx + 1}`;
@@ -1200,6 +1284,8 @@ const SINGLE_ENDPOINT_ACTIONS = new Set([
   'tewfai',
   'trusttunnel',
   'shadowtls',
+  'csqtt',
+  'wdtt',
 ]);
 
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
@@ -1216,6 +1302,8 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
   tewfai: 'TewFai',
   trusttunnel: 'TrustTunnel',
   shadowtls: 'ShadowTLS',
+  csqtt: 'CSQTT',
+  wdtt: 'WDTT',
   desync: 'Native Desync',
   fptn: 'FPTN',
 };
@@ -1229,12 +1317,7 @@ function isConnectionAction(action?: string) {
 }
 
 function isServiceAction(action?: string) {
-  return Boolean(
-    action &&
-      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        action,
-      ),
-  );
+  return action === 'desync';
 }
 
 function isPolicyAction(action?: string) {
@@ -1295,7 +1378,7 @@ function shouldHideNaServers(section: Tachyon.ConfigSection) {
   );
 }
 
-// A server is rendered as N/A when it is missing from the sing-box runtime or
+// A server is rendered as N/A when it is missing from the tachyon-core runtime or
 // when no latency has ever been measured for it. "Not responding" (-1) is a
 // distinct, meaningful state and stays visible.
 function isNaOutbound(outbound: Tachyon.Outbound) {
@@ -2086,6 +2169,8 @@ function dashboardOutboundType(
   if (proto === 'masque') return 'MASQUE';
   if (proto === 'openconnect') return 'OpenConnect';
   if (proto === 'tewfai') return 'TewFai';
+  if (proto === 'csqtt') return 'CSQTT';
+  if (proto === 'wdtt') return 'WDTT';
   if (proto === 'warp') return 'WARP';
   if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
   if (proto === 'tailscale') return 'Tailscale';
@@ -2636,13 +2721,24 @@ function buildProxyGroupOutbounds(
     getConfiguredSubscriptionPrefixStyles(m);
   }
   const proxyByCode = getProxyEntryByCode(proxies);
-  const selectorTag = getOutboundTagBySection(sectionName);
-  const selector = proxyByCode.get(selectorTag);
-  const urlTestConfigs = getUrlTestConfigs(section);
+  const selector = resolveSectionRuntimeSelector(
+    proxyByCode,
+    sectionName,
+    section,
+  );
+  const urlTestConfigs = getUrlTestConfigs(section).map((config) => {
+    if (proxyByCode.has(config.code)) return config;
+    const balCode = `bal-${sectionName}-${config.id}`;
+    return proxyByCode.has(balCode) ? { ...config, code: balCode } : config;
+  });
   const urlTestConfigByCode = new Map(
     urlTestConfigs.map((config) => [config.code, config]),
   );
-  const priorityConfigs = getPriorityConfigs(section);
+  const priorityConfigs = getPriorityConfigs(section).map((config) => {
+    if (proxyByCode.has(config.code)) return config;
+    const balCode = `bal-${sectionName}-${config.id}`;
+    return proxyByCode.has(balCode) ? { ...config, code: balCode } : config;
+  });
   const priorityConfigByCode = new Map(
     priorityConfigs.map((config) => [config.code, config]),
   );
@@ -2874,15 +2970,45 @@ function buildProxyGroupOutbounds(
       urlTestTelemetryDelay ||
       (activeMemberLatency > 0 ? activeMemberLatency : 0);
 
+    let sourceId = isGroupType
+      ? undefined
+      : outboundMetadata?.source_ids?.[code];
     let sourceGroup = isGroupType
       ? undefined
       : outboundMetadata?.sources?.[code];
+    if (
+      sourceGroup &&
+      sourceGroup !== 'manual' &&
+      !sourceGroup.startsWith('sub:')
+    ) {
+      const subUrls = getListValues(section.subscription_urls);
+      const subSettings = itemSettingsMap(section.subscription_url_settings);
+      const matchedSubIdx = subUrls.findIndex((u) => {
+        const sid = subSettings[u]?.source_id;
+        return sid && (sid === sourceGroup || sid === sourceId);
+      });
+      if (matchedSubIdx >= 0) {
+        if (!sourceId) sourceId = sourceGroup;
+        sourceGroup = `sub:${matchedSubIdx + 1}`;
+      }
+    }
     if (!sourceGroup && !isGroupType) {
       if (findManualLink(manualLinkByCode, code)) {
         sourceGroup = 'manual';
       } else {
         const subUrls = getListValues(section.subscription_urls);
-        if (prefix && subUrls.length > 0) {
+        if (sourceId && subUrls.length > 0) {
+          const subSettings = itemSettingsMap(
+            section.subscription_url_settings,
+          );
+          const matchedBySid = subUrls.findIndex(
+            (u) => subSettings[u]?.source_id === sourceId,
+          );
+          if (matchedBySid >= 0) {
+            sourceGroup = `sub:${matchedBySid + 1}`;
+          }
+        }
+        if (!sourceGroup && prefix && subUrls.length > 0) {
           const subSettings = itemSettingsMap(
             section.subscription_url_settings,
           );
@@ -2900,6 +3026,42 @@ function buildProxyGroupOutbounds(
         }
         if (!sourceGroup && subUrls.length === 1) {
           sourceGroup = 'sub:1';
+        }
+      }
+    }
+
+    const sourceName = isGroupType
+      ? undefined
+      : outboundMetadata?.source_names?.[code];
+    let isHiddenOutbound = false;
+    if (!isGroupType) {
+      if (sourceId && hiddenSourceIds.has(sourceId)) {
+        isHiddenOutbound = true;
+      }
+      if (link && hiddenManualLinks.has(link)) {
+        isHiddenOutbound = true;
+      }
+      if (sourceGroup && sourceGroup.startsWith('sub:')) {
+        const subIdx = Number.parseInt(sourceGroup.slice(4), 10);
+        const subUrls = getListValues(section.subscription_urls);
+        const subUrl = subIdx >= 1 ? subUrls[subIdx - 1] : undefined;
+        if (subUrl) {
+          const subSt = itemSettingsMap(section.subscription_url_settings)[
+            subUrl
+          ];
+          if (
+            !sourceId &&
+            typeof subSt?.source_id === 'string' &&
+            subSt.source_id.trim()
+          ) {
+            sourceId = subSt.source_id.trim();
+          }
+          if (
+            subSt?.hidden === '1' ||
+            Boolean(sourceId && hiddenSourceIds.has(sourceId))
+          ) {
+            isHiddenOutbound = true;
+          }
         }
       }
     }
@@ -2933,6 +3095,9 @@ function buildProxyGroupOutbounds(
         urlTestInfo,
         priorityInfo,
         sourceGroup,
+        ...(sourceId ? { sourceId } : {}),
+        ...(sourceName ? { sourceName } : {}),
+        ...(isHiddenOutbound ? { hidden: true } : {}),
       },
     ];
   });
@@ -3095,9 +3260,6 @@ function getSubscriptionMetadata(
         isSubscriptionMetadataVisible(section, sourceCount, metadata),
     )
     .map((metadata) => {
-      if (metadata.title) {
-        return metadata;
-      }
       const sourceIndex = getSubscriptionMetadataSourceIndex(
         section['.name'],
         sourceCount,
@@ -3106,12 +3268,35 @@ function getSubscriptionMetadata(
       const sourceEntry =
         sourceIndex && sourceIndex >= 1 ? subUrls[sourceIndex - 1] : undefined;
       const srcSettings = sourceEntry ? settingsMap[sourceEntry] : undefined;
+      const sourceId =
+        typeof srcSettings?.source_id === 'string' &&
+        srcSettings.source_id.trim()
+          ? srcSettings.source_id.trim()
+          : undefined;
+      const isHidden =
+        srcSettings?.hidden === '1' ||
+        Boolean(sourceId && hiddenSourceIds.has(sourceId));
       const fallbackName =
         (typeof srcSettings?.name === 'string' && srcSettings.name.trim()) ||
         (typeof srcSettings?.node_prefix === 'string' &&
           srcSettings.node_prefix.trim()) ||
         '';
-      return fallbackName ? { ...metadata, title: fallbackName } : metadata;
+      const resolvedTitle = decodeSubHeaderValue(
+        metadata.title || fallbackName,
+      );
+      const resolvedAnnounce = metadata.announce
+        ? decodeSubHeaderValue(metadata.announce)
+        : undefined;
+      if (!resolvedTitle && !resolvedAnnounce && !isHidden && !sourceId) {
+        return metadata;
+      }
+      return {
+        ...metadata,
+        ...(resolvedTitle ? { title: resolvedTitle } : {}),
+        ...(resolvedAnnounce ? { announce: resolvedAnnounce } : {}),
+        ...(sourceId ? { sourceId } : {}),
+        ...(isHidden ? { hidden: true } : {}),
+      };
     });
 
   if (visibleMetadataItems.length > 0) {
@@ -3138,6 +3323,8 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
     details: objectMap(metadata.details),
     prefixes: objectMap(metadata.prefixes),
     sources: objectMap(metadata.sources),
+    source_ids: objectMap(metadata.source_ids),
+    source_names: objectMap(metadata.source_names),
   };
 }
 
@@ -3152,6 +3339,83 @@ function getCachedProxyLinks(
         isCopyableProxyLink(link) && (includeHidden || !hidden[code]),
     ),
   );
+}
+
+function mergeOutboundMetaRecords(
+  base?: Tachyon.GetOutboundMetadata,
+  extra?: Tachyon.GetOutboundMetadata,
+): Tachyon.GetOutboundMetadata | undefined {
+  if (!base && !extra) return undefined;
+  return {
+    names: { ...base?.names, ...extra?.names },
+    countries: { ...base?.countries, ...extra?.countries },
+    transports: { ...base?.transports, ...extra?.transports },
+    protocols: { ...base?.protocols, ...extra?.protocols },
+    securities: { ...base?.securities, ...extra?.securities },
+    ports: { ...base?.ports, ...extra?.ports },
+    details: { ...base?.details, ...extra?.details },
+    prefixes: { ...base?.prefixes, ...extra?.prefixes },
+    sources: { ...base?.sources, ...extra?.sources },
+    source_ids: { ...base?.source_ids, ...extra?.source_ids },
+    source_names: { ...base?.source_names, ...extra?.source_names },
+  };
+}
+
+async function loadDashboardSectionCacheWithRpc(
+  sectionName: string,
+  includeSubMeta: boolean,
+): Promise<DashboardSectionCache | undefined> {
+  const cachePromise = readDashboardSectionCache(sectionName);
+  const outMetaPromise =
+    typeof TachyonShellMethods.getOutboundMetadata === 'function'
+      ? TachyonShellMethods.getOutboundMetadata(sectionName)
+          .then((res) => (res?.success && res.data ? res.data : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  const subMetaPromise =
+    includeSubMeta &&
+    typeof TachyonShellMethods.getSubscriptionMetadata === 'function'
+      ? TachyonShellMethods.getSubscriptionMetadata(sectionName)
+          .then((res) => (res?.success && res.data ? res.data : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [fileCache, rpcOutMeta, rpcSubMeta] = await Promise.all([
+    cachePromise,
+    outMetaPromise,
+    subMetaPromise,
+  ]);
+
+  if (!fileCache && !rpcOutMeta && !rpcSubMeta) {
+    return undefined;
+  }
+
+  const mergedOutMeta = mergeOutboundMetaRecords(
+    fileCache?.outboundMetadata,
+    rpcOutMeta,
+  );
+  const rpcSubList = rpcSubMeta
+    ? Array.isArray(rpcSubMeta)
+      ? rpcSubMeta
+      : [rpcSubMeta]
+    : [];
+  const fileSubList = fileCache?.subscriptionMetadata
+    ? Array.isArray(fileCache.subscriptionMetadata)
+      ? fileCache.subscriptionMetadata
+      : [fileCache.subscriptionMetadata]
+    : [];
+  const mergedSubMeta =
+    rpcSubList.length > 0
+      ? rpcSubList
+      : fileSubList.length > 0
+        ? fileSubList
+        : undefined;
+
+  return {
+    ...(fileCache || {}),
+    ...(mergedOutMeta ? { outboundMetadata: mergedOutMeta } : {}),
+    ...(mergedSubMeta ? { subscriptionMetadata: mergedSubMeta } : {}),
+  };
 }
 
 export async function getDashboardSections(
@@ -3185,123 +3449,17 @@ export async function getDashboardSections(
     Promise<Tachyon.ServiceStatus | undefined>
   >();
 
-  const getServiceStatus = (
-    serviceType:
-      | 'zapret'
-      | 'zapret2'
-      | 'byedpi'
-      | 'desync'
-      | 'wdtt'
-      | 'olcrtc'
-      | 'fptn',
-  ) => {
+  const getServiceStatus = (serviceType: 'desync') => {
     if (!serviceStatusCache.has(serviceType)) {
       serviceStatusCache.set(
         serviceType,
         (async () => {
           try {
-            if (serviceType === 'zapret') {
-              const result = await TachyonShellMethods.getZapretStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'zapret',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'zapret2') {
-              const result = await TachyonShellMethods.getZapret2Status();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'zapret2',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: 0,
-                  unstable: false,
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'byedpi') {
-              const result = await TachyonShellMethods.getByedpiStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'byedpi',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'wdtt') {
-              const result = await TachyonShellMethods.getWdttStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'wdtt',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'olcrtc') {
-              const result = await TachyonShellMethods.getOlcrtcStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'olcrtc',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: Boolean(s.conflict),
-                  runningProcesses: s.running_process_count,
-                  expectedProcesses: s.expected_process_count,
-                  restartCount: s.restart_count,
-                  unstable: Boolean(s.runtime_unstable),
-                  statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'fptn') {
-              const result = await TachyonShellMethods.getFptnStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'fptn',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: false,
-                  runningProcesses: s.service_running ? 1 : 0,
-                  expectedProcesses: s.configured ? 1 : 0,
-                  restartCount: 0,
-                  unstable: false,
-                  statusMessage:
-                    s.status_message || (s.ready ? _('Running') : _('Stopped')),
-                };
-              }
-            } else if (serviceType === 'desync') {
+            if (serviceType === 'desync') {
               // desync runs inside tachyon-core — there is no separate process.
-              // Reflect readiness from the tachyon-core/sing-box engine status.
+              // Reflect readiness from the tachyon-core engine status.
               try {
-                const result = await TachyonShellMethods.getSingBoxStatus();
+                const result = await TachyonShellMethods.getTachyonCoreStatus();
                 if (result?.success && result.data) {
                   const s = result.data;
                   const isRunning = Boolean(s.running);
@@ -3414,7 +3572,10 @@ export async function getDashboardSections(
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
           const subscriptionEnabled = subscriptionSourceCount > 0;
-          const dashboardCache = await readDashboardSectionCache(sectionName);
+          const dashboardCache = await loadDashboardSectionCacheWithRpc(
+            sectionName,
+            subscriptionEnabled,
+          );
           let outboundMetadata = getOutboundMetadata(dashboardCache);
           const subscriptionMetadata = subscriptionEnabled
             ? getSubscriptionMetadata(
@@ -3477,6 +3638,14 @@ export async function getDashboardSections(
                   sources: {
                     ...mMeta.sources,
                     ...outboundMetadata?.sources,
+                  },
+                  source_ids: {
+                    ...mMeta.source_ids,
+                    ...outboundMetadata?.source_ids,
+                  },
+                  source_names: {
+                    ...mMeta.source_names,
+                    ...outboundMetadata?.source_names,
                   },
                 };
               }
@@ -3787,11 +3956,27 @@ export async function getDashboardSections(
       }),
   );
 
-  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) =>
-    sectionErrors[group.sectionName]
-      ? { ...group, configError: sectionErrors[group.sectionName] }
-      : group,
+  const configSectionByName = new Map(
+    configSections
+      .filter((s) => s['.type'] === 'section' && s['.name'])
+      .map((s) => [s['.name'], s]),
   );
+
+  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) => {
+    const cfg = configSectionByName.get(group.sectionName);
+    const isGroupHidden =
+      cfg?.hidden === '1' ||
+      sectionSourcesHiddenMap.get(group.sectionName) === true;
+    const err = sectionErrors[group.sectionName];
+    if (!err && !isGroupHidden) {
+      return group;
+    }
+    return {
+      ...group,
+      ...(err ? { configError: err } : {}),
+      ...(isGroupHidden ? { hidden: true } : {}),
+    };
+  });
 
   return {
     success: true,

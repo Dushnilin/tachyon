@@ -91,6 +91,26 @@ describe('TachyonShellMethods.subscriptionUpdate', () => {
     });
   });
 
+  it('passes sourceIndex when updating a single subscription inside a section', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: JSON.stringify({
+        success: true,
+        job_id: 'job-single-2',
+        message: 'Subscription update started',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    await TachyonShellMethods.subscriptionUpdateStart('Main', 2);
+
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith({
+      command: '/usr/bin/tachyon',
+      args: ['subscription_update_async', 'Main', '2'],
+      timeout: 15000,
+    });
+  });
+
   it('returns the backend subscription start error message', async () => {
     mocks.executeShellCommand.mockResolvedValue({
       stdout: JSON.stringify({

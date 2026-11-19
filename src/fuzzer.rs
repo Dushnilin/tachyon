@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -19,7 +19,7 @@ use tokio::net::{TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket};
 use tokio::process::Command;
 
 use crate::crypto_gen;
-use crate::store::unix_now_secs;
+use crate::store::{PortableAtomicU64, unix_now_secs};
 
 const SANDBOX_ROUTING_MARK: u32 = 0x0800_0000; // 134_217_728 — bypasses active TPROXY rules
 const STATE_FILE: &str = "/var/run/tachyon/fuzzer-state.json";
@@ -33,8 +33,8 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 static FUZZER_STATE: OnceLock<Mutex<Value>> = OnceLock::new();
 static FUZZER_ABORT: AtomicBool = AtomicBool::new(false);
 static FUZZER_ACTIVE_PID: AtomicU32 = AtomicU32::new(0);
-static FUZZER_JOB_SEQ: AtomicU64 = AtomicU64::new(1);
-static FUZZER_ACTIVE_GEN: AtomicU64 = AtomicU64::new(0);
+static FUZZER_JOB_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
+static FUZZER_ACTIVE_GEN: PortableAtomicU64 = PortableAtomicU64::new(0);
 static FUZZER_START_GATE: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 static FUZZER_TASK_SLOT: OnceLock<tokio::sync::Mutex<FuzzerTaskSlot>> = OnceLock::new();
 
@@ -896,6 +896,56 @@ fn parse_split_pos_value(raw: &str) -> Value {
     }
 }
 
+pub(crate) fn insert_desync_udp_fake_payload(obj: &mut Map<String, Value>, raw: &str) {
+    let trimmed = raw.trim();
+    if !trimmed.is_empty() {
+        obj.insert("udp_fake_payload".into(), json!(trimmed));
+    }
+}
+
+pub(crate) fn insert_desync_udp_out_range(obj: &mut Map<String, Value>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if (1..=3).contains(&trimmed.len())
+        && trimmed.bytes().all(|b| b.is_ascii_digit())
+        && let Ok(n) = trimmed.parse::<u16>()
+    {
+        obj.insert("udp_out_range".into(), json!(n));
+        return;
+    }
+    obj.insert("udp_out_range".into(), json!(trimmed));
+}
+
+pub(crate) fn insert_desync_udp_keep_socket(obj: &mut Map<String, Value>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    match trimmed.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => {
+            obj.insert("udp_keep_socket".into(), json!(true));
+        }
+        "0" | "false" | "no" | "off" => {
+            obj.insert("udp_keep_socket".into(), json!(false));
+        }
+        _ => {
+            obj.insert("udp_keep_socket".into(), json!(trimmed));
+        }
+    }
+}
+
+/// Normalize `--flag-name` / `--dpi-desync-*` keys to canonical underscore names.
+fn normalize_desync_arg_key(raw: &str) -> String {
+    let stripped = raw.trim().strip_prefix("--").unwrap_or(raw.trim());
+    let underscored = stripped.replace('-', "_").to_ascii_lowercase();
+    underscored
+        .strip_prefix("dpi_desync_")
+        .unwrap_or(&underscored)
+        .to_string()
+}
+
 /// Convert a `desync` strategy argument string (`mode=fake_disorder split_pos=sni,endhost-1 ...`)
 /// into a validated `tachyon-core` `"type": "desync"` outbound JSON object.
 pub fn parse_desync_args_to_outbound(args_str: &str, tag: &str, sandbox_mark: bool) -> Value {
@@ -1019,7 +1069,12 @@ pub fn parse_desync_args_to_outbound(args_str: &str, tag: &str, sandbox_mark: bo
             "fake_tls" => {
                 obj.insert("fake_tls".into(), json!(val));
             }
-            _ => {}
+            _ => match normalize_desync_arg_key(key).as_str() {
+                "udp_fake_payload" => insert_desync_udp_fake_payload(&mut obj, val),
+                "udp_out_range" => insert_desync_udp_out_range(&mut obj, val),
+                "udp_keep_socket" => insert_desync_udp_keep_socket(&mut obj, val),
+                _ => {}
+            },
         }
     }
 
@@ -1058,6 +1113,9 @@ pub fn apply_desync_args_to_section_map(sec_obj: &mut Map<String, Value>, args_s
         "desync_quic_fake",
         "desync_udp_repeats",
         "desync_udp_fake_ttl",
+        "desync_udp_fake_payload",
+        "desync_udp_out_range",
+        "desync_udp_keep_socket",
         "desync_udplen",
         "desync_auto_tune",
         "desync_host_fake",
@@ -1203,7 +1261,23 @@ pub fn apply_desync_args_to_section_map(sec_obj: &mut Map<String, Value>, args_s
             "fake_tls" => {
                 sec_obj.insert("desync_fake_tls".into(), json!(val));
             }
-            _ => {}
+            _ => match normalize_desync_arg_key(key).as_str() {
+                "udp_fake_payload" => {
+                    sec_obj.insert("desync_udp_fake_payload".into(), json!(val));
+                }
+                "udp_out_range" => {
+                    sec_obj.insert("desync_udp_out_range".into(), json!(val));
+                }
+                "udp_keep_socket" => {
+                    let v = match val.to_ascii_lowercase().as_str() {
+                        "1" | "true" | "yes" | "on" => "1",
+                        "0" | "false" | "no" | "off" => "0",
+                        _ => val,
+                    };
+                    sec_obj.insert("desync_udp_keep_socket".into(), json!(v));
+                }
+                _ => {}
+            },
         }
     }
     if is_hostfakesplit && !explicit_host_fake {
@@ -1610,19 +1684,28 @@ fn pick_sandbox_port() -> u16 {
     11090
 }
 
-async fn wait_local_port_ready(port: u16, max_wait_ms: u64) -> bool {
+async fn wait_local_port_ready(
+    port: u16,
+    max_wait_ms: u64,
+    child: &mut tokio::process::Child,
+) -> Option<String> {
     let deadline = Instant::now() + Duration::from_millis(max_wait_ms);
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
     while Instant::now() < deadline {
         if FUZZER_ABORT.load(Ordering::Relaxed) {
-            return false;
+            return Some("Тест песочницы прерван".to_string());
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            return Some(format!(
+                "Песочница tachyon-core завершилась досрочно ({status})"
+            ));
         }
         if TcpStream::connect_timeout(&addr, Duration::from_millis(25)).is_ok() {
-            return true;
+            return None;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    false
+    Some("Песочница tachyon-core не открыла локальный порт вовремя".to_string())
 }
 
 fn extract_host_port(url: &str) -> Option<(String, u16)> {
@@ -2352,12 +2435,14 @@ async fn probe_outbound_in_sandbox(
             "servers": [
                 {
                     "tag": "dns-direct",
-                    "address": "https://1.1.1.1/dns-query",
+                    "type": "https",
+                    "server": "1.1.1.1",
                     "detour": "direct-wan"
                 },
                 {
                     "tag": "dns-fallback",
-                    "address": "8.8.8.8",
+                    "type": "udp",
+                    "server": "8.8.8.8",
                     "detour": "direct-wan"
                 }
             ],
@@ -2380,6 +2465,7 @@ async fn probe_outbound_in_sandbox(
             }
         ],
         "route": {
+            "default_domain_resolver": "dns-direct",
             "final": "fuzzer-out"
         }
     });
@@ -2392,7 +2478,7 @@ async fn probe_outbound_in_sandbox(
     let child_res = Command::new(bin_path)
         .args(["run", "-c", &cfg_path])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn();
 
@@ -2421,7 +2507,38 @@ async fn probe_outbound_in_sandbox(
     FUZZER_ACTIVE_PID.store(pid, Ordering::Relaxed);
 
     let mut metrics = Vec::with_capacity(endpoints.len());
-    if wait_local_port_ready(port, 750).await {
+    if let Some(fail_reason) = wait_local_port_ready(port, 2500, &mut child).await {
+        let mut stderr_tail = String::new();
+        if let Some(mut err_pipe) = child.stderr.take() {
+            let mut buf = vec![0u8; 512];
+            if let Ok(Ok(n)) =
+                tokio::time::timeout(Duration::from_millis(120), err_pipe.read(&mut buf)).await
+            {
+                stderr_tail = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+            }
+        }
+        let err_msg = if stderr_tail.is_empty() {
+            fail_reason
+        } else {
+            format!("{fail_reason}: {stderr_tail}")
+        };
+        for ep in endpoints {
+            metrics.push(SingleProbeMetrics {
+                target_name: ep.target_name.clone(),
+                url: ep.url.clone(),
+                success: false,
+                http_code: 0,
+                handshake_ms: 0,
+                ttfb_ms: 0,
+                speed_kbps: 0,
+                data_bytes: 0,
+                data_verified: false,
+                dpi_verdict: "sandbox_timeout",
+                exit_code: 1,
+                error: err_msg.clone(),
+            });
+        }
+    } else {
         let mut passed_so_far = 0usize;
         for ep in endpoints {
             if FUZZER_ABORT.load(Ordering::Relaxed) {
@@ -2436,23 +2553,6 @@ async fn probe_outbound_in_sandbox(
             if !is_custom && failed && passed_so_far == 0 && endpoints.len() > 6 {
                 break;
             }
-        }
-    } else {
-        for ep in endpoints {
-            metrics.push(SingleProbeMetrics {
-                target_name: ep.target_name.clone(),
-                url: ep.url.clone(),
-                success: false,
-                http_code: 0,
-                handshake_ms: 0,
-                ttfb_ms: 0,
-                speed_kbps: 0,
-                data_bytes: 0,
-                data_verified: false,
-                dpi_verdict: "sandbox_timeout",
-                exit_code: 1,
-                error: "Песочница tachyon-core не открыла локальный порт вовремя".to_string(),
-            });
         }
     }
 
@@ -2836,6 +2936,31 @@ pub fn synthesize_ai_strategies(target: &str, user_prompt: &str) -> Value {
     })
 }
 
+pub fn parse_fuzzer_timeout_secs(raw: Option<&str>, fallback: u64) -> u64 {
+    let Some(raw_val) = raw else {
+        return fallback;
+    };
+    let s = raw_val.trim();
+    if s.is_empty() {
+        return fallback;
+    }
+    if s == "0" || s.eq_ignore_ascii_case("unlimited") || s.eq_ignore_ascii_case("none") {
+        return 0;
+    }
+    match s.parse::<u64>() {
+        Ok(n) if n > 0 => n,
+        _ => fallback,
+    }
+}
+
+fn resolve_fuzzer_max_duration(timeout_secs: u64) -> Option<Duration> {
+    if timeout_secs == 0 {
+        None
+    } else {
+        Some(Duration::from_secs(timeout_secs.clamp(30, 7200)))
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn start_benchmark(
     bin_path: String,
@@ -3003,7 +3128,7 @@ pub async fn start_benchmark(
     let total = candidates.len();
     let rule_owned = rule_trimmed.to_string();
     let mode_owned = mode_norm.to_string();
-    let max_duration = Duration::from_secs(timeout_secs.clamp(30, 7200));
+    let max_duration = resolve_fuzzer_max_duration(timeout_secs);
 
     let initial_state = json!({
         "success": true,
@@ -3047,7 +3172,9 @@ pub async fn start_benchmark(
         let mut best: Option<Value> = None;
 
         for (idx, strat) in candidates.iter().enumerate() {
-            if is_run_aborted(run_gen, &run_abort) || started_instant.elapsed() >= max_duration {
+            if is_run_aborted(run_gen, &run_abort)
+                || max_duration.is_some_and(|d| started_instant.elapsed() >= d)
+            {
                 break;
             }
 
@@ -3167,7 +3294,7 @@ pub async fn start_benchmark(
         if !top_ids.is_empty() && !is_run_aborted(run_gen, &run_abort) {
             for (v_idx, (sid, sargs)) in top_ids.iter().enumerate() {
                 if is_run_aborted(run_gen, &run_abort)
-                    || started_instant.elapsed() >= max_duration
+                    || max_duration.is_some_and(|d| started_instant.elapsed() >= d)
                 {
                     break;
                 }
@@ -3922,5 +4049,26 @@ nameserver 213.180.193.3
         assert_eq!(get_status()["running"], false);
 
         let _ = std::fs::remove_file(bin);
+    }
+
+    #[test]
+    fn parse_fuzzer_timeout_and_unlimited_duration() {
+        assert_eq!(parse_fuzzer_timeout_secs(None, 2700), 2700);
+        assert_eq!(parse_fuzzer_timeout_secs(Some(""), 2700), 2700);
+        assert_eq!(parse_fuzzer_timeout_secs(Some("0"), 2700), 0);
+        assert_eq!(parse_fuzzer_timeout_secs(Some("unlimited"), 2700), 0);
+        assert_eq!(parse_fuzzer_timeout_secs(Some("NONE"), 2700), 0);
+        assert_eq!(parse_fuzzer_timeout_secs(Some("1800"), 2700), 1800);
+        assert_eq!(parse_fuzzer_timeout_secs(Some("invalid"), 2700), 2700);
+
+        assert_eq!(resolve_fuzzer_max_duration(0), None);
+        assert_eq!(
+            resolve_fuzzer_max_duration(10),
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(
+            resolve_fuzzer_max_duration(9000),
+            Some(Duration::from_secs(7200))
+        );
     }
 }

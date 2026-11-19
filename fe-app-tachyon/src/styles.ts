@@ -546,11 +546,9 @@ footer {
     transform: translateX(16px) !important;
 }
 
-/* Translucent Dark Surfaces so Tachyon Animated Background Streams Shine Through (1:1 ui.html) */
+/* Solid Dark Topbar Surface */
 .tachyon-topbar {
-    background-color: rgba(20, 20, 22, 0.78) !important;
-    backdrop-filter: saturate(160%) blur(16px);
-    -webkit-backdrop-filter: saturate(160%) blur(16px);
+    background-color: rgba(20, 20, 22, 0.96) !important;
 }
 
 .tachyon-sidebar,
@@ -746,7 +744,44 @@ input.cbi-button-action:hover:not(:disabled),
     background-image: none !important;
     border-color: rgba(10, 132, 255, 0.52) !important;
     color: #82c4ff !important;
-    box-shadow: inset 0 1px 0 rgba(10, 132, 255, 0.18), 0 2px 8px rgba(10, 132, 255, 0.12) !important;
+    box-shadow: none !important;
+}
+
+/* Keep buttons inside LuCI light-yellow alert banners readable across light and dark themes */
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button-apply,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button,
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .btn,
+.tachyon-view .alert-message .cbi-button-apply,
+.tachyon-view .alert-message .cbi-button,
+.tachyon-view .alert-message .btn,
+#modal_overlay .alert-message .cbi-button-apply,
+#modal_overlay .alert-message .cbi-button,
+#modal_overlay .alert-message .btn,
+.cbi-modal .alert-message .cbi-button-apply,
+.cbi-modal .alert-message .cbi-button,
+.cbi-modal .alert-message .btn {
+    background: #1f2430 !important;
+    border-color: rgba(15, 23, 42, 0.45) !important;
+    color: #f8fafc !important;
+    font-weight: 600 !important;
+    text-shadow: none !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button-apply:hover:not(:disabled),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .cbi-button:hover:not(:disabled),
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .alert-message .btn:hover:not(:disabled),
+.tachyon-view .alert-message .cbi-button-apply:hover:not(:disabled),
+.tachyon-view .alert-message .cbi-button:hover:not(:disabled),
+.tachyon-view .alert-message .btn:hover:not(:disabled),
+#modal_overlay .alert-message .cbi-button-apply:hover:not(:disabled),
+#modal_overlay .alert-message .cbi-button:hover:not(:disabled),
+#modal_overlay .alert-message .btn:hover:not(:disabled),
+.cbi-modal .alert-message .cbi-button-apply:hover:not(:disabled),
+.cbi-modal .alert-message .cbi-button:hover:not(:disabled),
+.cbi-modal .alert-message .btn:hover:not(:disabled) {
+    background: #111827 !important;
+    border-color: rgba(15, 23, 42, 0.72) !important;
+    color: #ffffff !important;
 }
 
 /* Danger / Remove Buttons (1:1 tachyon-ui .btn-danger) */
@@ -768,6 +803,7 @@ input.cbi-button-action:hover:not(:disabled),
     background: rgba(255, 69, 58, 0.08) !important;
 }
 
+/* Negative / Remove buttons stay calm neutral until hovered */
 .btn-danger:hover:not(:disabled),
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .btn-danger:hover:not(:disabled),
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-button-remove:hover:not(:disabled),
@@ -1018,22 +1054,18 @@ input.cbi-button-action:hover:not(:disabled),
 
 .toast-dot-success {
     background: #30d158;
-    box-shadow: 0 0 8px rgba(48, 209, 88, 0.55);
 }
 
 .toast-dot-error {
     background: #ff453a;
-    box-shadow: 0 0 8px rgba(255, 69, 58, 0.55);
 }
 
 .toast-dot-warning {
     background: #ff9f0a;
-    box-shadow: 0 0 8px rgba(255, 159, 10, 0.55);
 }
 
 .toast-dot-info {
     background: #0a84ff;
-    box-shadow: 0 0 8px rgba(10, 132, 255, 0.55);
 }
 
 .toast-success {
@@ -1165,6 +1197,40 @@ input.cbi-button-action:hover:not(:disabled),
 }
 
 /* LuCI & CBI dropdown menu viewport containment */
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown,
+.tachyon-view .cbi-dropdown,
+#modal_overlay .cbi-dropdown,
+.cbi-modal .cbi-dropdown {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > ul,
+.tachyon-view .cbi-dropdown > ul,
+#modal_overlay .cbi-dropdown > ul,
+.cbi-modal .cbi-dropdown > ul {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding-right: 28px !important;
+}
+
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown > .open,
+.tachyon-view .cbi-dropdown > .open,
+#modal_overlay .cbi-dropdown > .open,
+.cbi-modal .cbi-dropdown > .open {
+    position: absolute !important;
+    right: 10px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    pointer-events: none !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    opacity: 0.72 !important;
+}
+
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[open] > ul,
 .tachyon-view .cbi-dropdown[open] > ul,
 #modal_overlay .cbi-dropdown[open] > ul,
@@ -1267,14 +1333,14 @@ input.cbi-button-action:hover:not(:disabled),
     }
 }
 
-/* Phones: edge-to-edge with small gutters */
+/* Phones: edge-to-edge inside modal overlay without vw scrollbar overflow */
 @media (max-width: 640px) {
     .modal:has([class*="tachyon"]),
     .cbi-modal:has([class*="tachyon"]),
     .modal:has(.fkp-server-info-modal),
     .cbi-modal:has(.fkp-server-info-modal) {
-        width: calc(100vw - 16px) !important;
-        max-width: calc(100vw - 16px) !important;
+        width: 100% !important;
+        max-width: 100% !important;
         margin: 8px auto;
     }
 }
@@ -1599,7 +1665,7 @@ header .dropdown-menu {
     padding: 8px 14px !important;
     position: relative !important;
     top: auto !important;
-    z-index: 30 !important;
+    z-index: 130 !important;
     background: rgba(14, 14, 16, 0.94) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 12px !important;
@@ -1870,6 +1936,7 @@ header .dropdown-menu {
     border-radius: 0 !important;
     min-height: 0 !important;
     box-shadow: none !important;
+    z-index: 25 !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2414,7 +2481,8 @@ header .dropdown-menu {
     top: auto !important;
     left: auto !important;
     right: auto !important;
-    z-index: 1;
+    z-index: 120;
+    overflow: visible !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3273,6 +3341,82 @@ header .dropdown-menu {
     background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent);
 }
 
+.tachyon-routing-sections-block__filter-btn.is-active {
+    border-color: color-mix(in srgb, var(--tachyon-accent) 48%, transparent);
+    background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent);
+    color: var(--tachyon-accent-text);
+}
+
+.tachyon-section-order-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(217, 119, 6, 0.34);
+    background: rgba(217, 119, 6, 0.08);
+    color: inherit;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.tachyon-section-order-warning__icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #d97706;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tachyon-section-order-warning__body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon-section-order-warning__title {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: inherit;
+}
+
+.tachyon-section-order-warning__desc {
+    font-size: 12px;
+    opacity: 0.88;
+}
+
+.tachyon-section-order-warning__btn {
+    flex-shrink: 0;
+    align-self: center;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(217, 119, 6, 0.38);
+    background: rgba(217, 119, 6, 0.12);
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.tachyon-section-order-warning__btn:hover {
+    border-color: rgba(217, 119, 6, 0.6);
+    background: rgba(217, 119, 6, 0.2);
+}
+
+@media (max-width: 640px) {
+    .tachyon-section-order-warning {
+        flex-wrap: wrap;
+    }
+
+    .tachyon-section-order-warning__btn {
+        margin-left: 25px;
+    }
+}
+
 .tachyon-section-types-modal {
     display: flex;
     flex-direction: column;
@@ -3508,12 +3652,10 @@ header .dropdown-menu {
 
 .tachyon-routing-row__status-dot.is-online {
     background: #4cc38a;
-    box-shadow: 0 0 0 2px rgba(76, 195, 138, 0.18);
 }
 
 .tachyon-routing-row__status-dot.is-offline {
     background: #e5484d;
-    box-shadow: 0 0 0 2px rgba(229, 72, 77, 0.18);
 }
 
 .tachyon-routing-row__ping--led {
@@ -3600,6 +3742,20 @@ header .dropdown-menu {
     background: rgba(239, 68, 68, 0.14);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tachyon-routing-row__status-badge.is-hidden {
+    background: rgba(148, 163, 184, 0.16);
+    color: #64748b;
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.tachyon-routing-row.is-dashboard-hidden,
+.tachyon-routing-matrix-card.is-dashboard-hidden,
+.tachyon-routing-compact-tile.is-dashboard-hidden,
+.tachyon-routing-bento-card.is-dashboard-hidden {
+    opacity: 0.72;
+    border-style: dashed;
 }
 
 .tachyon-routing-row__engine-badge {
@@ -4753,7 +4909,16 @@ header .dropdown-menu {
 .tachyon-global-subtabs.cbi-tabmenu > li,
 #cbi-tachyon-section .tachyon-section-subtabs.cbi-tabmenu > li,
 #cbi-tachyon-settings .cbi-tabmenu > li,
-.tachyon-clients-subtabs.cbi-tabmenu > li {
+.tachyon-clients-subtabs.cbi-tabmenu > li,
+.tachyon-global-subtabs.cbi-tabmenu > li.cbi-tab-disabled,
+#cbi-tachyon-section .tachyon-section-subtabs.cbi-tabmenu > li.cbi-tab-disabled,
+#cbi-tachyon-settings .cbi-tabmenu > li.cbi-tab-disabled,
+.tachyon-clients-subtabs.cbi-tabmenu > li.cbi-tab-disabled {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -4765,17 +4930,27 @@ header .dropdown-menu {
 .tachyon-global-subtabs.cbi-tabmenu > li > a,
 #cbi-tachyon-section .tachyon-section-subtabs.cbi-tabmenu > li > a,
 #cbi-tachyon-settings .cbi-tabmenu > li > a,
-.tachyon-clients-subtabs.cbi-tabmenu > li > a {
+.tachyon-clients-subtabs.cbi-tabmenu > li > a,
+.tachyon-global-subtabs.cbi-tabmenu > li.cbi-tab-disabled > a,
+#cbi-tachyon-section .tachyon-section-subtabs.cbi-tabmenu > li.cbi-tab-disabled > a,
+#cbi-tachyon-settings .cbi-tabmenu > li.cbi-tab-disabled > a,
+.tachyon-clients-subtabs.cbi-tabmenu > li.cbi-tab-disabled > a {
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+    opacity: 1 !important;
     padding: 5px 12px !important;
     border-radius: 7px !important;
     font-size: 12.5px !important;
     font-weight: 500 !important;
     line-height: 1.3 !important;
     text-decoration: none !important;
-    color: var(--text2, #a1a1a6) !important;
+    color: var(--text2, #b8b8c0) !important;
     border: none !important;
     background: transparent !important;
     transition: background var(--transition), color var(--transition) !important;
@@ -5292,7 +5467,7 @@ header .dropdown-menu {
 
 /* ==========================================================================
    Simple Mode (Обычный режим) — Clean "Set & Forget" View
-   Hides expert tabs, legacy DPI tools (zapret/zapret2/byedpi), and low-level knobs
+   Hides expert tabs and low-level knobs
    ========================================================================== */
 
 /* 1. Hide expert modal sub-tabs in Simple Mode */
@@ -5307,9 +5482,7 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
 
 #modal_overlay {
     z-index: 10000 !important;
-    background: rgba(0, 0, 0, 0.62) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    background: rgba(0, 0, 0, 0.72) !important;
     padding: 64px 14px 24px 14px !important;
     scroll-padding-top: 64px !important;
     box-sizing: border-box;
@@ -5675,6 +5848,8 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     line-height: 1.35 !important;
     word-break: normal !important;
     overflow-wrap: break-word !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 #modal_overlay > .modal .cbi-value-description,
@@ -5706,6 +5881,21 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     color: var(--text, #f5f5f7) !important;
     box-sizing: border-box;
     transition: border-color var(--transition, 0.14s cubic-bezier(0.22, 1, 0.36, 1)), box-shadow var(--transition, 0.14s cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.tachyon-workspace-body .cbi-value-field select,
+#modal_overlay > .modal select,
+.cbi-modal select {
+    height: auto !important;
+    min-height: 36px !important;
+    line-height: 1.4 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    padding-right: 32px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 12px 12px !important;
 }
 
 .tachyon-workspace-body input[type="text"]:focus,
@@ -5983,89 +6173,220 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: none;
 }
 
-@media (max-width: 780px) {
+@media (max-width: 860px) {
     #cbi-tachyon {
-        padding-bottom: 56px;
+        padding: 8px 8px 64px !important;
+        overflow-x: hidden;
     }
     .tachyon-shell-layout,
     .tachyon-shell-layout[data-sidebar-pos="right"],
-    #cbi-tachyon[data-sidebar-pos="right"] > .tachyon-shell-layout {
-        flex-direction: column;
+    #cbi-tachyon[data-sidebar-pos="right"] > .tachyon-shell-layout,
+    .tachyon-shell-layout[data-sidebar-pos="top"],
+    #cbi-tachyon[data-sidebar-pos="top"] > .tachyon-shell-layout {
+        flex-direction: column !important;
+        gap: 10px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-workspace,
+    .tachyon-workspace-body {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
     }
     .tachyon-sidebar,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar,
     .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar,
     #cbi-tachyon[data-sidebar-collapsed="true"] .tachyon-sidebar {
+        display: flex !important;
+        flex-direction: column !important;
+        flex-wrap: nowrap !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
         width: 100% !important;
         min-width: 0 !important;
+        max-width: 100% !important;
         position: relative !important;
         top: 0 !important;
         max-height: none !important;
-        padding: 8px 12px !important;
+        padding: 8px 10px !important;
+        gap: 0 !important;
+        border-radius: 12px !important;
         overflow: visible !important;
+        box-sizing: border-box !important;
         z-index: 1200 !important;
     }
-    .tachyon-topbar {
+    .tachyon-topbar,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-topbar,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-topbar {
         position: relative !important;
         top: auto !important;
         z-index: 1 !important;
-    }
-    .tachyon-topbar__sidebar-pos-btn {
-        display: none !important;
-    }
-    .tachyon-sidebar__brand,
-    .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar__brand,
-    #cbi-tachyon[data-sidebar-collapsed="true"] .tachyon-sidebar__brand {
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        padding: 2px 4px !important;
-        margin-bottom: 0 !important;
-        border-bottom: none !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        padding: 8px 10px !important;
         width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
     }
-    .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar__brand-text,
-    #cbi-tachyon[data-sidebar-collapsed="true"] .tachyon-sidebar__brand-text {
-        display: flex !important;
+    .tachyon-topbar.tachyon-topbar--subnav {
+        padding: 6px 8px !important;
     }
+    .tachyon-topbar__sidebar-pos-btn,
+    .tachyon-topbar__collapse-btn,
     .tachyon-sidebar__collapse-btn {
         display: none !important;
     }
+    .tachyon-sidebar__brand,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar__brand,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar__brand,
+    .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar__brand,
+    #cbi-tachyon[data-sidebar-collapsed="true"] .tachyon-sidebar__brand {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        padding: 2px !important;
+        margin: 0 !important;
+        border-right: none !important;
+        border-bottom: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        flex: 0 0 auto !important;
+        box-sizing: border-box !important;
+    }
+    .tachyon-shell-layout[data-sidebar-collapsed="true"] .tachyon-sidebar__brand-text,
+    #cbi-tachyon[data-sidebar-collapsed="true"] .tachyon-sidebar__brand-text,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar__brand-text {
+        display: flex !important;
+        min-width: 0 !important;
+        flex: 0 0 auto !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar__status-card--inline,
+    .tachyon-sidebar__status-card--inline {
+        margin-left: 0 !important;
+        padding: 3px 8px !important;
+        font-size: 11px !important;
+        flex-shrink: 0 !important;
+    }
     .tachyon-sidebar__mobile-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 6px 11px;
-        border-radius: 9px;
-        border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.28));
-        background: var(--background-color-low, rgba(128, 128, 128, 0.12));
-        color: inherit;
-        font-size: 12.5px;
-        font-weight: 600;
-        cursor: pointer;
-        max-width: 62%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        margin-left: auto !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 7px !important;
+        min-height: 36px !important;
+        padding: 6px 10px !important;
+        border-radius: 9px !important;
+        border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.28)) !important;
+        background: var(--background-color-low, rgba(128, 128, 128, 0.14)) !important;
+        color: inherit !important;
+        font-size: 12.5px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        flex: 0 1 auto !important;
+        min-width: 0 !important;
+        max-width: 56% !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    .tachyon-sidebar__mobile-toggle.is-open {
+        border-color: color-mix(in srgb, var(--tachyon-accent) 48%, transparent) !important;
+        background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent) !important;
+        color: var(--tachyon-accent-text) !important;
     }
     .tachyon-sidebar__mobile-toggle-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        min-width: 0 !important;
     }
+    .tachyon-sidebar__mobile-toggle-icon {
+        flex-shrink: 0 !important;
+        opacity: 0.9 !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__nav,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__nav,
     .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__nav,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__footer,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__footer,
     .tachyon-sidebar:not(.is-mobile-open) .tachyon-sidebar__footer {
         display: none !important;
     }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav,
+    .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav,
     .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav {
         display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+        width: 100% !important;
         position: static !important;
-        margin-top: 8px;
-        padding: 8px 4px 2px;
-        border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22));
-        background: transparent;
-        box-shadow: none;
-        max-height: min(68dvh, 480px);
-        overflow-y: auto;
-        box-sizing: border-box;
+        margin: 8px 0 0 !important;
+        padding: 8px 2px 4px !important;
+        border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22)) !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        max-height: min(62dvh, 460px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__menu-block,
+    .tachyon-sidebar.is-mobile-open .tachyon-sidebar__menu-block {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-item,
+    .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-item {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        min-height: 40px !important;
+        padding: 8px 10px !important;
+        font-size: 13px !important;
+        box-sizing: border-box !important;
+    }
+    #cbi-tachyon[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-label,
+    .tachyon-shell-layout[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-label,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-label {
+        display: inline !important;
+    }
+    #cbi-tachyon[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__chevron,
+    .tachyon-shell-layout[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__chevron,
+    #cbi-tachyon[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-count,
+    .tachyon-shell-layout[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-count,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__chevron,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-count {
+        display: inline-flex !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-count,
+    .tachyon-sidebar.is-mobile-open .tachyon-sidebar__nav-count {
+        margin-left: auto !important;
+    }
+    #cbi-tachyon[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__submenu.is-open,
+    .tachyon-shell-layout[data-sidebar-collapsed="true"]:not([data-sidebar-pos="top"]) .tachyon-sidebar.is-mobile-open .tachyon-sidebar__submenu.is-open,
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__submenu.is-open,
+    .tachyon-sidebar.is-mobile-open .tachyon-sidebar__submenu.is-open {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2px !important;
+        padding: 2px 0 6px 12px !important;
+        margin: 2px 0 4px 12px !important;
+        border-left: 1px solid var(--border-color-low, rgba(255, 255, 255, 0.14)) !important;
+    }
+    #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__subitem,
+    .tachyon-sidebar.is-mobile-open .tachyon-sidebar__subitem {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        min-height: 36px !important;
+        padding: 7px 10px !important;
+        font-size: 12.5px !important;
+        box-sizing: border-box !important;
     }
     .tachyon-sidebar.is-mobile-open .tachyon-sidebar__footer {
         display: none !important;
@@ -6073,12 +6394,81 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     .tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__footer,
     #cbi-tachyon[data-sidebar-pos="top"] .tachyon-sidebar.is-mobile-open .tachyon-sidebar__footer {
         display: flex !important;
+        flex-direction: row !important;
         flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
         gap: 8px !important;
-        margin-top: 8px !important;
-        padding-top: 8px !important;
+        margin: 8px 0 0 !important;
+        padding: 10px 2px 2px !important;
         border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22)) !important;
         width: 100% !important;
+        margin-left: 0 !important;
+        box-sizing: border-box !important;
+    }
+    .tachyon-sidebar.is-mobile-open .tachyon-topbar__divider {
+        display: none !important;
+    }
+    .tachyon-sidebar.is-mobile-open .tachyon-topbar__service-controls,
+    .tachyon-sidebar.is-mobile-open .tachyon-topbar__mode-switch,
+    .tachyon-sidebar.is-mobile-open .tachyon-topbar__lang-slot,
+    .tachyon-topbar__left,
+    .tachyon-topbar__right {
+        flex-wrap: wrap !important;
+        max-width: 100% !important;
+    }
+    .tachyon-topbar--subnav .tachyon-global-subtabs.cbi-tabmenu,
+    .tachyon-clients-subtabs.cbi-tabmenu,
+    #cbi-tachyon-settings .cbi-tabmenu {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .tachyon-topbar--subnav .tachyon-global-subtabs.cbi-tabmenu > li,
+    .tachyon-clients-subtabs.cbi-tabmenu > li,
+    #cbi-tachyon-settings .cbi-tabmenu > li {
+        flex: 0 0 auto !important;
+    }
+    .tachyon-topbar--subnav .tachyon-global-subtabs.cbi-tabmenu > li > a,
+    .tachyon-clients-subtabs.cbi-tabmenu > li > a,
+    #cbi-tachyon-settings .cbi-tabmenu > li > a {
+        white-space: nowrap !important;
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+    .tachyon-studio-deck,
+    .tachyon-studio-panel,
+    .tachyon-studio-toolbar,
+    .tachyon-pane-quickbar,
+    .tachyon-dash-preset-toolbar {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        padding: 10px !important;
+        box-sizing: border-box !important;
+    }
+    .tachyon-studio-toolbar__titles,
+    .tachyon-studio-panel__titles,
+    .tachyon-pane-quickbar__info {
+        min-width: 0 !important;
+        flex: 1 1 100% !important;
+    }
+    .tachyon-studio-toolbar__actions,
+    .tachyon-studio-panel__header-controls {
+        width: 100% !important;
+        justify-content: flex-start !important;
+    }
+    .tachyon-dash-preset-toolbar__pills {
+        width: 100% !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        scrollbar-width: none !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding-bottom: 2px !important;
     }
     .tachyon-kpi-grid,
     .tachyon-wizard__cards-2col,
@@ -6091,6 +6481,87 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     }
     .tachyon_dashboard-page__content > .tachyon-dashboard-widget-slot--half {
         grid-column: 1 / -1;
+    }
+    .tachyon-studio-body--pipeline .tachyon-studio-card {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        padding: 10px 12px !important;
+        gap: 8px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-body--pipeline .tachyon-studio-card__head {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    .tachyon-studio-card__identity {
+        min-width: 0 !important;
+        flex: 1 1 160px !important;
+    }
+    .tachyon-studio-body--pipeline .tachyon-studio-card__pipeline {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        width: 100% !important;
+        margin-right: 0 !important;
+        flex-wrap: wrap !important;
+    }
+    .tachyon-studio-body--pipeline .tachyon-studio-card__footer,
+    .tachyon-studio-card__footer {
+        flex: 1 1 auto !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+        padding-top: 8px !important;
+        border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.14)) !important;
+        white-space: normal !important;
+    }
+    #modal_overlay > .modal,
+    #modal_overlay > .modal.cbi-modal,
+    #modal_overlay > .modal:has([class*="tachyon"]),
+    .cbi-modal,
+    .cbi-modal:has([class*="tachyon"]) {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        max-height: 92dvh !important;
+        margin: 4dvh auto !important;
+        padding: 14px !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+    #modal_overlay > .modal > *,
+    #modal_overlay > .modal .cbi-section,
+    #modal_overlay > .modal .cbi-section-node,
+    #modal_overlay > .modal .cbi-tabcontainer,
+    #modal_overlay > .modal .cbi-value,
+    #modal_overlay > .modal .cbi-value-field,
+    .cbi-modal .cbi-section,
+    .cbi-modal .cbi-section-node {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    #modal_overlay > .modal .cbi-page-actions,
+    .cbi-modal .cbi-page-actions {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-end !important;
+        gap: 8px !important;
+        max-width: 100% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .tachyon-sidebar__brand-sub {
+        display: none !important;
+    }
+    .tachyon-sidebar__mobile-toggle {
+        max-width: 52% !important;
+        padding: 5px 8px !important;
+        font-size: 12px !important;
     }
 }
 
@@ -7524,7 +7995,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
    Balancers, Inbound Servers, Profiles & Schedules)
    ========================================================================== */
 
-/* Hide default LuCI GridSection tables & raw add bars when Studio Deck is mounted */
+/* Hide legacy LuCI GridSection tables & raw add bars when Studio Deck is mounted */
 .tachyon-has-studio-deck > .cbi-section-node > .cbi-section-table,
 .tachyon-has-studio-deck > .cbi-section-node > .cbi-section-create,
 .tachyon-has-studio-deck > .cbi-section-table,
@@ -8469,9 +8940,12 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-studio-create__templates {
     display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
     gap: 8px !important;
     width: 100% !important;
+    max-height: min(68vh, 620px) !important;
+    overflow-y: auto !important;
+    padding-right: 4px !important;
     box-sizing: border-box !important;
 }
 

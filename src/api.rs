@@ -1,7 +1,7 @@
 //! Lightweight pure-Rust HTTP/1.1 API server for `tachyon` (Router Control Panel & REST/MCP).
 //!
-//! Built directly on `tokio::net::TcpListener` with zero web framework dependencies,
-//! bounded concurrency semaphore (`256`), and embedded `tachyon-ui` styled SPA (`ui.html`).
+//! Built directly on `tokio::net::TcpListener` with zero web framework dependencies and
+//! bounded concurrency semaphore (`256`).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -56,11 +56,12 @@ pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow:
         let state = Arc::clone(&state);
         let core = Arc::clone(&core);
         let peer_ip = peer.ip().to_string();
+        let local_ip = stream.local_addr().ok().map(|sa| sa.ip());
         tokio::spawn(async move {
             let _permit = permit;
             let _ = tokio::time::timeout(
                 Duration::from_secs(20),
-                handle_conn(stream, &state, &core, &peer_ip),
+                handle_conn(stream, &state, &core, &peer_ip, local_ip),
             )
             .await;
         });
@@ -72,6 +73,7 @@ async fn handle_conn(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
     peer_ip: &str,
+    local_ip: Option<std::net::IpAddr>,
 ) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 16384];
     let mut total = 0usize;
@@ -156,10 +158,25 @@ async fn handle_conn(
             let html = ubus_bridge::serve_luci_shell(sub, &ui_lang);
             return send_html(&mut stream, &html).await;
         }
-        if path == "/lite" || path == "/ui.html" {
-            let ui_lang = state.data.read().await.settings.lang.clone();
-            let html = ubus_bridge::serve_luci_shell(None, &ui_lang);
-            return send_html(&mut stream, &html).await;
+        if path == "/favicon.svg" || path == "/favicon.ico" {
+            let etag = "\"tachyon-favicon-v1\"";
+            let inm = parse_header(&head_str, "if-none-match");
+            if inm.as_deref() == Some(etag) {
+                return send_not_modified(&mut stream, etag).await;
+            }
+            let cache_ctrl = if query.contains("v=") {
+                "public, max-age=31536000, immutable"
+            } else {
+                "public, max-age=86400"
+            };
+            return send_cached_bytes(
+                &mut stream,
+                "image/svg+xml; charset=utf-8",
+                ubus_bridge::TACHYON_FAVICON_SVG.as_bytes(),
+                etag,
+                cache_ctrl,
+            )
+            .await;
         }
         if let Some(lang) = path
             .strip_prefix("/cgi-bin/luci/admin/translations/")
@@ -294,11 +311,10 @@ async fn handle_conn(
         }
     }
 
-    // Public Router Subscription Endpoint (`/sub/:token` or `/sub/:token/:client_id`)
+    // Public Router Subscription Endpoint (`/sub/:token`, `/cgi-bin/tachyon-sub/:token`, or `/cgi-bin/tachyon-sub?token=:token`)
     if method == "GET"
-        && let Some(sub_rest) = path.strip_prefix("/sub/")
+        && let Some(sub_tok) = extract_router_sub_token(&path, &query)
     {
-        let sub_tok = sub_rest.split('/').next().unwrap_or(sub_rest);
         let d = state.data.read().await;
         if !d.settings.server_subscription_enabled {
             return send_json(
@@ -310,7 +326,6 @@ async fn handle_conn(
         }
         if !d.settings.server_subscription_token.is_empty()
             && sub_tok != d.settings.server_subscription_token
-            && sub_tok != "default"
         {
             return send_json(
                 &mut stream,
@@ -324,7 +339,8 @@ async fn handle_conn(
                 .or_else(|| kv.strip_prefix("format="))
         });
         let fmt = app_param.unwrap_or(&d.settings.server_subscription_format);
-        let payload = config_gen::build_router_subscription_payload(&d, host_hdr.as_deref(), fmt);
+        let eff_host = resolve_effective_sub_host(&d, host_hdr.as_deref());
+        let payload = config_gen::build_router_subscription_payload(&d, eff_host.as_deref(), fmt);
         return send_plain(&mut stream, &payload).await;
     }
 
@@ -333,9 +349,9 @@ async fn handle_conn(
         return handle_login(&mut stream, state, body, peer_ip).await;
     }
 
-    // Authenticate session token, Agent API Bearer token, or trusted LAN peer
+    // Authenticate session token, Agent API Bearer token, or trusted LAN/Tailscale peer
     let token = extract_token(&head_str);
-    if !is_authenticated(state, &token, peer_ip).await {
+    if !is_authenticated(state, &token, peer_ip, local_ip).await {
         return send_json(&mut stream, 401, &json!({"error": "unauthorized"})).await;
     }
 
@@ -390,6 +406,80 @@ async fn handle_conn(
         host_hdr.as_deref(),
     )
     .await
+}
+
+async fn commit_and_sync(
+    state: &Arc<AppState>,
+    candidate: RouterStoreData,
+) -> anyhow::Result<transaction::ConfigPlanReport> {
+    let plan = transaction::commit_transaction(state, candidate).await?;
+    let committed = state.data.read().await.clone();
+    ubus_bridge::sync_from_store_to_json_and_cache(&committed);
+    Ok(plan)
+}
+
+async fn run_route_trace(state: &Arc<AppState>, core: &Arc<CoreManager>, body: &[u8]) -> Value {
+    let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+    let client_ip = val
+        .get("client_ip")
+        .or_else(|| val.get("src_ip"))
+        .or_else(|| val.get("source_ip"))
+        .and_then(Value::as_str)
+        .unwrap_or("192.168.1.100");
+    let target = val
+        .get("target")
+        .or_else(|| val.get("host"))
+        .or_else(|| val.get("domain"))
+        .and_then(Value::as_str)
+        .unwrap_or("www.youtube.com");
+    let port = val
+        .get("port")
+        .or_else(|| val.get("dst_port"))
+        .and_then(Value::as_u64)
+        .unwrap_or(443) as u16;
+    let proto = val.get("protocol").and_then(Value::as_str).unwrap_or("tcp");
+    let d = state.data.read().await.clone();
+    let mut res =
+        diagnostics::explain_route_with_engine(core, &d, client_ip, target, port, proto).await;
+    if let Some(obj) = res.as_object_mut() {
+        let sec = obj
+            .get("matched_section")
+            .or_else(|| obj.get("section"))
+            .and_then(Value::as_str)
+            .unwrap_or("direct")
+            .to_string();
+        obj.entry("matched_section".to_string())
+            .or_insert_with(|| json!(sec));
+        obj.entry("section".to_string())
+            .or_insert_with(|| json!(sec));
+
+        let out = obj
+            .get("outbound")
+            .or_else(|| obj.get("action"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        obj.entry("outbound".to_string())
+            .or_insert_with(|| json!(out));
+        obj.entry("action".to_string())
+            .or_insert_with(|| json!(out));
+
+        let reason = obj
+            .get("reason")
+            .or_else(|| obj.get("matched_rule"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        obj.entry("reason".to_string())
+            .or_insert_with(|| json!(reason));
+        obj.entry("matched_rule".to_string())
+            .or_insert_with(|| json!(reason));
+
+        if !obj.get("steps").is_some_and(Value::is_array) {
+            obj.insert("steps".to_string(), json!([]));
+        }
+    }
+    res
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -560,7 +650,7 @@ async fn dispatch_api(
                     cond.user_domains.push(domain.clone());
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(
@@ -586,8 +676,13 @@ async fn dispatch_api(
                         return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                     }
                     if src.cached_nodes.is_empty() {
+                        let mut taken_tags = std::collections::HashSet::new();
                         for link_or_b64 in &src.proxy_links {
-                            for node in CoreManager::parse_subscription_payload(link_or_b64) {
+                            for mut node in CoreManager::parse_subscription_payload(link_or_b64) {
+                                crate::config_gen::assign_unique_node_tag(
+                                    &mut node,
+                                    &mut taken_tags,
+                                );
                                 src.cached_nodes.push(node);
                             }
                         }
@@ -600,7 +695,7 @@ async fn dispatch_api(
                     subs_to_refresh.push(src.id.clone());
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     for sid in &subs_to_refresh {
                         let _ = core.refresh_subscription_source(sid).await;
@@ -626,7 +721,7 @@ async fn dispatch_api(
             }
             let new_port = candidate.settings.listen_port;
             let new_base = candidate.settings.web_base_path.clone();
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     ubus_bridge::sync_router_luci_launcher(new_port, &new_base).await;
                     let _ = core.apply_or_reload().await;
@@ -654,7 +749,7 @@ async fn dispatch_api(
             } else {
                 candidate.sections.push(sec);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -671,7 +766,7 @@ async fn dispatch_api(
             let id = val.get("id").and_then(Value::as_str).unwrap_or("");
             let mut candidate = state.data.read().await.clone();
             candidate.sections.retain(|s| s.id != id);
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -692,7 +787,11 @@ async fn dispatch_api(
                 .and_then(Value::as_str)
                 .unwrap_or("");
             match core.select_section_node(section_id, tag).await {
-                Ok(()) => send_json(stream, 200, &json!({"ok": true})).await,
+                Ok(()) => {
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_from_store_to_json_and_cache(&cur);
+                    send_json(stream, 200, &json!({"ok": true})).await
+                }
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
                 }
@@ -718,7 +817,7 @@ async fn dispatch_api(
                     candidate.sections.insert(new_idx, item);
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -740,7 +839,7 @@ async fn dispatch_api(
                     .and_then(Value::as_bool)
                     .unwrap_or(!sec.enabled);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -760,7 +859,7 @@ async fn dispatch_api(
             } else {
                 candidate.conditions.push(cond);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -780,7 +879,7 @@ async fn dispatch_api(
             for sec in &mut candidate.sections {
                 sec.condition_refs.retain(|r| r != id);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -799,8 +898,10 @@ async fn dispatch_api(
                     return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                 }
                 src.cached_nodes.clear();
+                let mut taken_tags = std::collections::HashSet::new();
                 for link_or_b64 in &src.proxy_links {
-                    for node in CoreManager::parse_subscription_payload(link_or_b64) {
+                    for mut node in CoreManager::parse_subscription_payload(link_or_b64) {
+                        crate::config_gen::assign_unique_node_tag(&mut node, &mut taken_tags);
                         src.cached_nodes.push(node);
                     }
                 }
@@ -821,7 +922,7 @@ async fn dispatch_api(
             } else {
                 candidate.outbound_sources.push(src);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     if is_sub {
                         let _ = core.refresh_subscription_source(&src_id).await;
@@ -844,7 +945,7 @@ async fn dispatch_api(
             for sec in &mut candidate.sections {
                 sec.outbound_source_refs.retain(|r| r != id);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -860,14 +961,22 @@ async fn dispatch_api(
                 .and_then(|v| v.get("id").and_then(Value::as_str).map(String::from))
                 .unwrap_or_default();
             match core.refresh_subscription_source(&id).await {
-                Ok(cnt) => send_json(stream, 200, &json!({"ok": true, "updated": cnt})).await,
+                Ok(cnt) => {
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_from_store_to_json_and_cache(&cur);
+                    send_json(stream, 200, &json!({"ok": true, "updated": cnt})).await
+                }
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
                 }
             }
         }
         ("POST", "/api/sources/warp-register") => match core.register_warp_source().await {
-            Ok(val) => send_json(stream, 200, &val).await,
+            Ok(val) => {
+                let cur = state.data.read().await.clone();
+                ubus_bridge::sync_from_store_to_json_and_cache(&cur);
+                send_json(stream, 200, &val).await
+            }
             Err(e) => send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await,
         },
         ("POST", "/api/balancers/save") => {
@@ -880,7 +989,7 @@ async fn dispatch_api(
             } else {
                 candidate.balancers.push(bal);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -900,7 +1009,7 @@ async fn dispatch_api(
             for sec in &mut candidate.sections {
                 sec.balancer_refs.retain(|r| r != id);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -924,7 +1033,7 @@ async fn dispatch_api(
             } else {
                 candidate.outbound_groups.push(grp);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -946,7 +1055,7 @@ async fn dispatch_api(
                     sec.outbound_group_ref.clear();
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -966,7 +1075,7 @@ async fn dispatch_api(
             } else {
                 candidate.servers.push(srv);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -983,7 +1092,7 @@ async fn dispatch_api(
             let id = val.get("id").and_then(Value::as_str).unwrap_or("");
             let mut candidate = state.data.read().await.clone();
             candidate.servers.retain(|s| s.id != id);
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1002,9 +1111,10 @@ async fn dispatch_api(
             let Some(srv) = d.servers.iter().find(|s| s.id == srv_id) else {
                 return send_json(stream, 404, &json!({"error": "server not found"})).await;
             };
-            let uri = config_gen::build_server_share_uri(srv, host_hdr);
+            let eff_host = resolve_effective_sub_host(&d, host_hdr);
+            let uri = config_gen::build_server_share_uri(srv, eff_host.as_deref());
             let wg_conf = if srv.protocol == "awg" || srv.protocol == "wireguard" {
-                config_gen::build_server_wg_conf(srv, host_hdr)
+                config_gen::build_server_wg_conf(srv, eff_host.as_deref())
             } else {
                 String::new()
             };
@@ -1042,7 +1152,7 @@ async fn dispatch_api(
             } else {
                 candidate.profiles.push(prof);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1059,7 +1169,7 @@ async fn dispatch_api(
             let id = val.get("id").and_then(Value::as_str).unwrap_or("");
             let mut candidate = state.data.read().await.clone();
             candidate.profiles.retain(|p| p.id != id);
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1079,7 +1189,7 @@ async fn dispatch_api(
             } else {
                 candidate.schedules.push(sched);
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1096,7 +1206,7 @@ async fn dispatch_api(
             let id = val.get("id").and_then(Value::as_str).unwrap_or("");
             let mut candidate = state.data.read().await.clone();
             candidate.schedules.retain(|s| s.id != id);
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1114,7 +1224,7 @@ async fn dispatch_api(
                     return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1152,7 +1262,7 @@ async fn dispatch_api(
                 candidate.telegram.bot_proxy_section.trim() != tg.bot_proxy_section.trim();
             candidate.telegram = tg;
             let saved_tg = candidate.telegram.clone();
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     ubus_bridge::sync_telegram_section_to_json(&saved_tg);
                     if proxy_changed {
@@ -1211,24 +1321,10 @@ async fn dispatch_api(
                 }
             }
         }
-        ("POST", "/api/diagnostics/route-explain") | ("GET", "/api/agent/v1/route/explain") => {
-            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
-            let client_ip = val
-                .get("client_ip")
-                .or_else(|| val.get("source_ip"))
-                .and_then(Value::as_str)
-                .unwrap_or("192.168.1.100");
-            let target = val
-                .get("target")
-                .or_else(|| val.get("domain"))
-                .and_then(Value::as_str)
-                .unwrap_or("www.youtube.com");
-            let port = val.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
-            let proto = val.get("protocol").and_then(Value::as_str).unwrap_or("tcp");
-            let d = state.data.read().await.clone();
-            let res =
-                diagnostics::explain_route_with_engine(core, &d, client_ip, target, port, proto)
-                    .await;
+        ("POST", "/api/diagnostics/route-explain")
+        | ("GET", "/api/agent/v1/route/explain")
+        | ("POST", "/api/conditions/trace") => {
+            let res = run_route_trace(state, core, body).await;
             send_json(stream, 200, &res).await
         }
         ("POST", "/api/diagnostics/dns-speed-test")
@@ -1451,7 +1547,11 @@ async fn dispatch_api(
         }
         ("POST", "/api/diagnostics/known-good/rollback") | ("POST", "/api/lkg/rollback") => {
             match diagnostics::apply_quick_fix(state, core, "rollback_known_good").await {
-                Ok(msg) => send_json(stream, 200, &json!({"ok": true, "message": msg})).await,
+                Ok(msg) => {
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_from_store_to_json_and_cache(&cur);
+                    send_json(stream, 200, &json!({"ok": true, "message": msg})).await
+                }
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
                 }
@@ -1499,7 +1599,7 @@ async fn dispatch_api(
         ("POST", "/api/system/import-legacy") => {
             let mut candidate = state.data.read().await.clone();
             let count = candidate.import_legacy_router_files();
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(
@@ -1537,7 +1637,7 @@ async fn dispatch_api(
                     ubus_bridge::set_json_sections_snapshot(prof.config_sections);
                 }
                 let _ = snapshots::restore_certs(state, &prof.certs);
-                return match transaction::commit_transaction(state, candidate).await {
+                return match commit_and_sync(state, candidate).await {
                     Ok(plan) => {
                         let _ = core.apply_or_reload().await;
                         send_json(
@@ -1556,7 +1656,7 @@ async fn dispatch_api(
             let Ok(candidate) = serde_json::from_slice::<RouterStoreData>(body) else {
                 return send_json(stream, 400, &json!({"error": "invalid backup JSON"})).await;
             };
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1594,6 +1694,8 @@ async fn dispatch_api(
             match snapshots::snapshot_restore(state, file_arg).await {
                 Ok((prof, restored_secs)) => {
                     ubus_bridge::set_json_sections_snapshot(restored_secs);
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     send_json(
                         stream,
@@ -1649,6 +1751,8 @@ async fn dispatch_api(
                     new_sections,
                 } => {
                     ubus_bridge::set_json_sections_snapshot(new_sections);
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &response).await
                 }
@@ -1659,6 +1763,8 @@ async fn dispatch_api(
             match snapshots::reset_settings_to_defaults(state, &cur_secs).await {
                 Ok((resp, default_secs)) => {
                     ubus_bridge::set_json_sections_snapshot(default_secs);
+                    let cur = state.data.read().await.clone();
+                    ubus_bridge::sync_section_cache(&cur);
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &resp).await
                 }
@@ -1743,7 +1849,7 @@ async fn dispatch_api(
             if let Some(sl) = val.get("static_lease").and_then(Value::as_bool) {
                 entry.static_lease = sl;
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => send_json(stream, 200, &json!({"ok": true, "plan": plan})).await,
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
@@ -1767,7 +1873,7 @@ async fn dispatch_api(
                 candidate.settings.accent_theme = acc.trim().to_string();
             }
             let ui_mode = candidate.settings.ui_mode.clone();
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(_) => send_json(stream, 200, &json!({"ok": true, "ui_mode": ui_mode})).await,
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
@@ -1790,7 +1896,7 @@ async fn dispatch_api(
                     _ => {}
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => send_json(stream, 200, &json!({"ok": true, "plan": plan})).await,
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
@@ -1828,7 +1934,7 @@ async fn dispatch_api(
                     }
                 }
             }
-            match transaction::commit_transaction(state, candidate).await {
+            match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
@@ -1976,7 +2082,7 @@ async fn dispatch_api(
                     "openapi": "3.1.0",
                     "info": {
                         "title": "Tachyon Router Agent API",
-                        "version": "2.0.0"
+                        "version": crate::store::TACHYON_VERSION
                     }
                 }),
             )
@@ -2050,27 +2156,44 @@ async fn handle_login(
     Ok(())
 }
 
-fn is_trusted_lan_ip(ip: &str) -> bool {
+fn parse_peer_ip(ip: &str) -> Option<std::net::IpAddr> {
     let trimmed = ip.trim();
     if trimmed.is_empty() {
-        return false;
+        return None;
     }
-    if trimmed.eq_ignore_ascii_case("localhost") {
-        return true;
+    if let Ok(sa) = trimmed.parse::<std::net::SocketAddr>() {
+        return Some(sa.ip());
     }
-    let parsed_ip = if let Ok(sa) = trimmed.parse::<std::net::SocketAddr>() {
-        Some(sa.ip())
-    } else {
-        let no_brackets = trimmed
-            .strip_prefix('[')
-            .and_then(|s| s.split(']').next())
-            .unwrap_or(trimmed);
-        let no_zone = no_brackets.split('%').next().unwrap_or(no_brackets);
-        no_zone.parse::<std::net::IpAddr>().ok()
-    };
-    let Some(addr) = parsed_ip else {
-        return false;
-    };
+    let no_brackets = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.split(']').next())
+        .unwrap_or(trimmed);
+    let no_zone = no_brackets.split('%').next().unwrap_or(no_brackets);
+    no_zone.parse::<std::net::IpAddr>().ok()
+}
+
+fn is_cgnat_v4(v4: std::net::Ipv4Addr) -> bool {
+    (u32::from(v4) & 0xffc0_0000) == 0x6440_0000
+}
+
+fn is_tailscale_ula_v6(v6: std::net::Ipv6Addr) -> bool {
+    let seg = v6.segments();
+    seg[0] == 0xfd7a && seg[1] == 0x115c && seg[2] == 0xa1e0
+}
+
+fn is_tailscale_ip_addr(addr: std::net::IpAddr) -> bool {
+    match addr {
+        std::net::IpAddr::V4(v4) => is_cgnat_v4(v4),
+        std::net::IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_cgnat_v4(v4);
+            }
+            is_tailscale_ula_v6(v6)
+        }
+    }
+}
+
+fn is_trusted_lan_addr(addr: std::net::IpAddr) -> bool {
     let check_v4 =
         |v4: std::net::Ipv4Addr| v4.is_loopback() || v4.is_private() || v4.is_link_local();
     match addr {
@@ -2089,8 +2212,164 @@ fn is_trusted_lan_ip(ip: &str) -> bool {
     }
 }
 
-async fn is_authenticated(state: &Arc<AppState>, token: &str, peer_ip: &str) -> bool {
-    if is_trusted_lan_ip(peer_ip) {
+#[cfg(test)]
+fn is_trusted_lan_ip(ip: &str) -> bool {
+    let trimmed = ip.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    parse_peer_ip(trimmed).is_some_and(is_trusted_lan_addr)
+}
+
+fn net_iface_is_up(iface: &str) -> bool {
+    let clean = iface.trim();
+    if clean.is_empty() || clean.contains('/') || clean == "." || clean == ".." {
+        return false;
+    }
+    let flags_path = format!("/sys/class/net/{clean}/flags");
+    if let Ok(raw_flags) = std::fs::read_to_string(&flags_path)
+        && let Ok(val) = u32::from_str_radix(raw_flags.trim().trim_start_matches("0x"), 16)
+    {
+        return (val & 0x1) != 0;
+    }
+    let oper_path = format!("/sys/class/net/{clean}/operstate");
+    if let Ok(oper) = std::fs::read_to_string(&oper_path) {
+        return !oper.trim().eq_ignore_ascii_case("down");
+    }
+    false
+}
+
+fn has_active_tailscale_interface(store: &crate::store::RouterStoreData) -> bool {
+    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.to_ascii_lowercase().starts_with("tailscale") && net_iface_is_up(&name) {
+                return true;
+            }
+        }
+    }
+    let check_custom = |enabled: bool, sys_iface: bool, raw_name: &str| {
+        enabled && sys_iface && !raw_name.trim().is_empty() && net_iface_is_up(raw_name.trim())
+    };
+    store.servers.iter().any(|s| {
+        check_custom(
+            s.enabled && s.is_embedded_tailscale(),
+            s.tailscale_system_interface,
+            &s.tailscale_system_interface_name,
+        )
+    }) || store.sections.iter().any(|s| {
+        check_custom(
+            s.enabled && s.is_embedded_tailscale(),
+            s.tailscale_system_interface,
+            &s.tailscale_system_interface_name,
+        )
+    }) || store.outbound_sources.iter().any(|s| {
+        check_custom(
+            s.enabled && s.is_embedded_tailscale(),
+            s.tailscale_system_interface,
+            &s.tailscale_system_interface_name,
+        )
+    })
+}
+
+fn has_tailscale_firewall_zone_in(firewall_cfg: Option<&str>) -> bool {
+    let Some(raw) = firewall_cfg else {
+        return false;
+    };
+    let mut in_zone = false;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("config ") {
+            let sec_type = rest.split_whitespace().next().unwrap_or("");
+            in_zone = sec_type == "zone";
+            continue;
+        }
+        if !in_zone {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let mentions_ts = |val: &str| {
+            val.split(['\'', '"', ' ', '\t'])
+                .filter(|tok| !tok.is_empty())
+                .any(|tok| tok == "tailscale" || tok.starts_with("tailscale"))
+        };
+        if (lower.starts_with("option name")
+            || lower.starts_with("list network")
+            || lower.starts_with("list device"))
+            && mentions_ts(&lower)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn has_tailscale_firewall_zone() -> bool {
+    let raw = std::fs::read_to_string("/etc/config/firewall").ok();
+    has_tailscale_firewall_zone_in(raw.as_deref())
+}
+
+fn is_tailscale_peer_trusted(
+    peer_addr: std::net::IpAddr,
+    local_ip: Option<std::net::IpAddr>,
+    mode: &str,
+    active_ts_iface: bool,
+    ts_store_enabled: bool,
+    ts_firewall_zone: bool,
+) -> bool {
+    if !is_tailscale_ip_addr(peer_addr) {
+        return false;
+    }
+    match crate::store::normalize_auto_mode(mode).as_str() {
+        "0" => false,
+        "1" => true,
+        _ => {
+            if !(active_ts_iface || ts_store_enabled || ts_firewall_zone) {
+                return false;
+            }
+            local_ip.is_none_or(|lip| is_tailscale_ip_addr(lip) || is_trusted_lan_addr(lip))
+        }
+    }
+}
+
+async fn is_authenticated(
+    state: &Arc<AppState>,
+    token: &str,
+    peer_ip: &str,
+    local_ip: Option<std::net::IpAddr>,
+) -> bool {
+    let (ts_mode, active_ts_iface, ts_store_enabled, agent_tok) = {
+        let d = state.data.read().await;
+        (
+            crate::store::normalize_auto_mode(&d.settings.tailscale_web_access),
+            has_active_tailscale_interface(&d),
+            crate::net_stack::is_tailscale_enabled(&d),
+            d.settings.agent_api_token.clone(),
+        )
+    };
+    if let Some(peer_addr) = parse_peer_ip(peer_ip) {
+        if is_tailscale_ip_addr(peer_addr) {
+            let ts_zone = has_tailscale_firewall_zone();
+            if is_tailscale_peer_trusted(
+                peer_addr,
+                local_ip,
+                &ts_mode,
+                active_ts_iface,
+                ts_store_enabled,
+                ts_zone,
+            ) {
+                return true;
+            }
+        } else if is_trusted_lan_addr(peer_addr) {
+            return true;
+        }
+    } else if peer_ip.trim().eq_ignore_ascii_case("localhost") {
         return true;
     }
     if token.is_empty() {
@@ -2105,7 +2384,6 @@ async fn is_authenticated(state: &Arc<AppState>, token: &str, peer_ip: &str) -> 
             return true;
         }
     }
-    let agent_tok = { state.data.read().await.settings.agent_api_token.clone() };
     !agent_tok.is_empty() && crypto_gen::constant_time_eq(token, &agent_tok)
 }
 
@@ -2282,6 +2560,46 @@ async fn stream_static_file(
     Ok(())
 }
 
+fn is_usable_external_host(raw: &str) -> bool {
+    let bare = config_gen::extract_host_only(raw.trim()).to_ascii_lowercase();
+    !bare.is_empty()
+        && !matches!(
+            bare.as_str(),
+            "0.0.0.0" | "127.0.0.1" | "localhost" | "::" | "::1"
+        )
+}
+
+fn extract_router_sub_token<'a>(path: &'a str, query: &'a str) -> Option<&'a str> {
+    if let Some(sub_rest) = path.strip_prefix("/sub/") {
+        return Some(sub_rest.split('/').next().unwrap_or(sub_rest));
+    }
+    if let Some(cgi_rest) = path.strip_prefix("/cgi-bin/tachyon-sub/") {
+        return Some(cgi_rest.split('/').next().unwrap_or(cgi_rest));
+    }
+    if path == "/cgi-bin/tachyon-sub" {
+        let tok = query
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("token="))
+            .unwrap_or("");
+        return Some(tok);
+    }
+    None
+}
+
+fn resolve_effective_sub_host(d: &RouterStoreData, host_hdr: Option<&str>) -> Option<String> {
+    if is_usable_external_host(&d.settings.server_subscription_host) {
+        return Some(d.settings.server_subscription_host.trim().to_string());
+    }
+    if let Some(hdr) = host_hdr.filter(|h| is_usable_external_host(h)) {
+        return Some(hdr.trim().to_string());
+    }
+    let (lan_ip, _) = sys_info::detect_router_ips();
+    if is_usable_external_host(&lan_ip) {
+        return Some(lan_ip);
+    }
+    None
+}
+
 fn apply_settings_save_payload(
     current: &crate::store::GlobalSettings,
     val: &Value,
@@ -2334,6 +2652,20 @@ fn apply_settings_save_payload(
         }
     }
 
+    if let Some(raw_ts_web) = src.get("tailscale_web_access").and_then(Value::as_str) {
+        let lower = raw_ts_web.trim().to_ascii_lowercase();
+        if !lower.is_empty()
+            && !matches!(
+                lower.as_str(),
+                "auto" | "1" | "0" | "true" | "false" | "on" | "off" | "yes" | "no"
+            )
+        {
+            return Err(format!(
+                "Unsupported tailscale_web_access '{raw_ts_web}'. Expected auto, 1, or 0."
+            ));
+        }
+    }
+
     let mut cur_json = serde_json::to_value(current).map_err(|e| e.to_string())?;
     let sent_ipv6_mode = src.contains_key("ipv6_mode");
     let sent_enable_ipv6 = src.contains_key("enable_ipv6");
@@ -2365,6 +2697,8 @@ fn apply_settings_save_payload(
         updated.enable_ipv6 = updated.ipv6_mode == "dual_stack";
     }
     updated.dns_strategy = crate::store::normalize_dns_strategy(&updated.dns_strategy);
+    updated.tailscale_web_access = crate::store::normalize_auto_mode(&updated.tailscale_web_access);
+    updated.subscription_engine = "core".to_string();
     updated.cache_path = crate::store::sanitize_cache_path(&updated.cache_path);
     updated.fakeip_inet4_range = if updated.fakeip_inet4_range.trim().is_empty() {
         "198.18.0.0/15".to_string()
@@ -2549,11 +2883,77 @@ mod tests {
     }
 
     #[test]
+    fn test_tailscale_web_access_auto_on_off_and_cgnat_isolation() {
+        use std::net::IpAddr;
+
+        let ts_v4: IpAddr = "100.64.12.34".parse().unwrap();
+        let ts_v4_mapped: IpAddr = "::ffff:100.100.100.100".parse().unwrap();
+        let ts_v6: IpAddr = "fd7a:115c:a1e0::1234".parse().unwrap();
+        let public_v4: IpAddr = "8.8.8.8".parse().unwrap();
+        let local_ts: Option<IpAddr> = Some("100.64.0.2".parse().unwrap());
+        let local_lan: Option<IpAddr> = Some("192.168.1.1".parse().unwrap());
+        let local_wan: Option<IpAddr> = Some("198.51.100.10".parse().unwrap());
+
+        // Auto rejects WAN CGNAT when no Tailscale interface, config, or firewall zone exists
+        assert!(!is_tailscale_peer_trusted(
+            ts_v4, local_ts, "auto", false, false, false
+        ));
+        assert!(!is_tailscale_peer_trusted(
+            ts_v4_mapped,
+            local_ts,
+            "auto",
+            false,
+            false,
+            false
+        ));
+
+        // Auto trusts Tailscale v4 & v6 when active interface, enabled Tailscale, or firewall zone is present
+        assert!(is_tailscale_peer_trusted(
+            ts_v4, local_ts, "auto", true, false, false
+        ));
+        assert!(is_tailscale_peer_trusted(
+            ts_v4, local_lan, "auto", false, true, false
+        ));
+        assert!(is_tailscale_peer_trusted(
+            ts_v6, local_ts, "auto", false, false, true
+        ));
+
+        // Auto still rejects when the socket local endpoint is a public WAN IP
+        assert!(!is_tailscale_peer_trusted(
+            ts_v4, local_wan, "auto", true, true, true
+        ));
+
+        // Explicit Off blocks even active Tailscale peers; explicit On trusts subnet peers
+        assert!(!is_tailscale_peer_trusted(
+            ts_v4, local_ts, "0", true, true, true
+        ));
+        assert!(!is_tailscale_peer_trusted(
+            ts_v6, local_ts, "0", true, true, true
+        ));
+        assert!(is_tailscale_peer_trusted(
+            ts_v4, local_lan, "1", false, false, false
+        ));
+
+        // Public IPs never match Tailscale trust in any mode
+        assert!(!is_tailscale_peer_trusted(
+            public_v4, local_ts, "1", true, true, true
+        ));
+
+        // Firewall zone detector
+        let fw_with_ts = "config zone\n\toption name 'tailscale'\n\tlist device 'tailscale0'\n";
+        let fw_without_ts = "config zone\n\toption name 'lan'\n\tlist network 'lan'\n";
+        assert!(has_tailscale_firewall_zone_in(Some(fw_with_ts)));
+        assert!(!has_tailscale_firewall_zone_in(Some(fw_without_ts)));
+        assert!(!has_tailscale_firewall_zone_in(None));
+    }
+
+    #[test]
     fn test_settings_save_validates_and_normalizes_ipv6_fakeip_tun_and_dns_strategy() {
         let base = crate::store::GlobalSettings::default();
         let ok_payload = json!({
             "ipv6_mode": "tunnel_over_v4",
             "dns_strategy": "prefer_ipv6",
+            "tailscale_web_access": "on",
             "fakeip_inet4_range": "198.18.0.0/16",
             "fakeip_inet6_range": "fd10::/48",
             "tun_inet4": "172.16.250.1/30",
@@ -2562,12 +2962,17 @@ mod tests {
         let updated = apply_settings_save_payload(&base, &ok_payload).expect("valid settings");
         assert_eq!(updated.ipv6_mode, "tunnel_over_v4");
         assert_eq!(updated.dns_strategy, "prefer_ipv6");
+        assert_eq!(updated.tailscale_web_access, "1");
         assert_eq!(updated.fakeip_inet4_range, "198.18.0.0/16");
         assert_eq!(updated.fakeip_inet6_range, "fd10::/48");
         assert_eq!(updated.tun_inet4, "172.16.250.1/30");
         assert_eq!(updated.tun_inet6, "fd20::1/126");
 
         assert!(apply_settings_save_payload(&base, &json!({"ipv6_mode": "invalid_v6"})).is_err());
+        assert!(
+            apply_settings_save_payload(&base, &json!({"tailscale_web_access": "invalid_ts"}))
+                .is_err()
+        );
         assert!(apply_settings_save_payload(&base, &json!({"dns_strategy": "bogus"})).is_err());
         assert!(
             apply_settings_save_payload(&base, &json!({"fakeip_inet4_range": "999.0.0.0/15"}))
@@ -2624,5 +3029,42 @@ mod tests {
         let plain_links =
             vec!["vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443#DE".to_string()];
         assert!(validate_source_proxy_links(&plain_links).is_ok());
+    }
+
+    #[test]
+    fn test_cgi_tachyon_sub_route_and_host_resolution() {
+        assert_eq!(
+            extract_router_sub_token("/sub/tok123/client1", ""),
+            Some("tok123")
+        );
+        assert_eq!(
+            extract_router_sub_token("/cgi-bin/tachyon-sub/tok123", "format=plain"),
+            Some("tok123")
+        );
+        assert_eq!(
+            extract_router_sub_token("/cgi-bin/tachyon-sub", "token=tok123&format=plain"),
+            Some("tok123")
+        );
+        assert_eq!(
+            extract_router_sub_token("/other/path", "token=tok123"),
+            None
+        );
+
+        let mut d = RouterStoreData::default();
+        d.settings.server_subscription_host = "192.168.1.205".to_string();
+        assert_eq!(
+            resolve_effective_sub_host(&d, Some("127.0.0.1:1680")).as_deref(),
+            Some("192.168.1.205")
+        );
+        assert_eq!(
+            resolve_effective_sub_host(&d, Some("router.example.org:1680")).as_deref(),
+            Some("192.168.1.205")
+        );
+
+        d.settings.server_subscription_host.clear();
+        assert_eq!(
+            resolve_effective_sub_host(&d, Some("10.0.0.1:1680")).as_deref(),
+            Some("10.0.0.1:1680")
+        );
     }
 }

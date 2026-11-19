@@ -13,7 +13,7 @@ pub(crate) mod transport;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -23,16 +23,16 @@ use tokio::sync::Notify;
 
 use crate::core_mgr::CoreManager;
 use crate::crypto_gen;
-use crate::store::{AppState, RouterStoreData, unix_now_secs};
+use crate::store::{AppState, PortableAtomicU64, RouterStoreData, unix_now_secs};
 use crate::updater;
 
 static TG_POLL_ACTIVE: AtomicBool = AtomicBool::new(false);
 // 0 = follow store `d.telegram.enabled`, 1 = force stopped, 2 = force running
 static TG_RUNTIME_OVERRIDE: AtomicU8 = AtomicU8::new(0);
 static TG_WAKEUP_NOTIFY: Notify = Notify::const_new();
-static OUTBOX_SEQ: AtomicU64 = AtomicU64::new(0);
-static CB_TOKEN_SEQ: AtomicU64 = AtomicU64::new(1);
-static PROMPT_SEQ: AtomicU64 = AtomicU64::new(1);
+static OUTBOX_SEQ: PortableAtomicU64 = PortableAtomicU64::new(0);
+static CB_TOKEN_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
+static PROMPT_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
 
 const TG_OUTBOX_DIR: &str = "/var/run/tachyon/telegram-outbox";
 pub(crate) const TG_OUTBOX_MAX_FILES: usize = 50;
@@ -425,6 +425,7 @@ pub async fn diagnose_bot_connection(state: &Arc<AppState>, core: &Arc<CoreManag
         bot_proxy_section,
         proxy_url_live,
         proxy_url_when_core_up,
+        direct_fallback,
         core_running,
         ru,
         header,
@@ -441,6 +442,7 @@ pub async fn diagnose_bot_connection(state: &Arc<AppState>, core: &Arc<CoreManag
             d.telegram.bot_proxy_section.trim().to_string(),
             resolve_tg_proxy_url(&d, live_core),
             resolve_tg_proxy_url(&d, true),
+            d.telegram.bot_direct_fallback,
             live_core,
             is_ru(&d),
             build_message_header(&d),
@@ -535,13 +537,13 @@ pub async fn diagnose_bot_connection(state: &Arc<AppState>, core: &Arc<CoreManag
             false,
             "No admin_ids set — cannot send test message".to_string(),
         )
-    } else if !token_ok || !(proxy_ok || direct_ok) {
+    } else if !token_ok || !(proxy_ok || (direct_fallback && direct_ok)) {
         (
             false,
             "Failed to send test message — check admin_ids and bot permissions".to_string(),
         )
     } else {
-        let send_proxy = if proxy_ok {
+        let send_proxy = if proxy_ok || !direct_fallback {
             proxy_url_live.as_deref()
         } else {
             None
@@ -554,9 +556,17 @@ pub async fn diagnose_bot_connection(state: &Arc<AppState>, core: &Arc<CoreManag
         let ping_msg = format!("{header}{ping_body}");
         let mut sent = 0usize;
         for &cid in &admins {
-            if transport::send_tg_message(&token, cid, &ping_msg, None, false, send_proxy)
-                .await
-                .is_ok()
+            if transport::send_tg_message(
+                &token,
+                cid,
+                &ping_msg,
+                None,
+                false,
+                send_proxy,
+                direct_fallback,
+            )
+            .await
+            .is_ok()
             {
                 sent += 1;
             }
@@ -929,6 +939,69 @@ pub(crate) fn maybe_alert_route_failure_at(params: &RouteAlertParams<'_>) -> boo
     any_queued
 }
 
+pub(crate) fn submit_update_available_notice(
+    d: &crate::store::RouterStoreData,
+    comp: &str,
+    current: &str,
+    latest: &str,
+) {
+    let token = d.telegram.bot_token.trim();
+    if token.is_empty() || d.telegram.admin_ids.is_empty() || latest.trim().is_empty() {
+        return;
+    }
+    let ru = is_ru(d);
+    let text = if ru {
+        format!(
+            "Доступно обновление <b>{}</b>: <code>{}</code> -> <code>{}</code>",
+            escape_html(comp),
+            escape_html(current),
+            escape_html(latest)
+        )
+    } else {
+        format!(
+            "Update available for <b>{}</b>: <code>{}</code> -> <code>{}</code>",
+            escape_html(comp),
+            escape_html(current),
+            escape_html(latest)
+        )
+    };
+    let outbox_dir = std::path::Path::new(TG_OUTBOX_DIR);
+    let dedup = format!("upd_{comp}_{latest}");
+    let mut queued = false;
+    for &cid in &d.telegram.admin_ids {
+        if submit_outbox_notice_in(outbox_dir, token, cid, &text, Some(&dedup)).is_ok() {
+            queued = true;
+        }
+    }
+    if queued {
+        notify_bot_wakeup();
+    }
+}
+
+pub fn notify_if_enabled(d: &crate::store::RouterStoreData, kind: &str, text: &str) {
+    if !d.telegram.enabled || text.trim().is_empty() {
+        return;
+    }
+    let enabled = match kind {
+        "crash" => d.telegram.notify_crash,
+        "restart" => d.telegram.notify_restart,
+        "server_switch" => d.telegram.notify_server_switch,
+        "failover" => d.telegram.notify_failover,
+        "wan" => d.telegram.notify_wan,
+        "dns_leak" => d.telegram.notify_dns_leak,
+        "subscription" => d.telegram.notify_subscription,
+        "parental" => d.telegram.notify_parental,
+        "cert" => d.telegram.notify_cert,
+        "honeypot" => d.telegram.notify_honeypot,
+        "smart_detect" => d.telegram.notify_smart_detect,
+        "auto_update" => d.telegram.notify_auto_update,
+        _ => false,
+    };
+    if enabled {
+        queue_or_send_notification(text);
+    }
+}
+
 pub fn queue_or_send_notification(text: impl Into<String>) {
     let msg = text.into();
     if msg.trim().is_empty() {
@@ -968,6 +1041,7 @@ async fn drain_telegram_outbox(
     header: &str,
     quiet_now: bool,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) {
     let current_bot_id = bot_id_from_token(token);
     let entries = list_outbox_entries(std::path::Path::new(TG_OUTBOX_DIR));
@@ -996,6 +1070,7 @@ async fn drain_telegram_outbox(
                 None,
                 quiet_now,
                 proxy_url,
+                direct_fallback,
             )
             .await
             .is_ok()
@@ -1009,9 +1084,17 @@ async fn drain_telegram_outbox(
         let html = format_outbox_html(&raw_text, header);
         let mut any_ok = false;
         for &chat_id in admins {
-            if transport::send_tg_message(token, chat_id, &html, None, quiet_now, proxy_url)
-                .await
-                .is_ok()
+            if transport::send_tg_message(
+                token,
+                chat_id,
+                &html,
+                None,
+                quiet_now,
+                proxy_url,
+                direct_fallback,
+            )
+            .await
+            .is_ok()
             {
                 any_ok = true;
             }
@@ -1025,13 +1108,14 @@ async fn drain_telegram_outbox(
 }
 
 pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usize> {
-    let (token, admins, proxy_opt, header, ru) = {
+    let (token, admins, proxy_opt, direct_fallback, header, ru) = {
         let d = state.data.read().await;
         let core_running = state.live.read().await.core_running;
         (
             d.telegram.bot_token.trim().to_string(),
             d.telegram.admin_ids.clone(),
             resolve_tg_proxy_url(&d, core_running),
+            d.telegram.bot_direct_fallback,
             build_message_header(&d),
             is_ru(&d),
         )
@@ -1056,8 +1140,16 @@ pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usi
     let mut sent = 0usize;
     let mut last_err: Option<anyhow::Error> = None;
     for chat_id in admins {
-        match transport::send_tg_message(&token, chat_id, &text, None, false, proxy_opt.as_deref())
-            .await
+        match transport::send_tg_message(
+            &token,
+            chat_id,
+            &text,
+            None,
+            false,
+            proxy_opt.as_deref(),
+            direct_fallback,
+        )
+        .await
         {
             Ok(()) => sent += 1,
             Err(e) => last_err = Some(e),
@@ -1329,6 +1421,7 @@ async fn deliver_bot_reply(
     reply: BotReply,
     header: &str,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) {
     let final_text = prepend_header_if_missing(&reply.text, header);
     let kb_ref = reply.keyboard.as_ref();
@@ -1346,13 +1439,27 @@ async fn deliver_bot_reply(
 
         if text_differs {
             if let Some(mid) = edit_message_id.filter(|_| !reply.prefer_new_message) {
-                let _ =
-                    transport::edit_tg_message(token, chat_id, mid, &final_text, None, proxy_url)
-                        .await;
+                let _ = transport::edit_tg_message(
+                    token,
+                    chat_id,
+                    mid,
+                    &final_text,
+                    None,
+                    proxy_url,
+                    direct_fallback,
+                )
+                .await;
             } else {
-                let _ =
-                    transport::send_tg_message(token, chat_id, &final_text, None, false, proxy_url)
-                        .await;
+                let _ = transport::send_tg_message(
+                    token,
+                    chat_id,
+                    &final_text,
+                    None,
+                    false,
+                    proxy_url,
+                    direct_fallback,
+                )
+                .await;
             }
         }
 
@@ -1363,23 +1470,49 @@ async fn deliver_bot_reply(
             keyboard: kb_ref,
             disable_notification: false,
         };
-        if let Err(err) = transport::send_tg_document(token, chat_id, &tg_doc, proxy_url).await {
+        if let Err(err) =
+            transport::send_tg_document(token, chat_id, &tg_doc, proxy_url, direct_fallback).await
+        {
             let fallback = format!(
                 "{final_text}\n\n[!] Upload error: {}",
                 escape_html(&err.to_string())
             );
-            let _ = transport::send_tg_message(token, chat_id, &fallback, kb_ref, false, proxy_url)
-                .await;
+            let _ = transport::send_tg_message(
+                token,
+                chat_id,
+                &fallback,
+                kb_ref,
+                false,
+                proxy_url,
+                direct_fallback,
+            )
+            .await;
         }
         return;
     }
 
     if let Some(mid) = edit_message_id.filter(|_| !reply.prefer_new_message) {
-        let _ =
-            transport::edit_tg_message(token, chat_id, mid, &final_text, kb_ref, proxy_url).await;
+        let _ = transport::edit_tg_message(
+            token,
+            chat_id,
+            mid,
+            &final_text,
+            kb_ref,
+            proxy_url,
+            direct_fallback,
+        )
+        .await;
     } else {
-        let _ =
-            transport::send_tg_message(token, chat_id, &final_text, kb_ref, false, proxy_url).await;
+        let _ = transport::send_tg_message(
+            token,
+            chat_id,
+            &final_text,
+            kb_ref,
+            false,
+            proxy_url,
+            direct_fallback,
+        )
+        .await;
     }
 }
 
@@ -1399,7 +1532,9 @@ struct JobNotifyCtx<'a> {
     header: &'a str,
     ru: bool,
     quiet_now: bool,
+    notify_auto_update: bool,
     proxy_url: Option<&'a str>,
+    direct_fallback: bool,
 }
 
 async fn check_and_notify_finished_jobs(
@@ -1423,6 +1558,9 @@ async fn check_and_notify_finished_jobs(
 
         let action = st.get("action").and_then(Value::as_str).unwrap_or("");
         if action == "check" || action == "check_update" {
+            continue;
+        }
+        if !ctx.notify_auto_update {
             continue;
         }
 
@@ -1461,6 +1599,7 @@ async fn check_and_notify_finished_jobs(
                 None,
                 ctx.quiet_now,
                 ctx.proxy_url,
+                ctx.direct_fallback,
             )
             .await;
         }
@@ -1468,10 +1607,445 @@ async fn check_and_notify_finished_jobs(
     *prev_active_jobs = current_active;
 }
 
+#[derive(Default)]
+struct BotEventObserver {
+    initialized: bool,
+    seen_event_keys: VecDeque<String>,
+    seen_honeypot_keys: VecDeque<String>,
+    last_core_pid: Option<u32>,
+    last_core_running: bool,
+    last_wan_healthy: bool,
+    last_dns_healthy: bool,
+    section_active_nodes: HashMap<String, String>,
+    sub_state: HashMap<String, (i64, String)>,
+    parental_blocked: HashMap<String, bool>,
+    smart_detect_domain_count: usize,
+    last_clash_poll_unix: i64,
+    last_cert_check_unix: i64,
+    warned_cert_paths: HashSet<String>,
+}
+
+fn push_bounded_key(q: &mut VecDeque<String>, key: String, max: usize) -> bool {
+    if q.iter().any(|k| k == &key) {
+        return false;
+    }
+    if q.len() >= max {
+        q.pop_front();
+    }
+    q.push_back(key);
+    true
+}
+
+async fn check_cert_expiring_soon(path: &str) -> bool {
+    if cfg!(windows) || path.trim().is_empty() || !std::path::Path::new(path).exists() {
+        return false;
+    }
+    let out = tokio::process::Command::new("openssl")
+        .args(["x509", "-noout", "-checkend", "1209600", "-in", path])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+    matches!(out, Ok(st) if !st.success())
+}
+
+async fn observe_and_notify_events(
+    obs: &mut BotEventObserver,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) {
+    let d = state.data.read().await.clone();
+    let live = state.live.read().await.clone();
+    let now = unix_now_secs();
+    let ru = is_ru(&d);
+
+    let mut cur_sub_state = HashMap::new();
+    for src in &d.outbound_sources {
+        if src.source_type == "subscription" {
+            cur_sub_state.insert(
+                src.id.clone(),
+                (src.last_updated_unix, src.sub_last_error.clone()),
+            );
+        }
+    }
+
+    let mut cur_parental = HashMap::new();
+    for prof in &d.profiles {
+        let blocked = prof.enabled
+            && (prof.paused_until_unix > now
+                || (prof.daily_quota_minutes > 0
+                    && prof.used_minutes_today >= prof.daily_quota_minutes));
+        cur_parental.insert(prof.id.clone(), blocked);
+    }
+
+    let cur_smart_count: usize = d
+        .conditions
+        .iter()
+        .filter(|c| c.id.contains("smart") || c.name.to_ascii_lowercase().contains("smart"))
+        .map(|c| c.user_domains.len())
+        .sum();
+
+    if !obs.initialized {
+        for ev in &live.events {
+            push_bounded_key(
+                &mut obs.seen_event_keys,
+                format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message),
+                128,
+            );
+        }
+        for hit in &live.honeypot_hits {
+            push_bounded_key(
+                &mut obs.seen_honeypot_keys,
+                format!("{}|{}|{}", hit.timestamp, hit.ip, hit.path),
+                128,
+            );
+        }
+        obs.last_core_pid = live.core_pid;
+        obs.last_core_running = live.core_running;
+        obs.last_wan_healthy = live.wan_healthy;
+        obs.last_dns_healthy = live.dns_healthy;
+        for sec in &d.sections {
+            if !sec.active_selected_tag.is_empty() {
+                obs.section_active_nodes
+                    .insert(sec.id.clone(), sec.active_selected_tag.clone());
+            }
+        }
+        obs.sub_state = cur_sub_state;
+        obs.parental_blocked = cur_parental;
+        obs.smart_detect_domain_count = cur_smart_count;
+        obs.last_clash_poll_unix = now;
+        obs.initialized = true;
+        return;
+    }
+
+    let mut emitted_restart = false;
+    for ev in &live.events {
+        let key = format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message);
+        if !push_bounded_key(&mut obs.seen_event_keys, key, 128) {
+            continue;
+        }
+        let sub_low = ev.subsystem.to_ascii_lowercase();
+        let msg_low = ev.message.to_ascii_lowercase();
+        if sub_low == "watchdog"
+            || msg_low.contains("stopped unexpectedly")
+            || msg_low.contains("crash")
+        {
+            let txt = if ru {
+                format!("<b>Сбой ядра:</b> {}", escape_html(&ev.message))
+            } else {
+                format!("<b>Core Crash:</b> {}", escape_html(&ev.message))
+            };
+            notify_if_enabled(&d, "crash", &txt);
+        } else if sub_low == "core_mgr"
+            && (msg_low.contains("started")
+                || msg_low.contains("reloaded")
+                || msg_low.contains("restart"))
+        {
+            emitted_restart = true;
+            let txt = if ru {
+                format!("<b>Перезапуск ядра:</b> {}", escape_html(&ev.message))
+            } else {
+                format!("<b>Core Restart:</b> {}", escape_html(&ev.message))
+            };
+            notify_if_enabled(&d, "restart", &txt);
+        } else if sub_low.contains("failover") || msg_low.contains("failover") {
+            let txt = if ru {
+                format!(
+                    "<b>Переключение канала (Failover):</b> {}",
+                    escape_html(&ev.message)
+                )
+            } else {
+                format!("<b>Failover:</b> {}", escape_html(&ev.message))
+            };
+            notify_if_enabled(&d, "failover", &txt);
+        } else if sub_low.contains("smart_detect") || msg_low.contains("smart detect") {
+            let txt = format!("<b>Smart Detect:</b> {}", escape_html(&ev.message));
+            notify_if_enabled(&d, "smart_detect", &txt);
+        } else if sub_low.contains("parental") {
+            let txt = if ru {
+                format!("<b>Семейный режим:</b> {}", escape_html(&ev.message))
+            } else {
+                format!("<b>Parental Control:</b> {}", escape_html(&ev.message))
+            };
+            notify_if_enabled(&d, "parental", &txt);
+        }
+    }
+
+    if !emitted_restart
+        && live.core_running
+        && live.core_pid.is_some()
+        && obs.last_core_pid.is_some()
+        && live.core_pid != obs.last_core_pid
+    {
+        let txt = if ru {
+            format!(
+                "<b>Перезапуск ядра:</b> новый PID <code>{}</code>",
+                live.core_pid.unwrap_or(0)
+            )
+        } else {
+            format!(
+                "<b>Core Restarted:</b> new PID <code>{}</code>",
+                live.core_pid.unwrap_or(0)
+            )
+        };
+        notify_if_enabled(&d, "restart", &txt);
+    }
+    if obs.last_core_running && !live.core_running {
+        let txt = if ru {
+            "<b>Внимание:</b> процесс <code>tachyon-core</code> остановлен"
+        } else {
+            "<b>Warning:</b> <code>tachyon-core</code> process stopped"
+        };
+        notify_if_enabled(&d, "crash", txt);
+    }
+    obs.last_core_pid = live.core_pid;
+    obs.last_core_running = live.core_running;
+
+    for hit in &live.honeypot_hits {
+        let key = format!("{}|{}|{}", hit.timestamp, hit.ip, hit.path);
+        if push_bounded_key(&mut obs.seen_honeypot_keys, key, 128) {
+            let txt = if ru {
+                format!(
+                    "<b>Honeypot:</b> заблокирована попытка с <code>{}</code> (<code>{}</code> — {})",
+                    escape_html(&hit.ip),
+                    escape_html(&hit.path),
+                    escape_html(&hit.reason)
+                )
+            } else {
+                format!(
+                    "<b>Honeypot:</b> probe from <code>{}</code> (<code>{}</code> — {})",
+                    escape_html(&hit.ip),
+                    escape_html(&hit.path),
+                    escape_html(&hit.reason)
+                )
+            };
+            notify_if_enabled(&d, "honeypot", &txt);
+        }
+    }
+
+    if live.wan_healthy != obs.last_wan_healthy {
+        let txt = if live.wan_healthy {
+            if ru {
+                "<b>WAN:</b> внешний канал восстановлен"
+            } else {
+                "<b>WAN:</b> uplink restored"
+            }
+        } else if ru {
+            "<b>WAN:</b> потеря связи на внешнем канале"
+        } else {
+            "<b>WAN:</b> uplink unreachable"
+        };
+        notify_if_enabled(&d, "wan", txt);
+        if d.settings.wan_failover_enabled {
+            notify_if_enabled(&d, "failover", txt);
+        }
+        obs.last_wan_healthy = live.wan_healthy;
+    }
+
+    if obs.last_dns_healthy && !live.dns_healthy {
+        let txt = if ru {
+            "<b>DNS:</b> локальный резолвер <code>127.0.0.42:53</code> недоступен — риск утечки DNS"
+        } else {
+            "<b>DNS:</b> local resolver <code>127.0.0.42:53</code> unavailable — DNS leak risk"
+        };
+        notify_if_enabled(&d, "dns_leak", txt);
+    }
+    obs.last_dns_healthy = live.dns_healthy;
+
+    for sec in &d.sections {
+        if !sec.active_selected_tag.is_empty()
+            && obs
+                .section_active_nodes
+                .get(&sec.id)
+                .is_some_and(|prev| prev != &sec.active_selected_tag)
+        {
+            let txt = if ru {
+                format!(
+                    "<b>Смена узла:</b> секция <b>{}</b> -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&sec.active_selected_tag)
+                )
+            } else {
+                format!(
+                    "<b>Server Switch:</b> section <b>{}</b> -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&sec.active_selected_tag)
+                )
+            };
+            notify_if_enabled(&d, "server_switch", &txt);
+        }
+        if !sec.active_selected_tag.is_empty() {
+            obs.section_active_nodes
+                .insert(sec.id.clone(), sec.active_selected_tag.clone());
+        }
+    }
+
+    if live.core_running
+        && (d.telegram.notify_server_switch || d.telegram.notify_failover)
+        && now.saturating_sub(obs.last_clash_poll_unix) >= 30
+    {
+        obs.last_clash_poll_unix = now;
+        if let Ok(px) = core.clash_request("GET", "/proxies", None).await
+            && let Some(px_map) = px.get("proxies").and_then(Value::as_object)
+        {
+            for sec in &d.sections {
+                let mut candidates: Vec<String> = sec
+                    .balancer_refs
+                    .iter()
+                    .map(|b| format!("bal-{}-{b}", sec.id))
+                    .collect();
+                let prefix = format!("bal-{}-", sec.id);
+                for k in px_map.keys() {
+                    if k.starts_with(&prefix) && !candidates.contains(k) {
+                        candidates.push(k.clone());
+                    }
+                }
+                candidates.push(format!("sel-{}", sec.id));
+                candidates.push(format!("{}-out", sec.id));
+                for gtag in candidates {
+                    if let Some(now_tag) = px_map
+                        .get(&gtag)
+                        .and_then(|g| g.get("now"))
+                        .and_then(Value::as_str)
+                        && !now_tag.is_empty()
+                    {
+                        if let Some(prev) = obs.section_active_nodes.get(&sec.id)
+                            && prev != now_tag
+                        {
+                            let txt = if ru {
+                                format!(
+                                    "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                                    escape_html(&sec.label),
+                                    escape_html(&gtag),
+                                    escape_html(now_tag)
+                                )
+                            } else {
+                                format!(
+                                    "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                                    escape_html(&sec.label),
+                                    escape_html(&gtag),
+                                    escape_html(now_tag)
+                                )
+                            };
+                            notify_if_enabled(&d, "server_switch", &txt);
+                            if gtag.starts_with("bal-") {
+                                notify_if_enabled(&d, "failover", &txt);
+                            }
+                        }
+                        obs.section_active_nodes
+                            .insert(sec.id.clone(), now_tag.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    for (sid, (ts, err)) in &cur_sub_state {
+        if let Some((prev_ts, prev_err)) = obs.sub_state.get(sid) {
+            if err != prev_err && !err.is_empty() {
+                let txt = if ru {
+                    format!(
+                        "<b>Подписка <code>{}</code>:</b> ошибка обновления — {}",
+                        escape_html(sid),
+                        escape_html(err)
+                    )
+                } else {
+                    format!(
+                        "<b>Subscription <code>{}</code>:</b> update error — {}",
+                        escape_html(sid),
+                        escape_html(err)
+                    )
+                };
+                notify_if_enabled(&d, "subscription", &txt);
+            } else if ts > prev_ts && err.is_empty() {
+                let nodes_cnt = d
+                    .outbound_sources
+                    .iter()
+                    .find(|s| &s.id == sid)
+                    .map(|s| s.cached_nodes.len())
+                    .unwrap_or(0);
+                let txt = if ru {
+                    format!(
+                        "<b>Подписка <code>{}</code>:</b> обновлена (узлов: {nodes_cnt})",
+                        escape_html(sid)
+                    )
+                } else {
+                    format!(
+                        "<b>Subscription <code>{}</code>:</b> updated ({nodes_cnt} nodes)",
+                        escape_html(sid)
+                    )
+                };
+                notify_if_enabled(&d, "subscription", &txt);
+            }
+        }
+    }
+    obs.sub_state = cur_sub_state;
+
+    for (pid, &blocked) in &cur_parental {
+        if obs.parental_blocked.get(pid).copied() == Some(false) && blocked {
+            let txt = if ru {
+                format!(
+                    "<b>Семейный режим:</b> профиль <code>{}</code> ограничен (пауза или квота)",
+                    escape_html(pid)
+                )
+            } else {
+                format!(
+                    "<b>Parental Control:</b> profile <code>{}</code> paused or quota reached",
+                    escape_html(pid)
+                )
+            };
+            notify_if_enabled(&d, "parental", &txt);
+        }
+    }
+    obs.parental_blocked = cur_parental;
+
+    if cur_smart_count > obs.smart_detect_domain_count {
+        let added = cur_smart_count - obs.smart_detect_domain_count;
+        let txt = if ru {
+            format!("<b>Smart Detect:</b> добавлено доменов: {added} (всего {cur_smart_count})")
+        } else {
+            format!("<b>Smart Detect:</b> added {added} domain(s) (total {cur_smart_count})")
+        };
+        notify_if_enabled(&d, "smart_detect", &txt);
+    }
+    obs.smart_detect_domain_count = cur_smart_count;
+
+    if d.telegram.notify_cert && now.saturating_sub(obs.last_cert_check_unix) >= 6 * 3600 {
+        obs.last_cert_check_unix = now;
+        for srv in d
+            .servers
+            .iter()
+            .filter(|s| s.enabled && s.security == "tls")
+        {
+            let cp = srv.tls_certificate_path.trim();
+            if !cp.is_empty()
+                && !obs.warned_cert_paths.contains(cp)
+                && check_cert_expiring_soon(cp).await
+            {
+                obs.warned_cert_paths.insert(cp.to_string());
+                let txt = if ru {
+                    format!(
+                        "<b>Сертификаты:</b> срок TLS-сертификата <code>{}</code> истекает менее чем через 14 дней",
+                        escape_html(cp)
+                    )
+                } else {
+                    format!(
+                        "<b>Certificates:</b> TLS certificate <code>{}</code> expires within 14 days",
+                        escape_html(cp)
+                    )
+                };
+                notify_if_enabled(&d, "cert", &txt);
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record_poll_failure_alert(
     consecutive_failures: &mut u32,
     route_alert_sent: &mut bool,
+    notify_route_alert: bool,
     token: &str,
     admins: &[i64],
     header: &str,
@@ -1482,7 +2056,7 @@ fn record_poll_failure_alert(
     quiet_end: &str,
 ) {
     *consecutive_failures = consecutive_failures.saturating_add(1);
-    if *consecutive_failures >= 5 && !*route_alert_sent {
+    if notify_route_alert && *consecutive_failures >= 5 && !*route_alert_sent {
         *route_alert_sent = maybe_alert_route_failure_at(&RouteAlertParams {
             token,
             admins,
@@ -1514,6 +2088,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
             VecDeque::with_capacity(MAX_SEEN_FINISHED_JOBS);
         let mut consecutive_failures: u32 = 0;
         let mut route_alert_sent = false;
+        let mut observer = BotEventObserver::default();
 
         loop {
             let (
@@ -1528,6 +2103,8 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 quiet_enabled,
                 quiet_start,
                 quiet_end,
+                notify_auto_update,
+                notify_route_alert,
             ) = {
                 let d = state.data.read().await;
                 let core_running = state.live.read().await.core_running;
@@ -1543,6 +2120,8 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                     d.telegram.quiet_hours_enabled,
                     d.telegram.quiet_hours_start.clone(),
                     d.telegram.quiet_hours_end.clone(),
+                    d.telegram.notify_auto_update,
+                    d.telegram.notify_route_alert,
                 )
             };
 
@@ -1556,9 +2135,14 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
             write_heartbeat_to(std::path::Path::new(TG_HEARTBEAT_FILE), unix_now_secs());
 
             if last_commands_key.as_ref() != Some(&(token.clone(), ru))
-                && transport::register_bot_commands(&token, ru, proxy_opt.as_deref())
-                    .await
-                    .is_ok()
+                && transport::register_bot_commands(
+                    &token,
+                    ru,
+                    proxy_opt.as_deref(),
+                    direct_fallback,
+                )
+                .await
+                .is_ok()
             {
                 last_commands_key = Some((token.clone(), ru));
             }
@@ -1566,13 +2150,17 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
             let quiet_now = quiet_enabled
                 && is_in_quiet_hours_at(local_secs_for_quiet_check(), &quiet_start, &quiet_end);
 
+            observe_and_notify_events(&mut observer, &state, &core).await;
+
             let job_ctx = JobNotifyCtx {
                 token: &token,
                 admins: &admins,
                 header: &header,
                 ru,
                 quiet_now,
+                notify_auto_update,
                 proxy_url: proxy_opt.as_deref(),
+                direct_fallback,
             };
             Box::pin(check_and_notify_finished_jobs(
                 &mut prev_active_jobs,
@@ -1587,6 +2175,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 &header,
                 quiet_now,
                 proxy_opt.as_deref(),
+                direct_fallback,
             ))
             .await;
 
@@ -1611,6 +2200,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 record_poll_failure_alert(
                     &mut consecutive_failures,
                     &mut route_alert_sent,
+                    notify_route_alert,
                     &token,
                     &admins,
                     &header,
@@ -1649,6 +2239,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                     record_poll_failure_alert(
                         &mut consecutive_failures,
                         &mut route_alert_sent,
+                        notify_route_alert,
                         &token,
                         &admins,
                         &header,
@@ -1701,6 +2292,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                         reply,
                         &header,
                         proxy_opt.as_deref(),
+                        direct_fallback,
                     ))
                     .await;
                 } else if let Some(cb) = upd.get("callback_query") {
@@ -1724,8 +2316,14 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                         let tok_c = token.clone();
                         let px_c = proxy_opt.clone();
                         tokio::spawn(async move {
-                            transport::answer_callback_query(&tok_c, &cb_id, None, px_c.as_deref())
-                                .await;
+                            transport::answer_callback_query(
+                                &tok_c,
+                                &cb_id,
+                                None,
+                                px_c.as_deref(),
+                                direct_fallback,
+                            )
+                            .await;
                         });
                     }
 
@@ -1737,6 +2335,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                         reply,
                         &header,
                         proxy_opt.as_deref(),
+                        direct_fallback,
                     ))
                     .await;
                 }

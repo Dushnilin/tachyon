@@ -37,17 +37,9 @@ function getVerdictMeta(verdict: string): {
           'background: #28a745; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
         alertClass: 'alert-message success',
       };
-    case 'zapret':
-    case 'zapret2':
+    case 'desync':
       return {
-        label: _('DPI BYPASS (ZAPRET)'),
-        badgeStyle:
-          'background: #17a2b8; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
-        alertClass: 'alert-message info',
-      };
-    case 'byedpi':
-      return {
-        label: _('DPI BYPASS (BYEDPI)'),
+        label: _('PACKET DESYNC (CORE)'),
         badgeStyle:
           'background: #17a2b8; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;',
         alertClass: 'alert-message info',

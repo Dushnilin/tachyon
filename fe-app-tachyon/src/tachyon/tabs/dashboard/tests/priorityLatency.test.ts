@@ -129,7 +129,7 @@ describe('priority modal latency', () => {
       expect(measured.size).toBe(0);
     });
 
-    // The whole point of the change. Asking sing-box for every member's delay at
+    // The whole point of the change. Asking tachyon-core for every member's delay at
     // once answered 1 of 152 on a real router; the rest were "Timeout", so the
     // modal filled with -1 instead of latencies.
     it('keeps only a bounded number of probes in flight', async () => {
@@ -172,9 +172,8 @@ describe('priority modal latency', () => {
   });
 
   // The reason a node did not answer is the difference between "the server is
-  // down" and "the tls handshake was cut". Our own core names the cause; a core
-  // that does not - sing-box answers with the message alone - has no reason to
-  // show, and its generic message is not one: it names no cause.
+  // down" and "the tls handshake was cut". The core names the cause; a reply
+  // with only the generic message names no cause and is not shown.
   describe('parseFailureReason', () => {
     it('takes the reason the core named', () => {
       expect(

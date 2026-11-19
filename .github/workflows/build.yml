@@ -116,13 +116,12 @@ jobs:
           name: fe-assets
           path: |
             luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/
-            fe-app-tachyon/locales/tachyon.ru.po
           if-no-files-found: error
 
   build:
     name: Build (${{ matrix.arch }})
     needs: [prepare, frontend]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -147,9 +146,11 @@ jobs:
             build-std: false
           - target: mipsel-unknown-linux-musl
             arch: mipsel
+            os: ubuntu-24.04
             build-std: true
           - target: mips-unknown-linux-musl
             arch: mips
+            os: ubuntu-24.04
             build-std: true
     steps:
       - name: Checkout repository
@@ -159,6 +160,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: fe-assets
+          path: luci-app-tachyon/htdocs/luci-static/resources/view/tachyon
 
       - name: Prepare MIPS musl cache directory
         if: startsWith(matrix.target, 'mips')
@@ -196,7 +198,7 @@ jobs:
           {
             echo "CC_mipsel_unknown_linux_musl=mipsel-linux-gnu-gcc"
             echo "CARGO_TARGET_MIPSEL_UNKNOWN_LINUX_MUSL_LINKER=mipsel-linux-gnu-gcc"
-            echo "RUSTFLAGS=-C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C panic=abort -C strip=symbols -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mipsel-musl/lib -C link-arg=-L/opt/mipsel-musl/lib -C link-arg=-static -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
+            echo "RUSTFLAGS=-Z location-detail=none -Z fmt-debug=shallow -Z remap-cwd-prefix=. -C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mipsel-musl/lib -C link-arg=-L/opt/mipsel-musl/lib -C link-arg=-static -C link-arg=-Wl,--no-eh-frame-hdr -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
           } >> "$GITHUB_ENV"
 
       - name: Setup MIPS musl toolchain (mips)
@@ -220,19 +222,21 @@ jobs:
           {
             echo "CC_mips_unknown_linux_musl=mips-linux-gnu-gcc"
             echo "CARGO_TARGET_MIPS_UNKNOWN_LINUX_MUSL_LINKER=mips-linux-gnu-gcc"
-            echo "RUSTFLAGS=-C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C panic=abort -C strip=symbols -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mips-musl/lib -C link-arg=-L/opt/mips-musl/lib -C link-arg=-static -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
+            echo "RUSTFLAGS=-Z location-detail=none -Z fmt-debug=shallow -Z remap-cwd-prefix=. -C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mips-musl/lib -C link-arg=-L/opt/mips-musl/lib -C link-arg=-static -C link-arg=-Wl,--no-eh-frame-hdr -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
           } >> "$GITHUB_ENV"
 
-      - name: Setup Rust toolchain (prebuilt std)
+      - name: Setup Rust toolchain (stable + rust-src)
         if: ${{ !matrix.build-std }}
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: rust-src
           targets: ${{ matrix.target }}
 
       - name: Setup Rust toolchain (build-std)
         if: ${{ matrix.build-std }}
-        uses: dtolnay/rust-toolchain@nightly-2026-10-30
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-10-30
           components: rust-src
 
       - name: Cache Cargo registry and target
@@ -243,9 +247,9 @@ jobs:
       - name: Build binary and OpenWrt packages
         env:
           SKIP_FE_BUILD: '1'
+          TACHYON_BUILD_STD: '1'
           TACHYON_BUILD_VERSION: '${{ needs.prepare.outputs.version }}'
           TACHYON_TARGETS: '${{ matrix.target }}:${{ matrix.arch }}'
-          TACHYON_CARGO_EXTRA_ARGS: "${{ matrix.build-std && '-Z build-std=std,panic_abort' || '' }}"
         run: bash build.sh "${{ needs.prepare.outputs.version }}" dist/release-final
 
       - name: Upload architecture packages
@@ -253,7 +257,6 @@ jobs:
         with:
           name: pkg-${{ matrix.arch }}
           path: |
-            dist/release-final/tachyon-*.tar.gz
             dist/release-final/tachyon-*.ipk
             dist/release-final/tachyon-*.apk
           if-no-files-found: error
@@ -280,7 +283,7 @@ jobs:
           cp -f install.sh uninstall.sh release-assets/
           cd release-assets
           rm -f SHA256SUMS
-          sha256sum tachyon-*.tar.gz tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh > SHA256SUMS
+          sha256sum tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh > SHA256SUMS
           ls -lh
 
       - name: Check existing GitHub release notes

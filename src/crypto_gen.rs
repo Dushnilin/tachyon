@@ -241,11 +241,25 @@ pub fn content_unchanged(path: &Path, new_bytes: &[u8]) -> bool {
     existing == new_bytes
 }
 
-/// NAND-wear-safe atomic file writer (`content_unchanged` check + `.tmp` + `rename`).
-/// Returns `Ok(true)` if the file was modified on disk, or `Ok(false)` if skipped because identical.
-pub fn write_file_if_changed(path: impl AsRef<Path>, new_bytes: &[u8]) -> anyhow::Result<bool> {
+/// NAND-wear-safe atomic file writer with explicit Unix permission mode (`content_unchanged` check + `.tmp` + `rename`).
+/// If the file already exists with identical bytes but a different Unix mode, updates permissions in place without rewriting content.
+pub fn write_bytes_with_mode_if_changed(
+    path: impl AsRef<Path>,
+    new_bytes: &[u8],
+    mode: u32,
+) -> anyhow::Result<bool> {
     let path = path.as_ref();
     if content_unchanged(path, new_bytes) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(path)
+                && (meta.permissions().mode() & 0o777) != (mode & 0o777)
+            {
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+            }
+        }
+        let _ = mode;
         return Ok(false);
     }
     if let Some(parent) = path.parent()
@@ -262,10 +276,28 @@ pub fn write_file_if_changed(path: impl AsRef<Path>, new_bytes: &[u8]) -> anyhow
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
+        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(mode));
     }
     std::fs::rename(&tmp_path, path)?;
     Ok(true)
+}
+
+/// String wrapper around `write_bytes_with_mode_if_changed` returning `std::io::Result<bool>`.
+pub fn write_file_with_mode_if_changed(
+    path: &Path,
+    content: &str,
+    mode: u32,
+) -> std::io::Result<bool> {
+    write_bytes_with_mode_if_changed(path, content.as_bytes(), mode).map_err(std::io::Error::other)
+}
+
+/// NAND-wear-safe atomic file writer (`content_unchanged` check + `.tmp` + `rename`).
+/// Returns `Ok(true)` if the file was modified on disk, or `Ok(false)` if skipped because identical.
+pub fn write_file_if_changed(path: impl AsRef<Path>, new_bytes: &[u8]) -> anyhow::Result<bool> {
+    if content_unchanged(path.as_ref(), new_bytes) {
+        return Ok(false);
+    }
+    write_bytes_with_mode_if_changed(path, new_bytes, 0o600)
 }
 
 /// Compute lowercase SHA-256 hex digest of a byte slice.

@@ -129,7 +129,7 @@ function getServerItems(
     getPortConflictItem(item),
     {
       state:
-        item.firewall_required === 0
+        item.firewall_required === 0 || item.firewall_open === -1
           ? 'warning'
           : item.firewall_open === 1
             ? 'success'
@@ -138,7 +138,9 @@ function getServerItems(
       value:
         item.firewall_required === 0
           ? _('Not required for this listen address')
-          : `${item.required_proto}/${Number(item.listen_port || 0)}`,
+          : item.firewall_open === -1
+            ? _('Firewall status unavailable')
+            : `${item.required_proto}/${Number(item.listen_port || 0)}`,
     },
     {
       state: item.routes_configured ? 'success' : 'warning',

@@ -1,6 +1,6 @@
 const MASKED_VALUE = '*******';
 
-const SING_BOX_MASKED_KEYS = new Set([
+const CORE_CONFIG_MASKED_KEYS = new Set([
   'auth_key',
   'auth_token',
   'access_token',
@@ -276,18 +276,18 @@ function maskMultilineContinuation(line: string) {
   return `${leadingSpace}${MASKED_VALUE}${hasClosingQuote ? "'" : ''}`;
 }
 
-export function maskSingBoxConfigValue(value: unknown): unknown {
+export function maskCoreConfigValue(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => maskSingBoxConfigValue(item));
+    return value.map((item) => maskCoreConfigValue(item));
   }
 
   if (isRecord(value)) {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        SING_BOX_MASKED_KEYS.has(key)
+        CORE_CONFIG_MASKED_KEYS.has(key)
           ? MASKED_VALUE
-          : maskSingBoxConfigValue(item),
+          : maskCoreConfigValue(item),
       ]),
     );
   }
@@ -295,20 +295,20 @@ export function maskSingBoxConfigValue(value: unknown): unknown {
   return value;
 }
 
-export function stringifySingBoxConfig(value: unknown) {
+export function stringifyCoreConfig(value: unknown) {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 }
 
-export function formatMaskedSingBoxConfig(value: unknown) {
+export function formatMaskedCoreConfig(value: unknown) {
   if (typeof value === 'string') {
     try {
-      return JSON.stringify(maskSingBoxConfigValue(JSON.parse(value)), null, 2);
+      return JSON.stringify(maskCoreConfigValue(JSON.parse(value)), null, 2);
     } catch (_error) {
       return value;
     }
   }
 
-  return JSON.stringify(maskSingBoxConfigValue(value), null, 2);
+  return JSON.stringify(maskCoreConfigValue(value), null, 2);
 }
 
 export function maskGlobalCheckText(text: string = '') {
@@ -352,7 +352,7 @@ export function maskGlobalCheckText(text: string = '') {
 }
 
 // Hostnames, addresses and URLs in syslog lines identify the user's provider
-// infrastructure (a node shows up as `host:port` in every sing-box dial/TLS
+// infrastructure (a node shows up as `host:port` in every tachyon-core dial/TLS
 // line) and the sites they browse. maskGlobalCheckText cannot help there: it
 // only rewrites UCI `option`/`list` tokens, and log lines have none.
 const LOG_URL = /[a-z][a-z0-9+.-]*:\/\/\S+/gi;

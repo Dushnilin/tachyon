@@ -158,10 +158,6 @@ function createMockElement(tag: string): any {
       const matchSingle = (node: any, s: string): boolean => {
         if (!node || typeof node !== 'object') return false;
         const trimmed = s.trim();
-        if (trimmed.startsWith(':scope > ')) {
-          if (node.parentElement !== el) return false;
-          return matchSingle(node, trimmed.slice(9));
-        }
         if (trimmed.includes(' > ')) {
           const parts = trimmed.split(/\s*>\s*/);
           const last = parts[parts.length - 1];
@@ -297,6 +293,7 @@ import {
 } from '../appShell';
 import { openConnectionWizardModal } from '../connectionWizard';
 import { store } from '../services/store.service';
+import { switchToServersTab } from '../tabs/dashboard/inboundServers';
 
 describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
   beforeEach(() => {
@@ -763,5 +760,164 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ direction: 'outbound' }),
     );
+  });
+
+  it('renders mobile hamburger toggle and expandable submenus when top-bar mode is viewed on mobile', () => {
+    setUiMode('advanced');
+    setSidebarPos('top');
+    const E = (globalThis as any).E;
+    const prevMatchMedia = (globalThis.window as any)?.matchMedia;
+    (globalThis.window as any).matchMedia = (query: string) => ({
+      matches: query.includes('860px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+
+    try {
+      const mapEl = E('div', { id: 'cbi-tachyon' }, [
+        E('ul', { class: 'cbi-tabmenu' }, [
+          E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+            E('a', { href: '#' }, 'Dashboard'),
+          ]),
+          E('li', { class: 'cbi-tab-disabled', 'data-tab': 'section' }, [
+            E('a', { href: '#' }, 'Sections'),
+          ]),
+          E('li', { class: 'cbi-tab-disabled', 'data-tab': 'sources' }, [
+            E('a', { href: '#' }, 'Sources'),
+          ]),
+        ]),
+        E('div', {
+          id: 'cbi-tachyon-dashboard',
+          class: 'cbi-section cbi-tab',
+        }),
+        E('div', {
+          id: 'cbi-tachyon-section',
+          class: 'cbi-section cbi-tab-disabled',
+        }),
+        E('div', {
+          id: 'cbi-tachyon-sources',
+          class: 'cbi-section cbi-tab-disabled',
+        }),
+      ]);
+      (globalThis as any).document.body.appendChild(mapEl);
+      mountTachyonAppShell({
+        mapEl,
+        defaultNavKey: 'dashboard',
+      });
+
+      const sidebarEl = mapEl.querySelector('.tachyon-sidebar');
+      const mobileToggle = mapEl.querySelector(
+        '.tachyon-sidebar__mobile-toggle',
+      );
+      expect(mobileToggle).toBeTruthy();
+      expect(mobileToggle.getAttribute('aria-expanded')).toBe('false');
+
+      // Submenus ARE rendered on compact mobile viewport even in top-bar mode
+      expect(
+        mapEl.querySelectorAll('.tachyon-sidebar__submenu').length,
+      ).toBeGreaterThan(0);
+
+      // Opening hamburger menu sets is-mobile-open, data-mobile-menu-open="true", and flips aria-expanded
+      mobileToggle.click();
+      expect(sidebarEl.className).toContain('is-mobile-open');
+      expect(mapEl.getAttribute('data-mobile-menu-open')).toBe('true');
+
+      const openedToggle = mapEl.querySelector(
+        '.tachyon-sidebar__mobile-toggle',
+      );
+      expect(openedToggle.getAttribute('aria-expanded')).toBe('true');
+
+      // Clicking a parent menu expands its submenu instead of leaving the drawer immediately
+      const routingParent = mapEl
+        .querySelectorAll('.tachyon-sidebar__nav-parent')
+        .find((btn: any) => btn.getAttribute('data-parent-menu') === 'routing');
+      expect(routingParent).toBeTruthy();
+      routingParent.click();
+      expect(sidebarEl.className).toContain('is-mobile-open');
+
+      // Clicking a leaf subitem navigates and closes mobile drawer
+      const sectionSubItem = mapEl
+        .querySelectorAll('.tachyon-sidebar__subitem')
+        .find(
+          (btn: any) => btn.getAttribute('data-nav-key') === 'section:sections',
+        );
+      expect(sectionSubItem).toBeTruthy();
+      sectionSubItem.click();
+      expect(sidebarEl.className).not.toContain('is-mobile-open');
+      expect(mapEl.getAttribute('data-mobile-menu-open')).toBe('false');
+    } finally {
+      if (prevMatchMedia === undefined) {
+        delete (globalThis.window as any).matchMedia;
+      } else {
+        (globalThis.window as any).matchMedia = prevMatchMedia;
+      }
+    }
+  });
+
+  it('reveals #cbi-tachyon-server via switchToServersTab even when show_tab_servers is off', () => {
+    const E = (globalThis as any).E;
+    let tabLinkClicked = false;
+    const serverLi = E(
+      'li',
+      { class: 'cbi-tab-disabled', 'data-tab': 'server' },
+      [
+        E(
+          'a',
+          {
+            href: '#',
+            click: () => {
+              tabLinkClicked = true;
+            },
+          },
+          'Servers',
+        ),
+      ],
+    );
+    const dashboardSec = E('div', {
+      id: 'cbi-tachyon-dashboard',
+      class: 'cbi-section cbi-tab',
+    });
+    const serverSec = E('div', {
+      id: 'cbi-tachyon-server',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        serverLi,
+      ]),
+      dashboardSec,
+      serverSec,
+    ]);
+    (globalThis as any).uci = {
+      sections: () => [],
+      get: () => undefined,
+    };
+
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+      isTabVisible: (id) => id !== 'server',
+    });
+
+    // Server item must not be rendered in sidebar while show_tab_servers is off
+    expect(
+      mapEl
+        .querySelectorAll('.tachyon-sidebar__subitem')
+        .find((el: any) => el.getAttribute('data-nav-key') === 'server'),
+    ).toBeUndefined();
+    expect(serverSec.style.display).toBe('none !important');
+    expect(dashboardSec.style.display || '').toBe('');
+
+    const switched = switchToServersTab();
+    expect(switched).toBe(true);
+    expect(tabLinkClicked).toBe(true);
+    expect(serverSec.style.display || '').toBe('');
+    expect(serverSec.getAttribute('data-tab-active')).toBe('true');
+    expect(dashboardSec.style.display).toBe('none !important');
+    expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
   });
 });

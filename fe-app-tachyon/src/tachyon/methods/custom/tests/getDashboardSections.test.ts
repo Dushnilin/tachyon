@@ -453,7 +453,7 @@ describe('getDashboardSections', () => {
     expect(urltest?.urlTestInfo?.selectedName).toBe('Third server');
   });
 
-  it('keeps an empty configured URLTest visible when sing-box skipped the group', async () => {
+  it('keeps an empty configured URLTest visible when tachyon-core skipped the group', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({
         urltest_settings: urlTestSettings('urltest', {
@@ -629,7 +629,7 @@ describe('getDashboardSections', () => {
     ]);
   });
 
-  it('keeps an empty Priority group visible when sing-box skipped the selector', async () => {
+  it('keeps an empty Priority group visible when tachyon-core skipped the selector', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({
         selector_proxy_links: [],
@@ -1202,14 +1202,14 @@ describe('getDashboardSections', () => {
     });
   });
 
-  it('exposes ByeDPI sections on the dashboard as service cards', async () => {
+  it('exposes Desync sections on the dashboard as service cards', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection(),
       {
         '.name': 'dpi',
         '.type': 'section',
         enabled: '1',
-        action: 'byedpi',
+        action: 'desync',
       },
     ]);
     mocks.getClashApiProxies.mockResolvedValue({
@@ -1572,8 +1572,8 @@ describe('getDashboardSections', () => {
       proxySection(),
       proxySection({ '.name': 'other' }),
     ]);
-    // The runtime writes a flat { section: reason } map when sing-box rejects a
-    // section and init-config quarantines it; a missing file means every
+    // The runtime writes a flat { section: reason } map when tachyon-core rejects
+    // a section and init-config quarantines it; a missing file means every
     // section loaded fine.
     mocks.fsRead.mockImplementation((path: string) =>
       path.includes('section-errors')
@@ -1829,7 +1829,7 @@ describe('getDashboardSections', () => {
         dns_server: 'https://dns.dns-ai.ru/dns-query',
       },
       {
-        '.name': 'Zapret2',
+        '.name': 'Youtube_Desync',
         '.type': 'section',
         enabled: '1',
         label: 'Youtube',
@@ -1859,7 +1859,7 @@ describe('getDashboardSections', () => {
       'ByPass',
       'YandexDns',
       'XboxDns',
-      'Zapret2',
+      'Youtube_Desync',
       'Discord',
       'Main',
     ]);
@@ -1933,7 +1933,7 @@ describe('getDashboardSections', () => {
         '.name': 'grp_migrated_main',
         '.type': 'outbound_group',
         enabled: '1',
-        source_refs: ['src_sub_1', 'src_links_main'],
+        source_refs: ['*'],
       },
       {
         '.name': 'bal_fastest',
@@ -1955,6 +1955,111 @@ describe('getDashboardSections', () => {
     expect(result.success).toBe(true);
     expect(result.data[0].subscriptionSourceCount).toBe(0);
     expect(result.data[0].subscriptionMetadata).toBeUndefined();
+  });
+
+  it('includes secondary subscription from explicit outbound_group_refs, subscription_urls array, and resolves sel-{sec} + base64 headers', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'Main',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['sub_1'],
+        outbound_group_refs: ['grp_sub_2'],
+      },
+      {
+        '.name': 'sub_1',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Primary',
+        url: 'https://sub1.example/sub',
+      },
+      {
+        '.name': 'sub_2',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Secondary',
+        subscription_urls: ['https://sub2.example/sub'],
+      },
+      {
+        '.name': 'grp_sub_2',
+        '.type': 'outbound_group',
+        enabled: '1',
+        source_refs: ['sub_2'],
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'sel-Main': {
+            name: 'sel-Main',
+            type: 'Selector',
+            all: ['node-1', 'node-2'],
+            now: 'node-2',
+            history: [],
+            udp: true,
+          },
+          'node-1': {
+            name: 'node-1',
+            type: 'VLESS',
+            history: [{ delay: 40 }],
+            udp: true,
+          },
+          'node-2': {
+            name: 'node-2',
+            type: 'VLESS',
+            history: [{ delay: 55 }],
+            udp: true,
+          },
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'node-1': 'DE 1', 'node-2': 'FI 2' },
+          sources: { 'node-1': 'sub_1', 'node-2': 'sub_2' },
+          source_ids: { 'node-1': 'sub_1', 'node-2': 'sub_2' },
+        },
+        subscriptionMetadata: [
+          {
+            sourceId: 'sub_1',
+            sourceSection: 'Main-subscription-1',
+            sourceIndex: 1,
+            title: 'Primary',
+            nodeCount: 1,
+          },
+          {
+            sourceId: 'sub_2',
+            sourceSection: 'Main-subscription-2',
+            sourceIndex: 2,
+            title: 'base64:U3RyZXNzS1ZO',
+            announce: 'base64:SGVsbG8=',
+            nodeCount: 1,
+          },
+        ],
+      }),
+    );
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].code).toBe('sel-Main');
+    expect(result.data[0].subscriptionSourceCount).toBe(2);
+    expect(result.data[0].subscriptionMetadata?.length).toBe(2);
+    expect(result.data[0].subscriptionMetadata?.[1].title).toBe('StressKVN');
+    expect(result.data[0].subscriptionMetadata?.[1].announce).toBe('Hello');
+    expect(
+      result.data[0].outbounds.find((o) => o.code === 'node-1')?.sourceGroup,
+    ).toBe('sub:1');
+    expect(
+      result.data[0].outbounds.find((o) => o.code === 'node-2')?.sourceGroup,
+    ).toBe('sub:2');
+    expect(
+      result.data[0].outbounds.find((o) => o.code === 'node-2')?.selected,
+    ).toBe(true);
   });
 
   it('keeps an unprobed secondary subscription in a Priority balancer visible under hide_na_servers until it is probed (#357)', async () => {
@@ -2215,5 +2320,342 @@ describe('getDashboardSections', () => {
         ?.latency,
     ).toBe(34);
     expect(activeNodeCard?.latency).toBe(34);
+  });
+
+  it('ignores stale inline outbound_jsons and proxy_links when modular outbound_source_refs are attached', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'xhttp_443',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'xhttp 443',
+        source_type: 'subscription',
+        url: 'https://sub.example.com/api/v1/sub',
+        proxy_links: [
+          'vless://11111111-1111-4111-8111-111111111111@stale.example:443#StaleSourceLink',
+        ],
+      } as Tachyon.ConfigSection,
+      proxySection({
+        '.name': 'main',
+        outbound_source_refs: ['xhttp_443'],
+        selector_proxy_links: [
+          'vless://22222222-2222-4222-8222-222222222222@stale-inline.example:443#StaleInlineLink',
+        ],
+        outbound_jsons: [
+          '{"type":"vless","tag":"stale-json-out","server":"stale-json.example","server_port":443,"uuid":"33333333-3333-4333-8333-333333333333"}',
+        ],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: false,
+      message: 'core starting',
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const codes = section.outbounds.map((o) => o.code);
+    const names = section.outbounds.map((o) => o.displayName);
+    expect(codes).not.toContain('stale-json-out');
+    expect(names).not.toContain('StaleSourceLink');
+    expect(names).not.toContain('StaleInlineLink');
+  });
+
+  it('propagates hidden flags on sections, subscriptions, and manual outbound_source entries (#405)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'sub_hidden',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '1',
+        name: 'Hidden Sub',
+        source_type: 'subscription',
+        url: 'https://hidden.example.com/sub',
+      } as Tachyon.ConfigSection,
+      {
+        '.name': 'sub_visible',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '0',
+        name: 'Visible Sub',
+        source_type: 'subscription',
+        url: 'https://visible.example.com/sub',
+      } as Tachyon.ConfigSection,
+      {
+        '.name': 'manual_hidden',
+        '.type': 'outbound_source',
+        enabled: '1',
+        hidden: '1',
+        name: 'Hidden Manual',
+        source_type: 'proxy_links',
+        proxy_links: [
+          'vless://11111111-1111-4111-8111-111111111111@198.51.100.47:443#HiddenNode',
+        ],
+      } as Tachyon.ConfigSection,
+      proxySection({
+        '.name': 'mixed_sec',
+        outbound_source_refs: ['sub_hidden', 'sub_visible', 'manual_hidden'],
+      }),
+      proxySection({
+        '.name': 'solo_hidden_source_sec',
+        outbound_source_refs: ['sub_hidden'],
+      }),
+      proxySection({
+        '.name': 'explicit_hidden_sec',
+        hidden: '1',
+        outbound_source_refs: ['sub_visible'],
+      }),
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'mixed_sec-out': {
+            type: 'Selector',
+            name: 'mixed_sec-out',
+            now: 'vis-node',
+            all: ['hid-sub-node', 'vis-node', 'hid-manual-node'],
+            history: [],
+          },
+          'solo_hidden_source_sec-out': {
+            type: 'Selector',
+            name: 'solo_hidden_source_sec-out',
+            now: 'solo-hid-node',
+            all: ['solo-hid-node'],
+            history: [],
+          },
+          'explicit_hidden_sec-out': {
+            type: 'Selector',
+            name: 'explicit_hidden_sec-out',
+            now: 'exp-vis-node',
+            all: ['exp-vis-node'],
+            history: [],
+          },
+          'hid-sub-node': {
+            type: 'VLESS',
+            name: 'hid-sub-node',
+            history: [{ delay: 30 }],
+          },
+          'vis-node': {
+            type: 'VLESS',
+            name: 'vis-node',
+            history: [{ delay: 20 }],
+          },
+          'hid-manual-node': {
+            type: 'VLESS',
+            name: 'hid-manual-node',
+            history: [{ delay: 40 }],
+          },
+          'solo-hid-node': {
+            type: 'VLESS',
+            name: 'solo-hid-node',
+            history: [{ delay: 35 }],
+          },
+          'exp-vis-node': {
+            type: 'VLESS',
+            name: 'exp-vis-node',
+            history: [{ delay: 25 }],
+          },
+        },
+      },
+    });
+
+    mocks.fsRead.mockImplementation(async (filePath: string) => {
+      if (filePath.includes('mixed_sec')) {
+        return JSON.stringify({
+          outboundMetadata: {
+            names: {
+              'hid-sub-node': 'Hidden Sub Node',
+              'vis-node': 'Visible Sub Node',
+              'hid-manual-node': 'HiddenNode',
+            },
+            sources: {
+              'hid-sub-node': 'sub:1',
+              'vis-node': 'sub:2',
+              'hid-manual-node': 'manual',
+            },
+            source_ids: {
+              'hid-sub-node': 'sub_hidden',
+              'vis-node': 'sub_visible',
+              'hid-manual-node': 'manual_hidden',
+            },
+          },
+          subscriptionMetadata: [
+            {
+              title: 'Hidden Sub',
+              sourceIndex: 1,
+              sourceSection: 'mixed_sec-subscription-1',
+            },
+            {
+              title: 'Visible Sub',
+              sourceIndex: 2,
+              sourceSection: 'mixed_sec-subscription-2',
+            },
+          ],
+        });
+      }
+      throw new Error('cache miss');
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+
+    const mixed = result.data.find((s) => s.sectionName === 'mixed_sec');
+    const solo = result.data.find(
+      (s) => s.sectionName === 'solo_hidden_source_sec',
+    );
+    const explicit = result.data.find(
+      (s) => s.sectionName === 'explicit_hidden_sec',
+    );
+
+    expect(mixed?.hidden).toBeUndefined();
+    expect(solo?.hidden).toBe(true);
+    expect(explicit?.hidden).toBe(true);
+
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'hid-sub-node')?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'hid-manual-node')?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.outbounds.find((o) => o.code === 'vis-node')?.hidden,
+    ).toBeUndefined();
+
+    expect(
+      mixed?.subscriptionMetadata?.find((m) => m.sourceIndex === 1)?.hidden,
+    ).toBe(true);
+    expect(
+      mixed?.subscriptionMetadata?.find((m) => m.sourceIndex === 2)?.hidden,
+    ).toBeUndefined();
+  });
+
+  it('hydrates connection sections with source_type=csqtt and native source_type=wdtt, and renders standalone action=csqtt / action=wdtt', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'Main_Route',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        label: 'Main Route',
+        section_selection_mode: 'priority_failover',
+        outbound_source_refs: ['src_csqtt', 'src_wdtt', 'src_tt'],
+      },
+      {
+        '.name': 'Direct_WDTT',
+        '.type': 'section',
+        enabled: '1',
+        action: 'wdtt',
+        label: 'Direct WDTT',
+        warp_flow_uri: 'wdtt://example',
+      },
+      {
+        '.name': 'Direct_CSQTT',
+        '.type': 'section',
+        enabled: '1',
+        action: 'csqtt',
+        label: 'Direct CSQTT',
+        csqtt_server: 'vk.example.com',
+        csqtt_server_port: '46000',
+      },
+      {
+        '.name': 'src_csqtt',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'CSQTT Primary',
+        source_type: 'csqtt',
+        csqtt_server: 'vk.example.com',
+      },
+      {
+        '.name': 'src_wdtt',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'WDTT Native',
+        source_type: 'wdtt',
+        warp_flow_uri: 'csqtt://connect?v=2&host=example.com',
+      },
+      {
+        '.name': 'src_tt',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'TrustTunnel Backup',
+        source_type: 'trusttunnel',
+        server: 'tt.example.com',
+      },
+    ]);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Main_Route-out': proxy('Selector', {
+            name: 'Main_Route-out',
+            now: 'CSQTT Primary',
+            all: ['CSQTT Primary', 'WDTT Native', 'TrustTunnel Backup'],
+          }),
+          'CSQTT Primary': proxy('wdtt', {
+            name: 'CSQTT Primary',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 42 }],
+          }),
+          'WDTT Native': proxy('wdtt', {
+            name: 'WDTT Native',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 55 }],
+          }),
+          'TrustTunnel Backup': proxy('trusttunnel', {
+            name: 'TrustTunnel Backup',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 80 }],
+          }),
+          'Direct_CSQTT-out': proxy('wdtt', {
+            name: 'Direct_CSQTT-out',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 33 }],
+          }),
+          'Direct_WDTT-out': proxy('wdtt', {
+            name: 'Direct_WDTT-out',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 44 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+
+    const mainRoute = result.data.find((s) => s.sectionName === 'Main_Route');
+    expect(mainRoute).toBeDefined();
+    expect(mainRoute?.action).toBe('connection');
+    expect(mainRoute?.outbounds.map((o) => [o.displayName, o.type])).toEqual([
+      ['CSQTT Primary', 'WDTT'],
+      ['WDTT Native', 'WDTT'],
+      ['TrustTunnel Backup', 'TrustTunnel'],
+    ]);
+
+    // When Clash API has no proxy entry yet, direct csqtt outbound_source falls back to ACTION_DISPLAY_NAMES['csqtt'] = 'CSQTT'
+    mocks.getClashApiProxies.mockResolvedValueOnce({
+      success: true,
+      data: { proxies: {} },
+    });
+    const fallbackResult = await getDashboardSections();
+    const fallbackMain = fallbackResult.data.find(
+      (s) => s.sectionName === 'Main_Route',
+    );
+    expect(fallbackMain?.outbounds[0]?.displayName).toBe('CSQTT Primary');
+    expect(fallbackMain?.outbounds[0]?.type).toBe('CSQTT');
+
+    const directWdtt = result.data.find((s) => s.sectionName === 'Direct_WDTT');
+    expect(directWdtt).toBeDefined();
+    expect(directWdtt?.action).toBe('wdtt');
+    expect(directWdtt?.outbounds[0]?.displayName).toBe('Direct WDTT');
+    expect(directWdtt?.outbounds[0]?.type).toBe('WDTT');
+    expect(directWdtt?.outbounds[0]?.latency).toBe(44);
+
+    const directCsqtt = result.data.find(
+      (s) => s.sectionName === 'Direct_CSQTT',
+    );
+    expect(directCsqtt).toBeDefined();
+    expect(directCsqtt?.action).toBe('csqtt');
+    expect(directCsqtt?.outbounds[0]?.displayName).toBe('Direct CSQTT');
+    expect(directCsqtt?.outbounds[0]?.type).toBe('CSQTT');
+    expect(directCsqtt?.outbounds[0]?.latency).toBe(33);
   });
 });

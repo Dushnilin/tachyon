@@ -6,14 +6,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-static UPLOAD_SEQ: AtomicU64 = AtomicU64::new(0);
+static UPLOAD_SEQ: crate::store::PortableAtomicU64 = crate::store::PortableAtomicU64::new(0);
 
 const TELEGRAM_MAX_MESSAGE_CHARS: usize = 3800;
 const TELEGRAM_MAX_CAPTION_CHARS: usize = 1000;
@@ -410,12 +410,15 @@ pub(crate) async fn curl_telegram_api(
     json_body: Option<&str>,
     timeout_secs: u64,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<Vec<u8>> {
-    if let Some(px) = proxy_url.map(str::trim).filter(|s| !s.is_empty())
-        && let Ok(res) = curl_telegram_api_once(url, json_body, timeout_secs, Some(px)).await
-        && !res.is_empty()
-    {
-        return Ok(res);
+    if let Some(px) = proxy_url.map(str::trim).filter(|s| !s.is_empty()) {
+        match curl_telegram_api_once(url, json_body, timeout_secs, Some(px)).await {
+            Ok(res) if !res.is_empty() => return Ok(res),
+            Ok(_) if !direct_fallback => anyhow::bail!("Empty Telegram API response via proxy"),
+            Err(e) if !direct_fallback => return Err(e),
+            Ok(_) | Err(_) => {}
+        }
     }
     curl_telegram_api_once(url, json_body, timeout_secs, None).await
 }
@@ -466,6 +469,7 @@ async fn send_single_chunk(
     keyboard: Option<&Value>,
     disable_notification: bool,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<()> {
     let mut body = json!({
         "chat_id": chat_id,
@@ -479,7 +483,8 @@ async fn send_single_chunk(
     if let Some(kb) = keyboard {
         body["reply_markup"] = kb.clone();
     }
-    let raw = curl_telegram_api(url, Some(&body.to_string()), 10, proxy_url).await?;
+    let raw =
+        curl_telegram_api(url, Some(&body.to_string()), 10, proxy_url, direct_fallback).await?;
     let val: Value = serde_json::from_slice(&raw)?;
     if val.get("ok").and_then(Value::as_bool) == Some(true) {
         return Ok(());
@@ -500,8 +505,14 @@ async fn send_single_chunk(
         if let Some(kb) = keyboard {
             plain_body["reply_markup"] = kb.clone();
         }
-        let raw_plain =
-            curl_telegram_api(url, Some(&plain_body.to_string()), 10, proxy_url).await?;
+        let raw_plain = curl_telegram_api(
+            url,
+            Some(&plain_body.to_string()),
+            10,
+            proxy_url,
+            direct_fallback,
+        )
+        .await?;
         let val_plain: Value = serde_json::from_slice(&raw_plain)?;
         if val_plain.get("ok").and_then(Value::as_bool) == Some(true) {
             return Ok(());
@@ -517,6 +528,7 @@ pub(crate) async fn send_tg_message(
     keyboard: Option<&Value>,
     disable_notification: bool,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<()> {
     let clean = token.trim();
     if clean.is_empty() {
@@ -527,7 +539,16 @@ pub(crate) async fn send_tg_message(
     let last_idx = chunks.len().saturating_sub(1);
     for (idx, chunk) in chunks.iter().enumerate() {
         let kb = if idx == last_idx { keyboard } else { None };
-        send_single_chunk(&url, chat_id, chunk, kb, disable_notification, proxy_url).await?;
+        send_single_chunk(
+            &url,
+            chat_id,
+            chunk,
+            kb,
+            disable_notification,
+            proxy_url,
+            direct_fallback,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -539,6 +560,7 @@ pub(crate) async fn edit_tg_message(
     text: &str,
     keyboard: Option<&Value>,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<()> {
     let clean = token.trim();
     if clean.is_empty() {
@@ -546,7 +568,16 @@ pub(crate) async fn edit_tg_message(
     }
     let chunks = split_long_html_message(text, TELEGRAM_MAX_MESSAGE_CHARS);
     if chunks.len() != 1 {
-        return send_tg_message(clean, chat_id, text, keyboard, false, proxy_url).await;
+        return send_tg_message(
+            clean,
+            chat_id,
+            text,
+            keyboard,
+            false,
+            proxy_url,
+            direct_fallback,
+        )
+        .await;
     }
 
     let url = format!("https://api.telegram.org/bot{clean}/editMessageText");
@@ -561,7 +592,8 @@ pub(crate) async fn edit_tg_message(
         body["reply_markup"] = kb.clone();
     }
 
-    if let Ok(raw) = curl_telegram_api(&url, Some(&body.to_string()), 8, proxy_url).await
+    if let Ok(raw) =
+        curl_telegram_api(&url, Some(&body.to_string()), 8, proxy_url, direct_fallback).await
         && let Ok(val) = serde_json::from_slice::<Value>(&raw)
     {
         if val.get("ok").and_then(Value::as_bool) == Some(true) {
@@ -576,7 +608,16 @@ pub(crate) async fn edit_tg_message(
         }
     }
 
-    send_tg_message(clean, chat_id, text, keyboard, false, proxy_url).await
+    send_tg_message(
+        clean,
+        chat_id,
+        text,
+        keyboard,
+        false,
+        proxy_url,
+        direct_fallback,
+    )
+    .await
 }
 
 pub(crate) async fn answer_callback_query(
@@ -584,6 +625,7 @@ pub(crate) async fn answer_callback_query(
     callback_query_id: &str,
     text: Option<&str>,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) {
     let clean = token.trim();
     if clean.is_empty() || callback_query_id.trim().is_empty() {
@@ -596,7 +638,7 @@ pub(crate) async fn answer_callback_query(
     if let Some(msg) = text.filter(|s| !s.trim().is_empty()) {
         body["text"] = json!(truncate_chars_with_ellipsis(msg, 180));
     }
-    let _ = curl_telegram_api(&url, Some(&body.to_string()), 5, proxy_url).await;
+    let _ = curl_telegram_api(&url, Some(&body.to_string()), 5, proxy_url, direct_fallback).await;
 }
 
 pub(crate) struct TgDocument<'a> {
@@ -678,6 +720,7 @@ pub(crate) async fn send_tg_document(
     chat_id: i64,
     doc: &TgDocument<'_>,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<()> {
     let clean = token.trim();
     if clean.is_empty() {
@@ -715,7 +758,12 @@ pub(crate) async fn send_tg_document(
         };
         match send_tg_document_once(&via_proxy).await {
             Ok(b) => b,
-            Err(_) => send_tg_document_once(&base_attempt).await?,
+            Err(e) => {
+                if !direct_fallback {
+                    return Err(e);
+                }
+                send_tg_document_once(&base_attempt).await?
+            }
         }
     } else {
         send_tg_document_once(&base_attempt).await?
@@ -736,6 +784,7 @@ pub(crate) async fn register_bot_commands(
     token: &str,
     ru: bool,
     proxy_url: Option<&str>,
+    direct_fallback: bool,
 ) -> anyhow::Result<()> {
     let clean = token.trim();
     if clean.is_empty() {
@@ -758,6 +807,8 @@ pub(crate) async fn register_bot_commands(
                 {"command": "updates", "description": "Обновления компонентов и списков"},
                 {"command": "snapshots", "description": "Снапшоты и перенос конфигурации"},
                 {"command": "restart", "description": "Перезапуск tachyon-core"},
+                {"command": "toggles", "description": "Быстрые переключатели опций"},
+                {"command": "notify", "description": "Настройки уведомлений"},
                 {"command": "bot_settings", "description": "Настройки Telegram-бота"},
                 {"command": "cancel", "description": "Отменить текущий ввод"}
             ]
@@ -779,13 +830,16 @@ pub(crate) async fn register_bot_commands(
                 {"command": "updates", "description": "Component and rule list updates"},
                 {"command": "snapshots", "description": "Snapshots and transfer codes"},
                 {"command": "restart", "description": "Reload tachyon-core"},
+                {"command": "toggles", "description": "Quick feature toggles"},
+                {"command": "notify", "description": "Notification filters"},
                 {"command": "bot_settings", "description": "Telegram bot settings"},
                 {"command": "cancel", "description": "Cancel active input"}
             ]
         })
     };
     let url = format!("https://api.telegram.org/bot{clean}/setMyCommands");
-    let raw = curl_telegram_api(&url, Some(&cmds.to_string()), 8, proxy_url).await?;
+    let raw =
+        curl_telegram_api(&url, Some(&cmds.to_string()), 8, proxy_url, direct_fallback).await?;
     let val: Value = serde_json::from_slice(&raw)?;
     if val.get("ok").and_then(Value::as_bool) == Some(true) {
         Ok(())

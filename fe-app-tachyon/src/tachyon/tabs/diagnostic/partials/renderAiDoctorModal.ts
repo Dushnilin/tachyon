@@ -30,7 +30,6 @@ export interface AiDoctorModalOptions {
   quickFixes?: string[];
   backendNodes?: Array<{ name: string; status: 'OK' | 'WARN' | 'FAIL' }> | null;
   onRefreshServices?: () => Promise<void>;
-  isTachyonCore?: boolean;
 }
 
 const AI_DOCTOR_HISTORY_STORAGE_KEY = 'tachyon_ai_doctor_history';
@@ -58,12 +57,13 @@ export function saveAiDoctorHistory(entry: AiDoctorHistoryEntry): void {
 }
 
 export const FIX_LABELS: Record<string, string> = {
-  start_singbox: _('Start sing-box'),
+  doctor_fix: _('Auto-repair config & IPv6 rules (doctor --fix)'),
+  start_tachyon_core: _('Start Tachyon Core'),
   rebuild_rules: _('Rebuild firewall rules'),
   fix_dnsmasq: _('Restart dnsmasq'),
   fix_resolv_symlink: _('Fix resolv.conf'),
   start_watchdog: _('Start watchdog'),
-  restart_singbox_dns: _('Restart sing-box DNS'),
+  restart_tachyon_core_dns: _('Restart Tachyon Core DNS'),
   fix_uci_config: _('Restore config backup'),
   fix_wan_interface: _('Reconnect WAN'),
   fix_gateway: _('Resolve gateway'),
@@ -71,7 +71,6 @@ export const FIX_LABELS: Record<string, string> = {
   update_subscriptions: _('Update subscriptions'),
   reset_firewall: _('Restart firewall'),
   restart_network: _('Restart network'),
-  restart_zapret: _('Restart Zapret/ByeDPI'),
   optimize_memory: _('Optimize RAM memory'),
   switch_to_doh: _('Switch DNS to DoH'),
   heal_network_stack: _('Auto-Heal Network Stack'),
@@ -83,11 +82,7 @@ export const FIX_LABELS: Record<string, string> = {
   optimize_mtu: _('Optimize AWG MTU'),
 };
 
-export function getFixLabel(code: string, isTachyonCore?: boolean): string {
-  if (isTachyonCore) {
-    if (code === 'start_singbox') return _('Start Tachyon Core');
-    if (code === 'restart_singbox_dns') return _('Restart Tachyon Core DNS');
-  }
+export function getFixLabel(code: string): string {
   return FIX_LABELS[code] || code;
 }
 
@@ -168,10 +163,9 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
           : ('OK' as const),
     },
     {
-      name: options.isTachyonCore ? 'Tachyon Core' : 'sing-box',
+      name: 'Tachyon Core',
       status:
-        (repLower.includes('sing-box') ||
-          repLower.includes('tachyon-core') ||
+        (repLower.includes('tachyon-core') ||
           repLower.includes('tachyon core') ||
           repLower.includes('proxy')) &&
         (repLower.includes('остановлен') ||
@@ -240,9 +234,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
     const nodeSummary = nodes.map((n) => `${n.name}: ${n.status}`).join(' | ');
     const fixesSummary =
       quickFixes.length > 0
-        ? quickFixes
-            .map((f) => getFixLabel(f, options.isTachyonCore))
-            .join(', ')
+        ? quickFixes.map((f) => getFixLabel(f)).join(', ')
         : _('None');
     const clientsSummary =
       currentClients.length > 0
@@ -363,10 +355,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                 },
                 quickFixes.map((code) => {
                   let applied = false;
-                  const friendlyLabel = getFixLabel(
-                    code,
-                    options.isTachyonCore,
-                  );
+                  const friendlyLabel = getFixLabel(code);
                   const btn = renderButton({
                     classNames: ['cbi-button-apply'],
                     text: friendlyLabel,

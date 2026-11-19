@@ -12,3 +12,4 @@ export * from './insertIf';
 export * from './isCopyableProxyLink';
 export * from './formatOutboundType';
 export * from './getProxyUrlTransport';
+export * from './decodeSubHeader';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AI_PRESET_KEYS,
   COMMUNITY_LIST_SUPERSETS,
   getSubsumedCommunityLists,
 } from '../communityListPicker';
@@ -45,5 +46,18 @@ describe('getSubsumedCommunityLists', () => {
     expect(result.get('ru_only_inside')).toEqual(['ru_domains']);
     expect(COMMUNITY_LIST_SUPERSETS.twitch).toEqual(['twitch_ads']);
     expect(COMMUNITY_LIST_SUPERSETS.ru_blocked_all).toEqual(['antifilter']);
+  });
+
+  it('includes google_services alongside ai_all and google_ai in AI preset and covers kimi/qwen under ai_all', () => {
+    expect([...AI_PRESET_KEYS]).toEqual([
+      'ai_all',
+      'google_ai',
+      'google_services',
+    ]);
+    const result = getSubsumedCommunityLists([...AI_PRESET_KEYS]);
+    expect(result.get('kimi')).toEqual(['ai_all']);
+    expect(result.get('qwen')).toEqual(['ai_all']);
+    expect(result.has('google_services')).toBe(false);
+    expect(result.has('google_ai')).toBe(false);
   });
 });

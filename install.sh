@@ -22,6 +22,9 @@ PKG_FORMAT="auto"
 ARCH_OVERRIDE=""
 FORCE_REINSTALL=0
 SKIP_CORE=0
+PREPARED_CORE_BIN=""
+PREPARED_CORE_VER=""
+PREPARED_CORE_PKG=""
 
 CONNECT_TIMEOUT=15
 METADATA_TIMEOUT=60
@@ -68,7 +71,7 @@ Usage: $0 [options]
       --channel CH      Release channel: auto, stable, beta (default: auto)
       --prerelease      Include beta/rc releases (alias for --channel beta)
       --tag VERSION     Install exact tag (e.g. v2.0.0-beta.1 or v2.0.0)
-      --format FMT      Package format: auto, apk, ipk, tar (default: auto)
+      --format FMT      Package format: auto, apk, ipk (default: auto)
       --arch ARCH       Override target arch (x86_64, i386_pentium4, aarch64,
                         armv7, armv6, riscv64, mipsel, mips)
       --reinstall       Force package reinstall over existing files
@@ -101,13 +104,12 @@ while [ "$#" -gt 0 ]; do
             ;;
         --format)
             shift
-            [ "$#" -gt 0 ] || { err "--format requires auto, apk, ipk, or tar"; exit 2; }
+            [ "$#" -gt 0 ] || { err "--format requires auto, apk, or ipk"; exit 2; }
             case "$1" in
-                auto|apk|ipk|tar|tar.gz)
+                auto|apk|ipk)
                     PKG_FORMAT="$1"
-                    [ "$PKG_FORMAT" = "tar.gz" ] && PKG_FORMAT="tar"
                     ;;
-                *) err "Invalid --format value: $1 (expected auto, apk, ipk, or tar)"; exit 2 ;;
+                *) err "Invalid --format value: $1 (expected auto, apk, or ipk)"; exit 2 ;;
             esac
             ;;
         --arch)
@@ -271,7 +273,8 @@ resolve_pkg_format() {
     elif [ "$PKG_MANAGER" = "opkg" ]; then
         echo "ipk"
     else
-        echo "tar"
+        err "OpenWrt apk or opkg package manager not found; specify --format apk or --format ipk"
+        return 1
     fi
 }
 
@@ -307,6 +310,80 @@ install_system_deps() {
         # shellcheck disable=SC2086
         opkg install $_missing >>"$LOG_FILE" 2>&1 || warn "Some packages failed to install:${_missing}"
     fi
+}
+
+write_if_changed() {
+    _wic_path="$1"
+    _wic_content="$2"
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    _wic_dir="$(dirname "$_wic_path")"
+    [ -d "$_wic_dir" ] || mkdir -p "$_wic_dir" 2>/dev/null || return 1
+    _wic_tmp="${_wic_path}.tmp.$$"
+    printf '%s' "$_wic_content" >"$_wic_tmp" || { rm -f "$_wic_tmp" 2>/dev/null || true; return 1; }
+    if [ -f "$_wic_path" ] && cmp -s "$_wic_path" "$_wic_tmp" 2>/dev/null; then
+        rm -f "$_wic_tmp" 2>/dev/null || true
+        return 0
+    fi
+    mv -f "$_wic_tmp" "$_wic_path"
+}
+
+install_pkg_best_effort() {
+    _pkg="$1"
+    [ -n "$PKG_MANAGER" ] || return 1
+    pkg_installed "$_pkg" && return 0
+    if [ "$PKG_IS_APK" -eq 1 ]; then
+        apk add --no-cache "$_pkg" >>"$LOG_FILE" 2>&1 && return 0
+        apk update >/dev/null 2>&1 || true
+        apk add --no-cache "$_pkg" >>"$LOG_FILE" 2>&1 && return 0
+    elif [ "$PKG_MANAGER" = "opkg" ]; then
+        opkg install "$_pkg" >>"$LOG_FILE" 2>&1 && return 0
+        opkg update >/dev/null 2>&1 || true
+        opkg install "$_pkg" >>"$LOG_FILE" 2>&1 && return 0
+    fi
+    return 1
+}
+
+ensure_tcp_bbr_best_effort() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would probe/install kmod-tcp-bbr best-effort and configure TCP BBR if supported"
+        return 0
+    fi
+    _bbr_uci="1"
+    if command_exists uci; then
+        _bbr_uci="$(uci -q get tachyon.settings.tcp_bbr 2>/dev/null || echo '1')"
+    fi
+    [ "$_bbr_uci" = "0" ] && return 0
+
+    _avail_cc="${TACHYON_PROC_TCP_AVAIL_CC:-/proc/sys/net/ipv4/tcp_available_congestion_control}"
+    _conf_file="${TACHYON_SYSCTL_BBR_CONF:-/etc/sysctl.d/99-tachyon-bbr.conf}"
+
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        modprobe tcp_bbr >/dev/null 2>&1 || true
+    fi
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        if install_pkg_best_effort kmod-tcp-bbr; then
+            modprobe tcp_bbr >/dev/null 2>&1 || true
+        else
+            warn "kmod-tcp-bbr is unavailable for the current kernel; skipping kernel TCP BBR (userspace BBR remains active)"
+        fi
+    fi
+    if ! grep -qw bbr "$_avail_cc" 2>/dev/null; then
+        msg "Kernel TCP BBR is unavailable; skipping 99-tachyon-bbr.conf (userspace BBR remains active)"
+        return 0
+    fi
+
+    modprobe sch_fq >/dev/null 2>&1 || true
+    _qdisc="fq_codel"
+    if sysctl -w net.core.default_qdisc=fq >/dev/null 2>&1; then
+        _qdisc="fq"
+    else
+        sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1 || true
+    fi
+    sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+
+    _desired="$(printf 'net.core.default_qdisc=%s\nnet.ipv4.tcp_congestion_control=bbr\n' "$_qdisc")"
+    write_if_changed "$_conf_file" "$_desired" || warn "Could not write $_conf_file"
+    return 0
 }
 
 verify_sha256_file() {
@@ -431,7 +508,7 @@ resolve_tachyon_release_tag() {
         fi
     fi
 
-    _list_json="$(http_get "https://api.github.com/repos/${_repo}/releases?per_page=30" || true)"
+    _list_json="$(http_get "https://api.github.com/repos/${_repo}/releases?per_page=100" || true)"
     _tags=""
     if [ -n "$_list_json" ]; then
         _tags="$(printf '%s' "$_list_json" | parse_releases_json_tags || true)"
@@ -442,6 +519,46 @@ resolve_tachyon_release_tag() {
     fi
     [ -n "$_tags" ] || return 1
     pick_best_v2_tag "$_tags"
+}
+
+_timeout_cmd() {
+    if command_exists timeout; then
+        if timeout 1 /bin/true >/dev/null 2>&1; then
+            echo "timeout 15"
+            return 0
+        elif timeout -t 1 /bin/true >/dev/null 2>&1; then
+            echo "timeout -t 15"
+            return 0
+        fi
+    fi
+    echo ""
+}
+
+_kill_tachyon_init_waiters() {
+    __anc=" "
+    __p=$$
+    while [ -n "$__p" ] && [ "$__p" -gt 1 ] 2>/dev/null; do
+        __anc="$__anc$__p "
+        __p=$(awk '{ sub(/.*\) /, ""); print $2 }' "/proc/$__p/stat" 2>/dev/null || true)
+    done
+    for __pdir in /proc/[0-9]*; do
+        __pid="${__pdir##*/}"
+        case "$__anc" in *" $__pid "*) continue;; esac
+        if [ -r "$__pdir/cmdline" ]; then
+            __cmd="$(tr '\0' ' ' < "$__pdir/cmdline" 2>/dev/null || true)"
+            case "$__cmd" in
+                *99-tachyon-wan*|*"flock 1000"*|*"/etc/init.d/tachyon"*)
+                    kill -9 "$__pid" >/dev/null 2>&1 || true
+                    continue
+                    ;;
+            esac
+        fi
+        if [ -e "$__pdir/fd/1000" ]; then
+            case "$(readlink "$__pdir/fd/1000" 2>/dev/null || true)" in
+                *procd_tachyon*) kill -9 "$__pid" >/dev/null 2>&1 || true ;;
+            esac
+        fi
+    done
 }
 
 migrate_from_v1() {
@@ -458,6 +575,9 @@ migrate_from_v1() {
             break
         fi
     done
+    if [ "$_is_v1" -eq 0 ] && [ -x /usr/bin/tachyon ] && head -c 2 /usr/bin/tachyon 2>/dev/null | grep -q '^#!'; then
+        _is_v1=1
+    fi
 
     if [ "$_is_v1" -eq 0 ]; then
         return 0
@@ -471,19 +591,22 @@ migrate_from_v1() {
         ok "Backed up /etc/config/tachyon -> /etc/tachyon/backup-pre-2.0/tachyon.uci (kept for auto-import)"
     fi
 
+    _kill_tachyon_init_waiters
+    _to="$(_timeout_cmd)"
+    if [ -x /usr/bin/tachyon ]; then
+        $_to /usr/bin/tachyon stop >/dev/null 2>&1 || true
+    fi
     for _old_svc in \
         /etc/init.d/tachyon \
         /etc/init.d/tachyon-torrserver-direct \
-        /etc/init.d/tachyon-steer-zapret \
         /etc/init.d/tachyon-core
     do
         if [ -x "$_old_svc" ]; then
-            "$_old_svc" stop >/dev/null 2>&1 || true
+            $_to "$_old_svc" stop >/dev/null 2>&1 || true
             "$_old_svc" disable >/dev/null 2>&1 || true
         fi
     done
 
-    killall -9 sing-box nfqws nfqws2 ciadpi >/dev/null 2>&1 || true
     for p in /proc/[0-9]*; do
         [ -r "$p/cmdline" ] || continue
         case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
@@ -505,11 +628,74 @@ migrate_from_v1() {
     if command_exists nft; then
         nft delete table inet tachyon >/dev/null 2>&1 || true
         nft delete table inet TachyonTable >/dev/null 2>&1 || true
-        nft delete table inet steer >/dev/null 2>&1 || true
+        nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
         nft delete table ip tachyon >/dev/null 2>&1 || true
         nft delete table ip6 tachyon >/dev/null 2>&1 || true
     fi
-    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
+
+    if command_exists ip; then
+        for _p in 9499 9500 9501; do
+            for _fam in -4 -6; do
+                while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
+            done
+        done
+        for _fam in -4 -6; do
+            ip "$_fam" rule del fwmark 0x04000000/0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000/0x10000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000 lookup 100 >/dev/null 2>&1 || true
+        done
+    fi
+
+    if command_exists uci && [ -f /etc/config/dhcp ]; then
+        _dont_touch="$(uci -q get tachyon.settings.dont_touch_dhcp 2>/dev/null || echo '0')"
+        if [ "$_dont_touch" != "1" ]; then
+            _had_v1_dns=0
+            if uci -q get dhcp.@dnsmasq[0].server 2>/dev/null | grep -q '127\.0\.0\.42'; then
+                _had_v1_dns=1
+            fi
+            if [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_noresolv 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.@dnsmasq[0].tachyon_cachesize 2>/dev/null || true)" ] || \
+               [ -n "$(uci -q get dhcp.tachyon 2>/dev/null || true)" ]; then
+                _had_v1_dns=1
+            fi
+            uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.42" 2>/dev/null || true
+            _orig_servers="$(uci -q get dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true)"
+            if [ -n "$_orig_servers" ]; then
+                uci -q delete dhcp.@dnsmasq[0].server 2>/dev/null || true
+                for _srv in $_orig_servers; do
+                    [ "$_srv" != "127.0.0.42" ] && uci -q add_list dhcp.@dnsmasq[0].server="$_srv" 2>/dev/null || true
+                done
+                uci -q delete dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true
+            fi
+            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface serversfile localservice; do
+                _val="$(uci -q get "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true)"
+                if [ -n "$_val" ]; then
+                    if [ "$_val" = "__tachyon_unset__" ] || [ "$_val" = "__absent__" ] || [ "$_val" = "unset" ]; then
+                        uci -q delete "dhcp.@dnsmasq[0].${_opt}" 2>/dev/null || true
+                    else
+                        uci -q set "dhcp.@dnsmasq[0].${_opt}=${_val}" 2>/dev/null || true
+                    fi
+                    uci -q delete "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true
+                fi
+            done
+            if [ "$_had_v1_dns" -eq 1 ]; then
+                if [ "$(uci -q get dhcp.@dnsmasq[0].noresolv 2>/dev/null)" = "1" ]; then
+                    uci -q set dhcp.@dnsmasq[0].noresolv="0" 2>/dev/null || true
+                fi
+                if [ "$(uci -q get dhcp.@dnsmasq[0].cachesize 2>/dev/null)" = "0" ]; then
+                    uci -q set dhcp.@dnsmasq[0].cachesize="150" 2>/dev/null || true
+                fi
+            fi
+            uci -q delete dhcp.tachyon 2>/dev/null || true
+            uci -q commit dhcp 2>/dev/null || true
+            if [ "$_had_v1_dns" -eq 1 ] && [ -x /etc/init.d/dnsmasq ]; then
+                /etc/init.d/dnsmasq reload >/dev/null 2>&1 || /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
 
     if [ "$PKG_IS_APK" -eq 1 ]; then
         for _old_pkg in luci-i18n-tachyon-ru luci-app-tachyon tachyon; do
@@ -551,12 +737,32 @@ migrate_from_v1() {
         /etc/uci-defaults/50_luci-tachyon \
         /usr/share/luci/menu.d/luci-app-tachyon.json \
         /usr/share/rpcd/acl.d/luci-app-tachyon.json \
+        /usr/lib/lua/luci/i18n/tachyon.ru.lmo \
         2>/dev/null || true
     ok "Legacy ucode/rpcd files removed; /etc/config/tachyon preserved for automatic import"
 }
 
-install_tachyon_core() {
+has_sha256_entry() {
+    _sums="$1"
+    _asset_name="$2"
+    [ -s "$_sums" ] || return 1
+    awk -v name="$_asset_name" '
+        {
+            f = $2;
+            gsub(/^\*/, "", f);
+            sub(/^.*\//, "", f);
+            if (f == name && length($1) == 64) { found = 1; exit }
+        }
+        END { exit(found ? 0 : 1) }
+    ' "$_sums" 2>/dev/null
+}
+
+prepare_tachyon_core() {
     _arch="$1"
+    _fmt="${2:-}"
+    PREPARED_CORE_BIN=""
+    PREPARED_CORE_VER=""
+    PREPARED_CORE_PKG=""
     [ "$SKIP_CORE" -eq 1 ] && return 0
 
     msg "Resolving latest tachyon-core release from ${CORE_REPO}..."
@@ -571,33 +777,98 @@ install_tachyon_core() {
     fi
 
     _core_ver="${_core_tag#v}"
+    _need_core_update=1
     if [ -x /usr/bin/tachyon-core ]; then
         _cur_core="$(/usr/bin/tachyon-core version 2>/dev/null | awk 'NR==1 {print $NF}' | tr -d 'vV')"
         if [ "$_cur_core" = "$_core_ver" ]; then
-            ok "tachyon-core ${_core_ver} is already up to date"
-            return 0
+            if [ "$PKG_IS_APK" -eq 1 ] && command_exists apk; then
+                _apk_core_ver="$(apk list -I tachyon-core 2>/dev/null | head -n 1 | sed -n 's/^tachyon-core-\([^ ]*\).*/\1/p')"
+                if [ -z "$_apk_core_ver" ] || [ "${_apk_core_ver%%-r*}" = "$_core_ver" ]; then
+                    _need_core_update=0
+                fi
+            else
+                _need_core_update=0
+            fi
+        fi
+    fi
+    if [ "$_need_core_update" -eq 0 ]; then
+        ok "tachyon-core ${_core_ver} is already up to date"
+        return 0
+    fi
+
+    _sums_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/SHA256SUMS"
+    _has_sums=0
+    if download_file "$_sums_url" "$TMP_DIR/core.SHA256SUMS" "tachyon-core SHA256SUMS"; then
+        _has_sums=1
+    fi
+
+    _core_base="tachyon-core-${_arch}-${_core_tag}"
+    _core_asset=""
+    _core_is_pkg=0
+    _core_ext=""
+    if [ "$_fmt" = "apk" ] || [ "$_fmt" = "ipk" ]; then
+        _pkg_asset="${_core_base}.${_fmt}"
+        _pkg_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/${_pkg_asset}"
+        if download_file "$_pkg_url" "$TMP_DIR/$_pkg_asset" "tachyon-core ${_core_tag} (.${_fmt})"; then
+            _core_asset="$_pkg_asset"
+            _core_is_pkg=1
+            _core_ext="$_fmt"
         fi
     fi
 
-    _core_asset="tachyon-core-${_arch}-${_core_tag}.tar.gz"
-    _core_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/${_core_asset}"
-    _sums_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/SHA256SUMS"
-
-    if ! download_file "$_core_url" "$TMP_DIR/$_core_asset" "tachyon-core ${_core_tag}"; then
-        err "Failed to download ${_core_asset}"
-        return 1
+    if [ -z "$_core_asset" ]; then
+        _tgz_asset="${_core_base}.tar.gz"
+        _tgz_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/${_tgz_asset}"
+        if ! download_file "$_tgz_url" "$TMP_DIR/$_tgz_asset" "tachyon-core ${_core_tag} (.tar.gz)"; then
+            err "Failed to download tachyon-core (${_core_base})"
+            return 1
+        fi
+        _core_asset="$_tgz_asset"
+        _core_ext="tar.gz"
     fi
 
-    if download_file "$_sums_url" "$TMP_DIR/core.SHA256SUMS" "tachyon-core SHA256SUMS"; then
-        verify_sha256_file "$TMP_DIR/$_core_asset" "$TMP_DIR/core.SHA256SUMS" "$_core_asset" || return 1
+    _verified_archive=0
+    if [ "$_has_sums" -eq 1 ]; then
+        if [ "$_core_is_pkg" -eq 1 ] || has_sha256_entry "$TMP_DIR/core.SHA256SUMS" "$_core_asset"; then
+            verify_sha256_file "$TMP_DIR/$_core_asset" "$TMP_DIR/core.SHA256SUMS" "$_core_asset" || return 1
+            _verified_archive=1
+        fi
     fi
 
+    rm -rf "$TMP_DIR/core_extract" "$TMP_DIR/core_ipk_outer"
     mkdir -p "$TMP_DIR/core_extract"
-    tar -xzf "$TMP_DIR/$_core_asset" -C "$TMP_DIR/core_extract" || return 1
-    _core_bin="$(find "$TMP_DIR/core_extract" -type f -name 'tachyon-core*' | head -n 1)"
+    case "$_core_ext" in
+        apk)
+            gzip -dc "$TMP_DIR/$_core_asset" | tar -x -C "$TMP_DIR/core_extract" || return 1
+            ;;
+        ipk)
+            mkdir -p "$TMP_DIR/core_ipk_outer"
+            tar -xzf "$TMP_DIR/$_core_asset" -C "$TMP_DIR/core_ipk_outer" || return 1
+            if [ -f "$TMP_DIR/core_ipk_outer/data.tar.gz" ]; then
+                tar -xzf "$TMP_DIR/core_ipk_outer/data.tar.gz" -C "$TMP_DIR/core_extract" || return 1
+            else
+                err "data.tar.gz not found inside ${_core_asset}"
+                return 1
+            fi
+            rm -rf "$TMP_DIR/core_ipk_outer"
+            ;;
+        *)
+            tar -xzf "$TMP_DIR/$_core_asset" -C "$TMP_DIR/core_extract" || return 1
+            ;;
+    esac
+
+    if [ -f "$TMP_DIR/core_extract/usr/bin/tachyon-core" ]; then
+        _core_bin="$TMP_DIR/core_extract/usr/bin/tachyon-core"
+    else
+        _core_bin="$(find "$TMP_DIR/core_extract" -type f -name 'tachyon-core*' ! -path '*/etc/*' | head -n 1)"
+    fi
     if [ -z "$_core_bin" ] || [ ! -f "$_core_bin" ]; then
         err "tachyon-core binary not found in ${_core_asset}"
         return 1
+    fi
+
+    if [ "$_has_sums" -eq 1 ] && [ "$_verified_archive" -eq 0 ]; then
+        verify_sha256_file "$_core_bin" "$TMP_DIR/core.SHA256SUMS" "$_core_base" || return 1
     fi
 
     chmod 755 "$_core_bin"
@@ -606,15 +877,43 @@ install_tachyon_core() {
         return 1
     fi
 
-    mv -f "$_core_bin" /usr/bin/tachyon-core.new && mv -f /usr/bin/tachyon-core.new /usr/bin/tachyon-core
+    PREPARED_CORE_BIN="$_core_bin"
+    PREPARED_CORE_VER="$_core_ver"
+    if [ "$_core_is_pkg" -eq 1 ]; then
+        PREPARED_CORE_PKG="$TMP_DIR/$_core_asset"
+    fi
+}
+
+apply_tachyon_core() {
+    [ -n "$PREPARED_CORE_BIN" ] || return 0
+    mv -f "$PREPARED_CORE_BIN" /usr/bin/tachyon-core.new && mv -f /usr/bin/tachyon-core.new /usr/bin/tachyon-core
     chmod 755 /usr/bin/tachyon-core
-    mkdir -p /etc/tachyon /etc/tachyon-core
-    printf '%s\n' "$_core_ver" > /etc/tachyon/tachyon-core-version
+    if [ -n "$PREPARED_CORE_PKG" ] && [ -f "$PREPARED_CORE_PKG" ]; then
+        case "$PREPARED_CORE_PKG" in
+            *.apk)
+                if [ "$PKG_IS_APK" -eq 1 ] && command_exists apk; then
+                    apk add --allow-untrusted --no-network --repositories-file /dev/null --force-overwrite --force-reinstall --scripts=no "$PREPARED_CORE_PKG" >>"$LOG_FILE" 2>&1 || true
+                    rm -f /etc/tachyon-core/config.json.apk-new /etc/config/tachyon-core.apk-new 2>/dev/null || true
+                fi
+                ;;
+            *.ipk)
+                if [ "$PKG_MANAGER" = "opkg" ] && command_exists opkg; then
+                    opkg install --force-reinstall --force-overwrite "$PREPARED_CORE_PKG" >>"$LOG_FILE" 2>&1 || true
+                    rm -f /etc/tachyon-core/config.json-opkg /etc/config/tachyon-core-opkg 2>/dev/null || true
+                    if [ -x /etc/init.d/tachyon-core ]; then
+                        /etc/init.d/tachyon-core stop >/dev/null 2>&1 || true
+                    fi
+                fi
+                ;;
+        esac
+    fi
+    mkdir -p /etc/tachyon /etc/tachyon-core /var/run/tachyon
+    printf '%s\n' "$PREPARED_CORE_VER" > /var/run/tachyon/tachyon-core-version
     if [ -x /etc/init.d/tachyon-core ]; then
         /etc/init.d/tachyon-core disable >/dev/null 2>&1 || true
     fi
     rm -f /etc/rc.d/S*tachyon-core /etc/rc.d/K*tachyon-core 2>/dev/null || true
-    ok "Installed tachyon-core ${_core_ver} -> /usr/bin/tachyon-core"
+    ok "Installed tachyon-core ${PREPARED_CORE_VER} -> /usr/bin/tachyon-core"
 }
 
 package_asset_name() {
@@ -624,7 +923,10 @@ package_asset_name() {
     case "$_fmt" in
         apk) echo "tachyon-${_arch}-v${_ver}.apk" ;;
         ipk) echo "tachyon-${_arch}-v${_ver}.ipk" ;;
-        *) echo "tachyon-${_arch}-v${_ver}.tar.gz" ;;
+        *)
+            err "Unsupported package format: ${_fmt} (expected apk or ipk)"
+            return 1
+            ;;
     esac
 }
 
@@ -643,97 +945,39 @@ verify_bundle_checksum() {
     verify_sha256_file "$TMP_DIR/$_asset" "$TMP_DIR/SHA256SUMS" "$_asset"
 }
 
-install_tar_bundle() {
-    _arch="$1"
-    _ver="$2"
-    _tag="$3"
-    _repo="$4"
-    _sums_url="$5"
-
-    _bundle="tachyon-${_arch}-v${_ver}.tar.gz"
-    _bundle_url="https://github.com/${_repo}/releases/download/${_tag}/${_bundle}"
-
-    download_file "$_bundle_url" "$TMP_DIR/$_bundle" "tachyon ${_tag}" || return 1
-    verify_bundle_checksum "$_bundle" "$_sums_url" "$_tag" || return 1
-
-    rm -rf "$TMP_DIR/stage"
-    mkdir -p "$TMP_DIR/stage"
-    tar -xzf "$TMP_DIR/$_bundle" -C "$TMP_DIR/stage" || return 1
-
-    if [ ! -f "$TMP_DIR/stage/usr/bin/tachyon" ]; then
-        err "usr/bin/tachyon missing in ${_bundle}"
-        return 1
-    fi
-
-    chmod 755 "$TMP_DIR/stage/usr/bin/tachyon"
-    if ! "$TMP_DIR/stage/usr/bin/tachyon" --version >/dev/null 2>&1; then
-        err "Downloaded tachyon binary failed --version smoke check"
-        return 1
-    fi
-
-    cp -f "$TMP_DIR/stage/usr/bin/tachyon" /usr/bin/tachyon.new && mv -f /usr/bin/tachyon.new /usr/bin/tachyon
-    chmod 755 /usr/bin/tachyon
-
-    if [ -f "$TMP_DIR/stage/etc/init.d/tachyon" ]; then
-        cp -f "$TMP_DIR/stage/etc/init.d/tachyon" /etc/init.d/tachyon
-        chmod 755 /etc/init.d/tachyon
-    fi
-
-    if [ -f "$TMP_DIR/stage/usr/share/tachyon/tachyon.ru.po" ]; then
-        mkdir -p /usr/share/tachyon
-        cp -f "$TMP_DIR/stage/usr/share/tachyon/tachyon.ru.po" /usr/share/tachyon/tachyon.ru.po
-    fi
-
-    if [ -d "$TMP_DIR/stage/www/luci-static/resources/view/tachyon" ]; then
-        mkdir -p /www/luci-static/resources/view/tachyon
-        cp -f "$TMP_DIR/stage/www/luci-static/resources/view/tachyon/"* /www/luci-static/resources/view/tachyon/
-    fi
-
-    if [ -f "$TMP_DIR/stage/usr/share/luci/menu.d/tachyon-launcher.json" ]; then
-        mkdir -p /usr/share/luci/menu.d
-        cp -f "$TMP_DIR/stage/usr/share/luci/menu.d/tachyon-launcher.json" /usr/share/luci/menu.d/tachyon-launcher.json
-        chmod 644 /usr/share/luci/menu.d/tachyon-launcher.json
-    fi
-
-    if [ -f "$TMP_DIR/stage/usr/share/rpcd/acl.d/tachyon-launcher.json" ]; then
-        mkdir -p /usr/share/rpcd/acl.d
-        cp -f "$TMP_DIR/stage/usr/share/rpcd/acl.d/tachyon-launcher.json" /usr/share/rpcd/acl.d/tachyon-launcher.json
-        chmod 644 /usr/share/rpcd/acl.d/tachyon-launcher.json
-    fi
-    return 0
-}
-
-install_apk_package() {
+download_tachyon_package() {
     _asset="$1"
     _url="$2"
     _sums_url="$3"
     _tag="$4"
+    _fmt="$5"
 
-    download_file "$_url" "$TMP_DIR/$_asset" "tachyon ${_tag} (.apk)" || return 1
+    download_file "$_url" "$TMP_DIR/$_asset" "tachyon ${_tag} (.${_fmt})" || return 1
     verify_bundle_checksum "$_asset" "$_sums_url" "$_tag" || return 1
+}
 
-    if apk add --allow-untrusted --force-overwrite "$TMP_DIR/$_asset" >>"$LOG_FILE" 2>&1; then
+install_local_apk_package() {
+    _pkg="$1"
+
+    if apk add --allow-untrusted --no-network --repositories-file /dev/null --force-reinstall --force-overwrite "$_pkg" >>"$LOG_FILE" 2>&1; then
         return 0
     fi
-    if apk add --allow-untrusted --no-network --repositories-file /dev/null "$TMP_DIR/$_asset" >>"$LOG_FILE" 2>&1; then
+    if apk add --allow-untrusted --force-reinstall --force-overwrite "$_pkg" >>"$LOG_FILE" 2>&1; then
         return 0
     fi
-    if apk add --allow-untrusted "$TMP_DIR/$_asset" >>"$LOG_FILE" 2>&1; then
+    if apk add --allow-untrusted --force-overwrite "$_pkg" >>"$LOG_FILE" 2>&1; then
+        return 0
+    fi
+    if apk add --allow-untrusted "$_pkg" >>"$LOG_FILE" 2>&1; then
         return 0
     fi
     return 1
 }
 
-install_ipk_package() {
-    _asset="$1"
-    _url="$2"
-    _sums_url="$3"
-    _tag="$4"
+install_local_ipk_package() {
+    _pkg="$1"
 
-    download_file "$_url" "$TMP_DIR/$_asset" "tachyon ${_tag} (.ipk)" || return 1
-    verify_bundle_checksum "$_asset" "$_sums_url" "$_tag" || return 1
-
-    if opkg install --force-reinstall --force-overwrite "$TMP_DIR/$_asset" >>"$LOG_FILE" 2>&1; then
+    if opkg install --force-reinstall --force-overwrite "$_pkg" >>"$LOG_FILE" 2>&1; then
         return 0
     fi
     return 1
@@ -746,7 +990,7 @@ main() {
     detect_fetcher || exit 1
     ARCH="$(detect_arch)" || exit 1
     detect_pkg_manager
-    FMT="$(resolve_pkg_format)"
+    FMT="$(resolve_pkg_format)" || exit 1
 
     REPO="${REPO_OWNER}/${REPO_NAME}"
     TAG="$(resolve_tachyon_release_tag "$REPO" "$TAG_REQUESTED" || true)"
@@ -755,7 +999,7 @@ main() {
         exit 1
     fi
     VER="${TAG#[vV]}"
-    BUNDLE="$(package_asset_name "$ARCH" "$VER" "$FMT")"
+    BUNDLE="$(package_asset_name "$ARCH" "$VER" "$FMT")" || exit 1
     BUNDLE_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE}"
     SUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS"
 
@@ -781,39 +1025,39 @@ main() {
     fi
 
     install_system_deps
+    # Download and verify all release artifacts before stopping or modifying any running 1.x/2.x services.
+    download_tachyon_package "$BUNDLE" "$BUNDLE_URL" "$SUMS_URL" "$TAG" "$FMT" || { err "Failed to download ${BUNDLE} (see ${LOG_FILE})"; exit 1; }
+    prepare_tachyon_core "$ARCH" "$FMT" || exit 1
+
     migrate_from_v1
-    install_tachyon_core "$ARCH" || exit 1
+    apply_tachyon_core
 
     if [ -x /etc/init.d/tachyon ]; then
         /etc/init.d/tachyon stop >/dev/null 2>&1 || true
     fi
 
-    _installed=0
     case "$FMT" in
         apk)
-            if install_apk_package "$BUNDLE" "$BUNDLE_URL" "$SUMS_URL" "$TAG"; then
+            if install_local_apk_package "$TMP_DIR/$BUNDLE"; then
                 ok "Installed package ${BUNDLE} via apk"
-                _installed=1
             else
-                warn "apk installation failed for ${BUNDLE}; falling back to .tar.gz bundle"
+                err "Failed to install ${BUNDLE} via apk (see ${LOG_FILE})"
+                exit 1
             fi
             ;;
         ipk)
-            if install_ipk_package "$BUNDLE" "$BUNDLE_URL" "$SUMS_URL" "$TAG"; then
+            if install_local_ipk_package "$TMP_DIR/$BUNDLE"; then
                 ok "Installed package ${BUNDLE} via opkg"
-                _installed=1
             else
-                warn "opkg installation failed for ${BUNDLE}; falling back to .tar.gz bundle"
+                err "Failed to install ${BUNDLE} via opkg (see ${LOG_FILE})"
+                exit 1
             fi
             ;;
-    esac
-
-    if [ "$_installed" -eq 0 ]; then
-        install_tar_bundle "$ARCH" "$VER" "$TAG" "$REPO" "$SUMS_URL" || {
-            err "Failed to install tachyon ${TAG} tarball bundle"
+        *)
+            err "Unsupported package format: ${FMT}"
             exit 1
-        }
-    fi
+            ;;
+    esac
 
     if [ ! -x /usr/bin/tachyon ] || ! /usr/bin/tachyon --version >/dev/null 2>&1; then
         err "Installed /usr/bin/tachyon failed --version verification"
@@ -827,6 +1071,7 @@ main() {
     fi
 
     mkdir -p /etc/tachyon /etc/tachyon-core /tmp/dnsmasq.d
+    ensure_tcp_bbr_best_effort
     /etc/init.d/tachyon enable >/dev/null 2>&1 || true
     /etc/init.d/tachyon restart || { err "Failed to start /etc/init.d/tachyon"; exit 1; }
 

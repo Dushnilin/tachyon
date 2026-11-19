@@ -7,6 +7,7 @@ export interface RouterUiPrefs {
   sidebar_pos?: 'left' | 'top';
   sidebar_collapsed?: boolean;
   topbar_collapsed?: boolean;
+  dashboard_show_hidden?: boolean;
   [key: string]: any;
 }
 

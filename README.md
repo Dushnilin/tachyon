@@ -51,7 +51,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 |:---|:---|
 | `--channel <auto\|stable\|beta>` | Выбор канала релизов `2.0`: `auto` устанавливает стабильный `2.x` (или последний пре-релиз, если стабильный ещё не вышел); `--prerelease` эквивалентен `--channel beta` |
 | `--tag <vX.Y.Z>` | Установка точного тега релиза (например, `v2.0.0-beta.1` или `v2.0.0`) |
-| `--format <auto\|apk\|ipk\|tar>` | Выбор формата установки: автоматическое определение пакетного менеджера (`apk` в OpenWrt 25+ / `opkg` в 23.05–24.10) или распаковка `.tar.gz` |
+| `--format <auto\|apk\|ipk>` | Выбор формата установки: автоматическое определение пакетного менеджера (`apk` в OpenWrt 25+ / `opkg` в 23.05–24.10) |
 | `--arch <arch>` | Явное переопределение архитектуры вместо автоопределения |
 | `--reinstall` / `--repair` | Повторная установка поверх существующей конфигурации, перезапуск служб и восстановление таблиц |
 | `--skip-core` | Установка или обновление только пакета `tachyon` без загрузки `/usr/bin/tachyon-core` |
@@ -60,7 +60,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 
 ### Поддерживаемые архитектуры OpenWrt
 
-Релизы ветки `2.0` собираются статически под 8 целевых платформ в форматах `.apk`, `.ipk` и `.tar.gz`:
+Релизы ветки `2.0` собираются статически под 8 целевых платформ строго в форматах `.apk` и `.ipk`:
 
 | Архитектура (`--arch`) | Целевой triple Rust (`musl`) | Типичные устройства |
 |:---|:---|:---|
@@ -68,7 +68,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 | `i386_pentium4` | `i686-unknown-linux-musl` | Устаревшие 32-битные шлюзы x86 |
 | `aarch64` | `aarch64-unknown-linux-musl` | `aarch64_cortex-a53`, `cortex-a72`, Filogic 820/830, RPi 4/5, NanoPi R4S/R5S |
 | `armv7` | `armv7-unknown-linux-musleabihf` | `arm_cortex-a7`, `cortex-a9`, `cortex-a15`, IPQ40xx |
-| `armv6` | `arm-unknown-linux-musleabihf` | Устройства `arm_arm1176jzf-s_vfp` с аппаратным FPU |
+| `armv6` | `arm-unknown-linux-musleabi` | Устройства `arm_arm1176jzf-s_vfp` (EABI soft-float) |
 | `riscv64` | `riscv64gc-unknown-linux-musl` | Платы и роутеры архитектуры RISC-V 64 |
 | `mipsel` | `mipsel-unknown-linux-musl` | MT7620 / MT7621 / MT7628 (`mipsel_24kc`, little-endian soft-float) |
 | `mips` | `mips-unknown-linux-musl` | Atheros / Qualcomm `mips_24kc` (big-endian soft-float) |
@@ -112,7 +112,7 @@ Tachyon 2.0 компилирует единую таблицу **nftables** (`ta
 | **2. Встроенный Outbound Desync** | Интеграция в сетевом стеке `tachyon-core` (TCP/TLS/HTTP и UDP) | Адаптивная фрагментация и десинхронизация пакетов (`fake_disorder`, `fake_split`, `tlsrec`, `disorder`, `split`, `oob`, `seqovl`, `syndata`, `ipfrag`) без внешних демонов |
 | **3. Прокси-протоколы L4/L7** | Клиенты и группы балансировки в `tachyon-core` | Селективное туннелирование по секциям, спискам `.trs`/`.srs`, подсетям и MAC через VLESS (Reality/XHTTP/Vision), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, NaiveProxy, Mieru, Snell, ShadowTLS, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor |
 | **4. Сетевые туннели L3/UDP** | Встроенные клиенты `wireguard`, `awg`, `warp`, `fptn`, `openvpn` | Подключение конфигураций AmneziaWG (`.conf`, `vpn://`, CPS-параметры `i1`–`i5`/`j1`–`j3`), WireGuard, Cloudflare WARP и FPTN (`fwmark 0x00300000`) |
-| **5. Mesh и спецтранспорты** | `tailscale`, `wdtt`, `mtproto`, `socks5`, `http` | Сети Tailscale (`100.64.0.0/10` и MagicDNS `100.100.100.100`, маска байпаса `0x00340000`), транспорты WDTT (`csqtt`/`raw`/`wg`) и MTProto |
+| **5. Mesh и спецтранспорты** | `tailscale`, `wdtt`, `socks5`, `http` | Сети Tailscale (`100.64.0.0/10` и MagicDNS `100.100.100.100`, маска байпаса `0x00340000`) и транспорты WDTT (`csqtt`/`raw`/`wg`) |
 | **6. Smart DNS** | `dnsmasq` -> `127.0.0.42#53` + пул FakeIP (`198.18.0.0/15`, `fc00::/18`) | Изолированное разрешение имён по DoH, DoT, DoQ и HTTP/3, резервный bootstrap DNS и защита от подмены ответов на транзитном участке |
 
 ---
@@ -131,7 +131,7 @@ Tachyon 2.0 компилирует единую таблицу **nftables** (`ta
 
 ### 2. Протоколы, подписки и балансировка секций
 
-* **Широкий набор исходящих протоколов**: VLESS (Reality, XHTTP, Vision), VMess, Trojan, Shadowsocks (включая `2022-blake3-*`), Hysteria2, TUIC, AnyTLS, ShadowTLS, NaiveProxy, Mieru (`TCP`/`UDP`), Snell, Sudoku, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor, OpenVPN, WireGuard, AmneziaWG (`2.0–3.1` `.conf`, `vpn://` и параметры обфускации `jc`/`jmin`/`jmax`/`s1`–`s4`/`h1`–`h4`/`i1`–`i5`/`j1`–`j3`), Cloudflare WARP, FPTN, WDTT (`csqtt`/`raw`/`wg`), Tailscale, MTProto, SOCKS5 и HTTP.
+* **Широкий набор исходящих протоколов**: VLESS (Reality, XHTTP, Vision), VMess, Trojan, Shadowsocks (включая `2022-blake3-*`), Hysteria2, TUIC, AnyTLS, ShadowTLS, NaiveProxy, Mieru (`TCP`/`UDP`), Snell, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor, OpenVPN, WireGuard, AmneziaWG (`2.0–3.1` `.conf`, `vpn://` и параметры обфускации `jc`/`jmin`/`jmax`/`s1`–`s4`/`h1`–`h4`/`i1`–`i5`/`j1`–`j3`), Cloudflare WARP, FPTN, WDTT (`csqtt`/`raw`/`wg`), Tailscale, SOCKS5 и HTTP.
 * **Обработка подписок и провайдерских ссылок**: загрузка по HTTP/HTTPS (с резервным обращением через DoH), поддержка ссылок `happ://`, списков прокси-URI, конфигураций `.conf`, а также извлечение метаданных квот и срока действия из заголовков ответа подписки.
 * **Группы и балансировщики**: автоматический выбор узлов по задержке (`urltest`), `fallback`, `random` и квотированный режим (`quota` с параметром `quota_mib`).
 * **Встроенные генераторы ключей (`crypto_gen`)**: генерация профилей Cloudflare WARP (`tachyon generate_warp`), ключевых пар X25519 для VLESS Reality (`tachyon generate_reality_keypair`), ключей WireGuard/AmneziaWG (`tachyon generate_wg_keypair`) и TLS-ключей (`tachyon generate_tls_keypair`), а также эндпоинт `/api/crypto/keygen`.
@@ -212,7 +212,7 @@ Tachyon 2.0 компилирует единую таблицу **nftables** (`ta
 
 ### 8. Родительский контроль, квоты времени и Smart QoS
 
-* **Профили устройств и расписания**: правила доступа по L2 MAC-адресу, 7 категорий фильтрации, режим SafeSearch, блокировка обходного DoH и гибкие расписания.
+* **Профили устройств и расписания**: правила доступа по L2 MAC-адресу, 7 категорий фильтрации, режим SafeSearch, блокировка стороннего DoH и гибкие расписания.
 * **Суточные квоты и мгновенная пауза**: учёт использованных минут в сутки (`daily_quota_minutes`, `used_minutes_today`) и принудительная пауза доступа для выбранного устройства (`/api/profiles/quota` и команды бота `/parental`).
 * **Приоритизация трафика (Smart QoS / DSCP)**: разметка DSCP в правилах секций и условий маршрутизации плюс управление дисциплинами очередей (`tc qdisc` / `net.core.default_qdisc = fq`).
 
@@ -328,6 +328,7 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 Если Tachyon помогает в работе, вы можете поддержать развитие проекта:
 
 * **Boosty:** [boosty.to/tachyon](https://boosty.to/tachyon)
+* **СБП (Ozon Банк):** [finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5](https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5)
 * **Карты РФ и СБП (CloudTips):** [pay.cloudtips.ru/p/449c5ef9](https://pay.cloudtips.ru/p/449c5ef9)
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`
 * **Ethereum (ETH / ERC-20):** `0x6CB7a4547eD62EF64990D5C6B5D9fdA58EB223E6`

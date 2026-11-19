@@ -11,7 +11,7 @@ import { tr } from '../../helpers/i18n';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { TachyonShellMethods } from '../../methods';
 import { store } from '../../services';
-import type { Tachyon } from '../../types';
+import { activateAppShellNavKey } from '../../services/tab.service';
 import { getWidgetViewMode } from './dashboardLayout';
 import { renderFlagEmojis } from './partials/renderFlagEmojis';
 import { readSectionErrors } from '../../methods/custom/getDashboardSections';
@@ -58,7 +58,6 @@ export interface IInboundConnectedClient {
   chain: string;
   isOnline: boolean;
   lastSeenAt: number;
-  isMeshPeer?: boolean;
 }
 
 export interface IInboundRuntimeStats {
@@ -71,8 +70,6 @@ export interface IInboundRuntimeStats {
   downSpeed: number;
   clients: IInboundConnectedClient[];
   meshRunning?: boolean;
-  meshOnlinePeers?: number;
-  meshTotalPeers?: number;
 }
 
 export interface IAllInboundsSummary {
@@ -416,7 +413,7 @@ export function getConfiguredServerInbounds(
         .replace(/\/\d+$/, '');
       const tailscaleMode =
         protocol === 'tailscale'
-          ? `${raw.tailscale_mode || 'singbox'}`.trim().toLowerCase()
+          ? `${raw.tailscale_mode || 'core'}`.trim().toLowerCase()
           : undefined;
 
       return {
@@ -509,17 +506,11 @@ export function computeInboundsRuntimeSummary(
   rawConnections: any[],
   hostnames: Map<string, string> = lastKnownHostnames,
   now = Date.now(),
-  tailscaleDataOverride?: Tachyon.GetTailscalePeers | null,
 ): IAllInboundsSummary {
   lastKnownRawConnections = Array.isArray(rawConnections) ? rawConnections : [];
   if (hostnames && hostnames.size > 0) {
     lastKnownHostnames = hostnames;
   }
-  const tailscaleData =
-    tailscaleDataOverride !== undefined
-      ? tailscaleDataOverride
-      : (store.get()?.tailscaleWidget?.data ?? null);
-  let nativeTailscaleApplied = false;
 
   const serverById = new Map<string, IServerInboundConfig>();
   for (const s of servers) {
@@ -681,86 +672,16 @@ export function computeInboundsRuntimeSummary(
       }
     }
 
-    let sectionUpload = closedSec.upload + activeUpload;
-    let sectionDownload = closedSec.download + activeDownload;
+    const sectionUpload = closedSec.upload + activeUpload;
+    const sectionDownload = closedSec.download + activeDownload;
     let meshRunning = false;
-    let meshOnlinePeers: number | undefined;
-    let meshTotalPeers: number | undefined;
 
-    const meshClients: IInboundConnectedClient[] = [];
-    const isNativeTailscale =
-      server.enabled &&
-      server.protocol === 'tailscale' &&
-      server.tailscaleMode === 'native' &&
-      !nativeTailscaleApplied;
-    const isSingboxTailscale =
-      server.enabled &&
-      server.protocol === 'tailscale' &&
-      server.tailscaleMode !== 'native';
+    const isEmbeddedTailscale =
+      server.enabled && server.protocol === 'tailscale';
 
-    if (isSingboxTailscale) {
+    if (isEmbeddedTailscale) {
       const svcInfo = store.get()?.servicesInfoWidget?.data;
-      meshRunning = Boolean(svcInfo?.tachyonRunning || svcInfo?.singbox);
-    }
-
-    if (isNativeTailscale && tailscaleData && tailscaleData.configured) {
-      nativeTailscaleApplied = true;
-      meshRunning = tailscaleData.backend_state === 'Running';
-      const peers = Array.isArray(tailscaleData.peers)
-        ? tailscaleData.peers
-        : [];
-      meshTotalPeers = peers.length;
-      let onlinePeersCount = 0;
-      let peerRxSum = 0;
-      let peerTxSum = 0;
-
-      for (const peer of peers) {
-        if (!peer) continue;
-        const peerIp =
-          (Array.isArray(peer.ips) && peer.ips.find((ip) => Boolean(ip))) ||
-          `${peer.name || peer.dns_name || ''}`.trim();
-        if (!peerIp) continue;
-        const isPeerOnline = Boolean(peer.online);
-        if (isPeerOnline) {
-          onlinePeersCount += 1;
-          globalClientIps.add(peerIp);
-        }
-        const rx = Math.max(0, Number(peer.rx_bytes) || 0);
-        const tx = Math.max(0, Number(peer.tx_bytes) || 0);
-        peerRxSum += rx;
-        peerTxSum += tx;
-
-        if (clientTempMap.has(peerIp)) {
-          continue;
-        }
-
-        const cleanDns = `${peer.dns_name || ''}`.trim().replace(/\.$/, '');
-        const peerDisplayName =
-          `${peer.name || ''}`.trim() || cleanDns || peerIp;
-        meshClients.push({
-          ip: peerIp,
-          name: peerDisplayName,
-          activeConns: 0,
-          // From router's inbound perspective: rx_bytes = received from peer, tx_bytes = sent to peer
-          upload: rx,
-          download: tx,
-          targets: cleanDns && cleanDns !== peerDisplayName ? [cleanDns] : [],
-          chain: 'Tailnet Mesh',
-          isOnline: isPeerOnline,
-          lastSeenAt: now,
-          isMeshPeer: true,
-        });
-      }
-
-      meshOnlinePeers = onlinePeersCount;
-      if (
-        sectionUpload === 0 &&
-        sectionDownload === 0 &&
-        (peerRxSum > 0 || peerTxSum > 0)
-      ) {
-        sectionUpload = peerRxSum;
-        sectionDownload = peerTxSum;
-      }
+      meshRunning = Boolean(svcInfo?.tachyonRunning || svcInfo?.tachyonCore);
     }
 
     const prevRateState =
@@ -769,8 +690,10 @@ export function computeInboundsRuntimeSummary(
       computeTrafficRates(sectionUpload, sectionDownload, now, prevRateState);
     sectionRatesStates.set(sectionId, nextSecRateState);
 
-    const clients: IInboundConnectedClient[] = [
-      ...Array.from(clientTempMap.entries()).map(([ip, info]) => {
+    const clients: IInboundConnectedClient[] = Array.from(
+      clientTempMap.entries(),
+    )
+      .map(([ip, info]) => {
         const closedRec = closedClientsForSec?.get(ip);
         const clientUp = (closedRec?.upload || 0) + info.activeUpload;
         const clientDown = (closedRec?.download || 0) + info.activeDownload;
@@ -789,19 +712,16 @@ export function computeInboundsRuntimeSummary(
           isOnline,
           lastSeenAt: info.lastSeenAt,
         };
-      }),
-      ...meshClients,
-    ].sort((a, b) => {
-      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-      if (b.activeConns !== a.activeConns) return b.activeConns - a.activeConns;
-      return b.download + b.upload - (a.download + a.upload);
-    });
+      })
+      .sort((a, b) => {
+        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+        if (b.activeConns !== a.activeConns)
+          return b.activeConns - a.activeConns;
+        return b.download + b.upload - (a.download + a.upload);
+      });
 
     const activeConns = rawSecConns.length;
-    const activeClientsCount =
-      meshOnlinePeers !== undefined
-        ? clients.filter((c) => c.isOnline).length
-        : clients.length;
+    const activeClientsCount = clients.length;
     if (activeConns > 0 || activeClientsCount > 0) {
       activeInboundsCount += 1;
     }
@@ -821,17 +741,11 @@ export function computeInboundsRuntimeSummary(
       upSpeed: secRates.up,
       downSpeed: secRates.down,
       clients,
-      ...(meshOnlinePeers !== undefined
+      ...(isEmbeddedTailscale
         ? {
             meshRunning,
-            meshOnlinePeers,
-            meshTotalPeers,
           }
-        : isSingboxTailscale
-          ? {
-              meshRunning,
-            }
-          : {}),
+        : {}),
     });
   }
 
@@ -859,8 +773,16 @@ export function computeInboundsRuntimeSummary(
 }
 
 export function switchToServersTab(): boolean {
+  if (activateAppShellNavKey('server')) {
+    return true;
+  }
   if (typeof document === 'undefined' || !document.querySelector) {
     return false;
+  }
+  const navBtn = document.querySelector<HTMLElement>('[data-nav-key="server"]');
+  if (navBtn && typeof navBtn.click === 'function') {
+    navBtn.click();
+    return true;
   }
   const tabLink = document.querySelector<HTMLElement>(
     '.cbi-tab[data-tab="cbi-tachyon-server"] a, ' +
@@ -871,7 +793,35 @@ export function switchToServersTab(): boolean {
       'li[data-tab="server"] a',
   );
   if (tabLink && typeof tabLink.click === 'function') {
+    const parentLi =
+      typeof tabLink.closest === 'function' ? tabLink.closest('li') : null;
+    if (parentLi) {
+      parentLi.classList.add('cbi-tab-disabled');
+    }
     tabLink.click();
+    if (typeof document.querySelectorAll === 'function') {
+      document
+        .querySelectorAll<HTMLElement>('.cbi-section[id^="cbi-tachyon-"]')
+        .forEach((sec) => {
+          const isTarget = sec.id === 'cbi-tachyon-server';
+          if (typeof sec.classList?.toggle === 'function') {
+            sec.classList.toggle('cbi-tab', isTarget);
+            sec.classList.toggle('cbi-tab-disabled', !isTarget);
+          } else if (sec.classList) {
+            if (isTarget) {
+              sec.classList.add('cbi-tab');
+              sec.classList.remove('cbi-tab-disabled');
+            } else {
+              sec.classList.remove('cbi-tab');
+              sec.classList.add('cbi-tab-disabled');
+            }
+          }
+          sec.setAttribute?.('data-tab-active', isTarget ? 'true' : 'false');
+          if (sec.style) {
+            sec.style.display = isTarget ? '' : 'none';
+          }
+        });
+    }
     return true;
   }
   return false;
@@ -1078,9 +1028,7 @@ export function showInboundClientsModal(
       E(
         'span',
         { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
-        st?.meshOnlinePeers !== undefined && activeConns === 0
-          ? `${st.meshOnlinePeers} ${tr('в сети', 'online')}`
-          : `${activeConns} ${tr('соед.', 'conns')}`,
+        `${activeConns} ${tr('соед.', 'conns')}`,
       ),
       E(
         'span',
@@ -1153,9 +1101,7 @@ export function showInboundClientsModal(
               style:
                 'padding: 1px 7px; border-radius: 9px; font-size: 10.5px; display: inline-block;',
             },
-            client.isMeshPeer
-              ? tr('Не в сети', 'Offline')
-              : tr('Недавно', 'Recent'),
+            tr('Недавно', 'Recent'),
           );
 
       const targetText =
@@ -1181,11 +1127,9 @@ export function showInboundClientsModal(
           E(
             'span',
             { class: 'tachyon-stat-pill tachyon-stat-pill--conns' },
-            client.isMeshPeer && client.activeConns === 0
-              ? 'Mesh'
-              : client.isOnline
-                ? `${client.activeConns} ${tr('соед.', 'conns')}`
-                : `0 ${tr('соед.', 'conns')}`,
+            client.isOnline
+              ? `${client.activeConns} ${tr('соед.', 'conns')}`
+              : `0 ${tr('соед.', 'conns')}`,
           ),
         ]),
         E('td', { class: 'td' }, [
@@ -1359,17 +1303,11 @@ export function renderCollapsibleInboundsBlock(params: {
     const isSelected = selectedServerSectionFilter === s.sectionId;
     const serverError = sectionErrors[s.sectionId] || '';
 
-    const meshOnlinePeers = st?.meshOnlinePeers;
-    const meshTotalPeers = st?.meshTotalPeers;
-    const meshRunning = Boolean(st?.meshRunning);
-    const hasMeshPeersOnline =
-      meshOnlinePeers !== undefined && meshOnlinePeers > 0;
-
     const dotClass = serverError
       ? 'tachyon-service-dot tachyon-service-dot--offline'
       : !s.enabled || !isTachyonRunning
         ? 'tachyon-service-dot tachyon-service-dot--offline'
-        : activeConns > 0 || hasMeshPeersOnline
+        : activeConns > 0
           ? 'tachyon-service-dot tachyon-service-dot--online tachyon-service-dot--active-pulse'
           : 'tachyon-service-dot tachyon-service-dot--online';
 
@@ -1483,58 +1421,33 @@ export function renderCollapsibleInboundsBlock(params: {
                       `${activeConns} ${tr('соед.', 'conns')}`,
                     ),
                   ]
-                : hasMeshPeersOnline
+                : s.protocol === 'tailscale'
                   ? [
                       E(
                         'span',
                         {
-                          class: 'tachyon-stat-pill tachyon-stat-pill--conns',
-                          title:
-                            meshTotalPeers && meshTotalPeers > meshOnlinePeers!
-                              ? `${meshOnlinePeers} / ${meshTotalPeers} ${tr('устр. в сети', 'peers online')}`
-                              : `${meshOnlinePeers} ${tr('устр. в сети', 'peers online')}`,
+                          class: 'tachyon-stat-pill tachyon-stat-pill--idle',
+                          title: tr(
+                            'Встроенный Tailscale работает',
+                            'Embedded Tailscale is running',
+                          ),
                         },
-                        `${meshOnlinePeers} ${tr('в сети', 'online')}`,
+                        tr('Работает', 'Running'),
                       ),
                     ]
-                  : (s.protocol === 'tailscale' &&
-                        s.tailscaleMode !== 'native') ||
-                      (meshRunning && meshOnlinePeers !== undefined)
-                    ? [
-                        E(
-                          'span',
-                          {
-                            class: 'tachyon-stat-pill tachyon-stat-pill--idle',
-                            title:
-                              s.protocol === 'tailscale' &&
-                              s.tailscaleMode !== 'native'
-                                ? tr(
-                                    'Встроенный Tailscale работает',
-                                    'Embedded Tailscale is running',
-                                  )
-                                : meshTotalPeers && meshTotalPeers > 0
-                                  ? `0 / ${meshTotalPeers} ${tr('устр. в сети', 'peers online')}`
-                                  : tr(
-                                      'Демон tailscaled работает',
-                                      'tailscaled daemon is running',
-                                    ),
-                          },
-                          tr('Работает', 'Running'),
-                        ),
-                      ]
-                    : [
-                        E(
-                          'span',
-                          {
-                            class: 'tachyon-stat-pill tachyon-stat-pill--idle',
-                            title: tr(
-                              'Нет активных соединений (режим ожидания)',
-                              'No active connections (standby mode)',
-                            ),
-                          },
-                          tr('Ожидание', 'Idle'),
-                        ),
-                      ]),
+                  : [
+                      E(
+                        'span',
+                        {
+                          class: 'tachyon-stat-pill tachyon-stat-pill--idle',
+                          title: tr(
+                            'Нет активных соединений (режим ожидания)',
+                            'No active connections (standby mode)',
+                          ),
+                        },
+                        tr('Ожидание', 'Idle'),
+                      ),
+                    ]),
             ...(totalDown > 0
               ? [
                   E(
@@ -1892,16 +1805,10 @@ async function pollInboundsForServersTab() {
   }
 
   try {
-    const configuredServers = getConfiguredServerInbounds();
-    const hasNativeTailscale =
-      hasEnabledNativeTailscaleServer(configuredServers);
-    const [res, hostnames, , tailscaleRes] = await Promise.all([
+    const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       fetchHostnames(),
       readSectionErrors(),
-      hasNativeTailscale
-        ? TachyonShellMethods.getTailscalePeers().catch(() => null)
-        : Promise.resolve(null),
     ]);
     if (hostnames && hostnames.size > 0) {
       lastKnownHostnames = hostnames;
@@ -1911,15 +1818,6 @@ async function pollInboundsForServersTab() {
       if (Array.isArray(payload.connections)) {
         lastKnownRawConnections = payload.connections;
       }
-    }
-    if (tailscaleRes && tailscaleRes.success) {
-      store.set({
-        tailscaleWidget: {
-          loading: false,
-          failed: false,
-          data: tailscaleRes.data,
-        },
-      });
     }
   } catch {
     // Ignore transient errors

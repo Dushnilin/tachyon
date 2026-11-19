@@ -51,7 +51,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 |:---|:---|
 | `--channel <auto\|stable\|beta>` | Selects `2.0` release channel: `auto` prefers stable `2.x` and falls back to the latest `2.x` prerelease; `--prerelease` aliases `--channel beta` |
 | `--tag <vX.Y.Z>` | Installs an exact release tag (e.g. `v2.0.0-beta.1` or `v2.0.0`) |
-| `--format <auto\|apk\|ipk\|tar>` | Selects package format: auto-detects `apk` (OpenWrt 25+) / `opkg` (23.05–24.10) or extracts the `.tar.gz` bundle |
+| `--format <auto\|apk\|ipk>` | Selects package format: auto-detects `apk` (OpenWrt 25+) / `opkg` (23.05–24.10) |
 | `--arch <arch>` | Overrides target OpenWrt architecture instead of auto-detection |
 | `--reinstall` / `--repair` | Reinstalls packages over existing configs, restarts services, and rebuilds network hooks |
 | `--skip-core` | Installs or updates `tachyon` without downloading `/usr/bin/tachyon-core` |
@@ -60,7 +60,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 
 ### Supported OpenWrt Architectures
 
-Branch `2.0` builds statically linked binaries for 8 target architectures in `.apk`, `.ipk`, and `.tar.gz` formats:
+Branch `2.0` builds statically linked binaries for 8 target architectures strictly in `.apk` and `.ipk` formats:
 
 | Architecture (`--arch`) | Rust Target Triple (`musl`) | Typical Devices |
 |:---|:---|:---|
@@ -68,7 +68,7 @@ Branch `2.0` builds statically linked binaries for 8 target architectures in `.a
 | `i386_pentium4` | `i686-unknown-linux-musl` | Legacy 32-bit x86 routers |
 | `aarch64` | `aarch64-unknown-linux-musl` | `aarch64_cortex-a53`, `cortex-a72`, Filogic 820/830, RPi 4/5, NanoPi R4S/R5S |
 | `armv7` | `armv7-unknown-linux-musleabihf` | `arm_cortex-a7`, `cortex-a9`, `cortex-a15`, IPQ40xx |
-| `armv6` | `arm-unknown-linux-musleabihf` | `arm_arm1176jzf-s_vfp` devices with hardware FPU |
+| `armv6` | `arm-unknown-linux-musleabi` | `arm_arm1176jzf-s_vfp` devices (EABI soft-float) |
 | `riscv64` | `riscv64gc-unknown-linux-musl` | 64-bit RISC-V boards and routers |
 | `mipsel` | `mipsel-unknown-linux-musl` | MT7620 / MT7621 / MT7628 (`mipsel_24kc`, little-endian soft-float) |
 | `mips` | `mips-unknown-linux-musl` | Atheros / Qualcomm `mips_24kc` (big-endian soft-float) |
@@ -112,7 +112,7 @@ Tachyon 2.0 compiles a single **nftables** ruleset (`table inet TachyonTable`) a
 | **2. Built-in Outbound Desync** | Native stack handling inside `tachyon-core` (TCP/TLS/HTTP & UDP) | Adaptive packet segmentation and desynchronization (`fake_disorder`, `fake_split`, `tlsrec`, `disorder`, `split`, `oob`, `seqovl`, `syndata`, `ipfrag`) without external daemons |
 | **3. L4/L7 Proxy Protocols** | Native clients and load-balancing groups inside `tachyon-core` | Selective routing by sections, `.trs`/`.srs` rule-sets, subnets, and MACs over VLESS (Reality/XHTTP/Vision), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, NaiveProxy, Mieru, Snell, ShadowTLS, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor |
 | **4. L3 / UDP Tunnels** | Built-in `wireguard`, `awg`, `warp`, `fptn`, `openvpn` clients | AmneziaWG (`.conf`, `vpn://`, CPS `i1`–`i5`/`j1`–`j3`), WireGuard, Cloudflare WARP, and FPTN (`fwmark 0x00300000`) |
-| **5. Mesh & Special Transports** | `tailscale`, `wdtt`, `mtproto`, `socks5`, `http` | Tailscale (`100.64.0.0/10` + MagicDNS `100.100.100.100`, bypass mask `0x00340000`), WDTT (`csqtt`/`raw`/`wg`), and MTProto |
+| **5. Mesh & Special Transports** | `tailscale`, `wdtt`, `socks5`, `http` | Tailscale (`100.64.0.0/10` + MagicDNS `100.100.100.100`, bypass mask `0x00340000`) and WDTT (`csqtt`/`raw`/`wg`) |
 | **6. Smart DNS** | `dnsmasq` -> `127.0.0.42#53` + FakeIP pool (`198.18.0.0/15`, `fc00::/18`) | Encrypted resolution over DoH, DoT, DoQ, and HTTP/3 with direct Bootstrap DNS and ISP hijack protection |
 
 ---
@@ -131,7 +131,7 @@ Tachyon 2.0 compiles a single **nftables** ruleset (`table inet TachyonTable`) a
 
 ### 2. Protocols, Subscriptions & Section Balancers
 
-* **Supported outbound protocols**: VLESS (Reality, XHTTP, Vision), VMess, Trojan, Shadowsocks (including `2022-blake3-*`), Hysteria2, TUIC, AnyTLS, ShadowTLS, NaiveProxy, Mieru (`TCP`/`UDP`), Snell, Sudoku, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor, OpenVPN, WireGuard, AmneziaWG (`2.0–3.1` `.conf`, `vpn://`, obfuscation params `jc`/`jmin`/`jmax`/`s1`–`s4`/`h1`–`h4`/`i1`–`i5`/`j1`–`j3`), Cloudflare WARP, FPTN, WDTT (`csqtt`/`raw`/`wg`), Tailscale, MTProto, SOCKS5, and HTTP.
+* **Supported outbound protocols**: VLESS (Reality, XHTTP, Vision), VMess, Trojan, Shadowsocks (including `2022-blake3-*`), Hysteria2, TUIC, AnyTLS, ShadowTLS, NaiveProxy, Mieru (`TCP`/`UDP`), Snell, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor, OpenVPN, WireGuard, AmneziaWG (`2.0–3.1` `.conf`, `vpn://`, obfuscation params `jc`/`jmin`/`jmax`/`s1`–`s4`/`h1`–`h4`/`i1`–`i5`/`j1`–`j3`), Cloudflare WARP, FPTN, WDTT (`csqtt`/`raw`/`wg`), Tailscale, SOCKS5, and HTTP.
 * **Subscription ingestion**: fetches HTTP/HTTPS subscriptions (with DoH fallback), parses `happ://` links, proxy URI lists, `.conf` files, and extracts `subscription-userinfo` traffic/expiration metadata.
 * **Node groups & balancers**: `urltest`, `fallback`, `random`, and bandwidth quota balancing (`quota` with `quota_mib`).
 * **Built-in key generators (`crypto_gen`)**: `tachyon generate_warp`, `tachyon generate_reality_keypair`, `tachyon generate_wg_keypair`, `tachyon generate_tls_keypair`, and `POST /api/crypto/keygen`.
@@ -328,6 +328,7 @@ wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com
 If Tachyon is useful in your network setup, you can support ongoing development:
 
 * **Boosty:** [boosty.to/tachyon](https://boosty.to/tachyon)
+* **SBP (Ozon Bank):** [finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5](https://finance.ozon.ru/apps/sbp/ozonbankpay/019af2ed-d158-77a9-a698-2805a5e61be5)
 * **Bank Cards / SBP (CloudTips):** [pay.cloudtips.ru/p/449c5ef9](https://pay.cloudtips.ru/p/449c5ef9)
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`
 * **Ethereum (ETH / ERC-20):** `0x6CB7a4547eD62EF64990D5C6B5D9fdA58EB223E6`

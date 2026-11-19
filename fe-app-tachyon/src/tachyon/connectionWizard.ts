@@ -3,6 +3,7 @@ import { tr } from './helpers/i18n';
 import { getIPv6ModeLabel, normalizeIpv6Mode } from './helpers/ipv6Summary';
 import { showToast } from '../helpers/showToast';
 import {
+  AI_PRESET_KEYS,
   createInteractiveHintBanner,
   getSubsumedCommunityLists,
 } from '../helpers/communityListPicker';
@@ -101,12 +102,12 @@ const OUTBOUND_METHODS: OutboundMethodOption[] = [
   },
   {
     id: 'desync',
-    titleRu: 'Десинхронизация пакетов (Core Desync / Zapret2 / ByeDPI)',
-    titleEn: 'Packet Desync (Core Desync / Zapret2 / ByeDPI)',
+    titleRu: 'Десинхронизация пакетов (Tachyon Core Desync)',
+    titleEn: 'Packet Desync (Tachyon Core Desync)',
     descRu:
-      'Модификация и фрагментация пакетов (Tachyon Core Desync, Zapret2 nfqws2, Zapret nfqws, ByeDPI ciadpi) без прокси-сервера',
+      'Встроенная модификация и фрагментация пакетов (Tachyon Core Desync Adaptive 2.0) без внешнего прокси-сервера',
     descEn:
-      'Packet fragmentation and desynchronization (Tachyon Core Desync, Zapret2, Zapret, ByeDPI) without external proxy',
+      'Built-in packet fragmentation and desynchronization (Tachyon Core Desync Adaptive 2.0) without external proxy',
     badge: 'DESYNC',
   },
   {
@@ -138,14 +139,6 @@ const OUTBOUND_METHODS: OutboundMethodOption[] = [
     badge: 'PROTOS',
   },
 ];
-
-const ZAPRET_DEFAULT_NFQWS_OPT =
-  '--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-desync-autottl=2 --dpi-desync-fooling=badsum --new --filter-tcp=443 --dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-repeats=11 --dpi-desync-fooling=badsum --dpi-desync-fake-tls-mod=rnd,dupsid,sni=www.google.com --new --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic=/opt/zapret/files/fake/quic_initial_www_google_com.bin';
-
-const ZAPRET2_DEFAULT_NFQWS2_OPT =
-  '--filter-tcp=80 --filter-l7=http --payload=http_req --lua-desync=fake:blob=fake_default_http:tcp_md5 --lua-desync=multisplit:pos=method+2 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000 --lua-desync=multidisorder:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6';
-
-const BYEDPI_DEFAULT_CMD_OPTS = '-o 2 --auto=t,r,a,s -d 2';
 
 const CUSTOM_PROTO_LIST: Array<{
   id: string;
@@ -216,8 +209,8 @@ const CUSTOM_PROTO_LIST: Array<{
   {
     id: 'outbound_json',
     label: tr(
-      'Собственный JSON-аутбаунд (tachyon-core)',
-      'Custom Raw JSON Outbound (tachyon-core)',
+      'Собственный JSON-аутбаунд (Tachyon Core)',
+      'Custom Raw JSON Outbound (Tachyon Core)',
     ),
   },
 ];
@@ -354,21 +347,21 @@ const TRAFFIC_PRESETS: Array<{
   },
   {
     id: 'rkn_geoblock',
-    labelRu: 'Базовый обход РФ + Геоблок 150+ сервисов + SSL CA',
-    labelEn: 'Base Russia Bypass + GeoBlock 150+ + SSL CA',
+    labelRu: 'Базовый список РФ + Геоблок 150+ сервисов + SSL CA',
+    labelEn: 'Base Russia List + GeoBlock 150+ + SSL CA',
     domains: ['russia_inside', 'hodca'],
   },
   {
     id: 'antifilter_refilter',
-    labelRu: 'Расширенный реестр РКН, Антизапрет и Re:filter',
-    labelEn: 'Extended RKN Registry, Antizapret & Re:filter',
+    labelRu: 'Расширенный реестр РФ, Антизапрет и Re:filter',
+    labelEn: 'Extended RU Registry, Antizapret & Re:filter',
     domains: ['ru_blocked', 'refilter', 'antifilter'],
   },
   {
     id: 'ai',
-    labelRu: 'Нейросети и ИИ (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    labelEn: 'AI Services (ChatGPT, Claude, Gemini, Grok, Cursor)',
-    domains: ['ai_all', 'google_ai'],
+    labelRu: 'Нейросети и ИИ (ChatGPT, Claude, Gemini, Google, Grok, Cursor)',
+    labelEn: 'AI Services (ChatGPT, Claude, Gemini, Google, Grok, Cursor)',
+    domains: [...AI_PRESET_KEYS],
   },
   {
     id: 'social',
@@ -425,8 +418,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
 }> = [
   {
     id: 'rkn',
-    titleRu: 'Реестры блокировок и Геоблок',
-    titleEn: 'Censorship & GeoBlock Registries',
+    titleRu: 'Сетевые списки и Геоблок',
+    titleEn: 'Network Registries & GeoBlock',
     keys: [
       'russia_inside',
       'ukraine_inside',
@@ -454,6 +447,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'perplexity',
       'copilot',
       'deepseek',
+      'qwen',
+      'kimi',
       'midjourney',
       'elevenlabs',
       'ai_video',
@@ -470,6 +465,7 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'youtube_images',
       'twitch',
       'twitch_ads',
+      'kick',
       'spotify',
       'soundcloud_music',
       'podcasts_radio',
@@ -560,6 +556,7 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'figma_adobe',
       'gamedev_3d',
       'pkg_registries',
+      'paas_db',
       'linux_repos',
       'captcha_auth',
       'security_passwords',
@@ -922,12 +919,12 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     id: 'ru_all_in_one',
     titleRu: 'РФ: Всё включено (Рекомендуется)',
     titleEn: 'Russia: All-in-One (Recommended)',
-    badgeRu: 'ХИТ • В 1 КЛИК',
+    badgeRu: 'РЕКОМЕНДУЕТСЯ',
     badgeEn: 'RECOMMENDED',
     descRu:
-      'YouTube, Discord, Telegram, все ИИ (ChatGPT, Claude, Gemini), соцсети, Spotify и базовый обход РФ — через подписку с автовыбором узла (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую.',
+      'YouTube, Discord, Telegram, все ИИ (ChatGPT, Claude, Gemini), соцсети, Spotify и базовый список РФ — через подписку с автовыбором узла (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую.',
     descEn:
-      'YouTube, Discord, Telegram, AI services (ChatGPT, Claude, Gemini), Meta, X, Spotify & Russia bypass via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
+      'YouTube, Discord, Telegram, AI services (ChatGPT, Claude, Gemini), Meta, X, Spotify & Russia list via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
@@ -964,9 +961,9 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'БАЗОВЫЙ',
     badgeEn: 'ESSENTIAL',
     descRu:
-      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый список блокировок РФ + геоблок 150+ сервисов и нейросети. Всё остальное идёт напрямую через провайдера.',
+      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый реестр ограничений РФ + геоблок 150+ сервисов и нейросети. Всё остальное идёт напрямую через провайдера.',
     descEn:
-      'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia bypass + GeoBlock 150+ and AI services. Everything else goes direct.',
+      'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia list + GeoBlock 150+ and AI services. Everything else goes direct.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
@@ -979,21 +976,21 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     enableAutoUrlTest: true,
     tagsRu: [
       'YouTube + Discord + TG',
-      'Базовый обход РФ + ИИ',
+      'Базовый список РФ + ИИ',
       '1 секция без лишнего',
     ],
-    tagsEn: ['YouTube + Discord + TG', 'Base RU Bypass + AI', 'Single section'],
+    tagsEn: ['YouTube + Discord + TG', 'Base RU List + AI', 'Single section'],
   },
   {
     id: 'ru_max_adblock',
-    titleRu: 'РФ: Максимальный обход + Антиреклама',
-    titleEn: 'Russia: Maximum Bypass + AdBlock',
-    badgeRu: 'МАКСИМУМ + ADBLOCK',
-    badgeEn: 'MAX + ADBLOCK',
+    titleRu: 'РФ: Полный профиль + Антиреклама',
+    titleEn: 'Russia: Full Profile + AdBlock',
+    badgeRu: 'ПОЛНЫЙ + ADBLOCK',
+    badgeEn: 'FULL + ADBLOCK',
     descRu:
-      'Полные реестры РКН, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой обход для банков РФ и игр.',
+      'Полный реестр ограничений РФ, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой маршрут для банков РФ и игр.',
     descEn:
-      'Full RKN/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct bypass for RU banks & games.',
+      'Full RU/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct routing for RU banks & games.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: [
@@ -1020,13 +1017,13 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     globalDnsPreset: 'yandex_doh',
     enableAutoUrlTest: true,
     tagsRu: [
-      'Полные базы РКН + Re:filter',
+      'Полные базы РФ + Re:filter',
       'ИИ + Соцсети + Стримы',
       'Блокировка рекламы HaGeZi',
       'Банки РФ и Игры напрямую',
     ],
     tagsEn: [
-      'Full RKN + Re:filter',
+      'Full RU + Re:filter',
       'AI + Social + Streaming',
       'HaGeZi Pro AdBlock',
       'RU Banks & Games Direct',
@@ -1410,20 +1407,9 @@ export function openConnectionWizardModal(
     initialDiagInfo?.providerInfoLoaded || initialDiagInfo?.loaded,
   );
   let wizardAvailableEngines = {
-    desync: wizardEnginesLoaded
-      ? Boolean(initialDiagInfo?.sing_box_tachyon_core)
-      : true,
-    zapret2: wizardEnginesLoaded
-      ? Boolean(initialDiagInfo?.zapret2_installed)
-      : true,
-    zapret: wizardEnginesLoaded
-      ? Boolean(initialDiagInfo?.zapret_installed)
-      : true,
-    byedpi: wizardEnginesLoaded
-      ? Boolean(initialDiagInfo?.byedpi_installed)
-      : true,
+    desync: true,
   };
-  let dpiEngineType: 'desync' | 'zapret2' | 'zapret' | 'byedpi' = 'desync';
+  let dpiEngineType = 'desync' as const;
   let desyncPresetKey = 'auto';
   let desyncMode = 'fake_disorder';
   let desyncSplitPos = 'midsld';
@@ -1431,10 +1417,6 @@ export function openConnectionWizardModal(
   let desyncFakeSni = '';
   const desyncUdpFake = true;
   let desyncPreset = '';
-  let nfqws2Opt = ZAPRET2_DEFAULT_NFQWS2_OPT;
-  let nfqwsOpt = ZAPRET_DEFAULT_NFQWS_OPT;
-  let directNfqws = true;
-  let byedpiCmdOpts = BYEDPI_DEFAULT_CMD_OPTS;
 
   function syncDpiEngineSelection() {
     if (
@@ -1444,25 +1426,15 @@ export function openConnectionWizardModal(
     ) {
       selectedQuickPresetId = 'ru_all_in_one';
     }
-    const engineOrder: Array<'desync' | 'zapret2' | 'zapret' | 'byedpi'> = [
-      'desync',
-      'zapret2',
-      'zapret',
-      'byedpi',
-    ];
-    const hasAnyEngine = engineOrder.some((id) => wizardAvailableEngines[id]);
-    if (wizardEnginesLoaded && !hasAnyEngine && outboundMethod === 'desync') {
+    if (
+      wizardEnginesLoaded &&
+      !wizardAvailableEngines.desync &&
+      outboundMethod === 'desync'
+    ) {
       outboundMethod = 'subscription';
       return;
     }
-    if (!wizardAvailableEngines[dpiEngineType]) {
-      const firstAvailable = engineOrder.find(
-        (id) => wizardAvailableEngines[id],
-      );
-      if (firstAvailable) {
-        dpiEngineType = firstAvailable;
-      }
-    }
+    dpiEngineType = 'desync';
   }
 
   // Custom protocol shared & specific state
@@ -1528,10 +1500,21 @@ export function openConnectionWizardModal(
   let csqttHashes = '';
   let csqttWorkers = '';
   let csqttVkAuthMode = '';
+  let csqttVkCookie = '';
+  let csqttVkClientIds = '';
   let csqttTurnTransport = '';
   let csqttTurnServer = '';
+  let csqttTurnUrls = '';
+  let csqttTurnUsername = '';
+  let csqttTurnPassword = '';
   let csqttMtu = '';
   let csqttDeviceId = '';
+  let csqttChunk1 = false;
+  let csqttWgPort = '';
+  let csqttLocalPort = '';
+  let csqttWgPrivateKey = '';
+  let csqttWgPeerPublicKey = '';
+  let csqttWgAddress = '';
 
   // ShadowTLS
   let shadowtlsVersion = '3';
@@ -1548,7 +1531,6 @@ export function openConnectionWizardModal(
   let openvpnCipher = 'AES-256-GCM';
 
   // Tailscale
-  let tailscaleMode: 'embedded' | 'native' = 'embedded';
   let tailscaleAuthKey = '';
   let tailscaleHostname = '';
   let tailscaleControlUrl = 'https://controlplane.tailscale.com';
@@ -2128,8 +2110,8 @@ export function openConnectionWizardModal(
               'div',
               { class: 'tachyon-wizard__choice-desc' },
               tr(
-                'Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков.',
-                'Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing.',
+                'Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor и др.) и настройка списков.',
+                'Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor, etc.) and routing.',
               ),
             ),
           ],
@@ -2173,11 +2155,7 @@ export function openConnectionWizardModal(
 
   function renderStep2Outbound() {
     const hasAnyDesyncEngine =
-      !wizardEnginesLoaded ||
-      wizardAvailableEngines.desync ||
-      wizardAvailableEngines.zapret2 ||
-      wizardAvailableEngines.zapret ||
-      wizardAvailableEngines.byedpi;
+      !wizardEnginesLoaded || wizardAvailableEngines.desync;
     const methodCards = OUTBOUND_METHODS.filter(
       (m) => m.id !== 'desync' || hasAnyDesyncEngine,
     ).map((m) =>
@@ -2543,90 +2521,24 @@ export function openConnectionWizardModal(
         ]),
       );
     } else if (outboundMethod === 'desync') {
-      const allDpiEngines: Array<{
-        id: 'desync' | 'zapret2' | 'zapret' | 'byedpi';
-        label: string;
-      }> = [
-        {
-          id: 'desync',
-          label: tr(
-            'Tachyon Core Desync (встроенный нативный движок)',
-            'Tachyon Core Desync (Built-in Native Engine)',
-          ),
-        },
-        {
-          id: 'zapret2',
-          label: tr(
-            'Zapret2 (nfqws2 — Lua-стратегии и NFQUEUE)',
-            'Zapret2 (nfqws2 — Lua strategies & NFQUEUE)',
-          ),
-        },
-        {
-          id: 'zapret',
-          label: tr(
-            'Zapret (nfqws — классический NFQUEUE)',
-            'Zapret (nfqws — classic NFQUEUE)',
-          ),
-        },
-        {
-          id: 'byedpi',
-          label: tr(
-            'ByeDPI (ciadpi — локальный SOCKS5 десинхронизатор)',
-            'ByeDPI (ciadpi — local SOCKS5 desync)',
-          ),
-        },
-      ];
-      const dpiEngines = allDpiEngines.filter(
-        (eng) => wizardAvailableEngines[eng.id],
-      );
+      const dpiEngineAvailable = Boolean(wizardAvailableEngines.desync);
 
-      formFields.push(
-        E('div', { class: 'tachyon-wizard__field' }, [
+      if (!dpiEngineAvailable) {
+        formFields.push(
           E(
-            'label',
-            { class: 'tachyon-wizard__label' },
-            tr(
-              'Движок десинхронизации пакетов',
-              'Packet Desynchronization Engine',
+            'div',
+            { class: 'tachyon-wizard__field' },
+            E(
+              'span',
+              { class: 'tachyon-wizard__label' },
+              tr(
+                'Бинарный файл tachyon-core не установлен на роутере',
+                'tachyon-core binary is not installed on the router',
+              ),
             ),
           ),
-          E(
-            'select',
-            {
-              class: 'cbi-input-select tachyon-wizard__select',
-              change: (ev: Event) => {
-                dpiEngineType = (ev.target as HTMLSelectElement).value as any;
-                rerender();
-              },
-            } as any,
-            dpiEngines.length > 0
-              ? dpiEngines.map((eng) =>
-                  E(
-                    'option',
-                    {
-                      value: eng.id,
-                      selected: eng.id === dpiEngineType ? true : undefined,
-                    },
-                    eng.label,
-                  ),
-                )
-              : [
-                  E(
-                    'option',
-                    { value: '', disabled: true, selected: true },
-                    tr(
-                      'Нет установленных совместимых движков',
-                      'No compatible engines installed',
-                    ),
-                  ),
-                ],
-          ),
-        ]),
-      );
-
-      if (dpiEngines.length === 0) {
-        // No compatible engines installed; skip engine-specific fields
-      } else if (dpiEngineType === 'desync') {
+        );
+      } else {
         const presetOptions = [
           {
             id: 'auto',
@@ -2960,112 +2872,8 @@ export function openConnectionWizardModal(
             );
           }
         }
-      } else if (dpiEngineType === 'zapret2') {
-        formFields.push(
-          E('div', { class: 'tachyon-wizard__field' }, [
-            E(
-              'label',
-              { class: 'tachyon-wizard__label' },
-              tr(
-                'Стратегия Zapret2 (аргументы nfqws2 / Lua)',
-                'Zapret2 Strategy (nfqws2 / Lua arguments)',
-              ),
-            ),
-            E(
-              'textarea',
-              {
-                class: 'cbi-input-textarea tachyon-wizard__textarea',
-                rows: 4,
-                input: (ev: Event) => {
-                  nfqws2Opt = (ev.target as HTMLTextAreaElement).value;
-                },
-              } as any,
-              nfqws2Opt,
-            ),
-          ]),
-          E('label', { class: 'tachyon-wizard__toggle-row' }, [
-            E('input', {
-              type: 'checkbox',
-              checked: directNfqws ? true : undefined,
-              change: (ev: Event) => {
-                directNfqws = (ev.target as HTMLInputElement).checked;
-              },
-            } as any),
-            E(
-              'span',
-              {},
-              tr(
-                'Прямой запуск бинарника nfqws2 (изолированный per-section инстанс без /etc/init.d/zapret2)',
-                'Direct nfqws2 binary launch (isolated per-section instance)',
-              ),
-            ),
-          ]),
-        );
-      } else if (dpiEngineType === 'zapret') {
-        formFields.push(
-          E('div', { class: 'tachyon-wizard__field' }, [
-            E(
-              'label',
-              { class: 'tachyon-wizard__label' },
-              tr(
-                'Стратегия Zapret (аргументы nfqws)',
-                'Zapret Strategy (nfqws arguments)',
-              ),
-            ),
-            E(
-              'textarea',
-              {
-                class: 'cbi-input-textarea tachyon-wizard__textarea',
-                rows: 4,
-                input: (ev: Event) => {
-                  nfqwsOpt = (ev.target as HTMLTextAreaElement).value;
-                },
-              } as any,
-              nfqwsOpt,
-            ),
-          ]),
-          E('label', { class: 'tachyon-wizard__toggle-row' }, [
-            E('input', {
-              type: 'checkbox',
-              checked: directNfqws ? true : undefined,
-              change: (ev: Event) => {
-                directNfqws = (ev.target as HTMLInputElement).checked;
-              },
-            } as any),
-            E(
-              'span',
-              {},
-              tr(
-                'Прямой запуск бинарника nfqws (изолированный инстанс)',
-                'Direct nfqws binary launch (isolated instance)',
-              ),
-            ),
-          ]),
-        );
-      } else if (dpiEngineType === 'byedpi') {
-        formFields.push(
-          E('div', { class: 'tachyon-wizard__field' }, [
-            E(
-              'label',
-              { class: 'tachyon-wizard__label' },
-              tr(
-                'Аргументы командной строки ByeDPI (ciadpi)',
-                'ByeDPI (ciadpi) Command Arguments',
-              ),
-            ),
-            E('input', {
-              type: 'text',
-              class: 'cbi-input-text tachyon-wizard__input',
-              placeholder: '-o 2 --auto=t,r,a,s -d 2',
-              value: byedpiCmdOpts,
-              input: (ev: Event) => {
-                byedpiCmdOpts = (ev.target as HTMLInputElement).value;
-              },
-            } as any),
-          ]),
-        );
       }
-      if (dpiEngines.length > 0) {
+      if (dpiEngineAvailable) {
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
             E(
@@ -3078,21 +2886,10 @@ export function openConnectionWizardModal(
                     initialEngine: dpiEngineType,
                     availableEngines: wizardAvailableEngines,
                     nestedModal: true,
-                    onApplyStrategy: (appliedEngine, args) => {
-                      if (appliedEngine === 'zapret2') {
-                        dpiEngineType = 'zapret2';
-                        nfqws2Opt = args;
-                      } else if (appliedEngine === 'zapret') {
-                        dpiEngineType = 'zapret';
-                        nfqwsOpt = args;
-                      } else if (appliedEngine === 'byedpi') {
-                        dpiEngineType = 'byedpi';
-                        byedpiCmdOpts = args;
-                      } else if (appliedEngine === 'desync') {
-                        dpiEngineType = 'desync';
-                        desyncPresetKey = 'custom';
-                        desyncPreset = args;
-                      }
+                    onApplyStrategy: (_appliedEngine, args) => {
+                      dpiEngineType = 'desync';
+                      desyncPresetKey = 'custom';
+                      desyncPreset = args;
                       rerender();
                     },
                   });
@@ -4434,6 +4231,71 @@ export function openConnectionWizardModal(
               E(
                 'label',
                 { class: 'tachyon-wizard__label' },
+                tr('URL-ы TURN (через запятую)', 'TURN URLs (comma-separated)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'turn:turn.example.com:3478?transport=udp',
+                value: csqttTurnUrls,
+                input: (ev: Event) => {
+                  csqttTurnUrls = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Device ID (необязательно)', 'Device ID (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttDeviceId,
+                input: (ev: Event) => {
+                  csqttDeviceId = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Логин TURN (необязательно)', 'TURN Username (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttTurnUsername,
+                input: (ev: Event) => {
+                  csqttTurnUsername = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Пароль TURN (необязательно)', 'TURN Password (optional)'),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttTurnPassword,
+                input: (ev: Event) => {
+                  csqttTurnPassword = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
                 tr('Режим авторизации VK', 'VK Auth Mode'),
               ),
               E(
@@ -4469,17 +4331,145 @@ export function openConnectionWizardModal(
               E(
                 'label',
                 { class: 'tachyon-wizard__label' },
-                tr('Device ID (необязательно)', 'Device ID (optional)'),
+                tr('VK Cookie (для режима cookie)', 'VK Cookie (cookie mode)'),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'remixdsid=...; remixsid=...',
+                value: csqttVkCookie,
+                input: (ev: Event) => {
+                  csqttVkCookie = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'VK Client IDs (через запятую)',
+                  'VK Client IDs (comma-separated)',
+                ),
               ),
               E('input', {
                 type: 'text',
                 class: 'cbi-input-text tachyon-wizard__input',
-                value: csqttDeviceId,
+                value: csqttVkClientIds,
                 input: (ev: Event) => {
-                  csqttDeviceId = (ev.target as HTMLInputElement).value;
+                  csqttVkClientIds = (ev.target as HTMLInputElement).value;
                 },
               } as any),
             ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Порт WireGuard / Локальный порт', 'WG Port / Local Port'),
+              ),
+              E('div', { style: 'display:flex;gap:8px;' }, [
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: '56000',
+                  value: csqttWgPort,
+                  input: (ev: Event) => {
+                    csqttWgPort = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: tr('Локальный', 'Local'),
+                  value: csqttLocalPort,
+                  input: (ev: Event) => {
+                    csqttLocalPort = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+              ]),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Приватный ключ WireGuard (режим wg)',
+                  'WireGuard Private Key (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttWgPrivateKey,
+                input: (ev: Event) => {
+                  csqttWgPrivateKey = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Публичный ключ пира WireGuard (режим wg)',
+                  'WireGuard Peer Public Key (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttWgPeerPublicKey,
+                input: (ev: Event) => {
+                  csqttWgPeerPublicKey = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Адрес туннеля WireGuard (режим wg)',
+                  'WireGuard Tunnel Address (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: '10.66.0.2/32',
+                value: csqttWgAddress,
+                input: (ev: Event) => {
+                  csqttWgAddress = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E(
+              'label',
+              {
+                class: 'tachyon-wizard__toggle-row',
+                style: 'align-self:end;margin-bottom:6px;',
+              },
+              [
+                E('input', {
+                  type: 'checkbox',
+                  checked: csqttChunk1 ? true : undefined,
+                  change: (ev: Event) => {
+                    csqttChunk1 = (ev.target as HTMLInputElement).checked;
+                  },
+                } as any),
+                E(
+                  'span',
+                  {},
+                  tr('Фрейминг Chunk1 (chunk1)', 'Chunk1 Framing (chunk1)'),
+                ),
+              ],
+            ),
           ]),
         );
       } else if (customProto === 'shadowtls') {
@@ -4847,234 +4837,138 @@ export function openConnectionWizardModal(
           ]),
         );
       } else if (customProto === 'tailscale') {
-        const tsIfaces = Array.from(
-          new Set(['tailscale0', ...readyRouterInterfaces]),
-        );
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
             E(
               'label',
               { class: 'tachyon-wizard__label' },
-              tr('Режим Tailscale', 'Tailscale Mode'),
+              tr(
+                'Ключ авторизации Tailscale (необязательно)',
+                'Tailscale Auth Key (optional)',
+              ),
             ),
+            E('input', {
+              type: 'text',
+              class: 'cbi-input-text tachyon-wizard__input',
+              placeholder: 'tskey-auth-...',
+              value: tailscaleAuthKey,
+              input: (ev: Event) => {
+                tailscaleAuthKey = (ev.target as HTMLInputElement).value;
+              },
+            } as any),
             E(
-              'select',
+              'div',
               {
-                class: 'cbi-input-select tachyon-wizard__select',
-                change: (ev: Event) => {
-                  const val = (ev.target as HTMLSelectElement).value;
-                  tailscaleMode = val === 'native' ? 'native' : 'embedded';
-                  if (tailscaleMode === 'native' && !customInterface) {
-                    customInterface = 'tailscale0';
-                  }
-                  rerender();
+                style: 'margin-top: 4px; font-size: 12px; opacity: 0.78;',
+              },
+              tr(
+                'Если не указан, ссылка для интерактивного входа появится в журнале сервиса.',
+                'If omitted, an interactive login URL is printed in the service logs.',
+              ),
+            ),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Имя хоста (Hostname)', 'Tailscale Hostname'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'tachyon-router',
+                value: tailscaleHostname,
+                input: (ev: Event) => {
+                  tailscaleHostname = (ev.target as HTMLInputElement).value;
                 },
-              } as any,
-              [
-                E(
-                  'option',
-                  {
-                    value: 'embedded',
-                    selected: tailscaleMode === 'embedded' ? true : undefined,
-                  },
-                  tr(
-                    'Встроенный (tachyon-core / sing-box, по умолчанию)',
-                    'Embedded (tachyon-core / sing-box, default)',
-                  ),
-                ),
-                E(
-                  'option',
-                  {
-                    value: 'native',
-                    selected: tailscaleMode === 'native' ? true : undefined,
-                  },
-                  tr(
-                    'Нативный (системный tailscaled / tailscale0)',
-                    'Native (system tailscaled / tailscale0)',
-                  ),
-                ),
-              ],
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('URL контроллера (Control URL)', 'Tailscale Control URL'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'https://controlplane.tailscale.com',
+                value: tailscaleControlUrl,
+                input: (ev: Event) => {
+                  tailscaleControlUrl = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__field' }, [
+            E(
+              'label',
+              { class: 'tachyon-wizard__label' },
+              tr(
+                'Выходной узел (Exit node, необязательно)',
+                'Exit Node (optional)',
+              ),
+            ),
+            E('input', {
+              type: 'text',
+              class: 'cbi-input-text tachyon-wizard__input',
+              placeholder: '100.64.0.10',
+              value: tailscaleExitNode,
+              input: (ev: Event) => {
+                tailscaleExitNode = (ev.target as HTMLInputElement).value;
+              },
+            } as any),
+          ]),
+          E('label', { class: 'tachyon-wizard__toggle-row' }, [
+            E('input', {
+              type: 'checkbox',
+              checked: tailscaleAcceptRoutes ? true : undefined,
+              change: (ev: Event) => {
+                tailscaleAcceptRoutes = (ev.target as HTMLInputElement).checked;
+              },
+            } as any),
+            E(
+              'span',
+              {},
+              tr('Принимать подсети (Accept routes)', 'Accept subnet routes'),
+            ),
+          ]),
+          E('label', { class: 'tachyon-wizard__toggle-row' }, [
+            E('input', {
+              type: 'checkbox',
+              checked: tailscaleAcceptDns ? true : undefined,
+              change: (ev: Event) => {
+                tailscaleAcceptDns = (ev.target as HTMLInputElement).checked;
+              },
+            } as any),
+            E(
+              'span',
+              {},
+              tr(
+                'Использовать MagicDNS (Accept DNS)',
+                'Accept Tailscale DNS (MagicDNS)',
+              ),
+            ),
+          ]),
+          E('label', { class: 'tachyon-wizard__toggle-row' }, [
+            E('input', {
+              type: 'checkbox',
+              checked: tailscaleEphemeral ? true : undefined,
+              change: (ev: Event) => {
+                tailscaleEphemeral = (ev.target as HTMLInputElement).checked;
+              },
+            } as any),
+            E(
+              'span',
+              {},
+              tr(
+                'Эфемерный узел (удалять после отключения)',
+                'Ephemeral node (remove on disconnect)',
+              ),
             ),
           ]),
         );
-        if (tailscaleMode === 'native') {
-          formFields.push(
-            E('div', { class: 'tachyon-wizard__field' }, [
-              E(
-                'label',
-                { class: 'tachyon-wizard__label' },
-                tr(
-                  'Сетевой интерфейс Tailscale на роутере',
-                  'Tailscale Interface Name on Router',
-                ),
-              ),
-              E('input', {
-                type: 'text',
-                class: 'cbi-input-text tachyon-wizard__input',
-                placeholder: 'tailscale0',
-                value: customInterface || 'tailscale0',
-                input: (ev: Event) => {
-                  customInterface = (ev.target as HTMLInputElement).value;
-                },
-              } as any),
-              E(
-                'div',
-                {
-                  class: 'tachyon-wizard__chips',
-                  style: 'margin-top: 6px;',
-                },
-                tsIfaces.map((ifName) =>
-                  E(
-                    'button',
-                    {
-                      type: 'button',
-                      class: `tachyon-wizard__chip ${(customInterface || 'tailscale0') === ifName ? 'is-active' : ''}`,
-                      click: () => {
-                        customInterface = ifName;
-                        rerender();
-                      },
-                    } as any,
-                    ifName,
-                  ),
-                ),
-              ),
-            ]),
-          );
-        } else {
-          formFields.push(
-            E('div', { class: 'tachyon-wizard__field' }, [
-              E(
-                'label',
-                { class: 'tachyon-wizard__label' },
-                tr(
-                  'Ключ авторизации Tailscale (необязательно)',
-                  'Tailscale Auth Key (optional)',
-                ),
-              ),
-              E('input', {
-                type: 'text',
-                class: 'cbi-input-text tachyon-wizard__input',
-                placeholder: 'tskey-auth-...',
-                value: tailscaleAuthKey,
-                input: (ev: Event) => {
-                  tailscaleAuthKey = (ev.target as HTMLInputElement).value;
-                },
-              } as any),
-              E(
-                'div',
-                {
-                  style: 'margin-top: 4px; font-size: 12px; opacity: 0.78;',
-                },
-                tr(
-                  'Если не указан, ссылка для интерактивного входа появится в журнале сервиса.',
-                  'If omitted, an interactive login URL is printed in the service logs.',
-                ),
-              ),
-            ]),
-            E('div', { class: 'tachyon-wizard__row-2col' }, [
-              E('div', { class: 'tachyon-wizard__field' }, [
-                E(
-                  'label',
-                  { class: 'tachyon-wizard__label' },
-                  tr('Имя хоста (Hostname)', 'Tailscale Hostname'),
-                ),
-                E('input', {
-                  type: 'text',
-                  class: 'cbi-input-text tachyon-wizard__input',
-                  placeholder: 'tachyon-router',
-                  value: tailscaleHostname,
-                  input: (ev: Event) => {
-                    tailscaleHostname = (ev.target as HTMLInputElement).value;
-                  },
-                } as any),
-              ]),
-              E('div', { class: 'tachyon-wizard__field' }, [
-                E(
-                  'label',
-                  { class: 'tachyon-wizard__label' },
-                  tr('URL контроллера (Control URL)', 'Tailscale Control URL'),
-                ),
-                E('input', {
-                  type: 'text',
-                  class: 'cbi-input-text tachyon-wizard__input',
-                  placeholder: 'https://controlplane.tailscale.com',
-                  value: tailscaleControlUrl,
-                  input: (ev: Event) => {
-                    tailscaleControlUrl = (ev.target as HTMLInputElement).value;
-                  },
-                } as any),
-              ]),
-            ]),
-            E('div', { class: 'tachyon-wizard__field' }, [
-              E(
-                'label',
-                { class: 'tachyon-wizard__label' },
-                tr(
-                  'Выходной узел (Exit node, необязательно)',
-                  'Exit Node (optional)',
-                ),
-              ),
-              E('input', {
-                type: 'text',
-                class: 'cbi-input-text tachyon-wizard__input',
-                placeholder: '100.64.0.10',
-                value: tailscaleExitNode,
-                input: (ev: Event) => {
-                  tailscaleExitNode = (ev.target as HTMLInputElement).value;
-                },
-              } as any),
-            ]),
-            E('label', { class: 'tachyon-wizard__toggle-row' }, [
-              E('input', {
-                type: 'checkbox',
-                checked: tailscaleAcceptRoutes ? true : undefined,
-                change: (ev: Event) => {
-                  tailscaleAcceptRoutes = (ev.target as HTMLInputElement)
-                    .checked;
-                },
-              } as any),
-              E(
-                'span',
-                {},
-                tr('Принимать подсети (Accept routes)', 'Accept subnet routes'),
-              ),
-            ]),
-            E('label', { class: 'tachyon-wizard__toggle-row' }, [
-              E('input', {
-                type: 'checkbox',
-                checked: tailscaleAcceptDns ? true : undefined,
-                change: (ev: Event) => {
-                  tailscaleAcceptDns = (ev.target as HTMLInputElement).checked;
-                },
-              } as any),
-              E(
-                'span',
-                {},
-                tr(
-                  'Использовать MagicDNS (Accept DNS)',
-                  'Accept Tailscale DNS (MagicDNS)',
-                ),
-              ),
-            ]),
-            E('label', { class: 'tachyon-wizard__toggle-row' }, [
-              E('input', {
-                type: 'checkbox',
-                checked: tailscaleEphemeral ? true : undefined,
-                change: (ev: Event) => {
-                  tailscaleEphemeral = (ev.target as HTMLInputElement).checked;
-                },
-              } as any),
-              E(
-                'span',
-                {},
-                tr(
-                  'Эфемерный узел (удалять после отключения)',
-                  'Ephemeral node (remove on disconnect)',
-                ),
-              ),
-            ]),
-          );
-        }
       } else if (customProto === 'tor') {
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
@@ -5160,8 +5054,8 @@ export function openConnectionWizardModal(
               'label',
               { class: 'tachyon-wizard__label' },
               tr(
-                'JSON-объект outbound (tachyon-core)',
-                'Raw Outbound JSON Object (tachyon-core)',
+                'JSON-объект outbound (Tachyon Core)',
+                'Raw Outbound JSON Object (Tachyon Core)',
               ),
             ),
             E(
@@ -5708,7 +5602,7 @@ export function openConnectionWizardModal(
                     { class: 'tachyon-wizard__checkbox-desc' },
                     tr(
                       'Роутер сам измеряет задержку и автоматически переключает маршрут на самый быстрый живой узел без разрыва связи',
-                      'Router automatically measures latency and switches to the fastest alive server seamlessly',
+                      'Router automatically measures latency and switches to the fastest available server without dropping connections',
                     ),
                   ),
                 ]),
@@ -7166,86 +7060,51 @@ export function openConnectionWizardModal(
         }
       }
     } else if (outboundMethod === 'desync') {
-      if (dpiEngineType === 'desync') {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'desync_preset',
-          desyncPresetKey || 'auto',
-        );
-        if (desyncPresetKey === 'custom' || desyncPresetKey === 'auto') {
-          if (desyncPresetKey === 'custom') {
-            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'desync_mode', desyncMode);
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'desync_split_pos',
-              desyncSplitPos,
-            );
-            if (desyncPreset.trim()) {
-              uciObj.set(
-                TACHYON_UCI_PACKAGE,
-                srcId,
-                'desync_opts',
-                desyncPreset.trim(),
-              );
-            }
-          }
-          if (desyncFakeTtl.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'desync_fake_ttl',
-              desyncFakeTtl.trim(),
-            );
-          }
-          if (desyncFakeSni.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'desync_fake_sni',
-              desyncFakeSni.trim(),
-            );
-          }
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srcId,
+        'desync_preset',
+        desyncPresetKey || 'auto',
+      );
+      if (desyncPresetKey === 'custom' || desyncPresetKey === 'auto') {
+        if (desyncPresetKey === 'custom') {
+          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'desync_mode', desyncMode);
           uciObj.set(
             TACHYON_UCI_PACKAGE,
             srcId,
-            'desync_udp_fake',
-            desyncUdpFake ? '1' : '0',
+            'desync_split_pos',
+            desyncSplitPos,
+          );
+          if (desyncPreset.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'desync_opts',
+              desyncPreset.trim(),
+            );
+          }
+        }
+        if (desyncFakeTtl.trim()) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'desync_fake_ttl',
+            desyncFakeTtl.trim(),
           );
         }
-      } else if (dpiEngineType === 'zapret2') {
+        if (desyncFakeSni.trim()) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'desync_fake_sni',
+            desyncFakeSni.trim(),
+          );
+        }
         uciObj.set(
           TACHYON_UCI_PACKAGE,
           srcId,
-          'nfqws2_opt',
-          nfqws2Opt.trim() || ZAPRET2_DEFAULT_NFQWS2_OPT,
-        );
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'direct_nfqws',
-          directNfqws ? '1' : '0',
-        );
-      } else if (dpiEngineType === 'zapret') {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'nfqws_opt',
-          nfqwsOpt.trim() || ZAPRET_DEFAULT_NFQWS_OPT,
-        );
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'direct_nfqws',
-          directNfqws ? '1' : '0',
-        );
-      } else if (dpiEngineType === 'byedpi') {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'byedpi_cmd_opts',
-          byedpiCmdOpts.trim() || BYEDPI_DEFAULT_CMD_OPTS,
+          'desync_udp_fake',
+          desyncUdpFake ? '1' : '0',
         );
       }
     } else if (outboundMethod === 'fptn') {
@@ -7273,76 +7132,63 @@ export function openConnectionWizardModal(
         uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface_name', iface);
         uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface', iface);
       } else if (customProto === 'tailscale') {
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'tailscale_mode', tailscaleMode);
-        if (tailscaleMode === 'native') {
-          const iface = customInterface.trim() || 'tailscale0';
-          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface_name', iface);
-          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface', iface);
-          unsetUciOpt('tailscale_auth_key');
-          unsetUciOpt('tailscale_hostname');
-          unsetUciOpt('tailscale_control_url');
-          unsetUciOpt('tailscale_exit_node');
-          unsetUciOpt('tailscale_accept_routes');
-          unsetUciOpt('tailscale_accept_dns');
-          unsetUciOpt('tailscale_ephemeral');
+        unsetUciOpt('tailscale_mode');
+        unsetUciOpt('interface_name');
+        unsetUciOpt('interface');
+        if (tailscaleAuthKey.trim()) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_auth_key',
+            tailscaleAuthKey.trim(),
+          );
         } else {
-          unsetUciOpt('interface_name');
-          unsetUciOpt('interface');
-          if (tailscaleAuthKey.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'tailscale_auth_key',
-              tailscaleAuthKey.trim(),
-            );
-          } else {
-            unsetUciOpt('tailscale_auth_key');
-          }
-          if (tailscaleHostname.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'tailscale_hostname',
-              tailscaleHostname.trim(),
-            );
-          } else {
-            unsetUciOpt('tailscale_hostname');
-          }
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'tailscale_control_url',
-            tailscaleControlUrl.trim() || 'https://controlplane.tailscale.com',
-          );
-          if (tailscaleExitNode.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'tailscale_exit_node',
-              tailscaleExitNode.trim(),
-            );
-          } else {
-            unsetUciOpt('tailscale_exit_node');
-          }
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'tailscale_accept_routes',
-            tailscaleAcceptRoutes ? '1' : '0',
-          );
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'tailscale_accept_dns',
-            tailscaleAcceptDns ? '1' : '0',
-          );
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'tailscale_ephemeral',
-            tailscaleEphemeral ? '1' : '0',
-          );
+          unsetUciOpt('tailscale_auth_key');
         }
+        if (tailscaleHostname.trim()) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_hostname',
+            tailscaleHostname.trim(),
+          );
+        } else {
+          unsetUciOpt('tailscale_hostname');
+        }
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'tailscale_control_url',
+          tailscaleControlUrl.trim() || 'https://controlplane.tailscale.com',
+        );
+        if (tailscaleExitNode.trim()) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_exit_node',
+            tailscaleExitNode.trim(),
+          );
+        } else {
+          unsetUciOpt('tailscale_exit_node');
+        }
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'tailscale_accept_routes',
+          tailscaleAcceptRoutes ? '1' : '0',
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'tailscale_accept_dns',
+          tailscaleAcceptDns ? '1' : '0',
+        );
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'tailscale_ephemeral',
+          tailscaleEphemeral ? '1' : '0',
+        );
       } else if (customProto === 'tor') {
         uciObj.set(
           TACHYON_UCI_PACKAGE,
@@ -7757,6 +7603,26 @@ export function openConnectionWizardModal(
               csqttVkAuthMode,
             );
           }
+          if (csqttVkCookie.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_vk_cookie',
+              csqttVkCookie.trim(),
+            );
+          }
+          const vkClientIdsList = csqttVkClientIds
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean);
+          if (vkClientIdsList.length > 0) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_vk_client_ids',
+              vkClientIdsList,
+            );
+          }
           if (csqttTurnTransport) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
@@ -7773,6 +7639,34 @@ export function openConnectionWizardModal(
               csqttTurnServer.trim(),
             );
           }
+          const turnUrlsList = csqttTurnUrls
+            .split(',')
+            .map((u) => u.trim())
+            .filter(Boolean);
+          if (turnUrlsList.length > 0) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_urls',
+              turnUrlsList,
+            );
+          }
+          if (csqttTurnUsername.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_username',
+              csqttTurnUsername.trim(),
+            );
+          }
+          if (csqttTurnPassword.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_password',
+              csqttTurnPassword.trim(),
+            );
+          }
           if (csqttMtu.trim()) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
@@ -7781,12 +7675,55 @@ export function openConnectionWizardModal(
               csqttMtu.trim(),
             );
           }
+          if (csqttChunk1) {
+            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'csqtt_chunk1', '1');
+          }
           if (csqttDeviceId.trim()) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
               srcId,
               'csqtt_device_id',
               csqttDeviceId.trim(),
+            );
+          }
+          if (csqttWgPort.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_port',
+              csqttWgPort.trim(),
+            );
+          }
+          if (csqttLocalPort.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_local_port',
+              csqttLocalPort.trim(),
+            );
+          }
+          if (csqttWgPrivateKey.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_private_key',
+              csqttWgPrivateKey.trim(),
+            );
+          }
+          if (csqttWgPeerPublicKey.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_peer_public_key',
+              csqttWgPeerPublicKey.trim(),
+            );
+          }
+          if (csqttWgAddress.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_address',
+              csqttWgAddress.trim(),
             );
           }
         } else if (customProto === 'shadowtls') {
@@ -9038,9 +8975,6 @@ export function openConnectionWizardModal(
         if (av && typeof av === 'object') {
           wizardAvailableEngines = {
             desync: Boolean(av.desync),
-            zapret2: Boolean(av.zapret2),
-            zapret: Boolean(av.zapret),
-            byedpi: Boolean(av.byedpi),
           };
           wizardEnginesLoaded = true;
           syncDpiEngineSelection();
