@@ -89,7 +89,7 @@ Tachyon classifies flows via kernel **nftables** (`fw4`) and dispatches traffic 
 | **2. Native Desync** | Built-in `desync` module (Adaptive 2.0) inside `tachyon-core` | TCP/TLS/HTTP segmentation and per-connection shaping (`auto`, `multisplit`, `fake`, `disorder`) directly inside the routing core without external daemons or NFQUEUE |
 | **3. Proxy Core** | `tachyon-core` (Rust) | Selective routing by domains, `.trs` (priority) and `.srs`/`.lst` rule-sets, subnets, and LAN clients over VLESS Reality/XHTTP, Hysteria2, Trojan, VMess, and Shadowsocks |
 | **4. CSQTT & Tailscale** | In-core transports and mesh networking in `tachyon-core` | CSQTT/WDTT profiles with multi-tier pools/failover, plus native Tailscale endpoints (MagicDNS) without an external `tailscaled` daemon |
-| **5. L3 Tunnels** | Kernel `tun` / WireGuard interfaces (table `4249` for FPTN) | Packet-level tunneling via AmneziaWG (`AWG 2.0/3.0/3.1`), WireGuard, built-in OpenVPN (`.ovpn`), and `fptn-client-cli` over WebSocket/TLS |
+| **5. L3 Tunnels** | Kernel `tun` / WireGuard interfaces (routing table `4249`) | Packet-level tunneling via AmneziaWG (`AWG 2.0/3.0/3.1`), WireGuard, and native OpenVPN (`.ovpn`) / FPTN (`fptn://`) built into `tachyon-core` |
 | **6. Smart DNS** | FakeIP (`198.18.0.0/15`) + UDP/TCP port 53 interception | Isolated name resolution over DoH, DoT, DoQ, and HTTP/3 with continuous upstream health checks (`dns_failover.uc`) and ISP anti-hijack protection |
 
 ---
@@ -112,7 +112,7 @@ All selective routing, proxy tunneling, and DNS isolation run on the single nati
 
 * **AmneziaWG `2.0 / 3.0 / 3.1` (`.conf`) Import**: a dedicated named list between Connection URL and text links in section settings. Original configurations are stored in the UCI option `selector_amnezia_configs` (up to 64 KiB including name, one `Interface` and one `Peer`; DNS and command hooks in the file are ignored).
 * **Built-in OpenVPN Client (`.ovpn`)**: direct upload and validation of `.ovpn` profiles in LuCI for `tachyon-core`.
-* **FPTN Tunnel (`fptn-client-cli`)**: L3 packet tunneling over WebSocket/TLS over standard HTTPS transport (`tun-fptn` interface, routing table `4249`).
+* **Built-in FPTN Tunnel (`fptn://`)**: native L3 packet tunneling over WebSocket/TLS inside `tachyon-core` with access token configuration in LuCI and zero external client daemon.
 * **Subscription Processing**:
   * **Happ (`crypt2`–`crypt5`)** encrypted subscription decryption.
   * **Dual HWID** client header emulation.
@@ -130,7 +130,7 @@ All selective routing, proxy tunneling, and DNS isolation run on the single nati
 * **Autonomous DNS Failover (`dns_failover.uc`)**: continuous upstream health monitoring and zero-downtime switching to backup resolvers.
 * **Kernel Anti-DNS Hijack**: transparent interception of UDP/TCP port 53 via `nftables`.
 * **DNS Leak Checker ([`docs/DNS_LEAK_CHECK.md`](docs/DNS_LEAK_CHECK.md))**: verifies active resolvers while filtering internal service records; **Plus** mode additionally tests the router's local DNS, unencrypted WAN queries, and an independent DoH/TLS probe.
-* **Hosts Engine (`dns_hosts`)**: static hostname overrides and remote blocklist ingestion (AdAway, StevenBlack, Antizapret) with automatic GitHub mirror fallback (`jsdelivr`, `gh-proxy`).
+* **Hosts Engine (`dns_hosts`)**: static hostname overrides and remote Hosts list ingestion (`hosts_list_urls`) with automatic GitHub mirror fallback (`jsdelivr`, `gh-proxy`).
 * **DNS Benchmark & Autotune**: resolver latency benchmarking (`tachyon dns_benchmark`) and automated fastest-upstream selection (`tachyon dns_autotune --apply`).
 
 ---
@@ -294,7 +294,7 @@ wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/ta
 |:---|:---|
 | `-y`, `--yes` | Non-interactive execution without confirmation prompts |
 | `-p`, `--purge` | Remove all package files including configurations and backups |
-| `--keep-binaries` | Preserve installed binaries (`tachyon-core` and auxiliary tools) on the system |
+| `--keep-binaries` | Preserve installed `/usr/bin/tachyon-core` binary on the system |
 
 <details>
 <summary><b>Uninstallation commands via mirrors</b></summary>
