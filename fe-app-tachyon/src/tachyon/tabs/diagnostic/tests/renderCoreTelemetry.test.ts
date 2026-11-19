@@ -69,6 +69,7 @@ import {
   renderCoreTelemetry,
   type ICoreTelemetrySnapshot,
 } from '../partials/renderCoreTelemetry';
+import { buildCoreTelemetryRouteLabels } from '../helpers/coreTelemetryRouteLabels';
 
 function collectAllText(node: any): string {
   if (!node || typeof node !== 'object') return String(node ?? '');
@@ -77,6 +78,14 @@ function collectAllText(node: any): string {
     text += ' ' + collectAllText(child);
   }
   return text;
+}
+
+function findByClass(node: any, className: string): any {
+  if (node.class === className) return node;
+  for (const child of node.children || []) {
+    const match = findByClass(child, className);
+    if (match) return match;
+  }
 }
 
 const SAMPLE_SNAPSHOT: ICoreTelemetrySnapshot = {
@@ -178,4 +187,60 @@ describe('renderCoreTelemetry localization', () => {
     expect(ruText).toContain('Пропускная способность и баланс трафика');
     expect(ruText).toContain('Защита контура и Бортовой самописец');
   });
+});
+
+it('uses configured labels and retains tags in tooltips across telemetry', () => {
+  const labels = buildCoreTelemetryRouteLabels([
+    {
+      '.name': 'main',
+      '.type': 'section',
+      label: 'Main VPN',
+      balancer_refs: ['bal_main_auto'],
+    },
+    { '.name': 'bal_main_auto', '.type': 'balancer', name: 'Auto' },
+    {
+      '.name': 'video',
+      '.type': 'section',
+      label: 'Video',
+      outbound_source_refs: ['src_dpi'],
+    },
+    { '.name': 'src_dpi', '.type': 'outbound_source', source_type: 'desync' },
+    {
+      '.name': 'src_router',
+      '.type': 'outbound_source',
+      source_type: 'custom_json',
+      name: 'Remote Router',
+      custom_json: '{"type":"wireguard","tag":"custom-wg-leaf"}',
+    },
+  ]);
+  const rendered = renderCoreTelemetry(
+    {
+      outbounds: [{ tag: 'custom-wg-leaf' }],
+      failover: {
+        groups: [{ tag: 'sel-main', current: 'bal-main-bal_main_auto' }],
+      },
+      flight: { entries: [{ outbound: 'desync-src_dpi' }] },
+    },
+    {},
+    labels,
+  );
+  for (const [suffix, textContent, title] of [
+    ['outbound-tag', 'Remote Router', 'custom-wg-leaf'],
+    ['failover-tag', 'Main VPN', 'sel-main'],
+    ['failover-node', '→ Auto', 'bal-main-bal_main_auto'],
+    ['flight-out', 'Video', 'desync-src_dpi'],
+  ]) {
+    expect(
+      findByClass(rendered, `tachyon_diag-telemetry__${suffix}`),
+    ).toMatchObject({
+      textContent,
+      title,
+    });
+  }
+  expect(
+    findByClass(
+      renderCoreTelemetry(SAMPLE_SNAPSHOT),
+      'tachyon_diag-telemetry__flight-out',
+    ),
+  ).toMatchObject({ textContent: 'sel-Main', title: 'sel-Main' });
 });

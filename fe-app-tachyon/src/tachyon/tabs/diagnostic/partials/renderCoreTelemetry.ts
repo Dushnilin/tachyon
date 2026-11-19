@@ -228,7 +228,11 @@ function renderSparklineSvg(history: Array<[number, number]>): HTMLElement {
 export function renderCoreTelemetry(
   snapshot?: ICoreTelemetrySnapshot | null,
   actions: ICoreTelemetryActions = {},
+  routeLabels: ReadonlyMap<string, string> = new Map(),
 ): HTMLElement {
+  const routeLabel = (tag: string) =>
+    routeLabels.get(tag) ||
+    (tag === 'direct' || tag === 'direct-out' ? tr('Напрямую', 'Direct') : tag);
   const traffic = snapshot?.traffic || {};
   const memory = snapshot?.memory || {};
   const protocols = snapshot?.protocols || {};
@@ -597,8 +601,11 @@ export function renderCoreTelemetry(
                       [
                         E(
                           'span',
-                          { class: 'tachyon_diag-telemetry__outbound-tag' },
-                          ob.tag,
+                          {
+                            class: 'tachyon_diag-telemetry__outbound-tag',
+                            title: ob.tag,
+                          },
+                          routeLabel(ob.tag),
                         ),
                         E(
                           'span',
@@ -800,6 +807,7 @@ export function renderCoreTelemetry(
             failoverGroups.slice(0, 4).map((g) => {
               const rtt =
                 g.primary_rtt_ms != null ? `${g.primary_rtt_ms} ms` : '—';
+              const current = g.current || g.primary;
               return E(
                 'div',
                 { class: 'tachyon_diag-telemetry__failover-item' },
@@ -807,13 +815,19 @@ export function renderCoreTelemetry(
                   E('div', { class: 'tachyon_diag-telemetry__failover-main' }, [
                     E(
                       'strong',
-                      { class: 'tachyon_diag-telemetry__failover-tag' },
-                      g.tag,
+                      {
+                        class: 'tachyon_diag-telemetry__failover-tag',
+                        title: g.tag,
+                      },
+                      routeLabel(g.tag),
                     ),
                     E(
                       'span',
-                      { class: 'tachyon_diag-telemetry__failover-node' },
-                      `→ ${g.current || g.primary || '—'}`,
+                      {
+                        class: 'tachyon_diag-telemetry__failover-node',
+                        title: current,
+                      },
+                      `→ ${current ? routeLabel(current) : '—'}`,
                     ),
                   ]),
                   E(
@@ -882,6 +896,7 @@ export function renderCoreTelemetry(
                   ? 'is-warn'
                   : 'is-ok';
               const target = fl.host || fl.destination || '—';
+              const outbound = fl.outbound || 'direct';
               const bytes =
                 (Number(fl.download) || 0) + (Number(fl.upload) || 0);
               return E('div', { class: 'tachyon_diag-telemetry__flight-row' }, [
@@ -905,8 +920,11 @@ export function renderCoreTelemetry(
                 ),
                 E(
                   'span',
-                  { class: 'tachyon_diag-telemetry__flight-out' },
-                  String(fl.outbound || 'direct'),
+                  {
+                    class: 'tachyon_diag-telemetry__flight-out',
+                    title: fl.outbound,
+                  },
+                  routeLabel(outbound),
                 ),
                 E(
                   'span',

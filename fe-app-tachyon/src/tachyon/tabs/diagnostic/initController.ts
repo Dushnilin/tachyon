@@ -51,6 +51,7 @@ import {
 import { TachyonShellMethods } from '../../methods';
 import { callBaseMethod } from '../../methods/shell/callBaseMethod';
 import { getConfigSections } from '../../methods/custom/getConfigSections';
+import { buildCoreTelemetryRouteLabels } from './helpers/coreTelemetryRouteLabels';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal, renderButton } from '../../../partials';
@@ -101,6 +102,7 @@ let servicesInfoStateUnsubscribe: (() => void) | null = null;
 let servicesInfoRefreshPromise: Promise<void> | null = null;
 let coreTelemetryTimer: ReturnType<typeof setInterval> | null = null;
 let cachedCoreTelemetry: ICoreTelemetrySnapshot | null = null;
+let coreTelemetryRouteLabels: ReadonlyMap<string, string> = new Map();
 let coreTelemetryLoading = false;
 const followedServiceActionJobs = new Set<string>();
 const handledServiceActionJobs = new Set<string>();
@@ -629,13 +631,17 @@ function renderCoreTelemetryWidget() {
     return;
   }
 
-  const node = renderCoreTelemetry(cachedCoreTelemetry, {
-    onRefresh: () => void refreshCoreTelemetryWidget(),
-    onTrimMemory: () => void handleTrimCoreMemory(),
-    onRecheckRoutes: () => void handleRecheckCoreRoutes(),
-    onRestoreFailover: () => void handleRestoreCoreFailover(),
-    onClearFlight: () => void handleClearCoreFlight(),
-  });
+  const node = renderCoreTelemetry(
+    cachedCoreTelemetry,
+    {
+      onRefresh: () => void refreshCoreTelemetryWidget(),
+      onTrimMemory: () => void handleTrimCoreMemory(),
+      onRecheckRoutes: () => void handleRecheckCoreRoutes(),
+      onRestoreFailover: () => void handleRestoreCoreFailover(),
+      onClearFlight: () => void handleClearCoreFlight(),
+    },
+    coreTelemetryRouteLabels,
+  );
 
   preserveScrollForPage(() => {
     container.replaceChildren(node);
@@ -668,6 +674,21 @@ function startCoreTelemetryWatcher() {
   if (coreTelemetryTimer) {
     clearInterval(coreTelemetryTimer);
   }
+  const mountId = diagnosticMountId;
+  coreTelemetryRouteLabels = new Map();
+  void getConfigSections()
+    .then((sections) => {
+      if (!isDiagnosticMountActive(mountId)) return;
+      coreTelemetryRouteLabels = buildCoreTelemetryRouteLabels(sections);
+      renderCoreTelemetryWidget();
+    })
+    .catch((error) => {
+      logger.debug(
+        '[DIAGNOSTIC]',
+        'core telemetry route labels unavailable',
+        error,
+      );
+    });
   renderCoreTelemetryWidget();
   void refreshCoreTelemetryWidget();
   coreTelemetryTimer = setInterval(() => {
