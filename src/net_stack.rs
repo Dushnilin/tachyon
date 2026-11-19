@@ -1619,6 +1619,168 @@ async fn run_dnsmasq_init(action: &str) {
         .await;
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnsmasqSnapshot {
+    pub exists: bool,
+    pub rebind_protection: Option<String>,
+    pub cachesize: Option<String>,
+    pub backup_rebind_protection: Option<String>,
+    pub backup_cachesize: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnsmasqSyncPlan {
+    pub changed: bool,
+    pub set_opts: Vec<(&'static str, String)>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnsmasqRestorePlan {
+    pub changed: bool,
+    pub set_opts: Vec<(&'static str, String)>,
+    pub del_opts: Vec<&'static str>,
+}
+
+pub fn parse_uci_dnsmasq_snapshot(uci_show_out: &str) -> DnsmasqSnapshot {
+    let mut snap = DnsmasqSnapshot::default();
+    for raw_line in uci_show_out.lines() {
+        let line = raw_line.trim();
+        let Some((lhs, rhs)) = line.split_once('=') else {
+            continue;
+        };
+        let lhs = lhs.trim();
+        let val = rhs.trim().trim_matches('\'').trim_matches('"').to_string();
+        if lhs
+            .strip_prefix("dhcp.")
+            .is_some_and(|rest| !rest.contains('.'))
+            && val == "dnsmasq"
+        {
+            snap.exists = true;
+            continue;
+        }
+        match lhs.rsplit_once('.').map(|(_, k)| k) {
+            Some("rebind_protection") => snap.rebind_protection = Some(val),
+            Some("cachesize") => snap.cachesize = Some(val),
+            Some("tachyon_rebind_protection") => snap.backup_rebind_protection = Some(val),
+            Some("tachyon_cachesize") => snap.backup_cachesize = Some(val),
+            _ => {}
+        }
+    }
+    snap
+}
+
+pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) -> DnsmasqSyncPlan {
+    if !cur.exists {
+        return DnsmasqSyncPlan::default();
+    }
+    let mut set_opts: Vec<(&'static str, String)> = Vec::new();
+    if cur.rebind_protection.as_deref() != Some("0") {
+        if cur.backup_rebind_protection.is_none() {
+            let orig = cur
+                .rebind_protection
+                .clone()
+                .unwrap_or_else(|| "1".to_string());
+            set_opts.push(("tachyon_rebind_protection", orig));
+        }
+        set_opts.push(("rebind_protection", "0".to_string()));
+    }
+    if fakeip_enabled && cur.cachesize.as_deref() != Some("0") {
+        if cur.backup_cachesize.is_none() {
+            let orig = cur.cachesize.clone().unwrap_or_else(|| "150".to_string());
+            set_opts.push(("tachyon_cachesize", orig));
+        }
+        set_opts.push(("cachesize", "0".to_string()));
+    }
+    DnsmasqSyncPlan {
+        changed: !set_opts.is_empty(),
+        set_opts,
+    }
+}
+
+pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan {
+    if !cur.exists {
+        return DnsmasqRestorePlan::default();
+    }
+    let mut set_opts: Vec<(&'static str, String)> = Vec::new();
+    let mut del_opts: Vec<&'static str> = Vec::new();
+    if let Some(ref orig) = cur.backup_rebind_protection {
+        match decode_backup_scalar(orig) {
+            Some(v) => {
+                if cur.rebind_protection.as_deref() != Some(v.as_str()) {
+                    set_opts.push(("rebind_protection", v));
+                }
+            }
+            None => {
+                if cur.rebind_protection.is_some() {
+                    del_opts.push("rebind_protection");
+                }
+            }
+        }
+        del_opts.push("tachyon_rebind_protection");
+    }
+    if let Some(ref orig) = cur.backup_cachesize {
+        match decode_backup_scalar(orig) {
+            Some(v) => {
+                if cur.cachesize.as_deref() != Some(v.as_str()) {
+                    set_opts.push(("cachesize", v));
+                }
+            }
+            None => {
+                if cur.cachesize.is_some() {
+                    del_opts.push("cachesize");
+                }
+            }
+        }
+        del_opts.push("tachyon_cachesize");
+    }
+    DnsmasqRestorePlan {
+        changed: !set_opts.is_empty() || !del_opts.is_empty(),
+        set_opts,
+        del_opts,
+    }
+}
+
+async fn sync_dnsmasq_uci_for_fakeip(fakeip_enabled: bool) -> bool {
+    if cfg!(not(target_os = "linux")) {
+        return false;
+    }
+    let Some(show_out) = uci_query(&["-q", "show", "dhcp.@dnsmasq[0]"]).await else {
+        return false;
+    };
+    let snap = parse_uci_dnsmasq_snapshot(&show_out);
+    let plan = compute_dnsmasq_sync_plan(&snap, fakeip_enabled);
+    if !plan.changed {
+        return false;
+    }
+    for (k, v) in &plan.set_opts {
+        uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+    }
+    uci_run(&["commit", "dhcp"]).await;
+    true
+}
+
+async fn restore_dnsmasq_uci() -> bool {
+    if cfg!(not(target_os = "linux")) {
+        return false;
+    }
+    let Some(show_out) = uci_query(&["-q", "show", "dhcp.@dnsmasq[0]"]).await else {
+        return false;
+    };
+    let snap = parse_uci_dnsmasq_snapshot(&show_out);
+    let plan = compute_dnsmasq_restore_plan(&snap);
+    if !plan.changed {
+        return false;
+    }
+    for (k, v) in &plan.set_opts {
+        uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+    }
+    for k in &plan.del_opts {
+        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
+    }
+    uci_run(&["commit", "dhcp"]).await;
+    true
+}
+
 async fn run_odhcpd_reload() {
     let _ = Command::new("/etc/init.d/odhcpd")
         .arg("reload")
@@ -2793,8 +2955,9 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 dnsmasq_changed = true;
             }
         }
-        if dnsmasq_changed {
-            run_dnsmasq_init("reload").await;
+        let dnsmasq_uci_changed = sync_dnsmasq_uci_for_fakeip(store.settings.fakeip_enabled).await;
+        if dnsmasq_changed || dnsmasq_uci_changed {
+            run_dnsmasq_init("restart").await;
         }
         if intercept_embedded_ts {
             let _ = std::fs::remove_file("/tmp/resolv.conf.d/resolv.conf.tailscale");
@@ -3302,8 +3465,9 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
                 dnsmasq_changed = true;
             }
         }
-        if dnsmasq_changed {
-            run_dnsmasq_init("reload").await;
+        let dnsmasq_uci_restored = restore_dnsmasq_uci().await;
+        if dnsmasq_changed || dnsmasq_uci_restored {
+            run_dnsmasq_init("restart").await;
         }
     }
     sync_tailscale_magicdns(false, false).await;
@@ -4276,5 +4440,59 @@ dhcp.lan.tachyon_lan_dns='__absent__'
 ";
         let snap_absent = parse_uci_dhcp_lan_snapshot(raw_absent_dns);
         assert!(snap_absent.backup.unwrap().dns.is_empty());
+    }
+
+    #[test]
+    fn test_dnsmasq_snapshot_sync_and_restore_plans() {
+        let raw = "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='1'
+dhcp.cfg01411c.cachesize='1000'
+";
+        let snap = parse_uci_dnsmasq_snapshot(raw);
+        assert!(snap.exists);
+        assert_eq!(snap.rebind_protection.as_deref(), Some("1"));
+        assert_eq!(snap.cachesize.as_deref(), Some("1000"));
+        assert_eq!(snap.backup_rebind_protection, None);
+        assert_eq!(snap.backup_cachesize, None);
+
+        let plan = compute_dnsmasq_sync_plan(&snap, true);
+        assert!(plan.changed);
+        assert_eq!(
+            plan.set_opts,
+            vec![
+                ("tachyon_rebind_protection", "1".to_string()),
+                ("rebind_protection", "0".to_string()),
+                ("tachyon_cachesize", "1000".to_string()),
+                ("cachesize", "0".to_string()),
+            ]
+        );
+
+        let updated = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='0'
+dhcp.cfg01411c.tachyon_rebind_protection='1'
+dhcp.cfg01411c.tachyon_cachesize='1000'
+",
+        );
+        let idempotent = compute_dnsmasq_sync_plan(&updated, true);
+        assert!(!idempotent.changed);
+        assert!(idempotent.set_opts.is_empty());
+
+        let restore = compute_dnsmasq_restore_plan(&updated);
+        assert!(restore.changed);
+        assert_eq!(
+            restore.set_opts,
+            vec![
+                ("rebind_protection", "1".to_string()),
+                ("cachesize", "1000".to_string()),
+            ]
+        );
+        assert_eq!(
+            restore.del_opts,
+            vec!["tachyon_rebind_protection", "tachyon_cachesize"]
+        );
     }
 }

@@ -5362,20 +5362,6 @@ impl RouterStoreData {
                             .or_else(|| b.opt("interface"))
                             .unwrap_or("")
                             .to_string(),
-                        server: b
-                            .opt("server")
-                            .or_else(|| b.opt("server_address"))
-                            .unwrap_or("")
-                            .to_string(),
-                        server_port: b
-                            .opt("server_port")
-                            .or_else(|| b.opt("port"))
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
-                        username: b.opt("username").unwrap_or("").to_string(),
-                        password: b.opt("password").unwrap_or("").to_string(),
-                        psk: b.opt("psk").unwrap_or("").to_string(),
-                        uuid: b.opt("uuid").unwrap_or("").to_string(),
                         method: b
                             .opt("method")
                             .or_else(|| b.opt("cipher"))
@@ -5399,13 +5385,7 @@ impl RouterStoreData {
                             .unwrap_or(0),
                         multiplex_padding: b.opt("multiplex_padding").is_some_and(parse_bool),
                         sni: b.opt("sni").unwrap_or("").to_string(),
-                        tls_sni: b
-                            .opt("tls_sni")
-                            .or_else(|| b.opt("tls_server_name"))
-                            .unwrap_or("")
-                            .to_string(),
                         insecure: b.opt("insecure").is_some_and(parse_bool),
-                        tls_insecure: b.opt("tls_insecure").is_some_and(parse_bool),
                         tls_fingerprint: b
                             .opt("tls_fingerprint")
                             .or_else(|| b.opt("client_fingerprint"))
@@ -5437,32 +5417,6 @@ impl RouterStoreData {
                         bind_interface: b.opt("bind_interface").unwrap_or("").to_string(),
                         amnezia_configs: b.list("amnezia_configs"),
                         amnezia_conf_text: b.opt("amnezia_conf_text").unwrap_or("").to_string(),
-                        wg_endpoint: b.opt("wg_endpoint").unwrap_or("").to_string(),
-                        wg_private_key: b
-                            .opt("wg_private_key")
-                            .or_else(|| b.opt("private_key"))
-                            .unwrap_or("")
-                            .to_string(),
-                        wg_peer_public_key: b
-                            .opt("wg_peer_public_key")
-                            .or_else(|| b.opt("peer_public_key"))
-                            .unwrap_or("")
-                            .to_string(),
-                        wg_preshared_key: b
-                            .opt("wg_preshared_key")
-                            .or_else(|| b.opt("preshared_key"))
-                            .unwrap_or("")
-                            .to_string(),
-                        wg_local_address: b
-                            .opt("wg_local_address")
-                            .or_else(|| b.opt("local_address"))
-                            .unwrap_or("")
-                            .to_string(),
-                        wg_mtu: b
-                            .opt("wg_mtu")
-                            .or_else(|| b.opt("mtu"))
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
                         awg_version: b.opt("awg_version").unwrap_or("").to_string(),
                         awg_keepalive: b
                             .opt("awg_keepalive")
@@ -5488,23 +5442,16 @@ impl RouterStoreData {
                         awg_j2: b.opt("awg_j2").unwrap_or("").to_string(),
                         awg_j3: b.opt("awg_j3").unwrap_or("").to_string(),
                         awg_itime: b.opt("awg_itime").and_then(|s| s.parse().ok()).unwrap_or(0),
-                        server_ports: b.list("server_ports"),
                         hop_interval: b.opt("hop_interval").unwrap_or("").to_string(),
                         hop_interval_max: b.opt("hop_interval_max").unwrap_or("").to_string(),
                         warp_device_id: b.opt("warp_device_id").unwrap_or("").to_string(),
                         warp_access_token: b.opt("warp_access_token").unwrap_or("").to_string(),
                         warp_ipv4: b.opt("warp_ipv4").unwrap_or("").to_string(),
                         warp_ipv6: b.opt("warp_ipv6").unwrap_or("").to_string(),
-                        warp_private_key: b.opt("warp_private_key").unwrap_or("").to_string(),
                         warp_peer_public_key: b
                             .opt("warp_peer_public_key")
                             .unwrap_or("")
                             .to_string(),
-                        warp_server: b.opt("warp_server").unwrap_or("").to_string(),
-                        warp_server_port: b
-                            .opt("warp_server_port")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
                         warp_reserved: b.opt("warp_reserved").unwrap_or("").to_string(),
                         warp_mtu: b.opt("warp_mtu").and_then(|s| s.parse().ok()).unwrap_or(0),
                         warp_fake_packets: b.opt("warp_fake_packets").unwrap_or("").to_string(),
@@ -5569,7 +5516,6 @@ impl RouterStoreData {
                         snell_obfs: b.opt("snell_obfs").unwrap_or("").to_string(),
                         snell_obfs_host: b.opt("snell_obfs_host").unwrap_or("").to_string(),
                         snell_uot: b.opt("snell_uot").is_some_and(parse_bool),
-                        mieru_transport: b.opt("mieru_transport").unwrap_or("").to_string(),
                         mieru_multiplexing: b.opt("mieru_multiplexing").unwrap_or("").to_string(),
                         mieru_handshake_mode: b
                             .opt("mieru_handshake_mode")
@@ -5588,9 +5534,7 @@ impl RouterStoreData {
                             .opt("naive_insecure_concurrency")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
-                        naive_udp_over_tcp: b.opt("naive_udp_over_tcp").is_some_and(parse_bool),
                         naive_extra_headers: b.opt("naive_extra_headers").unwrap_or("").to_string(),
-                        sudoku_aead: b.opt("sudoku_aead").unwrap_or("").to_string(),
                         sudoku_ascii: b.opt("sudoku_ascii").is_some_and(parse_bool),
                         sudoku_http_mask: b.opt("sudoku_http_mask").is_some_and(parse_bool),
                         sudoku_http_mask_host: b
@@ -5599,29 +5543,16 @@ impl RouterStoreData {
                             .to_string(),
                         masque_vhttp: b.opt("masque_vhttp").is_some_and(parse_bool),
                         masque_public_key: b.opt("masque_public_key").unwrap_or("").to_string(),
-                        masque_local_address: b
-                            .opt("masque_local_address")
-                            .unwrap_or("")
-                            .to_string(),
                         masque_ipv6: b.opt("masque_ipv6").unwrap_or("").to_string(),
                         masque_uri: b.opt("masque_uri").unwrap_or("").to_string(),
                         masque_mtu: b
                             .opt("masque_mtu")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
-                        openconnect_protocol: b
-                            .opt("openconnect_protocol")
-                            .unwrap_or("")
-                            .to_string(),
                         openconnect_authgroup: b
                             .opt("openconnect_authgroup")
                             .unwrap_or("")
                             .to_string(),
-                        openconnect_servercert: b
-                            .opt("openconnect_servercert")
-                            .unwrap_or("")
-                            .to_string(),
-                        openconnect_no_dtls: b.opt("openconnect_no_dtls").is_some_and(parse_bool),
                         shadowtls_version: b
                             .opt("shadowtls_version")
                             .and_then(|s| s.parse().ok())
@@ -5658,15 +5589,6 @@ impl RouterStoreData {
                         csqtt_wg_private_key: b.opt_str("csqtt_wg_private_key"),
                         csqtt_wg_peer_public_key: b.opt_str("csqtt_wg_peer_public_key"),
                         csqtt_wg_address: b.opt_str("csqtt_wg_address"),
-                        tewfai_transport: b.opt("tewfai_transport").unwrap_or("").to_string(),
-                        tewfai_inner_cipher: b.opt("tewfai_inner_cipher").unwrap_or("").to_string(),
-                        tewfai_morph_profile: b
-                            .opt("tewfai_morph_profile")
-                            .unwrap_or("")
-                            .to_string(),
-                        tewfai_desync_enabled: b
-                            .opt("tewfai_desync_enabled")
-                            .is_some_and(parse_bool),
                         tor_socks_port: b
                             .opt("tor_socks_port")
                             .and_then(|s| s.parse().ok())
@@ -5845,6 +5767,7 @@ impl RouterStoreData {
                         last_updated_unix: 0,
                         ..Default::default()
                     };
+                    fill_outbound_source_from_uci_block(&mut src, b, false, true);
 
                     if stype == "subscription" {
                         if let Some(prev) = prev_sources.get(&src.id) {
@@ -6941,6 +6864,26 @@ impl RouterStoreData {
                 _ => {}
             }
         }
+        for b in blocks {
+            if b.kind != "section" {
+                continue;
+            }
+            let refs = b.list("outbound_source_refs");
+            let allow_generic = refs.len() == 1;
+            for ref_id in &refs {
+                let Some(src) = self.outbound_sources.iter_mut().find(|s| s.id == *ref_id) else {
+                    continue;
+                };
+                let ref_matches_type = ref_id.starts_with("src_")
+                    && ref_id[4..].split('_').next().is_some_and(|prefix| {
+                        prefix.eq_ignore_ascii_case(&src.source_type)
+                            || (prefix.eq_ignore_ascii_case("wg") && src.source_type == "wireguard")
+                    });
+                if allow_generic || ref_matches_type {
+                    fill_outbound_source_from_uci_block(src, b, true, allow_generic);
+                }
+            }
+        }
         self.apply_relax_probe_intervals_v1();
         self.apply_fail_closed_auto_defaults();
         self.apply_ai_lists_1_8();
@@ -7451,6 +7394,452 @@ fn strip_uci_inline_comment(line: &str) -> &str {
     s
 }
 
+fn source_type_server_key(stype: &str) -> Option<&'static str> {
+    match stype {
+        "anytls" => Some("anytls_server"),
+        "naive" => Some("naive_server"),
+        "mieru" => Some("mieru_server"),
+        "trusttunnel" => Some("trusttunnel_server"),
+        "tewfai" => Some("tewfai_server"),
+        "masque" => Some("masque_server"),
+        "openconnect" => Some("openconnect_server"),
+        "shadowtls" => Some("shadowtls_server"),
+        "snell" => Some("snell_server"),
+        "sudoku" => Some("sudoku_server"),
+        "openvpn" => Some("openvpn_server"),
+        "mtproto" => Some("mtproto_server"),
+        _ => None,
+    }
+}
+
+fn source_type_port_keys(stype: &str) -> &'static [&'static str] {
+    match stype {
+        "anytls" => &["anytls_server_port", "anytls_port"],
+        "naive" => &["naive_server_port", "naive_port"],
+        "mieru" => &["mieru_server_port", "mieru_port"],
+        "trusttunnel" => &["trusttunnel_server_port", "trusttunnel_port"],
+        "tewfai" => &["tewfai_server_port", "tewfai_port"],
+        "masque" => &["masque_server_port", "masque_port"],
+        "openconnect" => &["openconnect_server_port", "openconnect_port"],
+        "shadowtls" => &["shadowtls_server_port", "shadowtls_port"],
+        "snell" => &["snell_server_port", "snell_port"],
+        "sudoku" => &["sudoku_server_port", "sudoku_port"],
+        "openvpn" => &["openvpn_port"],
+        "mtproto" => &["mtproto_port"],
+        _ => &[],
+    }
+}
+
+fn extract_uci_source_port_specs(
+    b: &LegacyUciBlock,
+    stype: &str,
+    from_section: bool,
+    allow_generic: bool,
+) -> (u16, Vec<String>) {
+    let mut ports: Vec<String> = Vec::new();
+    let list_keys: &[&str] = if !from_section || stype == "mieru" {
+        if allow_generic || !from_section {
+            &["server_ports", "mieru_server_ports", "mieru_port_bindings"]
+        } else {
+            &["mieru_server_ports", "mieru_port_bindings"]
+        }
+    } else if allow_generic {
+        &["server_ports"]
+    } else {
+        &[]
+    };
+    for key in list_keys {
+        for item in b.list(key) {
+            let norm = item.trim().replace(':', "-");
+            if !norm.is_empty() && !ports.contains(&norm) {
+                ports.push(norm);
+            }
+        }
+    }
+    let mut scalar_keys: Vec<&'static str> = Vec::new();
+    if !from_section || allow_generic {
+        scalar_keys.extend_from_slice(&["server_port", "port"]);
+    }
+    if from_section {
+        scalar_keys.extend_from_slice(source_type_port_keys(stype));
+    } else {
+        scalar_keys.extend_from_slice(&[
+            "anytls_server_port",
+            "anytls_port",
+            "naive_server_port",
+            "naive_port",
+            "mieru_server_port",
+            "mieru_port",
+            "trusttunnel_server_port",
+            "trusttunnel_port",
+            "tewfai_server_port",
+            "tewfai_port",
+            "masque_server_port",
+            "masque_port",
+            "openconnect_server_port",
+            "openconnect_port",
+            "shadowtls_server_port",
+            "shadowtls_port",
+            "snell_server_port",
+            "snell_port",
+            "sudoku_server_port",
+            "sudoku_port",
+            "openvpn_port",
+            "mtproto_port",
+        ]);
+    }
+    let mut single_port: u16 = 0;
+    for key in scalar_keys {
+        if let Some(raw) = b.opt(key) {
+            let t = raw.trim();
+            if t.is_empty() {
+                continue;
+            }
+            if let Ok(p) = t.parse::<u16>()
+                && p > 0
+            {
+                if single_port == 0 {
+                    single_port = p;
+                }
+            } else if stype == "mieru" {
+                for tok in t.split(|c: char| c == ',' || c.is_whitespace()) {
+                    let norm = tok.trim().replace(':', "-");
+                    if !norm.is_empty() && !ports.contains(&norm) {
+                        ports.push(norm);
+                    }
+                }
+            }
+        }
+    }
+    (single_port, ports)
+}
+
+fn extract_uci_wg_endpoint(b: &LegacyUciBlock) -> String {
+    if let Some(ep) = b.opt_any(&["wg_endpoint", "awg_endpoint"]) {
+        return ep.to_string();
+    }
+    let Some(host) = b.opt_any(&["awg_server_address", "wg_server", "wg_server_address"]) else {
+        return String::new();
+    };
+    let port = b.opt_u16(&["awg_server_port", "wg_server_port", "server_port", "port"]);
+    if port > 0 {
+        if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]:{port}")
+        } else {
+            format!("{host}:{port}")
+        }
+    } else {
+        host.to_string()
+    }
+}
+
+fn fill_outbound_source_from_uci_block(
+    src: &mut OutboundSource,
+    b: &LegacyUciBlock,
+    from_section: bool,
+    allow_generic: bool,
+) {
+    let st = src.source_type.as_str();
+    if src.server.trim().is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.extend_from_slice(&["server", "server_address"]);
+        }
+        if let Some(k) = source_type_server_key(st) {
+            keys.push(k);
+        }
+        if !from_section {
+            keys.extend_from_slice(&[
+                "anytls_server",
+                "naive_server",
+                "mieru_server",
+                "trusttunnel_server",
+                "tewfai_server",
+                "masque_server",
+                "openconnect_server",
+                "shadowtls_server",
+                "snell_server",
+                "sudoku_server",
+                "openvpn_server",
+                "mtproto_server",
+            ]);
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.server = v.to_string();
+        }
+    }
+    if src.server_port == 0 && src.server_ports.is_empty() {
+        let (p, ps) = extract_uci_source_port_specs(b, st, from_section, allow_generic);
+        src.server_port = p;
+        src.server_ports = ps;
+    } else if src.server_ports.is_empty() {
+        let (_, ps) = extract_uci_source_port_specs(b, st, from_section, allow_generic);
+        src.server_ports = ps;
+    }
+    if src.username.is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.extend_from_slice(&["username", "user"]);
+        }
+        match st {
+            "naive" => keys.push("naive_username"),
+            "mieru" => keys.push("mieru_username"),
+            "trusttunnel" => keys.push("trusttunnel_username"),
+            "openconnect" => keys.extend_from_slice(&["openconnect_username", "openconnect_user"]),
+            _ if !from_section => keys.extend_from_slice(&[
+                "naive_username",
+                "mieru_username",
+                "trusttunnel_username",
+                "openconnect_username",
+                "openconnect_user",
+            ]),
+            _ => {}
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.username = v.to_string();
+        }
+    }
+    if src.password.is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.push("password");
+        }
+        match st {
+            "anytls" => keys.push("anytls_password"),
+            "naive" => keys.push("naive_password"),
+            "mieru" => keys.push("mieru_password"),
+            "trusttunnel" => keys.push("trusttunnel_password"),
+            "tewfai" => keys.push("tewfai_password"),
+            "openconnect" => keys.push("openconnect_password"),
+            "shadowtls" => keys.push("shadowtls_password"),
+            "sudoku" => keys.push("sudoku_key"),
+            "masque" => keys.push("masque_access_token"),
+            _ if !from_section => keys.extend_from_slice(&[
+                "anytls_password",
+                "naive_password",
+                "mieru_password",
+                "trusttunnel_password",
+                "tewfai_password",
+                "openconnect_password",
+                "shadowtls_password",
+                "sudoku_key",
+                "masque_access_token",
+            ]),
+            _ => {}
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.password = v.to_string();
+        }
+    }
+    if src.psk.is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.push("psk");
+        }
+        if !from_section || st == "snell" {
+            keys.push("snell_psk");
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.psk = v.to_string();
+        }
+    }
+    if src.uuid.is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.push("uuid");
+        }
+        if !from_section || st == "tewfai" {
+            keys.push("tewfai_uuid");
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.uuid = v.to_string();
+        }
+    }
+    if src.tls_sni.is_empty() {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.extend_from_slice(&["tls_sni", "tls_server_name", "sni"]);
+        }
+        match st {
+            "anytls" => keys.push("anytls_sni"),
+            "naive" => keys.push("naive_sni"),
+            "trusttunnel" => keys.push("trusttunnel_sni"),
+            "tewfai" => keys.push("tewfai_sni"),
+            "masque" => keys.push("masque_sni"),
+            "openconnect" => keys.push("openconnect_sni"),
+            "shadowtls" => keys.push("shadowtls_sni"),
+            _ if !from_section => keys.extend_from_slice(&[
+                "anytls_sni",
+                "naive_sni",
+                "trusttunnel_sni",
+                "tewfai_sni",
+                "masque_sni",
+                "openconnect_sni",
+                "shadowtls_sni",
+            ]),
+            _ => {}
+        }
+        if let Some(v) = b.opt_any(&keys) {
+            src.tls_sni = v.to_string();
+        }
+    }
+    if !src.tls_insecure {
+        let mut keys: Vec<&'static str> = Vec::new();
+        if !from_section || allow_generic {
+            keys.push("tls_insecure");
+        }
+        match st {
+            "anytls" => keys.push("anytls_insecure"),
+            "trusttunnel" => keys.push("trusttunnel_insecure"),
+            "tewfai" => keys.push("tewfai_insecure"),
+            "masque" => keys.push("masque_insecure"),
+            "openconnect" => keys.push("openconnect_insecure"),
+            "shadowtls" => keys.push("shadowtls_insecure"),
+            _ if !from_section => keys.extend_from_slice(&[
+                "anytls_insecure",
+                "trusttunnel_insecure",
+                "tewfai_insecure",
+                "masque_insecure",
+                "openconnect_insecure",
+                "shadowtls_insecure",
+            ]),
+            _ => {}
+        }
+        if b.bool_any(&keys) {
+            src.tls_insecure = true;
+        }
+    }
+    if !from_section || matches!(st, "wireguard" | "awg" | "warp") {
+        if src.wg_endpoint.trim().is_empty() {
+            let ep = extract_uci_wg_endpoint(b);
+            if !ep.is_empty() {
+                src.wg_endpoint = ep;
+            }
+        }
+        if src.wg_private_key.is_empty()
+            && let Some(v) = b.opt_any(&["wg_private_key", "awg_private_key", "private_key"])
+        {
+            src.wg_private_key = v.to_string();
+        }
+        if src.wg_peer_public_key.is_empty()
+            && let Some(v) = b.opt_any(&[
+                "wg_peer_public_key",
+                "awg_peer_public_key",
+                "awg_public_key",
+                "peer_public_key",
+            ])
+        {
+            src.wg_peer_public_key = v.to_string();
+        }
+        if src.wg_preshared_key.is_empty()
+            && let Some(v) = b.opt_any(&["wg_preshared_key", "awg_preshared_key", "preshared_key"])
+        {
+            src.wg_preshared_key = v.to_string();
+        }
+        if src.wg_local_address.is_empty()
+            && let Some(v) = b.opt_any(&[
+                "wg_local_address",
+                "awg_local_address",
+                "awg_address",
+                "local_address",
+            ])
+        {
+            src.wg_local_address = v.to_string();
+        }
+        if src.wg_mtu == 0 {
+            src.wg_mtu = b.opt_u16(&["wg_mtu", "awg_mtu", "mtu"]);
+        }
+    }
+    if !from_section || st == "warp" {
+        if src.warp_private_key.is_empty()
+            && let Some(v) = b.opt_any(&["warp_private_key", "awg_private_key"])
+        {
+            src.warp_private_key = v.to_string();
+        }
+        if src.warp_server.is_empty()
+            && let Some(v) = b.opt_any(&["warp_server", "warp_endpoint_host"])
+        {
+            src.warp_server = v.to_string();
+        }
+        if src.warp_server_port == 0 {
+            src.warp_server_port = b.opt_u16(&["warp_server_port"]);
+        }
+    }
+    if (!from_section || st == "mieru")
+        && src.mieru_transport.is_empty()
+        && let Some(v) = b.opt_any(&["mieru_transport"])
+    {
+        src.mieru_transport = v.to_string();
+    }
+    if (!from_section || st == "naive")
+        && !src.naive_udp_over_tcp
+        && b.bool_any(&["naive_udp_over_tcp", "naive_uot"])
+    {
+        src.naive_udp_over_tcp = true;
+    }
+    if (!from_section || st == "sudoku")
+        && src.sudoku_aead.is_empty()
+        && let Some(v) = b.opt_any(&["sudoku_aead", "sudoku_aead_method"])
+    {
+        src.sudoku_aead = v.to_string();
+    }
+    if (!from_section || st == "masque")
+        && src.masque_local_address.is_empty()
+        && let Some(v) = b.opt_any(&["masque_local_address", "masque_ip"])
+    {
+        src.masque_local_address = v.to_string();
+    }
+    if !from_section || st == "openconnect" {
+        if src.openconnect_protocol.is_empty()
+            && let Some(v) = b.opt_any(&["openconnect_protocol", "openconnect_flavor"])
+        {
+            src.openconnect_protocol = v.to_string();
+        }
+        if src.openconnect_servercert.is_empty()
+            && let Some(v) = b.opt_any(&["openconnect_servercert", "openconnect_server_cert_pin"])
+        {
+            src.openconnect_servercert = v.to_string();
+        }
+        if !src.openconnect_no_dtls
+            && b.opt("openconnect_no_dtls")
+                .map(parse_uci_bool)
+                .unwrap_or_else(|| {
+                    b.opt("openconnect_dtls")
+                        .is_some_and(|v| !parse_uci_bool(v))
+                })
+        {
+            src.openconnect_no_dtls = true;
+        }
+    }
+    if !from_section || st == "tewfai" {
+        if src.tewfai_transport.is_empty() {
+            let list = b.list("tewfai_transport");
+            if !list.is_empty() {
+                src.tewfai_transport = list.join(",");
+            }
+        }
+        if src.tewfai_inner_cipher.is_empty()
+            && let Some(v) = b.opt_any(&["tewfai_inner_cipher"])
+        {
+            src.tewfai_inner_cipher = v.to_string();
+        }
+        if src.tewfai_morph_profile.is_empty()
+            && let Some(v) = b.opt_any(&["tewfai_morph_profile"])
+        {
+            src.tewfai_morph_profile = v.to_string();
+        }
+        if !src.tewfai_desync_enabled && b.opt("tewfai_desync_enabled").is_some_and(parse_uci_bool)
+        {
+            src.tewfai_desync_enabled = true;
+        }
+    }
+}
+
+fn parse_uci_bool(v: &str) -> bool {
+    let t = v.trim();
+    t == "1" || t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("yes")
+}
+
 impl LegacyUciBlock {
     fn opt(&self, key: &str) -> Option<&str> {
         self.options.get(key).map(String::as_str).or_else(|| {
@@ -7459,6 +7848,13 @@ impl LegacyUciBlock {
                 .and_then(|v| v.first())
                 .map(String::as_str)
         })
+    }
+    fn opt_any(&self, keys: &[&str]) -> Option<&str> {
+        keys.iter()
+            .find_map(|k| self.opt(k).map(str::trim).filter(|v| !v.is_empty()))
+    }
+    fn bool_any(&self, keys: &[&str]) -> bool {
+        keys.iter().any(|k| self.opt(k).is_some_and(parse_uci_bool))
     }
     fn opt_u16(&self, keys: &[&str]) -> u16 {
         keys.iter()
@@ -9294,5 +9690,151 @@ config section 'sec_user'
                 .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION)
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_uci_migration_protocol_specific_source_and_section_fallback_fields() {
+        let uci = r#"
+config outbound_source 'src_mieru_DeluxHost_Miery'
+	option name 'DeluxHost Miery'
+	option enabled '1'
+	option source_type 'mieru'
+	option mieru_server '198.51.100.10'
+	option mieru_server_port '2012-2022'
+	option mieru_username 'm_user'
+	option mieru_password 'm_pass'
+	option mieru_transport 'TCP'
+
+config outbound_source 'src_tewfai_DeluxHost2_TewFai'
+	option name 'DeluxHost2 TewFai'
+	option enabled '1'
+	option source_type 'tewfai'
+	option tewfai_server 'tw.example.org'
+	option tewfai_port '8443'
+	option tewfai_uuid '11111111-2222-3333-4444-555555555555'
+	list tewfai_transport 'raw_tls'
+	option tewfai_inner_cipher 'aes-256-gcm'
+	option tewfai_morph_profile 'video'
+	option tewfai_desync_enabled '1'
+
+config outbound_source 'src_trusttunnel_TrustTunnel'
+	option name 'TrustTunnel'
+	option enabled '1'
+	option source_type 'trusttunnel'
+	option trusttunnel_server 'tt.example.org'
+	option trusttunnel_port '443'
+	option trusttunnel_sni 'cdn.example.org'
+	option trusttunnel_quic '1'
+
+config outbound_source 'src_naive_DeluxHost_Naive'
+	option name 'DeluxHost Naive'
+	option enabled '1'
+	option source_type 'naive'
+	option naive_server 'nv.example.org'
+	option naive_server_port '443'
+	option naive_username 'nv_user'
+	option naive_password 'nv_pass'
+	option naive_uot '1'
+
+config outbound_source 'src_awg_Servitro_AWG'
+	option name 'Servitro AWG'
+	option enabled '1'
+	option source_type 'awg'
+	option awg_server_address '203.0.113.55'
+	option awg_server_port '51820'
+	option awg_private_key 'PRIVKEY'
+	option awg_peer_public_key 'PUBKEY'
+	option awg_address '10.9.0.2/32'
+
+config section 'Main'
+	option enabled '1'
+	option action 'connection'
+	list outbound_source_refs 'src_trusttunnel_TrustTunnel'
+	list outbound_source_refs 'src_mieru_DeluxHost_Miery'
+	option trusttunnel_username 'tt_sec_user'
+	option trusttunnel_password 'tt_sec_pass'
+
+config section 'sec_tt_only'
+	option enabled '1'
+	option action 'connection'
+	list outbound_source_refs 'src_trusttunnel_Only'
+	option username 'single_user'
+	option password 'single_pass'
+
+config outbound_source 'src_trusttunnel_Only'
+	option enabled '1'
+	option source_type 'trusttunnel'
+	option trusttunnel_server 'tt2.example.org'
+"#;
+        let mut store = RouterStoreData::default();
+        let blocks = parse_legacy_uci_blocks(uci);
+        store.import_from_blocks_with_cache(&blocks, std::path::Path::new("/nonexistent-cache"));
+
+        let mieru = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_mieru_DeluxHost_Miery")
+            .expect("mieru source imported");
+        assert_eq!(mieru.server, "198.51.100.10");
+        assert_eq!(mieru.server_port, 0);
+        assert_eq!(mieru.server_ports, vec!["2012-2022"]);
+        assert_eq!(mieru.username, "m_user");
+        assert_eq!(mieru.password, "m_pass");
+        assert_eq!(mieru.mieru_transport, "TCP");
+
+        let tewfai = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_tewfai_DeluxHost2_TewFai")
+            .expect("tewfai source imported");
+        assert_eq!(tewfai.server, "tw.example.org");
+        assert_eq!(tewfai.server_port, 8443);
+        assert_eq!(tewfai.uuid, "11111111-2222-3333-4444-555555555555");
+        assert_eq!(tewfai.tewfai_transport, "raw_tls");
+        assert_eq!(tewfai.tewfai_inner_cipher, "aes-256-gcm");
+        assert_eq!(tewfai.tewfai_morph_profile, "video");
+        assert!(tewfai.tewfai_desync_enabled);
+
+        let tt = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_trusttunnel_TrustTunnel")
+            .expect("trusttunnel source imported");
+        assert_eq!(tt.server, "tt.example.org");
+        assert_eq!(tt.server_port, 443);
+        assert_eq!(tt.tls_sni, "cdn.example.org");
+        assert_eq!(tt.username, "tt_sec_user");
+        assert_eq!(tt.password, "tt_sec_pass");
+        assert!(tt.trusttunnel_quic);
+
+        let naive = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_naive_DeluxHost_Naive")
+            .expect("naive source imported");
+        assert_eq!(naive.server, "nv.example.org");
+        assert_eq!(naive.server_port, 443);
+        assert_eq!(naive.username, "nv_user");
+        assert_eq!(naive.password, "nv_pass");
+        assert!(naive.naive_udp_over_tcp);
+
+        let awg = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_awg_Servitro_AWG")
+            .expect("awg source imported");
+        assert_eq!(awg.wg_endpoint, "203.0.113.55:51820");
+        assert_eq!(awg.wg_private_key, "PRIVKEY");
+        assert_eq!(awg.wg_peer_public_key, "PUBKEY");
+        assert_eq!(awg.wg_local_address, "10.9.0.2/32");
+
+        let tt_only = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_trusttunnel_Only")
+            .expect("single-ref section fallback");
+        assert_eq!(tt_only.server, "tt2.example.org");
+        assert_eq!(tt_only.username, "single_user");
+        assert_eq!(tt_only.password, "single_pass");
     }
 }

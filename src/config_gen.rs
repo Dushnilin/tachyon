@@ -4689,50 +4689,68 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
         | "shadowtls" | "trusttunnel" | "tewfai" | "tor" | "openvpn"
             if !src.server.trim().is_empty() || src.source_type == "tor" =>
         {
-            if src.source_type == "mieru" && src.server_port == 0 && src.server_ports.is_empty() {
+            let st = src.source_type.as_str();
+            if st == "mieru" && src.server_port == 0 && src.server_ports.is_empty() {
                 return Vec::new();
             }
+            let srv_trimmed = src.server.trim();
             let tag = format!("{}-{}", src.source_type, src.id);
             let mut obj = Map::new();
             obj.insert("type".into(), json!(src.source_type));
             obj.insert("tag".into(), json!(tag));
-            if !src.server.trim().is_empty() {
-                obj.insert("server".into(), json!(src.server.trim()));
+            if !srv_trimmed.is_empty() {
+                obj.insert("server".into(), json!(srv_trimmed));
             }
-            if src.server_port > 0 {
-                obj.insert("server_port".into(), json!(src.server_port));
-            }
-            if src.source_type == "mieru" {
-                let tr = src.mieru_transport.trim();
-                let tr_norm = if tr.eq_ignore_ascii_case("UDP") {
-                    "UDP"
+            let eff_port: Option<u16> = if st == "mieru" || st == "tor" {
+                (src.server_port > 0).then_some(src.server_port)
+            } else if st == "snell" {
+                Some(if src.server_port > 0 {
+                    src.server_port
                 } else {
-                    "TCP"
-                };
-                obj.insert("transport".into(), json!(tr_norm));
-                if !src.server_ports.is_empty() {
-                    obj.insert("server_ports".into(), json!(src.server_ports));
-                }
-                if !src.mieru_multiplexing.trim().is_empty() {
-                    obj.insert("multiplexing".into(), json!(src.mieru_multiplexing.trim()));
-                }
-                if !src.mieru_handshake_mode.trim().is_empty() {
-                    obj.insert(
-                        "handshake_mode".into(),
-                        json!(src.mieru_handshake_mode.trim()),
-                    );
-                }
-                if !src.mieru_traffic_pattern.trim().is_empty() {
-                    obj.insert(
-                        "traffic_pattern".into(),
-                        json!(src.mieru_traffic_pattern.trim()),
-                    );
-                }
+                    8388
+                })
+            } else if st == "sudoku" {
+                Some(if src.server_port > 0 {
+                    src.server_port
+                } else {
+                    8443
+                })
+            } else {
+                Some(if src.server_port > 0 {
+                    src.server_port
+                } else {
+                    443
+                })
+            };
+            if let Some(p) = eff_port {
+                obj.insert("server_port".into(), json!(p));
             }
             if !src.username.is_empty() {
                 obj.insert("username".into(), json!(src.username));
             }
-            if !src.password.is_empty() {
+            if st == "snell" {
+                let psk_val = if !src.psk.is_empty() {
+                    &src.psk
+                } else {
+                    &src.password
+                };
+                if !psk_val.is_empty() {
+                    obj.insert("psk".into(), json!(psk_val));
+                }
+            } else if st == "sudoku" {
+                let key_val = if !src.password.is_empty() {
+                    &src.password
+                } else {
+                    &src.psk
+                };
+                if !key_val.is_empty() {
+                    obj.insert("key".into(), json!(key_val));
+                }
+            } else if st == "masque" {
+                if !src.password.is_empty() {
+                    obj.insert("auth_token".into(), json!(src.password));
+                }
+            } else if !src.password.is_empty() {
                 obj.insert("password".into(), json!(src.password));
             } else if !src.psk.is_empty() {
                 obj.insert("psk".into(), json!(src.psk));
@@ -4740,15 +4758,300 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             if !src.uuid.is_empty() {
                 obj.insert("uuid".into(), json!(src.uuid));
             }
-            if !src.tls_sni.is_empty() {
-                obj.insert(
-                    "tls".into(),
-                    json!({
+
+            let sni_or_server = if !src.tls_sni.trim().is_empty() {
+                src.tls_sni.trim()
+            } else if !src.sni.trim().is_empty() {
+                src.sni.trim()
+            } else {
+                srv_trimmed
+            };
+
+            match st {
+                "mieru" => {
+                    let tr = src.mieru_transport.trim();
+                    let tr_norm = if tr.eq_ignore_ascii_case("UDP") {
+                        "UDP"
+                    } else {
+                        "TCP"
+                    };
+                    obj.insert("transport".into(), json!(tr_norm));
+                    if !src.server_ports.is_empty() {
+                        obj.insert("server_ports".into(), json!(src.server_ports));
+                    }
+                    if !src.mieru_multiplexing.trim().is_empty() {
+                        obj.insert("multiplexing".into(), json!(src.mieru_multiplexing.trim()));
+                    }
+                    if !src.mieru_handshake_mode.trim().is_empty() {
+                        obj.insert(
+                            "handshake_mode".into(),
+                            json!(src.mieru_handshake_mode.trim()),
+                        );
+                    }
+                    if !src.mieru_traffic_pattern.trim().is_empty() {
+                        obj.insert(
+                            "traffic_pattern".into(),
+                            json!(src.mieru_traffic_pattern.trim()),
+                        );
+                    }
+                }
+                "anytls" => {
+                    if src.anytls_min_idle_session > 0 {
+                        obj.insert(
+                            "min_idle_session".into(),
+                            json!(src.anytls_min_idle_session),
+                        );
+                    }
+                    if !src.anytls_idle_session_check_interval.trim().is_empty() {
+                        obj.insert(
+                            "idle_session_check_interval".into(),
+                            json!(src.anytls_idle_session_check_interval.trim()),
+                        );
+                    }
+                    if !src.anytls_idle_session_timeout.trim().is_empty() {
+                        obj.insert(
+                            "idle_session_timeout".into(),
+                            json!(src.anytls_idle_session_timeout.trim()),
+                        );
+                    }
+                    let mut tls = json!({
                         "enabled": true,
-                        "server_name": src.tls_sni,
+                        "server_name": sni_or_server,
                         "insecure": src.tls_insecure
-                    }),
-                );
+                    });
+                    if !src.anytls_alpn.is_empty() {
+                        tls["alpn"] = json!(src.anytls_alpn);
+                    }
+                    obj.insert("tls".into(), tls);
+                }
+                "naive" => {
+                    if src.naive_quic {
+                        obj.insert("quic".into(), json!(true));
+                    }
+                    if !src.naive_quic_congestion_control.trim().is_empty() {
+                        obj.insert(
+                            "quic_congestion_control".into(),
+                            json!(src.naive_quic_congestion_control.trim()),
+                        );
+                    }
+                    if src.naive_insecure_concurrency > 0 {
+                        obj.insert(
+                            "insecure_concurrency".into(),
+                            json!(src.naive_insecure_concurrency),
+                        );
+                    }
+                    if src.naive_udp_over_tcp {
+                        obj.insert("udp_over_tcp".into(), json!(true));
+                    }
+                    let raw_hdrs = src.naive_extra_headers.trim();
+                    if !raw_hdrs.is_empty() {
+                        if raw_hdrs.starts_with('{')
+                            && let Ok(Value::Object(hdrs_map)) =
+                                serde_json::from_str::<Value>(raw_hdrs)
+                        {
+                            obj.insert("extra_headers".into(), Value::Object(hdrs_map));
+                        } else {
+                            let mut hdrs_map = Map::new();
+                            for line in raw_hdrs.lines() {
+                                if let Some((k, v)) = line.split_once(':') {
+                                    let kt = k.trim();
+                                    if !kt.is_empty() {
+                                        hdrs_map.insert(kt.to_string(), json!(v.trim()));
+                                    }
+                                }
+                            }
+                            if !hdrs_map.is_empty() {
+                                obj.insert("extra_headers".into(), Value::Object(hdrs_map));
+                            }
+                        }
+                    }
+                    let mut tls = json!({
+                        "enabled": true,
+                        "server_name": sni_or_server
+                    });
+                    if src.tls_insecure {
+                        tls["insecure"] = json!(true);
+                    }
+                    obj.insert("tls".into(), tls);
+                }
+                "trusttunnel" => {
+                    if src.trusttunnel_quic {
+                        obj.insert("quic".into(), json!(true));
+                    }
+                    if src.trusttunnel_health_check {
+                        obj.insert("health_check".into(), json!(true));
+                    }
+                    obj.insert(
+                        "tls".into(),
+                        json!({
+                            "enabled": true,
+                            "server_name": sni_or_server,
+                            "insecure": src.tls_insecure
+                        }),
+                    );
+                }
+                "tewfai" => {
+                    let mut tr_list: Vec<String> = Vec::new();
+                    for tok in src
+                        .tewfai_transport
+                        .split(|c: char| c == ',' || c.is_whitespace())
+                    {
+                        let norm = match tok.trim().to_ascii_lowercase().as_str() {
+                            "raw_tls" | "h2" | "ws" | "tcp" => "tcp",
+                            "h3_stream" | "h3_datagram" | "quic" => "quic",
+                            _ => continue,
+                        };
+                        if !tr_list.iter().any(|x| x == norm) {
+                            tr_list.push(norm.to_string());
+                        }
+                    }
+                    if !tr_list.is_empty() {
+                        obj.insert("transport".into(), json!(tr_list));
+                    }
+                    if !src.tewfai_inner_cipher.trim().is_empty() {
+                        obj.insert("inner_cipher".into(), json!(src.tewfai_inner_cipher.trim()));
+                    }
+                    if !src.tewfai_morph_profile.trim().is_empty() {
+                        obj.insert(
+                            "morph_profile".into(),
+                            json!(src.tewfai_morph_profile.trim()),
+                        );
+                    }
+                    if src.tewfai_desync_enabled {
+                        obj.insert("desync".into(), json!(true));
+                    }
+                    obj.insert(
+                        "tls".into(),
+                        json!({
+                            "enabled": true,
+                            "server_name": sni_or_server,
+                            "insecure": src.tls_insecure
+                        }),
+                    );
+                }
+                "snell" => {
+                    obj.insert(
+                        "version".into(),
+                        json!(if src.snell_version > 0 {
+                            src.snell_version
+                        } else {
+                            4
+                        }),
+                    );
+                    let obfs = src.snell_obfs.trim();
+                    if !obfs.is_empty() && !obfs.eq_ignore_ascii_case("none") {
+                        let mut obfs_obj = json!({ "type": obfs });
+                        if !src.snell_obfs_host.trim().is_empty() {
+                            obfs_obj["host"] = json!(src.snell_obfs_host.trim());
+                        }
+                        obj.insert("obfs".into(), obfs_obj);
+                    }
+                    if src.snell_uot {
+                        obj.insert("udp_over_tcp".into(), json!(true));
+                    }
+                }
+                "shadowtls" => {
+                    obj.insert(
+                        "version".into(),
+                        json!(if src.shadowtls_version > 0 {
+                            src.shadowtls_version
+                        } else {
+                            3
+                        }),
+                    );
+                    let mut tls = json!({
+                        "enabled": true,
+                        "server_name": sni_or_server
+                    });
+                    if src.tls_insecure {
+                        tls["insecure"] = json!(true);
+                    }
+                    obj.insert("tls".into(), tls);
+                }
+                "sudoku" => {
+                    if !src.sudoku_aead.trim().is_empty() {
+                        obj.insert("aead_method".into(), json!(src.sudoku_aead.trim()));
+                    }
+                }
+                "masque" => {
+                    obj.insert("profile".into(), json!("cloudflare"));
+                    let priv_key = if !src.wg_private_key.trim().is_empty() {
+                        src.wg_private_key.trim()
+                    } else {
+                        src.warp_private_key.trim()
+                    };
+                    if !priv_key.is_empty() {
+                        obj.insert("private_key".into(), json!(priv_key));
+                    }
+                    if !src.masque_public_key.trim().is_empty() {
+                        obj.insert("public_key".into(), json!(src.masque_public_key.trim()));
+                    }
+                    if !src.masque_local_address.trim().is_empty() {
+                        obj.insert("ip".into(), json!(src.masque_local_address.trim()));
+                    }
+                    if !src.masque_ipv6.trim().is_empty() {
+                        obj.insert("ipv6".into(), json!(src.masque_ipv6.trim()));
+                    }
+                    if !src.masque_uri.trim().is_empty() {
+                        obj.insert("uri".into(), json!(src.masque_uri.trim()));
+                    }
+                    if src.masque_mtu > 0 {
+                        obj.insert("mtu".into(), json!(src.masque_mtu));
+                    }
+                    let explicit_sni = if !src.tls_sni.trim().is_empty() {
+                        src.tls_sni.trim()
+                    } else {
+                        src.sni.trim()
+                    };
+                    if !explicit_sni.is_empty() || src.tls_insecure {
+                        let mut tls = json!({ "enabled": true });
+                        if !explicit_sni.is_empty() {
+                            tls["server_name"] = json!(explicit_sni);
+                        }
+                        if src.tls_insecure {
+                            tls["insecure"] = json!(true);
+                        }
+                        obj.insert("tls".into(), tls);
+                    }
+                }
+                "openconnect" => {
+                    let flavor = if src.openconnect_protocol.trim().is_empty() {
+                        "anyconnect"
+                    } else {
+                        src.openconnect_protocol.trim()
+                    };
+                    obj.insert("flavor".into(), json!(flavor));
+                    if !src.openconnect_authgroup.trim().is_empty() {
+                        obj.insert("authgroup".into(), json!(src.openconnect_authgroup.trim()));
+                    }
+                    if !src.openconnect_servercert.trim().is_empty() {
+                        obj.insert(
+                            "server_cert_pin".into(),
+                            json!(src.openconnect_servercert.trim()),
+                        );
+                    }
+                    obj.insert("dtls".into(), json!(!src.openconnect_no_dtls));
+                    obj.insert(
+                        "tls".into(),
+                        json!({
+                            "enabled": true,
+                            "server_name": sni_or_server,
+                            "insecure": src.tls_insecure
+                        }),
+                    );
+                }
+                _ => {
+                    if !src.tls_sni.is_empty() {
+                        obj.insert(
+                            "tls".into(),
+                            json!({
+                                "enabled": true,
+                                "server_name": src.tls_sni,
+                                "insecure": src.tls_insecure
+                            }),
+                        );
+                    }
+                }
             }
             out.push((tag, Value::Object(obj)));
         }
@@ -9077,11 +9380,15 @@ fn move_wireguard_outbounds_to_endpoints(outbounds: &mut Vec<Value>, endpoints: 
             ("peer_public_key", "public_key"),
             ("pre_shared_key", "pre_shared_key"),
             ("persistent_keepalive", "persistent_keepalive_interval"),
+            (
+                "persistent_keepalive_interval",
+                "persistent_keepalive_interval",
+            ),
             ("reserved", "reserved"),
             ("allowed_ips", "allowed_ips"),
         ] {
             if let Some(value) = endpoint.remove(legacy) {
-                legacy_peer.insert(native.to_string(), value);
+                legacy_peer.entry(native.to_string()).or_insert(value);
             }
         }
         let peers = endpoint.entry("peers").or_insert_with(|| {
@@ -9774,6 +10081,7 @@ pub fn compile_core_config_with_wan6(
         let pre_resolve_ip = sec.connection_type == "desync" || sec.resolve_real_ip_for_routing;
 
         let mut section_matched_any = false;
+        let mut section_emitted_rules: Vec<Value> = Vec::new();
         for cref in &sec.condition_refs {
             let Some(cond) = cond_map.get(cref.as_str()).copied() else {
                 continue;
@@ -9795,11 +10103,15 @@ pub fn compile_core_config_with_wan6(
             );
             if !cond_rules.is_empty() {
                 for rule in cond_rules {
-                    rules.push(wrap_rule_with_inverted_subrules(
+                    let wrapped = wrap_rule_with_inverted_subrules(
                         rule,
                         &sec_exc_dom_subs,
                         &sec_exc_proto_subs,
-                    ));
+                    );
+                    if !section_emitted_rules.contains(&wrapped) {
+                        section_emitted_rules.push(wrapped.clone());
+                        rules.push(wrapped);
+                    }
                 }
                 section_matched_any = true;
             }
@@ -9858,11 +10170,15 @@ pub fn compile_core_config_with_wan6(
             );
             if !cond_rules.is_empty() {
                 for rule in cond_rules {
-                    rules.push(wrap_rule_with_inverted_subrules(
+                    let wrapped = wrap_rule_with_inverted_subrules(
                         rule,
                         &sec_exc_dom_subs,
                         &sec_exc_proto_subs,
-                    ));
+                    );
+                    if !section_emitted_rules.contains(&wrapped) {
+                        section_emitted_rules.push(wrapped.clone());
+                        rules.push(wrapped);
+                    }
                 }
                 section_matched_any = true;
             }
@@ -10565,7 +10881,7 @@ pub fn compile_core_config_with_wan6(
             "final": "direct",
             "auto_detect_interface": true,
             "default_mark": 1073741824,
-            "default_domain_resolver": "dns-bootstrap"
+            "default_domain_resolver": "dns-remote"
         },
         "experimental": {
             "cache_file": {
@@ -14320,7 +14636,7 @@ mod tests {
         store.sections[0].server_domain_rules =
             vec!["src-src_native_desync=netflix.com, fast.com".to_string()];
         let cfg = compile_core_config(&store).expect("compile core config");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
         let inbounds = cfg["inbounds"].as_array().unwrap();
         assert!(
             inbounds
@@ -17256,5 +17572,203 @@ config timeserver 'ntp'
         assert!(!community_service_has_subnet_list("youtube"));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_route_rule_dedup_and_protocol_outbound_schemas_v2() {
+        let mut store = RouterStoreData::default();
+        store.conditions.push(TrafficCondition {
+            id: "cond_Zapret2".to_string(),
+            enabled: true,
+            name: "Youtube".to_string(),
+            condition_type: "atomic".to_string(),
+            community_lists: vec!["youtube".to_string(), "youtube_images".to_string()],
+            ..Default::default()
+        });
+        store.sections = vec![RoutingSection {
+            id: "Zapret2".to_string(),
+            enabled: true,
+            label: "Youtube".to_string(),
+            action: "connection".to_string(),
+            connection_type: "desync".to_string(),
+            condition_refs: vec!["cond_Zapret2".to_string()],
+            community_lists: vec!["youtube".to_string(), "youtube_images".to_string()],
+            outbound_source_refs: vec!["Desync".to_string()],
+            ..Default::default()
+        }];
+        store.outbound_sources = vec![
+            OutboundSource {
+                id: "Desync".to_string(),
+                enabled: true,
+                source_type: "desync".to_string(),
+                desync_preset: "auto".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "tw1".to_string(),
+                enabled: true,
+                source_type: "tewfai".to_string(),
+                server: "tw.example.org".to_string(),
+                tewfai_transport: "raw_tls".to_string(),
+                uuid: "uuid-1".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "tt1".to_string(),
+                enabled: true,
+                source_type: "trusttunnel".to_string(),
+                server: "tt.example.org".to_string(),
+                username: "u".to_string(),
+                password: "p".to_string(),
+                trusttunnel_quic: true,
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "nv1".to_string(),
+                enabled: true,
+                source_type: "naive".to_string(),
+                server: "nv.example.org".to_string(),
+                username: "u".to_string(),
+                password: "p".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "any1".to_string(),
+                enabled: true,
+                source_type: "anytls".to_string(),
+                server: "any.example.org".to_string(),
+                password: "p".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "sn1".to_string(),
+                enabled: true,
+                source_type: "snell".to_string(),
+                server: "sn.example.org".to_string(),
+                password: "psk_pw".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "su1".to_string(),
+                enabled: true,
+                source_type: "sudoku".to_string(),
+                server: "su.example.org".to_string(),
+                password: "skey".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "mq1".to_string(),
+                enabled: true,
+                source_type: "masque".to_string(),
+                server: "162.159.198.2".to_string(),
+                wg_private_key: "PRIV".to_string(),
+                masque_public_key: "PUB".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "oc1".to_string(),
+                enabled: true,
+                source_type: "openconnect".to_string(),
+                server: "oc.example.org".to_string(),
+                username: "u".to_string(),
+                password: "p".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "st1".to_string(),
+                enabled: true,
+                source_type: "shadowtls".to_string(),
+                server: "st.example.org".to_string(),
+                password: "p".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "amz1".to_string(),
+                enabled: true,
+                source_type: "amnezia_config".to_string(),
+                amnezia_conf_text: "[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.2.2/32\n[Peer]\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\nEndpoint = 198.51.100.11:51820\nPersistentKeepalive = 25\n".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile v2 config");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
+
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        let resolve_yt_count = route_rules
+            .iter()
+            .filter(|r| {
+                r.get("action").and_then(Value::as_str) == Some("resolve")
+                    && r.get("rule_set") == Some(&json!(["trs-youtube", "trs-youtube_images"]))
+            })
+            .count();
+        let desync_yt_count = route_rules
+            .iter()
+            .filter(|r| {
+                r.get("outbound").and_then(Value::as_str) == Some("desync-Desync")
+                    && r.get("rule_set") == Some(&json!(["trs-youtube", "trs-youtube_images"]))
+            })
+            .count();
+        assert_eq!(resolve_yt_count, 1, "resolve rule must not duplicate");
+        assert_eq!(desync_yt_count, 1, "desync rule must not duplicate");
+
+        let outbounds = cfg["outbounds"].as_array().unwrap();
+        let find_ob = |tag: &str| {
+            outbounds
+                .iter()
+                .find(|o| o.get("tag").and_then(Value::as_str) == Some(tag))
+                .unwrap_or_else(|| panic!("missing outbound {tag}"))
+        };
+
+        let tw = find_ob("tewfai-tw1");
+        assert_eq!(tw["server_port"], 443);
+        assert_eq!(tw["transport"], json!(["tcp"]));
+        assert_eq!(tw["tls"]["enabled"], json!(true));
+
+        let tt = find_ob("trusttunnel-tt1");
+        assert_eq!(tt["server_port"], 443);
+        assert_eq!(tt["quic"], json!(true));
+        assert_eq!(tt["tls"]["enabled"], json!(true));
+
+        let nv = find_ob("naive-nv1");
+        assert_eq!(nv["server_port"], 443);
+        assert_eq!(nv["tls"]["enabled"], json!(true));
+
+        let any = find_ob("anytls-any1");
+        assert_eq!(any["server_port"], 443);
+        assert_eq!(any["tls"]["enabled"], json!(true));
+
+        let sn = find_ob("snell-sn1");
+        assert_eq!(sn["server_port"], 8388);
+        assert_eq!(sn["version"], 4);
+        assert_eq!(sn["psk"], "psk_pw");
+        assert!(sn.get("password").is_none());
+
+        let su = find_ob("sudoku-su1");
+        assert_eq!(su["server_port"], 8443);
+        assert_eq!(su["key"], "skey");
+        assert!(su.get("password").is_none());
+
+        let mq = find_ob("masque-mq1");
+        assert_eq!(mq["profile"], "cloudflare");
+        assert_eq!(mq["private_key"], "PRIV");
+        assert_eq!(mq["public_key"], "PUB");
+
+        let oc = find_ob("openconnect-oc1");
+        assert_eq!(oc["flavor"], "anyconnect");
+        assert_eq!(oc["dtls"], json!(true));
+        assert_eq!(oc["tls"]["enabled"], json!(true));
+
+        let st = find_ob("shadowtls-st1");
+        assert_eq!(st["version"], 3);
+        assert_eq!(st["tls"]["enabled"], json!(true));
+
+        let endpoints = cfg["endpoints"].as_array().unwrap();
+        let amz_ep = endpoints
+            .iter()
+            .find(|ep| ep.get("type").and_then(Value::as_str) == Some("wireguard"))
+            .expect("amnezia wireguard endpoint");
+        assert!(amz_ep.get("persistent_keepalive_interval").is_none());
+        assert_eq!(amz_ep["peers"][0]["persistent_keepalive_interval"], 25);
     }
 }
