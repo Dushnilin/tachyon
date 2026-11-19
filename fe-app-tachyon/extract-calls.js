@@ -18,8 +18,9 @@ const srcDir = path.join(__dirname, 'src');
 const entries = await fs.readdir(srcDir, { recursive: true });
 const files = entries
     .filter((rel) => (rel.endsWith('.ts') || rel.endsWith('.tsx')) && !rel.endsWith('.test.ts'))
-    .map((rel) => path.join(srcDir, rel))
-    .sort();
+    .map((rel) => rel.replaceAll('\\', '/'))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .map((rel) => path.join(srcDir, rel));
 
 console.log('Found files:', files.length);
 

@@ -1,15 +1,15 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# Dushnilin <dushnilin@gmail.com>, 2026.
+# Tachyon <dushnilin@gmail.com>, 2026.
 #, fuzzy
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 17:59+0300\n"
-"PO-Revision-Date: 2026-11-19 17:59+0300\n"
-"Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
+"POT-Creation-Date: 2026-11-19 19:15+0300\n"
+"PO-Revision-Date: 2026-11-19 19:15+0300\n"
+"Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
 "MIME-Version: 1.0\n"
