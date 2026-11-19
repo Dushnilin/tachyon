@@ -13,7 +13,13 @@ import {
 import { TachyonShellMethods } from './methods/shell';
 import { fetchServicesInfo } from './fetchers/fetchServicesInfo';
 import { store } from './services/store.service';
+import {
+  activateAppShellNavKey,
+  registerAppShellNavActivator,
+} from './services/tab.service';
 import { openConnectionWizardModal } from './connectionWizard';
+
+export { activateAppShellNavKey };
 import {
   mountLanguageSelector,
   UiLanguageCapabilities,
@@ -2275,6 +2281,14 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   };
 
   activeShellState.renderFn = renderSidebarAndTopbar;
+  registerAppShellNavActivator((navKey: string): boolean => {
+    const item = NAV_ITEMS.find(
+      (i) => i.key === navKey || i.luciTab === navKey,
+    );
+    if (!item) return false;
+    activateNavItem(item);
+    return true;
+  });
   renderSidebarAndTopbar();
 
   const targetItem =

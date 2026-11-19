@@ -102,4 +102,28 @@ if (int(d.runtime_ok) != 0)
     die("missing tailscale endpoint must report runtime_ok=0: " + sprintf("%J", d) + "\n");
 ' || fail "missing Tailscale inbound item regression"
 
+# 6. Live nftables dstnat redirect & DNAT rules satisfy firewall_required_protocols_open_cached
+env -u TACHYON_UCI_STATE_FILE -u UCI_STATE ucode -L "$TACHYON_LIB" -e '
+let r = require("diagnostics.routing");
+let dstnat_redirect = "meta nfproto ipv4 tcp dport 443 counter packets 0 bytes 0 redirect to :8443 comment \"!fw4: VLESS\"";
+if (!r.firewall_required_protocols_open_cached("8443", "tcp", "", "", dstnat_redirect, "192.168.1.1"))
+    die("nft redirect to :8443 must satisfy 8443/tcp\n");
+if (r.firewall_required_protocols_open_cached("8443", "udp", "", "", dstnat_redirect, "192.168.1.1"))
+    die("nft tcp redirect must not satisfy 8443/udp\n");
+if (r.firewall_required_protocols_open_cached("443", "tcp", "", "", dstnat_redirect, "192.168.1.1"))
+    die("nft redirect from 443 to :8443 must not satisfy 443/tcp\n");
+
+let dstnat_dnat = "meta nfproto ipv4 tcp dport 8443 counter dnat ip to 192.168.1.1:8443";
+if (!r.firewall_required_protocols_open_cached("8443", "tcp", "", "", dstnat_dnat, "192.168.1.1"))
+    die("nft dnat to local router IP 192.168.1.1:8443 must satisfy 8443/tcp\n");
+
+let dstnat_other_host = "meta nfproto ipv4 tcp dport 8443 counter dnat ip to 192.168.1.50:8443";
+if (r.firewall_required_protocols_open_cached("8443", "tcp", "", "", dstnat_other_host, "192.168.1.1"))
+    die("nft dnat to non-router LAN host must not satisfy 8443/tcp\n");
+
+let dstnat_both = "meta nfproto ipv4 meta l4proto { tcp, udp } th dport 443 redirect to :8443";
+if (!r.firewall_required_protocols_open_cached("8443", "tcp udp", "", "", dstnat_both, "192.168.1.1"))
+    die("nft multi-proto redirect must satisfy 8443 tcp udp\n");
+' || fail "nft dstnat redirect diagnostic regression"
+
 printf 'inbounds check diagnostics tests passed\n'

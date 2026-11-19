@@ -125,6 +125,7 @@ let resetInboundTrafficStateForTests: any;
 let renderCollapsibleInboundsBlock: any;
 let formatActiveServersCount: any;
 let showInboundClientsModal: any;
+let switchToServersTab: any;
 
 describe('inboundServers', () => {
   beforeAll(async () => {
@@ -136,6 +137,7 @@ describe('inboundServers', () => {
     renderCollapsibleInboundsBlock = mod.renderCollapsibleInboundsBlock;
     formatActiveServersCount = mod.formatActiveServersCount;
     showInboundClientsModal = mod.showInboundClientsModal;
+    switchToServersTab = mod.switchToServersTab;
   });
 
   beforeEach(() => {
@@ -746,6 +748,52 @@ describe('inboundServers', () => {
 
       expect(stoppedContainer.textContent).toContain('Остановлен');
       expect(stoppedContainer.textContent).not.toContain('Работает');
+    });
+  });
+
+  describe('switchToServersTab', () => {
+    it('reveals #cbi-tachyon-server and hides #cbi-tachyon-dashboard in fallback LuCI mode', () => {
+      const prevDoc = (globalThis as any).document;
+      let clicked = false;
+      const serverLi = new MockElement('li') as any;
+      serverLi.className = 'cbi-tab';
+      const tabLink = new MockElement('a') as any;
+      tabLink.closest = () => serverLi;
+      tabLink.click = () => {
+        clicked = true;
+      };
+
+      const dashboardSec = new MockElement('div') as any;
+      dashboardSec.setAttribute('id', 'cbi-tachyon-dashboard');
+      dashboardSec.id = 'cbi-tachyon-dashboard';
+      dashboardSec.className = 'cbi-section cbi-tab';
+      dashboardSec.style = { display: '' };
+
+      const serverSec = new MockElement('div') as any;
+      serverSec.setAttribute('id', 'cbi-tachyon-server');
+      serverSec.id = 'cbi-tachyon-server';
+      serverSec.className = 'cbi-section cbi-tab-disabled';
+      serverSec.style = { display: 'none' };
+
+      (globalThis as any).document = {
+        ...prevDoc,
+        querySelector: (sel: string) =>
+          sel.includes('cbi-tachyon-server') ? tabLink : null,
+        querySelectorAll: (sel: string) =>
+          sel.includes('cbi-tachyon-') ? [dashboardSec, serverSec] : [],
+      };
+
+      try {
+        expect(switchToServersTab()).toBe(true);
+        expect(clicked).toBe(true);
+        expect(serverLi.classList.contains('cbi-tab-disabled')).toBe(true);
+        expect(serverSec.style.display).toBe('');
+        expect(serverSec.getAttribute('data-tab-active')).toBe('true');
+        expect(dashboardSec.style.display).toBe('none');
+        expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
+      } finally {
+        (globalThis as any).document = prevDoc;
+      }
     });
   });
 });

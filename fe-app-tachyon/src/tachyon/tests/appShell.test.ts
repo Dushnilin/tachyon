@@ -16,6 +16,7 @@ function createMockElement(tag: string): any {
     dataset,
     setAttribute(k: string, v: string) {
       attrs[k] = String(v);
+      if (k === 'id') el.id = String(v);
       if (k === 'class') el.className = String(v);
       if (k.startsWith('data-')) {
         const camel = k
@@ -84,23 +85,62 @@ function createMockElement(tag: string): any {
     },
     querySelectorAll(sel: string): any[] {
       const results: any[] = [];
-      const matchSingle = (node: any, s: string): boolean => {
-        if (!node || typeof node !== 'object') return false;
-        if (s.startsWith('#')) {
-          return node.getAttribute?.('id') === s.slice(1);
+      const matchToken = (node: any, tok: string): boolean => {
+        const attrPrefix = tok.match(
+          /^([^[]*)\[([a-zA-Z0-9_-]+)\^="([^"]*)"\]$/,
+        );
+        if (attrPrefix) {
+          const [, prefix, attr, val] = attrPrefix;
+          if (prefix && !matchToken(node, prefix)) return false;
+          const actual =
+            attr === 'id'
+              ? node.getAttribute?.('id') || ''
+              : node.getAttribute?.(attr) || '';
+          return actual.startsWith(val);
         }
-        if (s.startsWith('.')) {
-          const cls = s.slice(1);
+        const attrEq = tok.match(/^([^[]*)\[([a-zA-Z0-9_-]+)="([^"]*)"\]$/);
+        if (attrEq) {
+          const [, prefix, attr, val] = attrEq;
+          if (prefix && !matchToken(node, prefix)) return false;
+          return (node.getAttribute?.(attr) || '') === val;
+        }
+        const multiDot = tok.match(/^([^.]*)(\..+)$/);
+        if (multiDot && multiDot[1]) {
+          if (!matchToken(node, multiDot[1])) return false;
+          return matchToken(node, multiDot[2]);
+        }
+        if (tok.startsWith('#')) {
+          return node.getAttribute?.('id') === tok.slice(1);
+        }
+        if (tok.startsWith('.')) {
+          const cls = tok.slice(1);
           return (node.className || '').split(/\s+/).includes(cls);
         }
-        return (node.tagName || '').toLowerCase() === s.toLowerCase();
+        return (node.tagName || '').toLowerCase() === tok.toLowerCase();
       };
+      const selectors = sel
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       const walk = (node: any) => {
         if (!node || !Array.isArray(node.children)) return;
         for (const child of node.children) {
           if (child && typeof child === 'object') {
-            if (matchSingle(child, sel)) {
-              results.push(child);
+            for (const single of selectors) {
+              const parts = single
+                .replace(/\s*>\s*/g, ' > ')
+                .split(/\s+/)
+                .filter(Boolean);
+              const lastTok = parts[parts.length - 1];
+              if (lastTok && matchToken(child, lastTok)) {
+                if (
+                  parts.length === 1 ||
+                  !single.includes(':scope') ||
+                  el.children.includes(child)
+                ) {
+                  if (!results.includes(child)) results.push(child);
+                }
+              }
             }
             walk(child);
           }
@@ -186,6 +226,7 @@ import {
 } from '../appShell';
 import { openConnectionWizardModal } from '../connectionWizard';
 import { store } from '../services/store.service';
+import { switchToServersTab } from '../tabs/dashboard/inboundServers';
 
 describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
   beforeEach(() => {
@@ -485,5 +526,71 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ direction: 'outbound' }),
     );
+  });
+
+  it('reveals #cbi-tachyon-server via switchToServersTab even when show_tab_servers is off', () => {
+    const E = (globalThis as any).E;
+    let tabLinkClicked = false;
+    const serverLi = E(
+      'li',
+      { class: 'cbi-tab-disabled', 'data-tab': 'server' },
+      [
+        E(
+          'a',
+          {
+            href: '#',
+            click: () => {
+              tabLinkClicked = true;
+            },
+          },
+          'Servers',
+        ),
+      ],
+    );
+    const dashboardSec = E('div', {
+      id: 'cbi-tachyon-dashboard',
+      class: 'cbi-section cbi-tab',
+    });
+    const serverSec = E('div', {
+      id: 'cbi-tachyon-server',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        serverLi,
+      ]),
+      dashboardSec,
+      serverSec,
+    ]);
+    (globalThis as any).uci = {
+      sections: () => [],
+      get: () => undefined,
+    };
+
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+      isTabVisible: (id) => id !== 'server',
+    });
+
+    // Server item must not be rendered in sidebar while show_tab_servers is off
+    expect(
+      mapEl
+        .querySelectorAll('.tachyon-sidebar__subitem')
+        .find((el: any) => el.getAttribute('data-nav-key') === 'server'),
+    ).toBeUndefined();
+    expect(serverSec.style.display).toBe('none');
+    expect(dashboardSec.style.display).toBe('');
+
+    const switched = switchToServersTab();
+    expect(switched).toBe(true);
+    expect(tabLinkClicked).toBe(true);
+    expect(serverSec.style.display).toBe('');
+    expect(serverSec.getAttribute('data-tab-active')).toBe('true');
+    expect(dashboardSec.style.display).toBe('none');
+    expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
   });
 });

@@ -143,9 +143,11 @@ function firewall_rules_from_uci_show(data) {
 
         let rest = substr(key, length(prefix));
         if (index(rest, ".") < 0) {
-            if (uci_show_list_value(raw_value) == "rule") {
+            let sec_type = uci_show_list_value(raw_value);
+            if (sec_type == "rule" || sec_type == "redirect") {
                 if (sections[key] == null)
                     sections[key] = {};
+                sections[key]._section_type = sec_type;
                 push(order, key);
             }
             continue;
@@ -573,8 +575,64 @@ function firewall_proto_spec_contains(spec, proto) {
     return false;
 }
 
-function firewall_rules_allow_port_proto(rules, port, proto) {
+function firewall_dest_ip_is_local(dest_ip, local_ips) {
+    dest_ip = trim(as_string(dest_ip));
+    if (dest_ip == "" || dest_ip == "127.0.0.1" || dest_ip == "::1")
+        return true;
+
+    for (let ip in whitespace_values(local_ips)) {
+        if (ip == dest_ip)
+            return true;
+    }
+
+    return false;
+}
+
+function firewall_redirect_allows_port_proto(rule, port, proto, local_ips) {
+    let enabled = as_string(rule.enabled);
+    if (enabled != "" && enabled != "1")
+        return false;
+
+    let target = uc(as_string(rule.target));
+    if (target != "" && target != "DNAT")
+        return false;
+
+    let src = as_string(rule.src);
+    if (src != "" && src != "wan" && src != "*")
+        return false;
+
+    let src_port = as_string(rule.src_port);
+    if (src_port != "" && src_port != "*")
+        return false;
+
+    if (as_string(rule.family) == "ipv6")
+        return false;
+
+    if (!firewall_proto_spec_contains(rule.proto, proto))
+        return false;
+
+    if (!firewall_dest_ip_is_local(rule.dest_ip, local_ips))
+        return false;
+
+    let dest_port = trim(as_string(rule.dest_port));
+    if (dest_port != "")
+        return firewall_port_spec_contains(dest_port, port);
+
+    let src_dport = trim(as_string(rule.src_dport));
+    if (src_dport != "")
+        return firewall_port_spec_contains(src_dport, port);
+
+    return false;
+}
+
+function firewall_rules_allow_port_proto(rules, port, proto, local_ips) {
     for (let rule in rules) {
+        if (as_string(rule._section_type) == "redirect") {
+            if (firewall_redirect_allows_port_proto(rule, port, proto, local_ips))
+                return true;
+            continue;
+        }
+
         let enabled = as_string(rule.enabled);
         if (enabled != "" && enabled != "1")
             continue;
@@ -609,15 +667,15 @@ function firewall_rules_allow_port_proto(rules, port, proto) {
     return false;
 }
 
-function firewall_port_open_for_proto(port, proto) {
-    return firewall_rules_allow_port_proto(firewall_rules_from_uci_show(read_stdin()), port, proto);
+function firewall_port_open_for_proto(port, proto, local_ips) {
+    return firewall_rules_allow_port_proto(firewall_rules_from_uci_show(read_stdin()), port, proto, local_ips);
 }
 
-function firewall_required_protocols_open(port, required_proto) {
+function firewall_required_protocols_open(port, required_proto, local_ips) {
     let rules = firewall_rules_from_uci_show(read_stdin());
 
     for (let proto in whitespace_values(required_proto))
-        if (!firewall_rules_allow_port_proto(rules, port, proto))
+        if (!firewall_rules_allow_port_proto(rules, port, proto, local_ips))
             return false;
 
     return true;
@@ -2054,9 +2112,9 @@ else if (mode == "firewall-port-spec-contains")
 else if (mode == "firewall-proto-spec-contains")
     exit(firewall_proto_spec_contains(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "firewall-port-open")
-    exit(firewall_port_open_for_proto(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(firewall_port_open_for_proto(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "firewall-required-protocols-open")
-    exit(firewall_required_protocols_open(ARGV[1], ARGV[2]) ? 0 : 1);
+    exit(firewall_required_protocols_open(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "server-listen-requires-firewall")
     exit(server_listen_requires_firewall(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "server-port-listening")

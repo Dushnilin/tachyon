@@ -446,32 +446,254 @@ function in_memory_port_conflict_owners(netstat_data, listen, port, required_pro
     return join(" ", sort(owners));
 }
 
-function firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in) {
-    if (!uci_fixture_enabled() && fw4_in != "") {
-        let p_str = trim(as_string(port));
-        let proto_str = lc(trim(as_string(required_proto || "tcp")));
-        if (p_str != "" && (proto_str == "tcp" || proto_str == "udp")) {
-            if (index(fw4_in, proto_str + " dport " + p_str + " accept") >= 0)
-                return true;
-            for (let line in split(fw4_in, "\n")) {
-                if (index(line, proto_str + " dport") >= 0 && index(line, "accept") >= 0) {
-                    for (let tok in split(replace(line, /[^0-9]+/g, " "), " ")) {
-                        if (tok == p_str)
-                            return true;
-                    }
-                }
+function collect_local_router_ips(wan_ip, listen, ip_addr_out) {
+    let seen = {};
+    let ips = [];
+
+    for (let ip in words(wan_ip)) {
+        if (ip != "" && !seen[ip]) {
+            seen[ip] = true;
+            push(ips, ip);
+        }
+    }
+
+    listen = trim(as_string(listen));
+    if (listen != "" && listen != "0.0.0.0" && listen != "::" && !seen[listen]) {
+        seen[listen] = true;
+        push(ips, listen);
+    }
+
+    for (let line in split(as_string(ip_addr_out), "\n")) {
+        let fields = words(line);
+        for (let i = 0; i + 1 < length(fields); i++) {
+            if (fields[i] != "inet" && fields[i] != "inet6")
+                continue;
+            let raw_ip = as_string(fields[i + 1]);
+            let slash = index(raw_ip, "/");
+            if (slash >= 0)
+                raw_ip = substr(raw_ip, 0, slash);
+            let pct = index(raw_ip, "%");
+            if (pct >= 0)
+                raw_ip = substr(raw_ip, 0, pct);
+            raw_ip = trim(raw_ip);
+            if (raw_ip != "" && !seen[raw_ip]) {
+                seen[raw_ip] = true;
+                push(ips, raw_ip);
             }
         }
     }
+
+    return join(" ", ips);
+}
+
+function nft_strip_comment(line) {
+    line = as_string(line);
+    let cpos = index(line, "comment \"");
+    if (cpos >= 0)
+        line = substr(line, 0, cpos);
+    return trim(line);
+}
+
+function nft_extract_port_expr(text) {
+    text = trim(as_string(text));
+    if (text == "")
+        return "";
+    if (substr(text, 0, 1) == "{") {
+        let end_b = index(text, "}");
+        if (end_b >= 0)
+            return substr(text, 0, end_b + 1);
+    }
+    let toks = words(text);
+    return length(toks) > 0 ? toks[0] : "";
+}
+
+function nft_port_expr_contains(expr, port) {
+    let p_str = trim(as_string(port));
+    if (p_str == "" || match(p_str, /^[0-9]+$/) == null)
+        return false;
+
+    let cleaned = replace(replace(replace(as_string(expr), /[{},]/g, " "), /;/g, " "), /^[ \t]+|[ \t]+$/g, "");
+    if (cleaned == "")
+        return false;
+
+    let p_num = int(p_str, 10);
+    for (let tok in words(cleaned)) {
+        if (tok == p_str)
+            return true;
+        let dash = index(tok, "-");
+        if (dash > 0) {
+            let start_s = substr(tok, 0, dash);
+            let end_s = substr(tok, dash + 1);
+            if (match(start_s, /^[0-9]+$/) != null && match(end_s, /^[0-9]+$/) != null) {
+                if (p_num >= int(start_s, 10) && p_num <= int(end_s, 10))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+function nft_line_matches_proto(clean_line, proto_str) {
+    proto_str = lc(trim(as_string(proto_str)));
+    if (proto_str != "tcp" && proto_str != "udp")
+        return false;
+    if (index(clean_line, proto_str + " dport") >= 0)
+        return true;
+    let l4_pos = index(clean_line, "meta l4proto ");
+    if (l4_pos >= 0) {
+        let expr = nft_extract_port_expr(substr(clean_line, l4_pos + 13));
+        let cleaned = replace(as_string(expr), /[{},]/g, " ");
+        for (let tok in words(cleaned)) {
+            if (lc(tok) == proto_str)
+                return true;
+        }
+    }
+    return false;
+}
+
+function nft_extract_dport_expr(clean_line) {
+    let pos = index(clean_line, " dport ");
+    let offset = 7;
+    if (pos < 0 && substr(clean_line, 0, 6) == "dport ") {
+        pos = 0;
+        offset = 6;
+    }
+    if (pos < 0)
+        return "";
+    return nft_extract_port_expr(substr(clean_line, pos + offset));
+}
+
+function nft_ip_is_local(dest_ip, local_ips) {
+    dest_ip = trim(as_string(dest_ip));
+    if (dest_ip == "127.0.0.1" || dest_ip == "::1")
+        return true;
+    for (let ip in words(local_ips)) {
+        if (ip == dest_ip)
+            return true;
+    }
+    return false;
+}
+
+function nft_input_chain_allows_port_proto(fw4_in, port, proto_str) {
+    for (let line in split(as_string(fw4_in), "\n")) {
+        let clean = nft_strip_comment(line);
+        if (clean == "" || index(clean, "accept") < 0)
+            continue;
+        if (index(clean, " sport ") >= 0)
+            continue;
+        if (!nft_line_matches_proto(clean, proto_str))
+            continue;
+        let dport_expr = nft_extract_dport_expr(clean);
+        if (dport_expr != "" && nft_port_expr_contains(dport_expr, port))
+            return true;
+    }
+    return false;
+}
+
+function nft_dstnat_chain_allows_port_proto(fw4_dstnat, port, proto_str, local_ips) {
+    for (let line in split(as_string(fw4_dstnat), "\n")) {
+        let clean = nft_strip_comment(line);
+        if (clean == "")
+            continue;
+        if (index(clean, " sport ") >= 0)
+            continue;
+        if (!nft_line_matches_proto(clean, proto_str))
+            continue;
+
+        let redir_to_pos = index(clean, "redirect to :");
+        if (redir_to_pos >= 0) {
+            let tport = nft_extract_port_expr(substr(clean, redir_to_pos + 13));
+            if (nft_port_expr_contains(tport, port))
+                return true;
+            continue;
+        }
+
+        if (index(clean, " redirect") >= 0 || substr(clean, 0, 8) == "redirect") {
+            let dport_expr = nft_extract_dport_expr(clean);
+            if (dport_expr != "" && nft_port_expr_contains(dport_expr, port))
+                return true;
+            continue;
+        }
+
+        let after_to = "";
+        let dnat_prefixes = [ "dnat ip to ", "dnat ip6 to ", "dnat to " ];
+        for (let pref in dnat_prefixes) {
+            let dpos = index(clean, pref);
+            if (dpos >= 0) {
+                after_to = substr(clean, dpos + length(pref));
+                break;
+            }
+        }
+        if (after_to == "")
+            continue;
+
+        let toks = words(after_to);
+        if (length(toks) == 0)
+            continue;
+        let target_tok = toks[0];
+        let dest_ip = "";
+        let target_port = "";
+        if (substr(target_tok, 0, 1) == "[") {
+            let end_b = index(target_tok, "]");
+            if (end_b > 0) {
+                dest_ip = substr(target_tok, 1, end_b - 1);
+                if (substr(target_tok, end_b + 1, 1) == ":")
+                    target_port = substr(target_tok, end_b + 2);
+            }
+        } else {
+            let m4 = match(target_tok, /^([0-9]+[.][0-9]+[.][0-9]+[.][0-9]+):([0-9]+(-[0-9]+)?)$/);
+            if (m4) {
+                dest_ip = as_string(m4[1]);
+                target_port = as_string(m4[2]);
+            } else {
+                dest_ip = target_tok;
+            }
+        }
+        if (!nft_ip_is_local(dest_ip, local_ips))
+            continue;
+        let effective_port_expr = target_port != "" ? target_port : nft_extract_dport_expr(clean);
+        if (effective_port_expr != "" && nft_port_expr_contains(effective_port_expr, port))
+            return true;
+    }
+    return false;
+}
+
+function firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in, fw4_dstnat, local_ips) {
+    let p_str = trim(as_string(port));
+    let proto_list = words(lc(trim(as_string(required_proto || "tcp"))));
+    if (length(proto_list) == 0)
+        proto_list = [ "tcp" ];
+
+    if (!uci_fixture_enabled() && (as_string(fw4_in || "") != "" || as_string(fw4_dstnat || "") != "") && p_str != "") {
+        let all_open = true;
+        for (let proto_str in proto_list) {
+            if (!nft_input_chain_allows_port_proto(fw4_in, p_str, proto_str) &&
+                !nft_dstnat_chain_allows_port_proto(fw4_dstnat, p_str, proto_str, local_ips)) {
+                all_open = false;
+                break;
+            }
+        }
+        if (all_open)
+            return true;
+    }
     if (firewall == null)
         firewall = firewall_show_data();
-    return status_success([ "firewall-required-protocols-open", port, required_proto ], firewall);
+    return status_success([ "firewall-required-protocols-open", port, required_proto, as_string(local_ips || "") ], firewall);
 }
 
 function firewall_required_protocols_open(port, required_proto) {
     let firewall = firewall_show_data();
-    let fw4_in = uci_fixture_enabled() ? "" : command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
-    return firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in);
+    let fw4_in = "";
+    let fw4_dstnat = "";
+    let local_ips = "";
+    if (!uci_fixture_enabled()) {
+        fw4_in = as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ])) + "\n" +
+            as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input_wan" ]));
+        fw4_dstnat = as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "dstnat_wan" ])) + "\n" +
+            as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "dstnat" ]));
+        local_ips = collect_local_router_ips("", "", command_output_from_args([ "ip", "-o", "addr", "show" ]));
+    }
+    return firewall_required_protocols_open_cached(port, required_proto, firewall, fw4_in, fw4_dstnat, local_ips);
 }
 
 function compute_public_host_flags(public_host, public_host_ips, wan_ip, wan_public) {
@@ -588,6 +810,8 @@ function check_inbounds() {
     let netstat_ln_cache = null;
     let firewall_cache = null;
     let fw4_in_cache = null;
+    let fw4_dstnat_cache = null;
+    let router_addr_ips = null;
     let resolved_hosts_cache = {};
     let daemon_comm_names = require("core.process").core_contract().comm_names || [];
 
@@ -629,10 +853,21 @@ function check_inbounds() {
             if (server_listen_requires_firewall(listen, wan_ip)) {
                 firewall_required = 1;
                 if (fw4_in_cache == null)
-                    fw4_in_cache = uci_fixture_enabled() ? "" : command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+                    fw4_in_cache = uci_fixture_enabled() ? "" : (
+                        as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ])) + "\n" +
+                        as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input_wan" ]))
+                    );
+                if (fw4_dstnat_cache == null)
+                    fw4_dstnat_cache = uci_fixture_enabled() ? "" : (
+                        as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "dstnat_wan" ])) + "\n" +
+                        as_string(command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "dstnat" ]))
+                    );
+                if (router_addr_ips == null)
+                    router_addr_ips = uci_fixture_enabled() ? "" : command_output_from_args([ "ip", "-o", "addr", "show" ]);
                 if (uci_fixture_enabled() && firewall_cache == null)
                     firewall_cache = firewall_show_data();
-                firewall_open = firewall_required_protocols_open_cached(listen_port, required_proto, firewall_cache, fw4_in_cache) ? 1 : 0;
+                let local_ips = collect_local_router_ips(wan_ip, listen, router_addr_ips);
+                firewall_open = firewall_required_protocols_open_cached(listen_port, required_proto, firewall_cache, fw4_in_cache, fw4_dstnat_cache, local_ips) ? 1 : 0;
             }
         }
 
@@ -2406,6 +2641,7 @@ return {
     server_runtime_type_for_protocol,
     server_effective_listen_port,
     server_listen_requires_firewall,
+    firewall_required_protocols_open_cached,
     firewall_required_protocols_open,
     resolve_public_host_ips,
     public_host_flags,

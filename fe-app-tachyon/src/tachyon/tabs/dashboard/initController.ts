@@ -27,6 +27,7 @@ import {
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
+import { activateAppShellNavKey } from '../../services/tab.service';
 import {
   logger,
   markUiActionOwned,
@@ -4599,6 +4600,9 @@ export function renderSectionAccordionBody(
             openEntity('section', targetSecId, 'sections');
             return;
           }
+          if (activateAppShellNavKey('section:sections')) {
+            return;
+          }
           const navSub = document.querySelector<HTMLElement>(
             '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
           );
@@ -4683,6 +4687,9 @@ export function renderSectionAccordionBody(
           const openEntity = (globalThis as any).__tachyonOpenEntityModal;
           if (typeof openEntity === 'function' && targetSecId) {
             openEntity('section', targetSecId, 'sections');
+            return;
+          }
+          if (activateAppShellNavKey('section:sections')) {
             return;
           }
           const navSub = document.querySelector<HTMLElement>(

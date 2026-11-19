@@ -214,6 +214,94 @@ if printf '%s\n' "$firewall_src_port_rule" |
   fail "firewall rule limited by source port should not satisfy public inbound diagnostic"
 fi
 
+firewall_redirect_rule="$(cat <<'EOF'
+firewall.@redirect[0]=redirect
+firewall.@redirect[0].enabled='1'
+firewall.@redirect[0].target='DNAT'
+firewall.@redirect[0].src='wan'
+firewall.@redirect[0].proto='tcp'
+firewall.@redirect[0].src_dport='443'
+firewall.@redirect[0].dest_port='8443'
+firewall.@redirect[1]=redirect
+firewall.@redirect[1].src='wan'
+firewall.@redirect[1].proto='udp'
+firewall.@redirect[1].src_dport='51820'
+firewall.@redirect[2]=redirect
+firewall.@redirect[2].enabled='1'
+firewall.@redirect[2].target='DNAT'
+firewall.@redirect[2].src='wan'
+firewall.@redirect[2].proto='tcp'
+firewall.@redirect[2].src_dport='9443'
+firewall.@redirect[2].dest_port='9443'
+firewall.@redirect[2].dest_ip='192.168.1.1'
+firewall.@redirect[3]=redirect
+firewall.@redirect[3].enabled='1'
+firewall.@redirect[3].target='DNAT'
+firewall.@redirect[3].src='wan'
+firewall.@redirect[3].proto='tcp'
+firewall.@redirect[3].src_dport='7443'
+firewall.@redirect[3].dest_port='7443'
+firewall.@redirect[3].dest_ip='192.168.1.50'
+firewall.@redirect[4]=redirect
+firewall.@redirect[4].enabled='0'
+firewall.@redirect[4].target='DNAT'
+firewall.@redirect[4].src='wan'
+firewall.@redirect[4].proto='tcp'
+firewall.@redirect[4].src_dport='6443'
+firewall.@redirect[4].dest_port='6443'
+firewall.@redirect[5]=redirect
+firewall.@redirect[5].enabled='1'
+firewall.@redirect[5].target='SNAT'
+firewall.@redirect[5].src='wan'
+firewall.@redirect[5].proto='tcp'
+firewall.@redirect[5].src_dport='5443'
+firewall.@redirect[5].dest_port='5443'
+firewall.@redirect[6]=redirect
+firewall.@redirect[6].enabled='1'
+firewall.@redirect[6].target='DNAT'
+firewall.@redirect[6].src='lan'
+firewall.@redirect[6].proto='tcp'
+firewall.@redirect[6].src_dport='4443'
+firewall.@redirect[6].dest_port='4443'
+firewall.@redirect[7]=redirect
+firewall.@redirect[7].enabled='1'
+firewall.@redirect[7].target='DNAT'
+firewall.@redirect[7].src='wan'
+firewall.@redirect[7].proto='tcp'
+firewall.@redirect[7].src_port='12345'
+firewall.@redirect[7].src_dport='3443'
+firewall.@redirect[7].dest_port='3443'
+EOF
+)"
+
+printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 8443 "tcp" >/dev/null ||
+  fail "WAN redirect without dest_ip should satisfy target port 8443/tcp"
+if printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 443 "tcp" >/dev/null 2>&1; then
+  fail "WAN redirect to 8443 should not satisfy original src_dport 443 when dest_port differs"
+fi
+if printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 8443 "udp" >/dev/null 2>&1; then
+  fail "TCP redirect must not satisfy UDP requirement"
+fi
+printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 51820 "udp" >/dev/null ||
+  fail "WAN redirect with omitted target and dest_port should satisfy src_dport 51820/udp"
+printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 9443 "tcp" "192.168.1.1 203.0.113.10" >/dev/null ||
+  fail "WAN redirect to local router dest_ip should satisfy public inbound diagnostic"
+if printf '%s\n' "$firewall_redirect_rule" |
+  status_ucode firewall-required-protocols-open 7443 "tcp" "192.168.1.1 203.0.113.10" >/dev/null 2>&1; then
+  fail "WAN redirect forwarding to another LAN host must not satisfy router inbound diagnostic"
+fi
+for bad_port in 6443 5443 4443 3443; do
+  if printf '%s\n' "$firewall_redirect_rule" |
+    status_ucode firewall-required-protocols-open "$bad_port" "tcp" "192.168.1.1" >/dev/null 2>&1; then
+    fail "disabled/non-DNAT/non-WAN/src_port redirect ($bad_port) should not satisfy public inbound diagnostic"
+  fi
+done
+
 status_ucode server-listen-requires-firewall 0.0.0.0 "" 0 >/dev/null ||
   fail "wildcard listen should require firewall"
 status_ucode server-listen-requires-firewall :: "" 0 >/dev/null ||

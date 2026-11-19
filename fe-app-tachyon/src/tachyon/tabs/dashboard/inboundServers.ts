@@ -11,6 +11,7 @@ import { tr } from '../../helpers/i18n';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { TachyonShellMethods } from '../../methods';
 import { store } from '../../services';
+import { activateAppShellNavKey } from '../../services/tab.service';
 import { getWidgetViewMode } from './dashboardLayout';
 import { renderFlagEmojis } from './partials/renderFlagEmojis';
 import { readSectionErrors } from '../../methods/custom/getDashboardSections';
@@ -756,8 +757,16 @@ export function computeInboundsRuntimeSummary(
 }
 
 export function switchToServersTab(): boolean {
+  if (activateAppShellNavKey('server')) {
+    return true;
+  }
   if (typeof document === 'undefined' || !document.querySelector) {
     return false;
+  }
+  const navBtn = document.querySelector<HTMLElement>('[data-nav-key="server"]');
+  if (navBtn && typeof navBtn.click === 'function') {
+    navBtn.click();
+    return true;
   }
   const tabLink = document.querySelector<HTMLElement>(
     '.cbi-tab[data-tab="cbi-tachyon-server"] a, ' +
@@ -768,7 +777,35 @@ export function switchToServersTab(): boolean {
       'li[data-tab="server"] a',
   );
   if (tabLink && typeof tabLink.click === 'function') {
+    const parentLi =
+      typeof tabLink.closest === 'function' ? tabLink.closest('li') : null;
+    if (parentLi) {
+      parentLi.classList.add('cbi-tab-disabled');
+    }
     tabLink.click();
+    if (typeof document.querySelectorAll === 'function') {
+      document
+        .querySelectorAll<HTMLElement>('.cbi-section[id^="cbi-tachyon-"]')
+        .forEach((sec) => {
+          const isTarget = sec.id === 'cbi-tachyon-server';
+          if (typeof sec.classList?.toggle === 'function') {
+            sec.classList.toggle('cbi-tab', isTarget);
+            sec.classList.toggle('cbi-tab-disabled', !isTarget);
+          } else if (sec.classList) {
+            if (isTarget) {
+              sec.classList.add('cbi-tab');
+              sec.classList.remove('cbi-tab-disabled');
+            } else {
+              sec.classList.remove('cbi-tab');
+              sec.classList.add('cbi-tab-disabled');
+            }
+          }
+          sec.setAttribute?.('data-tab-active', isTarget ? 'true' : 'false');
+          if (sec.style) {
+            sec.style.display = isTarget ? '' : 'none';
+          }
+        });
+    }
     return true;
   }
   return false;
