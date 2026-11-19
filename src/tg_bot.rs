@@ -1608,7 +1608,7 @@ async fn check_and_notify_finished_jobs(
 }
 
 #[derive(Default)]
-struct BotEventObserver {
+pub(crate) struct BotEventObserver {
     initialized: bool,
     seen_event_keys: VecDeque<String>,
     seen_honeypot_keys: VecDeque<String>,
@@ -1617,12 +1617,145 @@ struct BotEventObserver {
     last_wan_healthy: bool,
     last_dns_healthy: bool,
     section_active_nodes: HashMap<String, String>,
+    clash_active_nodes: HashMap<String, String>,
     sub_state: HashMap<String, (i64, String)>,
     parental_blocked: HashMap<String, bool>,
     smart_detect_domain_count: usize,
     last_clash_poll_unix: i64,
     last_cert_check_unix: i64,
     warned_cert_paths: HashSet<String>,
+}
+
+pub(crate) fn collect_section_store_switch_notifications(
+    obs: &mut BotEventObserver,
+    d: &RouterStoreData,
+    ru: bool,
+) -> (HashSet<String>, Vec<(&'static str, String)>) {
+    let mut switched_sections = HashSet::new();
+    let mut notices = Vec::new();
+    for sec in &d.sections {
+        if !sec.active_selected_tag.is_empty()
+            && obs
+                .section_active_nodes
+                .get(&sec.id)
+                .is_some_and(|prev| prev != &sec.active_selected_tag)
+        {
+            let txt = if ru {
+                format!(
+                    "<b>Смена узла:</b> секция <b>{}</b> -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&sec.active_selected_tag)
+                )
+            } else {
+                format!(
+                    "<b>Server Switch:</b> section <b>{}</b> -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&sec.active_selected_tag)
+                )
+            };
+            switched_sections.insert(sec.id.clone());
+            notices.push(("server_switch", txt));
+        }
+        if !sec.active_selected_tag.is_empty() {
+            obs.section_active_nodes
+                .insert(sec.id.clone(), sec.active_selected_tag.clone());
+        }
+    }
+    (switched_sections, notices)
+}
+
+pub(crate) fn collect_clash_node_switch_notifications(
+    obs: &mut BotEventObserver,
+    d: &RouterStoreData,
+    px_map: &serde_json::Map<String, Value>,
+    store_switched_sections: &HashSet<String>,
+    ru: bool,
+) -> Vec<(&'static str, String)> {
+    let mut notices = Vec::new();
+    for sec in &d.sections {
+        let sel_tag = format!("sel-{}", sec.id);
+        let active_pair: Option<(String, String)> = if let Some(sel_now) = px_map
+            .get(&sel_tag)
+            .and_then(|g| g.get("now"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(bal_now) = px_map
+                .get(sel_now)
+                .and_then(|g| g.get("now"))
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                Some((sel_now.to_string(), bal_now.to_string()))
+            } else {
+                Some((sel_tag, sel_now.to_string()))
+            }
+        } else {
+            let mut candidates: Vec<String> = sec
+                .balancer_refs
+                .iter()
+                .map(|b| format!("bal-{}-{b}", sec.id))
+                .collect();
+            let prefix = format!("bal-{}-", sec.id);
+            for k in px_map.keys() {
+                if k.starts_with(&prefix) && !candidates.contains(k) {
+                    candidates.push(k.clone());
+                }
+            }
+            candidates.push(format!("{}-out", sec.id));
+            candidates.into_iter().find_map(|gtag| {
+                px_map
+                    .get(&gtag)
+                    .and_then(|g| g.get("now"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(|now_tag| (gtag, now_tag.to_string()))
+            })
+        };
+
+        let Some((active_group, resolved_node)) = active_pair else {
+            continue;
+        };
+        let track_key = format!("{}::{}", sec.id, active_group);
+        if let Some(prev) = obs.clash_active_nodes.get(&track_key)
+            && prev != &resolved_node
+            && !store_switched_sections.contains(&sec.id)
+        {
+            let kind = if active_group.starts_with("bal-") {
+                if d.telegram.notify_failover {
+                    Some("failover")
+                } else if d.telegram.notify_server_switch {
+                    Some("server_switch")
+                } else {
+                    None
+                }
+            } else if d.telegram.notify_server_switch {
+                Some("server_switch")
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
+                let txt = if ru {
+                    format!(
+                        "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                        escape_html(&sec.label),
+                        escape_html(&active_group),
+                        escape_html(&resolved_node)
+                    )
+                } else {
+                    format!(
+                        "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                        escape_html(&sec.label),
+                        escape_html(&active_group),
+                        escape_html(&resolved_node)
+                    )
+                };
+                notices.push((kind, txt));
+            }
+        }
+        obs.clash_active_nodes.insert(track_key, resolved_node);
+    }
+    notices
 }
 
 fn push_bounded_key(q: &mut VecDeque<String>, key: String, max: usize) -> bool {
@@ -1835,8 +1968,9 @@ async fn observe_and_notify_events(
         } else {
             "<b>WAN:</b> uplink unreachable"
         };
-        notify_if_enabled(&d, "wan", txt);
-        if d.settings.wan_failover_enabled {
+        if d.telegram.notify_wan {
+            notify_if_enabled(&d, "wan", txt);
+        } else if d.settings.wan_failover_enabled {
             notify_if_enabled(&d, "failover", txt);
         }
         obs.last_wan_healthy = live.wan_healthy;
@@ -1852,32 +1986,10 @@ async fn observe_and_notify_events(
     }
     obs.last_dns_healthy = live.dns_healthy;
 
-    for sec in &d.sections {
-        if !sec.active_selected_tag.is_empty()
-            && obs
-                .section_active_nodes
-                .get(&sec.id)
-                .is_some_and(|prev| prev != &sec.active_selected_tag)
-        {
-            let txt = if ru {
-                format!(
-                    "<b>Смена узла:</b> секция <b>{}</b> -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&sec.active_selected_tag)
-                )
-            } else {
-                format!(
-                    "<b>Server Switch:</b> section <b>{}</b> -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&sec.active_selected_tag)
-                )
-            };
-            notify_if_enabled(&d, "server_switch", &txt);
-        }
-        if !sec.active_selected_tag.is_empty() {
-            obs.section_active_nodes
-                .insert(sec.id.clone(), sec.active_selected_tag.clone());
-        }
+    let (store_switched_sections, store_notices) =
+        collect_section_store_switch_notifications(obs, &d, ru);
+    for (kind, txt) in store_notices {
+        notify_if_enabled(&d, kind, &txt);
     }
 
     if live.core_running
@@ -1888,55 +2000,14 @@ async fn observe_and_notify_events(
         if let Ok(px) = core.clash_request("GET", "/proxies", None).await
             && let Some(px_map) = px.get("proxies").and_then(Value::as_object)
         {
-            for sec in &d.sections {
-                let mut candidates: Vec<String> = sec
-                    .balancer_refs
-                    .iter()
-                    .map(|b| format!("bal-{}-{b}", sec.id))
-                    .collect();
-                let prefix = format!("bal-{}-", sec.id);
-                for k in px_map.keys() {
-                    if k.starts_with(&prefix) && !candidates.contains(k) {
-                        candidates.push(k.clone());
-                    }
-                }
-                candidates.push(format!("sel-{}", sec.id));
-                candidates.push(format!("{}-out", sec.id));
-                for gtag in candidates {
-                    if let Some(now_tag) = px_map
-                        .get(&gtag)
-                        .and_then(|g| g.get("now"))
-                        .and_then(Value::as_str)
-                        && !now_tag.is_empty()
-                    {
-                        if let Some(prev) = obs.section_active_nodes.get(&sec.id)
-                            && prev != now_tag
-                        {
-                            let txt = if ru {
-                                format!(
-                                    "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                                    escape_html(&sec.label),
-                                    escape_html(&gtag),
-                                    escape_html(now_tag)
-                                )
-                            } else {
-                                format!(
-                                    "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                                    escape_html(&sec.label),
-                                    escape_html(&gtag),
-                                    escape_html(now_tag)
-                                )
-                            };
-                            notify_if_enabled(&d, "server_switch", &txt);
-                            if gtag.starts_with("bal-") {
-                                notify_if_enabled(&d, "failover", &txt);
-                            }
-                        }
-                        obs.section_active_nodes
-                            .insert(sec.id.clone(), now_tag.to_string());
-                        break;
-                    }
-                }
+            for (kind, txt) in collect_clash_node_switch_notifications(
+                obs,
+                &d,
+                px_map,
+                &store_switched_sections,
+                ru,
+            ) {
+                notify_if_enabled(&d, kind, &txt);
             }
         }
     }

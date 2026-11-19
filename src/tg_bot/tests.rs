@@ -1150,3 +1150,97 @@ async fn test_ops_notifications_all_and_quick_toggles() {
         !prev_intercept
     );
 }
+
+#[test]
+fn test_node_switch_observer_no_ping_pong_and_no_duplicate() {
+    let mut d = RouterStoreData::default();
+    d.telegram.notify_server_switch = true;
+    d.telegram.notify_failover = true;
+    d.sections = vec![RoutingSection {
+        id: "Main".to_string(),
+        enabled: true,
+        label: "Main".to_string(),
+        connection_type: "proxy".to_string(),
+        balancer_refs: vec!["bal_Main_SoftPortal".to_string()],
+        active_selected_tag: "fsoft_old".to_string(),
+        ..Default::default()
+    }];
+
+    let mut obs = BotEventObserver::default();
+    // Simulate startup initialization of store active_selected_tag
+    obs.section_active_nodes
+        .insert("Main".to_string(), "fsoft_old".to_string());
+
+    let px_json = json!({
+        "sel-Main": { "now": "bal-Main-bal_Main_SoftPortal" },
+        "bal-Main-bal_Main_SoftPortal": { "now": "Unlim EE" }
+    });
+    let px_map = px_json.as_object().unwrap();
+
+    // 5 consecutive polling ticks with constant store tag & balancer target: 0 notifications (baseline on tick 1, silent on ticks 2..5)
+    for _ in 0..5 {
+        let (switched, store_notices) =
+            collect_section_store_switch_notifications(&mut obs, &d, true);
+        assert!(switched.is_empty());
+        assert!(store_notices.is_empty());
+        let clash_notices =
+            collect_clash_node_switch_notifications(&mut obs, &d, px_map, &switched, true);
+        assert!(
+            clash_notices.is_empty(),
+            "unexpected node switch ping-pong flood: {clash_notices:?}"
+        );
+    }
+
+    // Actual balancer switch to Unlim DE: exactly 1 notification (not duplicated into both failover and server_switch)
+    let px_switched = json!({
+        "sel-Main": { "now": "bal-Main-bal_Main_SoftPortal" },
+        "bal-Main-bal_Main_SoftPortal": { "now": "Unlim DE" }
+    });
+    let (switched, store_notices) = collect_section_store_switch_notifications(&mut obs, &d, true);
+    assert!(store_notices.is_empty());
+    let clash_notices = collect_clash_node_switch_notifications(
+        &mut obs,
+        &d,
+        px_switched.as_object().unwrap(),
+        &switched,
+        true,
+    );
+    assert_eq!(clash_notices.len(), 1);
+    assert_eq!(clash_notices[0].0, "failover");
+    assert!(clash_notices[0].1.contains("Unlim DE"));
+
+    // Subsequent poll with same Unlim DE produces 0 notifications
+    let (switched2, store_notices2) =
+        collect_section_store_switch_notifications(&mut obs, &d, true);
+    assert!(store_notices2.is_empty());
+    let clash_notices2 = collect_clash_node_switch_notifications(
+        &mut obs,
+        &d,
+        px_switched.as_object().unwrap(),
+        &switched2,
+        true,
+    );
+    assert!(clash_notices2.is_empty());
+
+    // Manual store change + matching Clash selector update on the same tick: only 1 notification
+    d.sections[0].active_selected_tag = "node_manual".to_string();
+    let px_manual = json!({
+        "sel-Main": { "now": "node_manual" },
+        "bal-Main-bal_Main_SoftPortal": { "now": "Unlim DE" }
+    });
+    let (switched3, store_notices3) =
+        collect_section_store_switch_notifications(&mut obs, &d, true);
+    assert_eq!(store_notices3.len(), 1);
+    assert!(switched3.contains("Main"));
+    let clash_notices3 = collect_clash_node_switch_notifications(
+        &mut obs,
+        &d,
+        px_manual.as_object().unwrap(),
+        &switched3,
+        true,
+    );
+    assert!(
+        clash_notices3.is_empty(),
+        "manual store switch must suppress same-tick Clash duplicate"
+    );
+}

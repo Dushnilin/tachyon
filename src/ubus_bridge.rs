@@ -10458,18 +10458,35 @@ fn finalize_ubus_leak_check_payload(
             && !resolved_first.starts_with("198.18.")
             && !resolved_first.starts_with("198.19."));
 
+    let en = d.settings.lang.trim().eq_ignore_ascii_case("en");
     let mut warnings = Vec::new();
     if !core_running {
-        warnings.push("Ядро tachyon-core не запущено");
+        warnings.push(if en {
+            "tachyon-core is not running"
+        } else {
+            "Ядро tachyon-core не запущено"
+        });
     }
     if ip_leaked {
-        warnings.push("Внешний IP совпадает с WAN-адресом провайдера");
+        warnings.push(if en {
+            "External IP matches the ISP WAN address"
+        } else {
+            "Внешний IP совпадает с WAN-адресом провайдера"
+        });
     }
     if dns_leaked {
-        warnings.push("DNS-резолвер не отвечает через защищённый контур");
+        warnings.push(if en {
+            "DNS resolver is not responding through the protected path"
+        } else {
+            "DNS-резолвер не отвечает через защищённый контур"
+        });
     }
     if ipv6_leaked {
-        warnings.push("Обнаружена возможная утечка IPv6");
+        warnings.push(if en {
+            "Potential IPv6 leak detected"
+        } else {
+            "Обнаружена возможная утечка IPv6"
+        });
     }
 
     let overall = if !warnings.is_empty() {
@@ -10490,11 +10507,23 @@ fn finalize_ubus_leak_check_payload(
             "leaked": ip_leaked,
             "proxy_online": core_running && !exit_ip.is_empty(),
             "details": if exit_ip.is_empty() {
-                vec!["Не удалось определить внешний IP выходного узла"]
+                vec![if en {
+                    "Failed to determine the outbound exit IP"
+                } else {
+                    "Не удалось определить внешний IP выходного узла"
+                }]
             } else if ip_leaked {
-                vec!["Внешний IP совпадает с WAN-адресом"]
+                vec![if en {
+                    "External IP matches the WAN address"
+                } else {
+                    "Внешний IP совпадает с WAN-адресом"
+                }]
             } else {
-                vec!["Внешний IP выходного узла отличается от прямого WAN-адреса"]
+                vec![if en {
+                    "Outbound exit IP differs from direct WAN address"
+                } else {
+                    "Внешний IP выходного узла отличается от прямого WAN-адреса"
+                }]
             }
         }),
     );

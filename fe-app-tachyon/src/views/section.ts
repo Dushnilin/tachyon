@@ -7279,7 +7279,7 @@ function getActionOptionLabel(action) {
     case 'naive':
       return 'NaiveProxy';
     case 'sudoku':
-      return _('Sudoku (не реализован)');
+      return _tr('Sudoku (не реализован)', 'Sudoku (not implemented)');
     case 'masque':
       return 'MASQUE';
     case 'csqtt':
@@ -13691,7 +13691,10 @@ function createSectionContent(section) {
     'settings',
     form.Value,
     'desync_fake_sni',
-    _('Fake SNI (Белый список РФ / Custom)'),
+    _tr(
+      'Fake SNI (Белый список РФ / Custom)',
+      'Fake SNI (RU Allowlist / Custom)',
+    ),
     _(
       'Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)',
     ),

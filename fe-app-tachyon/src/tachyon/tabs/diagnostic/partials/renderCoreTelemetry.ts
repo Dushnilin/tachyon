@@ -217,9 +217,9 @@ function renderSparklineSvg(history: Array<[number, number]>): HTMLElement {
             <polyline points="${upPoints}" fill="none" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <div class="tachyon_diag-telemetry__sparkline-meta">
-            <span>-60с</span>
-            <span>Пик шкалы: ${formatRate(maxVal)}</span>
-            <span>Сейчас</span>
+            <span>${tr('-60с', '-60s')}</span>
+            <span>${tr('Пик шкалы', 'Scale peak')}: ${formatRate(maxVal)}</span>
+            <span>${tr('Сейчас', 'Now')}</span>
         </div>
     `;
   return wrapper;
@@ -276,13 +276,17 @@ export function renderCoreTelemetry(
             E(
               'h4',
               { class: 'tachyon_diag-telemetry__title' },
-              _('Пропускная способность и баланс трафика'),
+              tr(
+                'Пропускная способность и баланс трафика',
+                'Throughput & Traffic Split',
+              ),
             ),
             E(
               'p',
               { class: 'tachyon_diag-telemetry__subtitle' },
-              _(
+              tr(
                 'Живая телеметрия потока данных за 60 секунд и распределение маршрутов',
+                'Live 60-second traffic telemetry and route distribution',
               ),
             ),
           ]),
@@ -306,7 +310,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Принято всего'),
+            tr('Принято всего', 'Total Received'),
           ),
           E(
             'strong',
@@ -318,7 +322,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Отправлено всего'),
+            tr('Отправлено всего', 'Total Sent'),
           ),
           E(
             'strong',
@@ -330,7 +334,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Клиенты в пуле'),
+            tr('Клиенты в пуле', 'Clients in Pool'),
           ),
           E(
             'strong',
@@ -342,7 +346,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Активные сессии'),
+            tr('Активные сессии', 'Active Sessions'),
           ),
           E(
             'strong',
@@ -356,12 +360,12 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__split-tag is-proxied' },
-            `${_('Через туннели')}: ${formatBytes(proxiedBytes)} (${splitSum > 0 ? proxiedPct : 0}%)`,
+            `${tr('Через туннели', 'Via Tunnels')}: ${formatBytes(proxiedBytes)} (${splitSum > 0 ? proxiedPct : 0}%)`,
           ),
           E(
             'span',
             { class: 'tachyon_diag-telemetry__split-tag is-direct' },
-            `${_('Напрямую')}: ${formatBytes(directBytes)} (${splitSum > 0 ? directPct : 0}%)`,
+            `${tr('Напрямую', 'Direct')}: ${formatBytes(directBytes)} (${splitSum > 0 ? directPct : 0}%)`,
           ),
         ]),
         E('div', { class: 'tachyon_diag-telemetry__split-bar' }, [
@@ -414,8 +418,8 @@ export function renderCoreTelemetry(
   const isUnderPressure =
     Boolean(memory.under_pressure) || pressureRaw !== 'normal';
   const pressureLabel = isUnderPressure
-    ? _('Нагрузка RAM')
-    : _('Норма (Normal)');
+    ? tr('Нагрузка RAM', 'RAM Pressure')
+    : tr('Норма (Normal)', 'Normal');
 
   const maxOutboundScore = outbounds.reduce((acc, item) => {
     const s =
@@ -436,7 +440,7 @@ export function renderCoreTelemetry(
     },
     [
       iconMarkup('zap', 'tachyon_diag-telemetry__btn-icon'),
-      E('span', {}, _('Очистить кэши RAM')),
+      E('span', {}, tr('Очистить кэши RAM', 'Trim RAM Caches')),
     ],
   );
 
@@ -452,7 +456,7 @@ export function renderCoreTelemetry(
     },
     [
       iconMarkup('refresh', 'tachyon_diag-telemetry__btn-icon'),
-      E('span', {}, _('Перепроверить маршруты')),
+      E('span', {}, tr('Перепроверить маршруты', 'Re-evaluate Routes')),
     ],
   );
 
@@ -467,13 +471,17 @@ export function renderCoreTelemetry(
             E(
               'h4',
               { class: 'tachyon_diag-telemetry__title' },
-              _('Ресурсы ядра, DNS-кэши и узлы'),
+              tr(
+                'Ресурсы ядра, DNS-кэши и узлы',
+                'Core Resources, DNS Caches & Outbounds',
+              ),
             ),
             E(
               'p',
               { class: 'tachyon_diag-telemetry__subtitle' },
-              _(
+              tr(
                 'Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов',
+                'tachyon-core memory usage, DNS tables state and outbound activity',
               ),
             ),
           ]),
@@ -493,7 +501,11 @@ export function renderCoreTelemetry(
             {},
             `Core RSS: ${formatBytes(rssBytes)} · VM: ${formatBytes(vmBytes)}`,
           ),
-          E('span', {}, `${_('Свободно ОЗУ')}: ${formatBytes(sysAvailBytes)}`),
+          E(
+            'span',
+            {},
+            `${tr('Свободно ОЗУ', 'Free RAM')}: ${formatBytes(sysAvailBytes)}`,
+          ),
         ]),
         E('div', { class: 'tachyon_diag-telemetry__progress-track' }, [
           E('span', {
@@ -507,7 +519,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Кэш DNS'),
+            tr('Кэш DNS', 'DNS Cache'),
           ),
           E(
             'strong',
@@ -519,7 +531,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Reverse DNS'),
+            'Reverse DNS',
           ),
           E(
             'strong',
@@ -531,7 +543,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Таблица FakeIP'),
+            tr('Таблица FakeIP', 'FakeIP Table'),
           ),
           E(
             'strong',
@@ -543,7 +555,7 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__kpi-label' },
-            _('Пул устройств'),
+            tr('Пул устройств', 'Device Pool'),
           ),
           E(
             'strong',
@@ -556,7 +568,10 @@ export function renderCoreTelemetry(
         E(
           'div',
           { class: 'tachyon_diag-telemetry__section-caption' },
-          _('Активные направления маршрутизации (Outbounds)'),
+          tr(
+            'Активные направления маршрутизации (Outbounds)',
+            'Active Routing Outbounds',
+          ),
         ),
         outbounds.length > 0
           ? E(
@@ -588,7 +603,7 @@ export function renderCoreTelemetry(
                         E(
                           'span',
                           { class: 'tachyon_diag-telemetry__outbound-stats' },
-                          `${act > 0 ? `${act} сесс. · ` : ''}${hits > 0 ? `${hits} зап. · ` : ''}${formatBytes(bytes)}`,
+                          `${act > 0 ? `${act} ${tr('сесс.', 'sess.')} · ` : ''}${hits > 0 ? `${hits} ${tr('зап.', 'req.')} · ` : ''}${formatBytes(bytes)}`,
                         ),
                       ],
                     ),
@@ -609,7 +624,10 @@ export function renderCoreTelemetry(
           : E(
               'div',
               { class: 'tachyon_diag-telemetry__empty' },
-              _('Нет накопленной статистики по направлениям'),
+              tr(
+                'Нет накопленной статистики по направлениям',
+                'No outbound statistics collected yet',
+              ),
             ),
       ]),
       E('div', { class: 'tachyon_diag-telemetry__card-actions' }, [
@@ -644,7 +662,7 @@ export function renderCoreTelemetry(
           actions.onRestoreFailover();
       },
     },
-    _('Восстановить основные'),
+    tr('Восстановить основные', 'Restore Primary'),
   );
 
   const clearFlightBtn = E(
@@ -657,7 +675,7 @@ export function renderCoreTelemetry(
           actions.onClearFlight();
       },
     },
-    _('Очистить'),
+    tr('Очистить', 'Clear'),
   );
 
   const auditCard = E('article', { class: 'tachyon_diag-telemetry__card' }, [
@@ -668,13 +686,17 @@ export function renderCoreTelemetry(
           E(
             'h4',
             { class: 'tachyon_diag-telemetry__title' },
-            _('Защита контура и Бортовой самописец'),
+            tr(
+              'Защита контура и Бортовой самописец',
+              'Leak Guard & Flight Recorder',
+            ),
           ),
           E(
             'p',
             { class: 'tachyon_diag-telemetry__subtitle' },
-            _(
+            tr(
               'Контроль утечек, статус отказоустойчивости и журнал завершённых сессий',
+              'Leak protection, failover status and closed session log',
             ),
           ),
         ]),
@@ -684,7 +706,9 @@ export function renderCoreTelemetry(
         {
           class: `tachyon_diag-telemetry__status-badge ${anyWarnBackup || ipv6LeakRisk || stunLeakRisk ? 'is-warn' : 'is-ok'}`,
         },
-        anyWarnBackup ? _('На резерве') : _('Защищено'),
+        anyWarnBackup
+          ? tr('На резерве', 'On Backup')
+          : tr('Защищено', 'Protected'),
       ),
     ]),
     E('div', { class: 'tachyon_diag-telemetry__leak-grid' }, [
@@ -692,7 +716,7 @@ export function renderCoreTelemetry(
         E(
           'span',
           { class: 'tachyon_diag-telemetry__leak-name' },
-          'IPv4 контур',
+          tr('IPv4 контур', 'IPv4 Route'),
         ),
         E(
           'strong',
@@ -709,14 +733,14 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__leak-name' },
-            'IPv6 контур',
+            tr('IPv6 контур', 'IPv6 Route'),
           ),
           E(
             'strong',
             { class: 'tachyon_diag-telemetry__leak-val' },
             ipv6LeakRisk
-              ? _('Риск утечки')
-              : String(leak.ipv6?.outbound || 'Защищено'),
+              ? tr('Риск утечки', 'Leak Risk')
+              : String(leak.ipv6?.outbound || tr('Защищено', 'Protected')),
           ),
         ],
       ),
@@ -748,12 +772,14 @@ export function renderCoreTelemetry(
           E(
             'span',
             { class: 'tachyon_diag-telemetry__leak-name' },
-            'Перехват DNS',
+            tr('Перехват DNS', 'DNS Intercept'),
           ),
           E(
             'strong',
             { class: 'tachyon_diag-telemetry__leak-val' },
-            dnsEnabled ? _('Активен (Core)') : _('Отключён'),
+            dnsEnabled
+              ? tr('Активен (Core)', 'Active (Core)')
+              : tr('Отключён', 'Disabled'),
           ),
         ],
       ),
@@ -763,7 +789,7 @@ export function renderCoreTelemetry(
         E(
           'span',
           { class: 'tachyon_diag-telemetry__section-caption' },
-          `${_('Группы балансировки и резерва')} (${failoverGroups.length})`,
+          `${tr('Группы балансировки и резерва', 'Failover & Balancer Groups')} (${failoverGroups.length})`,
         ),
         restoreBtn,
       ]),
@@ -819,7 +845,10 @@ export function renderCoreTelemetry(
         : E(
             'div',
             { class: 'tachyon_diag-telemetry__empty' },
-            _('Группы балансировки не настроены'),
+            tr(
+              'Группы балансировки не настроены',
+              'No balancer groups configured',
+            ),
           ),
     ]),
     E('div', { class: 'tachyon_diag-telemetry__flight-box' }, [
@@ -827,7 +856,7 @@ export function renderCoreTelemetry(
         E(
           'span',
           { class: 'tachyon_diag-telemetry__section-caption' },
-          `${_('Бортовой самописец (Flight Recorder)')} · ${flightCount}`,
+          `${tr('Бортовой самописец (Flight Recorder)', 'Flight Recorder')} · ${flightCount}`,
         ),
         clearFlightBtn,
       ]),
@@ -890,7 +919,10 @@ export function renderCoreTelemetry(
         : E(
             'div',
             { class: 'tachyon_diag-telemetry__empty' },
-            _('Журнал бортового самописца пуст'),
+            tr(
+              'Журнал бортового самописца пуст',
+              'Flight recorder log is empty',
+            ),
           ),
     ]),
   ]);

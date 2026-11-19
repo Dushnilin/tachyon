@@ -485,6 +485,161 @@ describe('dashboard initController', () => {
         upSpeed: 20,
       });
     });
+
+    it('matches Tachyon 2.0 sel-*, bal-*, desync-sec-*, and tailscale-sec-* tags', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const conns = [
+        {
+          id: 'c1',
+          chains: ['sel-vpn', 'R-VPN Moscow'],
+          upload: 10,
+          download: 90,
+        },
+        {
+          id: 'c2',
+          chains: ['bal-Main-bal_Main_SoftPortal', 'Unlim EE'],
+          upload: 20,
+          download: 80,
+        },
+        { id: 'c3', chains: ['desync-sec-youtube'], upload: 5, download: 45 },
+        { id: 'c4', chains: ['tailscale-sec-ts'], upload: 15, download: 35 },
+      ];
+      const rates = new Map([
+        ['c1', { down: 9, up: 1 }],
+        ['c2', { down: 8, up: 2 }],
+      ]);
+
+      expect(getSectionConnectionStats('vpn', 4, conns, {}, rates)).toEqual({
+        conns: 1,
+        upload: 10,
+        download: 90,
+        downSpeed: 9,
+        upSpeed: 1,
+      });
+      expect(getSectionConnectionStats('Main', 4, conns, {}, rates)).toEqual({
+        conns: 1,
+        upload: 20,
+        download: 80,
+        downSpeed: 8,
+        upSpeed: 2,
+      });
+      expect(getSectionConnectionStats('youtube', 4, conns, {}, rates)).toEqual(
+        {
+          conns: 1,
+          upload: 5,
+          download: 45,
+          downSpeed: 0,
+          upSpeed: 0,
+        },
+      );
+      expect(getSectionConnectionStats('ts', 4, conns, {}, rates)).toEqual({
+        conns: 1,
+        upload: 15,
+        download: 35,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+    });
+
+    it('matches single-source leaf tags without double-counting shared leaf nodes across other section groups', async () => {
+      const { getSectionConnectionStats } = await import('../initController');
+      const routeAllSec = {
+        code: 'iface-src_iface_awg_de',
+        sectionName: 'route_all',
+        outbounds: [
+          {
+            code: 'iface-src_iface_awg_de',
+            displayName: 'AWG DE',
+            latency: 10,
+            type: 'wireguard',
+            selected: true,
+          },
+        ],
+      } as any;
+      const vpnSec = {
+        code: 'sel-vpn',
+        sectionName: 'vpn',
+        outbounds: [
+          {
+            code: 'R-VPN Moscow',
+            displayName: 'R-VPN Moscow',
+            latency: 20,
+            type: 'vless',
+            selected: true,
+          },
+        ],
+      } as any;
+      const telegramSec = {
+        code: 'sel-telegram',
+        sectionName: 'telegram',
+        outbounds: [
+          {
+            code: 'R-VPN Moscow',
+            displayName: 'R-VPN Moscow',
+            latency: 20,
+            type: 'vless',
+            selected: true,
+          },
+        ],
+      } as any;
+
+      const conns = [
+        {
+          id: 'r1',
+          chains: ['iface-src_iface_awg_de'],
+          upload: 100,
+          download: 500,
+        },
+        {
+          id: 'v1',
+          chains: ['sel-vpn', 'R-VPN Moscow'],
+          upload: 50,
+          download: 250,
+        },
+      ];
+
+      expect(
+        getSectionConnectionStats(
+          'route_all',
+          3,
+          conns,
+          {},
+          new Map(),
+          routeAllSec,
+        ),
+      ).toEqual({
+        conns: 1,
+        upload: 100,
+        download: 500,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+      expect(
+        getSectionConnectionStats('vpn', 3, conns, {}, new Map(), vpnSec),
+      ).toEqual({
+        conns: 1,
+        upload: 50,
+        download: 250,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+      expect(
+        getSectionConnectionStats(
+          'telegram',
+          3,
+          conns,
+          {},
+          new Map(),
+          telegramSec,
+        ),
+      ).toEqual({
+        conns: 0,
+        upload: 0,
+        download: 0,
+        downSpeed: 0,
+        upSpeed: 0,
+      });
+    });
   });
 
   it('keeps #dashboard-widget-tailscale hidden during initial loading when no native Tailscale server is enabled', async () => {

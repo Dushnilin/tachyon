@@ -12,6 +12,32 @@
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE || 'tachyon';
 const SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
 
+function _tr(ru, en) {
+  const envLang =
+    (typeof L !== 'undefined' && L.env && L.env.lang) ||
+    (typeof window !== 'undefined' &&
+      window.L &&
+      window.L.env &&
+      window.L.env.lang) ||
+    '';
+  const docLang = (
+    (typeof document !== 'undefined' &&
+      document.documentElement &&
+      document.documentElement.lang) ||
+    (typeof document !== 'undefined' &&
+      document.querySelector('html')?.getAttribute('lang')) ||
+    ''
+  ).toLowerCase();
+  const lang = (envLang || docLang).toLowerCase();
+  const isRu =
+    lang.startsWith('ru') ||
+    (typeof _ === 'function' &&
+      (_('Status') === 'Статус' ||
+        _('Overview') === 'Обзор' ||
+        _('Save') === 'Сохранить'));
+  return isRu ? ru : en;
+}
+
 const COMMON_COUNTRIES = [
   ['NL', '🇳🇱 NL'],
   ['DE', '🇩🇪 DE'],
@@ -6880,7 +6906,10 @@ function createOutboundsContent(section) {
     'general',
     form.Value,
     'desync_fake_sni',
-    _('Fake SNI (Белый список РФ / Custom)'),
+    _tr(
+      'Fake SNI (Белый список РФ / Custom)',
+      'Fake SNI (RU Allowlist / Custom)',
+    ),
     _(
       'Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)',
     ),

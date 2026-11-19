@@ -99,11 +99,29 @@ pub struct UnlockProbeEntry {
     pub latency_ms: u32,
 }
 
+fn is_en_lang(lang: &str) -> bool {
+    lang.trim().eq_ignore_ascii_case("en")
+}
+
+#[cfg(test)]
 pub fn evaluate_odhcpd_ipv6_dns(dhcp_conf_raw: &str, odhcpd_present: bool) -> (bool, String) {
+    evaluate_odhcpd_ipv6_dns_lang(dhcp_conf_raw, odhcpd_present, false)
+}
+
+fn evaluate_odhcpd_ipv6_dns_lang(
+    dhcp_conf_raw: &str,
+    odhcpd_present: bool,
+    en: bool,
+) -> (bool, String) {
     if !odhcpd_present {
         return (
             true,
-            "odhcpd не установлен (проверка IPv6 DNS не требуется)".to_string(),
+            if en {
+                "odhcpd is not installed (IPv6 DNS check not required)"
+            } else {
+                "odhcpd не установлен (проверка IPv6 DNS не требуется)"
+            }
+            .to_string(),
         );
     }
     let mut in_lan = false;
@@ -163,11 +181,25 @@ pub fn evaluate_odhcpd_ipv6_dns(dhcp_conf_raw: &str, odhcpd_present: bool) -> (b
     }
 
     if !dhcpv6.eq_ignore_ascii_case("server") {
-        return (true, "DHCPv6-сервер odhcpd на lan неактивен".to_string());
+        return (
+            true,
+            if en {
+                "odhcpd DHCPv6 server on LAN is inactive"
+            } else {
+                "DHCPv6-сервер odhcpd на lan неактивен"
+            }
+            .to_string(),
+        );
     }
     if ra_dns == "1" || !dns_list.is_empty() {
         let detail = if !dns_list.is_empty() {
-            format!("DHCPv6 DNS настроен ({})", dns_list.join(", "))
+            if en {
+                format!("DHCPv6 DNS configured ({})", dns_list.join(", "))
+            } else {
+                format!("DHCPv6 DNS настроен ({})", dns_list.join(", "))
+            }
+        } else if en {
+            "DHCPv6 RA DNS active (ra_dns=1)".to_string()
         } else {
             "DHCPv6 RA DNS активен (ra_dns=1)".to_string()
         };
@@ -175,7 +207,12 @@ pub fn evaluate_odhcpd_ipv6_dns(dhcp_conf_raw: &str, odhcpd_present: bool) -> (b
     }
     (
         false,
-        "При включённом dhcp.lan.dhcpv6='server' не заданы ra_dns='1' и list dns".to_string(),
+        if en {
+            "dhcp.lan.dhcpv6='server' is enabled without ra_dns='1' or list dns"
+        } else {
+            "При включённом dhcp.lan.dhcpv6='server' не заданы ra_dns='1' и list dns"
+        }
+        .to_string(),
     )
 }
 
@@ -183,6 +220,7 @@ pub fn evaluate_odhcpd_ipv6_dns(dhcp_conf_raw: &str, odhcpd_present: bool) -> (b
 pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     let mut findings = Vec::new();
     let d = state.data.read().await.clone();
+    let en = is_en_lang(&d.settings.lang);
     let live = state.live.read().await.clone();
     let sys = sys_info::collect_host_info();
     let checks_total = 16usize;
@@ -193,10 +231,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "core_stopped".to_string(),
             severity: "critical".to_string(),
             subsystem: "core".to_string(),
-            title: "Процесс tachyon-core не запущен".to_string(),
-            detail: "Ядро маршрутизации остановлено или ожидает запуска.".to_string(),
+            title: if en {
+                "tachyon-core process is not running"
+            } else {
+                "Процесс tachyon-core не запущен"
+            }
+            .to_string(),
+            detail: if en {
+                "Routing core is stopped or waiting to start."
+            } else {
+                "Ядро маршрутизации остановлено или ожидает запуска."
+            }
+            .to_string(),
             quick_fix_id: "restart_core".to_string(),
-            quick_fix_label: "Запустить tachyon-core".to_string(),
+            quick_fix_label: if en {
+                "Start tachyon-core"
+            } else {
+                "Запустить tachyon-core"
+            }
+            .to_string(),
         });
     }
 
@@ -206,10 +259,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "nft_missing".to_string(),
             severity: "warning".to_string(),
             subsystem: "nftables".to_string(),
-            title: "Таблица nftables inet TachyonTable не активна".to_string(),
-            detail: "Правила прозрачного перехвата TProxy не загружены в ядро Linux.".to_string(),
+            title: if en {
+                "nftables table inet TachyonTable is inactive"
+            } else {
+                "Таблица nftables inet TachyonTable не активна"
+            }
+            .to_string(),
+            detail: if en {
+                "Transparent TProxy interception rules are not loaded in the Linux kernel."
+            } else {
+                "Правила прозрачного перехвата TProxy не загружены в ядро Linux."
+            }
+            .to_string(),
             quick_fix_id: "heal_network_stack".to_string(),
-            quick_fix_label: "Восстановить сетевой стек".to_string(),
+            quick_fix_label: if en {
+                "Restore network stack"
+            } else {
+                "Восстановить сетевой стек"
+            }
+            .to_string(),
         });
     }
 
@@ -219,11 +287,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "bootstrap_dns_empty".to_string(),
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
-            title: "Не задан Bootstrap DNS".to_string(),
-            detail: "Для разрешения доменов прокси-узлов и DoH требуется прямой Bootstrap DNS."
-                .to_string(),
+            title: if en {
+                "Bootstrap DNS is not configured"
+            } else {
+                "Не задан Bootstrap DNS"
+            }
+            .to_string(),
+            detail: if en {
+                "Direct Bootstrap DNS is required to resolve proxy node domains and DoH endpoints."
+            } else {
+                "Для разрешения доменов прокси-узлов и DoH требуется прямой Bootstrap DNS."
+            }
+            .to_string(),
             quick_fix_id: "fix_bootstrap_dns".to_string(),
-            quick_fix_label: "Сбросить Bootstrap DNS".to_string(),
+            quick_fix_label: if en {
+                "Reset Bootstrap DNS"
+            } else {
+                "Сбросить Bootstrap DNS"
+            }
+            .to_string(),
         });
     }
 
@@ -234,10 +316,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "no_active_sections".to_string(),
             severity: "info".to_string(),
             subsystem: "routing".to_string(),
-            title: "Нет активных секций маршрутизации".to_string(),
-            detail: "Весь трафик сейчас направляется напрямую (direct).".to_string(),
+            title: if en {
+                "No active routing sections"
+            } else {
+                "Нет активных секций маршрутизации"
+            }
+            .to_string(),
+            detail: if en {
+                "All traffic is currently routed directly."
+            } else {
+                "Весь трафик сейчас направляется напрямую (direct)."
+            }
+            .to_string(),
             quick_fix_id: "enable_default_desync".to_string(),
-            quick_fix_label: "Включить секции".to_string(),
+            quick_fix_label: if en {
+                "Enable sections"
+            } else {
+                "Включить секции"
+            }
+            .to_string(),
         });
     }
 
@@ -250,10 +347,24 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 id: "low_memory".to_string(),
                 severity: "warning".to_string(),
                 subsystem: "memory".to_string(),
-                title: format!("Мало свободной памяти ОЗУ ({free_pct}%)"),
-                detail: "Рекомендуется выполнить сжатие буферов ядра или включить Эко-режим (Tachyon Lite).".to_string(),
+                title: if en {
+                    format!("Low free RAM ({free_pct}%)")
+                } else {
+                    format!("Мало свободной памяти ОЗУ ({free_pct}%)")
+                },
+                detail: if en {
+                    "Consider trimming core memory buffers or enabling Eco mode (Tachyon Lite)."
+                } else {
+                    "Рекомендуется выполнить сжатие буферов ядра или включить Эко-режим (Tachyon Lite)."
+                }
+                .to_string(),
                 quick_fix_id: "optimize_memory".to_string(),
-                quick_fix_label: "Оптимизировать память".to_string(),
+                quick_fix_label: if en {
+                    "Optimize memory"
+                } else {
+                    "Оптимизировать память"
+                }
+                .to_string(),
             });
         }
     }
@@ -264,10 +375,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "clock_skew".to_string(),
             severity: "critical".to_string(),
             subsystem: "time".to_string(),
-            title: "Системное время роутера сбито".to_string(),
-            detail: "Некорректное время ломает рукопожатия TLS 1.3 и VLESS Reality.".to_string(),
+            title: if en {
+                "Router system clock is skewed"
+            } else {
+                "Системное время роутера сбито"
+            }
+            .to_string(),
+            detail: if en {
+                "Incorrect system time breaks TLS 1.3 and VLESS Reality handshakes."
+            } else {
+                "Некорректное время ломает рукопожатия TLS 1.3 и VLESS Reality."
+            }
+            .to_string(),
             quick_fix_id: "fix_system_time".to_string(),
-            quick_fix_label: "Синхронизировать NTP".to_string(),
+            quick_fix_label: if en {
+                "Sync NTP"
+            } else {
+                "Синхронизировать NTP"
+            }
+            .to_string(),
         });
     }
 
@@ -282,10 +408,24 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 id: format!("sub_empty_{}", src.id),
                 severity: "warning".to_string(),
                 subsystem: "subscriptions".to_string(),
-                title: format!("Подписка «{}» не содержит кэшированных узлов", src.name),
-                detail: "Обновите подписку для загрузки актуального списка узлов.".to_string(),
+                title: if en {
+                    format!("Subscription \"{}\" has no cached nodes", src.name)
+                } else {
+                    format!("Подписка «{}» не содержит кэшированных узлов", src.name)
+                },
+                detail: if en {
+                    "Refresh the subscription to fetch the current node list."
+                } else {
+                    "Обновите подписку для загрузки актуального списка узлов."
+                }
+                .to_string(),
                 quick_fix_id: "update_subscriptions".to_string(),
-                quick_fix_label: "Обновить подписки".to_string(),
+                quick_fix_label: if en {
+                    "Update subscriptions"
+                } else {
+                    "Обновить подписки"
+                }
+                .to_string(),
             });
         }
     }
@@ -300,32 +440,65 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "flow_offloading_conflict".to_string(),
             severity: "warning".to_string(),
             subsystem: "firewall".to_string(),
-            title: "Включён Flow Offloading в Firewall (конфликт с TProxy/SQM)".to_string(),
-            detail: "Аппаратный/программный Flow Offloading обходит netfilter/TProxy и приводит к зависанию долгоживущих TCP-потоков на клиентских устройствах.".to_string(),
+            title: if en {
+                "Firewall Flow Offloading is enabled (conflicts with TProxy/SQM)"
+            } else {
+                "Включён Flow Offloading в Firewall (конфликт с TProxy/SQM)"
+            }
+            .to_string(),
+            detail: if en {
+                "Hardware/software Flow Offloading bypasses netfilter/TProxy and causes stalled long-lived TCP streams on LAN clients."
+            } else {
+                "Аппаратный/программный Flow Offloading обходит netfilter/TProxy и приводит к зависанию долгоживущих TCP-потоков на клиентских устройствах."
+            }
+            .to_string(),
             quick_fix_id: "disable_flow_offloading".to_string(),
-            quick_fix_label: "Отключить Flow Offloading".to_string(),
+            quick_fix_label: if en {
+                "Disable Flow Offloading"
+            } else {
+                "Отключить Flow Offloading"
+            }
+            .to_string(),
         });
     }
 
     // 9. odhcpd IPv6 DNS check (when DHCPv6 server is active on LAN)
     let (odhcpd_ok, odhcpd_detail) = if cfg!(windows) {
-        (true, "Windows test mode: odhcpd пропущен".to_string())
+        (
+            true,
+            if en {
+                "Windows test mode: odhcpd skipped"
+            } else {
+                "Windows test mode: odhcpd пропущен"
+            }
+            .to_string(),
+        )
     } else {
         let odhcpd_present = tokio::fs::metadata("/etc/init.d/odhcpd").await.is_ok();
         let dhcp_raw = tokio::fs::read_to_string("/etc/config/dhcp")
             .await
             .unwrap_or_default();
-        evaluate_odhcpd_ipv6_dns(&dhcp_raw, odhcpd_present)
+        evaluate_odhcpd_ipv6_dns_lang(&dhcp_raw, odhcpd_present, en)
     };
     if !odhcpd_ok {
         findings.push(DoctorFinding {
             id: "odhcpd_ipv6_dns_missing".to_string(),
             severity: "warning".to_string(),
             subsystem: "dhcp".to_string(),
-            title: "Не настроен IPv6 DNS в odhcpd для LAN".to_string(),
+            title: if en {
+                "IPv6 DNS is not configured in odhcpd for LAN"
+            } else {
+                "Не настроен IPv6 DNS в odhcpd для LAN"
+            }
+            .to_string(),
             detail: odhcpd_detail.clone(),
             quick_fix_id: "heal_network_stack".to_string(),
-            quick_fix_label: "Настроить стек IPv6/DNS".to_string(),
+            quick_fix_label: if en {
+                "Configure IPv6/DNS stack"
+            } else {
+                "Настроить стек IPv6/DNS"
+            }
+            .to_string(),
         });
     }
 
@@ -354,12 +527,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "resolv_conf_invalid".to_string(),
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
-            title: "Некорректный системный /etc/resolv.conf".to_string(),
-            detail:
+            title: if en {
+                "Invalid system /etc/resolv.conf"
+            } else {
+                "Некорректный системный /etc/resolv.conf"
+            }
+            .to_string(),
+            detail: if en {
+                "Router host resolver does not point to local DNS (127.0.0.1) or is missing."
+            } else {
                 "Резолвер хоста роутера не указывает на локальный DNS (127.0.0.1) или отсутствует."
-                    .to_string(),
+            }
+            .to_string(),
             quick_fix_id: "fix_resolv_symlink".to_string(),
-            quick_fix_label: "Починить симлинк".to_string(),
+            quick_fix_label: if en {
+                "Repair symlink"
+            } else {
+                "Починить симлинк"
+            }
+            .to_string(),
         });
     }
 
@@ -403,11 +589,25 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "dnsmasq_cascade_broken".to_string(),
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
-            title: "Нарушен каскад dnsmasq -> 127.0.0.42#53".to_string(),
-            detail: "Отсутствует drop-in /tmp/dnsmasq*.d/tachyon.conf или остановлен dnsmasq."
-                .to_string(),
+            title: if en {
+                "dnsmasq -> 127.0.0.42#53 cascade is broken"
+            } else {
+                "Нарушен каскад dnsmasq -> 127.0.0.42#53"
+            }
+            .to_string(),
+            detail: if en {
+                "Drop-in /tmp/dnsmasq*.d/tachyon.conf is missing or dnsmasq is stopped."
+            } else {
+                "Отсутствует drop-in /tmp/dnsmasq*.d/tachyon.conf или остановлен dnsmasq."
+            }
+            .to_string(),
             quick_fix_id: "fix_dnsmasq".to_string(),
-            quick_fix_label: "Перезапустить dnsmasq".to_string(),
+            quick_fix_label: if en {
+                "Restart dnsmasq"
+            } else {
+                "Перезапустить dnsmasq"
+            }
+            .to_string(),
         });
     }
 
@@ -431,21 +631,48 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             id: "fakeip6_config_drift".to_string(),
             severity: "warning".to_string(),
             subsystem: "dns".to_string(),
-            title: "FakeIPv6 в конфиге ядра не синхронизирован с активным IPv6".to_string(),
-            detail: format!(
-                "В {} отсутствует актуальный inet6_range для FakeIPv6 при активном состоянии IPv6 ({}).",
-                core_cfg_doc.display(),
-                ipv6_state_doc.as_str()
-            ),
+            title: if en {
+                "FakeIPv6 core config is out of sync with active IPv6 state"
+            } else {
+                "FakeIPv6 в конфиге ядра не синхронизирован с активным IPv6"
+            }
+            .to_string(),
+            detail: if en {
+                format!(
+                    "{} is missing the current inet6_range for FakeIPv6 while IPv6 state is {}.",
+                    core_cfg_doc.display(),
+                    ipv6_state_doc.as_str()
+                )
+            } else {
+                format!(
+                    "В {} отсутствует актуальный inet6_range для FakeIPv6 при активном состоянии IPv6 ({}).",
+                    core_cfg_doc.display(),
+                    ipv6_state_doc.as_str()
+                )
+            },
             quick_fix_id: "doctor_fix".to_string(),
-            quick_fix_label: "Автовосстановление конфига и IPv6 (doctor --fix)".to_string(),
+            quick_fix_label: if en {
+                "Auto-repair config and IPv6 (doctor --fix)"
+            } else {
+                "Автовосстановление конфига и IPv6 (doctor --fix)"
+            }
+            .to_string(),
         });
     }
 
     let checks_passed = checks_total.saturating_sub(findings.len());
     let healthy = !findings.iter().any(|f| f.severity == "critical");
     let summary = if findings.is_empty() {
-        format!("Все {checks_total} подсистем роутера и ядра tachyon-core работают штатно")
+        if en {
+            format!("All {checks_total} router and tachyon-core subsystems operate normally")
+        } else {
+            format!("Все {checks_total} подсистем роутера и ядра tachyon-core работают штатно")
+        }
+    } else if en {
+        format!(
+            "Checked subsystems: {checks_total}, findings: {}",
+            findings.len()
+        )
     } else {
         format!(
             "Проверено подсистем: {checks_total}, замечаний: {}",
@@ -453,44 +680,174 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         )
     };
 
+    let fakeip_v4_doc = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        d.settings.fakeip_inet4_range.trim()
+    };
     let subsystems = vec![
-        json!({"name": "1. Ядро tachyon-core", "status": if live.core_running { "ok" } else { "warn" }, "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024), "fix_id": "restart_core", "fix_label": "Перезапустить"}),
-        json!({"name": "2. Таблица nftables TProxy", "status": if live.nft_table_active { "ok" } else { "warn" }, "detail": "inet TachyonTable :1602", "fix_id": "heal_network_stack", "fix_label": "Восстановить стек"}),
+        json!({
+            "name": if en { "1. tachyon-core Engine" } else { "1. Ядро tachyon-core" },
+            "status": if live.core_running { "ok" } else { "warn" },
+            "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024),
+            "fix_id": "restart_core",
+            "fix_label": if en { "Restart" } else { "Перезапустить" }
+        }),
+        json!({
+            "name": if en { "2. nftables TProxy Table" } else { "2. Таблица nftables TProxy" },
+            "status": if live.nft_table_active { "ok" } else { "warn" },
+            "detail": "inet TachyonTable :1602",
+            "fix_id": "heal_network_stack",
+            "fix_label": if en { "Restore stack" } else { "Восстановить стек" }
+        }),
         json!({
             "name": if d.settings.fakeip_enabled {
-                format!(
-                    "3. DNS и FakeIP ({})",
-                    if d.settings.fakeip_inet4_range.trim().is_empty() {
-                        "198.18.0.0/15"
-                    } else {
-                        d.settings.fakeip_inet4_range.trim()
-                    }
-                )
+                if en {
+                    format!("3. DNS & FakeIP ({fakeip_v4_doc})")
+                } else {
+                    format!("3. DNS и FakeIP ({fakeip_v4_doc})")
+                }
             } else {
                 "3. DNS (RealIP)".to_string()
             },
             "status": if live.dns_healthy { "ok" } else { "warn" },
-            "detail": if d.settings.fakeip_enabled {
-                "FakeIP 127.0.0.42:53"
-            } else {
-                "RealIP 127.0.0.42:53"
-            },
+            "detail": if d.settings.fakeip_enabled { "FakeIP 127.0.0.42:53" } else { "RealIP 127.0.0.42:53" },
             "fix_id": "clear_dns_cache",
-            "fix_label": "Сбросить кэш DNS"
+            "fix_label": if en { "Flush DNS cache" } else { "Сбросить кэш DNS" }
         }),
-        json!({"name": "4. Внешний канал WAN", "status": if live.wan_healthy { "ok" } else { "warn" }, "detail": "Маршрут по умолчанию активен", "fix_id": "fix_wan_interface", "fix_label": "Проверить шлюз"}),
-        json!({"name": "5. Секции маршрутизации", "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" }, "detail": format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len()), "fix_id": "enable_default_desync", "fix_label": "Включить секции"}),
-        json!({"name": "6. Источники и Подписки", "status": if sub_has_issue { "warn" } else { "ok" }, "detail": format!("Активно {} из {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len()), "fix_id": "update_subscriptions", "fix_label": "Обновить подписки"}),
-        json!({"name": "7. Балансировщики нагрузки", "status": if balancer_has_issue { "warn" } else { "ok" }, "detail": format!("Алгоритмов: {}", d.balancers.len()), "fix_id": "restart_core", "fix_label": "Перепроверить"}),
-        json!({"name": "8. Входящие серверы", "status": if server_has_issue { "warn" } else { "ok" }, "detail": format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len()), "fix_id": "restart_core", "fix_label": "Применить"}),
-        json!({"name": "9. Память ОЗУ и ZRAM", "status": if low_memory { "warn" } else { "ok" }, "detail": format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576), "fix_id": "optimize_memory", "fix_label": "Сжать память"}),
-        json!({"name": "10. Системное время NTP", "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" }, "detail": "Синхронизировано для TLS 1.3 / Reality", "fix_id": "fix_system_time", "fix_label": "Синхронизировать NTP"}),
-        json!({"name": "11. Снимок LKG Watchdog", "status": if lkg_ready { "ok" } else { "warn" }, "detail": if lkg_ready { "Эталон сохранён" } else { "Эталон ещё не сохранён" }, "fix_id": "rollback_known_good", "fix_label": "Откат к эталону"}),
-        json!({"name": "12. Защита NAND и Honeypot", "status": if honeypot_triggered { "warn" } else { "ok" }, "detail": format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len()), "fix_id": "flush_conntrack", "fix_label": "Сбросить сессии"}),
-        json!({"name": "13. Каскад dnsmasq -> FakeIP", "status": if dnsmasq_cascade_ok { "ok" } else { "warn" }, "detail": if dnsmasq_cascade_ok { "noresolv=1 · 127.0.0.42#53" } else { "Проблема каскада dnsmasq/127.0.0.42#53" }, "fix_id": "fix_dnsmasq", "fix_label": "Перезапустить dnsmasq"}),
-        json!({"name": "14. Системный /etc/resolv.conf", "status": if resolv_ok { "ok" } else { "warn" }, "detail": "Резолвер хоста роутера", "fix_id": "fix_resolv_symlink", "fix_label": "Починить симлинк"}),
-        json!({"name": "15. Конфликты Firewall (Flow Offloading)", "status": if flow_offload_active { "warn" } else { "ok" }, "detail": if flow_offload_active { "Обнаружен Flow Offloading при TProxy/SQM" } else { "Конфликтов с netfilter/TProxy не обнаружено" }, "fix_id": "disable_flow_offloading", "fix_label": "Отключить Flow Offloading"}),
-        json!({"name": "16. odhcpd IPv6 DNS", "status": if odhcpd_ok { "ok" } else { "warn" }, "detail": odhcpd_detail, "fix_id": "heal_network_stack", "fix_label": "Настроить стек IPv6/DNS"}),
+        json!({
+            "name": if en { "4. WAN Uplink" } else { "4. Внешний канал WAN" },
+            "status": if live.wan_healthy { "ok" } else { "warn" },
+            "detail": if en { "Default route is active" } else { "Маршрут по умолчанию активен" },
+            "fix_id": "fix_wan_interface",
+            "fix_label": if en { "Check gateway" } else { "Проверить шлюз" }
+        }),
+        json!({
+            "name": if en { "5. Routing Sections" } else { "5. Секции маршрутизации" },
+            "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" },
+            "detail": if en {
+                format!("Active {} of {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len())
+            } else {
+                format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len())
+            },
+            "fix_id": "enable_default_desync",
+            "fix_label": if en { "Enable sections" } else { "Включить секции" }
+        }),
+        json!({
+            "name": if en { "6. Sources & Subscriptions" } else { "6. Источники и Подписки" },
+            "status": if sub_has_issue { "warn" } else { "ok" },
+            "detail": if en {
+                format!("Active {} of {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len())
+            } else {
+                format!("Активно {} из {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len())
+            },
+            "fix_id": "update_subscriptions",
+            "fix_label": if en { "Update subscriptions" } else { "Обновить подписки" }
+        }),
+        json!({
+            "name": if en { "7. Load Balancers" } else { "7. Балансировщики нагрузки" },
+            "status": if balancer_has_issue { "warn" } else { "ok" },
+            "detail": if en {
+                format!("Configured: {}", d.balancers.len())
+            } else {
+                format!("Алгоритмов: {}", d.balancers.len())
+            },
+            "fix_id": "restart_core",
+            "fix_label": if en { "Recheck" } else { "Перепроверить" }
+        }),
+        json!({
+            "name": if en { "8. Inbound Servers" } else { "8. Входящие серверы" },
+            "status": if server_has_issue { "warn" } else { "ok" },
+            "detail": if en {
+                format!("Active {} of {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len())
+            } else {
+                format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len())
+            },
+            "fix_id": "restart_core",
+            "fix_label": if en { "Apply" } else { "Применить" }
+        }),
+        json!({
+            "name": if en { "9. RAM & ZRAM Memory" } else { "9. Память ОЗУ и ZRAM" },
+            "status": if low_memory { "warn" } else { "ok" },
+            "detail": if en {
+                format!("Free {} MB · ZRAM {} MB", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576)
+            } else {
+                format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576)
+            },
+            "fix_id": "optimize_memory",
+            "fix_label": if en { "Trim memory" } else { "Сжать память" }
+        }),
+        json!({
+            "name": if en { "10. NTP System Clock" } else { "10. Системное время NTP" },
+            "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" },
+            "detail": if en { "Synced for TLS 1.3 / Reality" } else { "Синхронизировано для TLS 1.3 / Reality" },
+            "fix_id": "fix_system_time",
+            "fix_label": if en { "Sync NTP" } else { "Синхронизировать NTP" }
+        }),
+        json!({
+            "name": if en { "11. LKG Watchdog Snapshot" } else { "11. Снимок LKG Watchdog" },
+            "status": if lkg_ready { "ok" } else { "warn" },
+            "detail": if lkg_ready {
+                if en { "Known-good snapshot saved" } else { "Эталон сохранён" }
+            } else if en {
+                "No snapshot saved yet"
+            } else {
+                "Эталон ещё не сохранён"
+            },
+            "fix_id": "rollback_known_good",
+            "fix_label": if en { "Rollback to LKG" } else { "Откат к эталону" }
+        }),
+        json!({
+            "name": if en { "12. NAND Guard & Honeypot" } else { "12. Защита NAND и Honeypot" },
+            "status": if honeypot_triggered { "warn" } else { "ok" },
+            "detail": if en {
+                format!("SHA-256 Guard · Blocked: {}", live.honeypot_hits.len())
+            } else {
+                format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len())
+            },
+            "fix_id": "flush_conntrack",
+            "fix_label": if en { "Flush sessions" } else { "Сбросить сессии" }
+        }),
+        json!({
+            "name": if en { "13. dnsmasq -> FakeIP Cascade" } else { "13. Каскад dnsmasq -> FakeIP" },
+            "status": if dnsmasq_cascade_ok { "ok" } else { "warn" },
+            "detail": if dnsmasq_cascade_ok {
+                "noresolv=1 · 127.0.0.42#53"
+            } else if en {
+                "dnsmasq/127.0.0.42#53 cascade issue"
+            } else {
+                "Проблема каскада dnsmasq/127.0.0.42#53"
+            },
+            "fix_id": "fix_dnsmasq",
+            "fix_label": if en { "Restart dnsmasq" } else { "Перезапустить dnsmasq" }
+        }),
+        json!({
+            "name": if en { "14. System /etc/resolv.conf" } else { "14. Системный /etc/resolv.conf" },
+            "status": if resolv_ok { "ok" } else { "warn" },
+            "detail": if en { "Router host resolver" } else { "Резолвер хоста роутера" },
+            "fix_id": "fix_resolv_symlink",
+            "fix_label": if en { "Repair symlink" } else { "Починить симлинк" }
+        }),
+        json!({
+            "name": if en { "15. Firewall Conflicts (Flow Offloading)" } else { "15. Конфликты Firewall (Flow Offloading)" },
+            "status": if flow_offload_active { "warn" } else { "ok" },
+            "detail": if flow_offload_active {
+                if en { "Flow Offloading active with TProxy/SQM" } else { "Обнаружен Flow Offloading при TProxy/SQM" }
+            } else if en {
+                "No conflicts with netfilter/TProxy detected"
+            } else {
+                "Конфликтов с netfilter/TProxy не обнаружено"
+            },
+            "fix_id": "disable_flow_offloading",
+            "fix_label": if en { "Disable Flow Offloading" } else { "Отключить Flow Offloading" }
+        }),
+        json!({
+            "name": "16. odhcpd IPv6 DNS",
+            "status": if odhcpd_ok { "ok" } else { "warn" },
+            "detail": odhcpd_detail,
+            "fix_id": "heal_network_stack",
+            "fix_label": if en { "Configure IPv6/DNS stack" } else { "Настроить стек IPv6/DNS" }
+        }),
     ];
 
     DoctorReport {
@@ -1123,6 +1480,7 @@ fn explain_route_with_mac_table(
     protocol: &str,
     mac_table: &MacIpTable,
 ) -> RouteExplainResult {
+    let en = is_en_lang(&store.settings.lang);
     let target_lower = target.trim().to_ascii_lowercase();
     let proto_lower = protocol.trim().to_ascii_lowercase();
     let resolved_client_mac = mac_table.resolve_client_mac(client_ip);
@@ -1133,13 +1491,25 @@ fn explain_route_with_mac_table(
         target_lower: &target_lower,
         port,
         proto_lower: &proto_lower,
+        en,
     };
     let mut steps = vec![
-        format!("1. Входящий пакет от {client_ip} -> {target}:{port} ({proto_lower})"),
-        format!(
-            "2. DNS FakeIP конвейер (127.0.0.42:53, стратегия: {})",
-            store.settings.dns_strategy
-        ),
+        if en {
+            format!("1. Incoming packet from {client_ip} -> {target}:{port} ({proto_lower})")
+        } else {
+            format!("1. Входящий пакет от {client_ip} -> {target}:{port} ({proto_lower})")
+        },
+        if en {
+            format!(
+                "2. DNS FakeIP pipeline (127.0.0.42:53, strategy: {})",
+                store.settings.dns_strategy
+            )
+        } else {
+            format!(
+                "2. DNS FakeIP конвейер (127.0.0.42:53, стратегия: {})",
+                store.settings.dns_strategy
+            )
+        },
     ];
 
     // Check parental profiles first
@@ -1150,20 +1520,33 @@ fn explain_route_with_mac_table(
             target_lower == d.to_ascii_lowercase()
                 || target_lower.ends_with(&format!(".{}", d.to_ascii_lowercase()))
         }) {
-            steps.push(format!(
-                "3. Совпадение с семейным профилем «{}» -> БЛОКИРОВКА",
-                prof.label
-            ));
+            steps.push(if en {
+                format!("3. Matched parental profile \"{}\" -> BLOCK", prof.label)
+            } else {
+                format!(
+                    "3. Совпадение с семейным профилем «{}» -> БЛОКИРОВКА",
+                    prof.label
+                )
+            });
+            let sec_label = if en {
+                format!("Parental profile: {}", prof.label)
+            } else {
+                format!("Семейный профиль: {}", prof.label)
+            };
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
                 target: target.to_string(),
                 port,
                 protocol: proto_lower,
                 matched_section_id: prof.id.clone(),
-                matched_section_label: format!("Семейный профиль: {}", prof.label),
-                matched_section: format!("Семейный профиль: {}", prof.label),
+                matched_section_label: sec_label.clone(),
+                matched_section: sec_label,
                 matched_condition_id: "blocked_domains".to_string(),
-                matched_reason: format!("Домен '{}' заблокирован семейным профилем", target),
+                matched_reason: if en {
+                    format!("Domain '{target}' is blocked by parental profile")
+                } else {
+                    format!("Домен '{}' заблокирован семейным профилем", target)
+                },
                 resolved_outbound: "block".to_string(),
                 selected_outbound: "block".to_string(),
                 dns_strategy: "reject".to_string(),
@@ -1224,10 +1607,17 @@ fn explain_route_with_mac_table(
         if sec.fully_routed_ips.iter().any(|ip| {
             client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
         }) {
-            steps.push(format!(
-                "3. Клиент {client_ip} входит в список полной маршрутизации секции «{}» -> {resolved_out}",
-                sec.label
-            ));
+            steps.push(if en {
+                format!(
+                    "3. Client {client_ip} is in full-routing list of section \"{}\" -> {resolved_out}",
+                    sec.label
+                )
+            } else {
+                format!(
+                    "3. Клиент {client_ip} входит в список полной маршрутизации секции «{}» -> {resolved_out}",
+                    sec.label
+                )
+            });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
                 target: target.to_string(),
@@ -1237,7 +1627,11 @@ fn explain_route_with_mac_table(
                 matched_section_label: sec.label.clone(),
                 matched_section: sec.label.clone(),
                 matched_condition_id: "fully_routed_ips".to_string(),
-                matched_reason: format!("Клиент {client_ip} задан в fully_routed_ips"),
+                matched_reason: if en {
+                    format!("Client {client_ip} is listed in fully_routed_ips")
+                } else {
+                    format!("Клиент {client_ip} задан в fully_routed_ips")
+                },
                 resolved_outbound: resolved_out.clone(),
                 selected_outbound: resolved_out,
                 dns_strategy,
@@ -1255,14 +1649,28 @@ fn explain_route_with_mac_table(
             if let Some(reason) =
                 match_condition_against_target_with_table(cond, &store.conditions, &match_ctx)
             {
-                steps.push(format!(
-                    "3. Совпадение с условием «{}» ({reason}) в секции «{}»",
-                    cond.name, sec.label
-                ));
-                steps.push(format!(
-                    "4. Выходной обработчик: {resolved_out} ({})",
-                    sec.connection_type
-                ));
+                steps.push(if en {
+                    format!(
+                        "3. Matched condition \"{}\" ({reason}) in section \"{}\"",
+                        cond.name, sec.label
+                    )
+                } else {
+                    format!(
+                        "3. Совпадение с условием «{}» ({reason}) в секции «{}»",
+                        cond.name, sec.label
+                    )
+                });
+                steps.push(if en {
+                    format!(
+                        "4. Outbound handler: {resolved_out} ({})",
+                        sec.connection_type
+                    )
+                } else {
+                    format!(
+                        "4. Выходной обработчик: {resolved_out} ({})",
+                        sec.connection_type
+                    )
+                });
                 return RouteExplainResult {
                     client_ip: client_ip.to_string(),
                     target: target.to_string(),
@@ -1320,14 +1728,25 @@ fn explain_route_with_mac_table(
         if let Some(reason) =
             match_condition_against_target_with_table(&inline_cond, &store.conditions, &match_ctx)
         {
-            steps.push(format!(
-                "3. Совпадение с правилами секции «{}» ({reason})",
-                sec.label
-            ));
-            steps.push(format!(
-                "4. Выходной обработчик: {resolved_out} ({})",
-                sec.connection_type
-            ));
+            steps.push(if en {
+                format!("3. Matched section \"{}\" rules ({reason})", sec.label)
+            } else {
+                format!(
+                    "3. Совпадение с правилами секции «{}» ({reason})",
+                    sec.label
+                )
+            });
+            steps.push(if en {
+                format!(
+                    "4. Outbound handler: {resolved_out} ({})",
+                    sec.connection_type
+                )
+            } else {
+                format!(
+                    "4. Выходной обработчик: {resolved_out} ({})",
+                    sec.connection_type
+                )
+            });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
                 target: target.to_string(),
@@ -1348,15 +1767,29 @@ fn explain_route_with_mac_table(
         }
 
         if sec.match_all {
-            let reason = format!(
-                "Секция «{}» настроена на перехват всего трафика (match_all)",
-                sec.label
-            );
+            let reason = if en {
+                format!(
+                    "Section \"{}\" is configured to route all traffic (match_all)",
+                    sec.label
+                )
+            } else {
+                format!(
+                    "Секция «{}» настроена на перехват всего трафика (match_all)",
+                    sec.label
+                )
+            };
             steps.push(format!("3. {reason}"));
-            steps.push(format!(
-                "4. Выходной обработчик: {resolved_out} ({})",
-                sec.connection_type
-            ));
+            steps.push(if en {
+                format!(
+                    "4. Outbound handler: {resolved_out} ({})",
+                    sec.connection_type
+                )
+            } else {
+                format!(
+                    "4. Выходной обработчик: {resolved_out} ({})",
+                    sec.connection_type
+                )
+            });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
                 target: target.to_string(),
@@ -1377,20 +1810,31 @@ fn explain_route_with_mac_table(
         }
     }
 
-    steps.push(
+    steps.push(if en {
+        "3. No section rules matched -> fallback route (route.final = direct)".to_string()
+    } else {
         "3. Ни одно правило секций не совпало -> маршрут по умолчанию (route.final = direct)"
-            .to_string(),
-    );
+            .to_string()
+    });
+    let final_section = if en {
+        "Direct Route (Direct)"
+    } else {
+        "Прямой маршрут (Direct)"
+    };
     RouteExplainResult {
         client_ip: client_ip.to_string(),
         target: target.to_string(),
         port,
         protocol: proto_lower,
         matched_section_id: "final".to_string(),
-        matched_section_label: "Прямой маршрут (Direct)".to_string(),
-        matched_section: "Прямой маршрут (Direct)".to_string(),
+        matched_section_label: final_section.to_string(),
+        matched_section: final_section.to_string(),
         matched_condition_id: "none".to_string(),
-        matched_reason: "Не совпало ни одно условие; направлено напрямую (direct)".to_string(),
+        matched_reason: if en {
+            "No conditions matched; routed directly (direct)".to_string()
+        } else {
+            "Не совпало ни одно условие; направлено напрямую (direct)".to_string()
+        },
         resolved_outbound: "direct".to_string(),
         selected_outbound: "direct".to_string(),
         dns_strategy: "system (77.88.8.8)".to_string(),
@@ -1599,10 +2043,20 @@ fn default_community_subnet_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
+#[cfg(test)]
 fn match_condition_community_lists_in_dirs(
     cond: &crate::store::TrafficCondition,
     target_lower: &str,
     dirs: &[std::path::PathBuf],
+) -> Option<String> {
+    match_condition_community_lists_in_dirs_lang(cond, target_lower, dirs, false)
+}
+
+fn match_condition_community_lists_in_dirs_lang(
+    cond: &crate::store::TrafficCondition,
+    target_lower: &str,
+    dirs: &[std::path::PathBuf],
+    en: bool,
 ) -> Option<String> {
     for list in &cond.community_lists {
         let ll = list.trim().to_ascii_lowercase();
@@ -1611,10 +2065,11 @@ fn match_condition_community_lists_in_dirs(
                 || (cond.community_subnets
                     && check_community_ip_match_in_dirs(target_lower, &ll, dirs)))
         {
-            return Some(format!(
-                "Список сообщества trs-{list} в условии «{}»",
-                cond.name
-            ));
+            return Some(if en {
+                format!("Community list trs-{list} in condition \"{}\"", cond.name)
+            } else {
+                format!("Список сообщества trs-{list} в условии «{}»", cond.name)
+            });
         }
     }
 
@@ -1625,10 +2080,11 @@ fn match_condition_community_lists_in_dirs(
             if match_list_tag_against_domain(&ll, target_lower)
                 || check_community_ip_match_in_dirs(target_lower, &ll, dirs)
             {
-                return Some(format!(
-                    "Список с подсетями {clean} в условии «{}»",
-                    cond.name
-                ));
+                return Some(if en {
+                    format!("Subnet list {clean} in condition \"{}\"", cond.name)
+                } else {
+                    format!("Список с подсетями {clean} в условии «{}»", cond.name)
+                });
             }
         }
     }
@@ -1642,6 +2098,7 @@ struct RouteMatchTarget<'a> {
     target_lower: &'a str,
     port: u16,
     proto_lower: &'a str,
+    en: bool,
 }
 
 fn match_condition_against_target_with_table(
@@ -1675,7 +2132,11 @@ fn match_condition_against_target_with_table(
             if let Some(child) = all_conditions.iter().find(|c| c.id == *cid && c.enabled)
                 && match_condition_against_target_with_table(child, all_conditions, ctx).is_none()
             {
-                return Some(format!("Отрицание условия «{}»", cond.name));
+                return Some(if ctx.en {
+                    format!("Negation of condition \"{}\"", cond.name)
+                } else {
+                    format!("Отрицание условия «{}»", cond.name)
+                });
             }
             return None;
         }
@@ -1714,11 +2175,19 @@ fn match_condition_against_target_with_table(
         let dl = d.trim().to_ascii_lowercase();
         !dl.is_empty() && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
     }) {
-        return Some(format!("Пользовательский домен в условии «{}»", cond.name));
+        return Some(if ctx.en {
+            format!("Custom domain in condition \"{}\"", cond.name)
+        } else {
+            format!("Пользовательский домен в условии «{}»", cond.name)
+        });
     }
 
     if !cond.ports.is_empty() && cond.ports.iter().any(|p| p.trim() == ctx.port.to_string()) {
-        return Some(format!("Порт {} в условии «{}»", ctx.port, cond.name));
+        return Some(if ctx.en {
+            format!("Port {} in condition \"{}\"", ctx.port, cond.name)
+        } else {
+            format!("Порт {} в условии «{}»", ctx.port, cond.name)
+        });
     }
 
     if !cond.user_subnets.is_empty()
@@ -1729,12 +2198,16 @@ fn match_condition_against_target_with_table(
                     || crate::store::ip_in_cidr(ctx.target_lower, clean))
         })
     {
-        return Some(format!("Подсеть в условии «{}»", cond.name));
+        return Some(if ctx.en {
+            format!("Subnet in condition \"{}\"", cond.name)
+        } else {
+            format!("Подсеть в условии «{}»", cond.name)
+        });
     }
 
     let comm_dirs = default_community_subnet_dirs();
     if let Some(reason) =
-        match_condition_community_lists_in_dirs(cond, ctx.target_lower, &comm_dirs)
+        match_condition_community_lists_in_dirs_lang(cond, ctx.target_lower, &comm_dirs, ctx.en)
     {
         return Some(reason);
     }
@@ -1742,7 +2215,11 @@ fn match_condition_against_target_with_table(
     for gs in &cond.geosite_codes {
         let gl = gs.trim().to_ascii_lowercase();
         if !gl.is_empty() && match_list_tag_against_domain(&gl, ctx.target_lower) {
-            return Some(format!("Набор geosite-{gs} в условии «{}»", cond.name));
+            return Some(if ctx.en {
+                format!("Geosite list geosite-{gs} in condition \"{}\"", cond.name)
+            } else {
+                format!("Набор geosite-{gs} в условии «{}»", cond.name)
+            });
         }
     }
 
@@ -1754,7 +2231,11 @@ fn match_condition_against_target_with_table(
         && cond.rule_set_with_subnets.is_empty()
         && cond.geosite_codes.is_empty()
     {
-        return Some(format!("Устройство/источник в условии «{}»", cond.name));
+        return Some(if ctx.en {
+            format!("Device/source in condition \"{}\"", cond.name)
+        } else {
+            format!("Устройство/источник в условии «{}»", cond.name)
+        });
     }
     None
 }
@@ -2340,12 +2821,27 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
     } else {
         "tproxy"
     };
+    let en = is_en_lang(&d.settings.lang);
     let nft_details = if d.settings.proxy_mode == "socks" {
-        "Активен режим SOCKS/Mixed; таблица nftables не используется"
+        if en {
+            "SOCKS/Mixed mode active; nftables table is not used"
+        } else {
+            "Активен режим SOCKS/Mixed; таблица nftables не используется"
+        }
     } else if !nft_active {
-        "Таблица inet TachyonTable не загружена в ядро (трафик идёт напрямую через WAN)"
+        if en {
+            "Table inet TachyonTable is not loaded in kernel (traffic goes directly via WAN)"
+        } else {
+            "Таблица inet TachyonTable не загружена в ядро (трафик идёт напрямую через WAN)"
+        }
     } else if is_direct {
-        "Секция direct/bypass; пакет пропущен в обход TProxy"
+        if en {
+            "Direct/bypass section; packet bypassed TProxy"
+        } else {
+            "Секция direct/bypass; пакет пропущен в обход TProxy"
+        }
+    } else if en {
+        "Packet redirected to tproxy :1602 with fwmark 0x04000000"
     } else {
         "Пакет направлен в tproxy :1602 с меткой 0x04000000"
     };
@@ -2354,6 +2850,11 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
         "mixed-in"
     } else {
         "tproxy-in"
+    };
+    let fakeip_range_trace = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        d.settings.fakeip_inet4_range.trim()
     };
 
     json!({
@@ -2403,27 +2904,35 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
         "stages": {
             "1_client_classification": {
                 "stage": 1,
-                "name": "Классификация клиента",
+                "name": if en { "Client Classification" } else { "Классификация клиента" },
                 "client": client_ip,
                 "ip": client_ip,
                 "client_type": "lan",
                 "is_excluded": false,
-                "details": format!("Клиент локальной сети {client_ip} включен в обработку")
+                "details": if en {
+                    format!("LAN client {client_ip} is included in routing")
+                } else {
+                    format!("Клиент локальной сети {client_ip} включен в обработку")
+                }
             },
             "2_target_classification": {
                 "stage": 2,
-                "name": "Классификация назначения",
+                "name": if en { "Target Classification" } else { "Классификация назначения" },
                 "target": tr.target,
                 "target_type": if is_ip_target { "ip" } else { "domain" },
                 "port": tr.port,
                 "proto": tr.protocol,
                 "is_private_ip": false,
                 "is_fakeip": d.settings.fakeip_enabled && !is_ip_target,
-                "details": format!("Назначение {}:{} ({})", tr.target, tr.port, tr.protocol.to_uppercase())
+                "details": if en {
+                    format!("Target {}:{} ({})", tr.target, tr.port, tr.protocol.to_uppercase())
+                } else {
+                    format!("Назначение {}:{} ({})", tr.target, tr.port, tr.protocol.to_uppercase())
+                }
             },
             "3_section_matching": {
                 "stage": 3,
-                "name": "Сопоставление правил секции",
+                "name": if en { "Section Rules Matching" } else { "Сопоставление правил секции" },
                 "matched_section": tr.matched_section,
                 "section_label": tr.matched_section,
                 "action": action_str,
@@ -2433,28 +2942,27 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
             },
             "4_dns_decision": {
                 "stage": 4,
-                "name": "Решение DNS / FakeIP",
+                "name": if en { "DNS / FakeIP Decision" } else { "Решение DNS / FakeIP" },
                 "mode": if d.settings.fakeip_enabled { "fakeip" } else { "realip" },
                 "resolver": d.settings.dns_type,
                 "fakeip_active": d.settings.fakeip_enabled,
                 "ipv6_effective_state": ipv6_state.as_str(),
                 "runtime_dns_strategy": runtime_dns_strategy,
                 "details": if d.settings.fakeip_enabled {
-                    format!(
-                        "Домен сопоставлен через таблицу FakeIP ({})",
-                        if d.settings.fakeip_inet4_range.trim().is_empty() {
-                            "198.18.0.0/15"
-                        } else {
-                            d.settings.fakeip_inet4_range.trim()
-                        }
-                    )
+                    if en {
+                        format!("Domain matched through FakeIP table ({fakeip_range_trace})")
+                    } else {
+                        format!("Домен сопоставлен через таблицу FakeIP ({fakeip_range_trace})")
+                    }
+                } else if en {
+                    "Real IP name resolution without FakeIP substitution".to_string()
                 } else {
                     "Используется реальное разрешение имён без подмены FakeIP".to_string()
                 }
             },
             "5_nftables_interception": {
                 "stage": 5,
-                "name": "Перехват nftables",
+                "name": if en { "nftables Interception" } else { "Перехват nftables" },
                 "table": "inet TachyonTable",
                 "chain": "prerouting",
                 "hook": "prerouting",
@@ -2465,19 +2973,25 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
             },
             "6_policy_routing": {
                 "stage": 6,
-                "name": "Политика маршрутизации (PBR)",
+                "name": if en { "Policy Routing (PBR)" } else { "Политика маршрутизации (PBR)" },
                 "table": crate::net_stack::TPROXY_ROUTE_TABLE,
                 "ip_rule": format!("fwmark {} table {}", crate::net_stack::TPROXY_FWMARK, crate::net_stack::TPROXY_ROUTE_TABLE),
                 "route": "local 0.0.0.0/0 dev lo",
                 "details": if nft_active {
-                    "Таблица маршрутизации 100 доставляет пакет в сокет Tachyon Core (:1602)"
+                    if en {
+                        "Routing table 100 delivers the packet to Tachyon Core socket (:1602)"
+                    } else {
+                        "Таблица маршрутизации 100 доставляет пакет в сокет Tachyon Core (:1602)"
+                    }
+                } else if en {
+                    "PBR policy inactive — TachyonTable is not loaded"
                 } else {
                     "Политика PBR неактивна — таблица TachyonTable не загружена"
                 }
             },
             "7_engine_outbound": {
                 "stage": 7,
-                "name": "Исходящий узел ядра",
+                "name": if en { "Core Outbound Node" } else { "Исходящий узел ядра" },
                 "engine": "tachyon-core",
                 "engaged": nft_active || !is_tproxy,
                 "inbound_tag": inbound_tag,
@@ -2489,7 +3003,11 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
                 "server_address": srv_addr,
                 "server_port": srv_port,
                 "transport": tr.protocol,
-                "details": format!("Трафик отправлен через узел {} ({})", tr.selected_outbound, srv_proto.to_uppercase())
+                "details": if en {
+                    format!("Traffic routed via {} ({})", tr.selected_outbound, srv_proto.to_uppercase())
+                } else {
+                    format!("Трафик отправлен через узел {} ({})", tr.selected_outbound, srv_proto.to_uppercase())
+                }
             }
         },
         "explanation": {
@@ -2720,36 +3238,78 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
+    let en = is_en_lang(&d.settings.lang);
+    let tg_en = is_en_lang(&d.telegram.language);
     if ipv6_leaked {
         crate::tg_bot::notify_if_enabled(
             &d,
             "dns_leak",
-            "Обнаружен риск прямой маршрутизации IPv6 при неактивной таблице nftables",
+            if tg_en {
+                "IPv6 direct routing leak risk detected while nftables table is inactive"
+            } else {
+                "Обнаружен риск прямой маршрутизации IPv6 при неактивной таблице nftables"
+            },
         );
     } else if live.core_running && !dns_port_open {
         crate::tg_bot::notify_if_enabled(
             &d,
             "dns_leak",
-            "Локальный DNS-резолвер ядра 127.0.0.42:53 не отвечает — возможна утечка DNS",
+            if tg_en {
+                "Core local DNS resolver 127.0.0.42:53 is unreachable — DNS leak risk"
+            } else {
+                "Локальный DNS-резолвер ядра 127.0.0.42:53 не отвечает — возможна утечка DNS"
+            },
         );
     }
 
     let verdict = if !live.core_running {
-        "Ядро остановлено — используется системный DNS роутера".to_string()
+        if en {
+            "Core is stopped — router system DNS is active".to_string()
+        } else {
+            "Ядро остановлено — используется системный DNS роутера".to_string()
+        }
     } else if ipv6_leaked {
-        "Обнаружен риск прямой маршрутизации IPv6 при отключённой таблице nftables".to_string()
+        if en {
+            "IPv6 direct routing leak risk detected while nftables table is disabled".to_string()
+        } else {
+            "Обнаружен риск прямой маршрутизации IPv6 при отключённой таблице nftables".to_string()
+        }
     } else if d.settings.fakeip_enabled && ipv6_state.is_tunnel_over_v4() {
-        format!(
-            "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), туннель IPv6-over-IPv4 и WebRTC-фильтр активны"
-        )
+        if en {
+            format!(
+                "FakeIP protection ({fakeip_v4}, {fakeip_v6}), IPv6-over-IPv4 tunnel and WebRTC filter are active"
+            )
+        } else {
+            format!(
+                "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), туннель IPv6-over-IPv4 и WebRTC-фильтр активны"
+            )
+        }
     } else if d.settings.fakeip_enabled && ipv6_state.is_active() {
-        format!(
-            "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), режим IPv6 ({}) и WebRTC-фильтр активны",
-            ipv6_state.as_str()
-        )
+        if en {
+            format!(
+                "FakeIP protection ({fakeip_v4}, {fakeip_v6}), IPv6 mode ({}) and WebRTC filter are active",
+                ipv6_state.as_str()
+            )
+        } else {
+            format!(
+                "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), режим IPv6 ({}) и WebRTC-фильтр активны",
+                ipv6_state.as_str()
+            )
+        }
     } else if d.settings.fakeip_enabled {
+        if en {
+            format!(
+                "FakeIP protection ({fakeip_v4}), AAAA suppression (NOERROR) and WebRTC STUN interception are active"
+            )
+        } else {
+            format!(
+                "Защита FakeIP ({fakeip_v4}), подавление AAAA (NOERROR) и перехват WebRTC STUN активны"
+            )
+        }
+    } else if en {
         format!(
-            "Защита FakeIP ({fakeip_v4}), подавление AAAA (NOERROR) и перехват WebRTC STUN активны"
+            "RealIP DNS ({eff_dns}), IPv6 mode ({}) and WebRTC STUN interception are active",
+            ipv6_state.as_str()
         )
     } else {
         format!(
@@ -4096,6 +4656,80 @@ IP address       HW type     Flags       HW address            Mask     Device
         assert!(
             match_condition_community_lists_in_dirs(&cond_explicit, "203.0.113.42", &dirs)
                 .is_some()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_diagnostics_english_mode_contains_no_cyrillic() {
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_diag_en_{}_{uniq}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = crate::store::AppState::load_or_create(dir.join("store.json")).unwrap();
+        {
+            let mut d = state.data.write().await;
+            d.settings.lang = "en".to_string();
+            d.sections[0].enabled = true;
+        }
+        let d_snapshot = state.data.read().await.clone();
+
+        let has_cyrillic = |s: &str| s.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c));
+
+        let doc = run_local_doctor(&state).await;
+        assert!(
+            !has_cyrillic(&doc.summary),
+            "doctor summary must be English: {}",
+            doc.summary
+        );
+        for sub in &doc.subsystems {
+            let txt = sub.to_string();
+            assert!(!has_cyrillic(&txt), "doctor subsystem has Cyrillic: {txt}");
+        }
+        for finding in &doc.findings {
+            assert!(
+                !has_cyrillic(&finding.title)
+                    && !has_cyrillic(&finding.detail)
+                    && !has_cyrillic(&finding.quick_fix_label),
+                "doctor finding has Cyrillic: {finding:?}"
+            );
+        }
+
+        let leak = run_leak_check(&state, None).await;
+        let verdict = leak.get("verdict").and_then(Value::as_str).unwrap_or("");
+        assert!(
+            !has_cyrillic(verdict),
+            "leak verdict has Cyrillic: {verdict}"
+        );
+
+        let table = MacIpTable::default();
+        let mut trace = build_route_trace_json_with_mac_table(&RouteTraceInput {
+            d: &d_snapshot,
+            client_ip: "192.168.1.50",
+            domain: "example.org",
+            target_or_ip: "",
+            port: 443,
+            protocol: "tcp",
+            nft_active: true,
+            wan6_available: false,
+            mac_table: &table,
+        });
+        assert!(!has_cyrillic(
+            trace["explanation"]["en"].as_str().unwrap_or("")
+        ));
+        // Strip compatibility Russian field before scanning the whole trace JSON for Cyrillic
+        if let Some(exp) = trace.get_mut("explanation").and_then(Value::as_object_mut) {
+            exp.remove("ru");
+        }
+        let trace_str = trace.to_string();
+        assert!(
+            !has_cyrillic(&trace_str),
+            "route trace in EN mode contains Cyrillic: {trace_str}"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

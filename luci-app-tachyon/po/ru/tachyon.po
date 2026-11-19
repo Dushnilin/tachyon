@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 22:15+0300\n"
-"PO-Revision-Date: 2026-11-19 22:15+0300\n"
+"POT-Creation-Date: 2026-11-19 00:18+0300\n"
+"PO-Revision-Date: 2026-11-19 00:18+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -73,6 +73,9 @@ msgstr "-- Выберите или введите порт/диапазон --"
 
 msgid "-- Select server of this section --"
 msgstr "-- Выберите сервер этой секции --"
+
+msgid "-60s"
+msgstr "-60с"
 
 msgid ".lst Lists"
 msgstr "Списки .lst"
@@ -329,6 +332,9 @@ msgstr "Активно (Блокировка)"
 msgid "Active (Blocking)"
 msgstr "Активно (Блокирует)"
 
+msgid "Active (Core)"
+msgstr "Активен (Core)"
+
 msgid "Active (DNS)"
 msgstr "Активно (DNS)"
 
@@ -370,6 +376,12 @@ msgstr "Размер активного пула (топ N узлов)"
 
 msgid "Active Route"
 msgstr "Активный выход"
+
+msgid "Active Routing Outbounds"
+msgstr "Активные направления маршрутизации (Outbounds)"
+
+msgid "Active Sessions"
+msgstr "Активные сессии"
 
 msgid "Active TCP RST received on transit path during TLS ClientHello."
 msgstr "На транзитном маршруте зафиксирован сброс TCP RST при отправке TLS ClientHello."
@@ -1910,6 +1922,9 @@ msgstr "Фрагментация ClientHello / TCP"
 msgid "Clients"
 msgstr "Клиенты"
 
+msgid "Clients in Pool"
+msgstr "Клиенты в пуле"
+
 msgid "Clone"
 msgstr "Клонировать"
 
@@ -2261,6 +2276,9 @@ msgstr "Скопировать отчёт"
 msgid "Copy to Clipboard"
 msgstr "Скопировать в буфер"
 
+msgid "Core Resources, DNS Caches & Outbounds"
+msgstr "Ресурсы ядра, DNS-кэши и узлы"
+
 msgid "Core Telemetry HUD"
 msgstr "Приборная панель ядра (HUD)"
 
@@ -2495,6 +2513,9 @@ msgstr "Автоподбор DNS завершён! Оптимальная свя
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr "Автоподбор и бенчмарк DNS"
 
+msgid "DNS Cache"
+msgstr "Кэш DNS"
+
 msgid "DNS Cache Size (entries)"
 msgstr "Размер DNS-кэша (записей)"
 
@@ -2509,6 +2530,9 @@ msgstr "Ошибок DNS до переключения"
 
 msgid "DNS IPv4 / IPv6 Priority"
 msgstr "Приоритет DNS (IPv4 / IPv6)"
+
+msgid "DNS Intercept"
+msgstr "Перехват DNS"
 
 msgid "DNS Protocol"
 msgstr "Протокол DNS"
@@ -2851,6 +2875,9 @@ msgstr "Модель устройства (x-device-model)"
 
 msgid "Device OS (x-device-os)"
 msgstr "ОС устройства (x-device-os)"
+
+msgid "Device Pool"
+msgstr "Пул устройств"
 
 msgid "Device does not broadcast its hostname via DHCP when privacy protection is enabled (Private Wi-Fi address)."
 msgstr "Устройство не передаёт своё имя по DHCP при включённой защите приватности (частный адрес Wi-Fi)."
@@ -4010,6 +4037,9 @@ msgstr "Не удалось обновить подписки"
 msgid "Failed to update subscriptions."
 msgstr "Не удалось обновить подписки."
 
+msgid "Failover & Balancer Groups"
+msgstr "Группы балансировки и резерва"
+
 msgid "Failover (Pin Current Until Failure)"
 msgstr "Отказоустойчивый (удерживать текущий до сбоя)"
 
@@ -4070,9 +4100,6 @@ msgstr "Повторы фейковых пакетов"
 msgid "Fake Repeats (--repeats)"
 msgstr "Повторы фейков (--repeats)"
 
-msgid "Fake SNI (Белый список РФ / Custom)"
-msgstr "Фейковый SNI (Белый список РФ / Свой)"
-
 msgid "Fake SNI Domain (Whitelist)"
 msgstr "Fake SNI домен (Белый список РФ)"
 
@@ -4090,6 +4117,9 @@ msgstr "FakeIP DNS не работает"
 
 msgid "FakeIP DNS works"
 msgstr "FakeIP DNS работает"
+
+msgid "FakeIP Table"
+msgstr "Таблица FakeIP"
 
 msgid "FakeIP and control checks use different public IPs"
 msgstr "FakeIP и контрольная проверка используют разные публичные IP"
@@ -4229,8 +4259,14 @@ msgstr "Профиль совместимости (Flavor)"
 msgid "Fleet Latency"
 msgstr "Средняя задержка серверов"
 
+msgid "Flight Recorder"
+msgstr "Бортовой самописец (Flight Recorder)"
+
 msgid "Flight recorder cleared"
 msgstr "Журнал бортового самописца очищен"
+
+msgid "Flight recorder log is empty"
+msgstr "Журнал бортового самописца пуст"
 
 msgid "Flow"
 msgstr "Поток (Flow)"
@@ -4285,6 +4321,9 @@ msgstr "Профиль фрейминга (obfs)"
 
 msgid "France (fr)"
 msgstr "Франция (fr)"
+
+msgid "Free RAM"
+msgstr "Свободно ОЗУ"
 
 msgid "Freedom"
 msgstr "Freedom"
@@ -4832,6 +4871,9 @@ msgstr "Только IPv4 (без IPv6 на устройствах)"
 msgid "IPv4 Pool (optional)"
 msgstr "Пул IPv4 (необязательно)"
 
+msgid "IPv4 Route"
+msgstr "IPv4 контур"
+
 msgid "IPv4 pool (CIDR)"
 msgstr "Пул IPv4 (CIDR)"
 
@@ -4861,6 +4903,9 @@ msgstr "Режим работы IPv6"
 
 msgid "IPv6 N/A"
 msgstr "IPv6 НЕ НАСТРОЕН"
+
+msgid "IPv6 Route"
+msgstr "IPv6 контур"
 
 msgid "IPv6 TUNNELED"
 msgstr "IPv6 В ТУННЕЛЕ"
@@ -5813,8 +5858,17 @@ msgstr "Уровень 1: Общий пул серверов (подписки, 
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr "Уровень 2: Переиспользуемые группы серверов (Outbound Groups)"
 
+msgid "Leak Guard & Flight Recorder"
+msgstr "Защита контура и Бортовой самописец"
+
 msgid "Leak Guard off"
 msgstr "Leak Guard выкл"
+
+msgid "Leak Risk"
+msgstr "Риск утечки"
+
+msgid "Leak protection, failover status and closed session log"
+msgstr "Контроль утечек, статус отказоустойчивости и журнал завершённых сессий"
 
 msgid "Least Load (Active Connections × RTT)"
 msgstr "Наименьшая нагрузка (активные соединения × RTT)"
@@ -5887,6 +5941,9 @@ msgstr "Обновление списков всё ещё выполняется
 
 msgid "Lite Eco Mode"
 msgstr "Эко-режим Lite"
+
+msgid "Live 60-second traffic telemetry and route distribution"
+msgstr "Живая телеметрия потока данных за 60 секунд и распределение маршрутов"
 
 msgid "Live check"
 msgstr "Live-проверка"
@@ -6539,6 +6596,9 @@ msgstr "Активные секции маршрутизации не найде
 msgid "No applicable rule sections found"
 msgstr "Подходящие секции правил не найдены"
 
+msgid "No balancer groups configured"
+msgstr "Группы балансировки не настроены"
+
 msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
 msgstr "Данные тестирования отсутствуют. Нажмите \"Запустить тест\" для начала."
 
@@ -6613,6 +6673,9 @@ msgstr "Других версий не найдено"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
+
+msgid "No outbound statistics collected yet"
+msgstr "Нет накопленной статистики по направлениям"
 
 msgid "No public firewall port required"
 msgstr "Публичный порт в firewall не требуется"
@@ -6695,6 +6758,9 @@ msgstr "Нет"
 msgid "None (TLS/QUIC only)"
 msgstr "Нет (только TLS/QUIC)"
 
+msgid "Normal"
+msgstr "Норма (Normal)"
+
 msgid "Not applicable for current engine"
 msgstr "Неприменимо для текущего движка"
 
@@ -6772,6 +6838,9 @@ msgstr "Уведомлять о перезапусках сервиса"
 
 msgid "Notify on Subscription Updates"
 msgstr "Уведомлять об обновлениях подписок"
+
+msgid "Now"
+msgstr "Сейчас"
 
 msgid "Number of consecutive failed checks before switching to the backup WAN (1-30, default: 3)."
 msgstr "Количество неудачных проверок подряд перед переключением на резервный WAN (1–30, по умолчанию: 3)."
@@ -6859,6 +6928,9 @@ msgstr "Вкл."
 
 msgid "On (always trust 100.64.0.0/10)"
 msgstr "Вкл (всегда доверять 100.64.0.0/10)"
+
+msgid "On Backup"
+msgstr "На резерве"
 
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
@@ -7916,6 +7988,9 @@ msgstr "Память и нагрузка на ресурсы"
 msgid "RAM (RSS)"
 msgstr "ОЗУ (RSS)"
 
+msgid "RAM Pressure"
+msgstr "Нагрузка RAM"
+
 msgid "RAM usage:"
 msgstr "Использование ОЗУ:"
 
@@ -7969,6 +8044,9 @@ msgstr "Исходные JSON-объекты outbound для Tachyon Core."
 
 msgid "Raw UDP Port (optional)"
 msgstr "Исходный порт UDP (необязательно)"
+
+msgid "Re-evaluate Routes"
+msgstr "Перепроверить маршруты"
 
 msgid "Re-run Leak Test"
 msgstr "Повторить проверку утечек"
@@ -8294,6 +8372,9 @@ msgstr "Вернуть обычный интернет"
 msgid "Restore Native Internet (Stop Tachyon)"
 msgstr "Вернуть обычный интернет (остановить Tachyon)"
 
+msgid "Restore Primary"
+msgstr "Восстановить основные"
+
 msgid "Restore Snapshot"
 msgstr "Восстановить снапшот"
 
@@ -8329,9 +8410,6 @@ msgstr "Переиспользуемые атомарные условия и с
 
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr "Списки сервисов, домены, подсети и составные логические условия (AND / OR / NOT) для секций."
-
-msgid "Reverse DNS"
-msgstr "Обратный DNS (PTR)"
 
 msgid "Roaming / Handover"
 msgstr "Роуминг / бесшовное переключение"
@@ -8713,6 +8791,9 @@ msgstr "Сохранить снапшот рабочей конфигураци�
 
 msgid "Save component backup before update"
 msgstr "Сохранять резервную копию перед обновлением"
+
+msgid "Scale peak"
+msgstr "Пик шкалы"
 
 msgid "Scan Strategies"
 msgstr "Подобрать стратегию сканером"
@@ -9824,9 +9905,6 @@ msgstr "Успешно импортировано %d DNS-записей"
 msgid "Successfully updated %d hosts entries"
 msgstr "Успешно обновлено %d записей hosts"
 
-msgid "Sudoku (не реализован)"
-msgstr "Sudoku (не реализован)"
-
 msgid "Sudoku Key / Password"
 msgstr "Ключ / Пароль Sudoku"
 
@@ -10424,6 +10502,9 @@ msgstr "По правилам секций Tachyon (маршрутизация)"
 msgid "Throughput"
 msgstr "Пропускная способность"
 
+msgid "Throughput & Traffic Split"
+msgstr "Пропускная способность и баланс трафика"
+
 msgid "Throughput (Active Bandwidth Decay)"
 msgstr "Пропускная способность (по скорости потока с затуханием)"
 
@@ -10501,6 +10582,12 @@ msgstr "Порт Tor SOCKS5"
 
 msgid "TorrServer Direct"
 msgstr "TorrServer Direct"
+
+msgid "Total Received"
+msgstr "Принято всего"
+
+msgid "Total Sent"
+msgstr "Отправлено всего"
 
 msgid "Total allowed network usage per day for devices in this profile. When the quota is reached, access is blocked until midnight. Enter 0 for unlimited."
 msgstr "Суммарное разрешенное время работы в сети в день для устройств этого профиля. По исчерпании лимита доступ блокируется до полуночи. Введите 0 для отсутствия ограничений."
@@ -10633,6 +10720,9 @@ msgstr "Транспорты для гонки подключений (напр�
 
 msgid "Transports to race (e.g. tcp, quic, h3_datagram, h2, ws)"
 msgstr "Транспорты для гонки подключений (например: tcp, quic, h3_datagram, h2, ws)"
+
+msgid "Trim RAM Caches"
+msgstr "Очистить кэши RAM"
 
 msgid "Trust Tailscale peers (100.64.0.0/10 and fd7a:115c:a1e0::/48) to open the Web UI on port 1680 without a password or token. In Auto mode this is active only when a Tailscale interface, firewall zone, or Tailscale node is configured on the router."
 msgstr "Доверять узлам подсети Tailscale (100.64.0.0/10 и fd7a:115c:a1e0::/48) для входа в веб-интерфейс на порту 1680 без пароля и токена. В режиме Авто работает только при наличии интерфейса Tailscale, зоны файрвола или настроенного узла Tailscale на роутере."
@@ -11207,6 +11297,9 @@ msgstr "Версии"
 msgid "Via"
 msgstr "Через"
 
+msgid "Via Tunnels"
+msgstr "Через туннели"
+
 msgid "Via country.is"
 msgstr "Через country.is"
 
@@ -11780,6 +11873,9 @@ msgstr "пре-релиз"
 msgid "quarantine"
 msgstr "карантин"
 
+msgid "req."
+msgstr "зап."
+
 msgid "rndsni (Random same-length ASCII SNI)"
 msgstr "rndsni (случайный ASCII SNI той же длины)"
 
@@ -11797,6 +11893,9 @@ msgstr "server_port должен быть числом от 1 до 65535"
 
 msgid "servers"
 msgstr "серверов"
+
+msgid "sess."
+msgstr "сесс."
 
 msgid "sites"
 msgstr "сайтов"
@@ -11830,6 +11929,9 @@ msgstr "Бинарный файл tachyon-core не установлен на р
 
 msgid "tachyon-core memory caches trimmed"
 msgstr "Кэши памяти и неактивные буферы tachyon-core очищены"
+
+msgid "tachyon-core memory usage, DNS tables state and outbound activity"
+msgstr "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
 
 msgid "timeout"
 msgstr "таймаут"
@@ -11894,15 +11996,6 @@ msgstr "Auto"
 msgid "Авто (по названию)"
 msgstr "Auto (by name)"
 
-msgid "Активен (Core)"
-msgstr "Активен (Core)"
-
-msgid "Активные направления маршрутизации (Outbounds)"
-msgstr "Активные направления маршрутизации (Outbounds)"
-
-msgid "Активные сессии"
-msgstr "Активные сессии"
-
 msgid "Белый — #ffffff"
 msgstr "White — #ffffff"
 
@@ -11912,14 +12005,8 @@ msgstr "Cyan (Teal) — #155e75"
 msgid "Бирюзовый — #67e8f9"
 msgstr "Cyan — #67e8f9"
 
-msgid "Бортовой самописец (Flight Recorder)"
-msgstr "Бортовой самописец (Flight Recorder)"
-
 msgid "Быстрый выбор палитры"
 msgstr "Quick color palette"
-
-msgid "Восстановить основные"
-msgstr "Восстановить основные"
 
 msgid "Выберите цвет текста из базового набора или укажите свой HEX/CSS-цвет (пусто — авто-палитра)"
 msgstr "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)"
@@ -11942,24 +12029,6 @@ msgstr "Slate"
 msgid "Графитовый — #334155"
 msgstr "Slate (Dark Gray) — #334155"
 
-msgid "Группы балансировки и резерва"
-msgstr "Группы балансировки и резерва"
-
-msgid "Группы балансировки не настроены"
-msgstr "Группы балансировки не настроены"
-
-msgid "Живая телеметрия потока данных за 60 секунд и распределение маршрутов"
-msgstr "Живая телеметрия потока данных за 60 секунд и распределение маршрутов"
-
-msgid "Журнал бортового самописца пуст"
-msgstr "Журнал бортового самописца пуст"
-
-msgid "Защита контура и Бортовой самописец"
-msgstr "Защита контура и Бортовой самописец"
-
-msgid "Защищено"
-msgstr "Защищено"
-
 msgid "Золотистый — #fcd34d"
 msgstr "Amber Gold — #fcd34d"
 
@@ -11969,20 +12038,11 @@ msgstr "Emerald"
 msgid "Изумрудный (Зелёный) — #065f46"
 msgstr "Emerald (Green) — #065f46"
 
-msgid "Клиенты в пуле"
-msgstr "Клиенты в пуле"
-
-msgid "Контроль утечек, статус отказоустойчивости и журнал завершённых сессий"
-msgstr "Контроль утечек, статус отказоустойчивости и журнал завершённых сессий"
-
 msgid "Красный"
 msgstr "Red"
 
 msgid "Красный — #7f1d1d"
 msgstr "Red — #7f1d1d"
-
-msgid "Кэш DNS"
-msgstr "Кэш DNS"
 
 msgid "Лавандовый — #c4b5fd"
 msgstr "Lavender — #c4b5fd"
@@ -11990,44 +12050,14 @@ msgstr "Lavender — #c4b5fd"
 msgid "Мятно-зелёный — #6ee7b7"
 msgstr "Mint Green — #6ee7b7"
 
-msgid "На резерве"
-msgstr "На резерве"
-
-msgid "Нагрузка RAM"
-msgstr "Нагрузка RAM"
-
 msgid "Нажмите на готовый стиль бейджа или выберите произвольные цвета пипеткой"
 msgstr "Click a ready-made badge theme or use the color pickers to set background and text colors"
-
-msgid "Напрямую"
-msgstr "Напрямую"
-
-msgid "Нет накопленной статистики по направлениям"
-msgstr "Нет накопленной статистики по направлениям"
-
-msgid "Норма (Normal)"
-msgstr "Норма (Normal)"
 
 msgid "Оранж"
 msgstr "Orange"
 
 msgid "Оранжевый — #7c2d12"
 msgstr "Orange — #7c2d12"
-
-msgid "Отключён"
-msgstr "Отключён"
-
-msgid "Отправлено всего"
-msgstr "Отправлено всего"
-
-msgid "Очистить"
-msgstr "Очистить"
-
-msgid "Очистить кэши RAM"
-msgstr "Очистить кэши RAM"
-
-msgid "Перепроверить маршруты"
-msgstr "Перепроверить маршруты"
 
 msgid "Персиковый — #fdba74"
 msgstr "Peach Orange — #fdba74"
@@ -12038,29 +12068,11 @@ msgstr "Text"
 msgid "Пипетка фона"
 msgstr "Background"
 
-msgid "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
-msgstr "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
-
 msgid "Предпросмотр:"
 msgstr "Preview:"
 
 msgid "Префикс"
 msgstr "Prefix"
-
-msgid "Принято всего"
-msgstr "Принято всего"
-
-msgid "Пропускная способность и баланс трафика"
-msgstr "Пропускная способность и баланс трафика"
-
-msgid "Пул устройств"
-msgstr "Пул устройств"
-
-msgid "Ресурсы ядра, DNS-кэши и узлы"
-msgstr "Ресурсы ядра, DNS-кэши и узлы"
-
-msgid "Риск утечки"
-msgstr "Риск утечки"
 
 msgid "Розовый"
 msgstr "Rose"
@@ -12077,17 +12089,11 @@ msgstr "Light Pink — #f9a8d4"
 msgid "Светло-серый — #e2e8f0"
 msgstr "Light Silver — #e2e8f0"
 
-msgid "Свободно ОЗУ"
-msgstr "Свободно ОЗУ"
-
 msgid "Синий"
 msgstr "Blue"
 
 msgid "Синий (Индиго) — #1e3a8a"
 msgstr "Blue (Indigo) — #1e3a8a"
-
-msgid "Таблица FakeIP"
-msgstr "Таблица FakeIP"
 
 msgid "Фиолет"
 msgstr "Purple"
@@ -12103,9 +12109,6 @@ msgstr "Prefix background color"
 
 msgid "Циан"
 msgstr "Cyan"
-
-msgid "Через туннели"
-msgstr "Через туннели"
 
 msgid "Янтарный (Золотой) — #78350f"
 msgstr "Amber (Gold) — #78350f"
@@ -12157,6 +12160,114 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Fake SNI (Белый список РФ / Custom)"
+msgstr "Фейковый SNI (Белый список РФ / Свой)"
+
+msgid "Reverse DNS"
+msgstr "Обратный DNS (PTR)"
+
+msgid "Sudoku (не реализован)"
+msgstr "Sudoku (не реализован)"
+
+msgid "Активен (Core)"
+msgstr "Активен (Core)"
+
+msgid "Активные направления маршрутизации (Outbounds)"
+msgstr "Активные направления маршрутизации (Outbounds)"
+
+msgid "Активные сессии"
+msgstr "Активные сессии"
+
+msgid "Бортовой самописец (Flight Recorder)"
+msgstr "Бортовой самописец (Flight Recorder)"
+
+msgid "Восстановить основные"
+msgstr "Восстановить основные"
+
+msgid "Группы балансировки и резерва"
+msgstr "Группы балансировки и резерва"
+
+msgid "Группы балансировки не настроены"
+msgstr "Группы балансировки не настроены"
+
+msgid "Живая телеметрия потока данных за 60 секунд и распределение маршрутов"
+msgstr "Живая телеметрия потока данных за 60 секунд и распределение маршрутов"
+
+msgid "Журнал бортового самописца пуст"
+msgstr "Журнал бортового самописца пуст"
+
+msgid "Защита контура и Бортовой самописец"
+msgstr "Защита контура и Бортовой самописец"
+
+msgid "Защищено"
+msgstr "Защищено"
+
+msgid "Клиенты в пуле"
+msgstr "Клиенты в пуле"
+
+msgid "Контроль утечек, статус отказоустойчивости и журнал завершённых сессий"
+msgstr "Контроль утечек, статус отказоустойчивости и журнал завершённых сессий"
+
+msgid "Кэш DNS"
+msgstr "Кэш DNS"
+
+msgid "На резерве"
+msgstr "На резерве"
+
+msgid "Нагрузка RAM"
+msgstr "Нагрузка RAM"
+
+msgid "Напрямую"
+msgstr "Напрямую"
+
+msgid "Нет накопленной статистики по направлениям"
+msgstr "Нет накопленной статистики по направлениям"
+
+msgid "Норма (Normal)"
+msgstr "Норма (Normal)"
+
+msgid "Отключён"
+msgstr "Отключён"
+
+msgid "Отправлено всего"
+msgstr "Отправлено всего"
+
+msgid "Очистить"
+msgstr "Очистить"
+
+msgid "Очистить кэши RAM"
+msgstr "Очистить кэши RAM"
+
+msgid "Перепроверить маршруты"
+msgstr "Перепроверить маршруты"
+
+msgid "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
+msgstr "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
+
+msgid "Принято всего"
+msgstr "Принято всего"
+
+msgid "Пропускная способность и баланс трафика"
+msgstr "Пропускная способность и баланс трафика"
+
+msgid "Пул устройств"
+msgstr "Пул устройств"
+
+msgid "Ресурсы ядра, DNS-кэши и узлы"
+msgstr "Ресурсы ядра, DNS-кэши и узлы"
+
+msgid "Риск утечки"
+msgstr "Риск утечки"
+
+msgid "Свободно ОЗУ"
+msgstr "Свободно ОЗУ"
+
+msgid "Таблица FakeIP"
+msgstr "Таблица FakeIP"
+
+msgid "Через туннели"
+msgstr "Через туннели"
 
 msgid "AI Network Engineer & Desync Synthesizer"
 msgstr "ИИ-анализатор маршрутов и генератор профилей Desync"

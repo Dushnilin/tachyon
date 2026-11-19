@@ -4484,6 +4484,7 @@ export function renderSectionInspectorModalContent(
                 upSpeed: bwData?.up,
               },
               connectionRates,
+              section,
             ),
           }),
         ])
@@ -4840,6 +4841,7 @@ export function renderSectionAccordionBody(
                 upSpeed: bwData?.up,
               },
               connectionRates,
+              section,
             ),
           }),
         ])
@@ -4999,6 +5001,7 @@ async function renderSectionsWidget(forceImmediate = false) {
           upSpeed: bwData?.up,
         },
         connectionRates,
+        sec,
       ),
     isTestingAllSections,
     onTestAllSections: () => {
@@ -5345,6 +5348,42 @@ function renderConnectionsWidget() {
   }, container);
 }
 
+const GENERIC_OUTBOUND_TAGS = new Set([
+  'direct',
+  'direct-out',
+  'block',
+  'block-out',
+  'bypass',
+  'bypass-out',
+  'reject',
+  'dns-out',
+]);
+
+function collectSectionOwnedTags(section?: Tachyon.OutboundGroup): Set<string> {
+  const tags = new Set<string>();
+  if (!section) return tags;
+  const pushTag = (raw?: string) => {
+    const normalized = String(raw || '')
+      .trim()
+      .toLowerCase();
+    if (normalized && !GENERIC_OUTBOUND_TAGS.has(normalized)) {
+      tags.add(normalized);
+    }
+  };
+  pushTag(section.code);
+  for (const ob of section.outbounds || []) {
+    if (!ob) continue;
+    pushTag(ob.code);
+    for (const child of ob.urlTestInfo?.outbounds || []) {
+      pushTag(child?.code);
+    }
+    for (const child of ob.priorityInfo?.outbounds || []) {
+      pushTag(child?.code);
+    }
+  }
+  return tags;
+}
+
 export function getSectionConnectionStats(
   sectionName: string,
   totalProxySections: number,
@@ -5356,16 +5395,33 @@ export function getSectionConnectionStats(
     upSpeed?: number;
   },
   rates: ReadonlyMap<string, TrafficSample> = new Map(),
+  section?: Tachyon.OutboundGroup,
 ) {
   const target = (sectionName || '').toLowerCase();
   const outbound = `${target}-out`;
+  const selectorTag = `sel-${target}`;
+  const balancerPrefix = `bal-${target}-`;
+  const desyncSecTag = `desync-sec-${target}`;
+  const tailscaleSecTag = `tailscale-sec-${target}`;
   const urltestPrefix = `${target}-urltest-`;
   const priorityPrefix = `${target}-priority-`;
   const outboundRule = `route(${outbound})`;
   const targetRule = `route(${target})`;
+  const selectorRule = `route(${selectorTag})`;
+  const desyncSecRule = `route(${desyncSecTag})`;
+  const tailscaleSecRule = `route(${tailscaleSecTag})`;
   const ruleSetPrefix = `rule_set=${target}-`;
   const bracketPrefix = `[${target}-`;
   const spacePrefix = ` ${target}-`;
+  const sectionOwnedTags = collectSectionOwnedTags(section);
+
+  const isOtherSectionGroupTag = (chain: string): boolean =>
+    (chain.startsWith('sel-') && chain !== selectorTag) ||
+    (chain.startsWith('bal-') && !chain.startsWith(balancerPrefix)) ||
+    (chain.startsWith('desync-sec-') && chain !== desyncSecTag) ||
+    (chain.startsWith('tailscale-sec-') && chain !== tailscaleSecTag) ||
+    (chain.includes('-urltest-') && !chain.startsWith(urltestPrefix)) ||
+    (chain.includes('-priority-') && !chain.startsWith(priorityPrefix));
 
   const matchesTarget = (c: ConnectionTrafficSample): boolean => {
     const rawChains = Array.isArray(c.chains)
@@ -5373,16 +5429,31 @@ export function getSectionConnectionStats(
       : Array.isArray((c as any).metadata?.chains)
         ? (c as any).metadata.chains
         : [];
-    let matched = false;
+    let matchedDirectSection = false;
+    let matchedOwnedLeaf = false;
+    let ownedByOtherSectionGroup = false;
     rawChains.forEach((rawTag: unknown) => {
       const chain = String(rawTag).toLowerCase();
-      matched ||=
+      if (
         chain === target ||
         chain === outbound ||
+        chain === selectorTag ||
+        chain === desyncSecTag ||
+        chain === tailscaleSecTag ||
+        chain.startsWith(balancerPrefix) ||
         chain.startsWith(urltestPrefix) ||
-        chain.startsWith(priorityPrefix);
+        chain.startsWith(priorityPrefix)
+      ) {
+        matchedDirectSection = true;
+      } else if (isOtherSectionGroupTag(chain)) {
+        ownedByOtherSectionGroup = true;
+      }
+      if (sectionOwnedTags.has(chain)) {
+        matchedOwnedLeaf = true;
+      }
     });
-    if (matched) return true;
+    if (matchedDirectSection) return true;
+    if (matchedOwnedLeaf && !ownedByOtherSectionGroup) return true;
 
     const ruleStr = String(
       (c as any).rule || (c as any).rulePayload || '',
@@ -5391,11 +5462,21 @@ export function getSectionConnectionStats(
       ruleStr &&
       (ruleStr.includes(outboundRule) ||
         ruleStr.includes(targetRule) ||
+        ruleStr.includes(selectorRule) ||
+        ruleStr.includes(desyncSecRule) ||
+        ruleStr.includes(tailscaleSecRule) ||
         ruleStr.includes(ruleSetPrefix) ||
         ruleStr.includes(bracketPrefix) ||
         ruleStr.includes(spacePrefix))
     ) {
       return true;
+    }
+    if (ruleStr && !ownedByOtherSectionGroup && sectionOwnedTags.size > 0) {
+      for (const ownedTag of sectionOwnedTags) {
+        if (ruleStr.includes(`route(${ownedTag})`)) {
+          return true;
+        }
+      }
     }
     return false;
   };
@@ -5548,6 +5629,9 @@ export async function renderSectionDashboardWidgets() {
     for (const rowNode of rowMetricsNodes) {
       const secName =
         rowNode.getAttribute('data-section-row-metrics') || 'main';
+      const matchedSec = sectionsWithCustomLatencies.find(
+        (s) => s.sectionName === secName || s.code === secName,
+      );
       const stats = getSectionConnectionStats(
         secName,
         totalSectionCount,
@@ -5559,6 +5643,7 @@ export async function renderSectionDashboardWidgets() {
           upSpeed,
         },
         connectionRates,
+        matchedSec,
       );
       const totalEl = rowNode.querySelector<HTMLElement>(
         '[data-row-metric="session-total"]',
@@ -5568,6 +5653,13 @@ export async function renderSectionDashboardWidgets() {
           (stats.download || 0) + (stats.upload || 0),
         );
         if (totalEl.textContent !== nextTotal) totalEl.textContent = nextTotal;
+        const trafficParent = totalEl.parentElement;
+        if (trafficParent?.hasAttribute('title')) {
+          const nextTitle = `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`;
+          if (trafficParent.getAttribute('title') !== nextTitle) {
+            trafficParent.setAttribute('title', nextTitle);
+          }
+        }
       }
       const downEl = rowNode.querySelector<HTMLElement>(
         '[data-row-metric="session-down"]',
@@ -5631,6 +5723,9 @@ export async function renderSectionDashboardWidgets() {
     routesToRender.forEach((route, idx) => {
       const card = existingCards[idx];
       const sectionName = route.sectionName || 'main';
+      const matchedSec = sectionsWithCustomLatencies.find(
+        (s) => s.sectionName === sectionName || s.code === sectionName,
+      );
       const stats = getSectionConnectionStats(
         sectionName,
         totalProxySections,
@@ -5642,6 +5737,7 @@ export async function renderSectionDashboardWidgets() {
           upSpeed: bandwidth.up,
         },
         connectionRates,
+        matchedSec,
       );
 
       const downPill = card.querySelector<HTMLElement>(
@@ -5767,6 +5863,9 @@ export async function renderSectionDashboardWidgets() {
   const widgets = routesToRender.map((route) => {
     const sectionName = route.sectionName || 'main';
     const sectionDisplayName = route.sectionDisplayName || sectionName;
+    const matchedSec = sectionsWithCustomLatencies.find(
+      (s) => s.sectionName === sectionName || s.code === sectionName,
+    );
     const stats = getSectionConnectionStats(
       sectionName,
       totalProxySections,
@@ -5778,6 +5877,7 @@ export async function renderSectionDashboardWidgets() {
         upSpeed: bandwidth.up,
       },
       connectionRates,
+      matchedSec,
     );
 
     const latencyClass =

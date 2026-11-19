@@ -9348,6 +9348,192 @@ fn apply_settings_tcp_profile(outbounds: &mut [Value], endpoints: &mut [Value], 
     }
 }
 
+fn parse_xhttp_int_bound(raw: &str, allow_neg_one: bool) -> Option<i64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let min_val = if allow_neg_one { -1 } else { 0 };
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return (n >= min_val).then_some(n);
+    }
+    if let Ok(f) = trimmed.parse::<f64>()
+        && f.is_finite()
+        && f >= (min_val as f64) - 0.5
+        && f <= (i64::MAX / 2) as f64
+    {
+        let n = f.round() as i64;
+        return (n >= min_val).then_some(n);
+    }
+    None
+}
+
+fn normalize_xhttp_range_value(val: &mut Value, allow_neg_one: bool) {
+    let min_val = if allow_neg_one { -1 } else { 0 };
+    match val {
+        Value::Number(n) => {
+            if n.as_i64().is_none()
+                && n.as_u64().is_none()
+                && let Some(f) = n.as_f64()
+                && f.is_finite()
+                && f >= (min_val as f64) - 0.5
+                && f <= (i64::MAX / 2) as f64
+            {
+                let i = f.round() as i64;
+                if i >= min_val {
+                    *val = json!(i);
+                }
+            }
+        }
+        Value::String(s) => {
+            let trimmed = s.trim().to_string();
+            if let Some(i) = parse_xhttp_int_bound(&trimmed, allow_neg_one) {
+                *val = json!(i.to_string());
+            } else if let Some(rel_idx) = trimmed.get(1..).and_then(|tail| tail.find('-')) {
+                let split_at = 1 + rel_idx;
+                let left = &trimmed[..split_at];
+                let right = &trimmed[split_at + 1..];
+                if let (Some(a), Some(b)) = (
+                    parse_xhttp_int_bound(left, allow_neg_one),
+                    parse_xhttp_int_bound(right, allow_neg_one),
+                ) {
+                    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+                    *val = json!(format!("{lo}-{hi}"));
+                }
+            }
+        }
+        Value::Object(obj) => {
+            let parse_bound_val = |v: &Value| -> Option<i64> {
+                if let Some(i) = v.as_i64() {
+                    return (i >= min_val).then_some(i);
+                }
+                if let Some(u) = v.as_u64() {
+                    return i64::try_from(u).ok();
+                }
+                if let Some(f) = v.as_f64()
+                    && f.is_finite()
+                    && f >= (min_val as f64) - 0.5
+                    && f <= (i64::MAX / 2) as f64
+                {
+                    let i = f.round() as i64;
+                    return (i >= min_val).then_some(i);
+                }
+                v.as_str()
+                    .and_then(|raw| parse_xhttp_int_bound(raw, allow_neg_one))
+            };
+            if let (Some(from_v), Some(to_v)) = (
+                obj.get("from").and_then(parse_bound_val),
+                obj.get("to").and_then(parse_bound_val),
+            ) {
+                let (lo, hi) = if from_v <= to_v {
+                    (from_v, to_v)
+                } else {
+                    (to_v, from_v)
+                };
+                *val = if lo == hi {
+                    json!(lo.to_string())
+                } else {
+                    json!(format!("{lo}-{hi}"))
+                };
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_xhttp_int_value(val: &mut Value) {
+    match val {
+        Value::Number(n) => {
+            if n.as_i64().is_none()
+                && n.as_u64().is_none()
+                && let Some(f) = n.as_f64()
+                && f.is_finite()
+                && f >= -0.5
+                && f <= (i64::MAX / 2) as f64
+            {
+                let i = f.round() as i64;
+                if i >= 0 {
+                    *val = json!(i);
+                }
+            }
+        }
+        Value::String(s) => {
+            if let Some(i) = parse_xhttp_int_bound(s, false) {
+                *val = json!(i);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
+    for key in [
+        "sc_max_each_post_bytes",
+        "scMaxEachPostBytes",
+        "sc_min_posts_interval_ms",
+        "scMinPostsIntervalMs",
+        "x_padding_bytes",
+        "xPaddingBytes",
+        "sc_max_concurrent_posts",
+        "scMaxConcurrentPosts",
+        "session_length",
+        "max_concurrency",
+        "maxConcurrency",
+        "max_connections",
+        "maxConnections",
+        "c_max_reuse_times",
+        "cMaxReuseTimes",
+        "h_max_request_times",
+        "hMaxRequestTimes",
+        "h_max_reusable_secs",
+        "hMaxReusableSecs",
+    ] {
+        if let Some(v) = obj.get_mut(key) {
+            normalize_xhttp_range_value(v, false);
+        }
+    }
+    for key in ["sc_stream_up_server_secs", "scStreamUpServerSecs"] {
+        if let Some(v) = obj.get_mut(key) {
+            normalize_xhttp_range_value(v, true);
+        }
+    }
+    for key in [
+        "sc_max_buffered_posts",
+        "scMaxBufferedPosts",
+        "h_keep_alive_period",
+        "hKeepAlivePeriod",
+    ] {
+        if let Some(v) = obj.get_mut(key) {
+            normalize_xhttp_int_value(v);
+        }
+    }
+    for nested_key in [
+        "extra",
+        "xmux",
+        "download_settings",
+        "downloadSettings",
+        "xhttp_settings",
+        "xhttpSettings",
+        "transport",
+    ] {
+        if let Some(Value::Object(nested)) = obj.get_mut(nested_key) {
+            sanitize_xhttp_object(nested);
+        }
+    }
+}
+
+fn sanitize_xhttp_transports(outbounds: &mut [Value]) {
+    for ob in outbounds {
+        if let Some(tr) = ob.get_mut("transport").and_then(Value::as_object_mut)
+            && tr.get("type").and_then(Value::as_str).is_some_and(|t| {
+                t.eq_ignore_ascii_case("xhttp") || t.eq_ignore_ascii_case("splithttp")
+            })
+        {
+            sanitize_xhttp_object(tr);
+        }
+    }
+}
+
 /// Move client definitions into the native endpoint schema before deduplication.
 fn move_wireguard_outbounds_to_endpoints(outbounds: &mut Vec<Value>, endpoints: &mut Vec<Value>) {
     for mut outbound in std::mem::take(outbounds) {
@@ -10439,6 +10625,7 @@ pub fn compile_core_config_with_wan6(
         move_wireguard_outbounds_to_endpoints(&mut outbounds, &mut endpoints);
         share_wireguard_client_outbounds(&mut outbounds, &mut endpoints);
     }
+    sanitize_xhttp_transports(&mut outbounds);
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
 
     // Built-in `direct` and `block` outbounds
@@ -17770,5 +17957,44 @@ config timeserver 'ntp'
             .expect("amnezia wireguard endpoint");
         assert!(amz_ep.get("persistent_keepalive_interval").is_none());
         assert_eq!(amz_ep["peers"][0]["persistent_keepalive_interval"], 25);
+    }
+
+    #[test]
+    fn test_sanitize_xhttp_float_and_string_ranges() {
+        let mut outbounds = vec![json!({
+            "type": "vless",
+            "tag": "vless-xhttp",
+            "transport": {
+                "type": "xhttp",
+                "mode": "auto",
+                "path": "/",
+                "sc_max_each_post_bytes": "1000000.0",
+                "sc_min_posts_interval_ms": 30.0,
+                "sc_stream_up_server_secs": "-1.0",
+                "x_padding_bytes": "100.0-1000.0",
+                "sc_max_buffered_posts": 30.0,
+                "sc_max_concurrent_posts": "16384-65536",
+                "extra": {
+                    "scMaxEachPostBytes": 1000000.0,
+                    "xmux": {
+                        "maxConcurrency": { "from": 16.0, "to": 32.0 },
+                        "hKeepAlivePeriod": 60.0
+                    }
+                }
+            }
+        })];
+
+        sanitize_xhttp_transports(&mut outbounds);
+
+        let tr = &outbounds[0]["transport"];
+        assert_eq!(tr["sc_max_each_post_bytes"], "1000000");
+        assert_eq!(tr["sc_min_posts_interval_ms"].as_i64(), Some(30));
+        assert_eq!(tr["sc_stream_up_server_secs"], "-1");
+        assert_eq!(tr["x_padding_bytes"], "100-1000");
+        assert_eq!(tr["sc_max_buffered_posts"].as_i64(), Some(30));
+        assert_eq!(tr["sc_max_concurrent_posts"], "16384-65536");
+        assert_eq!(tr["extra"]["scMaxEachPostBytes"].as_i64(), Some(1_000_000));
+        assert_eq!(tr["extra"]["xmux"]["maxConcurrency"], "16-32");
+        assert_eq!(tr["extra"]["xmux"]["hKeepAlivePeriod"].as_i64(), Some(60));
     }
 }
