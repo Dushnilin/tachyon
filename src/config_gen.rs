@@ -4192,6 +4192,12 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             out.push((tag, val));
         }
         "wireguard" | "awg" => {
+            if src.wg_endpoint.trim().is_empty()
+                && src.wg_private_key.trim().is_empty()
+                && src.wg_peer_public_key.trim().is_empty()
+            {
+                return Vec::new();
+            }
             let tag = format!("wg-{}", src.id);
             let (host, port) = split_host_port(&src.wg_endpoint, 51820)
                 .unwrap_or_else(|| ("127.0.0.1".to_string(), 51820));
@@ -4532,14 +4538,12 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     out.push((node.tag, node.outbound_json));
                 }
             }
-            if out.is_empty() {
+            if out.is_empty() && !src.fptn_access_token.trim().is_empty() {
                 let tag = format!("fptn-{}", src.id);
                 let mut obj = Map::new();
                 obj.insert("type".into(), json!("fptn"));
                 obj.insert("tag".into(), json!(tag));
-                if !src.fptn_access_token.trim().is_empty() {
-                    obj.insert("token".into(), json!(src.fptn_access_token.trim()));
-                }
+                obj.insert("token".into(), json!(src.fptn_access_token.trim()));
                 if !sni_val.is_empty() {
                     obj.insert("sni".into(), json!(sni_val));
                 }
@@ -4590,7 +4594,7 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
         }
         "vless" | "vmess" | "trojan" | "shadowsocks" | "ss" | "hysteria2" | "tuic" | "socks"
         | "http" | "ssh" | "direct"
-            if !src.server.is_empty() || src.source_type == "direct" =>
+            if !src.server.trim().is_empty() || src.source_type == "direct" =>
         {
             let tag = format!("{}-{}", src.source_type, src.id);
             let proto = if src.source_type == "ss" {
@@ -4601,8 +4605,8 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             let mut obj = Map::new();
             obj.insert("type".into(), json!(proto));
             obj.insert("tag".into(), json!(tag));
-            if !src.server.is_empty() {
-                obj.insert("server".into(), json!(src.server));
+            if !src.server.trim().is_empty() {
+                obj.insert("server".into(), json!(src.server.trim()));
             }
             if src.server_port > 0 {
                 obj.insert("server_port".into(), json!(src.server_port));
@@ -4682,13 +4686,18 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             out.push((tag, Value::Object(obj)));
         }
         "anytls" | "naive" | "mieru" | "snell" | "sudoku" | "masque" | "openconnect"
-        | "shadowtls" | "trusttunnel" | "tewfai" | "tor" | "openvpn" => {
+        | "shadowtls" | "trusttunnel" | "tewfai" | "tor" | "openvpn"
+            if !src.server.trim().is_empty() || src.source_type == "tor" =>
+        {
+            if src.source_type == "mieru" && src.server_port == 0 && src.server_ports.is_empty() {
+                return Vec::new();
+            }
             let tag = format!("{}-{}", src.source_type, src.id);
             let mut obj = Map::new();
             obj.insert("type".into(), json!(src.source_type));
             obj.insert("tag".into(), json!(tag));
-            if !src.server.is_empty() {
-                obj.insert("server".into(), json!(src.server));
+            if !src.server.trim().is_empty() {
+                obj.insert("server".into(), json!(src.server.trim()));
             }
             if src.server_port > 0 {
                 obj.insert("server_port".into(), json!(src.server_port));
@@ -4743,14 +4752,14 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             }
             out.push((tag, Value::Object(obj)));
         }
-        "interface" => {
+        "interface" if !src.interface_name.trim().is_empty() => {
             let tag = format!("iface-{}", src.id);
             out.push((
                 tag.clone(),
                 json!({
                     "type": "direct",
                     "tag": tag,
-                    "bind_interface": src.interface_name,
+                    "bind_interface": src.interface_name.trim(),
                 }),
             ));
         }
@@ -15758,6 +15767,86 @@ config timeserver 'ntp'
         assert_eq!(ob["server_ports"], json!(["20100-20110"]));
         assert_eq!(ob["multiplexing"], "MULTIPLEXING_HIGH");
         assert!(ob.get("server_port").is_none());
+    }
+
+    #[test]
+    fn test_incomplete_sources_skipped_without_invalid_outbounds() {
+        let empty_mieru = OutboundSource {
+            id: "MeiruTest".to_string(),
+            enabled: true,
+            source_type: "mieru".to_string(),
+            ..Default::default()
+        };
+        assert!(build_source_outbounds(&empty_mieru).is_empty());
+
+        let mieru_no_ports = OutboundSource {
+            id: "MeiruNoPort".to_string(),
+            enabled: true,
+            source_type: "mieru".to_string(),
+            server: "203.0.113.10".to_string(),
+            ..Default::default()
+        };
+        assert!(build_source_outbounds(&mieru_no_ports).is_empty());
+
+        let valid_mieru = OutboundSource {
+            id: "MeiruOk".to_string(),
+            enabled: true,
+            source_type: "mieru".to_string(),
+            server: " 203.0.113.10 ".to_string(),
+            server_port: 8443,
+            ..Default::default()
+        };
+        let mieru_out = build_source_outbounds(&valid_mieru);
+        assert_eq!(mieru_out.len(), 1);
+        assert_eq!(mieru_out[0].1["server"], "203.0.113.10");
+        assert_eq!(mieru_out[0].1["server_port"], 8443);
+
+        for st in ["anytls", "naive", "snell"] {
+            let empty_srv = OutboundSource {
+                id: format!("empty_{st}"),
+                enabled: true,
+                source_type: st.to_string(),
+                server: "   ".to_string(),
+                ..Default::default()
+            };
+            assert!(
+                build_source_outbounds(&empty_srv).is_empty(),
+                "expected empty outbounds for {st} without server"
+            );
+        }
+
+        let tor_src = OutboundSource {
+            id: "tor1".to_string(),
+            enabled: true,
+            source_type: "tor".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(build_source_outbounds(&tor_src).len(), 1);
+
+        let empty_fptn = OutboundSource {
+            id: "fptn_empty".to_string(),
+            enabled: true,
+            source_type: "fptn".to_string(),
+            ..Default::default()
+        };
+        assert!(build_source_outbounds(&empty_fptn).is_empty());
+
+        let empty_iface = OutboundSource {
+            id: "iface_empty".to_string(),
+            enabled: true,
+            source_type: "interface".to_string(),
+            interface_name: "   ".to_string(),
+            ..Default::default()
+        };
+        assert!(build_source_outbounds(&empty_iface).is_empty());
+
+        let empty_wg = OutboundSource {
+            id: "wg_empty".to_string(),
+            enabled: true,
+            source_type: "wireguard".to_string(),
+            ..Default::default()
+        };
+        assert!(build_source_outbounds(&empty_wg).is_empty());
     }
 
     #[test]

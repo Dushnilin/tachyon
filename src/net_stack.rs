@@ -845,12 +845,12 @@ pub fn compile_nftables_ruleset_with_wan6(
     if intercept_embedded_ts {
         let _ = writeln!(
             out,
-            "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+            "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
         );
         if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
             let _ = writeln!(
                 out,
-                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
             );
         }
     }
@@ -861,7 +861,7 @@ pub fn compile_nftables_ruleset_with_wan6(
         if store.settings.fakeip_enabled && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
             let _ = writeln!(
                 out,
-                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
             );
         }
         let _ = writeln!(out, "        meta l4proto icmpv6 return");
@@ -893,12 +893,12 @@ pub fn compile_nftables_ruleset_with_wan6(
 
     let _ = writeln!(
         out,
-        "        meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+        "        meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
     );
     if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
         let _ = writeln!(
             out,
-            "        meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+            "        meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
         );
     }
 
@@ -969,27 +969,27 @@ pub fn compile_nftables_ruleset_with_wan6(
     if intercept_embedded_ts {
         let _ = writeln!(
             out,
-            "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+            "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
     let _ = writeln!(out, "        ip daddr @localv4 return");
     if store.settings.fakeip_enabled {
         let _ = writeln!(
             out,
-            "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+            "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
     if ipv6_active {
         if store.settings.fakeip_enabled {
             let _ = writeln!(
                 out,
-                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
             );
         }
         if intercept_embedded_ts {
             let _ = writeln!(
                 out,
-                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
             );
         }
         let _ = writeln!(out, "        ip6 daddr @localv6 return");
@@ -1007,7 +1007,7 @@ pub fn compile_nftables_ruleset_with_wan6(
     if store.settings.route_router_traffic {
         let _ = writeln!(
             out,
-            "        meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+            "        meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
     let _ = writeln!(out, "    }}");
@@ -2775,6 +2775,8 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
         } else {
             let _ = Command::new("nft")
                 .args(["delete", "table", "inet", "TachyonTable"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .status()
                 .await;
         }
@@ -3288,6 +3290,8 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
     }
     let _ = Command::new("nft")
         .args(["delete", "table", "inet", "TachyonTable"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .await;
     cleanup_policy_rules().await;
@@ -3437,14 +3441,16 @@ mod tests {
         store.settings.torrserver_direct_enabled = true;
         let nft = compile_nftables_ruleset(&store);
         assert!(nft.contains("table inet TachyonTable"));
-        assert!(nft.contains("tproxy ip to 127.0.0.1:1602 meta mark set 0x04000000 accept"));
+        assert!(
+            nft.contains("tproxy ip to 127.0.0.1:1602 meta mark set 0x04000000 counter accept")
+        );
         assert!(nft.contains("udp dport 443 reject"));
         assert!(nft.contains("th dport { 8090 } return"));
         assert!(nft.contains("chain mangle_output"));
         assert!(nft.contains("iifname \"lo\" meta mark != 0x10000000 return"));
         assert!(nft.contains("meta mark & 0x14000000 != 0 return"));
         assert!(nft.contains(
-            "ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000 accept"
+            "ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000 counter accept"
         ));
         assert!(!nft.contains("socket transparent"));
         assert!(!nft.contains("queue num"));
@@ -3458,13 +3464,13 @@ mod tests {
         let nft = compile_nftables_ruleset(&store);
         assert!(nft.contains("iifname \"lo\" meta mark != 0x10000000 return"));
         assert!(nft.contains("meta mark & 0x14000000 != 0 return"));
-        assert!(nft.contains("tproxy ip6 to [::1]:1602 meta mark set 0x04000000 accept"));
+        assert!(nft.contains("tproxy ip6 to [::1]:1602 meta mark set 0x04000000 counter accept"));
         assert!(nft.contains(
-            "ip6 daddr fc00::/18 meta l4proto { tcp, udp } meta mark set 0x10000000 accept"
+            "ip6 daddr fc00::/18 meta l4proto { tcp, udp } meta mark set 0x10000000 counter accept"
         ));
-        assert!(
-            nft.contains("\n        meta l4proto { tcp, udp } meta mark set 0x10000000 accept\n")
-        );
+        assert!(nft.contains(
+            "\n        meta l4proto { tcp, udp } meta mark set 0x10000000 counter accept\n"
+        ));
     }
 
     #[test]
@@ -3542,7 +3548,7 @@ mod tests {
         assert!(out_cgnat < out_localv4);
         assert!(
             mangle_output.contains(&format!(
-                "ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+                "ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
             ))
         );
 

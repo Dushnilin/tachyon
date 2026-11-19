@@ -4750,26 +4750,106 @@ fn dns_probe_succeeded(probe: &Value) -> bool {
             .is_some_and(|a| !a.is_empty())
 }
 
-fn parse_nft_table_summary(text: &str) -> (bool, bool, usize, u64) {
-    let mut rules_count = 0usize;
-    let mut mangle_packets = 0u64;
-    let has_mangle = text.contains("chain prerouting") || text.contains("chain mangle");
-    let has_output = text.contains("chain mangle_output") || text.contains("chain output");
-    for line in text.lines() {
-        let t = line.trim();
-        if t.contains("meta mark") || t.contains("tproxy") || t.contains("counter") {
-            rules_count += 1;
-        }
-        if let Some(pos) = t.find("packets ") {
-            let rest_p = &t[pos + 8..];
-            if let Some(num) = rest_p.split_whitespace().next()
-                && let Ok(p) = num.parse::<u64>()
-            {
-                mangle_packets = mangle_packets.saturating_add(p);
-            }
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+struct NftTableSummary {
+    has_mangle: bool,
+    mangle_rules_count: usize,
+    mangle_counter_rules: usize,
+    mangle_packets: u64,
+    has_output: bool,
+    mangle_output_rules_count: usize,
+    mangle_output_counter_rules: usize,
+    mangle_output_packets: u64,
+    has_proxy: bool,
+    proxy_rules_count: usize,
+    proxy_counter_rules: usize,
+    proxy_packets: u64,
+}
+
+fn extract_nft_packets(line: &str) -> u64 {
+    if let Some(pos) = line.find("packets ") {
+        let rest_p = &line[pos + 8..];
+        if let Some(num) = rest_p.split_whitespace().next()
+            && let Ok(p) = num.parse::<u64>()
+        {
+            return p;
         }
     }
-    (has_mangle, has_output, rules_count, mangle_packets)
+    0
+}
+
+fn parse_nft_table_summary(text: &str) -> NftTableSummary {
+    let mut summary = NftTableSummary::default();
+    let mut current_chain = "";
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with("chain ") {
+            let chain_name = t
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("")
+                .trim_end_matches('{');
+            current_chain = match chain_name {
+                "prerouting" | "mangle" => {
+                    summary.has_mangle = true;
+                    "mangle"
+                }
+                "mangle_output" | "output" => {
+                    summary.has_output = true;
+                    "mangle_output"
+                }
+                "proxy" => {
+                    summary.has_proxy = true;
+                    "proxy"
+                }
+                _ => "",
+            };
+            continue;
+        }
+        if t == "}" {
+            current_chain = "";
+            continue;
+        }
+        if current_chain.is_empty() || t.is_empty() || t.starts_with("type ") || t.starts_with('#')
+        {
+            continue;
+        }
+        let has_counter = t.contains("counter");
+        let pkts = extract_nft_packets(t);
+        match current_chain {
+            "mangle" => {
+                summary.mangle_rules_count += 1;
+                if has_counter {
+                    summary.mangle_counter_rules += 1;
+                }
+                summary.mangle_packets = summary.mangle_packets.saturating_add(pkts);
+                if t.contains("tproxy") {
+                    summary.has_proxy = true;
+                    summary.proxy_rules_count += 1;
+                    if has_counter {
+                        summary.proxy_counter_rules += 1;
+                    }
+                    summary.proxy_packets = summary.proxy_packets.saturating_add(pkts);
+                }
+            }
+            "mangle_output" => {
+                summary.mangle_output_rules_count += 1;
+                if has_counter {
+                    summary.mangle_output_counter_rules += 1;
+                }
+                summary.mangle_output_packets = summary.mangle_output_packets.saturating_add(pkts);
+            }
+            "proxy" => {
+                summary.proxy_rules_count += 1;
+                if has_counter {
+                    summary.proxy_counter_rules += 1;
+                }
+                summary.proxy_packets = summary.proxy_packets.saturating_add(pkts);
+            }
+            _ => {}
+        }
+    }
+    summary
 }
 
 fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
@@ -5473,39 +5553,65 @@ async fn execute_pure_rust_tachyon_cli(
             let table_active = net_stack::check_nft_table_active().await;
             let nft_installed =
                 Path::new("/usr/sbin/nft").exists() || Path::new("/sbin/nft").exists();
-            let mut rules_count = 0usize;
-            let mut mangle_packets = 0u64;
-            let mut has_mangle = false;
-            let mut has_output = false;
-            if let Ok(Ok(out)) = tokio::time::timeout(
-                Duration::from_secs(3),
-                Command::new("nft")
-                    .args(["list", "table", "inet", "TachyonTable"])
-                    .output(),
-            )
-            .await
-                && out.status.success()
-            {
-                let text = String::from_utf8_lossy(&out.stdout);
-                (has_mangle, has_output, rules_count, mangle_packets) =
-                    parse_nft_table_summary(&text);
+            if d.settings.proxy_mode == "tun" || d.settings.proxy_mode == "socks" {
+                json!({
+                    "not_applicable": 1,
+                    "installed": nft_installed || table_active,
+                    "table_present": table_active,
+                    "table_exist": i32::from(table_active),
+                    "table_name": "inet TachyonTable",
+                })
+            } else {
+                let mut summary = NftTableSummary::default();
+                if let Ok(Ok(out)) = tokio::time::timeout(
+                    Duration::from_secs(3),
+                    Command::new("nft")
+                        .args(["list", "table", "inet", "TachyonTable"])
+                        .output(),
+                )
+                .await
+                    && out.status.success()
+                {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    summary = parse_nft_table_summary(&text);
+                }
+                let rules_mangle_exist =
+                    table_active && summary.has_mangle && summary.mangle_rules_count > 0;
+                let rules_mangle_counters = rules_mangle_exist
+                    && (summary.mangle_packets > 0 || summary.mangle_counter_rules > 0);
+                let rules_mangle_output_exist =
+                    table_active && summary.has_output && summary.mangle_output_rules_count > 0;
+                let output_has_marking =
+                    d.settings.fakeip_enabled || d.settings.route_router_traffic;
+                let rules_mangle_output_counters = rules_mangle_output_exist
+                    && (summary.mangle_output_packets > 0
+                        || summary.mangle_output_counter_rules > 0
+                        || !output_has_marking);
+                let rules_proxy_exist =
+                    table_active && summary.has_proxy && summary.proxy_rules_count > 0;
+                let rules_proxy_counters = rules_proxy_exist
+                    && (summary.proxy_packets > 0 || summary.proxy_counter_rules > 0);
+                json!({
+                    "installed": nft_installed || table_active,
+                    "table_present": table_active,
+                    "table_exist": i32::from(table_active),
+                    "table_name": "inet TachyonTable",
+                    "rules_mangle_exist": i32::from(rules_mangle_exist),
+                    "rules_mangle_counters": i32::from(rules_mangle_counters),
+                    "mangle_rules_count": summary.mangle_rules_count,
+                    "mangle_packets": summary.mangle_packets,
+                    "rules_mangle_output_exist": i32::from(rules_mangle_output_exist),
+                    "rules_mangle_output_counters": i32::from(rules_mangle_output_counters),
+                    "mangle_output_rules_count": summary.mangle_output_rules_count,
+                    "mangle_output_packets": summary.mangle_output_packets,
+                    "rules_proxy_exist": i32::from(rules_proxy_exist),
+                    "rules_proxy_counters": i32::from(rules_proxy_counters),
+                    "proxy_rules_count": summary.proxy_rules_count,
+                    "proxy_packets": summary.proxy_packets,
+                    "rules_other_mark_exist": 0,
+                    "rules": net_stack::compile_nftables_ruleset(&d),
+                })
             }
-            json!({
-                "installed": nft_installed || table_active,
-                "table_present": table_active,
-                "table_exist": i32::from(table_active),
-                "table_name": "inet TachyonTable",
-                "rules_mangle_exist": i32::from(table_active && has_mangle),
-                "rules_mangle_counters": i32::from(mangle_packets > 0),
-                "mangle_rules_count": rules_count,
-                "mangle_packets": mangle_packets,
-                "rules_mangle_output_exist": i32::from(table_active && has_output),
-                "rules_mangle_output_counters": i32::from(table_active && has_output && mangle_packets > 0),
-                "rules_proxy_exist": i32::from(table_active),
-                "rules_proxy_counters": i32::from(table_active && mangle_packets > 0),
-                "rules_other_mark_exist": 0,
-                "rules": net_stack::compile_nftables_ruleset(&d),
-            })
         }
         "check_inbounds_config" => json!({
             "success": true,
@@ -10792,12 +10898,30 @@ mod tests {
             &json!({"engine": {"ok": false, "addresses": []}})
         ));
 
-        let nft_sample = "table inet TachyonTable {\n\tchain prerouting {\n\t\tmeta mark 0x100 counter packets 42 bytes 1000\n\t}\n\tchain mangle_output {\n\t\ttype route hook output priority mangle;\n\t}\n}\n";
-        let (has_mangle, has_output, rules_cnt, pkts) = parse_nft_table_summary(nft_sample);
-        assert!(has_mangle);
-        assert!(has_output);
-        assert_eq!(rules_cnt, 1);
-        assert_eq!(pkts, 42);
+        let nft_sample = "table inet TachyonTable {\n\tchain prerouting {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n\t\tiifname \"br-lan\" ct direction reply counter packets 0 bytes 0 return comment \"tachyon-inbound-reply\"\n\t\tmeta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602 meta mark set 0x04000000 counter packets 150 bytes 12000 accept\n\t}\n\tchain mangle_output {\n\t\ttype route hook output priority mangle; policy accept;\n\t\tip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000 counter packets 7 bytes 420 accept\n\t}\n}\n";
+        let summary = parse_nft_table_summary(nft_sample);
+        assert!(summary.has_mangle);
+        assert!(summary.has_output);
+        assert!(summary.has_proxy);
+        assert_eq!(summary.mangle_rules_count, 2);
+        assert_eq!(summary.mangle_counter_rules, 2);
+        assert_eq!(summary.mangle_packets, 150);
+        assert_eq!(summary.mangle_output_rules_count, 1);
+        assert_eq!(summary.mangle_output_counter_rules, 1);
+        assert_eq!(summary.mangle_output_packets, 7);
+        assert_eq!(summary.proxy_rules_count, 1);
+        assert_eq!(summary.proxy_counter_rules, 1);
+        assert_eq!(summary.proxy_packets, 150);
+
+        let nft_no_counters = "table inet TachyonTable {\n\tchain prerouting {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n\t\tmeta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602 meta mark set 0x04000000 accept\n\t}\n\tchain mangle_output {\n\t\ttype route hook output priority mangle; policy accept;\n\t\tip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000 accept\n\t}\n}\n";
+        let summary_no_cnt = parse_nft_table_summary(nft_no_counters);
+        assert!(summary_no_cnt.has_mangle);
+        assert!(summary_no_cnt.has_output);
+        assert!(summary_no_cnt.has_proxy);
+        assert_eq!(summary_no_cnt.proxy_counter_rules, 0);
+        assert_eq!(summary_no_cnt.mangle_output_counter_rules, 0);
+        assert_eq!(summary_no_cnt.proxy_packets, 0);
+        assert_eq!(summary_no_cnt.mangle_output_packets, 0);
 
         assert!(fw4_line_matches_port(
             "\t\tmeta l4proto tcp th dport 8443 accept",
