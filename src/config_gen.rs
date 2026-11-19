@@ -9036,6 +9036,64 @@ fn apply_settings_tcp_profile(outbounds: &mut [Value], endpoints: &mut [Value], 
     }
 }
 
+/// Move client definitions into the native endpoint schema before deduplication.
+fn move_wireguard_outbounds_to_endpoints(outbounds: &mut Vec<Value>, endpoints: &mut Vec<Value>) {
+    for mut outbound in std::mem::take(outbounds) {
+        if outbound["type"] != "wireguard" {
+            outbounds.push(outbound);
+            continue;
+        }
+        let Some(endpoint) = outbound.as_object_mut() else {
+            continue;
+        };
+        if let Some(address) = endpoint.remove("local_address") {
+            endpoint.entry("address").or_insert(address);
+        }
+        if let Some(addresses) = endpoint.get_mut("address").and_then(Value::as_array_mut) {
+            for entry in addresses {
+                if let Some(ip) = entry
+                    .as_str()
+                    .and_then(|raw| raw.parse::<std::net::IpAddr>().ok())
+                {
+                    let prefix = if ip.is_ipv4() { 32 } else { 128 };
+                    *entry = json!(format!("{ip}/{prefix}"));
+                }
+            }
+        }
+
+        let mut legacy_peer = Map::new();
+        for (legacy, native) in [
+            ("server", "address"),
+            ("server_port", "port"),
+            ("peer_public_key", "public_key"),
+            ("pre_shared_key", "pre_shared_key"),
+            ("persistent_keepalive", "persistent_keepalive_interval"),
+            ("reserved", "reserved"),
+            ("allowed_ips", "allowed_ips"),
+        ] {
+            if let Some(value) = endpoint.remove(legacy) {
+                legacy_peer.insert(native.to_string(), value);
+            }
+        }
+        let peers = endpoint.entry("peers").or_insert_with(|| {
+            legacy_peer
+                .entry("allowed_ips")
+                .or_insert_with(|| json!(["0.0.0.0/0", "::/0"]));
+            json!([legacy_peer])
+        });
+        if let Some(peers) = peers.as_array_mut() {
+            for peer in peers.iter_mut().filter_map(Value::as_object_mut) {
+                for (legacy, native) in [("server", "address"), ("server_port", "port")] {
+                    if let Some(value) = peer.remove(legacy) {
+                        peer.entry(native).or_insert(value);
+                    }
+                }
+            }
+        }
+        endpoints.push(outbound);
+    }
+}
+
 fn share_wireguard_client_outbounds(outbounds: &mut Vec<Value>, endpoints: &mut Vec<Value>) {
     let mut first_by_options: HashMap<String, String> = HashMap::new();
     let mut retained_endpoints: Vec<Value> = Vec::with_capacity(endpoints.len());
@@ -9061,28 +9119,6 @@ fn share_wireguard_client_outbounds(outbounds: &mut Vec<Value>, endpoints: &mut 
         retained_endpoints.push(ep);
     }
     *endpoints = retained_endpoints;
-
-    for out in outbounds.iter_mut() {
-        if !is_shareable_wireguard_client(out) {
-            continue;
-        }
-        let tag = out
-            .get("tag")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let key = canonical_wireguard_json(out, true);
-        if let Some(first_tag) = first_by_options.get(&key) {
-            *out = json!({
-                "type": "selector",
-                "tag": tag,
-                "outbounds": [first_tag],
-                "default": first_tag
-            });
-        } else {
-            first_by_options.insert(key, tag);
-        }
-    }
 }
 
 fn is_usable_external_sub_host(raw: &str) -> bool {
@@ -10075,6 +10111,7 @@ pub fn compile_core_config_with_wan6(
     }
 
     if is_tachyon_core {
+        move_wireguard_outbounds_to_endpoints(&mut outbounds, &mut endpoints);
         share_wireguard_client_outbounds(&mut outbounds, &mut endpoints);
     }
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
@@ -16597,7 +16634,7 @@ config timeserver 'ntp'
             "tag": "WG-Alpha",
             "server": "198.51.100.10",
             "server_port": 51820,
-            "local_address": ["10.0.0.2/32"],
+            "local_address": ["10.0.0.2"],
             "private_key": "PRIV",
             "peer_public_key": "PUB"
         });
@@ -16668,10 +16705,23 @@ config timeserver 'ntp'
 
         let cfg = compile_core_config_with_wan6(&store, false).expect("compile config");
         let outs = cfg["outbounds"].as_array().unwrap();
-        let real_wg_count = outs.iter().filter(|o| o["type"] == "wireguard").count();
+        assert!(!outs.iter().any(|o| o["type"] == "wireguard"));
+        let endpoints = cfg["endpoints"].as_array().unwrap();
+        let clients: Vec<_> = endpoints
+            .iter()
+            .filter(|ep| ep["type"] == "wireguard")
+            .collect();
+        assert_eq!(clients.len(), 1, "identical WG clients share an endpoint");
+        assert_eq!(clients[0]["tag"], "WG-Alpha");
+        assert_eq!(clients[0]["address"], json!(["10.0.0.2/32"]));
         assert_eq!(
-            real_wg_count, 1,
-            "identical WG clients must share one WG outbound"
+            clients[0]["peers"],
+            json!([{
+                "address": "198.51.100.10",
+                "port": 51820,
+                "public_key": "PUB",
+                "allowed_ips": ["0.0.0.0/0", "::/0"]
+            }])
         );
         assert!(outs.iter().any(|o| {
             o["tag"] == "WG-Beta"
