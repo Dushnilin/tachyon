@@ -18249,11 +18249,23 @@ async function readSubnetListFile(service, snapshots) {
   if (!service) return [];
   if (_subnetListCache[service]) return _subnetListCache[service];
 
-  const paths = [
-    `/tmp/tachyon-core/rulesets/community-subnets-${service}.lst`,
-    `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
-    `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
-  ];
+  const communitySubnetAliases: Record<string, string> = {
+    antifilter_community: 'antifilter',
+    runetfreedom_blocked: 'ru_blocked',
+    runetfreedom_blocked_all: 'ru_blocked_all',
+    roscomvpn_whitelist: 'ru_whitelist',
+    roscomvpn_ru: 'ru_domains',
+  };
+  const canonical = communitySubnetAliases[service] || service;
+  const names = canonical !== service ? [service, canonical] : [service];
+  const paths: string[] = [];
+  for (const name of names) {
+    paths.push(`/tmp/tachyon-core/rulesets/community-subnets-${name}.lst`);
+  }
+  for (const name of names) {
+    paths.push(`/etc/tachyon/rulesets/community-subnets-${name}.lst`);
+    paths.push(`/usr/share/tachyon/rulesets/community-subnets-${name}.lst`);
+  }
 
   for (const p of paths) {
     try {

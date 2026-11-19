@@ -340,7 +340,12 @@ const COMMUNITY_SERVICES = {
 //   FakeIP-ing Discord IP-in-DNS-response causes tachyon-core to dial tcp for UDP QUIC sessions → i/o timeout.
 // - geoip_* lists from MetaCubeX/meta-rules-dat contain only ip_cidr ("subnets");
 // - geosite_* lists from MetaCubeX/meta-rules-dat contain only domains ("domains");
-// - external lists (github, twitch, ads_hagezi_pro, supercell) are domain-only ("domains").
+// - external lists (github, twitch, ads_hagezi_pro, supercell) are domain-only ("domains");
+// - lists with kind == "domains" that publish companion IPv4/IPv6 CIDR files
+//   (refilter, antifilter, ru_blocked, ru_blocked_all, ru_domains, ru_whitelist,
+//   fastly, games_all, netflix, origin, pubg, tor) stay classified as "domains"
+//   so DNS rules remain domain-only, while route.rules attach their companion
+//   subnets as a separate `builtin-<id>-subnets-ruleset` when community_subnets is enabled.
 //
 // Referencing a rule-set with ip_cidr in a DNS rule without match_response: true
 // is treated as a deprecated legacy address filter and rejected if query_type is present in DNS configuration.

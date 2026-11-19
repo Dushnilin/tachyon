@@ -2951,6 +2951,67 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
     };
 }
 
+function ensure_community_subnet_ruleset(config, service) {
+    service = as_string(service);
+    let canonical = (type(rule_config.canonical_community_subnet_service) == "function")
+        ? rule_config.canonical_community_subnet_service(service)
+        : service;
+    let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder || "/tmp/tachyon-core/rulesets";
+    let raw_candidates = [
+        folder + "/community-subnets-" + service + ".lst",
+        folder + "/community-subnets-" + canonical + ".lst",
+        "/tmp/tachyon-core/rulesets/community-subnets-" + service + ".lst",
+        "/tmp/tachyon-core/rulesets/community-subnets-" + canonical + ".lst",
+        "/etc/tachyon/rulesets/community-subnets-" + service + ".lst",
+        "/etc/tachyon/rulesets/community-subnets-" + canonical + ".lst"
+    ];
+    let seen_paths = {};
+    let content = null;
+    for (let path in raw_candidates) {
+        if (seen_paths[path])
+            continue;
+        seen_paths[path] = true;
+        let data = fs.readfile(path);
+        if (data != null && data != "") {
+            content = data;
+            break;
+        }
+    }
+    if (content == null)
+        return null;
+
+    let cidrs = [];
+    for (let line in split(as_string(content), "\n")) {
+        line = trim(replace(as_string(line), /\r/g, ""));
+        if (line != "" && substr(line, 0, 1) != "#" && match(line, /^[0-9a-fA-F:.]+(\/[0-9]+)?$/) && !match(line, /\.$/)) {
+            if (index(line, "/") < 0)
+                line = line + (index(line, ":") >= 0 ? "/128" : "/32");
+            push(cidrs, line);
+        }
+    }
+    if (length(cidrs) == 0)
+        return null;
+
+    let sub_tag = "builtin-" + canonical + "-subnets-ruleset";
+    let json_path = folder + "/community-subnets-" + canonical + "-ruleset.json";
+    if (!ruleset_registered(config, sub_tag)) {
+        common.ensure_dir(folder);
+        common.write_json_file(json_path, {
+            version: 3,
+            rules: [ { ip_cidr: cidrs } ]
+        });
+        if (config.route.rule_set == null)
+            config.route.rule_set = [];
+        push(config.route.rule_set, {
+            type: "local",
+            tag: sub_tag,
+            format: "source",
+            path: json_path
+        });
+    }
+    return sub_tag;
+}
+
 function domain_ip_list_ruleset_tag(section_name) {
     return ruleset_tag(section_name, "lists", "");
 }
@@ -4606,20 +4667,33 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
         if (ntw != "")
             sub.time_window = ntw;
         let nrs = [];
+        let neg_subnets_enabled = community_subnets_enabled(neg);
         for (let comm in list_option(neg, "community_lists")) {
-            let ens = ensure_community_ruleset(config, section_name, as_string(comm));
-            if (ens && ens.tag)
+            let comm_str = as_string(comm);
+            let ens = ensure_community_ruleset(config, section_name, comm_str);
+            if (ens && ens.tag && index(nrs, ens.tag) < 0)
                 push(nrs, ens.tag);
+            if (neg_subnets_enabled && ens && ens.kind == "domains" && rule_config.community_service_has_subnet_list(comm_str)) {
+                let sub_tag = ensure_community_subnet_ruleset(config, comm_str);
+                if (sub_tag != null && index(nrs, sub_tag) < 0)
+                    push(nrs, sub_tag);
+            }
         }
         for (let rset in list_option(neg, "rule_set")) {
             let ens = ensure_custom_ruleset(config, as_string(rset), section_name);
-            if (ens && ens.tag)
+            if (ens && ens.tag && index(nrs, ens.tag) < 0)
                 push(nrs, ens.tag);
         }
         for (let rset_sub in list_option(neg, "rule_set_with_subnets")) {
-            let ens = ensure_custom_ruleset(config, as_string(rset_sub), section_name);
-            if (ens && ens.tag)
+            let ref_str = as_string(rset_sub);
+            let ens = ensure_custom_ruleset(config, ref_str, section_name);
+            if (ens && ens.tag && index(nrs, ens.tag) < 0)
                 push(nrs, ens.tag);
+            if (ens && runtime_rulesets.is_community(ref_str) && ens.kind == "domains" && rule_config.community_service_has_subnet_list(ref_str)) {
+                let sub_tag = ensure_community_subnet_ruleset(config, ref_str);
+                if (sub_tag != null && index(nrs, sub_tag) < 0)
+                    push(nrs, sub_tag);
+            }
         }
         if (length(nrs) > 0)
             sub.rule_set = single_or_array(nrs);
@@ -4682,6 +4756,10 @@ function add_combined_route_for_clause(config, section) {
             } else if (service == "telegram") {
                 for (let cidr in load_community_subnet_cidrs(community, null))
                     push(ip_cidr, cidr);
+            } else if (ensured.kind == "domains" && rule_config.community_service_has_subnet_list(service)) {
+                let sub_tag = ensure_community_subnet_ruleset(config, service);
+                if (sub_tag != null && index(rule_set_tags, sub_tag) < 0)
+                    push(rule_set_tags, sub_tag);
             } else if (ensured == null || !ensured.tag) {
                 for (let cidr in load_community_subnet_cidrs(community, "exclude_cloudflare"))
                     push(ip_cidr, cidr);
@@ -4713,6 +4791,11 @@ function add_combined_route_for_clause(config, section) {
                 push(dns_non_domain_query_tags, ensured.tag);
         } else if (ensured.kind == "mixed")
             push(dns_response_rule_set_tags, ensured.tag);
+        if (runtime_rulesets.is_community(ref_str) && ensured.kind == "domains" && rule_config.community_service_has_subnet_list(ref_str)) {
+            let sub_tag = ensure_community_subnet_ruleset(config, ref_str);
+            if (sub_tag != null && index(rule_set_tags, sub_tag) < 0)
+                push(rule_set_tags, sub_tag);
+        }
     }
     add_domain_ip_list_ruleset(
         config,

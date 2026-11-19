@@ -100,7 +100,22 @@ const BUILTIN_SUBNET_URLS = {
     vps_clouds: [ getenv("SUBNETS_VPS_CLOUDS") || TACHYON_LISTS_SUBNETS_BASE + "/vps_clouds.lst" ],
     et_spamhaus_block: [ getenv("SUBNETS_ET_SPAMHAUS_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/et_spamhaus_block.lst" ],
     hagezi_tif_ip_block: [ getenv("SUBNETS_HAGEZI_TIF_IP_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/hagezi_tif_ip_block.lst" ],
-    botnet_attackers_ip_block: [ getenv("SUBNETS_BOTNET_ATTACKERS_IP_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/botnet_attackers_ip_block.lst" ]
+    botnet_attackers_ip_block: [ getenv("SUBNETS_BOTNET_ATTACKERS_IP_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/botnet_attackers_ip_block.lst" ],
+    antifilter: [ getenv("SUBNETS_ANTIFILTER") || TACHYON_LISTS_SUBNETS_BASE + "/antifilter.lst" ],
+    refilter: [ getenv("SUBNETS_REFILTER") || TACHYON_LISTS_SUBNETS_BASE + "/refilter.lst" ],
+    ru_blocked: [ getenv("SUBNETS_RU_BLOCKED") || TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked.lst" ],
+    ru_blocked_all: [ getenv("SUBNETS_RU_BLOCKED_ALL") || TACHYON_LISTS_SUBNETS_BASE + "/ru_blocked_all.lst" ],
+    ru_domains: [ getenv("SUBNETS_RU_DOMAINS") || TACHYON_LISTS_SUBNETS_BASE + "/ru_domains.lst" ],
+    ru_whitelist: [ getenv("SUBNETS_RU_WHITELIST") || TACHYON_LISTS_SUBNETS_BASE + "/ru_whitelist.lst" ],
+    fastly: [ getenv("SUBNETS_FASTLY") || TACHYON_LISTS_SUBNETS_BASE + "/fastly.lst" ],
+    games_all: [ getenv("SUBNETS_GAMES_ALL") || TACHYON_LISTS_SUBNETS_BASE + "/games_all.lst" ],
+    geoip_cn: [ getenv("SUBNETS_GEOIP_CN") || TACHYON_LISTS_SUBNETS_BASE + "/geoip_cn.lst" ],
+    geoip_ru: [ getenv("SUBNETS_GEOIP_RU") || TACHYON_LISTS_SUBNETS_BASE + "/geoip_ru.lst" ],
+    geoip_us: [ getenv("SUBNETS_GEOIP_US") || TACHYON_LISTS_SUBNETS_BASE + "/geoip_us.lst" ],
+    netflix: [ getenv("SUBNETS_NETFLIX") || TACHYON_LISTS_SUBNETS_BASE + "/netflix.lst" ],
+    origin: [ getenv("SUBNETS_ORIGIN") || TACHYON_LISTS_SUBNETS_BASE + "/origin.lst" ],
+    pubg: [ getenv("SUBNETS_PUBG") || TACHYON_LISTS_SUBNETS_BASE + "/pubg.lst" ],
+    tor: [ getenv("SUBNETS_TOR") || TACHYON_LISTS_SUBNETS_BASE + "/tor.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
@@ -137,6 +152,21 @@ let array_or_empty = common.array_or_empty;
 let option = common.option;
 let bool_option = common.bool_option;
 let list_option = common.list_option;
+
+function builtin_subnet_urls_for_service(service) {
+    let key = as_string(service);
+    let direct = BUILTIN_SUBNET_URLS[key];
+    if (type(direct) == "array")
+        return direct;
+    if (rule_config == null)
+        rule_config = require("config.rule");
+    if (type(rule_config.canonical_community_subnet_service) == "function") {
+        let canonical = rule_config.canonical_community_subnet_service(key);
+        if (canonical != "" && canonical != key && type(BUILTIN_SUBNET_URLS[canonical]) == "array")
+            return BUILTIN_SUBNET_URLS[canonical];
+    }
+    return null;
+}
 
 function read_stdin() {
     let data = fs.readfile("/dev/stdin");
@@ -3537,6 +3567,8 @@ function import_all_preset_lists(settings) {
     let ok = true;
 
     for (let service, urls in BUILTIN_SUBNET_URLS) {
+        if (as_string(service) == "geoip_us")
+            continue;
         if (type(urls) != "array")
             continue;
 
@@ -3641,6 +3673,11 @@ let builtin_subnets_need_reload = false;
 let list_update_seen_community_srs = null;
 let list_update_seen_builtin_subnets = null;
 
+function section_community_subnets_enabled(section) {
+    let raw = lc(trim(option(section, "community_subnets", "1")));
+    return raw != "0" && raw != "false" && raw != "no" && raw != "off";
+}
+
 function import_builtin_subnets_from_rule(section, settings, apply_nft) {
     if (!bool_option(section, "enabled", true))
         return true;
@@ -3650,12 +3687,20 @@ function import_builtin_subnets_from_rule(section, settings, apply_nft) {
     let should_apply_nft = apply_nft == null ? true : (apply_nft != false);
     let ok = true;
     let section_services = [];
-    for (let s in connections.community_lists(section))
+    let subnet_services = {};
+    let subnets_enabled = section_community_subnets_enabled(section);
+    for (let s in connections.community_lists(section)) {
         if (!(s in section_services)) push(section_services, s);
+        if (subnets_enabled) subnet_services[s] = true;
+    }
     for (let s in connections.rule_sets(section))
         if (core_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
-    for (let s in connections.rule_sets_with_subnets(section))
-        if (core_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
+    for (let s in connections.rule_sets_with_subnets(section)) {
+        if (core_rulesets_module().is_community(s)) {
+            if (!(s in section_services)) push(section_services, s);
+            subnet_services[s] = true;
+        }
+    }
     for (let cc in connections.geoip_country_list(section)) {
         let ip_list = "geoip_" + as_string(cc);
         if (core_rulesets_module().is_community(ip_list) && !(ip_list in section_services))
@@ -3676,7 +3721,9 @@ function import_builtin_subnets_from_rule(section, settings, apply_nft) {
                 list_update_seen_community_srs[service] = true;
         }
 
-        let urls = BUILTIN_SUBNET_URLS[service];
+        if (subnet_services[service] != true)
+            continue;
+        let urls = builtin_subnet_urls_for_service(service);
         if (type(urls) != "array")
             continue;
 
@@ -5000,7 +5047,7 @@ function fixture_subscription_update_section_due_status(path, section_name_value
 }
 
 function print_builtin_subnet_urls(service) {
-    for (let url in array_or_empty(BUILTIN_SUBNET_URLS[as_string(service)]))
+    for (let url in array_or_empty(builtin_subnet_urls_for_service(as_string(service))))
         print(url, "\n");
 }
 

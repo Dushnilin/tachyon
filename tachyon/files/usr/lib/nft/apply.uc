@@ -5107,10 +5107,17 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
         if (service == "") continue;
         if (!rule_config.community_service_has_subnet_list(service)) continue;
 
+        let canonical = (type(rule_config.canonical_community_subnet_service) == "function")
+            ? rule_config.canonical_community_subnet_service(service)
+            : service;
         let candidates = [
-            "/tmp/tachyon-core/rulesets/community-subnets-" + service + ".lst",
-            "/etc/tachyon/rulesets/community-subnets-" + service + ".lst"
+            "/tmp/tachyon-core/rulesets/community-subnets-" + service + ".lst"
         ];
+        if (canonical != "" && canonical != service)
+            push(candidates, "/tmp/tachyon-core/rulesets/community-subnets-" + canonical + ".lst");
+        push(candidates, "/etc/tachyon/rulesets/community-subnets-" + service + ".lst");
+        if (canonical != "" && canonical != service)
+            push(candidates, "/etc/tachyon/rulesets/community-subnets-" + canonical + ".lst");
 
         let loaded = false;
         for (let path in candidates) {

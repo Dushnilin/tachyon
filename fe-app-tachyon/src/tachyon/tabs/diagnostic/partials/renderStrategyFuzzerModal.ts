@@ -704,6 +704,7 @@ export function renderStrategyFuzzerModal(
         _('45 min — Deep (Recommended)'),
       ),
       E('option', { value: '3600' }, _('60 min — Exhaustive')),
+      E('option', { value: '0' }, _('Unlimited — Wait for all tests')),
     ],
   );
   timeoutSelect.addEventListener('change', () => {

@@ -5774,11 +5774,20 @@ function trace_check_list_reference(reference, target_val, is_ip, owner_sec_id) 
     }
     if (substr(reference, 0, 7) != "http://" && substr(reference, 0, 8) != "https://" && substr(reference, 0, 1) != "/") {
         let comm = lc(reference);
+        let rule_cfg = require("config.rule");
+        let canonical = (type(rule_cfg.canonical_community_subnet_service) == "function")
+            ? rule_cfg.canonical_community_subnet_service(comm)
+            : comm;
         for (let folder in folders) {
             if (is_ip) {
                 let lst_hit = trace_match_plain_file(target_val, folder + "/community-subnets-" + comm + ".lst", true);
                 if (lst_hit != null)
                     return lst_hit;
+                if (canonical != "" && canonical != comm) {
+                    let alias_hit = trace_match_plain_file(target_val, folder + "/community-subnets-" + canonical + ".lst", true);
+                    if (alias_hit != null)
+                        return alias_hit;
+                }
             }
             for (let ext in [ ".trs", ".srs" ]) {
                 if (trace_match_binary_ruleset_file(folder + "/community-" + comm + ext, target_val, is_ip))

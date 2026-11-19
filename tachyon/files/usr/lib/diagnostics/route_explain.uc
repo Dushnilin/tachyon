@@ -536,13 +536,28 @@ const KNOWN_COMMUNITY_SUBNETS = {
     botnet_attackers_ip_block: [ "1.12.55.80/32", "1.12.70.212/32", "1.12.229.231/32" ]
 };
 
+function canonical_community_subnet_name(community_name) {
+    let rule_cfg = require("config.rule");
+    if (type(rule_cfg.canonical_community_subnet_service) == "function")
+        return rule_cfg.canonical_community_subnet_service(community_name);
+    return as_string(community_name);
+}
+
 function find_local_community_ruleset_file(community_name) {
-    let candidates = [
-        "/tmp/tachyon-core/rulesets/community-" + community_name + ".trs",
-        "/etc/tachyon/rulesets/community-" + community_name + ".trs",
-        "/tmp/tachyon-core/rulesets/community-" + community_name + ".srs",
-        "/etc/tachyon/rulesets/community-" + community_name + ".srs"
-    ];
+    let canonical = canonical_community_subnet_name(community_name);
+    let names = (canonical != "" && canonical != community_name) ? [ community_name, canonical ] : [ community_name ];
+    let folders = [];
+    for (let env_dir in [ getenv("TMP_RULESET_FOLDER"), getenv("TACHYON_RULESETS_DIR"), "/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets", "/usr/share/tachyon/rulesets" ]) {
+        if (env_dir != null && trim(env_dir) != "" && index(folders, env_dir) < 0)
+            push(folders, env_dir);
+    }
+    let candidates = [];
+    for (let dir in folders) {
+        for (let name in names) {
+            push(candidates, dir + "/community-" + name + ".trs");
+            push(candidates, dir + "/community-" + name + ".srs");
+        }
+    }
     for (let p in candidates) {
         let st = fs.stat(p);
         if (st != null && st.type == "file" && (st.size || 0) > 0)
@@ -587,7 +602,7 @@ function load_cached_json_ruleset(path) {
     path = as_string(path);
     if (path == "")
         return null;
-    if (_json_ruleset_cache[path] !== undefined)
+    if (exists(_json_ruleset_cache, path))
         return _json_ruleset_cache[path];
     let parsed = common.read_json_file(path);
     _json_ruleset_cache[path] = (type(parsed) == "object" && type(parsed.rules) == "array") ? parsed : null;
@@ -763,27 +778,37 @@ function check_community_domain_match(target_domain, community_name) {
 
 function check_community_ip_match(target_ip, community_name) {
     community_name = lc(trim(as_string(community_name)));
-    let subnets = KNOWN_COMMUNITY_SUBNETS[community_name];
+    let canonical = canonical_community_subnet_name(community_name);
+    let subnets = KNOWN_COMMUNITY_SUBNETS[community_name] || KNOWN_COMMUNITY_SUBNETS[canonical];
+    let target_is_v6 = index(target_ip, ":") >= 0;
     if (type(subnets) == "array") {
         for (let cidr in subnets) {
-            if (ipv4_in_cidr(target_ip, cidr)) {
+            let cidr_is_v6 = index(cidr, ":") >= 0;
+            if (target_is_v6 == cidr_is_v6 && (target_is_v6 ? ipv6_in_cidr(target_ip, cidr) : ipv4_in_cidr(target_ip, cidr))) {
                 return true;
             }
         }
     }
     // Also check local compiled ruleset list file if exists
-    let lst_candidates = [
-        "/tmp/tachyon-core/rulesets/community-subnets-" + community_name + ".lst",
-        "/etc/tachyon/rulesets/community-subnets-" + community_name + ".lst",
-        "/usr/share/tachyon/rulesets/community-subnets-" + community_name + ".lst"
-    ];
+    let names = (canonical != "" && canonical != community_name) ? [ community_name, canonical ] : [ community_name ];
+    let folders = [];
+    for (let env_dir in [ getenv("TMP_RULESET_FOLDER"), getenv("TACHYON_RULESETS_DIR"), "/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets", "/usr/share/tachyon/rulesets" ]) {
+        if (env_dir != null && trim(env_dir) != "" && index(folders, env_dir) < 0)
+            push(folders, env_dir);
+    }
+    let lst_candidates = [];
+    for (let dir in folders) {
+        for (let name in names)
+            push(lst_candidates, dir + "/community-subnets-" + name + ".lst");
+    }
     for (let subnets_file in lst_candidates) {
         let data = fs.readfile(subnets_file);
         if (data != null) {
             for (let line in split(as_string(data), "\n")) {
                 line = trim(line);
                 if (line != "" && index(line, "#") < 0) {
-                    if (ipv4_in_cidr(target_ip, line)) {
+                    let cidr_is_v6 = index(line, ":") >= 0;
+                    if (target_is_v6 == cidr_is_v6 && (target_is_v6 ? ipv6_in_cidr(target_ip, line) : ipv4_in_cidr(target_ip, line))) {
                         return true;
                     }
                 }
@@ -1305,7 +1330,20 @@ function evaluate_atomic_clause_match_inner(section, client_info, target_info, p
         }
 
         // Community subnets & custom subnet lists
-        let comm_subnets = parse_combined_items(section, [ "community_subnets", "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ]);
+        let comm_sub_raw = section.community_subnets;
+        let comm_sub_disabled = (type(comm_sub_raw) == "boolean" && !comm_sub_raw);
+        if (!comm_sub_disabled) {
+            let comm_sub_vals = parse_items_list(comm_sub_raw);
+            if (length(comm_sub_vals) == 1) {
+                let flag = lc(trim(as_string(comm_sub_vals[0])));
+                if (flag == "0" || flag == "false" || flag == "no" || flag == "off")
+                    comm_sub_disabled = true;
+            }
+        }
+        let comm_sub_keys = comm_sub_disabled
+            ? [ "rule_set", "rule_set_with_subnets", "domain_ip_lists" ]
+            : [ "community_subnets", "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ];
+        let comm_subnets = parse_combined_items(section, comm_sub_keys);
         for (let comm in comm_subnets) {
             if (check_custom_reference_match(target_info.host, comm, true) || check_community_ip_match(target_info.host, comm)) {
                 if (check_geo_filter_pass())

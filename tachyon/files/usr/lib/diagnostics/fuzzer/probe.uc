@@ -21,7 +21,11 @@ let command_success = common.command_success;
 
 const STATE_DIR = history.STATE_DIR;
 const DESYNC_PORT = 11090;
-const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
+let _raw_deadline = trim(as_string(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS")));
+let _lc_deadline = lc(_raw_deadline);
+const JOB_HARD_DEADLINE_SECONDS = (_raw_deadline == "0" || _lc_deadline == "unlimited" || _lc_deadline == "none")
+    ? 0
+    : ((int(_raw_deadline) != null && int(_raw_deadline) > 0) ? int(_raw_deadline) : 2700);
 
 function kill_pid_file(path) {
     fuzzer_runner.kill_pid_file(path);

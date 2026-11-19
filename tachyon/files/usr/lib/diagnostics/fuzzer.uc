@@ -32,7 +32,19 @@ const JOBS_DIR = STATE_DIR + "/fuzzer";
 const HISTORY_FILE = "/etc/tachyon/fuzzer_history.json";
 const FUZZER_FWMARK = "0x40000000";
 const FUZZER_OUTBOUND_MARK = getenv("NFT_OUTBOUND_MARK") || "0x08000000";
-const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
+
+function parse_fuzzer_deadline_seconds(raw_value, fallback) {
+    let s = trim(as_string(raw_value));
+    if (s == "")
+        return fallback;
+    let lower = lc(s);
+    if (s == "0" || lower == "unlimited" || lower == "none")
+        return 0;
+    let n = int(s);
+    return (n != null && n > 0) ? n : fallback;
+}
+
+const JOB_HARD_DEADLINE_SECONDS = parse_fuzzer_deadline_seconds(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS"), 2700);
 
 function log_fuzzer_message(message, level) {
     level = as_string(level || "warn");
@@ -316,7 +328,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
             save_fuzzer_state(state);
 
             let elapsed = clock()[0] - state.started_at;
-            if (elapsed > JOB_HARD_DEADLINE_SECONDS) {
+            if (JOB_HARD_DEADLINE_SECONDS > 0 && elapsed > JOB_HARD_DEADLINE_SECONDS) {
                 state.running = false;
                 state.error = sprintf("Hard deadline reached (%ds). Tested %d/%d strategies.", JOB_HARD_DEADLINE_SECONDS, i, total);
                 state.finished_at = clock()[0];
@@ -443,7 +455,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 save_fuzzer_state(state);
 
                 let elapsed = clock()[0] - state.started_at;
-                if (elapsed > JOB_HARD_DEADLINE_SECONDS) {
+                if (JOB_HARD_DEADLINE_SECONDS > 0 && elapsed > JOB_HARD_DEADLINE_SECONDS) {
                     break;
                 }
 
@@ -717,7 +729,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     let fuzzer_bin = LIB_DIR + "/diagnostics/fuzzer.uc";
     if (fs.stat(fuzzer_bin) == null) fuzzer_bin = "/usr/lib/tachyon/diagnostics/fuzzer.uc";
 
-    let deadline_override = int(timeout_seconds) || JOB_HARD_DEADLINE_SECONDS;
+    let deadline_override = parse_fuzzer_deadline_seconds(timeout_seconds, JOB_HARD_DEADLINE_SECONDS);
     let deadline_env = sprintf("TACHYON_JOB_HARD_DEADLINE_SECONDS=%d", deadline_override);
     let cmd = sprintf(
         "%s ucode -L %s %s worker %s %s %s %s %s %s %s",

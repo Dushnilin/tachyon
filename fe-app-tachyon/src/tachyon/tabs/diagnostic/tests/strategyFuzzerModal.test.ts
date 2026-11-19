@@ -555,4 +555,40 @@ describe('renderStrategyFuzzerModal', () => {
     expect(applyRpcSpy).not.toHaveBeenCalled();
     expect((globalThis as any).document.body.children.length).toBe(0);
   });
+
+  it('includes unlimited timeout option (0) and passes timeoutSeconds=0 to startFuzzer', async () => {
+    const startSpy = vi
+      .spyOn(TachyonShellMethods, 'startFuzzer')
+      .mockResolvedValue({
+        success: true,
+        data: { job_id: 'job_unlim_1' } as any,
+      });
+
+    renderStrategyFuzzerModal([
+      { id: 'yt_dpi', label: 'YouTube Desync', action: 'desync' },
+    ]);
+
+    const modalEl = mocks.showModal.mock.calls[0][1];
+    const selects = modalEl.querySelectorAll('select');
+    const timeoutSelect = selects.find((sel: any) =>
+      sel.options.some((opt: any) => opt.value === '3600'),
+    );
+    expect(timeoutSelect).toBeDefined();
+    expect(timeoutSelect.options.some((opt: any) => opt.value === '0')).toBe(
+      true,
+    );
+
+    timeoutSelect.value = '0';
+    timeoutSelect.dispatchEvent({ type: 'change' });
+
+    const buttons = modalEl.querySelectorAll('button');
+    const startBtn = buttons.find((b: any) =>
+      JSON.stringify(b).includes('Start Benchmark'),
+    );
+    startBtn.dispatchEvent({ type: 'click' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(startSpy.mock.calls[0][6]).toBe(0);
+  });
 });

@@ -334,8 +334,41 @@ let community_subnet_lists = {
     vps_clouds: true,
     et_spamhaus_block: true,
     hagezi_tif_ip_block: true,
-    botnet_attackers_ip_block: true
+    botnet_attackers_ip_block: true,
+    antifilter: true,
+    refilter: true,
+    ru_blocked: true,
+    ru_blocked_all: true,
+    ru_domains: true,
+    ru_whitelist: true,
+    fastly: true,
+    games_all: true,
+    geoip_cn: true,
+    geoip_ru: true,
+    geoip_us: true,
+    netflix: true,
+    origin: true,
+    pubg: true,
+    tor: true,
+    antifilter_community: true,
+    runetfreedom_blocked: true,
+    runetfreedom_blocked_all: true,
+    roscomvpn_whitelist: true,
+    roscomvpn_ru: true
 };
+
+let community_subnet_aliases = {
+    antifilter_community: "antifilter",
+    runetfreedom_blocked: "ru_blocked",
+    runetfreedom_blocked_all: "ru_blocked_all",
+    roscomvpn_whitelist: "ru_whitelist",
+    roscomvpn_ru: "ru_domains"
+};
+
+function canonical_community_subnet_service(value) {
+    let key = as_string(value);
+    return community_subnet_aliases[key] || key;
+}
 
 function community_service_has_subnet_list(value) {
     return community_subnet_lists[as_string(value)] == true;
@@ -372,6 +405,7 @@ return {
     legacy_condition_csv_value,
     rule_condition_csv_value,
     rule_ports_csv_value,
+    canonical_community_subnet_service,
     community_service_has_subnet_list,
     filter_community_subnet_lists_value,
     has_community_subnet_list

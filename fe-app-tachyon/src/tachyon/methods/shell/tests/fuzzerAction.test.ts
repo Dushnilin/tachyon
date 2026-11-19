@@ -80,6 +80,36 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     );
   });
 
+  it('starts fuzzer with unlimited timeout (0)', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        job_id: 'fuzz_unlim_1',
+        engine: 'desync',
+        target: 'youtube',
+        mode: 'presets',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.startFuzzer(
+      'desync',
+      'youtube',
+      '',
+      '',
+      '',
+      'presets',
+      0,
+    );
+    expect(res.success).toBe(true);
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ['fuzzer_start', 'desync', 'youtube', '', '', '', 'presets', '0'],
+      }),
+    );
+  });
+
   it('gets fuzzer status and results', async () => {
     mocks.executeShellCommand.mockResolvedValueOnce({
       stdout: JSON.stringify({

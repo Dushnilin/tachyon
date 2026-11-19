@@ -1342,8 +1342,10 @@ export const TachyonShellMethods = {
     else args.push('');
     if (customFile) args.push(customFile);
     else args.push('');
-    if (mode) args.push(mode);
-    if (timeoutSeconds) args.push(String(timeoutSeconds));
+    if (mode || timeoutSeconds !== undefined) args.push(mode || '');
+    if (timeoutSeconds !== undefined && timeoutSeconds !== null) {
+      args.push(String(timeoutSeconds));
+    }
 
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
