@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 01:51+0300\n"
-"PO-Revision-Date: 2026-11-19 01:51+0300\n"
+"POT-Creation-Date: 2026-11-20 12:51+0300\n"
+"PO-Revision-Date: 2026-11-20 12:51+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1010,6 +1010,9 @@ msgstr "Авто (кооперация с SQM/CAKE)"
 msgid "Auto (domain pool / ClientHello clone)"
 msgstr "Авто (пул доменов / клонирование ClientHello)"
 
+msgid "Auto (first working from test list below)"
+msgstr "Авто (первая рабочая из списка проверки ниже)"
+
 msgid "Auto (follow LuCI)"
 msgstr "Авто (как в LuCI)"
 
@@ -1082,8 +1085,8 @@ msgstr "Автоопределённые домены"
 msgid "Auto-detected domains"
 msgstr "Автоопределённые домены"
 
-msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
-msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
+msgid "Auto-detects domains unreachable directly and adds them to the selected target proxy section below (or the first working section from the test list). Block, Bypass, Direct, DNS, and Core Desync sections are never used."
+msgstr "Автоматически определяет недоступные напрямую домены и добавляет их в выбранную ниже целевую прокси-секцию (или в первую рабочую из списка проверки). Секции Block, Bypass, Direct, DNS и Core Desync не используются."
 
 msgid "Auto-failover of proxy sections"
 msgstr "Авто-failover прокси-секций"
@@ -1723,6 +1726,9 @@ msgstr "Выбрать файл Hosts..."
 
 msgid "Choose Preset Architecture"
 msgstr "Выберите шаблон архитектуры"
+
+msgid "Choose a specific proxy section where all detected domains will be added, or leave Auto to test the checked sections below top-to-bottom. Block, Bypass, Direct, DNS, and Core Desync sections are excluded."
+msgstr "Выберите конкретную прокси-секцию, в которую будут добавляться все найденные домены, либо оставьте Авто для проверки отмеченных секций сверху вниз. Секции Block, Bypass, Direct, DNS и Core Desync исключены."
 
 msgid "Choose a visual icon for this profile"
 msgstr "Выберите визуальную иконку для профиля"
@@ -3140,8 +3146,8 @@ msgstr "Домены и суффиксы"
 msgid "Domains and subdomains that should never be automatically proxied by Smart Detect (e.g. yandex.net, mail.ru, vk.com)."
 msgstr "Домены и поддомены, которые никогда не должны автоматически проксироваться Smart Detect (например, yandex.net, mail.ru, vk.com)."
 
-msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
-msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
+msgid "Domains automatically detected by Smart Detect for this proxy section or added via Telegram bot. You can manually edit or remove them here."
+msgstr "Домены, автоматически определённые Smart Detect для этой прокси-секции или добавленные через Telegram-бота. Здесь их можно отредактировать или удалить вручную."
 
 msgid "Domains excluded from this section even if matched by its domain lists or rules (useful e.g. with Block lists). Use full: for exact host, domain: or bare domain for suffix, keyword: for substring, regex: for regular expression."
 msgstr "Домены, исключённые из этой секции даже при совпадении с её списками или правилами (удобно, например, со списками блокировки). Используйте full: для точного хоста, domain: или голый домен для суффикса, keyword: для подстроки, regex: для регулярного выражения."
@@ -4234,6 +4240,9 @@ msgstr "Порт в firewall для WAN"
 
 msgid "Firewall status unavailable"
 msgstr "Статус файрвола недоступен"
+
+msgid "First priority section in Auto mode"
+msgstr "Приоритетная секция #1 в режиме Авто"
 
 msgid "Fix"
 msgstr "Исправить"
@@ -8996,8 +9005,8 @@ msgstr "Выберите экспортированный файл .tachyon-prof
 msgid "Select an intermediate section"
 msgstr "Выберите промежуточную секцию"
 
-msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
-msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
+msgid "Select and order proxy sections tested top-to-bottom when Target section is set to Auto. Non-tunnel sections (Block, Bypass, Direct, DNS, Core Desync) are excluded automatically."
+msgstr "Выберите и упорядочьте прокси-секции, которые проверяются сверху вниз в режиме Авто. Нетуннельные секции (Block, Bypass, Direct, DNS, Core Desync) исключаются автоматически."
 
 msgid "Select any connections from the Connections Pool (Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
 msgstr "Выберите подключения из пула (Desync, CSQTT/WDTT, подписки, AmneziaWG, FPTN, OpenVPN, WARP и др.). Порядок имеет значение: 2-й элемент используется как резервный при отказе 1-го. Секции маршрутизации применяются сверху вниз (первое совпадение): если отдельная секция CSQTT/WDTT включена выше Main_Route с пересекающимися условиями, она перехватит трафик раньше Main_Route."
@@ -10318,6 +10327,9 @@ msgstr "Целевой URL для проверки (например, https://ru
 
 msgid "Target endpoint reachable directly without packet desync."
 msgstr "Целевой узел доступен напрямую без десинхронизации пакетов."
+
+msgid "Target section for detected domains"
+msgstr "Целевая секция для найденных доменов"
 
 msgid "Teal"
 msgstr "Бирюзовый"
@@ -12160,6 +12172,15 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
+msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
+
+msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
+msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
+
+msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
+msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
 
 msgid "Fake SNI (Белый список РФ / Custom)"
 msgstr "Фейковый SNI (Белый список РФ / Свой)"

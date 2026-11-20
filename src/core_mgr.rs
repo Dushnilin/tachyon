@@ -68,9 +68,11 @@ pub struct CoreManager {
     proc: Mutex<Option<(Child, Instant)>>,
     reload_lock: Mutex<()>,
     sub_refresh_lock: Mutex<()>,
+    sub_last_attempt: Mutex<HashMap<String, i64>>,
     prev_totals: Mutex<Option<TrafficSampleBaseline>>,
     intentional_stop: AtomicBool,
     last_ipv6_resync_ts: PortableAtomicU64,
+    pub watchdog: Mutex<crate::watchdog::WatchdogState>,
 }
 
 impl CoreManager {
@@ -80,9 +82,11 @@ impl CoreManager {
             proc: Mutex::new(None),
             reload_lock: Mutex::new(()),
             sub_refresh_lock: Mutex::new(()),
+            sub_last_attempt: Mutex::new(HashMap::new()),
             prev_totals: Mutex::new(None),
             intentional_stop: AtomicBool::new(false),
             last_ipv6_resync_ts: PortableAtomicU64::new(0),
+            watchdog: Mutex::new(crate::watchdog::WatchdogState::default()),
         })
     }
 
@@ -834,22 +838,34 @@ impl CoreManager {
                     .filter_map(Value::as_str)
                     .any(|cand| cand == chosen);
                 if !in_pool {
-                    let default_cand = body
-                        .pointer(&format!("/proxies/{group}/default"))
-                        .and_then(Value::as_str)
-                        .filter(|def_tag| {
-                            all_arr
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .any(|cand| cand == *def_tag)
-                        });
-                    if let Some(fallback) =
-                        default_cand.or_else(|| all_arr.iter().filter_map(Value::as_str).next())
-                    {
-                        chosen = fallback.to_string();
+                    let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
+                    let telemetry_match = (!wanted_canon.is_empty()).then(|| {
+                        all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                            config_gen::strip_dynamic_server_telemetry(cand)
+                                .eq_ignore_ascii_case(&wanted_canon)
+                        })
+                    });
+                    if let Some(Some(matched)) = telemetry_match {
+                        chosen = matched.to_string();
                         pruned_dirty = true;
                     } else {
-                        continue;
+                        let default_cand = body
+                            .pointer(&format!("/proxies/{group}/default"))
+                            .and_then(Value::as_str)
+                            .filter(|def_tag| {
+                                all_arr
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .any(|cand| cand == *def_tag)
+                            });
+                        if let Some(fallback) =
+                            default_cand.or_else(|| all_arr.iter().filter_map(Value::as_str).next())
+                        {
+                            chosen = fallback.to_string();
+                            pruned_dirty = true;
+                        } else {
+                            continue;
+                        }
                     }
                 }
             }
@@ -1232,6 +1248,107 @@ impl CoreManager {
         Ok(serde_json::from_str::<Value>(json_part.trim()).unwrap_or_else(|_| json!({})))
     }
 
+    pub async fn get_core_health(&self) -> anyhow::Result<Value> {
+        self.clash_request("GET", "/tachyon/health", None).await
+    }
+
+    pub async fn get_core_anomalies(&self) -> anyhow::Result<Value> {
+        self.clash_request("GET", "/tachyon/anomalies", None).await
+    }
+
+    pub async fn get_core_recent_logs(&self, level: &str, limit: usize) -> anyhow::Result<Value> {
+        let lvl = encode_query_component(level);
+        let path = format!("/tachyon/logs/recent?level={lvl}&limit={limit}");
+        self.clash_request("GET", &path, None).await
+    }
+
+    pub async fn get_core_config_state(&self) -> anyhow::Result<Value> {
+        self.clash_request("GET", "/tachyon/config-state", None)
+            .await
+    }
+
+    pub async fn get_core_flight_filtered(
+        &self,
+        only_failed: bool,
+        outbound: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Value> {
+        let mut path = format!("/tachyon/flight?only_failed={only_failed}&limit={limit}");
+        if let Some(tag) = outbound.map(str::trim).filter(|s| !s.is_empty()) {
+            path.push_str("&outbound=");
+            path.push_str(&encode_query_component(tag));
+        }
+        self.clash_request("GET", &path, None).await
+    }
+
+    pub async fn flush_core_dns(&self, scope: &str) -> anyhow::Result<Value> {
+        let body = json!({ "scope": scope }).to_string();
+        self.clash_request("POST", "/tachyon/dns/flush", Some(&body))
+            .await
+    }
+
+    pub async fn reset_core_outbound(
+        &self,
+        tag: &str,
+        close_sessions: bool,
+        stalled_only_ms: Option<u64>,
+    ) -> anyhow::Result<Value> {
+        let mut obj = json!({
+            "tag": tag,
+            "close_sessions": close_sessions,
+        });
+        if let Some(ms) = stalled_only_ms
+            && let Some(map) = obj.as_object_mut()
+        {
+            map.insert("stalled_only_ms".to_string(), json!(ms));
+        }
+        self.clash_request("POST", "/tachyon/outbound/reset", Some(&obj.to_string()))
+            .await
+    }
+
+    pub async fn kick_core_filtered(
+        &self,
+        inbound: Option<&str>,
+        user: Option<&str>,
+        outbound: Option<&str>,
+        only_stalled_ms: Option<u64>,
+    ) -> anyhow::Result<Value> {
+        let mut obj = serde_json::Map::new();
+        if let Some(v) = inbound.filter(|s| !s.is_empty()) {
+            obj.insert("inbound".to_string(), json!(v));
+        }
+        if let Some(v) = user.filter(|s| !s.is_empty()) {
+            obj.insert("user".to_string(), json!(v));
+        }
+        if let Some(v) = outbound.filter(|s| !s.is_empty()) {
+            obj.insert("outbound".to_string(), json!(v));
+        }
+        if let Some(ms) = only_stalled_ms {
+            obj.insert("only_stalled_ms".to_string(), json!(ms));
+        }
+        self.clash_request(
+            "POST",
+            "/tachyon/kick",
+            Some(&Value::Object(obj).to_string()),
+        )
+        .await
+    }
+
+    pub async fn set_core_log_level(
+        &self,
+        level: &str,
+        ttl_sec: Option<u64>,
+    ) -> anyhow::Result<Value> {
+        let mut obj = json!({ "log-level": level });
+        if let Some(ttl) = ttl_sec
+            && let Some(map) = obj.as_object_mut()
+        {
+            map.insert("ttl_sec".to_string(), json!(ttl));
+        }
+        self.clash_request("PATCH", "/configs", Some(&obj.to_string()))
+            .await
+    }
+
     /// Trigger Wake-on-LAN via `tachyon-core` (`POST /tachyon/wol`) or direct UDP magic packet broadcast.
     pub async fn send_wake_on_lan(&self, mac: &str, interface: &str) -> anyhow::Result<()> {
         let payload = json!({
@@ -1496,6 +1613,13 @@ impl CoreManager {
                 line_nodes
             };
 
+        // Drop informational/banner pseudo-nodes pointing to loopback/unspecified addresses
+        // (e.g. `127.0.0.1:443#Remaining: 15GB`) that cause immediate ECONNREFUSED after reload.
+        out.retain(|node| {
+            let srv = node.server.trim();
+            srv.is_empty() || config_gen::is_usable_external_sub_host(srv)
+        });
+
         let mut taken_tags: HashSet<String> = HashSet::new();
         for node in &mut out {
             config_gen::assign_unique_node_tag(node, &mut taken_tags);
@@ -1660,6 +1784,13 @@ impl CoreManager {
         }
 
         // Re-read fresh state right before committing so concurrent config edits are preserved.
+        let finish_ts = unix_now_secs().max(now);
+        {
+            let mut attempts = self.sub_last_attempt.lock().await;
+            for res in &fetched_results {
+                attempts.insert(res.id.clone(), finish_ts);
+            }
+        }
         let mut candidate = self.state.data.read().await.clone();
         let mut updated_sources = 0usize;
         let mut metadata_changed = false;
@@ -1681,14 +1812,22 @@ impl CoreManager {
             src.sub_download_bytes = res.updated_src.sub_download_bytes;
             src.sub_total_bytes = res.updated_src.sub_total_bytes;
             src.sub_expire_unix = res.updated_src.sub_expire_unix;
-            src.subscription_update_interval = res.updated_src.subscription_update_interval;
+            if src.subscription_update_interval.trim().is_empty()
+                && !res
+                    .updated_src
+                    .subscription_update_interval
+                    .trim()
+                    .is_empty()
+            {
+                src.subscription_update_interval = res.updated_src.subscription_update_interval;
+            }
 
             if !res.nodes.is_empty() {
                 if !nodes_materially_equal(&src.cached_nodes, &res.nodes) {
                     core_reload_needed = true;
                 }
                 src.cached_nodes = res.nodes;
-                src.last_updated_unix = now;
+                src.last_updated_unix = finish_ts;
                 src.sub_last_error.clear();
                 updated_sources += 1;
                 metadata_changed = true;
@@ -1696,8 +1835,8 @@ impl CoreManager {
                 src.sub_last_error = res.last_fetch_err.unwrap_or_else(|| {
                     "Не удалось загрузить или разобрать узлы подписки".to_string()
                 });
+                src.last_updated_unix = finish_ts;
                 if !src.cached_nodes.is_empty() {
-                    src.last_updated_unix = now;
                     updated_sources += 1;
                 }
                 metadata_changed = true;
@@ -1705,7 +1844,14 @@ impl CoreManager {
         }
 
         if metadata_changed || updated_sources > 0 {
-            transaction::commit_transaction(&self.state, candidate).await?;
+            if let Err(e) = transaction::commit_transaction(&self.state, candidate).await {
+                self.state.live.write().await.push_event(
+                    "warn",
+                    "subscription",
+                    &format!("Subscription state commit skipped (in-memory timestamp kept): {e:#}"),
+                );
+                return Err(e);
+            }
             if core_reload_needed && !self.is_manually_stopped() {
                 let _ = self.apply_or_reload().await;
             }
@@ -1719,6 +1865,7 @@ impl CoreManager {
 
     pub async fn refresh_due_subscriptions(&self, target: Option<&str>) -> anyhow::Result<usize> {
         let candidate = self.state.data.read().await.clone();
+        let last_attempts = self.sub_last_attempt.lock().await.clone();
         let target_ids = target
             .map(|t| t.trim())
             .filter(|t| !t.is_empty())
@@ -1745,10 +1892,14 @@ impl CoreManager {
                 &src.id,
             );
             let interval_secs = (base_interval as i64 + jitter_offset).max(300);
-            if src.cached_nodes.is_empty()
-                || src.last_updated_unix <= 0
-                || now.saturating_sub(src.last_updated_unix) >= interval_secs
-            {
+            let last_attempt = last_attempts.get(&src.id).copied().unwrap_or(0);
+            let effective_last = src.last_updated_unix.max(last_attempt);
+            let is_due = if src.cached_nodes.is_empty() {
+                effective_last <= 0 || now.saturating_sub(effective_last) >= interval_secs.min(900)
+            } else {
+                effective_last <= 0 || now.saturating_sub(effective_last) >= interval_secs
+            };
+            if is_due {
                 due_ids.push(src.id.clone());
             }
         }
@@ -2843,8 +2994,6 @@ impl CoreManager {
             live.core_pid = pid_opt;
             live.core_uptime_secs = uptime_secs;
             live.core_rss_bytes = rss_bytes;
-            live.dns_healthy = core_alive;
-            live.wan_healthy = true;
 
             let (pt_up_bps, pt_down_bps) = match sample {
                 ConnectionsSample::Stopped => {
@@ -2956,8 +3105,10 @@ impl CoreManager {
         }
 
         if promote_lkg {
-            let d = self.state.data.read().await.clone();
-            let _ = transaction::promote_to_known_good(&self.state.lkg_path, &d);
+            {
+                let d = self.state.data.read().await;
+                let _ = transaction::promote_to_known_good(&self.state.lkg_path, &d);
+            }
             self.state.live.write().await.push_event(
                 "info",
                 "known_good",
@@ -3080,62 +3231,72 @@ impl CoreManager {
                     live.lan_devices = devices;
                 }
             }
-            if watchdog_on && !self.is_manually_stopped() {
-                let store_snapshot = { self.state.data.read().await.clone() };
-                if !core_alive && !self.is_manually_stopped() {
-                    let _ = net_stack::hold_kill_switch(&store_snapshot).await;
-                    self.state.live.write().await.push_event(
-                        "warn",
-                        "watchdog",
-                        "tachyon-core process stopped unexpectedly; restarting",
-                    );
-                    let _ = self.start().await;
-                    return;
-                }
-                let needs_nft_table = proxy_mode == "tproxy"
-                    || (proxy_mode == "tun"
-                        && net_stack::compile_tun_guard_ruleset_with_wan6(
-                            &store_snapshot,
-                            true,
-                            &[],
-                        )
-                        .is_some());
-                if needs_nft_table && !nft_ok {
-                    let _ = net_stack::apply_network_stack(&store_snapshot).await;
-                    self.state.live.write().await.push_event(
-                        "warn",
-                        "reconciler",
-                        "Repaired inet TachyonTable drift",
-                    );
-                }
-                if core_alive && tick_count.is_multiple_of(20) {
-                    let wan6 = crate::store::probe_wan6_runtime_state();
+            crate::watchdog::check_and_repair_nft_drift_boxed(
+                &self.state,
+                watchdog_on && !self.is_manually_stopped(),
+                &proxy_mode,
+                nft_ok,
+            )
+            .await;
+            crate::watchdog::run_watchdog_tick_boxed(self, core_alive, tick_count).await;
+            if watchdog_on
+                && !self.is_manually_stopped()
+                && core_alive
+                && tick_count.is_multiple_of(20)
+            {
+                let wan6 = crate::store::probe_wan6_runtime_state();
+                let drifted_state = {
+                    let store_guard = self.state.data.read().await;
                     let ipv6_state = crate::store::resolve_effective_ipv6_state(
-                        &store_snapshot.settings,
+                        &store_guard.settings,
                         wan6.wan6_available,
                     );
                     let cfg_path =
-                        Self::effective_core_config_path_for(&self.state, &store_snapshot.settings);
-                    if !Self::core_config_ipv6_matches(&cfg_path, &store_snapshot, ipv6_state) {
-                        let now_u64 = crate::store::unix_now_u64();
-                        let last_sync = self.last_ipv6_resync_ts.load(Ordering::Acquire);
-                        if now_u64.saturating_sub(last_sync) >= 120 {
-                            self.last_ipv6_resync_ts.store(now_u64, Ordering::Release);
-                            self.state.live.write().await.push_event(
-                                "warn",
-                                "watchdog",
-                                &format!(
-                                    "FakeIPv6 runtime config drifted from {} state; reloading",
-                                    ipv6_state.as_str()
-                                ),
-                            );
-                            let _ = self.apply_or_reload().await;
-                        }
+                        Self::effective_core_config_path_for(&self.state, &store_guard.settings);
+                    if !Self::core_config_ipv6_matches(&cfg_path, &store_guard, ipv6_state) {
+                        Some(ipv6_state)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(ipv6_state) = drifted_state {
+                    let now_u64 = crate::store::unix_now_u64();
+                    let last_sync = self.last_ipv6_resync_ts.load(Ordering::Acquire);
+                    if now_u64.saturating_sub(last_sync) >= 120 {
+                        self.last_ipv6_resync_ts.store(now_u64, Ordering::Release);
+                        self.state.live.write().await.push_event(
+                            "warn",
+                            "watchdog",
+                            &format!(
+                                "FakeIPv6 runtime config drifted from {} state; reloading",
+                                ipv6_state.as_str()
+                            ),
+                        );
+                        let _ = self.apply_or_reload_boxed().await;
                     }
                 }
             }
         }
     }
+
+    #[inline(never)]
+    fn apply_or_reload_boxed(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+        Box::pin(self.apply_or_reload())
+    }
+}
+
+fn encode_query_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for b in raw.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 fn split_http_response(raw: &str) -> (&str, &str) {
@@ -3192,7 +3353,7 @@ fn parse_subscription_headers(headers: &str, src: &mut crate::store::OutboundSou
             "announce" if !val.is_empty() => {
                 src.sub_announce = crate::store::decode_sub_header_value(val);
             }
-            "profile-update-interval" => {
+            "profile-update-interval" if src.subscription_update_interval.trim().is_empty() => {
                 if let Ok(hours) = val.trim().parse::<u64>()
                     && hours >= 1
                 {
@@ -3239,19 +3400,27 @@ fn extract_semver_token(raw: &str) -> Option<String> {
     None
 }
 
-/// Strip volatile `tls.reality.short_id` rotation before comparing fetched subscription nodes
-/// against cached nodes (`aeab04d18`), avoiding pointless core reloads on CDN short_id rotation.
+/// Strip volatile `tls.reality.short_id` rotation and dynamic traffic/expiry telemetry
+/// from node tags before comparing fetched subscription nodes against cached nodes,
+/// avoiding pointless core hot-reloads that drop active client connections.
 fn canonical_node_fingerprint(node: &crate::store::ParsedProxyNode) -> Value {
+    let clean_tag = config_gen::strip_dynamic_server_telemetry(&node.tag);
     let mut obj = node.outbound_json.clone();
-    if let Some(reality) = obj
-        .get_mut("tls")
-        .and_then(|v| v.get_mut("reality"))
-        .and_then(Value::as_object_mut)
-    {
-        reality.remove("short_id");
+    if let Some(map) = obj.as_object_mut() {
+        if let Some(raw_t) = map.get("tag").and_then(Value::as_str) {
+            let cleaned = config_gen::strip_dynamic_server_telemetry(raw_t);
+            map.insert("tag".to_string(), json!(cleaned));
+        }
+        if let Some(reality) = map
+            .get_mut("tls")
+            .and_then(|v| v.get_mut("reality"))
+            .and_then(Value::as_object_mut)
+        {
+            reality.remove("short_id");
+        }
     }
     json!({
-        "tag": node.tag,
+        "tag": clean_tag,
         "protocol": node.protocol,
         "server": node.server,
         "server_port": node.server_port,
@@ -3266,10 +3435,17 @@ fn nodes_materially_equal(
     if old_nodes.len() != new_nodes.len() {
         return false;
     }
-    old_nodes
+    let mut old_fps: Vec<String> = old_nodes
         .iter()
-        .zip(new_nodes.iter())
-        .all(|(a, b)| canonical_node_fingerprint(a) == canonical_node_fingerprint(b))
+        .map(|n| canonical_node_fingerprint(n).to_string())
+        .collect();
+    let mut new_fps: Vec<String> = new_nodes
+        .iter()
+        .map(|n| canonical_node_fingerprint(n).to_string())
+        .collect();
+    old_fps.sort_unstable();
+    new_fps.sort_unstable();
+    old_fps == new_fps
 }
 
 fn parse_http_url_host_port(url: &str) -> Option<(String, u16)> {
@@ -3478,7 +3654,12 @@ fn read_service_mixed_port_from_config(config_path: &str) -> Option<u16> {
 
 fn parse_subscription_interval_secs(raw: &str) -> u64 {
     let trimmed = raw.trim().to_ascii_lowercase();
-    if trimmed.is_empty() {
+    if trimmed.is_empty()
+        || matches!(
+            trimmed.as_str(),
+            "0" | "0s" | "0m" | "0h" | "0d" | "off" | "disabled" | "none" | "never"
+        )
+    {
         return 6 * 3600;
     }
     let (num_str, mult) = if let Some(n) = trimmed.strip_suffix('d') {
@@ -3491,6 +3672,9 @@ fn parse_subscription_interval_secs(raw: &str) -> u64 {
         (n, 1u64)
     } else {
         let bare = trimmed.parse::<u64>().unwrap_or(6);
+        if bare == 0 {
+            return 6 * 3600;
+        }
         let secs = if bare < 200 {
             bare.saturating_mul(3600)
         } else {
@@ -3499,6 +3683,9 @@ fn parse_subscription_interval_secs(raw: &str) -> u64 {
         return secs.max(300);
     };
     let n = num_str.trim().parse::<u64>().unwrap_or(6);
+    if n == 0 {
+        return 6 * 3600;
+    }
     n.saturating_mul(mult).max(300)
 }
 
@@ -4240,5 +4427,48 @@ mod core_mgr_tests {
         ));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_subscription_zero_interval_loopback_filter_and_telemetry_diff() {
+        // Zero / disabled intervals must fall back to 6h instead of clamping to 5m (300s).
+        assert_eq!(parse_subscription_interval_secs("0"), 6 * 3600);
+        assert_eq!(parse_subscription_interval_secs("0h"), 6 * 3600);
+        assert_eq!(parse_subscription_interval_secs("0m"), 6 * 3600);
+        assert_eq!(parse_subscription_interval_secs("off"), 6 * 3600);
+
+        // User-defined interval must not be overwritten by provider Profile-Update-Interval header.
+        let mut src = crate::store::OutboundSource {
+            subscription_update_interval: "6h".to_string(),
+            ..Default::default()
+        };
+        parse_subscription_headers("Profile-Update-Interval: 1\r\n", &mut src);
+        assert_eq!(src.subscription_update_interval, "6h");
+        src.subscription_update_interval.clear();
+        parse_subscription_headers("Profile-Update-Interval: 4\r\n", &mut src);
+        assert_eq!(src.subscription_update_interval, "4h");
+
+        // Loopback/unspecified banner pseudo-nodes must be dropped from remote subscriptions.
+        let payload = concat!(
+            "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443#Remaining%2015GB\n",
+            "vless://11111111-1111-4111-8111-111111111111@0.0.0.0:80#Expire%2020d\n",
+            "vless://11111111-1111-4111-8111-111111111111@198.51.100.10:443#DE%20Frankfurt%20%5B15d%20%7C%2010GB%5D\n",
+            "vless://11111111-1111-4111-8111-111111111111@198.51.100.11:443#FI%20Helsinki\n",
+        );
+        let parsed = CoreManager::parse_subscription_payload(payload);
+        assert_eq!(parsed.len(), 2);
+        assert!(
+            parsed
+                .iter()
+                .all(|n| n.server != "127.0.0.1" && n.server != "0.0.0.0")
+        );
+
+        // Dynamic telemetry suffix changes or shuffled order must not trigger core hot-reload.
+        let payload_reordered = concat!(
+            "vless://11111111-1111-4111-8111-111111111111@198.51.100.11:443#FI%20Helsinki\n",
+            "vless://11111111-1111-4111-8111-111111111111@198.51.100.10:443#DE%20Frankfurt%20%5B14d%20%7C%209.5GB%5D\n",
+        );
+        let parsed_reordered = CoreManager::parse_subscription_payload(payload_reordered);
+        assert!(nodes_materially_equal(&parsed, &parsed_reordered));
     }
 }

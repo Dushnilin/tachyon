@@ -9,6 +9,7 @@
 //! - Router `/proc/net/nf_conntrack` session reader for Monitoring
 //! - Redacted Support Bundle generator
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,11 +21,15 @@ use tokio::process::Command;
 use crate::core_mgr::CoreManager;
 use crate::crypto_gen;
 use crate::net_stack;
-use crate::store::{AppState, OutboundSource, RouterStoreData, unix_now_secs};
+use crate::snapshots;
+use crate::store::{AppState, IncidentRecord, OutboundSource, RouterStoreData, unix_now_secs};
 use crate::sys_info;
 use crate::transaction;
+use crate::watchdog;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub const MAX_INCIDENTS: usize = 30;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DoctorFinding {
     pub id: String,
     pub severity: String,
@@ -33,9 +38,17 @@ pub struct DoctorFinding {
     pub detail: String,
     pub quick_fix_id: String,
     pub quick_fix_label: String,
+    #[serde(default)]
+    pub root_cause: bool,
+    #[serde(default)]
+    pub suppressed_by: Option<String>,
+    #[serde(default)]
+    pub risk_tier: String,
+    #[serde(default)]
+    pub evidence: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DoctorReport {
     pub healthy: bool,
     pub timestamp: i64,
@@ -44,6 +57,26 @@ pub struct DoctorReport {
     pub subsystems: Vec<Value>,
     pub findings: Vec<DoctorFinding>,
     pub summary: String,
+    #[serde(default)]
+    pub pipeline_nodes: Vec<Value>,
+    #[serde(default)]
+    pub root_causes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VerifiedFixResult {
+    pub ok: bool,
+    pub fix_id: String,
+    pub risk_tier: String,
+    pub dry_run: bool,
+    pub message: String,
+    pub before_healthy: bool,
+    pub after_healthy: bool,
+    pub before_findings: usize,
+    pub after_findings: usize,
+    pub rolled_back: bool,
+    pub cooldown_blocked: bool,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,14 +249,366 @@ fn evaluate_odhcpd_ipv6_dns_lang(
     )
 }
 
-/// Run Local Doctor heuristic and runtime checks across 16 router subsystems.
+pub fn quick_fix_risk_tier(fix_id: &str) -> &'static str {
+    let base = fix_id
+        .split_once(':')
+        .map(|(head, _)| head)
+        .unwrap_or(fix_id);
+    match base {
+        "trim_core_memory"
+        | "optimize_memory"
+        | "flush_core_dns"
+        | "clear_dns_cache"
+        | "capture_blackbox"
+        | "restore_primary_failover"
+        | "upgrade_core"
+        | "fix_system_time" => "safe",
+        "restart_core"
+        | "start_core"
+        | "start_tachyon_core"
+        | "hot_reload_core"
+        | "restart_core_dns"
+        | "restart_tachyon_core_dns"
+        | "reset_outbound_pool"
+        | "reconcile_nftables"
+        | "heal_network_stack"
+        | "rebuild_rules"
+        | "reset_firewall"
+        | "fix_dnsmasq"
+        | "fix_wan_interface"
+        | "fix_gateway"
+        | "restart_network"
+        | "flush_conntrack"
+        | "fix_resolv_symlink" => "disruptive",
+        "switch_to_doh"
+        | "fix_bootstrap_dns"
+        | "optimize_mtu"
+        | "rollback_core_binary"
+        | "rollback_known_good"
+        | "fix_uci_config"
+        | "restore_lkg"
+        | "enable_default_desync"
+        | "restart_zapret"
+        | "disable_flow_offloading"
+        | "restore_native_internet"
+        | "enable_safe_bypass"
+        | "flush_nftables"
+        | "update_subscriptions"
+        | "restart_providers"
+        | "start_watchdog"
+        | "enable_autostart" => "config_change",
+        _ => "config_change",
+    }
+}
+
+pub fn is_known_quick_fix(fix_id: &str) -> bool {
+    let base = fix_id
+        .split_once(':')
+        .map(|(head, _)| head)
+        .unwrap_or(fix_id);
+    matches!(
+        base,
+        "restart_core"
+            | "start_core"
+            | "start_tachyon_core"
+            | "hot_reload_core"
+            | "heal_network_stack"
+            | "rebuild_rules"
+            | "reset_firewall"
+            | "reconcile_nftables"
+            | "fix_bootstrap_dns"
+            | "switch_to_doh"
+            | "clear_dns_cache"
+            | "restart_core_dns"
+            | "restart_tachyon_core_dns"
+            | "flush_core_dns"
+            | "fix_dnsmasq"
+            | "fix_resolv_symlink"
+            | "start_watchdog"
+            | "optimize_memory"
+            | "trim_core_memory"
+            | "optimize_mtu"
+            | "flush_conntrack"
+            | "fix_system_time"
+            | "update_subscriptions"
+            | "restart_providers"
+            | "fix_wan_interface"
+            | "fix_gateway"
+            | "restart_network"
+            | "restore_native_internet"
+            | "enable_safe_bypass"
+            | "flush_nftables"
+            | "enable_autostart"
+            | "enable_default_desync"
+            | "restart_zapret"
+            | "rollback_known_good"
+            | "fix_uci_config"
+            | "restore_lkg"
+            | "rollback_core_binary"
+            | "upgrade_core"
+            | "disable_flow_offloading"
+            | "reset_outbound_pool"
+            | "restore_primary_failover"
+            | "capture_blackbox"
+    )
+}
+
+/// Pure causal dependency graph: suppress downstream secondary symptoms when an upstream
+/// root cause (WAN offline, severe clock skew, missing/stopped core) explains them.
+pub fn apply_causal_suppression(findings: &mut [DoctorFinding]) -> Vec<String> {
+    for f in findings.iter_mut() {
+        if f.risk_tier.is_empty() {
+            f.risk_tier = quick_fix_risk_tier(&f.quick_fix_id).to_string();
+        }
+        f.suppressed_by = None;
+        f.root_cause = false;
+    }
+
+    let has_wan_down = findings.iter().any(|f| f.id == "wan_down");
+    let has_clock_skew = findings.iter().any(|f| f.id == "clock_skew");
+    let core_blocker = findings
+        .iter()
+        .find(|f| f.id == "core_binary_corrupt" || f.id == "core_stopped")
+        .map(|f| f.id.clone());
+
+    for f in findings.iter_mut() {
+        if let Some(ref blocker) = core_blocker
+            && matches!(
+                f.id.as_str(),
+                "config_drift" | "dns_unhealthy" | "failover_on_backup"
+            )
+        {
+            f.suppressed_by = Some(blocker.clone());
+            continue;
+        }
+        if let Some(ref blocker) = core_blocker
+            && (f.id.starts_with("outbound_") || f.id.starts_with("anomalies_"))
+        {
+            f.suppressed_by = Some(blocker.clone());
+            continue;
+        }
+        if has_wan_down
+            && (f.id == "dns_unhealthy"
+                || f.id == "dns_upstream_errors"
+                || f.id == "failover_on_backup"
+                || f.id.starts_with("outbound_")
+                || f.id.starts_with("anomalies_")
+                || f.id.starts_with("sub_empty_"))
+        {
+            f.suppressed_by = Some("wan_down".to_string());
+            continue;
+        }
+        if has_clock_skew
+            && (f.id.contains("tls_handshake_fail") || f.id.contains("reality_auth_fail"))
+        {
+            f.suppressed_by = Some("clock_skew".to_string());
+            continue;
+        }
+    }
+
+    let mut root_causes = Vec::new();
+    for f in findings.iter_mut() {
+        if f.suppressed_by.is_some() {
+            continue;
+        }
+        let is_primary = f.severity == "critical"
+            || matches!(
+                f.id.as_str(),
+                "wan_down"
+                    | "clock_skew"
+                    | "core_binary_corrupt"
+                    | "core_stopped"
+                    | "config_drift"
+                    | "nft_missing"
+                    | "flow_offloading_conflict"
+                    | "dns_unhealthy"
+                    | "dns_upstream_errors"
+                    | "low_memory"
+                    | "core_memory_pressure"
+                    | "fd_exhaustion"
+                    | "fakeip_saturation"
+            )
+            || f.id.starts_with("outbound_");
+        if is_primary {
+            f.root_cause = true;
+            root_causes.push(f.title.clone());
+        }
+    }
+    if root_causes.is_empty()
+        && let Some(first_active) = findings.iter_mut().find(|f| f.suppressed_by.is_none())
+    {
+        first_active.root_cause = true;
+        root_causes.push(first_active.title.clone());
+    }
+    root_causes
+}
+
+/// Returns `true` only when a failover-capable group is actually degraded/on backup,
+/// ignoring healthy `least_test` (URLTest) balancers that pick a lower-RTT member.
+pub fn has_true_failover_backup(failover_val: Option<&Value>) -> bool {
+    let Some(val) = failover_val else {
+        return false;
+    };
+    if let Some(groups) = val.get("groups").and_then(Value::as_array) {
+        return groups.iter().any(|g| {
+            let on_backup = g.get("on_backup").and_then(Value::as_bool).unwrap_or(false);
+            if !on_backup {
+                return false;
+            }
+            let mode = g.get("mode").and_then(Value::as_str).unwrap_or("");
+            let is_failover_mode = matches!(mode, "failover" | "priority" | "fallback");
+            let primary_healthy = g
+                .get("primary_healthy")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let primary_failures = g
+                .get("primary_failures")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let primary_quarantine = g
+                .get("primary_quarantine_rem_s")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            is_failover_mode || !primary_healthy || primary_failures > 0 || primary_quarantine > 0
+        });
+    }
+    val.get("any_on_backup")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// Run Local Doctor without querying live Clash endpoints directly (uses stored telemetry).
 pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
+    Box::pin(build_doctor_report(state, None, None, None, None, None)).await
+}
+
+/// Full causal Local Doctor querying live `tachyon-core` health, anomalies, Flight failures, and failover.
+pub async fn run_local_doctor_with_core(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> DoctorReport {
+    let core_up = state.live.read().await.core_running;
+    let (health, anomalies, flight_failures, failover) = if core_up {
+        let (h, a, f, fo) = tokio::join!(
+            Box::pin(core.get_core_health()),
+            Box::pin(core.get_core_anomalies()),
+            Box::pin(core.get_core_flight_filtered(true, None, 20)),
+            Box::pin(core.get_core_failover()),
+        );
+        (h.ok(), a.ok(), f.ok(), Some(fo))
+    } else {
+        (None, None, None, None)
+    };
+    let bin_path = core.resolve_bin_path().await;
+    Box::pin(build_doctor_report(
+        state,
+        Some(bin_path.as_str()),
+        health,
+        anomalies,
+        flight_failures,
+        failover,
+    ))
+    .await
+}
+
+async fn build_doctor_report(
+    state: &Arc<AppState>,
+    resolved_bin_path: Option<&str>,
+    health_val: Option<Value>,
+    anomalies_val: Option<Value>,
+    flight_val: Option<Value>,
+    failover_val: Option<Value>,
+) -> DoctorReport {
+    let d = Box::new(state.data.read().await.clone());
+    let live = Box::new(state.live.read().await.clone());
+    let (odhcpd_present, dhcp_raw) = if cfg!(windows) {
+        (false, String::new())
+    } else {
+        let present = tokio::fs::metadata("/etc/init.d/odhcpd").await.is_ok();
+        let raw = tokio::fs::read_to_string("/etc/config/dhcp")
+            .await
+            .unwrap_or_default();
+        (present, raw)
+    };
+    assemble_doctor_report(
+        state,
+        &d,
+        &live,
+        resolved_bin_path,
+        health_val,
+        anomalies_val,
+        flight_val,
+        failover_val,
+        odhcpd_present,
+        &dhcp_raw,
+    )
+}
+
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn assemble_doctor_report(
+    state: &Arc<AppState>,
+    d: &RouterStoreData,
+    live: &crate::store::LiveTelemetry,
+    resolved_bin_path: Option<&str>,
+    health_val: Option<Value>,
+    anomalies_val: Option<Value>,
+    flight_val: Option<Value>,
+    failover_val: Option<Value>,
+    odhcpd_present: bool,
+    dhcp_raw: &str,
+) -> DoctorReport {
     let mut findings = Vec::new();
-    let d = state.data.read().await.clone();
     let en = is_en_lang(&d.settings.lang);
-    let live = state.live.read().await.clone();
+    let core_bin_path = d.settings.core_bin_path.clone();
+    let proxy_mode = d.settings.proxy_mode.clone();
+    let smart_queue = d.settings.smart_queue;
+    let bootstrap_dns_empty = d.settings.bootstrap_dns_servers.is_empty();
+    let fakeip_enabled = d.settings.fakeip_enabled;
+    let enable_watchdog = d.settings.enable_watchdog;
+    let enabled_sections = d.sections.iter().filter(|s| s.enabled).count();
+    let total_sections = d.sections.len();
+    let empty_subs: Vec<(String, String)> = d
+        .outbound_sources
+        .iter()
+        .filter(|s| {
+            s.enabled
+                && s.source_type == "subscription"
+                && s.cached_nodes.is_empty()
+                && s.proxy_links.is_empty()
+        })
+        .map(|s| (s.id.clone(), s.name.clone()))
+        .collect();
+    let sources_len = d.outbound_sources.len();
+    let balancers_len = d.balancers.len();
+    let enabled_servers = d.servers.iter().filter(|s| s.enabled).count();
+    let total_servers = d.servers.len();
     let sys = sys_info::collect_host_info();
     let checks_total = 16usize;
+
+    let eff_bin_path = resolved_bin_path
+        .filter(|s| !s.is_empty())
+        .unwrap_or(core_bin_path.as_str());
+    let bin_check_res = if !eff_bin_path.is_empty() && Path::new(eff_bin_path).exists() {
+        watchdog::check_core_binary_integrity(Path::new(eff_bin_path))
+    } else if !live.core_binary_ok && !live.core_binary_error.is_empty() {
+        Err(live.core_binary_error.clone())
+    } else {
+        Ok(())
+    };
+    if let Err(err) = &bin_check_res {
+        findings.push(DoctorFinding {
+            id: "core_binary_corrupt".to_string(),
+            severity: "critical".to_string(),
+            subsystem: "binary".to_string(),
+            title: "Бинарный файл tachyon-core повреждён или заменён скриптом".to_string(),
+            detail: err.clone(),
+            quick_fix_id: "rollback_core_binary".to_string(),
+            quick_fix_label: "Откатить бинарник ядра".to_string(),
+            evidence: json!({ "path": eff_bin_path, "error": err }),
+            ..Default::default()
+        });
+    }
 
     // 1. Core process liveness
     if !live.core_running {
@@ -238,9 +623,9 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             }
             .to_string(),
             detail: if en {
-                "Routing core is stopped or waiting to start."
+                "Routing core is stopped or not responding."
             } else {
-                "Ядро маршрутизации остановлено или ожидает запуска."
+                "Ядро маршрутизации остановлено или не отвечает."
             }
             .to_string(),
             quick_fix_id: "restart_core".to_string(),
@@ -250,11 +635,74 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Запустить tachyon-core"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 2. nftables TProxy table check
-    if d.settings.proxy_mode == "tproxy" && !live.nft_table_active {
+    // 1b. Config digest drift check
+    let applied_digest = health_val
+        .as_ref()
+        .and_then(|h| h.pointer("/config_state/digest"))
+        .and_then(Value::as_str)
+        .unwrap_or(&live.applied_config_digest)
+        .to_string();
+    let config_drift = live.config_drift
+        || (live.core_running
+            && !live.desired_config_digest.is_empty()
+            && !applied_digest.is_empty()
+            && live.desired_config_digest != applied_digest);
+    if config_drift {
+        findings.push(DoctorFinding {
+            id: "config_drift".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "config_sync".to_string(),
+            title: "Рассинхронизация конфигурации ядра (config_drift)".to_string(),
+            detail: "Применённый digest в памяти tachyon-core отличается от актуальной конфигурации хранилища.".to_string(),
+            quick_fix_id: "hot_reload_core".to_string(),
+            quick_fix_label: "Выполнить Hot-Reload ядра".to_string(),
+            evidence: json!({
+                "desired": live.desired_config_digest,
+                "applied": applied_digest,
+            }),
+            ..Default::default()
+        });
+    }
+
+    // 2. WAN reachability (real TCP connect check state, never hardcoded)
+    if !live.wan_healthy && (live.wan_fail_streak > 0 || live.wan_probe_ms > 0) {
+        findings.push(DoctorFinding {
+            id: "wan_down".to_string(),
+            severity: "critical".to_string(),
+            subsystem: "wan".to_string(),
+            title: "Внешний канал WAN недоступен".to_string(),
+            detail: format!(
+                "Прямые TCP-пробы до внешних шлюзов не проходят (серия отказов: {}).",
+                live.wan_fail_streak
+            ),
+            quick_fix_id: "fix_wan_interface".to_string(),
+            quick_fix_label: "Проверить шлюз WAN".to_string(),
+            evidence: json!({ "fail_streak": live.wan_fail_streak, "probe_ms": live.wan_probe_ms }),
+            ..Default::default()
+        });
+    }
+
+    // 3. System clock sanity check (critical for TLS 1.3 & REALITY)
+    if unix_now_secs() < 1_700_000_000 {
+        findings.push(DoctorFinding {
+            id: "clock_skew".to_string(),
+            severity: "critical".to_string(),
+            subsystem: "time".to_string(),
+            title: "Системное время роутера сбито".to_string(),
+            detail: "Некорректные часы нарушают проверку сертификатов TLS 1.3 и VLESS REALITY."
+                .to_string(),
+            quick_fix_id: "fix_system_time".to_string(),
+            quick_fix_label: "Синхронизировать NTP".to_string(),
+            ..Default::default()
+        });
+    }
+
+    // 4. nftables TProxy table check
+    if proxy_mode == "tproxy" && !live.nft_table_active {
         findings.push(DoctorFinding {
             id: "nft_missing".to_string(),
             severity: "warning".to_string(),
@@ -268,21 +716,22 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             detail: if en {
                 "Transparent TProxy interception rules are not loaded in the Linux kernel."
             } else {
-                "Правила прозрачного перехвата TProxy не загружены в ядро Linux."
+                "Правила перехвата TProxy не загружены в ядро Linux."
             }
             .to_string(),
-            quick_fix_id: "heal_network_stack".to_string(),
+            quick_fix_id: "reconcile_nftables".to_string(),
             quick_fix_label: if en {
                 "Restore network stack"
             } else {
                 "Восстановить сетевой стек"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 3. Bootstrap DNS check
-    if d.settings.bootstrap_dns_servers.is_empty() {
+    // 5. DNS pipeline checks
+    if bootstrap_dns_empty {
         findings.push(DoctorFinding {
             id: "bootstrap_dns_empty".to_string(),
             severity: "warning".to_string(),
@@ -296,7 +745,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             detail: if en {
                 "Direct Bootstrap DNS is required to resolve proxy node domains and DoH endpoints."
             } else {
-                "Для разрешения доменов прокси-узлов и DoH требуется прямой Bootstrap DNS."
+                "Для разрешения доменов узлов и DoH требуется Bootstrap DNS."
             }
             .to_string(),
             quick_fix_id: "fix_bootstrap_dns".to_string(),
@@ -306,11 +755,87 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Сбросить Bootstrap DNS"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 4. Active routing sections check
-    let enabled_sections = d.sections.iter().filter(|s| s.enabled).count();
+    if live.core_running && !live.dns_healthy && live.dns_fail_streak > 0 {
+        findings.push(DoctorFinding {
+            id: "dns_unhealthy".to_string(),
+            severity: "critical".to_string(),
+            subsystem: "dns".to_string(),
+            title: "Локальный DNS-резолвер 127.0.0.42:53 не отвечает корректно".to_string(),
+            detail: format!(
+                "UDP A-проба к FakeIP/DNS ядра завершается таймаутом или SERVFAIL (отказов подряд: {}).",
+                live.dns_fail_streak
+            ),
+            quick_fix_id: "flush_core_dns".to_string(),
+            quick_fix_label: "Сбросить кэш и апстримы DNS".to_string(),
+            evidence: json!({ "dns_probe_ms": live.dns_probe_ms, "fail_streak": live.dns_fail_streak }),
+            ..Default::default()
+        });
+    }
+
+    let dns_up_err = health_val
+        .as_ref()
+        .and_then(|h| h.pointer("/dns/servers"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .map(|s| s.get("errors_total").and_then(Value::as_u64).unwrap_or(0))
+                .sum::<u64>()
+        })
+        .unwrap_or(live.dns_upstream_errors);
+    if dns_up_err >= 5 {
+        findings.push(DoctorFinding {
+            id: "dns_upstream_errors".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: format!("Ошибки и таймауты DNS-апстримов ({dns_up_err})"),
+            detail: "Запросы к настроенным DNS-апстримам завершаются сбоем или SERVFAIL."
+                .to_string(),
+            quick_fix_id: "switch_to_doh".to_string(),
+            quick_fix_label: "Переключить на DoH".to_string(),
+            evidence: json!({ "dns_upstream_errors": dns_up_err }),
+            ..Default::default()
+        });
+    }
+
+    let (fip_used, fip_cap, fip_evictions) = (
+        health_val
+            .as_ref()
+            .and_then(|h| h.pointer("/dns/fakeip/v4_used"))
+            .and_then(Value::as_u64)
+            .unwrap_or(live.fakeip_v4_used),
+        health_val
+            .as_ref()
+            .and_then(|h| h.pointer("/dns/fakeip/v4_cap"))
+            .and_then(Value::as_u64)
+            .unwrap_or(live.fakeip_v4_cap),
+        health_val
+            .as_ref()
+            .and_then(|h| h.pointer("/dns/fakeip/evictions"))
+            .and_then(Value::as_u64)
+            .unwrap_or(live.fakeip_evictions),
+    );
+    if (fip_cap > 0 && fip_used.saturating_mul(100) / fip_cap >= 85) || fip_evictions > 20 {
+        findings.push(DoctorFinding {
+            id: "fakeip_saturation".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: format!(
+                "Пул FakeIP перегружен ({fip_used}/{fip_cap}, вытеснений: {fip_evictions})"
+            ),
+            detail: "Частые вытеснения из FakeIP LRU нарушают маршрутизацию открытых сессий."
+                .to_string(),
+            quick_fix_id: "trim_core_memory".to_string(),
+            quick_fix_label: "Очистить кэши ядра".to_string(),
+            evidence: json!({ "used": fip_used, "cap": fip_cap, "evictions": fip_evictions }),
+            ..Default::default()
+        });
+    }
+
+    // 6. Active routing sections & local .trs rule-set check
     if enabled_sections == 0 {
         findings.push(DoctorFinding {
             id: "no_active_sections".to_string(),
@@ -335,10 +860,11 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Включить секции"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 5. System RAM pressure check
+    // 7. System & core resources: RAM, pressure level, FD usage, UDP NAT, inbound cap
     if sys.mem_total_bytes > 0 {
         let avail_bytes = sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes);
         let free_pct = (avail_bytes * 100) / sys.mem_total_bytes;
@@ -353,88 +879,257 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                     format!("Мало свободной памяти ОЗУ ({free_pct}%)")
                 },
                 detail: if en {
-                    "Consider trimming core memory buffers or enabling Eco mode (Tachyon Lite)."
+                    "Consider trimming core memory buffers or lowering cache load."
                 } else {
-                    "Рекомендуется выполнить сжатие буферов ядра или включить Эко-режим (Tachyon Lite)."
+                    "Рекомендуется сжать буферы памяти ядра или снизить нагрузку кэшей."
                 }
                 .to_string(),
-                quick_fix_id: "optimize_memory".to_string(),
+                quick_fix_id: "trim_core_memory".to_string(),
                 quick_fix_label: if en {
-                    "Optimize memory"
+                    "Trim core memory"
                 } else {
-                    "Оптимизировать память"
+                    "Сжать буферы памяти"
                 }
                 .to_string(),
+                ..Default::default()
             });
         }
     }
 
-    // 6. System clock sanity check (for TLS / Reality / WireGuard handshakes)
-    if unix_now_secs() < 1_700_000_000 {
+    let pressure = health_val
+        .as_ref()
+        .and_then(|h| h.pointer("/memory/pressure_level"))
+        .and_then(Value::as_str)
+        .unwrap_or(&live.core_pressure_level);
+    if pressure == "critical" || pressure == "elevated" {
         findings.push(DoctorFinding {
-            id: "clock_skew".to_string(),
-            severity: "critical".to_string(),
-            subsystem: "time".to_string(),
+            id: "core_memory_pressure".to_string(),
+            severity: if pressure == "critical" {
+                "critical"
+            } else {
+                "warning"
+            }
+            .to_string(),
+            subsystem: "memory".to_string(),
             title: if en {
-                "Router system clock is skewed"
+                format!("Memory pressure inside tachyon-core: {pressure}")
             } else {
-                "Системное время роутера сбито"
-            }
-            .to_string(),
+                format!("Давление памяти внутри tachyon-core: {pressure}")
+            },
             detail: if en {
-                "Incorrect system time breaks TLS 1.3 and VLESS Reality handshakes."
+                "Core is approaching its RSS limit; buffer pools and caches need trimming."
             } else {
-                "Некорректное время ломает рукопожатия TLS 1.3 и VLESS Reality."
+                "Ядро приблизилось к лимиту RSS; активные пулы буферов и кэш требуют очистки."
             }
             .to_string(),
-            quick_fix_id: "fix_system_time".to_string(),
+            quick_fix_id: "trim_core_memory".to_string(),
             quick_fix_label: if en {
-                "Sync NTP"
+                "Trim core memory"
             } else {
-                "Синхронизировать NTP"
+                "Сжать буферы памяти ядра"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 7. Outbound sources empty cache check
-    for src in d
-        .outbound_sources
-        .iter()
-        .filter(|s| s.enabled && s.source_type == "subscription")
+    let (fd_open, fd_limit) = (
+        health_val
+            .as_ref()
+            .and_then(|h| h.pointer("/fds/open"))
+            .and_then(Value::as_u64)
+            .unwrap_or(live.core_fd_open),
+        health_val
+            .as_ref()
+            .and_then(|h| h.pointer("/fds/soft_limit"))
+            .and_then(Value::as_u64)
+            .unwrap_or(live.core_fd_limit),
+    );
+    if fd_limit > 0 && fd_open.saturating_mul(100) / fd_limit >= 80 {
+        findings.push(DoctorFinding {
+            id: "fd_exhaustion".to_string(),
+            severity: "critical".to_string(),
+            subsystem: "resources".to_string(),
+            title: format!("Исчерпание файловых дескрипторов ({fd_open}/{fd_limit})"),
+            detail: "Необходимо закрыть зависшие сессии или перезапустить процесс.".to_string(),
+            quick_fix_id: "flush_conntrack".to_string(),
+            quick_fix_label: "Сбросить зависшие сессии".to_string(),
+            evidence: json!({ "open": fd_open, "soft_limit": fd_limit }),
+            ..Default::default()
+        });
+    }
+
+    let nat_evictions = health_val
+        .as_ref()
+        .and_then(|h| h.pointer("/udp_nat/evictions_total"))
+        .and_then(Value::as_u64)
+        .unwrap_or(live.udp_nat_evictions);
+    let cap_drops = health_val
+        .as_ref()
+        .and_then(|h| h.pointer("/connections/inbound_cap_drops"))
+        .and_then(Value::as_u64)
+        .unwrap_or(live.core_inbound_cap_drops);
+    if nat_evictions > 0 || cap_drops > 0 {
+        findings.push(DoctorFinding {
+            id: "nat_or_cap_pressure".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "resources".to_string(),
+            title: format!(
+                "Вытеснения UDP NAT ({nat_evictions}) или отказы лимита входящих ({cap_drops})"
+            ),
+            detail: "Таблица потоков достигла предела ёмкости.".to_string(),
+            quick_fix_id: "trim_core_memory".to_string(),
+            quick_fix_label: "Сбросить старые бакеты и буферы".to_string(),
+            evidence: json!({ "udp_nat_evictions": nat_evictions, "inbound_cap_drops": cap_drops }),
+            ..Default::default()
+        });
+    }
+
+    // 8. Outbound dial errors (DialErrorClass), WireGuard stale handshake, failover & anomalies
+    if let Some(out_arr) = health_val
+        .as_ref()
+        .and_then(|h| h.get("outbounds"))
+        .and_then(Value::as_array)
     {
-        if src.cached_nodes.is_empty() && src.proxy_links.is_empty() {
-            findings.push(DoctorFinding {
-                id: format!("sub_empty_{}", src.id),
-                severity: "warning".to_string(),
-                subsystem: "subscriptions".to_string(),
-                title: if en {
-                    format!("Subscription \"{}\" has no cached nodes", src.name)
-                } else {
-                    format!("Подписка «{}» не содержит кэшированных узлов", src.name)
-                },
-                detail: if en {
-                    "Refresh the subscription to fetch the current node list."
-                } else {
-                    "Обновите подписку для загрузки актуального списка узлов."
-                }
-                .to_string(),
-                quick_fix_id: "update_subscriptions".to_string(),
-                quick_fix_label: if en {
-                    "Update subscriptions"
-                } else {
-                    "Обновить подписки"
-                }
-                .to_string(),
-            });
+        for o in out_arr {
+            let tag = o.get("tag").and_then(Value::as_str).unwrap_or("");
+            if tag.is_empty() {
+                continue;
+            }
+            let dial_ok = o.get("dial_ok").and_then(Value::as_u64).unwrap_or(0);
+            let dial_fail = o.get("dial_fail").and_then(Value::as_u64).unwrap_or(0);
+            let err_class = o
+                .get("last_err_class")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let err_detail = o
+                .get("last_err_detail")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if dial_fail >= 3 && dial_fail > dial_ok {
+                let suggested_fix = match err_class {
+                    "dns_fail" => "flush_core_dns".to_string(),
+                    "quic_timeout" => format!("reset_outbound_pool:{tag}"),
+                    _ => format!("reset_outbound_pool:{tag}"),
+                };
+                findings.push(DoctorFinding {
+                    id: format!("outbound_err_{err_class}_{tag}"),
+                    severity: "warning".to_string(),
+                    subsystem: "outbounds".to_string(),
+                    title: if en {
+                        format!("Outbound \"{tag}\" dial failures ({err_class}: {dial_fail})")
+                    } else {
+                        format!("Сбои подключения узла «{tag}» ({err_class}: {dial_fail} отказов)")
+                    },
+                    detail: if err_detail.is_empty() {
+                        if en {
+                            "High dial failure ratio on this outbound.".to_string()
+                        } else {
+                            "Высокая доля отказов при установке соединения.".to_string()
+                        }
+                    } else {
+                        err_detail.to_string()
+                    },
+                    quick_fix_id: suggested_fix,
+                    quick_fix_label: if en {
+                        format!("Reset pool \"{tag}\"")
+                    } else {
+                        format!("Сбросить пул «{tag}»")
+                    },
+                    evidence: json!({ "tag": tag, "dial_ok": dial_ok, "dial_fail": dial_fail, "err_class": err_class }),
+                    ..Default::default()
+                });
+            }
+            if let Some(age) = o.get("wg_last_handshake_age_secs").and_then(Value::as_u64)
+                && age > 180
+            {
+                findings.push(DoctorFinding {
+                    id: format!("outbound_wg_stale_{tag}"),
+                    severity: "warning".to_string(),
+                    subsystem: "outbounds".to_string(),
+                    title: if en {
+                        format!("WireGuard \"{tag}\": stale handshake ({age}s)")
+                    } else {
+                        format!("WireGuard «{tag}»: устаревший handshake ({age} с)")
+                    },
+                    detail: if en {
+                        "Tunnel has not renewed keys for over 3 minutes; socket rebind recommended."
+                    } else {
+                        "Туннель не обновлял ключи более 3 минут; рекомендуется rebind сокета."
+                    }
+                    .to_string(),
+                    quick_fix_id: format!("reset_outbound_pool:{tag}"),
+                    quick_fix_label: if en {
+                        format!("Rebind WireGuard \"{tag}\"")
+                    } else {
+                        format!("Rebind WireGuard «{tag}»")
+                    },
+                    evidence: json!({ "tag": tag, "handshake_age_secs": age }),
+                    ..Default::default()
+                });
+            }
         }
     }
 
-    // 8. Firewall flow offloading conflict check (breaks TProxy / SQM packet interception)
+    if has_true_failover_backup(failover_val.as_ref()) {
+        findings.push(DoctorFinding {
+            id: "failover_on_backup".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "failover".to_string(),
+            title: "Группа балансировки переключена на резервный узел".to_string(),
+            detail: "Основной узел недоступен или показал высокий RTT.".to_string(),
+            quick_fix_id: "restore_primary_failover".to_string(),
+            quick_fix_label: "Проверить и вернуть основной узел".to_string(),
+            ..Default::default()
+        });
+    }
+
+    let anom_hosts = anomalies_val
+        .as_ref()
+        .and_then(|a| a.get("hosts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if !anom_hosts.is_empty() {
+        let top_host = anom_hosts[0]
+            .get("host")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        findings.push(DoctorFinding {
+            id: "anomalies_hosts".to_string(),
+            severity: "info".to_string(),
+            subsystem: "outbounds".to_string(),
+            title: format!(
+                "Аномалии соединений на {} хостах (например, {})",
+                anom_hosts.len(),
+                top_host
+            ),
+            detail: "Фиксируются повторяющиеся отказы соединения в 5-минутном окне.".to_string(),
+            quick_fix_id: "capture_blackbox".to_string(),
+            quick_fix_label: "Снять дамп Blackbox".to_string(),
+            evidence: json!({ "count": anom_hosts.len(), "top": anom_hosts.first() }),
+            ..Default::default()
+        });
+    }
+
+    // 9. Outbound sources empty cache check
+    for (src_id, src_name) in empty_subs {
+        findings.push(DoctorFinding {
+            id: format!("sub_empty_{src_id}"),
+            severity: "warning".to_string(),
+            subsystem: "subscriptions".to_string(),
+            title: format!("Подписка «{src_name}» не содержит кэшированных узлов"),
+            detail: "Обновите подписку для загрузки актуального списка узлов.".to_string(),
+            quick_fix_id: "update_subscriptions".to_string(),
+            quick_fix_label: "Обновить подписки".to_string(),
+            ..Default::default()
+        });
+    }
+
+    // 10. Firewall flow offloading conflict check
     let (sw_offload, hw_offload) = read_firewall_flow_offloading();
     let flow_offload_active = (sw_offload || hw_offload)
-        && (matches!(d.settings.proxy_mode.as_str(), "tproxy" | "redirect")
-            || d.settings.smart_queue);
+        && (matches!(proxy_mode.as_str(), "tproxy" | "redirect") || smart_queue);
     if flow_offload_active {
         findings.push(DoctorFinding {
             id: "flow_offloading_conflict".to_string(),
@@ -459,10 +1154,11 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Отключить Flow Offloading"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    // 9. odhcpd IPv6 DNS check (when DHCPv6 server is active on LAN)
+    // 11. odhcpd IPv6 DNS check
     let (odhcpd_ok, odhcpd_detail) = if cfg!(windows) {
         (
             true,
@@ -474,11 +1170,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
             .to_string(),
         )
     } else {
-        let odhcpd_present = tokio::fs::metadata("/etc/init.d/odhcpd").await.is_ok();
-        let dhcp_raw = tokio::fs::read_to_string("/etc/config/dhcp")
-            .await
-            .unwrap_or_default();
-        evaluate_odhcpd_ipv6_dns_lang(&dhcp_raw, odhcpd_present, en)
+        evaluate_odhcpd_ipv6_dns_lang(dhcp_raw, odhcpd_present, en)
     };
     if !odhcpd_ok {
         findings.push(DoctorFinding {
@@ -499,6 +1191,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Настроить стек IPv6/DNS"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
@@ -546,35 +1239,10 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Починить симлинк"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    let sub_has_issue = findings.iter().any(|f| f.id.starts_with("sub_empty_"))
-        || d.outbound_sources
-            .iter()
-            .any(|s| s.enabled && !s.sub_last_error.is_empty())
-        || d.outbound_sources.iter().filter(|s| s.enabled).count() == 0;
-    let balancer_has_issue = d
-        .balancers
-        .iter()
-        .any(|b| b.balancer_pool.is_empty() && b.priority_levels.is_empty())
-        || d.sections.iter().any(|s| {
-            s.enabled
-                && s.connection_type == "proxy"
-                && s.outbound_source_refs.is_empty()
-                && s.balancer_refs.is_empty()
-                && s.outbound_group_refs.is_empty()
-        });
-    let server_has_issue = d.servers.iter().any(|s| s.enabled)
-        && (!live.core_running
-            || d.servers.iter().any(|s| {
-                s.enabled
-                    && (s.listen_port == 0
-                        || (s.security == "tls" && s.tls_certificate_path.trim().is_empty()))
-            }));
-    let low_memory = findings.iter().any(|f| f.id == "low_memory");
-    let lkg_ready = state.lkg_path.exists();
-    let honeypot_triggered = !live.honeypot_hits.is_empty();
     let dnsmasq_cascade_ok = if cfg!(windows) || d.settings.dont_touch_dhcp {
         live.dns_healthy
     } else {
@@ -608,6 +1276,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Перезапустить dnsmasq"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
@@ -621,11 +1290,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         && d.settings.fakeip_enabled
         && ipv6_state_doc.is_active()
         && eff_dns_doc != "ipv4_only"
-        && !crate::core_mgr::CoreManager::core_config_ipv6_matches(
-            &core_cfg_doc,
-            &d,
-            ipv6_state_doc,
-        )
+        && !crate::core_mgr::CoreManager::core_config_ipv6_matches(&core_cfg_doc, d, ipv6_state_doc)
     {
         findings.push(DoctorFinding {
             id: "fakeip6_config_drift".to_string(),
@@ -657,27 +1322,180 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
                 "Автовосстановление конфига и IPv6 (doctor --fix)"
             }
             .to_string(),
+            ..Default::default()
         });
     }
 
-    let checks_passed = checks_total.saturating_sub(findings.len());
-    let healthy = !findings.iter().any(|f| f.severity == "critical");
+    let root_causes = apply_causal_suppression(&mut findings);
+    let active_findings_count = findings
+        .iter()
+        .filter(|f| f.suppressed_by.is_none())
+        .count();
+    let checks_passed = checks_total.saturating_sub(active_findings_count.min(checks_total));
+    let healthy = !findings
+        .iter()
+        .any(|f| f.suppressed_by.is_none() && f.severity == "critical");
+
+    let node_status = |match_ids: &[&str], sub: &str| -> (&'static str, bool) {
+        let matching: Vec<&DoctorFinding> = findings
+            .iter()
+            .filter(|f| f.subsystem == sub || match_ids.iter().any(|p| f.id.starts_with(p)))
+            .collect();
+        if matching.is_empty() {
+            return ("ok", false);
+        }
+        if matching.iter().all(|f| f.suppressed_by.is_some()) {
+            return ("suppressed", false);
+        }
+        let is_root = matching.iter().any(|f| f.root_cause);
+        if matching
+            .iter()
+            .any(|f| f.suppressed_by.is_none() && f.severity == "critical")
+        {
+            ("err", is_root)
+        } else {
+            ("warn", is_root)
+        }
+    };
+
+    let pipeline_specs = [
+        (
+            "wan",
+            "WAN",
+            &["wan_down"][..],
+            "wan",
+            format!("{} мс", live.wan_probe_ms),
+        ),
+        (
+            "clock",
+            "Часы",
+            &["clock_skew"][..],
+            "time",
+            "NTP sync".to_string(),
+        ),
+        (
+            "binary",
+            "Бинарник",
+            &["core_binary_corrupt"][..],
+            "binary",
+            if bin_check_res.is_ok() {
+                "ELF/PE OK".into()
+            } else {
+                "Повреждён".into()
+            },
+        ),
+        (
+            "core_process",
+            "Ядро",
+            &["core_stopped"][..],
+            "core",
+            if live.core_running {
+                format!("PID {}", live.core_pid.unwrap_or(0))
+            } else {
+                "Остановлено".into()
+            },
+        ),
+        (
+            "config_sync",
+            "Конфиг",
+            &["config_drift"][..],
+            "config_sync",
+            if config_drift {
+                "Drift".into()
+            } else {
+                "Синхронизирован".into()
+            },
+        ),
+        (
+            "nftables",
+            "nftables",
+            &["nft_missing", "flow_offloading"][..],
+            "nftables",
+            if live.nft_table_active {
+                "TProxy :1602".into()
+            } else {
+                proxy_mode.clone()
+            },
+        ),
+        (
+            "dns_fakeip",
+            "DNS/FakeIP",
+            &["dns_", "fakeip_", "bootstrap_dns"][..],
+            "dns",
+            format!("{} мс · {fip_used}/{fip_cap}", live.dns_probe_ms),
+        ),
+        (
+            "outbounds",
+            "Узлы",
+            &["outbound_", "failover_", "anomalies_"][..],
+            "outbounds",
+            format!(
+                "Ошибок: {}",
+                flight_val
+                    .as_ref()
+                    .and_then(|v| v.get("count"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(live.recent_flight_failures as u64)
+            ),
+        ),
+        (
+            "resources",
+            "Ресурсы",
+            &[
+                "low_memory",
+                "core_memory_pressure",
+                "fd_exhaustion",
+                "nat_or_cap",
+            ][..],
+            "resources",
+            format!(
+                "{} · FD {fd_open}/{fd_limit}",
+                if pressure.is_empty() {
+                    "normal"
+                } else {
+                    pressure
+                }
+            ),
+        ),
+    ];
+    let pipeline_nodes: Vec<Value> = pipeline_specs
+        .into_iter()
+        .map(|(id, label, prefixes, sub, detail)| {
+            let (st, rc) = node_status(prefixes, sub);
+            json!({
+                "id": id,
+                "label": label,
+                "status": st,
+                "detail": detail,
+                "root_cause": rc,
+            })
+        })
+        .collect();
+
     let summary = if findings.is_empty() {
         if en {
             format!("All {checks_total} router and tachyon-core subsystems operate normally")
         } else {
             format!("Все {checks_total} подсистем роутера и ядра tachyon-core работают штатно")
         }
+    } else if !root_causes.is_empty() {
+        if en {
+            format!(
+                "Active findings: {active_findings_count} (total {}), root cause: {}",
+                findings.len(),
+                root_causes[0]
+            )
+        } else {
+            format!(
+                "Активных замечаний: {active_findings_count} (всего {}), корневая причина: {}",
+                findings.len(),
+                root_causes[0]
+            )
+        }
     } else if en {
-        format!(
-            "Checked subsystems: {checks_total}, findings: {}",
-            findings.len()
-        )
+        format!("Checked subsystems: {checks_total}, findings: {active_findings_count}")
     } else {
-        format!(
-            "Проверено подсистем: {checks_total}, замечаний: {}",
-            findings.len()
-        )
+        format!("Проверено подсистем: {checks_total}, замечаний: {active_findings_count}")
     };
 
     let fakeip_v4_doc = if d.settings.fakeip_inet4_range.trim().is_empty() {
@@ -685,170 +1503,433 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     } else {
         d.settings.fakeip_inet4_range.trim()
     };
-    let subsystems = vec![
+    let wan_status = if !live.wan_healthy && live.wan_fail_streak > 0 {
+        "err"
+    } else {
+        "ok"
+    };
+    let dns_status = if live.core_running && !live.dns_healthy && live.dns_fail_streak > 0 {
+        "err"
+    } else if dns_up_err >= 5 || (fip_cap > 0 && fip_used * 100 / fip_cap >= 85) {
+        "warn"
+    } else {
+        "ok"
+    };
+    let outbounds_bad = findings.iter().any(|f| {
+        f.suppressed_by.is_none()
+            && (f.id.starts_with("outbound_") || f.id.starts_with("sub_empty_"))
+    });
+    let resources_bad = findings.iter().any(|f| {
+        matches!(
+            f.id.as_str(),
+            "low_memory" | "core_memory_pressure" | "fd_exhaustion" | "nat_or_cap_pressure"
+        )
+    });
+    let failover_backup = has_true_failover_backup(failover_val.as_ref());
+
+    #[inline(never)]
+    fn make_sub(
+        name: impl Into<String>,
+        status: &str,
+        detail: impl Into<String>,
+        fix_id: &str,
+        fix_label: &str,
+    ) -> Value {
         json!({
-            "name": if en { "1. tachyon-core Engine" } else { "1. Ядро tachyon-core" },
-            "status": if live.core_running { "ok" } else { "warn" },
-            "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024),
-            "fix_id": "restart_core",
-            "fix_label": if en { "Restart" } else { "Перезапустить" }
-        }),
-        json!({
-            "name": if en { "2. nftables TProxy Table" } else { "2. Таблица nftables TProxy" },
-            "status": if live.nft_table_active { "ok" } else { "warn" },
-            "detail": "inet TachyonTable :1602",
-            "fix_id": "heal_network_stack",
-            "fix_label": if en { "Restore stack" } else { "Восстановить стек" }
-        }),
-        json!({
-            "name": if d.settings.fakeip_enabled {
-                if en {
-                    format!("3. DNS & FakeIP ({fakeip_v4_doc})")
+            "name": name.into(),
+            "status": status,
+            "detail": detail.into(),
+            "fix_id": fix_id,
+            "fix_label": fix_label,
+        })
+    }
+
+    let mut subsystems = Vec::with_capacity(16);
+    subsystems.push(make_sub(
+        if en {
+            "1. tachyon-core Engine & Binary"
+        } else {
+            "1. Ядро и бинарник tachyon-core"
+        },
+        if bin_check_res.is_err() {
+            "err"
+        } else if live.core_running && !config_drift {
+            "ok"
+        } else {
+            "warn"
+        },
+        format!(
+            "PID {} · RSS {} KB · reloads {}",
+            live.core_pid.unwrap_or(0),
+            live.core_rss_bytes / 1024,
+            live.core_reload_count
+        ),
+        if bin_check_res.is_err() {
+            "rollback_core_binary"
+        } else if config_drift {
+            "hot_reload_core"
+        } else {
+            "restart_core"
+        },
+        if bin_check_res.is_err() {
+            if en {
+                "Rollback binary"
+            } else {
+                "Откатить бинарник"
+            }
+        } else if config_drift {
+            "Hot-Reload"
+        } else if en {
+            "Restart"
+        } else {
+            "Перезапустить"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "2. nftables TProxy Table"
+        } else {
+            "2. Таблица nftables TProxy"
+        },
+        if proxy_mode == "tproxy" && !live.nft_table_active {
+            "err"
+        } else {
+            "ok"
+        },
+        "inet TachyonTable :1602",
+        "reconcile_nftables",
+        if en {
+            "Restore stack"
+        } else {
+            "Восстановить стек"
+        },
+    ));
+    subsystems.push(make_sub(
+        if fakeip_enabled {
+            if en {
+                format!("3. DNS & FakeIP ({fakeip_v4_doc})")
+            } else {
+                format!("3. DNS и FakeIP ({fakeip_v4_doc})")
+            }
+        } else {
+            "3. DNS (RealIP)".to_string()
+        },
+        dns_status,
+        if en {
+            format!(
+                "127.0.0.42:53 · {} ms · FakeIP {fip_used}/{fip_cap} (evictions {fip_evictions})",
+                live.dns_probe_ms
+            )
+        } else {
+            format!(
+                "127.0.0.42:53 · {} мс · FakeIP {fip_used}/{fip_cap} (вытеснений {fip_evictions})",
+                live.dns_probe_ms
+            )
+        },
+        "flush_core_dns",
+        if en {
+            "Flush core DNS"
+        } else {
+            "Сбросить DNS ядра"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "4. WAN Uplink"
+        } else {
+            "4. Внешний канал WAN"
+        },
+        wan_status,
+        if en {
+            format!(
+                "TCP probe: {} ms (fail streak: {})",
+                live.wan_probe_ms, live.wan_fail_streak
+            )
+        } else {
+            format!(
+                "TCP проба: {} мс (отказов подряд: {})",
+                live.wan_probe_ms, live.wan_fail_streak
+            )
+        },
+        "fix_wan_interface",
+        if en {
+            "Check gateway"
+        } else {
+            "Проверить шлюз"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "5. Routing Sections"
+        } else {
+            "5. Секции маршрутизации"
+        },
+        if enabled_sections > 0 { "ok" } else { "warn" },
+        if en {
+            format!("Active {enabled_sections} of {total_sections}")
+        } else {
+            format!("Активно {enabled_sections} из {total_sections}")
+        },
+        "enable_default_desync",
+        if en {
+            "Enable sections"
+        } else {
+            "Включить секции"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "6. Outbounds & Sources (DialErrorClass)"
+        } else {
+            "6. Узлы и Источники (DialErrorClass)"
+        },
+        if outbounds_bad { "warn" } else { "ok" },
+        if en {
+            format!("Sources: {sources_len} · anomalies: {}", anom_hosts.len())
+        } else {
+            format!("Источников: {sources_len} · аномалий: {}", anom_hosts.len())
+        },
+        "reset_outbound_pool",
+        if en {
+            "Reset outbound pool"
+        } else {
+            "Сбросить пул узлов"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "7. Balancers & Failover"
+        } else {
+            "7. Балансировщики и Failover"
+        },
+        if failover_backup { "warn" } else { "ok" },
+        if failover_backup {
+            if en {
+                "Backup node active".to_string()
+            } else {
+                "Активен резервный узел".to_string()
+            }
+        } else if en {
+            format!("Configured: {balancers_len}")
+        } else {
+            format!("Алгоритмов: {balancers_len}")
+        },
+        "restore_primary_failover",
+        if en {
+            "Restore primary"
+        } else {
+            "Вернуть primary"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en { "8. Inbound Servers & NAT" } else { "8. Входящие серверы и NAT" },
+        if nat_evictions > 0 || cap_drops > 0 { "warn" } else { "ok" },
+        if en {
+            format!(
+                "Active {enabled_servers}/{total_servers} · UDP NAT: {} (evictions {nat_evictions}) · cap drops {cap_drops}",
+                live.udp_nat_active
+            )
+        } else {
+            format!(
+                "Активно {enabled_servers}/{total_servers} · UDP NAT: {} (вытеснений {nat_evictions}) · cap drops {cap_drops}",
+                live.udp_nat_active
+            )
+        },
+        "trim_core_memory",
+        if en { "Trim stale NAT" } else { "Сбросить старые NAT" },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "9. RAM, FD & Buffers"
+        } else {
+            "9. Память ОЗУ, FD и буферы"
+        },
+        if resources_bad { "warn" } else { "ok" },
+        if en {
+            format!(
+                "Free {} MB · {pressure} · FD {fd_open}/{fd_limit}",
+                sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576
+            )
+        } else {
+            format!(
+                "Свободно {} МБ · {pressure} · FD {fd_open}/{fd_limit}",
+                sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576
+            )
+        },
+        "trim_core_memory",
+        if en {
+            "Trim memory"
+        } else {
+            "Сжать память"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "10. NTP System Clock"
+        } else {
+            "10. Системное время NTP"
+        },
+        if unix_now_secs() > 1_700_000_000 {
+            "ok"
+        } else {
+            "err"
+        },
+        if en {
+            "Synced for TLS 1.3 / REALITY"
+        } else {
+            "Синхронизировано для TLS 1.3 / REALITY"
+        },
+        "fix_system_time",
+        if en {
+            "Sync NTP"
+        } else {
+            "Синхронизировать NTP"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "11. Watchdog & LKG Snapshot"
+        } else {
+            "11. Watchdog и снимок LKG"
+        },
+        if !enable_watchdog || live.watchdog_restarts_10m > 0 {
+            "warn"
+        } else {
+            "ok"
+        },
+        if en {
+            format!(
+                "{} · restarts 10m: {}",
+                if live.watchdog_state.is_empty() {
+                    "idle"
                 } else {
-                    format!("3. DNS и FakeIP ({fakeip_v4_doc})")
-                }
+                    &live.watchdog_state
+                },
+                live.watchdog_restarts_10m
+            )
+        } else {
+            format!(
+                "{} · рестартов за 10м: {}",
+                if live.watchdog_state.is_empty() {
+                    "idle"
+                } else {
+                    &live.watchdog_state
+                },
+                live.watchdog_restarts_10m
+            )
+        },
+        "rollback_known_good",
+        if en {
+            "Rollback to LKG"
+        } else {
+            "Откат к LKG"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "12. NAND Guard, Blackbox & Security"
+        } else {
+            "12. NAND Guard, Blackbox и Безопасность"
+        },
+        "ok",
+        if en {
+            format!(
+                "Blackbox: {} · incidents: {} · honeypot: {}",
+                live.blackboxes.len(),
+                live.incidents.len(),
+                live.honeypot_hits.len()
+            )
+        } else {
+            format!(
+                "Blackbox: {} · инцидентов: {} · honeypot: {}",
+                live.blackboxes.len(),
+                live.incidents.len(),
+                live.honeypot_hits.len()
+            )
+        },
+        "capture_blackbox",
+        if en {
+            "Capture Blackbox"
+        } else {
+            "Снять Blackbox"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "13. dnsmasq -> FakeIP Cascade"
+        } else {
+            "13. Каскад dnsmasq -> FakeIP"
+        },
+        if dnsmasq_cascade_ok { "ok" } else { "warn" },
+        if dnsmasq_cascade_ok {
+            "noresolv=1 · 127.0.0.42#53"
+        } else if en {
+            "dnsmasq/127.0.0.42#53 cascade issue"
+        } else {
+            "Проблема каскада dnsmasq/127.0.0.42#53"
+        },
+        "fix_dnsmasq",
+        if en {
+            "Restart dnsmasq"
+        } else {
+            "Перезапустить dnsmasq"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "14. System /etc/resolv.conf"
+        } else {
+            "14. Системный /etc/resolv.conf"
+        },
+        if resolv_ok { "ok" } else { "warn" },
+        if en {
+            "Router host resolver"
+        } else {
+            "Резолвер хоста роутера"
+        },
+        "fix_resolv_symlink",
+        if en {
+            "Repair symlink"
+        } else {
+            "Починить симлинк"
+        },
+    ));
+    subsystems.push(make_sub(
+        if en {
+            "15. Firewall Conflicts (Flow Offloading)"
+        } else {
+            "15. Конфликты Firewall (Flow Offloading)"
+        },
+        if flow_offload_active { "warn" } else { "ok" },
+        if flow_offload_active {
+            if en {
+                "Flow Offloading active with TProxy/SQM"
             } else {
-                "3. DNS (RealIP)".to_string()
-            },
-            "status": if live.dns_healthy { "ok" } else { "warn" },
-            "detail": if d.settings.fakeip_enabled { "FakeIP 127.0.0.42:53" } else { "RealIP 127.0.0.42:53" },
-            "fix_id": "clear_dns_cache",
-            "fix_label": if en { "Flush DNS cache" } else { "Сбросить кэш DNS" }
-        }),
-        json!({
-            "name": if en { "4. WAN Uplink" } else { "4. Внешний канал WAN" },
-            "status": if live.wan_healthy { "ok" } else { "warn" },
-            "detail": if en { "Default route is active" } else { "Маршрут по умолчанию активен" },
-            "fix_id": "fix_wan_interface",
-            "fix_label": if en { "Check gateway" } else { "Проверить шлюз" }
-        }),
-        json!({
-            "name": if en { "5. Routing Sections" } else { "5. Секции маршрутизации" },
-            "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" },
-            "detail": if en {
-                format!("Active {} of {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len())
-            } else {
-                format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len())
-            },
-            "fix_id": "enable_default_desync",
-            "fix_label": if en { "Enable sections" } else { "Включить секции" }
-        }),
-        json!({
-            "name": if en { "6. Sources & Subscriptions" } else { "6. Источники и Подписки" },
-            "status": if sub_has_issue { "warn" } else { "ok" },
-            "detail": if en {
-                format!("Active {} of {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len())
-            } else {
-                format!("Активно {} из {}", d.outbound_sources.iter().filter(|s| s.enabled).count(), d.outbound_sources.len())
-            },
-            "fix_id": "update_subscriptions",
-            "fix_label": if en { "Update subscriptions" } else { "Обновить подписки" }
-        }),
-        json!({
-            "name": if en { "7. Load Balancers" } else { "7. Балансировщики нагрузки" },
-            "status": if balancer_has_issue { "warn" } else { "ok" },
-            "detail": if en {
-                format!("Configured: {}", d.balancers.len())
-            } else {
-                format!("Алгоритмов: {}", d.balancers.len())
-            },
-            "fix_id": "restart_core",
-            "fix_label": if en { "Recheck" } else { "Перепроверить" }
-        }),
-        json!({
-            "name": if en { "8. Inbound Servers" } else { "8. Входящие серверы" },
-            "status": if server_has_issue { "warn" } else { "ok" },
-            "detail": if en {
-                format!("Active {} of {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len())
-            } else {
-                format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len())
-            },
-            "fix_id": "restart_core",
-            "fix_label": if en { "Apply" } else { "Применить" }
-        }),
-        json!({
-            "name": if en { "9. RAM & ZRAM Memory" } else { "9. Память ОЗУ и ZRAM" },
-            "status": if low_memory { "warn" } else { "ok" },
-            "detail": if en {
-                format!("Free {} MB · ZRAM {} MB", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576)
-            } else {
-                format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576)
-            },
-            "fix_id": "optimize_memory",
-            "fix_label": if en { "Trim memory" } else { "Сжать память" }
-        }),
-        json!({
-            "name": if en { "10. NTP System Clock" } else { "10. Системное время NTP" },
-            "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" },
-            "detail": if en { "Synced for TLS 1.3 / Reality" } else { "Синхронизировано для TLS 1.3 / Reality" },
-            "fix_id": "fix_system_time",
-            "fix_label": if en { "Sync NTP" } else { "Синхронизировать NTP" }
-        }),
-        json!({
-            "name": if en { "11. LKG Watchdog Snapshot" } else { "11. Снимок LKG Watchdog" },
-            "status": if lkg_ready { "ok" } else { "warn" },
-            "detail": if lkg_ready {
-                if en { "Known-good snapshot saved" } else { "Эталон сохранён" }
-            } else if en {
-                "No snapshot saved yet"
-            } else {
-                "Эталон ещё не сохранён"
-            },
-            "fix_id": "rollback_known_good",
-            "fix_label": if en { "Rollback to LKG" } else { "Откат к эталону" }
-        }),
-        json!({
-            "name": if en { "12. NAND Guard & Honeypot" } else { "12. Защита NAND и Honeypot" },
-            "status": if honeypot_triggered { "warn" } else { "ok" },
-            "detail": if en {
-                format!("SHA-256 Guard · Blocked: {}", live.honeypot_hits.len())
-            } else {
-                format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len())
-            },
-            "fix_id": "flush_conntrack",
-            "fix_label": if en { "Flush sessions" } else { "Сбросить сессии" }
-        }),
-        json!({
-            "name": if en { "13. dnsmasq -> FakeIP Cascade" } else { "13. Каскад dnsmasq -> FakeIP" },
-            "status": if dnsmasq_cascade_ok { "ok" } else { "warn" },
-            "detail": if dnsmasq_cascade_ok {
-                "noresolv=1 · 127.0.0.42#53"
-            } else if en {
-                "dnsmasq/127.0.0.42#53 cascade issue"
-            } else {
-                "Проблема каскада dnsmasq/127.0.0.42#53"
-            },
-            "fix_id": "fix_dnsmasq",
-            "fix_label": if en { "Restart dnsmasq" } else { "Перезапустить dnsmasq" }
-        }),
-        json!({
-            "name": if en { "14. System /etc/resolv.conf" } else { "14. Системный /etc/resolv.conf" },
-            "status": if resolv_ok { "ok" } else { "warn" },
-            "detail": if en { "Router host resolver" } else { "Резолвер хоста роутера" },
-            "fix_id": "fix_resolv_symlink",
-            "fix_label": if en { "Repair symlink" } else { "Починить симлинк" }
-        }),
-        json!({
-            "name": if en { "15. Firewall Conflicts (Flow Offloading)" } else { "15. Конфликты Firewall (Flow Offloading)" },
-            "status": if flow_offload_active { "warn" } else { "ok" },
-            "detail": if flow_offload_active {
-                if en { "Flow Offloading active with TProxy/SQM" } else { "Обнаружен Flow Offloading при TProxy/SQM" }
-            } else if en {
-                "No conflicts with netfilter/TProxy detected"
-            } else {
-                "Конфликтов с netfilter/TProxy не обнаружено"
-            },
-            "fix_id": "disable_flow_offloading",
-            "fix_label": if en { "Disable Flow Offloading" } else { "Отключить Flow Offloading" }
-        }),
-        json!({
-            "name": "16. odhcpd IPv6 DNS",
-            "status": if odhcpd_ok { "ok" } else { "warn" },
-            "detail": odhcpd_detail,
-            "fix_id": "heal_network_stack",
-            "fix_label": if en { "Configure IPv6/DNS stack" } else { "Настроить стек IPv6/DNS" }
-        }),
-    ];
+                "Обнаружен Flow Offloading при TProxy/SQM"
+            }
+        } else if en {
+            "No conflicts with netfilter/TProxy detected"
+        } else {
+            "Конфликтов с netfilter/TProxy не обнаружено"
+        },
+        "disable_flow_offloading",
+        if en {
+            "Disable Flow Offloading"
+        } else {
+            "Отключить Flow Offloading"
+        },
+    ));
+    subsystems.push(make_sub(
+        "16. odhcpd IPv6 DNS",
+        if odhcpd_ok { "ok" } else { "warn" },
+        odhcpd_detail,
+        "heal_network_stack",
+        if en {
+            "Configure IPv6/DNS stack"
+        } else {
+            "Настроить стек IPv6/DNS"
+        },
+    ));
 
     DoctorReport {
         healthy,
@@ -858,7 +1939,125 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         subsystems,
         findings,
         summary,
+        pipeline_nodes,
+        root_causes,
     }
+}
+
+async fn rollback_snapshot_boxed(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    prev: Box<RouterStoreData>,
+) -> bool {
+    if Box::pin(transaction::commit_transaction(state, *prev))
+        .await
+        .is_ok()
+    {
+        let _ = Box::pin(core.apply_or_reload()).await;
+        true
+    } else {
+        false
+    }
+}
+
+async fn commit_and_reload_boxed(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    reload: bool,
+    mutate: impl FnOnce(&mut RouterStoreData),
+) -> anyhow::Result<()> {
+    let mut candidate = Box::new(state.data.read().await.clone());
+    mutate(&mut candidate);
+    Box::pin(transaction::commit_transaction(state, *candidate)).await?;
+    if reload {
+        let _ = Box::pin(core.apply_or_reload()).await;
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn qf_core_start(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(core.start())
+}
+
+#[inline(never)]
+fn qf_core_stop(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(core.stop())
+}
+
+#[inline(never)]
+fn qf_core_reload(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(core.apply_or_reload())
+}
+
+#[inline(never)]
+fn qf_apply_net_stack(
+    snap: &RouterStoreData,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(net_stack::apply_network_stack(snap))
+}
+
+#[inline(never)]
+fn qf_commit_and_reload<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    reload: bool,
+    mutate: fn(&mut RouterStoreData),
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(commit_and_reload_boxed(state, core, reload, mutate))
+}
+
+#[inline(never)]
+fn qf_refresh_subs(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<usize>> + Send + '_>> {
+    Box::pin(core.refresh_all_subscriptions())
+}
+
+#[inline(never)]
+fn qf_component_action<'a>(
+    core: &'a Arc<CoreManager>,
+    comp: &'a str,
+    act: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Value> + Send + 'a>> {
+    Box::pin(core.component_action(comp, act, None))
+}
+
+#[inline(never)]
+fn qf_capture_blackbox<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    reason: &'a str,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = anyhow::Result<crate::store::BlackboxSummary>> + Send + 'a,
+    >,
+> {
+    Box::pin(watchdog::capture_blackbox(state, core, reason))
+}
+
+#[inline(never)]
+fn qf_commit_tx(
+    state: &Arc<AppState>,
+    data: Box<RouterStoreData>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(async move {
+        transaction::commit_transaction(state, *data).await?;
+        Ok(())
+    })
+}
+
+#[inline(never)]
+fn qf_check_updates(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Value> + Send + '_>> {
+    Box::pin(core.check_updates())
 }
 
 /// Execute any of the 25 automated Quick Fixes by ID.
@@ -867,54 +2066,89 @@ pub async fn apply_quick_fix(
     core: &Arc<CoreManager>,
     fix_id: &str,
 ) -> anyhow::Result<String> {
+    if let Some(tag) = fix_id.strip_prefix("reset_outbound_pool:") {
+        let tag = tag.trim();
+        anyhow::ensure!(
+            !tag.is_empty(),
+            "Пустой тег outbound для reset_outbound_pool"
+        );
+        let res = core.reset_core_outbound(tag, true, None).await?;
+        let kicked = core
+            .kick_core_filtered(None, None, Some(tag), Some(30_000))
+            .await
+            .ok()
+            .and_then(|v| v.get("closed").and_then(Value::as_u64))
+            .unwrap_or(0);
+        let closed = res
+            .get("closed_sessions")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        return Ok(format!(
+            "Пул узла '{tag}' сброшен (rebind/probe, закрыто сессий: {}, зависших: {kicked})",
+            closed
+        ));
+    }
+
     match fix_id {
         "restart_core" | "start_core" | "start_tachyon_core" => {
-            core.apply_or_reload().await?;
+            qf_core_start(core).await?;
             Ok("Ядро tachyon-core перезапущено и синхронизировано".to_string())
         }
+        "hot_reload_core" => {
+            qf_core_reload(core).await?;
+            Ok("Конфигурация ядра обновлена через Hot-Reload".to_string())
+        }
         "doctor_fix" => {
-            if core.apply_or_reload().await.is_err() {
-                let _ = core.component_action("lists", "update", None).await;
-                core.apply_or_reload().await?;
+            if qf_core_reload(core).await.is_err() {
+                let _ = qf_component_action(core, "lists", "update").await;
+                qf_core_reload(core).await?;
             }
             Ok("Выполнено автовосстановление конфигурации, правил IPv6 и списков".to_string())
         }
-        "heal_network_stack" | "rebuild_rules" | "reset_firewall" => {
-            let snap = state.data.read().await.clone();
-            net_stack::apply_network_stack(&snap).await?;
+        "heal_network_stack" | "rebuild_rules" | "reset_firewall" | "reconcile_nftables" => {
+            let snap = Box::new(state.data.read().await.clone());
+            qf_apply_net_stack(&snap).await?;
             state.live.write().await.nft_table_active = net_stack::check_nft_table_active().await;
             Ok("Сетевой стек (inet TachyonTable и ip rule) перестроен".to_string())
         }
         "fix_bootstrap_dns" => {
-            let mut candidate = state.data.read().await.clone();
-            candidate.settings.bootstrap_dns_servers =
-                vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
-            transaction::commit_transaction(state, candidate).await?;
-            let _ = core.apply_or_reload().await;
+            qf_commit_and_reload(state, core, true, |c| {
+                c.settings.bootstrap_dns_servers =
+                    vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
+            })
+            .await?;
             Ok("Bootstrap DNS сброшен на 77.88.8.8 / 1.1.1.1".to_string())
         }
         "switch_to_doh" => {
-            let mut candidate = state.data.read().await.clone();
-            candidate.settings.dns_type = "doh".to_string();
-            candidate.settings.dns_servers = vec![
-                "https://1.1.1.1/dns-query".to_string(),
-                "https://dns.google/dns-query".to_string(),
-            ];
-            transaction::commit_transaction(state, candidate).await?;
-            let _ = core.apply_or_reload().await;
+            qf_commit_and_reload(state, core, true, |c| {
+                c.settings.dns_type = "doh".to_string();
+                c.settings.dns_servers = vec![
+                    "https://1.1.1.1/dns-query".to_string(),
+                    "https://dns.google/dns-query".to_string(),
+                ];
+            })
+            .await?;
             Ok("DNS переключён на защищённый DoH (Cloudflare + Google)".to_string())
         }
-        "clear_dns_cache" | "restart_core_dns" | "restart_tachyon_core_dns" => {
-            let _ = core
-                .clash_request("POST", "/configs?force=true", Some("{}"))
-                .await;
-            if !cfg!(windows) {
+        "clear_dns_cache" | "restart_core_dns" | "restart_tachyon_core_dns" | "flush_core_dns" => {
+            let mut msg_parts = Vec::new();
+            match core.flush_core_dns("all").await {
+                Ok(v) => {
+                    let evicted = v.get("evicted_cache").and_then(Value::as_u64).unwrap_or(0);
+                    msg_parts.push(format!(
+                        "DNS-кэш и апстримы ядра очищены (записей: {evicted})"
+                    ));
+                }
+                Err(e) => msg_parts.push(format!("Сброс DNS ядра не выполнен: {e}")),
+            }
+            if fix_id != "flush_core_dns" && !cfg!(windows) {
                 let _ = Command::new("/etc/init.d/dnsmasq")
                     .arg("restart")
                     .status()
                     .await;
+                msg_parts.push("dnsmasq перезапущен".to_string());
             }
-            Ok("Кэш DNS очищен, резолвер перезапущен".to_string())
+            Ok(msg_parts.join("; "))
         }
         "fix_dnsmasq" => {
             if !cfg!(windows) {
@@ -954,26 +2188,27 @@ pub async fn apply_quick_fix(
             Ok("Симлинк /etc/resolv.conf проверен и восстановлен".to_string())
         }
         "start_watchdog" => {
-            let mut candidate = state.data.read().await.clone();
-            candidate.settings.enable_watchdog = true;
-            transaction::commit_transaction(state, candidate).await?;
+            qf_commit_and_reload(state, core, false, |c| {
+                c.settings.enable_watchdog = true;
+            })
+            .await?;
             core.set_manual_stop(false);
             Ok("Автономный Watchdog включён".to_string())
         }
-        "optimize_memory" => {
+        "optimize_memory" | "trim_core_memory" => {
             let _ = core
                 .clash_request("POST", "/tachyon/memory/trim", Some("{}"))
                 .await;
-            if !cfg!(windows) {
+            if fix_id == "optimize_memory" && !cfg!(windows) {
                 let _ = std::fs::write("/proc/sys/vm/drop_caches", "1\n");
             }
-            Ok("Буферы памяти tachyon-core и кэш страниц Linux очищены".to_string())
+            Ok("Буферы памяти и кэши tachyon-core сжаты".to_string())
         }
         "optimize_mtu" => {
-            let mut candidate = state.data.read().await.clone();
-            candidate.settings.tun_mtu = 1400;
-            transaction::commit_transaction(state, candidate).await?;
-            let _ = core.apply_or_reload().await;
+            qf_commit_and_reload(state, core, true, |c| {
+                c.settings.tun_mtu = 1400;
+            })
+            .await?;
             Ok("MTU интерфейса установлен на 1400 байт".to_string())
         }
         "flush_conntrack" => {
@@ -993,15 +2228,90 @@ pub async fn apply_quick_fix(
             Ok("Запущена синхронизация времени NTP (pool.ntp.org)".to_string())
         }
         "update_subscriptions" | "restart_providers" => {
-            let updated = core.refresh_all_subscriptions().await?;
+            let updated = qf_refresh_subs(core).await?;
             Ok(format!("Обновлено подписок: {updated}"))
         }
         "fix_wan_interface" | "fix_gateway" | "restart_network" => {
-            let _ = core.probe_all_nodes_rtt().await;
-            Ok("Проверка шлюза WAN и узлов маршрутизации выполнена".to_string())
+            let (wan_ok, rtt_ms) =
+                watchdog::probe_wan_health(&watchdog::default_wan_targets()).await;
+            let snap = Box::new(state.data.read().await.clone());
+            if snap.settings.proxy_mode == "tproxy" {
+                let _ = qf_apply_net_stack(&snap).await;
+            }
+            let nft_ok = net_stack::check_nft_table_active().await;
+            {
+                let mut live = state.live.write().await;
+                live.wan_healthy = wan_ok;
+                live.wan_probe_ms = rtt_ms;
+                live.nft_table_active = nft_ok;
+            }
+            Ok(format!(
+                "Проверка WAN и маршрутизации завершена: канал {}, RTT {} мс",
+                if wan_ok {
+                    "доступен"
+                } else {
+                    "недоступен"
+                },
+                rtt_ms
+            ))
+        }
+        "reset_outbound_pool" => {
+            let candidate_tag = {
+                let live = state.live.read().await;
+                live.outbound_health
+                    .iter()
+                    .filter(|o| o.dial_fail > 0)
+                    .max_by_key(|o| o.dial_fail)
+                    .map(|o| o.tag.clone())
+                    .or_else(|| live.outbound_health.first().map(|o| o.tag.clone()))
+            };
+            let Some(tag) = candidate_tag else {
+                anyhow::bail!("Нет активных outbound-тегов для сброса");
+            };
+            let _ = core.reset_core_outbound(&tag, true, None).await?;
+            let _ = core
+                .kick_core_filtered(None, None, Some(&tag), Some(30_000))
+                .await;
+            Ok(format!("Пул соединений узла '{tag}' сброшен"))
+        }
+        "restore_primary_failover" => {
+            let res = core.restore_core_failover("").await;
+            Ok(format!(
+                "Выполнена проверка и возврат основного узла: {}",
+                res.get("any_on_backup")
+                    .and_then(Value::as_bool)
+                    .map(|b| if b {
+                        "резерв ещё активен"
+                    } else {
+                        "основной активен"
+                    })
+                    .unwrap_or("завершено")
+            ))
+        }
+        "rollback_core_binary" => {
+            let data_dir = state
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("data"))
+                .to_path_buf();
+            let target_bin = PathBuf::from(core.resolve_bin_path().await);
+            let meta = tokio::task::spawn_blocking(move || {
+                snapshots::rollback_binary(&data_dir, "tachyon-core", &target_bin)
+            })
+            .await??;
+            let _ = qf_core_stop(core).await;
+            let _ = qf_core_start(core).await;
+            Ok(format!(
+                "Выполнен откат бинарника tachyon-core к версии {} и перезапуск",
+                meta.version
+            ))
+        }
+        "capture_blackbox" => {
+            let summary = qf_capture_blackbox(state, core, "manual").await?;
+            Ok(format!("Дамп состояния сохранён в tmpfs: {}", summary.id))
         }
         "restore_native_internet" | "enable_safe_bypass" | "flush_nftables" => {
-            let _ = core.stop().await;
+            let _ = qf_core_stop(core).await;
             Ok("Перехват трафика отключён, прямой доступ в интернет восстановлен".to_string())
         }
         "enable_autostart" => {
@@ -1014,33 +2324,33 @@ pub async fn apply_quick_fix(
             Ok("Автозапуск службы Tachyon при загрузке роутера проверен и включён".to_string())
         }
         "enable_default_desync" | "restart_zapret" => {
-            let mut candidate = state.data.read().await.clone();
-            if candidate.outbound_sources.is_empty() {
-                candidate.outbound_sources.push(OutboundSource {
-                    id: "src_adaptive_desync".to_string(),
-                    enabled: true,
-                    name: "Adaptive Desync 2.0".to_string(),
-                    source_type: "desync".to_string(),
-                    desync_preset: "adaptive".to_string(),
-                    desync_auto_tune: true,
-                    ..Default::default()
-                });
-            }
-            for s in &mut candidate.sections {
-                s.enabled = true;
-            }
-            transaction::commit_transaction(state, candidate).await?;
-            let _ = core.apply_or_reload().await;
+            qf_commit_and_reload(state, core, true, |c| {
+                if c.outbound_sources.is_empty() {
+                    c.outbound_sources.push(OutboundSource {
+                        id: "src_adaptive_desync".to_string(),
+                        enabled: true,
+                        name: "Adaptive Desync 2.0".to_string(),
+                        source_type: "desync".to_string(),
+                        desync_preset: "adaptive".to_string(),
+                        desync_auto_tune: true,
+                        ..Default::default()
+                    });
+                }
+                for s in &mut c.sections {
+                    s.enabled = true;
+                }
+            })
+            .await?;
             Ok("Включена секция адаптивной десинхронизации пакетов".to_string())
         }
         "rollback_known_good" | "fix_uci_config" | "restore_lkg" => {
-            let lkg = transaction::load_known_good(&state.lkg_path)?;
-            transaction::commit_transaction(state, lkg).await?;
-            let _ = core.apply_or_reload().await;
+            let lkg = Box::new(transaction::load_known_good(&state.lkg_path)?);
+            qf_commit_tx(state, lkg).await?;
+            let _ = qf_core_reload(core).await;
             Ok("Выполнен откат к снимку Last Known Good".to_string())
         }
         "upgrade_core" => {
-            let info = core.check_updates().await;
+            let info = qf_check_updates(core).await;
             Ok(format!(
                 "Проверка обновлений завершена: {}",
                 info.get("core_latest")
@@ -1074,6 +2384,239 @@ pub async fn apply_quick_fix(
         }
         _ => anyhow::bail!("Неизвестный код быстрого исправления: {fix_id}"),
     }
+}
+
+pub fn incidents_path() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        PathBuf::from("/tmp/tachyon/incidents.json")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        std::env::temp_dir().join("tachyon-incidents.json")
+    }
+}
+
+pub fn load_incidents_from(path: &Path) -> Vec<IncidentRecord> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    serde_json::from_str::<Vec<IncidentRecord>>(&raw).unwrap_or_default()
+}
+
+pub fn append_incident_in(path: &Path, mut rec: IncidentRecord) -> Vec<IncidentRecord> {
+    rec.detail = crypto_gen::redact_string(&rec.detail);
+    let mut list = load_incidents_from(path);
+    list.push(rec);
+    if list.len() > MAX_INCIDENTS {
+        let excess = list.len() - MAX_INCIDENTS;
+        list.drain(..excess);
+    }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(bytes) = serde_json::to_vec_pretty(&list) {
+        let _ = std::fs::write(path, bytes);
+    }
+    list
+}
+
+pub fn load_incidents() -> Vec<IncidentRecord> {
+    load_incidents_from(&incidents_path())
+}
+
+#[inline(never)]
+fn run_local_doctor_with_core_boxed<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = DoctorReport> + Send + 'a>> {
+    Box::pin(run_local_doctor_with_core(state, core))
+}
+
+#[inline(never)]
+fn apply_quick_fix_boxed<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    fix_id: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send + 'a>> {
+    Box::pin(apply_quick_fix(state, core, fix_id))
+}
+
+#[inline(never)]
+fn rollback_snapshot_pinned<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    prev: Box<RouterStoreData>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>> {
+    Box::pin(rollback_snapshot_boxed(state, core, prev))
+}
+
+/// Verified Quick Fix executor with dry-run preview, per-action cooldown, before/after verification,
+/// automatic config rollback on regression, and zero-flash-wear tmpfs IncidentMemory recording.
+pub async fn apply_quick_fix_verified(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    fix_id: &str,
+    dry_run: bool,
+    force: bool,
+) -> anyhow::Result<VerifiedFixResult> {
+    let risk_tier = quick_fix_risk_tier(fix_id).to_string();
+    anyhow::ensure!(
+        is_known_quick_fix(fix_id),
+        "Неизвестный код быстрого исправления: {fix_id}"
+    );
+
+    if dry_run {
+        let report = run_local_doctor_with_core_boxed(state, core).await;
+        let active_findings = report
+            .findings
+            .iter()
+            .filter(|f| f.suppressed_by.is_none())
+            .count();
+        return Ok(VerifiedFixResult {
+            ok: true,
+            fix_id: fix_id.to_string(),
+            risk_tier: risk_tier.clone(),
+            dry_run: true,
+            message: format!(
+                "Dry-Run: действие '{fix_id}' (риск: {risk_tier}) будет выполнено без немедленных изменений (текущих проблем: {active_findings})"
+            ),
+            before_healthy: report.healthy,
+            after_healthy: report.healthy,
+            before_findings: active_findings,
+            after_findings: active_findings,
+            rolled_back: false,
+            cooldown_blocked: false,
+            duration_ms: 0,
+        });
+    }
+
+    let now = unix_now_secs();
+    if !force {
+        let ready = {
+            let mut wd = core.watchdog.lock().await;
+            wd.cooldown_ready(&format!("qfix:{fix_id}"), now, 30)
+        };
+        if !ready {
+            let report = run_local_doctor_with_core_boxed(state, core).await;
+            let active_findings = report
+                .findings
+                .iter()
+                .filter(|f| f.suppressed_by.is_none())
+                .count();
+            return Ok(VerifiedFixResult {
+                ok: false,
+                fix_id: fix_id.to_string(),
+                risk_tier,
+                dry_run: false,
+                message: format!(
+                    "Действие '{fix_id}' ограничено cooldown (повтор допускается через 30 с или с параметром force)"
+                ),
+                before_healthy: report.healthy,
+                after_healthy: report.healthy,
+                before_findings: active_findings,
+                after_findings: active_findings,
+                rolled_back: false,
+                cooldown_blocked: true,
+                duration_ms: 0,
+            });
+        }
+    }
+
+    let started = Instant::now();
+    let before = run_local_doctor_with_core_boxed(state, core).await;
+    let before_count = before
+        .findings
+        .iter()
+        .filter(|f| f.suppressed_by.is_none())
+        .count();
+    let prev_snapshot: Option<Box<RouterStoreData>> = if risk_tier == "config_change" {
+        Some(Box::new(state.data.read().await.clone()))
+    } else {
+        None
+    };
+
+    let fix_res = apply_quick_fix_boxed(state, core, fix_id).await;
+    let (exec_ok, mut message) = match fix_res {
+        Ok(m) => (true, m),
+        Err(e) => (false, format!("Ошибка выполнения '{fix_id}': {e}")),
+    };
+
+    let after = run_local_doctor_with_core_boxed(state, core).await;
+    let after_count = after
+        .findings
+        .iter()
+        .filter(|f| f.suppressed_by.is_none())
+        .count();
+
+    let mut rolled_back = false;
+    if let Some(prev) = prev_snapshot
+        && (!exec_ok || after_count > before_count || (before.healthy && !after.healthy))
+        && rollback_snapshot_pinned(state, core, prev).await
+    {
+        rolled_back = true;
+        message = format!(
+            "{message}. Обнаружено ухудшение состояния ({before_count} -> {after_count} проблем); выполнен автоматический откат конфигурации."
+        );
+    }
+
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let final_ok = exec_ok && !rolled_back;
+    let root_cause_str = before
+        .root_causes
+        .first()
+        .cloned()
+        .unwrap_or_else(|| before.summary.clone());
+    let inc = IncidentRecord {
+        id: format!("inc-{}-{}", unix_now_secs(), crypto_gen::generate_hex(3)),
+        timestamp: unix_now_secs(),
+        subsystem: before
+            .findings
+            .iter()
+            .find(|f| f.suppressed_by.is_none())
+            .map(|f| f.subsystem.clone())
+            .unwrap_or_else(|| "system".to_string()),
+        root_cause: root_cause_str,
+        fix_id: fix_id.to_string(),
+        before_ok: before.healthy,
+        after_ok: after.healthy,
+        rolled_back,
+        outcome: if rolled_back {
+            "rolled_back".to_string()
+        } else if final_ok {
+            "verified_ok".to_string()
+        } else {
+            "failed".to_string()
+        },
+        detail: message.clone(),
+    };
+    let incidents = append_incident_in(&incidents_path(), inc);
+    {
+        let mut live = state.live.write().await;
+        live.incidents = incidents;
+        live.push_event(
+            if final_ok { "info" } else { "warn" },
+            "diagnostics",
+            &format!("QuickFix '{fix_id}': {message}"),
+        );
+    }
+
+    Ok(VerifiedFixResult {
+        ok: final_ok,
+        fix_id: fix_id.to_string(),
+        risk_tier,
+        dry_run: false,
+        message,
+        before_healthy: before.healthy,
+        after_healthy: after.healthy,
+        before_findings: before_count,
+        after_findings: after_count,
+        rolled_back,
+        cooldown_blocked: false,
+        duration_ms,
+    })
 }
 
 pub fn parse_firewall_flow_offloading(content: &str) -> (bool, bool) {
@@ -1129,7 +2672,7 @@ fn read_firewall_flow_offloading() -> (bool, bool) {
 /// AI Doctor v3.0: Autonomous analysis + RAG knowledge base + optional LLM query.
 pub async fn run_ai_doctor(state: &Arc<AppState>, user_query: Option<&str>) -> Value {
     let report = run_local_doctor(state).await;
-    let d = state.data.read().await.clone();
+    let d = Box::new(state.data.read().await.clone());
     let live = state.live.read().await.clone();
     let sys = sys_info::collect_host_info();
 
@@ -1241,64 +2784,202 @@ pub async fn run_ai_doctor(state: &Arc<AppState>, user_query: Option<&str>) -> V
 
 /// Built-in Knowledge Base RAG search (`/api/agent/v1/docs/search`).
 pub fn search_knowledge_docs(query: &str) -> Vec<Value> {
-    let docs = [
+    let docs: [(&str, &str, &str, &str); 22] = [
         (
             "01_SYSTEM_ARCHITECTURE",
-            "Архитектура Tachyon и ядра tachyon-core",
+            "Архитектура Tachyon 2.0 и ядра tachyon-core",
+            "arch architecture core tproxy 1602 127.0.0.42",
             "Единый бинарный оркестратор управляет /usr/bin/tachyon-core, таблицей nftables inet TachyonTable (TProxy :1602) и DNS FakeIP (127.0.0.42:53 -> 198.18.0.0/15).",
+        ),
+        (
+            "02_CORE_HEALTH_API",
+            "Телеметрия ядра (/tachyon/health, /tachyon/anomalies, /tachyon/flight)",
+            "health metrics anomalies flight error_kind dial_ms ttfb fd",
+            "Эндпоинты ядра возвращают аптайм, ревизию config-state, давление ОЗУ, открытые FD, статистику FakeIP/UDP NAT, EWMA RTT, классификацию DialErrorClass по outbound и отказы Flight Recorder.",
         ),
         (
             "03_NETWORKING_AND_NFTABLES",
             "Перехват трафика TProxy и таблица inet TachyonTable",
-            "В режиме tproxy пакеты из br-lan маркируются fwmark 0x1 и направляются через ip rule fwmark 0x1 lookup 100 на порт 1602.",
+            "nft nftables tproxy fwmark table 100 intercept route",
+            "В режиме tproxy пакеты из br-lan маркируются fwmark 0x1 и направляются через ip rule fwmark 0x1 lookup 100 на порт 1602. При исчезновении таблицы выполняется reconcile_nftables.",
         ),
         (
             "04_ADAPTIVE_DESYNC",
             "Адаптивная десинхронизация пакетов (Adaptive Desync 2.0)",
-            "Модуль desync выполняет фрагментацию TLS ClientHello (pos=1,sni,midsld), автоподбор TTL и отправку фейковых пакетов без внешних утилит.",
+            "desync sni midsld ttl fragmentation clienthello",
+            "Модуль desync выполняет фрагментацию TLS ClientHello (pos=1,sni,midsld), автоподбор TTL и отправку служебных пакетов без внешних утилит при фильтрации на транзитном узле.",
         ),
         (
             "05_BALANCERS_INVARIANT",
-            "Инвариант секционных балансировщиков (URLTest / Stability / Sticky)",
-            "Балансировщик хранит только политику выбора (least_test, stability, sticky, priority). Список кандидатов всегда формируется строго из секции маршрутизации.",
+            "Инвариант секционных балансировщиков и Failover",
+            "balancer urltest stability sticky failover backup primary",
+            "Балансировщик хранит политику выбора (least_test, stability, sticky, priority) из узлов секции. Переключение группы на резервный узел отображается в /tachyon/failover.",
+        ),
+        (
+            "06_DIAL_ERROR_CLASS",
+            "Классификация ошибок соединения DialErrorClass",
+            "dial_fail tls_handshake_fail reality_auth_fail tcp_reset eof_early connect_timeout auth_rejected",
+            "Ошибки соединения классифицируются как dns_fail, connect_timeout, tcp_reset, tls_handshake_fail, reality_auth_fail, quic_timeout, auth_rejected, eof_early и cert_pin_mismatch.",
+        ),
+        (
+            "07_CERT_PINNING",
+            "Ошибка cert_pin_mismatch и проверка сертификата TLS",
+            "cert certificate pin mismatch x509 tls fingerprint",
+            "Ошибка cert_pin_mismatch возникает при несовпадении SHA-256 отпечатка сертификата сервера с заданным в конфиге или подмене цепочки транзитным узлом.",
         ),
         (
             "08_DNS_AND_FAKEIP",
-            "Конвейер DNS, FakeIP и защита от утечек",
-            "Запросы A/AAAA перехватываются на 127.0.0.42:53 и получают синтетические адреса 198.18.0.0/15, что исключает DNS-утечки и ускоряет маршрутизацию.",
+            "Конвейер DNS, пул FakeIP и сброс кэша (/tachyon/dns/flush)",
+            "dns fakeip 198.18.0.0/15 lru eviction cache flush servfail",
+            "Запросы A/AAAA перехватываются на 127.0.0.42:53 и получают адреса 198.18.0.0/15. Переполнение FakeIP LRU (evictions) или ошибки апстримов лечатся через /tachyon/dns/flush и переключение на DoH.",
+        ),
+        (
+            "09_DNSMASQ_CASCADE",
+            "Каскад dnsmasq -> FakeIP и /etc/resolv.conf",
+            "dnsmasq resolv.conf noresolv 127.0.0.42",
+            "На OpenWrt dnsmasq перенаправляет запросы на 127.0.0.42#53 (noresolv=1). При сбое симлинка /etc/resolv.conf или зависании dnsmasq используйте fix_dnsmasq и fix_resolv_symlink.",
+        ),
+        (
+            "10_UDP_NAT_FULLCONE",
+            "Таблица UDP NAT, FullCone-сессии и вытеснения",
+            "udp nat fullcone eviction quic games voip discord",
+            "Активные UDP-потоки учитываются счётчиком udp_nat_active. При достижении капаситета ядро вытесняет самые старые потоки (udp_nat_evictions), что прерывает QUIC и голосовой трафик.",
+        ),
+        (
+            "11_WIREGUARD_AWG_HANDSHAKE",
+            "WireGuard / AmneziaWG: handshake, MTU и rebind",
+            "wireguard wg awg amnezia handshake stale mtu rebind",
+            "Если wg_last_handshake_age_secs превышает 180 секунд или сменился внешний IP WAN, выполните POST /tachyon/outbound/reset (wg.rebind) и при необходимости установите MTU 1280-1400.",
+        ),
+        (
+            "12_HYSTERIA2_TUIC_QUIC",
+            "Протоколы QUIC (Hysteria2, TUIC, MASQUE) и quic_timeout",
+            "hysteria2 tuic masque quic timeout udp loss",
+            "Массовые quic_timeout указывают на фильтрацию UDP на маршруте или устаревший NAT. Проверьте порт сервера, обновите пул outbound или переключите секцию на TCP/TLS-транспорт.",
+        ),
+        (
+            "13_VLESS_REALITY_CLOCK",
+            "VLESS + REALITY: системное время NTP, short_id и ключ",
+            "vless reality ntp clock time skew short_id public_key sni",
+            "Ошибка reality_auth_fail или tls_handshake_fail часто вызвана рассинхронизацией системных часов роутера (>30 сек) либо несоответствием short_id, public_key или SNI на сервере.",
+        ),
+        (
+            "14_MEMORY_FD_LIMITS",
+            "Память ОЗУ, PressureLevel и лимит дескрипторов FD",
+            "memory rss oom pressure critical elevated fd file descriptor trim",
+            "При pressure_level=elevated/critical или росте FD >80% Watchdog и Quick Fix вызывают POST /tachyon/memory/trim и закрытие зависших соединений (POST /tachyon/kick с only_stalled_ms).",
+        ),
+        (
+            "15_CONFIG_DRIFT_RELOAD",
+            "Дрейф конфигурации (config_digest) и Hot-Reload",
+            "config drift digest revision reload hot",
+            "Несовпадение desired_config_digest и applied_config_digest из /tachyon/config-state означает, что ядро работает со старой конфигурацией и требует hot_reload_core.",
+        ),
+        (
+            "16_TRS_RULESETS",
+            "Наборы правил .trs и диагностика маршрутизации",
+            "trs srs ruleset geosite geoip route explain",
+            "Tachyon 2.0 использует бинарный формат .trs. Для проверки попадания домена в секцию используйте route_explain и POST /tachyon/route-check.",
+        ),
+        (
+            "17_FLOW_OFFLOADING",
+            "Конфликт Hardware/Software Flow Offloading с TProxy",
+            "flow offloading hardware software firewall conflict stall",
+            "Аппаратный/программный Flow Offloading обходит netfilter и обрывает перехваченные соединения. Отключайте его действием disable_flow_offloading.",
+        ),
+        (
+            "18_IPV6_LEAK_GUARD",
+            "Контур IPv6, режим leak_guard и odhcpd",
+            "ipv6 leak guard aaaa odhcpd dhcpv6",
+            "При отключённом проксировании IPv6 режим leak_guard фильтрует AAAA-ответы и блокирует обходной трафик IPv6 в nftables во избежание утечек.",
+        ),
+        (
+            "19_WATCHDOG_HYSTERESIS",
+            "Автономный Watchdog, гистерезис 3/2 и circuit-breaker",
+            "watchdog hysteresis wan suppress circuit breaker escalation",
+            "Watchdog меняет статус только после серии отказов (3/2 для WAN и DNS), подавляет рестарты ядра при падении WAN и ограничивает перезапуски до 4 за 10 минут.",
+        ),
+        (
+            "20_BLACKBOX_TMPFS",
+            "Дампы Blackbox и журнал инцидентов в tmpfs",
+            "blackbox dump tmpfs nand flash wear incidents",
+            "Blackbox (макс. 5 файлов) и журнал IncidentMemory (макс. 30 записей) сохраняются строго в /tmp/tachyon (tmpfs) с автоматической ротацией и без износа NAND flash.",
+        ),
+        (
+            "21_BINARY_INTEGRITY",
+            "Целостность бинарника tachyon-core и откат резервной копии",
+            "binary elf corrupt size rollback backup",
+            "Watchdog проверяет наличие ELF-заголовка, размер >64 КБ и отсутствие #! обёрток у /usr/bin/tachyon-core, выполняя откат бинарной копии при повреждении.",
         ),
         (
             "22_LAST_KNOWN_GOOD",
-            "Транзакции, сверка (Reconciler) и снимок Last Known Good",
-            "После каждого изменения запускается окно наблюдения 180 секунд. При успешной проверке конфигурация сохраняется в tachyon.known_good.json.",
+            "Транзакции, окно наблюдения 180s и автооткат LKG",
+            "lkg known good rollback 180s transaction",
+            "После изменений запускается 180-секундное окно наблюдения. При устойчивом падении ядра или DNS в течение окна Watchdog автоматически откатывает tachyon.known_good.json.",
         ),
     ];
 
-    let q_lower = query.to_lowercase();
-    let mut out = Vec::new();
-    for (id, title, snippet) in docs {
-        if q_lower.is_empty()
-            || title.to_lowercase().contains(&q_lower)
-            || snippet.to_lowercase().contains(&q_lower)
-            || id.to_lowercase().contains(&q_lower)
-        {
-            out.push(json!({
-                "id": id,
-                "title": title,
-                "snippet": snippet
-            }));
+    let tokens: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| s.len() >= 2)
+        .collect();
+
+    let mut scored: Vec<(i32, Value)> = Vec::new();
+    for (id, title, tags, snippet) in docs {
+        let title_l = title.to_lowercase();
+        let tags_l = tags.to_lowercase();
+        let snip_l = snippet.to_lowercase();
+        let id_l = id.to_lowercase();
+        let score: i32 = if tokens.is_empty() {
+            1
+        } else {
+            let mut sc = 0i32;
+            for t in &tokens {
+                if id_l.contains(t) {
+                    sc += 5;
+                }
+                if tags_l.contains(t) {
+                    sc += 4;
+                }
+                if title_l.contains(t) {
+                    sc += 3;
+                }
+                if snip_l.contains(t) {
+                    sc += 2;
+                }
+            }
+            sc
+        };
+        if score > 0 {
+            scored.push((
+                score,
+                json!({
+                    "id": id,
+                    "title": title,
+                    "snippet": snippet,
+                    "score": score,
+                }),
+            ));
         }
     }
-    if out.is_empty() {
-        for (id, title, snippet) in docs.iter().take(3) {
-            out.push(json!({
-                "id": id,
-                "title": title,
-                "snippet": snippet
-            }));
-        }
+
+    scored.sort_by_key(|a| std::cmp::Reverse(a.0));
+    if scored.is_empty() {
+        return docs
+            .iter()
+            .take(5)
+            .map(|(id, title, _, snippet)| {
+                json!({
+                    "id": id,
+                    "title": title,
+                    "snippet": snippet,
+                    "score": 0,
+                })
+            })
+            .collect();
     }
-    out
+    scored.into_iter().take(5).map(|(_, v)| v).collect()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -3171,7 +4852,7 @@ pub(crate) fn build_ipv6_leak_summary(
 /// DNS Leak, IPv4/IPv6, WebRTC STUN & FakeIP pipeline verification (`POST /api/diagnostics/leak-check`),
 /// delegating directly to `tachyon-core` `POST /tachyon/leak`.
 pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager>>) -> Value {
-    let d = state.data.read().await.clone();
+    let d = Box::new(state.data.read().await.clone());
     let live = state.live.read().await.clone();
     let (_lan_v6, wan_v6, _prefixes_v6) =
         tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips)
@@ -4066,7 +5747,7 @@ pub async fn tick_list_updates_if_due(core: &Arc<CoreManager>) -> bool {
 
 /// Self-contained FakeIP & public exit IP probe for frontend diagnostics.
 pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
-    let d = state.data.read().await.clone();
+    let d = Box::new(state.data.read().await.clone());
     let (_lan_v6, wan_v6, _) = tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips)
         .await
         .unwrap_or_default();
@@ -4733,5 +6414,228 @@ IP address       HW type     Flags       HW address            Mask     Device
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_causal_suppression_wan_clock_and_core_stopped() {
+        let mut wan_findings = vec![
+            DoctorFinding {
+                id: "wan_down".into(),
+                severity: "critical".into(),
+                subsystem: "wan".into(),
+                title: "WAN down".into(),
+                quick_fix_id: "fix_wan_interface".into(),
+                ..Default::default()
+            },
+            DoctorFinding {
+                id: "dns_unhealthy".into(),
+                severity: "critical".into(),
+                subsystem: "dns".into(),
+                title: "DNS fail".into(),
+                quick_fix_id: "flush_core_dns".into(),
+                ..Default::default()
+            },
+            DoctorFinding {
+                id: "outbound_err_tcp_reset_p1".into(),
+                severity: "warning".into(),
+                subsystem: "outbounds".into(),
+                title: "Outbound fail".into(),
+                quick_fix_id: "reset_outbound_pool:p1".into(),
+                ..Default::default()
+            },
+        ];
+        let roots = apply_causal_suppression(&mut wan_findings);
+        assert_eq!(roots, vec!["WAN down".to_string()]);
+        assert!(wan_findings[0].root_cause);
+        assert_eq!(wan_findings[1].suppressed_by.as_deref(), Some("wan_down"));
+        assert_eq!(wan_findings[2].suppressed_by.as_deref(), Some("wan_down"));
+
+        let mut clock_findings = vec![
+            DoctorFinding {
+                id: "clock_skew".into(),
+                severity: "critical".into(),
+                subsystem: "time".into(),
+                title: "Clock skew".into(),
+                quick_fix_id: "fix_system_time".into(),
+                ..Default::default()
+            },
+            DoctorFinding {
+                id: "outbound_err_reality_auth_fail_v1".into(),
+                severity: "warning".into(),
+                subsystem: "outbounds".into(),
+                title: "Reality fail".into(),
+                quick_fix_id: "reset_outbound_pool:v1".into(),
+                ..Default::default()
+            },
+        ];
+        apply_causal_suppression(&mut clock_findings);
+        assert_eq!(
+            clock_findings[1].suppressed_by.as_deref(),
+            Some("clock_skew")
+        );
+
+        let mut core_findings = vec![
+            DoctorFinding {
+                id: "core_stopped".into(),
+                severity: "critical".into(),
+                subsystem: "core".into(),
+                title: "Core stopped".into(),
+                quick_fix_id: "restart_core".into(),
+                ..Default::default()
+            },
+            DoctorFinding {
+                id: "config_drift".into(),
+                severity: "warning".into(),
+                subsystem: "config_sync".into(),
+                title: "Config drift".into(),
+                quick_fix_id: "hot_reload_core".into(),
+                ..Default::default()
+            },
+        ];
+        apply_causal_suppression(&mut core_findings);
+        assert_eq!(
+            core_findings[1].suppressed_by.as_deref(),
+            Some("core_stopped")
+        );
+    }
+
+    #[test]
+    fn test_risk_tiers_rag_and_incident_memory_cap() {
+        assert_eq!(quick_fix_risk_tier("trim_core_memory"), "safe");
+        assert_eq!(
+            quick_fix_risk_tier("reset_outbound_pool:node1"),
+            "disruptive"
+        );
+        assert_eq!(quick_fix_risk_tier("switch_to_doh"), "config_change");
+
+        let hits = search_knowledge_docs("FakeIP eviction dns");
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0]["id"], "08_DNS_AND_FAKEIP");
+
+        let inc_path = std::env::temp_dir().join(format!(
+            "tachyon-incidents-test-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&inc_path);
+        for i in 0..35 {
+            append_incident_in(
+                &inc_path,
+                IncidentRecord {
+                    id: format!("inc-{i}"),
+                    timestamp: 1_700_000_000 + i,
+                    subsystem: "dns".into(),
+                    root_cause: "dns fail".into(),
+                    fix_id: "flush_core_dns".into(),
+                    before_ok: false,
+                    after_ok: true,
+                    rolled_back: false,
+                    outcome: "verified_ok".into(),
+                    detail: "Bearer secret_val_xyz".into(),
+                },
+            );
+        }
+        let loaded = load_incidents_from(&inc_path);
+        assert_eq!(loaded.len(), MAX_INCIDENTS);
+        assert_eq!(loaded[0].id, "inc-5");
+        assert!(!loaded[0].detail.contains("secret_val_xyz"));
+        let _ = std::fs::remove_file(&inc_path);
+    }
+
+    #[tokio::test]
+    async fn test_apply_quick_fix_verified_dry_run_and_cooldown() {
+        let dir = std::env::temp_dir().join(format!("tachyon-qfix-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let dry = Box::pin(apply_quick_fix_verified(
+            &state,
+            &core,
+            "trim_core_memory",
+            true,
+            false,
+        ))
+        .await
+        .unwrap();
+        assert!(dry.ok);
+        assert!(dry.dry_run);
+        assert_eq!(dry.risk_tier, "safe");
+
+        let first = Box::pin(apply_quick_fix_verified(
+            &state,
+            &core,
+            "trim_core_memory",
+            false,
+            false,
+        ))
+        .await
+        .unwrap();
+        assert!(first.ok);
+        assert!(!first.cooldown_blocked);
+
+        let second = Box::pin(apply_quick_fix_verified(
+            &state,
+            &core,
+            "trim_core_memory",
+            false,
+            false,
+        ))
+        .await
+        .unwrap();
+        assert!(!second.ok);
+        assert!(second.cooldown_blocked);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_has_true_failover_backup_ignores_healthy_least_test() {
+        let healthy_least_test = json!({
+            "any_on_backup": true,
+            "groups": [{
+                "tag": "bal-main",
+                "type": "URLTest",
+                "mode": "least_test",
+                "primary": "de-1",
+                "current": "uk-1",
+                "on_backup": true,
+                "primary_healthy": true,
+                "primary_failures": 0,
+                "primary_quarantine_rem_s": 0
+            }]
+        });
+        assert!(!has_true_failover_backup(Some(&healthy_least_test)));
+
+        let true_failover = json!({
+            "any_on_backup": true,
+            "groups": [{
+                "tag": "fo-main",
+                "type": "URLTest",
+                "mode": "failover",
+                "primary": "de-1",
+                "current": "uk-1",
+                "on_backup": true,
+                "primary_healthy": true,
+                "primary_failures": 0,
+                "primary_quarantine_rem_s": 0
+            }]
+        });
+        assert!(has_true_failover_backup(Some(&true_failover)));
+
+        let unhealthy_least_test = json!({
+            "any_on_backup": true,
+            "groups": [{
+                "tag": "bal-main",
+                "type": "URLTest",
+                "mode": "least_test",
+                "primary": "de-1",
+                "current": "uk-1",
+                "on_backup": true,
+                "primary_healthy": false,
+                "primary_failures": 2,
+                "primary_quarantine_rem_s": 0
+            }]
+        });
+        assert!(has_true_failover_backup(Some(&unhealthy_least_test)));
     }
 }

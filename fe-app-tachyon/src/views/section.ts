@@ -17033,10 +17033,34 @@ function createSectionContent(section) {
     legacyTextOptionName: 'user_domains_text',
     label: _('Auto-detected Domains'),
     description: _(
-      'Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here.',
+      'Domains automatically detected by Smart Detect for this proxy section or added via Telegram bot. You can manually edit or remove them here.',
     ),
     textAnalyze: analyzeDomainSuffixText,
   });
+  [
+    'connection',
+    'proxy',
+    'outbound',
+    'vpn',
+    'group',
+    'awg',
+    'warp',
+    'anytls',
+    'snell',
+    'mieru',
+    'naive',
+    'sudoku',
+    'masque',
+    'shadowtls',
+    'trusttunnel',
+    'tewfai',
+    'csqtt',
+    'openvpn',
+    'openconnect',
+    'wdtt',
+    'olcrtc',
+    'fptn',
+  ].forEach((act) => userDomainsConditionOption.depends('action', act));
 
   const ipConditionOption = addTextConditionField(section, {
     key: 'ip_cidr',
@@ -19923,6 +19947,7 @@ function cascadeDeleteSection(section_id) {
     }
 
     [
+      'smart_detect_section',
       'dns_detour_section',
       'download_lists_via_proxy_section',
       'download_components_via_proxy_section',

@@ -1433,11 +1433,11 @@ impl Default for GlobalSettings {
             recovery_bypass: false,
             memory_limit_mb: 0,
             log_level: "warn".to_string(),
-            smart_detect: true,
+            smart_detect: false,
             smart_detect_mode: "default".to_string(),
             smart_detect_expand_to_root: true,
-            smart_detect_sections: vec!["Main".to_string()],
-            smart_detect_section: "Main".to_string(),
+            smart_detect_sections: Vec::new(),
+            smart_detect_section: String::new(),
             smart_detect_exclude: Vec::new(),
             smart_detect_exclude_lists: Vec::new(),
             subscription_engine: "core".to_string(),
@@ -4793,9 +4793,19 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("smart_detect_mode") {
                         self.settings.smart_detect_mode = v.to_string();
                     }
-                    let sd_secs = b.list("smart_detect_sections");
-                    if !sd_secs.is_empty() {
-                        self.settings.smart_detect_sections = sd_secs;
+                    self.settings.smart_detect_section = b
+                        .opt("smart_detect_section")
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    self.settings.smart_detect_sections = b.list("smart_detect_sections");
+                    if let Some(v) = b.opt("smart_detect_expand_to_root") {
+                        self.settings.smart_detect_expand_to_root = parse_bool(v);
+                    }
+                    self.settings.smart_detect_exclude = b.list("smart_detect_exclude");
+                    self.settings.smart_detect_exclude_lists = b.list("smart_detect_exclude_lists");
+                    if let Some(v) = b.opt("ai_persistent_smart_detect") {
+                        self.settings.ai_persistent_smart_detect = parse_bool(v);
                     }
                     if let Some(v) = b.opt("list_update_enabled") {
                         self.settings.list_update_enabled = parse_bool(v);
@@ -8283,6 +8293,45 @@ pub struct ThroughputSample {
     pub tx_bps: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OutboundHealthEntry {
+    pub tag: String,
+    pub kind: String,
+    pub dial_ok: u64,
+    pub dial_fail: u64,
+    pub ewma_handshake_ms: u64,
+    pub last_err_class: String,
+    pub last_err_detail: String,
+    #[serde(default)]
+    pub wg_up: Option<bool>,
+    #[serde(default)]
+    pub wg_last_handshake_age_secs: Option<u64>,
+    #[serde(default)]
+    pub selected: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BlackboxSummary {
+    pub id: String,
+    pub timestamp: i64,
+    pub reason: String,
+    pub file_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IncidentRecord {
+    pub id: String,
+    pub timestamp: i64,
+    pub subsystem: String,
+    pub root_cause: String,
+    pub fix_id: String,
+    pub before_ok: bool,
+    pub after_ok: bool,
+    pub rolled_back: bool,
+    pub outcome: String,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LiveTelemetry {
     pub core_running: bool,
@@ -8319,6 +8368,40 @@ pub struct LiveTelemetry {
     /// Bounded IP -> `(strike_count, ban_until_unix_sec)` (max `MAX_HONEYPOT_STRIKES`).
     #[serde(skip)]
     pub honeypot_ip_strikes: HashMap<String, (u32, i64)>,
+    pub core_pressure_level: String,
+    pub core_fd_open: u64,
+    pub core_fd_limit: u64,
+    pub core_reload_count: u64,
+    pub core_pool_purges: u64,
+    pub core_inbound_cap_drops: u64,
+    pub fakeip_v4_used: u64,
+    pub fakeip_v4_cap: u64,
+    pub fakeip_evictions: u64,
+    pub udp_nat_active: u64,
+    pub udp_nat_evictions: u64,
+    pub dns_cache_entries: u64,
+    pub dns_cache_hits: u64,
+    pub dns_cache_misses: u64,
+    pub dns_upstream_errors: u64,
+    pub desired_config_digest: String,
+    pub applied_config_digest: String,
+    pub config_drift: bool,
+    pub core_binary_ok: bool,
+    pub core_binary_error: String,
+    pub wan_probe_ms: u64,
+    pub dns_probe_ms: u64,
+    pub wan_fail_streak: u32,
+    pub dns_fail_streak: u32,
+    pub core_fail_streak: u32,
+    pub watchdog_state: String,
+    pub watchdog_last_action: String,
+    pub watchdog_last_action_ts: i64,
+    pub watchdog_restarts_10m: u32,
+    pub outbound_health: Vec<OutboundHealthEntry>,
+    pub anomalies_count: usize,
+    pub recent_flight_failures: usize,
+    pub blackboxes: Vec<BlackboxSummary>,
+    pub incidents: Vec<IncidentRecord>,
 }
 
 impl LiveTelemetry {

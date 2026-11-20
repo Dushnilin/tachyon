@@ -9623,22 +9623,67 @@ fn share_wireguard_client_outbounds(outbounds: &mut Vec<Value>, endpoints: &mut 
     *endpoints = retained_endpoints;
 }
 
-fn is_usable_external_sub_host(raw: &str) -> bool {
+pub(crate) fn is_usable_external_sub_host(raw: &str) -> bool {
     let bare = extract_host_only(raw.trim()).to_ascii_lowercase();
-    !bare.is_empty()
-        && !matches!(
+    if bare.is_empty()
+        || matches!(
             bare.as_str(),
             "0.0.0.0" | "127.0.0.1" | "localhost" | "::" | "::1"
         )
+        || bare.ends_with(".localhost")
+    {
+        return false;
+    }
+    if let Ok(ip) = bare.parse::<std::net::IpAddr>()
+        && (ip.is_loopback() || ip.is_unspecified())
+    {
+        return false;
+    }
+    true
+}
+
+pub fn resolve_outbound_group_member_tags(store: &RouterStoreData) -> HashMap<String, Vec<String>> {
+    let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
+    for src in &store.outbound_sources {
+        let pairs = build_source_outbounds(src);
+        let tags: Vec<String> = pairs
+            .into_iter()
+            .filter_map(|(tag, _, visible)| visible.then_some(tag))
+            .collect();
+        source_tag_map.insert(src.id.clone(), tags);
+    }
+    build_outbound_group_map(
+        &store.outbound_groups,
+        &store.outbound_sources,
+        &source_tag_map,
+    )
 }
 
 pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     compile_core_config_with_wan6(store, crate::store::detect_wan6_runtime_available())
 }
 
+pub fn resolve_section_outbound_tags(store: &RouterStoreData) -> HashMap<String, String> {
+    let mut tags = HashMap::new();
+    let _ = compile_core_config_inner(
+        store,
+        crate::store::detect_wan6_runtime_available(),
+        Some(&mut tags),
+    );
+    tags
+}
+
 pub fn compile_core_config_with_wan6(
     store: &RouterStoreData,
     wan6_available: bool,
+) -> anyhow::Result<Value> {
+    compile_core_config_inner(store, wan6_available, None)
+}
+
+fn compile_core_config_inner(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    mut section_tags_out: Option<&mut HashMap<String, String>>,
 ) -> anyhow::Result<Value> {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
@@ -10145,6 +10190,10 @@ pub fn compile_core_config_with_wan6(
             }
         }
         let sec_exc_dom_subs = build_excluded_domain_subrules(&sec_exc_domains);
+
+        if let Some(ref mut tag_map) = section_tags_out {
+            tag_map.insert(sec.id.clone(), target_outbound_tag.clone());
+        }
 
         if target_outbound_tag != "direct" && target_outbound_tag != "block" {
             emit_base_policy(&mut rules, &mut base_policy_emitted);

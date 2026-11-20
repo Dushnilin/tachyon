@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+use crate::ai_doctor;
 use crate::config_gen;
 use crate::core_mgr::CoreManager;
 use crate::crypto_gen;
@@ -26,6 +27,7 @@ use crate::sys_info;
 use crate::tg_bot;
 use crate::transaction;
 use crate::ubus_bridge;
+use crate::watchdog;
 
 const MAX_REQ_BYTES: usize = 2 * 1024 * 1024;
 const SESSION_TTL_SECS: i64 = 86400;
@@ -497,17 +499,17 @@ async fn dispatch_api(
         ("GET", "/api/bootstrap") => {
             state.touch_telemetry_access();
             let sys = sys_info::collect_host_info();
-            let store = state.data.read().await.clone();
-            let live = state.live.read().await.clone();
-            let doctor = diagnostics::run_local_doctor(state).await;
+            let store = Box::new(state.data.read().await.clone());
+            let live = Box::new(state.live.read().await.clone());
+            let doctor = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             let updates = core.check_updates().await;
             send_json(
                 stream,
                 200,
                 &json!({
                     "system": sys,
-                    "store": store,
-                    "live": live,
+                    "store": &*store,
+                    "live": &*live,
                     "doctor": doctor,
                     "updates": updates,
                 }),
@@ -1296,13 +1298,13 @@ async fn dispatch_api(
         ("POST", "/api/diagnostics/doctor")
         | ("GET", "/api/diagnostics/doctor")
         | ("GET", "/api/agent/v1/diagnose") => {
-            let report = diagnostics::run_local_doctor(state).await;
+            let report = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             send_json(stream, 200, &json!(report)).await
         }
         ("POST", "/api/diagnostics/ai-doctor") | ("POST", "/api/agent/v1/ai-doctor") => {
             let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
             let q = val.get("query").and_then(Value::as_str);
-            let res = diagnostics::run_ai_doctor(state, q).await;
+            let res = Box::pin(ai_doctor::run_ai_doctor_v4(state, core, q)).await;
             send_json(stream, 200, &res).await
         }
         ("POST", "/api/diagnostics/quick-fix")
@@ -1314,10 +1316,115 @@ async fn dispatch_api(
                 .or_else(|| val.get("code"))
                 .and_then(Value::as_str)
                 .unwrap_or("heal_network_stack");
-            match diagnostics::apply_quick_fix(state, core, fix_id).await {
-                Ok(msg) => send_json(stream, 200, &json!({"ok": true, "message": msg})).await,
+            let dry_run = val.get("dry_run").and_then(Value::as_bool).unwrap_or(false);
+            let force = val.get("force").and_then(Value::as_bool).unwrap_or(false);
+            match Box::pin(diagnostics::apply_quick_fix_verified(
+                state, core, fix_id, dry_run, force,
+            ))
+            .await
+            {
+                Ok(res) => send_json(stream, 200, &json!(res)).await,
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
+        ("GET", "/api/diagnostics/core-health") => {
+            let res = match core.get_core_health().await {
+                Ok(mut v) => {
+                    if let Some(m) = v.as_object_mut() {
+                        m.insert("ok".to_string(), json!(true));
+                    }
+                    v
+                }
+                Err(e) => json!({ "ok": false, "error": e.to_string() }),
+            };
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/anomalies") => {
+            let res = core
+                .get_core_anomalies()
+                .await
+                .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string(), "hosts": [] }));
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/flight-failures") => {
+            let outbound = query.split('&').find_map(|p| p.strip_prefix("outbound="));
+            let limit = query
+                .split('&')
+                .find_map(|p| p.strip_prefix("limit="))
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(25)
+                .clamp(1, 100);
+            let res = core
+                .get_core_flight_filtered(true, outbound, limit)
+                .await
+                .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string(), "entries": [] }));
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/blackbox") => {
+            let items = watchdog::list_blackboxes();
+            send_json(stream, 200, &json!({ "ok": true, "items": items })).await
+        }
+        ("POST", "/api/diagnostics/blackbox/capture") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let reason = val
+                .get("reason")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or("manual");
+            match watchdog::capture_blackbox(state, core, reason).await {
+                Ok(summary) => {
+                    send_json(stream, 200, &json!({ "ok": true, "blackbox": summary })).await
+                }
+                Err(e) => {
+                    send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await
+                }
+            }
+        }
+        ("GET", "/api/diagnostics/incidents") => {
+            let items = diagnostics::load_incidents();
+            send_json(stream, 200, &json!({ "ok": true, "items": items })).await
+        }
+        ("POST", "/api/diagnostics/remediation/execute") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let res = Box::pin(execute_remediation_plan(state, core, &val)).await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/smart-detect/status") => {
+            let res = crate::smart_detect::get_status(state).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/smart-detect/probe") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let domain = val.get("domain").and_then(Value::as_str).unwrap_or("");
+            let apply = val.get("apply").and_then(Value::as_bool).unwrap_or(false);
+            match Box::pin(crate::smart_detect::probe_single_domain(
+                state, core, domain, apply,
+            ))
+            .await
+            {
+                Ok(outcome) => {
+                    send_json(stream, 200, &json!({ "ok": true, "result": outcome })).await
+                }
+                Err(e) => {
+                    send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await
+                }
+            }
+        }
+        ("POST", "/api/smart-detect/remove") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let section_id = val.get("section_id").and_then(Value::as_str).unwrap_or("");
+            let domain = val.get("domain").and_then(Value::as_str).unwrap_or("");
+            let exclude = val.get("exclude").and_then(Value::as_bool).unwrap_or(false);
+            match Box::pin(crate::smart_detect::remove_detected_domain(
+                state, core, section_id, domain, exclude,
+            ))
+            .await
+            {
+                Ok(res) => send_json(stream, 200, &res).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await
                 }
             }
         }
@@ -2088,8 +2195,86 @@ async fn dispatch_api(
             )
             .await
         }
+        ("GET", p) if p.starts_with("/api/diagnostics/blackbox/") => {
+            let id = p.trim_start_matches("/api/diagnostics/blackbox/");
+            match watchdog::read_blackbox(id) {
+                Ok(doc) => send_json(stream, 200, &doc).await,
+                Err(e) => {
+                    send_json(stream, 404, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
         _ => send_json(stream, 404, &json!({"error": "not found"})).await,
     }
+}
+
+async fn execute_remediation_plan(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    val: &Value,
+) -> Value {
+    let dry_run = val.get("dry_run").and_then(Value::as_bool).unwrap_or(false);
+    let confirm_high_risk = val
+        .get("confirm_high_risk")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let steps = val
+        .get("steps")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut results = Vec::new();
+    let mut all_ok = true;
+    for step in steps.into_iter().take(8) {
+        let fix_id = step
+            .get("fix_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if fix_id.is_empty() {
+            continue;
+        }
+        let risk = diagnostics::quick_fix_risk_tier(&fix_id);
+        if risk == "config_change" && !dry_run && !confirm_high_risk {
+            all_ok = false;
+            results.push(json!({
+                "ok": false,
+                "fix_id": fix_id,
+                "risk_tier": risk,
+                "requires_confirmation": true,
+                "message": "Требуется подтверждение confirm_high_risk: true для шага изменения конфигурации",
+            }));
+            continue;
+        }
+        match Box::pin(diagnostics::apply_quick_fix_verified(
+            state, core, &fix_id, dry_run, false,
+        ))
+        .await
+        {
+            Ok(res) => {
+                if !res.ok {
+                    all_ok = false;
+                }
+                results.push(json!(res));
+            }
+            Err(e) => {
+                all_ok = false;
+                results.push(json!({
+                    "ok": false,
+                    "fix_id": fix_id,
+                    "risk_tier": risk,
+                    "error": e.to_string(),
+                }));
+            }
+        }
+    }
+    json!({
+        "ok": all_ok,
+        "dry_run": dry_run,
+        "results": results,
+    })
 }
 
 async fn handle_login(
@@ -3066,5 +3251,41 @@ mod tests {
             resolve_effective_sub_host(&d, Some("10.0.0.1:1680")).as_deref(),
             Some("10.0.0.1:1680")
         );
+    }
+
+    #[tokio::test]
+    async fn test_remediation_execute_requires_confirmation_for_config_change() {
+        let dir = std::env::temp_dir().join(format!("tachyon-api-rem-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let unconfirmed = Box::pin(execute_remediation_plan(
+            &state,
+            &core,
+            &json!({
+                "dry_run": false,
+                "confirm_high_risk": false,
+                "steps": [{ "fix_id": "switch_to_doh" }]
+            }),
+        ))
+        .await;
+        assert_eq!(unconfirmed["ok"], false);
+        assert_eq!(unconfirmed["results"][0]["requires_confirmation"], true);
+        assert_eq!(unconfirmed["results"][0]["risk_tier"], "config_change");
+
+        let dry = Box::pin(execute_remediation_plan(
+            &state,
+            &core,
+            &json!({
+                "dry_run": true,
+                "steps": [{ "fix_id": "switch_to_doh" }, { "fix_id": "trim_core_memory" }]
+            }),
+        ))
+        .await;
+        assert_eq!(dry["ok"], true);
+        assert_eq!(dry["results"].as_array().unwrap().len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

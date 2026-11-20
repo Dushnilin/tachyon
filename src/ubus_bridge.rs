@@ -281,6 +281,50 @@ pub fn sync_telegram_section_to_json(tg: &crate::store::TgBotConfig) {
     }
 }
 
+/// Synchronize a section's (and optionally its linked condition's) `user_domains` back into `config_sections.json`.
+pub fn sync_section_user_domains_to_json(
+    section_id: &str,
+    domains: &[String],
+    linked_condition_id: Option<&str>,
+    cond_domains: Option<&[String]>,
+) {
+    if let Ok(mut store) = json_sections_store().write() {
+        let mut changed = false;
+        let dom_val = Value::Array(domains.iter().cloned().map(Value::String).collect());
+        if let Some(sec_obj) = store.get_mut(section_id).and_then(Value::as_object_mut)
+            && sec_obj.get("user_domains") != Some(&dom_val)
+        {
+            sec_obj.insert("user_domains".to_string(), dom_val);
+            changed = true;
+        }
+        if let (Some(cid), Some(cdoms)) = (linked_condition_id, cond_domains) {
+            let cdom_val = Value::Array(cdoms.iter().cloned().map(Value::String).collect());
+            if let Some(cond_obj) = store.get_mut(cid).and_then(Value::as_object_mut)
+                && cond_obj.get("user_domains") != Some(&cdom_val)
+            {
+                cond_obj.insert("user_domains".to_string(), cdom_val);
+                changed = true;
+            }
+        }
+        if changed {
+            persist_json_sections(&store);
+        }
+    }
+}
+
+/// Synchronize `settings.smart_detect_exclude` back into `config_sections.json`.
+pub fn sync_smart_detect_exclude_to_json(excludes: &[String]) {
+    if let Ok(mut store) = json_sections_store().write()
+        && let Some(set_obj) = store.get_mut("settings").and_then(Value::as_object_mut)
+    {
+        let val = Value::Array(excludes.iter().cloned().map(Value::String).collect());
+        if set_obj.get("smart_detect_exclude") != Some(&val) {
+            set_obj.insert("smart_detect_exclude".to_string(), val);
+            persist_json_sections(&store);
+        }
+    }
+}
+
 fn serialize_json_sections_to_uci(map: &Map<String, Value>) -> String {
     let mut ordered: Vec<(usize, &String, &Value)> = map
         .iter()
@@ -1639,6 +1683,29 @@ fn format_uptime_pretty(secs: u64) -> String {
     }
 }
 
+type CliExecOutput = (i32, String, String);
+type BoxedCliFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+#[inline(never)]
+fn try_fast_pure_rust_method_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(try_fast_pure_rust_method(method, rest, state, core))
+}
+
+#[inline(never)]
+fn execute_pure_rust_tachyon_cli_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, CliExecOutput> {
+    Box::pin(execute_pure_rust_tachyon_cli(method, rest, state, core))
+}
+
 /// Execute `/usr/bin/tachyon <method> [args...]` with sub-millisecond Pure-Rust handlers
 /// for all hot paths (`get_ui_state`, `get_system_info`, `get_outbound_metadata`, `clash_api`, etc.).
 pub async fn execute_tachyon_cli(
@@ -1652,12 +1719,12 @@ pub async fn execute_tachyon_cli(
     let rest = &params[1..];
 
     // 1. Sub-millisecond Pure-Rust handlers for all frequent UI / telemetry / metadata / crypto methods
-    if let Some(fast) = try_fast_pure_rust_method(method, rest, state, core).await {
+    if let Some(fast) = try_fast_pure_rust_method_boxed(method, rest, state, core).await {
         return fast;
     }
 
     // 2. All remaining CLI / RPC methods are handled 100% in pure Rust without ucode
-    execute_pure_rust_tachyon_cli(method, rest, state, core).await
+    execute_pure_rust_tachyon_cli_boxed(method, rest, state, core).await
 }
 
 /// Fast pure-Rust implementations of hot RPC methods (`<1 ms` latency, zero process forks).
@@ -1717,7 +1784,7 @@ async fn try_fast_pure_rust_method(
         }
         "get_sing_box_status" | "get_tachyon_core_status" | "get_engine_status" => {
             state.touch_telemetry_access();
-            let live = state.live.read().await.clone();
+            let live = state.live.read().await;
             let d = state.data.read().await;
             let mut val = build_core_service_json(&live);
             if let Some(obj) = val.as_object_mut() {
@@ -1727,6 +1794,19 @@ async fn try_fast_pure_rust_method(
                     json!(i32::from(d.settings.lite_mode)),
                 );
             }
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
+        "check_sing_box" | "check_tachyon_core" | "check_core" => {
+            let wan6_cache = tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state)
+                .await
+                .unwrap_or_default();
+            let d = state.data.read().await;
+            let live = state.live.read().await;
+            let ipv6_active =
+                crate::store::resolve_effective_ipv6_state(&d.settings, wan6_cache.wan6_available)
+                    .is_active();
+            let val = build_core_health_check_payload(&d, &live, ipv6_active);
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -1854,7 +1934,7 @@ async fn try_fast_pure_rust_method(
         "clash_api" => handle_pure_rust_clash_api(rest, state, core).await,
         "core_telemetry_snapshot" => {
             state.touch_telemetry_access();
-            let val = build_pure_rust_core_telemetry(state, core).await;
+            let val = Box::pin(build_pure_rust_core_telemetry(state, core)).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -2175,19 +2255,27 @@ async fn try_fast_pure_rust_method(
         }
         "doctor" => {
             let do_fix = rest.iter().any(|a| a == "--fix" || a == "fix");
-            let mut doc = diagnostics::run_local_doctor(state).await;
+            let mut doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             let mut fixed_count = 0usize;
             if do_fix && !doc.findings.is_empty() {
                 for f in &doc.findings {
-                    if !f.quick_fix_id.is_empty()
-                        && diagnostics::apply_quick_fix(state, core, &f.quick_fix_id)
-                            .await
-                            .is_ok()
+                    if f.suppressed_by.is_none()
+                        && !f.quick_fix_id.is_empty()
+                        && diagnostics::quick_fix_risk_tier(&f.quick_fix_id) != "config_change"
+                        && let Ok(res) = Box::pin(diagnostics::apply_quick_fix_verified(
+                            state,
+                            core,
+                            &f.quick_fix_id,
+                            false,
+                            false,
+                        ))
+                        .await
+                        && res.ok
                     {
                         fixed_count += 1;
                     }
                 }
-                doc = diagnostics::run_local_doctor(state).await;
+                doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             }
             let mut report_lines = vec![format!("=== {} ===", doc.summary)];
             for sub in &doc.subsystems {
@@ -2709,9 +2797,11 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
             "tachyon_version": crate::store::TACHYON_VERSION,
             "tachyon_core_version": core_version,
             "sing_box_version": core_version,
+            "tachyon_core_version": core_version,
             "active_engine": "tachyon-core",
             "tachyon_core_installed": core_installed,
             "sing_box_tachyon_core": core_installed,
+            "tachyon_core_installed": core_installed,
             "openwrt_version": sys.openwrt_release,
             "device_model": sys.router_model,
             "kernel_version": sys.os,
@@ -2732,7 +2822,9 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
                     .find(|r| r.get("component").and_then(Value::as_str) == Some(comp))
             })
     };
-    let core_cached = cached_for("tachyon-core").or_else(|| cached_for("sing_box"));
+    let core_cached = cached_for("tachyon-core")
+        .or_else(|| cached_for("tachyon_core"))
+        .or_else(|| cached_for("sing_box"));
     let tachyon_cached = cached_for("tachyon");
 
     if let Some(obj) = base.as_object_mut() {
@@ -2822,6 +2914,7 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
         obj.insert("sing_box_backup_time".to_string(), json!(core_backup_time));
         obj.insert("active_engine".to_string(), json!("tachyon-core"));
         obj.insert("sing_box_tachyon_core".to_string(), json!(core_installed));
+        obj.insert("tachyon_core_installed".to_string(), json!(core_installed));
         obj.insert("sing_box_extended".to_string(), json!(0));
         obj.insert("sing_box_tiny".to_string(), json!(0));
         obj.insert("sing_box_compressed".to_string(), json!(0));
@@ -4192,13 +4285,15 @@ fn resolve_telemetry_tag_display_name(
 async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
     let store_snap = state.data.read().await.clone();
     let tag_display_map = build_telemetry_tag_display_map(&store_snap);
-    let (mem_res, dev_res, conn_res, flight_res, failover_res, leak_res) = tokio::join!(
+    let (mem_res, dev_res, conn_res, flight_res, failover_res, leak_res, health_res, anomalies_res) = tokio::join!(
         core.clash_request("GET", "/tachyon/memory", None),
         core.clash_request("GET", "/tachyon/devices", None),
         core.clash_request("GET", "/connections", None),
         core.clash_request("GET", "/tachyon/flight", None),
         core.clash_request("GET", "/tachyon/failover", None),
         core.clash_request("GET", "/tachyon/leak", None),
+        core.clash_request("GET", "/tachyon/health", None),
+        core.clash_request("GET", "/tachyon/anomalies", None),
     );
 
     let memory = mem_res.unwrap_or_else(|_| {
@@ -4507,7 +4602,9 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         "flight": {
             "count": flight_count,
             "entries": flight_entries,
-        }
+        },
+        "health": health_res.unwrap_or_else(|_| json!({})),
+        "anomalies": anomalies_res.unwrap_or_else(|_| json!({"count": 0, "hosts": []})),
     })
 }
 
@@ -5714,6 +5811,145 @@ fn write_uci_ui_prefs(patch: &Value) -> Value {
     current
 }
 
+fn map_pipeline_node_status(doc: &diagnostics::DoctorReport, node_id: &str) -> &'static str {
+    let raw = doc
+        .pipeline_nodes
+        .iter()
+        .find(|n| n.get("id").and_then(Value::as_str) == Some(node_id))
+        .and_then(|n| n.get("status"))
+        .and_then(Value::as_str)
+        .unwrap_or("ok");
+    match raw {
+        "ok" => "OK",
+        "warn" => "WARN",
+        _ => "FAIL",
+    }
+}
+
+fn status_severity_rank(status: &str) -> u8 {
+    match status {
+        "FAIL" => 2,
+        "WARN" => 1,
+        _ => 0,
+    }
+}
+
+async fn build_ubus_ai_doctor_payload(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    method: &str,
+    rest: &[String],
+) -> Value {
+    let cache_path = Path::new("/var/run/tachyon/ui-state/ai-doctor-last.json");
+    if method == "ai_doctor_last"
+        && let Ok(raw) = tokio::fs::read_to_string(cache_path).await
+        && let Ok(cached) = serde_json::from_str::<Value>(&raw)
+        && cached.is_object()
+    {
+        return cached;
+    }
+
+    let query = rest
+        .first()
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    let ai_res = Box::pin(crate::ai_doctor::run_ai_doctor_v4(state, core, query)).await;
+    let doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
+    let score = ((doc.checks_passed * 100) / doc.checks_total.max(1)) as u32;
+
+    let wan_status = map_pipeline_node_status(&doc, "wan");
+    let dns_status = map_pipeline_node_status(&doc, "dns_fakeip");
+    let out_status = map_pipeline_node_status(&doc, "outbounds");
+    let core_status = [
+        "core_process",
+        "config_sync",
+        "nftables",
+        "resources",
+        "binary",
+        "clock",
+    ]
+    .iter()
+    .map(|id| map_pipeline_node_status(&doc, id))
+    .max_by_key(|st| status_severity_rank(st))
+    .unwrap_or("OK");
+
+    let nodes = json!([
+        { "name": "WAN", "status": wan_status },
+        { "name": "DNS", "status": dns_status },
+        { "name": "Core", "status": core_status },
+        { "name": "Outbound", "status": out_status },
+    ]);
+
+    let mut quick_fixes: Vec<String> = Vec::new();
+    if let Some(plan) = ai_res.get("remediation_plan").and_then(Value::as_array) {
+        for item in plan {
+            if item.get("advisory_only").and_then(Value::as_bool) == Some(true) {
+                continue;
+            }
+            if let Some(fix_id) = item
+                .get("fix_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                && !quick_fixes.iter().any(|existing| existing == fix_id)
+            {
+                quick_fixes.push(fix_id.to_string());
+            }
+        }
+    }
+    if quick_fixes.is_empty() {
+        for f in &doc.findings {
+            if f.suppressed_by.is_none() {
+                let fix_id = f.quick_fix_id.trim();
+                if !fix_id.is_empty() && !quick_fixes.iter().any(|existing| existing == fix_id) {
+                    quick_fixes.push(fix_id.to_string());
+                }
+            }
+        }
+    }
+
+    let report = ai_res
+        .get("analysis")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&doc.summary);
+
+    let payload = json!({
+        "success": true,
+        "async": false,
+        "running": false,
+        "completed": true,
+        "status": "completed",
+        "job_id": "rust-ai-doc-1",
+        "score": score,
+        "report": report,
+        "quick_fixes": quick_fixes,
+        "nodes": nodes,
+        "mode": ai_res.get("mode").cloned().unwrap_or(Value::Null),
+        "provider": ai_res.get("provider").cloned().unwrap_or(Value::Null),
+        "model": ai_res.get("model").cloned().unwrap_or(Value::Null),
+        "root_cause": ai_res.get("root_cause").cloned().unwrap_or(Value::Null),
+        "confidence": ai_res.get("confidence").cloned().unwrap_or(Value::Null),
+        "tool_trace": ai_res.get("tool_trace").cloned().unwrap_or_else(|| json!([])),
+        "rag_docs": ai_res.get("rag_docs").cloned().unwrap_or_else(|| json!([])),
+        "remediation_plan": ai_res.get("remediation_plan").cloned().unwrap_or_else(|| json!([])),
+        "similar_incidents": ai_res.get("similar_incidents").cloned().unwrap_or_else(|| json!([])),
+        "pipeline_nodes": doc.pipeline_nodes,
+        "llm_error": ai_res.get("llm_error").cloned().unwrap_or(Value::Null),
+    });
+
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(raw) = serde_json::to_string(&payload) {
+        let _ = crypto_gen::write_file_if_changed(cache_path, raw.as_bytes());
+    }
+    payload
+}
+
 async fn execute_pure_rust_tachyon_cli(
     method: &str,
     rest: &[String],
@@ -5751,7 +5987,7 @@ async fn execute_pure_rust_tachyon_cli(
         "global_check" => {
             let masked = rest.first().map(String::as_str) == Some("masked");
             let sys = sys_info::collect_host_info();
-            let doc = diagnostics::run_local_doctor(state).await;
+            let doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             let score = ((doc.checks_passed * 100) / doc.checks_total.max(1)) as u32;
             let mut report = String::new();
             report.push_str("=== Tachyon Diagnostic Report ===\n");
@@ -6665,132 +6901,28 @@ async fn execute_pure_rust_tachyon_cli(
         "enable" | "disable" => json!({ "success": true }),
         "apply_quick_fix" => {
             let fix_id = rest.first().map(String::as_str).unwrap_or("restart_core");
-            match diagnostics::apply_quick_fix(state, core, fix_id).await {
-                Ok(msg) => json!({ "success": true, "message": msg }),
-                Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+            match Box::pin(diagnostics::apply_quick_fix_verified(
+                state, core, fix_id, false, false,
+            ))
+            .await
+            {
+                Ok(res) => json!({
+                    "success": res.ok,
+                    "message": res.message,
+                    "risk_tier": res.risk_tier,
+                    "rolled_back": res.rolled_back,
+                    "cooldown_blocked": res.cooldown_blocked,
+                    "before_findings": res.before_findings,
+                    "after_findings": res.after_findings,
+                }),
+                Err(e) => json!({
+                    "success": false,
+                    "message": e.to_string(),
+                }),
             }
         }
         "ai_doctor" | "ai_doctor_last" => {
-            let last_path = crate::store::runtime_state_dir()
-                .join("ui-state")
-                .join("ai-doctor-last.json");
-            let wants_status =
-                method == "ai_doctor_last" || rest.iter().any(|a| a == "--status" || a == "status");
-            let wants_async = rest.iter().any(|a| a == "--async" || a == "async");
-            let user_query = rest
-                .iter()
-                .filter(|a| !a.starts_with('-') && a.as_str() != "async" && a.as_str() != "status")
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(" ");
-            if wants_status
-                && let Ok(raw) = std::fs::read_to_string(&last_path)
-                && let Ok(val) = serde_json::from_str::<Value>(&raw)
-            {
-                return (
-                    0,
-                    format!("{}\n", serde_json::to_string(&val).unwrap_or_default()),
-                    String::new(),
-                );
-            }
-            let build_ai_doc_payload = |ai_val: Value,
-                                        store_snap: &crate::store::RouterStoreData,
-                                        live_snap: &crate::store::LiveTelemetry,
-                                        job_id: &str| {
-                let score = ai_val.get("score").and_then(Value::as_u64).unwrap_or(0);
-                let report = ai_val
-                    .get("analysis")
-                    .or_else(|| ai_val.get("summary"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let recommendations = ai_val
-                    .get("recommendations")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let quick_fixes: Vec<Value> = recommendations
-                    .iter()
-                    .filter_map(|r| {
-                        let id = r.get("fix_id").and_then(Value::as_str)?;
-                        if id.is_empty() {
-                            return None;
-                        }
-                        Some(json!({
-                            "id": id,
-                            "label": r.get("label").and_then(Value::as_str).unwrap_or(id),
-                            "description": r.get("reason").and_then(Value::as_str).unwrap_or(""),
-                            "severity": r.get("severity").and_then(Value::as_str).unwrap_or("info"),
-                            "safe": true
-                        }))
-                    })
-                    .collect();
-                let nodes: Vec<Value> = store_snap
-                    .outbound_sources
-                    .iter()
-                    .map(|s| {
-                        let ms_opt = live_snap.node_latencies_ms.get(&s.id).copied();
-                        json!({
-                            "key": s.id,
-                            "label": if s.name.is_empty() { &s.id } else { &s.name },
-                            "protocol": s.source_type,
-                            "latency_ms": ms_opt.unwrap_or(0),
-                            "tested": ms_opt.is_some(),
-                            "healthy": ms_opt.is_some_and(|m| m > 0)
-                        })
-                    })
-                    .collect();
-                json!({
-                    "success": true,
-                    "async": false,
-                    "running": false,
-                    "completed": true,
-                    "status": "completed",
-                    "job_id": job_id,
-                    "score": score,
-                    "report": report,
-                    "analysis": report,
-                    "quick_fixes": quick_fixes,
-                    "recommendations": recommendations,
-                    "nodes": nodes
-                })
-            };
-            if wants_async {
-                let job_id = format!("rust-ai-doc-{}", crate::store::unix_now_u64());
-                let running_payload = json!({
-                    "success": true,
-                    "async": true,
-                    "running": true,
-                    "completed": false,
-                    "status": "running",
-                    "job_id": job_id,
-                });
-                if let Some(parent) = last_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = crypto_gen::write_json_if_changed(&last_path, &running_payload);
-                let state_c = Arc::clone(state);
-                let q_opt = (!user_query.trim().is_empty()).then_some(user_query);
-                let job_id_bg = job_id.clone();
-                let last_path_bg = last_path.clone();
-                tokio::spawn(async move {
-                    let ai_val = diagnostics::run_ai_doctor(&state_c, q_opt.as_deref()).await;
-                    let d_snap = state_c.data.read().await.clone();
-                    let l_snap = state_c.live.read().await.clone();
-                    let payload = build_ai_doc_payload(ai_val, &d_snap, &l_snap, &job_id_bg);
-                    let _ = crypto_gen::write_json_if_changed(&last_path_bg, &payload);
-                });
-                running_payload
-            } else {
-                let q_opt = (!user_query.trim().is_empty()).then_some(user_query);
-                let ai_val = diagnostics::run_ai_doctor(state, q_opt.as_deref()).await;
-                let payload = build_ai_doc_payload(ai_val, &d, &live, "rust-ai-doc-1");
-                if let Some(parent) = last_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = crypto_gen::write_json_if_changed(&last_path, &payload);
-                payload
-            }
+            Box::pin(build_ubus_ai_doctor_payload(state, core, method, rest)).await
         }
         "service_health_check" => {
             let sub = rest.first().map(String::as_str).unwrap_or("get-targets");
@@ -7878,72 +8010,86 @@ async fn execute_pure_rust_tachyon_cli(
             .await
         }
         "probe_outbound_url" => {
-            let tag = rest.first().map(String::as_str).unwrap_or("Main-out");
-            let url = rest
-                .get(1)
-                .map(String::as_str)
-                .unwrap_or("https://www.gstatic.com/generate_204");
-            let encoded_url = url_encode_component(url);
-            let mut effective_tag = tag.to_string();
-            let mut latency_ms: Option<u64> = None;
-            let mut last_err = String::new();
-            let direct_path = format!(
-                "/proxies/{}/delay?url={encoded_url}&timeout=5000",
-                url_encode_component(tag)
-            );
-            match core.clash_request("GET", &direct_path, None).await {
-                Ok(val) => {
-                    latency_ms = val.get("delay").and_then(Value::as_u64);
-                }
-                Err(e) => {
-                    last_err = format!("{e:#}");
-                    if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
-                        && let Some(proxies_map) =
-                            proxies_val.get("proxies").and_then(Value::as_object)
-                    {
-                        let candidates: Vec<String> = proxies_map.keys().cloned().collect();
-                        if let Some(matched) =
-                            resolve_outbound_tag_with_telemetry_fallback(tag, &candidates)
+            let first = rest.first().map(|s| s.trim()).unwrap_or("");
+            if first.starts_with("http://") || first.starts_with("https://") {
+                let group_id = rest.get(1).map(|s| s.trim()).unwrap_or("all");
+                let timeout_ms = rest
+                    .get(2)
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or(3000)
+                    .clamp(1000, 10_000);
+                Box::pin(handle_probe_outbound_url_batch(
+                    &d, core, first, group_id, timeout_ms,
+                ))
+                .await
+            } else {
+                let tag = if first.is_empty() { "Main-out" } else { first };
+                let url = rest
+                    .get(1)
+                    .map(String::as_str)
+                    .unwrap_or("https://www.gstatic.com/generate_204");
+                let encoded_url = url_encode_component(url);
+                let mut effective_tag = tag.to_string();
+                let mut latency_ms: Option<u64> = None;
+                let mut last_err = String::new();
+                let direct_path = format!(
+                    "/proxies/{}/delay?url={encoded_url}&timeout=5000",
+                    url_encode_component(tag)
+                );
+                match core.clash_request("GET", &direct_path, None).await {
+                    Ok(val) => {
+                        latency_ms = val.get("delay").and_then(Value::as_u64);
+                    }
+                    Err(e) => {
+                        last_err = format!("{e:#}");
+                        if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
+                            && let Some(proxies_map) =
+                                proxies_val.get("proxies").and_then(Value::as_object)
                         {
-                            let retry_path = format!(
-                                "/proxies/{}/delay?url={encoded_url}&timeout=5000",
-                                url_encode_component(&matched)
-                            );
-                            effective_tag = matched;
-                            match core.clash_request("GET", &retry_path, None).await {
-                                Ok(val) => {
-                                    latency_ms = val.get("delay").and_then(Value::as_u64);
-                                    last_err.clear();
+                            let candidates: Vec<String> = proxies_map.keys().cloned().collect();
+                            if let Some(matched) =
+                                resolve_outbound_tag_with_telemetry_fallback(tag, &candidates)
+                            {
+                                let retry_path = format!(
+                                    "/proxies/{}/delay?url={encoded_url}&timeout=5000",
+                                    url_encode_component(&matched)
+                                );
+                                effective_tag = matched;
+                                match core.clash_request("GET", &retry_path, None).await {
+                                    Ok(val) => {
+                                        latency_ms = val.get("delay").and_then(Value::as_u64);
+                                        last_err.clear();
+                                    }
+                                    Err(e2) => last_err = format!("{e2:#}"),
                                 }
-                                Err(e2) => last_err = format!("{e2:#}"),
                             }
                         }
                     }
                 }
-            }
-            if let Some(ms) = latency_ms
-                && ms > 0
-            {
-                json!({
-                    "success": true,
-                    "status": "ok",
-                    "tag": effective_tag,
-                    "requested_tag": tag,
-                    "target_url": url,
-                    "http_code": 204,
-                    "latency_ms": ms
-                })
-            } else {
-                json!({
-                    "success": false,
-                    "status": "failed",
-                    "tag": effective_tag,
-                    "requested_tag": tag,
-                    "target_url": url,
-                    "http_code": 0,
-                    "latency_ms": 0,
-                    "error": if last_err.is_empty() { "timeout".to_string() } else { last_err }
-                })
+                if let Some(ms) = latency_ms
+                    && ms > 0
+                {
+                    json!({
+                        "success": true,
+                        "status": "ok",
+                        "tag": effective_tag,
+                        "requested_tag": tag,
+                        "target_url": url,
+                        "http_code": 204,
+                        "latency_ms": ms
+                    })
+                } else {
+                    json!({
+                        "success": false,
+                        "status": "failed",
+                        "tag": effective_tag,
+                        "requested_tag": tag,
+                        "target_url": url,
+                        "http_code": 0,
+                        "latency_ms": 0,
+                        "error": if last_err.is_empty() { "timeout".to_string() } else { last_err }
+                    })
+                }
             }
         }
         "resolve_domain" => {
@@ -10702,6 +10848,222 @@ fn resolve_outbound_tag_with_telemetry_fallback(
     None
 }
 
+fn is_probeable_leaf_proxy(tag: &str, entry: &Value) -> bool {
+    let t = tag.trim();
+    if t.is_empty()
+        || matches!(
+            t,
+            "direct" | "DIRECT" | "block" | "BLOCK" | "reject" | "REJECT" | "dns-out" | "GLOBAL"
+        )
+        || t.starts_with("desync-")
+        || t.starts_with("srv-")
+    {
+        return false;
+    }
+    if entry
+        .get("all")
+        .and_then(Value::as_array)
+        .is_some_and(|a| !a.is_empty())
+    {
+        return false;
+    }
+    let ty = entry
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    !matches!(
+        ty.as_str(),
+        "selector"
+            | "urltest"
+            | "fallback"
+            | "loadbalance"
+            | "direct"
+            | "block"
+            | "reject"
+            | "dns"
+            | "desync"
+    )
+}
+
+fn collect_probe_outbound_url_targets(
+    store: &crate::store::RouterStoreData,
+    proxies_map: &Map<String, Value>,
+    group_id: &str,
+) -> Vec<String> {
+    let mut leaf_pool: Vec<String> = proxies_map
+        .iter()
+        .filter(|&(k, v)| is_probeable_leaf_proxy(k, v))
+        .map(|(k, _)| k.clone())
+        .collect();
+    leaf_pool.sort_unstable();
+
+    let gid = group_id.trim();
+    if gid.is_empty() || gid.eq_ignore_ascii_case("all") {
+        return leaf_pool;
+    }
+
+    let group_map = config_gen::resolve_outbound_group_member_tags(store);
+    let mut matched = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if let Some(member_tags) = group_map.get(gid) {
+        for raw_tag in member_tags {
+            if let Some(live_tag) =
+                resolve_outbound_tag_with_telemetry_fallback(raw_tag, &leaf_pool)
+                && seen.insert(live_tag.clone())
+            {
+                matched.push(live_tag);
+            }
+        }
+    }
+    if matched.is_empty() {
+        let clash_members = collect_clash_leaf_members(proxies_map, gid);
+        for m in clash_members {
+            if leaf_pool.iter().any(|p| p == &m) && seen.insert(m.clone()) {
+                matched.push(m);
+            }
+        }
+    }
+    matched
+}
+
+async fn handle_probe_outbound_url_batch(
+    store: &crate::store::RouterStoreData,
+    core: &Arc<CoreManager>,
+    target_url: &str,
+    group_id: &str,
+    timeout_ms: u64,
+) -> Value {
+    let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await else {
+        return json!({
+            "success": false,
+            "error": "tachyon-core Clash API is unreachable"
+        });
+    };
+    let Some(proxies_map) = proxies_val.get("proxies").and_then(Value::as_object) else {
+        return json!({
+            "success": false,
+            "error": "invalid /proxies response"
+        });
+    };
+
+    let targets = collect_probe_outbound_url_targets(store, proxies_map, group_id);
+    let meta = read_pure_rust_outbound_metadata(store, "all");
+    let names_map = meta.get("names").and_then(Value::as_object);
+    let countries_map = meta.get("countries").and_then(Value::as_object);
+    let prefixes_map = meta.get("prefixes").and_then(Value::as_object);
+    let sources_map = meta.get("source_names").and_then(Value::as_object);
+
+    let mut delays: std::collections::HashMap<String, Option<u64>> =
+        std::collections::HashMap::new();
+    let eff_timeout = timeout_ms.clamp(1000, 10_000);
+    let encoded_url = url_encode_component(target_url);
+
+    for chunk in targets.chunks(24) {
+        let body = json!({
+            "names": chunk,
+            "url": target_url,
+            "timeout": eff_timeout,
+        })
+        .to_string();
+        if let Ok(batch_resp) = core
+            .clash_request("POST", "/tachyon/delay-batch", Some(&body))
+            .await
+            && let Some(res_map) = batch_resp.get("results").and_then(Value::as_object)
+        {
+            for tag in chunk {
+                let ms = res_map
+                    .get(tag)
+                    .and_then(|v| v.get("delay"))
+                    .and_then(Value::as_u64)
+                    .filter(|&d| d > 0);
+                delays.insert(tag.clone(), ms);
+            }
+            continue;
+        }
+        // Fallback for cores without /tachyon/delay-batch
+        let mut set = tokio::task::JoinSet::new();
+        for tag in chunk {
+            let core_c = Arc::clone(core);
+            let tag_c = tag.clone();
+            let path = format!(
+                "/proxies/{}/delay?url={encoded_url}&timeout={eff_timeout}",
+                url_encode_component(tag)
+            );
+            set.spawn(async move {
+                let ms = core_c
+                    .clash_request("GET", &path, None)
+                    .await
+                    .ok()
+                    .and_then(|v| v.get("delay").and_then(Value::as_u64))
+                    .filter(|&d| d > 0);
+                (tag_c, ms)
+            });
+        }
+        while let Some(Ok((tag_c, ms))) = set.join_next().await {
+            delays.insert(tag_c, ms);
+        }
+    }
+
+    let mut rows: Vec<(bool, u64, String, Value)> = Vec::with_capacity(targets.len());
+    let mut reachable_count = 0usize;
+    for tag in &targets {
+        let delay_opt = delays.get(tag).copied().flatten();
+        let reachable = delay_opt.is_some();
+        if reachable {
+            reachable_count += 1;
+        }
+        let delay_ms = delay_opt.unwrap_or(0);
+        let display_name = names_map
+            .and_then(|m| m.get(tag))
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(tag.as_str());
+        let country = countries_map
+            .and_then(|m| m.get(tag))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let prefix = prefixes_map
+            .and_then(|m| m.get(tag))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let source = sources_map
+            .and_then(|m| m.get(tag))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        rows.push((
+            reachable,
+            delay_ms,
+            display_name.to_string(),
+            json!({
+                "tag": tag,
+                "name": display_name,
+                "country": country,
+                "prefix": prefix,
+                "source": source,
+                "reachable": reachable,
+                "delay_ms": delay_ms,
+            }),
+        ));
+    }
+    rows.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    let results: Vec<Value> = rows.into_iter().map(|r| r.3).collect();
+
+    json!({
+        "success": true,
+        "status": "ok",
+        "url": target_url,
+        "group": if group_id.is_empty() { "all" } else { group_id },
+        "reachable_count": reachable_count,
+        "total_count": results.len(),
+        "results": results,
+    })
+}
+
 pub fn sync_from_store_to_json_and_cache(store: &crate::store::RouterStoreData) {
     let existing = Value::Object(get_json_sections_snapshot());
     if let Value::Object(new_map) =
@@ -11419,6 +11781,72 @@ mod tests {
             resolve_outbound_tag_with_telemetry_fallback("US New York", &candidates),
             None
         );
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "sub_main".to_string(),
+            enabled: true,
+            name: "MainSub".to_string(),
+            source_type: "subscription".to_string(),
+            cached_nodes: vec![
+                crate::store::ParsedProxyNode {
+                    tag: "DE Frankfurt".to_string(),
+                    protocol: "vless".to_string(),
+                    server: "198.51.100.1".to_string(),
+                    server_port: 443,
+                    country: "DE".to_string(),
+                    outbound_json: json!({
+                        "type": "vless",
+                        "tag": "DE Frankfurt",
+                        "server": "198.51.100.1",
+                        "server_port": 443,
+                        "uuid": "11111111-1111-4111-8111-111111111111"
+                    }),
+                    ..Default::default()
+                },
+                crate::store::ParsedProxyNode {
+                    tag: "FI Helsinki".to_string(),
+                    protocol: "vless".to_string(),
+                    server: "198.51.100.2".to_string(),
+                    server_port: 443,
+                    country: "FI".to_string(),
+                    outbound_json: json!({
+                        "type": "vless",
+                        "tag": "FI Helsinki",
+                        "server": "198.51.100.2",
+                        "server_port": 443,
+                        "uuid": "11111111-1111-4111-8111-111111111111"
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        store.outbound_groups.push(crate::store::OutboundGroup {
+            id: "grp_de".to_string(),
+            enabled: true,
+            name: "Germany Only".to_string(),
+            source_refs: vec!["sub_main".to_string()],
+            include_country_flags: vec!["DE".to_string()],
+            ..Default::default()
+        });
+        let mut proxies = Map::new();
+        proxies.insert(
+            "sel-Main".to_string(),
+            json!({ "type": "Selector", "all": ["DE Frankfurt", "FI Helsinki"] }),
+        );
+        proxies.insert("direct".to_string(), json!({ "type": "Direct" }));
+        proxies.insert("desync-yt".to_string(), json!({ "type": "Desync" }));
+        proxies.insert("DE Frankfurt".to_string(), json!({ "type": "VLESS" }));
+        proxies.insert("FI Helsinki".to_string(), json!({ "type": "VLESS" }));
+
+        let all_targets = collect_probe_outbound_url_targets(&store, &proxies, "all");
+        assert_eq!(
+            all_targets,
+            vec!["DE Frankfurt".to_string(), "FI Helsinki".to_string()]
+        );
+        let de_targets = collect_probe_outbound_url_targets(&store, &proxies, "grp_de");
+        assert_eq!(de_targets, vec!["DE Frankfurt".to_string()]);
     }
 
     #[test]
@@ -11807,5 +12235,48 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         );
         assert_eq!(conns.len(), 1, "unexpected conntrack entries: {conns:?}");
         assert_eq!(conns[0]["id"], "ct:udp:192.168.1.50:60123:1.1.1.1:443");
+    }
+
+    #[tokio::test]
+    async fn tachyon_core_rpc_aliases_return_running_and_fields() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon-ubus-core-aliases-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+        {
+            let mut live = state.live.write().await;
+            live.core_running = true;
+            live.core_version = "0.6.0".to_string();
+            live.core_pid = Some(12345);
+        }
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let (code_st, out_st, _) =
+            execute_tachyon_cli(&["get_tachyon_core_status".to_string()], &state, &core).await;
+        assert_eq!(code_st, 0);
+        let v_st: Value = serde_json::from_str(&out_st).unwrap();
+        assert_eq!(v_st["running"], 1);
+        assert_eq!(v_st["pid"], 12345);
+
+        let (code_chk, out_chk, _) =
+            execute_tachyon_cli(&["check_tachyon_core".to_string()], &state, &core).await;
+        assert_eq!(code_chk, 0);
+        let v_chk: Value = serde_json::from_str(&out_chk).unwrap();
+        assert!(v_chk.get("tachyon_core_installed").is_some());
+        assert_eq!(v_chk["tachyon_core_process_running"], 1);
+
+        let (code_ui, out_ui, _) =
+            execute_tachyon_cli(&["get_ui_state".to_string()], &state, &core).await;
+        assert_eq!(code_ui, 0);
+        let v_ui: Value = serde_json::from_str(&out_ui).unwrap();
+        assert_eq!(v_ui["service"]["tachyon_core"]["running"], 1);
+        assert!(v_ui["capabilities"].get("tachyon_core_installed").is_some());
+
+        let (code_ver, out_ver, _) =
+            execute_tachyon_cli(&["show_tachyon_core_version".to_string()], &state, &core).await;
+        assert_eq!(code_ver, 0);
+        assert_eq!(out_ver.trim(), "0.6.0");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
