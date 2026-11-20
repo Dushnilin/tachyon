@@ -261,6 +261,20 @@ fn default_log_level() -> String {
     "warn".to_string()
 }
 
+/// Normalize log levels for `tachyon-core` (`trace`, `debug`, `info`, `warn`, `error`, `fatal`).
+/// Legacy configs (e.g. `panic` or `off` from 1.x / sing-box) are mapped safely so `tachyon-core check` never rejects them.
+pub fn normalize_core_log_level(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "trace" => "trace",
+        "debug" => "debug",
+        "info" => "info",
+        "warn" | "warning" => "warn",
+        "error" | "err" => "error",
+        "fatal" | "panic" => "fatal",
+        _ => "warn",
+    }
+}
+
 fn default_sub_format() -> String {
     "base64".to_string()
 }
@@ -4411,7 +4425,11 @@ impl RouterStoreData {
                 lists,
             });
         }
-        let imported = self.import_from_blocks(&blocks);
+        let imported = self.import_from_blocks_impl(
+            &blocks,
+            Path::new("/etc/tachyon/subscription-cache"),
+            true,
+        );
         if had_legacy_marker || imported > 0 {
             self.mark_legacy_uci_imported();
         }
@@ -4426,14 +4444,19 @@ impl RouterStoreData {
         sync_store_to_json_sections(self, existing)
     }
 
-    fn import_from_blocks(&mut self, blocks: &[LegacyUciBlock]) -> usize {
-        self.import_from_blocks_with_cache(blocks, Path::new("/etc/tachyon/subscription-cache"))
-    }
-
     fn import_from_blocks_with_cache(
         &mut self,
         blocks: &[LegacyUciBlock],
         sub_cache_dir: &Path,
+    ) -> usize {
+        self.import_from_blocks_impl(blocks, sub_cache_dir, false)
+    }
+
+    fn import_from_blocks_impl(
+        &mut self,
+        blocks: &[LegacyUciBlock],
+        sub_cache_dir: &Path,
+        reset_omitted_fields: bool,
     ) -> usize {
         if blocks.is_empty() {
             return 0;
@@ -4467,6 +4490,61 @@ impl RouterStoreData {
         for b in blocks {
             match b.kind.as_str() {
                 "settings" => {
+                    if reset_omitted_fields {
+                        let prev = self.settings.clone();
+                        self.settings = GlobalSettings::default();
+                        self.settings.config_version = prev.config_version;
+                        self.settings.listen_addr = prev.listen_addr;
+                        self.settings.listen_port = prev.listen_port;
+                        self.settings.web_base_path = prev.web_base_path;
+                        self.settings.admin_user = prev.admin_user;
+                        self.settings.admin_pass_hash = prev.admin_pass_hash;
+                        self.settings.admin_pass_salt = prev.admin_pass_salt;
+                        self.settings.session_secret = prev.session_secret;
+                        self.settings.core_bin_path = prev.core_bin_path;
+                        self.settings.core_config_path = prev.core_config_path;
+                        self.settings.rulesets_dir = prev.rulesets_dir;
+                        self.settings.clash_api_addr = prev.clash_api_addr;
+                        self.settings.clash_api_secret = prev.clash_api_secret;
+                        self.settings.agent_api_token = prev.agent_api_token;
+                        self.settings.server_subscription_token = prev.server_subscription_token;
+                        self.settings.enable_badwan_interface_monitoring =
+                            prev.enable_badwan_interface_monitoring;
+                        self.settings.badwan_monitored_interfaces =
+                            prev.badwan_monitored_interfaces;
+                        self.settings.badwan_reload_delay = prev.badwan_reload_delay;
+                        self.settings.fallback_wan_main = prev.fallback_wan_main;
+                        self.settings.fallback_wan_bootstrap = prev.fallback_wan_bootstrap;
+                        self.settings.torrserver_ports = prev.torrserver_ports;
+                        self.settings.tailscale_enabled = prev.tailscale_enabled;
+                        self.settings.wan_failover_failure_threshold =
+                            prev.wan_failover_failure_threshold;
+                        self.settings.wan_failover_recovery_threshold =
+                            prev.wan_failover_recovery_threshold;
+                        self.settings.download_all_presets = prev.download_all_presets;
+                        self.settings.engine_variant = prev.engine_variant;
+                        self.settings.honeypot_enabled = prev.honeypot_enabled;
+                        self.settings.decoy_mode = prev.decoy_mode;
+                        self.settings.enable_rag = prev.enable_rag;
+                        self.settings.ai_reload_dedup_enabled = prev.ai_reload_dedup_enabled;
+                        self.settings.ai_metrics_enabled = prev.ai_metrics_enabled;
+                        self.settings.ai_smart_cooldowns_enabled = prev.ai_smart_cooldowns_enabled;
+                        self.settings.ai_config_validation_enabled =
+                            prev.ai_config_validation_enabled;
+                        self.settings.ai_graceful_degradation_enabled =
+                            prev.ai_graceful_degradation_enabled;
+                        self.settings.ai_adaptive_intervals_enabled =
+                            prev.ai_adaptive_intervals_enabled;
+                        self.settings.ai_anomaly_detection_enabled =
+                            prev.ai_anomaly_detection_enabled;
+                        self.settings.ai_anomaly_reconnect_threshold =
+                            prev.ai_anomaly_reconnect_threshold;
+                        self.settings.section_failover_enabled = prev.section_failover_enabled;
+                        self.settings.section_failover_threshold = prev.section_failover_threshold;
+                        self.settings.qos_priority_engine = prev.qos_priority_engine;
+                        self.settings.warp_proxy_section = prev.warp_proxy_section;
+                    }
+                    let has_key = |k: &str| b.lists.contains_key(k) || b.options.contains_key(k);
                     if let Some(v) = b.opt("proxy_mode") {
                         self.settings.proxy_mode = v.to_string();
                     }
@@ -4531,11 +4609,14 @@ impl RouterStoreData {
                         self.settings.selector_auto_failover = parse_bool(v);
                     }
                     let src_ifaces = b.clean_tokens(&["source_network_interfaces"]);
-                    if !src_ifaces.is_empty() {
+                    if !src_ifaces.is_empty()
+                        || (reset_omitted_fields && has_key("source_network_interfaces"))
+                    {
                         self.settings.source_network_interfaces = src_ifaces;
                     }
                     let excluded_ips = b.clean_tokens(&["excluded_ips"]);
-                    if !excluded_ips.is_empty() {
+                    if !excluded_ips.is_empty() || (reset_omitted_fields && has_key("excluded_ips"))
+                    {
                         self.settings.excluded_ips = excluded_ips;
                     }
                     if let Some(v) = b.opt("cache_path") {
@@ -4580,15 +4661,19 @@ impl RouterStoreData {
                         self.settings.dns_type = v.to_string();
                     }
                     let dns_srvs = b.list("dns_server");
-                    if !dns_srvs.is_empty() {
+                    if !dns_srvs.is_empty() || (reset_omitted_fields && has_key("dns_server")) {
                         self.settings.dns_servers = dns_srvs;
                     }
                     let boot_srvs = b.list("bootstrap_dns_server");
-                    if !boot_srvs.is_empty() {
+                    if !boot_srvs.is_empty()
+                        || (reset_omitted_fields && has_key("bootstrap_dns_server"))
+                    {
                         self.settings.bootstrap_dns_servers = boot_srvs;
                     }
                     let fb_srvs = b.list("dns_fallback_server");
-                    if !fb_srvs.is_empty() {
+                    if !fb_srvs.is_empty()
+                        || (reset_omitted_fields && has_key("dns_fallback_server"))
+                    {
                         self.settings.dns_fallback_servers = fb_srvs;
                     }
                     if let Some(v) = b.opt("fallback_dns_server") {
@@ -4649,7 +4734,7 @@ impl RouterStoreData {
                         self.settings.fakeip_inet6_range = v.to_string();
                     }
                     let fip_ex = b.list("fakeip_exclude");
-                    if !fip_ex.is_empty() {
+                    if !fip_ex.is_empty() || (reset_omitted_fields && has_key("fakeip_exclude")) {
                         self.settings.fakeip_exclude = fip_ex;
                     }
                     if let Some(v) = b.opt("dont_touch_dhcp") {
@@ -4659,11 +4744,11 @@ impl RouterStoreData {
                         self.settings.hosts_enabled = parse_bool(v);
                     }
                     let h_urls = b.list("hosts_list_urls");
-                    if !h_urls.is_empty() {
+                    if !h_urls.is_empty() || (reset_omitted_fields && has_key("hosts_list_urls")) {
                         self.settings.hosts_list_urls = h_urls;
                     }
                     let s_hosts = b.list("static_hosts");
-                    if !s_hosts.is_empty() {
+                    if !s_hosts.is_empty() || (reset_omitted_fields && has_key("static_hosts")) {
                         self.settings.static_hosts = s_hosts;
                     }
                     if let Some(v) = b.opt("lite_mode") {
@@ -4685,7 +4770,7 @@ impl RouterStoreData {
                         self.settings.default_tab = v.to_string();
                     }
                     let t_order = b.list("tab_order");
-                    if !t_order.is_empty() {
+                    if !t_order.is_empty() || (reset_omitted_fields && has_key("tab_order")) {
                         self.settings.tab_order = t_order;
                     }
                     if let Some(v) = b.opt("sidebar_collapsed") {
@@ -4799,7 +4884,7 @@ impl RouterStoreData {
                         self.settings.game_console_optimizer = parse_bool(v);
                     }
                     let gc_ips = b.list("game_console_ips");
-                    if !gc_ips.is_empty() {
+                    if !gc_ips.is_empty() || (reset_omitted_fields && has_key("game_console_ips")) {
                         self.settings.game_console_ips = gc_ips;
                     }
                     if let Some(v) = b.opt("exclude_ntp") {
@@ -4827,7 +4912,9 @@ impl RouterStoreData {
                         self.settings.wan_failover_backup = v.to_string();
                     }
                     let wf_hosts = b.list("wan_failover_probe_hosts");
-                    if !wf_hosts.is_empty() {
+                    if !wf_hosts.is_empty()
+                        || (reset_omitted_fields && has_key("wan_failover_probe_hosts"))
+                    {
                         self.settings.wan_failover_probe_hosts = wf_hosts;
                     }
                     if let Some(v) = b.opt("recovery_bypass") {
@@ -4837,7 +4924,7 @@ impl RouterStoreData {
                         self.settings.memory_limit_mb = v;
                     }
                     if let Some(v) = b.opt("log_level") {
-                        self.settings.log_level = v.to_string();
+                        self.settings.log_level = normalize_core_log_level(v).to_string();
                     }
                     if let Some(v) = b.opt("smart_detect") {
                         self.settings.smart_detect = parse_bool(v);
@@ -4915,7 +5002,9 @@ impl RouterStoreData {
                         self.settings.component_auto_update_max_clients = n;
                     }
                     let auto_targets = b.list("component_auto_update_targets");
-                    if !auto_targets.is_empty() {
+                    if !auto_targets.is_empty()
+                        || (reset_omitted_fields && has_key("component_auto_update_targets"))
+                    {
                         self.settings.component_auto_update_targets = auto_targets;
                     }
                     if let Some(v) = b.opt("component_backup_enabled") {
@@ -5025,7 +5114,7 @@ impl RouterStoreData {
                         self.settings.snapshot_max_count = v;
                     }
                     let cors = b.list("cors_origins");
-                    if !cors.is_empty() {
+                    if !cors.is_empty() || (reset_omitted_fields && has_key("cors_origins")) {
                         self.settings.cors_origins = cors;
                     }
                     if let Some(v) = b.opt("session_ttl_secs").and_then(|s| s.parse().ok()) {
@@ -5036,6 +5125,9 @@ impl RouterStoreData {
                     imported += 1;
                 }
                 "telegram" => {
+                    if reset_omitted_fields {
+                        self.telegram = TgBotConfig::default();
+                    }
                     self.telegram.enabled = b.opt("enabled").is_some_and(parse_bool);
                     self.telegram.bot_token = b.opt("bot_token").unwrap_or("").to_string();
                     let mut id_tokens = b.list("admin_ids");
@@ -8719,6 +8811,11 @@ impl AppState {
                 parsed.settings.cache_path = safe_cache;
                 migrated = true;
             }
+            let norm_log = normalize_core_log_level(&parsed.settings.log_level);
+            if norm_log != parsed.settings.log_level {
+                parsed.settings.log_level = norm_log.to_string();
+                migrated = true;
+            }
 
             // If store still matches the unedited initial template (e.g. a package hook
             // initialized `tachyon.json` before legacy backup/config was restored) and has not
@@ -10257,5 +10354,64 @@ config outbound_source 'src_DeluxHost2_TewFai'
                 .get("exclude_outbounds")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn test_normalize_core_log_level_maps_legacy_values() {
+        assert_eq!(normalize_core_log_level("trace"), "trace");
+        assert_eq!(normalize_core_log_level("DEBUG"), "debug");
+        assert_eq!(normalize_core_log_level("info"), "info");
+        assert_eq!(normalize_core_log_level("warn"), "warn");
+        assert_eq!(normalize_core_log_level("warning"), "warn");
+        assert_eq!(normalize_core_log_level("error"), "error");
+        assert_eq!(normalize_core_log_level("err"), "error");
+        assert_eq!(normalize_core_log_level("fatal"), "fatal");
+        assert_eq!(normalize_core_log_level("panic"), "fatal");
+        assert_eq!(normalize_core_log_level("off"), "warn");
+        assert_eq!(normalize_core_log_level(""), "warn");
+    }
+
+    #[test]
+    fn test_import_from_json_sections_resets_cleared_settings_and_telegram_fields() {
+        let mut store = RouterStoreData::default();
+        store.settings.admin_pass_hash = "keep-hash".to_string();
+        store.settings.session_secret = "keep-secret".to_string();
+        store.settings.block_doh = true;
+        store.settings.disable_quic = true;
+        store.settings.log_level = "panic".to_string();
+        store.settings.excluded_ips = vec!["192.168.1.50".to_string()];
+        store.settings.dns_fallback_servers = vec!["9.9.9.9".to_string()];
+        store.telegram.notify_crash = false;
+        store.telegram.quiet_hours_start = "22:00".to_string();
+
+        // Simulate UI `uci delete` (resetting options back to default / clearing DynamicList)
+        let sections = serde_json::json!({
+            "settings": {
+                ".type": "settings",
+                ".name": "settings",
+                ".index": 0,
+                "log_level": "error",
+                "dns_fallback_server": []
+            },
+            "telegram": {
+                ".type": "telegram",
+                ".name": "telegram",
+                ".index": 1,
+                "enabled": "1"
+            }
+        });
+
+        let imported = store.import_from_json_sections(sections.as_object().unwrap());
+        assert_eq!(imported, 2);
+        assert_eq!(store.settings.log_level, "error");
+        assert!(!store.settings.block_doh);
+        assert!(!store.settings.disable_quic);
+        assert!(store.settings.excluded_ips.is_empty());
+        assert!(store.settings.dns_fallback_servers.is_empty());
+        assert_eq!(store.settings.admin_pass_hash, "keep-hash");
+        assert_eq!(store.settings.session_secret, "keep-secret");
+        assert!(store.telegram.enabled);
+        assert!(store.telegram.notify_crash);
+        assert_eq!(store.telegram.quiet_hours_start, "23:00");
     }
 }

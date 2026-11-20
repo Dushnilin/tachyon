@@ -717,7 +717,12 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
             ui.changes.displayStatus = function() {{}};
             ui.changes.confirm = function() {{ return Promise.resolve(); }};
             ui.changes.apply = function() {{
-              return fetch('/cgi-bin/luci/admin/uci/apply_unchecked', {{ method: 'POST' }}).then(function() {{}});
+              return fetch('/cgi-bin/luci/admin/uci/apply_unchecked', {{ method: 'POST' }}).then(function(res) {{
+                if (res.ok) return;
+                return res.json().catch(function() {{ return null; }}).then(function(body) {{
+                  throw new Error((body && body.error) || ('HTTP ' + res.status));
+                }});
+              }});
             }};
           }}
           ui.instantiateView('tachyon/tachyon');
@@ -9563,7 +9568,7 @@ pub async fn handle_uci_http_action(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> (u16, Option<Value>) {
-    let _guard = uci_mutex().lock().await;
+    let guard = uci_mutex().lock().await;
     match action {
         "apply_rollback" => {
             capture_uci_rollback_baseline(state).await;
@@ -9579,10 +9584,51 @@ pub async fn handle_uci_http_action(
         }
         "apply_unchecked" => {
             clear_uci_rollback_baseline();
-            if let Err(err) = sync_uci_to_rust_store(state, core).await {
-                return (400, Some(json!({ "error": err })));
+            if let Err(err) = sync_uci_to_rust_store_with_reload(state, core, false).await {
+                return (400, Some(json!({ "success": false, "error": err })));
             }
-            (204, None)
+            let has_empty_sub = {
+                let d_now = state.data.read().await;
+                d_now.outbound_sources.iter().any(|s| {
+                    s.enabled
+                        && s.source_type == "subscription"
+                        && !s.subscription_urls.is_empty()
+                        && s.cached_nodes.is_empty()
+                })
+            };
+            drop(guard);
+            if !core.is_manually_stopped() {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(25),
+                    core.apply_or_reload(),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {
+                        let d_now = state.data.read().await.clone();
+                        sync_section_cache(&d_now);
+                        if has_empty_sub {
+                            let core_clone = Arc::clone(core);
+                            tokio::spawn(async move {
+                                if !core_clone.is_manually_stopped() {
+                                    let _ = core_clone.refresh_all_subscriptions().await;
+                                }
+                            });
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        let msg = format!("{e:#}");
+                        eprintln!("[tachyon] apply_unchecked core apply_or_reload failed: {msg}");
+                        return (400, Some(json!({ "success": false, "error": msg })));
+                    }
+                    Err(_) => {
+                        let msg = "Таймаут применения конфигурации ядра".to_string();
+                        eprintln!("[tachyon] apply_unchecked timed out");
+                        return (500, Some(json!({ "success": false, "error": msg })));
+                    }
+                }
+            }
+            (200, Some(json!({ "success": true })))
         }
         "confirm" => {
             clear_uci_rollback_baseline();

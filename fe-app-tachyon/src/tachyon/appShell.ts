@@ -16,6 +16,7 @@ import {
 import { TachyonShellMethods } from './methods/shell';
 import { fetchServicesInfo } from './fetchers/fetchServicesInfo';
 import { store } from './services/store.service';
+import { applyUiStateToStore } from './services/uiState.service';
 import {
   activateAppShellNavKey,
   registerAppShellNavActivator,
@@ -1144,7 +1145,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             const g = globalThis as any;
             const mapInst = g.__tachyonMapInstance;
             if (mapInst && typeof mapInst.save === 'function') {
-              await mapInst.save(null, true);
+              await mapInst.save(null, false);
             } else if (g.L?.uci?.save) {
               await g.L.uci.save();
             }
@@ -1154,8 +1155,31 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 method: 'POST',
               },
             );
+            const applyPayload = await applyRes
+              .json()
+              .catch(() => null as { error?: string } | null);
             if (!applyRes.ok) {
-              throw new Error(`HTTP ${applyRes.status}`);
+              if (
+                g.L?.uci?.unload &&
+                g.L?.uci?.load &&
+                mapInst &&
+                typeof mapInst.load === 'function'
+              ) {
+                try {
+                  g.L.uci.unload('tachyon');
+                  await g.L.uci.load('tachyon');
+                  await mapInst.load();
+                  if (typeof mapInst.renderContents === 'function') {
+                    await mapInst.renderContents();
+                  }
+                } catch (reloadErr) {
+                  console.warn(
+                    'Failed to reload form after apply error:',
+                    reloadErr,
+                  );
+                }
+              }
+              throw new Error(applyPayload?.error || `HTTP ${applyRes.status}`);
             }
             if (g.L?.ui?.changes) {
               g.L.ui.changes.changes = {};
@@ -1165,10 +1189,19 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             }
             captureFormBaseline(true);
             refreshHistoryBadges();
+            if (typeof TachyonShellMethods?.getUiState === 'function') {
+              TachyonShellMethods.getUiState()
+                .then((res) => {
+                  if (res?.success && res.data) {
+                    applyUiStateToStore(res.data);
+                  }
+                })
+                .catch(() => null);
+            }
             showToast(
               tr(
-                'Настройки сохранены в JSON-конфигурацию',
-                'Settings saved to JSON configuration',
+                'Настройки сохранены и применены',
+                'Settings saved and applied',
               ),
               'success',
             );

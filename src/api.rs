@@ -2975,6 +2975,17 @@ async fn send_empty_cors(stream: &mut TcpStream, cors_origin: &str) -> anyhow::R
     Ok(())
 }
 
+fn format_response_head(status: u16, reason: &str, content_type: &str, body_len: usize) -> String {
+    if matches!(status, 204 | 304) {
+        return format!(
+            "HTTP/1.1 {status} {reason}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n"
+        );
+    }
+    format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {body_len}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n"
+    )
+}
+
 async fn send_bytes(
     stream: &mut TcpStream,
     status: u16,
@@ -2984,17 +2995,15 @@ async fn send_bytes(
     let reason = match status {
         200 => "OK",
         204 => "No Content",
+        304 => "Not Modified",
         400 => "Bad Request",
         401 => "Unauthorized",
         404 => "Not Found",
         _ => "Internal Server Error",
     };
-    let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n",
-        bytes.len()
-    );
+    let head = format_response_head(status, reason, content_type, bytes.len());
     stream.write_all(head.as_bytes()).await?;
-    if !bytes.is_empty() {
+    if !matches!(status, 204 | 304) && !bytes.is_empty() {
         stream.write_all(bytes).await?;
     }
     Ok(())
@@ -3002,7 +3011,7 @@ async fn send_bytes(
 
 async fn send_not_modified(stream: &mut TcpStream, etag: &str) -> anyhow::Result<()> {
     let head = format!(
-        "HTTP/1.1 304 Not Modified\r\nETag: {etag}\r\nCache-Control: public, max-age=31536000, immutable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        "HTTP/1.1 304 Not Modified\r\nETag: {etag}\r\nCache-Control: public, max-age=31536000, immutable\r\nConnection: close\r\n\r\n"
     );
     stream.write_all(head.as_bytes()).await?;
     Ok(())
@@ -3911,5 +3920,21 @@ mod tests {
         // block_router_admin = false allows all peers
         gm.block_router_admin = false;
         assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.150", None));
+    }
+
+    #[test]
+    fn test_format_response_head_omits_content_headers_for_204_and_304() {
+        let head_204 = format_response_head(204, "No Content", "application/json", 0);
+        assert!(head_204.starts_with("HTTP/1.1 204 No Content\r\n"));
+        assert!(!head_204.contains("Content-Length"));
+        assert!(!head_204.contains("Content-Type"));
+
+        let head_304 = format_response_head(304, "Not Modified", "text/plain", 0);
+        assert!(!head_304.contains("Content-Length"));
+        assert!(!head_304.contains("Content-Type"));
+
+        let head_200 = format_response_head(200, "OK", "application/json", 16);
+        assert!(head_200.contains("Content-Type: application/json\r\n"));
+        assert!(head_200.contains("Content-Length: 16\r\n"));
     }
 }

@@ -11157,7 +11157,7 @@ fn compile_core_config_inner(
 
     Ok(json!({
         "log": {
-            "level": store.settings.log_level,
+            "level": crate::store::normalize_core_log_level(&store.settings.log_level),
             "timestamp": true
         },
         "dns": dns_block,
@@ -18944,5 +18944,13 @@ config timeserver 'ntp'
             7,
             "100%-excluded balancer must safely fall back to full candidate pool"
         );
+    }
+
+    #[test]
+    fn test_compile_core_config_normalizes_legacy_panic_log_level_to_fatal() {
+        let mut store = RouterStoreData::default();
+        store.settings.log_level = "panic".to_string();
+        let cfg = compile_core_config(&store).expect("compile core config");
+        assert_eq!(cfg["log"]["level"], "fatal");
     }
 }

@@ -1652,7 +1652,7 @@ impl CoreManager {
         level: &str,
         ttl_sec: Option<u64>,
     ) -> anyhow::Result<Value> {
-        let mut obj = json!({ "log-level": level });
+        let mut obj = json!({ "log-level": crate::store::normalize_core_log_level(level) });
         if let Some(ttl) = ttl_sec
             && let Some(map) = obj.as_object_mut()
         {

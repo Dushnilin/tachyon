@@ -3949,8 +3949,14 @@ function createSettingsContent(section, capabilities) {
   configureDnsDynamicList(
     dnsOption,
     (_section_id) => {
-      const dnsType = settingsDnsDynamicState.dnsType || 'udp';
-      return getDnsServerChoices(dnsType);
+      const liveType =
+        (typeof dnsTypeOption.formvalue === 'function' &&
+          dnsTypeOption.formvalue(_section_id)) ||
+        uci.get('tachyon', _section_id, 'dns_type') ||
+        settingsDnsDynamicState.dnsType ||
+        'udp';
+      settingsDnsDynamicState.dnsType = liveType;
+      return getDnsServerChoices(liveType);
     },
     '77.88.8.8',
   );
@@ -6264,7 +6270,10 @@ function createSettingsContent(section, capabilities) {
   o.value('warn', 'Warn');
   o.value('error', 'Error');
   o.value('fatal', 'Fatal');
-  o.value('panic', 'Panic');
+  o.cfgvalue = function (section_id) {
+    const val = form.ListValue.prototype.cfgvalue.call(this, section_id);
+    return val === 'panic' ? 'fatal' : val;
+  };
   o.default = 'warn';
   o.rmempty = false;
 
