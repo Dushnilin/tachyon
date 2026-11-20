@@ -833,4 +833,76 @@ if [ ! -s "$WORK_DIR/probe.log" ]; then
   fail "tick_group must probe priority group when it is selected in parent selector"
 fi
 
+cat >"$WORK_DIR/mock-bin/curl" <<'SH'
+#!/usr/bin/env bash
+is_put=0
+for arg in "$@"; do
+  if [ "$arg" = "-X" ] || [ "$arg" = "PUT" ]; then
+    is_put=1
+  fi
+  case "$arg" in
+    */proxies/main-out)
+      printf '{"now":"main-priority-pg-out"}\n'
+      exit 0
+      ;;
+    */proxies/main-priority-pg-out)
+      if [ "$is_put" = "1" ]; then
+        printf '204\n'
+      else
+        printf '{"now":"node-a"}\n'
+      fi
+      exit 0
+      ;;
+    */proxies/node-a/delay*)
+      printf '{"message":"Timeout"}\n'
+      exit 0
+      ;;
+    */proxies/node-b/delay*)
+      printf '{"delay":42}\n'
+      exit 0
+      ;;
+  esac
+done
+if [ "$is_put" = "1" ]; then
+  printf '204\n'
+  exit 0
+fi
+exit 0
+SH
+chmod +x "$WORK_DIR/mock-bin/curl"
+
+PATH="$WORK_DIR/mock-bin:$PATH" \
+  ucode -L "$TACHYON_LIB" -e '
+let prio = require("tachyon_core.priority");
+let grp = {
+    id: "pg",
+    tag: "main-priority-pg-out",
+    kind: "priority",
+    section: "main",
+    health_url: "https://www.gstatic.com/generate_204",
+    health_urls: [ "https://www.gstatic.com/generate_204" ],
+    active_check_interval: "5s",
+    check_timeout: "2s",
+    recovery_check_interval: "15s",
+    fastest_check_interval: "3m",
+    levels: [ { id: "l1", order: 0, outbounds: [ "node-a", "node-b" ] } ]
+};
+let st = prio.init_group_state(grp);
+st.active = "node-a";
+st.levelIndex = 0;
+st.nextActiveCheck = 0;
+
+prio.tick_group(st, grp);
+if (st.activeFailStreak != 1)
+    die("expected activeFailStreak=1 after first failure, got " + st.activeFailStreak + "\n");
+if (st.active != "node-a")
+    die("active node must not switch on first probe failure (streak 1)\n");
+
+st.nextActiveCheck = 0;
+prio.tick_group(st, grp);
+if (st.active != "node-b")
+    die("active node must failover to node-b after 2 consecutive failures, got " + st.active + "\n");
+' || fail "priority same-tier failover hysteresis on activeFailStreak"
+
 printf 'Priority failover checks passed\n'
+
