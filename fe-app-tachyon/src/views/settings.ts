@@ -3014,6 +3014,10 @@ function createMenuTabsOrderWidget(option, section_id) {
       }
     }
   });
+  const initialOrder = ordered.slice();
+  const initialVis = Object.assign({}, visibility);
+  const hadSavedOrder = savedOrder.length > 0;
+  let orderTouched = false;
 
   const wrapper = E('div', { id: 'menu-tabs-order-widget-' + section_id });
   const listEl = E('div', {
@@ -3021,15 +3025,23 @@ function createMenuTabsOrderWidget(option, section_id) {
   });
 
   function syncToUci() {
-    const sameOrder =
-      Array.isArray(savedOrder) &&
-      savedOrder.length === ordered.length &&
-      savedOrder.every((id, i) => id === ordered[i]);
-    if (!sameOrder) {
+    const sameAsInitialOrder =
+      ordered.length === initialOrder.length &&
+      ordered.every((id, i) => id === initialOrder[i]);
+    if (!sameAsInitialOrder) {
+      orderTouched = true;
       uci.set(UCI_PACKAGE, section_id, 'tab_order', ordered);
+    } else if (orderTouched) {
+      if (hadSavedOrder) {
+        uci.set(UCI_PACKAGE, section_id, 'tab_order', savedOrder.slice());
+      } else if (typeof uci.unset === 'function') {
+        uci.unset(UCI_PACKAGE, section_id, 'tab_order');
+      }
+      orderTouched = false;
     }
     wrapper._order = ordered.slice();
     wrapper._vis = Object.assign({}, visibility);
+    const baseValues = (uci as any)?.state?.values?.[UCI_PACKAGE]?.[section_id];
     ALL_MENU_TABS.forEach(function (t) {
       if (!t.fixed) {
         let optKey = 'show_tab_' + t.id;
@@ -3037,11 +3049,19 @@ function createMenuTabsOrderWidget(option, section_id) {
         else if (t.id === 'profile') optKey = 'show_tab_profiles';
         else if (t.id === 'schedule') optKey = 'show_tab_parental';
         const next = visibility[t.id] ? '1' : '0';
-        // uci.get returns undefined for an option that was never set, which is
-        // not the same as "0" and must not be read as a match.
+        const initVal = initialVis[t.id] ? '1' : '0';
         const prev = uci.get(UCI_PACKAGE, section_id, optKey);
-        if (prev !== next) {
+        if (next !== initVal) {
           uci.set(UCI_PACKAGE, section_id, optKey, next);
+        } else if (prev !== undefined && prev !== next) {
+          const origVal = baseValues ? baseValues[optKey] : undefined;
+          if (origVal === undefined || origVal === null || origVal === '') {
+            if (typeof uci.unset === 'function') {
+              uci.unset(UCI_PACKAGE, section_id, optKey);
+            }
+          } else {
+            uci.set(UCI_PACKAGE, section_id, optKey, next);
+          }
         }
       }
     });
@@ -3314,7 +3334,8 @@ function createMenuTabsOrderWidget(option, section_id) {
   );
 
   renderList();
-  syncToUci();
+  wrapper._order = ordered.slice();
+  wrapper._vis = Object.assign({}, visibility);
 
   wrapper.appendChild(toolbarRow);
   wrapper.appendChild(listEl);
@@ -3587,6 +3608,7 @@ function createComponentsVisibilityWidget(option, section_id) {
       }
     }
   });
+  const initialVis = Object.assign({}, visibility);
 
   const wrapper = E('div', {
     id: 'components-visibility-widget-' + section_id,
@@ -3597,15 +3619,24 @@ function createComponentsVisibilityWidget(option, section_id) {
 
   function syncToUci() {
     wrapper._vis = Object.assign({}, visibility);
+    const baseValues = (uci as any)?.state?.values?.[UCI_PACKAGE]?.[section_id];
     ALL_COMPONENTS.forEach(function (c) {
       if (!c.fixed) {
         const optKey = 'show_component_' + c.id;
         const next = visibility[c.id] ? '1' : '0';
-        // Same reasoning as the tab-order widget: an unset option reads as
-        // undefined, which is not "0", so it still has to be written once.
+        const initVal = initialVis[c.id] ? '1' : '0';
         const prev = uci.get(UCI_PACKAGE, section_id, optKey);
-        if (prev !== next) {
+        if (next !== initVal) {
           uci.set(UCI_PACKAGE, section_id, optKey, next);
+        } else if (prev !== undefined && prev !== next) {
+          const origVal = baseValues ? baseValues[optKey] : undefined;
+          if (origVal === undefined || origVal === null || origVal === '') {
+            if (typeof uci.unset === 'function') {
+              uci.unset(UCI_PACKAGE, section_id, optKey);
+            }
+          } else {
+            uci.set(UCI_PACKAGE, section_id, optKey, next);
+          }
         }
       }
     });
@@ -3684,7 +3715,7 @@ function createComponentsVisibilityWidget(option, section_id) {
   }
 
   renderList();
-  syncToUci();
+  wrapper._vis = Object.assign({}, visibility);
 
   wrapper.appendChild(listEl);
   return wrapper;
@@ -5077,19 +5108,6 @@ function createSettingsContent(section, capabilities) {
   o.multiple = false;
   o.default = 'wan2';
   o.rmempty = true;
-
-  o = section.taboption(
-    'network',
-    form.Flag,
-    'tcp_bbr',
-    _tr('TCP BBR (контроль перегрузки ядра)', 'TCP BBR Congestion Control'),
-    _tr(
-      'Включает алгоритм управления перегрузкой TCP BBR на уровне ядра Linux (при наличии поддержки bbr и планировщика fq или fq_codel) для более стабильной пропускной способности на каналах с потерями и высокой задержкой. Если модуль ядра отсутствует, настройка безопасно пропускается.',
-      'Enables Linux kernel TCP BBR congestion control (when bbr and fq or fq_codel qdisc are supported by the kernel) for higher throughput on high-latency or lossy links. Safely skipped if kernel support is unavailable.',
-    ),
-  );
-  o.default = '1';
-  o.rmempty = false;
   o.filter = function (section_id, value) {
     if (['lan', 'loopback'].includes(value) || value.startsWith('@')) {
       return false;
@@ -7740,6 +7758,25 @@ function createTelegramContent(section) {
     return true;
   };
 
+  const validateHourOrTimeOption = (value: string) => {
+    const raw = value ? `${value}`.trim() : '';
+    if (!raw) return true;
+    if (/^[0-9]{1,2}$/.test(raw)) {
+      const hour = parseInt(raw, 10);
+      if (hour >= 0 && hour <= 23) return true;
+    } else {
+      const match = /^([0-9]{1,2}):([0-9]{2})$/.exec(raw);
+      if (match) {
+        const hour = parseInt(match[1], 10);
+        const minute = parseInt(match[2], 10);
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+          return true;
+        }
+      }
+    }
+    return _('Enter time as H or HH:MM (e.g. 23 or 23:00)');
+  };
+
   o = section.option(
     form.Flag,
     'daily_report_enabled',
@@ -7793,20 +7830,22 @@ function createTelegramContent(section) {
   o = section.option(
     form.Value,
     'quiet_hours_start',
-    _('Quiet Hours Start (0-23)'),
-    _('Hour when quiet hours begin (default: 23).'),
+    _('Quiet Hours Start'),
+    _('Start time in H or HH:MM format, e.g. 23 or 23:00 (default: 23:00).'),
   );
   o.depends({ enabled: '1', quiet_hours_enabled: '1' });
   o.retain = true;
-  o.default = '23';
-  o.placeholder = '23';
+  o.default = '23:00';
+  o.placeholder = '23:00';
   o.rmempty = true;
   o.validate = function (_section_id, value) {
-    return validateHourOption(value);
+    return validateHourOrTimeOption(value);
   };
   o.write = function (section_id, value) {
     const val = value ? `${value}`.trim() : '';
-    if (val && val !== '23') {
+    if (val && val !== '23:00' && val !== '23') {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_start', val);
+    } else if (val === '23') {
       uci.set(UCI_PACKAGE, section_id, 'quiet_hours_start', val);
     } else {
       uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_start');
@@ -7819,20 +7858,28 @@ function createTelegramContent(section) {
   o = section.option(
     form.Value,
     'quiet_hours_end',
-    _('Quiet Hours End (0-23)'),
-    _('Hour when quiet hours end (default: 7).'),
+    _('Quiet Hours End'),
+    _('End time in H or HH:MM format, e.g. 7 or 07:00 (default: 07:00).'),
   );
   o.depends({ enabled: '1', quiet_hours_enabled: '1' });
   o.retain = true;
-  o.default = '7';
-  o.placeholder = '7';
+  o.default = '07:00';
+  o.placeholder = '07:00';
   o.rmempty = true;
   o.validate = function (_section_id, value) {
-    return validateHourOption(value);
+    return validateHourOrTimeOption(value);
   };
   o.write = function (section_id, value) {
     const val = value ? `${value}`.trim() : '';
-    if (val && val !== '7') {
+    if (
+      val &&
+      val !== '07:00' &&
+      val !== '7:00' &&
+      val !== '7' &&
+      val !== '07'
+    ) {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_end', val);
+    } else if (val === '7' || val === '07' || val === '7:00') {
       uci.set(UCI_PACKAGE, section_id, 'quiet_hours_end', val);
     } else {
       uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_end');

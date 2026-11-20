@@ -1611,15 +1611,7 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
   const excludePorts = normalizeArr(filterSpec.excludePorts);
 
   const compileRegexList = (patterns) =>
-    patterns
-      .map((pat) => {
-        try {
-          return new RegExp(pat);
-        } catch (_e) {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    patterns.map((pat) => compileUserServerRegex(pat)).filter(Boolean);
 
   const includeCompiledRegexes = compileRegexList(includeRegexes);
   const excludeCompiledRegexes = compileRegexList(excludeRegexes);
@@ -4425,18 +4417,17 @@ function defaultInterfaceSettings() {
 
 function subscriptionUserAgentChoices() {
   return [
-    'TachyonCore',
-    'Happ',
-    'v2rayN',
-    'v2rayNG',
+    'tachyon-core/2.0',
+    'Happ/4.4.0',
+    'v2rayNG/2.3.15',
+    'v2rayN/7.12',
     'v2RayTun',
     'Incy',
-    'Hiddify',
-    'HiddifyNext',
-    'Clash',
-    'Clash.Meta',
-    'ClashMetaForAndroid',
-    'Mihomo',
+    'HiddifyNext/2.5.7',
+    'Mihomo/1.19.16',
+    'FlClash/v0.8.72',
+    'ClashMetaForAndroid/2.11.5.Meta',
+    'Koala Clash/v0.2.8',
     'NekoBox',
     'Karing',
     'Husi',
@@ -8149,17 +8140,55 @@ function refreshOptionChoices(option, choices) {
   });
 }
 
+function compileUserServerRegex(rawPattern) {
+  let pat = `${rawPattern ?? ''}`.trim();
+  if (!pat) {
+    return null;
+  }
+
+  let caseInsensitive = true;
+  if (pat.startsWith('/') && pat.length >= 2) {
+    const lastSlash = pat.lastIndexOf('/');
+    if (lastSlash > 1) {
+      let backslashes = 0;
+      for (let i = lastSlash - 1; i >= 0 && pat[i] === '\\'; i -= 1) {
+        backslashes += 1;
+      }
+      const flags = pat.slice(lastSlash + 1);
+      if (backslashes % 2 === 0 && /^[imsugyd]*$/.test(flags)) {
+        pat = pat.slice(1, lastSlash);
+        caseInsensitive = true;
+      }
+    }
+  }
+
+  while (pat.startsWith('(?-i)') || pat.startsWith('(?i)')) {
+    if (pat.startsWith('(?-i)')) {
+      caseInsensitive = false;
+      pat = pat.slice(5);
+    } else {
+      caseInsensitive = true;
+      pat = pat.slice(4);
+    }
+  }
+
+  if (!pat) {
+    return null;
+  }
+
+  try {
+    return new RegExp(pat, caseInsensitive ? 'i' : '');
+  } catch (_error) {
+    return null;
+  }
+}
+
 function validateRegex(_section_id, value) {
   if (!value || !value.length) {
     return true;
   }
 
-  try {
-    new RegExp(value);
-    return true;
-  } catch (_error) {
-    return _('Invalid regular expression');
-  }
+  return compileUserServerRegex(value) ? true : _('Invalid regular expression');
 }
 
 function validateKeyword(_section_id, value) {

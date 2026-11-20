@@ -186,6 +186,7 @@ if [ "$_is_v1" -eq 1 ]; then
             fi
             uci -q delete dhcp.tachyon 2>/dev/null || true
             uci -q commit dhcp 2>/dev/null || true
+            rm -f /tmp/dnsmasq.d/tachyon.conf 2>/dev/null || true
             if [ "$_had_v1_dns" -eq 1 ] && [ -x /etc/init.d/dnsmasq ]; then
                 /etc/init.d/dnsmasq reload >/dev/null 2>&1 || /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
             fi

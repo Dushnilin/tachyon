@@ -7222,7 +7222,8 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.value('tachyon-core', 'Tachyon Core (Default)');
-  o.value('Happ/3.7.1', 'Happ (Happ/3.7.1)');
+  o.value('Happ/4.4.0', 'Happ (Happ/4.4.0)');
+  o.value('v2rayNG/2.3.15', 'v2rayNG (v2rayNG/2.3.15)');
   o.value('v2rayN/7.12', 'v2rayN (v2rayN/7.12)');
   o.value(
     'ClashMetaForAndroid/2.11.5.Meta',
@@ -7231,7 +7232,7 @@ function createOutboundsContent(section) {
   o.value('FlClash/v0.8.72', 'FlClash (v0.8.72)');
   o.value('HiddifyNext/2.5.7', 'HiddifyNext (2.5.7)');
   o.value('Koala Clash/v0.2.8', 'Koala Clash (v0.2.8)');
-  o.value('Mihomo/1.19.0', 'Mihomo (1.19.0)');
+  o.value('Mihomo/1.19.16', 'Mihomo (1.19.16)');
   o.value('Shadowrocket/2075', 'Shadowrocket (2075)');
   o.depends({ source_type: 'subscription', auto_user_agent: '0' });
 

@@ -809,6 +809,387 @@ pub fn compile_nftables_ruleset_with_wan6(
     )
 }
 
+fn append_localv4_set(out: &mut String) {
+    let _ = writeln!(
+        out,
+        "    set localv4 {{
+        type ipv4_addr
+        flags interval
+        elements = {{
+            0.0.0.0/8,
+            10.0.0.0/8,
+            100.64.0.0/10,
+            127.0.0.0/8,
+            169.254.0.0/16,
+            172.16.0.0/12,
+            192.168.0.0/16,
+            224.0.0.0/4,
+            240.0.0.0/4
+        }}
+    }}"
+    );
+}
+
+fn parse_guest_device_buckets(items: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let mut v4 = Vec::new();
+    let mut v6 = Vec::new();
+    let mut macs = Vec::new();
+    for raw in items {
+        let g = raw.trim();
+        if g.is_empty() {
+            continue;
+        }
+        if crate::store::is_mac_address(g) {
+            let mac = g.to_ascii_lowercase();
+            if !macs.contains(&mac) {
+                macs.push(mac);
+            }
+        } else if let Some((ip_part, prefix_part)) = g.split_once('/') {
+            if let (Ok(_), Ok(p)) = (
+                ip_part.trim().parse::<std::net::Ipv4Addr>(),
+                prefix_part.trim().parse::<u8>(),
+            ) && p <= 32
+            {
+                let item = g.to_string();
+                if !v4.contains(&item) {
+                    v4.push(item);
+                }
+            } else if let (Ok(_), Ok(p)) = (
+                ip_part.trim().parse::<std::net::Ipv6Addr>(),
+                prefix_part.trim().parse::<u8>(),
+            ) && p <= 128
+            {
+                let item = g.to_string();
+                if !v6.contains(&item) {
+                    v6.push(item);
+                }
+            }
+        } else if g.parse::<std::net::Ipv4Addr>().is_ok() {
+            let item = g.to_string();
+            if !v4.contains(&item) {
+                v4.push(item);
+            }
+        } else if g.parse::<std::net::Ipv6Addr>().is_ok() {
+            let item = g.to_string();
+            if !v6.contains(&item) {
+                v6.push(item);
+            }
+        }
+    }
+    (v4, v6, macs)
+}
+
+fn collect_router_admin_ports(store: &RouterStoreData) -> String {
+    let mut ports: Vec<u16> = vec![22, 80, 443, 1680, 9090];
+    if store.settings.listen_port > 0 {
+        ports.push(store.settings.listen_port);
+    }
+    if let Some((_, port_str)) = store.settings.clash_api_addr.trim().rsplit_once(':')
+        && let Ok(port) = port_str.trim().parse::<u16>()
+        && port > 0
+    {
+        ports.push(port);
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+        .iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn is_guest_mode_zero_trust(gm: &crate::store::GuestModeConfig) -> bool {
+    matches!(
+        gm.mode.trim().to_ascii_lowercase().as_str(),
+        "inverted" | "all"
+    )
+}
+
+fn guest_mode_has_active_rules(gm: &crate::store::GuestModeConfig) -> bool {
+    if !gm.enabled {
+        return false;
+    }
+    let has_actions = gm.block_router_admin
+        || gm.isolate_lan
+        || !gm.allowed_ports.is_empty()
+        || gm.bandwidth_limit_mbps > 0
+        || !gm.allow_proxy;
+    if !has_actions {
+        return false;
+    }
+    if is_guest_mode_zero_trust(gm) {
+        let (tv4, tv6, tmac) = parse_guest_device_buckets(&gm.trusted_devices);
+        !tv4.is_empty() || !tv6.is_empty() || !tmac.is_empty()
+    } else {
+        let (gv4, gv6, gmac) = parse_guest_device_buckets(&gm.guest_devices);
+        !gv4.is_empty() || !gv6.is_empty() || !gmac.is_empty()
+    }
+}
+
+fn format_guest_allowed_ports(gm: &crate::store::GuestModeConfig) -> Option<String> {
+    if gm.allowed_ports.is_empty() {
+        return None;
+    }
+    let mut ports: Vec<u16> = gm.allowed_ports.clone();
+    if !ports.contains(&53) {
+        ports.push(53);
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    Some(
+        ports
+            .iter()
+            .map(u16::to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
+fn append_guest_zero_trust_chain(
+    out: &mut String,
+    store: &RouterStoreData,
+    need_localv6: bool,
+    ipv6_active: bool,
+    fakeip_v6: &str,
+    include_allow_proxy_accept: bool,
+) {
+    let (trusted_v4, trusted_v6, trusted_mac) =
+        parse_guest_device_buckets(&store.guest_mode.trusted_devices);
+    let admin_ports = collect_router_admin_ports(store);
+    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode);
+    let fakeip_v6_exempt_clause =
+        if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
+            format!(" ip6 daddr != {fakeip_v6}")
+        } else {
+            String::new()
+        };
+
+    let _ = writeln!(out, "    chain guest_guard {{");
+    if !trusted_v4.is_empty() {
+        let _ = writeln!(
+            out,
+            "        ip saddr {{ {} }} return",
+            trusted_v4.join(", ")
+        );
+    }
+    if !trusted_v6.is_empty() {
+        let _ = writeln!(
+            out,
+            "        ip6 saddr {{ {} }} return",
+            trusted_v6.join(", ")
+        );
+    }
+    if !trusted_mac.is_empty() {
+        let _ = writeln!(
+            out,
+            "        ether saddr {{ {} }} return",
+            trusted_mac.join(", ")
+        );
+    }
+    let _ = writeln!(out, "        udp dport {{ 67, 68, 547 }} return");
+
+    if store.guest_mode.block_router_admin {
+        let _ = writeln!(
+            out,
+            "        ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+        );
+        if need_localv6 {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+            );
+        }
+        let _ = writeln!(
+            out,
+            "        fib daddr type local meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+        );
+    }
+    if store.guest_mode.isolate_lan {
+        let _ = writeln!(
+            out,
+            "        ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+        );
+        if need_localv6 {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+            );
+        }
+    }
+    if let Some(ref port_list) = guest_allowed_ports {
+        let _ = writeln!(
+            out,
+            "        ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+        );
+        if need_localv6 {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr != @localv6 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+            );
+        }
+    }
+    if store.guest_mode.bandwidth_limit_mbps > 0 {
+        let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+        let _ = writeln!(
+            out,
+            "        limit rate over {rate_kbytes} kbytes/second drop"
+        );
+    }
+    if include_allow_proxy_accept && !store.guest_mode.allow_proxy {
+        let _ = writeln!(out, "        accept");
+    }
+    let _ = writeln!(out, "    }}");
+}
+
+fn append_selected_guest_rules(
+    out: &mut String,
+    store: &RouterStoreData,
+    need_localv6: bool,
+    ipv6_active: bool,
+    fakeip_v6: &str,
+    include_allow_proxy_return: bool,
+) {
+    let (guests_v4, guests_v6, guests_mac) =
+        parse_guest_device_buckets(&store.guest_mode.guest_devices);
+    let admin_ports = collect_router_admin_ports(store);
+    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode);
+    let fakeip_v6_exempt_clause =
+        if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
+            format!(" ip6 daddr != {fakeip_v6}")
+        } else {
+            String::new()
+        };
+
+    if !guests_v4.is_empty() {
+        let guest_set = guests_v4.join(", ");
+        if store.guest_mode.block_router_admin {
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+            );
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {guest_set} }} fib daddr type local meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+            );
+        }
+        if store.guest_mode.isolate_lan {
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+            );
+        }
+        if let Some(ref port_list) = guest_allowed_ports {
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {guest_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+            );
+        }
+        if store.guest_mode.bandwidth_limit_mbps > 0 {
+            let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+            let _ = writeln!(
+                out,
+                "        ip daddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        }
+        if include_allow_proxy_return && !store.guest_mode.allow_proxy {
+            let _ = writeln!(out, "        ip saddr {{ {guest_set} }} return");
+        }
+    }
+    if !guests_v6.is_empty() {
+        let guest6_set = guests_v6.join(", ");
+        if need_localv6 {
+            if store.guest_mode.block_router_admin {
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+                );
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {guest6_set} }} fib daddr type local meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+                );
+            }
+            if store.guest_mode.isolate_lan {
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                );
+            }
+            if let Some(ref port_list) = guest_allowed_ports {
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {guest6_set} }} ip6 daddr != @localv6 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+                );
+            }
+            if store.guest_mode.bandwidth_limit_mbps > 0 {
+                let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+                );
+                let _ = writeln!(
+                    out,
+                    "        ip6 daddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+                );
+            }
+        }
+        if include_allow_proxy_return && !store.guest_mode.allow_proxy {
+            let _ = writeln!(out, "        ip6 saddr {{ {guest6_set} }} return");
+        }
+    }
+    if !guests_mac.is_empty() {
+        let mac_set = guests_mac.join(", ");
+        if store.guest_mode.block_router_admin {
+            let _ = writeln!(
+                out,
+                "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+            );
+            if need_localv6 {
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+                );
+            }
+            let _ = writeln!(
+                out,
+                "        ether saddr {{ {mac_set} }} fib daddr type local meta l4proto {{ tcp, udp }} th dport {{ {admin_ports} }} drop"
+            );
+        }
+        if store.guest_mode.isolate_lan {
+            let _ = writeln!(
+                out,
+                "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+            );
+            if need_localv6 {
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                );
+            }
+        }
+        if let Some(ref port_list) = guest_allowed_ports {
+            let _ = writeln!(
+                out,
+                "        ether saddr {{ {mac_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+            );
+        }
+        if store.guest_mode.bandwidth_limit_mbps > 0 {
+            let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+            let _ = writeln!(
+                out,
+                "        ether saddr {{ {mac_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        }
+        if include_allow_proxy_return && !store.guest_mode.allow_proxy {
+            let _ = writeln!(out, "        ether saddr {{ {mac_set} }} return");
+        }
+    }
+}
+
 fn compile_nftables_ruleset_full(
     store: &RouterStoreData,
     wan6_available: bool,
@@ -840,24 +1221,7 @@ fn compile_nftables_ruleset_full(
     let _ = writeln!(out, "table inet TachyonTable {{");
 
     // Local / RFC1918 / Loopback / Multicast bypass sets
-    let _ = writeln!(
-        out,
-        "    set localv4 {{
-        type ipv4_addr
-        flags interval
-        elements = {{
-            0.0.0.0/8,
-            10.0.0.0/8,
-            100.64.0.0/10,
-            127.0.0.0/8,
-            169.254.0.0/16,
-            172.16.0.0/12,
-            192.168.0.0/16,
-            224.0.0.0/4,
-            240.0.0.0/4
-        }}
-    }}"
-    );
+    append_localv4_set(&mut out);
 
     if need_localv6 {
         let localv6_elems = format_localv6_elements(fakeip_v6, extra_local_v6);
@@ -895,6 +1259,10 @@ fn compile_nftables_ruleset_full(
     }
     append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
     append_dnat_output_chains(&mut out, dnat_redirects, lan_v4_ips, &lan_ifaces_literal);
+    if guest_mode_has_active_rules(&store.guest_mode) && is_guest_mode_zero_trust(&store.guest_mode)
+    {
+        append_guest_zero_trust_chain(&mut out, store, need_localv6, ipv6_active, fakeip_v6, true);
+    }
 
     let _ = writeln!(
         out,
@@ -937,175 +1305,18 @@ fn compile_nftables_ruleset_full(
     append_client_exclusion_returns(&mut out, &store.settings.excluded_ips);
 
     // Guest mode LAN isolation, router admin protection, port allowlist & rate shaping (IPv4 + IPv6 + MAC)
-    if store.guest_mode.enabled {
-        let mut guests_v4: Vec<String> = Vec::new();
-        let mut guests_v6: Vec<String> = Vec::new();
-        let mut guests_mac: Vec<String> = Vec::new();
-        for g_raw in &store.guest_mode.guest_devices {
-            let g = g_raw.trim();
-            if g.is_empty() {
-                continue;
-            }
-            if crate::store::is_mac_address(g) {
-                guests_mac.push(g.to_ascii_lowercase());
-            } else if let Some((ip_part, prefix_part)) = g.split_once('/') {
-                if let (Ok(_), Ok(p)) = (
-                    ip_part.parse::<std::net::Ipv4Addr>(),
-                    prefix_part.parse::<u8>(),
-                ) && p <= 32
-                {
-                    guests_v4.push(g.to_string());
-                } else if let (Ok(_), Ok(p)) = (
-                    ip_part.parse::<std::net::Ipv6Addr>(),
-                    prefix_part.parse::<u8>(),
-                ) && p <= 128
-                {
-                    guests_v6.push(g.to_string());
-                }
-            } else if g.parse::<std::net::Ipv4Addr>().is_ok() {
-                guests_v4.push(g.to_string());
-            } else if g.parse::<std::net::Ipv6Addr>().is_ok() {
-                guests_v6.push(g.to_string());
-            }
-        }
-        let guest_allowed_ports = if !store.guest_mode.allowed_ports.is_empty() {
-            let mut ports: Vec<u16> = store.guest_mode.allowed_ports.clone();
-            if !ports.contains(&53) {
-                ports.push(53);
-            }
-            ports.sort_unstable();
-            ports.dedup();
-            Some(
-                ports
-                    .iter()
-                    .map(u16::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            )
+    if guest_mode_has_active_rules(&store.guest_mode) {
+        if is_guest_mode_zero_trust(&store.guest_mode) {
+            let _ = writeln!(out, "        jump guest_guard");
         } else {
-            None
-        };
-        let fakeip_v6_exempt_clause =
-            if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
-                format!(" ip6 daddr != {fakeip_v6}")
-            } else {
-                String::new()
-            };
-        if !guests_v4.is_empty() {
-            let guest_set = guests_v4.join(", ");
-            if store.guest_mode.block_router_admin {
-                let _ = writeln!(
-                    out,
-                    "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
-                );
-            }
-            if store.guest_mode.isolate_lan {
-                let _ = writeln!(
-                    out,
-                    "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
-                );
-            }
-            if let Some(ref port_list) = guest_allowed_ports {
-                let _ = writeln!(
-                    out,
-                    "        ip saddr {{ {guest_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
-                );
-            }
-            if store.guest_mode.bandwidth_limit_mbps > 0 {
-                let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
-                let _ = writeln!(
-                    out,
-                    "        ip saddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                );
-                let _ = writeln!(
-                    out,
-                    "        ip daddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                );
-            }
-            if !store.guest_mode.allow_proxy {
-                let _ = writeln!(out, "        ip saddr {{ {guest_set} }} return");
-            }
-        }
-        if !guests_v6.is_empty() {
-            let guest6_set = guests_v6.join(", ");
-            if need_localv6 {
-                if store.guest_mode.block_router_admin {
-                    let _ = writeln!(
-                        out,
-                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
-                    );
-                }
-                if store.guest_mode.isolate_lan {
-                    let _ = writeln!(
-                        out,
-                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
-                    );
-                }
-                if let Some(ref port_list) = guest_allowed_ports {
-                    let _ = writeln!(
-                        out,
-                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr != @localv6 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
-                    );
-                }
-                if store.guest_mode.bandwidth_limit_mbps > 0 {
-                    let rate_kbytes =
-                        (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
-                    let _ = writeln!(
-                        out,
-                        "        ip6 saddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                    );
-                    let _ = writeln!(
-                        out,
-                        "        ip6 daddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                    );
-                }
-            }
-            if !store.guest_mode.allow_proxy {
-                let _ = writeln!(out, "        ip6 saddr {{ {guest6_set} }} return");
-            }
-        }
-        if !guests_mac.is_empty() {
-            let mac_set = guests_mac.join(", ");
-            if store.guest_mode.block_router_admin {
-                let _ = writeln!(
-                    out,
-                    "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
-                );
-                if need_localv6 {
-                    let _ = writeln!(
-                        out,
-                        "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
-                    );
-                }
-            }
-            if store.guest_mode.isolate_lan {
-                let _ = writeln!(
-                    out,
-                    "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
-                );
-                if need_localv6 {
-                    let _ = writeln!(
-                        out,
-                        "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
-                    );
-                }
-            }
-            if let Some(ref port_list) = guest_allowed_ports {
-                let _ = writeln!(
-                    out,
-                    "        ether saddr {{ {mac_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
-                );
-            }
-            if store.guest_mode.bandwidth_limit_mbps > 0 {
-                let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
-                let _ = writeln!(
-                    out,
-                    "        ether saddr {{ {mac_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                );
-            }
-            if !store.guest_mode.allow_proxy {
-                let _ = writeln!(out, "        ether saddr {{ {mac_set} }} return");
-            }
+            append_selected_guest_rules(
+                &mut out,
+                store,
+                need_localv6,
+                ipv6_active,
+                fakeip_v6,
+                true,
+            );
         }
     }
 
@@ -1467,6 +1678,7 @@ fn compile_tun_guard_ruleset_full(
     let eff_webrtc = crate::store::effective_webrtc_leak_protect(store);
     let eff_dns_intercept = crate::store::effective_dns_intercept_all(store);
     let fail_closed = direct_fallback_veto(store).is_some();
+    let guest_active = guest_mode_has_active_rules(&store.guest_mode);
     if !eff_webrtc
         && !eff_dns_intercept
         && !store.settings.block_doh
@@ -1474,6 +1686,7 @@ fn compile_tun_guard_ruleset_full(
         && ipv6_active
         && !forward_guard
         && dnat_redirects.is_empty()
+        && !guest_active
     {
         return None;
     }
@@ -1506,7 +1719,11 @@ fn compile_tun_guard_ruleset_full(
     let _ = writeln!(out, "table inet TachyonTable");
     let _ = writeln!(out, "delete table inet TachyonTable");
     let _ = writeln!(out, "table inet TachyonTable {{");
-    if forward_guard {
+    if guest_active {
+        append_localv4_set(&mut out);
+    }
+    let need_localv6 = ipv6_active || forward_guard;
+    if forward_guard || (guest_active && need_localv6) {
         let localv6_elems = format_localv6_elements(fakeip_v6, extra_local_v6);
         let _ = writeln!(
             out,
@@ -1518,6 +1735,47 @@ fn compile_tun_guard_ruleset_full(
         }}
     }}"
         );
+    }
+    if guest_active {
+        let zero_trust = is_guest_mode_zero_trust(&store.guest_mode);
+        if zero_trust {
+            append_guest_zero_trust_chain(
+                &mut out,
+                store,
+                need_localv6,
+                ipv6_active,
+                fakeip_v6,
+                false,
+            );
+        }
+        let _ = writeln!(
+            out,
+            "    chain guest_guard_prerouting {{
+        type filter hook prerouting priority -90; policy accept;"
+        );
+        if !bypass_ifaces_literal.trim().is_empty() {
+            let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
+        }
+        let _ = writeln!(out, "        iifname \"lo\" return");
+        append_source_iface_guard(&mut out, store);
+        let _ = writeln!(
+            out,
+            "        iifname {lan_ifaces_literal} ct direction reply return"
+        );
+        append_client_exclusion_returns(&mut out, &store.settings.excluded_ips);
+        if zero_trust {
+            let _ = writeln!(out, "        jump guest_guard");
+        } else {
+            append_selected_guest_rules(
+                &mut out,
+                store,
+                need_localv6,
+                ipv6_active,
+                fakeip_v6,
+                false,
+            );
+        }
+        let _ = writeln!(out, "    }}");
     }
     if eff_webrtc {
         append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
@@ -5044,5 +5302,69 @@ config interface 'wan'
             .expect("tun guard must emit when dnat redirects exist");
         assert!(tun_nft.contains("chain dnat_output {"));
         assert!(tun_nft.contains("chain postrouting_dnat_output {"));
+    }
+
+    #[test]
+    fn test_guest_mode_zero_trust_emits_guest_guard_and_custom_panel_port() {
+        let mut store = RouterStoreData::default();
+        store.settings.listen_port = 1688;
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.guest_mode.enabled = true;
+        store.guest_mode.mode = "inverted".to_string();
+        store.guest_mode.block_router_admin = true;
+        store.guest_mode.isolate_lan = true;
+        store.guest_mode.allow_proxy = false;
+
+        // Empty trusted_devices must not trigger self-lockout
+        let empty_nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        assert!(!empty_nft.contains("chain guest_guard"));
+        assert!(!empty_nft.contains("jump guest_guard"));
+
+        store.guest_mode.trusted_devices = vec![
+            "192.168.1.50".to_string(),
+            "fd00::50".to_string(),
+            "AA:BB:CC:DD:EE:11".to_string(),
+        ];
+
+        for mode in ["inverted", "all"] {
+            store.guest_mode.mode = mode.to_string();
+            let nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+            assert!(nft.contains("chain guest_guard {"));
+            assert!(nft.contains("ip saddr { 192.168.1.50 } return"));
+            assert!(nft.contains("ip6 saddr { fd00::50 } return"));
+            assert!(nft.contains("ether saddr { aa:bb:cc:dd:ee:11 } return"));
+            assert!(nft.contains("udp dport { 67, 68, 547 } return"));
+            assert!(
+                nft.contains(
+                    "ip daddr @localv4 meta l4proto { tcp, udp } th dport { 22, 80, 443, 1680, 1688, 9090 } drop"
+                )
+            );
+            assert!(
+                nft.contains(
+                    "ip6 daddr @localv6 meta l4proto { tcp, udp } th dport { 22, 80, 443, 1680, 1688, 9090 } drop"
+                )
+            );
+            assert!(
+                nft.contains(
+                    "fib daddr type local meta l4proto { tcp, udp } th dport { 22, 80, 443, 1680, 1688, 9090 } drop"
+                )
+            );
+            assert!(nft.contains("\n        accept\n"));
+            assert!(nft.contains("        jump guest_guard"));
+
+            store.settings.proxy_mode = "tun".to_string();
+            let tun_nft = compile_tun_guard_ruleset_with_wan6(&store, true, &[])
+                .expect("tun guard must emit guest_guard_prerouting in zero-trust mode");
+            assert!(tun_nft.contains("set localv4 {"));
+            assert!(tun_nft.contains("set localv6 {"));
+            assert!(tun_nft.contains("chain guest_guard {"));
+            assert!(tun_nft.contains("chain guest_guard_prerouting {"));
+            assert!(tun_nft.contains("        jump guest_guard"));
+            // In TUN mode include_allow_proxy_accept is false
+            let guard_start = tun_nft.find("chain guest_guard {").unwrap();
+            let guard_end = tun_nft[guard_start..].find("\n    }\n").unwrap() + guard_start;
+            assert!(!tun_nft[guard_start..guard_end].contains("\n        accept\n"));
+            store.settings.proxy_mode = "tproxy".to_string();
+        }
     }
 }

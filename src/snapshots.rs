@@ -1030,7 +1030,7 @@ pub async fn snapshot_restore(
             .import_from_json_sections(&prof.config_sections);
     }
     restore_certs(state, &prof.certs);
-    transaction::commit_transaction(state, prof.store_data.clone()).await?;
+    transaction::commit_transaction_with_source(state, prof.store_data.clone(), "snapshot").await?;
     let committed = state.data.read().await.clone();
     let existing_val = Value::Object(prof.config_sections.clone());
     let sections = match crate::store::sync_store_to_json_sections(&committed, Some(&existing_val))
@@ -1575,7 +1575,9 @@ pub async fn snapshot_import(
             guard.shrink_to_fit();
         }
 
-        if let Err(e) = transaction::commit_transaction(state, next_store).await {
+        if let Err(e) =
+            transaction::commit_transaction_with_source(state, next_store, "import").await
+        {
             return ImportOutcome::ResponseOnly(json!({
                 "success": false,
                 "message": format!("Не удалось применить конфигурацию: {e}")
@@ -1698,8 +1700,8 @@ pub async fn reset_settings_to_defaults(
         .unwrap_or("")
         .to_string();
 
-    let default_store = RouterStoreData::default();
-    transaction::commit_transaction(state, default_store.clone()).await?;
+    let default_store = RouterStoreData::factory_defaults();
+    transaction::commit_transaction_with_source(state, default_store.clone(), "reset").await?;
 
     let default_sections = match crate::store::sync_store_to_json_sections(&default_store, None) {
         Value::Object(map) => map,
@@ -2069,6 +2071,46 @@ mod tests {
             std::fs::read(&bin_path).expect("read rolled"),
             b"ELF-tachyon-v2.0.0-binary-image"
         );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_reset_settings_to_defaults_uses_factory_defaults_not_legacy_uci() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("rt");
+        let tmp = std::env::temp_dir().join(format!("tachyon_reset_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("mkdir");
+        let store_path = tmp.join("tachyon.json");
+
+        let mut custom = RouterStoreData::factory_defaults();
+        custom.settings.dns_type = "dot".to_string();
+        custom.settings.listen_port = 18080;
+        let state = AppState::load_or_create(&store_path).expect("state");
+        {
+            let mut w = state.data.blocking_write();
+            *w = custom;
+        }
+        rt.block_on(async {
+            state.save().await.expect("save custom");
+            let cur_secs =
+                match crate::store::sync_store_to_json_sections(&*state.data.read().await, None) {
+                    Value::Object(m) => m,
+                    _ => Map::new(),
+                };
+            let (resp, _default_secs) = reset_settings_to_defaults(&state, &cur_secs)
+                .await
+                .expect("reset");
+            assert_eq!(resp.get("success").and_then(Value::as_bool), Some(true));
+            let after = state.data.read().await;
+            let expected = RouterStoreData::factory_defaults();
+            assert_eq!(after.settings.dns_type, expected.settings.dns_type);
+            assert_eq!(after.settings.listen_port, expected.settings.listen_port);
+            assert_eq!(after.sections.len(), expected.sections.len());
+        });
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

@@ -2038,18 +2038,26 @@ export function renderStrategyFuzzerModal(
             'td',
             {
               class: 'cbi-section-table-cell',
-              style: 'padding: 8px 10px; text-align: center;',
+              style:
+                'padding: 8px 10px; text-align: center; white-space: nowrap;',
             },
             E(
               'div',
-              { style: 'display: flex; gap: 4px; justify-content: center;' },
+              {
+                style:
+                  'display: flex; gap: 4px; justify-content: center; white-space: nowrap;',
+              },
               [
-                renderButton({
-                  text: _('Apply'),
-                  classNames: ['cbi-button-action'],
-                  disabled: !item.success,
-                  onClick: () => handleApplySingle(item),
-                }),
+                (() => {
+                  const btn = renderButton({
+                    text: _('Apply'),
+                    classNames: ['cbi-button-action'],
+                    disabled: !item.success,
+                    onClick: () => handleApplySingle(item),
+                  });
+                  btn.style.whiteSpace = 'nowrap';
+                  return btn;
+                })(),
               ],
             ),
           ),

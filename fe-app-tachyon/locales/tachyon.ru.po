@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 17:55+0300\n"
-"PO-Revision-Date: 2026-11-20 17:55+0300\n"
+"POT-Creation-Date: 2026-11-20 21:06+0300\n"
+"PO-Revision-Date: 2026-11-20 21:06+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3494,6 +3494,9 @@ msgstr "Конец суточного окна обновлений в форм�
 msgid "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."
 msgstr "Конец интервала расписания (например, 08:00). Поддерживает переход через полночь."
 
+msgid "End time in H or HH:MM format, e.g. 7 or 07:00 (default: 07:00)."
+msgstr "Время окончания в формате Ч или ЧЧ:ММ, например 7 или 07:00 (по умолчанию: 07:00)."
+
 msgid "Endpoint UDP Port"
 msgstr "Порт эндпоинта (UDP)"
 
@@ -3568,6 +3571,9 @@ msgstr "Введите HWID, отправляемый с запросами по
 
 msgid "Enter the subscription URL"
 msgstr "Введите URL подписки"
+
+msgid "Enter time as H or HH:MM (e.g. 23 or 23:00)"
+msgstr "Введите время в формате Ч или ЧЧ:ММ (например, 23 или 23:00)"
 
 msgid "Enter valid domain names, one per line."
 msgstr "Введите корректные домены, по одному на строку."
@@ -4816,12 +4822,6 @@ msgstr "Интервал обновления списков Hosts"
 
 msgid "Hour of the day to send the daily report (default: 8)."
 msgstr "Час суток для отправки ежедневного отчёта (по умолчанию: 8)."
-
-msgid "Hour when quiet hours begin (default: 23)."
-msgstr "Час начала тихих часов (по умолчанию: 23)."
-
-msgid "Hour when quiet hours end (default: 7)."
-msgstr "Час окончания тихих часов (по умолчанию: 7)."
 
 msgid "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated."
 msgstr "Способ расчёта итоговой задержки по нескольким URL при выборе лучшего сервера. Примечание: число фоновых проверок растёт пропорционально числу ссылок (N серверов × M ссылок); если ни один сервер не проходит 100% проверок, автоматически включается резервный режим частичного совпадения (Fallback)."
@@ -8042,11 +8042,11 @@ msgstr "Быстрая настройка исходящего маршрута 
 msgid "Quiet Hours"
 msgstr "Тихие часы"
 
-msgid "Quiet Hours End (0-23)"
-msgstr "Конец тихих часов (0-23)"
+msgid "Quiet Hours End"
+msgstr "Конец тихих часов"
 
-msgid "Quiet Hours Start (0-23)"
-msgstr "Начало тихих часов (0-23)"
+msgid "Quiet Hours Start"
+msgstr "Начало тихих часов"
 
 msgid "Quota"
 msgstr "Лимит"
@@ -9614,6 +9614,9 @@ msgstr "Режим Smart Detect"
 msgid "Smooth weighted round-robin across top healthy nodes proportional to 1/RTT²"
 msgstr "Детерминированное распределение трафика между топ-узлами пропорционально квадрату скорости отклика"
 
+msgid "Snapshot"
+msgstr "Снапшот"
+
 msgid "Snapshot Diff"
 msgstr "Сравнение снапшота"
 
@@ -9793,6 +9796,9 @@ msgstr "Начало разрешенного ежедневного интер�
 
 msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
 msgstr "Начало суточного окна обновлений в формате ЧЧ:ММ (24ч). Внутри окна роутер дожидается тихого момента вместо обновления в фиксированную минуту. Если пусто — используется время по расписанию выше."
+
+msgid "Start time in H or HH:MM format, e.g. 23 or 23:00 (default: 23:00)."
+msgstr "Время начала в формате Ч или ЧЧ:ММ, например 23 или 23:00 (по умолчанию: 23:00)."
 
 msgid "Start watchdog"
 msgstr "Запустить watchdog"
@@ -12283,6 +12289,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Hour when quiet hours begin (default: 23)."
+msgstr "Час начала тихих часов (по умолчанию: 23)."
+
+msgid "Hour when quiet hours end (default: 7)."
+msgstr "Час окончания тихих часов (по умолчанию: 7)."
+
+msgid "Quiet Hours End (0-23)"
+msgstr "Конец тихих часов (0-23)"
+
+msgid "Quiet Hours Start (0-23)"
+msgstr "Начало тихих часов (0-23)"
 
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."

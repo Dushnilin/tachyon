@@ -588,7 +588,7 @@ async fn apply_detected_domain_to_section(
         return Ok(false);
     }
 
-    transaction::commit_transaction(state, candidate).await?;
+    transaction::commit_transaction_with_source(state, candidate, "smart_detect").await?;
     ubus_bridge::sync_section_user_domains_to_json(
         section_id,
         &updated_sec_domains,
@@ -830,7 +830,7 @@ pub async fn remove_detected_domain(
     }
 
     if removed || excluded_added {
-        transaction::commit_transaction(state, candidate).await?;
+        transaction::commit_transaction_with_source(state, candidate, "smart_detect").await?;
         if let Some(ref sdoms) = updated_sec_domains {
             ubus_bridge::sync_section_user_domains_to_json(
                 section_id,

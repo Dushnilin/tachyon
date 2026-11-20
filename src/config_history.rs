@@ -248,6 +248,95 @@ impl DiffAccumulator {
     }
 }
 
+fn format_scalar_item(val: &Value) -> Option<String> {
+    match val {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(if *b { "true" } else { "false" }.to_string()),
+        _ => None,
+    }
+}
+
+fn format_delta_preview(prefix: &str, items: &[String], total_len: usize) -> String {
+    let preview: Vec<String> = items
+        .iter()
+        .take(3)
+        .map(|s| truncate_chars(s, 40))
+        .collect();
+    let joined = preview.join(", ");
+    if items.len() > 3 {
+        truncate_chars(
+            &format!("{prefix} {joined}, ... (+{}; {total_len})", items.len()),
+            MAX_PREVIEW_CHARS,
+        )
+    } else {
+        truncate_chars(
+            &format!("{prefix} {joined} ({total_len})"),
+            MAX_PREVIEW_CHARS,
+        )
+    }
+}
+
+fn format_scalar_array_diff(before_arr: &[Value], after_arr: &[Value]) -> Option<(String, String)> {
+    let before_items: Vec<String> = before_arr
+        .iter()
+        .map(format_scalar_item)
+        .collect::<Option<Vec<_>>>()?;
+    let after_items: Vec<String> = after_arr
+        .iter()
+        .map(format_scalar_item)
+        .collect::<Option<Vec<_>>>()?;
+
+    let mut after_counts: HashMap<&str, usize> = HashMap::new();
+    for s in &after_items {
+        *after_counts.entry(s.as_str()).or_insert(0) += 1;
+    }
+    let mut before_counts: HashMap<&str, usize> = HashMap::new();
+    for s in &before_items {
+        *before_counts.entry(s.as_str()).or_insert(0) += 1;
+    }
+
+    let mut rem_consumed = after_counts;
+    let mut removed = Vec::new();
+    for s in &before_items {
+        if let Some(cnt) = rem_consumed.get_mut(s.as_str())
+            && *cnt > 0
+        {
+            *cnt -= 1;
+        } else {
+            removed.push(s.clone());
+        }
+    }
+
+    let mut add_consumed = before_counts;
+    let mut added = Vec::new();
+    for s in &after_items {
+        if let Some(cnt) = add_consumed.get_mut(s.as_str())
+            && *cnt > 0
+        {
+            *cnt -= 1;
+        } else {
+            added.push(s.clone());
+        }
+    }
+
+    match (!removed.is_empty(), !added.is_empty()) {
+        (false, true) => Some((
+            format!("[{}]", before_items.len()),
+            format_delta_preview("+", &added, after_items.len()),
+        )),
+        (true, false) => Some((
+            format_delta_preview("-", &removed, before_items.len()),
+            format!("[{}]", after_items.len()),
+        )),
+        (true, true) => Some((
+            format_delta_preview("-", &removed, before_items.len()),
+            format_delta_preview("+", &added, after_items.len()),
+        )),
+        (false, false) => None,
+    }
+}
+
 fn diff_object_fields(
     acc: &mut DiffAccumulator,
     scope: &str,
@@ -271,8 +360,14 @@ fn diff_object_fields(
         if b_val == a_val {
             continue;
         }
-        let b_str = format_diff_value(key, b_val);
-        let a_str = format_diff_value(key, a_val);
+        let (b_str, a_str) = if !is_sensitive_diff_field(key)
+            && let (Value::Array(b_arr), Value::Array(a_arr)) = (b_val, a_val)
+            && let Some((b_delta, a_delta)) = format_scalar_array_diff(b_arr, a_arr)
+        {
+            (b_delta, a_delta)
+        } else {
+            (format_diff_value(key, b_val), format_diff_value(key, a_val))
+        };
         if b_str == a_str && is_empty_json_value(b_val) && is_empty_json_value(a_val) {
             continue;
         }
@@ -994,6 +1089,41 @@ mod tests {
             load_last_working_store_in(&dir, None).expect("working store found");
         assert_eq!(best_id, rev1.id);
         assert_eq!(best_store.settings.tun_mtu, 1420);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scalar_array_diff_shows_exact_added_and_removed_delta() {
+        let dir = temp_hist_dir("array_delta");
+        let mut s0 = RouterStoreData::default();
+        s0.sections[0].user_domains = (0..160).map(|i| format!("dom{i}.example")).collect();
+
+        let mut s1 = s0.clone();
+        s1.sections[0].user_domains.push("mijia.tech".to_string());
+
+        let rev_add =
+            record_commit_revision_in(&dir, &s0, &s1, "smart_detect").expect("add revision");
+        assert_eq!(rev_add.source, "smart_detect");
+        let add_entry = rev_add
+            .changes
+            .iter()
+            .find(|c| c.field == "user_domains")
+            .expect("user_domains add entry");
+        assert_eq!(add_entry.before, "[160]");
+        assert_eq!(add_entry.after, "+ mijia.tech (161)");
+
+        let mut s2 = s1.clone();
+        s2.sections[0].user_domains.retain(|d| d != "dom0.example");
+        // Use a different source to avoid 3s coalescing with rev_add.
+        let rev_rem = record_commit_revision_in(&dir, &s1, &s2, "save").expect("remove revision");
+        let rem_entry = rev_rem
+            .changes
+            .iter()
+            .find(|c| c.field == "user_domains")
+            .expect("user_domains remove entry");
+        assert_eq!(rem_entry.before, "- dom0.example (161)");
+        assert_eq!(rem_entry.after, "[160]");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -142,6 +142,48 @@ async fn handle_conn(
         raw_path
     };
 
+    {
+        let (gm_snap, lang_snap, reg_snap) = {
+            let d = state.data.read().await;
+            let need_reg = d.guest_mode.enabled && d.guest_mode.block_router_admin;
+            (
+                d.guest_mode.clone(),
+                d.settings.lang.clone(),
+                if need_reg {
+                    Some(d.device_registry.clone())
+                } else {
+                    None
+                },
+            )
+        };
+        if let Some(registry) = reg_snap {
+            let active_list = if is_guest_zero_trust_mode(&gm_snap) {
+                &gm_snap.trusted_devices
+            } else {
+                &gm_snap.guest_devices
+            };
+            let peer_mac = resolve_peer_mac_if_needed(peer_ip, active_list, &registry).await;
+            if is_peer_blocked_by_guest_mode(&gm_snap, peer_ip, peer_mac.as_deref()) {
+                let is_api_or_cgi = path.starts_with("/api/")
+                    || path == "/ubus"
+                    || path.starts_with("/ubus/")
+                    || path.starts_with("/cgi-bin/luci/admin/ubus")
+                    || path.starts_with("/cgi-bin/luci/admin/uci")
+                    || path.starts_with("/cgi-bin/cgi-exec")
+                    || path.starts_with("/cgi-bin/cgi-download");
+                if is_api_or_cgi {
+                    return send_json(
+                        &mut stream,
+                        403,
+                        &json!({"ok": false, "error": "Access denied by Guest Mode policy"}),
+                    )
+                    .await;
+                }
+                return send_html_forbidden(&mut stream, &lang_snap).await;
+            }
+        }
+    }
+
     // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) at `/` and `/cgi-bin/luci/admin/services/tachyon*`
     if method == "GET" {
         if path == "/" || path == "/index.html" || path == "/cgi-bin/luci" {
@@ -2458,6 +2500,176 @@ fn is_trusted_lan_addr(addr: std::net::IpAddr) -> bool {
     }
 }
 
+fn normalize_ip_addr(addr: std::net::IpAddr) -> std::net::IpAddr {
+    match addr {
+        std::net::IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map(std::net::IpAddr::V4)
+            .unwrap_or(std::net::IpAddr::V6(v6)),
+        other => other,
+    }
+}
+
+fn is_guest_zero_trust_mode(gm: &crate::store::GuestModeConfig) -> bool {
+    matches!(
+        gm.mode.trim().to_ascii_lowercase().as_str(),
+        "inverted" | "all"
+    )
+}
+
+fn peer_matches_device_list(
+    list: &[String],
+    peer_addr: Option<std::net::IpAddr>,
+    peer_mac: Option<&str>,
+) -> bool {
+    let mac_lower = peer_mac
+        .map(|m| m.trim().to_ascii_lowercase())
+        .filter(|m| !m.is_empty());
+    let norm_peer = peer_addr.map(normalize_ip_addr);
+    let peer_ip_str = norm_peer.map(|ip| ip.to_string());
+
+    for raw in list {
+        let entry = raw.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        if crate::store::is_mac_address(entry) {
+            if mac_lower.as_deref() == Some(entry.to_ascii_lowercase().as_str()) {
+                return true;
+            }
+        } else if entry.contains('/') {
+            if let Some(ref ip_s) = peer_ip_str
+                && crate::store::ip_in_cidr(ip_s, entry)
+            {
+                return true;
+            }
+        } else if let Ok(entry_ip) = entry.parse::<std::net::IpAddr>()
+            && norm_peer == Some(normalize_ip_addr(entry_ip))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_peer_blocked_by_guest_mode(
+    gm: &crate::store::GuestModeConfig,
+    peer_ip: &str,
+    peer_mac: Option<&str>,
+) -> bool {
+    if !gm.enabled || !gm.block_router_admin {
+        return false;
+    }
+    if peer_ip.trim().eq_ignore_ascii_case("localhost") {
+        return false;
+    }
+    let peer_addr = parse_peer_ip(peer_ip).map(normalize_ip_addr);
+    if peer_addr.is_some_and(|ip| ip.is_loopback()) {
+        return false;
+    }
+    if is_guest_zero_trust_mode(gm) {
+        if !gm.trusted_devices.iter().any(|s| !s.trim().is_empty()) {
+            return false;
+        }
+        if peer_addr.is_some_and(is_tailscale_ip_addr) {
+            return false;
+        }
+        !peer_matches_device_list(&gm.trusted_devices, peer_addr, peer_mac)
+    } else {
+        peer_matches_device_list(&gm.guest_devices, peer_addr, peer_mac)
+    }
+}
+
+fn resolve_peer_mac_from_tables(
+    peer_ip: &str,
+    arp_raw: &str,
+    leases_raw: &str,
+    device_registry: &std::collections::HashMap<String, crate::store::DeviceMeta>,
+) -> Option<String> {
+    let target_ip = parse_peer_ip(peer_ip).map(normalize_ip_addr)?;
+
+    for line in arp_raw.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 4
+            && parts[2] != "0x0"
+            && parts[3] != "00:00:00:00:00:00"
+            && crate::store::is_mac_address(parts[3])
+            && parse_peer_ip(parts[0]).map(normalize_ip_addr) == Some(target_ip)
+        {
+            return Some(parts[3].to_ascii_lowercase());
+        }
+    }
+
+    for line in leases_raw.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3
+            && crate::store::is_mac_address(parts[1])
+            && parse_peer_ip(parts[2]).map(normalize_ip_addr) == Some(target_ip)
+        {
+            return Some(parts[1].to_ascii_lowercase());
+        }
+    }
+
+    for (key_ip, meta) in device_registry {
+        let mac = meta.mac.trim();
+        if !crate::store::is_mac_address(mac) {
+            continue;
+        }
+        let matches = parse_peer_ip(key_ip).map(normalize_ip_addr) == Some(target_ip)
+            || parse_peer_ip(&meta.ip).map(normalize_ip_addr) == Some(target_ip);
+        if matches {
+            return Some(mac.to_ascii_lowercase());
+        }
+    }
+
+    None
+}
+
+async fn resolve_peer_mac_if_needed(
+    peer_ip: &str,
+    list: &[String],
+    device_registry: &std::collections::HashMap<String, crate::store::DeviceMeta>,
+) -> Option<String> {
+    if !list.iter().any(|x| crate::store::is_mac_address(x.trim())) {
+        return None;
+    }
+
+    let arp_raw = tokio::fs::read_to_string("/proc/net/arp")
+        .await
+        .unwrap_or_default();
+    let leases_raw = tokio::fs::read_to_string("/tmp/dhcp.leases")
+        .await
+        .unwrap_or_default();
+    if let Some(mac) = resolve_peer_mac_from_tables(peer_ip, &arp_raw, &leases_raw, device_registry)
+    {
+        return Some(mac);
+    }
+
+    #[cfg(target_os = "linux")]
+    if let Some(std::net::IpAddr::V6(v6)) = parse_peer_ip(peer_ip).map(normalize_ip_addr)
+        && let Ok(Ok(out)) = tokio::time::timeout(
+            Duration::from_millis(400),
+            tokio::process::Command::new("ip")
+                .args(["-6", "neigh", "show", &v6.to_string()])
+                .output(),
+        )
+        .await
+        && out.status.success()
+    {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        for line in stdout.lines() {
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            for win in tokens.windows(2) {
+                if win[0] == "lladdr" && crate::store::is_mac_address(win[1]) {
+                    return Some(win[1].to_ascii_lowercase());
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 fn is_trusted_lan_ip(ip: &str) -> bool {
     let trimmed = ip.trim();
@@ -2679,6 +2891,7 @@ async fn send_json(stream: &mut TcpStream, status: u16, val: &Value) -> anyhow::
         200 => "OK",
         400 => "Bad Request",
         401 => "Unauthorized",
+        403 => "Forbidden",
         404 => "Not Found",
         413 => "Payload Too Large",
         _ => "Internal Server Error",
@@ -2689,6 +2902,37 @@ async fn send_json(stream: &mut TcpStream, status: u16, val: &Value) -> anyhow::
     );
     stream.write_all(head.as_bytes()).await?;
     stream.write_all(&body).await?;
+    Ok(())
+}
+
+async fn send_html_forbidden(stream: &mut TcpStream, lang: &str) -> anyhow::Result<()> {
+    let en = lang.trim().eq_ignore_ascii_case("en");
+    let (title, body_msg) = if en {
+        (
+            "Access Denied",
+            "Access to the router management panel is blocked by Guest Mode policy.",
+        )
+    } else {
+        (
+            "Доступ запрещён",
+            "Доступ к панели управления роутером ограничен политикой гостевого режима.",
+        )
+    };
+    let html = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{title}</title></head>\
+         <body style=\"font-family:system-ui,sans-serif;background:#111317;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;\">\
+         <div style=\"max-width:420px;padding:24px;border:1px solid #2b303a;border-radius:10px;background:#181b21;\">\
+         <h2 style=\"margin:0 0 8px 0;font-size:18px;\">{title}</h2>\
+         <p style=\"margin:0;font-size:14px;color:#9ca3af;\">{body_msg}</p>\
+         </div></body></html>"
+    );
+    let bytes = html.as_bytes();
+    let head = format!(
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(bytes).await?;
     Ok(())
 }
 
@@ -3570,5 +3814,102 @@ mod tests {
             let _ = std::fs::remove_dir_all(&dir);
         })
         .await;
+    }
+
+    #[test]
+    fn test_guest_mode_panel_access_zero_trust_and_selected() {
+        use std::collections::HashMap;
+
+        let mut gm = crate::store::GuestModeConfig {
+            enabled: true,
+            mode: "inverted".to_string(),
+            block_router_admin: true,
+            ..Default::default()
+        };
+
+        // Empty trusted_devices must not cause self-lockout
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+
+        gm.trusted_devices = vec![
+            "192.168.1.50".to_string(),
+            "10.10.0.0/24".to_string(),
+            "aa:bb:cc:dd:ee:11".to_string(),
+        ];
+
+        // Zero-Trust: untrusted LAN IPv4 / IPv4-mapped / IPv6 blocked
+        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "::ffff:192.168.1.99",
+            None
+        ));
+        assert!(is_peer_blocked_by_guest_mode(&gm, "fd00::99", None));
+
+        // Trusted IP, CIDR, IPv4-mapped trusted IP, and MAC via ARP/DHCP/registry allowed
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.50", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "::ffff:192.168.1.50",
+            None
+        ));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "10.10.0.42", None));
+
+        let arp_raw = "IP address HW type Flags HW address Mask Device\n\
+                       192.168.1.77 0x1 0x2 AA:BB:CC:DD:EE:11 * br-lan\n\
+                       192.168.1.78 0x1 0x0 00:00:00:00:00:00 * br-lan\n";
+        let leases_raw = "1700000000 11:22:33:44:55:66 192.168.1.80 phone *\n";
+        let mut reg = HashMap::new();
+        reg.insert(
+            "192.168.1.81".to_string(),
+            crate::store::DeviceMeta {
+                ip: "192.168.1.81".to_string(),
+                mac: "AA:BB:CC:DD:EE:11".to_string(),
+                ..Default::default()
+            },
+        );
+        let resolved_arp = resolve_peer_mac_from_tables("192.168.1.77", arp_raw, leases_raw, &reg);
+        assert_eq!(resolved_arp.as_deref(), Some("aa:bb:cc:dd:ee:11"));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.77",
+            resolved_arp.as_deref()
+        ));
+        assert_eq!(
+            resolve_peer_mac_from_tables("192.168.1.78", arp_raw, leases_raw, &reg),
+            None
+        );
+        let resolved_reg = resolve_peer_mac_from_tables("192.168.1.81", arp_raw, leases_raw, &reg);
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.81",
+            resolved_reg.as_deref()
+        ));
+
+        // Loopback and Tailscale peers are exempt
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "127.0.0.1", None));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "::1", None));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "localhost", None));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "100.64.1.2", None));
+
+        // "all" alias behaves identically to "inverted"
+        gm.mode = "all".to_string();
+        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.50", None));
+
+        // Selected mode blocks only listed guest IP/MAC and allows others
+        gm.mode = "selected".to_string();
+        gm.guest_devices = vec!["192.168.1.150".to_string(), "11:22:33:44:55:66".to_string()];
+        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.150", None));
+        let guest_mac = resolve_peer_mac_from_tables("192.168.1.80", arp_raw, leases_raw, &reg);
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.80",
+            guest_mac.as_deref()
+        ));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+
+        // block_router_admin = false allows all peers
+        gm.block_router_admin = false;
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.150", None));
     }
 }

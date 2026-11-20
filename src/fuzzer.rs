@@ -1,8 +1,8 @@
 //! Native `tachyon-core` Desync Strategy Fuzzer & Isolated Sandbox Benchmark Runner.
 //!
 //! Spawns ephemeral `tachyon-core` instances bound to `127.0.0.1:<port>` with
-//! `routing_mark = 0x08000000` (`134217728`) so probes traverse the real WAN path
-//! without mutating `nftables` or interrupting active LAN sessions.
+//! `routing_mark = 0x40000000` (`1073741824`, matching `BYPASS_FWMARK`) so probes
+//! traverse the real WAN path without mutating `nftables` or interrupting active LAN sessions.
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
@@ -21,7 +21,7 @@ use tokio::process::Command;
 use crate::crypto_gen;
 use crate::store::{PortableAtomicU64, unix_now_secs};
 
-const SANDBOX_ROUTING_MARK: u32 = 0x0800_0000; // 134_217_728 — bypasses active TPROXY rules
+const SANDBOX_ROUTING_MARK: u32 = 0x4000_0000; // 1_073_741_824 — matches net_stack::BYPASS_FWMARK
 const STATE_FILE: &str = "/var/run/tachyon/fuzzer-state.json";
 const PATTERNS_FILE: &str = "/var/run/tachyon/ui-state/fuzzer-patterns.json";
 const HISTORY_FILE: &str = "/var/run/tachyon/ui-state/fuzzer-history.json";
@@ -1875,7 +1875,7 @@ fn parse_dns_a_response(buf: &[u8], expected_txid: Option<u16>) -> Option<IpAddr
     None
 }
 
-async fn query_dns_a_udp(server: IpAddr, domain: &str) -> Option<IpAddr> {
+pub(crate) async fn query_dns_a_udp(server: IpAddr, domain: &str) -> Option<IpAddr> {
     let txid = (rand::thread_rng().next_u32() as u16) | 1;
     let query = build_dns_a_query(domain, txid)?;
     let bind_addr = if server.is_ipv4() {
@@ -1941,7 +1941,28 @@ async fn resolve_host_for_fuzzer(
             }
         }
     }
-    lookup_usable_host_ip(host, port).await
+    if let Some(ip) = lookup_usable_host_ip(host, port).await {
+        return Some(ip);
+    }
+
+    // When FakeIP is active on the router, system resolution can return 198.18.0.0/15
+    // (rejected by `is_usable_wan_ip`). Fall back to direct public & ISP DNS A queries.
+    let mut dns_servers: Vec<IpAddr> = vec![
+        IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+        IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+        IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)),
+    ];
+    for &ns in isp_nameservers {
+        if !dns_servers.contains(&ns) {
+            dns_servers.push(ns);
+        }
+    }
+    for ns in dns_servers {
+        if let Some(ip) = query_dns_a_udp(ns, host).await {
+            return Some(ip);
+        }
+    }
+    None
 }
 
 async fn prewarm_dns_cache(endpoints: &[ProbeEndpoint]) -> HashMap<(String, u16), IpAddr> {
@@ -2169,6 +2190,7 @@ fn build_curl_args(
     };
     let mut args = vec![
         "-s".to_string(),
+        "-S".to_string(),
         "-L".to_string(),
         "-k".to_string(),
         "--http1.1".to_string(),
@@ -2197,7 +2219,17 @@ fn build_curl_args(
     args
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn classify_curl_output(ep: &ProbeEndpoint, exit_code: i32, stdout: &str) -> SingleProbeMetrics {
+    classify_curl_output_with_stderr(ep, exit_code, stdout, "")
+}
+
+fn classify_curl_output_with_stderr(
+    ep: &ProbeEndpoint,
+    exit_code: i32,
+    stdout: &str,
+    stderr: &str,
+) -> SingleProbeMetrics {
     let parts: Vec<&str> = stdout.trim().split('|').collect();
     let parse_f64 = |idx: usize| -> f64 {
         parts
@@ -2321,6 +2353,19 @@ fn classify_curl_output(ep: &ProbeEndpoint, exit_code: i32, stdout: &str) -> Sin
                 "rst",
                 "Сброс сессии (TCP RST / обрыв TLS-рукопожатия)".to_string(),
             ),
+            97 => {
+                let first_err_line = stderr
+                    .lines()
+                    .map(str::trim)
+                    .find(|l| !l.is_empty())
+                    .unwrap_or("");
+                let msg = if first_err_line.is_empty() {
+                    "Ошибка SOCKS5-песочницы (код curl 97)".to_string()
+                } else {
+                    format!("Ошибка SOCKS5-песочницы (код curl 97): {first_err_line}")
+                };
+                ("proxy_error", msg)
+            }
             _ => (
                 "drop",
                 if http_code > 0 {
@@ -2389,7 +2434,8 @@ async fn run_curl_cmd(
 
     let exit_code = res.status.code().unwrap_or(1);
     let stdout = String::from_utf8_lossy(&res.stdout);
-    classify_curl_output(ep, exit_code, &stdout)
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    classify_curl_output_with_stderr(ep, exit_code, &stdout, &stderr)
 }
 
 async fn run_curl_via_socks(
@@ -2412,7 +2458,7 @@ async fn run_curl_via_socks(
     {
         let resolve_entry = format!("{host}:{dst_port}:{ip}");
         let primary = run_curl_cmd(ep, &socks_local, Some(&resolve_entry), cto, mto).await;
-        if primary.success || !matches!(primary.exit_code, 6 | 7 | 28) {
+        if primary.success || !matches!(primary.exit_code, 6 | 7 | 28 | 97) {
             return primary;
         }
     }
@@ -2420,29 +2466,40 @@ async fn run_curl_via_socks(
     run_curl_cmd(ep, &socks_remote, None, cto, mto).await
 }
 
-async fn probe_outbound_in_sandbox(
-    bin_path: &str,
-    outbound_obj: Value,
-    endpoints: &[ProbeEndpoint],
-    dns_cache: &HashMap<(String, u16), IpAddr>,
-    is_custom: bool,
-) -> Vec<SingleProbeMetrics> {
-    let port = pick_sandbox_port();
-    let cfg_path = format!("/var/run/tachyon/fuzzer_sandbox_{port}.json");
-    let sandbox_cfg = json!({
+fn build_fuzzer_sandbox_config(port: u16, outbound_obj: Value) -> Value {
+    json!({
         "log": { "level": "error" },
         "dns": {
             "servers": [
                 {
                     "tag": "dns-direct",
                     "type": "https",
+                    "server": "8.8.8.8",
+                    "server_port": 443,
+                    "path": "/dns-query",
+                    "tls": {
+                        "enabled": true,
+                        "server_name": "dns.google"
+                    },
+                    "detour": "direct-wan"
+                },
+                {
+                    "tag": "dns-cf",
+                    "type": "https",
                     "server": "1.1.1.1",
+                    "server_port": 443,
+                    "path": "/dns-query",
+                    "tls": {
+                        "enabled": true,
+                        "server_name": "cloudflare-dns.com"
+                    },
                     "detour": "direct-wan"
                 },
                 {
                     "tag": "dns-fallback",
                     "type": "udp",
                     "server": "8.8.8.8",
+                    "server_port": 53,
                     "detour": "direct-wan"
                 }
             ],
@@ -2465,10 +2522,23 @@ async fn probe_outbound_in_sandbox(
             }
         ],
         "route": {
+            "default_mark": SANDBOX_ROUTING_MARK,
             "default_domain_resolver": "dns-direct",
             "final": "fuzzer-out"
         }
-    });
+    })
+}
+
+async fn probe_outbound_in_sandbox(
+    bin_path: &str,
+    outbound_obj: Value,
+    endpoints: &[ProbeEndpoint],
+    dns_cache: &HashMap<(String, u16), IpAddr>,
+    is_custom: bool,
+) -> Vec<SingleProbeMetrics> {
+    let port = pick_sandbox_port();
+    let cfg_path = format!("/var/run/tachyon/fuzzer_sandbox_{port}.json");
+    let sandbox_cfg = build_fuzzer_sandbox_config(port, outbound_obj);
 
     let _ = std::fs::create_dir_all("/var/run/tachyon");
     if let Ok(raw) = serde_json::to_string(&sandbox_cfg) {
@@ -2628,6 +2698,11 @@ fn classify_wan_probe_list(
             "ip_block",
             82,
             "Отсутствует ответ на TCP SYN на прямом маршруте — вероятна фильтрация по IP-адресу.",
+        ),
+        Some(m) if m.exit_code == 97 || m.dpi_verdict == "proxy_error" => (
+            "sandbox_error",
+            95,
+            "Ошибка подключения через локальную песочницу fuzzer (SOCKS5 / curl 97). Проверьте DNS и маркер обхода nftables.",
         ),
         Some(m) if m.exit_code == 6 => ("dns_block", 85, "Не удалось разрешить доменное имя цели."),
         _ => (
@@ -4070,5 +4145,43 @@ nameserver 213.180.193.3
             resolve_fuzzer_max_duration(9000),
             Some(Duration::from_secs(7200))
         );
+    }
+
+    #[test]
+    fn sandbox_uses_bypass_fwmark_and_reports_curl_97_as_proxy_error() {
+        let bypass_val = u32::from_str_radix(
+            crate::net_stack::BYPASS_FWMARK
+                .trim()
+                .trim_start_matches("0x"),
+            16,
+        )
+        .expect("BYPASS_FWMARK hex");
+        assert_eq!(SANDBOX_ROUTING_MARK, bypass_val);
+        assert_eq!(SANDBOX_ROUTING_MARK, 0x4000_0000);
+
+        let outbound = parse_desync_args_to_outbound("preset=auto", "fuzzer-out", true);
+        let cfg = build_fuzzer_sandbox_config(19001, outbound);
+        assert_eq!(cfg["route"]["default_mark"], SANDBOX_ROUTING_MARK);
+        assert_eq!(cfg["outbounds"][1]["routing_mark"], SANDBOX_ROUTING_MARK);
+        assert_eq!(cfg["dns"]["servers"][0]["tag"], "dns-direct");
+        assert_eq!(cfg["dns"]["servers"][0]["server_port"], 443);
+        assert_eq!(cfg["dns"]["servers"][0]["path"], "/dns-query");
+        assert_eq!(cfg["dns"]["servers"][0]["tls"]["enabled"], true);
+
+        let eps = resolve_suite_endpoints("discord", "");
+        let probe = classify_curl_output_with_stderr(
+            &eps[0],
+            97,
+            "000|0.000|0.000|0.000|0.010|0|0",
+            "curl: (97) Can't complete SOCKS5 connection to discord.com:443. (Host unreachable)",
+        );
+        assert!(!probe.success);
+        assert_eq!(probe.dpi_verdict, "proxy_error");
+        assert!(probe.error.contains("SOCKS5-песочницы (код curl 97)"));
+        assert!(probe.error.contains("Host unreachable"));
+
+        let (_, dtype, conf, _) = classify_wan_probe_list(&eps, &[probe]);
+        assert_eq!(dtype, "sandbox_error");
+        assert_eq!(conf, 95);
     }
 }

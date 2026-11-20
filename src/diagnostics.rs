@@ -993,17 +993,22 @@ fn assemble_doctor_report(
     {
         for o in out_arr {
             let tag = o.get("tag").and_then(Value::as_str).unwrap_or("");
-            if tag.is_empty() {
+            let err_detail = o
+                .get("last_err_detail")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if tag.is_empty()
+                || is_builtin_non_proxy_outbound(tag)
+                || err_detail
+                    .trim()
+                    .eq_ignore_ascii_case("blocked by outbound")
+            {
                 continue;
             }
             let dial_ok = o.get("dial_ok").and_then(Value::as_u64).unwrap_or(0);
             let dial_fail = o.get("dial_fail").and_then(Value::as_u64).unwrap_or(0);
             let err_class = o
                 .get("last_err_class")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let err_detail = o
-                .get("last_err_detail")
                 .and_then(Value::as_str)
                 .unwrap_or("");
             if dial_fail >= 3 && dial_fail > dial_ok {
@@ -2061,6 +2066,13 @@ fn qf_check_updates(
 }
 
 /// Execute any of the 25 automated Quick Fixes by ID.
+fn is_builtin_non_proxy_outbound(tag: &str) -> bool {
+    matches!(
+        tag.trim().to_ascii_lowercase().as_str(),
+        "block" | "block-out" | "reject" | "dns" | "dns-out"
+    )
+}
+
 pub async fn apply_quick_fix(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
@@ -2260,10 +2272,22 @@ pub async fn apply_quick_fix(
                 let live = state.live.read().await;
                 live.outbound_health
                     .iter()
-                    .filter(|o| o.dial_fail > 0)
+                    .filter(|o| {
+                        o.dial_fail > 0
+                            && !is_builtin_non_proxy_outbound(&o.tag)
+                            && !o.tag.eq_ignore_ascii_case("direct")
+                    })
                     .max_by_key(|o| o.dial_fail)
                     .map(|o| o.tag.clone())
-                    .or_else(|| live.outbound_health.first().map(|o| o.tag.clone()))
+                    .or_else(|| {
+                        live.outbound_health
+                            .iter()
+                            .find(|o| {
+                                !is_builtin_non_proxy_outbound(&o.tag)
+                                    && !o.tag.eq_ignore_ascii_case("direct")
+                            })
+                            .map(|o| o.tag.clone())
+                    })
             };
             let Some(tag) = candidate_tag else {
                 anyhow::bail!("Нет активных outbound-тегов для сброса");
@@ -6637,5 +6661,52 @@ IP address       HW type     Flags       HW address            Mask     Device
             }]
         });
         assert!(has_true_failover_backup(Some(&unhealthy_least_test)));
+    }
+
+    #[test]
+    fn test_local_doctor_ignores_builtin_block_outbound_and_blocked_by_outbound() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("rt");
+        let tmp =
+            std::env::temp_dir().join(format!("tachyon_doctor_block_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("mkdir");
+        let state = AppState::load_or_create(tmp.join("tachyon.json")).expect("state");
+        let health = json!({
+            "outbounds": [
+                {
+                    "tag": "block",
+                    "dial_ok": 0,
+                    "dial_fail": 1455,
+                    "last_err_class": "io_other",
+                    "last_err_detail": "blocked by outbound"
+                },
+                {
+                    "tag": "vless-de",
+                    "dial_ok": 120,
+                    "dial_fail": 0,
+                    "last_err_class": ""
+                }
+            ]
+        });
+        let report = rt.block_on(build_doctor_report(
+            &state,
+            None,
+            Some(health),
+            None,
+            None,
+            None,
+        ));
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|f| f.id.contains("block") || f.quick_fix_id.contains("block")),
+            "builtin block outbound must not trigger failure findings: {:?}",
+            report.findings
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

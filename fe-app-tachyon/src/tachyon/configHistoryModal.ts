@@ -676,6 +676,11 @@ function formatScopeLabel(scope: string): string {
 function formatSourceTag(source: string): string {
   if (source === 'auto_rollback') return tr('Автооткат', 'Auto-rollback');
   if (source === 'rollback') return tr('Откат', 'Rollback');
+  if (source === 'smart_detect') return 'Smart Detect';
+  if (source === 'subscription') return tr('Подписки', 'Subscriptions');
+  if (source === 'snapshot') return tr('Снапшот', 'Snapshot');
+  if (source === 'import') return tr('Импорт', 'Import');
+  if (source === 'reset') return tr('Сброс', 'Reset');
   return tr('Сохранение', 'Save');
 }
 

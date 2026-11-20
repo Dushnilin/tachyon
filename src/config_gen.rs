@@ -3858,10 +3858,7 @@ fn url_decode(s: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// Detect 2-letter ISO country code from Unicode flag emojis (`🇳🇱`, `🇫🇮`, `🇩🇪`, etc.),
-/// Russian/English country names (`Нидерланды`, `Финляндия`, `Germany`, etc.), or ISO codes.
-pub fn detect_country_code(label: &str) -> String {
-    // 1. Decode any Unicode regional indicator symbol pair (U+1F1E6..=U+1F1FF)
+fn extract_flag_emoji_country_code(label: &str) -> String {
     let chars: Vec<char> = label.chars().collect();
     for pair in chars.windows(2) {
         let c0 = pair[0] as u32;
@@ -3871,6 +3868,17 @@ pub fn detect_country_code(label: &str) -> String {
             let b = (b'A' + (c1 - 0x1F1E6) as u8) as char;
             return format!("{a}{b}");
         }
+    }
+    String::new()
+}
+
+/// Detect 2-letter ISO country code from Unicode flag emojis (`🇳🇱`, `🇫🇮`, `🇩🇪`, etc.),
+/// Russian/English country names (`Нидерланды`, `Финляндия`, `Germany`, etc.), or ISO codes.
+pub fn detect_country_code(label: &str) -> String {
+    // 1. Decode any Unicode regional indicator symbol pair (U+1F1E6..=U+1F1FF)
+    let flag_cc = extract_flag_emoji_country_code(label);
+    if !flag_cc.is_empty() {
+        return flag_cc;
     }
 
     // 2. Check Russian & English country names
@@ -8740,6 +8748,9 @@ fn tag_matches_keyword_or_telemetry(tag: &str, pattern: &str, known_prefixes: &[
     if pat_trim.is_empty() {
         return false;
     }
+    if crate::simple_regex::regex_is_match(pat_trim, tag) {
+        return true;
+    }
     let tl = tag.to_lowercase();
     let pl = pat_trim.to_lowercase();
     if tl.contains(&pl) {
@@ -9656,18 +9667,23 @@ pub(crate) fn is_usable_external_sub_host(raw: &str) -> bool {
 
 pub fn resolve_outbound_group_member_tags(store: &RouterStoreData) -> HashMap<String, Vec<String>> {
     let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut outbounds: Vec<Value> = Vec::new();
     for src in &store.outbound_sources {
         let pairs = build_source_outbounds(src);
-        let tags: Vec<String> = pairs
-            .into_iter()
-            .filter_map(|(tag, _, visible)| visible.then_some(tag))
-            .collect();
+        let mut tags = Vec::new();
+        for (tag, obj, visible) in pairs {
+            if visible {
+                tags.push(tag.clone());
+                outbounds.push(obj);
+            }
+        }
         source_tag_map.insert(src.id.clone(), tags);
     }
-    build_outbound_group_map(
+    build_outbound_group_map_with_outbounds(
         &store.outbound_groups,
         &store.outbound_sources,
         &source_tag_map,
+        &outbounds,
     )
 }
 
@@ -9917,10 +9933,11 @@ fn compile_core_config_inner(
         store.balancers.iter().map(|b| (b.id.as_str(), b)).collect();
     let sec_map: HashMap<&str, &RoutingSection> =
         store.sections.iter().map(|s| (s.id.as_str(), s)).collect();
-    let group_tag_map = build_outbound_group_map(
+    let group_tag_map = build_outbound_group_map_with_outbounds(
         &store.outbound_groups,
         &store.outbound_sources,
         &source_tag_map,
+        &outbounds,
     );
 
     let client_intercept_inbounds: Vec<&'static str> = match store.settings.proxy_mode.as_str() {
@@ -9995,6 +10012,7 @@ fn compile_core_config_inner(
             let mut visited_secs = Vec::new();
             Some(resolve_section_outbound(
                 sec,
+                &store.outbound_sources,
                 &source_tag_map,
                 &group_tag_map,
                 &sec_map,
@@ -10191,6 +10209,7 @@ fn compile_core_config_inner(
         let mut visited_secs = Vec::new();
         let target_outbound_tag = resolve_section_outbound(
             sec,
+            &store.outbound_sources,
             &source_tag_map,
             &group_tag_map,
             &sec_map,
@@ -12112,16 +12131,704 @@ fn parental_category_domains(cat: &str) -> &'static [&'static str] {
     }
 }
 
-fn build_outbound_group_map(
-    groups: &[OutboundGroup],
+#[derive(Debug, Clone, Default)]
+struct ServerFilterSpec {
+    filter_mode: String,
+    detect_server_country: String,
+    include_prefixes: Vec<String>,
+    include_countries: Vec<String>,
+    include_outbounds: Vec<String>,
+    include_regex: Vec<String>,
+    include_proxy_parameters: bool,
+    include_protocols: Vec<String>,
+    include_transports: Vec<String>,
+    include_securities: Vec<String>,
+    include_ports: Vec<String>,
+    exclude_prefixes: Vec<String>,
+    exclude_countries: Vec<String>,
+    exclude_outbounds: Vec<String>,
+    exclude_regex: Vec<String>,
+    exclude_proxy_parameters: bool,
+    exclude_protocols: Vec<String>,
+    exclude_transports: Vec<String>,
+    exclude_securities: Vec<String>,
+    exclude_ports: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct OutboundFilterMeta {
+    protocol: String,
+    transport: String,
+    security: String,
+    port: u16,
+}
+
+struct FilterCriteria<'a> {
+    prefixes: &'a [String],
+    outbounds_filter: &'a [String],
+    regexes: &'a [String],
+    countries_upper: &'a [String],
+    proxy_params_enabled: bool,
+    proxy_operator_or: bool,
+    protocols: &'a [String],
+    transports: &'a [String],
+    securities: &'a [String],
+    ports: &'a [String],
+}
+
+fn push_unique_trimmed(target: &mut Vec<String>, items: &[String]) {
+    for raw in items {
+        let s = raw.trim();
+        if !s.is_empty() && !target.iter().any(|existing| existing == s) {
+            target.push(s.to_string());
+        }
+    }
+}
+
+fn json_string_list(obj: &Map<String, Value>, key: &str) -> Vec<String> {
+    match obj.get(key) {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| match v {
+                Value::String(s) => {
+                    let t = s.trim();
+                    (!t.is_empty()).then(|| t.to_string())
+                }
+                Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            })
+            .collect(),
+        Some(Value::String(s)) => {
+            let t = s.trim();
+            if t.is_empty() {
+                Vec::new()
+            } else {
+                vec![t.to_string()]
+            }
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn json_flag_enabled(obj: &Map<String, Value>, key: &str) -> bool {
+    match obj.get(key) {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => matches!(
+            s.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Some(Value::Number(n)) => n.as_i64() == Some(1),
+        _ => false,
+    }
+}
+
+impl ServerFilterSpec {
+    fn from_json_map(obj: &Map<String, Value>) -> Self {
+        let filter_mode = obj
+            .get("filter_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let detect_server_country = obj
+            .get("detect_server_country")
+            .and_then(Value::as_str)
+            .unwrap_or("flag_emoji")
+            .trim()
+            .to_ascii_lowercase();
+        let mut include_countries = json_string_list(obj, "include_countries");
+        push_unique_trimmed(
+            &mut include_countries,
+            &json_string_list(obj, "include_country_flags"),
+        );
+        let mut include_outbounds = json_string_list(obj, "include_outbounds");
+        push_unique_trimmed(
+            &mut include_outbounds,
+            &json_string_list(obj, "include_servers"),
+        );
+        let mut include_securities = json_string_list(obj, "include_securities");
+        push_unique_trimmed(
+            &mut include_securities,
+            &json_string_list(obj, "include_security_types"),
+        );
+        let mut exclude_countries = json_string_list(obj, "exclude_countries");
+        push_unique_trimmed(
+            &mut exclude_countries,
+            &json_string_list(obj, "exclude_country_flags"),
+        );
+        let mut exclude_outbounds = json_string_list(obj, "exclude_outbounds");
+        push_unique_trimmed(
+            &mut exclude_outbounds,
+            &json_string_list(obj, "exclude_servers"),
+        );
+        let mut exclude_securities = json_string_list(obj, "exclude_securities");
+        push_unique_trimmed(
+            &mut exclude_securities,
+            &json_string_list(obj, "exclude_security_types"),
+        );
+        Self {
+            filter_mode,
+            detect_server_country,
+            include_prefixes: json_string_list(obj, "include_prefixes"),
+            include_countries,
+            include_outbounds,
+            include_regex: json_string_list(obj, "include_regex"),
+            include_proxy_parameters: json_flag_enabled(obj, "include_proxy_parameters"),
+            include_protocols: json_string_list(obj, "include_protocols"),
+            include_transports: json_string_list(obj, "include_transports"),
+            include_securities,
+            include_ports: json_string_list(obj, "include_ports"),
+            exclude_prefixes: json_string_list(obj, "exclude_prefixes"),
+            exclude_countries,
+            exclude_outbounds,
+            exclude_regex: json_string_list(obj, "exclude_regex"),
+            exclude_proxy_parameters: json_flag_enabled(obj, "exclude_proxy_parameters"),
+            exclude_protocols: json_string_list(obj, "exclude_protocols"),
+            exclude_transports: json_string_list(obj, "exclude_transports"),
+            exclude_securities,
+            exclude_ports: json_string_list(obj, "exclude_ports"),
+        }
+    }
+
+    fn has_include_rules(&self) -> bool {
+        !self.include_prefixes.is_empty()
+            || !self.include_countries.is_empty()
+            || !self.include_outbounds.is_empty()
+            || self.include_regex.iter().any(|r| !r.trim().is_empty())
+            || (self.include_proxy_parameters
+                && (!self.include_protocols.is_empty()
+                    || !self.include_transports.is_empty()
+                    || !self.include_securities.is_empty()
+                    || !self.include_ports.is_empty()))
+    }
+
+    fn has_exclude_rules(&self) -> bool {
+        !self.exclude_prefixes.is_empty()
+            || !self.exclude_countries.is_empty()
+            || !self.exclude_outbounds.is_empty()
+            || self.exclude_regex.iter().any(|r| !r.trim().is_empty())
+            || (self.exclude_proxy_parameters
+                && (!self.exclude_protocols.is_empty()
+                    || !self.exclude_transports.is_empty()
+                    || !self.exclude_securities.is_empty()
+                    || !self.exclude_ports.is_empty()))
+    }
+
+    fn has_any_rule(&self) -> bool {
+        self.has_include_rules() || self.has_exclude_rules()
+    }
+}
+
+fn port_matches_filter_condition(port: u16, cond: &str) -> bool {
+    if port == 0 {
+        return false;
+    }
+    let clean = cond.trim();
+    if clean.is_empty() {
+        return false;
+    }
+    if let Some((lo_s, hi_s)) = clean.split_once(['-', ':'])
+        && let (Ok(lo), Ok(hi)) = (lo_s.trim().parse::<u16>(), hi_s.trim().parse::<u16>())
+    {
+        return (lo..=hi).contains(&port);
+    }
+    clean.parse::<u16>().is_ok_and(|exact| exact == port)
+}
+
+fn build_outbound_filter_meta_map(outbounds: &[Value]) -> HashMap<&str, OutboundFilterMeta> {
+    let mut map = HashMap::with_capacity(outbounds.len());
+    for ob in outbounds {
+        let Some(tag) = ob.get("tag").and_then(Value::as_str) else {
+            continue;
+        };
+        let protocol = ob
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let transport = ob
+            .pointer("/transport/type")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_else(|| {
+                if matches!(protocol.as_str(), "hysteria2" | "tuic") {
+                    "quic".to_string()
+                } else if !protocol.is_empty()
+                    && !matches!(
+                        protocol.as_str(),
+                        "urltest" | "selector" | "direct" | "block"
+                    )
+                {
+                    "tcp".to_string()
+                } else {
+                    String::new()
+                }
+            });
+        let security = if ob.pointer("/tls/reality/enabled").and_then(Value::as_bool) == Some(true)
+        {
+            "reality".to_string()
+        } else if ob.pointer("/tls/enabled").and_then(Value::as_bool) == Some(true)
+            || ob
+                .get("tls")
+                .and_then(Value::as_object)
+                .is_some_and(|t| t.get("enabled").and_then(Value::as_bool) != Some(false))
+        {
+            "tls".to_string()
+        } else if !protocol.is_empty() {
+            "none".to_string()
+        } else {
+            String::new()
+        };
+        let port = ob
+            .get("server_port")
+            .and_then(Value::as_u64)
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(0);
+        map.insert(
+            tag,
+            OutboundFilterMeta {
+                protocol,
+                transport,
+                security,
+                port,
+            },
+        );
+    }
+    map
+}
+
+fn prefix_matches_tag(tag: &str, tag_srcs: &[&OutboundSource], raw_prefix: &str) -> bool {
+    let pl = raw_prefix
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim()
+        .to_ascii_lowercase();
+    if pl.is_empty() {
+        return false;
+    }
+    if tag_srcs.iter().any(|s| {
+        s.id.to_ascii_lowercase() == pl
+            || s.name.trim().to_ascii_lowercase() == pl
+            || s.node_prefix
+                .trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .to_ascii_lowercase()
+                == pl
+    }) {
+        return true;
+    }
+    let tl = tag.to_ascii_lowercase();
+    tl.starts_with(&format!("[{pl}]"))
+        || tl.starts_with(&format!("{pl} "))
+        || tl.starts_with(&format!("{pl}_"))
+}
+
+fn display_name_for_filter<'a>(
+    tag: &'a str,
+    tag_srcs: &[&OutboundSource],
+    known_prefixes: &[String],
+) -> &'a str {
+    let mut name = strip_node_tag_prefix(tag, known_prefixes);
+    for src in tag_srcs {
+        if let Some(after) = name
+            .strip_prefix(&src.id)
+            .and_then(|rest| rest.strip_prefix('_'))
+        {
+            let trimmed = after.trim();
+            if !trimmed.is_empty() {
+                name = trimmed;
+                break;
+            }
+        }
+    }
+    name
+}
+
+fn candidate_matches_criteria(
+    tag: &str,
+    display_name: &str,
+    country_upper: &str,
+    tag_srcs: &[&OutboundSource],
+    known_prefixes: &[String],
+    ob_meta: Option<&OutboundFilterMeta>,
+    criteria: &FilterCriteria<'_>,
+) -> bool {
+    let prefix_matched = !criteria.prefixes.is_empty()
+        && criteria
+            .prefixes
+            .iter()
+            .any(|p| prefix_matches_tag(tag, tag_srcs, p));
+    let name_matched = (!criteria.outbounds_filter.is_empty()
+        && criteria
+            .outbounds_filter
+            .iter()
+            .any(|flt| server_tag_matches(tag, flt, known_prefixes)))
+        || criteria.regexes.iter().any(|pat| {
+            let p = pat.trim();
+            !p.is_empty()
+                && (crate::simple_regex::regex_is_match(p, tag)
+                    || crate::simple_regex::regex_is_match(p, display_name))
+        });
+    let country_matched =
+        !country_upper.is_empty() && criteria.countries_upper.iter().any(|c| c == country_upper);
+    let base_configured = !criteria.prefixes.is_empty()
+        || !criteria.outbounds_filter.is_empty()
+        || criteria.regexes.iter().any(|r| !r.trim().is_empty())
+        || !criteria.countries_upper.is_empty();
+    let base_matches = prefix_matched || name_matched || country_matched;
+
+    if !criteria.proxy_params_enabled {
+        return base_matches;
+    }
+
+    let proto = ob_meta.map(|m| m.protocol.as_str()).unwrap_or("");
+    let trans = ob_meta.map(|m| m.transport.as_str()).unwrap_or("");
+    let sec = ob_meta.map(|m| m.security.as_str()).unwrap_or("");
+    let port = ob_meta.map(|m| m.port).unwrap_or(0);
+
+    let attr_matches = |val: &str, selected: &[String]| -> bool {
+        if selected.is_empty() {
+            true
+        } else {
+            !val.is_empty() && selected.iter().any(|s| s.eq_ignore_ascii_case(val))
+        }
+    };
+    let port_matches = |p: u16, selected: &[String]| -> bool {
+        if selected.is_empty() {
+            true
+        } else {
+            p > 0 && selected.iter().any(|c| port_matches_filter_condition(p, c))
+        }
+    };
+
+    if criteria.proxy_operator_or {
+        let any_param = (!criteria.protocols.is_empty() && attr_matches(proto, criteria.protocols))
+            || (!criteria.transports.is_empty() && attr_matches(trans, criteria.transports))
+            || (!criteria.securities.is_empty() && attr_matches(sec, criteria.securities))
+            || (!criteria.ports.is_empty() && port_matches(port, criteria.ports));
+        return base_matches || any_param;
+    }
+
+    let eff_base = if !base_configured { true } else { base_matches };
+    let all_params = attr_matches(proto, criteria.protocols)
+        && attr_matches(trans, criteria.transports)
+        && attr_matches(sec, criteria.securities)
+        && port_matches(port, criteria.ports);
+    eff_base && all_params
+}
+
+fn apply_server_filter_spec(
+    tags: &[String],
+    spec: &ServerFilterSpec,
     sources: &[OutboundSource],
     source_tag_map: &HashMap<String, Vec<String>>,
-) -> HashMap<String, Vec<String>> {
+    outbounds: &[Value],
+) -> Vec<String> {
+    let mode = spec.filter_mode.trim().to_ascii_lowercase();
+    if matches!(mode.as_str(), "disabled" | "all") || !spec.has_any_rule() {
+        return tags.to_vec();
+    }
+
     let known_prefixes: Vec<String> = sources
         .iter()
         .filter(|s| s.prefix_nodes && !s.node_prefix.trim().is_empty())
         .map(|s| s.node_prefix.trim().to_string())
         .collect();
+    let src_by_id: HashMap<&str, &OutboundSource> =
+        sources.iter().map(|s| (s.id.as_str(), s)).collect();
+    let mut tag_sources: HashMap<&str, Vec<&OutboundSource>> = HashMap::new();
+    for (src_id, src_tags) in source_tag_map {
+        if let Some(&src) = src_by_id.get(src_id.as_str()) {
+            for t in src_tags {
+                let list = tag_sources.entry(t.as_str()).or_default();
+                if !list.iter().any(|existing| existing.id == src.id) {
+                    list.push(src);
+                }
+            }
+        }
+    }
+    let outbound_meta = build_outbound_filter_meta_map(outbounds);
+
+    let inc_countries_upper: Vec<String> = spec
+        .include_countries
+        .iter()
+        .map(|c| c.trim().to_ascii_uppercase())
+        .filter(|c| !c.is_empty())
+        .collect();
+    let exc_countries_upper: Vec<String> = spec
+        .exclude_countries
+        .iter()
+        .map(|c| c.trim().to_ascii_uppercase())
+        .filter(|c| !c.is_empty())
+        .collect();
+
+    let inc_criteria = FilterCriteria {
+        prefixes: &spec.include_prefixes,
+        outbounds_filter: &spec.include_outbounds,
+        regexes: &spec.include_regex,
+        countries_upper: &inc_countries_upper,
+        proxy_params_enabled: spec.include_proxy_parameters,
+        proxy_operator_or: false,
+        protocols: &spec.include_protocols,
+        transports: &spec.include_transports,
+        securities: &spec.include_securities,
+        ports: &spec.include_ports,
+    };
+    let exc_criteria = FilterCriteria {
+        prefixes: &spec.exclude_prefixes,
+        outbounds_filter: &spec.exclude_outbounds,
+        regexes: &spec.exclude_regex,
+        countries_upper: &exc_countries_upper,
+        proxy_params_enabled: spec.exclude_proxy_parameters,
+        proxy_operator_or: true,
+        protocols: &spec.exclude_protocols,
+        transports: &spec.exclude_transports,
+        securities: &spec.exclude_securities,
+        ports: &spec.exclude_ports,
+    };
+
+    let has_inc = spec.has_include_rules();
+    let use_flag_only = spec
+        .detect_server_country
+        .eq_ignore_ascii_case("flag_emoji");
+    let eff_mode = if mode.is_empty() {
+        "mixed"
+    } else {
+        mode.as_str()
+    };
+
+    tags.iter()
+        .filter(|tag| {
+            let tag_srcs = tag_sources
+                .get(tag.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let display_name = display_name_for_filter(tag, tag_srcs, &known_prefixes);
+            let cc = if use_flag_only {
+                extract_flag_emoji_country_code(display_name)
+                    .if_empty_then(|| extract_flag_emoji_country_code(tag))
+            } else {
+                detect_country_code(tag)
+            }
+            .to_ascii_uppercase();
+            let ob_meta = outbound_meta.get(tag.as_str());
+
+            let is_included = candidate_matches_criteria(
+                tag,
+                display_name,
+                &cc,
+                tag_srcs,
+                &known_prefixes,
+                ob_meta,
+                &inc_criteria,
+            );
+            let is_excluded = candidate_matches_criteria(
+                tag,
+                display_name,
+                &cc,
+                tag_srcs,
+                &known_prefixes,
+                ob_meta,
+                &exc_criteria,
+            );
+
+            match eff_mode {
+                "include" => is_included,
+                "exclude" => !is_excluded,
+                _ => (!has_inc || is_included) && !is_excluded,
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+trait EmptyFallback {
+    fn if_empty_then<F: FnOnce() -> String>(self, f: F) -> String;
+}
+
+impl EmptyFallback for String {
+    fn if_empty_then<F: FnOnce() -> String>(self, f: F) -> String {
+        if self.is_empty() { f() } else { self }
+    }
+}
+
+fn resolve_balancer_filter_spec(
+    sec: &RoutingSection,
+    bal: &BalancerConfig,
+) -> Option<ServerFilterSpec> {
+    let raw_bs = sec.balancer_settings.trim();
+    if !raw_bs.is_empty()
+        && let Ok(Value::Object(bs_map)) = serde_json::from_str::<Value>(raw_bs)
+        && let Some(Value::Object(st)) = bs_map.get(&bal.id)
+    {
+        let mut spec = ServerFilterSpec::from_json_map(st);
+        let fmode = spec.filter_mode.as_str();
+        if !fmode.is_empty() {
+            if matches!(fmode, "disabled" | "all") {
+                return None;
+            }
+            if spec.has_any_rule() {
+                return Some(spec);
+            }
+            return None;
+        }
+        if spec.has_any_rule() {
+            spec.filter_mode = "mixed".to_string();
+            return Some(spec);
+        }
+    }
+
+    let bal_mode = bal.filter_mode.trim().to_ascii_lowercase();
+    if matches!(bal_mode.as_str(), "disabled" | "all") {
+        return None;
+    }
+
+    let mut include_regex = bal.include_regex.clone();
+    if !bal.include_name_regex.trim().is_empty() {
+        push_unique_trimmed(
+            &mut include_regex,
+            std::slice::from_ref(&bal.include_name_regex),
+        );
+    }
+    let mut exclude_regex = bal.exclude_regex.clone();
+    if !bal.exclude_name_regex.trim().is_empty() {
+        push_unique_trimmed(
+            &mut exclude_regex,
+            std::slice::from_ref(&bal.exclude_name_regex),
+        );
+    }
+
+    let inc_params_present = !bal.include_protocols.is_empty()
+        || !bal.include_transports.is_empty()
+        || !bal.include_security_types.is_empty()
+        || !bal.include_ports.is_empty();
+    let exc_params_present = !bal.exclude_protocols.is_empty()
+        || !bal.exclude_transports.is_empty()
+        || !bal.exclude_security_types.is_empty()
+        || !bal.exclude_ports.is_empty();
+
+    let spec = ServerFilterSpec {
+        filter_mode: if bal_mode.is_empty() {
+            "mixed".to_string()
+        } else {
+            bal_mode
+        },
+        detect_server_country: String::new(),
+        include_prefixes: bal.include_prefixes.clone(),
+        include_countries: bal.include_country_flags.clone(),
+        include_outbounds: bal.include_servers.clone(),
+        include_regex,
+        include_proxy_parameters: bal.include_proxy_parameters || inc_params_present,
+        include_protocols: bal.include_protocols.clone(),
+        include_transports: bal.include_transports.clone(),
+        include_securities: bal.include_security_types.clone(),
+        include_ports: bal.include_ports.clone(),
+        exclude_prefixes: bal.exclude_prefixes.clone(),
+        exclude_countries: bal.exclude_country_flags.clone(),
+        exclude_outbounds: bal.exclude_servers.clone(),
+        exclude_regex,
+        exclude_proxy_parameters: bal.exclude_proxy_parameters || exc_params_present,
+        exclude_protocols: bal.exclude_protocols.clone(),
+        exclude_transports: bal.exclude_transports.clone(),
+        exclude_securities: bal.exclude_security_types.clone(),
+        exclude_ports: bal.exclude_ports.clone(),
+    };
+
+    spec.has_any_rule().then_some(spec)
+}
+
+fn push_legacy_pipe_or_regex(target: &mut Vec<String>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if trimmed.contains('(') || trimmed.contains('[') {
+        push_unique_trimmed(target, &[trimmed.to_string()]);
+        return;
+    }
+    for part in trimmed.split('|') {
+        let p = part.trim();
+        if !p.is_empty() {
+            push_unique_trimmed(target, &[p.to_string()]);
+        }
+    }
+}
+
+fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec> {
+    let mode = sec.section_filter_mode.trim().to_ascii_lowercase();
+    if mode.is_empty() || matches!(mode.as_str(), "disabled" | "all") {
+        return None;
+    }
+
+    let mut include_prefixes = sec.section_include_prefixes.clone();
+    push_unique_trimmed(&mut include_prefixes, &sec.include_prefixes);
+    let mut exclude_prefixes = sec.section_exclude_prefixes.clone();
+    push_unique_trimmed(&mut exclude_prefixes, &sec.exclude_prefixes);
+
+    let mut include_countries = sec.section_include_countries.clone();
+    push_unique_trimmed(&mut include_countries, &sec.include_countries);
+    let mut exclude_countries = sec.section_exclude_countries.clone();
+    push_unique_trimmed(&mut exclude_countries, &sec.exclude_countries);
+
+    let mut include_regex = sec.section_include_regex.clone();
+    push_legacy_pipe_or_regex(&mut include_regex, &sec.node_filter_allow);
+    let mut exclude_regex = sec.section_exclude_regex.clone();
+    push_legacy_pipe_or_regex(&mut exclude_regex, &sec.node_filter_deny);
+
+    let inc_params = !sec.include_protocols.is_empty()
+        || !sec.include_transports.is_empty()
+        || !sec.include_securities.is_empty();
+    let exc_params = !sec.exclude_protocols.is_empty()
+        || !sec.exclude_transports.is_empty()
+        || !sec.exclude_securities.is_empty();
+
+    let spec = ServerFilterSpec {
+        filter_mode: mode,
+        detect_server_country: String::new(),
+        include_prefixes,
+        include_countries,
+        include_outbounds: Vec::new(),
+        include_regex,
+        include_proxy_parameters: inc_params,
+        include_protocols: sec.include_protocols.clone(),
+        include_transports: sec.include_transports.clone(),
+        include_securities: sec.include_securities.clone(),
+        include_ports: Vec::new(),
+        exclude_prefixes,
+        exclude_countries,
+        exclude_outbounds: Vec::new(),
+        exclude_regex,
+        exclude_proxy_parameters: exc_params,
+        exclude_protocols: sec.exclude_protocols.clone(),
+        exclude_transports: sec.exclude_transports.clone(),
+        exclude_securities: sec.exclude_securities.clone(),
+        exclude_ports: Vec::new(),
+    };
+
+    spec.has_any_rule().then_some(spec)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn build_outbound_group_map(
+    groups: &[OutboundGroup],
+    sources: &[OutboundSource],
+    source_tag_map: &HashMap<String, Vec<String>>,
+) -> HashMap<String, Vec<String>> {
+    build_outbound_group_map_with_outbounds(groups, sources, source_tag_map, &[])
+}
+
+fn build_outbound_group_map_with_outbounds(
+    groups: &[OutboundGroup],
+    sources: &[OutboundSource],
+    source_tag_map: &HashMap<String, Vec<String>>,
+    outbounds: &[Value],
+) -> HashMap<String, Vec<String>> {
     let mut map = HashMap::new();
     for grp in groups.iter().filter(|g| g.enabled) {
         let mut refs = Vec::new();
@@ -12152,83 +12859,58 @@ fn build_outbound_group_map(
                 }
             }
         }
-        let inc_cc: Vec<String> = grp
-            .include_country_flags
-            .iter()
-            .map(|c| c.to_uppercase())
-            .collect();
-        let exc_cc: Vec<String> = grp
-            .exclude_country_flags
-            .iter()
-            .map(|c| c.to_uppercase())
-            .collect();
-        let inc_kw = grp.include_name_regex.trim().to_lowercase();
-        let exc_kw = grp.exclude_name_regex.trim().to_lowercase();
-        if !inc_cc.is_empty()
-            || !exc_cc.is_empty()
-            || !inc_kw.is_empty()
-            || !exc_kw.is_empty()
-            || !grp.include_prefixes.is_empty()
-            || !grp.exclude_prefixes.is_empty()
-            || !grp.include_servers.is_empty()
-            || !grp.exclude_servers.is_empty()
-        {
-            let filtered: Vec<String> = tags
-                .iter()
-                .filter(|tag| {
-                    let cc = detect_country_code(tag).to_uppercase();
-                    let tl = tag.to_lowercase();
-                    if !inc_cc.is_empty() && !inc_cc.contains(&cc) {
-                        return false;
-                    }
-                    if !exc_cc.is_empty() && exc_cc.contains(&cc) {
-                        return false;
-                    }
-                    if !grp.include_prefixes.is_empty()
-                        && !grp.include_prefixes.iter().any(|p| {
-                            let pt = p.trim();
-                            tag.starts_with(&format!("[{pt}]"))
-                                || tag.starts_with(&format!("{pt} "))
-                        })
-                    {
-                        return false;
-                    }
-                    if !grp.exclude_prefixes.is_empty()
-                        && grp.exclude_prefixes.iter().any(|p| {
-                            let pt = p.trim();
-                            tag.starts_with(&format!("[{pt}]"))
-                                || tag.starts_with(&format!("{pt} "))
-                        })
-                    {
-                        return false;
-                    }
-                    if !inc_kw.is_empty() && !tl.contains(&inc_kw) {
-                        return false;
-                    }
-                    if !exc_kw.is_empty() && tl.contains(&exc_kw) {
-                        return false;
-                    }
-                    if !grp.include_servers.is_empty()
-                        && !grp
-                            .include_servers
-                            .iter()
-                            .any(|inc| server_tag_matches(tag, inc, &known_prefixes))
-                    {
-                        return false;
-                    }
-                    if grp
-                        .exclude_servers
-                        .iter()
-                        .any(|exc| server_tag_matches(tag, exc, &known_prefixes))
-                    {
-                        return false;
-                    }
-                    true
-                })
-                .cloned()
-                .collect();
-            tags = filtered;
+        let mut include_regex = grp.include_regex.clone();
+        if !grp.include_name_regex.trim().is_empty() {
+            push_unique_trimmed(
+                &mut include_regex,
+                std::slice::from_ref(&grp.include_name_regex),
+            );
         }
+        let mut exclude_regex = grp.exclude_regex.clone();
+        if !grp.exclude_name_regex.trim().is_empty() {
+            push_unique_trimmed(
+                &mut exclude_regex,
+                std::slice::from_ref(&grp.exclude_name_regex),
+            );
+        }
+        let inc_params = grp.include_proxy_parameters
+            || !grp.include_protocols.is_empty()
+            || !grp.include_transports.is_empty()
+            || !grp.include_security_types.is_empty()
+            || !grp.include_ports.is_empty();
+        let exc_params = grp.exclude_proxy_parameters
+            || !grp.exclude_protocols.is_empty()
+            || !grp.exclude_transports.is_empty()
+            || !grp.exclude_security_types.is_empty()
+            || !grp.exclude_ports.is_empty();
+        let raw_mode = grp.filter_mode.trim().to_ascii_lowercase();
+        let spec = ServerFilterSpec {
+            filter_mode: if raw_mode.is_empty() {
+                "mixed".to_string()
+            } else {
+                raw_mode
+            },
+            detect_server_country: String::new(),
+            include_prefixes: grp.include_prefixes.clone(),
+            include_countries: grp.include_country_flags.clone(),
+            include_outbounds: grp.include_servers.clone(),
+            include_regex,
+            include_proxy_parameters: inc_params,
+            include_protocols: grp.include_protocols.clone(),
+            include_transports: grp.include_transports.clone(),
+            include_securities: grp.include_security_types.clone(),
+            include_ports: grp.include_ports.clone(),
+            exclude_prefixes: grp.exclude_prefixes.clone(),
+            exclude_countries: grp.exclude_country_flags.clone(),
+            exclude_outbounds: grp.exclude_servers.clone(),
+            exclude_regex,
+            exclude_proxy_parameters: exc_params,
+            exclude_protocols: grp.exclude_protocols.clone(),
+            exclude_transports: grp.exclude_transports.clone(),
+            exclude_securities: grp.exclude_security_types.clone(),
+            exclude_ports: grp.exclude_ports.clone(),
+        };
+        tags = apply_server_filter_spec(&tags, &spec, sources, source_tag_map, outbounds);
         map.insert(grp.id.clone(), tags);
     }
     map
@@ -12241,6 +12923,7 @@ fn build_outbound_group_map(
 #[allow(clippy::too_many_arguments)]
 fn resolve_section_outbound(
     sec: &RoutingSection,
+    sources: &[OutboundSource],
     source_tag_map: &HashMap<String, Vec<String>>,
     group_tag_map: &HashMap<String, Vec<String>>,
     sec_map: &HashMap<&str, &RoutingSection>,
@@ -12296,6 +12979,7 @@ fn resolve_section_outbound(
         {
             let child_tag = resolve_section_outbound(
                 child_sec,
+                sources,
                 source_tag_map,
                 group_tag_map,
                 sec_map,
@@ -12314,66 +12998,15 @@ fn resolve_section_outbound(
 
     visited.pop();
 
-    // Apply section-level server narrowing filters (country filter & keyword/regex filter)
-    let filter_mode = sec.section_filter_mode.trim();
-    if !filter_mode.is_empty()
-        && !filter_mode.eq_ignore_ascii_case("disabled")
-        && (!sec.include_countries.is_empty()
-            || !sec.exclude_countries.is_empty()
-            || !sec.node_filter_allow.trim().is_empty()
-            || !sec.node_filter_deny.trim().is_empty())
-    {
-        let inc_c: Vec<String> = sec
-            .include_countries
-            .iter()
-            .map(|c| c.to_uppercase())
-            .collect();
-        let exc_c: Vec<String> = sec
-            .exclude_countries
-            .iter()
-            .map(|c| c.to_uppercase())
-            .collect();
-        let allow_kw: Vec<&str> = sec
-            .node_filter_allow
-            .split('|')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        let deny_kw: Vec<&str> = sec
-            .node_filter_deny
-            .split('|')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        let filtered: Vec<String> = candidate_tags
-            .iter()
-            .filter(|tag| {
-                let cc = detect_country_code(tag).to_uppercase();
-                if !inc_c.is_empty() && !inc_c.contains(&cc) {
-                    return false;
-                }
-                if !exc_c.is_empty() && exc_c.contains(&cc) {
-                    return false;
-                }
-                if !allow_kw.is_empty()
-                    && !allow_kw
-                        .iter()
-                        .any(|k| tag_matches_keyword_or_telemetry(tag, k, &[]))
-                {
-                    return false;
-                }
-                if !deny_kw.is_empty()
-                    && deny_kw
-                        .iter()
-                        .any(|k| tag_matches_keyword_or_telemetry(tag, k, &[]))
-                {
-                    return false;
-                }
-                true
-            })
-            .cloned()
-            .collect();
-        candidate_tags = filtered;
+    // Apply section-level server narrowing filters (country, prefix, regex & proxy params)
+    if let Some(sec_spec) = resolve_section_filter_spec(sec) {
+        candidate_tags = apply_server_filter_spec(
+            &candidate_tags,
+            &sec_spec,
+            sources,
+            source_tag_map,
+            outbounds,
+        );
     }
 
     if candidate_tags.is_empty()
@@ -12584,11 +13217,24 @@ fn resolve_section_outbound(
             let bal_tag = format!("bal-{}-{}", sec.id, bal.id);
             if !seen_outbound_tags.contains_key(&bal_tag) {
                 seen_outbound_tags.insert(bal_tag.clone(), true);
-                outbounds.push(build_balancer_outbound(
-                    &bal_tag,
-                    bal,
-                    candidate_tags.clone(),
-                ));
+                let bal_candidates = if let Some(bal_spec) = resolve_balancer_filter_spec(sec, bal)
+                {
+                    let filtered = apply_server_filter_spec(
+                        &candidate_tags,
+                        &bal_spec,
+                        sources,
+                        source_tag_map,
+                        outbounds,
+                    );
+                    if filtered.is_empty() {
+                        candidate_tags.clone()
+                    } else {
+                        filtered
+                    }
+                } else {
+                    candidate_tags.clone()
+                };
+                outbounds.push(build_balancer_outbound(&bal_tag, bal, bal_candidates));
             }
             let raw_mode = if !bal.mode.trim().is_empty() {
                 bal.mode.trim().to_ascii_lowercase()
@@ -18135,5 +18781,168 @@ config timeserver 'ntp'
             "cloned section must not emit duplicate mixed inbound on port 1088"
         );
         assert_eq!(mixed_1088[0]["tag"], "mixed-sec-Main");
+    }
+
+    #[test]
+    fn test_section_balancer_settings_and_regex_filters() {
+        let mut store = RouterStoreData::default();
+        let lte_fi = "vless://11111111-1111-1111-1111-111111111111@203.0.113.10:443#%F0%9F%87%AB%F0%9F%87%AE%20%F0%9F%8E%AE%20%E2%AD%90%200.1X%20-%20LTE%20%E2%84%96134%20-%20Hysteria2";
+        let lte_ch = "vless://22222222-2222-2222-2222-222222222222@203.0.113.11:443#%F0%9F%87%A8%F0%9F%87%AD%20%E2%9A%A1%20%E2%AD%90%200.1X%20-%20LTE%20%E2%84%96136%20-%20%D0%A8%D0%B2%D0%B5%D0%B9%D1%86%D0%B0%D1%80%D0%B8%D1%8F";
+        let ru_node = "vless://33333333-3333-3333-3333-333333333333@203.0.113.12:443#%F0%9F%87%B7%F0%9F%87%BA%20%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F";
+        let by_node = "vless://44444444-4444-4444-4444-444444444444@203.0.113.13:443#%F0%9F%87%A7%F0%9F%87%BE%20%D0%91%D0%B5%D0%BB%D0%B0%D1%80%D1%83%D1%81%D1%8C";
+        let ee_ok = "vless://55555555-5555-5555-5555-555555555555@203.0.113.14:443#%F0%9F%87%AA%F0%9F%87%AA%20%D0%AD%D1%81%D1%82%D0%BE%D0%BD%D0%B8%D1%8F";
+        let fi_ok = "vless://66666666-6666-6666-6666-666666666666@203.0.113.15:443#%F0%9F%87%AB%F0%9F%87%AE%20%D0%A4%D0%B8%D0%BD%D0%BB%D1%8F%D0%BD%D0%B4%D0%B8%D1%8F";
+        let de_ok = "hysteria2://pass@203.0.113.16:8443?insecure=1#%F0%9F%87%A9%F0%9F%87%AA%20%D0%93%D0%B5%D1%80%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F%20%232";
+
+        store.outbound_sources.push(OutboundSource {
+            id: "sub_main".to_string(),
+            enabled: true,
+            source_type: "urls".to_string(),
+            proxy_links: vec![
+                lte_fi.to_string(),
+                lte_ch.to_string(),
+                ru_node.to_string(),
+                by_node.to_string(),
+                ee_ok.to_string(),
+                fi_ok.to_string(),
+                de_ok.to_string(),
+            ],
+            ..Default::default()
+        });
+
+        store.balancers.push(BalancerConfig {
+            id: "bal_auto_Main".to_string(),
+            enabled: true,
+            name: "Main Auto".to_string(),
+            balancer_type: "urltest".to_string(),
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_regex_meta".to_string(),
+            enabled: true,
+            name: "Meta Regex".to_string(),
+            balancer_type: "urltest".to_string(),
+            filter_mode: "exclude".to_string(),
+            exclude_regex: vec![r"0\.1X.*LTE".to_string(), r"^🇷🇺".to_string()],
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_override_disabled".to_string(),
+            enabled: true,
+            name: "Global Filtered".to_string(),
+            balancer_type: "urltest".to_string(),
+            filter_mode: "exclude".to_string(),
+            exclude_regex: vec!["LTE|BY".to_string()],
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_proto_exc".to_string(),
+            enabled: true,
+            name: "Proto Exc".to_string(),
+            balancer_type: "urltest".to_string(),
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_all_excluded".to_string(),
+            enabled: true,
+            name: "All Excluded Fallback".to_string(),
+            balancer_type: "urltest".to_string(),
+            ..Default::default()
+        });
+
+        let bs = json!({
+            "bal_auto_Main": {
+                "filter_mode": "exclude",
+                "detect_server_country": "flag_emoji",
+                "exclude_countries": ["RU", "BY", "UA"],
+                "exclude_regex": ["LTE", "lte"]
+            },
+            "bal_override_disabled": {
+                "filter_mode": "disabled"
+            },
+            "bal_proto_exc": {
+                "filter_mode": "exclude",
+                "exclude_proxy_parameters": "1",
+                "exclude_protocols": ["hysteria2"]
+            },
+            "bal_all_excluded": {
+                "filter_mode": "include",
+                "include_regex": ["NEVER_MATCHES_ANYTHING"]
+            }
+        })
+        .to_string();
+
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            action: "connection".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["sub_main".to_string()],
+            balancer_refs: vec![
+                "bal_auto_Main".to_string(),
+                "bal_regex_meta".to_string(),
+                "bal_override_disabled".to_string(),
+                "bal_proto_exc".to_string(),
+                "bal_all_excluded".to_string(),
+            ],
+            balancer_settings: bs,
+            match_all: true,
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let obs = cfg["outbounds"].as_array().expect("outbounds array");
+        let find_bal_outs = |bal_tag: &str| -> Vec<String> {
+            obs.iter().find(|o| o["tag"] == bal_tag).expect(bal_tag)["outbounds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        };
+
+        let auto_outs = find_bal_outs("bal-Main-bal_auto_Main");
+        assert!(
+            !auto_outs
+                .iter()
+                .any(|t| t.contains("LTE") || t.contains("Россия") || t.contains("Беларусь")),
+            "LTE nodes and RU/BY countries must be excluded from bal-Main-bal_auto_Main: {auto_outs:?}"
+        );
+        assert_eq!(
+            auto_outs,
+            vec![
+                "🇪🇪 Эстония".to_string(),
+                "🇫🇮 Финляндия".to_string(),
+                "🇩🇪 Германия #2".to_string(),
+            ]
+        );
+
+        let meta_outs = find_bal_outs("bal-Main-bal_regex_meta");
+        assert!(
+            !meta_outs
+                .iter()
+                .any(|t| t.contains("LTE") || t.contains("Россия"))
+        );
+        assert!(meta_outs.iter().any(|t| t.contains("Беларусь")));
+
+        let disabled_outs = find_bal_outs("bal-Main-bal_override_disabled");
+        assert_eq!(
+            disabled_outs.len(),
+            7,
+            "section disabled override must keep all 7 nodes"
+        );
+
+        let proto_outs = find_bal_outs("bal-Main-bal_proto_exc");
+        assert!(!proto_outs.iter().any(|t| t.contains("Германия #2")));
+        assert_eq!(proto_outs.len(), 6);
+
+        let fallback_outs = find_bal_outs("bal-Main-bal_all_excluded");
+        assert_eq!(
+            fallback_outs.len(),
+            7,
+            "100%-excluded balancer must safely fall back to full candidate pool"
+        );
     }
 }

@@ -15,6 +15,7 @@ mod diagnostics;
 mod fuzzer;
 mod mcp;
 mod net_stack;
+mod simple_regex;
 mod smart_detect;
 mod snapshots;
 mod store;

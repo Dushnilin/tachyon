@@ -197,7 +197,11 @@ function createController() {
           item.appendChild(button);
         }
         const result = results.get(value);
-        button.textContent = result ? formatMs(result.stats.median) : '—';
+        button.textContent = result
+          ? result.stats.success > 0
+            ? formatMs(result.stats.median)
+            : _('Unavailable')
+          : '—';
         button.disabled = !result;
         button.title = result
           ? _('Median; successful queries: %s / %s. Click for details.').format(

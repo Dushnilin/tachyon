@@ -1570,7 +1570,21 @@ pub struct RoutingSection {
 
     // Section-level server pool narrowing & dashboard filter
     #[serde(default)]
+    pub balancer_settings: String,
+    #[serde(default)]
     pub section_filter_mode: String,
+    #[serde(default)]
+    pub section_include_prefixes: Vec<String>,
+    #[serde(default)]
+    pub section_exclude_prefixes: Vec<String>,
+    #[serde(default)]
+    pub section_include_countries: Vec<String>,
+    #[serde(default)]
+    pub section_exclude_countries: Vec<String>,
+    #[serde(default)]
+    pub section_include_regex: Vec<String>,
+    #[serde(default)]
+    pub section_exclude_regex: Vec<String>,
     #[serde(default)]
     pub include_countries: Vec<String>,
     #[serde(default)]
@@ -2514,6 +2528,8 @@ pub struct OutboundSource {
     #[serde(default)]
     pub accept_language: String,
     #[serde(default)]
+    pub sub_preferred_user_agent: String,
+    #[serde(default)]
     pub show_dashboard_metadata: bool,
     #[serde(default)]
     pub include_urltest_groups: bool,
@@ -2669,6 +2685,8 @@ pub struct BalancerConfig {
     #[serde(default)]
     pub pin_dashboard: bool,
     #[serde(default)]
+    pub include_proxy_parameters: bool,
+    #[serde(default)]
     pub exclude_proxy_parameters: bool,
     #[serde(default)]
     pub include_prefixes: Vec<String>,
@@ -2676,6 +2694,8 @@ pub struct BalancerConfig {
     pub include_country_flags: Vec<String>,
     #[serde(default)]
     pub include_servers: Vec<String>,
+    #[serde(default)]
+    pub include_regex: Vec<String>,
     #[serde(default)]
     pub include_name_regex: String,
     #[serde(default)]
@@ -2692,6 +2712,8 @@ pub struct BalancerConfig {
     pub exclude_country_flags: Vec<String>,
     #[serde(default)]
     pub exclude_servers: Vec<String>,
+    #[serde(default)]
+    pub exclude_regex: Vec<String>,
     #[serde(default)]
     pub exclude_name_regex: String,
     #[serde(default)]
@@ -2726,11 +2748,17 @@ pub struct OutboundGroup {
     #[serde(default = "default_true")]
     pub detect_server_country: bool,
     #[serde(default)]
+    pub include_proxy_parameters: bool,
+    #[serde(default)]
+    pub exclude_proxy_parameters: bool,
+    #[serde(default)]
     pub include_prefixes: Vec<String>,
     #[serde(default)]
     pub include_country_flags: Vec<String>,
     #[serde(default)]
     pub include_servers: Vec<String>,
+    #[serde(default)]
+    pub include_regex: Vec<String>,
     #[serde(default)]
     pub include_name_regex: String,
     #[serde(default)]
@@ -2747,6 +2775,8 @@ pub struct OutboundGroup {
     pub exclude_country_flags: Vec<String>,
     #[serde(default)]
     pub exclude_servers: Vec<String>,
+    #[serde(default)]
+    pub exclude_regex: Vec<String>,
     #[serde(default)]
     pub exclude_name_regex: String,
     #[serde(default)]
@@ -3380,9 +3410,9 @@ pub struct RouterStoreData {
     pub applied_migrations: Vec<String>,
 }
 
-impl Default for RouterStoreData {
-    fn default() -> Self {
-        let mut s = Self {
+impl RouterStoreData {
+    fn empty_base() -> Self {
+        Self {
             settings: GlobalSettings::default(),
             sections: Vec::new(),
             conditions: Vec::new(),
@@ -3396,7 +3426,22 @@ impl Default for RouterStoreData {
             telegram: TgBotConfig::default(),
             device_registry: HashMap::new(),
             applied_migrations: Vec::new(),
-        };
+        }
+    }
+
+    pub fn factory_defaults() -> Self {
+        let mut s = Self::empty_base();
+        s.seed_defaults();
+        s.apply_relax_probe_intervals_v1();
+        s.apply_fail_closed_auto_defaults();
+        s.apply_ai_lists_1_8();
+        s
+    }
+}
+
+impl Default for RouterStoreData {
+    fn default() -> Self {
+        let mut s = Self::empty_base();
         if s.import_legacy_router_files() == 0 {
             s.seed_defaults();
         }
@@ -4349,6 +4394,13 @@ impl RouterStoreData {
                         }
                         lists.insert(k.clone(), vec_str);
                     }
+                    Value::Object(m) => {
+                        if !m.is_empty()
+                            && let Ok(serialized) = serde_json::to_string(v)
+                        {
+                            options.insert(k.clone(), serialized);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -5289,24 +5341,33 @@ impl RouterStoreData {
                             .opt("detect_server_country")
                             .is_none_or(|v| v.trim().is_empty() || parse_bool(v)),
                         pin_dashboard: b.opt("pin_dashboard").is_some_and(parse_bool),
+                        include_proxy_parameters: b
+                            .opt("include_proxy_parameters")
+                            .is_some_and(parse_bool),
                         exclude_proxy_parameters: b
                             .opt("exclude_proxy_parameters")
                             .is_some_and(parse_bool),
                         include_prefixes: b.list("include_prefixes"),
-                        include_country_flags: b.list("include_country_flags"),
-                        include_servers: b.list("include_servers"),
+                        include_country_flags: b
+                            .merge_lists("include_countries", "include_country_flags"),
+                        include_servers: b.merge_lists("include_outbounds", "include_servers"),
+                        include_regex: b.raw_list("include_regex"),
                         include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
                         include_protocols: b.list("include_protocols"),
                         include_transports: b.list("include_transports"),
-                        include_security_types: b.list("include_security_types"),
+                        include_security_types: b
+                            .merge_lists("include_securities", "include_security_types"),
                         include_ports: b.list("include_ports"),
                         exclude_prefixes: b.list("exclude_prefixes"),
-                        exclude_country_flags: b.list("exclude_country_flags"),
-                        exclude_servers: b.list("exclude_servers"),
+                        exclude_country_flags: b
+                            .merge_lists("exclude_countries", "exclude_country_flags"),
+                        exclude_servers: b.merge_lists("exclude_outbounds", "exclude_servers"),
+                        exclude_regex: b.raw_list("exclude_regex"),
                         exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
                         exclude_protocols: b.list("exclude_protocols"),
                         exclude_transports: b.list("exclude_transports"),
-                        exclude_security_types: b.list("exclude_security_types"),
+                        exclude_security_types: b
+                            .merge_lists("exclude_securities", "exclude_security_types"),
                         exclude_ports: b.list("exclude_ports"),
                         ..Default::default()
                     });
@@ -5678,6 +5739,10 @@ impl RouterStoreData {
                         device_locale: b.opt("device_locale").unwrap_or("").to_string(),
                         app_version: b.opt("app_version").unwrap_or("").to_string(),
                         accept_language: b.opt("accept_language").unwrap_or("").to_string(),
+                        sub_preferred_user_agent: b
+                            .opt("sub_preferred_user_agent")
+                            .unwrap_or("")
+                            .to_string(),
                         show_dashboard_metadata: b
                             .opt("show_dashboard_metadata")
                             .is_some_and(parse_bool),
@@ -5807,6 +5872,10 @@ impl RouterStoreData {
                                 src.sub_expire_unix = prev.sub_expire_unix;
                                 src.sub_last_error = prev.sub_last_error.clone();
                                 src.last_updated_unix = prev.last_updated_unix;
+                                if src.sub_preferred_user_agent.is_empty() {
+                                    src.sub_preferred_user_agent =
+                                        prev.sub_preferred_user_agent.clone();
+                                }
                             }
                         }
                         if src.cached_nodes.is_empty() {
@@ -5832,37 +5901,33 @@ impl RouterStoreData {
                                 "0" | "false" | "off" | "no" | "disabled"
                             )
                         }),
+                        include_proxy_parameters: b
+                            .opt("include_proxy_parameters")
+                            .is_some_and(parse_bool),
+                        exclude_proxy_parameters: b
+                            .opt("exclude_proxy_parameters")
+                            .is_some_and(parse_bool),
                         include_prefixes: b.list("include_prefixes"),
-                        include_country_flags: b.list("include_country_flags"),
-                        include_servers: {
-                            let mut s = b.list("include_servers");
-                            for item in b.list("include_outbounds") {
-                                if !s.contains(&item) {
-                                    s.push(item);
-                                }
-                            }
-                            s
-                        },
+                        include_country_flags: b
+                            .merge_lists("include_countries", "include_country_flags"),
+                        include_servers: b.merge_lists("include_outbounds", "include_servers"),
+                        include_regex: b.raw_list("include_regex"),
                         include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
                         include_protocols: b.list("include_protocols"),
                         include_transports: b.list("include_transports"),
-                        include_security_types: b.list("include_security_types"),
+                        include_security_types: b
+                            .merge_lists("include_securities", "include_security_types"),
                         include_ports: b.list("include_ports"),
                         exclude_prefixes: b.list("exclude_prefixes"),
-                        exclude_country_flags: b.list("exclude_country_flags"),
-                        exclude_servers: {
-                            let mut s = b.list("exclude_servers");
-                            for item in b.list("exclude_outbounds") {
-                                if !s.contains(&item) {
-                                    s.push(item);
-                                }
-                            }
-                            s
-                        },
+                        exclude_country_flags: b
+                            .merge_lists("exclude_countries", "exclude_country_flags"),
+                        exclude_servers: b.merge_lists("exclude_outbounds", "exclude_servers"),
+                        exclude_regex: b.raw_list("exclude_regex"),
                         exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
                         exclude_protocols: b.list("exclude_protocols"),
                         exclude_transports: b.list("exclude_transports"),
-                        exclude_security_types: b.list("exclude_security_types"),
+                        exclude_security_types: b
+                            .merge_lists("exclude_securities", "exclude_security_types"),
                         exclude_ports: b.list("exclude_ports"),
                     });
                     imported += 1;
@@ -5971,10 +6036,17 @@ impl RouterStoreData {
                         interfaces: b.list("interfaces"),
                         output_interface: b.opt("output_interface").unwrap_or("").to_string(),
                         server_domain_rules: b.list("server_domain_rules"),
+                        balancer_settings: b.opt("balancer_settings").unwrap_or("").to_string(),
                         section_filter_mode: b
                             .opt("section_filter_mode")
                             .unwrap_or("disabled")
                             .to_string(),
+                        section_include_prefixes: b.list("section_include_prefixes"),
+                        section_exclude_prefixes: b.list("section_exclude_prefixes"),
+                        section_include_countries: b.list("section_include_countries"),
+                        section_exclude_countries: b.list("section_exclude_countries"),
+                        section_include_regex: b.raw_list("section_include_regex"),
+                        section_exclude_regex: b.raw_list("section_exclude_regex"),
                         include_countries: b.list("include_countries"),
                         exclude_countries: b.list("exclude_countries"),
                         include_prefixes: b.list("include_prefixes"),
@@ -7184,6 +7256,15 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         idx += 1;
     }
 
+    let filter_rename_keys = [
+        ("include_country_flags", "include_countries"),
+        ("exclude_country_flags", "exclude_countries"),
+        ("include_servers", "include_outbounds"),
+        ("exclude_servers", "exclude_outbounds"),
+        ("include_security_types", "include_securities"),
+        ("exclude_security_types", "exclude_securities"),
+    ];
+
     for bal in &store.balancers {
         if bal.id.trim().is_empty() {
             continue;
@@ -7195,7 +7276,7 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 &bal.id,
                 idx,
                 bal,
-                &[],
+                &filter_rename_keys,
                 &[],
                 &[],
                 existing_obj(&bal.id),
@@ -7216,7 +7297,7 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 &grp.id,
                 idx,
                 grp,
-                &[],
+                &filter_rename_keys,
                 &[],
                 &[],
                 existing_obj(&grp.id),
@@ -7947,6 +8028,27 @@ impl LegacyUciBlock {
                 .filter(|v| !v.is_empty())
                 .map(String::from)
                 .collect();
+        }
+        Vec::new()
+    }
+    fn merge_lists(&self, primary: &str, legacy: &str) -> Vec<String> {
+        let mut out = self.list(primary);
+        for item in self.list(legacy) {
+            if !out.contains(&item) {
+                out.push(item);
+            }
+        }
+        out
+    }
+    fn raw_list(&self, key: &str) -> Vec<String> {
+        if let Some(l) = self.lists.get(key) {
+            return l.clone();
+        }
+        if let Some(s) = self.options.get(key) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return vec![trimmed.to_string()];
+            }
         }
         Vec::new()
     }
@@ -10000,5 +10102,160 @@ config outbound_source 'src_DeluxHost2_TewFai'
         assert_eq!(repaired.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         assert!(repaired.username.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_json_sections_round_trip_balancer_settings_and_filter_renames() {
+        let bal_settings_json = serde_json::json!({
+            "bal_auto_Main": {
+                "filter_mode": "exclude",
+                "detect_server_country": "flag_emoji",
+                "exclude_countries": ["RU", "BY", "UA"],
+                "exclude_regex": ["LTE", "lte"]
+            }
+        })
+        .to_string();
+
+        let initial_sections = serde_json::json!({
+            "Main": {
+                ".type": "section",
+                ".name": "Main",
+                ".index": 0,
+                "action": "proxy",
+                "balancer_refs": ["bal_auto_Main"],
+                "balancer_settings": bal_settings_json,
+                "section_include_regex": ["^🇫🇮", "VK|OZON"],
+                "section_exclude_regex": ["0\\.1X.*LTE"]
+            },
+            "bal_auto_Main": {
+                ".type": "balancer",
+                ".name": "bal_auto_Main",
+                ".index": 1,
+                "name": "Основная подписка",
+                "balancer_type": "urltest",
+                "filter_mode": "exclude",
+                "exclude_countries": ["RU", "BY"],
+                "exclude_regex": ["LTE", "lte"]
+            },
+            "grp_custom": {
+                ".type": "outbound_group",
+                ".name": "grp_custom",
+                ".index": 2,
+                "name": "Custom",
+                "filter_mode": "exclude",
+                "exclude_countries": ["CN"],
+                "exclude_outbounds": ["bad-node"],
+                "exclude_regex": ["slow"]
+            }
+        });
+
+        let mut store = RouterStoreData::default();
+        store.import_from_json_sections(initial_sections.as_object().expect("sections map"));
+
+        let sec_main = store
+            .sections
+            .iter()
+            .find(|s| s.id == "Main")
+            .expect("Main section");
+        assert_eq!(sec_main.balancer_settings, bal_settings_json);
+        assert_eq!(
+            sec_main.section_include_regex,
+            vec!["^🇫🇮".to_string(), "VK|OZON".to_string()]
+        );
+        assert_eq!(
+            sec_main.section_exclude_regex,
+            vec!["0\\.1X.*LTE".to_string()]
+        );
+
+        let bal = store
+            .balancers
+            .iter()
+            .find(|b| b.id == "bal_auto_Main")
+            .expect("balancer");
+        assert_eq!(
+            bal.exclude_country_flags,
+            vec!["RU".to_string(), "BY".to_string()]
+        );
+        assert_eq!(
+            bal.exclude_regex,
+            vec!["LTE".to_string(), "lte".to_string()]
+        );
+
+        let grp = store
+            .outbound_groups
+            .iter()
+            .find(|g| g.id == "grp_custom")
+            .expect("group");
+        assert_eq!(grp.exclude_country_flags, vec!["CN".to_string()]);
+        assert_eq!(grp.exclude_servers, vec!["bad-node".to_string()]);
+        assert_eq!(grp.exclude_regex, vec!["slow".to_string()]);
+
+        let exported = store.to_json_sections(Some(&initial_sections));
+        assert_eq!(exported["Main"]["balancer_settings"], bal_settings_json);
+        assert_eq!(
+            exported["bal_auto_Main"]["exclude_countries"],
+            json!(["RU", "BY"])
+        );
+        assert!(
+            exported["bal_auto_Main"]
+                .get("exclude_country_flags")
+                .is_none()
+        );
+
+        // Clearing filters on the store must not resurrect stale legacy keys from `existing`.
+        store.balancers[0].exclude_country_flags.clear();
+        store.balancers[0].exclude_servers.clear();
+        store.outbound_groups[0].exclude_country_flags.clear();
+        store.outbound_groups[0].exclude_servers.clear();
+
+        let existing_with_legacy = serde_json::json!({
+            "bal_auto_Main": {
+                ".type": "balancer",
+                ".name": "bal_auto_Main",
+                "exclude_country_flags": ["RU"],
+                "exclude_countries": ["RU"],
+                "exclude_servers": ["old-srv"],
+                "exclude_outbounds": ["old-srv"]
+            },
+            "grp_custom": {
+                ".type": "outbound_group",
+                ".name": "grp_custom",
+                "exclude_country_flags": ["CN"],
+                "exclude_countries": ["CN"],
+                "exclude_servers": ["old-srv"],
+                "exclude_outbounds": ["old-srv"]
+            }
+        });
+        let exported_cleared = store.to_json_sections(Some(&existing_with_legacy));
+        assert!(
+            exported_cleared["bal_auto_Main"]
+                .get("exclude_countries")
+                .is_none()
+        );
+        assert!(
+            exported_cleared["bal_auto_Main"]
+                .get("exclude_country_flags")
+                .is_none()
+        );
+        assert!(
+            exported_cleared["bal_auto_Main"]
+                .get("exclude_servers")
+                .is_none()
+        );
+        assert!(
+            exported_cleared["grp_custom"]
+                .get("exclude_countries")
+                .is_none()
+        );
+        assert!(
+            exported_cleared["grp_custom"]
+                .get("exclude_country_flags")
+                .is_none()
+        );
+        assert!(
+            exported_cleared["grp_custom"]
+                .get("exclude_outbounds")
+                .is_none()
+        );
     }
 }

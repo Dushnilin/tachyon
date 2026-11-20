@@ -6121,6 +6121,13 @@ fn status_severity_rank(status: &str) -> u8 {
     }
 }
 
+fn extract_ai_doctor_query(rest: &[String]) -> Option<&str> {
+    rest.iter()
+        .map(String::as_str)
+        .map(str::trim)
+        .find(|s| !s.is_empty() && !s.starts_with("--"))
+}
+
 async fn build_ubus_ai_doctor_payload(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
@@ -6136,11 +6143,7 @@ async fn build_ubus_ai_doctor_payload(
         return cached;
     }
 
-    let query = rest
-        .first()
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let query = extract_ai_doctor_query(rest);
 
     let ai_res = Box::pin(crate::ai_doctor::run_ai_doctor_v4(state, core, query)).await;
     let doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
@@ -7877,11 +7880,36 @@ async fn execute_pure_rust_tachyon_cli(
                     "error": "Choose between 1 and 24 DNS servers."
                 })
             } else {
+                let mut bootstrap_ips: Vec<std::net::IpAddr> = Vec::new();
+                for (srv, proto) in &server_entries {
+                    if proto == "udp"
+                        && let Some(ip_str) = srv.trim().split(':').next()
+                        && let Ok(ip) = ip_str
+                            .trim_matches(|c| c == '[' || c == ']')
+                            .parse::<std::net::IpAddr>()
+                        && !bootstrap_ips.contains(&ip)
+                    {
+                        bootstrap_ips.push(ip);
+                    }
+                }
+                for fallback in ["77.88.8.8", "1.1.1.1", "8.8.8.8"] {
+                    if let Ok(ip) = fallback.parse::<std::net::IpAddr>()
+                        && !bootstrap_ips.contains(&ip)
+                    {
+                        bootstrap_ips.push(ip);
+                    }
+                }
                 let mut join_set = tokio::task::JoinSet::new();
                 for (srv_idx, (srv_val, proto)) in server_entries.iter().cloned().enumerate() {
                     let doms = domains.clone();
+                    let boot_ips = bootstrap_ips.clone();
                     join_set.spawn(async move {
                         let target = resolve_dns_bench_target(&srv_val, &proto);
+                        let resolved_sock = if proto != "udp" {
+                            resolve_dns_bench_socket_addr(&target, &boot_ips).await
+                        } else {
+                            None
+                        };
                         let mut samples = Vec::with_capacity(doms.len());
                         let mut vals = Vec::with_capacity(doms.len());
                         for dom in &doms {
@@ -7889,11 +7917,15 @@ async fn execute_pure_rust_tachyon_cli(
                                 probe_udp_dns_rtt_ms(&target, dom).await
                             } else {
                                 let t0 = std::time::Instant::now();
-                                match tokio::time::timeout(
-                                    Duration::from_millis(900),
-                                    tokio::net::TcpStream::connect(&target),
-                                )
-                                .await
+                                let connect_fut = async {
+                                    if let Some(sock) = resolved_sock {
+                                        tokio::net::TcpStream::connect(sock).await
+                                    } else {
+                                        tokio::net::TcpStream::connect(&target).await
+                                    }
+                                };
+                                match tokio::time::timeout(Duration::from_millis(1500), connect_fut)
+                                    .await
                                 {
                                     Ok(Ok(_)) => Ok((t0.elapsed().as_secs_f64() * 1000.0).max(0.5)),
                                     Ok(Err(e)) => Err(e.to_string()),
@@ -7921,46 +7953,13 @@ async fn execute_pure_rust_tachyon_cli(
                                 }
                             }
                         }
-                        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                        let total_doms = doms.len();
-                        let ok_cnt = vals.len();
-                        let min_v = vals.first().copied().unwrap_or(0.0);
-                        let max_v = vals.last().copied().unwrap_or(0.0);
-                        let sum_v: f64 = vals.iter().sum();
-                        let avg_v = if ok_cnt > 0 {
-                            ((sum_v / ok_cnt as f64) * 100.0).round() / 100.0
-                        } else {
-                            0.0
-                        };
-                        let median_v = if ok_cnt == 0 {
-                            0.0
-                        } else if ok_cnt % 2 == 1 {
-                            vals[ok_cnt / 2]
-                        } else {
-                            (((vals[ok_cnt / 2 - 1] + vals[ok_cnt / 2]) / 2.0) * 100.0).round()
-                                / 100.0
-                        };
-                        let srv_status = if ok_cnt == 0 {
-                            "unreachable"
-                        } else if ok_cnt < total_doms {
-                            "degraded"
-                        } else {
-                            "healthy"
-                        };
+                        let stats = build_dns_bench_stats_json(&mut vals, doms.len());
                         (
                             srv_idx,
                             json!({
                                 "server": srv_val,
                                 "samples": samples,
-                                "stats": {
-                                    "success": ok_cnt,
-                                    "total": total_doms,
-                                    "status": srv_status,
-                                    "min": min_v,
-                                    "median": median_v,
-                                    "avg": avg_v,
-                                    "max": max_v
-                                }
+                                "stats": stats
                             }),
                         )
                     });
@@ -11135,6 +11134,71 @@ fn resolve_dns_bench_target(srv_val: &str, proto: &str) -> String {
     format!("{uri_host}:{port}")
 }
 
+fn build_dns_bench_stats_json(vals: &mut [f64], total_doms: usize) -> Value {
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let ok_cnt = vals.len();
+    if ok_cnt == 0 {
+        return json!({
+            "success": 0,
+            "total": total_doms,
+            "status": "unreachable",
+            "min": null,
+            "median": null,
+            "avg": null,
+            "max": null
+        });
+    }
+    let min_v = vals[0];
+    let max_v = vals[ok_cnt - 1];
+    let sum_v: f64 = vals.iter().sum();
+    let avg_v = ((sum_v / ok_cnt as f64) * 100.0).round() / 100.0;
+    let median_v = if ok_cnt % 2 == 1 {
+        vals[ok_cnt / 2]
+    } else {
+        (((vals[ok_cnt / 2 - 1] + vals[ok_cnt / 2]) / 2.0) * 100.0).round() / 100.0
+    };
+    let srv_status = if ok_cnt < total_doms {
+        "degraded"
+    } else {
+        "healthy"
+    };
+    json!({
+        "success": ok_cnt,
+        "total": total_doms,
+        "status": srv_status,
+        "min": min_v,
+        "median": median_v,
+        "avg": avg_v,
+        "max": max_v
+    })
+}
+
+async fn resolve_dns_bench_socket_addr(
+    target: &str,
+    bootstrap_ips: &[std::net::IpAddr],
+) -> Option<std::net::SocketAddr> {
+    if let Ok(sock) = target.parse::<std::net::SocketAddr>() {
+        return Some(sock);
+    }
+    let (raw_host, port_str) = target.rsplit_once(':')?;
+    let port = port_str.parse::<u16>().ok()?;
+    let host = raw_host.trim_matches(|c| c == '[' || c == ']');
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return Some(std::net::SocketAddr::new(ip, port));
+    }
+    for ns in bootstrap_ips {
+        if let Some(ip) = crate::fuzzer::query_dns_a_udp(*ns, host).await {
+            if let std::net::IpAddr::V4(v4) = ip
+                && (v4.is_loopback() || (v4.octets()[0] == 198 && (v4.octets()[1] & 0xfe) == 18))
+            {
+                continue;
+            }
+            return Some(std::net::SocketAddr::new(ip, port));
+        }
+    }
+    None
+}
+
 fn resolve_outbound_tag_with_telemetry_fallback(
     requested: &str,
     candidates: &[String],
@@ -12782,5 +12846,36 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         let ips = resolve_domain_via_udp_dns("test.duckdns.org", &[&addr], Duration::from_secs(2));
         let _ = handle.join();
         assert_eq!(ips, vec!["84.201.1.2".to_string()]);
+    }
+
+    #[test]
+    fn test_extract_ai_doctor_query_skips_cli_flags() {
+        assert_eq!(extract_ai_doctor_query(&["--async".to_string()]), None);
+        assert_eq!(
+            extract_ai_doctor_query(&["--async".to_string(), "DNS check".to_string()]),
+            Some("DNS check")
+        );
+        assert_eq!(
+            extract_ai_doctor_query(&["  --status  ".to_string(), "".to_string()]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_build_dns_bench_stats_json_uses_null_median_on_total_failure() {
+        let mut empty_vals = Vec::new();
+        let failed = build_dns_bench_stats_json(&mut empty_vals, 3);
+        assert_eq!(
+            failed.get("status").and_then(Value::as_str),
+            Some("unreachable")
+        );
+        assert_eq!(failed.get("success").and_then(Value::as_u64), Some(0));
+        assert!(failed.get("median").is_some_and(Value::is_null));
+        assert!(failed.get("min").is_some_and(Value::is_null));
+
+        let mut ok_vals = vec![29.47, 8.27, 27.16];
+        let ok = build_dns_bench_stats_json(&mut ok_vals, 3);
+        assert_eq!(ok.get("status").and_then(Value::as_str), Some("healthy"));
+        assert_eq!(ok.get("median").and_then(Value::as_f64), Some(27.16));
     }
 }
