@@ -1054,16 +1054,16 @@ function tick_group(state, group) {
             state.activeFailStreak = (int(state.activeFailStreak || 0, 10) || 0) + 1;
             if (state.guard)
                 reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: false, tunnel_foreign: false, now: now });
-            let same_tier_selected = choose_from_level_range(
-                group,
-                state.levelIndex,
-                state.levelIndex,
-                clash_probe,
-                state.active
-            );
-            let selected = same_tier_selected;
-            if (selected == null && state.activeFailStreak >= 2) {
-                selected = choose_from_level_range(
+            let selected = null;
+            if (state.activeFailStreak >= 2) {
+                let same_tier_selected = choose_from_level_range(
+                    group,
+                    state.levelIndex,
+                    state.levelIndex,
+                    clash_probe,
+                    state.active
+                );
+                selected = same_tier_selected != null ? same_tier_selected : choose_from_level_range(
                     group,
                     state.levelIndex,
                     length(group.levels) - 1,
