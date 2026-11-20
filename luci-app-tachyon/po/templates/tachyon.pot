@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 13:58+0300\n"
-"PO-Revision-Date: 2026-11-20 13:58+0300\n"
+"POT-Creation-Date: 2026-11-20 14:55+0300\n"
+"PO-Revision-Date: 2026-11-20 14:55+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -610,7 +610,7 @@ msgstr ""
 msgid "Add Condition"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2232
+#: src/tachyon/appShell.ts:2247
 msgid "Add Connection (Setup Wizard)"
 msgstr ""
 
@@ -729,7 +729,7 @@ msgstr ""
 msgid "Add to Connections Pool only"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:656
+#: src/tachyon/configHistoryModal.ts:819
 msgid "Added"
 msgstr ""
 
@@ -807,7 +807,7 @@ msgstr ""
 msgid "Adult content"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2299
+#: src/tachyon/appShell.ts:2314
 msgid "Advanced"
 msgstr ""
 
@@ -819,16 +819,16 @@ msgstr ""
 msgid "Advanced Boolean Expression"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2435
+#: src/tachyon/appShell.ts:2450
 msgid "Advanced Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2782
+#: src/tachyon/appShell.ts:2797
 #: src/views/settings.ts:3703
 msgid "Advanced System"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2288
+#: src/tachyon/appShell.ts:2303
 msgid "Advanced mode: all tabs, conditions, balancers and expert settings"
 msgstr ""
 
@@ -1578,7 +1578,7 @@ msgstr ""
 msgid "Auto-repair config & IPv6 rules (doctor --fix)"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:514
+#: src/tachyon/configHistoryModal.ts:677
 msgid "Auto-rollback"
 msgstr ""
 
@@ -1647,12 +1647,12 @@ msgstr ""
 msgid "Automatic component updates"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1004
+#: src/tachyon/configHistoryModal.ts:1168
 msgid "Automatic rollback to last working config is active."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:951
-#: src/tachyon/configHistoryModal.ts:952
+#: src/tachyon/configHistoryModal.ts:1115
+#: src/tachyon/configHistoryModal.ts:1116
 msgid "Automatic rollback to working config triggered"
 msgstr ""
 
@@ -1819,7 +1819,7 @@ msgstr ""
 msgid "Badge text color"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:495
+#: src/tachyon/configHistoryModal.ts:658
 #: src/views/section.ts:3270
 #: src/views/section.ts:3318
 #: src/views/tachyon.ts:2871
@@ -2339,11 +2339,11 @@ msgstr ""
 msgid "Chain via Another Section (Detour)"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1218
+#: src/tachyon/configHistoryModal.ts:1382
 msgid "Change History & Rollback"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1072
+#: src/tachyon/appShell.ts:1075
 msgid "Change history and quick rollback"
 msgstr ""
 
@@ -2355,7 +2355,7 @@ msgstr ""
 msgid "Change subscription URL"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1118
+#: src/tachyon/appShell.ts:1121
 msgid "Changes"
 msgstr ""
 
@@ -2825,8 +2825,8 @@ msgid "Clone Source"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:277
-#: src/tachyon/appShell.ts:851
 #: src/tachyon/appShell.ts:852
+#: src/tachyon/appShell.ts:853
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1232
 #: src/tachyon/tabs/dashboard/initController.ts:2976
 #: src/tachyon/tabs/dashboard/initController.ts:4570
@@ -2875,8 +2875,8 @@ msgstr ""
 msgid "Close connection"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2446
-#: src/tachyon/appShell.ts:2449
+#: src/tachyon/appShell.ts:2461
+#: src/tachyon/appShell.ts:2464
 msgid "Close menu"
 msgstr ""
 
@@ -2918,7 +2918,7 @@ msgstr ""
 msgid "Code type"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2506
+#: src/tachyon/appShell.ts:2521
 msgid "Collapse menu to icons"
 msgstr ""
 
@@ -2926,7 +2926,7 @@ msgstr ""
 msgid "Collapse non-errors"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2727
+#: src/tachyon/appShell.ts:2742
 msgid "Collapse top toolbar"
 msgstr ""
 
@@ -2946,9 +2946,9 @@ msgstr ""
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1219
-#: src/tachyon/appShell.ts:1226
-#: src/tachyon/appShell.ts:1232
+#: src/tachyon/appShell.ts:1223
+#: src/tachyon/appShell.ts:1230
+#: src/tachyon/appShell.ts:1236
 msgid "Command failed"
 msgstr ""
 
@@ -3002,7 +3002,7 @@ msgstr ""
 msgid "Concurrency"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:493
+#: src/tachyon/configHistoryModal.ts:656
 #: src/views/tachyon.ts:2835
 msgid "Condition"
 msgstr ""
@@ -3052,7 +3052,7 @@ msgstr ""
 msgid "Conditions from Pool"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:509
+#: src/tachyon/configHistoryModal.ts:672
 msgid "Config"
 msgstr ""
 
@@ -3085,7 +3085,7 @@ msgstr ""
 msgid "Configuration must contain [Interface] section or valid vpn:// links."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:834
+#: src/tachyon/configHistoryModal.ts:998
 msgid "Configuration rolled back and applied"
 msgstr ""
 
@@ -3140,16 +3140,16 @@ msgstr ""
 msgid "Configured detour"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1035
-#: src/tachyon/configHistoryModal.ts:1055
+#: src/tachyon/configHistoryModal.ts:1199
+#: src/tachyon/configHistoryModal.ts:1219
 msgid "Confirm rollback?"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:981
+#: src/tachyon/configHistoryModal.ts:1145
 msgid "Confirm working"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1115
+#: src/tachyon/configHistoryModal.ts:1279
 msgid "Confirm?"
 msgstr ""
 
@@ -3189,7 +3189,7 @@ msgstr ""
 msgid "Connected clients and active connections"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2253
+#: src/tachyon/appShell.ts:2268
 #: src/tachyon/connectionWizard.ts:1767
 #: src/tachyon/studioDeck.ts:532
 #: src/tachyon/tabs/diagnostic/initController.ts:1209
@@ -3256,7 +3256,7 @@ msgstr ""
 msgid "Connections from Pool (in Priority Order)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:277
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:283
 msgid "Connectivity probe failed"
 msgstr ""
 
@@ -3495,7 +3495,7 @@ msgstr ""
 msgid "Current Diagnosis"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:885
+#: src/tachyon/configHistoryModal.ts:1049
 msgid "Current config confirmed as working"
 msgstr ""
 
@@ -4223,7 +4223,7 @@ msgstr ""
 msgid "Detour Target Section"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:507
+#: src/tachyon/configHistoryModal.ts:670
 #: src/tachyon/tabs/diagnostic/initController.ts:1755
 msgid "Device"
 msgstr ""
@@ -4482,7 +4482,7 @@ msgstr ""
 msgid "Disabled (raw UDP)"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:628
+#: src/tachyon/configHistoryModal.ts:791
 msgid "Discard draft"
 msgstr ""
 
@@ -4752,7 +4752,7 @@ msgstr ""
 msgid "Downloading lists"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:659
+#: src/tachyon/configHistoryModal.ts:822
 msgid "Draft"
 msgstr ""
 
@@ -4824,13 +4824,13 @@ msgstr ""
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2709
-#: src/tachyon/appShell.ts:3036
+#: src/tachyon/appShell.ts:2724
+#: src/tachyon/appShell.ts:3051
 msgid "Eco Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2708
-#: src/tachyon/appShell.ts:3035
+#: src/tachyon/appShell.ts:2723
+#: src/tachyon/appShell.ts:3050
 msgid "Eco Mode: On"
 msgstr ""
 
@@ -5110,7 +5110,7 @@ msgstr ""
 msgid "Engine crashes:"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1004
+#: src/tachyon/appShell.ts:1005
 msgid "Engine: Tachyon Core"
 msgstr ""
 
@@ -5434,15 +5434,15 @@ msgstr ""
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2505
+#: src/tachyon/appShell.ts:2520
 msgid "Expand menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2413
+#: src/tachyon/appShell.ts:2428
 msgid "Expand sidebar"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2726
+#: src/tachyon/appShell.ts:2741
 msgid "Expand top toolbar"
 msgstr ""
 
@@ -5635,7 +5635,7 @@ msgstr ""
 msgid "Fail-Open (Direct bypass)"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:538
+#: src/tachyon/configHistoryModal.ts:701
 msgid "Failed"
 msgstr ""
 
@@ -5697,7 +5697,7 @@ msgstr ""
 msgid "Failed to compare snapshot"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:895
+#: src/tachyon/configHistoryModal.ts:1059
 msgid "Failed to confirm working config"
 msgstr ""
 
@@ -5794,7 +5794,7 @@ msgstr ""
 msgid "Failed to install version"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1206
+#: src/tachyon/configHistoryModal.ts:1370
 msgid "Failed to load change history"
 msgstr ""
 
@@ -5864,7 +5864,7 @@ msgstr ""
 msgid "Failed to restore snapshot"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:853
+#: src/tachyon/configHistoryModal.ts:1017
 msgid "Failed to rollback config"
 msgstr ""
 
@@ -5881,7 +5881,7 @@ msgstr ""
 msgid "Failed to save patterns"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1174
+#: src/tachyon/appShell.ts:1178
 msgid "Failed to save settings"
 msgstr ""
 
@@ -5943,8 +5943,8 @@ msgstr ""
 msgid "Failed to synthesize AI strategies"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2681
-#: src/tachyon/appShell.ts:2691
+#: src/tachyon/appShell.ts:2696
+#: src/tachyon/appShell.ts:2706
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
@@ -6012,7 +6012,7 @@ msgstr ""
 msgid "Failovers & Restarts"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1125
+#: src/tachyon/configHistoryModal.ts:1289
 msgid "Failure reason"
 msgstr ""
 
@@ -6163,7 +6163,7 @@ msgstr ""
 msgid "Family Profile"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1863
+#: src/tachyon/appShell.ts:1878
 #: src/tachyon/studioDeck.ts:2004
 #: src/views/tachyon.ts:2910
 msgid "Family Profiles"
@@ -6618,7 +6618,7 @@ msgstr ""
 msgid "Green"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:491
+#: src/tachyon/configHistoryModal.ts:654
 #: src/views/outbounds.ts:2909
 #: src/views/section.ts:3254
 #: src/views/section.ts:3316
@@ -6659,12 +6659,12 @@ msgstr ""
 msgid "Guest Devices (MAC / IP)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1871
+#: src/tachyon/appShell.ts:1886
 #: src/views/tachyon.ts:2948
 msgid "Guest Mode"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:503
+#: src/tachyon/configHistoryModal.ts:666
 msgid "Guest mode"
 msgstr ""
 
@@ -7408,7 +7408,7 @@ msgstr ""
 msgid "Inbound Server on Router (Host)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1875
+#: src/tachyon/appShell.ts:1890
 #: src/tachyon/studioDeck.ts:1986
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1555
 msgid "Inbound Servers"
@@ -7703,7 +7703,7 @@ msgstr ""
 msgid "Interface IPv4/IPv6 addresses (e.g. 10.8.1.2/32)."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2262
+#: src/tachyon/appShell.ts:2277
 msgid "Interface Mode"
 msgstr ""
 
@@ -8791,8 +8791,8 @@ msgstr ""
 msgid "Loaded!"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:766
-#: src/tachyon/configHistoryModal.ts:913
+#: src/tachyon/configHistoryModal.ts:1077
+#: src/tachyon/configHistoryModal.ts:929
 msgid "Loading change history..."
 msgstr ""
 
@@ -9519,7 +9519,7 @@ msgstr ""
 msgid "Native packet desynchronization inside Tachyon Core"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2868
+#: src/tachyon/appShell.ts:2883
 msgid "Need expert knobs? Advanced Mode →"
 msgstr ""
 
@@ -9783,7 +9783,7 @@ msgstr ""
 msgid "No routes"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1066
+#: src/tachyon/configHistoryModal.ts:1230
 msgid "No saved changes recorded in the current session yet. History is stored in RAM (/tmp) with zero flash wear."
 msgstr ""
 
@@ -9982,7 +9982,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:166
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:167
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:173
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:290
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:296
 msgid "Not responding"
 msgstr ""
 
@@ -10274,8 +10274,8 @@ msgstr ""
 msgid "Open inbound settings"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2447
-#: src/tachyon/appShell.ts:2450
+#: src/tachyon/appShell.ts:2462
+#: src/tachyon/appShell.ts:2465
 msgid "Open navigation menu"
 msgstr ""
 
@@ -10652,7 +10652,7 @@ msgstr ""
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1867
+#: src/tachyon/appShell.ts:1882
 #: src/tachyon/studioDeck.ts:2018
 #: src/views/tachyon.ts:2929
 msgid "Parental Control"
@@ -11379,7 +11379,7 @@ msgstr ""
 msgid "Probing all..."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:499
+#: src/tachyon/configHistoryModal.ts:662
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:757
 #: src/views/parental.ts:330
 msgid "Profile"
@@ -11637,7 +11637,7 @@ msgstr ""
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2907
+#: src/tachyon/appShell.ts:2922
 msgid "Quick Setup Wizard"
 msgstr ""
 
@@ -12010,8 +12010,8 @@ msgstr ""
 msgid "Reload now"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2141
-#: src/tachyon/appShell.ts:3015
+#: src/tachyon/appShell.ts:2156
+#: src/tachyon/appShell.ts:3030
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:452
 msgid "Reloading..."
 msgstr ""
@@ -12050,7 +12050,7 @@ msgstr ""
 msgid "Remove the specified servers from this level."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:658
+#: src/tachyon/configHistoryModal.ts:821
 msgid "Removed"
 msgstr ""
 
@@ -12187,7 +12187,7 @@ msgstr ""
 msgid "Response payload (I2)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1385
+#: src/tachyon/appShell.ts:1389
 msgid "Restart"
 msgstr ""
 
@@ -12199,7 +12199,7 @@ msgstr ""
 msgid "Restart Tachyon Core DNS"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1356
+#: src/tachyon/appShell.ts:1360
 msgid "Restart Tachyon service"
 msgstr ""
 
@@ -12215,7 +12215,7 @@ msgstr ""
 msgid "Restart network"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1292
+#: src/tachyon/appShell.ts:1296
 msgid "Restarting..."
 msgstr ""
 
@@ -12252,7 +12252,7 @@ msgstr ""
 msgid "Restore config backup"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1100
+#: src/tachyon/configHistoryModal.ts:1264
 msgid "Restore working"
 msgstr ""
 
@@ -12283,7 +12283,7 @@ msgstr ""
 msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1198
+#: src/tachyon/configHistoryModal.ts:1362
 msgid "Retry"
 msgstr ""
 
@@ -12303,7 +12303,7 @@ msgstr ""
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1101
+#: src/tachyon/configHistoryModal.ts:1265
 msgid "Revert before"
 msgstr ""
 
@@ -12311,12 +12311,12 @@ msgstr ""
 msgid "Roaming / Handover"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:515
+#: src/tachyon/configHistoryModal.ts:678
 #: src/tachyon/tabs/updates/cardDefinitions.ts:143
 msgid "Rollback"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1018
+#: src/tachyon/configHistoryModal.ts:1182
 msgid "Rollback to working (LKG)"
 msgstr ""
 
@@ -12698,8 +12698,8 @@ msgstr ""
 msgid "Run the DNS speed test to see results."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2144
-#: src/tachyon/appShell.ts:3018
+#: src/tachyon/appShell.ts:2159
+#: src/tachyon/appShell.ts:3033
 #: src/tachyon/methods/custom/getDashboardSections.ts:3500
 #: src/tachyon/methods/custom/getDashboardSections.ts:3517
 #: src/tachyon/methods/custom/getDashboardSections.ts:3877
@@ -12837,7 +12837,7 @@ msgid "Saturday"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:353
-#: src/tachyon/configHistoryModal.ts:516
+#: src/tachyon/configHistoryModal.ts:679
 #: src/tachyon/helpers/i18n.ts:38
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1891
 #: src/views/dns_speed_test.ts:381
@@ -12850,7 +12850,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1197
+#: src/tachyon/appShell.ts:1201
 msgid "Save & Apply"
 msgstr ""
 
@@ -12879,7 +12879,7 @@ msgstr ""
 msgid "Save component backup before update"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:775
+#: src/tachyon/configHistoryModal.ts:938
 msgid "Saved revisions (RAM)"
 msgstr ""
 
@@ -12893,7 +12893,7 @@ msgstr ""
 msgid "Scan Strategies"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:501
+#: src/tachyon/configHistoryModal.ts:664
 #: src/views/conditions.ts:205
 #: src/views/parental.ts:947
 msgid "Schedule"
@@ -12952,7 +12952,7 @@ msgstr ""
 msgid "Secrets and credentials are masked as ***. Added lines (+):"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:487
+#: src/tachyon/configHistoryModal.ts:650
 #: src/tachyon/tabs/dashboard/inboundServers.ts:403
 #: src/tachyon/tabs/dashboard/initController.ts:4876
 #: src/tachyon/tabs/dashboard/initController.ts:6008
@@ -13429,7 +13429,7 @@ msgstr ""
 msgid "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:497
+#: src/tachyon/configHistoryModal.ts:660
 #: src/tachyon/studioDeck.ts:4574
 #: src/tachyon/tabs/dashboard/initController.ts:2912
 #: src/tachyon/tabs/dashboard/initController.ts:5901
@@ -13670,7 +13670,7 @@ msgstr ""
 msgid "Service Presets"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1249
+#: src/tachyon/appShell.ts:1253
 #: src/tachyon/methods/shell/index.ts:590
 #: src/tachyon/methods/shell/index.ts:611
 #: src/tachyon/tabs/diagnostic/initController.ts:755
@@ -13686,8 +13686,8 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2148
-#: src/tachyon/appShell.ts:3022
+#: src/tachyon/appShell.ts:2163
+#: src/tachyon/appShell.ts:3037
 msgid "Service stopped"
 msgstr ""
 
@@ -13731,7 +13731,7 @@ msgstr ""
 msgid "Session total"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:485
+#: src/tachyon/configHistoryModal.ts:648
 #: src/tachyon/helpers/i18n.ts:36
 #: src/tachyon/languageSelector.ts:83
 #: src/views/section.ts:10484
@@ -13744,7 +13744,7 @@ msgstr ""
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1165
+#: src/tachyon/appShell.ts:1169
 msgid "Settings saved to JSON configuration"
 msgstr ""
 
@@ -13879,19 +13879,19 @@ msgstr ""
 msgid "Show widget on dashboard"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2375
+#: src/tachyon/appShell.ts:2390
 msgid "Sidebar"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2281
+#: src/tachyon/appShell.ts:2296
 msgid "Simple"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2434
+#: src/tachyon/appShell.ts:2449
 msgid "Simple Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2270
+#: src/tachyon/appShell.ts:2285
 msgid "Simple mode: basic settings and quick connection wizard"
 msgstr ""
 
@@ -14014,7 +14014,7 @@ msgstr ""
 msgid "Sorts servers in this section by lowest latency in the dashboard."
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:489
+#: src/tachyon/configHistoryModal.ts:652
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2688
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:952
 #: src/tachyon/tabs/monitoring/initController.ts:1103
@@ -14182,7 +14182,7 @@ msgstr ""
 msgid "Standby / Direct"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1416
+#: src/tachyon/appShell.ts:1420
 #: src/views/settings.ts:875
 msgid "Start"
 msgstr ""
@@ -14202,7 +14202,7 @@ msgstr ""
 msgid "Start Tachyon Core"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1398
+#: src/tachyon/appShell.ts:1402
 msgid "Start Tachyon service"
 msgstr ""
 
@@ -14234,7 +14234,7 @@ msgstr ""
 msgid "Starting lists update..."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1289
+#: src/tachyon/appShell.ts:1293
 msgid "Starting..."
 msgstr ""
 
@@ -14295,7 +14295,7 @@ msgstr ""
 msgid "Sticky Hash Components"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1347
+#: src/tachyon/appShell.ts:1351
 #: src/views/settings.ts:882
 msgid "Stop"
 msgstr ""
@@ -14310,7 +14310,7 @@ msgstr ""
 msgid "Stop Tachyon"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1321
+#: src/tachyon/appShell.ts:1325
 msgid "Stop Tachyon service"
 msgstr ""
 
@@ -14328,8 +14328,8 @@ msgstr ""
 msgid "Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2147
-#: src/tachyon/appShell.ts:3021
+#: src/tachyon/appShell.ts:2162
+#: src/tachyon/appShell.ts:3036
 #: src/tachyon/methods/custom/getDashboardSections.ts:3500
 #: src/tachyon/methods/custom/getDashboardSections.ts:3881
 #: src/tachyon/studioDeck.ts:5821
@@ -14350,7 +14350,7 @@ msgstr ""
 msgid "Stopped"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1291
+#: src/tachyon/appShell.ts:1295
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2464
 msgid "Stopping..."
 msgstr ""
@@ -14606,11 +14606,11 @@ msgstr ""
 msgid "Switch to auto-selection"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2312
+#: src/tachyon/appShell.ts:2327
 msgid "Switch to left sidebar menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2316
+#: src/tachyon/appShell.ts:2331
 msgid "Switch to top horizontal menu"
 msgstr ""
 
@@ -14640,8 +14640,8 @@ msgstr ""
 msgid "Synthesizing..."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2592
-#: src/tachyon/appShell.ts:2780
+#: src/tachyon/appShell.ts:2607
+#: src/tachyon/appShell.ts:2795
 msgid "System & Backup"
 msgstr ""
 
@@ -14677,8 +14677,8 @@ msgstr ""
 msgid "System information"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2145
-#: src/tachyon/appShell.ts:3019
+#: src/tachyon/appShell.ts:2160
+#: src/tachyon/appShell.ts:3034
 msgid "System running"
 msgstr ""
 
@@ -15005,12 +15005,12 @@ msgstr ""
 msgid "Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2672
+#: src/tachyon/appShell.ts:2687
 #: src/tachyon/tabs/dashboard/initController.ts:6118
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2668
+#: src/tachyon/appShell.ts:2683
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
@@ -15018,7 +15018,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2221
+#: src/tachyon/appShell.ts:2236
 msgid "Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load"
 msgstr ""
 
@@ -15035,7 +15035,7 @@ msgstr ""
 msgid "Tachyon has been installed"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1242
+#: src/tachyon/appShell.ts:1246
 msgid "Tachyon restarted"
 msgstr ""
 
@@ -15047,11 +15047,11 @@ msgstr ""
 msgid "Tachyon service is stopped. Start the service to display the dashboard."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1239
+#: src/tachyon/appShell.ts:1243
 msgid "Tachyon started"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1241
+#: src/tachyon/appShell.ts:1245
 msgid "Tachyon stopped"
 msgstr ""
 
@@ -15538,7 +15538,7 @@ msgstr ""
 msgid "Tolerance (ms)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2376
+#: src/tachyon/appShell.ts:2391
 msgid "Top bar"
 msgstr ""
 
@@ -16049,11 +16049,11 @@ msgstr ""
 msgid "Underload packet header (H3)"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1098
+#: src/tachyon/configHistoryModal.ts:1262
 msgid "Undo"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:1042
+#: src/tachyon/configHistoryModal.ts:1206
 msgid "Undo last change"
 msgstr ""
 
@@ -16127,11 +16127,11 @@ msgstr ""
 msgid "Unreachable"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:685
+#: src/tachyon/configHistoryModal.ts:848
 msgid "Unsaved draft changes"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:451
+#: src/tachyon/configHistoryModal.ts:614
 msgid "Unsaved draft changes discarded"
 msgstr ""
 
@@ -16155,7 +16155,7 @@ msgstr ""
 msgid "Untested fleet"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:560
+#: src/tachyon/configHistoryModal.ts:723
 msgid "Unverified"
 msgstr ""
 
@@ -16695,7 +16695,7 @@ msgstr ""
 msgid "Verify Direct Reachability Before Fail-Open"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:554
+#: src/tachyon/configHistoryModal.ts:717
 msgid "Verifying"
 msgstr ""
 
@@ -17097,7 +17097,7 @@ msgstr ""
 msgid "Workers"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:531
+#: src/tachyon/configHistoryModal.ts:694
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1647
 msgid "Working"
 msgstr ""
@@ -17150,8 +17150,8 @@ msgstr ""
 msgid "YouTube Only"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:643
-#: src/tachyon/configHistoryModal.ts:701
+#: src/tachyon/configHistoryModal.ts:806
+#: src/tachyon/configHistoryModal.ts:864
 msgid "absent"
 msgstr ""
 
@@ -17562,8 +17562,8 @@ msgstr ""
 msgid "quarantine"
 msgstr ""
 
-#: src/tachyon/configHistoryModal.ts:647
-#: src/tachyon/configHistoryModal.ts:704
+#: src/tachyon/configHistoryModal.ts:810
+#: src/tachyon/configHistoryModal.ts:867
 msgid "removed"
 msgstr ""
 

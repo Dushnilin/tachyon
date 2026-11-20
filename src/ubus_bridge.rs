@@ -3689,7 +3689,47 @@ async fn handle_pure_rust_clash_api(
             } else {
                 format!("/proxies/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
             };
-            match core.clash_request("GET", &path, None).await {
+            let primary_res = core.clash_request("GET", &path, None).await;
+            let needs_proxy_fallback = action == "get_proxy_latency"
+                && match &primary_res {
+                    Err(_) => true,
+                    Ok(val) => {
+                        val.get("delay").and_then(Value::as_u64).unwrap_or(0) == 0
+                            && val.get("message").is_some()
+                    }
+                };
+            let final_res = if needs_proxy_fallback {
+                let d_snap = state.data.read().await.clone();
+                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+                let proxies_map = proxies_val
+                    .as_ref()
+                    .and_then(|v| v.get("proxies"))
+                    .and_then(Value::as_object);
+                if let Some(fallback_tag) =
+                    proxies_map.and_then(|pm| resolve_clash_proxy_for_target(&d_snap, pm, tag))
+                {
+                    let enc_fallback = url_encode_component(&fallback_tag);
+                    let fallback_path = format!(
+                        "/proxies/{enc_fallback}/delay?url={encoded_url}&timeout={timeout}"
+                    );
+                    match core.clash_request("GET", &fallback_path, None).await {
+                        Ok(val) => Ok(val),
+                        Err(fallback_err) => {
+                            if primary_res.is_ok() {
+                                primary_res
+                            } else {
+                                Err(fallback_err)
+                            }
+                        }
+                    }
+                } else {
+                    primary_res
+                }
+            } else {
+                primary_res
+            };
+
+            match final_res {
                 Ok(val) => {
                     let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
                     Some((0, format!("{s}\n"), String::new()))
@@ -3916,6 +3956,80 @@ fn collect_store_section_leaf_tags(
         }
     }
     out
+}
+
+fn resolve_clash_proxy_for_target(
+    store: &crate::store::RouterStoreData,
+    proxies_map: &Map<String, Value>,
+    target: &str,
+) -> Option<String> {
+    let req = target.trim();
+    if req.is_empty() {
+        return None;
+    }
+    let is_system_tag = |t: &str| matches!(t, "direct" | "block" | "reject" | "GLOBAL" | "dns-out");
+
+    if let Some(entry) = proxies_map.get(req) {
+        if let Some(now) = entry
+            .get("now")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && *n != req && !is_system_tag(n))
+            && proxies_map.contains_key(now)
+        {
+            return Some(now.to_string());
+        }
+        return None;
+    }
+
+    let sec_base = req
+        .strip_prefix("sel-")
+        .or_else(|| req.strip_suffix("-out"))
+        .unwrap_or(req);
+
+    let group = resolve_clash_group_for_target(store, Some(proxies_map), sec_base);
+    if let Some(entry) = proxies_map.get(&group) {
+        if let Some(now) = entry
+            .get("now")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && *n != req && !is_system_tag(n))
+            && proxies_map.contains_key(now)
+        {
+            return Some(now.to_string());
+        }
+        for leaf in collect_clash_leaf_members(proxies_map, &group) {
+            if leaf != req && !is_system_tag(&leaf) && proxies_map.contains_key(&leaf) {
+                return Some(leaf);
+            }
+        }
+    }
+
+    for (_owner, src, _hidden) in collect_section_sources_with_owner(store, sec_base) {
+        for cand in [
+            src.id.clone(),
+            format!("wg-{}", src.id),
+            format!("{}-{}", src.source_type, src.id),
+        ] {
+            if cand != req && !is_system_tag(&cand) && proxies_map.contains_key(&cand) {
+                return Some(cand);
+            }
+        }
+        let suffix = format!("-{}", src.id);
+        for (k, entry) in proxies_map {
+            let is_group = entry
+                .get("all")
+                .and_then(Value::as_array)
+                .is_some_and(|a| !a.is_empty());
+            if !is_group && k != req && !is_system_tag(k) && k.ends_with(&suffix) {
+                return Some(k.clone());
+            }
+        }
+    }
+
+    collect_store_section_leaf_tags(store, sec_base)
+        .into_iter()
+        .find(|leaf| leaf != req && !is_system_tag(leaf) && proxies_map.contains_key(leaf))
 }
 
 fn resolve_latency_targets(
@@ -5107,7 +5221,146 @@ fn has_route_rule_for_inbound(sb_config: Option<&Value>, tag: &str) -> bool {
     })
 }
 
-fn resolve_public_host_ips_list(host: &str) -> Vec<String> {
+const EXTERNAL_PUBLIC_DNS_SERVERS: &[&str] = &["8.8.8.8:53", "1.1.1.1:53", "77.88.8.8:53"];
+
+fn is_fakeip_addr(ip_str: &str, fakeip4_cidr: &str, fakeip6_cidr: &str) -> bool {
+    let ip = ip_str.trim();
+    if ip.is_empty() {
+        return false;
+    }
+    let f4 = fakeip4_cidr.trim();
+    if !f4.is_empty() && crate::store::ip_in_cidr(ip, f4) {
+        return true;
+    }
+    if crate::store::ip_in_cidr(ip, "198.18.0.0/15") {
+        return true;
+    }
+    let f6 = fakeip6_cidr.trim();
+    if !f6.is_empty() && crate::store::ip_in_cidr(ip, f6) {
+        return true;
+    }
+    crate::store::ip_in_cidr(ip, "fc00::/18")
+}
+
+fn skip_dns_wire_name(buf: &[u8], start: usize) -> Option<usize> {
+    let mut pos = start;
+    for _ in 0..128 {
+        let &len = buf.get(pos)?;
+        if len == 0 {
+            return Some(pos + 1);
+        }
+        if (len & 0xc0) == 0xc0 {
+            buf.get(pos + 1)?;
+            return Some(pos + 2);
+        }
+        if (len & 0xc0) != 0 {
+            return None;
+        }
+        pos = pos.checked_add(1 + usize::from(len))?;
+        if pos > buf.len() {
+            return None;
+        }
+    }
+    None
+}
+
+fn parse_dns_response_ips(buf: &[u8], expected_txid: [u8; 2]) -> Option<Vec<String>> {
+    if buf.len() < 12 || buf[0] != expected_txid[0] || buf[1] != expected_txid[1] {
+        return None;
+    }
+    if (buf[2] & 0x80) == 0 || (buf[3] & 0x0f) != 0 {
+        return None;
+    }
+    let qdcount = u16::from_be_bytes([buf[4], buf[5]]) as usize;
+    let ancount = u16::from_be_bytes([buf[6], buf[7]]) as usize;
+
+    let mut pos = 12usize;
+    for _ in 0..qdcount.min(32) {
+        let next = skip_dns_wire_name(buf, pos)?;
+        let after_q = next.checked_add(4)?;
+        if after_q > buf.len() {
+            return None;
+        }
+        pos = after_q;
+    }
+
+    let mut ips = Vec::new();
+    for _ in 0..ancount.min(64) {
+        let after_name = skip_dns_wire_name(buf, pos)?;
+        let hdr_end = after_name.checked_add(10)?;
+        let hdr = buf.get(after_name..hdr_end)?;
+        let rtype = u16::from_be_bytes([hdr[0], hdr[1]]);
+        let rclass = u16::from_be_bytes([hdr[2], hdr[3]]);
+        let rdlength = u16::from_be_bytes([hdr[8], hdr[9]]) as usize;
+        let rdata_end = hdr_end.checked_add(rdlength)?;
+        let rdata = buf.get(hdr_end..rdata_end)?;
+        if rclass == 1 {
+            if rtype == 1 && rdata.len() == 4 {
+                let ip =
+                    std::net::Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]).to_string();
+                if !ips.contains(&ip) {
+                    ips.push(ip);
+                }
+            } else if rtype == 28 && rdata.len() == 16 {
+                let octets: [u8; 16] = rdata.try_into().ok()?;
+                let ip = std::net::Ipv6Addr::from(octets).to_string();
+                if !ips.contains(&ip) {
+                    ips.push(ip);
+                }
+            }
+        }
+        pos = rdata_end;
+    }
+    Some(ips)
+}
+
+fn query_single_udp_dns(
+    server: &str,
+    host: &str,
+    qtype: u16,
+    timeout: Duration,
+) -> Option<Vec<String>> {
+    let pkt = diagnostics::build_dns_query_packet(host, qtype)?;
+    let bind_addr = if server.starts_with('[') {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
+    let sock = std::net::UdpSocket::bind(bind_addr).ok()?;
+    let _ = sock.set_write_timeout(Some(Duration::from_millis(800)));
+    let _ = sock.set_read_timeout(Some(timeout));
+    sock.connect(server).ok()?;
+    sock.send(&pkt).ok()?;
+    let mut buf = [0u8; 512];
+    let n = sock.recv(&mut buf).ok()?;
+    parse_dns_response_ips(&buf[..n], [pkt[0], pkt[1]])
+}
+
+fn resolve_domain_via_udp_dns(host: &str, servers: &[&str], timeout: Duration) -> Vec<String> {
+    for server in servers {
+        let Some(a_ips) = query_single_udp_dns(server, host, 1, timeout) else {
+            continue;
+        };
+        let mut combined = a_ips;
+        if let Some(aaaa_ips) = query_single_udp_dns(server, host, 28, Duration::from_millis(600)) {
+            for ip in aaaa_ips {
+                if !combined.contains(&ip) {
+                    combined.push(ip);
+                }
+            }
+        }
+        if !combined.is_empty() {
+            return combined;
+        }
+    }
+    Vec::new()
+}
+
+fn resolve_public_host_ips_list_with_fakeip(
+    host: &str,
+    fakeip4_cidr: &str,
+    fakeip6_cidr: &str,
+) -> Vec<String> {
     let h_clean = crate::config_gen::extract_host_only(host);
     let h = h_clean.trim();
     if h.is_empty() {
@@ -5116,18 +5369,37 @@ fn resolve_public_host_ips_list(host: &str) -> Vec<String> {
     if let Ok(ip) = h.parse::<std::net::IpAddr>() {
         return vec![ip.to_string()];
     }
-    use std::net::ToSocketAddrs;
-    let Ok(addrs) = (h, 0).to_socket_addrs() else {
-        return Vec::new();
-    };
-    let mut ips = Vec::new();
-    for a in addrs {
-        let s = a.ip().to_string();
-        if !ips.contains(&s) {
-            ips.push(s);
+
+    let mut saw_fakeip = false;
+    let mut non_fakeip_local = Vec::new();
+    {
+        use std::net::ToSocketAddrs;
+        if let Ok(addrs) = (h, 0).to_socket_addrs() {
+            for a in addrs {
+                let s = a.ip().to_string();
+                if is_fakeip_addr(&s, fakeip4_cidr, fakeip6_cidr) {
+                    saw_fakeip = true;
+                } else if !non_fakeip_local.contains(&s) {
+                    non_fakeip_local.push(s);
+                }
+            }
         }
     }
-    ips
+
+    if !saw_fakeip && !non_fakeip_local.is_empty() {
+        return non_fakeip_local;
+    }
+
+    let ext_ips: Vec<String> =
+        resolve_domain_via_udp_dns(h, EXTERNAL_PUBLIC_DNS_SERVERS, Duration::from_millis(1200))
+            .into_iter()
+            .filter(|ip| !is_fakeip_addr(ip, fakeip4_cidr, fakeip6_cidr))
+            .collect();
+
+    if !ext_ips.is_empty() {
+        return ext_ips;
+    }
+    non_fakeip_local
 }
 
 fn dns_probe_succeeded(probe: &Value) -> bool {
@@ -5295,6 +5567,8 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
     let mut items = Vec::new();
     let mut enabled_count = 0usize;
     let mut requires_public_wan = 0i32;
+    let mut public_host_dns_cache: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for srv in d.servers.iter().filter(|s| s.enabled) {
         enabled_count += 1;
@@ -5472,7 +5746,20 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
             && !(is_ts && public_host.is_empty())
             && !public_host.is_empty()
         {
-            public_host_ips_vec = resolve_public_host_ips_list(&public_host);
+            let cache_key = crate::config_gen::extract_host_only(&public_host)
+                .trim()
+                .to_ascii_lowercase();
+            public_host_ips_vec = if let Some(cached) = public_host_dns_cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                let resolved_ips = resolve_public_host_ips_list_with_fakeip(
+                    &public_host,
+                    &d.settings.fakeip_inet4_range,
+                    &d.settings.fakeip_inet6_range,
+                );
+                public_host_dns_cache.insert(cache_key, resolved_ips.clone());
+                resolved_ips
+            };
             if public_host_ips_vec.is_empty() {
                 resolved = 0;
             } else {
@@ -6180,7 +6467,13 @@ async fn execute_pure_rust_tachyon_cli(
             "success": true,
             "enabled_count": d.servers.iter().filter(|s| s.enabled).count(),
         }),
-        "check_inbounds" => build_check_inbounds_result(&d),
+        "check_inbounds" => {
+            let d_clone = d.clone();
+            drop(d);
+            tokio::task::spawn_blocking(move || build_check_inbounds_result(&d_clone))
+                .await
+                .unwrap_or_else(|e| json!({ "success": false, "error": e.to_string() }))
+        }
         "check_zapret_runtime"
         | "check_zapret2_runtime"
         | "check_byedpi_runtime"
@@ -12303,5 +12596,191 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         assert_eq!(out_ver.trim(), "0.6.0");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_clash_proxy_for_target_resolves_section_and_selector_tags() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources = vec![
+            crate::store::OutboundSource {
+                id: "src_TrustTunnel".to_string(),
+                source_type: "trusttunnel".to_string(),
+                ..Default::default()
+            },
+            crate::store::OutboundSource {
+                id: "src_mieru_DeluxHost_Miery".to_string(),
+                source_type: "mieru".to_string(),
+                ..Default::default()
+            },
+            crate::store::OutboundSource {
+                id: "src_awg_WARP".to_string(),
+                source_type: "amneziawg".to_string(),
+                ..Default::default()
+            },
+        ];
+        store.sections = vec![
+            crate::store::RoutingSection {
+                id: "TrustTunnel".to_string(),
+                outbound_source_refs: vec!["src_TrustTunnel".to_string()],
+                ..Default::default()
+            },
+            crate::store::RoutingSection {
+                id: "DeluxHost_Miery".to_string(),
+                outbound_source_refs: vec!["src_mieru_DeluxHost_Miery".to_string()],
+                ..Default::default()
+            },
+            crate::store::RoutingSection {
+                id: "WARP".to_string(),
+                outbound_source_refs: vec!["src_awg_WARP".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let proxies_val = json!({
+            "trusttunnel-src_TrustTunnel": { "type": "TrustTunnel" },
+            "mieru-src_mieru_DeluxHost_Miery": { "type": "Mieru" },
+            "wg-src_awg_WARP": { "type": "WireGuard" },
+            "sel-Main": {
+                "type": "Selector",
+                "now": "vless-node-1",
+                "all": ["vless-node-1", "vless-node-2"]
+            },
+            "vless-node-1": { "type": "VLESS" },
+            "vless-node-2": { "type": "VLESS" }
+        });
+        let proxies_map = proxies_val.as_object().unwrap();
+
+        assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "TrustTunnel").as_deref(),
+            Some("trusttunnel-src_TrustTunnel")
+        );
+        assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "DeluxHost_Miery").as_deref(),
+            Some("mieru-src_mieru_DeluxHost_Miery")
+        );
+        assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "WARP").as_deref(),
+            Some("wg-src_awg_WARP")
+        );
+        assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "sel-Main").as_deref(),
+            Some("vless-node-1")
+        );
+        assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "vless-node-1"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_is_fakeip_addr_default_and_custom_ranges() {
+        assert!(is_fakeip_addr("198.18.0.238", "", ""));
+        assert!(is_fakeip_addr("198.19.255.1", "", ""));
+        assert!(is_fakeip_addr("fc00::1234", "", ""));
+        assert!(is_fakeip_addr(
+            "198.18.12.34",
+            "198.18.0.0/16",
+            "fd00:f::/48"
+        ));
+        assert!(is_fakeip_addr("fd00:f::1", "198.18.0.0/16", "fd00:f::/48"));
+        assert!(!is_fakeip_addr("84.201.1.2", "", ""));
+        assert!(!is_fakeip_addr("2001:4860:4860::8888", "", ""));
+    }
+
+    #[test]
+    fn test_parse_dns_response_ips_cname_a_and_aaaa() {
+        // Query for "my.duckdns.org" (18 bytes QNAME + 4 bytes QTYPE/QCLASS)
+        let mut resp = Vec::new();
+        resp.extend_from_slice(&[0x54, 0x43]); // txid
+        resp.extend_from_slice(&[0x81, 0x80]); // QR=1, RD=1, RA=1, RCODE=0
+        resp.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT=1
+        resp.extend_from_slice(&3u16.to_be_bytes()); // ANCOUNT=3
+        resp.extend_from_slice(&[0, 0, 0, 0]); // NS/AR=0
+
+        // Question: my.duckdns.org A IN (offset 12)
+        resp.extend_from_slice(&[
+            2, b'm', b'y', 7, b'd', b'u', b'c', b'k', b'd', b'n', b's', 3, b'o', b'r', b'g', 0,
+        ]);
+        resp.extend_from_slice(&1u16.to_be_bytes());
+        resp.extend_from_slice(&1u16.to_be_bytes());
+
+        // Answer 1: compressed pointer 0xC00C, CNAME -> "edge.duckdns.org" (via pointer 0xC00F after "edge")
+        resp.extend_from_slice(&[0xC0, 0x0C]);
+        resp.extend_from_slice(&5u16.to_be_bytes()); // TYPE=CNAME
+        resp.extend_from_slice(&1u16.to_be_bytes()); // CLASS=IN
+        resp.extend_from_slice(&60u32.to_be_bytes()); // TTL
+        let cname_rdata: [u8; 7] = [4, b'e', b'd', b'g', b'e', 0xC0, 0x0F];
+        resp.extend_from_slice(&(cname_rdata.len() as u16).to_be_bytes());
+        resp.extend_from_slice(&cname_rdata);
+
+        // Answer 2: compressed pointer 0xC00C, A -> 84.201.1.2
+        resp.extend_from_slice(&[0xC0, 0x0C]);
+        resp.extend_from_slice(&1u16.to_be_bytes());
+        resp.extend_from_slice(&1u16.to_be_bytes());
+        resp.extend_from_slice(&60u32.to_be_bytes());
+        resp.extend_from_slice(&4u16.to_be_bytes());
+        resp.extend_from_slice(&[84, 201, 1, 2]);
+
+        // Answer 3: compressed pointer 0xC00C, AAAA -> 2001:db8::1
+        resp.extend_from_slice(&[0xC0, 0x0C]);
+        resp.extend_from_slice(&28u16.to_be_bytes());
+        resp.extend_from_slice(&1u16.to_be_bytes());
+        resp.extend_from_slice(&60u32.to_be_bytes());
+        resp.extend_from_slice(&16u16.to_be_bytes());
+        resp.extend_from_slice(&[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+        assert_eq!(
+            parse_dns_response_ips(&resp, [0x54, 0x43]),
+            Some(vec!["84.201.1.2".to_string(), "2001:db8::1".to_string()])
+        );
+        assert_eq!(parse_dns_response_ips(&resp, [0x00, 0x01]), None);
+
+        let mut nxdomain = resp.clone();
+        nxdomain[3] = 0x83; // RCODE=3
+        assert_eq!(parse_dns_response_ips(&nxdomain, [0x54, 0x43]), None);
+    }
+
+    #[test]
+    fn test_resolve_domain_via_udp_dns_local_mock() {
+        let srv = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind mock dns");
+        srv.set_read_timeout(Some(Duration::from_secs(3))).ok();
+        let addr = srv.local_addr().unwrap().to_string();
+
+        let handle = std::thread::spawn(move || {
+            let mut buf = [0u8; 512];
+            for _ in 0..2 {
+                let Ok((n, peer)) = srv.recv_from(&mut buf) else {
+                    break;
+                };
+                if n < 17 {
+                    continue;
+                }
+                let qtype = u16::from_be_bytes([buf[n - 4], buf[n - 3]]);
+                let mut resp = Vec::new();
+                resp.extend_from_slice(&buf[0..2]); // echo txid
+                resp.extend_from_slice(&[0x81, 0x80]); // QR=1, RCODE=0
+                resp.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT=1
+                if qtype == 1 {
+                    resp.extend_from_slice(&1u16.to_be_bytes()); // ANCOUNT=1
+                    resp.extend_from_slice(&[0, 0, 0, 0]);
+                    resp.extend_from_slice(&buf[12..n]);
+                    resp.extend_from_slice(&[0xC0, 0x0C]);
+                    resp.extend_from_slice(&1u16.to_be_bytes());
+                    resp.extend_from_slice(&1u16.to_be_bytes());
+                    resp.extend_from_slice(&60u32.to_be_bytes());
+                    resp.extend_from_slice(&4u16.to_be_bytes());
+                    resp.extend_from_slice(&[84, 201, 1, 2]);
+                } else {
+                    resp.extend_from_slice(&0u16.to_be_bytes()); // ANCOUNT=0
+                    resp.extend_from_slice(&[0, 0, 0, 0]);
+                    resp.extend_from_slice(&buf[12..n]);
+                }
+                let _ = srv.send_to(&resp, peer);
+            }
+        });
+
+        let ips = resolve_domain_via_udp_dns("test.duckdns.org", &[&addr], Duration::from_secs(2));
+        let _ = handle.join();
+        assert_eq!(ips, vec!["84.201.1.2".to_string()]);
     }
 }

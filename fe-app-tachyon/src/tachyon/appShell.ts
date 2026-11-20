@@ -24,6 +24,7 @@ import { openConnectionWizardModal } from './connectionWizard';
 import {
   openConfigHistoryModal,
   countUnsavedChanges,
+  captureFormBaseline,
 } from './configHistoryModal';
 
 export { activateAppShellNavKey };
@@ -1025,6 +1026,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   const lastChildByParent: Record<string, string> = {};
   let shellLayoutRef: HTMLElement | null = null;
 
+  captureFormBaseline(true);
+
   const refreshHistoryBadges = (): void => {
     const count = countUnsavedChanges();
     const targets: Array<{ querySelectorAll: (sel: string) => any }> = [];
@@ -1160,6 +1163,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 g.L.ui.changes.setIndicator(0);
               }
             }
+            captureFormBaseline(true);
             refreshHistoryBadges();
             showToast(
               tr(
@@ -1485,6 +1489,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     typeof mapEl.addEventListener === 'function'
   ) {
     mapEl.setAttribute?.('data-tachyon-history-watch', 'true');
+    let userInteracted = false;
     let badgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleBadgeRefresh = () => {
       if (badgeDebounceTimer !== null) {
@@ -1495,8 +1500,18 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         refreshHistoryBadges();
       }, 180);
     };
-    mapEl.addEventListener('input', scheduleBadgeRefresh);
-    mapEl.addEventListener('change', scheduleBadgeRefresh);
+    const handleFormInteraction = () => {
+      userInteracted = true;
+      scheduleBadgeRefresh();
+    };
+    mapEl.addEventListener('input', handleFormInteraction);
+    mapEl.addEventListener('change', handleFormInteraction);
+    setTimeout(() => {
+      if (!userInteracted) {
+        captureFormBaseline(false);
+        refreshHistoryBadges();
+      }
+    }, 250);
   }
 
   const syncLuciThemeAccent = () => {

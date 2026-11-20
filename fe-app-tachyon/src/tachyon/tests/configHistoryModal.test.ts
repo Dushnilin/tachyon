@@ -176,6 +176,8 @@ vi.hoisted(() => {
 });
 
 import {
+  captureFormBaseline,
+  clearFormBaseline,
   collectUnsavedUciChanges,
   openConfigHistoryModal,
 } from '../configHistoryModal';
@@ -190,6 +192,7 @@ describe('configHistoryModal', () => {
   const origFetch = (globalThis as any).fetch;
 
   beforeEach(() => {
+    clearFormBaseline();
     (globalThis as any).document.body = createMockElement('body');
     (globalThis as any).__tachyonMapInstance = null;
     (globalThis as any).L = undefined;
@@ -605,5 +608,221 @@ describe('configHistoryModal', () => {
 
     expect((globalThis as any).uci.state.changes.tachyon).toBeUndefined();
     expect(onReloadMap.mock.calls.length).toBeGreaterThan(callsBeforeDiscard);
+  });
+
+  it('ignores non-settings sections, virtual widgets, normalized unchanged controls, and uci no-ops while tracking real edits', () => {
+    const dashboardMountCfg = vi.fn(() => createMockElement('div'));
+    const diagnosticMountCfg = vi.fn(() => createMockElement('div'));
+    const monitoringMountCfg = vi.fn(() => createMockElement('div'));
+    const updatesMountCfg = vi.fn(() => createMockElement('div'));
+
+    let tunMtuValue = '1500';
+
+    (globalThis as any).__tachyonMapInstance = {
+      children: [
+        {
+          section: 'dashboard',
+          addremove: false,
+          children: [
+            {
+              option: '_mount_node',
+              rawhtml: true,
+              cfgvalue: dashboardMountCfg,
+              formvalue: () => undefined,
+              write: () => {},
+            },
+          ],
+        },
+        {
+          section: 'diagnostic',
+          addremove: false,
+          children: [
+            {
+              option: '_mount_node',
+              rawhtml: true,
+              cfgvalue: diagnosticMountCfg,
+              formvalue: () => undefined,
+              write: () => {},
+            },
+          ],
+        },
+        {
+          section: 'monitoring',
+          addremove: false,
+          children: [
+            {
+              option: '_mount_node',
+              rawhtml: true,
+              cfgvalue: monitoringMountCfg,
+              formvalue: () => undefined,
+              write: () => {},
+            },
+          ],
+        },
+        {
+          section: 'updates',
+          addremove: false,
+          children: [
+            {
+              option: '_mount_node',
+              rawhtml: true,
+              cfgvalue: updatesMountCfg,
+              formvalue: () => undefined,
+              write: () => {},
+            },
+          ],
+        },
+        {
+          section: 'settings',
+          addremove: false,
+          children: [
+            {
+              option: '_dashboard_layout_widget',
+              title: 'Виджеты и пресеты дашборда',
+              cfgvalue: () => '',
+              formvalue: () => '{"preset":"standard","widgets":[]}',
+              write: () => {},
+            },
+            {
+              option: '_components_visibility_widget',
+              title: 'Видимость карточек компонентов',
+              cfgvalue: () => '',
+              formvalue: () => '{"tachyon":true}',
+              write: () => {},
+            },
+            {
+              option: '_reset_settings',
+              title: 'Сбросить настройки',
+              cfgvalue: () => createMockElement('button'),
+              formvalue: () => '',
+              write: () => {},
+            },
+            {
+              option: '_snapshots',
+              title: 'Снапшоты конфигурации',
+              cfgvalue: () => createMockElement('div'),
+              formvalue: () => '',
+              write: () => {},
+            },
+            {
+              option: '_watchdog_status',
+              title: 'Статус Watchdog',
+              cfgvalue: () => createMockElement('div'),
+              formvalue: () => createMockElement('div'),
+              write: () => {},
+            },
+            {
+              option: 'tcp_profile',
+              title: 'Профиль TCP-стека исходящих подключений',
+              cfgvalue: () => 'default',
+              formvalue: () => '',
+              write: () => {},
+            },
+            {
+              option: 'qos_engine',
+              title: 'Движок приоритета QoS (DSCP)',
+              cfgvalue: () => 'auto',
+              formvalue: () => '',
+              write: () => {},
+            },
+            {
+              option: 'tun_mtu',
+              title: 'MTU',
+              cfgvalue: () => '1500',
+              formvalue: () => tunMtuValue,
+              write: () => {},
+            },
+          ],
+        },
+        {
+          section: 'telegram',
+          addremove: false,
+          children: [
+            {
+              option: '_bot_status',
+              title: 'Статус бота',
+              cfgvalue: () => createMockElement('div'),
+              formvalue: () => createMockElement('div'),
+              write: () => {},
+            },
+            {
+              option: '_test_telegram',
+              title: 'Проверить подключение к Telegram',
+              cfgvalue: () => createMockElement('div'),
+              formvalue: () => createMockElement('div'),
+              write: () => {},
+            },
+            {
+              option: 'admin_chat_ids',
+              title: 'Chat ID администраторов',
+              cfgvalue: () => ['226947167'],
+              formvalue: () => '226947167',
+              write: () => {},
+            },
+          ],
+        },
+      ],
+    };
+
+    captureFormBaseline(true);
+
+    (globalThis as any).uci = {
+      state: {
+        values: {
+          tachyon: {
+            block: { enabled: '1' },
+            google_ai: { enabled: '0' },
+            ByPass: { enabled: '1' },
+            settings: { _internal: 'x', tun_mtu: '1500' },
+          },
+        },
+        changes: {
+          tachyon: {
+            block: { enabled: '1' },
+            google_ai: { enabled: '0' },
+            ByPass: { enabled: true },
+            settings: { _internal: 'y' },
+          },
+        },
+      },
+      changes: () => ({
+        tachyon: [
+          ['set', 'block', 'enabled', '1'],
+          ['set', 'google_ai', 'enabled', '0'],
+          ['set', 'settings', '_tabs_order_widget', '{"order":[]}'],
+        ],
+      }),
+    };
+
+    (globalThis as any).ui = {
+      changes: {
+        changes: {
+          tachyon: [['set', 'ByPass', 'enabled', '1']],
+        },
+      },
+    };
+
+    expect(collectUnsavedUciChanges()).toEqual([]);
+    expect(dashboardMountCfg).not.toHaveBeenCalled();
+    expect(diagnosticMountCfg).not.toHaveBeenCalled();
+    expect(monitoringMountCfg).not.toHaveBeenCalled();
+    expect(updatesMountCfg).not.toHaveBeenCalled();
+
+    // Making one real edit produces exactly 1 item
+    tunMtuValue = '1420';
+    const afterEdit = collectUnsavedUciChanges();
+    expect(afterEdit).toHaveLength(1);
+    expect(afterEdit[0]).toMatchObject({
+      section: 'settings',
+      option: 'tun_mtu',
+      label: 'MTU',
+      action: 'set',
+      before: '1500',
+      after: '1420',
+    });
+
+    // Reverting that edit back to baseline returns 0 items
+    tunMtuValue = '1500';
+    expect(collectUnsavedUciChanges()).toEqual([]);
   });
 });

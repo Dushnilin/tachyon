@@ -136,12 +136,77 @@ export function formatDiffFieldValue(field: string, raw: unknown): string {
   return truncateValue(String(raw));
 }
 
+const LIVE_FORM_ALLOWED_SECTIONS = new Set([
+  'settings',
+  'guest_mode',
+  'telegram',
+]);
+const formBaselineByMap = new WeakMap<object, Map<string, unknown>>();
+
+function isInternalOptionName(name: string): boolean {
+  return !name || name.startsWith('_') || name.startsWith('.');
+}
+
+function isDomNodeLike(val: unknown): boolean {
+  if (!val || typeof val !== 'object') return false;
+  const obj = val as Record<string, unknown>;
+  if (typeof obj.nodeType === 'number') return true;
+  if (typeof obj.tagName === 'string') return true;
+  if (typeof Element !== 'undefined' && val instanceof Element) return true;
+  if (typeof Node !== 'undefined' && val instanceof Node) return true;
+  return false;
+}
+
+function isEditableLiveOption(opt: any): boolean {
+  if (
+    !opt ||
+    opt.disable ||
+    opt.readonly ||
+    opt.modalonly ||
+    opt.rawhtml ||
+    opt.isDummy
+  ) {
+    return false;
+  }
+  if (typeof opt.option !== 'string' || isInternalOptionName(opt.option)) {
+    return false;
+  }
+  if (typeof opt.formvalue !== 'function' || typeof opt.write !== 'function') {
+    return false;
+  }
+  const g = globalThis as any;
+  const formApi = typeof form !== 'undefined' ? form : g.form || g.L?.form;
+  if (formApi) {
+    if (
+      typeof formApi.DummyValue === 'function' &&
+      opt instanceof formApi.DummyValue
+    ) {
+      return false;
+    }
+    if (typeof formApi.Button === 'function' && opt instanceof formApi.Button) {
+      return false;
+    }
+  }
+  if (opt.__name__ === 'DummyValue' || opt.__name__ === 'Button') {
+    return false;
+  }
+  return true;
+}
+
 function normalizeFormValue(val: unknown): string | string[] {
+  if (typeof val === 'boolean') {
+    return val ? '1' : '0';
+  }
   if (Array.isArray(val)) {
-    return val.map((v) => String(v ?? ''));
+    return val.map((v) =>
+      typeof v === 'boolean' ? (v ? '1' : '0') : String(v ?? ''),
+    );
   }
   if (val === null || val === undefined) {
     return '';
+  }
+  if (typeof val === 'object') {
+    return isDomNodeLike(val) ? '' : String(val);
   }
   return String(val);
 }
@@ -154,13 +219,81 @@ function areFormValuesEqual(a: unknown, b: unknown): boolean {
       normA.length === normB.length && normA.every((v, i) => v === normB[i])
     );
   }
-  if (Array.isArray(normA)) {
-    return normA.length === 0 && normB === '';
+  if (Array.isArray(normA) && typeof normB === 'string') {
+    if (normA.length === 0 && normB === '') return true;
+    if (normA.length === 1 && normA[0] === normB) return true;
+    return normA.join('\n') === normB || normA.join(', ') === normB;
   }
-  if (Array.isArray(normB)) {
-    return normB.length === 0 && normA === '';
+  if (Array.isArray(normB) && typeof normA === 'string') {
+    if (normB.length === 0 && normA === '') return true;
+    if (normB.length === 1 && normB[0] === normA) return true;
+    return normB.join('\n') === normA || normB.join(', ') === normA;
   }
   return normA === normB;
+}
+
+function getAllowedSectionIds(sec: any): string[] {
+  if (!sec || sec.addremove || !Array.isArray(sec.children)) return [];
+  const sids: string[] =
+    typeof sec.cfgsections === 'function'
+      ? (sec.cfgsections() || []).filter(
+          (s: unknown) => typeof s === 'string' && Boolean(s),
+        )
+      : typeof sec.section === 'string' && sec.section
+        ? [sec.section]
+        : [];
+  return sids.filter((sid) => LIVE_FORM_ALLOWED_SECTIONS.has(sid));
+}
+
+export function clearFormBaseline(): void {
+  const g = globalThis as any;
+  const mapInst = g.__tachyonMapInstance;
+  if (mapInst && typeof mapInst === 'object') {
+    formBaselineByMap.delete(mapInst);
+  }
+}
+
+export function captureFormBaseline(forceReset = false): void {
+  const g = globalThis as any;
+  const mapInst = g.__tachyonMapInstance;
+  if (
+    !mapInst ||
+    typeof mapInst !== 'object' ||
+    !Array.isArray(mapInst.children)
+  ) {
+    return;
+  }
+
+  let baseline = formBaselineByMap.get(mapInst);
+  if (forceReset || !baseline) {
+    baseline = new Map<string, unknown>();
+    formBaselineByMap.set(mapInst, baseline);
+  }
+
+  for (const sec of mapInst.children) {
+    const sids = getAllowedSectionIds(sec);
+    if (sids.length === 0) continue;
+
+    for (const sid of sids) {
+      for (const opt of sec.children) {
+        if (!isEditableLiveOption(opt)) continue;
+        if (typeof opt.isActive === 'function' && !opt.isActive(sid)) {
+          continue;
+        }
+        const key = `${sid}:${opt.option}`;
+        if (!forceReset && baseline.has(key)) continue;
+
+        let formVal: unknown;
+        try {
+          formVal = opt.formvalue(sid);
+        } catch {
+          continue;
+        }
+        if (formVal === undefined || isDomNodeLike(formVal)) continue;
+        baseline.set(key, Array.isArray(formVal) ? formVal.slice() : formVal);
+      }
+    }
+  }
 }
 
 function collectFromLiveForm(
@@ -170,51 +303,57 @@ function collectFromLiveForm(
   const g = globalThis as any;
   const mapInst = g.__tachyonMapInstance;
   if (!mapInst || !Array.isArray(mapInst.children)) return;
+  const baseline =
+    typeof mapInst === 'object' ? formBaselineByMap.get(mapInst) : undefined;
 
   for (const sec of mapInst.children) {
-    if (!sec || sec.addremove || !Array.isArray(sec.children)) continue;
-    const sids: string[] =
-      typeof sec.cfgsections === 'function'
-        ? (sec.cfgsections() || []).filter(
-            (s: unknown) => typeof s === 'string' && Boolean(s),
-          )
-        : typeof sec.section === 'string' && sec.section
-          ? [sec.section]
-          : [];
+    const sids = getAllowedSectionIds(sec);
     if (sids.length === 0) continue;
 
     for (const sid of sids) {
       for (const opt of sec.children) {
-        if (!opt || opt.disable || opt.readonly || opt.modalonly) continue;
-        if (typeof opt.option !== 'string' || !opt.option) continue;
-        if (
-          typeof opt.formvalue !== 'function' ||
-          typeof opt.cfgvalue !== 'function' ||
-          typeof opt.write !== 'function'
-        ) {
-          continue;
-        }
+        if (!isEditableLiveOption(opt)) continue;
         if (typeof opt.isActive === 'function' && !opt.isActive(sid)) {
           continue;
         }
 
-        const formVal = opt.formvalue(sid);
-        if (formVal === undefined) continue;
+        let formVal: unknown;
+        try {
+          formVal = opt.formvalue(sid);
+        } catch {
+          continue;
+        }
+        if (formVal === undefined || isDomNodeLike(formVal)) continue;
 
-        let savedRaw = opt.cfgvalue(sid);
-        if (savedRaw === null || savedRaw === undefined) {
-          if (opt.default !== null && opt.default !== undefined) {
-            savedRaw = opt.default;
-          } else if (typeof opt.disabled !== 'undefined') {
-            savedRaw = opt.disabled;
-          } else {
-            savedRaw = '';
+        const key = `${sid}:${opt.option}`;
+        let savedRaw: unknown;
+        if (baseline && baseline.has(key)) {
+          savedRaw = baseline.get(key);
+        } else {
+          if (typeof opt.cfgvalue !== 'function') continue;
+          try {
+            savedRaw = opt.cfgvalue(sid);
+          } catch {
+            continue;
+          }
+          if (isDomNodeLike(savedRaw)) continue;
+          if (savedRaw === null || savedRaw === undefined) {
+            if (opt.default !== null && opt.default !== undefined) {
+              savedRaw = opt.default;
+            } else if (typeof opt.disabled !== 'undefined') {
+              savedRaw = opt.disabled;
+            } else {
+              savedRaw = '';
+            }
           }
         }
 
         if (areFormValuesEqual(formVal, savedRaw)) continue;
 
-        const key = `${sid}:${opt.option}`;
+        const before = formatDiffFieldValue(opt.option, savedRaw);
+        const after = formatDiffFieldValue(opt.option, formVal);
+        if (!isSensitiveFieldName(opt.option) && before === after) continue;
+
         if (seen.has(key)) continue;
         seen.add(key);
 
@@ -226,8 +365,8 @@ function collectFromLiveForm(
               ? opt.title.trim()
               : undefined,
           action: 'set',
-          before: formatDiffFieldValue(opt.option, savedRaw),
-          after: formatDiffFieldValue(opt.option, formVal),
+          before,
+          after,
         });
       }
     }
@@ -250,16 +389,21 @@ function collectFromUciState(
       for (const [optName, newVal] of Object.entries(
         opts as Record<string, unknown>,
       )) {
+        if (isInternalOptionName(optName)) continue;
+        const oldVal = pkgValues?.[sid]?.[optName];
+        if (areFormValuesEqual(oldVal, newVal)) continue;
+        const before = formatDiffFieldValue(optName, oldVal);
+        const after = formatDiffFieldValue(optName, newVal);
+        if (!isSensitiveFieldName(optName) && before === after) continue;
         const key = `${sid}:${optName}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const oldVal = pkgValues?.[sid]?.[optName];
         out.push({
           section: sid,
           option: optName,
           action: 'set',
-          before: formatDiffFieldValue(optName, oldVal),
-          after: formatDiffFieldValue(optName, newVal),
+          before,
+          after,
         });
       }
     }
@@ -298,10 +442,12 @@ function collectFromUciState(
         });
       } else if (delVal && typeof delVal === 'object') {
         for (const optName of Object.keys(delVal as Record<string, unknown>)) {
+          if (isInternalOptionName(optName)) continue;
+          const oldVal = pkgValues?.[sid]?.[optName];
+          if (isEmptyRawValue(oldVal)) continue;
           const key = `${sid}:${optName}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          const oldVal = pkgValues?.[sid]?.[optName];
           out.push({
             section: sid,
             option: optName,
@@ -317,6 +463,7 @@ function collectFromUciState(
 
 function appendClassicChangeTuples(
   rawList: unknown,
+  pkgValues: Record<string, Record<string, unknown>> | undefined,
   out: UnsavedChangeItem[],
   seen: Set<string>,
 ): void {
@@ -337,7 +484,14 @@ function appendClassicChangeTuples(
     if (rawOp === 'set' && item.length >= 3) {
       const sid = String(item[1] ?? '');
       const optName = String(item[2] ?? '');
-      if (!sid || !optName) continue;
+      if (!sid || !optName || isInternalOptionName(optName)) continue;
+      const oldVal = pkgValues?.[sid]?.[optName];
+      if (oldVal !== undefined && areFormValuesEqual(oldVal, item[3])) {
+        continue;
+      }
+      const before = formatDiffFieldValue(optName, oldVal);
+      const after = formatDiffFieldValue(optName, item[3]);
+      if (!isSensitiveFieldName(optName) && before === after) continue;
       const key = `${sid}:${optName}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -345,8 +499,8 @@ function appendClassicChangeTuples(
         section: sid,
         option: optName,
         action: 'set',
-        before: '',
-        after: formatDiffFieldValue(optName, item[3]),
+        before,
+        after,
       });
     } else if (rawOp === 'add') {
       const secType = String(item[1] ?? '');
@@ -368,6 +522,11 @@ function appendClassicChangeTuples(
       const optName =
         item.length >= 3 && item[2] != null ? String(item[2]) : '';
       if (!sid) continue;
+      if (optName && isInternalOptionName(optName)) continue;
+      const oldVal = optName ? pkgValues?.[sid]?.[optName] : undefined;
+      if (optName && oldVal !== undefined && isEmptyRawValue(oldVal)) {
+        continue;
+      }
       const key = `${sid}:${optName}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -375,7 +534,9 @@ function appendClassicChangeTuples(
         section: sid,
         option: optName,
         action: 'remove',
-        before: optName || sid,
+        before: optName
+          ? formatDiffFieldValue(optName, oldVal) || optName
+          : sid,
         after: '',
       });
     }
@@ -389,13 +550,14 @@ export function collectUnsavedUciChanges(): UnsavedChangeItem[] {
   collectFromLiveForm(out, seen);
 
   const uciObj = getLuciUci();
+  const pkgValues = uciObj?.state?.values?.[UCI_PACKAGE];
   if (uciObj) {
     collectFromUciState(uciObj, out, seen);
     if (typeof uciObj.changes === 'function') {
       try {
         const res = uciObj.changes(UCI_PACKAGE);
         if (res && typeof (res as PromiseLike<unknown>).then !== 'function') {
-          appendClassicChangeTuples(res, out, seen);
+          appendClassicChangeTuples(res, pkgValues, out, seen);
         }
       } catch {
         // Ignore synchronous uci.changes lookup errors
@@ -406,7 +568,7 @@ export function collectUnsavedUciChanges(): UnsavedChangeItem[] {
   const uiObj = getLuciUi();
   const uiPkgChanges = uiObj?.changes?.changes?.[UCI_PACKAGE];
   if (uiPkgChanges) {
-    appendClassicChangeTuples(uiPkgChanges, out, seen);
+    appendClassicChangeTuples(uiPkgChanges, pkgValues, out, seen);
   }
 
   return out;
@@ -445,6 +607,7 @@ export async function resetUnsavedDraftChanges(
     await Promise.resolve(uciObj.unload(UCI_PACKAGE)).catch(() => null);
   }
   clearLocalUciUiState();
+  captureFormBaseline(true);
   hideActiveModal();
   options?.onChangesUpdated?.();
   showToast(
@@ -829,6 +992,7 @@ export function openConfigHistoryModal(
         await Promise.resolve(uciObj.unload(UCI_PACKAGE)).catch(() => null);
       }
       clearLocalUciUiState();
+      captureFormBaseline(true);
       hideActiveModal();
       showToast(
         tr(
