@@ -228,6 +228,15 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
     }
 
     for sec in candidate.sections.iter().filter(|s| s.enabled) {
+        if sec.mixed_proxy_enabled
+            && sec.mixed_proxy_port > 0
+            && !used_ports.insert(sec.mixed_proxy_port)
+        {
+            warnings.push(format!(
+                "Section '{}' mixed_proxy_port {} conflicts with another enabled inbound/section and will be skipped",
+                sec.id, sec.mixed_proxy_port
+            ));
+        }
         if sec.is_tailscale()
             && let Err(msg) = crate::store::validate_tailscale_network_options(
                 &sec.tailscale_relay_server_port,
@@ -356,74 +365,161 @@ pub fn promote_to_known_good(lkg_path: &Path, data: &RouterStoreData) -> anyhow:
     crypto_gen::write_json_if_changed(lkg_path, data)
 }
 
+/// Clone `RouterStoreData` onto the heap without keeping temporary stack copies in async futures.
+#[inline(never)]
+fn clone_store_boxed(src: &RouterStoreData) -> Box<RouterStoreData> {
+    Box::new(src.clone())
+}
+
+/// Restore heap-allocated `Box<RouterStoreData>` from Last Known Good (`tachyon.known_good.json`).
+#[inline(never)]
+pub fn load_known_good_boxed(lkg_path: &Path) -> anyhow::Result<Box<RouterStoreData>> {
+    let raw = std::fs::read_to_string(lkg_path)?;
+    Ok(serde_json::from_str::<Box<RouterStoreData>>(&raw)?)
+}
+
 /// Restore `RouterStoreData` from Last Known Good (`tachyon.known_good.json`) if available.
 pub fn load_known_good(lkg_path: &Path) -> anyhow::Result<RouterStoreData> {
-    let raw = std::fs::read_to_string(lkg_path)?;
-    Ok(serde_json::from_str::<RouterStoreData>(&raw)?)
+    Ok(*load_known_good_boxed(lkg_path)?)
+}
+
+/// Execute an 8-phase atomic configuration transaction with LIFO rollback on failure,
+/// recording a structural history entry with the supplied `source` tag into `hist_dir`.
+#[inline(never)]
+pub fn commit_transaction_boxed_in_history_dir<'a>(
+    state: &'a Arc<AppState>,
+    candidate: Box<RouterStoreData>,
+    source: &'a str,
+    hist_dir: Option<std::path::PathBuf>,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = anyhow::Result<ConfigPlanReport>> + Send + 'a>,
+> {
+    Box::pin(async move {
+        let mut candidate = candidate;
+
+        // Phase 1: PLAN (deduplicate cloned conditions and enforce cascade invariants)
+        candidate.deduplicate_cloned_conditions();
+        enforce_section_server_cascade(&mut candidate);
+
+        // Phase 2: PREFLIGHT & Phase 5: VALIDATE
+        let plan = analyze_config_plan(&candidate);
+        if !plan.valid {
+            anyhow::bail!("Transaction validation failed: {}", plan.errors.join("; "));
+        }
+
+        // Phase 3: SNAPSHOT (capture current state on heap for instant LIFO rollback)
+        let mut previous = {
+            let guard = state.data.read().await;
+            clone_store_boxed(&guard)
+        };
+        if !state.lkg_path.exists() {
+            let _ = promote_to_known_good(&state.lkg_path, &previous);
+        }
+
+        // Phase 4: MUTATE (write compiled core config + store JSON using NAND-safe atomic writers)
+        {
+            let core_cfg = config_gen::compile_core_config(&candidate)?;
+            let core_cfg_path = Path::new(&candidate.settings.core_config_path);
+            if let Err(e) = crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg) {
+                // Non-fatal on dev hosts where `/etc/tachyon-core` is not writable; fallback to local data dir
+                if let Some(parent) = state.path.parent() {
+                    let fallback_core = parent.join("tachyon-core-config.json");
+                    crypto_gen::write_json_if_changed(&fallback_core, &core_cfg)
+                        .map_err(|fe| anyhow::anyhow!("Failed writing core config ({e} / {fe})"))?;
+                }
+            }
+        }
+
+        {
+            let mut d = state.data.write().await;
+            std::mem::swap(&mut *d, &mut *candidate);
+        }
+        drop(candidate);
+
+        if let Err(e) = state.save().await {
+            // LIFO Rollback
+            let mut d = state.data.write().await;
+            std::mem::swap(&mut *d, &mut *previous);
+            anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
+        }
+
+        let recorded_id = {
+            let committed = state.data.read().await;
+            match hist_dir.as_deref() {
+                Some(dir) => crate::config_history::record_commit_revision_in(
+                    dir, &previous, &committed, source,
+                ),
+                None => {
+                    crate::config_history::record_commit_revision(&previous, &committed, source)
+                }
+            }
+            .map(|s| s.id)
+        };
+        drop(previous);
+
+        // Phase 6-8: ACTIVATE & COMMIT (start LKG 180s observation window unless auto_rollback)
+        {
+            let mut live = state.live.write().await;
+            if let Some(id) = recorded_id {
+                live.active_revision_id = id;
+            }
+            if source == "auto_rollback" {
+                live.lkg_observing = false;
+                live.lkg_remaining_secs = 0;
+                live.push_event(
+                    "warn",
+                    "transaction",
+                    &format!("Committed automatic rollback at {}", unix_now_secs()),
+                );
+            } else {
+                live.lkg_observing = true;
+                live.lkg_remaining_secs = LKG_OBSERVATION_WINDOW_SECS;
+                live.push_event(
+                    "info",
+                    "transaction",
+                    &format!(
+                        "Committed transaction at {} (LKG observation window: {}s)",
+                        unix_now_secs(),
+                        LKG_OBSERVATION_WINDOW_SECS
+                    ),
+                );
+            }
+        }
+
+        Ok(plan)
+    })
+}
+
+/// Execute an 8-phase atomic configuration transaction with LIFO rollback on failure,
+/// taking a heap-allocated `Box<RouterStoreData>` to keep async task frames small on 512 KiB stacks.
+#[inline(never)]
+pub fn commit_transaction_boxed<'a>(
+    state: &'a Arc<AppState>,
+    candidate: Box<RouterStoreData>,
+    source: &'a str,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = anyhow::Result<ConfigPlanReport>> + Send + 'a>,
+> {
+    commit_transaction_boxed_in_history_dir(state, candidate, source, None)
+}
+
+/// Execute an 8-phase atomic configuration transaction with LIFO rollback on failure,
+/// recording a structural history entry with the supplied `source` tag.
+#[allow(dead_code)]
+pub async fn commit_transaction_with_source(
+    state: &Arc<AppState>,
+    candidate: RouterStoreData,
+    source: &str,
+) -> anyhow::Result<ConfigPlanReport> {
+    commit_transaction_boxed(state, Box::new(candidate), source).await
 }
 
 /// Execute an 8-phase atomic configuration transaction with LIFO rollback on failure.
 pub async fn commit_transaction(
     state: &Arc<AppState>,
-    mut candidate: RouterStoreData,
+    candidate: RouterStoreData,
 ) -> anyhow::Result<ConfigPlanReport> {
-    // Phase 1: PLAN (deduplicate cloned conditions and enforce cascade invariants)
-    candidate.deduplicate_cloned_conditions();
-    enforce_section_server_cascade(&mut candidate);
-
-    // Phase 2: PREFLIGHT & Phase 5: VALIDATE
-    let plan = analyze_config_plan(&candidate);
-    if !plan.valid {
-        anyhow::bail!("Transaction validation failed: {}", plan.errors.join("; "));
-    }
-
-    // Phase 3: SNAPSHOT (capture current state in memory for instant LIFO rollback)
-    let previous = { state.data.read().await.clone() };
-    if !state.lkg_path.exists() {
-        let _ = promote_to_known_good(&state.lkg_path, &previous);
-    }
-
-    // Phase 4: MUTATE (write compiled core config + store JSON using NAND-safe atomic writers)
-    let core_cfg = config_gen::compile_core_config(&candidate)?;
-    let core_cfg_path = Path::new(&candidate.settings.core_config_path);
-    if let Err(e) = crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg) {
-        // Non-fatal on dev hosts where `/etc/tachyon-core` is not writable; fallback to local data dir
-        if let Some(parent) = state.path.parent() {
-            let fallback_core = parent.join("tachyon-core-config.json");
-            crypto_gen::write_json_if_changed(&fallback_core, &core_cfg)
-                .map_err(|fe| anyhow::anyhow!("Failed writing core config ({e} / {fe})"))?;
-        }
-    }
-
-    {
-        let mut d = state.data.write().await;
-        *d = candidate;
-    }
-
-    if let Err(e) = state.save().await {
-        // LIFO Rollback
-        let mut d = state.data.write().await;
-        *d = previous;
-        anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
-    }
-
-    // Phase 6-8: ACTIVATE & COMMIT (start LKG 180s observation window)
-    {
-        let mut live = state.live.write().await;
-        live.lkg_observing = true;
-        live.lkg_remaining_secs = LKG_OBSERVATION_WINDOW_SECS;
-        live.push_event(
-            "info",
-            "transaction",
-            &format!(
-                "Committed transaction at {} (LKG observation window: {}s)",
-                unix_now_secs(),
-                LKG_OBSERVATION_WINDOW_SECS
-            ),
-        );
-    }
-
-    Ok(plan)
+    commit_transaction_boxed(state, Box::new(candidate), "save").await
 }
 
 #[cfg(test)]

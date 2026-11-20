@@ -196,6 +196,65 @@ pub fn redact_string(input: &str) -> String {
             search_from = start;
         }
     }
+
+    // Mask Bearer tokens and sensitive key=value assignments in arbitrary logs/commands.
+    for marker in [
+        "bearer ",
+        "password=",
+        "token=",
+        "secret=",
+        "api_key=",
+        "apikey=",
+        "key=",
+    ] {
+        let mut cursor = 0;
+        loop {
+            let lower = out[cursor..].to_ascii_lowercase();
+            let Some(rel) = lower.find(marker) else {
+                break;
+            };
+            let val_start = cursor + rel + marker.len();
+            if !out.is_char_boundary(val_start) {
+                cursor = val_start;
+                continue;
+            }
+            let val_end_rel = out[val_start..]
+                .find(|c: char| {
+                    c.is_whitespace() || matches!(c, '&' | '"' | '\'' | ';' | ',' | ')' | ']')
+                })
+                .unwrap_or(out.len() - val_start);
+            let val_end = val_start + val_end_rel;
+            if val_end > val_start && &out[val_start..val_end] != "[REDACTED]" {
+                out.replace_range(val_start..val_end, "[REDACTED]");
+                cursor = val_start + "[REDACTED]".len();
+            } else {
+                cursor = val_end.max(val_start + 1).min(out.len());
+            }
+        }
+    }
+
+    // Mask sk-* provider API keys (length >= 12 token chars).
+    let mut sk_cursor = 0;
+    while sk_cursor < out.len() {
+        let Some(rel) = out[sk_cursor..].find("sk-") else {
+            break;
+        };
+        let start = sk_cursor + rel;
+        let boundary_ok = start == 0
+            || out[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|c| !c.is_ascii_alphanumeric() && c != '_');
+        let tok_len = out[start..]
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+            .unwrap_or(out.len() - start);
+        if boundary_ok && tok_len >= 15 {
+            out.replace_range(start..start + tok_len, "[REDACTED]");
+            sk_cursor = start + "[REDACTED]".len();
+        } else {
+            sk_cursor = (start + 3).min(out.len());
+        }
+    }
     out
 }
 

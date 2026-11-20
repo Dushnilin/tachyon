@@ -7301,18 +7301,33 @@ export function openConnectionWizardModal(
           );
         }
         if (customUsername.trim()) {
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            `${customProto}_username`,
-            customUsername.trim(),
-          );
-          uciObj.set(
-            TACHYON_UCI_PACKAGE,
-            srcId,
-            'username',
-            customUsername.trim(),
-          );
+          if (customProto === 'tewfai') {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'tewfai_uuid',
+              customUsername.trim(),
+            );
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'uuid',
+              customUsername.trim(),
+            );
+          } else {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              `${customProto}_username`,
+              customUsername.trim(),
+            );
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'username',
+              customUsername.trim(),
+            );
+          }
         }
         if (customPassword.trim()) {
           uciObj.set(

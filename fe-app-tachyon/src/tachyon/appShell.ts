@@ -21,6 +21,11 @@ import {
   registerAppShellNavActivator,
 } from './services/tab.service';
 import { openConnectionWizardModal } from './connectionWizard';
+import {
+  openConfigHistoryModal,
+  countUnsavedChanges,
+  captureFormBaseline,
+} from './configHistoryModal';
 
 export { activateAppShellNavKey };
 import {
@@ -1019,6 +1024,105 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   let topbarServiceActionInFlight: 'start' | 'stop' | 'restart' | null = null;
   const expandedMenus = getExpandedMenus();
   const lastChildByParent: Record<string, string> = {};
+  let shellLayoutRef: HTMLElement | null = null;
+
+  captureFormBaseline(true);
+
+  const refreshHistoryBadges = (): void => {
+    const count = countUnsavedChanges();
+    const targets: Array<{ querySelectorAll: (sel: string) => any }> = [];
+    if (
+      shellLayoutRef &&
+      typeof shellLayoutRef.querySelectorAll === 'function'
+    ) {
+      targets.push(shellLayoutRef);
+    }
+    if (mapEl && typeof mapEl.querySelectorAll === 'function') {
+      targets.push(mapEl);
+    }
+    if (
+      typeof document !== 'undefined' &&
+      typeof document.querySelectorAll === 'function'
+    ) {
+      targets.push(document);
+    }
+    const updated = new Set<unknown>();
+    for (const root of targets) {
+      const nodes = root.querySelectorAll('.tachyon-history-btn__badge');
+      if (nodes && typeof nodes.forEach === 'function') {
+        nodes.forEach((badge: HTMLElement) => {
+          if (updated.has(badge)) return;
+          updated.add(badge);
+          badge.textContent = count > 0 ? String(count) : '';
+          badge.classList?.toggle('is-hidden', count === 0);
+        });
+      }
+    }
+  };
+
+  const createHistoryButton = (
+    extraClass = '',
+    iconOnly = false,
+  ): HTMLElement => {
+    const unsavedCount = countUnsavedChanges();
+    const badge = E(
+      'span',
+      {
+        class: `tachyon-history-btn__badge${unsavedCount > 0 ? '' : ' is-hidden'}`,
+      },
+      unsavedCount > 0 ? String(unsavedCount) : '',
+    );
+    const titleText = tr(
+      'История изменений и быстрый откат',
+      'Change history and quick rollback',
+    );
+    return E(
+      'button',
+      {
+        type: 'button',
+        class: [
+          'tachyon-topbar__icon-btn',
+          'tachyon-history-btn',
+          iconOnly ? 'tachyon-history-btn--icon' : '',
+          extraClass,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        title: titleText,
+        'aria-label': titleText,
+        click: (ev: MouseEvent) => {
+          ev.preventDefault();
+          openConfigHistoryModal({
+            onReloadMap: options.onReloadMap,
+            onChangesUpdated: refreshHistoryBadges,
+          });
+        },
+      } as any,
+      [
+        svgEl(
+          'svg',
+          {
+            viewBox: '0 0 24 24',
+            width: '14',
+            height: '14',
+            fill: 'none',
+            stroke: 'currentColor',
+            'stroke-width': '2',
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+            'aria-hidden': 'true',
+          },
+          [
+            svgEl('path', { d: 'M3 12a9 9 0 1 0 3-6.7L3 8' }),
+            svgEl('path', { d: 'M3 3v5h5' }),
+            svgEl('path', { d: 'M12 7v5l3 2' }),
+          ],
+        ),
+        ...(iconOnly ? [] : [E('span', {}, tr('Изменения', 'Changes'))]),
+        badge,
+      ],
+    );
+  };
 
   const createSaveApplyButton = (extraClass = ''): HTMLElement =>
     E(
@@ -1059,6 +1163,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 g.L.ui.changes.setIndicator(0);
               }
             }
+            captureFormBaseline(true);
+            refreshHistoryBadges();
             showToast(
               tr(
                 'Настройки сохранены в JSON-конфигурацию',
@@ -1375,6 +1481,37 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     for (const stray of strayChildren) {
       workspaceBodyEl.appendChild(stray);
     }
+  }
+  shellLayoutRef = shellLayout;
+
+  if (
+    !mapEl.getAttribute?.('data-tachyon-history-watch') &&
+    typeof mapEl.addEventListener === 'function'
+  ) {
+    mapEl.setAttribute?.('data-tachyon-history-watch', 'true');
+    let userInteracted = false;
+    let badgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleBadgeRefresh = () => {
+      if (badgeDebounceTimer !== null) {
+        clearTimeout(badgeDebounceTimer);
+      }
+      badgeDebounceTimer = setTimeout(() => {
+        badgeDebounceTimer = null;
+        refreshHistoryBadges();
+      }, 180);
+    };
+    const handleFormInteraction = () => {
+      userInteracted = true;
+      scheduleBadgeRefresh();
+    };
+    mapEl.addEventListener('input', handleFormInteraction);
+    mapEl.addEventListener('change', handleFormInteraction);
+    setTimeout(() => {
+      if (!userInteracted) {
+        captureFormBaseline(false);
+        refreshHistoryBadges();
+      }
+    }, 250);
   }
 
   const syncLuciThemeAccent = () => {
@@ -2423,6 +2560,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         sidebarPos === 'top'
           ? [
               buildTopbarServiceControls(),
+              createHistoryButton('tachyon-topbar__history-btn', true),
               buildWizardBtn(),
               E('span', {
                 class: 'tachyon-topbar__divider',
@@ -2497,6 +2635,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         if (needsSaveBtn) {
           rowChildren.push(
             E('div', { class: 'tachyon-subnav-actions' }, [
+              createHistoryButton('tachyon-subnav-history-btn', false),
               createSaveApplyButton('tachyon-subnav-save-btn'),
             ]),
           );
@@ -2589,6 +2728,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           buildTopbarServiceControls(),
         ]),
         E('div', { class: 'tachyon-topbar__right' }, [
+          createHistoryButton('tachyon-topbar__history-btn', true),
           buildWizardBtn(),
           buildSidebarPosBtn(false),
           langSlot,
@@ -2785,6 +2925,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 ),
               ]
             : []),
+          createHistoryButton('tachyon-pane-quickbar__history-btn', false),
           createSaveApplyButton('tachyon-pane-quickbar__save-btn'),
         ]),
       );

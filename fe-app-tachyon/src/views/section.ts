@@ -17033,10 +17033,34 @@ function createSectionContent(section) {
     legacyTextOptionName: 'user_domains_text',
     label: _('Auto-detected Domains'),
     description: _(
-      'Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here.',
+      'Domains automatically detected by Smart Detect for this proxy section or added via Telegram bot. You can manually edit or remove them here.',
     ),
     textAnalyze: analyzeDomainSuffixText,
   });
+  [
+    'connection',
+    'proxy',
+    'outbound',
+    'vpn',
+    'group',
+    'awg',
+    'warp',
+    'anytls',
+    'snell',
+    'mieru',
+    'naive',
+    'sudoku',
+    'masque',
+    'shadowtls',
+    'trusttunnel',
+    'tewfai',
+    'csqtt',
+    'openvpn',
+    'openconnect',
+    'wdtt',
+    'olcrtc',
+    'fptn',
+  ].forEach((act) => userDomainsConditionOption.depends('action', act));
 
   const ipConditionOption = addTextConditionField(section, {
     key: 'ip_cidr',
@@ -19923,6 +19947,7 @@ function cascadeDeleteSection(section_id) {
     }
 
     [
+      'smart_detect_section',
       'dns_detour_section',
       'download_lists_via_proxy_section',
       'download_components_via_proxy_section',
@@ -20065,6 +20090,23 @@ function makeUniqueSectionId(baseId) {
   return candidate;
 }
 
+const CLONE_EXCLUDED_SECTION_OPTIONS = new Set([
+  // A global-rule claim stays with the original. Copying it would leave two
+  // sections claiming one value, which is exactly what validation rejects -
+  // the clone would brick the apply before anyone opened it.
+  'global_rules',
+  // Unique local listen ports, state dirs, inbound bindings, and runtime tags
+  // must never be duplicated onto a clone or enabling both sections collides.
+  'mixed_proxy_enabled',
+  'mixed_proxy_port',
+  'csqtt_local_port',
+  'tailscale_relay_server_port',
+  'tailscale_state_dir',
+  'tailscale_hostname',
+  'source_inbounds',
+  'active_selected_tag',
+]);
+
 function copySectionOptions(sourceId, targetId, overrides = {}) {
   const source = (uci.sections(UCI_PACKAGE, 'section') || []).find(
     (item) => item['.name'] === sourceId,
@@ -20073,10 +20115,7 @@ function copySectionOptions(sourceId, targetId, overrides = {}) {
 
   Object.entries(source).forEach(([key, value]) => {
     if (key.startsWith('.')) return;
-    // A global-rule claim stays with the original. Copying it would leave two
-    // sections claiming one value, which is exactly what validation rejects -
-    // the clone would brick the apply before anyone opened it.
-    if (key === 'global_rules') return;
+    if (CLONE_EXCLUDED_SECTION_OPTIONS.has(key)) return;
     if (Object.prototype.hasOwnProperty.call(overrides, key)) return;
     if (value === undefined || value === null) return;
     uci.set(UCI_PACKAGE, targetId, key, value);
@@ -20162,6 +20201,7 @@ function copyChildSections(sourceId, targetId) {
         : [];
     if (balRefs.length > 0) {
       const newBalRefs: string[] = [];
+      const balIdMap: Record<string, string> = {};
       balRefs.forEach((balId) => {
         const balObj = (uci.sections(UCI_PACKAGE, 'balancer') || []).find(
           (b) => b['.name'] === balId,
@@ -20177,9 +20217,36 @@ function copyChildSections(sourceId, targetId) {
         const oldBalName = uci.get(UCI_PACKAGE, balId, 'name') || balId;
         uci.set(UCI_PACKAGE, newBalId, 'name', `${oldBalName} (Copy)`);
         newBalRefs.push(newBalId);
+        balIdMap[balId] = newBalId;
       });
       if (newBalRefs.length > 0) {
         uci.set(UCI_PACKAGE, targetId, 'balancer_refs', newBalRefs);
+        const rawBalSettings = uci.get(
+          UCI_PACKAGE,
+          targetId,
+          'balancer_settings',
+        );
+        if (typeof rawBalSettings === 'string' && rawBalSettings.trim()) {
+          try {
+            const parsed = JSON.parse(rawBalSettings);
+            if (
+              parsed &&
+              typeof parsed === 'object' &&
+              !Array.isArray(parsed)
+            ) {
+              const remapped: Record<string, unknown> = {};
+              Object.entries(parsed).forEach(([k, v]) => {
+                remapped[balIdMap[k] || k] = v;
+              });
+              uci.set(
+                UCI_PACKAGE,
+                targetId,
+                'balancer_settings',
+                JSON.stringify(remapped),
+              );
+            }
+          } catch (_e) {}
+        }
       }
     }
   } catch (_e) {}

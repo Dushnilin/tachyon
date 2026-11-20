@@ -198,12 +198,22 @@ if [ "$_is_v1" -eq 1 ]; then
 fi
 
 if command -v crontab >/dev/null 2>&1; then
+    _tachyon_cron_re='#[[:space:]]*tachyon-(list-update|subscription-update|component-update-check|parental-quota)([[:space:]]|$)|/usr/bin/tachyon[[:space:]]+(list_update(_if_due)?|subscription_update(_if_due)?|component_updates_if_due|component_auto_update_apply|parental_quota_tick)([[:space:]]|$)'
+    _cron_cur="$(mktemp /tmp/tachyon-cron-cur.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cron-cur.$$")"
     _crontmp="$(mktemp /tmp/tachyon-cron.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cron.$$")"
-    if crontab -l 2>/dev/null | grep -q -E 'tachyon|parental_quota_tick'; then
-        crontab -l 2>/dev/null | grep -v -E 'tachyon|parental_quota_tick' > "$_crontmp" || true
-        crontab "$_crontmp" 2>/dev/null || true
+    if [ -r /etc/crontabs/root ]; then
+        cat /etc/crontabs/root > "$_cron_cur" 2>/dev/null || true
+    else
+        crontab -l > "$_cron_cur" 2>/dev/null || true
     fi
-    rm -f "$_crontmp" 2>/dev/null || true
+    if grep -q -E "$_tachyon_cron_re" "$_cron_cur" 2>/dev/null; then
+        grep -v -E "$_tachyon_cron_re" "$_cron_cur" > "$_crontmp" || true
+        crontab "$_crontmp" 2>/dev/null || true
+        if [ -s "$_crontmp" ] && [ -x /etc/init.d/cron ]; then
+            pgrep crond >/dev/null 2>&1 || /etc/init.d/cron start >/dev/null 2>&1 || true
+        fi
+    fi
+    rm -f "$_cron_cur" "$_crontmp" 2>/dev/null || true
 fi
 
 rm -f /tmp/luci-indexcache* /usr/share/tachyon/tachyon.ru.po 2>/dev/null || true

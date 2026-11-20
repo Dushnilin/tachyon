@@ -1433,11 +1433,11 @@ impl Default for GlobalSettings {
             recovery_bypass: false,
             memory_limit_mb: 0,
             log_level: "warn".to_string(),
-            smart_detect: true,
+            smart_detect: false,
             smart_detect_mode: "default".to_string(),
             smart_detect_expand_to_root: true,
-            smart_detect_sections: vec!["Main".to_string()],
-            smart_detect_section: "Main".to_string(),
+            smart_detect_sections: Vec::new(),
+            smart_detect_section: String::new(),
             smart_detect_exclude: Vec::new(),
             smart_detect_exclude_lists: Vec::new(),
             subscription_engine: "core".to_string(),
@@ -4793,9 +4793,19 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("smart_detect_mode") {
                         self.settings.smart_detect_mode = v.to_string();
                     }
-                    let sd_secs = b.list("smart_detect_sections");
-                    if !sd_secs.is_empty() {
-                        self.settings.smart_detect_sections = sd_secs;
+                    self.settings.smart_detect_section = b
+                        .opt("smart_detect_section")
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    self.settings.smart_detect_sections = b.list("smart_detect_sections");
+                    if let Some(v) = b.opt("smart_detect_expand_to_root") {
+                        self.settings.smart_detect_expand_to_root = parse_bool(v);
+                    }
+                    self.settings.smart_detect_exclude = b.list("smart_detect_exclude");
+                    self.settings.smart_detect_exclude_lists = b.list("smart_detect_exclude_lists");
+                    if let Some(v) = b.opt("ai_persistent_smart_detect") {
+                        self.settings.ai_persistent_smart_detect = parse_bool(v);
                     }
                     if let Some(v) = b.opt("list_update_enabled") {
                         self.settings.list_update_enabled = parse_bool(v);
@@ -7576,7 +7586,7 @@ fn fill_outbound_source_from_uci_block(
         let (_, ps) = extract_uci_source_port_specs(b, st, from_section, allow_generic);
         src.server_ports = ps;
     }
-    if src.username.is_empty() {
+    if src.username.is_empty() && st != "tewfai" {
         let mut keys: Vec<&'static str> = Vec::new();
         if !from_section || allow_generic {
             keys.extend_from_slice(&["username", "user"]);
@@ -7651,8 +7661,22 @@ fn fill_outbound_source_from_uci_block(
         if !from_section || st == "tewfai" {
             keys.push("tewfai_uuid");
         }
+        if st == "tewfai" {
+            // Legacy 1.x connection wizard saved TewFai UUID under `tewfai_username` / `username`.
+            keys.push("tewfai_username");
+            if !from_section || allow_generic {
+                keys.extend_from_slice(&["username", "user"]);
+            }
+        }
         if let Some(v) = b.opt_any(&keys) {
             src.uuid = v.to_string();
+        }
+    }
+    if st == "tewfai" && !src.username.is_empty() {
+        if src.uuid.is_empty() {
+            src.uuid = std::mem::take(&mut src.username);
+        } else {
+            src.username.clear();
         }
     }
     if src.tls_sni.is_empty() {
@@ -8283,6 +8307,45 @@ pub struct ThroughputSample {
     pub tx_bps: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OutboundHealthEntry {
+    pub tag: String,
+    pub kind: String,
+    pub dial_ok: u64,
+    pub dial_fail: u64,
+    pub ewma_handshake_ms: u64,
+    pub last_err_class: String,
+    pub last_err_detail: String,
+    #[serde(default)]
+    pub wg_up: Option<bool>,
+    #[serde(default)]
+    pub wg_last_handshake_age_secs: Option<u64>,
+    #[serde(default)]
+    pub selected: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BlackboxSummary {
+    pub id: String,
+    pub timestamp: i64,
+    pub reason: String,
+    pub file_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IncidentRecord {
+    pub id: String,
+    pub timestamp: i64,
+    pub subsystem: String,
+    pub root_cause: String,
+    pub fix_id: String,
+    pub before_ok: bool,
+    pub after_ok: bool,
+    pub rolled_back: bool,
+    pub outcome: String,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LiveTelemetry {
     pub core_running: bool,
@@ -8301,6 +8364,12 @@ pub struct LiveTelemetry {
     pub wan_healthy: bool,
     pub lkg_observing: bool,
     pub lkg_remaining_secs: u64,
+    #[serde(default)]
+    pub active_revision_id: String,
+    #[serde(default)]
+    pub last_auto_rollback_reason: String,
+    #[serde(default)]
+    pub last_auto_rollback_ts: i64,
     pub lan_devices: Vec<LanDevice>,
     /// Node tag -> latest RTT latency in ms (bounded to `MAX_NODE_LATENCIES`).
     pub node_latencies_ms: HashMap<String, u32>,
@@ -8319,6 +8388,40 @@ pub struct LiveTelemetry {
     /// Bounded IP -> `(strike_count, ban_until_unix_sec)` (max `MAX_HONEYPOT_STRIKES`).
     #[serde(skip)]
     pub honeypot_ip_strikes: HashMap<String, (u32, i64)>,
+    pub core_pressure_level: String,
+    pub core_fd_open: u64,
+    pub core_fd_limit: u64,
+    pub core_reload_count: u64,
+    pub core_pool_purges: u64,
+    pub core_inbound_cap_drops: u64,
+    pub fakeip_v4_used: u64,
+    pub fakeip_v4_cap: u64,
+    pub fakeip_evictions: u64,
+    pub udp_nat_active: u64,
+    pub udp_nat_evictions: u64,
+    pub dns_cache_entries: u64,
+    pub dns_cache_hits: u64,
+    pub dns_cache_misses: u64,
+    pub dns_upstream_errors: u64,
+    pub desired_config_digest: String,
+    pub applied_config_digest: String,
+    pub config_drift: bool,
+    pub core_binary_ok: bool,
+    pub core_binary_error: String,
+    pub wan_probe_ms: u64,
+    pub dns_probe_ms: u64,
+    pub wan_fail_streak: u32,
+    pub dns_fail_streak: u32,
+    pub core_fail_streak: u32,
+    pub watchdog_state: String,
+    pub watchdog_last_action: String,
+    pub watchdog_last_action_ts: i64,
+    pub watchdog_restarts_10m: u32,
+    pub outbound_health: Vec<OutboundHealthEntry>,
+    pub anomalies_count: usize,
+    pub recent_flight_failures: usize,
+    pub blackboxes: Vec<BlackboxSummary>,
+    pub incidents: Vec<IncidentRecord>,
 }
 
 impl LiveTelemetry {
@@ -8546,6 +8649,14 @@ impl AppState {
                 migrated = true;
             }
             for src in &mut parsed.outbound_sources {
+                if src.source_type == "tewfai" && !src.username.is_empty() {
+                    if src.uuid.is_empty() {
+                        src.uuid = std::mem::take(&mut src.username);
+                    } else {
+                        src.username.clear();
+                    }
+                    migrated = true;
+                }
                 if src.subscription_engine != "core" {
                     src.subscription_engine = "core".to_string();
                     migrated = true;
@@ -9836,5 +9947,58 @@ config outbound_source 'src_trusttunnel_Only'
         assert_eq!(tt_only.server, "tt2.example.org");
         assert_eq!(tt_only.username, "single_user");
         assert_eq!(tt_only.password, "single_pass");
+    }
+
+    #[test]
+    fn test_tewfai_legacy_username_migrates_to_uuid_and_clears_username() {
+        let uci = r#"
+config outbound_source 'src_DeluxHost2_TewFai'
+	option name 'DeluxHost2 TewFai'
+	option enabled '1'
+	option source_type 'tewfai'
+	option server 'tw2.example.org'
+	option server_port '8443'
+	option username 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+	option password 'secret-psk'
+"#;
+        let blocks = parse_legacy_uci_blocks(uci);
+        let mut store = RouterStoreData::default();
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        let tw = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_DeluxHost2_TewFai")
+            .expect("tewfai source imported");
+        assert_eq!(tw.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert!(tw.username.is_empty(), "tewfai must not keep username");
+        assert_eq!(tw.password, "secret-psk");
+
+        // Also verify AppState::load_or_create auto-repairs pre-existing tachyon.json with username on tewfai
+        let dir = std::env::temp_dir().join(format!("tachyon-tewfai-norm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store_path = dir.join("tachyon.json");
+        let mut broken = RouterStoreData::default();
+        broken.outbound_sources.push(OutboundSource {
+            id: "src_DeluxHost2_TewFai".to_string(),
+            enabled: true,
+            source_type: "tewfai".to_string(),
+            server: "tw2.example.org".to_string(),
+            server_port: 8443,
+            username: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string(),
+            password: "secret-psk".to_string(),
+            ..Default::default()
+        });
+        std::fs::write(&store_path, serde_json::to_string(&broken).unwrap()).unwrap();
+        let loaded = AppState::load_or_create(&store_path).expect("load repaired store");
+        let guard = loaded.data.blocking_read();
+        let repaired = guard
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_DeluxHost2_TewFai")
+            .expect("repaired tewfai source");
+        assert_eq!(repaired.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert!(repaired.username.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

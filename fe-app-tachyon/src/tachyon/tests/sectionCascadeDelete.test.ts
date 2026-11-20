@@ -61,6 +61,7 @@ describe('cascadeDeleteSection logic', () => {
         {
           '.name': 'settings',
           '.type': 'settings',
+          smart_detect_section: 'sec1',
           smart_detect_sections: ['sec1', 'sec2'],
           dns_detour_section: 'sec1',
           download_lists_via_proxy_section: 'sec1',
@@ -191,6 +192,7 @@ describe('cascadeDeleteSection logic', () => {
       }
 
       [
+        'smart_detect_section',
         'dns_detour_section',
         'download_lists_via_proxy_section',
         'download_components_via_proxy_section',
@@ -283,6 +285,7 @@ describe('cascadeDeleteSection logic', () => {
     cascadeDelete('sec1');
 
     const settings = uciState.settings[0];
+    expect(settings.smart_detect_section).toBe('');
     expect(settings.smart_detect_sections).toEqual(['sec2']);
     expect(settings.dns_detour_section).toBe('');
     expect(settings.download_lists_via_proxy_section).toBe('');

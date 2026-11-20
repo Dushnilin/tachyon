@@ -2491,7 +2491,7 @@ function createSnapshotsWidget() {
   return wrapper;
 }
 
-function createSmartDetectSectionsWidget(section_id) {
+function getEligibleSmartDetectSections() {
   const TESTABLE_ACTIONS = [
     'connection',
     'proxy',
@@ -2511,15 +2511,64 @@ function createSmartDetectSectionsWidget(section_id) {
     'wdtt',
     'fptn',
   ];
+  const NON_TUNNEL_SOURCE_TYPES = new Set([
+    'desync',
+    'direct',
+    'block',
+    'reject',
+    'zapret',
+    'zapret2',
+    'byedpi',
+  ]);
+  const sourceTypeById = {};
+  (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach(function (src) {
+    if (src['.name'] && src.enabled !== '0') {
+      sourceTypeById[src['.name']] = String(
+        src.source_type || '',
+      ).toLowerCase();
+    }
+  });
+
+  return (uci.sections(UCI_PACKAGE, 'section') || []).filter(function (s) {
+    if (s.enabled === '0') return false;
+    if (TESTABLE_ACTIONS.indexOf(s.action) < 0) return false;
+    const connType = String(s.connection_type || '').toLowerCase();
+    if (
+      ['block', 'reject', 'direct', 'bypass', 'dns', 'desync', 'hosts'].indexOf(
+        connType,
+      ) >= 0
+    ) {
+      return false;
+    }
+    const srcRefs = L.toArray(s.outbound_source_refs || []);
+    const hasOtherRefs =
+      L.toArray(s.outbound_group_refs || []).length > 0 ||
+      Boolean(s.outbound_group_ref) ||
+      L.toArray(s.section_refs || []).length > 0 ||
+      L.toArray(s.balancer_refs || []).length > 0;
+    if (srcRefs.length > 0 && !hasOtherRefs) {
+      let foundKnown = false;
+      let hasTunnel = false;
+      srcRefs.forEach(function (ref) {
+        if (Object.prototype.hasOwnProperty.call(sourceTypeById, ref)) {
+          foundKnown = true;
+          if (!NON_TUNNEL_SOURCE_TYPES.has(sourceTypeById[ref])) {
+            hasTunnel = true;
+          }
+        }
+      });
+      if (foundKnown && !hasTunnel) return false;
+    }
+    return true;
+  });
+}
+
+function createSmartDetectSectionsWidget(section_id) {
   const sectionActionByName = {};
-  const allSections = (uci.sections(UCI_PACKAGE, 'section') || [])
-    .filter(function (s) {
-      return s.enabled !== '0' && TESTABLE_ACTIONS.indexOf(s.action) >= 0;
-    })
-    .map(function (s) {
-      sectionActionByName[s['.name']] = s.action;
-      return s['.name'];
-    });
+  const allSections = getEligibleSmartDetectSections().map(function (s) {
+    sectionActionByName[s['.name']] = s.action;
+    return s['.name'];
+  });
 
   if (allSections.length === 0) {
     const empty = E('em', {
@@ -2630,6 +2679,16 @@ function createSmartDetectSectionsWidget(section_id) {
 
     row.appendChild(cb);
     row.appendChild(label);
+    if (isEnabled && ordered.find((n) => Boolean(enabledSet[n])) === name) {
+      const primaryBadge = E('span', {
+        'data-section-role': 'primary-target',
+        title: _('First priority section in Auto mode'),
+        style:
+          'display:inline-block;padding:1px 6px;font-size:0.75rem;font-weight:600;line-height:1.4;border-radius:4px;background:rgba(48,209,88,0.12);color:var(--success-color-medium,#30d158);border:1px solid rgba(48,209,88,0.3);user-select:none;',
+      });
+      primaryBadge.textContent = '#1';
+      row.appendChild(primaryBadge);
+    }
     if (sectionActionByName[name] === 'group') {
       const groupBadge = E('span', {
         'data-section-type': 'group',
@@ -6746,7 +6805,7 @@ function createSettingsContent(section, capabilities) {
     'smart_detect',
     _('Enable Smart Detect'),
     _(
-      'Auto-detects blocked domains from logs and adds them to the first section where they work via proxy.',
+      'Auto-detects domains unreachable directly and adds them to the selected target proxy section below (or the first working section from the test list). Block, Bypass, Direct, DNS, and Core Desync sections are never used.',
     ),
   );
   o.default = '0';
@@ -6797,6 +6856,29 @@ function createSettingsContent(section, capabilities) {
     if (description) description.textContent = this.description;
   };
 
+  // Smart Detect target section (explicit single destination or Auto priority list)
+  const sdTargetOpt = section.taboption(
+    'services',
+    form.ListValue,
+    'smart_detect_section',
+    _('Target section for detected domains'),
+    _(
+      'Choose a specific proxy section where all detected domains will be added, or leave Auto to test the checked sections below top-to-bottom. Block, Bypass, Direct, DNS, and Core Desync sections are excluded.',
+    ),
+  );
+  sdTargetOpt.value('', _('Auto (first working from test list below)'));
+  getEligibleSmartDetectSections().forEach(function (sec) {
+    const secName = sec['.name'];
+    const secLabel =
+      sec.label && sec.label !== secName
+        ? `${sec.label} (${secName})`
+        : secName;
+    sdTargetOpt.value(secName, secLabel);
+  });
+  sdTargetOpt.default = '';
+  sdTargetOpt.rmempty = true;
+  sdTargetOpt.depends('smart_detect', '1');
+
   // Smart Detect sections (domain test order)
   const sdSectionsOpt = section.taboption(
     'services',
@@ -6804,11 +6886,11 @@ function createSettingsContent(section, capabilities) {
     '_smart_detect_sections',
     _('Domain test sections'),
     _(
-      'Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom.',
+      'Select and order proxy sections tested top-to-bottom when Target section is set to Auto. Non-tunnel sections (Block, Bypass, Direct, DNS, Core Desync) are excluded automatically.',
     ),
   );
   sdSectionsOpt.rawhtml = true;
-  sdSectionsOpt.depends('smart_detect', '1');
+  sdSectionsOpt.depends({ smart_detect: '1', smart_detect_section: '' });
   sdSectionsOpt.renderWidget = function (section_id, option_index, cfgvalue) {
     return createSmartDetectSectionsWidget(section_id);
   };
@@ -6885,7 +6967,8 @@ function createSettingsContent(section, capabilities) {
       : _('Select a predefined domain list');
   };
 
-  const sdDomainsOpt = section.option(
+  const sdDomainsOpt = section.taboption(
+    'services',
     form.DummyValue,
     '_smart_detect_domains',
     _('Auto-detected domains'),

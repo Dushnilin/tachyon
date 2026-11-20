@@ -2790,6 +2790,39 @@ function buildProxyGroupOutbounds(
     ({ config, entry }) =>
       priorityGroups[config.code]?.outbounds || entry?.value.all || [],
   );
+  const cachedLinkValues = new Set(
+    Array.from(cachedProxyLinks.values())
+      .map((v) => String(v || '').trim())
+      .filter(Boolean),
+  );
+  const metadataRuntimeCodes = Object.keys(
+    outboundMetadata?.names || {},
+  ).filter((code) => !hiddenOutboundTags[code] && proxyByCode.has(code));
+  const hasRuntimeFallbackLeaf =
+    Array.from(cachedProxyLinks.keys()).some(
+      (code) => !hiddenOutboundTags[code] && proxyByCode.has(code),
+    ) || metadataRuntimeCodes.length > 0;
+  const dedupedManualFallbackCodes = Array.from(manualLinkByCode.entries())
+    .filter(([code, link]) => {
+      if (proxyByCode.has(code)) return true;
+      if (hasRuntimeFallbackLeaf) return false;
+      const trimmed = String(link || '').trim();
+      return !trimmed || !cachedLinkValues.has(trimmed);
+    })
+    .map(([code]) => code);
+  const dedupedJsonFallbackCodes = Array.from(jsonOutboundByCode.keys()).filter(
+    (code) => proxyByCode.has(code) || !hasRuntimeFallbackLeaf,
+  );
+  const dedupedInterfaceFallbackCodes = Array.from(
+    interfaceOutboundByCode.keys(),
+  ).filter((code) => proxyByCode.has(code) || !hasRuntimeFallbackLeaf);
+  const fallbackLeafCodes = uniqueCodes([
+    ...Array.from(cachedProxyLinks.keys()),
+    ...metadataRuntimeCodes,
+    ...dedupedManualFallbackCodes,
+    ...dedupedJsonFallbackCodes,
+    ...dedupedInterfaceFallbackCodes,
+  ]);
   const fallbackCodes =
     section.action === 'group'
       ? uniqueCodes([
@@ -2798,20 +2831,12 @@ function buildProxyGroupOutbounds(
           ...(groupUrlTestMemberCodes.length > 0 ||
           groupPriorityMemberCodes.length > 0
             ? [...groupUrlTestMemberCodes, ...groupPriorityMemberCodes]
-            : [
-                ...Array.from(cachedProxyLinks.keys()),
-                ...Array.from(manualLinkByCode.keys()),
-                ...Array.from(jsonOutboundByCode.keys()),
-                ...Array.from(interfaceOutboundByCode.keys()),
-              ]),
+            : fallbackLeafCodes),
         ]).filter((code) => !hiddenOutboundTags[code])
       : uniqueCodes([
           ...urlTestCodes,
           ...priorityCodes,
-          ...Array.from(cachedProxyLinks.keys()),
-          ...Array.from(manualLinkByCode.keys()),
-          ...Array.from(jsonOutboundByCode.keys()),
-          ...Array.from(interfaceOutboundByCode.keys()),
+          ...fallbackLeafCodes,
           ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
           ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
         ]).filter((code) => !hiddenOutboundTags[code]);

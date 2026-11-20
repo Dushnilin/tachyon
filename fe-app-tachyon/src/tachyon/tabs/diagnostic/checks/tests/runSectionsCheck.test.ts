@@ -449,4 +449,76 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('probes concrete outbound code for single-node non-selectable sections', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: false,
+          code: 'TrustTunnel',
+          sectionName: 'TrustTunnel',
+          displayName: 'TrustTunnel',
+          latencyTestTimeout: '5000',
+          outbounds: [
+            {
+              code: 'trusttunnel-src_TrustTunnel',
+              displayName: 'TrustTunnel',
+              latency: 0,
+              type: 'TrustTunnel',
+              selected: true,
+            },
+          ],
+        },
+        {
+          withTagSelect: false,
+          code: 'DeluxHost_Miery',
+          sectionName: 'DeluxHost_Miery',
+          displayName: 'DeluxHost_Miery',
+          latencyTestTimeout: '5000',
+          outbounds: [
+            {
+              code: 'mieru-src_mieru_DeluxHost_Miery',
+              displayName: 'DeluxHost_Miery',
+              latency: 0,
+              type: 'Mieru',
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: { delay: 64 },
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).toHaveBeenCalledWith(
+      'trusttunnel-src_TrustTunnel',
+      '5000',
+    );
+    expect(mocks.getClashApiProxyLatency).toHaveBeenCalledWith(
+      'mieru-src_mieru_DeluxHost_Miery',
+      '5000',
+    );
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'TrustTunnel',
+            value: '64 ms',
+          },
+          {
+            state: 'success',
+            key: 'DeluxHost_Miery',
+            value: '64 ms',
+          },
+        ],
+      }),
+    );
+  });
 });

@@ -243,9 +243,15 @@ export async function runSectionsCheck() {
         };
       }
 
-      const selectedOutbound = section.outbounds[0];
+      const selectedOutbound =
+        section.outbounds.find((item) => item.selected) ?? section.outbounds[0];
+      const targetCode =
+        selectedOutbound?.urlTestInfo?.selectedCode ||
+        selectedOutbound?.priorityInfo?.selectedCode ||
+        selectedOutbound?.code ||
+        section.code;
       const latencyProxy = await TachyonShellMethods.getClashApiProxyLatency(
-        section.code,
+        targetCode,
         section.latencyTestTimeout,
       );
 
@@ -253,7 +259,7 @@ export async function runSectionsCheck() {
 
       if (success) {
         const delay = latencyProxy.data?.delay;
-        if (typeof delay === 'number') {
+        if (typeof delay === 'number' && delay > 0) {
           return {
             state: 'success',
             latency: `${delay} ms`,

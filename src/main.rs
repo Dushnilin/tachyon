@@ -5,14 +5,17 @@
 
 #![recursion_limit = "256"]
 
+mod ai_doctor;
 mod api;
 mod config_gen;
+mod config_history;
 mod core_mgr;
 mod crypto_gen;
 mod diagnostics;
 mod fuzzer;
 mod mcp;
 mod net_stack;
+mod smart_detect;
 mod snapshots;
 mod store;
 mod sys_info;
@@ -20,6 +23,7 @@ mod tg_bot;
 mod transaction;
 mod ubus_bridge;
 mod updater;
+mod watchdog;
 
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
@@ -285,6 +289,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 core.ensure_initial_binary_backups().await;
                 core.spawn_background_loop();
+                smart_detect::spawn_smart_detect_loop(Arc::clone(&state), Arc::clone(&core));
                 tg_bot::spawn_tg_bot_loop(Arc::clone(&state), Arc::clone(&core));
 
                 let state_sig = Arc::clone(&state);
