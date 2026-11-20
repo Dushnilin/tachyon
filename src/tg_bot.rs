@@ -381,6 +381,52 @@ fn local_secs_for_quiet_check() -> i64 {
     unix_now_secs()
 }
 
+pub(crate) fn is_quiet_hours_now(tg: &crate::store::TgBotConfig) -> bool {
+    tg.quiet_hours_enabled
+        && is_in_quiet_hours_at(
+            local_secs_for_quiet_check(),
+            &tg.quiet_hours_start,
+            &tg.quiet_hours_end,
+        )
+}
+
+pub(crate) fn is_critical_notification(kind: &str, text: &str) -> bool {
+    match kind {
+        "crash" | "dns_leak" | "honeypot" => true,
+        "wan" => text.contains("потеря связи") || text.contains("uplink unreachable"),
+        _ => false,
+    }
+}
+
+pub(crate) fn should_suppress_for_quiet_hours_at(
+    now_local_secs: i64,
+    tg: &crate::store::TgBotConfig,
+    is_critical: bool,
+) -> bool {
+    !is_critical
+        && tg.quiet_hours_enabled
+        && is_in_quiet_hours_at(now_local_secs, &tg.quiet_hours_start, &tg.quiet_hours_end)
+}
+
+pub(crate) fn is_critical_outbox_message(raw: &str, dedup_key: Option<&str>) -> bool {
+    if let Some(key) = dedup_key
+        && (key == "route_alert" || key.starts_with("upd_"))
+    {
+        return false;
+    }
+    raw.contains("<b>Сбой ядра:")
+        || raw.contains("<b>Core Crash:")
+        || raw.contains("tachyon-core</code> остановлен")
+        || raw.contains("process stopped")
+        || raw.contains("утечки DNS")
+        || raw.contains("DNS leak")
+        || raw.contains("возможна утечка DNS")
+        || raw.contains("прямой маршрутизации IPv6")
+        || raw.contains("<b>Honeypot:")
+        || raw.contains("<b>WAN:</b> потеря связи")
+        || raw.contains("<b>WAN:</b> uplink unreachable")
+}
+
 pub(crate) fn build_message_header(d: &RouterStoreData) -> String {
     let name = d.telegram.router_name.trim();
     if name.is_empty() {
@@ -946,7 +992,13 @@ pub(crate) fn submit_update_available_notice(
     latest: &str,
 ) {
     let token = d.telegram.bot_token.trim();
-    if token.is_empty() || d.telegram.admin_ids.is_empty() || latest.trim().is_empty() {
+    if !d.telegram.enabled
+        || !d.telegram.notify_update_available
+        || token.is_empty()
+        || d.telegram.admin_ids.is_empty()
+        || latest.trim().is_empty()
+        || is_quiet_hours_now(&d.telegram)
+    {
         return;
     }
     let ru = is_ru(d);
@@ -978,9 +1030,14 @@ pub(crate) fn submit_update_available_notice(
     }
 }
 
-pub fn notify_if_enabled(d: &crate::store::RouterStoreData, kind: &str, text: &str) {
+pub(crate) fn should_emit_notification_at(
+    d: &crate::store::RouterStoreData,
+    kind: &str,
+    text: &str,
+    local_now_secs: i64,
+) -> bool {
     if !d.telegram.enabled || text.trim().is_empty() {
-        return;
+        return false;
     }
     let enabled = match kind {
         "crash" => d.telegram.notify_crash,
@@ -997,7 +1054,26 @@ pub fn notify_if_enabled(d: &crate::store::RouterStoreData, kind: &str, text: &s
         "auto_update" => d.telegram.notify_auto_update,
         _ => false,
     };
-    if enabled {
+    if !enabled {
+        return false;
+    }
+    !should_suppress_for_quiet_hours_at(
+        local_now_secs,
+        &d.telegram,
+        is_critical_notification(kind, text),
+    )
+}
+
+pub fn notify_if_enabled(d: &crate::store::RouterStoreData, kind: &str, text: &str) {
+    if !d.telegram.enabled || text.trim().is_empty() {
+        return;
+    }
+    let local_secs = if d.telegram.quiet_hours_enabled && !is_critical_notification(kind, text) {
+        local_secs_for_quiet_check()
+    } else {
+        0
+    };
+    if should_emit_notification_at(d, kind, text, local_secs) {
         queue_or_send_notification(text);
     }
 }
@@ -1063,12 +1139,17 @@ async fn drain_telegram_outbox(
             if current_bot_id.is_empty() || notice.bot_id != current_bot_id || notice.chat_id == 0 {
                 continue;
             }
+            let critical = is_critical_outbox_message(&notice.text, notice.dedup_key.as_deref());
+            if quiet_now && !critical {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
             if transport::send_tg_message(
                 token,
                 notice.chat_id,
                 &notice.text,
                 None,
-                quiet_now,
+                false,
                 proxy_url,
                 direct_fallback,
             )
@@ -1081,6 +1162,10 @@ async fn drain_telegram_outbox(
             }
             continue;
         }
+        if quiet_now && !is_critical_outbox_message(&raw_text, None) {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
         let html = format_outbox_html(&raw_text, header);
         let mut any_ok = false;
         for &chat_id in admins {
@@ -1089,7 +1174,7 @@ async fn drain_telegram_outbox(
                 chat_id,
                 &html,
                 None,
-                quiet_now,
+                false,
                 proxy_url,
                 direct_fallback,
             )
@@ -1560,7 +1645,7 @@ async fn check_and_notify_finished_jobs(
         if action == "check" || action == "check_update" {
             continue;
         }
-        if !ctx.notify_auto_update {
+        if !ctx.notify_auto_update || ctx.quiet_now {
             continue;
         }
 
@@ -1720,38 +1805,24 @@ pub(crate) fn collect_clash_node_switch_notifications(
         if let Some(prev) = obs.clash_active_nodes.get(&track_key)
             && prev != &resolved_node
             && !store_switched_sections.contains(&sec.id)
+            && d.telegram.notify_server_switch
         {
-            let kind = if active_group.starts_with("bal-") {
-                if d.telegram.notify_failover {
-                    Some("failover")
-                } else if d.telegram.notify_server_switch {
-                    Some("server_switch")
-                } else {
-                    None
-                }
-            } else if d.telegram.notify_server_switch {
-                Some("server_switch")
+            let txt = if ru {
+                format!(
+                    "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&active_group),
+                    escape_html(&resolved_node)
+                )
             } else {
-                None
+                format!(
+                    "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
+                    escape_html(&sec.label),
+                    escape_html(&active_group),
+                    escape_html(&resolved_node)
+                )
             };
-            if let Some(kind) = kind {
-                let txt = if ru {
-                    format!(
-                        "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                        escape_html(&sec.label),
-                        escape_html(&active_group),
-                        escape_html(&resolved_node)
-                    )
-                } else {
-                    format!(
-                        "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                        escape_html(&sec.label),
-                        escape_html(&active_group),
-                        escape_html(&resolved_node)
-                    )
-                };
-                notices.push((kind, txt));
-            }
+            notices.push(("server_switch", txt));
         }
         obs.clash_active_nodes.insert(track_key, resolved_node);
     }
@@ -1993,7 +2064,7 @@ async fn observe_and_notify_events(
     }
 
     if live.core_running
-        && (d.telegram.notify_server_switch || d.telegram.notify_failover)
+        && d.telegram.notify_server_switch
         && now.saturating_sub(obs.last_clash_poll_unix) >= 30
     {
         obs.last_clash_poll_unix = now;

@@ -2134,8 +2134,9 @@ async fn install_core_binary_release(
     };
     let msg = format!("{disp} успешно обновлён: {current} -> {display_ver}");
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
-    if core.state.data.read().await.telegram.notify_auto_update {
-        crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    {
+        let d_guard = core.state.data.read().await;
+        crate::tg_bot::notify_if_enabled(&d_guard, "auto_update", &format!("[Tachyon] {msg}"));
     }
 
     let ok = json!({
@@ -2334,8 +2335,9 @@ async fn install_tachyon_release(
 
     let msg = format!("{disp} успешно обновлён: {current} -> {target_ver}");
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
-    if core.state.data.read().await.telegram.notify_auto_update {
-        crate::tg_bot::queue_or_send_notification(format!("[Tachyon] {msg}"));
+    {
+        let d_guard = core.state.data.read().await;
+        crate::tg_bot::notify_if_enabled(&d_guard, "auto_update", &format!("[Tachyon] {msg}"));
     }
 
     let restart_scheduled = Path::new("/etc/init.d/tachyon").exists();

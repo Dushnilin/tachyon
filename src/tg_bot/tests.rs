@@ -1206,7 +1206,7 @@ fn test_node_switch_observer_no_ping_pong_and_no_duplicate() {
         true,
     );
     assert_eq!(clash_notices.len(), 1);
-    assert_eq!(clash_notices[0].0, "failover");
+    assert_eq!(clash_notices[0].0, "server_switch");
     assert!(clash_notices[0].1.contains("Unlim DE"));
 
     // Subsequent poll with same Unlim DE produces 0 notifications
@@ -1243,4 +1243,121 @@ fn test_node_switch_observer_no_ping_pong_and_no_duplicate() {
         clash_notices3.is_empty(),
         "manual store switch must suppress same-tick Clash duplicate"
     );
+
+    // When notify_server_switch is disabled, balancer node switches stay silent even if notify_failover is enabled
+    d.telegram.notify_server_switch = false;
+    d.telegram.notify_failover = true;
+    d.sections[0].active_selected_tag = String::new();
+    let px_reverted = json!({
+        "sel-Main": { "now": "bal-Main-bal_Main_SoftPortal" },
+        "bal-Main-bal_Main_SoftPortal": { "now": "Unlim EE" }
+    });
+    let (switched4, store_notices4) =
+        collect_section_store_switch_notifications(&mut obs, &d, true);
+    assert!(store_notices4.is_empty());
+    let clash_notices4 = collect_clash_node_switch_notifications(
+        &mut obs,
+        &d,
+        px_reverted.as_object().unwrap(),
+        &switched4,
+        true,
+    );
+    assert!(
+        clash_notices4.is_empty(),
+        "node switch notification must respect notify_server_switch=false even when notify_failover=true: {clash_notices4:?}"
+    );
+}
+
+#[test]
+fn test_quiet_hours_suppresses_non_critical_keeps_critical() {
+    let mut d = RouterStoreData::default();
+    d.telegram.enabled = true;
+    d.telegram.notify_server_switch = true;
+    d.telegram.notify_failover = true;
+    d.telegram.notify_auto_update = true;
+    d.telegram.notify_restart = true;
+    d.telegram.notify_crash = true;
+    d.telegram.notify_dns_leak = true;
+    d.telegram.notify_wan = true;
+    d.telegram.quiet_hours_enabled = true;
+    d.telegram.quiet_hours_start = "23:00".to_string();
+    d.telegram.quiet_hours_end = "07".to_string();
+
+    let night_secs = 3600; // 01:00
+    assert!(!should_emit_notification_at(
+        &d,
+        "server_switch",
+        "<b>Переключение узла:</b> Main -> Node",
+        night_secs
+    ));
+    assert!(!should_emit_notification_at(
+        &d,
+        "failover",
+        "<b>Failover:</b> backup",
+        night_secs
+    ));
+    assert!(!should_emit_notification_at(
+        &d,
+        "auto_update",
+        "[Tachyon] Tachyon успешно обновлён: 2.0.0-beta.9 -> 2.0.0-beta.10",
+        night_secs
+    ));
+    assert!(!should_emit_notification_at(
+        &d,
+        "restart",
+        "<b>Перезапуск ядра:</b> новый PID 123",
+        night_secs
+    ));
+    assert!(!should_emit_notification_at(
+        &d,
+        "wan",
+        "<b>WAN:</b> внешний канал восстановлен",
+        night_secs
+    ));
+
+    // Critical alerts continue to pass during quiet hours
+    assert!(should_emit_notification_at(
+        &d,
+        "crash",
+        "<b>Сбой ядра:</b> stopped unexpectedly",
+        night_secs
+    ));
+    assert!(should_emit_notification_at(
+        &d,
+        "dns_leak",
+        "<b>DNS:</b> local resolver unreachable — DNS leak risk",
+        night_secs
+    ));
+    assert!(should_emit_notification_at(
+        &d,
+        "wan",
+        "<b>WAN:</b> потеря связи на внешнем канале",
+        night_secs
+    ));
+
+    // Daytime restores non-critical alerts
+    let day_secs = 12 * 3600;
+    assert!(should_emit_notification_at(
+        &d,
+        "server_switch",
+        "<b>Переключение узла:</b> Main -> Node",
+        day_secs
+    ));
+
+    assert!(!is_critical_outbox_message(
+        "<b>Переключение узла:</b> Main",
+        None
+    ));
+    assert!(!is_critical_outbox_message(
+        "Доступно обновление tachyon",
+        Some("upd_tachyon_2.0.0-beta.10")
+    ));
+    assert!(is_critical_outbox_message(
+        "<b>Сбой ядра:</b> process crashed",
+        None
+    ));
+    assert!(is_critical_outbox_message(
+        "<b>Honeypot:</b> probe from 1.2.3.4",
+        None
+    ));
 }

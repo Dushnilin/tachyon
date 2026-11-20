@@ -15,14 +15,14 @@ use crate::crypto_gen;
 use crate::diagnostics;
 use crate::fuzzer;
 use crate::snapshots;
-use crate::store::{AppState, RouterStoreData, RoutingSection, TgBotConfig, unix_now_secs};
+use crate::store::{AppState, RouterStoreData, RoutingSection, TgBotConfig};
 use crate::transaction;
 use crate::ubus_bridge;
 use crate::updater;
 
 use super::{
     BotReply, PendingPromptKind, cb_btn, clear_chat_prompt, escape_html, inline_kb,
-    is_in_quiet_hours_at, is_ru, notify_bot_wakeup, parse_hhmm, resolve_tg_proxy_url,
+    is_quiet_hours_now, is_ru, notify_bot_wakeup, parse_hhmm, resolve_tg_proxy_url,
     set_chat_prompt, tr,
 };
 
@@ -2620,8 +2620,7 @@ async fn render_bot_settings(state: &Arc<AppState>) -> BotReply {
     };
     let ru = is_ru(&d);
     let tg = &d.telegram;
-    let in_quiet = tg.quiet_hours_enabled
-        && is_in_quiet_hours_at(unix_now_secs(), &tg.quiet_hours_start, &tg.quiet_hours_end);
+    let in_quiet = is_quiet_hours_now(tg);
     let admins_str = if tg.admin_ids.is_empty() {
         "-".to_string()
     } else {
