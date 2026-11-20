@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-20 12:51+0300\n"
-"PO-Revision-Date: 2026-11-20 12:51+0300\n"
+"POT-Creation-Date: 2026-11-20 16:58+0300\n"
+"PO-Revision-Date: 2026-11-20 16:58+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -511,6 +511,9 @@ msgstr "Добавить префикс к узлам"
 
 msgid "Add to Connections Pool only"
 msgstr "Только в пул подключений (без секции)"
+
+msgid "Added"
+msgstr "Добавлено"
 
 msgid "Additional Health Check URLs (Multi-URL)"
 msgstr "Дополнительные URL проверки доступности (Multi-URL)"
@@ -1100,6 +1103,9 @@ msgstr "Авто-генерация HWID"
 msgid "Auto-repair config & IPv6 rules (doctor --fix)"
 msgstr "Автоисправление конфига и IPv6-правил (doctor --fix)"
 
+msgid "Auto-rollback"
+msgstr "Автооткат"
+
 msgid "Auto-select fastest node from token"
 msgstr "Автовыбор самого быстрого узла из токена"
 
@@ -1147,6 +1153,12 @@ msgstr "Автоматическая проверка обновлений ко�
 
 msgid "Automatic component updates"
 msgstr "Автоматическое обновление компонентов"
+
+msgid "Automatic rollback to last working config is active."
+msgstr "Автоматический откат на последний рабочий конфиг активен."
+
+msgid "Automatic rollback to working config triggered"
+msgstr "Выполнен автооткат на рабочий конфиг"
 
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
 msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
@@ -1619,11 +1631,20 @@ msgstr "Пин сертификата недоступен. Примените �
 msgid "Chain via Another Section (Detour)"
 msgstr "Цепочка через другую секцию (Detour)"
 
+msgid "Change History & Rollback"
+msgstr "История изменений и откат"
+
+msgid "Change history and quick rollback"
+msgstr "История изменений и быстрый откат"
+
 msgid "Change interface language"
 msgstr "Сменить язык интерфейса"
 
 msgid "Change subscription URL"
 msgstr "Сменить ссылку подписки"
+
+msgid "Changes"
+msgstr "Изменения"
 
 msgid "ChatGPT / OpenAI Suite"
 msgstr "ChatGPT / OpenAI (полный пакет)"
@@ -2078,6 +2099,9 @@ msgstr "Режим объединения условий в секции"
 msgid "Conditions from Pool"
 msgstr "Условия из пула"
 
+msgid "Config"
+msgstr "Конфиг"
+
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
 
@@ -2098,6 +2122,9 @@ msgstr "Конфигурация сервиса Tachyon"
 
 msgid "Configuration must contain [Interface] section or valid vpn:// links."
 msgstr "Конфигурация должна содержать секцию [Interface] или корректные ссылки vpn://."
+
+msgid "Configuration rolled back and applied"
+msgstr "Настройки откачены и применены"
 
 msgid "Configure"
 msgstr "Изменить"
@@ -2131,6 +2158,15 @@ msgstr "Настроено"
 
 msgid "Configured detour"
 msgstr "Настроенный маршрут"
+
+msgid "Confirm rollback?"
+msgstr "Подтвердить откат?"
+
+msgid "Confirm working"
+msgstr "Подтвердить рабочий"
+
+msgid "Confirm?"
+msgstr "Подтвердить?"
 
 msgid "Conflict"
 msgstr "Конфликт"
@@ -2365,6 +2401,9 @@ msgstr "Криптовалюта"
 
 msgid "Current Diagnosis"
 msgstr "Текущий диагноз"
+
+msgid "Current config confirmed as working"
+msgstr "Текущий конфиг подтверждён как рабочий"
 
 msgid "Current downlink speed"
 msgstr "Текущая входящая скорость"
@@ -3038,6 +3077,9 @@ msgstr "Отключено (например, 10s)"
 msgid "Disabled (raw UDP)"
 msgstr "Отключено (обычный сырой UDP)"
 
+msgid "Discard draft"
+msgstr "Сбросить черновик"
+
 msgid "Discord (Gateway + Voice + CDN)"
 msgstr "Discord (Шлюз + Голос + CDN)"
 
@@ -3217,6 +3259,9 @@ msgstr "Скачивание"
 
 msgid "Downloading lists"
 msgstr "Скачивание списков"
+
+msgid "Draft"
+msgstr "Черновик"
 
 msgid "Drag blocks with mouse (⠿) or ←↑ / ↓→ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
 msgstr "Перетаскивайте блоки мышью (⠿) или кнопками ←↑ / ↓→. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки"
@@ -3821,6 +3866,9 @@ msgstr "Отказоустойчивый режим (Fail-Closed) включён
 msgid "Fail-Open (Direct bypass)"
 msgstr "Fail-Open (Прямой обход)"
 
+msgid "Failed"
+msgstr "Ошибки"
+
 msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
 msgstr "Неудачные запросы учитываются как 5000 мс. Все замеры выполнены с роутера."
 
@@ -3859,6 +3907,9 @@ msgstr "Не удалось связаться с провайдером ИИ"
 
 msgid "Failed to compare snapshot"
 msgstr "Не удалось сравнить снапшот"
+
+msgid "Failed to confirm working config"
+msgstr "Не удалось подтвердить конфиг"
 
 msgid "Failed to copy address"
 msgstr "Не удалось скопировать адрес"
@@ -3923,6 +3974,9 @@ msgstr "Не удалось импортировать профиль снапш
 msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
+msgid "Failed to load change history"
+msgstr "Не удалось загрузить историю изменений"
+
 msgid "Failed to load history"
 msgstr "Не удалось загрузить историю"
 
@@ -3970,6 +4024,9 @@ msgstr "Не удалось восстановить прямой интерне
 
 msgid "Failed to restore snapshot"
 msgstr "Не удалось восстановить снапшот"
+
+msgid "Failed to rollback config"
+msgstr "Не удалось выполнить откат настроек"
 
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr "Не удалось запустить диагностику — установлен ли бинарник tachyon?"
@@ -4063,6 +4120,9 @@ msgstr "Не удалось восстановить основные узлы"
 
 msgid "Failovers & Restarts"
 msgstr "Переключения и перезапуски"
+
+msgid "Failure reason"
+msgstr "Причина сбоя"
 
 msgid "Fake + Disorder (RAW Fake + Out-of-order MidSLD)"
 msgstr "Fake + Disorder (RAW-фейк + обратный порядок MidSLD)"
@@ -4515,6 +4575,9 @@ msgid "Guest Devices (MAC / IP)"
 msgstr "Гостевые устройства (MAC / IP)"
 
 msgid "Guest Mode"
+msgstr "Гостевой режим"
+
+msgid "Guest mode"
 msgstr "Гостевой режим"
 
 msgid "Guest mode isolates guest devices from local LAN and router administration, while allowing internet access with daily quotas and schedules."
@@ -6002,6 +6065,9 @@ msgstr "Загружено %d текущих записей"
 msgid "Loaded!"
 msgstr "Загружено!"
 
+msgid "Loading change history..."
+msgstr "Загрузка истории изменений..."
+
 msgid "Loading client link..."
 msgstr "Загрузка клиентской ссылки..."
 
@@ -6697,6 +6763,9 @@ msgstr "Нет ответа от трассировщика правил."
 
 msgid "No routes"
 msgstr "Нет маршрутов"
+
+msgid "No saved changes recorded in the current session yet. History is stored in RAM (/tmp) with zero flash wear."
+msgstr "За текущую сессию сохранённых изменений пока нет. История хранится в RAM (/tmp) без износа flash-памяти."
 
 msgid "No section is strictly satisfied by the supplied arguments."
 msgstr "Ни одна секция не удовлетворяется строго указанными аргументами."
@@ -8249,6 +8318,9 @@ msgstr "Удалить серверы, чьи имена соответству�
 msgid "Remove the specified servers from this level."
 msgstr "Удалить указанные серверы с этого уровня."
 
+msgid "Removed"
+msgstr "Удалено"
+
 msgid "Removed from other sections as global: %s"
 msgstr "Удалено из других секций как глобальное: %s"
 
@@ -8390,6 +8462,9 @@ msgstr "Восстановить снапшот"
 msgid "Restore config backup"
 msgstr "Восстановить конфигурацию"
 
+msgid "Restore working"
+msgstr "Вернуть рабочий"
+
 msgid "Restores the Tachyon factory defaults: all rules, subscriptions, custom DNS servers and other options will be lost."
 msgstr "Восстанавливает заводские настройки Tachyon: все правила, подписки, пользовательские DNS-серверы и другие параметры будут удалены."
 
@@ -8408,6 +8483,9 @@ msgstr "Продолжить обновление"
 msgid "Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer."
 msgstr "Сохранять исходящий UDP-сокет при задержке ответов. Требуется tachyon-core 0.5.9 или новее."
 
+msgid "Retry"
+msgstr "Повторить"
+
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
@@ -8420,11 +8498,17 @@ msgstr "Переиспользуемые атомарные условия и с
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr "Списки сервисов, домены, подсети и составные логические условия (AND / OR / NOT) для секций."
 
+msgid "Revert before"
+msgstr "Откатить до"
+
 msgid "Roaming / Handover"
 msgstr "Роуминг / бесшовное переключение"
 
 msgid "Rollback"
 msgstr "Откатить"
+
+msgid "Rollback to working (LKG)"
+msgstr "Откатить к рабочему (LKG)"
 
 msgid "Rose"
 msgstr "Розовый"
@@ -8800,6 +8884,9 @@ msgstr "Сохранить снапшот рабочей конфигураци�
 
 msgid "Save component backup before update"
 msgstr "Сохранять резервную копию перед обновлением"
+
+msgid "Saved revisions (RAM)"
+msgstr "Сохранённые изменения (RAM)"
 
 msgid "Scale peak"
 msgstr "Пик шкалы"
@@ -10925,6 +11012,12 @@ msgstr "Magic-заголовок пакета недогрузки (H4)"
 msgid "Underload packet header (H3)"
 msgstr "Заголовок пакета под нагрузкой (H3)"
 
+msgid "Undo"
+msgstr "Отменить"
+
+msgid "Undo last change"
+msgstr "Отменить последнее"
+
 msgid "Unencrypted DNS on WAN"
 msgstr "Незашифрованный DNS на WAN"
 
@@ -10967,6 +11060,12 @@ msgstr "Без ограничения — ждать все тесты"
 msgid "Unreachable"
 msgstr "Недоступен"
 
+msgid "Unsaved draft changes"
+msgstr "Несохранённые правки"
+
+msgid "Unsaved draft changes discarded"
+msgstr "Несохранённые правки сброшены"
+
 msgid "Unspecified IP address is not allowed"
 msgstr "Неуказанный IP-адрес не разрешён"
 
@@ -10981,6 +11080,9 @@ msgstr "Не проверено"
 
 msgid "Untested fleet"
 msgstr "Серверы ещё не проверялись"
+
+msgid "Unverified"
+msgstr "Не проверен"
 
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr "Хранится до 10 снапшотов; самые старые удаляются автоматически."
@@ -11296,6 +11398,9 @@ msgstr "Статус"
 
 msgid "Verify Direct Reachability Before Fail-Open"
 msgstr "Проверять прямую доступность перед переходом в Fail-Open"
+
+msgid "Verifying"
+msgstr "Проверяется"
 
 msgid "Verifying installation"
 msgstr "Проверка установки"
@@ -11618,6 +11723,9 @@ msgstr "YouTube + Discord + CS2"
 msgid "YouTube Only"
 msgstr "Только YouTube"
 
+msgid "absent"
+msgstr "отсутствовало"
+
 msgid "active"
 msgstr "активен"
 
@@ -11884,6 +11992,9 @@ msgstr "пре-релиз"
 
 msgid "quarantine"
 msgstr "карантин"
+
+msgid "removed"
+msgstr "удалено"
 
 msgid "req."
 msgstr "зап."
@@ -14566,9 +14677,6 @@ msgstr "Проверка доступности сервисов"
 
 msgid "Total Targets"
 msgstr "Всего целей"
-
-msgid "Failed"
-msgstr "Ошибки"
 
 msgid "Avg Latency"
 msgstr "Ср. задержка"

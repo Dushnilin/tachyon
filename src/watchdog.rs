@@ -19,7 +19,6 @@ use crate::crypto_gen;
 use crate::net_stack;
 use crate::snapshots;
 use crate::store::{AppState, BlackboxSummary, OutboundHealthEntry, unix_now_secs};
-use crate::transaction;
 
 pub const MAX_BLACKBOX_FILES: usize = 5;
 const MIN_CORE_BINARY_BYTES: u64 = 64 * 1024;
@@ -520,21 +519,8 @@ pub async fn capture_blackbox(
     Ok(summary)
 }
 
-async fn rollback_lkg_and_apply(core: &CoreManager) -> anyhow::Result<bool> {
-    let lkg_data = transaction::load_known_good(&core.state.lkg_path)?;
-    Box::pin(transaction::commit_transaction(&core.state, lkg_data)).await?;
-    {
-        let mut live = core.state.live.write().await;
-        live.lkg_observing = false;
-        live.lkg_remaining_secs = 0;
-        live.push_event(
-            "warn",
-            "watchdog",
-            "Triggered automatic rollback to Last Known Good configuration",
-        );
-    }
-    Box::pin(core.apply_or_reload()).await?;
-    Ok(true)
+async fn rollback_lkg_and_apply(core: &CoreManager, reason: &str) -> anyhow::Result<bool> {
+    core.auto_rollback_to_working_config(reason, None).await
 }
 
 #[inline(never)]
@@ -561,10 +547,11 @@ fn boxed_capture_blackbox<'a>(
 }
 
 #[inline(never)]
-fn boxed_rollback_lkg(
-    core: &CoreManager,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<bool>> + Send + '_>> {
-    Box::pin(rollback_lkg_and_apply(core))
+fn boxed_rollback_lkg<'a>(
+    core: &'a CoreManager,
+    reason: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<bool>> + Send + 'a>> {
+    Box::pin(rollback_lkg_and_apply(core, reason))
 }
 
 #[inline(never)]
@@ -926,7 +913,13 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                 .cooldown_ready("l4_lkg_rollback", now, 60);
             if allow {
                 let _ = boxed_capture_blackbox(core, "core_crash_lkg_rollback").await;
-                if boxed_rollback_lkg(core).await.is_ok() {
+                if boxed_rollback_lkg(
+                    core,
+                    "Автооткат watchdog: ядро остановилось после изменения конфига",
+                )
+                .await
+                .is_ok()
+                {
                     action_taken = Some("L4_lkg_rollback");
                     wd_state_label = "rolled_back_lkg".to_string();
                 }
@@ -941,7 +934,10 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                 let _ = boxed_capture_blackbox(core, "core_down").await;
                 let tripped = core.watchdog.lock().await.record_restart(now);
                 if tripped && core.state.lkg_path.exists() {
-                    if boxed_rollback_lkg(core).await.is_ok() {
+                    if boxed_rollback_lkg(core, "Автооткат watchdog: частые перезапуски ядра")
+                        .await
+                        .is_ok()
+                    {
                         action_taken = Some("L4_circuit_breaker_lkg_rollback");
                     }
                 } else if boxed_core_start(core).await.is_ok() {
@@ -999,7 +995,14 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                         .lock()
                         .await
                         .cooldown_ready("l4_dns_lkg_rollback", now, 60);
-                if allow && boxed_rollback_lkg(core).await.is_ok() {
+                if allow
+                    && boxed_rollback_lkg(
+                        core,
+                        "Автооткат watchdog: сбой DNS после изменения конфига",
+                    )
+                    .await
+                    .is_ok()
+                {
                     action_taken = Some("L4_dns_lkg_rollback");
                 }
             } else {

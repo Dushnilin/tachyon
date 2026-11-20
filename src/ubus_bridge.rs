@@ -8649,6 +8649,31 @@ async fn execute_pure_rust_tachyon_cli(
         }
         "known_good_promote" | "known_good_save" => {
             let ok = transaction::promote_to_known_good(&state.lkg_path, &d).is_ok();
+            if ok {
+                let active_id = {
+                    let mut live = state.live.write().await;
+                    live.lkg_observing = false;
+                    live.lkg_remaining_secs = 0;
+                    live.last_auto_rollback_reason.clear();
+                    live.last_auto_rollback_ts = 0;
+                    live.push_event(
+                        "info",
+                        "known_good",
+                        "Manual promotion to Last Known Good snapshot",
+                    );
+                    live.active_revision_id.clone()
+                };
+                let target_opt = if active_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(active_id.as_str())
+                };
+                let _ = crate::config_history::mark_revision_status(
+                    target_opt,
+                    "working",
+                    "Подтверждён вручную (LKG)",
+                );
+            }
             json!({ "success": ok, "ok": ok })
         }
         "known_good_restore" => {
@@ -9617,7 +9642,7 @@ async fn handle_pure_rust_uci(
                 persist_json_sections(&store);
                 name
             };
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
             json!([0, { "section": sname }])
         }
         "set" => {
@@ -9656,7 +9681,7 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
             json!([0])
         }
         "delete" => {
@@ -9704,7 +9729,7 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
             json!([0])
         }
         "order" => {
@@ -9747,7 +9772,7 @@ async fn handle_pure_rust_uci(
                 *store = new_map;
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
             json!([0])
         }
         "changes" => json!([0, { "changes": {} }]),

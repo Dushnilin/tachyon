@@ -2658,4 +2658,53 @@ describe('getDashboardSections', () => {
     expect(directCsqtt?.outbounds[0]?.type).toBe('CSQTT');
     expect(directCsqtt?.outbounds[0]?.latency).toBe(33);
   });
+
+  it('does not duplicate a single runtime node with a synthetic legacy manual fallback tag', async () => {
+    const vlessUri =
+      'vless://11111111-2222-3333-4444-555555555555@10.0.0.1:443?security=reality&sni=example.com#NodeOne';
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'SingleVless',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['src_vless_1'],
+      },
+      {
+        '.name': 'src_vless_1',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'proxy_links',
+        name: 'NodeOne',
+        proxy_links: [vlessUri],
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          NodeOne: proxy('vless', {
+            name: 'NodeOne',
+            history: [{ time: '2026-11-20T12:00:00Z', delay: 42 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        links: { NodeOne: vlessUri },
+        outboundMetadata: {
+          names: { NodeOne: 'NodeOne' },
+          protocols: { NodeOne: 'vless' },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const sec = result.data.find((s) => s.sectionName === 'SingleVless');
+    expect(sec).toBeDefined();
+    expect(sec?.outbounds.map((o) => o.code)).toEqual(['NodeOne']);
+    expect(sec?.outbounds[0]?.latency).toBe(42);
+  });
 });

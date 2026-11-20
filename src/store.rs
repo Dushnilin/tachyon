@@ -7586,7 +7586,7 @@ fn fill_outbound_source_from_uci_block(
         let (_, ps) = extract_uci_source_port_specs(b, st, from_section, allow_generic);
         src.server_ports = ps;
     }
-    if src.username.is_empty() {
+    if src.username.is_empty() && st != "tewfai" {
         let mut keys: Vec<&'static str> = Vec::new();
         if !from_section || allow_generic {
             keys.extend_from_slice(&["username", "user"]);
@@ -7661,8 +7661,22 @@ fn fill_outbound_source_from_uci_block(
         if !from_section || st == "tewfai" {
             keys.push("tewfai_uuid");
         }
+        if st == "tewfai" {
+            // Legacy 1.x connection wizard saved TewFai UUID under `tewfai_username` / `username`.
+            keys.push("tewfai_username");
+            if !from_section || allow_generic {
+                keys.extend_from_slice(&["username", "user"]);
+            }
+        }
         if let Some(v) = b.opt_any(&keys) {
             src.uuid = v.to_string();
+        }
+    }
+    if st == "tewfai" && !src.username.is_empty() {
+        if src.uuid.is_empty() {
+            src.uuid = std::mem::take(&mut src.username);
+        } else {
+            src.username.clear();
         }
     }
     if src.tls_sni.is_empty() {
@@ -8350,6 +8364,12 @@ pub struct LiveTelemetry {
     pub wan_healthy: bool,
     pub lkg_observing: bool,
     pub lkg_remaining_secs: u64,
+    #[serde(default)]
+    pub active_revision_id: String,
+    #[serde(default)]
+    pub last_auto_rollback_reason: String,
+    #[serde(default)]
+    pub last_auto_rollback_ts: i64,
     pub lan_devices: Vec<LanDevice>,
     /// Node tag -> latest RTT latency in ms (bounded to `MAX_NODE_LATENCIES`).
     pub node_latencies_ms: HashMap<String, u32>,
@@ -8629,6 +8649,14 @@ impl AppState {
                 migrated = true;
             }
             for src in &mut parsed.outbound_sources {
+                if src.source_type == "tewfai" && !src.username.is_empty() {
+                    if src.uuid.is_empty() {
+                        src.uuid = std::mem::take(&mut src.username);
+                    } else {
+                        src.username.clear();
+                    }
+                    migrated = true;
+                }
                 if src.subscription_engine != "core" {
                     src.subscription_engine = "core".to_string();
                     migrated = true;
@@ -9919,5 +9947,58 @@ config outbound_source 'src_trusttunnel_Only'
         assert_eq!(tt_only.server, "tt2.example.org");
         assert_eq!(tt_only.username, "single_user");
         assert_eq!(tt_only.password, "single_pass");
+    }
+
+    #[test]
+    fn test_tewfai_legacy_username_migrates_to_uuid_and_clears_username() {
+        let uci = r#"
+config outbound_source 'src_DeluxHost2_TewFai'
+	option name 'DeluxHost2 TewFai'
+	option enabled '1'
+	option source_type 'tewfai'
+	option server 'tw2.example.org'
+	option server_port '8443'
+	option username 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+	option password 'secret-psk'
+"#;
+        let blocks = parse_legacy_uci_blocks(uci);
+        let mut store = RouterStoreData::default();
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        let tw = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_DeluxHost2_TewFai")
+            .expect("tewfai source imported");
+        assert_eq!(tw.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert!(tw.username.is_empty(), "tewfai must not keep username");
+        assert_eq!(tw.password, "secret-psk");
+
+        // Also verify AppState::load_or_create auto-repairs pre-existing tachyon.json with username on tewfai
+        let dir = std::env::temp_dir().join(format!("tachyon-tewfai-norm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store_path = dir.join("tachyon.json");
+        let mut broken = RouterStoreData::default();
+        broken.outbound_sources.push(OutboundSource {
+            id: "src_DeluxHost2_TewFai".to_string(),
+            enabled: true,
+            source_type: "tewfai".to_string(),
+            server: "tw2.example.org".to_string(),
+            server_port: 8443,
+            username: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string(),
+            password: "secret-psk".to_string(),
+            ..Default::default()
+        });
+        std::fs::write(&store_path, serde_json::to_string(&broken).unwrap()).unwrap();
+        let loaded = AppState::load_or_create(&store_path).expect("load repaired store");
+        let guard = loaded.data.blocking_read();
+        let repaired = guard
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_DeluxHost2_TewFai")
+            .expect("repaired tewfai source");
+        assert_eq!(repaired.uuid, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert!(repaired.username.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

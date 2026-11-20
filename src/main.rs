@@ -8,6 +8,7 @@
 mod ai_doctor;
 mod api;
 mod config_gen;
+mod config_history;
 mod core_mgr;
 mod crypto_gen;
 mod diagnostics;

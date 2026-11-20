@@ -4725,7 +4725,12 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             if let Some(p) = eff_port {
                 obj.insert("server_port".into(), json!(p));
             }
-            if !src.username.is_empty() {
+            if !src.username.is_empty()
+                && matches!(
+                    st,
+                    "naive" | "mieru" | "trusttunnel" | "openconnect" | "openvpn"
+                )
+            {
                 obj.insert("username".into(), json!(src.username));
             }
             if st == "snell" {
@@ -4755,8 +4760,15 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             } else if !src.psk.is_empty() {
                 obj.insert("psk".into(), json!(src.psk));
             }
-            if !src.uuid.is_empty() {
-                obj.insert("uuid".into(), json!(src.uuid));
+            let effective_uuid = if !src.uuid.is_empty() {
+                src.uuid.as_str()
+            } else if st == "tewfai" && !src.username.is_empty() {
+                src.username.as_str()
+            } else {
+                ""
+            };
+            if !effective_uuid.is_empty() {
+                obj.insert("uuid".into(), json!(effective_uuid));
             }
 
             let sni_or_server = if !src.tls_sni.trim().is_empty() {
@@ -10156,6 +10168,21 @@ fn compile_core_config_inner(
     let mut section_order_ids: Vec<(String, String)> = Vec::new();
     let mut per_sec_aaaa_dns_rules: Vec<Value> = Vec::new();
     let mut custom_dns_sections: Vec<&RoutingSection> = Vec::new();
+    let mut emitted_mixed_ports: HashSet<u16> = HashSet::new();
+    for inb in &inbounds {
+        if let Some(p) = inb.get("listen_port").and_then(Value::as_u64)
+            && let Ok(port) = u16::try_from(p)
+            && port > 0
+        {
+            emitted_mixed_ports.insert(port);
+        }
+    }
+    if store.settings.listen_port > 0 {
+        emitted_mixed_ports.insert(store.settings.listen_port);
+    }
+    if clash_port_check > 0 {
+        emitted_mixed_ports.insert(clash_port_check);
+    }
     for sec in store.sections.iter().filter(|s| s.enabled) {
         if sec.action == "dns" || sec.connection_type == "dns" {
             custom_dns_sections.push(sec);
@@ -10199,26 +10226,33 @@ fn compile_core_config_inner(
             emit_base_policy(&mut rules, &mut base_policy_emitted);
         }
 
-        // Optional local Mixed Proxy port exposing this section
+        // Optional local Mixed Proxy port exposing this section (skip duplicate listen ports to keep core bootable)
         if sec.mixed_proxy_enabled && sec.mixed_proxy_port > 0 {
-            let mixed_in_tag = format!("mixed-sec-{}", sec.id);
-            let mut mixed_in = json!({
-                "type": "mixed",
-                "tag": mixed_in_tag,
-                "listen": if ipv6_active { "::" } else { "0.0.0.0" },
-                "listen_port": sec.mixed_proxy_port,
-            });
-            if sec.mixed_proxy_auth_enabled && !sec.mixed_proxy_username.is_empty() {
-                mixed_in["users"] = json!([{
-                    "username": sec.mixed_proxy_username,
-                    "password": sec.mixed_proxy_password
-                }]);
+            if emitted_mixed_ports.insert(sec.mixed_proxy_port) {
+                let mixed_in_tag = format!("mixed-sec-{}", sec.id);
+                let mut mixed_in = json!({
+                    "type": "mixed",
+                    "tag": mixed_in_tag,
+                    "listen": if ipv6_active { "::" } else { "0.0.0.0" },
+                    "listen_port": sec.mixed_proxy_port,
+                });
+                if sec.mixed_proxy_auth_enabled && !sec.mixed_proxy_username.is_empty() {
+                    mixed_in["users"] = json!([{
+                        "username": sec.mixed_proxy_username,
+                        "password": sec.mixed_proxy_password
+                    }]);
+                }
+                inbounds.push(mixed_in);
+                rules.push(json!({
+                    "inbound": [mixed_in_tag],
+                    "outbound": target_outbound_tag
+                }));
+            } else {
+                eprintln!(
+                    "[tachyon] skipping duplicate mixed_proxy_port {} on section '{}'",
+                    sec.mixed_proxy_port, sec.id
+                );
             }
-            inbounds.push(mixed_in);
-            rules.push(json!({
-                "inbound": [mixed_in_tag],
-                "outbound": target_outbound_tag
-            }));
         }
 
         // Capture traffic arriving on selected local Inbound Servers (`source_inbounds`)
@@ -18045,5 +18079,61 @@ config timeserver 'ntp'
         assert_eq!(tr["extra"]["scMaxEachPostBytes"].as_i64(), Some(1_000_000));
         assert_eq!(tr["extra"]["xmux"]["maxConcurrency"], "16-32");
         assert_eq!(tr["extra"]["xmux"]["hKeepAlivePeriod"].as_i64(), Some(60));
+    }
+
+    #[test]
+    fn test_tewfai_omits_username_and_dedupes_cloned_mixed_proxy_port() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_DeluxHost2_TewFai".to_string(),
+            enabled: true,
+            source_type: "tewfai".to_string(),
+            server: "tw.example.org".to_string(),
+            server_port: 8443,
+            username: "11111111-2222-3333-4444-555555555555".to_string(),
+            password: "psk".to_string(),
+            ..Default::default()
+        });
+        let base_sec = RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            connection_type: "proxy".to_string(),
+            action: "connection".to_string(),
+            outbound_source_refs: vec!["src_DeluxHost2_TewFai".to_string()],
+            mixed_proxy_enabled: true,
+            mixed_proxy_port: 1088,
+            ..Default::default()
+        };
+        let mut clone_sec = base_sec.clone();
+        clone_sec.id = "Main_copy".to_string();
+        clone_sec.label = "Main (Copy)".to_string();
+        store.sections = vec![base_sec, clone_sec];
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let tw = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "tewfai-src_DeluxHost2_TewFai")
+            .expect("tewfai outbound");
+        assert!(
+            tw.get("username").is_none(),
+            "tewfai outbound must never emit unknown field 'username'"
+        );
+        assert_eq!(tw["uuid"], "11111111-2222-3333-4444-555555555555");
+
+        let mixed_1088: Vec<&Value> = cfg["inbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|i| i["listen_port"] == 1088)
+            .collect();
+        assert_eq!(
+            mixed_1088.len(),
+            1,
+            "cloned section must not emit duplicate mixed inbound on port 1088"
+        );
+        assert_eq!(mixed_1088[0]["tag"], "mixed-sec-Main");
     }
 }

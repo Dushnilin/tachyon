@@ -12,6 +12,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::ai_doctor;
 use crate::config_gen;
+use crate::config_history;
 use crate::core_mgr::CoreManager;
 use crate::crypto_gen;
 use crate::diagnostics;
@@ -1634,16 +1635,34 @@ async fn dispatch_api(
             .await
         }
         ("POST", "/api/diagnostics/known-good/promote") | ("POST", "/api/lkg/confirm") => {
-            let d = state.data.read().await.clone();
-            match transaction::promote_to_known_good(&state.lkg_path, &d) {
+            let promote_res = {
+                let d = state.data.read().await;
+                transaction::promote_to_known_good(&state.lkg_path, &d)
+            };
+            match promote_res {
                 Ok(_) => {
-                    let mut live = state.live.write().await;
-                    live.lkg_observing = false;
-                    live.lkg_remaining_secs = 0;
-                    live.push_event(
-                        "info",
-                        "known_good",
-                        "Manual promotion to Last Known Good snapshot",
+                    let active_id = {
+                        let mut live = state.live.write().await;
+                        live.lkg_observing = false;
+                        live.lkg_remaining_secs = 0;
+                        live.last_auto_rollback_reason.clear();
+                        live.last_auto_rollback_ts = 0;
+                        live.push_event(
+                            "info",
+                            "known_good",
+                            "Manual promotion to Last Known Good snapshot",
+                        );
+                        live.active_revision_id.clone()
+                    };
+                    let target_opt = if active_id.trim().is_empty() {
+                        None
+                    } else {
+                        Some(active_id.as_str())
+                    };
+                    let _ = config_history::mark_revision_status(
+                        target_opt,
+                        "working",
+                        "Подтверждён вручную (LKG)",
                     );
                     send_json(stream, 200, &json!({"ok": true})).await
                 }
@@ -1864,6 +1883,48 @@ async fn dispatch_api(
                     send_json(stream, 200, &response).await
                 }
             }
+        }
+        ("GET", "/api/config/history") => {
+            let revisions = config_history::list_revisions();
+            let lkg_available = state.lkg_path.exists();
+            let watchdog_enabled = { state.data.read().await.settings.enable_watchdog };
+            let (
+                lkg_observing,
+                lkg_remaining_secs,
+                active_revision_id,
+                last_auto_rollback_reason,
+                last_auto_rollback_ts,
+            ) = {
+                let live = state.live.read().await;
+                (
+                    live.lkg_observing,
+                    live.lkg_remaining_secs,
+                    live.active_revision_id.clone(),
+                    live.last_auto_rollback_reason.clone(),
+                    live.last_auto_rollback_ts,
+                )
+            };
+            send_json(
+                stream,
+                200,
+                &json!({
+                    "ok": true,
+                    "revisions": revisions,
+                    "lkg_available": lkg_available,
+                    "lkg_observing": lkg_observing,
+                    "lkg_remaining_secs": lkg_remaining_secs,
+                    "active_revision_id": active_revision_id,
+                    "auto_rollback_enabled": true,
+                    "watchdog_enabled": watchdog_enabled,
+                    "last_auto_rollback_reason": last_auto_rollback_reason,
+                    "last_auto_rollback_ts": last_auto_rollback_ts,
+                }),
+            )
+            .await
+        }
+        ("POST", "/api/config/history/rollback") => {
+            let (status, resp) = rollback_config_history_boxed(state, core, body, None).await;
+            send_json(stream, status, &resp).await
         }
         ("POST", "/api/settings/reset") => {
             let cur_secs = ubus_bridge::get_json_sections_snapshot();
@@ -3039,6 +3100,144 @@ fn validate_source_proxy_links(proxy_links: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+#[inline(never)]
+fn sync_uci_snapshot_after_rollback(committed: &RouterStoreData) {
+    let prev_sections = Value::Object(ubus_bridge::get_json_sections_snapshot());
+    if let Value::Object(map) =
+        crate::store::sync_store_to_json_sections(committed, Some(&prev_sections))
+    {
+        ubus_bridge::set_json_sections_snapshot(map);
+    }
+    ubus_bridge::sync_section_cache(committed);
+}
+
+#[inline(never)]
+fn apply_reload_after_rollback_boxed(
+    core: &Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+    Box::pin(core.apply_or_reload())
+}
+
+#[inline(never)]
+fn rollback_config_history_boxed<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    body: &'a [u8],
+    hist_dir: Option<std::path::PathBuf>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = (u16, Value)> + Send + 'a>> {
+    Box::pin(async move {
+        let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+        let target = val.get("target").and_then(Value::as_str).unwrap_or("");
+        let id = val.get("id").and_then(Value::as_str).unwrap_or("");
+        let mode = val.get("mode").and_then(Value::as_str).unwrap_or("before");
+        let is_lkg = target.eq_ignore_ascii_case("lkg");
+        let dir_buf = hist_dir.clone().unwrap_or_else(config_history::history_dir);
+
+        let mut target_was_working = is_lkg;
+        let restored: Box<RouterStoreData> = if is_lkg {
+            match transaction::load_known_good_boxed(&state.lkg_path) {
+                Ok(mut d) => {
+                    let cur_guard = state.data.read().await;
+                    config_history::preserve_live_cached_nodes(&mut d, Some(&cur_guard));
+                    d
+                }
+                Err(e) => {
+                    return (
+                        400,
+                        json!({
+                            "ok": false,
+                            "success": false,
+                            "error": format!("Не удалось загрузить LKG-снимок: {e}")
+                        }),
+                    );
+                }
+            }
+        } else {
+            if mode.eq_ignore_ascii_case("after") {
+                target_was_working = config_history::list_revisions_in(&dir_buf)
+                    .into_iter()
+                    .find(|r| r.id == id)
+                    .is_some_and(|r| r.status == "working");
+            }
+            let cur_guard = state.data.read().await;
+            let loaded = match hist_dir.as_deref() {
+                Some(dir) => {
+                    config_history::load_revision_store_in(dir, id, mode, Some(&cur_guard))
+                }
+                None => config_history::load_revision_store(id, mode, Some(&cur_guard)),
+            };
+            match loaded {
+                Ok(d) => d,
+                Err(e) => {
+                    return (
+                        400,
+                        json!({
+                            "ok": false,
+                            "success": false,
+                            "error": e.to_string()
+                        }),
+                    );
+                }
+            }
+        };
+
+        let prev_active_id = { state.live.read().await.active_revision_id.clone() };
+        if let Err(e) = transaction::commit_transaction_boxed_in_history_dir(
+            state, restored, "rollback", hist_dir,
+        )
+        .await
+        {
+            return (
+                400,
+                json!({
+                    "ok": false,
+                    "success": false,
+                    "error": e.to_string()
+                }),
+            );
+        }
+
+        {
+            let committed = state.data.read().await;
+            sync_uci_snapshot_after_rollback(&committed);
+        }
+        let reload_ok = if core.is_manually_stopped() {
+            true
+        } else {
+            apply_reload_after_rollback_boxed(core).await.is_ok()
+        };
+
+        if target_was_working && reload_ok {
+            let rb_rev_id = {
+                let mut live = state.live.write().await;
+                live.lkg_observing = false;
+                live.lkg_remaining_secs = 0;
+                live.last_auto_rollback_reason.clear();
+                live.last_auto_rollback_ts = 0;
+                live.active_revision_id.clone()
+            };
+            if !rb_rev_id.trim().is_empty() && rb_rev_id != prev_active_id {
+                let _ = config_history::mark_revision_status_in(
+                    &dir_buf,
+                    Some(rb_rev_id.as_str()),
+                    "working",
+                    "Восстановлен рабочий конфиг",
+                );
+            }
+        }
+
+        (
+            200,
+            json!({
+                "ok": true,
+                "success": true,
+                "restored_id": if is_lkg { "lkg" } else { id },
+                "lkg": is_lkg,
+            }),
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3287,5 +3486,89 @@ mod tests {
         assert_eq!(dry["results"].as_array().unwrap().len(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_config_history_rollback_restores_store_and_records_rollback_revision() {
+        #[inline(never)]
+        fn clone_store_boxed(src: &RouterStoreData) -> Box<RouterStoreData> {
+            Box::new(src.clone())
+        }
+
+        Box::pin(async move {
+            let dir = std::env::temp_dir().join(format!("tachyon-api-hist-{}", std::process::id()));
+            let hist_dir = dir.join("history");
+            let _ = std::fs::remove_dir_all(&dir);
+            let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+            let core = CoreManager::new(Arc::clone(&state));
+            core.set_manual_stop(true);
+
+            let (initial_mtu, mut next_store) = {
+                let guard = state.data.read().await;
+                (guard.settings.tun_mtu, clone_store_boxed(&guard))
+            };
+            next_store.settings.tun_mtu = 1380;
+            transaction::commit_transaction_boxed_in_history_dir(
+                &state,
+                next_store,
+                "save",
+                Some(hist_dir.clone()),
+            )
+            .await
+            .expect("commit changed store");
+            assert_eq!(state.data.read().await.settings.tun_mtu, 1380);
+
+            let rev_list = config_history::list_revisions_in(&hist_dir);
+            assert_eq!(rev_list.len(), 1);
+            let rev_id = rev_list[0].id.clone();
+
+            let body = serde_json::to_vec(&json!({ "id": rev_id })).unwrap();
+            let (status, resp) =
+                rollback_config_history_boxed(&state, &core, &body, Some(hist_dir.clone())).await;
+            assert_eq!(status, 200);
+            assert_eq!(resp["ok"], true);
+            assert_eq!(resp["restored_id"], rev_id);
+            assert_eq!(resp["lkg"], false);
+            assert_eq!(state.data.read().await.settings.tun_mtu, initial_mtu);
+
+            let after_rb_list = config_history::list_revisions_in(&hist_dir);
+            assert!(
+                after_rb_list.iter().any(|r| r.source == "rollback"),
+                "expected a 'rollback' revision to be recorded: {:?}",
+                after_rb_list
+            );
+
+            // Verify LKG rollback path too
+            let lkg_snap = {
+                let guard = state.data.read().await;
+                clone_store_boxed(&guard)
+            };
+            transaction::promote_to_known_good(&state.lkg_path, &lkg_snap).unwrap();
+            let mut drifted = lkg_snap;
+            drifted.settings.tun_mtu = 1412;
+            transaction::commit_transaction_boxed_in_history_dir(
+                &state,
+                drifted,
+                "save",
+                Some(hist_dir.clone()),
+            )
+            .await
+            .expect("commit drifted store");
+            let lkg_body = serde_json::to_vec(&json!({ "target": "lkg" })).unwrap();
+            let (lkg_status, lkg_resp) =
+                rollback_config_history_boxed(&state, &core, &lkg_body, Some(hist_dir.clone()))
+                    .await;
+            assert_eq!(lkg_status, 200);
+            assert_eq!(lkg_resp["lkg"], true);
+            assert_eq!(state.data.read().await.settings.tun_mtu, initial_mtu);
+            assert!(!state.live.read().await.lkg_observing);
+
+            let final_revs = config_history::list_revisions_in(&hist_dir);
+            assert_eq!(final_revs[0].source, "rollback");
+            assert_eq!(final_revs[0].status, "working");
+
+            let _ = std::fs::remove_dir_all(&dir);
+        })
+        .await;
     }
 }

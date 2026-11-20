@@ -71,6 +71,7 @@ pub struct CoreManager {
     sub_last_attempt: Mutex<HashMap<String, i64>>,
     prev_totals: Mutex<Option<TrafficSampleBaseline>>,
     intentional_stop: AtomicBool,
+    auto_rollback_in_flight: AtomicBool,
     last_ipv6_resync_ts: PortableAtomicU64,
     pub watchdog: Mutex<crate::watchdog::WatchdogState>,
 }
@@ -85,6 +86,7 @@ impl CoreManager {
             sub_last_attempt: Mutex::new(HashMap::new()),
             prev_totals: Mutex::new(None),
             intentional_stop: AtomicBool::new(false),
+            auto_rollback_in_flight: AtomicBool::new(false),
             last_ipv6_resync_ts: PortableAtomicU64::new(0),
             watchdog: Mutex::new(crate::watchdog::WatchdogState::default()),
         })
@@ -734,8 +736,7 @@ impl CoreManager {
         }
     }
 
-    /// Hot-reload `tachyon-core` via `PUT /configs` on Clash API, or restart if not running.
-    pub async fn apply_or_reload(&self) -> anyhow::Result<()> {
+    async fn apply_or_reload_inner(&self) -> anyhow::Result<()> {
         let reload_guard = self.reload_lock.lock().await;
         let (is_running, core_pid) = {
             let live = self.state.live.read().await;
@@ -782,6 +783,138 @@ impl CoreManager {
         self.restore_saved_selectors(&store_snapshot).await;
         drop(reload_guard);
         Ok(())
+    }
+
+    /// Hot-reload `tachyon-core` via `PUT /configs` on Clash API, or restart if not running.
+    /// Automatically rolls back to the last working config if validation/startup fails during an observation window.
+    pub async fn apply_or_reload(&self) -> anyhow::Result<()> {
+        let was_running = { self.state.live.read().await.core_running };
+        let res = Box::pin(self.apply_or_reload_inner()).await;
+        if let Err(ref err) = res {
+            let err_text = err.to_string();
+            let missing_binary = err_text.contains("tachyon-core binary not found");
+            let config_rejected = err_text.contains("tachyon-core check failed")
+                || err_text.contains("tachyon-core check timed out")
+                || err_text.contains("config compile failed");
+            let observing = { self.state.live.read().await.lkg_observing };
+            if observing
+                && !self.is_manually_stopped()
+                && !missing_binary
+                && (config_rejected || was_running)
+            {
+                let reason = format!("Ошибка применения конфига: {err}");
+                if let Ok(true) =
+                    Box::pin(self.auto_rollback_to_working_config(&reason, None)).await
+                {
+                    return Err(anyhow::anyhow!(
+                        "Конфиг отклонён ядром ({err}); выполнен автоматический откат на последний рабочий конфиг"
+                    ));
+                }
+            }
+        }
+        res
+    }
+
+    /// Automatically revert to the newest working revision (or LKG / previous revision snapshot)
+    /// and mark the failing revision as `"failed"`.
+    #[inline(never)]
+    pub async fn auto_rollback_to_working_config(
+        &self,
+        reason: &str,
+        hist_dir: Option<PathBuf>,
+    ) -> anyhow::Result<bool> {
+        struct AutoRollbackGuard<'a>(&'a AtomicBool);
+        impl Drop for AutoRollbackGuard<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
+
+        if self.auto_rollback_in_flight.swap(true, Ordering::SeqCst) {
+            anyhow::bail!("Автооткат уже выполняется");
+        }
+        let _guard = AutoRollbackGuard(&self.auto_rollback_in_flight);
+
+        let failed_rev_id = { self.state.live.read().await.active_revision_id.clone() };
+        let failed_opt = if failed_rev_id.trim().is_empty() {
+            None
+        } else {
+            Some(failed_rev_id.as_str())
+        };
+        let dir_buf = hist_dir
+            .clone()
+            .unwrap_or_else(crate::config_history::history_dir);
+
+        let _ =
+            crate::config_history::mark_revision_status_in(&dir_buf, failed_opt, "failed", reason);
+
+        let candidate_opt: Option<Box<crate::store::RouterStoreData>> = {
+            let cur_guard = self.state.data.read().await;
+            if let Some((_, store)) =
+                crate::config_history::load_last_working_store_in(&dir_buf, Some(&cur_guard))
+            {
+                Some(store)
+            } else if let Ok(mut lkg) = transaction::load_known_good_boxed(&self.state.lkg_path) {
+                crate::config_history::preserve_live_cached_nodes(&mut lkg, Some(&cur_guard));
+                Some(lkg)
+            } else if !failed_rev_id.trim().is_empty() {
+                crate::config_history::load_revision_store_in(
+                    &dir_buf,
+                    &failed_rev_id,
+                    "before",
+                    Some(&cur_guard),
+                )
+                .ok()
+            } else {
+                None
+            }
+        };
+
+        let Some(working_store) = candidate_opt else {
+            anyhow::bail!("Рабочий конфиг для автоматического отката не найден");
+        };
+
+        transaction::commit_transaction_boxed_in_history_dir(
+            &self.state,
+            working_store,
+            "auto_rollback",
+            hist_dir,
+        )
+        .await?;
+
+        {
+            let committed = self.state.data.read().await;
+            crate::ubus_bridge::sync_from_store_to_json_and_cache(&committed);
+        }
+
+        let rb_rev_id = {
+            let mut live = self.state.live.write().await;
+            live.lkg_observing = false;
+            live.lkg_remaining_secs = 0;
+            live.last_auto_rollback_reason = reason.to_string();
+            live.last_auto_rollback_ts = unix_now_secs();
+            live.push_event(
+                "warn",
+                "auto_rollback",
+                &format!("Выполнен автооткат на последний рабочий конфиг: {reason}"),
+            );
+            live.active_revision_id.clone()
+        };
+
+        if !self.is_manually_stopped() {
+            Box::pin(self.apply_or_reload_inner()).await?;
+        }
+
+        if !rb_rev_id.trim().is_empty() && rb_rev_id != failed_rev_id {
+            let _ = crate::config_history::mark_revision_status_in(
+                &dir_buf,
+                Some(rb_rev_id.as_str()),
+                "working",
+                "Восстановлен последний рабочий конфиг",
+            );
+        }
+
+        Ok(true)
     }
 
     pub async fn refresh_core_version(&self) -> String {
@@ -2988,6 +3121,7 @@ impl CoreManager {
 
         // Update LiveTelemetry and LKG 180s observation window
         let mut promote_lkg = false;
+        let mut promoted_rev_id = String::new();
         {
             let mut live = self.state.live.write().await;
             live.core_running = core_alive;
@@ -3096,24 +3230,46 @@ impl CoreManager {
             });
 
             if live.lkg_observing {
-                live.lkg_remaining_secs = live.lkg_remaining_secs.saturating_sub(3);
-                if live.lkg_remaining_secs == 0 {
-                    live.lkg_observing = false;
-                    promote_lkg = true;
+                let healthy_tick = core_alive
+                    && !self.is_manually_stopped()
+                    && live.core_fail_streak == 0
+                    && live.dns_fail_streak == 0;
+                if healthy_tick {
+                    live.lkg_remaining_secs = live.lkg_remaining_secs.saturating_sub(3);
+                    if live.lkg_remaining_secs == 0 {
+                        live.lkg_observing = false;
+                        promote_lkg = true;
+                        promoted_rev_id = live.active_revision_id.clone();
+                    }
                 }
             }
         }
 
         if promote_lkg {
-            {
+            let promoted_ok = {
                 let d = self.state.data.read().await;
-                let _ = transaction::promote_to_known_good(&self.state.lkg_path, &d);
+                transaction::promote_to_known_good(&self.state.lkg_path, &d).is_ok()
+            };
+            if promoted_ok {
+                let target_opt = if promoted_rev_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(promoted_rev_id.as_str())
+                };
+                let _ = crate::config_history::mark_revision_status(
+                    target_opt,
+                    "working",
+                    "Проверен и подтверждён (LKG)",
+                );
+                let mut live = self.state.live.write().await;
+                live.last_auto_rollback_reason.clear();
+                live.last_auto_rollback_ts = 0;
+                live.push_event(
+                    "info",
+                    "known_good",
+                    "Promoted stable configuration to Last Known Good snapshot",
+                );
             }
-            self.state.live.write().await.push_event(
-                "info",
-                "known_good",
-                "Promoted stable configuration to Last Known Good snapshot",
-            );
         }
 
         // Every 5 ticks (15s), run Reconciler checks (`nftables` drift & adaptive LAN devices refresh via `/tachyon/devices`)
@@ -4470,5 +4626,92 @@ mod core_mgr_tests {
         );
         let parsed_reordered = CoreManager::parse_subscription_payload(payload_reordered);
         assert!(nodes_materially_equal(&parsed, &parsed_reordered));
+    }
+
+    #[tokio::test]
+    async fn test_auto_rollback_marks_failed_revision_and_restores_working_config() {
+        #[inline(never)]
+        fn clone_store_boxed(
+            src: &crate::store::RouterStoreData,
+        ) -> Box<crate::store::RouterStoreData> {
+            Box::new(src.clone())
+        }
+
+        Box::pin(async move {
+            let dir = std::env::temp_dir().join(format!("tachyon_auto_rb_{}", std::process::id()));
+            let hist_dir = dir.join("history");
+            let _ = std::fs::remove_dir_all(&dir);
+            let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+            let mgr = CoreManager::new(Arc::clone(&state));
+            mgr.set_manual_stop(true);
+
+            // Commit a working configuration (tun_mtu = 1420) and mark it working.
+            let mut s1 = {
+                let guard = state.data.read().await;
+                clone_store_boxed(&guard)
+            };
+            s1.settings.tun_mtu = 1420;
+            transaction::commit_transaction_boxed_in_history_dir(
+                &state,
+                s1,
+                "save",
+                Some(hist_dir.clone()),
+            )
+            .await
+            .expect("commit s1");
+            let rev1_id = state.live.read().await.active_revision_id.clone();
+            assert!(!rev1_id.is_empty());
+            crate::config_history::mark_revision_status_in(
+                &hist_dir,
+                Some(&rev1_id),
+                "working",
+                "Проверен",
+            )
+            .expect("mark rev1 working");
+
+            // Commit a faulty configuration (tun_mtu = 1360) with distinct source to avoid 3s coalescing.
+            let mut s2 = {
+                let guard = state.data.read().await;
+                clone_store_boxed(&guard)
+            };
+            s2.settings.tun_mtu = 1360;
+            transaction::commit_transaction_boxed_in_history_dir(
+                &state,
+                s2,
+                "rollback",
+                Some(hist_dir.clone()),
+            )
+            .await
+            .expect("commit s2");
+            let rev2_id = state.live.read().await.active_revision_id.clone();
+            assert_ne!(rev2_id, rev1_id);
+            assert_eq!(state.data.read().await.settings.tun_mtu, 1360);
+
+            let ok = mgr
+                .auto_rollback_to_working_config("Сбой проверки конфига", Some(hist_dir.clone()))
+                .await
+                .expect("auto rollback succeeds");
+            assert!(ok);
+            assert_eq!(state.data.read().await.settings.tun_mtu, 1420);
+            {
+                let live = state.live.read().await;
+                assert!(!live.lkg_observing);
+                assert_eq!(live.last_auto_rollback_reason, "Сбой проверки конфига");
+            }
+
+            let list = crate::config_history::list_revisions_in(&hist_dir);
+            let failed_rev = list.iter().find(|r| r.id == rev2_id).unwrap();
+            assert_eq!(failed_rev.status, "failed");
+            assert_eq!(failed_rev.status_reason, "Сбой проверки конфига");
+
+            let rb_rev = list
+                .iter()
+                .find(|r| r.source == "auto_rollback")
+                .expect("auto_rollback revision recorded");
+            assert_eq!(rb_rev.status, "working");
+
+            let _ = std::fs::remove_dir_all(&dir);
+        })
+        .await;
     }
 }
