@@ -12658,6 +12658,138 @@ impl EmptyFallback for String {
     }
 }
 
+fn parse_priority_levels_json(val: &Value) -> Vec<String> {
+    match val {
+        Value::Array(arr) => arr
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
+        Value::String(s) => s
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn resolve_priority_tier_levels(sec: &RoutingSection, bal: &BalancerConfig) -> Vec<String> {
+    let raw_bs = sec.balancer_settings.trim();
+    if !raw_bs.is_empty()
+        && let Ok(Value::Object(bs_map)) = serde_json::from_str::<Value>(raw_bs)
+        && let Some(Value::Object(st)) = bs_map.get(&bal.id)
+        && let Some(lvls_val) = st.get("outbound_group_levels")
+    {
+        let lvls = parse_priority_levels_json(lvls_val);
+        if !lvls.is_empty() {
+            return lvls;
+        }
+    }
+    if !sec.outbound_group_levels.is_empty() {
+        let lvls: Vec<String> = sec
+            .outbound_group_levels
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        if !lvls.is_empty() {
+            return lvls;
+        }
+    }
+    bal.outbound_group_levels
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_priority_balancer_outbounds(
+    levels: &[String],
+    bal_candidates: &[String],
+    bal_spec: Option<&ServerFilterSpec>,
+    built_tags_by_id: &HashMap<&str, String>,
+    group_tag_map: &HashMap<String, Vec<String>>,
+    source_tag_map: &HashMap<String, Vec<String>>,
+    sources: &[OutboundSource],
+    outbounds: &[Value],
+) -> Vec<String> {
+    if levels.is_empty() {
+        return bal_candidates.to_vec();
+    }
+    let known_prefixes: Vec<String> = sources
+        .iter()
+        .filter(|s| s.prefix_nodes && !s.node_prefix.trim().is_empty())
+        .map(|s| s.node_prefix.trim().to_string())
+        .collect();
+    let candidate_set: HashMap<&str, ()> =
+        bal_candidates.iter().map(|t| (t.as_str(), ())).collect();
+
+    let mut ordered = Vec::new();
+    let push_pool_tags = |ordered: &mut Vec<String>, pool: &[String]| {
+        let mut from_candidates = false;
+        for t in pool {
+            if candidate_set.contains_key(t.as_str()) {
+                from_candidates = true;
+                push_unique_str(ordered, t);
+            }
+        }
+        if !from_candidates {
+            let filtered = if let Some(spec) = bal_spec {
+                apply_server_filter_spec(pool, spec, sources, source_tag_map, outbounds)
+            } else {
+                pool.to_vec()
+            };
+            for t in &filtered {
+                push_unique_str(ordered, t);
+            }
+        }
+    };
+
+    for raw_lvl in levels {
+        let lvl = raw_lvl.trim();
+        if lvl.is_empty() {
+            continue;
+        }
+        if lvl.eq_ignore_ascii_case("direct") {
+            push_unique_str(&mut ordered, "direct");
+            continue;
+        }
+        if let Some(sub_bal_tag) = built_tags_by_id.get(lvl) {
+            push_unique_str(&mut ordered, sub_bal_tag);
+            continue;
+        }
+        if let Some(gtags) = group_tag_map.get(lvl) {
+            push_pool_tags(&mut ordered, gtags);
+            continue;
+        }
+        if let Some(stags) = source_tag_map.get(lvl) {
+            push_pool_tags(&mut ordered, stags);
+            continue;
+        }
+        let srv_key = lvl.strip_prefix("srv:").unwrap_or(lvl).trim();
+        if !srv_key.is_empty() {
+            for t in bal_candidates {
+                if t == srv_key || server_filter_name_matches(t, srv_key, &known_prefixes) {
+                    push_unique_str(&mut ordered, t);
+                }
+            }
+        }
+    }
+
+    if ordered.is_empty() {
+        bal_candidates.to_vec()
+    } else {
+        ordered
+    }
+}
+
 fn resolve_balancer_filter_spec(
     sec: &RoutingSection,
     bal: &BalancerConfig,
@@ -13208,20 +13340,37 @@ fn resolve_section_outbound(
 
     // If balancers are attached to this section, synthesize section-scoped balancer outbounds
     // populated strictly with `candidate_tags` from this section across all 14 algorithms!
-    let mut built_bal_tags = Vec::new();
-    let mut priority_bal_tag: Option<String> = None;
-    for bal_id in &sec.balancer_refs {
-        if let Some(bal) = bal_map.get(bal_id.as_str()).copied()
-            && bal.enabled
-        {
+    // Build non-priority balancers first so priority tiers can reference their tags regardless of order.
+    let active_balancers: Vec<&BalancerConfig> = sec
+        .balancer_refs
+        .iter()
+        .filter_map(|bal_id| bal_map.get(bal_id.as_str()).copied())
+        .filter(|bal| bal.enabled)
+        .collect();
+    let is_bal_priority = |bal: &BalancerConfig| -> bool {
+        let raw_mode = if !bal.mode.trim().is_empty() {
+            bal.mode.trim().to_ascii_lowercase()
+        } else {
+            bal.balancer_type.trim().to_ascii_lowercase()
+        };
+        bal.balancer_type == "priority" || matches!(raw_mode.as_str(), "priority" | "failover")
+    };
+
+    let mut built_tags_by_id: HashMap<&str, String> = HashMap::new();
+    for pass_priority in [false, true] {
+        for &bal in &active_balancers {
+            if is_bal_priority(bal) != pass_priority {
+                continue;
+            }
             let bal_tag = format!("bal-{}-{}", sec.id, bal.id);
+            built_tags_by_id.insert(bal.id.as_str(), bal_tag.clone());
             if !seen_outbound_tags.contains_key(&bal_tag) {
                 seen_outbound_tags.insert(bal_tag.clone(), true);
-                let bal_candidates = if let Some(bal_spec) = resolve_balancer_filter_spec(sec, bal)
-                {
+                let bal_spec = resolve_balancer_filter_spec(sec, bal);
+                let bal_candidates = if let Some(ref spec) = bal_spec {
                     let filtered = apply_server_filter_spec(
                         &candidate_tags,
-                        &bal_spec,
+                        spec,
                         sources,
                         source_tag_map,
                         outbounds,
@@ -13234,21 +13383,34 @@ fn resolve_section_outbound(
                 } else {
                     candidate_tags.clone()
                 };
-                outbounds.push(build_balancer_outbound(&bal_tag, bal, bal_candidates));
+                let final_candidates = if pass_priority {
+                    let levels = resolve_priority_tier_levels(sec, bal);
+                    resolve_priority_balancer_outbounds(
+                        &levels,
+                        &bal_candidates,
+                        bal_spec.as_ref(),
+                        &built_tags_by_id,
+                        group_tag_map,
+                        source_tag_map,
+                        sources,
+                        outbounds,
+                    )
+                } else {
+                    bal_candidates
+                };
+                outbounds.push(build_balancer_outbound(&bal_tag, bal, final_candidates));
             }
-            let raw_mode = if !bal.mode.trim().is_empty() {
-                bal.mode.trim().to_ascii_lowercase()
-            } else {
-                bal.balancer_type.trim().to_ascii_lowercase()
-            };
-            if priority_bal_tag.is_none()
-                && (bal.balancer_type == "priority"
-                    || matches!(raw_mode.as_str(), "priority" | "failover"))
-            {
-                priority_bal_tag = Some(bal_tag.clone());
-            }
-            built_bal_tags.push(bal_tag);
         }
+    }
+
+    let mut built_bal_tags = Vec::new();
+    let mut priority_bal_tag: Option<String> = None;
+    for &bal in &active_balancers {
+        let bal_tag = format!("bal-{}-{}", sec.id, bal.id);
+        if priority_bal_tag.is_none() && is_bal_priority(bal) {
+            priority_bal_tag = Some(bal_tag.clone());
+        }
+        built_bal_tags.push(bal_tag);
     }
     if !built_bal_tags.is_empty() {
         let sel_tag = format!("sel-{}", sec.id);
@@ -18952,5 +19114,131 @@ config timeserver 'ntp'
         store.settings.log_level = "panic".to_string();
         let cfg = compile_core_config(&store).expect("compile core config");
         assert_eq!(cfg["log"]["level"], "fatal");
+    }
+
+    #[test]
+    fn test_priority_balancer_respects_outbound_group_levels_order() {
+        let mut store = RouterStoreData::default();
+        store.sections.clear();
+        store.balancers.clear();
+        store.outbound_groups.clear();
+        store.outbound_sources = vec![crate::store::OutboundSource {
+            id: "src_pool".to_string(),
+            enabled: true,
+            name: "Pool".to_string(),
+            source_type: "manual".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#Alpha".to_string(),
+                "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#Beta".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.outbound_groups = vec![
+            crate::store::OutboundGroup {
+                id: "primary".to_string(),
+                enabled: true,
+                name: "Primary".to_string(),
+                source_refs: vec!["src_pool".to_string()],
+                filter_mode: "include".to_string(),
+                include_servers: vec!["Alpha".to_string()],
+                ..Default::default()
+            },
+            crate::store::OutboundGroup {
+                id: "backup".to_string(),
+                enabled: true,
+                name: "Backup".to_string(),
+                source_refs: vec!["src_pool".to_string()],
+                filter_mode: "include".to_string(),
+                include_servers: vec!["Beta".to_string()],
+                ..Default::default()
+            },
+        ];
+        store.balancers = vec![
+            crate::store::BalancerConfig {
+                id: "bal_prio".to_string(),
+                enabled: true,
+                name: "Priority".to_string(),
+                balancer_type: "priority".to_string(),
+                mode: "priority".to_string(),
+                ..Default::default()
+            },
+            crate::store::BalancerConfig {
+                id: "bal_srv".to_string(),
+                enabled: true,
+                name: "ServerPriority".to_string(),
+                balancer_type: "priority".to_string(),
+                mode: "priority".to_string(),
+                ..Default::default()
+            },
+            crate::store::BalancerConfig {
+                id: "bal_chain".to_string(),
+                enabled: true,
+                name: "ChainPriority".to_string(),
+                balancer_type: "priority".to_string(),
+                mode: "priority".to_string(),
+                outbound_group_levels: vec!["sub_urltest".to_string(), "direct".to_string()],
+                ..Default::default()
+            },
+            crate::store::BalancerConfig {
+                id: "sub_urltest".to_string(),
+                enabled: true,
+                name: "FastPool".to_string(),
+                balancer_type: "urltest".to_string(),
+                mode: "least_test".to_string(),
+                ..Default::default()
+            },
+        ];
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_group_refs: vec!["backup".to_string(), "primary".to_string()],
+            outbound_group_levels: vec!["srv:Beta".to_string(), "direct".to_string()],
+            balancer_refs: vec!["bal_prio".to_string(), "bal_srv".to_string()],
+            balancer_settings: r#"{"bal_prio":{"outbound_group_levels":["primary","backup"]}}"#
+                .to_string(),
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "Main2".to_string(),
+            enabled: true,
+            label: "Main2".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_group_refs: vec!["backup".to_string(), "primary".to_string()],
+            balancer_refs: vec!["bal_chain".to_string(), "sub_urltest".to_string()],
+            user_domains: vec!["example.org".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let outs = cfg["outbounds"].as_array().expect("outbounds array");
+        let find_bal_outs = |tag: &str| -> Vec<String> {
+            outs.iter()
+                .find(|o| o.get("tag").and_then(Value::as_str) == Some(tag))
+                .and_then(|o| o.get("outbounds"))
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("missing balancer outbound {tag}"))
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        };
+
+        assert_eq!(
+            find_bal_outs("bal-Main-bal_prio"),
+            vec!["Alpha".to_string(), "Beta".to_string()]
+        );
+        assert_eq!(
+            find_bal_outs("bal-Main-bal_srv"),
+            vec!["Beta".to_string(), "direct".to_string()]
+        );
+        assert_eq!(
+            find_bal_outs("bal-Main2-bal_chain"),
+            vec!["bal-Main2-sub_urltest".to_string(), "direct".to_string()]
+        );
     }
 }

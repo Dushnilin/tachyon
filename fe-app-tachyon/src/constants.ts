@@ -495,71 +495,107 @@ export const DNS_SERVERS_BY_PROTOCOL: Record<string, Record<string, string>> = {
     '77.88.8.88': '77.88.8.88 (Yandex Safe)',
   },
   doh: {
-    'https://cloudflare-dns.com/dns-query': 'Cloudflare',
-    'https://security.cloudflare-dns.com/dns-query': 'Cloudflare Security',
-    'https://family.cloudflare-dns.com/dns-query': 'Cloudflare Family',
-    'https://dns.google/dns-query': 'Google',
-    'https://dns.quad9.net/dns-query': 'Quad9 (Filtered)',
-    'https://dns10.quad9.net/dns-query': 'Quad9 (Unfiltered)',
-    'https://dns.adguard-dns.com/dns-query': 'AdGuard Default',
-    'https://unfiltered.adguard-dns.com/dns-query': 'AdGuard Non-filtering',
-    'https://family.adguard-dns.com/dns-query': 'AdGuard Family',
-    'https://dns.mullvad.net/dns-query': 'Mullvad Base',
-    'https://adblock.dns.mullvad.net/dns-query': 'Mullvad Adblock',
-    'https://extended.dns.mullvad.net/dns-query': 'Mullvad Extended',
-    'https://dns.nextdns.io/dns-query': 'NextDNS',
-    'https://freedns.controld.com/p0': 'Control D Uncensored',
-    'https://freedns.controld.com/p1': 'Control D Malware',
-    'https://freedns.controld.com/p2': 'Control D Adblock',
-    'https://doh.dns.sb/dns-query': 'DNS.SB',
-    'https://zero.dns0.eu': 'DNS0.EU Zero',
-    'https://odvr.nic.cz/doh': 'CZ.NIC ODVR',
-    'https://dns.alidns.com/dns-query': 'AliDNS',
-    'https://doh.opendns.com/dns-query': 'OpenDNS',
+    'https://cloudflare-dns.com/dns-query':
+      '1.1.1.1 — cloudflare-dns.com (Cloudflare)',
+    'https://security.cloudflare-dns.com/dns-query':
+      '1.1.1.2 — security.cloudflare-dns.com (Cloudflare Security)',
+    'https://family.cloudflare-dns.com/dns-query':
+      '1.1.1.3 — family.cloudflare-dns.com (Cloudflare Family)',
+    'https://dns.google/dns-query': '8.8.8.8 — dns.google (Google)',
+    'https://dns.quad9.net/dns-query':
+      '9.9.9.9 — dns.quad9.net (Quad9 Filtered)',
+    'https://dns10.quad9.net/dns-query':
+      '9.9.9.10 — dns10.quad9.net (Quad9 Unfiltered)',
+    'https://dns.adguard-dns.com/dns-query':
+      '94.140.14.14 — dns.adguard-dns.com (AdGuard Default)',
+    'https://unfiltered.adguard-dns.com/dns-query':
+      '94.140.14.140 — unfiltered.adguard-dns.com (AdGuard Non-filtering)',
+    'https://family.adguard-dns.com/dns-query':
+      '94.140.14.15 — family.adguard-dns.com (AdGuard Family)',
+    'https://dns.mullvad.net/dns-query':
+      '194.242.2.2 — dns.mullvad.net (Mullvad Base)',
+    'https://adblock.dns.mullvad.net/dns-query':
+      '194.242.2.3 — adblock.dns.mullvad.net (Mullvad Adblock)',
+    'https://extended.dns.mullvad.net/dns-query':
+      '194.242.2.4 — extended.dns.mullvad.net (Mullvad Extended)',
+    'https://dns.nextdns.io/dns-query': '45.90.28.0 — dns.nextdns.io (NextDNS)',
+    'https://freedns.controld.com/p0':
+      '76.76.2.0 — freedns.controld.com/p0 (Control D Uncensored)',
+    'https://freedns.controld.com/p1':
+      '76.76.2.1 — freedns.controld.com/p1 (Control D Malware)',
+    'https://freedns.controld.com/p2':
+      '76.76.2.2 — freedns.controld.com/p2 (Control D Adblock)',
+    'https://doh.dns.sb/dns-query': '185.222.222.222 — doh.dns.sb (DNS.SB)',
+    'https://zero.dns0.eu': '193.110.81.0 — zero.dns0.eu (DNS0.EU Zero)',
+    'https://odvr.nic.cz/doh': '193.17.47.1 — odvr.nic.cz/doh (CZ.NIC ODVR)',
+    'https://dns.alidns.com/dns-query': '223.5.5.5 — dns.alidns.com (AliDNS)',
+    'https://doh.opendns.com/dns-query':
+      '208.67.222.222 — doh.opendns.com (OpenDNS)',
     'https://doh.cleanbrowsing.org/doh/security-filter/':
-      'CleanBrowsing Security',
-    'https://doh.cleanbrowsing.org/doh/family-filter/': 'CleanBrowsing Family',
-    'https://common.dot.dns.yandex.net/dns-query': 'Yandex',
+      '185.228.168.9 — doh.cleanbrowsing.org (CleanBrowsing Security)',
+    'https://doh.cleanbrowsing.org/doh/family-filter/':
+      '185.228.168.168 — doh.cleanbrowsing.org (CleanBrowsing Family)',
+    'https://common.dot.dns.yandex.net/dns-query':
+      '77.88.8.8 — common.dot.dns.yandex.net (Yandex)',
   },
   dot: {
     '1.1.1.1': '1.1.1.1 (Cloudflare)',
     '1.0.0.1': '1.0.0.1 (Cloudflare Secondary)',
-    'security.cloudflare-dns.com': 'Cloudflare Security',
-    'family.cloudflare-dns.com': 'Cloudflare Family',
-    'dns.google': 'Google',
-    'dns.quad9.net': 'Quad9 (Filtered)',
-    'dns10.quad9.net': 'Quad9 (Unfiltered)',
-    'dns.adguard-dns.com': 'AdGuard Default',
-    'unfiltered.adguard-dns.com': 'AdGuard Non-filtering',
-    'family.adguard-dns.com': 'AdGuard Family',
-    'dns.mullvad.net': 'Mullvad Base',
-    'adblock.dns.mullvad.net': 'Mullvad Adblock',
-    'extended.dns.mullvad.net': 'Mullvad Extended',
-    'dns.nextdns.io': 'NextDNS',
-    'p0.freedns.controld.com': 'Control D Uncensored',
-    'p1.freedns.controld.com': 'Control D Malware',
-    'p2.freedns.controld.com': 'Control D Adblock',
-    'dot.sb': 'DNS.SB',
-    'zero.dns0.eu': 'DNS0.EU Zero',
-    'odvr.nic.cz': 'CZ.NIC ODVR',
-    'dns.alidns.com': 'AliDNS',
-    'security-filter-dns.cleanbrowsing.org': 'CleanBrowsing Security',
-    'family-filter-dns.cleanbrowsing.org': 'CleanBrowsing Family',
-    'common.dot.dns.yandex.net': 'Yandex',
-    'safe.dot.dns.yandex.net': 'Yandex Safe',
+    'security.cloudflare-dns.com':
+      '1.1.1.2 — security.cloudflare-dns.com (Cloudflare Security)',
+    'family.cloudflare-dns.com':
+      '1.1.1.3 — family.cloudflare-dns.com (Cloudflare Family)',
+    'dns.google': '8.8.8.8 — dns.google (Google)',
+    'dns.quad9.net': '9.9.9.9 — dns.quad9.net (Quad9 Filtered)',
+    'dns10.quad9.net': '9.9.9.10 — dns10.quad9.net (Quad9 Unfiltered)',
+    'dns.adguard-dns.com':
+      '94.140.14.14 — dns.adguard-dns.com (AdGuard Default)',
+    'unfiltered.adguard-dns.com':
+      '94.140.14.140 — unfiltered.adguard-dns.com (AdGuard Non-filtering)',
+    'family.adguard-dns.com':
+      '94.140.14.15 — family.adguard-dns.com (AdGuard Family)',
+    'dns.mullvad.net': '194.242.2.2 — dns.mullvad.net (Mullvad Base)',
+    'adblock.dns.mullvad.net':
+      '194.242.2.3 — adblock.dns.mullvad.net (Mullvad Adblock)',
+    'extended.dns.mullvad.net':
+      '194.242.2.4 — extended.dns.mullvad.net (Mullvad Extended)',
+    'dns.nextdns.io': '45.90.28.0 — dns.nextdns.io (NextDNS)',
+    'p0.freedns.controld.com':
+      '76.76.2.0 — p0.freedns.controld.com (Control D Uncensored)',
+    'p1.freedns.controld.com':
+      '76.76.2.1 — p1.freedns.controld.com (Control D Malware)',
+    'p2.freedns.controld.com':
+      '76.76.2.2 — p2.freedns.controld.com (Control D Adblock)',
+    'dot.sb': '185.222.222.222 — dot.sb (DNS.SB)',
+    'zero.dns0.eu': '193.110.81.0 — zero.dns0.eu (DNS0.EU Zero)',
+    'odvr.nic.cz': '193.17.47.1 — odvr.nic.cz (CZ.NIC ODVR)',
+    'dns.alidns.com': '223.5.5.5 — dns.alidns.com (AliDNS)',
+    'security-filter-dns.cleanbrowsing.org':
+      '185.228.168.9 — security-filter-dns.cleanbrowsing.org (CleanBrowsing Security)',
+    'family-filter-dns.cleanbrowsing.org':
+      '185.228.168.168 — family-filter-dns.cleanbrowsing.org (CleanBrowsing Family)',
+    'common.dot.dns.yandex.net':
+      '77.88.8.8 — common.dot.dns.yandex.net (Yandex)',
+    'safe.dot.dns.yandex.net':
+      '77.88.8.88 — safe.dot.dns.yandex.net (Yandex Safe)',
   },
   doq: {
-    '1.1.1.1:784': 'Cloudflare',
-    '1.0.0.1:784': 'Cloudflare Secondary',
-    'dns.google:784': 'Google',
-    'dns.adguard-dns.com:785': 'AdGuard Default',
-    'unfiltered.adguard-dns.com:785': 'AdGuard Non-filtering',
-    'dns.mullvad.net:784': 'Mullvad Base',
-    'adblock.dns.mullvad.net:784': 'Mullvad Adblock',
-    'dns.nextdns.io:784': 'NextDNS',
-    'p0.freedns.controld.com:853': 'Control D Uncensored',
-    'p2.freedns.controld.com:853': 'Control D Adblock',
-    'zero.dns0.eu:853': 'DNS0.EU Zero',
+    '1.1.1.1:784': '1.1.1.1:784 (Cloudflare)',
+    '1.0.0.1:784': '1.0.0.1:784 (Cloudflare Secondary)',
+    'dns.google:784': '8.8.8.8 — dns.google:784 (Google)',
+    'dns.adguard-dns.com:785':
+      '94.140.14.14 — dns.adguard-dns.com:785 (AdGuard Default)',
+    'unfiltered.adguard-dns.com:785':
+      '94.140.14.140 — unfiltered.adguard-dns.com:785 (AdGuard Non-filtering)',
+    'dns.mullvad.net:784': '194.242.2.2 — dns.mullvad.net:784 (Mullvad Base)',
+    'adblock.dns.mullvad.net:784':
+      '194.242.2.3 — adblock.dns.mullvad.net:784 (Mullvad Adblock)',
+    'dns.nextdns.io:784': '45.90.28.0 — dns.nextdns.io:784 (NextDNS)',
+    'p0.freedns.controld.com:853':
+      '76.76.2.0 — p0.freedns.controld.com:853 (Control D Uncensored)',
+    'p2.freedns.controld.com:853':
+      '76.76.2.2 — p2.freedns.controld.com:853 (Control D Adblock)',
+    'zero.dns0.eu:853': '193.110.81.0 — zero.dns0.eu:853 (DNS0.EU Zero)',
   },
 };
 export const BOOTSTRAP_DNS_SERVER_OPTIONS = {

@@ -2691,6 +2691,8 @@ pub struct BalancerConfig {
     #[serde(default)]
     pub fastest_check_interval: String,
     #[serde(default)]
+    pub outbound_group_levels: Vec<String>,
+    #[serde(default)]
     pub priority_levels: Vec<PriorityLevelConfig>,
     #[serde(default)]
     pub filter_mode: String,
@@ -5461,6 +5463,7 @@ impl RouterStoreData {
                         exclude_security_types: b
                             .merge_lists("exclude_securities", "exclude_security_types"),
                         exclude_ports: b.list("exclude_ports"),
+                        outbound_group_levels: b.list("outbound_group_levels"),
                         ..Default::default()
                     });
                     imported += 1;
