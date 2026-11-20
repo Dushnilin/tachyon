@@ -704,10 +704,12 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       } else if (stype === 'interface') {
         const iname = (src.interface_name || src.interface || '').trim();
         if (iname) extraInterfaces.push(iname);
-      } else if (stype === 'outbound_json' || stype === 'json') {
-        getRawListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
-          extraOutboundJsons.push(j),
-        );
+      } else if (['outbound_json', 'json', 'custom_json'].includes(stype)) {
+        const payload =
+          stype === 'custom_json'
+            ? src.custom_json
+            : src.outbound_jsons || src.outbound_json;
+        extraOutboundJsons.push(...getRawListValues(payload));
       } else if (
         [
           'warp',
@@ -2823,7 +2825,13 @@ function buildProxyGroupOutbounds(
     selector?.value?.now ||
     urlTestCodes[0] ||
     priorityCodes[0] ||
-    (selectorCodes.length > 0 ? selectorCodes[0] : undefined);
+    (selectorCodes.length > 0 ? selectorCodes[0] : undefined) ||
+    (!selector &&
+    groupCodes.length === 1 &&
+    jsonOutboundByCode.has(groupCodes[0]) &&
+    proxyByCode.has(groupCodes[0])
+      ? groupCodes[0]
+      : undefined);
 
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     if (hiddenOutboundTags[code]) {
@@ -2878,6 +2886,9 @@ function buildProxyGroupOutbounds(
     const displayName =
       priorityConfig?.displayName ||
       urlTestConfig?.displayName ||
+      (jsonOutboundByCode.has(code) && resolved.displayName === code
+        ? outboundMetadata?.source_names?.[code]?.trim()
+        : undefined) ||
       resolved.displayName;
     const prefix =
       priorityConfig || urlTestConfig ? undefined : resolved.prefix;

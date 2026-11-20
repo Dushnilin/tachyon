@@ -1799,6 +1799,48 @@ describe('getDashboardSections', () => {
     expect(section.outbounds[0].selected).toBe(true);
   });
 
+  it('shows a standalone custom_json WireGuard outbound by its source name', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'wg_sec',
+        '.type': 'section',
+        enabled: '1',
+        connection_type: 'proxy',
+        action: 'connection',
+        outbound_source_refs: ['src_json_wg'],
+      },
+      {
+        '.name': 'src_json_wg',
+        '.type': 'outbound_source',
+        source_type: 'custom_json',
+        enabled: '1',
+        custom_json: JSON.stringify(
+          { type: 'wireguard', tag: 'wg-node-1' },
+          null,
+          2,
+        ),
+      },
+    ]);
+    mocks.fsRead.mockImplementation(async (path: string) => {
+      if (!path.endsWith('/wg_sec.json')) throw new Error('cache miss');
+      return JSON.stringify({
+        outboundMetadata: { source_names: { 'wg-node-1': 'Office Router' } },
+      });
+    });
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: { 'wg-node-1': proxy('WireGuard', { name: 'wg-node-1' }) },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].outbounds).toMatchObject([
+      { code: 'wg-node-1', displayName: 'Office Router', selected: true },
+    ]);
+  });
+
   it('includes block, bypass, dns, and distinct desync sections on the Dashboard without merging separate desync sections', async () => {
     mocks.getConfigSections.mockResolvedValue([
       {

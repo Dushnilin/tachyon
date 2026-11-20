@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-19 22:51+0300\n"
-"PO-Revision-Date: 2026-11-19 22:51+0300\n"
+"POT-Creation-Date: 2026-11-20 04:26+0000\n"
+"PO-Revision-Date: 2026-11-20 04:26+0000\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -1942,7 +1942,7 @@ msgstr ""
 msgid "Block"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3892
+#: src/tachyon/methods/custom/getDashboardSections.ts:3903
 #: src/tachyon/studioDeck.ts:3736
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2294
 msgid "Block (Reject)"
@@ -3093,7 +3093,7 @@ msgstr ""
 msgid "Configured detour"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3854
+#: src/tachyon/methods/custom/getDashboardSections.ts:3865
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1697
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:226
 msgid "Conflict"
@@ -4260,7 +4260,7 @@ msgstr ""
 msgid "Direct (Default)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3913
+#: src/tachyon/methods/custom/getDashboardSections.ts:3924
 #: src/tachyon/studioDeck.ts:3741
 #: src/tachyon/tabs/dashboard/inboundServers.ts:399
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2301
@@ -6094,8 +6094,8 @@ msgstr ""
 msgid "Faster server search interval"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:1797
-#: src/tachyon/methods/custom/getDashboardSections.ts:1798
+#: src/tachyon/methods/custom/getDashboardSections.ts:1799
+#: src/tachyon/methods/custom/getDashboardSections.ts:1800
 msgid "Fastest"
 msgstr ""
 
@@ -9810,7 +9810,7 @@ msgstr ""
 msgid "Not available in demo mode — enter WARP private key manually"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3857
+#: src/tachyon/methods/custom/getDashboardSections.ts:3868
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1700
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:47
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:201
@@ -12567,9 +12567,9 @@ msgstr ""
 
 #: src/tachyon/appShell.ts:2022
 #: src/tachyon/appShell.ts:2892
-#: src/tachyon/methods/custom/getDashboardSections.ts:3475
-#: src/tachyon/methods/custom/getDashboardSections.ts:3492
-#: src/tachyon/methods/custom/getDashboardSections.ts:3852
+#: src/tachyon/methods/custom/getDashboardSections.ts:3486
+#: src/tachyon/methods/custom/getDashboardSections.ts:3503
+#: src/tachyon/methods/custom/getDashboardSections.ts:3863
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1435
 #: src/tachyon/tabs/dashboard/initController.ts:6426
 #: src/tachyon/tabs/dashboard/initController.ts:6529
@@ -14187,8 +14187,8 @@ msgstr ""
 
 #: src/tachyon/appShell.ts:2025
 #: src/tachyon/appShell.ts:2895
-#: src/tachyon/methods/custom/getDashboardSections.ts:3475
-#: src/tachyon/methods/custom/getDashboardSections.ts:3856
+#: src/tachyon/methods/custom/getDashboardSections.ts:3486
+#: src/tachyon/methods/custom/getDashboardSections.ts:3867
 #: src/tachyon/studioDeck.ts:5821
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1410
 #: src/tachyon/tabs/dashboard/initController.ts:6427
@@ -15932,7 +15932,7 @@ msgstr ""
 msgid "United States (us)"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:3858
+#: src/tachyon/methods/custom/getDashboardSections.ts:3869
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1701
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:242
 #: src/views/settings.ts:7097
