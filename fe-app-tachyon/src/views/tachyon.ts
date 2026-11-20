@@ -549,11 +549,27 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     ? sectionRef.handleModalSave
     : null;
   sectionRef.handleModalSave = function (modalMap, ev) {
+    const modalRoot =
+      typeof this.getActiveModalMap === 'function'
+        ? this.getActiveModalMap()
+        : null;
+    if (modalRoot && typeof modalRoot.querySelectorAll === 'function') {
+      modalRoot
+        .querySelectorAll('.cbi-dynlist .add-item > input[type="text"]')
+        .forEach((inp) => {
+          if (!inp || inp.disabled || !String(inp.value || '').trim()) return;
+          const addRow = inp.closest('.add-item');
+          const addBtn = addRow
+            ? addRow.querySelector('.cbi-button-add, .btn')
+            : null;
+          if (addBtn && typeof addBtn.click === 'function') {
+            addBtn.click();
+          }
+        });
+    }
+
     const targetMap =
-      modalMap ||
-      (typeof this.getActiveModalMap === 'function'
-        ? dom.findClassInstance(this.getActiveModalMap())
-        : null);
+      modalMap || (modalRoot ? dom.findClassInstance(modalRoot) : null);
 
     const targetSectionId =
       targetMap?.section || targetMap?.children?.[0]?.section;

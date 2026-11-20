@@ -4118,6 +4118,8 @@ function createOutboundsContent(section) {
     return Array.from(new Set(items));
   };
 
+  const bulkModeSections = new Set<string>();
+
   o = section.taboption(
     'general',
     form.DynamicList,
@@ -4131,7 +4133,12 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'proxy_links');
   o.cfgvalue = function (sectionId) {
     const all = getSourceProxyLinks(sectionId);
-    return all.length > 50 ? [] : all;
+    if (all.length > 50) {
+      bulkModeSections.add(sectionId);
+      return [];
+    }
+    bulkModeSections.delete(sectionId);
+    return all;
   };
   o.formvalue = function (sectionId) {
     const base = form.DynamicList.prototype.formvalue.apply(this, arguments);
@@ -4160,25 +4167,30 @@ function createOutboundsContent(section) {
   o.write = function (sectionId, value) {
     const list = asArray(value);
     if (list.length) {
-      uci.set(UCI_PACKAGE, sectionId, 'proxy_links', list);
+      const next = bulkModeSections.has(sectionId)
+        ? Array.from(new Set([...getSourceProxyLinks(sectionId), ...list]))
+        : list;
+      uci.set(UCI_PACKAGE, sectionId, 'proxy_links', next);
       uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
       uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
       uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links');
     }
   };
   o.remove = function (sectionId) {
-    try {
-      const bulkId = `cbid.${UCI_PACKAGE}.${sectionId}._proxy_links_bulk`;
-      const bulkEl =
-        typeof document !== 'undefined'
-          ? document.getElementById(`widget.${bulkId}`) ||
-            document.querySelector(`textarea[name="${bulkId}"]`) ||
-            document.querySelector(`[data-field="${bulkId}"] textarea`)
-          : null;
-      if (bulkEl && String(bulkEl.value || '').trim()) {
-        return;
-      }
-    } catch (_e) {}
+    if (bulkModeSections.has(sectionId)) {
+      try {
+        const bulkId = `cbid.${UCI_PACKAGE}.${sectionId}._proxy_links_bulk`;
+        const bulkEl =
+          typeof document !== 'undefined'
+            ? document.getElementById(`widget.${bulkId}`) ||
+              document.querySelector(`textarea[name="${bulkId}"]`) ||
+              document.querySelector(`[data-field="${bulkId}"] textarea`)
+            : null;
+        if (bulkEl && String(bulkEl.value || '').trim()) {
+          return;
+        }
+      } catch (_e) {}
+    }
     uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
     uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
     uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
@@ -4198,7 +4210,8 @@ function createOutboundsContent(section) {
   o.rows = 8;
   o.depends('source_type', 'proxy_links');
   o.cfgvalue = function (sectionId) {
-    return getSourceProxyLinks(sectionId).join('\n');
+    const all = getSourceProxyLinks(sectionId);
+    return all.length > 50 ? all.join('\n') : '';
   };
   o.write = function (sectionId, value) {
     const lines = String(value || '')
@@ -4208,17 +4221,40 @@ function createOutboundsContent(section) {
     if (lines.length) {
       const existing = getSourceProxyLinks(sectionId);
       const merged =
-        existing.length > 50
+        bulkModeSections.has(sectionId) || existing.length > 50
           ? Array.from(new Set(lines))
           : Array.from(new Set([...existing, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, 'proxy_links', merged);
       uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
       uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
       uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links');
+    } else if (bulkModeSections.has(sectionId)) {
+      uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
+      uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
+      uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
+      uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links');
     }
   };
-  o.remove = function () {
-    // Never remove proxy_links when bulk textarea is cleared; DynamicList manages removal.
+  o.remove = function (sectionId) {
+    if (!bulkModeSections.has(sectionId)) return;
+    try {
+      const listId = `cbid.${UCI_PACKAGE}.${sectionId}.proxy_links`;
+      const listWrap =
+        typeof document !== 'undefined'
+          ? document.getElementById(listId) ||
+            document.querySelector(`[data-field="${listId}"]`)
+          : null;
+      if (listWrap) {
+        const hasItems = Array.from(
+          listWrap.querySelectorAll('input[type="text"]'),
+        ).some((inp) => String(inp.value || '').trim());
+        if (hasItems) return;
+      }
+    } catch (_e) {}
+    uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
+    uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
+    uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
+    uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links');
   };
 
   // ── 3. Amnezia / AmneziaWG Multi-Config (vpn:// or .conf files) ───────────
