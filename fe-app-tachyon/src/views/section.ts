@@ -11737,7 +11737,7 @@ function createSectionContent(section) {
           existingEntries = v
             .split('\n')
             .map((l) => l.trim())
-            .filter((l) => l && !l.startsWith('#'));
+            .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
       }
       if (!existingEntries.length) {
         const uciVal = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
@@ -11843,7 +11843,7 @@ function createSectionContent(section) {
           existingEntries = v
             .split('\n')
             .map((l) => l.trim())
-            .filter((l) => l && !l.startsWith('#'));
+            .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
       }
       if (!existingEntries.length) {
         const uciVal = uci.get(UCI_PACKAGE, section_id, 'dns_hosts');
@@ -12133,7 +12133,7 @@ function createSectionContent(section) {
           const lines = ta.value
             .split('\n')
             .map((l) => l.trim())
-            .filter((l) => l && !l.startsWith('#'));
+            .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
           ta.value = lines.join('\n');
           updateCount();
         },
