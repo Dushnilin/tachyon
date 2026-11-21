@@ -495,6 +495,8 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       -webkit-font-smoothing: antialiased;
       font-optical-sizing: auto;
       min-height: 100vh;
+      max-width: 100%;
+      overflow-x: clip;
       margin: 0;
     }}
     #maincontent.container {{
@@ -505,6 +507,11 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       margin: 0 !important;
       padding: 8px 14px 24px !important;
       box-sizing: border-box !important;
+    }}
+    @media (max-width: 640px) {{
+      #maincontent.container {{
+        padding: 4px 6px 20px !important;
+      }}
     }}
     /* Completely hide legacy LuCI bottom page-actions, top banners, and UCI indicators (preserve modal footers) */
     #view > .cbi-page-actions,
@@ -1445,7 +1452,7 @@ async fn execute_pure_rust_uci_cli(
                 persist_json_sections(&store);
                 name
             };
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             (0, format!("{sname}\n"), String::new())
         }
         "reorder" => {
@@ -1488,7 +1495,7 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                let _ = sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
                 return (0, String::new(), String::new());
             }
             (1, String::new(), "Invalid reorder argument\n".to_string())
@@ -1517,7 +1524,7 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                let _ = sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
                 return (0, String::new(), String::new());
             }
             (1, String::new(), "Invalid rename argument\n".to_string())
@@ -1582,7 +1589,7 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                let _ = sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             }
             (0, String::new(), String::new())
         }
@@ -1615,7 +1622,7 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                let _ = sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             }
             (0, String::new(), String::new())
         }
@@ -1637,7 +1644,7 @@ async fn execute_pure_rust_uci_cli(
                     }
                     persist_json_sections(&store);
                 }
-                let _ = sync_uci_to_rust_store(state, core).await;
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             }
             (0, String::new(), String::new())
         }
@@ -1654,7 +1661,7 @@ async fn execute_pure_rust_uci_cli(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store(state, core).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             (0, String::new(), String::new())
         }
         "commit" | "apply" => {
@@ -2049,6 +2056,11 @@ async fn try_fast_pure_rust_method(
                 "total": total,
             });
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
+        "show_config" => {
+            let want_raw = rest.iter().any(|a| a == "raw" || a == "--raw");
+            let s = Box::pin(build_show_config_payload(state, want_raw)).await;
             Some((0, format!("{s}\n"), String::new()))
         }
         "show_sing_box_config" | "show_tachyon_core_config" => {
@@ -3240,7 +3252,14 @@ fn read_pure_rust_subscription_metadata(
             obj.insert("url".into(), json!(u));
         }
         obj.insert("urls".into(), json!(src.subscription_urls));
-        obj.insert("nodeCount".into(), json!(src.cached_nodes.len()));
+        let built = crate::config_gen::build_source_outbounds(src);
+        let visible_count = built.iter().filter(|(_, _, vis)| *vis).count();
+        let effective_node_count = if built.is_empty() && !src.cached_nodes.is_empty() {
+            src.cached_nodes.len()
+        } else {
+            visible_count
+        };
+        obj.insert("nodeCount".into(), json!(effective_node_count));
         if src.last_updated_unix > 0 {
             obj.insert("updatedAt".into(), json!(src.last_updated_unix));
         }
@@ -9686,18 +9705,181 @@ async fn handle_watchdog_command(
     })
 }
 
+fn mask_subscription_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Some(scheme_end) = trimmed.find("://") {
+        let after_scheme = &trimmed[scheme_end + 3..];
+        let host_part = if let Some(rel) = after_scheme.find(['/', '?', '#']) {
+            &trimmed[..scheme_end + 3 + rel]
+        } else {
+            trimmed
+        };
+        return format!("{host_part}/[REDACTED]");
+    }
+    "[REDACTED]".to_string()
+}
+
+fn redact_non_empty_string_field(obj: &mut Map<String, Value>, key: &str) {
+    if let Some(Value::String(s)) = obj.get_mut(key)
+        && !s.is_empty()
+    {
+        *s = "[REDACTED]".to_string();
+    }
+}
+
+fn redact_non_empty_string_array(obj: &mut Map<String, Value>, key: &str) {
+    if let Some(Value::Array(arr)) = obj.get_mut(key) {
+        for item in arr.iter_mut() {
+            if let Value::String(s) = item
+                && !s.is_empty()
+            {
+                *s = "[REDACTED]".to_string();
+            }
+        }
+    }
+}
+
+#[inline(never)]
+pub(crate) fn format_show_config_value(
+    data: &crate::store::RouterStoreData,
+    want_raw: bool,
+) -> Value {
+    let mut val = serde_json::to_value(data).unwrap_or_else(|_| json!({}));
+    if want_raw {
+        return val;
+    }
+
+    if let Some(sources) = val
+        .get_mut("outbound_sources")
+        .and_then(Value::as_array_mut)
+    {
+        for src_val in sources.iter_mut() {
+            let Some(src_obj) = src_val.as_object_mut() else {
+                continue;
+            };
+            if let Some(Value::Array(nodes)) = src_obj.get("cached_nodes")
+                && !nodes.is_empty()
+            {
+                let total = nodes.len();
+                let urltest_groups = nodes
+                    .iter()
+                    .filter(|n| {
+                        n.get("protocol").and_then(Value::as_str) == Some("urltest")
+                            || n.get("outbound_json")
+                                .and_then(|o| o.get("type"))
+                                .and_then(Value::as_str)
+                                == Some("urltest")
+                    })
+                    .count();
+                let hidden_members = nodes
+                    .iter()
+                    .filter(|n| {
+                        n.get("raw_uri")
+                            .and_then(Value::as_str)
+                            .is_some_and(|u| u.starts_with("json:hidden"))
+                    })
+                    .count();
+                let mut by_protocol: BTreeMap<String, usize> = BTreeMap::new();
+                let mut sample_tags: Vec<String> = Vec::new();
+                for n in nodes {
+                    let proto = n
+                        .get("protocol")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("unknown");
+                    *by_protocol.entry(proto.to_string()).or_insert(0) += 1;
+                    if sample_tags.len() < 10
+                        && let Some(tag) = n
+                            .get("tag")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                    {
+                        sample_tags.push(tag.to_string());
+                    }
+                }
+                src_obj.insert("cached_nodes_count".into(), json!(total));
+                src_obj.insert(
+                    "cached_nodes_summary".into(),
+                    json!({
+                        "total": total,
+                        "urltest_groups": urltest_groups,
+                        "hidden_members": hidden_members,
+                        "by_protocol": by_protocol,
+                        "sample_tags": sample_tags,
+                    }),
+                );
+                src_obj.remove("cached_nodes");
+            }
+
+            if let Some(Value::Array(urls)) = src_obj.get_mut("subscription_urls") {
+                for item in urls.iter_mut() {
+                    if let Value::String(s) = item
+                        && !s.is_empty()
+                    {
+                        *s = mask_subscription_url(s);
+                    }
+                }
+            }
+            for key in [
+                "hwid",
+                "amnezia_conf_text",
+                "proxy_links_text",
+                "outbound_json",
+            ] {
+                redact_non_empty_string_field(src_obj, key);
+            }
+            for key in ["amnezia_configs", "proxy_links", "outbound_jsons"] {
+                redact_non_empty_string_array(src_obj, key);
+            }
+        }
+    }
+
+    if let Some(servers) = val.get_mut("inbound_servers").and_then(Value::as_array_mut) {
+        for srv_val in servers.iter_mut() {
+            if let Some(srv_obj) = srv_val.as_object_mut() {
+                for key in ["reality_short_id", "reality_public_key", "inbound_json"] {
+                    redact_non_empty_string_field(srv_obj, key);
+                }
+            }
+        }
+    }
+
+    crypto_gen::redact_json_value(&val)
+}
+
+#[inline(never)]
+async fn build_show_config_payload(state: &Arc<AppState>, want_raw: bool) -> String {
+    let snapshot = { state.data.read().await.clone() };
+    let val = format_show_config_value(&snapshot, want_raw);
+    serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Synchronize pure-Rust JSON sections (`config_sections.json`) into `TachyonStore` (`tachyon.json`) and reload core.
 pub async fn sync_uci_to_rust_store(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> Result<(), String> {
-    sync_uci_to_rust_store_with_reload(state, core, true).await
+    sync_uci_to_rust_store_inner(state, core, true, true).await
 }
 
 pub async fn sync_uci_to_rust_store_with_reload(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
     trigger_reload: bool,
+) -> Result<(), String> {
+    sync_uci_to_rust_store_inner(state, core, trigger_reload, true).await
+}
+
+async fn sync_uci_to_rust_store_inner(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    trigger_reload: bool,
+    log_on_err: bool,
 ) -> Result<(), String> {
     let snapshot = get_json_sections_snapshot();
     let mut candidate = state.data.read().await.clone();
@@ -9713,13 +9895,15 @@ pub async fn sync_uci_to_rust_store_with_reload(
         });
         if let Err(e) = transaction::commit_transaction(state, candidate.clone()).await {
             let msg = format!("{e:#}");
-            eprintln!("[tachyon] sync_uci_to_rust_store failed: {msg}");
-            let mut live = state.live.write().await;
-            live.push_event(
-                "error",
-                "uci",
-                &format!("Ошибка синхронизации конфигурации: {msg}"),
-            );
+            if log_on_err {
+                eprintln!("[tachyon] sync_uci_to_rust_store failed: {msg}");
+                let mut live = state.live.write().await;
+                live.push_event(
+                    "error",
+                    "uci",
+                    &format!("Ошибка синхронизации конфигурации: {msg}"),
+                );
+            }
             return Err(msg);
         }
         sync_section_cache(&candidate);
@@ -9926,7 +10110,7 @@ async fn handle_pure_rust_uci(
                 persist_json_sections(&store);
                 name
             };
-            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             json!([0, { "section": sname }])
         }
         "set" => {
@@ -9965,7 +10149,7 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             json!([0])
         }
         "delete" => {
@@ -10013,7 +10197,7 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             json!([0])
         }
         "order" => {
@@ -10056,7 +10240,7 @@ async fn handle_pure_rust_uci(
                 *store = new_map;
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_with_reload(state, core, false).await;
+            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
             json!([0])
         }
         "changes" => json!([0, { "changes": {} }]),
@@ -12889,5 +13073,73 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         let ok = build_dns_bench_stats_json(&mut ok_vals, 3);
         assert_eq!(ok.get("status").and_then(Value::as_str), Some("healthy"));
         assert_eq!(ok.get("median").and_then(Value::as_f64), Some(27.16));
+    }
+
+    #[test]
+    fn test_format_show_config_value_redacts_and_compacts_cached_nodes() {
+        let mut data = crate::store::RouterStoreData::default();
+        data.settings.clash_api_secret = "clash-secret-123".into();
+        data.settings.server_subscription_token = "sub-tok-xyz".into();
+        data.settings.agent_api_token = "agent-tok-999".into();
+        data.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_sub".into(),
+            enabled: true,
+            source_type: "subscription".into(),
+            subscription_urls: vec!["https://futurefast.ru/api/sub/secretToken123".into()],
+            hwid: "HWID-ABCD".into(),
+            cached_nodes: vec![
+                crate::store::ParsedProxyNode {
+                    tag: "Auto".into(),
+                    protocol: "urltest".into(),
+                    outbound_json: json!({ "type": "urltest", "tag": "Auto" }),
+                    ..Default::default()
+                },
+                crate::store::ParsedProxyNode {
+                    tag: "de-hidden".into(),
+                    protocol: "vless".into(),
+                    server: "de.example".into(),
+                    server_port: 443,
+                    raw_uri: "json:hidden".into(),
+                    outbound_json: json!({ "type": "vless", "tag": "de-hidden" }),
+                    ..Default::default()
+                },
+                crate::store::ParsedProxyNode {
+                    tag: "NL-Single".into(),
+                    protocol: "hysteria2".into(),
+                    server: "nl.example".into(),
+                    server_port: 443,
+                    outbound_json: json!({ "type": "hysteria2", "tag": "NL-Single" }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+
+        let masked = format_show_config_value(&data, false);
+        assert_eq!(masked["settings"]["clash_api_secret"], "[REDACTED]");
+        assert_eq!(
+            masked["settings"]["server_subscription_token"],
+            "[REDACTED]"
+        );
+        assert_eq!(masked["settings"]["agent_api_token"], "[REDACTED]");
+
+        let src_obj = masked["outbound_sources"]
+            .as_array()
+            .and_then(|arr| arr.iter().find(|s| s["id"] == "src_sub"))
+            .expect("src_sub present");
+        assert!(src_obj.get("cached_nodes").is_none());
+        assert_eq!(src_obj["cached_nodes_count"], 3);
+        assert_eq!(src_obj["cached_nodes_summary"]["total"], 3);
+        assert_eq!(src_obj["cached_nodes_summary"]["urltest_groups"], 1);
+        assert_eq!(src_obj["cached_nodes_summary"]["hidden_members"], 1);
+        assert_eq!(
+            src_obj["subscription_urls"][0],
+            "https://futurefast.ru/[REDACTED]"
+        );
+        assert_eq!(src_obj["hwid"], "[REDACTED]");
+
+        let serialized = serde_json::to_string_pretty(&masked).expect("valid json");
+        let reparsed: Value = serde_json::from_str(&serialized).expect("reparse masked json");
+        assert!(reparsed.is_object());
     }
 }

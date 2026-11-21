@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 17:15+0300\n"
-"PO-Revision-Date: 2026-11-21 17:15+0300\n"
+"POT-Creation-Date: 2026-11-21 18:52+0300\n"
+"PO-Revision-Date: 2026-11-21 18:52+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -342,7 +342,7 @@ msgstr ""
 msgid "AI synthesis failed"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1537
+#: src/tachyon/methods/shell/index.ts:1541
 msgid "AI synthesis timed out waiting for LLM response"
 msgstr ""
 
@@ -1751,15 +1751,15 @@ msgstr ""
 msgid "Automatically update remote hosts lists on schedule"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1695
+#: src/tachyon/tabs/diagnostic/initController.ts:1723
 msgid "Autostart: off"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1694
+#: src/tachyon/tabs/diagnostic/initController.ts:1722
 msgid "Autostart: on"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1781
+#: src/tachyon/tabs/diagnostic/initController.ts:1809
 msgid "Avail"
 msgstr ""
 
@@ -2141,7 +2141,7 @@ msgstr ""
 msgid "Browsing"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1441
+#: src/tachyon/tabs/diagnostic/initController.ts:1469
 msgid "Bug report downloaded"
 msgstr ""
 
@@ -2502,7 +2502,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:14
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:51
 #: src/tachyon/tabs/diagnostic/checks/runTachyonCoreCheck.ts:16
-#: src/tachyon/tabs/diagnostic/initController.ts:2007
+#: src/tachyon/tabs/diagnostic/initController.ts:2035
 msgid "Checking, please wait"
 msgstr ""
 
@@ -3015,7 +3015,7 @@ msgstr ""
 msgid "Compact Pipeline View"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1079
+#: src/tachyon/methods/shell/index.ts:1083
 msgid "Component action timed out"
 msgstr ""
 
@@ -3123,7 +3123,7 @@ msgstr ""
 msgid "Configuration File"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1903
+#: src/tachyon/methods/shell/index.ts:1907
 msgid "Configuration applied"
 msgstr ""
 
@@ -3748,7 +3748,7 @@ msgstr ""
 msgid "DNS & Games / Direct"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1853
+#: src/tachyon/tabs/diagnostic/initController.ts:1881
 msgid "DNS & Intercept"
 msgstr ""
 
@@ -4279,7 +4279,7 @@ msgid "Detour Target Section"
 msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:670
-#: src/tachyon/tabs/diagnostic/initController.ts:1755
+#: src/tachyon/tabs/diagnostic/initController.ts:1783
 msgid "Device"
 msgstr ""
 
@@ -5712,7 +5712,7 @@ msgstr ""
 msgid "Failed queries count as 5000 ms in statistics. All times are measured from the router."
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1897
+#: src/tachyon/methods/shell/index.ts:1901
 msgid "Failed to apply DNS configuration"
 msgstr ""
 
@@ -5725,7 +5725,7 @@ msgstr ""
 msgid "Failed to apply fix"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1421
+#: src/tachyon/methods/shell/index.ts:1425
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2776
 msgid "Failed to apply strategy"
 msgstr ""
@@ -5734,7 +5734,7 @@ msgstr ""
 msgid "Failed to apply transfer code"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1750
+#: src/tachyon/methods/shell/index.ts:1754
 msgid "Failed to auto-apply strategy"
 msgstr ""
 
@@ -5744,7 +5744,7 @@ msgstr ""
 msgid "Failed to change language"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1795
+#: src/tachyon/methods/shell/index.ts:1799
 msgid "Failed to clear fuzzer history"
 msgstr ""
 
@@ -5787,7 +5787,7 @@ msgstr ""
 msgid "Failed to delete snapshot"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1722
+#: src/tachyon/methods/shell/index.ts:1726
 msgid "Failed to detect DPI type"
 msgstr ""
 
@@ -5800,8 +5800,8 @@ msgstr ""
 msgid "Failed to execute"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1968
-#: src/tachyon/methods/shell/index.ts:1994
+#: src/tachyon/methods/shell/index.ts:1972
+#: src/tachyon/methods/shell/index.ts:1998
 msgid "Failed to execute IP and DNS leak check"
 msgstr ""
 
@@ -5809,7 +5809,7 @@ msgstr ""
 msgid "Failed to export snapshot"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:864
+#: src/tachyon/methods/shell/index.ts:868
 msgid "Failed to fetch releases"
 msgstr ""
 
@@ -5827,7 +5827,7 @@ msgstr ""
 msgid "Failed to generate WARP configuration"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1444
+#: src/tachyon/tabs/diagnostic/initController.ts:1472
 msgid "Failed to generate bug report"
 msgstr ""
 
@@ -5835,23 +5835,23 @@ msgstr ""
 msgid "Failed to generate transfer code"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1849
+#: src/tachyon/methods/shell/index.ts:1853
 msgid "Failed to get DNS benchmark status"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1772
+#: src/tachyon/methods/shell/index.ts:1776
 msgid "Failed to get fuzzer history"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1626
+#: src/tachyon/methods/shell/index.ts:1630
 msgid "Failed to get fuzzer patterns"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1364
+#: src/tachyon/methods/shell/index.ts:1368
 msgid "Failed to get fuzzer status"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1468
+#: src/tachyon/methods/shell/index.ts:1472
 msgid "Failed to get fuzzer strategies"
 msgstr ""
 
@@ -5859,7 +5859,7 @@ msgstr ""
 msgid "Failed to import snapshot profile"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:893
+#: src/tachyon/methods/shell/index.ts:897
 msgid "Failed to install version"
 msgstr ""
 
@@ -5903,7 +5903,7 @@ msgstr ""
 msgid "Failed to parse target list."
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:826
+#: src/tachyon/methods/shell/index.ts:830
 msgid "Failed to read operation log"
 msgstr ""
 
@@ -5920,7 +5920,7 @@ msgstr ""
 msgid "Failed to reorder sections: UCI API unavailable"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1701
+#: src/tachyon/methods/shell/index.ts:1705
 msgid "Failed to reset fuzzer patterns"
 msgstr ""
 
@@ -5946,7 +5946,7 @@ msgstr ""
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1659
+#: src/tachyon/methods/shell/index.ts:1663
 msgid "Failed to save fuzzer patterns"
 msgstr ""
 
@@ -5963,7 +5963,7 @@ msgid "Failed to save snapshot"
 msgstr ""
 
 #: src/tachyon/connectionWizard.ts:5712
-#: src/tachyon/methods/shell/index.ts:1825
+#: src/tachyon/methods/shell/index.ts:1829
 msgid "Failed to start DNS benchmark"
 msgstr ""
 
@@ -5977,7 +5977,7 @@ msgstr ""
 msgid "Failed to start bot"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1343
+#: src/tachyon/methods/shell/index.ts:1347
 msgid "Failed to start fuzzer"
 msgstr ""
 
@@ -5990,7 +5990,7 @@ msgstr ""
 msgid "Failed to start watchdog"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1869
+#: src/tachyon/methods/shell/index.ts:1873
 msgid "Failed to stop DNS benchmark"
 msgstr ""
 
@@ -5999,7 +5999,7 @@ msgstr ""
 msgid "Failed to stop bot"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1379
+#: src/tachyon/methods/shell/index.ts:1383
 msgid "Failed to stop fuzzer"
 msgstr ""
 
@@ -6011,8 +6011,8 @@ msgstr ""
 msgid "Failed to switch proxy"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1532
-#: src/tachyon/methods/shell/index.ts:1595
+#: src/tachyon/methods/shell/index.ts:1536
+#: src/tachyon/methods/shell/index.ts:1599
 msgid "Failed to synthesize AI strategies"
 msgstr ""
 
@@ -7051,7 +7051,7 @@ msgstr ""
 msgid "History"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1800
+#: src/tachyon/methods/shell/index.ts:1804
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1574
 msgid "History cleared"
 msgstr ""
@@ -7195,7 +7195,7 @@ msgstr ""
 msgid "IP addresses pinged through the primary WAN interface to verify internet connectivity (default: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1976
+#: src/tachyon/methods/shell/index.ts:1980
 msgid "IP and DNS leak check timed out"
 msgstr ""
 
@@ -7260,7 +7260,7 @@ msgstr ""
 msgid "IPv4 pool (CIDR)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1877
+#: src/tachyon/tabs/diagnostic/initController.ts:1905
 msgid "IPv6 & Leak Guard"
 msgstr ""
 
@@ -8646,8 +8646,8 @@ msgstr ""
 msgid "Latency test URL"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:669
-#: src/tachyon/methods/shell/index.ts:690
+#: src/tachyon/methods/shell/index.ts:673
+#: src/tachyon/methods/shell/index.ts:694
 msgid "Latency test failed"
 msgstr ""
 
@@ -8676,7 +8676,7 @@ msgstr ""
 msgid "Leak Guard & Flight Recorder"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1886
+#: src/tachyon/tabs/diagnostic/initController.ts:1914
 msgid "Leak Guard off"
 msgstr ""
 
@@ -8806,7 +8806,7 @@ msgstr ""
 msgid "Live filter preview"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1816
+#: src/tachyon/tabs/diagnostic/initController.ts:1844
 msgid "Load & Uptime"
 msgstr ""
 
@@ -9271,7 +9271,7 @@ msgstr ""
 msgid "Member Conditions"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1773
+#: src/tachyon/tabs/diagnostic/initController.ts:1801
 msgid "Memory (RAM)"
 msgstr ""
 
@@ -9690,7 +9690,7 @@ msgstr ""
 msgid "No DNS resolvers recorded"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1856
+#: src/tachyon/tabs/diagnostic/initController.ts:1884
 msgid "No FakeIP"
 msgstr ""
 
@@ -10182,7 +10182,7 @@ msgstr ""
 msgid "OR (any selected condition matches)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1748
+#: src/tachyon/tabs/diagnostic/initController.ts:1776
 msgid "OS"
 msgstr ""
 
@@ -10427,7 +10427,7 @@ msgstr ""
 msgid "Operation log"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:825
+#: src/tachyon/methods/shell/index.ts:829
 msgid "Operation log is not available"
 msgstr ""
 
@@ -10436,8 +10436,8 @@ msgid "Operation started. Waiting for log output..."
 msgstr ""
 
 #: src/helpers/withTimeout.ts:7
-#: src/tachyon/methods/shell/index.ts:639
-#: src/tachyon/methods/shell/index.ts:734
+#: src/tachyon/methods/shell/index.ts:643
+#: src/tachyon/methods/shell/index.ts:738
 msgid "Operation timed out"
 msgstr ""
 
@@ -10875,11 +10875,11 @@ msgstr ""
 msgid "Patterns reset to defaults!"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1691
+#: src/tachyon/methods/shell/index.ts:1695
 msgid "Patterns reset to factory defaults"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1653
+#: src/tachyon/methods/shell/index.ts:1657
 msgid "Patterns saved successfully"
 msgstr ""
 
@@ -13170,7 +13170,7 @@ msgstr ""
 msgid "Sections"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1917
+#: src/tachyon/tabs/diagnostic/initController.ts:1945
 msgid "Sections & Sessions"
 msgstr ""
 
@@ -13245,7 +13245,7 @@ msgstr ""
 msgid "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1396
+#: src/tachyon/methods/shell/index.ts:1400
 msgid "Select a routing section or outbound source"
 msgstr ""
 
@@ -13779,8 +13779,8 @@ msgid "Service Presets"
 msgstr ""
 
 #: src/tachyon/appShell.ts:1286
-#: src/tachyon/methods/shell/index.ts:590
-#: src/tachyon/methods/shell/index.ts:611
+#: src/tachyon/methods/shell/index.ts:594
+#: src/tachyon/methods/shell/index.ts:615
 #: src/tachyon/tabs/diagnostic/initController.ts:755
 msgid "Service action failed"
 msgstr ""
@@ -13907,7 +13907,7 @@ msgid "Show Subscription Quota on Dashboard"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:1352
-#: src/tachyon/tabs/diagnostic/initController.ts:1632
+#: src/tachyon/tabs/diagnostic/initController.ts:1660
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:255
 msgid "Show Tachyon Core config"
 msgstr ""
@@ -14625,8 +14625,8 @@ msgstr ""
 msgid "Subscription settings saved. Use Save & Apply to activate them."
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1196
-#: src/tachyon/methods/shell/index.ts:1216
+#: src/tachyon/methods/shell/index.ts:1200
+#: src/tachyon/methods/shell/index.ts:1220
 msgid "Subscription update failed"
 msgstr ""
 
@@ -15151,7 +15151,7 @@ msgstr ""
 msgid "Tachyon Settings"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1016
+#: src/tachyon/methods/shell/index.ts:1020
 #: src/tachyon/tabs/updates/initController.ts:479
 msgid "Tachyon has been installed"
 msgstr ""
@@ -15176,7 +15176,7 @@ msgstr ""
 msgid "Tachyon stopped"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:1064
+#: src/tachyon/methods/shell/index.ts:1068
 msgid "Tachyon update did not complete within the timeout"
 msgstr ""
 
@@ -16462,7 +16462,7 @@ msgid "Upstream Provider / ASN"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:6984
-#: src/tachyon/tabs/diagnostic/initController.ts:1807
+#: src/tachyon/tabs/diagnostic/initController.ts:1835
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:518
 msgid "Uptime"
 msgstr ""
@@ -17085,11 +17085,11 @@ msgstr ""
 msgid "Watchdog recoveries:"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1716
+#: src/tachyon/tabs/diagnostic/initController.ts:1744
 msgid "Watchdog: active"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1717
+#: src/tachyon/tabs/diagnostic/initController.ts:1745
 msgid "Watchdog: off"
 msgstr ""
 
@@ -17294,9 +17294,9 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:3146
 #: src/tachyon/tabs/dashboard/inboundServers.ts:964
-#: src/tachyon/tabs/diagnostic/initController.ts:1707
-#: src/tachyon/tabs/diagnostic/initController.ts:1740
-#: src/tachyon/tabs/diagnostic/initController.ts:1931
+#: src/tachyon/tabs/diagnostic/initController.ts:1735
+#: src/tachyon/tabs/diagnostic/initController.ts:1768
+#: src/tachyon/tabs/diagnostic/initController.ts:1959
 msgid "active"
 msgstr ""
 
@@ -17343,15 +17343,15 @@ msgstr ""
 msgid "conns"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1657
+#: src/tachyon/tabs/diagnostic/initController.ts:1685
 msgid "d"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1867
+#: src/tachyon/tabs/diagnostic/initController.ts:1895
 msgid "default"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1927
+#: src/tachyon/tabs/diagnostic/initController.ts:1955
 msgid "deferred"
 msgstr ""
 
@@ -17523,7 +17523,7 @@ msgstr ""
 msgid "endpoints OK"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1845
+#: src/tachyon/tabs/diagnostic/initController.ts:1873
 msgid "entries"
 msgstr ""
 
@@ -17556,12 +17556,12 @@ msgstr ""
 msgid "gRPC service"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1867
+#: src/tachyon/tabs/diagnostic/initController.ts:1895
 msgid "guard on"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1657
-#: src/tachyon/tabs/diagnostic/initController.ts:1660
+#: src/tachyon/tabs/diagnostic/initController.ts:1685
+#: src/tachyon/tabs/diagnostic/initController.ts:1688
 msgid "h"
 msgstr ""
 
@@ -17570,7 +17570,7 @@ msgstr ""
 msgid "host+1 (1 byte into hostname)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1885
+#: src/tachyon/tabs/diagnostic/initController.ts:1913
 msgid "ipv6_only warning"
 msgstr ""
 
@@ -17582,8 +17582,8 @@ msgstr ""
 msgid "is unavailable"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1660
-#: src/tachyon/tabs/diagnostic/initController.ts:1662
+#: src/tachyon/tabs/diagnostic/initController.ts:1688
+#: src/tachyon/tabs/diagnostic/initController.ts:1690
 msgid "m"
 msgstr ""
 
@@ -17644,7 +17644,7 @@ msgstr ""
 msgid "no devices"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1865
+#: src/tachyon/tabs/diagnostic/initController.ts:1893
 msgid "no prefix"
 msgstr ""
 
@@ -17654,7 +17654,7 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:6268
 #: src/tachyon/tabs/dashboard/initController.ts:6269
-#: src/tachyon/tabs/diagnostic/initController.ts:1866
+#: src/tachyon/tabs/diagnostic/initController.ts:1894
 msgid "off"
 msgstr ""
 
@@ -17695,7 +17695,7 @@ msgstr ""
 msgid "pre-release"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1922
+#: src/tachyon/tabs/diagnostic/initController.ts:1950
 msgid "quarantine"
 msgstr ""
 
@@ -17773,8 +17773,8 @@ msgstr ""
 msgid "stability (3x)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1707
-#: src/tachyon/tabs/diagnostic/initController.ts:1740
+#: src/tachyon/tabs/diagnostic/initController.ts:1735
+#: src/tachyon/tabs/diagnostic/initController.ts:1768
 msgid "stopped"
 msgstr ""
 

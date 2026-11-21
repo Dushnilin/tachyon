@@ -311,7 +311,7 @@ export const styles = `
 
 .tachyon_dashboard-page__top-domains-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
     gap: 8px;
 }
 
@@ -2735,7 +2735,7 @@ body.dark-theme .tachyon_proto-popover__desc {
 
 .tachyon-inbounds-chip-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 285px), 1fr));
     gap: 8px;
     min-width: 0;
 }

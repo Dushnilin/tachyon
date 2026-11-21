@@ -7371,7 +7371,7 @@ function createOutboundsContent(section) {
     _('Import URLTest groups returned by this subscription provider'),
   );
   o.modalonly = true;
-  o.default = '0';
+  o.default = '1';
   o.rmempty = false;
   o.depends('source_type', 'subscription');
 
@@ -7385,7 +7385,7 @@ function createOutboundsContent(section) {
     ),
   );
   o.modalonly = true;
-  o.default = '0';
+  o.default = '1';
   o.rmempty = false;
   o.depends({
     source_type: 'subscription',

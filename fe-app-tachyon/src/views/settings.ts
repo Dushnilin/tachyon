@@ -3346,7 +3346,7 @@ function createInterfaceQuickControlsWidget(section_id) {
   const wrap = E('div', {
     class: 'tachyon-ui-quick-controls',
     style:
-      'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;width:100%;',
+      'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;width:100%;',
   });
 
   function renderPanel() {

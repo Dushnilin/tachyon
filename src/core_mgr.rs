@@ -590,6 +590,10 @@ impl CoreManager {
                     );
                 }
                 Err(e) => {
+                    eprintln!(
+                        "[tachyon] ensure_server_tls_certs failed for '{}': {e:#}",
+                        srv.id
+                    );
                     self.state.live.write().await.push_event(
                         "warn",
                         "core_mgr",

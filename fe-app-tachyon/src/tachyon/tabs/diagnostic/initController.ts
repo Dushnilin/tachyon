@@ -1377,7 +1377,30 @@ async function handleShowTachyonCoreConfig() {
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading('generateBugReport', true);
   try {
-    const configResult = await fs.read('/etc/config/tachyon').catch(() => '');
+    const showConfigRes = await TachyonShellMethods.showConfig(true).catch(
+      () => null,
+    );
+    let configHeader = '--- TACHYON CONFIG ---';
+    let maskedConfigText = '';
+
+    if (showConfigRes?.success && showConfigRes.data != null) {
+      configHeader = '--- TACHYON CONFIG (JSON) ---';
+      maskedConfigText = stringifyCoreConfig(showConfigRes.data);
+    } else {
+      const jsonFile = await fs
+        .read('/etc/tachyon/tachyon.json')
+        .catch(() => '');
+      if (jsonFile.trim()) {
+        configHeader = '--- TACHYON CONFIG (JSON) ---';
+        maskedConfigText = formatMaskedCoreConfig(jsonFile);
+      } else {
+        const uciFile = await fs.read('/etc/config/tachyon').catch(() => '');
+        maskedConfigText = uciFile
+          ? maskLogText(maskGlobalCheckText(uciFile))
+          : 'Failed to fetch config';
+      }
+    }
+
     const logsResult = await executeShellCommand({
       command: '/sbin/logread',
       args: ['-e', 'tachyon', '-l', '1000'],
@@ -1408,22 +1431,27 @@ async function handleGenerateBugReport() {
       return filtered.join('\n');
     };
 
-    const rawReport = [
-      '--- TACHYON CONFIG ---',
-      configResult || 'Failed to fetch config',
+    const maskedTachyonLogs =
+      logsResult.code === 0
+        ? maskLogText(maskGlobalCheckText(filterUdpErrors(logsResult.stdout)))
+        : 'Failed to fetch tachyon logs';
+    const maskedCoreLogs =
+      coreLogsResult.code === 0
+        ? maskLogText(
+            maskGlobalCheckText(filterUdpErrors(coreLogsResult.stdout)),
+          )
+        : 'Failed to fetch tachyon-core logs';
+
+    const maskedReport = [
+      configHeader,
+      maskedConfigText || 'Failed to fetch config',
       '',
       '--- TACHYON LOGS ---',
-      logsResult.code === 0
-        ? filterUdpErrors(logsResult.stdout)
-        : 'Failed to fetch tachyon logs',
+      maskedTachyonLogs,
       '',
       '--- TACHYON-CORE LOGS ---',
-      coreLogsResult.code === 0
-        ? filterUdpErrors(coreLogsResult.stdout)
-        : 'Failed to fetch tachyon-core logs',
+      maskedCoreLogs,
     ].join('\n');
-
-    const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
 
     // Download as a text file instead of using clipboard, because navigator.clipboard
     // is undefined in insecure contexts (HTTP) which is common for router web interfaces.

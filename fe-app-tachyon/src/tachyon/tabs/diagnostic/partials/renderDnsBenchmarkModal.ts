@@ -209,7 +209,7 @@ export function renderDnsBenchmarkModal() {
         'div',
         {
           style:
-            'display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; font-size: 12px; margin-bottom: 8px;',
+            'display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 8px; font-size: 12px; margin-bottom: 8px;',
         },
         [
           E('div', {}, [

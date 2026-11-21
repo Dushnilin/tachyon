@@ -6911,7 +6911,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 /* Routing Sections Alternative Views (Bento Cards, Compact Tiles, Protocol Matrix) */
 .tachyon-routing-sections-list--cards {
     display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
     gap: 10px;
 }
 
@@ -6990,7 +6990,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 
 .tachyon-routing-sections-list--tiles {
     display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 235px), 1fr));
     gap: 8px;
 }
 
@@ -7066,7 +7066,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 
 .tachyon-routing-sections-list--matrix {
     display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
     gap: 8px;
 }
 
@@ -7457,7 +7457,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 .tachyon-router-services-cards-grid,
 .tachyon-router-services-resource-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 195px), 1fr));
     gap: 8px;
 }
 
@@ -7525,7 +7525,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 /* Active Clients & Inbounds Alternative Views + Half-Width Responsiveness */
 .tachyon-client-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
     gap: 8px;
     padding: 4px 0;
 }
@@ -7560,7 +7560,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 }
 
 .tachyon-inbounds-chip-grid--compact {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)) !important;
     gap: 6px !important;
 }
 
@@ -7615,7 +7615,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 
 .tachyon-dash-editor__presets-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr));
     gap: 8px;
 }
 
@@ -8374,14 +8374,19 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 
 .tachyon-studio-body--cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
     gap: 10px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .tachyon-studio-body--pipeline {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    min-width: 0;
 }
 
 .tachyon-studio-card {
@@ -8394,6 +8399,9 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     background: var(--background-color-high, rgba(128, 128, 128, 0.04));
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.22));
     cursor: pointer;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     box-sizing: border-box;
     transition: border-color 0.14s ease, background-color 0.14s ease, transform 0.12s ease, box-shadow 0.14s ease;
 }
@@ -8735,6 +8743,8 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     gap: 8px 12px;
     padding-top: 8px;
     border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.15));
+    min-width: 0;
+    max-width: 100%;
 }
 
 .tachyon-studio-card__pipe-stage {
@@ -8762,6 +8772,8 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .tachyon-studio-chip {
@@ -8940,7 +8952,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-studio-create__templates {
     display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)) !important;
     gap: 8px !important;
     width: 100% !important;
     max-height: min(68vh, 620px) !important;
@@ -9066,6 +9078,10 @@ button.tachyon-studio-chip:hover {
     padding-top: 10px;
     border-top: 1px dashed var(--border-color-low, rgba(148, 163, 184, 0.2));
     font-size: 12px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .tachyon-studio-card--source-compact.is-expanded .tachyon-studio-source-inspector,
@@ -9078,6 +9094,16 @@ button.tachyon-studio-chip:hover {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.tachyon-studio-source-inspector__row--block {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
 }
 
 .tachyon-studio-source-inspector__label {
@@ -9104,8 +9130,12 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-studio-server-table-wrap {
     width: 100%;
+    max-width: 100%;
     max-height: 260px;
+    overflow-x: auto;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
     border-radius: 8px;
     border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.18));
     background: var(--background-color-low, rgba(15, 23, 42, 0.22));
@@ -9147,7 +9177,8 @@ button.tachyon-studio-chip:hover {
 .tachyon-studio-server-table__name {
     font-family: "Twemoji Country Flags", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-weight: 600;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
 .tachyon-studio-copy-link-btn {
@@ -9299,7 +9330,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-wizard__dns-rec-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
     gap: 7px;
 }
 
@@ -9356,7 +9387,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-wizard__dns-top-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 195px), 1fr));
     gap: 7px;
 }
 
@@ -9427,7 +9458,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-wizard__dns-presets-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
     gap: 8px;
 }
 
@@ -10039,7 +10070,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-ruleset-picker__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
     gap: 6px;
     max-height: none;
     overflow: visible;
@@ -10969,6 +11000,113 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
 }
 
 @media (max-width: 640px) {
+    #cbi-tachyon {
+        padding: 4px 4px 64px !important;
+    }
+    .tachyon-workspace-body .cbi-section.tachyon-has-studio-deck {
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+    }
+    .tachyon-studio-panel,
+    .tachyon-studio-toolbar {
+        padding: 10px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-body--cards {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px !important;
+    }
+    .tachyon-studio-card,
+    .tachyon-studio-card--source-compact {
+        padding: 10px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    .tachyon-studio-card__head {
+        align-items: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-card__identity,
+    .tachyon-studio-card--source-compact .tachyon-studio-card__identity {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        flex: 1 1 0% !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        gap: 6px 8px !important;
+        overflow: visible !important;
+    }
+    .tachyon-studio-card__title-wrap {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-card__title {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        overflow-wrap: anywhere !important;
+    }
+    .tachyon-studio-card__sid {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+    }
+    .tachyon-studio-source-compact__right {
+        width: 100% !important;
+        margin-left: 0 !important;
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    .tachyon-studio-card__pipe-stage {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-card__pipe-arrow {
+        display: none !important;
+    }
+    .tachyon-studio-card__chips {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+    .tachyon-studio-chip {
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+    .tachyon-studio-filter-menu {
+        left: 0 !important;
+        right: auto !important;
+        min-width: min(220px, calc(100vw - 32px)) !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+    .tachyon-studio-server-table th,
+    .tachyon-studio-server-table td {
+        padding: 6px 6px !important;
+        font-size: 11.5px !important;
+    }
+    .tachyon-studio-server-table__idx,
+    .tachyon-studio-server-table__proto,
+    .tachyon-studio-server-table__actions {
+        white-space: nowrap !important;
+    }
+    .tachyon-studio-server-table__name {
+        min-width: 96px !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+    }
+    .tachyon-studio-copy-link-btn {
+        padding: 4px 7px !important;
+    }
+    .tachyon-studio-copy-link-btn > span {
+        display: none !important;
+    }
     .tachyon-history-diff-row {
         flex-direction: column;
         align-items: flex-start;

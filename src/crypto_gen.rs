@@ -699,32 +699,44 @@ pub async fn generate_tls_keypair_files(
     if let Some(bin) = core_bin.map(str::trim).filter(|b| !b.is_empty())
         && Path::new(bin).exists()
     {
-        let mut cmd = tokio::process::Command::new(bin);
-        cmd.args(["generate", "tls-keypair", &cn, "-m", "120"])
-            .kill_on_drop(true);
-        match tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output()).await {
-            Ok(Ok(out)) if out.status.success() => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                if let Some((key_pem, cert_pem)) = split_tls_keypair_pem(&stdout) {
-                    write_bytes_with_mode_if_changed(key_path, key_pem.as_bytes(), 0o600)?;
-                    write_bytes_with_mode_if_changed(cert_path, cert_pem.as_bytes(), 0o644)?;
-                    return Ok(());
+        let invocations: [&[&str]; 2] = [
+            &["generate", "tls-keypair", &cn],
+            &["generate", "tls-keypair", &cn, "-m", "120"],
+        ];
+        for args in invocations {
+            let mut cmd = tokio::process::Command::new(bin);
+            cmd.args(args).kill_on_drop(true);
+            match tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output()).await {
+                Ok(Ok(out)) if out.status.success() => {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    if let Some((key_pem, cert_pem)) = split_tls_keypair_pem(&stdout) {
+                        write_bytes_with_mode_if_changed(key_path, key_pem.as_bytes(), 0o600)?;
+                        write_bytes_with_mode_if_changed(cert_path, cert_pem.as_bytes(), 0o644)?;
+                        return Ok(());
+                    }
+                    errors.push(format!(
+                        "tachyon-core {} returned invalid PEM",
+                        args.join(" ")
+                    ));
                 }
-                errors.push("tachyon-core generate tls-keypair returned invalid PEM".to_string());
-            }
-            Ok(Ok(out)) => {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                errors.push(format!(
-                    "tachyon-core generate tls-keypair exited with {}: {}",
-                    out.status,
-                    stderr.trim()
-                ));
-            }
-            Ok(Err(e)) => {
-                errors.push(format!("tachyon-core generate tls-keypair failed: {e}"));
-            }
-            Err(_) => {
-                errors.push("tachyon-core generate tls-keypair timed out after 15s".to_string());
+                Ok(Ok(out)) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    errors.push(format!(
+                        "tachyon-core {} exited with {}: {}",
+                        args.join(" "),
+                        out.status,
+                        stderr.trim()
+                    ));
+                }
+                Ok(Err(e)) => {
+                    errors.push(format!("tachyon-core {} failed: {e}", args.join(" ")));
+                }
+                Err(_) => {
+                    errors.push(format!(
+                        "tachyon-core {} timed out after 15s",
+                        args.join(" ")
+                    ));
+                }
             }
         }
     }

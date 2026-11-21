@@ -2557,9 +2557,9 @@ pub struct OutboundSource {
     pub sub_preferred_user_agent: String,
     #[serde(default)]
     pub show_dashboard_metadata: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub include_urltest_groups: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub hide_urltest_group_outbounds: bool,
     #[serde(default)]
     pub urltest_idle_timeout: String,
@@ -5957,10 +5957,10 @@ impl RouterStoreData {
                         node_prefix_color: b.opt("node_prefix_color").unwrap_or("").to_string(),
                         include_urltest_groups: b
                             .opt("include_urltest_groups")
-                            .is_some_and(parse_bool),
+                            .is_none_or(parse_bool),
                         hide_urltest_group_outbounds: b
                             .opt("hide_urltest_group_outbounds")
-                            .is_some_and(parse_bool),
+                            .is_none_or(parse_bool),
                         hide_detour_outbounds: b
                             .opt("hide_detour_outbounds")
                             .is_some_and(parse_bool),

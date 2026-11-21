@@ -529,6 +529,10 @@ export const TachyonShellMethods = {
       mode: 'proxied' | 'direct';
       message: string;
     }>(Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS, [ip], { timeout: 15000 }),
+  showConfig: async (masked = true) =>
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_CONFIG, [
+      masked ? 'masked' : 'raw',
+    ]),
   showTachyonCoreConfig: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_TACHYON_CORE_CONFIG, [
       masked ? 'masked' : 'raw',

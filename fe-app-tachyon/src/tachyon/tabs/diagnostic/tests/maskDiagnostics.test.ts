@@ -221,4 +221,37 @@ describe('diagnostic masking', () => {
     expect(masked).not.toContain('example.org');
     expect(masked).not.toContain('openwrt.org');
   });
+
+  it('masks Tachyon RouterStore JSON secrets while preserving valid JSON', () => {
+    const storeJson = JSON.stringify({
+      settings: {
+        clash_api_secret: 'clash-secret-123',
+        server_subscription_token: 'sub-tok-xyz',
+        agent_api_token: 'agent-tok-456',
+      },
+      outbound_sources: [
+        {
+          id: 'src_sub',
+          subscription_urls: ['https://futurefast.ru/api/sub/secretToken'],
+          hwid: 'device-hwid-999',
+        },
+      ],
+      inbound_servers: [
+        {
+          id: 'srv_1',
+          reality_private_key: 'priv-key-abc',
+        },
+      ],
+    });
+
+    const formatted = formatMaskedCoreConfig(storeJson);
+    const parsed = JSON.parse(formatted);
+
+    expect(parsed.settings.clash_api_secret).toBe('*******');
+    expect(parsed.settings.server_subscription_token).toBe('*******');
+    expect(parsed.settings.agent_api_token).toBe('*******');
+    expect(parsed.outbound_sources[0].subscription_urls).toBe('*******');
+    expect(parsed.outbound_sources[0].hwid).toBe('*******');
+    expect(parsed.inbound_servers[0].reality_private_key).toBe('*******');
+  });
 });

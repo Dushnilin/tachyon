@@ -1468,7 +1468,7 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
         if let Some(fp) = v
             .get("fp")
             .and_then(Value::as_str)
-            .map(str::trim)
+            .map(normalize_utls_fingerprint)
             .filter(|s| !s.is_empty())
         {
             tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
@@ -1567,25 +1567,19 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
             obj.insert("transport".into(), Value::Object(tr));
         }
         "xhttp" | "splithttp" => {
-            let mut tr = Map::new();
-            tr.insert("type".into(), json!("xhttp"));
-            tr.insert(
+            let mut primary = v.as_object().cloned().unwrap_or_default();
+            primary.insert(
                 "path".into(),
                 json!(if tr_path.is_empty() { "/" } else { tr_path }),
             );
-            tr.insert(
-                "mode".into(),
-                json!(
-                    v.get("mode")
-                        .and_then(Value::as_str)
-                        .filter(|s| !s.trim().is_empty())
-                        .unwrap_or("auto")
-                ),
-            );
             if !tr_host.is_empty() {
-                tr.insert("host".into(), json!(tr_host));
+                primary.insert("host".into(), json!(tr_host));
             }
-            obj.insert("transport".into(), Value::Object(tr));
+            let extra_raw = primary.get("extra").cloned();
+            obj.insert(
+                "transport".into(),
+                build_xhttp_transport(&primary, extra_raw.as_ref(), None),
+            );
         }
         _ => {}
     }
@@ -3652,6 +3646,54 @@ fn decode_ss_userinfo(userinfo: &str) -> Option<(String, String)> {
     Some((m.to_string(), p.to_string()))
 }
 
+/// Map upstream uTLS fingerprint aliases/unsupported values (e.g. `qq`, `random`) onto supported fingerprints.
+fn normalize_utls_fingerprint(raw: &str) -> String {
+    let v = raw.trim().to_ascii_lowercase();
+    if v.is_empty() {
+        return String::new();
+    }
+    if matches!(
+        v.as_str(),
+        "chrome"
+            | "firefox"
+            | "edge"
+            | "safari"
+            | "360"
+            | "ios"
+            | "android"
+            | "randomized"
+            | "randomizedalpn"
+            | "randomizednoalpn"
+    ) {
+        return v;
+    }
+    if v == "random" || v.starts_with("hellorandomized") || v.starts_with("randomized") {
+        return "randomized".to_string();
+    }
+    if v.starts_with("hellochrome") || v.starts_with("chrome") {
+        return "chrome".to_string();
+    }
+    if v.starts_with("hellofirefox") || v.starts_with("firefox") {
+        return "firefox".to_string();
+    }
+    if v.starts_with("hellosafari") || v.starts_with("safari") {
+        return "safari".to_string();
+    }
+    if v.starts_with("helloios") || v.starts_with("ios") {
+        return "ios".to_string();
+    }
+    if v.starts_with("helloandroid") || v.starts_with("android") {
+        return "android".to_string();
+    }
+    if v.starts_with("helloedge") || v.starts_with("edge") {
+        return "edge".to_string();
+    }
+    if v.starts_with("hello360") || v.starts_with("360") {
+        return "360".to_string();
+    }
+    "chrome".to_string()
+}
+
 fn build_tls_object(params: &HashMap<String, String>, default_host: &str) -> Option<Value> {
     build_tls_object_with_default(params, default_host, false)
 }
@@ -3678,7 +3720,7 @@ fn build_tls_object_with_default(
         .unwrap_or_else(|| default_host.to_string());
     let fp = params
         .get("fp")
-        .map(|s| s.trim().to_string())
+        .map(|s| normalize_utls_fingerprint(s))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "chrome".to_string());
     let mut tls = Map::new();
@@ -3700,6 +3742,14 @@ fn build_tls_object_with_default(
         if !alpn.is_empty() {
             tls.insert("alpn".into(), json!(alpn));
         }
+    } else if matches!(
+        params
+            .get("type")
+            .map(|s| s.trim().to_ascii_lowercase())
+            .as_deref(),
+        Some("xhttp" | "splithttp")
+    ) {
+        tls.insert("alpn".into(), json!(["h2", "http/1.1"]));
     }
     if params
         .get("allowInsecure")
@@ -3737,6 +3787,541 @@ fn build_tls_object_with_default(
         );
     }
     Some(Value::Object(tls))
+}
+
+fn xhttp_value_present(val: &Value) -> bool {
+    match val {
+        Value::Null => false,
+        Value::String(s) => !s.trim().is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(m) => !m.is_empty(),
+        Value::Bool(_) | Value::Number(_) => true,
+    }
+}
+
+fn xhttp_parse_object(val: &Value) -> Option<Map<String, Value>> {
+    match val {
+        Value::Object(m) => Some(m.clone()),
+        Value::String(s) => serde_json::from_str::<Value>(s.trim())
+            .ok()
+            .and_then(|v| v.as_object().cloned()),
+        _ => None,
+    }
+}
+
+fn xhttp_copy_present_fields(dst: &mut Map<String, Value>, src: &Map<String, Value>) {
+    for (k, v) in src {
+        if !matches!(k.as_str(), "extra" | "xhttpSettings" | "downloadSettings")
+            && xhttp_value_present(v)
+        {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+}
+
+fn xhttp_merge_extra_layers(extra_val: &Value) -> Map<String, Value> {
+    let mut merged = Map::new();
+    let Some(extra) = xhttp_parse_object(extra_val) else {
+        return merged;
+    };
+    xhttp_copy_present_fields(&mut merged, &extra);
+
+    if let Some(xhttp_v) = extra.get("xhttpSettings")
+        && let Some(xs) = xhttp_parse_object(xhttp_v)
+    {
+        xhttp_copy_present_fields(&mut merged, &xs);
+        if let Some(inner_v) = xs.get("extra")
+            && let Some(inner) = xhttp_parse_object(inner_v)
+        {
+            xhttp_copy_present_fields(&mut merged, &inner);
+        }
+    }
+
+    if let Some(dl_v) = extra.get("downloadSettings")
+        && let Some(dl) = xhttp_parse_object(dl_v)
+        && let Some(dxs_v) = dl.get("xhttpSettings")
+        && let Some(dxs) = xhttp_parse_object(dxs_v)
+    {
+        xhttp_copy_present_fields(&mut merged, &dxs);
+        if let Some(inner_v) = dxs.get("extra")
+            && let Some(inner) = xhttp_parse_object(inner_v)
+        {
+            xhttp_copy_present_fields(&mut merged, &inner);
+        }
+    }
+
+    merged
+}
+
+fn xhttp_lookup<'a>(
+    primary: &'a Map<String, Value>,
+    extra: &'a Map<String, Value>,
+    keys: &[&str],
+) -> Option<&'a Value> {
+    for &key in keys {
+        for source in [primary, extra] {
+            if let Some(v) = source.get(key)
+                && xhttp_value_present(v)
+            {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+fn xhttp_parse_int_bound_val(val: &Value, min_val: i64) -> Option<i64> {
+    let allow_neg_one = min_val < 0;
+    let parsed = match val {
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(i)
+            } else if let Some(u) = n.as_u64() {
+                i64::try_from(u).ok()
+            } else if let Some(f) = n.as_f64()
+                && f.is_finite()
+                && f >= (min_val as f64) - 0.5
+                && f <= (i64::MAX / 2) as f64
+            {
+                Some(f.round() as i64)
+            } else {
+                None
+            }
+        }
+        Value::String(s) => parse_xhttp_int_bound(s, allow_neg_one),
+        _ => None,
+    }?;
+    (parsed >= min_val).then_some(parsed)
+}
+
+fn xhttp_format_range(val: &Value, min_val: i64) -> Option<String> {
+    if !xhttp_value_present(val) {
+        return None;
+    }
+    if let Some(obj) = val.as_object() {
+        let from_v = obj
+            .get("from")
+            .and_then(|v| xhttp_parse_int_bound_val(v, min_val))?;
+        let to_v = obj
+            .get("to")
+            .and_then(|v| xhttp_parse_int_bound_val(v, min_val))?;
+        let (lo, hi) = if from_v <= to_v {
+            (from_v, to_v)
+        } else {
+            (to_v, from_v)
+        };
+        return Some(if lo == hi {
+            lo.to_string()
+        } else {
+            format!("{lo}-{hi}")
+        });
+    }
+    if let Some(arr) = val.as_array()
+        && arr.len() == 2
+    {
+        let from_v = xhttp_parse_int_bound_val(&arr[0], min_val)?;
+        let to_v = xhttp_parse_int_bound_val(&arr[1], min_val)?;
+        let (lo, hi) = if from_v <= to_v {
+            (from_v, to_v)
+        } else {
+            (to_v, from_v)
+        };
+        return Some(if lo == hi {
+            lo.to_string()
+        } else {
+            format!("{lo}-{hi}")
+        });
+    }
+    if let Some(single) = xhttp_parse_int_bound_val(val, min_val) {
+        return Some(single.to_string());
+    }
+    let trimmed = val.as_str()?.trim();
+    let rel_idx = trimmed.get(1..)?.find('-')?;
+    let split_at = 1 + rel_idx;
+    let allow_neg_one = min_val < 0;
+    let from_v =
+        parse_xhttp_int_bound(&trimmed[..split_at], allow_neg_one).filter(|&v| v >= min_val)?;
+    let to_v =
+        parse_xhttp_int_bound(&trimmed[split_at + 1..], allow_neg_one).filter(|&v| v >= min_val)?;
+    let (lo, hi) = if from_v <= to_v {
+        (from_v, to_v)
+    } else {
+        (to_v, from_v)
+    };
+    Some(if lo == hi {
+        lo.to_string()
+    } else {
+        format!("{lo}-{hi}")
+    })
+}
+
+fn xhttp_parse_bool(val: &Value) -> Option<bool> {
+    match val {
+        Value::Bool(b) => Some(*b),
+        Value::Number(n) => n.as_i64().map(|i| i != 0),
+        Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn xhttp_value_str(val: &Value) -> Option<String> {
+    match val {
+        Value::String(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.to_string())
+        }
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn xhttp_match_enum<'a>(val: &Value, allowed: &[&'a str]) -> Option<&'a str> {
+    let raw = xhttp_value_str(val)?;
+    let lc = raw.to_ascii_lowercase();
+    allowed
+        .iter()
+        .copied()
+        .find(|cand| cand.eq_ignore_ascii_case(&lc))
+}
+
+fn xhttp_normalize_xmux(val: &Value) -> Option<Value> {
+    let src = xhttp_parse_object(val)?;
+    let empty = Map::new();
+    let mut out = Map::new();
+
+    for (out_key, aliases) in [
+        (
+            "max_concurrency",
+            &["maxConcurrency", "max_concurrency"][..],
+        ),
+        (
+            "max_connections",
+            &["maxConnections", "max_connections"][..],
+        ),
+        (
+            "c_max_reuse_times",
+            &["cMaxReuseTimes", "c_max_reuse_times"][..],
+        ),
+        (
+            "c_max_lifetime_ms",
+            &["cMaxLifetimeMs", "c_max_lifetime_ms"][..],
+        ),
+        (
+            "h_max_request_times",
+            &["hMaxRequestTimes", "h_max_request_times"][..],
+        ),
+    ] {
+        if let Some(v) = xhttp_lookup(&src, &empty, aliases)
+            && let Some(r) = xhttp_format_range(v, 0)
+        {
+            out.insert(out_key.into(), json!(r));
+        }
+    }
+    if let Some(v) = xhttp_lookup(
+        &src,
+        &empty,
+        &["hMaxReusableSecs", "h_max_reusable_secs", "maxReusableSecs"],
+    ) && let Some(r) = xhttp_format_range(v, 0)
+    {
+        out.insert("h_max_reusable_secs".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(&src, &empty, &["hKeepAlivePeriod", "h_keep_alive_period"])
+        && let Some(i) = xhttp_parse_int_bound_val(v, 0)
+    {
+        out.insert("h_keep_alive_period".into(), json!(i));
+    }
+
+    if matches!(
+        out.get("max_connections").and_then(Value::as_str),
+        Some("0" | "0-0")
+    ) {
+        out.remove("max_connections");
+    }
+    if out.contains_key("max_connections")
+        && matches!(
+            out.get("max_concurrency").and_then(Value::as_str),
+            Some("0" | "0-0")
+        )
+    {
+        out.remove("max_concurrency");
+    }
+
+    (!out.is_empty()).then_some(Value::Object(out))
+}
+
+fn xhttp_normalize_headers(val: &Value) -> Option<Value> {
+    let src = xhttp_parse_object(val)?;
+    let mut out = Map::new();
+    for (k, v) in src {
+        let key = k.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(arr) = v.as_array() {
+            if let Some(first) = arr.iter().find_map(xhttp_value_str) {
+                out.insert(key.to_string(), json!(first));
+            }
+        } else if let Some(s) = xhttp_value_str(&v) {
+            out.insert(key.to_string(), json!(s));
+        }
+    }
+    (!out.is_empty()).then_some(Value::Object(out))
+}
+
+/// Build canonical snake_case XHTTP v1/v2 transport object from primary and nested `extra` layers.
+fn build_xhttp_transport(
+    primary: &Map<String, Value>,
+    extra_raw: Option<&Value>,
+    default_host: Option<&str>,
+) -> Value {
+    let extra = extra_raw.map(xhttp_merge_extra_layers).unwrap_or_default();
+    let mode = xhttp_lookup(primary, &extra, &["mode"])
+        .and_then(|v| xhttp_match_enum(v, &["auto", "packet-up", "stream-up", "stream-one"]))
+        .unwrap_or("auto");
+    let path = xhttp_lookup(primary, &extra, &["path"])
+        .and_then(xhttp_value_str)
+        .unwrap_or_else(|| "/".to_string());
+    let host = xhttp_lookup(primary, &extra, &["host"])
+        .and_then(xhttp_value_str)
+        .or_else(|| {
+            default_host
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        });
+
+    let mut tr = Map::new();
+    tr.insert("type".into(), json!("xhttp"));
+    tr.insert("mode".into(), json!(mode));
+    tr.insert("path".into(), json!(path));
+    if let Some(h) = host {
+        tr.insert("host".into(), json!(h));
+    }
+
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["xPaddingBytes", "x_padding_bytes", "xpaddingbytes"],
+    ) && let Some(r) = xhttp_format_range(v, 1)
+    {
+        tr.insert("x_padding_bytes".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &[
+            "noGRPCHeader",
+            "noGrpcHeader",
+            "no_grpc_header",
+            "nogrpcheader",
+        ],
+    ) && let Some(b) = xhttp_parse_bool(v)
+    {
+        tr.insert("no_grpc_header".into(), json!(b));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["noSSEHeader", "noSseHeader", "no_sse_header", "nosseheader"],
+    ) && let Some(b) = xhttp_parse_bool(v)
+    {
+        tr.insert("no_sse_header".into(), json!(b));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["scMaxEachPostBytes", "sc_max_each_post_bytes"],
+    ) && let Some(r) = xhttp_format_range(v, 1)
+    {
+        tr.insert("sc_max_each_post_bytes".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["scMinPostsIntervalMs", "sc_min_posts_interval_ms"],
+    ) && let Some(r) = xhttp_format_range(v, 0)
+    {
+        tr.insert("sc_min_posts_interval_ms".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["scStreamUpServerSecs", "sc_stream_up_server_secs"],
+    ) && let Some(r) = xhttp_format_range(v, -1)
+    {
+        tr.insert("sc_stream_up_server_secs".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["scMaxBufferedPosts", "sc_max_buffered_posts"],
+    ) && let Some(i) = xhttp_parse_int_bound_val(v, 1)
+    {
+        tr.insert("sc_max_buffered_posts".into(), json!(i));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["scMaxConcurrentPosts", "sc_max_concurrent_posts"],
+    ) {
+        if let Some(i) = xhttp_parse_int_bound_val(v, 1) {
+            tr.insert("sc_max_concurrent_posts".into(), json!(i));
+        } else if let Some(r) = xhttp_format_range(v, 1) {
+            tr.insert("sc_max_concurrent_posts".into(), json!(r));
+        }
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["serverMaxHeaderBytes", "server_max_header_bytes"],
+    ) && let Some(i) = xhttp_parse_int_bound_val(v, 1)
+    {
+        tr.insert("server_max_header_bytes".into(), json!(i));
+    }
+
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &[
+            "sessionPlacement",
+            "SessionIDPlacement",
+            "sessionIDPlacement",
+            "sessionIdPlacement",
+            "session_placement",
+            "session_id_placement",
+        ],
+    ) && let Some(m) = xhttp_match_enum(v, &["path", "query", "header", "cookie"])
+    {
+        tr.insert("session_placement".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &[
+            "sessionKey",
+            "SessionIDKey",
+            "sessionIDKey",
+            "sessionIdKey",
+            "session_key",
+            "session_id_key",
+        ],
+    ) && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("session_key".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &[
+            "sessionTable",
+            "SessionIDTable",
+            "sessionIDTable",
+            "sessionIdTable",
+            "session_table",
+            "session_id_table",
+        ],
+    ) && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("session_table".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &[
+            "sessionLength",
+            "SessionIDLength",
+            "sessionIDLength",
+            "sessionIdLength",
+            "session_length",
+            "session_id_length",
+        ],
+    ) && let Some(r) = xhttp_format_range(v, 1)
+    {
+        tr.insert("session_length".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["seqPlacement", "seq_placement"])
+        && let Some(m) = xhttp_match_enum(v, &["path", "query", "header", "cookie"])
+    {
+        tr.insert("seq_placement".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["seqKey", "seq_key"])
+        && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("seq_key".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["uplinkDataPlacement", "uplink_data_placement"],
+    ) && let Some(m) = xhttp_match_enum(v, &["body", "auto", "header", "cookie"])
+    {
+        tr.insert("uplink_data_placement".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["uplinkDataKey", "uplink_data_key"])
+        && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("uplink_data_key".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["uplinkChunkSize", "uplink_chunk_size"])
+        && let Some(r) = xhttp_format_range(v, 1)
+    {
+        tr.insert("uplink_chunk_size".into(), json!(r));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["uplinkHttpMethod", "uplinkHTTPMethod", "uplink_http_method"],
+    ) && let Some(m) = xhttp_match_enum(v, &["POST", "GET"])
+    {
+        tr.insert("uplink_http_method".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["xPaddingObfsMode", "x_padding_obfs_mode"],
+    ) && let Some(b) = xhttp_parse_bool(v)
+    {
+        tr.insert("x_padding_obfs_mode".into(), json!(b));
+    }
+    if let Some(v) = xhttp_lookup(
+        primary,
+        &extra,
+        &["xPaddingPlacement", "x_padding_placement"],
+    ) && let Some(m) = xhttp_match_enum(v, &["cookie", "header", "query", "queryInHeader"])
+    {
+        tr.insert("x_padding_placement".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["xPaddingKey", "x_padding_key"])
+        && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("x_padding_key".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["xPaddingHeader", "x_padding_header"])
+        && let Some(s) = xhttp_value_str(v)
+    {
+        tr.insert("x_padding_header".into(), json!(s));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["xPaddingMethod", "x_padding_method"])
+        && let Some(m) = xhttp_match_enum(v, &["repeat-x", "tokenish"])
+    {
+        tr.insert("x_padding_method".into(), json!(m));
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["headers"])
+        && let Some(hdrs) = xhttp_normalize_headers(v)
+    {
+        tr.insert("headers".into(), hdrs);
+    }
+    if let Some(v) = xhttp_lookup(primary, &extra, &["xmux"])
+        && let Some(xmux) = xhttp_normalize_xmux(v)
+    {
+        tr.insert("xmux".into(), xmux);
+    }
+
+    Value::Object(tr)
 }
 
 fn build_transport_object(params: &HashMap<String, String>) -> Option<Value> {
@@ -3779,42 +4364,18 @@ fn build_transport_object(params: &HashMap<String, String>) -> Option<Value> {
             "service_name": params.get("serviceName").or_else(|| params.get("path")).cloned().unwrap_or_default(),
         })),
         "xhttp" | "splithttp" => {
-            let mut obj = Map::new();
-            obj.insert("type".into(), json!("xhttp"));
-            obj.insert("path".into(), json!(path));
-            obj.insert(
-                "mode".into(),
-                json!(
-                    params
-                        .get("mode")
-                        .filter(|s| !s.is_empty())
-                        .cloned()
-                        .unwrap_or_else(|| "auto".to_string())
-                ),
-            );
+            let mut primary = Map::new();
+            for (k, v) in params {
+                if !v.trim().is_empty() {
+                    primary.insert(k.clone(), json!(v));
+                }
+            }
+            primary.insert("path".into(), json!(path));
             if let Some(h) = host {
-                obj.insert("host".into(), json!(h));
+                primary.insert("host".into(), json!(h));
             }
-            if let Some(pad) = params
-                .get("xPaddingBytes")
-                .or_else(|| params.get("x_padding_bytes"))
-                .filter(|s| !s.is_empty())
-            {
-                obj.insert("x_padding_bytes".into(), json!(pad));
-            }
-            if params
-                .get("noGRPCHeader")
-                .or_else(|| params.get("no_grpc_header"))
-                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            {
-                obj.insert("no_grpc_header".into(), json!(true));
-            }
-            if let Some(extra_raw) = params.get("extra").filter(|s| !s.trim().is_empty())
-                && let Ok(extra_val) = serde_json::from_str::<Value>(extra_raw)
-            {
-                obj.insert("extra".into(), extra_val);
-            }
-            Some(Value::Object(obj))
+            let extra_raw = primary.get("extra").cloned();
+            Some(build_xhttp_transport(&primary, extra_raw.as_ref(), None))
         }
         "http" | "h2" => {
             let mut obj = Map::new();
@@ -5725,14 +6286,25 @@ fn xray_tls_from_stream(stream: &Value, network: &str) -> Option<Value> {
             .collect(),
         _ => Vec::new(),
     };
-    if alpn.is_empty() && matches!(network, "http" | "h2" | "grpc" | "xhttp") {
-        alpn.push("h2".to_string());
+    if alpn.is_empty() {
+        match network {
+            "xhttp" | "splithttp" => {
+                alpn.push("h2".to_string());
+                alpn.push("http/1.1".to_string());
+            }
+            "ws" | "httpupgrade" => alpn.push("http/1.1".to_string()),
+            "http" | "h2" | "grpc" => alpn.push("h2".to_string()),
+            _ => {}
+        }
     }
     if !alpn.is_empty() {
         tls.insert("alpn".into(), json!(alpn));
     }
-    if let Some(fp) = json_str_at(settings, &["fingerprint", "fp"]) {
-        tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
+    if let Some(raw_fp) = json_str_at(settings, &["fingerprint", "fp"]) {
+        let fp = normalize_utls_fingerprint(raw_fp);
+        if !fp.is_empty() {
+            tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
+        }
     }
     if let Some(pin) = json_str_at(
         settings,
@@ -5874,34 +6446,14 @@ fn xray_transport_from_stream(stream: &Value) -> Option<Value> {
             }
             Some(Value::Object(tr))
         }
-        "xhttp" => {
-            let s = stream.get("xhttpSettings").unwrap_or(&Value::Null);
-            let mode = match json_str_at(s, &["mode"]).unwrap_or("auto") {
-                m @ ("auto" | "packet-up" | "stream-up" | "stream-one") => m,
-                _ => "auto",
-            };
-            let mut tr = Map::new();
-            tr.insert("type".into(), json!("xhttp"));
-            tr.insert("mode".into(), json!(mode));
-            tr.insert(
-                "path".into(),
-                json!(json_str_at(s, &["path"]).unwrap_or("/")),
-            );
-            if let Some(host) = json_str_at(s, &["host"]) {
-                tr.insert("host".into(), json!(host));
-            }
-            if let Some(xp) = json_str_at(s, &["xPaddingBytes", "x_padding_bytes"]) {
-                tr.insert("x_padding_bytes".into(), json!(xp));
-            }
-            if let Some(ng) =
-                json_opt_bool_at(s, &["noGRPCHeader", "noGrpcHeader", "no_grpc_header"])
-            {
-                tr.insert("no_grpc_header".into(), json!(ng));
-            }
-            if let Some(xmux) = s.get("xmux").filter(|v| v.is_object()) {
-                tr.insert("xmux".into(), xmux.clone());
-            }
-            Some(Value::Object(tr))
+        "xhttp" | "splithttp" => {
+            let s = stream
+                .get("xhttpSettings")
+                .or_else(|| stream.get("splithttpSettings"))
+                .unwrap_or(&Value::Null);
+            let primary = s.as_object().cloned().unwrap_or_default();
+            let extra_raw = primary.get("extra").cloned();
+            Some(build_xhttp_transport(&primary, extra_raw.as_ref(), None))
         }
         _ => None,
     }
@@ -6356,12 +6908,16 @@ fn normalize_xray_json_configs(configs: &[Value]) -> Vec<ParsedProxyNode> {
 
             let mut member_group_label: HashMap<String, String> = HashMap::new();
             for (plan_idx, plan) in bal_plans.iter().enumerate() {
-                let group_base = if bal_plans.len() == 1 && !display_name.is_empty() {
-                    display_name.clone()
+                let group_base = if !display_name.is_empty() {
+                    if bal_plans.len() == 1 || plan_idx == 0 {
+                        display_name.clone()
+                    } else if !plan.tag.is_empty() {
+                        format!("{display_name} ({})", plan.tag)
+                    } else {
+                        format!("{display_name}-{}", plan_idx + 1)
+                    }
                 } else if !plan.tag.is_empty() {
                     plan.tag.clone()
-                } else if !display_name.is_empty() {
-                    format!("{display_name}-{}", plan_idx + 1)
                 } else {
                     "urltest".to_string()
                 };
@@ -6954,7 +7510,10 @@ fn build_clash_tls(
         }
     };
     let fp = {
-        let v = clash_first_scalar(fields, &["client-fingerprint", "fingerprint", "fp"]);
+        let v = normalize_utls_fingerprint(&clash_first_scalar(
+            fields,
+            &["client-fingerprint", "fingerprint", "fp"],
+        ));
         if v.is_empty() {
             "chrome".to_string()
         } else {
@@ -7058,23 +7617,48 @@ fn build_clash_transport(fields: &HashMap<String, Vec<String>>) -> Option<Value>
             Some(Value::Object(tr))
         }
         "xhttp" | "splithttp" => {
-            let path = {
-                let p = clash_first_scalar(fields, &["xhttp-opts.path", "path"]);
-                if p.is_empty() { "/".to_string() } else { p }
-            };
-            let mode = {
-                let m = clash_first_scalar(fields, &["xhttp-opts.mode", "mode"]);
-                if m.is_empty() { "auto".to_string() } else { m }
-            };
-            let host = clash_first_scalar(fields, &["xhttp-opts.host", "host"]);
-            let mut tr = Map::new();
-            tr.insert("type".into(), json!("xhttp"));
-            tr.insert("path".into(), json!(path));
-            tr.insert("mode".into(), json!(mode));
-            if !host.is_empty() {
-                tr.insert("host".into(), json!(host));
+            let mut primary = Map::new();
+            let path = clash_first_scalar(fields, &["xhttp-opts.path", "path"]);
+            primary.insert(
+                "path".into(),
+                json!(if path.is_empty() { "/" } else { path.as_str() }),
+            );
+            let mode = clash_first_scalar(fields, &["xhttp-opts.mode", "mode"]);
+            if !mode.is_empty() {
+                primary.insert("mode".into(), json!(mode));
             }
-            Some(Value::Object(tr))
+            let host = clash_first_scalar(fields, &["xhttp-opts.host", "host"]);
+            if !host.is_empty() {
+                primary.insert("host".into(), json!(host));
+            }
+            let pad = clash_first_scalar(
+                fields,
+                &[
+                    "xhttp-opts.x-padding-bytes",
+                    "xhttp-opts.xpaddingbytes",
+                    "x-padding-bytes",
+                    "xpaddingbytes",
+                    "x_padding_bytes",
+                ],
+            );
+            if !pad.is_empty() {
+                primary.insert("xPaddingBytes".into(), json!(pad));
+            }
+            let no_grpc = clash_first_scalar(
+                fields,
+                &[
+                    "xhttp-opts.no-grpc-header",
+                    "xhttp-opts.nogrpcheader",
+                    "nogrpcheader",
+                    "no_grpc_header",
+                ],
+            );
+            if !no_grpc.is_empty() {
+                primary.insert("noGRPCHeader".into(), json!(no_grpc));
+            }
+            let extra_str = clash_first_scalar(fields, &["xhttp-opts.extra", "extra"]);
+            let extra_raw = (!extra_str.is_empty()).then_some(Value::String(extra_str));
+            Some(build_xhttp_transport(&primary, extra_raw.as_ref(), None))
         }
         _ => None,
     }
@@ -7212,6 +7796,7 @@ fn normalize_clash_proxy(
             let mut tls = build_clash_tls(fields, &host, true)
                 .and_then(|v| v.as_object().cloned())
                 .unwrap_or_default();
+            tls.remove("utls");
             if !tls.contains_key("alpn") {
                 tls.insert("alpn".into(), json!(["h3"]));
             }
@@ -7250,6 +7835,7 @@ fn normalize_clash_proxy(
             let mut tls = build_clash_tls(fields, &host, true)
                 .and_then(|v| v.as_object().cloned())
                 .unwrap_or_default();
+            tls.remove("utls");
             if !tls.contains_key("alpn") {
                 tls.insert("alpn".into(), json!(["h3"]));
             }
@@ -7493,8 +8079,109 @@ pub(crate) fn parse_clash_yaml_subscription_payload(decoded: &str) -> Option<Vec
     if nodes.is_empty() { None } else { Some(nodes) }
 }
 
+fn outbound_dedup_key(node: &ParsedProxyNode) -> String {
+    let host = node.server.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return String::new();
+    }
+    let ob = &node.outbound_json;
+    let sni = ob
+        .get("tls")
+        .and_then(|t| t.get("server_name"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let pbk = ob
+        .get("tls")
+        .and_then(|t| t.get("reality"))
+        .and_then(|r| r.get("public_key"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let sid = ob
+        .get("tls")
+        .and_then(|t| t.get("reality"))
+        .and_then(|r| r.get("short_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let tr = ob.get("transport");
+    let tr_type = tr
+        .and_then(|t| t.get("type"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let tr_path = tr
+        .and_then(|t| t.get("path"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let tr_host = tr
+        .and_then(|t| {
+            t.get("host").and_then(|h| {
+                h.as_str().or_else(|| {
+                    h.as_array()
+                        .and_then(|arr| arr.iter().find_map(Value::as_str))
+                })
+            })
+        })
+        .or_else(|| {
+            tr.and_then(|t| t.get("headers"))
+                .and_then(|h| h.get("Host").or_else(|| h.get("host")))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let tr_mode = tr
+        .and_then(|t| t.get("mode"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let tr_svc = tr
+        .and_then(|t| t.get("service_name"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let flow = ob
+        .get("flow")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let cred = ob
+        .get("uuid")
+        .or_else(|| ob.get("password"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+
+    format!(
+        "{}|{}|{}|{sni}|{pbk}|{sid}|{tr_type}|{tr_path}|{tr_host}|{tr_mode}|{tr_svc}|{flow}|{cred}",
+        node.protocol.to_ascii_lowercase(),
+        host,
+        node.server_port
+    )
+}
+
+fn is_specific_country_group(label: &str) -> bool {
+    if label.trim().is_empty() || detect_country_code(label).is_empty() {
+        return false;
+    }
+    let lc = label.to_ascii_lowercase();
+    !lc.contains("auto") && !label.to_lowercase().contains("автовыбор")
+}
+
 fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool)> {
     let mut nodes: Vec<ParsedProxyNode> = src.cached_nodes.clone();
+    nodes.retain(|n| {
+        n.server.trim().is_empty()
+            || matches!(n.protocol.as_str(), "urltest" | "selector")
+            || is_usable_external_sub_host(&n.server)
+    });
     let mut taken_tags: HashSet<String> = HashSet::new();
     let mut seen_raw_uris: HashSet<String> = HashSet::new();
     for node in &mut nodes {
@@ -7526,7 +8213,7 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
     }
 
     let mut urltest_member_tags: HashSet<String> = HashSet::new();
-    let mut survivor_endpoints: HashSet<(String, String, u16)> = HashSet::new();
+    let mut survivor_keys: HashSet<String> = HashSet::new();
     for n in &nodes {
         let is_ut = n.protocol == "urltest"
             || n.outbound_json.get("type").and_then(Value::as_str) == Some("urltest");
@@ -7536,18 +8223,17 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
                     urltest_member_tags.insert(m.to_string());
                 }
             }
-        } else if !n.raw_uri.starts_with("json:hidden") && !n.server.is_empty() {
-            survivor_endpoints.insert((
-                n.protocol.to_ascii_lowercase(),
-                n.server.to_ascii_lowercase(),
-                n.server_port,
-            ));
+        } else if !n.raw_uri.starts_with("json:hidden") {
+            let dkey = outbound_dedup_key(n);
+            if !dkey.is_empty() {
+                survivor_keys.insert(dkey);
+            }
         }
     }
 
     let mut aux_balancer_members: HashSet<String> = HashSet::new();
-    let mut covered_group_hidden_members: HashSet<String> = HashSet::new();
     let mut fallback_group_remarks: HashMap<String, String> = HashMap::new();
+    let mut member_best_group: HashMap<String, (bool, usize, String)> = HashMap::new();
 
     for cand in &nodes {
         let is_ut = cand.protocol == "urltest"
@@ -7561,8 +8247,6 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
             .unwrap_or(&cand.tag)
             .trim()
             .to_string();
-        let mut has_survivor_member = false;
-        let mut group_hidden_tags: Vec<String> = Vec::new();
         let mut candidate_aux_tags: Vec<String> = Vec::new();
         let mut non_aux_members: Vec<String> = Vec::new();
 
@@ -7576,23 +8260,13 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
                     continue;
                 };
                 let m_hidden = m_obj.raw_uri.starts_with("json:hidden");
-                let ep_key = (
-                    m_obj.protocol.to_ascii_lowercase(),
-                    m_obj.server.to_ascii_lowercase(),
-                    m_obj.server_port,
-                );
-                let is_dup_ep = !m_obj.server.is_empty() && survivor_endpoints.contains(&ep_key);
-                if m_hidden && is_dup_ep {
-                    has_survivor_member = true;
-                }
+                let dkey = outbound_dedup_key(m_obj);
+                let is_dup_standalone = !dkey.is_empty() && survivor_keys.contains(&dkey);
                 let m_tag_lc = m_tag.to_ascii_lowercase();
                 let is_aux = m_hidden
                     && (is_bal_internal_tag(&m_tag_lc)
                         || is_reserve_like_tag(&m_tag_lc)
-                        || is_dup_ep);
-                if m_hidden {
-                    group_hidden_tags.push(m_tag.to_string());
-                }
+                        || is_dup_standalone);
                 if is_aux {
                     candidate_aux_tags.push(m_tag.to_string());
                 } else {
@@ -7600,17 +8274,62 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
                 }
             }
         }
-        if has_survivor_member || !non_aux_members.is_empty() {
-            aux_balancer_members.extend(candidate_aux_tags);
-        }
-        if has_survivor_member {
-            covered_group_hidden_members.extend(group_hidden_tags);
-        } else if !group_label.is_empty() && non_aux_members.len() == 1 {
-            fallback_group_remarks.insert(non_aux_members[0].clone(), group_label);
+        aux_balancer_members.extend(candidate_aux_tags);
+        if !group_label.is_empty() {
+            let group_len = non_aux_members.len();
+            let specific = is_specific_country_group(&group_label);
+            for m_tag in &non_aux_members {
+                let replace = match member_best_group.get(m_tag) {
+                    None => true,
+                    Some((old_spec, old_len, _)) => {
+                        (specific, std::cmp::Reverse(group_len))
+                            > (*old_spec, std::cmp::Reverse(*old_len))
+                    }
+                };
+                if replace {
+                    member_best_group
+                        .insert(m_tag.clone(), (specific, group_len, group_label.clone()));
+                }
+            }
+            if group_len == 1 {
+                fallback_group_remarks
+                    .entry(non_aux_members[0].clone())
+                    .or_insert(group_label);
+            }
         }
     }
 
-    let drop_urltest_members = !src.include_urltest_groups && !survivor_endpoints.is_empty();
+    let mut dedup_dropped_hidden: HashSet<String> = HashSet::new();
+    if !src.include_urltest_groups {
+        let mut buckets: HashMap<String, Vec<(usize, String)>> = HashMap::new();
+        for (idx, n) in nodes.iter().enumerate() {
+            if n.raw_uri.starts_with("json:hidden")
+                && urltest_member_tags.contains(&n.tag)
+                && !aux_balancer_members.contains(&n.tag)
+            {
+                let dkey = outbound_dedup_key(n);
+                if !dkey.is_empty() {
+                    buckets.entry(dkey).or_default().push((idx, n.tag.clone()));
+                }
+            }
+        }
+        for (_, mut group) in buckets {
+            if group.len() <= 1 {
+                continue;
+            }
+            group.sort_by_key(|(idx, tag)| {
+                let (spec, glen) = member_best_group
+                    .get(tag)
+                    .map(|(s, l, _)| (*s, *l))
+                    .unwrap_or((false, usize::MAX));
+                std::cmp::Reverse((spec, std::cmp::Reverse(glen), std::cmp::Reverse(*idx)))
+            });
+            for (_, tag) in group.into_iter().skip(1) {
+                dedup_dropped_hidden.insert(tag);
+            }
+        }
+    }
+
     let mut detour_targets: HashSet<String> = HashSet::new();
     if src.hide_detour_outbounds {
         for n in &nodes {
@@ -7661,26 +8380,35 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
             continue;
         }
 
-        if !src.include_urltest_groups && urltest_member_tags.contains(&n.tag) {
-            if aux_balancer_members.contains(&n.tag)
-                || covered_group_hidden_members.contains(&n.tag)
-            {
-                continue;
-            }
-            if drop_urltest_members
-                && n.raw_uri == "json:hidden"
-                && !fallback_group_remarks.contains_key(&n.tag)
-            {
-                continue;
-            }
+        if !src.include_urltest_groups
+            && urltest_member_tags.contains(&n.tag)
+            && (aux_balancer_members.contains(&n.tag) || dedup_dropped_hidden.contains(&n.tag))
+        {
+            continue;
         }
 
         let mut base_name = n.tag.clone();
-        if !src.include_urltest_groups
-            && let Some(group_lbl) = fallback_group_remarks.get(&n.tag)
-            && is_generic_proxy_tag(&n.tag.to_ascii_lowercase())
-        {
-            base_name = group_lbl.clone();
+        if !src.include_urltest_groups {
+            if let Some(group_lbl) = fallback_group_remarks.get(&n.tag)
+                && (is_generic_proxy_tag(&n.tag.to_ascii_lowercase())
+                    || (n.raw_uri.starts_with("json:hidden")
+                        && extract_flag_emoji_country_code(&n.tag).is_empty()
+                        && is_specific_country_group(group_lbl)))
+            {
+                base_name = group_lbl.clone();
+            } else if let Some((_, _, group_lbl)) = member_best_group.get(&n.tag)
+                && !group_lbl.is_empty()
+            {
+                if is_generic_proxy_tag(&n.tag.to_ascii_lowercase()) {
+                    base_name = group_lbl.clone();
+                } else if extract_flag_emoji_country_code(&n.tag).is_empty()
+                    && !detect_country_code(group_lbl).is_empty()
+                    && (detect_country_code(&n.tag).is_empty()
+                        || is_specific_country_group(group_lbl))
+                {
+                    base_name = format!("{group_lbl} · {}", n.tag);
+                }
+            }
         }
         let eff_cc = if n.country.is_empty() {
             detect_country_code(&base_name)
@@ -7707,7 +8435,9 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
 
         let visible_in_selector = !(aux_balancer_members.contains(&n.tag)
             || (src.include_urltest_groups && n.raw_uri.starts_with("json:hidden"))
-            || (src.hide_urltest_group_outbounds && urltest_member_tags.contains(&n.tag))
+            || (src.include_urltest_groups
+                && src.hide_urltest_group_outbounds
+                && urltest_member_tags.contains(&n.tag))
             || (src.hide_detour_outbounds && detour_targets.contains(&n.tag)));
         staged.push((final_tag, val, visible_in_selector, false));
     }
@@ -7786,8 +8516,9 @@ fn apply_outbound_common_opts(src: &OutboundSource, v: &mut Value) {
         obj.insert("detour".into(), json!(src.outbound_detour_section.trim()));
     }
     let frag_mode = src.tls_fragment_mode.trim().to_ascii_lowercase();
+    let ob_type = obj.get("type").and_then(Value::as_str).unwrap_or("");
     let skip_frag = matches!(
-        obj.get("type").and_then(Value::as_str).unwrap_or(""),
+        ob_type,
         "urltest"
             | "selector"
             | "direct"
@@ -7803,17 +8534,23 @@ fn apply_outbound_common_opts(src: &OutboundSource, v: &mut Value) {
             | "wdtt"
             | "csqtt"
     );
+    let quic_no_utls = matches!(ob_type, "hysteria2" | "hysteria" | "tuic" | "masque");
     if let Some(tls_obj) = obj.get_mut("tls").and_then(Value::as_object_mut)
         && tls_obj.get("enabled").and_then(Value::as_bool) == Some(true)
     {
-        if !src.tls_fingerprint.trim().is_empty() {
-            tls_obj.insert(
-                "utls".into(),
-                json!({
-                    "enabled": true,
-                    "fingerprint": src.tls_fingerprint.trim()
-                }),
-            );
+        if quic_no_utls {
+            tls_obj.remove("utls");
+        } else if !skip_frag && !src.tls_fingerprint.trim().is_empty() {
+            let fp = normalize_utls_fingerprint(src.tls_fingerprint.trim());
+            if !fp.is_empty() {
+                tls_obj.insert(
+                    "utls".into(),
+                    json!({
+                        "enabled": true,
+                        "fingerprint": fp
+                    }),
+                );
+            }
         }
         if !skip_frag {
             match frag_mode.as_str() {
@@ -9802,12 +10539,19 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
         "sc_max_concurrent_posts",
         "scMaxConcurrentPosts",
         "session_length",
+        "sessionLength",
+        "sessionIDLength",
+        "session_id_length",
+        "uplink_chunk_size",
+        "uplinkChunkSize",
         "max_concurrency",
         "maxConcurrency",
         "max_connections",
         "maxConnections",
         "c_max_reuse_times",
         "cMaxReuseTimes",
+        "c_max_lifetime_ms",
+        "cMaxLifetimeMs",
         "h_max_request_times",
         "hMaxRequestTimes",
         "h_max_reusable_secs",
@@ -9825,6 +10569,8 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
     for key in [
         "sc_max_buffered_posts",
         "scMaxBufferedPosts",
+        "server_max_header_bytes",
+        "serverMaxHeaderBytes",
         "h_keep_alive_period",
         "hKeepAlivePeriod",
     ] {
@@ -9953,9 +10699,10 @@ pub(crate) fn is_usable_external_sub_host(raw: &str) -> bool {
     if bare.is_empty()
         || matches!(
             bare.as_str(),
-            "0.0.0.0" | "127.0.0.1" | "localhost" | "::" | "::1"
+            "0.0.0.0" | "127.0.0.1" | "localhost" | "::" | "::1" | "invalid"
         )
         || bare.ends_with(".localhost")
+        || bare.ends_with(".invalid")
     {
         return false;
     }
@@ -11592,9 +12339,7 @@ fn compile_core_config_with_rt_dir(
     dns_map.insert("final".into(), json!("dns-remote"));
     dns_map.insert("strategy".into(), json!(eff_dns_strategy));
     dns_map.insert("reverse_mapping".into(), json!(true));
-    if store.settings.dns_local_cache {
-        dns_map.insert("independent_cache".into(), json!(true));
-    } else {
+    if !store.settings.dns_local_cache {
         dns_map.insert("disable_cache".into(), json!(true));
     }
     let dns_block = Value::Object(dns_map);
@@ -15625,28 +16370,39 @@ pub fn server_safe_cert_name(raw: &str) -> String {
     }
 }
 
+fn server_protocol_requires_cert_tls(protocol: &str) -> bool {
+    matches!(
+        protocol,
+        "tewfai"
+            | "naive"
+            | "hysteria2"
+            | "tuic"
+            | "anytls"
+            | "fptn"
+            | "trusttunnel"
+            | "masque"
+            | "openconnect"
+    )
+}
+
+fn server_protocol_supports_reality(protocol: &str) -> bool {
+    matches!(protocol, "vless" | "trojan")
+}
+
 pub fn server_requires_tls(srv: &InboundServer) -> bool {
     if matches!(
         srv.protocol.as_str(),
         "json_inbound" | "awg" | "wireguard" | "tailscale"
-    ) || srv.security == "reality"
-    {
+    ) {
         return false;
     }
-    srv.security == "tls"
-        || matches!(
-            srv.protocol.as_str(),
-            "tewfai"
-                | "naive"
-                | "hysteria2"
-                | "tuic"
-                | "anytls"
-                | "fptn"
-                | "trusttunnel"
-                | "masque"
-                | "openconnect"
-                | "trojan"
-        )
+    if server_protocol_requires_cert_tls(&srv.protocol) {
+        return true;
+    }
+    if srv.security == "reality" && server_protocol_supports_reality(&srv.protocol) {
+        return false;
+    }
+    srv.security == "tls" || srv.protocol == "trojan"
 }
 
 pub fn server_tls_cert_key_paths(srv: &InboundServer) -> (String, String) {
@@ -15675,7 +16431,7 @@ fn build_inbound_servers(srv: &InboundServer) -> Vec<Value> {
     }
     let tag = format!("srv-{}", srv.id);
     let (cert_path, key_path) = server_tls_cert_key_paths(srv);
-    let tls_obj = if srv.security == "reality" {
+    let tls_obj = if srv.security == "reality" && server_protocol_supports_reality(&srv.protocol) {
         Some(json!({
             "enabled": true,
             "server_name": if srv.tls_server_name.is_empty() { "www.microsoft.com" } else { &srv.tls_server_name },
@@ -15690,21 +16446,7 @@ fn build_inbound_servers(srv: &InboundServer) -> Vec<Value> {
                 "max_time_difference": "1m"
             }
         }))
-    } else if srv.security == "tls"
-        || matches!(
-            srv.protocol.as_str(),
-            "tewfai"
-                | "naive"
-                | "hysteria2"
-                | "tuic"
-                | "anytls"
-                | "fptn"
-                | "trusttunnel"
-                | "masque"
-                | "openconnect"
-                | "trojan"
-        )
-    {
+    } else if server_requires_tls(srv) {
         Some(json!({
             "enabled": true,
             "server_name": if !srv.tls_server_name.is_empty() {
@@ -21856,5 +22598,317 @@ PersistentKeepalive = 25
         );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_normalize_utls_and_quic_utls_guard() {
+        assert_eq!(normalize_utls_fingerprint("qq"), "chrome");
+        assert_eq!(normalize_utls_fingerprint("random"), "randomized");
+        assert_eq!(normalize_utls_fingerprint("HelloFirefox_120"), "firefox");
+        assert_eq!(normalize_utls_fingerprint(""), "");
+
+        let uri = "vless://11111111-1111-4111-8111-111111111111@node.example:443?security=tls&sni=node.example&fp=qq&type=xhttp&path=%2Fx#XHTTP-QQ";
+        let node = parse_proxy_uri(uri, 0).expect("parse vless xhttp");
+        assert_eq!(node.outbound_json["tls"]["utls"]["fingerprint"], "chrome");
+        assert_eq!(node.outbound_json["tls"]["alpn"], json!(["h2", "http/1.1"]));
+
+        let src = OutboundSource {
+            enabled: true,
+            source_type: "urls".into(),
+            tls_fingerprint: "qq".into(),
+            ..Default::default()
+        };
+        let mut hy2 = json!({
+            "type": "hysteria2",
+            "tag": "hy",
+            "server": "hy.example",
+            "server_port": 443,
+            "tls": { "enabled": true, "utls": { "enabled": true, "fingerprint": "chrome" } }
+        });
+        apply_outbound_common_opts(&src, &mut hy2);
+        assert!(hy2["tls"].get("utls").is_none());
+
+        let mut tuic = json!({
+            "type": "tuic",
+            "tag": "tu",
+            "server": "tu.example",
+            "server_port": 443,
+            "tls": { "enabled": true }
+        });
+        apply_outbound_common_opts(&src, &mut tuic);
+        assert!(tuic["tls"].get("utls").is_none());
+    }
+
+    #[test]
+    fn test_xhttp_v2_from_xray_json_and_vless_uri() {
+        let extra_obj = json!({
+            "uplinkDataPlacement": "header",
+            "uplinkHTTPMethod": "GET",
+            "uplinkDataKey": "X-Playback-Token",
+            "uplinkChunkSize": 3072,
+            "serverMaxHeaderBytes": 32768,
+            "sessionIDPlacement": "header",
+            "sessionIDKey": "X-Session",
+            "sessionIDTable": "hex",
+            "sessionIDLength": "16-32",
+            "xPaddingHeader": "Referer",
+            "xPaddingMethod": "tokenish",
+            "xPaddingPlacement": "queryInHeader",
+            "xmux": {
+                "maxConcurrency": "0",
+                "maxConnections": "0",
+                "cMaxReuseTimes": "64-128",
+                "cMaxLifetimeMs": 60000,
+                "hKeepAlivePeriod": 30
+            }
+        });
+        let xray = json!([{
+            "remarks": "XHTTP-v2",
+            "outbounds": [{
+                "protocol": "vless",
+                "tag": "proxy",
+                "settings": { "vnext": [{ "address": "xh.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                "streamSettings": {
+                    "network": "xhttp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "serverName": "dl.example",
+                        "publicKey": "PUBKEY123",
+                        "shortId": "ab",
+                        "fingerprint": "qq"
+                    },
+                    "xhttpSettings": {
+                        "mode": "packet-up",
+                        "path": "/stream",
+                        "host": "cdn.example",
+                        "extra": extra_obj
+                    }
+                }
+            }]
+        }])
+        .to_string();
+
+        let parsed = parse_json_subscription_payload(&xray).expect("parse xray xhttp v2");
+        assert_eq!(parsed.len(), 1);
+        let tr = &parsed[0].outbound_json["transport"];
+        assert_eq!(tr["type"], "xhttp");
+        assert_eq!(tr["mode"], "packet-up");
+        assert_eq!(tr["uplink_data_placement"], "header");
+        assert_eq!(tr["uplink_http_method"], "GET");
+        assert_eq!(tr["uplink_data_key"], "X-Playback-Token");
+        assert_eq!(tr["uplink_chunk_size"], "3072");
+        assert_eq!(tr["server_max_header_bytes"], 32768);
+        assert_eq!(tr["session_placement"], "header");
+        assert_eq!(tr["session_key"], "X-Session");
+        assert_eq!(tr["session_table"], "hex");
+        assert_eq!(tr["session_length"], "16-32");
+        assert_eq!(tr["x_padding_header"], "Referer");
+        assert_eq!(tr["x_padding_method"], "tokenish");
+        assert_eq!(tr["x_padding_placement"], "queryInHeader");
+        assert_eq!(tr["xmux"]["c_max_lifetime_ms"], "60000");
+        assert_eq!(tr["xmux"]["c_max_reuse_times"], "64-128");
+        assert_eq!(tr["xmux"]["h_keep_alive_period"], 30);
+        assert!(tr["xmux"].get("max_connections").is_none());
+        assert!(tr.get("extra").is_none());
+        assert_eq!(
+            parsed[0].outbound_json["tls"]["utls"]["fingerprint"],
+            "chrome"
+        );
+        assert_eq!(
+            parsed[0].outbound_json["tls"]["alpn"],
+            json!(["h2", "http/1.1"])
+        );
+
+        let encoded_extra = url_encode_component(&extra_obj.to_string());
+        let uri = format!(
+            "vless://11111111-1111-4111-8111-111111111111@xh2.example:443?security=tls&sni=xh2.example&type=xhttp&mode=stream-one&path=%2Fv2&extra={encoded_extra}#URI-V2"
+        );
+        let uri_node = parse_proxy_uri(&uri, 0).expect("parse vless extra");
+        let utr = &uri_node.outbound_json["transport"];
+        assert_eq!(utr["uplink_data_placement"], "header");
+        assert_eq!(utr["uplink_http_method"], "GET");
+        assert_eq!(utr["session_length"], "16-32");
+        assert_eq!(utr["xmux"]["c_max_lifetime_ms"], "60000");
+    }
+
+    #[test]
+    fn test_invalid_domain_rejected_during_subscription_parse() {
+        assert!(!is_usable_external_sub_host("super-auto.invalid"));
+        assert!(!is_usable_external_sub_host("invalid"));
+        assert!(is_usable_external_sub_host("de1.example.org"));
+
+        let uri_lines = "\
+vless://11111111-1111-4111-8111-111111111111@super-auto.invalid:4659?security=tls#Auto\n\
+vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#DE-Valid\n";
+        let nodes = crate::core_mgr::CoreManager::parse_subscription_payload(uri_lines);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].server, "valid.example.org");
+    }
+
+    #[test]
+    fn test_futurefast_multi_config_balancer_retention_and_two_balancer_naming() {
+        let sub_json = json!([
+            {
+                "remarks": "🇩🇪 Германия (WS)",
+                "outbounds": [
+                    {
+                        "protocol": "vless",
+                        "tag": "proxy",
+                        "settings": { "vnext": [{ "address": "de-shared.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                        "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "de-shared.example" }, "wsSettings": { "path": "/ws" } }
+                    }
+                ]
+            },
+            {
+                "remarks": "🇪🇺 🌍 Автовыбор",
+                "routing": {
+                    "balancers": [
+                        { "tag": "BAL_PRIMARY", "selector": ["proxy", "xhttp-de", "se-only"] },
+                        { "tag": "RESERVE_BAL", "selector": ["reserve-"] }
+                    ]
+                },
+                "outbounds": [
+                    {
+                        "protocol": "vless",
+                        "tag": "proxy",
+                        "settings": { "vnext": [{ "address": "de-shared.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                        "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "de-shared.example" }, "wsSettings": { "path": "/ws" } }
+                    },
+                    {
+                        "protocol": "vless",
+                        "tag": "xhttp-de",
+                        "settings": { "vnext": [{ "address": "de-shared.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                        "streamSettings": { "network": "xhttp", "security": "tls", "tlsSettings": { "serverName": "de-shared.example" }, "xhttpSettings": { "path": "/xhttp" } }
+                    },
+                    {
+                        "protocol": "vless",
+                        "tag": "se-only",
+                        "settings": { "vnext": [{ "address": "se-only.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111112" }] }] },
+                        "streamSettings": { "network": "xhttp", "security": "tls", "tlsSettings": { "serverName": "se-only.example" }, "xhttpSettings": { "path": "/se" } }
+                    },
+                    {
+                        "protocol": "vless",
+                        "tag": "reserve-1",
+                        "settings": { "vnext": [{ "address": "res-1.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111113" }] }] },
+                        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "res-1.example" } }
+                    }
+                ]
+            },
+            {
+                "remarks": "🇸🇪 Швеция",
+                "routing": {
+                    "balancers": [
+                        { "tag": "BAL_SE", "selector": ["se-srv"] }
+                    ]
+                },
+                "outbounds": [
+                    {
+                        "protocol": "vless",
+                        "tag": "se-srv",
+                        "settings": { "vnext": [{ "address": "se-only.example", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111112" }] }] },
+                        "streamSettings": { "network": "xhttp", "security": "tls", "tlsSettings": { "serverName": "se-only.example" }, "xhttpSettings": { "path": "/se" } }
+                    }
+                ]
+            }
+        ])
+        .to_string();
+
+        let parsed = parse_json_subscription_payload(&sub_json).expect("parse multi-balancer json");
+
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_ff".into(),
+            enabled: true,
+            source_type: "subscription".into(),
+            include_urltest_groups: true,
+            hide_urltest_group_outbounds: true,
+            cached_nodes: parsed.clone(),
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "MAIN".into(),
+            enabled: true,
+            label: "Main".into(),
+            action: "proxy".into(),
+            outbound_source_refs: vec!["src_ff".into()],
+            user_domains: vec!["example.org".into()],
+            ..Default::default()
+        });
+
+        let cfg_on = compile_core_config(&store).expect("compile groups on");
+        let obs_on = cfg_on["outbounds"].as_array().unwrap();
+        assert!(obs_on.iter().any(|o| o["tag"] == "🇪🇺 🌍 Автовыбор"));
+        assert!(
+            obs_on
+                .iter()
+                .any(|o| o["tag"] == "🇪🇺 🌍 Автовыбор (RESERVE_BAL)")
+        );
+        assert!(obs_on.iter().any(|o| o["tag"] == "🇸🇪 Швеция"));
+
+        // With groups OFF (and hide_urltest_group_outbounds = true): xhttp-de & se-srv survive,
+        // reserve-1 & duplicate de-shared WS drop, SE prefers country group label over umbrella auto.
+        store.outbound_sources[0].include_urltest_groups = false;
+        let built_off = build_source_outbounds(&store.outbound_sources[0]);
+        let visible_tags: Vec<&str> = built_off
+            .iter()
+            .filter(|(_, _, vis)| *vis)
+            .map(|(t, _, _)| t.as_str())
+            .collect();
+        assert!(visible_tags.contains(&"🇩🇪 Германия (WS)"));
+        assert!(!visible_tags.iter().any(|t| t.contains("reserve")));
+        assert!(
+            built_off
+                .iter()
+                .any(|(_, ob, vis)| *vis && ob["transport"]["path"] == "/xhttp"),
+            "distinct transport on shared host:port must not be wiped: {visible_tags:?}"
+        );
+        assert_eq!(
+            built_off
+                .iter()
+                .filter(|(_, ob, vis)| *vis && ob["server"] == "se-only.example")
+                .count(),
+            1
+        );
+        assert!(visible_tags.iter().any(|t| t.contains("🇸🇪 Швеция")));
+    }
+
+    #[test]
+    fn test_hysteria2_stale_reality_requires_cert_tls_and_no_dns_independent_cache() {
+        let srv = InboundServer {
+            id: "srv_in_H2".into(),
+            enabled: true,
+            protocol: "hysteria2".into(),
+            security: "reality".into(), // stale value left after protocol switch
+            listen_port: 8443,
+            password: "secret".into(),
+            ..Default::default()
+        };
+        assert!(server_requires_tls(&srv));
+        let built = build_inbound_servers(&srv);
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0]["type"], "hysteria2");
+        assert!(built[0]["tls"].get("reality").is_none());
+        assert_eq!(
+            built[0]["tls"]["certificate_path"],
+            "/etc/tachyon/server-certs/srv_in_H2.crt"
+        );
+        assert_eq!(
+            built[0]["tls"]["key_path"],
+            "/etc/tachyon/server-certs/srv_in_H2.key"
+        );
+
+        let mut store = RouterStoreData::default();
+        store.settings.dns_local_cache = true;
+        store.sections.push(RoutingSection {
+            id: "MAIN".into(),
+            enabled: true,
+            label: "Main".into(),
+            action: "direct".into(),
+            user_domains: vec!["example.org".into()],
+            ..Default::default()
+        });
+        let cfg = compile_core_config(&store).expect("compile core config");
+        assert!(cfg["dns"].get("independent_cache").is_none());
     }
 }
