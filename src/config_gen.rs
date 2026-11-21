@@ -10017,14 +10017,34 @@ fn compile_core_config_inner(
     wan6_available: bool,
     section_tags_out: Option<&mut HashMap<String, String>>,
 ) -> anyhow::Result<Value> {
-    compile_core_config_with_lan_env(store, wan6_available, None, section_tags_out)
+    compile_core_config_with_rt_dir(store, wan6_available, None, section_tags_out, None)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn compile_core_config_with_adguard_dir(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    rt_dir: &std::path::Path,
+) -> anyhow::Result<Value> {
+    compile_core_config_with_rt_dir(store, wan6_available, None, None, Some(rt_dir))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 fn compile_core_config_with_lan_env(
     store: &RouterStoreData,
     wan6_available: bool,
     lan_override: Option<(&str, &[String])>,
+    section_tags_out: Option<&mut HashMap<String, String>>,
+) -> anyhow::Result<Value> {
+    compile_core_config_with_rt_dir(store, wan6_available, lan_override, section_tags_out, None)
+}
+
+fn compile_core_config_with_rt_dir(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    lan_override: Option<(&str, &[String])>,
     mut section_tags_out: Option<&mut HashMap<String, String>>,
+    adguard_rt_dir_override: Option<&std::path::Path>,
 ) -> anyhow::Result<Value> {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
@@ -11404,6 +11424,18 @@ fn compile_core_config_with_lan_env(
     } else if !per_sec_aaaa_dns_rules.is_empty() {
         dns_rules_vec.extend(per_sec_aaaa_dns_rules);
     }
+    let effective_adguard_rt_dir = adguard_rt_dir_override
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(crate::store::runtime_state_dir);
+    append_adguard_and_hosts_dns_rules(
+        store,
+        &effective_adguard_rt_dir,
+        adguard_rt_dir_override.is_some(),
+        &mut dns_servers_vec,
+        &mut dns_rules_vec,
+        &mut rule_sets,
+        &mut seen_rule_sets,
+    );
     if !store.settings.fakeip_exclude.is_empty() && store.settings.fakeip_enabled {
         dns_rules_vec.extend(build_fakeip_exclude_dns_rules_with_ttl(
             &store.settings.fakeip_exclude,
@@ -11832,6 +11864,189 @@ fn build_fakeip_exclude_dns_rules_with_ttl(
 #[cfg_attr(not(test), allow(dead_code))]
 fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
     build_fakeip_exclude_dns_rules_with_ttl(entries, None)
+}
+
+fn push_adguard_rules_for_tier(
+    rules: &[crate::adguard_hosts::CompiledDomainRule],
+    kind: crate::adguard_hosts::RuleKind,
+    important: bool,
+    dns_rules_vec: &mut Vec<Value>,
+) {
+    use std::collections::BTreeMap;
+    type ModRuleKey = (Vec<String>, Vec<String>);
+    type ModRuleDomains = (Vec<String>, Vec<String>);
+    let mut exact_uncond: Vec<String> = Vec::new();
+    let mut suffix_uncond: Vec<String> = Vec::new();
+    let mut grouped_mods: BTreeMap<ModRuleKey, ModRuleDomains> = BTreeMap::new();
+
+    for rule in rules {
+        if rule.kind != kind || rule.important != important {
+            continue;
+        }
+        if !rule.has_modifiers() {
+            match rule.match_kind {
+                crate::adguard_hosts::MatchKind::Exact => exact_uncond.push(rule.domain.clone()),
+                crate::adguard_hosts::MatchKind::Suffix => suffix_uncond.push(rule.domain.clone()),
+            }
+        } else {
+            let entry = grouped_mods
+                .entry((rule.query_types.clone(), rule.client_cidrs.clone()))
+                .or_default();
+            match rule.match_kind {
+                crate::adguard_hosts::MatchKind::Exact => entry.0.push(rule.domain.clone()),
+                crate::adguard_hosts::MatchKind::Suffix => entry.1.push(rule.domain.clone()),
+            }
+        }
+    }
+
+    let emit_rule_obj = |mut obj: Map<String, Value>, out: &mut Vec<Value>| {
+        match kind {
+            crate::adguard_hosts::RuleKind::Allow => {
+                obj.insert("action".into(), json!("route"));
+                obj.insert("server".into(), json!("dns-remote"));
+            }
+            crate::adguard_hosts::RuleKind::Block => {
+                obj.insert("action".into(), json!("predefined"));
+                obj.insert("rcode".into(), json!("NXDOMAIN"));
+            }
+        }
+        out.push(Value::Object(obj));
+    };
+
+    if !exact_uncond.is_empty() || !suffix_uncond.is_empty() {
+        let mut obj = Map::new();
+        if !exact_uncond.is_empty() {
+            obj.insert("domain".into(), json!(exact_uncond));
+        }
+        if !suffix_uncond.is_empty() {
+            obj.insert("domain_suffix".into(), json!(suffix_uncond));
+        }
+        emit_rule_obj(obj, dns_rules_vec);
+    }
+
+    for ((qtypes, clients), (exact, suffix)) in grouped_mods {
+        let mut obj = Map::new();
+        if !qtypes.is_empty() {
+            obj.insert("query_type".into(), json!(qtypes));
+        }
+        if !clients.is_empty() {
+            obj.insert("source_ip_cidr".into(), json!(clients));
+        }
+        if !exact.is_empty() {
+            obj.insert("domain".into(), json!(exact));
+        }
+        if !suffix.is_empty() {
+            obj.insert("domain_suffix".into(), json!(suffix));
+        }
+        emit_rule_obj(obj, dns_rules_vec);
+    }
+}
+
+fn append_adguard_and_hosts_dns_rules(
+    store: &RouterStoreData,
+    rt_dir: &std::path::Path,
+    use_rt_dir_always: bool,
+    dns_servers_vec: &mut Vec<Value>,
+    dns_rules_vec: &mut Vec<Value>,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+) {
+    use crate::adguard_hosts::{
+        RuleKind, TAG_ALLOW, TAG_ALLOW_IMPORTANT, TAG_BLOCK, TAG_BLOCK_IMPORTANT,
+        collect_active_hosts_list_urls, collect_inline_rules, load_compiled_index_in,
+        ruleset_file_has_entries,
+    };
+
+    let inline = collect_inline_rules(store);
+    let has_remote_urls = !collect_active_hosts_list_urls(store).is_empty();
+    let remote_index = if use_rt_dir_always || has_remote_urls {
+        load_compiled_index_in(rt_dir)
+    } else {
+        None
+    };
+
+    // 1. Static IP -> hostname entries (`192.168.1.50 nas.lan`, `$dnsrewrite=<ip>`).
+    let mut merged_static = inline.static_hosts;
+    if let Some(ref idx) = remote_index {
+        for (dom, ips) in &idx.static_hosts {
+            let bucket = merged_static.entry(dom.clone()).or_default();
+            for ip in ips {
+                if !bucket.contains(ip) {
+                    bucket.push(ip.clone());
+                }
+            }
+        }
+    }
+    if !merged_static.is_empty() {
+        let mut predefined = Map::new();
+        let mut static_domains = Vec::with_capacity(merged_static.len());
+        for (dom, ips) in merged_static {
+            if !ips.is_empty() {
+                static_domains.push(dom.clone());
+                predefined.insert(dom, json!(ips));
+            }
+        }
+        if !static_domains.is_empty() {
+            dns_servers_vec.push(json!({
+                "type": "hosts",
+                "tag": "dns-custom-hosts",
+                "predefined": Value::Object(predefined),
+            }));
+            dns_rules_vec.push(json!({
+                "domain": static_domains,
+                "action": "route",
+                "server": "dns-custom-hosts",
+            }));
+        }
+    }
+
+    // 2. Emit DNS exception & block tiers in strict precedence order:
+    //    Tier 1: @@...$important -> Tier 2: ...$important -> Tier 3: @@... -> Tier 4: block.
+    let tiers = [
+        (RuleKind::Allow, true, TAG_ALLOW_IMPORTANT),
+        (RuleKind::Block, true, TAG_BLOCK_IMPORTANT),
+        (RuleKind::Allow, false, TAG_ALLOW),
+        (RuleKind::Block, false, TAG_BLOCK),
+    ];
+    let remote_mods = remote_index
+        .as_ref()
+        .map(|idx| idx.modifier_rules.as_slice())
+        .unwrap_or(&[]);
+
+    for (kind, important, rs_tag) in tiers {
+        push_adguard_rules_for_tier(&inline.rules, kind, important, dns_rules_vec);
+
+        if use_rt_dir_always || has_remote_urls {
+            let rs_path = rt_dir.join(format!("{rs_tag}.json"));
+            if ruleset_file_has_entries(&rs_path) {
+                if !seen_rule_sets.contains_key(rs_tag) {
+                    seen_rule_sets.insert(rs_tag.to_string(), true);
+                    rule_sets.push(json!({
+                        "tag": rs_tag,
+                        "type": "local",
+                        "format": "source",
+                        "path": rs_path.to_string_lossy(),
+                    }));
+                }
+                match kind {
+                    RuleKind::Allow => dns_rules_vec.push(json!({
+                        "rule_set": [rs_tag],
+                        "action": "route",
+                        "server": "dns-remote",
+                    })),
+                    RuleKind::Block => dns_rules_vec.push(json!({
+                        "rule_set": [rs_tag],
+                        "action": "predefined",
+                        "rcode": "NXDOMAIN",
+                    })),
+                }
+            }
+        }
+
+        if !remote_mods.is_empty() {
+            push_adguard_rules_for_tier(remote_mods, kind, important, dns_rules_vec);
+        }
+    }
 }
 
 /// Return true if a routing section supports IPv6 traffic (`ipv6_support` flag
@@ -21462,5 +21677,133 @@ PersistentKeepalive = 25
 
         assert!(sec1_cond_idx < sec2_idx);
         assert!(sec1_catchall_idx < sec2_idx);
+    }
+
+    #[test]
+    fn adguard_exception_rules_precede_block_rules_before_fakeip() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-cg-adguard-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let remote_a = (
+            "https://list-a.invalid/ads.txt".to_string(),
+            "||remote-ads.example.org^\n0.0.0.0 legacy-host.example.org\n||forced-block.example.org^$important\n"
+                .to_string(),
+            true,
+            String::new(),
+        );
+        let remote_b = (
+            "https://list-b.invalid/allow.txt".to_string(),
+            "@@||sub.remote-ads.example.org^\n@@||forced-block.example.org^\n@@||forced-allow.example.org^$important\n"
+                .to_string(),
+            true,
+            String::new(),
+        );
+        crate::adguard_hosts::compile_and_store_remote_lists_in(
+            &tmp_dir,
+            &[remote_a, remote_b],
+            1_700_300_000,
+        )
+        .unwrap();
+
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.hosts_list_urls = vec![
+            "https://list-a.invalid/ads.txt".into(),
+            "https://list-b.invalid/allow.txt".into(),
+        ];
+        store.sections.push(RoutingSection {
+            id: "hosts_block".into(),
+            label: "Hosts Block".into(),
+            enabled: true,
+            action: "direct".into(),
+            dns_hosts: "\
+192.168.1.50 nas.lan
+0.0.0.0 inline-host.example.net
+||inline-ads.example.net^
+@@||ok.inline-ads.example.net^
+"
+            .into(),
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config_with_adguard_dir(&store, false, &tmp_dir)
+            .expect("compile config with adguard rules");
+
+        let dns_servers = cfg["dns"]["servers"].as_array().unwrap();
+        let custom_hosts_srv = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-custom-hosts")
+            .expect("dns-custom-hosts server present");
+        assert_eq!(custom_hosts_srv["predefined"]["nas.lan"], json!(["192.168.1.50"]));
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_allow_imp = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["rule_set"] == json!([crate::adguard_hosts::TAG_ALLOW_IMPORTANT])
+            })
+            .expect("important allow rule_set");
+        let idx_block_imp = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "predefined"
+                    && r["rcode"] == "NXDOMAIN"
+                    && r["rule_set"] == json!([crate::adguard_hosts::TAG_BLOCK_IMPORTANT])
+            })
+            .expect("important block rule_set");
+        let idx_inline_allow = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-remote"
+                    && r["domain_suffix"] == json!(["ok.inline-ads.example.net"])
+            })
+            .expect("inline exception rule");
+        let idx_remote_allow = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["rule_set"] == json!([crate::adguard_hosts::TAG_ALLOW])
+            })
+            .expect("remote allow rule_set");
+        let idx_inline_block = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "predefined"
+                    && r["rcode"] == "NXDOMAIN"
+                    && r["domain"] == json!(["inline-host.example.net"])
+                    && r["domain_suffix"] == json!(["inline-ads.example.net"])
+            })
+            .expect("inline block rule");
+        let idx_remote_block = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "predefined"
+                    && r["rcode"] == "NXDOMAIN"
+                    && r["rule_set"] == json!([crate::adguard_hosts::TAG_BLOCK])
+            })
+            .expect("remote block rule_set");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+
+        assert!(idx_allow_imp < idx_block_imp);
+        assert!(idx_block_imp < idx_inline_allow);
+        assert!(idx_inline_allow <= idx_remote_allow);
+        assert!(idx_remote_allow < idx_inline_block);
+        assert!(idx_inline_block < idx_remote_block);
+        assert!(idx_remote_block < idx_fakeip);
+
+        let route_rs = cfg["route"]["rule_set"].as_array().unwrap();
+        assert!(route_rs.iter().any(|rs| rs["tag"] == crate::adguard_hosts::TAG_BLOCK && rs["type"] == "local"));
+        assert!(route_rs.iter().any(|rs| rs["tag"] == crate::adguard_hosts::TAG_ALLOW && rs["type"] == "local"));
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

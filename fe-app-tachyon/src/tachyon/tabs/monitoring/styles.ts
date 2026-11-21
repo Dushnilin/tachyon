@@ -1269,5 +1269,115 @@ body.dark .tachyon_monitoring-page {
     .tachyon_monitoring-page__source-value {
         justify-content: flex-start;
     }
+
+    .tachyon_monitoring-page__dns-summary {
+        grid-template-columns: 1fr;
+    }
+}
+
+.tachyon_monitoring-page__dns-panel {
+    margin-top: 12px;
+}
+
+.tachyon_monitoring-page__dns-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--tachyon-monitoring-divider-color);
+}
+
+.tachyon_monitoring-page__dns-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.tachyon_monitoring-page__dns-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.tachyon_monitoring-page__dns-body {
+    padding: 12px 16px 16px;
+}
+
+.tachyon_monitoring-page__dns-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tachyon_monitoring-page__dns-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.tachyon_monitoring-page__dns-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid var(--tachyon-monitoring-divider-color);
+    border-radius: 6px;
+    background: var(--tachyon-monitoring-soft-bg);
+}
+
+.tachyon_monitoring-page__dns-metric-label {
+    font-size: 12px;
+    opacity: 0.78;
+}
+
+.tachyon_monitoring-page__dns-metric-value {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon_monitoring-page__dns-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tachyon_monitoring-page__dns-subtitle {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tachyon_monitoring-page__dns-col-num,
+.tachyon_monitoring-page__dns-cell-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tachyon_monitoring-page__dns-cell-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon_monitoring-page__dns-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--tachyon-monitoring-soft-bg);
+    word-break: break-all;
+}
+
+.tachyon_monitoring-page__dns-empty {
+    padding: 16px;
+    text-align: center;
+    opacity: 0.78;
+    border: 1px dashed var(--tachyon-monitoring-divider-color);
+    border-radius: 6px;
 }
 `;

@@ -834,6 +834,27 @@
       }
     },
     {
+      "name": "dns_block_stats",
+      "cli_command": "dns_block_stats",
+      "category": "diagnostics",
+      "acl": "read",
+      "description": "dns_block_stats (adguard_hosts)",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "period filter (1h, 24h, 7d, all)"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "per-client and per-domain DNS block statistics"
+      }
+    },
+    {
       "name": "dns_failover_apply",
       "cli_command": "dns_failover_apply",
       "category": "system",

@@ -19,6 +19,7 @@ import {
   getServiceAvailability,
   type ServiceAvailability,
 } from '../../helpers/serviceAvailability';
+import { createDnsBlockStatsController } from './dnsBlockStatsPanel';
 import {
   type MonitoringTabId,
   type ConnectionSourceFilter,
@@ -64,6 +65,7 @@ let monitoringMounted = false;
 let monitoringMountId = 0;
 let monitoringLifecycleRegistered = false;
 let monitoringControllerInitialized = false;
+const dnsBlockStatsController = createDnsBlockStatsController();
 let serviceStateUnsubscribe: (() => void) | null = null;
 let layoutChangeUnsubscribe: (() => void) | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
@@ -1982,6 +1984,7 @@ async function onPageMount() {
   bindControls();
   renderControls();
   renderConnections();
+  dnsBlockStatsController.mount();
   watchServiceState();
 
   void loadLocalDevices();
@@ -2066,6 +2069,7 @@ function onPageUnmount() {
   monitoringMountId += 1;
   monitoringVisibilityPaused = false;
   setDropdownOpen(null);
+  dnsBlockStatsController.unmount();
 
   if (renderTimer) {
     clearInterval(renderTimer);

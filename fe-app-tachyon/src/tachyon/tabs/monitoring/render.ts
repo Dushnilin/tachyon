@@ -1,4 +1,5 @@
 import { renderChevronDownIcon } from '../../../icons';
+import { renderDnsBlockStatsPanel } from './dnsBlockStatsPanel';
 
 export function render() {
   return E(
@@ -241,6 +242,7 @@ export function render() {
           ],
         ),
       ]),
+      renderDnsBlockStatsPanel(),
     ],
   );
 }

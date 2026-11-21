@@ -462,7 +462,7 @@ async fn handle_conn(
         return send_bytes(&mut stream, status, mime, &out_bytes).await;
     }
 
-    dispatch_api(
+    Box::pin(dispatch_api(
         &mut stream,
         state,
         core,
@@ -471,7 +471,7 @@ async fn handle_conn(
         &query,
         body,
         host_hdr.as_deref(),
-    )
+    ))
     .await
 }
 
@@ -550,6 +550,7 @@ async fn run_route_trace(state: &Arc<AppState>, core: &Arc<CoreManager>, body: &
 }
 
 #[allow(clippy::too_many_arguments)]
+#[inline(never)]
 async fn dispatch_api(
     stream: &mut TcpStream,
     state: &Arc<AppState>,
@@ -2266,6 +2267,29 @@ async fn dispatch_api(
             let bundle = diagnostics::build_support_bundle(state).await;
             send_json(stream, 200, &bundle).await
         }
+        ("GET", "/api/dns/block-stats") => {
+            let period = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("period="))
+                .unwrap_or("24h");
+            match Box::pin(crate::adguard_hosts::query_dns_block_stats_for_state(
+                state, core, period,
+            ))
+            .await
+            {
+                Ok(stats) => {
+                    let body = serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }));
+                    send_json(stream, 200, &body).await
+                }
+                Err(e) => send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await,
+            }
+        }
+        ("POST", "/api/dns/hosts/update") => {
+            match Box::pin(crate::adguard_hosts::update_hosts_lists(state, core, true)).await {
+                Ok(res) => send_json(stream, 200, &res).await,
+                Err(e) => send_json(stream, 500, &json!({ "ok": false, "error": e.to_string() })).await,
+            }
+        }
         ("GET", "/api/agent/v1/logs") => {
             let live = state.live.read().await;
             send_json(
@@ -3951,5 +3975,124 @@ mod tests {
         assert!(!should_use_dual_stack_v6_bind("0.0.0.0", Some("1\n")));
         assert!(!should_use_dual_stack_v6_bind("0.0.0.0", None));
         assert!(!should_use_dual_stack_v6_bind("192.168.1.1", Some("0\n")));
+    }
+
+    #[test]
+    fn test_dns_block_stats_endpoint_requires_auth_and_filters_period() {
+        std::thread::Builder::new()
+            .name("api-dns-stats-test".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(Box::pin(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+                    let dir = std::env::temp_dir()
+                        .join(format!("tachyon-api-dnsstats-{}", std::process::id()));
+                    let _ = std::fs::remove_dir_all(&dir);
+                    let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+                    {
+                        let mut sessions = state.sessions.write().await;
+                        sessions.insert(
+                            "tok-dns-stats".to_string(),
+                            crate::store::unix_now_secs() + 3600,
+                        );
+                    }
+                    let core = CoreManager::new(Arc::clone(&state));
+
+                    let client_ip = format!("10.99.88.{}", std::process::id() % 200 + 10);
+                    crate::adguard_hosts::ingest_dns_block_event(
+                        crate::adguard_hosts::DnsBlockEvent {
+                            timestamp_unix: crate::store::unix_now_secs(),
+                            client_ip: client_ip.clone(),
+                            client_name: "test-pc".to_string(),
+                            domain: "ads.example.org".to_string(),
+                            matched_rule: "||ads.example.org^".to_string(),
+                            list_source: "https://example.org/adguard.txt".to_string(),
+                        },
+                    )
+                    .unwrap();
+
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let addr = listener.local_addr().unwrap();
+
+                    let send_http = |req: String| {
+                        let st = Arc::clone(&state);
+                        let cr = Arc::clone(&core);
+                        let l_ref = &listener;
+                        async move {
+                            let accept_fut = l_ref.accept();
+                            let connect_fut = tokio::net::TcpStream::connect(addr);
+                            let (srv_res, cli_res) = tokio::join!(accept_fut, connect_fut);
+                            let (srv_stream, _) = srv_res.unwrap();
+                            let mut cli_stream = cli_res.unwrap();
+                            let h = tokio::task::spawn_local(Box::pin(async move {
+                                let _ =
+                                    Box::pin(handle_conn(srv_stream, &st, &cr, "203.0.113.10", None))
+                                        .await;
+                            }));
+                            cli_stream.write_all(req.as_bytes()).await.unwrap();
+                            cli_stream.shutdown().await.unwrap();
+                            let mut buf = Vec::new();
+                            cli_stream.read_to_end(&mut buf).await.unwrap();
+                            let _ = h.await;
+                            String::from_utf8_lossy(&buf).into_owned()
+                        }
+                    };
+
+                    let local = tokio::task::LocalSet::new();
+                    local
+                        .run_until(async move {
+                            // 1. Unauthenticated request must return 401.
+                            let unauth_resp = send_http(
+                                "GET /api/dns/block-stats?period=1h HTTP/1.1\r\nHost: 192.168.1.1\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(
+                                unauth_resp.starts_with("HTTP/1.1 401 "),
+                                "got: {unauth_resp}"
+                            );
+
+                            // 2. Authenticated request with period=1h returns 200 + ingested client event.
+                            let ok_resp = send_http(
+                                "GET /api/dns/block-stats?period=1h HTTP/1.1\r\nHost: 192.168.1.1\r\nAuthorization: Bearer tok-dns-stats\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(ok_resp.starts_with("HTTP/1.1 200 "), "got: {ok_resp}");
+                            let body = ok_resp.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+                            let parsed: Value = serde_json::from_str(body).unwrap();
+                            assert_eq!(parsed["ok"], true);
+                            assert_eq!(parsed["period"], "1h");
+                            assert!(parsed["clients"].as_array().unwrap().iter().any(|c| {
+                                c["client_ip"] == client_ip
+                                    && c["blocked_count"].as_u64().unwrap_or(0) >= 1
+                                    && c["top_domains"]
+                                        .as_array()
+                                        .unwrap()
+                                        .iter()
+                                        .any(|d| d["matched_rule"] == "||ads.example.org^")
+                            }));
+
+                            // 3. Invalid period returns 400.
+                            let bad_resp = send_http(
+                                "GET /api/dns/block-stats?period=invalid HTTP/1.1\r\nHost: 192.168.1.1\r\nAuthorization: Bearer tok-dns-stats\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(bad_resp.starts_with("HTTP/1.1 400 "), "got: {bad_resp}");
+                        })
+                        .await;
+
+                    let _ = std::fs::remove_dir_all(&dir);
+                }));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

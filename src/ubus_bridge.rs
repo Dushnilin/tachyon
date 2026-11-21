@@ -2008,6 +2008,21 @@ async fn try_fast_pure_rust_method(
             let s = serde_json::to_string(&out).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
+        "dns_block_stats" => {
+            let period = rest.first().map(String::as_str).unwrap_or("24h");
+            let val = match crate::adguard_hosts::query_dns_block_stats_for_state(
+                state, core, period,
+            )
+            .await
+            {
+                Ok(stats) => {
+                    serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
+                }
+                Err(e) => json!({ "ok": false, "error": e.to_string() }),
+            };
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
         "lan_clients" => {
             state.touch_telemetry_access();
             let d = state.data.read().await;
@@ -4390,6 +4405,16 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
         core.clash_request("GET", "/tachyon/leak", None),
         core.clash_request("GET", "/tachyon/health", None),
         core.clash_request("GET", "/tachyon/anomalies", None),
+    );
+    let live_logs_snap = { state.live.read().await.recent_logs.clone() };
+    let _ = crate::adguard_hosts::ingest_core_telemetry_payloads_in(
+        &crate::store::runtime_state_dir(),
+        &store_snap,
+        &live_logs_snap,
+        None,
+        flight_res.as_ref().ok(),
+        conn_res.as_ref().ok(),
+        crate::store::unix_now_secs(),
     );
 
     let memory = mem_res.unwrap_or_else(|_| {
@@ -8404,79 +8429,19 @@ async fn execute_pure_rust_tachyon_cli(
             })
         }
         "hosts_list_update" => {
-            let rt_dir = crate::store::runtime_state_dir();
-            let _ = std::fs::create_dir_all(&rt_dir);
-            let hosts_path = rt_dir.join("hosts-list.txt");
-            let status_path = rt_dir.join("hosts-list-status.json");
-            let mut urls: Vec<String> = d.settings.hosts_list_urls.clone();
-            for sec in &d.sections {
-                for u in &sec.hosts_list_urls {
-                    if !u.trim().is_empty() && !urls.contains(u) {
-                        urls.push(u.clone());
-                    }
-                }
-            }
-            let mut collected: Vec<String> = d.settings.static_hosts.clone();
-            let mut errors: Vec<String> = Vec::new();
-            for u in &urls {
-                let u_trim = u.trim();
-                if u_trim.is_empty() {
-                    continue;
-                }
-                match core
-                    .curl_fetch_with_doh_fallback(u_trim, false, 15, None)
-                    .await
-                {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        for line in text.lines() {
-                            let l = line.trim();
-                            if l.is_empty() || l.starts_with('#') {
-                                continue;
-                            }
-                            collected.push(l.to_string());
-                        }
-                    }
-                    Err(e) => errors.push(format!("{u_trim}: {e:#}")),
-                }
-            }
-            collected.sort();
-            collected.dedup();
-            let entries = collected.len();
-            let body = collected.join("\n");
-            let _ = crypto_gen::write_file_if_changed(&hosts_path, body.as_bytes());
-            let ok = errors.is_empty();
-            let payload = json!({
-                "success": ok,
-                "status": if ok { "completed" } else { "partial" },
-                "running": false,
-                "completed": true,
-                "entries": entries,
-                "urls_count": urls.len(),
-                "errors": errors,
-                "updated_at": crate::store::unix_now_secs()
-            });
-            let _ = crypto_gen::write_json_if_changed(&status_path, &payload);
-            payload
-        }
-        "hosts_list_status" => {
-            let status_path = crate::store::runtime_state_dir().join("hosts-list-status.json");
-            if let Ok(raw) = std::fs::read_to_string(&status_path)
-                && let Ok(val) = serde_json::from_str::<Value>(&raw)
-            {
-                val
-            } else {
-                json!({
-                    "success": true,
-                    "status": "idle",
+            match crate::adguard_hosts::update_hosts_lists(state, core, true).await {
+                Ok(val) => val,
+                Err(e) => json!({
+                    "ok": false,
+                    "success": false,
+                    "status": "error",
                     "running": false,
-                    "completed": false,
-                    "entries": d.settings.static_hosts.len(),
-                    "urls_count": d.settings.hosts_list_urls.len(),
-                    "updated_at": 0
-                })
+                    "completed": true,
+                    "error": e.to_string(),
+                }),
             }
         }
+        "hosts_list_status" => crate::adguard_hosts::get_hosts_list_status(&d),
         "toggle_client_bypass" => {
             let ip = rest.first().map(String::as_str).unwrap_or("");
             let mode = rest.get(1).map(String::as_str).unwrap_or("toggle");

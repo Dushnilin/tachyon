@@ -194,6 +194,9 @@ export namespace Tachyon {
     // global
     GLOBAL_CHECK = 'global_check',
     // hosts
+    // dns
+    DNS_BLOCK_STATS = 'dns_block_stats',
+    // hosts
     HOSTS_LIST_STATUS = 'hosts_list_status',
     HOSTS_LIST_UPDATE = 'hosts_list_update',
     // import

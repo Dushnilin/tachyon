@@ -1119,6 +1119,10 @@ pub struct GlobalSettings {
     #[serde(default)]
     pub hosts_list_urls: Vec<String>,
     #[serde(default)]
+    pub hosts_list_auto_update: bool,
+    #[serde(default)]
+    pub hosts_list_update_interval: String,
+    #[serde(default)]
     pub static_hosts: Vec<String>,
     #[serde(default)]
     pub github_mirror: String,
@@ -1437,6 +1441,8 @@ impl Default for GlobalSettings {
             fakeip_exclude: Vec::new(),
             hosts_enabled: false,
             hosts_list_urls: Vec::new(),
+            hosts_list_auto_update: false,
+            hosts_list_update_interval: "24h".to_string(),
             static_hosts: Vec::new(),
             github_mirror: String::new(),
             github_token: String::new(),
@@ -1882,6 +1888,8 @@ pub struct RoutingSection {
     pub dns_hosts: String,
     #[serde(default)]
     pub hosts_list_urls: Vec<String>,
+    #[serde(default)]
+    pub hosts_list_disabled: Vec<String>,
     /// CSQTT / WDTT v3
     #[serde(default)]
     pub warp_flow_device_id: String,
@@ -4825,6 +4833,12 @@ impl RouterStoreData {
                     if !h_urls.is_empty() || (reset_omitted_fields && has_key("hosts_list_urls")) {
                         self.settings.hosts_list_urls = h_urls;
                     }
+                    if let Some(v) = b.opt("hosts_list_auto_update") {
+                        self.settings.hosts_list_auto_update = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("hosts_list_update_interval") {
+                        self.settings.hosts_list_update_interval = v.to_string();
+                    }
                     let s_hosts = b.list("static_hosts");
                     if !s_hosts.is_empty() || (reset_omitted_fields && has_key("static_hosts")) {
                         self.settings.static_hosts = s_hosts;
@@ -6483,6 +6497,7 @@ impl RouterStoreData {
                         csqtt_wg_address: b.opt_str("csqtt_wg_address"),
                         dns_hosts: b.opt("dns_hosts").unwrap_or("").to_string(),
                         hosts_list_urls: b.list("hosts_list_urls"),
+                        hosts_list_disabled: b.list("hosts_list_disabled"),
                         hosts_list_auto_update: b
                             .opt("hosts_list_auto_update")
                             .is_some_and(parse_bool),

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 18:41+0300\n"
-"PO-Revision-Date: 2026-11-21 18:41+0300\n"
+"POT-Creation-Date: 2026-11-21 20:02+0300\n"
+"PO-Revision-Date: 2026-11-21 20:02+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -122,6 +122,9 @@ msgstr "1/2 колонки (50%)"
 msgid "15 min — Quick"
 msgstr "15 мин — быстрый"
 
+msgid "1h"
+msgstr "1 час"
+
 msgid "2 (Byte 2)"
 msgstr "2 (Байт 2)"
 
@@ -142,6 +145,9 @@ msgstr "2. Визуальная раскладка дашборда (2-коло�
 
 msgid "2. Which rule is strictly satisfied? (Exact Boolean Match)"
 msgstr "2. Какое правило точно удовлетворяется? (Точное булево совпадение)"
+
+msgid "24h"
+msgstr "24 часа"
 
 msgid "3 (Byte 3)"
 msgstr "3 (Байт 3)"
@@ -166,6 +172,9 @@ msgstr "50% → Авто 100%"
 
 msgid "60 min — Exhaustive"
 msgstr "60 мин — исчерпывающий"
+
+msgid "7d"
+msgstr "7 дней"
 
 msgid "A real DNS answer was received over HTTPS with certificate validation."
 msgstr "Получен корректный DNS-ответ через HTTPS с проверкой сертификата."
@@ -1436,6 +1445,12 @@ msgstr "Блокировать:"
 msgid "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."
 msgstr "Блокировать: запретить перечисленные сайты. Только разрешённые (белый список): запретить всё, кроме перечисленных сайтов. Режим белого списка требует блокировки на уровне DNS и действует в окне расписания."
 
+msgid "Blocked"
+msgstr "Блокировок"
+
+msgid "Blocked Domains & Rules"
+msgstr "Заблокированные домены и правила"
+
 msgid "Blocked Sites"
 msgstr "Заблокированные сайты"
 
@@ -1444,6 +1459,9 @@ msgstr "Заблокированные сайты (блокировка указ
 
 msgid "Blocked Sites (Domains)"
 msgstr "Заблокированные сайты (домены)"
+
+msgid "Blocked queries"
+msgstr "Заблокировано запросов"
 
 msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
 msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
@@ -1882,6 +1900,9 @@ msgstr "Нажмите для проверки задержки"
 
 msgid "Click to test section latency"
 msgstr "Нажмите для проверки задержки секции"
+
+msgid "Client"
+msgstr "Клиент"
 
 msgid "Client Address"
 msgstr "Адрес клиента"
@@ -2438,8 +2459,8 @@ msgstr "Пользовательский"
 msgid "Custom API Endpoint URL"
 msgstr "Пользовательский URL эндпоинта API"
 
-msgid "Custom DNS Records (Hosts)"
-msgstr "Пользовательские DNS-записи (Hosts)"
+msgid "Custom DNS Records (Hosts / AdGuard)"
+msgstr "Пользовательские DNS-записи (Hosts / AdGuard)"
 
 msgid "Custom DNS Route"
 msgstr "Специальный DNS-маршрут"
@@ -2569,6 +2590,9 @@ msgstr "Автоподбор DNS завершён! Оптимальная свя
 
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr "Автоподбор и бенчмарк DNS"
+
+msgid "DNS Block Statistics"
+msgstr "Статистика блокировки DNS"
 
 msgid "DNS Cache"
 msgstr "Кэш DNS"
@@ -3992,6 +4016,9 @@ msgstr "Не удалось импортировать профиль снапш
 msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
+msgid "Failed to load DNS statistics:"
+msgstr "Ошибка загрузки статистики DNS:"
+
 msgid "Failed to load change history"
 msgstr "Не удалось загрузить историю изменений"
 
@@ -4813,6 +4840,9 @@ msgstr "История"
 
 msgid "History cleared"
 msgstr "История очищена"
+
+msgid "Hits"
+msgstr "Срабатываний"
 
 msgid "Home Router / Office / Dacha"
 msgstr "Домашний роутер / Офис / Дача"
@@ -5645,9 +5675,6 @@ msgstr "Неверный формат. Используйте IP-адрес ил
 msgid "Invalid global rule \"%s\": expected \"option: value\" with a supported option"
 msgstr "Некорректное глобальное правило \"%s\": нужна запись вида \"опция: значение\" с поддерживаемой опцией"
 
-msgid "Invalid line: \"%s\". Use: domain ip or ip domain"
-msgstr "Неверная строка: \"%s\". Используйте: domain ip или ip domain"
-
 msgid "Invalid link format"
 msgstr "Некорректный формат ссылки"
 
@@ -5680,6 +5707,9 @@ msgstr "Неверное регулярное выражение"
 
 msgid "Invalid regular expression: %s"
 msgstr "Некорректное регулярное выражение: %s"
+
+msgid "Invalid rule: \"%s\". Use IP/domain hosts format or AdGuard syntax (||domain^, @@||domain^)"
+msgstr "Некорректное правило: \"%s\". Используйте формат hosts (IP/домен) или правила AdGuard (||domain^, @@||domain^)"
 
 msgid "Invalid target domain or URL"
 msgstr "Некорректный целевой домен или URL"
@@ -5987,6 +6017,9 @@ msgstr "Локальный или внешний прокси-сервер дл�
 msgid "Links"
 msgstr "Ссылки"
 
+msgid "List"
+msgstr "Список"
+
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
@@ -6076,6 +6109,9 @@ msgstr "Загружено %d текущих записей"
 
 msgid "Loaded!"
 msgstr "Загружено!"
+
+msgid "Loading DNS statistics..."
+msgstr "Загрузка статистики DNS..."
 
 msgid "Loading change history..."
 msgstr "Загрузка истории изменений..."
@@ -6695,6 +6731,9 @@ msgstr "История бенчмарков пуста. Запустите бе�
 msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
 msgstr "Результаты тестирования пока отсутствуют. Настройте параметры и нажмите \"Запустить тест\"."
 
+msgid "No blocked DNS queries recorded for the selected period."
+msgstr "За выбранный период срабатываний правил блокировки DNS не зафиксировано."
+
 msgid "No cached servers found for this section yet."
 msgstr "Для этой секции пока не найдено серверов в кэше."
 
@@ -7037,8 +7076,8 @@ msgstr "По одному заголовку на строку (Заголово
 msgid "One or multiple vless://, hysteria2://, tuic://, trojan://, ss:// links"
 msgstr "Одна или несколько ссылок vless://, hysteria2://, tuic://, trojan://, ss://"
 
-msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
-msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
+msgid "One record per line: <code>example.com 192.168.1.100</code>, <code>0.0.0.0 ads.example.com</code>, or AdGuard rules (<code>||example.org^</code>, <code>@@||example.org^</code>, <code>$important</code>). Lines starting with <code>#</code> or <code>!</code> are ignored."
+msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code>, <code>0.0.0.0 ads.example.com</code> или правила AdGuard (<code>||example.org^</code>, <code>@@||example.org^</code>, <code>$important</code>). Строки, начинающиеся с <code>#</code> или <code>!</code>, игнорируются."
 
 msgid "Online"
 msgstr "Онлайн"
@@ -7490,8 +7529,14 @@ msgstr "Ожидает запуска"
 msgid "Pending..."
 msgstr "Ожидание..."
 
+msgid "Per-Client Statistics"
+msgstr "Статистика по клиентам"
+
 msgid "Per-Server Outbound Interface Overrides"
 msgstr "Переопределение исходящего интерфейса по серверам"
+
+msgid "Period"
+msgstr "Период"
 
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
@@ -8198,6 +8243,9 @@ msgstr "Пересобранный релиз"
 msgid "Recent"
 msgstr "Недавно"
 
+msgid "Recent Blocked Queries"
+msgstr "Последние срабатывания"
+
 msgid "Recommended DNS Configuration"
 msgstr "Рекомендованная конфигурация DNS"
 
@@ -8309,8 +8357,8 @@ msgstr "Перезагрузить сейчас"
 msgid "Reloading..."
 msgstr "Перезагрузка..."
 
-msgid "Remote Hosts Lists"
-msgstr "Удалённые списки Hosts"
+msgid "Remote Hosts & AdGuard Filter Lists"
+msgstr "Удалённые списки Hosts и AdGuard"
 
 msgid "Remote or local rule-set URLs or paths (domains only)."
 msgstr "Удалённые или локальные URL/пути наборов правил (только домены)."
@@ -9704,6 +9752,9 @@ msgstr "Настройки источника"
 msgid "Source is in the global pool and not attached directly to a specific section"
 msgstr "Источник находится в глобальном пуле и не привязан напрямую к конкретной секции"
 
+msgid "Source list"
+msgstr "Список"
+
 msgid "Sources"
 msgstr "Источники"
 
@@ -10691,6 +10742,9 @@ msgstr "Допуск задержки (мс)"
 msgid "Top bar"
 msgstr "Верхнее"
 
+msgid "Top domain"
+msgstr "Топ домен"
+
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
 
@@ -10991,8 +11045,8 @@ msgstr "URLTest выбирает сервер с минимальным пинг
 msgid "URLTest settings"
 msgstr "Настройки URLTest"
 
-msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
-msgstr "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>."
+msgid "URLs of remote hosts or AdGuard Home filter lists to download and apply. Supports hosts (<code>0.0.0.0 domain</code>, <code>IP domain</code>) and AdGuard syntax (<code>||domain^</code>, <code>@@||domain^</code>, <code>$important</code>)."
+msgstr "URL удалённых списков hosts или фильтров AdGuard Home для загрузки и применения. Поддерживается формат hosts (<code>0.0.0.0 домен</code>, <code>IP домен</code>) и синтаксис AdGuard (<code>||domain^</code>, <code>@@||domain^</code>, <code>$important</code>)."
 
 msgid "URLs or local paths to plain-text domain/IP lists."
 msgstr "URL или локальные пути к текстовым спискам доменов и IP."
@@ -11050,6 +11104,9 @@ msgstr "Непредвиденные фоновые процессы"
 
 msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
 msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации."
+
+msgid "Unique domains"
+msgstr "Уникальных доменов"
 
 msgid "Unique identifier (letters, digits, underscores)."
 msgstr "Уникальный идентификатор (латинские буквы, цифры и подчёркивания)."
@@ -11158,6 +11215,9 @@ msgstr "Начало окна обновлений"
 
 msgid "Updated"
 msgstr "Обновлено"
+
+msgid "Updated %d entries (%d block, %d exceptions)"
+msgstr "Обновлено %d записей (блокирующих: %d, исключений: %d)"
 
 msgid "Updated/duplicates:"
 msgstr "Обновлено/дубликаты:"
@@ -12305,6 +12365,21 @@ msgstr "🇱🇻 Латвия (lv)"
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
 
+msgid "Custom DNS Records (Hosts)"
+msgstr "Пользовательские DNS-записи (Hosts)"
+
+msgid "Invalid line: \"%s\". Use: domain ip or ip domain"
+msgstr "Неверная строка: \"%s\". Используйте: domain ip или ip domain"
+
+msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
+msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
+
+msgid "Remote Hosts Lists"
+msgstr "Удалённые списки Hosts"
+
+msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
+msgstr "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>."
+
 msgid "Settings saved to JSON configuration"
 msgstr "Настройки сохранены в JSON-конфигурацию"
 
@@ -12463,9 +12538,6 @@ msgstr "Секции Block и Bypass подняты в начало списка
 
 msgid "Block / Bypass section priority warning"
 msgstr "Нарушен приоритет секций Block / Bypass"
-
-msgid "Client"
-msgstr "Клиент"
 
 msgid "Custom Raw JSON Outbound (tachyon-core)"
 msgstr "Собственный JSON-аутбаунд (tachyon-core)"

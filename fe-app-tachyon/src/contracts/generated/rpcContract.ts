@@ -62,6 +62,7 @@ export const TACHYON_RPC_METHODS = [
   'dns_benchmark_async',
   'dns_benchmark_status',
   'dns_benchmark_stop',
+  'dns_block_stats',
   'dns_failover_apply',
   'dns_speed_test_start',
   'dns_speed_test_status',
@@ -577,6 +578,14 @@ export type DnsbenchmarkstatusResult = Record<string, unknown>;
 export type DnsbenchmarkstopParams = Record<string, never>;
 
 export type DnsbenchmarkstopResult = Record<string, unknown>;
+
+/** dns_block_stats (adguard_hosts) */
+export interface DnsblockstatsParams {
+  /** period filter (1h, 24h, 7d, all) */
+  arg1?: string;
+}
+
+export type DnsblockstatsResult = Record<string, unknown>;
 
 /** dns-failover-apply (service/lifecycle.uc) */
 export interface DnsfailoverapplyParams {
@@ -2083,6 +2092,10 @@ export interface TachyonRpcRegistry {
     params: DnsbenchmarkstopParams;
     result: DnsbenchmarkstopResult;
   };
+  dns_block_stats: {
+    params: DnsblockstatsParams;
+    result: DnsblockstatsResult;
+  };
   dns_failover_apply: {
     params: DnsfailoverapplyParams;
     result: DnsfailoverapplyResult;
@@ -3487,6 +3500,23 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       async: false,
       timeout_ms: 60000,
       params: [],
+    },
+    dns_block_stats: {
+      name: 'dns_block_stats',
+      cli_command: 'dns_block_stats',
+      category: 'diagnostics',
+      acl: 'read',
+      description: 'dns_block_stats (adguard_hosts)',
+      async: false,
+      timeout_ms: 5000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'period filter (1h, 24h, 7d, all)',
+        },
+      ],
     },
     dns_failover_apply: {
       name: 'dns_failover_apply',

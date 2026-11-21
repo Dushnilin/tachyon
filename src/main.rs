@@ -5,6 +5,7 @@
 
 #![recursion_limit = "256"]
 
+mod adguard_hosts;
 mod ai_doctor;
 mod api;
 mod config_gen;
@@ -290,6 +291,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 core.ensure_initial_binary_backups().await;
                 core.spawn_background_loop();
+                adguard_hosts::spawn_adguard_hosts_loop(Arc::clone(&state), Arc::clone(&core));
                 smart_detect::spawn_smart_detect_loop(Arc::clone(&state), Arc::clone(&core));
                 tg_bot::spawn_tg_bot_loop(Arc::clone(&state), Arc::clone(&core));
 

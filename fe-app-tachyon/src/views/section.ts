@@ -11520,12 +11520,31 @@ function createSectionContent(section) {
       let line = lines[i].trim();
       if (!line) continue;
 
+      if (
+        line.startsWith('#') ||
+        line.startsWith('!') ||
+        line.startsWith('[')
+      ) {
+        skippedComments++;
+        continue;
+      }
+
+      if (
+        line.startsWith('@@') ||
+        line.startsWith('||') ||
+        line.startsWith('|') ||
+        line.startsWith('*.')
+      ) {
+        if (/\s/.test(line) || line.includes('://') || line.includes('/')) {
+          skippedInvalid++;
+        } else {
+          entries.push({ domain: line, ip: '' });
+        }
+        continue;
+      }
+
       const hashIdx = line.indexOf('#');
       if (hashIdx !== -1) {
-        if (hashIdx === 0) {
-          skippedComments++;
-          continue;
-        }
         line = line.substring(0, hashIdx).trim();
         if (!line) {
           skippedComments++;
@@ -11838,17 +11857,26 @@ function createSectionContent(section) {
       const domainMap = new Map();
       if (!overwrite) {
         for (const entry of existingEntries) {
-          const parts = `${entry}`.trim().split(/\s+/);
-          if (parts.length >= 2)
+          const raw = `${entry}`.trim();
+          const parts = raw.split(/\s+/);
+          if (parts.length >= 2) {
             domainMap.set(parts[0].toLowerCase(), parts[1]);
+          } else if (raw) {
+            domainMap.set(raw, '');
+          }
         }
       }
-      for (const item of currentParsedResult.entries)
-        domainMap.set(item.domain.toLowerCase(), item.ip);
+      for (const item of currentParsedResult.entries) {
+        if (item.ip) {
+          domainMap.set(item.domain.toLowerCase(), item.ip);
+        } else {
+          domainMap.set(item.domain, '');
+        }
+      }
 
       const finalEntries = [];
       for (const [domain, ip] of domainMap.entries())
-        finalEntries.push(`${domain} ${ip}`);
+        finalEntries.push(ip ? `${domain} ${ip}` : domain);
 
       uci.set(UCI_PACKAGE, section_id, 'dns_hosts', finalEntries.join('\n'));
       if (uiEl && typeof uiEl.setValue === 'function')
@@ -11935,9 +11963,9 @@ function createSectionContent(section) {
     'settings',
     form.TextValue,
     'dns_hosts',
-    _('Custom DNS Records (Hosts)'),
+    _('Custom DNS Records (Hosts / AdGuard)'),
     _(
-      'One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored.',
+      'One record per line: <code>example.com 192.168.1.100</code>, <code>0.0.0.0 ads.example.com</code>, or AdGuard rules (<code>||example.org^</code>, <code>@@||example.org^</code>, <code>$important</code>). Lines starting with <code>#</code> or <code>!</code> are ignored.',
     ),
   );
   o.depends('action', 'hosts');
@@ -11955,7 +11983,7 @@ function createSectionContent(section) {
     const lines = String(value || '')
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith('#'));
+      .filter((l) => l && !l.startsWith('#') && !l.startsWith('!'));
     if (lines.length === 0) {
       uci.unset(UCI_PACKAGE, section_id, 'dns_hosts');
     } else {
@@ -11965,15 +11993,68 @@ function createSectionContent(section) {
   o.remove = function (section_id) {
     uci.unset(UCI_PACKAGE, section_id, 'dns_hosts');
   };
+  function isValidHostsOrAdguardEntry(trimmed) {
+    if (
+      !trimmed ||
+      trimmed.startsWith('#') ||
+      trimmed.startsWith('!') ||
+      trimmed.startsWith('[')
+    ) {
+      return true;
+    }
+    if (
+      !trimmed.startsWith('@@') &&
+      !trimmed.startsWith('||') &&
+      !trimmed.startsWith('|') &&
+      /\s/.test(trimmed)
+    ) {
+      const noComment = trimmed.replace(/\s+#.*$/, '').trim();
+      const parts = noComment.split(/\s+/);
+      return parts.length >= 2;
+    }
+    if (/\s/.test(trimmed)) return false;
+    const dollarIdx = trimmed.indexOf('$');
+    let body = dollarIdx !== -1 ? trimmed.slice(0, dollarIdx) : trimmed;
+    if (dollarIdx !== -1) {
+      const mods = trimmed.slice(dollarIdx + 1).trim();
+      if (!mods) return false;
+      const items = mods.split(',').map((m) => m.trim());
+      for (const m of items) {
+        if (!m) return false;
+        const lower = m.toLowerCase();
+        const ok =
+          lower === 'important' ||
+          /^dnstype=[a-z]+(\|[a-z]+)*$/i.test(m) ||
+          /^client=[^~|\s]+(\|[^~|\s]+)*$/i.test(m) ||
+          /^dnsrewrite=(nxdomain|[0-9a-fA-F:.]+|noerror;(a|aaaa);[0-9a-fA-F:.]+)$/i.test(
+            m,
+          );
+        if (!ok) return false;
+      }
+    }
+    if (body.startsWith('@@')) body = body.slice(2);
+    if (!body || body.includes('://') || body.includes('/')) return false;
+    let dom = body;
+    if (dom.startsWith('||')) dom = dom.slice(2);
+    else if (dom.startsWith('|')) dom = dom.slice(1);
+    if (dom.endsWith('^')) dom = dom.slice(0, -1);
+    if (dom.startsWith('*.')) dom = dom.slice(2);
+    return (
+      dom.length > 0 &&
+      dom.length <= 253 &&
+      dom.includes('.') &&
+      /^[a-z0-9_.-]+$/i.test(dom)
+    );
+  }
   o.validate = function (_section_id, value) {
     if (!value) return true;
     const lines = value.split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const parts = trimmed.split(/\s+/);
-      if (parts.length < 2) {
-        return _('Invalid line: "%s". Use: domain ip or ip domain').format(
+      if (!isValidHostsOrAdguardEntry(trimmed)) {
+        return _(
+          'Invalid rule: "%s". Use IP/domain hosts format or AdGuard syntax (||domain^, @@||domain^)',
+        ).format(
           trimmed.length > 40 ? trimmed.substring(0, 40) + '\u2026' : trimmed,
         );
       }
@@ -12004,9 +12085,10 @@ function createSectionContent(section) {
 
     function updateCount() {
       const text = ta ? ta.value : '';
-      const validLines = text
-        .split('\n')
-        .filter((l) => l.trim() && !l.trim().startsWith('#'));
+      const validLines = text.split('\n').filter((l) => {
+        const t = l.trim();
+        return t && !t.startsWith('#') && !t.startsWith('!');
+      });
       countBadge.textContent = _('Records: %d').format(validLines.length);
     }
 
@@ -12027,8 +12109,12 @@ function createSectionContent(section) {
             .split('\n')
             .map((l) => l.trim())
             .filter(Boolean);
-          const comments = lines.filter((l) => l.startsWith('#'));
-          const records = lines.filter((l) => !l.startsWith('#')).sort();
+          const comments = lines.filter(
+            (l) => l.startsWith('#') || l.startsWith('!'),
+          );
+          const records = lines
+            .filter((l) => !l.startsWith('#') && !l.startsWith('!'))
+            .sort();
           ta.value = [...comments, ...records].join('\n');
           updateCount();
         },
@@ -12085,9 +12171,9 @@ function createSectionContent(section) {
     'settings',
     form.DynamicList,
     'hosts_list_urls',
-    _('Remote Hosts Lists'),
+    _('Remote Hosts & AdGuard Filter Lists'),
     _(
-      'URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>.',
+      'URLs of remote hosts or AdGuard Home filter lists to download and apply. Supports hosts (<code>0.0.0.0 domain</code>, <code>IP domain</code>) and AdGuard syntax (<code>||domain^</code>, <code>@@||domain^</code>, <code>$important</code>).',
     ),
   );
   o.depends('action', 'hosts');
@@ -12306,9 +12392,22 @@ function createSectionContent(section) {
                     const data = JSON.parse(res.stdout || '{}');
                     if (data.success) {
                       ok = true;
-                      msg = _('Successfully updated %d hosts entries').format(
-                        data.entries,
-                      );
+                      if (
+                        typeof data.block_rules === 'number' ||
+                        typeof data.allow_rules === 'number'
+                      ) {
+                        msg = _(
+                          'Updated %d entries (%d block, %d exceptions)',
+                        ).format(
+                          data.entries || 0,
+                          data.block_rules || 0,
+                          data.allow_rules || 0,
+                        );
+                      } else {
+                        msg = _('Successfully updated %d hosts entries').format(
+                          data.entries,
+                        );
+                      }
                     } else {
                       msg =
                         _('Update failed:') +
