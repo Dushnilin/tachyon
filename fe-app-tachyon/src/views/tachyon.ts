@@ -558,6 +558,34 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     const targetSectionId =
       targetMap?.section || targetMap?.children?.[0]?.section;
 
+    // Commit any typed but unconfirmed DynamicList input before no-op guard & parse().
+    if (typeof document !== 'undefined') {
+      const modalRoot =
+        (typeof this.getActiveModalMap === 'function'
+          ? this.getActiveModalMap()
+          : null) || document.querySelector('#modal_overlay .cbi-modal');
+      if (modalRoot && typeof modalRoot.querySelectorAll === 'function') {
+        modalRoot
+          .querySelectorAll('.cbi-dynlist .add-item')
+          .forEach((addRow) => {
+            const inputEl = addRow.querySelector(
+              'input[type="text"]',
+            ) as HTMLInputElement | null;
+            const addBtn = addRow.querySelector(
+              '.cbi-button-add, .btn',
+            ) as HTMLElement | null;
+            if (
+              inputEl &&
+              addBtn &&
+              !inputEl.disabled &&
+              String(inputEl.value || '').trim() !== ''
+            ) {
+              addBtn.click();
+            }
+          });
+      }
+    }
+
     sanitizeUciDeletes(targetSectionId);
 
     if (

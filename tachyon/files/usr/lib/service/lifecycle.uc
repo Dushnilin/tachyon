@@ -949,12 +949,22 @@ function prepare_community_rulesets() {
         let tmp_path = tmp_dir + "/community-" + service + ".srs";
         let etc_path = etc_dir + "/community-" + service + ".srs";
 
-        if (use_trs && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function") {
-            if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path)) {
+        let trs_urls = (use_trs && type(runtime_rulesets_mod.community_trs_urls) == "function")
+            ? runtime_rulesets_mod.community_trs_urls(service) : [];
+        let has_trs_upstream = type(trs_urls) == "array" && length(trs_urls) > 0;
+        let can_ref_trs = use_trs && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function";
+        let tmp_trs_ref = can_ref_trs ? runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path) : false;
+        let etc_trs_ref = false;
+        if (!tmp_trs_ref && can_ref_trs)
+            etc_trs_ref = runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path);
+        let has_local_trs = tmp_trs_ref || etc_trs_ref;
+
+        if (can_ref_trs && (has_trs_upstream || has_local_trs)) {
+            if (tmp_trs_ref) {
                 remove_file(tmp_path);
                 continue;
             }
-            if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
+            if (etc_trs_ref) {
                 if (common.copy_file_stream(etc_trs_path, tmp_trs_path)) {
                     remove_file(tmp_path);
                     remove_file(etc_path);
@@ -962,8 +972,7 @@ function prepare_community_rulesets() {
                 }
             }
             let trs_ok = false;
-            if (has_curl && type(runtime_rulesets_mod.community_trs_urls) == "function") {
-                let trs_urls = runtime_rulesets_mod.community_trs_urls(service);
+            if (has_curl && has_trs_upstream) {
                 let trs_candidates = [];
                 for (let tu in trs_urls) {
                     let expanded = type(core_url_mod.download_candidates) == "function" ?

@@ -4156,6 +4156,7 @@ function createOutboundsContent(section) {
     uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
   };
 
+  const bulkModeSections = new Set();
   o = section.taboption(
     "general",
     form.TextValue,
@@ -4170,7 +4171,10 @@ function createOutboundsContent(section) {
   o.depends("source_type", "proxy_links");
   o.cfgvalue = function (sectionId) {
     const all = getSourceProxyLinks(sectionId);
-    return all.length > 50 ? all.join("\n") : "";
+    const bulkMode = all.length > 50;
+    if (bulkMode) bulkModeSections.add(sectionId);
+    else bulkModeSections.delete(sectionId);
+    return bulkMode ? all.join("\n") : "";
   };
   o.write = function (sectionId, value) {
     const activeType = String(
@@ -4187,23 +4191,48 @@ function createOutboundsContent(section) {
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean);
+    const wasBulkMode = bulkModeSections.has(sectionId);
     if (lines.length) {
       const existing = getSourceProxyLinks(sectionId);
       const dynamicLinks = asArray(
         this.section.formvalue(sectionId, "proxy_links"),
       );
       const merged =
-        existing.length > 50
+        wasBulkMode || existing.length > 50
           ? Array.from(new Set(lines))
           : Array.from(new Set([...dynamicLinks, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, "proxy_links", merged);
       uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
       uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
       uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
+    } else if (wasBulkMode) {
+      uci.unset(UCI_PACKAGE, sectionId, "proxy_links");
+      uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
     }
   };
-  o.remove = function () {
-    // Never remove proxy_links when bulk textarea is cleared; DynamicList manages removal.
+  o.remove = function (sectionId) {
+    if (!bulkModeSections.has(sectionId)) return;
+    const activeType = String(
+      this.section.formvalue(sectionId, "source_type") ||
+        uci.get(UCI_PACKAGE, sectionId, "source_type") ||
+        "subscription",
+    )
+      .trim()
+      .toLowerCase();
+    if (activeType !== "proxy_links" && activeType !== "links") return;
+    const dynamicLinks = asArray(
+      this.section.formvalue(sectionId, "proxy_links"),
+    );
+    if (dynamicLinks.length) {
+      uci.set(UCI_PACKAGE, sectionId, "proxy_links", dynamicLinks);
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, "proxy_links");
+    }
+    uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
+    uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
+    uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
   };
 
   // ── 3. Amnezia / AmneziaWG Multi-Config (vpn:// or .conf files) ───────────

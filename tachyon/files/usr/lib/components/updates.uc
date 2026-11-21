@@ -3303,8 +3303,9 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
     let use_trs = type(core_rulesets_module().supports_trs) == "function" &&
         core_rulesets_module().supports_trs();
 
-    if (use_trs && type(core_rulesets_module().community_trs_urls) == "function") {
-        let trs_base_urls = core_rulesets_module().community_trs_urls(service);
+    let trs_base_urls = (use_trs && type(core_rulesets_module().community_trs_urls) == "function")
+        ? core_rulesets_module().community_trs_urls(service) : [];
+    if (type(trs_base_urls) == "array" && length(trs_base_urls) > 0) {
         let trs_candidates = [];
         for (let tu in trs_base_urls) {
             let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")

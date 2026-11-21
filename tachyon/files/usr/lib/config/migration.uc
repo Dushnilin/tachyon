@@ -1538,13 +1538,42 @@ function migrate_normalize_domain_lists(ctx) {
 
 function migrate_tailscale_entity_to_tachyon_core(ctx, obj, is_server) {
     let ts_mode = lc(trim(option(obj, "tailscale_mode", "")));
-    let has_native_fields = trim(option(obj, "tailscale_auth_key", "")) != "" ||
-        trim(option(obj, "tailscale_control_url", "")) != "" ||
-        trim(option(obj, "tailscale_exit_node", "")) != "";
+    let has_native_fields = length(list_option(obj, "tailscale_advertise_routes")) > 0;
+    if (!has_native_fields) {
+        for (let key in [
+            "tailscale_auth_key",
+            "tailscale_control_url",
+            "tailscale_exit_node",
+            "tailscale_hostname",
+            "tailscale_advertise_exit_node",
+            "tailscale_relay_server_port",
+            "tailscale_system_interface",
+            "tailscale_system_interface_name",
+            "tailscale_accept_routes"
+        ]) {
+            if (trim(option(obj, key, "")) != "") {
+                has_native_fields = true;
+                break;
+            }
+        }
+    }
     let has_iface_only = !has_native_fields && trim(option(obj, "interface_name", "")) != "";
 
     if (ts_mode == "native" || (ts_mode != "tachyon-core" && ts_mode != "embedded" && ts_mode != "singbox" && has_iface_only)) {
         set_option(ctx, obj, "enabled", "0");
+        // Clear the migration trigger after the one-shot disable so re-enabling
+        // the server/section manually stays enabled across future upgrades.
+        if (ts_mode == "native") {
+            if (is_server)
+                set_option(ctx, obj, "tailscale_mode", "tachyon-core");
+            else
+                delete_option(ctx, obj, "tailscale_mode");
+        }
+        if (has_iface_only) {
+            delete_option(ctx, obj, "interface_name");
+            if (is_server && ts_mode != "tachyon-core")
+                set_option(ctx, obj, "tailscale_mode", "tachyon-core");
+        }
         return;
     }
 

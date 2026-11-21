@@ -1460,6 +1460,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === 'tailscale') {
+    setValue(sectionId, 'tailscale_mode', 'tachyon-core');
     setDefault(
       sectionId,
       'tailscale_control_url',

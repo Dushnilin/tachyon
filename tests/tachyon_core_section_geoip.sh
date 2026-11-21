@@ -293,6 +293,16 @@ if (!sec_incall_geo)
 
 if (!sec_incall_catchall)
     die("Expected the remainder to stay inside the section for include_all!\n");
+
+let ua_rs = null;
+for (let rs in (cfg.route.rule_set || [])) {
+    if (rs && rs.tag == "sec_bypass_ua-geoip_ua-community-ruleset") {
+        ua_rs = rs;
+        break;
+    }
+}
+if (!ua_rs || ua_rs.type != "remote" || index(ua_rs.url || "", "/geo/geoip/ua.srs") < 0)
+    die("Expected sec_bypass_ua-geoip_ua-community-ruleset to emit non-empty MetaCubeX .srs URL, got: " + sprintf("%J", ua_rs) + "\n");
 ' || fail "tachyon_core_section_geoip verification failed"
 
 printf 'PASS: tachyon_core_section_geoip\n'

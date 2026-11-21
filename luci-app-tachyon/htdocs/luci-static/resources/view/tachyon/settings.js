@@ -3354,6 +3354,23 @@ function createComponentsVisibilityWidget(option, section_id) {
   return wrapper;
 }
 
+function preserveHiddenTabOptions(section) {
+  // LuCI CBIAbstractValue initializes `retain = false`, so dependency-hidden or
+  // inactive options trigger `uci.unset` unless `retain` is forced to `true`.
+  if (!section || !Array.isArray(section.children)) return;
+  for (const opt of section.children) {
+    if (
+      !opt ||
+      opt.disable ||
+      typeof opt.option !== "string" ||
+      opt.option.startsWith("_")
+    ) {
+      continue;
+    }
+    opt.retain = true;
+  }
+}
+
 function createSettingsContent(section, capabilities) {
   section.tab(
     "navigation",
@@ -6629,6 +6646,8 @@ function createSettingsContent(section, capabilities) {
     html += "</ul>";
     return html;
   };
+
+  preserveHiddenTabOptions(section);
 }
 
 function createTelegramStatusWidget() {
@@ -7476,11 +7495,14 @@ function createTelegramContent(section) {
 
     return wrapper;
   };
+
+  preserveHiddenTabOptions(section);
 }
 
 const EntryPoint = {
   createSettingsContent,
   createTelegramContent,
+  preserveHiddenTabOptions,
 };
 
 return baseclass.extend(EntryPoint);

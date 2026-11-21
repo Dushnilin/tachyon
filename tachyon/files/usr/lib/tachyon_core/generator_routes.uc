@@ -2680,12 +2680,13 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             let use_trs = type(runtime_rulesets.supports_trs) == "function" &&
                 runtime_rulesets.supports_trs() &&
                 type(runtime_rulesets.community_trs_url) == "function";
+            let trs_url = use_trs ? as_string(runtime_rulesets.community_trs_url(reference)) : "";
             let rule_set = {
                 type: "remote",
                 tag: tag_name,
                 format: "binary",
-                url: use_trs
-                    ? runtime_rulesets.community_trs_url(reference)
+                url: (trs_url != "")
+                    ? trs_url
                     : runtime_rulesets.community_url(reference)
             };
                 let detour = resolve_ruleset_download_detour(config, section_name);
@@ -2931,12 +2932,13 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             let use_trs = type(runtime_rulesets.supports_trs) == "function" &&
                 runtime_rulesets.supports_trs() &&
                 type(runtime_rulesets.community_trs_url) == "function";
+            let trs_url = use_trs ? as_string(runtime_rulesets.community_trs_url(community)) : "";
             let rule_set = {
                 type: "remote",
                 tag: tag_name,
                 format: "binary",
-                url: use_trs
-                    ? runtime_rulesets.community_trs_url(community)
+                url: (trs_url != "")
+                    ? trs_url
                     : runtime_rulesets.community_url(community),
                 update_interval: remote_ruleset_update_interval()
             };

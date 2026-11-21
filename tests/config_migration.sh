@@ -866,6 +866,15 @@ tachyon.srv_nat_ts=server
 tachyon.srv_nat_ts.enabled=1
 tachyon.srv_nat_ts.protocol=tailscale
 tachyon.srv_nat_ts.tailscale_mode=singbox
+tachyon.srv_ts_hostname=server
+tachyon.srv_ts_hostname.enabled=1
+tachyon.srv_ts_hostname.protocol=tailscale
+tachyon.srv_ts_hostname.tailscale_hostname=my-router
+tachyon.srv_ts_hostname.interface_name=tailscale0
+tachyon.srv_ext_ts=server
+tachyon.srv_ext_ts.enabled=1
+tachyon.srv_ext_ts.protocol=tailscale
+tachyon.srv_ext_ts.tailscale_mode=native
 EOF_UCI
 : >"$WORK_DIR/provider_unify.log"
 run_provider_unify() {
@@ -943,6 +952,27 @@ must(uci.get("tachyon", "src_nat_ts", "enabled") == "1", "src_nat_ts must stay e
 must(uci.get("tachyon", "src_nat_ts", "tailscale_mode") == "tachyon-core", "src_nat_ts must normalize to tachyon-core");
 must(uci.get("tachyon", "srv_nat_ts", "enabled") == "1", "srv_nat_ts must stay enabled");
 must(uci.get("tachyon", "srv_nat_ts", "tailscale_mode") == "tachyon-core", "srv_nat_ts must normalize to tachyon-core");
+must(uci.get("tachyon", "srv_ts_hostname", "enabled") == "1", "srv_ts_hostname with tailscale_hostname must stay enabled");
+must(uci.get("tachyon", "srv_ts_hostname", "tailscale_mode") == "tachyon-core", "srv_ts_hostname must normalize to tachyon-core");
+must(uci.get("tachyon", "srv_ext_ts", "enabled") == "0", "srv_ext_ts must disable once on legacy native migration");
+must(uci.get("tachyon", "srv_ext_ts", "tailscale_mode") == "tachyon-core", "srv_ext_ts must normalize tailscale_mode=native to tachyon-core after one-shot disable");
+must(uci.get("tachyon", "sec_ext_ts", "tailscale_mode") == "", "sec_ext_ts must clear tailscale_mode=native after migration");
+must(uci.get("tachyon", "src_ext_ts", "interface_name") == "", "src_ext_ts must clear interface_name trigger after migration");
+UCODE
+
+# Re-enabling a migrated Tailscale server manually must persist across subsequent upgrades
+TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify.state" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let uci = require("core.uci");
+uci.set("tachyon", "srv_ext_ts", "enabled", "1");
+uci.commit("tachyon");
+UCODE
+run_provider_unify
+TACHYON_UCI_STATE_FILE="$WORK_DIR/provider_unify.state" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let uci = require("core.uci");
+if (uci.get("tachyon", "srv_ext_ts", "enabled") != "1") {
+    warn("FAIL: srv_ext_ts was disabled again on subsequent migration\n");
+    exit(1);
+}
 UCODE
 
 # Verify standalone byedpi outbound_source migrates to desync without colliding in desync deduplication
