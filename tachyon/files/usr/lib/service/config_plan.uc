@@ -130,6 +130,41 @@ function load_active_uci() {
     return result;
 }
 
+function scan_uci_quoted(str, start_pos, quote_char) {
+    let n = length(str);
+    let out = "";
+    let i = start_pos;
+
+    while (i < n) {
+        let ch = substr(str, i, 1);
+        if (quote_char == "'") {
+            if (substr(str, i, 4) == "'\\''") {
+                out += "'";
+                i += 4;
+                continue;
+            }
+            if (ch == "'") {
+                return { value: out, next: i + 1, closed: true };
+            }
+            out += ch;
+            i++;
+        } else {
+            if (ch == "\\" && i + 1 < n) {
+                out += substr(str, i + 1, 1);
+                i += 2;
+                continue;
+            }
+            if (ch == "\"") {
+                return { value: out, next: i + 1, closed: true };
+            }
+            out += ch;
+            i++;
+        }
+    }
+
+    return { value: out, next: n, closed: false };
+}
+
 function parse_uci_text_to_dict(text) {
     let result = {
         settings: {}, sections: {}, servers: {},
@@ -139,22 +174,94 @@ function parse_uci_text_to_dict(text) {
     let current_section = null;
     let current_type = null;
 
-    for (let raw_line in split(as_string(text), "\n")) {
-        let line = trim(raw_line);
-        if (line == "" || index(line, "#") == 0) continue;
+    let src = replace(as_string(text), /\r\n/g, "\n");
+    src = replace(src, /\r/g, "\n");
+    let n = length(src);
+    let pos = 0;
 
-        let parts = split(line, /[ \t]+/);
-        let cmd = parts[0];
+    while (pos < n) {
+        // Skip blank lines and leading whitespace
+        while (pos < n) {
+            let c = substr(src, pos, 1);
+            if (c == " " || c == "\t" || c == "\n")
+                pos++;
+            else
+                break;
+        }
+        if (pos >= n)
+            break;
+
+        // Comment line
+        if (substr(src, pos, 1) == "#") {
+            while (pos < n && substr(src, pos, 1) != "\n")
+                pos++;
+            continue;
+        }
+
+        // Read directive keyword
+        let cmd_start = pos;
+        while (pos < n) {
+            let c = substr(src, pos, 1);
+            if (c == " " || c == "\t" || c == "\n")
+                break;
+            pos++;
+        }
+        let cmd = substr(src, cmd_start, pos - cmd_start);
+
+        // Skip horizontal whitespace after directive
+        while (pos < n) {
+            let c = substr(src, pos, 1);
+            if (c == " " || c == "\t")
+                pos++;
+            else
+                break;
+        }
 
         if (cmd == "config") {
-            current_type = parts[1];
-            let raw_name = parts[2];
-            if (raw_name != null && raw_name != "") {
-                if ((substr(raw_name, 0, 1) == "'" && substr(raw_name, length(raw_name) - 1, 1) == "'") ||
-                    (substr(raw_name, 0, 1) == "\"" && substr(raw_name, length(raw_name) - 1, 1) == "\"")) {
-                    raw_name = substr(raw_name, 1, length(raw_name) - 2);
+            let line_end = pos;
+            while (line_end < n && substr(src, line_end, 1) != "\n")
+                line_end++;
+            let rest = trim(substr(src, pos, line_end - pos));
+            pos = line_end < n ? line_end + 1 : n;
+
+            let rlen = length(rest);
+            let rp = 0;
+            let type_tok = "";
+            if (rp < rlen) {
+                let tc = substr(rest, rp, 1);
+                if (tc == "'" || tc == "\"") {
+                    let qt = scan_uci_quoted(rest, rp + 1, tc);
+                    type_tok = qt.value;
+                    rp = qt.next;
+                } else {
+                    let ts = rp;
+                    while (rp < rlen && substr(rest, rp, 1) != " " && substr(rest, rp, 1) != "\t")
+                        rp++;
+                    type_tok = substr(rest, ts, rp - ts);
                 }
-            } else {
+            }
+            if (type_tok == "" || substr(type_tok, 0, 1) == "#")
+                continue;
+
+            while (rp < rlen && (substr(rest, rp, 1) == " " || substr(rest, rp, 1) == "\t"))
+                rp++;
+
+            let raw_name = "";
+            if (rp < rlen && substr(rest, rp, 1) != "#") {
+                let nc = substr(rest, rp, 1);
+                if (nc == "'" || nc == "\"") {
+                    let qn = scan_uci_quoted(rest, rp + 1, nc);
+                    raw_name = qn.value;
+                } else {
+                    let ns = rp;
+                    while (rp < rlen && substr(rest, rp, 1) != " " && substr(rest, rp, 1) != "\t" && substr(rest, rp, 1) != "#")
+                        rp++;
+                    raw_name = substr(rest, ns, rp - ns);
+                }
+            }
+
+            current_type = type_tok;
+            if (raw_name == "") {
                 raw_name = "cfg" + length(keys(result.all_by_name));
             }
             current_section = raw_name;
@@ -178,34 +285,80 @@ function parse_uci_text_to_dict(text) {
             continue;
         }
 
-        if (!current_section || !result.all_by_name[current_section]) continue;
-        let sec_obj = result.all_by_name[current_section];
-
-        if (cmd == "option" && length(parts) >= 2) {
-            let opt = parts[1];
-            let opt_idx = index(line, opt);
-            let val = trim(substr(line, opt_idx + length(opt)));
-            if ((substr(val, 0, 1) == "'" && substr(val, length(val) - 1, 1) == "'") ||
-                (substr(val, 0, 1) == "\"" && substr(val, length(val) - 1, 1) == "\"")) {
-                val = substr(val, 1, length(val) - 2);
-            }
-            sec_obj[opt] = val;
+        if (cmd != "option" && cmd != "list") {
+            while (pos < n && substr(src, pos, 1) != "\n")
+                pos++;
             continue;
         }
 
-        if (cmd == "list" && length(parts) >= 2) {
-            let opt = parts[1];
-            let opt_idx = index(line, opt);
-            let val = trim(substr(line, opt_idx + length(opt)));
-            if ((substr(val, 0, 1) == "'" && substr(val, length(val) - 1, 1) == "'") ||
-                (substr(val, 0, 1) == "\"" && substr(val, length(val) - 1, 1) == "\"")) {
-                val = substr(val, 1, length(val) - 2);
+        // Read option name (must stay on current line)
+        let opt = "";
+        if (pos < n && substr(src, pos, 1) != "\n") {
+            let opt_first = substr(src, pos, 1);
+            if (opt_first == "'" || opt_first == "\"") {
+                let qopt = scan_uci_quoted(src, pos + 1, opt_first);
+                opt = qopt.value;
+                pos = qopt.next;
+            } else {
+                let opt_start = pos;
+                while (pos < n) {
+                    let c = substr(src, pos, 1);
+                    if (c == " " || c == "\t" || c == "\n")
+                        break;
+                    pos++;
+                }
+                opt = substr(src, opt_start, pos - opt_start);
             }
+        }
+
+        // Skip horizontal whitespace before value
+        while (pos < n) {
+            let c = substr(src, pos, 1);
+            if (c == " " || c == "\t")
+                pos++;
+            else
+                break;
+        }
+
+        // Parse value (supports multiline '...' and "..." strings, plus trailing # comments)
+        let val = "";
+        if (pos < n && substr(src, pos, 1) != "\n") {
+            let v_first = substr(src, pos, 1);
+            if (v_first == "'" || v_first == "\"") {
+                let qval = scan_uci_quoted(src, pos + 1, v_first);
+                val = qval.value;
+                pos = qval.next;
+                while (pos < n && substr(src, pos, 1) != "\n")
+                    pos++;
+            } else if (v_first == "#") {
+                val = "";
+                while (pos < n && substr(src, pos, 1) != "\n")
+                    pos++;
+            } else {
+                let val_start = pos;
+                while (pos < n) {
+                    let c = substr(src, pos, 1);
+                    if (c == "\n" || c == "#")
+                        break;
+                    pos++;
+                }
+                val = trim(substr(src, val_start, pos - val_start));
+                while (pos < n && substr(src, pos, 1) != "\n")
+                    pos++;
+            }
+        }
+
+        if (!current_section || !result.all_by_name[current_section] || opt == "")
+            continue;
+        let sec_obj = result.all_by_name[current_section];
+
+        if (cmd == "option") {
+            sec_obj[opt] = val;
+        } else {
             if (type(sec_obj[opt]) != "array") {
                 sec_obj[opt] = sec_obj[opt] != null ? [ sec_obj[opt] ] : [];
             }
             push(sec_obj[opt], val);
-            continue;
         }
     }
 
@@ -2036,13 +2189,13 @@ function validate_uci_semantics(candidate_uci) {
 
         let action = sec.action || "outbound";
         let valid_actions = {
-            connection: true, group: true, desync: true, direct: true,
-            outbound: true, proxy: true, bypass: true, block: true,
-            hosts: true, dns: true,
+            connection: true, proxy: true, outbound: true, vpn: true,
             awg: true, warp: true, anytls: true, snell: true, mieru: true, naive: true,
-            sudoku: true, tailscale: true,
-            masque: true, openvpn: true, openconnect: true, shadowtls: true,
-            trusttunnel: true, tewfai: true, wdtt: true, csqtt: true, fptn: true
+            sudoku: true, masque: true, openvpn: true, openconnect: true,
+            tewfai: true, csqtt: true, trusttunnel: true, mtproto: true,
+            shadowtls: true, desync: true, chain: true, tailscale: true,
+            bypass: true, block: true, dns: true, hosts: true,
+            wdtt: true, fptn: true, group: true
         };
 
         if (!valid_actions[action]) {
@@ -2501,7 +2654,7 @@ function selftest() {
     let conflict_uci = {
         settings: { engine: "tachyon-core" },
         sections: {
-            "allow_parent": { ".name": "allow_parent", ".type": "section", action: "direct", domain: [ "example.com" ] },
+            "allow_parent": { ".name": "allow_parent", ".type": "section", action: "bypass", domain: [ "example.com" ] },
             "block_sub": { ".name": "block_sub", ".type": "section", action: "block", domain: [ "ads.example.com" ] }
         },
         servers: {},
@@ -2515,7 +2668,7 @@ function selftest() {
     let google_overlap_uci = {
         settings: { engine: "tachyon-core" },
         sections: {
-            "Direct": { ".name": "Direct", ".type": "section", action: "direct", community_lists: [ "google_services" ] },
+            "Direct": { ".name": "Direct", ".type": "section", action: "bypass", community_lists: [ "google_services" ] },
             "VPN": { ".name": "VPN", ".type": "section", action: "proxy", community_lists: [ "google_ai" ] }
         },
         servers: {},
@@ -2531,9 +2684,9 @@ function selftest() {
     let disjoint_cond_uci = {
         settings: { engine: "tachyon-core" },
         sections: {
-            "dev_a": { ".name": "dev_a", ".type": "section", action: "direct", devices: [ "192.168.1.10" ], domain: [ "example.org" ], ports: [ "80" ] },
+            "dev_a": { ".name": "dev_a", ".type": "section", action: "bypass", devices: [ "192.168.1.10" ], domain: [ "example.org" ], ports: [ "80" ] },
             "dev_b": { ".name": "dev_b", ".type": "section", action: "proxy", devices: [ "192.168.1.20" ], domain: [ "sub.example.org" ], ports: [ "443" ] },
-            "narrow_early": { ".name": "narrow_early", ".type": "section", action: "direct", devices: [ "192.168.1.10" ], domain: [ "narrow.org" ] },
+            "narrow_early": { ".name": "narrow_early", ".type": "section", action: "bypass", devices: [ "192.168.1.10" ], domain: [ "narrow.org" ] },
             "broad_later": { ".name": "broad_later", ".type": "section", action: "proxy", domain: [ "app.narrow.org" ] }
         },
         servers: {},
@@ -2547,7 +2700,7 @@ function selftest() {
     let updated_list_uci = {
         settings: { engine: "tachyon-core" },
         sections: {
-            "early_direct": { ".name": "early_direct", ".type": "section", action: "direct", community_lists: [ "custom_feed_a" ] },
+            "early_direct": { ".name": "early_direct", ".type": "section", action: "bypass", community_lists: [ "custom_feed_a" ] },
             "later_vpn": { ".name": "later_vpn", ".type": "section", action: "proxy", community_lists: [ "custom_feed_b" ] }
         },
         servers: {},
@@ -2591,6 +2744,48 @@ function selftest() {
     let elapsed_ms = (t_end[0] - t_start[0]) * 1000 + int((t_end[1] - t_start[1]) / 1000000);
     assert(length(rc_big_cidr.conflicts) == 1 && rc_big_cidr.conflicts[0].overlap_count == 2, "indexed CIDR overlap detects subnet containment and exact IPv6 match across 2048x2048 lists");
     assert(elapsed_ms < 2000, sprintf("2048x2048 CIDR conflict analysis completes quickly (%d ms)", elapsed_ms));
+
+    // Test 13 (#467): Action validation rejects 'direct' and accepts 'vpn', 'mtproto', 'chain'
+    let bad_direct_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "legacy_direct": { ".name": "legacy_direct", ".type": "section", action: "direct", domain: [ "example.com" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let val_direct = validate_uci_semantics(bad_direct_uci);
+    assert(val_direct.status == "failed" && index(join("\n", val_direct.errors), "unsupported action 'direct'") >= 0, "validation rejects legacy action 'direct'");
+    let plan_direct = plan(bad_direct_uci, { active_uci: active_mock });
+    assert(plan_direct.valid == false, "plan rejects candidate section with action 'direct'");
+
+    let valid_new_actions_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "s_vpn": { ".name": "s_vpn", ".type": "section", action: "vpn", domain: [ "vpn.example.com" ] },
+            "s_mtp": { ".name": "s_mtp", ".type": "section", action: "mtproto", domain: [ "mtp.example.com" ] },
+            "s_chain": { ".name": "s_chain", ".type": "section", action: "chain", domain: [ "chain.example.com" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let val_new_actions = validate_uci_semantics(valid_new_actions_uci);
+    assert(val_new_actions.status == "ok" && length(val_new_actions.errors) == 0, "validation accepts vpn, mtproto, and chain actions");
+
+    // Test 14 (#468): Multiline quoted UCI values and escaped single quotes
+    let multiline_uci_text = "config settings 'settings'\n\toption engine 'tachyon-core'\n\nconfig section 'ml_ok'\n\toption action 'proxy'\n\toption label 'Bob'\\''s rule'\n\toption domain 'a.example\nb.example\nc.example'\n";
+    let parsed_ml = parse_uci_text_to_dict(multiline_uci_text);
+    assert(parsed_ml.sections["ml_ok"] != null, "multiline UCI section parsed");
+    assert(parsed_ml.sections["ml_ok"].label == "Bob's rule", "escaped single quote in UCI option parsed");
+    assert(length(words_list(parsed_ml.sections["ml_ok"].domain)) == 3, "multiline quoted option domain extracts all 3 domains");
+    let ml_plan = plan(multiline_uci_text, { active_uci: active_mock });
+    assert(ml_plan.valid == true && ml_plan.has_changes == true, "plan validates multiline UCI section and detects diff");
+    assert(index(format_text_plan(ml_plan), "ADD SECTION: [ml_ok]") >= 0, "diff output includes multiline section");
+
+    let bad_ml_uci_text = "config settings 'settings'\n\toption engine 'tachyon-core'\n\nconfig section 'ml_bad'\n\toption action 'proxy'\n\toption domain 'good.example\nbad domain!'\n";
+    let bad_ml_parsed = parse_uci_text_to_dict(bad_ml_uci_text);
+    let bad_ml_val = validate_uci_semantics(bad_ml_parsed);
+    assert(bad_ml_val.status == "failed", "multiline UCI with malformed domain on second line fails validation");
 
     print(sprintf("Config plan selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;

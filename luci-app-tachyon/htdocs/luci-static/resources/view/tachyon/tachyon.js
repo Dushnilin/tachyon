@@ -45,6 +45,95 @@
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 const CBI_PREFIX = UCI_PACKAGE;
 
+function persistSavedGridChanges(sectionRef, targetSectionId) {
+  try {
+    sanitizeUciDeletes(targetSectionId);
+    const saveDone =
+      hasPendingUciStateChanges() &&
+      typeof uci !== "undefined" &&
+      typeof uci.save === "function"
+        ? Promise.resolve(uci.save())
+        : Promise.resolve();
+    return saveDone
+      .then(() => {
+        if (
+          typeof ui !== "undefined" &&
+          ui.changes &&
+          typeof ui.changes.init === "function"
+        ) {
+          return ui.changes.init();
+        }
+        return null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (typeof sectionRef._refreshStudioDeck === "function") {
+          sectionRef._refreshStudioDeck();
+        }
+      });
+  } catch (_e) {
+    if (typeof sectionRef._refreshStudioDeck === "function") {
+      sectionRef._refreshStudioDeck();
+    }
+    return Promise.resolve();
+  }
+}
+
+function bindServerModalLifecycle(sectionRef) {
+  const serverSave = sectionRef.handleModalSave;
+  const serverCancel = sectionRef.handleModalCancel;
+
+  sectionRef.handleModalSave = function (modalMap, ev) {
+    const targetMap =
+      modalMap ||
+      (typeof this.getActiveModalMap === "function"
+        ? dom.findClassInstance(this.getActiveModalMap())
+        : null);
+    const targetSectionId =
+      targetMap?.section ||
+      targetMap?.children?.[0]?.section ||
+      sectionRef.addedSection ||
+      "";
+    let saveSucceeded = false;
+    let res;
+    try {
+      res = serverSave
+        ? serverSave.apply(this, arguments)
+        : form.GridSection.prototype.handleModalSave.apply(this, arguments);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    return Promise.resolve(res)
+      .then((val) => {
+        if (val !== false) {
+          saveSucceeded = true;
+        }
+        return val;
+      })
+      .finally(() => {
+        if (saveSucceeded) {
+          persistSavedGridChanges(sectionRef, targetSectionId);
+        }
+      });
+  };
+
+  sectionRef.handleModalCancel = function (modalMap, ev, isSaving) {
+    let res;
+    try {
+      res = serverCancel
+        ? serverCancel.apply(this, arguments)
+        : form.GridSection.prototype.handleModalCancel.apply(this, arguments);
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    return Promise.resolve(res).finally(() => {
+      if (!isSaving && typeof sectionRef._refreshStudioDeck === "function") {
+        window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
+      }
+    });
+  };
+}
+
 function renderSectionAdd(sectionRef, extra_class) {
   const el = form.GridSection.prototype.renderSectionAdd.apply(sectionRef, [
     extra_class,
@@ -801,36 +890,7 @@ function configureGridSection(sectionRef, type, title, addTitle) {
       if (!saveSucceeded) {
         return;
       }
-      try {
-        sanitizeUciDeletes(targetSectionId);
-        const saveDone =
-          hasPendingUciStateChanges() &&
-          typeof uci !== "undefined" &&
-          typeof uci.save === "function"
-            ? Promise.resolve(uci.save())
-            : Promise.resolve();
-        saveDone
-          .then(() => {
-            if (
-              typeof ui !== "undefined" &&
-              ui.changes &&
-              typeof ui.changes.init === "function"
-            ) {
-              return ui.changes.init();
-            }
-            return null;
-          })
-          .catch(() => null)
-          .finally(() => {
-            if (typeof sectionRef._refreshStudioDeck === "function") {
-              sectionRef._refreshStudioDeck();
-            }
-          });
-      } catch (_e) {
-        if (typeof sectionRef._refreshStudioDeck === "function") {
-          sectionRef._refreshStudioDeck();
-        }
-      }
+      persistSavedGridChanges(sectionRef, targetSectionId);
     });
   };
 
@@ -2911,6 +2971,7 @@ const EntryPoint = {
         server.configureServerSection(s, {
           loadCapabilities: loadUiCapabilities,
         });
+        bindServerModalLifecycle(s);
         server.createServerContent(s, uiCapabilities);
         return s;
       },

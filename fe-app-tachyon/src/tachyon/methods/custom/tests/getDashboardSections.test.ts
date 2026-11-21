@@ -2551,4 +2551,63 @@ describe('getDashboardSections', () => {
     expect(directCsqtt?.outbounds[0]?.type).toBe('CSQTT');
     expect(directCsqtt?.outbounds[0]?.latency).toBe(33);
   });
+
+  it('includes live runtime Core members in URLTest details even when groupCache.outbounds is partial (#464)', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-urltest-out',
+            all: ['main-urltest-out'],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-1-out',
+            history: [{ time: '2026-11-21T00:00:00Z', delay: 80 }],
+            all: ['main-1-out', 'main-2-out', 'main-3-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+          'main-2-out': clashProxies['main-2-out'],
+          'main-3-out': clashProxies['main-3-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'One',
+            'main-2-out': 'Two',
+            'main-3-out': 'Three',
+          },
+          countries: {},
+        },
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Fastest',
+            outbounds: ['main-1-out'],
+            url: 'https://probe.example/204',
+            interval: '3m',
+            tolerance: 50,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(urltest?.urlTestInfo?.outbounds.map((o) => o.code)).toEqual([
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+  });
 });

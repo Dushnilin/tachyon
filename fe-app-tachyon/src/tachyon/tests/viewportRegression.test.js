@@ -60,7 +60,7 @@ describe('Viewport and Mobile Responsiveness Regressions', async () => {
       /\.fkp-server-info-modal\{[^}]*width:\s*100%\s*!important/,
     );
     expect(serverJsContent).toMatch(
-      /\.fkp-server-info-modal__qr-image\{[^}]*max-width:\s*min\(180px,\s*60vw\)/,
+      /\.fkp-server-info-modal__qr-image\{[^}]*max-width:\s*min\(240px,\s*72vw\)/,
     );
     expect(serverJsContent).toMatch(
       /@media\s*\(max-width:\s*640px\)\{\s*\.fkp-server-info-modal\{width:100%\s*!important\}/,

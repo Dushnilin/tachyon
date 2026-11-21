@@ -131,7 +131,71 @@ EOF
     fail "validate should have returned non-zero for invalid action and port"
   fi
 
-  rm -f "$TMP_CANDIDATE" "$TMP_BAD"
+  # 4.5 Issue #467 & #468: reject 'direct', accept vpn/mtproto/chain, parse multiline UCI
+  TMP_DIRECT=$(mktemp)
+  cat <<'EOF' > "$TMP_DIRECT"
+config settings 'settings'
+	option engine 'tachyon-core'
+
+config section 'legacy_direct_sec'
+	option action 'direct'
+	list domain 'example.com'
+EOF
+  if ucode -L "$TACHYON_LIB" -- "$PLAN_UC" validate "$TMP_DIRECT" >/dev/null 2>&1; then
+    fail "validate must reject section action 'direct'"
+  fi
+
+  TMP_VALID_ACTIONS=$(mktemp)
+  cat <<'EOF' > "$TMP_VALID_ACTIONS"
+config settings 'settings'
+	option engine 'tachyon-core'
+
+config section 'sec_vpn'
+	option action 'vpn'
+	list domain 'vpn.example'
+
+config section 'sec_mtproto'
+	option action 'mtproto'
+	list domain 'mtp.example'
+
+config section 'sec_chain'
+	option action 'chain'
+	list domain 'chain.example'
+EOF
+  valid_act_plan=$(ucode -L "$TACHYON_LIB" -- "$PLAN_UC" plan "$TMP_VALID_ACTIONS" --json)
+  assert_contains "$valid_act_plan" '"valid": true' "Candidate JSON accepts vpn, mtproto and chain"
+
+  TMP_ML_OK=$(mktemp)
+  cat <<'EOF' > "$TMP_ML_OK"
+config settings 'settings'
+	option engine 'tachyon-core'
+
+config section 'ml_section'
+	option action 'proxy'
+	option label 'Bob'\''s rule'
+	option domain 'a.example
+b.example
+c.example'
+EOF
+  ml_ok_plan=$(ucode -L "$TACHYON_LIB" -- "$PLAN_UC" plan "$TMP_ML_OK" --json)
+  assert_contains "$ml_ok_plan" '"valid": true' "Multiline UCI option passes validation"
+  assert_contains "$ml_ok_plan" 'ml_section' "Multiline UCI section appears in diff"
+
+  TMP_ML_BAD=$(mktemp)
+  cat <<'EOF' > "$TMP_ML_BAD"
+config settings 'settings'
+	option engine 'tachyon-core'
+
+config section 'ml_bad_section'
+	option action 'proxy'
+	option domain 'good.example
+bad domain!'
+EOF
+  if ucode -L "$TACHYON_LIB" -- "$PLAN_UC" validate "$TMP_ML_BAD" >/dev/null 2>&1; then
+    fail "validate must reject malformed domain on subsequent line of multiline UCI value"
+  fi
+
+  rm -f "$TMP_CANDIDATE" "$TMP_BAD" "$TMP_DIRECT" "$TMP_VALID_ACTIONS" "$TMP_ML_OK" "$TMP_ML_BAD"
 fi
 
 printf 'ALL CONFIG PLAN CHECKS PASSED\n'

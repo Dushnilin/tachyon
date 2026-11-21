@@ -177,6 +177,28 @@ if command -v ucode >/dev/null 2>&1; then
     print(sprintf("%s|%s|%s|%s", res.selected_node, res.node_type, miss.selected_node, miss.node_type));
   ')
   assert_eq "$wg_ep_out" "AWG_HL-1-out|wireguard|AWG_HL-missing-out|unresolved" "WireGuard endpoint resolution and no foreign section fallback"
+
+  # 4.10 Quarantined and unsupported-action ('direct') sections (#469)
+  Q_JSON_FILE="$WORK_DIR/validator-quarantined.json"
+  printf '{"q_sec":"failed validation"}' > "$Q_JSON_FILE"
+  q_explain_out=$(TACHYON_VALIDATOR_QUARANTINED_FILE="$Q_JSON_FILE" ucode -L "$TACHYON_LIB" -e '
+    let r = require("diagnostics.route_explain");
+    let cfg = {
+      settings: { engine: "tachyon-core" },
+      sections: [
+        { ".name": "bad_direct", ".type": "section", enabled: "1", action: "direct", domain: [ "quarantine.example" ] },
+        { ".name": "q_sec", ".type": "section", enabled: "1", action: "bypass", domain: [ "quarantine.example" ] },
+        { ".name": "good_proxy", ".type": "section", enabled: "1", action: "proxy", domain: [ "quarantine.example" ] }
+      ],
+      conditions: {}, outbound_sources: {}, outbound_groups: {}, balancers: {}, nodes: [], dns_hosts: []
+    };
+    let res = r.explain_route("192.168.1.55", "quarantine.example", 443, "tcp", { uci_cfg: cfg });
+    let def_res = r.explain_route("192.168.1.55", "other.example", 443, "tcp", { uci_cfg: cfg });
+    let q_count = type(res.quarantined_sections) == "array" ? length(res.quarantined_sections) : 0;
+    let txt = r.format_text_report(res);
+    print(sprintf("%s|%s|%d|%s|%d", res.verdict, res.matched_section || "none", q_count, def_res.verdict, index(txt, "Quarantined:") >= 0 ? 1 : 0));
+  ')
+  assert_eq "$q_explain_out" "proxied|good_proxy|2|direct|1" "Quarantined and action=direct sections skipped cleanly without breaking default direct fallback"
 fi
 
 echo "All route_explain tests passed successfully!"

@@ -1512,7 +1512,7 @@ function query_clash_proxies_map() {
 }
 
 function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
-    if (matched_action == "bypass" || matched_action == "direct") {
+    if (matched_action == "bypass" || (!matched_section && matched_action == "direct")) {
         return {
             group_tag: "bypass-out",
             group_type: "direct",
@@ -1812,6 +1812,80 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
 
 // ─── Core Routing Explainer Implementation ────────────────────────────────────
 
+function is_supported_section_action(action) {
+    let a = lc(trim(as_string(action || "")));
+    if (a == "")
+        return false;
+    let supported = {
+        connection: true, proxy: true, outbound: true, vpn: true,
+        awg: true, warp: true, anytls: true, snell: true, mieru: true, naive: true,
+        sudoku: true, masque: true, openvpn: true, openconnect: true,
+        tewfai: true, csqtt: true, trusttunnel: true, mtproto: true,
+        shadowtls: true, desync: true, chain: true, tailscale: true,
+        bypass: true, block: true, dns: true, hosts: true,
+        wdtt: true, fptn: true, group: true
+    };
+    return supported[a] == true;
+}
+
+function load_quarantined_sections(options) {
+    let out = {};
+    options = options || {};
+
+    let merge_entry = function(raw_entry) {
+        if (type(raw_entry) == "array") {
+            for (let item in raw_entry) {
+                if (type(item) == "object") {
+                    let s = trim(as_string(item.section || item.name || item[".name"] || ""));
+                    if (s != "" && !out[s])
+                        out[s] = trim(as_string(item.reason || item.error || "quarantined"));
+                } else {
+                    let s = trim(as_string(item || ""));
+                    if (s != "" && !out[s])
+                        out[s] = "quarantined";
+                }
+            }
+        } else if (type(raw_entry) == "object") {
+            if (type(raw_entry.sections) == "array") {
+                for (let item in raw_entry.sections) {
+                    if (type(item) == "object") {
+                        let s = trim(as_string(item.section || item.name || item[".name"] || ""));
+                        if (s != "" && !out[s])
+                            out[s] = trim(as_string(item.reason || item.error || "quarantined"));
+                    } else {
+                        let s = trim(as_string(item || ""));
+                        if (s != "" && !out[s])
+                            out[s] = "quarantined";
+                    }
+                }
+            } else {
+                for (let k, v in raw_entry) {
+                    let s = trim(as_string(k || ""));
+                    if (s != "" && !out[s])
+                        out[s] = trim(as_string(v || "quarantined"));
+                }
+            }
+        }
+    };
+
+    if (options.quarantined_sections != null) {
+        merge_entry(options.quarantined_sections);
+        return out;
+    }
+
+    let q_files = [
+        getenv("TACHYON_VALIDATOR_QUARANTINED_FILE") || "/var/run/tachyon/validator-quarantined.json",
+        getenv("TACHYON_SECTION_ERRORS_FILE") || "/var/run/tachyon/section-errors.json"
+    ];
+    for (let path in q_files) {
+        let parsed = common.read_json_file(path);
+        if (parsed != null)
+            merge_entry(parsed);
+    }
+
+    return out;
+}
+
 function explain_route(client_in, target_in, port_in, proto_in, options) {
     options = options || {};
     let target_parsed = normalize_target_input(target_in);
@@ -2055,11 +2129,30 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     }
 
     // ─── Stage 3: Section & Rule Matching ─────────────────────────────────────
+    let quarantined_map = load_quarantined_sections(options);
+    let quarantined_matches = [];
     let matched_section = null;
     let matched_rule = null;
     let excluded_matches = [];
 
     for (let sec in uci_cfg.sections) {
+        let sec_key = type(sec) == "object" ? as_string(sec[".name"] || "") : "";
+        let raw_action = type(sec) == "object" ? lc(trim(as_string(sec.action || ""))) : "";
+        let q_reason = sec_key != "" ? (quarantined_map[sec_key] || null) : null;
+        if (!q_reason && raw_action != "" && !is_supported_section_action(raw_action))
+            q_reason = "unsupported action '" + raw_action + "'";
+
+        if (q_reason) {
+            if (evaluate_section_match(sec, client_info, target_info, port, proto, []) != null) {
+                push(quarantined_matches, {
+                    section: sec_key || "(unnamed)",
+                    action: raw_action != "" ? raw_action : "unknown",
+                    reason: as_string(q_reason)
+                });
+            }
+            continue;
+        }
+
         let match_res = evaluate_section_match(sec, client_info, target_info, port, proto, excluded_matches);
         if (match_res != null) {
             matched_section = sec;
@@ -2071,6 +2164,16 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let section_name = matched_section ? matched_section[".name"] : null;
     let section_label = matched_section ? (matched_section.label || matched_section[".name"]) : null;
     let action = matched_section ? resolve_effective_section_action(matched_section, uci_cfg) : "direct";
+    let is_direct_route = (action == "bypass") || (!matched_section && action == "direct");
+
+    let q_prefix_en = "";
+    if (length(quarantined_matches) > 0) {
+        let q_parts = [];
+        for (let qm in quarantined_matches) {
+            push(q_parts, "Quarantined section '" + qm.section + "' skipped (" + qm.reason + ").");
+        }
+        q_prefix_en = join(" ", q_parts) + " ";
+    }
 
     let excl_prefix_en = "";
     if (length(excluded_matches) > 0) {
@@ -2089,10 +2192,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         action: action,
         rule_type: matched_rule ? matched_rule.rule_type : "default_fallback",
         rule_value: matched_rule ? matched_rule.rule_value : "none",
-        details: excl_prefix_en + (matched_section
+        details: q_prefix_en + excl_prefix_en + (matched_section
             ? "Matched section '" + section_name + "' (" + action + ") by " + matched_rule.rule_type + " '" + matched_rule.rule_value + "'."
             : "No explicit section matched. Evaluated under default fallback routing rule.")
     };
+    if (length(quarantined_matches) > 0)
+        stage3.quarantined_sections = quarantined_matches;
     if (length(excluded_matches) > 0)
         stage3.excluded_sections = excluded_matches;
 
@@ -2102,7 +2207,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let dns_details = "";
 
     if (target_info.type == "domain") {
-        if (action == "bypass" || action == "direct") {
+        if (is_direct_route) {
             dns_mode = "direct";
             dns_resolver = "Standard Upstream / DoH";
             dns_details = "Domain is routed direct; resolved via standard system DNS forwarders.";
@@ -2147,7 +2252,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         name: "dns_decision",
         mode: dns_mode,
         resolver: dns_resolver,
-        fakeip_active: (action == "dns" || action == "hosts" || action == "bypass" || action == "direct") ? false : fakeip_enabled,
+        fakeip_active: (action == "dns" || action == "hosts" || is_direct_route) ? false : fakeip_enabled,
         ipv6_effective_state: eff_v6.effective,
         runtime_dns_strategy: eff_v6.runtime_dns_strategy,
         details: dns_details
@@ -2165,7 +2270,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         nft_mark = "drop";
         nft_action = "drop (tachyon-ipv6-leak-guard)";
         nft_details = "Blocked by IPv6 leak-guard rule (tachyon-ipv6-leak-guard) because effective IPv6 state is leak_guard.";
-    } else if (action == "bypass" || action == "direct") {
+    } else if (is_direct_route) {
         nft_intercepted = false;
         nft_mark = "none";
         if (section_name && (matched_rule.rule_type == "port" || matched_rule.rule_type == "protocol_port")) {
@@ -2260,8 +2365,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         stage: 7,
         name: "engine_outbound",
         engine: active_engine,
-        engaged: !(action == "bypass" || action == "direct" || action == "dns" || action == "hosts"),
-        inbound_tag: (action == "bypass" || action == "direct") ? "none" : ((action == "dns" || action == "hosts") ? "dns-in" : "tproxy-in"),
+        engaged: !(is_direct_route || action == "dns" || action == "hosts"),
+        inbound_tag: is_direct_route ? "none" : ((action == "dns" || action == "hosts") ? "dns-in" : "tproxy-in"),
         group_tag: outbound_res.group_tag,
         group_type: outbound_res.group_type,
         selected_node: outbound_res.selected_node,
@@ -2269,7 +2374,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         server_address: outbound_res.server_address,
         server_port: outbound_res.server_port,
         transport: outbound_res.transport,
-        details: (action == "bypass" || action == "direct")
+        details: is_direct_route
             ? "Core engine is bypassed entirely; unmarked packet is forwarded directly to WAN by the Linux kernel (0ms overhead)."
             : (action == "block"
                 ? "Engine drops traffic via reject action."
@@ -2282,7 +2387,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
 
     // ─── Final Verdict & Explanations ─────────────────────────────────────────
     let verdict = "proxied";
-    if (action == "bypass" || action == "direct") verdict = "direct";
+    if (is_direct_route) verdict = "direct";
     else if (action == "block") verdict = "blocked";
     else if (action == "dns") verdict = "dns";
     else if (action == "hosts") verdict = "hosts";
@@ -2355,6 +2460,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     };
     if (length(excluded_matches) > 0)
         report_obj.excluded_sections = excluded_matches;
+    if (length(quarantined_matches) > 0)
+        report_obj.quarantined_sections = quarantined_matches;
     return report_obj;
 }
 
@@ -2394,6 +2501,12 @@ function format_text_report(report) {
         for (let em in s3.excluded_sections)
             push(ex_labels, em.section + " (" + em.excluded_by + ")");
         push(lines, sprintf("     Excluded:    %s", join(", ", ex_labels)));
+    }
+    if (type(s3.quarantined_sections) == "array" && length(s3.quarantined_sections) > 0) {
+        let q_labels = [];
+        for (let qm in s3.quarantined_sections)
+            push(q_labels, qm.section + " (" + qm.reason + ")");
+        push(lines, sprintf("     Quarantined: %s skipped", join(", ", q_labels)));
     }
 
     let s4 = report.stages["4_dns_decision"];
@@ -2570,6 +2683,42 @@ function selftest() {
         }
     });
     assert(missing_res.node_type == "unresolved" && missing_res.selected_node == "AWG_HL-missing-out", "Missing node reports unresolved instead of picking foreign section YTB-desync-out");
+
+    // Test 13 (#469): Quarantined / unsupported-action sections (including action='direct') are skipped cleanly
+    let q_uci_cfg = {
+        settings: { engine: "tachyon-core" },
+        sections: [
+            { ".name": "bad_direct", ".type": "section", enabled: "1", action: "direct", domain: [ "quarantine.example" ] },
+            { ".name": "good_proxy", ".type": "section", enabled: "1", action: "proxy", domain: [ "quarantine.example" ] },
+            { ".name": "val_quarantined", ".type": "section", enabled: "1", action: "bypass", domain: [ "qfile.example" ] }
+        ],
+        conditions: {},
+        outbound_sources: {},
+        outbound_groups: {},
+        balancers: {},
+        nodes: [],
+        dns_hosts: []
+    };
+    let res_direct_skip = explain_route("192.168.1.55", "quarantine.example", 443, "tcp", {
+        uci_cfg: q_uci_cfg,
+        quarantined_sections: {}
+    });
+    assert(res_direct_skip.verdict == "proxied" && res_direct_skip.matched_section == "good_proxy", "Section with unsupported action='direct' is skipped instead of returning DIRECT");
+    assert(type(res_direct_skip.quarantined_sections) == "array" && length(res_direct_skip.quarantined_sections) == 1 && res_direct_skip.quarantined_sections[0].section == "bad_direct", "Skipped unsupported-action section is reported in quarantined_sections");
+    assert(index(format_text_report(res_direct_skip), "Quarantined: bad_direct") >= 0, "Text report lists skipped quarantined section");
+
+    let res_qfile_skip = explain_route("192.168.1.55", "qfile.example", 443, "tcp", {
+        uci_cfg: q_uci_cfg,
+        quarantined_sections: { val_quarantined: "invalid TLS settings" }
+    });
+    assert(res_qfile_skip.verdict == "direct" && res_qfile_skip.matched_rule.type == "default_fallback", "Quarantined section falls through to default fallback");
+    assert(type(res_qfile_skip.quarantined_sections) == "array" && res_qfile_skip.quarantined_sections[0].section == "val_quarantined", "Quarantined section recorded in fallback case");
+
+    let res_unmatched = explain_route("192.168.1.55", "unmatched-fallback.example", 443, "tcp", {
+        uci_cfg: q_uci_cfg,
+        quarantined_sections: {}
+    });
+    assert(res_unmatched.verdict == "direct" && res_unmatched.matched_rule.type == "default_fallback", "Unmatched domain still uses default fallback verdict 'direct'");
 
     print(sprintf("Route explain selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;

@@ -257,6 +257,116 @@ function qrAlignmentPatternPositions(version) {
   return result;
 }
 
+function qrMaskBit(mask, x, y) {
+  switch (mask) {
+    case 0:
+      return (x + y) % 2 === 0;
+    case 1:
+      return y % 2 === 0;
+    case 2:
+      return x % 3 === 0;
+    case 3:
+      return (x + y) % 3 === 0;
+    case 4:
+      return (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0;
+    case 5:
+      return ((x * y) % 2) + ((x * y) % 3) === 0;
+    case 6:
+      return (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
+    case 7:
+      return (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
+    default:
+      return false;
+  }
+}
+
+function qrScoreLine(size, getAt) {
+  let score = 0;
+  let runColor = getAt(0);
+  let runLen = 1;
+  for (let i = 1; i < size; i += 1) {
+    const val = getAt(i);
+    if (val === runColor) {
+      runLen += 1;
+    } else {
+      if (runLen >= 5) {
+        score += runLen - 2;
+      }
+      runColor = val;
+      runLen = 1;
+    }
+  }
+  if (runLen >= 5) {
+    score += runLen - 2;
+  }
+  for (let i = 0; i <= size - 11; i += 1) {
+    const matchForward =
+      getAt(i) &&
+      !getAt(i + 1) &&
+      getAt(i + 2) &&
+      getAt(i + 3) &&
+      getAt(i + 4) &&
+      !getAt(i + 5) &&
+      getAt(i + 6) &&
+      !getAt(i + 7) &&
+      !getAt(i + 8) &&
+      !getAt(i + 9) &&
+      !getAt(i + 10);
+    const matchBackward =
+      !getAt(i) &&
+      !getAt(i + 1) &&
+      !getAt(i + 2) &&
+      !getAt(i + 3) &&
+      getAt(i + 4) &&
+      !getAt(i + 5) &&
+      getAt(i + 6) &&
+      getAt(i + 7) &&
+      getAt(i + 8) &&
+      !getAt(i + 9) &&
+      getAt(i + 10);
+    if (matchForward || matchBackward) {
+      score += 40;
+    }
+  }
+  return score;
+}
+
+function qrPenaltyScore(matrix) {
+  const size = matrix.length;
+  let score = 0;
+  let darkCount = 0;
+
+  for (let y = 0; y < size; y += 1) {
+    score += qrScoreLine(size, (x) => matrix[y][x]);
+    for (let x = 0; x < size; x += 1) {
+      if (matrix[y][x]) {
+        darkCount += 1;
+      }
+      if (y < size - 1 && x < size - 1) {
+        const c = matrix[y][x];
+        if (
+          c === matrix[y][x + 1] &&
+          c === matrix[y + 1][x] &&
+          c === matrix[y + 1][x + 1]
+        ) {
+          score += 3;
+        }
+      }
+    }
+  }
+
+  for (let x = 0; x < size; x += 1) {
+    score += qrScoreLine(size, (y) => matrix[y][x]);
+  }
+
+  const percent = (darkCount * 100) / (size * size);
+  const prev5 = Math.floor(percent / 5) * 5;
+  const next5 = prev5 + 5;
+  score += (Math.min(Math.abs(prev5 - 50), Math.abs(next5 - 50)) / 5) * 10;
+
+  return score;
+}
+
 function qrMakeMatrix(version, dataCodewords) {
   const size = version * 4 + 17;
   const modules = Array.from({ length: size }, () => Array(size).fill(false));
@@ -264,8 +374,8 @@ function qrMakeMatrix(version, dataCodewords) {
     Array(size).fill(false),
   );
 
-  function setFunction(x, y, dark) {
-    modules[y][x] = dark;
+  function setFunction(x, y, dark, target = modules) {
+    target[y][x] = dark;
     isFunction[y][x] = true;
   }
 
@@ -332,7 +442,7 @@ function qrMakeMatrix(version, dataCodewords) {
     }
   }
 
-  function drawFormatBits(mask) {
+  function drawFormatBits(mask, target = modules) {
     const formatData = (1 << 3) | mask;
     let rem = formatData;
 
@@ -343,21 +453,21 @@ function qrMakeMatrix(version, dataCodewords) {
     const formatBits = ((formatData << 10) | rem) ^ 0x5412;
 
     for (let i = 0; i <= 5; i += 1) {
-      setFunction(8, i, qrGetBit(formatBits, i));
+      setFunction(8, i, qrGetBit(formatBits, i), target);
     }
-    setFunction(8, 7, qrGetBit(formatBits, 6));
-    setFunction(8, 8, qrGetBit(formatBits, 7));
-    setFunction(7, 8, qrGetBit(formatBits, 8));
+    setFunction(8, 7, qrGetBit(formatBits, 6), target);
+    setFunction(8, 8, qrGetBit(formatBits, 7), target);
+    setFunction(7, 8, qrGetBit(formatBits, 8), target);
     for (let i = 9; i < 15; i += 1) {
-      setFunction(14 - i, 8, qrGetBit(formatBits, i));
+      setFunction(14 - i, 8, qrGetBit(formatBits, i), target);
     }
     for (let i = 0; i < 8; i += 1) {
-      setFunction(size - 1 - i, 8, qrGetBit(formatBits, i));
+      setFunction(size - 1 - i, 8, qrGetBit(formatBits, i), target);
     }
     for (let i = 8; i < 15; i += 1) {
-      setFunction(8, size - 15 + i, qrGetBit(formatBits, i));
+      setFunction(8, size - 15 + i, qrGetBit(formatBits, i), target);
     }
-    setFunction(8, size - 8, true);
+    setFunction(8, size - 8, true, target);
   }
 
   drawFormatBits(0);
@@ -384,17 +494,26 @@ function qrMakeMatrix(version, dataCodewords) {
     }
   }
 
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      if (!isFunction[y][x] && (x + y) % 2 === 0) {
-        modules[y][x] = !modules[y][x];
+  let bestScore = Infinity;
+  let bestMatrix = modules;
+  for (let mask = 0; mask < 8; mask += 1) {
+    const candidate = modules.map((row) => row.slice());
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        if (!isFunction[y][x] && qrMaskBit(mask, x, y)) {
+          candidate[y][x] = !candidate[y][x];
+        }
       }
+    }
+    drawFormatBits(mask, candidate);
+    const score = qrPenaltyScore(candidate);
+    if (score < bestScore) {
+      bestScore = score;
+      bestMatrix = candidate;
     }
   }
 
-  drawFormatBits(0);
-
-  return modules;
+  return bestMatrix;
 }
 
 function qrSvgDataUri(text) {
@@ -418,15 +537,24 @@ function qrSvgDataUri(text) {
   const viewSize = size + border * 2;
   const path = [];
 
-  matrix.forEach((row, y) => {
-    row.forEach((dark, x) => {
-      if (dark) {
-        path.push(`M${x + border},${y + border}h1v1h-1z`);
+  for (let y = 0; y < size; y += 1) {
+    const row = matrix[y];
+    let x = 0;
+    while (x < size) {
+      if (!row[x]) {
+        x += 1;
+        continue;
       }
-    });
-  });
+      const startX = x;
+      while (x < size && row[x]) {
+        x += 1;
+      }
+      const runLen = x - startX;
+      path.push(`M${startX + border},${y + border}h${runLen}v1h-${runLen}z`);
+    }
+  }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewSize} ${viewSize}" shape-rendering="crispEdges"><path fill="#fff" d="M0 0h${viewSize}v${viewSize}H0z"/><path fill="#000" d="${path.join(" ")}"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewSize} ${viewSize}"><path fill="#fff" d="M0 0h${viewSize}v${viewSize}H0z"/><path fill="#000" d="${path.join(" ")}"/></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
@@ -573,10 +701,13 @@ function injectServerStyles() {
 #modal_overlay > .modal.fkp-server-info-dialog{max-width:95vw !important;width:min(94vw, 880px) !important;box-sizing:border-box !important}
 .fkp-server-info-modal{display:flex;flex-direction:column;gap:16px;width:100% !important;max-width:100% !important;box-sizing:border-box !important;margin:0 !important;overflow-x:hidden}
 .fkp-server-info-modal__container{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;width:100% !important;max-width:100% !important;box-sizing:border-box !important}
-.fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:10px;flex:0 0 176px;max-width:100%;box-sizing:border-box}
-.fkp-server-info-modal__qr-card{background:#ffffff;padding:8px;border-radius:12px;box-shadow:0 3px 12px rgba(0,0,0,0.12);border:1px solid rgba(128,128,128,0.18);display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
-.fkp-server-info-modal__qr-image{width:160px;height:160px;max-width:min(180px, 60vw);display:block;image-rendering:pixelated}
+.fkp-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:10px;flex:0 0 264px;max-width:100%;box-sizing:border-box}
+.fkp-server-info-modal__qr-card{background:#ffffff;padding:12px;border-radius:12px;box-shadow:0 3px 12px rgba(0,0,0,0.12);border:1px solid rgba(128,128,128,0.18);display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
+.fkp-server-info-modal__qr-image{width:240px;height:240px;max-width:min(240px, 72vw);display:block;cursor:zoom-in}
 .fkp-server-info-modal__qr-hint{font-size:11px;opacity:0.7;text-align:center;line-height:1.3;margin:0;font-weight:500}
+.fkp-server-qr-zoom-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+.fkp-server-qr-zoom-card{background:#ffffff;padding:20px;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.4);max-width:92vw;max-height:92vh;display:flex;flex-direction:column;align-items:center;gap:10px}
+.fkp-server-qr-zoom-img{width:min(420px, 82vw);height:min(420px, 82vw);display:block}
 .fkp-server-info-modal__details-col{display:flex;flex-direction:column;gap:14px;flex:1 1 0;min-width:0;max-width:100%;box-sizing:border-box !important;overflow:hidden}
 .fkp-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.06);padding:14px 16px;border:1px solid rgba(128,128,128,0.16);box-sizing:border-box !important;border-radius:8px;width:100% !important;max-width:100% !important}
 .fkp-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;width:100% !important;max-width:100% !important;box-sizing:border-box}
@@ -593,7 +724,7 @@ function injectServerStyles() {
 @media (max-width:640px){
 .fkp-server-info-modal{width:100% !important}
 .fkp-server-info-modal__container{flex-direction:column;align-items:center;gap:18px}
-.fkp-server-info-modal__qr-col{width:100%;max-width:180px;align-items:center}
+.fkp-server-info-modal__qr-col{width:100%;max-width:268px;align-items:center}
 .fkp-server-info-modal__details-col{width:100% !important;min-width:0}
 .fkp-server-info-modal__details-grid{padding:12px}
 .fkp-server-info-modal__detail-item{flex-wrap:wrap;gap:4px 8px}
@@ -2389,9 +2520,10 @@ function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
   const clientPrivateKey =
     uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
   const serverPublicKey =
-    uci.get(UCI_PACKAGE, sectionId, "awg_server_public_key") ||
-    uci.get(UCI_PACKAGE, sectionId, "awg_peer_public_key") ||
-    "";
+    uci.get(UCI_PACKAGE, sectionId, "awg_server_public_key") || "";
+  if (!clientPrivateKey || !serverPublicKey) {
+    return "";
+  }
   const presharedKey =
     uci.get(UCI_PACKAGE, sectionId, "awg_preshared_key") || "";
   const clientAddress =
@@ -2491,6 +2623,338 @@ function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
   if (presharedKey) conf += `PresharedKey = ${presharedKey}\n`;
 
   return conf;
+}
+
+const DEFLATE_LEN_BASE = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67,
+  83, 99, 115, 131, 163, 195, 227, 258,
+];
+const DEFLATE_LEN_EXTRA = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
+  5, 5, 0,
+];
+const DEFLATE_DIST_BASE = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
+  1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const DEFLATE_DIST_EXTRA = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+  11, 12, 12, 13, 13,
+];
+
+function deflateFixedHuffman(input) {
+  const out = [];
+  let bitBuf = 0;
+  let bitCount = 0;
+
+  const writeBits = (val, len) => {
+    bitBuf |= (val & ((1 << len) - 1)) << bitCount;
+    bitCount += len;
+    while (bitCount >= 8) {
+      out.push(bitBuf & 0xff);
+      bitBuf >>>= 8;
+      bitCount -= 8;
+    }
+  };
+
+  const writeBitsMsb = (code, len) => {
+    let rev = 0;
+    for (let i = 0; i < len; i += 1) {
+      rev = (rev << 1) | ((code >>> i) & 1);
+    }
+    writeBits(rev, len);
+  };
+
+  const writeLitLen = (sym) => {
+    if (sym <= 143) {
+      writeBitsMsb(0x30 + sym, 8);
+    } else if (sym <= 255) {
+      writeBitsMsb(0x190 + (sym - 144), 9);
+    } else if (sym <= 279) {
+      writeBitsMsb(sym - 256, 7);
+    } else {
+      writeBitsMsb(0xc0 + (sym - 280), 8);
+    }
+  };
+
+  writeBits(1, 1);
+  writeBits(1, 2);
+
+  const hashHead = new Int32Array(32768).fill(-1);
+  const hashPrev = new Int32Array(input.length).fill(-1);
+  const hashAt = (idx) =>
+    ((input[idx] << 10) ^ (input[idx + 1] << 5) ^ input[idx + 2]) & 0x7fff;
+
+  let pos = 0;
+  while (pos < input.length) {
+    let bestLen = 0;
+    let bestDist = 0;
+
+    if (pos + 2 < input.length) {
+      const h = hashAt(pos);
+      let candidate = hashHead[h];
+      hashPrev[pos] = candidate;
+      hashHead[h] = pos;
+
+      let steps = 0;
+      while (candidate >= 0 && pos - candidate <= 32768 && steps < 16) {
+        if (
+          input[candidate] === input[pos] &&
+          input[candidate + 1] === input[pos + 1] &&
+          input[candidate + 2] === input[pos + 2]
+        ) {
+          let len = 3;
+          const maxLen = Math.min(258, input.length - pos);
+          while (len < maxLen && input[candidate + len] === input[pos + len]) {
+            len += 1;
+          }
+          if (len > bestLen) {
+            bestLen = len;
+            bestDist = pos - candidate;
+            if (len === 258) {
+              break;
+            }
+          }
+        }
+        candidate = hashPrev[candidate];
+        steps += 1;
+      }
+    }
+
+    if (bestLen >= 3) {
+      if (bestLen === 258) {
+        writeLitLen(285);
+      } else {
+        let lenIdx = DEFLATE_LEN_BASE.length - 2;
+        while (lenIdx > 0 && DEFLATE_LEN_BASE[lenIdx] > bestLen) {
+          lenIdx -= 1;
+        }
+        writeLitLen(257 + lenIdx);
+        if (DEFLATE_LEN_EXTRA[lenIdx] > 0) {
+          writeBits(
+            bestLen - DEFLATE_LEN_BASE[lenIdx],
+            DEFLATE_LEN_EXTRA[lenIdx],
+          );
+        }
+      }
+
+      let distIdx = DEFLATE_DIST_BASE.length - 1;
+      while (distIdx > 0 && DEFLATE_DIST_BASE[distIdx] > bestDist) {
+        distIdx -= 1;
+      }
+      writeBitsMsb(distIdx, 5);
+      if (DEFLATE_DIST_EXTRA[distIdx] > 0) {
+        writeBits(
+          bestDist - DEFLATE_DIST_BASE[distIdx],
+          DEFLATE_DIST_EXTRA[distIdx],
+        );
+      }
+
+      const endPos = pos + bestLen;
+      pos += 1;
+      while (pos < endPos) {
+        if (pos + 2 < input.length) {
+          const h = hashAt(pos);
+          hashPrev[pos] = hashHead[h];
+          hashHead[h] = pos;
+        }
+        pos += 1;
+      }
+    } else {
+      writeLitLen(input[pos]);
+      pos += 1;
+    }
+  }
+
+  writeLitLen(256);
+  if (bitCount > 0) {
+    out.push(bitBuf & 0xff);
+  }
+  return Uint8Array.from(out);
+}
+
+function zlibCompressQt(inputBytes) {
+  const input =
+    inputBytes instanceof Uint8Array
+      ? inputBytes
+      : Uint8Array.from(inputBytes || []);
+  let deflateStream = deflateFixedHuffman(input);
+
+  if (input.length <= 65535 && 5 + input.length < deflateStream.length) {
+    deflateStream = new Uint8Array(5 + input.length);
+    deflateStream[0] = 0x01;
+    deflateStream[1] = input.length & 0xff;
+    deflateStream[2] = (input.length >>> 8) & 0xff;
+    deflateStream[3] = ~input.length & 0xff;
+    deflateStream[4] = (~input.length >>> 8) & 0xff;
+    deflateStream.set(input, 5);
+  }
+
+  let s1 = 1;
+  let s2 = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    s1 = (s1 + input[i]) % 65521;
+    s2 = (s2 + s1) % 65521;
+  }
+  const adler = ((s2 << 16) | s1) >>> 0;
+
+  const out = new Uint8Array(4 + 2 + deflateStream.length + 4);
+  out[0] = (input.length >>> 24) & 0xff;
+  out[1] = (input.length >>> 16) & 0xff;
+  out[2] = (input.length >>> 8) & 0xff;
+  out[3] = input.length & 0xff;
+  out[4] = 0x78;
+  out[5] = 0x9c;
+  out.set(deflateStream, 6);
+  const adlerOffset = 6 + deflateStream.length;
+  out[adlerOffset] = (adler >>> 24) & 0xff;
+  out[adlerOffset + 1] = (adler >>> 16) & 0xff;
+  out[adlerOffset + 2] = (adler >>> 8) & 0xff;
+  out[adlerOffset + 3] = adler & 0xff;
+  return out;
+}
+
+function buildAwgAmneziaVpnUri(sectionId, targetVersion, options = {}) {
+  const confText = buildAwgClientConfig(sectionId, targetVersion, options);
+  if (!confText) {
+    return "";
+  }
+
+  const host = getPublicHost(sectionId, options);
+  const port =
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+    (typeof getServerPort === "function" ? getServerPort(sectionId) : "51820");
+  const clientPrivateKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
+  const serverPublicKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_server_public_key") || "";
+  const presharedKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_preshared_key") || "";
+  const clientAddress =
+    uci.get(UCI_PACKAGE, sectionId, "awg_client_address") || "10.0.0.2/32";
+  const mtu = uci.get(UCI_PACKAGE, sectionId, "awg_mtu") || "1280";
+  const keepalive = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive") || "25";
+  const dns = uci.get(UCI_PACKAGE, sectionId, "awg_dns") || "10.0.0.1";
+  const dnsParts = dns
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const effectiveVer =
+    targetVersion || uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
+  const isWg = effectiveVer === "wg";
+  const containerName = isWg ? "amnezia-wireguard" : "amnezia-awg";
+  const subKey = isWg ? "wireguard" : "awg";
+
+  const lastConfig = {
+    config: confText,
+    hostName: host,
+    port: parseInt(port, 10) || 51820,
+    client_priv_key: clientPrivateKey,
+    client_ip: clientAddress.split("/")[0].trim(),
+    server_pub_key: serverPublicKey,
+    allowed_ips: ["0.0.0.0/0", "::/0"],
+    persistent_keep_alive: keepalive,
+    mtu,
+  };
+  if (presharedKey) {
+    lastConfig.psk_key = presharedKey;
+  }
+
+  const subObj = {
+    port: `${port}`,
+    transport_proto: "udp",
+    last_config: JSON.stringify(lastConfig),
+  };
+
+  if (!isWg) {
+    const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
+    const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
+    const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
+    let s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
+    let s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
+    let s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
+    let s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
+    const hpk =
+      effectiveVer === "3.0" || effectiveVer === "3.1"
+        ? uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || ""
+        : "";
+    if (hpk) {
+      if ((parseInt(s1, 10) || 0) < 12) s1 = "20";
+      if ((parseInt(s2, 10) || 0) < 12) s2 = "20";
+      if ((parseInt(s3, 10) || 0) < 12) s3 = "20";
+      if ((parseInt(s4, 10) || 0) < 12) s4 = "20";
+    }
+    subObj.Jc = jc;
+    subObj.Jmin = jmin;
+    subObj.Jmax = jmax;
+    subObj.S1 = s1;
+    subObj.S2 = s2;
+    subObj.H1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
+    subObj.H2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
+    subObj.H3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
+    subObj.H4 = uci.get(UCI_PACKAGE, sectionId, "awg_h4") || "4";
+    if (effectiveVer !== "1.0") {
+      subObj.S3 = s3;
+      subObj.S4 = s4;
+      const optionalAwg = [
+        ["awg_i1", "I1"],
+        ["awg_i2", "I2"],
+        ["awg_i3", "I3"],
+        ["awg_i4", "I4"],
+        ["awg_i5", "I5"],
+        ["awg_j1", "J1"],
+        ["awg_j2", "J2"],
+        ["awg_j3", "J3"],
+        ["awg_itime", "Itime"],
+      ];
+      optionalAwg.forEach(([uciKey, field]) => {
+        const val = uci.get(UCI_PACKAGE, sectionId, uciKey) || "";
+        if (val) subObj[field] = val;
+      });
+      if (effectiveVer === "3.0" || effectiveVer === "3.1") {
+        const cpa =
+          uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
+        if (hpk) subObj.HeaderProtectionKey = hpk;
+        if (cpa) subObj.ContentPaddingAddition = cpa;
+      }
+      if (effectiveVer === "3.1") {
+        const awg31 = [
+          ["awg_rekey_after_time", "RekeyAfterTime"],
+          ["awg_rekey_timeout", "RekeyTimeout"],
+          ["awg_reject_after_time", "RejectAfterTime"],
+          ["awg_keepalive_timeout", "KeepaliveTimeout"],
+          ["awg_max_handshake_attempts", "MaxHandshakeAttempts"],
+        ];
+        awg31.forEach(([uciKey, field]) => {
+          const val = uci.get(UCI_PACKAGE, sectionId, uciKey) || "";
+          if (val) subObj[field] = val;
+        });
+      }
+    }
+  }
+
+  const payload = {
+    containers: [
+      {
+        container: containerName,
+        [subKey]: subObj,
+      },
+    ],
+    defaultContainer: containerName,
+    description: getServerName(sectionId),
+    dns1: dnsParts[0] || "10.0.0.1",
+    dns2: dnsParts[1] || "",
+    hostName: host,
+  };
+
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const compressed = zlibCompressQt(jsonBytes);
+  let binary = "";
+  for (let i = 0; i < compressed.length; i += 1) {
+    binary += String.fromCharCode(compressed[i]);
+  }
+  return `vpn://${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
 }
 
 function buildClientLink(sectionId, options = {}) {
@@ -2814,6 +3278,8 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   }
 
   let fptnQrMode = "link";
+  let awgFormat = "conf";
+  let onAwgFormatChange = null;
   const qrUri =
     protocol === "fptn"
       ? qrSvgDataUri(
@@ -2843,10 +3309,51 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         )
       : "";
 
+  const openQrZoomOverlay = (src, altText) => {
+    if (!src) {
+      return;
+    }
+    const overlay = E("div", { class: "fkp-server-qr-zoom-overlay" }, [
+      E("div", { class: "fkp-server-qr-zoom-card" }, [
+        E("img", {
+          class: "fkp-server-qr-zoom-img",
+          src,
+          alt: altText,
+        }),
+        E(
+          "span",
+          { class: "fkp-server-info-modal__qr-hint" },
+          _("Click anywhere or press Esc to close"),
+        ),
+      ]),
+    ]);
+    const closeZoom = (ev) => {
+      if (ev) {
+        if (ev.type === "keydown" && ev.key !== "Escape") {
+          return;
+        }
+        ev.preventDefault?.();
+        ev.stopPropagation?.();
+      }
+      document.removeEventListener("keydown", closeZoom, true);
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    };
+    overlay.addEventListener("click", closeZoom);
+    document.addEventListener("keydown", closeZoom, true);
+    document.body.appendChild(overlay);
+  };
+
   let qrImg = E("img", {
     class: "fkp-server-info-modal__qr-image",
     src: qrUri,
     alt: _("Client link QR code"),
+    title: _("Click to enlarge QR code"),
+    click: (ev) => {
+      ev.preventDefault();
+      openQrZoomOverlay(qrImg.src, _("Client link QR code"));
+    },
   });
 
   const qrCard = E(
@@ -2858,9 +3365,62 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   const qrColChildren = [
     qrCard,
     qrUri
-      ? E("span", { class: "fkp-server-info-modal__qr-hint" }, _("QR code"))
+      ? E(
+          "span",
+          { class: "fkp-server-info-modal__qr-hint" },
+          _("QR code (click to enlarge)"),
+        )
       : "",
   ];
+
+  if (protocol === "awg") {
+    const btnAwgConf = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-action",
+        type: "button",
+        style: "padding:2px 8px;font-size:11px;",
+        click: (ev) => {
+          ev.preventDefault();
+          awgFormat = "conf";
+          btnAwgConf.className = "btn cbi-button cbi-button-action";
+          btnAwgVpn.className = "btn cbi-button cbi-button-neutral";
+          if (typeof onAwgFormatChange === "function") {
+            onAwgFormatChange();
+          }
+        },
+      },
+      _("AmneziaWG (.conf)"),
+    );
+    const btnAwgVpn = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-neutral",
+        type: "button",
+        style: "padding:2px 8px;font-size:11px;",
+        click: (ev) => {
+          ev.preventDefault();
+          awgFormat = "vpn";
+          btnAwgVpn.className = "btn cbi-button cbi-button-action";
+          btnAwgConf.className = "btn cbi-button cbi-button-neutral";
+          if (typeof onAwgFormatChange === "function") {
+            onAwgFormatChange();
+          }
+        },
+      },
+      _("AmneziaVPN (vpn://)"),
+    );
+    qrColChildren.push(
+      E(
+        "div",
+        {
+          style:
+            "display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;justify-content:center;",
+        },
+        [btnAwgConf, btnAwgVpn],
+      ),
+    );
+  }
 
   if (protocol === "fptn") {
     const btnLink = E(
@@ -3133,6 +3693,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       style: "display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;",
     });
 
+    let currentVpnUri = buildAwgAmneziaVpnUri(sectionId, activeAwgVersion, {
+      hostOverride: activeHost,
+    });
+    const getCurrentAwgPayload = () =>
+      awgFormat === "vpn" ? currentVpnUri || currentLink : currentLink;
+
     const confTextarea = E(
       "textarea",
       {
@@ -3142,8 +3708,15 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
         style: "font-family:monospace;font-size:11px;",
         click: (ev) => ev.currentTarget.select(),
       },
-      currentLink,
+      getCurrentAwgPayload(),
     );
+
+    const refreshAwgDisplay = () => {
+      const payload = getCurrentAwgPayload();
+      confTextarea.value = payload;
+      const newQr = qrSvgDataUri(payload);
+      if (newQr) qrImg.src = newQr;
+    };
 
     const vBtns = {};
 
@@ -3159,18 +3732,24 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       currentLink = buildAwgClientConfig(sectionId, activeAwgVersion, {
         hostOverride: activeHost,
       });
-      confTextarea.value = currentLink;
-      const newQr = qrSvgDataUri(currentLink);
-      if (newQr) qrImg.src = newQr;
+      currentVpnUri = buildAwgAmneziaVpnUri(sectionId, activeAwgVersion, {
+        hostOverride: activeHost,
+      });
+      refreshAwgDisplay();
     };
 
     onHostChange = (nextHost) => {
       currentLink = buildAwgClientConfig(sectionId, activeAwgVersion, {
         hostOverride: nextHost,
       });
-      confTextarea.value = currentLink;
-      const newQr = qrSvgDataUri(currentLink);
-      if (newQr) qrImg.src = newQr;
+      currentVpnUri = buildAwgAmneziaVpnUri(sectionId, activeAwgVersion, {
+        hostOverride: nextHost,
+      });
+      refreshAwgDisplay();
+    };
+
+    onAwgFormatChange = () => {
+      refreshAwgDisplay();
     };
 
     awgVersions.forEach((v) => {
@@ -3218,7 +3797,7 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           type: "button",
           click: (ev) => {
             ev.preventDefault();
-            copyText(currentLink);
+            copyText(getCurrentAwgPayload());
           },
         },
         [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
@@ -5346,7 +5925,11 @@ function configureServerSection(sectionRef, options = {}) {
 
     return saveTasks
       .then(() => this.handleModalCancel(targetMap, ev, true))
-      .catch((error) => showServerValidationMessage(error))
+      .then(() => true)
+      .catch((error) => {
+        showServerValidationMessage(error);
+        return false;
+      })
       .finally(() => {
         if (origCallDelete) {
           uci.callDelete = origCallDelete;
@@ -7433,8 +8016,14 @@ function configureServerSubscription(section) {
 
 return baseclass.extend({
   applyServerCapabilities,
+  buildAwgAmneziaVpnUri,
+  buildAwgClientConfig,
   configureServerSection,
   configureServerSubscription,
   createServerContent,
   preloadServerModalData,
+  qrMakeMatrix,
+  qrPenaltyScore,
+  qrSvgDataUri,
+  zlibCompressQt,
 });
