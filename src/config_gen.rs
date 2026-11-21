@@ -13595,11 +13595,27 @@ fn build_balancer_outbound(
         "failover" => "failover",
         _ => "least_test",
     };
+    let is_priority = mode == "priority";
+    let (effective_mode, effective_tolerance) = if is_priority {
+        if bal.switch_to_faster_same_priority {
+            // Tiered fastest with periodic re-selection inside the active tier.
+            ("least_test", bal.tolerance.max(50))
+        } else if bal.pick_fastest {
+            // Pick fastest node initially / on failover / on upper-tier recovery,
+            // sticking to the active healthy node inside the tier via max tolerance.
+            ("least_test", u16::MAX as u32)
+        } else {
+            // Strict list order inside the active tier.
+            ("priority", bal.tolerance.max(50))
+        }
+    } else {
+        (mode, bal.tolerance.max(50))
+    };
     let mut obj = Map::new();
     obj.insert("type".into(), json!("urltest"));
     obj.insert("tag".into(), json!(bal_tag));
     obj.insert("outbounds".into(), json!(tags));
-    obj.insert("mode".into(), json!(mode));
+    obj.insert("mode".into(), json!(effective_mode));
     obj.insert(
         "url".into(),
         json!(if bal.testing_url.is_empty() {
@@ -13612,7 +13628,7 @@ fn build_balancer_outbound(
         "interval".into(),
         json!(format!("{}s", bal.check_interval.max(15))),
     );
-    obj.insert("tolerance".into(), json!(bal.tolerance.max(50)));
+    obj.insert("tolerance".into(), json!(effective_tolerance));
     obj.insert(
         "interrupt_exist_connections".into(),
         json!(bal.interrupt_exist_connections),
@@ -13626,16 +13642,16 @@ fn build_balancer_outbound(
         }),
     );
     let mut balancer_opts = Map::new();
-    if mode == "sticky" {
+    if effective_mode == "sticky" {
         balancer_opts.insert(
             "sticky_hash".into(),
             json!(normalize_sticky_hash(&bal.sticky_hash)),
         );
     }
-    if mode == "quota" && bal.quota_mib > 0 {
+    if effective_mode == "quota" && bal.quota_mib > 0 {
         balancer_opts.insert("quota_mib".into(), json!(bal.quota_mib));
     }
-    if mode == "priority" && !tiers.is_empty() {
+    if is_priority && !tiers.is_empty() {
         balancer_opts.insert("tiers".into(), json!(tiers));
     }
     if !balancer_opts.is_empty() {
@@ -19396,5 +19412,98 @@ AllowedIPs = 0.0.0.0/0
         let parsed = parse_amnezia_conf_outbounds_with_prefix("awg-cpa", awg_ini);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].1["content_padding_addition"], json!("64"));
+    }
+
+    #[test]
+    fn test_priority_fastest_policy_toggles_change_compiled_config() {
+        let build_with = |pick_fastest: bool, switch_to_faster: bool| {
+            let mut store = RouterStoreData::default();
+            store.outbound_sources.push(OutboundSource {
+                id: "src_pool".to_string(),
+                enabled: true,
+                source_type: "links".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#Alpha".to_string(),
+                    "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#Beta".to_string(),
+                    "vless://33333333-3333-3333-3333-333333333333@3.3.3.3:443#Spare".to_string(),
+                ],
+                ..Default::default()
+            });
+            store.outbound_groups = vec![
+                crate::store::OutboundGroup {
+                    id: "tier_1".to_string(),
+                    enabled: true,
+                    name: "Tier1".to_string(),
+                    source_refs: vec!["src_pool".to_string()],
+                    filter_mode: "include".to_string(),
+                    include_servers: vec!["Alpha".to_string(), "Beta".to_string()],
+                    ..Default::default()
+                },
+                crate::store::OutboundGroup {
+                    id: "tier_2".to_string(),
+                    enabled: true,
+                    name: "Tier2".to_string(),
+                    source_refs: vec!["src_pool".to_string()],
+                    filter_mode: "include".to_string(),
+                    include_servers: vec!["Spare".to_string()],
+                    ..Default::default()
+                },
+            ];
+            store.balancers = vec![crate::store::BalancerConfig {
+                id: "bal_prio".to_string(),
+                enabled: true,
+                name: "Priority".to_string(),
+                balancer_type: "priority".to_string(),
+                mode: "priority".to_string(),
+                pick_fastest,
+                switch_to_faster_same_priority: switch_to_faster,
+                outbound_group_levels: vec!["tier_1".to_string(), "tier_2".to_string()],
+                ..Default::default()
+            }];
+            store.sections.push(RoutingSection {
+                id: "Main".to_string(),
+                enabled: true,
+                label: "Main".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_group_refs: vec!["tier_1".to_string(), "tier_2".to_string()],
+                balancer_refs: vec!["bal_prio".to_string()],
+                user_domains: vec!["example.com".to_string()],
+                ..Default::default()
+            });
+
+            let cfg = compile_core_config(&store).expect("compile core config");
+            cfg["outbounds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|o| o.get("tag").and_then(Value::as_str) == Some("bal-Main-bal_prio"))
+                .cloned()
+                .expect("priority balancer")
+        };
+
+        let strict = build_with(false, false);
+        assert_eq!(strict["mode"], json!("priority"));
+        assert_eq!(strict["tolerance"], json!(50));
+        assert_eq!(
+            strict["balancer"]["tiers"],
+            json!([["Alpha", "Beta"], ["Spare"]])
+        );
+
+        let initial_fastest = build_with(true, false);
+        assert_eq!(initial_fastest["mode"], json!("least_test"));
+        assert_eq!(initial_fastest["tolerance"], json!(65535));
+        assert_eq!(
+            initial_fastest["balancer"]["tiers"],
+            json!([["Alpha", "Beta"], ["Spare"]])
+        );
+
+        let adaptive_fastest = build_with(true, true);
+        assert_eq!(adaptive_fastest["mode"], json!("least_test"));
+        assert_eq!(adaptive_fastest["tolerance"], json!(50));
+        assert_eq!(
+            adaptive_fastest["balancer"]["tiers"],
+            json!([["Alpha", "Beta"], ["Spare"]])
+        );
     }
 }

@@ -10799,7 +10799,8 @@ config priority_level 'pl_direct'
             .find(|o| o["tag"] == "bal-proxy-pg_main")
             .expect("bal-proxy-pg_main outbound");
         assert_eq!(bal["type"], "urltest");
-        assert_eq!(bal["mode"], "priority");
+        assert_eq!(bal["mode"], "least_test");
+        assert_eq!(bal["tolerance"], 50);
         let tiers = bal["balancer"]["tiers"].as_array().expect("priority tiers");
         assert_eq!(tiers.len(), 3);
         let tier0: Vec<&str> = tiers[0]

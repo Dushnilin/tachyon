@@ -2310,6 +2310,7 @@ pub struct DnsmasqSnapshot {
 pub struct DnsmasqSyncPlan {
     pub changed: bool,
     pub set_opts: Vec<(&'static str, String)>,
+    pub del_opts: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -2347,11 +2348,38 @@ pub fn parse_uci_dnsmasq_snapshot(uci_show_out: &str) -> DnsmasqSnapshot {
     snap
 }
 
+fn plan_restore_backup_option(
+    cur_val: Option<&String>,
+    backup_val: Option<&String>,
+    key: &'static str,
+    backup_key: &'static str,
+    set_opts: &mut Vec<(&'static str, String)>,
+    del_opts: &mut Vec<&'static str>,
+) {
+    let Some(orig) = backup_val else {
+        return;
+    };
+    match decode_backup_scalar(orig) {
+        Some(v) => {
+            if cur_val.map(String::as_str) != Some(v.as_str()) {
+                set_opts.push((key, v));
+            }
+        }
+        None => {
+            if cur_val.is_some() {
+                del_opts.push(key);
+            }
+        }
+    }
+    del_opts.push(backup_key);
+}
+
 pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) -> DnsmasqSyncPlan {
     if !cur.exists {
         return DnsmasqSyncPlan::default();
     }
     let mut set_opts: Vec<(&'static str, String)> = Vec::new();
+    let mut del_opts: Vec<&'static str> = Vec::new();
     if cur.rebind_protection.as_deref() != Some("0") {
         if cur.backup_rebind_protection.is_none() {
             let orig = cur
@@ -2362,16 +2390,28 @@ pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) ->
         }
         set_opts.push(("rebind_protection", "0".to_string()));
     }
-    if fakeip_enabled && cur.cachesize.as_deref() != Some("0") {
-        if cur.backup_cachesize.is_none() {
-            let orig = cur.cachesize.clone().unwrap_or_else(|| "150".to_string());
-            set_opts.push(("tachyon_cachesize", orig));
+    if fakeip_enabled {
+        if cur.cachesize.as_deref() != Some("0") {
+            if cur.backup_cachesize.is_none() {
+                let orig = cur.cachesize.clone().unwrap_or_else(|| "150".to_string());
+                set_opts.push(("tachyon_cachesize", orig));
+            }
+            set_opts.push(("cachesize", "0".to_string()));
         }
-        set_opts.push(("cachesize", "0".to_string()));
+    } else {
+        plan_restore_backup_option(
+            cur.cachesize.as_ref(),
+            cur.backup_cachesize.as_ref(),
+            "cachesize",
+            "tachyon_cachesize",
+            &mut set_opts,
+            &mut del_opts,
+        );
     }
     DnsmasqSyncPlan {
-        changed: !set_opts.is_empty(),
+        changed: !set_opts.is_empty() || !del_opts.is_empty(),
         set_opts,
+        del_opts,
     }
 }
 
@@ -2381,36 +2421,22 @@ pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan
     }
     let mut set_opts: Vec<(&'static str, String)> = Vec::new();
     let mut del_opts: Vec<&'static str> = Vec::new();
-    if let Some(ref orig) = cur.backup_rebind_protection {
-        match decode_backup_scalar(orig) {
-            Some(v) => {
-                if cur.rebind_protection.as_deref() != Some(v.as_str()) {
-                    set_opts.push(("rebind_protection", v));
-                }
-            }
-            None => {
-                if cur.rebind_protection.is_some() {
-                    del_opts.push("rebind_protection");
-                }
-            }
-        }
-        del_opts.push("tachyon_rebind_protection");
-    }
-    if let Some(ref orig) = cur.backup_cachesize {
-        match decode_backup_scalar(orig) {
-            Some(v) => {
-                if cur.cachesize.as_deref() != Some(v.as_str()) {
-                    set_opts.push(("cachesize", v));
-                }
-            }
-            None => {
-                if cur.cachesize.is_some() {
-                    del_opts.push("cachesize");
-                }
-            }
-        }
-        del_opts.push("tachyon_cachesize");
-    }
+    plan_restore_backup_option(
+        cur.rebind_protection.as_ref(),
+        cur.backup_rebind_protection.as_ref(),
+        "rebind_protection",
+        "tachyon_rebind_protection",
+        &mut set_opts,
+        &mut del_opts,
+    );
+    plan_restore_backup_option(
+        cur.cachesize.as_ref(),
+        cur.backup_cachesize.as_ref(),
+        "cachesize",
+        "tachyon_cachesize",
+        &mut set_opts,
+        &mut del_opts,
+    );
     DnsmasqRestorePlan {
         changed: !set_opts.is_empty() || !del_opts.is_empty(),
         set_opts,
@@ -2432,6 +2458,9 @@ async fn sync_dnsmasq_uci_for_fakeip(fakeip_enabled: bool) -> bool {
     }
     for (k, v) in &plan.set_opts {
         uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+    }
+    for k in &plan.del_opts {
+        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
     }
     uci_run(&["commit", "dhcp"]).await;
     true
@@ -5191,6 +5220,38 @@ dhcp.cfg01411c.tachyon_cachesize='1000'
         let idempotent = compute_dnsmasq_sync_plan(&updated, true);
         assert!(!idempotent.changed);
         assert!(idempotent.set_opts.is_empty());
+        assert!(idempotent.del_opts.is_empty());
+
+        // Turning FakeIP off while running restores original cachesize without touching rebind_protection.
+        let fakeip_off = compute_dnsmasq_sync_plan(&updated, false);
+        assert!(fakeip_off.changed);
+        assert_eq!(fakeip_off.set_opts, vec![("cachesize", "1000".to_string())]);
+        assert_eq!(fakeip_off.del_opts, vec!["tachyon_cachesize"]);
+
+        let after_fakeip_off = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='1000'
+dhcp.cfg01411c.tachyon_rebind_protection='1'
+",
+        );
+        let fakeip_off_idempotent = compute_dnsmasq_sync_plan(&after_fakeip_off, false);
+        assert!(!fakeip_off_idempotent.changed);
+
+        let unset_backup = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='0'
+dhcp.cfg01411c.tachyon_rebind_protection='1'
+dhcp.cfg01411c.tachyon_cachesize='unset'
+",
+        );
+        let unset_plan = compute_dnsmasq_sync_plan(&unset_backup, false);
+        assert!(unset_plan.changed);
+        assert!(unset_plan.set_opts.is_empty());
+        assert_eq!(unset_plan.del_opts, vec!["cachesize", "tachyon_cachesize"]);
 
         let restore = compute_dnsmasq_restore_plan(&updated);
         assert!(restore.changed);
