@@ -1726,7 +1726,7 @@ function openStudioCreateModal(
         uci.set(UCI_PACKAGE, uciId, 'dns_type', 'udp');
       }
 
-      if (type === 'section' || type === 'profile') {
+      if (type === 'section' || type === 'profile' || type === 'server') {
         uci.set(UCI_PACKAGE, uciId, 'label', rawName);
       } else {
         const isProxyShareUri =

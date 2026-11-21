@@ -3,6 +3,7 @@ import {
   renderCopyIcon24,
   renderLinkIcon24,
   renderInfoIcon24,
+  renderLayersIcon,
   renderZapIcon,
   renderAlertTriangleIcon,
   renderCheckIcon,
@@ -2224,14 +2225,15 @@ function renderDefaultState({
                     {
                       type: 'button',
                       class:
-                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button tachyon_dashboard-page__outbound-grid__item__urltest-button',
+                      'data-action': 'urltest-details',
                       title: _('URLTest details'),
                       'aria-label': _('URLTest details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
                         onShowUrlTestInfo(section, outbound);
                       },
-                    },
+                    } as Record<string, unknown>,
                     renderInfoIcon24(),
                   ),
                 ]
@@ -2243,15 +2245,16 @@ function renderDefaultState({
                     {
                       type: 'button',
                       class:
-                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button tachyon_dashboard-page__outbound-grid__item__priority-button',
+                      'data-action': 'priority-details',
                       title: _('Priority details'),
                       'aria-label': _('Priority details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
                         onShowPriorityInfo(section, outbound);
                       },
-                    },
-                    renderInfoIcon24(),
+                    } as Record<string, unknown>,
+                    renderLayersIcon(16),
                   ),
                 ]
               : []),

@@ -644,6 +644,143 @@ pub fn cert_fingerprints_sha256_md5(pem_or_der: &[u8]) -> (String, String) {
     (bytes_to_hex(&sha.finalize()), md5_hex(target))
 }
 
+fn extract_pem_block(raw: &str, label: &str) -> Option<String> {
+    let begin_marker = format!("-----BEGIN {label}-----");
+    let end_marker = format!("-----END {label}-----");
+    let start = raw.find(&begin_marker)?;
+    let after_begin = &raw[start..];
+    let end_rel = after_begin.find(&end_marker)?;
+    let block = after_begin[..end_rel + end_marker.len()].trim();
+    Some(format!("{block}\n"))
+}
+
+/// Extract private key PEM (`PRIVATE KEY` / `EC PRIVATE KEY`) and certificate PEM (`CERTIFICATE`)
+/// from `tachyon-core generate tls-keypair` stdout.
+pub fn split_tls_keypair_pem(raw: &str) -> Option<(String, String)> {
+    let key_pem = extract_pem_block(raw, "PRIVATE KEY")
+        .or_else(|| extract_pem_block(raw, "EC PRIVATE KEY"))?;
+    let cert_pem = extract_pem_block(raw, "CERTIFICATE")?;
+    Some((key_pem, cert_pem))
+}
+
+/// Sanitize a TLS CommonName / SAN host for self-signed server certificates.
+pub fn sanitize_tls_cn(raw: &str) -> String {
+    let cn: String = raw
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .collect();
+    if cn.trim_matches(|c| matches!(c, '.' | '-' | '_')).is_empty() {
+        "tachyon.lan".to_string()
+    } else {
+        cn
+    }
+}
+
+/// Generate a self-signed P-256 TLS certificate and private key using `tachyon-core generate tls-keypair`
+/// cleanly with zero external dependencies, falling back to `openssl` only when `core_bin` is unavailable.
+pub async fn generate_tls_keypair_files(
+    core_bin: Option<&str>,
+    server_name: &str,
+    cert_path: &Path,
+    key_path: &Path,
+) -> anyhow::Result<()> {
+    for target in [cert_path, key_path] {
+        if let Some(parent) = target.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    let cn = sanitize_tls_cn(server_name);
+    let mut errors: Vec<String> = Vec::new();
+
+    if let Some(bin) = core_bin.map(str::trim).filter(|b| !b.is_empty())
+        && Path::new(bin).exists()
+    {
+        let mut cmd = tokio::process::Command::new(bin);
+        cmd.args(["generate", "tls-keypair", &cn, "-m", "120"])
+            .kill_on_drop(true);
+        match tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output()).await {
+            Ok(Ok(out)) if out.status.success() => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if let Some((key_pem, cert_pem)) = split_tls_keypair_pem(&stdout) {
+                    write_bytes_with_mode_if_changed(key_path, key_pem.as_bytes(), 0o600)?;
+                    write_bytes_with_mode_if_changed(cert_path, cert_pem.as_bytes(), 0o644)?;
+                    return Ok(());
+                }
+                errors.push("tachyon-core generate tls-keypair returned invalid PEM".to_string());
+            }
+            Ok(Ok(out)) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                errors.push(format!(
+                    "tachyon-core generate tls-keypair exited with {}: {}",
+                    out.status,
+                    stderr.trim()
+                ));
+            }
+            Ok(Err(e)) => {
+                errors.push(format!("tachyon-core generate tls-keypair failed: {e}"));
+            }
+            Err(_) => {
+                errors.push("tachyon-core generate tls-keypair timed out after 15s".to_string());
+            }
+        }
+    }
+
+    let mut cmd = tokio::process::Command::new("openssl");
+    cmd.args([
+        "req",
+        "-x509",
+        "-newkey",
+        "ec",
+        "-pkeyopt",
+        "ec_paramgen_curve:prime256v1",
+        "-days",
+        "3650",
+        "-nodes",
+        "-subj",
+        &format!("/CN={cn}"),
+        "-keyout",
+        &key_path.to_string_lossy(),
+        "-out",
+        &cert_path.to_string_lossy(),
+    ])
+    .kill_on_drop(true);
+    match tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output()).await {
+        Ok(Ok(out)) if out.status.success() => {
+            let cert_ok = std::fs::metadata(cert_path)
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false);
+            let key_ok = std::fs::metadata(key_path)
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false);
+            if cert_ok && key_ok {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600));
+                }
+                return Ok(());
+            }
+            errors.push("openssl produced empty certificate or key file".to_string());
+        }
+        Ok(Ok(out)) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            errors.push(format!("openssl exited with {}: {}", out.status, stderr.trim()));
+        }
+        Ok(Err(e)) => {
+            errors.push(format!("openssl failed: {e}"));
+        }
+        Err(_) => {
+            errors.push("openssl req timed out after 15s".to_string());
+        }
+    }
+
+    anyhow::bail!("TLS keypair generation failed: {}", errors.join("; "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -744,5 +881,29 @@ mod tests {
             ts["tailscale_control_url"],
             "https://controlplane.tailscale.com"
         );
+    }
+
+    #[test]
+    fn test_split_tls_keypair_pem() {
+        let pkcs8 = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n\
+                     -----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n";
+        let (k1, c1) = split_tls_keypair_pem(pkcs8).expect("parse PKCS#8 + CERTIFICATE");
+        assert!(k1.starts_with("-----BEGIN PRIVATE KEY-----"));
+        assert!(k1.ends_with("-----END PRIVATE KEY-----\n"));
+        assert!(c1.starts_with("-----BEGIN CERTIFICATE-----"));
+        assert!(c1.ends_with("-----END CERTIFICATE-----\n"));
+
+        let ec = "noise\n-----BEGIN EC PRIVATE KEY-----\nCCCC\n-----END EC PRIVATE KEY-----\r\n\
+                  -----BEGIN CERTIFICATE-----\nDDDD\n-----END CERTIFICATE-----\n";
+        let (k2, c2) = split_tls_keypair_pem(ec).expect("parse EC PRIVATE KEY + CERTIFICATE");
+        assert!(k2.contains("BEGIN EC PRIVATE KEY"));
+        assert!(c2.contains("BEGIN CERTIFICATE"));
+
+        assert!(split_tls_keypair_pem("").is_none());
+        assert!(split_tls_keypair_pem("-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----").is_none());
+        assert!(split_tls_keypair_pem("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----").is_none());
+
+        assert_eq!(sanitize_tls_cn("my.host-1"), "my.host-1");
+        assert_eq!(sanitize_tls_cn("///"), "tachyon.lan");
     }
 }

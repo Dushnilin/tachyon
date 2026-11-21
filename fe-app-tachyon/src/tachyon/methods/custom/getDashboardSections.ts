@@ -2364,9 +2364,10 @@ function buildUrlTestInfo({
   configuredPrefixes?: string[];
 }): Tachyon.UrlTestInfo {
   const runtimeAllCodes = entry?.value.all || [];
-  const childCodes = uniqueCodes(
-    groupCache?.outbounds?.length ? groupCache.outbounds : runtimeAllCodes,
-  );
+  const childCodes = uniqueCodes([
+    ...(groupCache?.outbounds || []),
+    ...runtimeAllCodes,
+  ]);
   const isChildSelectedInSelector = Boolean(
     selectorNow &&
       selectorNow !== code &&

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 11:10+0300\n"
-"PO-Revision-Date: 2026-11-21 11:10+0300\n"
+"POT-Creation-Date: 2026-11-21 17:01+0300\n"
+"PO-Revision-Date: 2026-11-21 17:01+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -802,6 +802,12 @@ msgstr "Конфиг Amnezia вместе с именем не должен пр
 
 msgid "Amnezia configurations"
 msgstr "Amnezia конфиги"
+
+msgid "AmneziaVPN (vpn://)"
+msgstr ""
+
+msgid "AmneziaWG (.conf)"
+msgstr ""
 
 msgid "AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!"
 msgstr "Конфигурация AmneziaWG (Cloudflare WARP) успешно сгенерирована и загружена!"
@@ -1826,6 +1832,9 @@ msgstr "Нажмите Изменить для выбора сервисов и�
 msgid "Click a ready-made badge theme or use the color pickers to set background and text colors"
 msgstr "Нажмите на готовый пресет бейджа или укажите собственные цвета фона и текста"
 
+msgid "Click anywhere or press Esc to close"
+msgstr ""
+
 msgid "Click sections below to attach this reusable server group to routing Sections."
 msgstr "Нажмите на секции ниже, чтобы привязать эту группу серверов к секциям маршрутизации."
 
@@ -1846,6 +1855,9 @@ msgstr "Нажмите, чтобы выбрать иконку секции"
 
 msgid "Click to customize prefix colors"
 msgstr "Нажмите для настройки цвета префикса"
+
+msgid "Click to enlarge QR code"
+msgstr ""
 
 msgid "Click to expand section nodes, balancers and conditions"
 msgstr "Нажмите, чтобы развернуть узлы, балансировщики и условия секции"
@@ -7981,6 +7993,9 @@ msgstr "QR / Подключение"
 
 msgid "QR code"
 msgstr "QR-код"
+
+msgid "QR code (click to enlarge)"
+msgstr ""
 
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"

@@ -1495,4 +1495,84 @@ describe('renderSections', () => {
       expect(onUpdateSubscription).toHaveBeenCalledWith(section);
     }
   });
+
+  it('renders distinct icons, classes, and data-action attrs for URLTest details and Priority details (#466)', () => {
+    const onShowUrlTestInfo = vi.fn();
+    const onShowPriorityInfo = vi.fn();
+    const section: any = {
+      code: 'Main',
+      sectionName: 'Main',
+      displayName: 'Main',
+      withTagSelect: false,
+      outbounds: [
+        {
+          code: 'main-priority-out',
+          displayName: 'Priority Balanced',
+          type: 'Priority',
+          selected: true,
+          urlTestInfo: {
+            code: 'main-urltest-out',
+            displayName: 'Fastest',
+            outbounds: [],
+          },
+          priorityInfo: {
+            code: 'main-priority-out',
+            displayName: 'Priority Balanced',
+            tiers: [],
+          },
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo,
+      onShowPriorityInfo,
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const urltestBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__urltest-button',
+    ) as HTMLButtonElement | null;
+    const priorityBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__priority-button',
+    ) as HTMLButtonElement | null;
+
+    expect(urltestBtn).not.toBeNull();
+    expect(priorityBtn).not.toBeNull();
+    expect(urltestBtn?.getAttribute('data-action')).toBe('urltest-details');
+    expect(priorityBtn?.getAttribute('data-action')).toBe('priority-details');
+    expect(
+      urltestBtn?.classList.contains(
+        'tachyon_dashboard-page__outbound-grid__item__copy-button',
+      ),
+    ).toBe(true);
+    expect(
+      priorityBtn?.classList.contains(
+        'tachyon_dashboard-page__outbound-grid__item__copy-button',
+      ),
+    ).toBe(true);
+
+    const urlSvg = urltestBtn?.querySelector('svg');
+    const prioSvg = priorityBtn?.querySelector('svg');
+    expect(urlSvg).not.toBeNull();
+    expect(prioSvg).not.toBeNull();
+    expect(
+      Array.from(urlSvg?.children || []).map((c: any) => c.tagName),
+    ).not.toEqual(
+      Array.from(prioSvg?.children || []).map((c: any) => c.tagName),
+    );
+
+    (urltestBtn as any)?.click({ stopPropagation() {} });
+    (priorityBtn as any)?.click({ stopPropagation() {} });
+    expect(onShowUrlTestInfo).toHaveBeenCalledTimes(1);
+    expect(onShowPriorityInfo).toHaveBeenCalledTimes(1);
+  });
 });

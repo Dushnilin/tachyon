@@ -2177,54 +2177,39 @@ async fn dispatch_api(
                         .and_then(Value::as_str)
                         .filter(|s| !s.trim().is_empty())
                         .unwrap_or("tachyon.internal");
+                    let raw_id = val
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.trim().is_empty())
+                        .unwrap_or(sni);
+                    let safe_id = config_gen::server_safe_cert_name(raw_id);
                     let cert_dir = state
                         .path
                         .parent()
                         .unwrap_or_else(|| std::path::Path::new("/etc/tachyon"))
-                        .join("certs");
-                    let _ = std::fs::create_dir_all(&cert_dir);
-                    let cert_path = cert_dir.join(format!("{sni}.crt"));
-                    let key_path = cert_dir.join(format!("{sni}.key"));
-                    let mut cmd = tokio::process::Command::new("openssl");
-                    cmd.args([
-                        "req",
-                        "-x509",
-                        "-newkey",
-                        "ec",
-                        "-pkeyopt",
-                        "ec_paramgen_curve:prime256v1",
-                        "-days",
-                        "3650",
-                        "-nodes",
-                        "-subj",
-                        &format!("/CN={sni}"),
-                        "-keyout",
-                        &key_path.to_string_lossy(),
-                        "-out",
-                        &cert_path.to_string_lossy(),
-                    ])
-                    .kill_on_drop(true);
-                    match tokio::time::timeout(Duration::from_secs(15), cmd.output()).await {
-                        Ok(Ok(out)) if out.status.success() => json!({
+                        .join("server-certs");
+                    let cert_path = cert_dir.join(format!("{safe_id}.crt"));
+                    let key_path = cert_dir.join(format!("{safe_id}.key"));
+                    let core_bin = { state.data.read().await.settings.core_bin_path.clone() };
+                    let core_bin_opt = (!core_bin.trim().is_empty()).then_some(core_bin.as_str());
+                    match crypto_gen::generate_tls_keypair_files(
+                        core_bin_opt,
+                        sni,
+                        &cert_path,
+                        &key_path,
+                    )
+                    .await
+                    {
+                        Ok(()) => json!({
                             "ok": true,
                             "sni": sni,
                             "cert_path": cert_path.to_string_lossy(),
                             "key_path": key_path.to_string_lossy()
                         }),
-                        Ok(Ok(out)) => json!({
+                        Err(e) => json!({
                             "ok": false,
                             "sni": sni,
-                            "error": format!("openssl exited with {}", out.status)
-                        }),
-                        Ok(Err(e)) => json!({
-                            "ok": false,
-                            "sni": sni,
-                            "error": format!("openssl failed: {e}")
-                        }),
-                        Err(_) => json!({
-                            "ok": false,
-                            "sni": sni,
-                            "error": "openssl req timed out after 15s"
+                            "error": format!("{e:#}")
                         }),
                     }
                 }

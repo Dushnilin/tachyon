@@ -272,6 +272,10 @@ impl CoreManager {
             if obj.get("type").and_then(Value::as_str) != Some("local") {
                 continue;
             }
+            let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("");
+            if !tag.starts_with("trs-") && !tag.starts_with("builtin-") {
+                continue;
+            }
             let Some(rs_path_str) = obj.get("path").and_then(Value::as_str).map(str::to_string)
             else {
                 continue;
@@ -308,6 +312,69 @@ impl CoreManager {
             obj.insert("format".into(), json!("source"));
             obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
         }
+    }
+
+    pub fn validate_custom_local_rulesets(candidate_cfg: &Value) -> anyhow::Result<()> {
+        let Some(rule_sets) = candidate_cfg
+            .pointer("/route/rule_set")
+            .and_then(Value::as_array)
+        else {
+            return Ok(());
+        };
+        for rs in rule_sets {
+            let Some(obj) = rs.as_object() else {
+                continue;
+            };
+            if obj.get("type").and_then(Value::as_str) != Some("local") {
+                continue;
+            }
+            let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("");
+            if !tag.starts_with("custom-local-") {
+                continue;
+            }
+            let path_str = obj.get("path").and_then(Value::as_str).unwrap_or("").trim();
+            if path_str.is_empty() {
+                anyhow::bail!("custom local rule_set '{tag}' has an empty path");
+            }
+            let format = obj.get("format").and_then(Value::as_str).unwrap_or("").trim();
+            if !matches!(format, "source" | "binary" | "trs" | "tsr") {
+                anyhow::bail!(
+                    "custom local rule_set '{tag}' ({path_str}) has unsupported format '{format}'"
+                );
+            }
+            let path = Path::new(path_str);
+            let meta = std::fs::metadata(path).map_err(|e| {
+                anyhow::anyhow!(
+                    "custom local rule_set '{tag}' file not readable at '{path_str}': {e}"
+                )
+            })?;
+            if !meta.is_file() {
+                anyhow::bail!("custom local rule_set '{tag}' path '{path_str}' is not a regular file");
+            }
+            if format == "source" {
+                let raw = std::fs::read_to_string(path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed to read custom local rule_set '{tag}' at '{path_str}': {e}"
+                    )
+                })?;
+                let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
+                    anyhow::anyhow!(
+                        "custom local rule_set '{tag}' at '{path_str}' is invalid JSON: {e}"
+                    )
+                })?;
+                let Some(root) = parsed.as_object() else {
+                    anyhow::bail!(
+                        "custom local rule_set '{tag}' at '{path_str}' must be a JSON object"
+                    );
+                };
+                if !root.get("rules").is_some_and(Value::is_array) {
+                    anyhow::bail!(
+                        "custom local rule_set '{tag}' at '{path_str}' is missing a 'rules' array"
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn effective_core_config_path_for(
@@ -403,6 +470,7 @@ impl CoreManager {
 
         let mut candidate_cfg = cfg_val.clone();
         Self::sanitize_candidate_local_rulesets(&mut candidate_cfg);
+        Self::validate_custom_local_rulesets(&candidate_cfg)?;
         let tmp_check_path = std::env::temp_dir().join("tachyon-core-candidate.json");
         crypto_gen::write_json_if_changed(&tmp_check_path, &candidate_cfg)?;
 
@@ -474,6 +542,61 @@ impl CoreManager {
         }
     }
 
+    async fn ensure_server_tls_certs(&self, store_snapshot: &crate::store::RouterStoreData) {
+        let bin_path = self.resolve_bin_path().await;
+        for srv in &store_snapshot.servers {
+            if !srv.enabled || !config_gen::server_requires_tls(srv) {
+                continue;
+            }
+            let (cert_path, key_path) = config_gen::server_tls_cert_key_paths(srv);
+            let cert_ok = std::fs::metadata(&cert_path)
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false);
+            let key_ok = std::fs::metadata(&key_path)
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false);
+            if cert_ok && key_ok {
+                continue;
+            }
+            let sni = if !srv.tls_server_name.trim().is_empty() {
+                srv.tls_server_name.trim()
+            } else if !srv.public_host.trim().is_empty() {
+                srv.public_host.trim()
+            } else {
+                "tachyon.internal"
+            };
+            match crypto_gen::generate_tls_keypair_files(
+                Some(bin_path.as_str()),
+                sni,
+                Path::new(&cert_path),
+                Path::new(&key_path),
+            )
+            .await
+            {
+                Ok(()) => {
+                    self.state.live.write().await.push_event(
+                        "info",
+                        "core_mgr",
+                        &format!(
+                            "Generated TLS certificate pair for server '{}' ({})",
+                            srv.id, cert_path
+                        ),
+                    );
+                }
+                Err(e) => {
+                    self.state.live.write().await.push_event(
+                        "warn",
+                        "core_mgr",
+                        &format!(
+                            "Failed to generate TLS certificate pair for server '{}' ({cert_path}): {e:#}",
+                            srv.id
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     /// Compile `/etc/tachyon-core/config.json`, apply network stack, and start `/usr/bin/tachyon-core`.
     pub async fn start(&self) -> anyhow::Result<()> {
         self.set_manual_stop(false);
@@ -501,6 +624,7 @@ impl CoreManager {
             startup_wan6.wan6_available,
         );
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
+        self.ensure_server_tls_certs(&store_snapshot).await;
         let cfg_val = match config_gen::compile_core_config(&store_snapshot) {
             Ok(v) => v,
             Err(e) => {
@@ -779,6 +903,7 @@ impl CoreManager {
             return Box::pin(self.start()).await;
         }
         let store_snapshot = { self.state.data.read().await.clone() };
+        self.ensure_server_tls_certs(&store_snapshot).await;
         let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
         let cfg_path = self
             .write_validated_core_config(&store_snapshot, &cfg_val)
@@ -5066,5 +5191,92 @@ mod core_mgr_tests {
             Some(2)
         );
         assert_eq!(pick_best_subscription_ua_index(&[0, 0, 0]), None);
+    }
+
+    #[test]
+    fn test_custom_local_rulesets_validation_and_sanitize_preservation() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_custom_rs_test_{}",
+            crypto_gen::generate_hex(4)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let valid_json_path = dir.join("media.json");
+        std::fs::write(
+            &valid_json_path,
+            r#"{"version":3,"rules":[{"ip_cidr":["192.0.2.0/24"]}]}"#,
+        )
+        .unwrap();
+
+        let custom_trs_path = dir.join("user-custom.trs");
+        std::fs::write(&custom_trs_path, b"not-a-valid-trs-header").unwrap();
+
+        let bad_json_path = dir.join("broken.json");
+        std::fs::write(&bad_json_path, b"{not valid json").unwrap();
+
+        let missing_path = dir.join("does-not-exist.json");
+
+        let mut preserve_cfg = json!({
+            "route": {
+                "rule_set": [
+                    {
+                        "tag": "custom-local-user-custom-1234567890ab",
+                        "type": "local",
+                        "format": "binary",
+                        "path": custom_trs_path.to_string_lossy()
+                    },
+                    {
+                        "tag": "custom-local-media-1234567890ab",
+                        "type": "local",
+                        "format": "source",
+                        "path": valid_json_path.to_string_lossy()
+                    }
+                ]
+            }
+        });
+        CoreManager::sanitize_candidate_local_rulesets(&mut preserve_cfg);
+        assert!(custom_trs_path.exists(), "custom .trs must never be removed");
+        assert_eq!(
+            preserve_cfg["route"]["rule_set"][0]["path"],
+            json!(custom_trs_path.to_string_lossy())
+        );
+
+        let ok_cfg = json!({
+            "route": {
+                "rule_set": [{
+                    "tag": "custom-local-media-1234567890ab",
+                    "type": "local",
+                    "format": "source",
+                    "path": valid_json_path.to_string_lossy()
+                }]
+            }
+        });
+        assert!(CoreManager::validate_custom_local_rulesets(&ok_cfg).is_ok());
+
+        let missing_cfg = json!({
+            "route": {
+                "rule_set": [{
+                    "tag": "custom-local-missing-1234567890ab",
+                    "type": "local",
+                    "format": "source",
+                    "path": missing_path.to_string_lossy()
+                }]
+            }
+        });
+        assert!(CoreManager::validate_custom_local_rulesets(&missing_cfg).is_err());
+
+        let broken_cfg = json!({
+            "route": {
+                "rule_set": [{
+                    "tag": "custom-local-broken-1234567890ab",
+                    "type": "local",
+                    "format": "source",
+                    "path": bad_json_path.to_string_lossy()
+                }]
+            }
+        });
+        assert!(CoreManager::validate_custom_local_rulesets(&broken_cfg).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -2773,7 +2773,7 @@ const ButtonAddSettingsDynamicList = SettingsDynamicList.extend({
   buttonAdd: true,
 });
 
-function configureLiveDynamicListChoices(option, getChoices) {
+function configureLiveDynamicListChoices(option, getChoices, options = {}) {
   option.renderWidget = function (section_id, _option_index, cfgvalue) {
     const values = L.toArray(cfgvalue != null ? cfgvalue : this.default);
     const choices = getChoices(section_id, values);
@@ -2852,24 +2852,41 @@ function configureLiveDynamicListChoices(option, getChoices) {
     node.addEventListener('focusin', refreshBeforeOpening, true);
     node.addEventListener('pointerdown', refreshBeforeOpening, true);
 
-    if (!dashboardFilterChoiceRefreshers.has(section_id)) {
-      dashboardFilterChoiceRefreshers.set(section_id, new Set());
-    }
-    dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);
-
+    const isStackedJsonSection = Boolean(
+      options?.skipPerRuleDnsRegistry ||
+        section_id === 'settings' ||
+        (this.map &&
+          typeof form !== 'undefined' &&
+          typeof form.JSONMap === 'function' &&
+          this.map instanceof form.JSONMap),
+    );
     const targetSectionId =
-      parentSectionIdForItem(section_id) || section_id || 'Main';
-    if (targetSectionId && targetSectionId !== section_id) {
-      if (!dashboardFilterChoiceRefreshers.has(targetSectionId)) {
-        dashboardFilterChoiceRefreshers.set(targetSectionId, new Set());
-      }
-      dashboardFilterChoiceRefreshers.get(targetSectionId).add(refreshChoices);
-    }
-    perRuleDnsWidgets.set(section_id, widget);
+      `${options?.targetSectionId || ''}`.trim() ||
+      parentSectionIdForItem(section_id) ||
+      (isStackedJsonSection ? '' : section_id || 'Main');
 
-    loadOutboundNameChoices(targetSectionId).then(() => {
-      refreshChoices();
-    });
+    if (!isStackedJsonSection) {
+      if (!dashboardFilterChoiceRefreshers.has(section_id)) {
+        dashboardFilterChoiceRefreshers.set(section_id, new Set());
+      }
+      dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);
+
+      if (targetSectionId && targetSectionId !== section_id) {
+        if (!dashboardFilterChoiceRefreshers.has(targetSectionId)) {
+          dashboardFilterChoiceRefreshers.set(targetSectionId, new Set());
+        }
+        dashboardFilterChoiceRefreshers
+          .get(targetSectionId)
+          .add(refreshChoices);
+      }
+      perRuleDnsWidgets.set(section_id, widget);
+
+      if (targetSectionId) {
+        loadOutboundNameChoices(targetSectionId).then(() => {
+          refreshChoices();
+        });
+      }
+    }
 
     return node;
   };
@@ -6177,10 +6194,22 @@ function pendingChildSettings(option, section_id, value, defaults) {
 }
 
 function renderStackedJsonSettingsModal(title, map, onSave) {
-  const modal = document.querySelector('#modal_overlay > .modal.cbi-modal');
-  const activeMap = modal ? modal.querySelector('.cbi-map:not(.hidden)') : null;
-  const buttonRow = modal ? modal.querySelector('div.button-row') : null;
-  const heading = modal ? modal.querySelector('h4') : null;
+  const modal =
+    document.querySelector('#modal_overlay > .modal.cbi-modal') ||
+    document.querySelector('.modal.cbi-modal');
+  const activeMap = modal
+    ? modal.querySelector(':scope > .cbi-map:not(.hidden)') ||
+      modal.querySelector('.cbi-map:not(.hidden)')
+    : null;
+  const buttonRow = modal
+    ? modal.querySelector(
+        ':scope > div.button-row, :scope > .button-row, :scope > .right',
+      ) || modal.querySelector('div.button-row')
+    : null;
+  const heading = modal
+    ? modal.querySelector(':scope > h4, :scope > h3') ||
+      modal.querySelector('h4')
+    : null;
 
   if (!modal || !activeMap || !buttonRow || !heading) {
     return Promise.resolve();
@@ -6194,6 +6223,7 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
       const originalButtonClass = buttonRow.getAttribute('class') || '';
       const originalButtonNodes = Array.from(buttonRow.childNodes);
       let closed = false;
+      let saving = false;
       let saveButton;
       let validationSummary;
 
@@ -6224,8 +6254,16 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
 
         const invalidInput = nodes.querySelector('.cbi-input-invalid');
         if (invalidInput) {
-          invalidInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          invalidInput.focus({ preventScroll: true });
+          invalidInput.scrollIntoView?.({
+            block: 'center',
+            behavior: 'smooth',
+          });
+          invalidInput.focus?.({ preventScroll: true });
+        } else {
+          validationSummary.scrollIntoView?.({
+            block: 'nearest',
+            behavior: 'smooth',
+          });
         }
       };
 
@@ -6235,7 +6273,13 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         buttonRow.setAttribute('class', originalButtonClass);
       };
 
-      const close = () => {
+      const close = (ev) => {
+        if (ev && typeof ev.preventDefault === 'function') {
+          ev.preventDefault();
+        }
+        if (ev && typeof ev.stopPropagation === 'function') {
+          ev.stopPropagation();
+        }
         if (closed) {
           return;
         }
@@ -6254,19 +6298,59 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         restoreButtonRow();
       };
 
-      const save = () => {
+      const flushPendingDynlistInputs = () => {
+        if (!nodes || typeof nodes.querySelectorAll !== 'function') {
+          return;
+        }
+        nodes
+          .querySelectorAll('.cbi-dynlist .add-item > input[type="text"]')
+          .forEach((inp) => {
+            if (!inp || inp.disabled || !String(inp.value || '').trim()) {
+              return;
+            }
+            const addRow = inp.closest ? inp.closest('.add-item') : null;
+            const addBtn = addRow
+              ? addRow.querySelector('.cbi-button-add, .btn')
+              : null;
+            if (addBtn && typeof addBtn.click === 'function') {
+              addBtn.click();
+            }
+          });
+      };
+
+      const save = (ev) => {
+        if (ev && typeof ev.preventDefault === 'function') {
+          ev.preventDefault();
+        }
+        if (ev && typeof ev.stopPropagation === 'function') {
+          ev.stopPropagation();
+        }
+        if (saving || closed) {
+          return Promise.resolve();
+        }
+        saving = true;
         if (saveButton) {
           saveButton.disabled = true;
         }
         clearValidationSummary();
 
-        return map
-          .parse()
+        return Promise.resolve()
           .then(() => {
-            onSave(cleanFormSectionData(map.data.get(map.config, 'settings')));
+            flushPendingDynlistInputs();
+            return map.parse();
+          })
+          .then(() =>
+            Promise.resolve(
+              onSave(
+                cleanFormSectionData(map.data.get(map.config, 'settings')),
+              ),
+            ),
+          )
+          .then(() => {
             close();
           })
           .catch((error) => {
+            saving = false;
             if (saveButton) {
               saveButton.disabled = false;
             }
@@ -6279,6 +6363,7 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         E(
           'button',
           {
+            type: 'button',
             class: 'btn cbi-button',
             click: close,
           },
@@ -6288,6 +6373,7 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         (saveButton = E(
           'button',
           {
+            type: 'button',
             class: 'btn cbi-button cbi-button-positive important',
             click: save,
           },
@@ -6295,7 +6381,14 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         )),
       );
 
-      heading.appendChild(titleNode);
+      const headerCloseBtn = heading.querySelector(
+        '.tachyon-modal__header-close',
+      );
+      if (headerCloseBtn) {
+        heading.insertBefore(titleNode, headerCloseBtn);
+      } else {
+        heading.appendChild(titleNode);
+      }
       activeMap.classList.add('hidden');
       activeMap.parentNode.insertBefore(nodes, activeMap.nextElementSibling);
     });
@@ -15354,6 +15447,7 @@ function createSectionContent(section) {
     return _('Filtered (mixed)');
   };
 
+  let balancerSettingsModalOpening = false;
   const showSectionBalancerSettingsModal = (
     sectionId,
     balancerId,
@@ -15363,332 +15457,354 @@ function createSectionContent(section) {
   ) => {
     const targetSectionId = sectionId || 'Main';
     const balId = `${balancerId || ''}`.trim();
-    if (!balId) return Promise.resolve();
+    if (!balId || balancerSettingsModalOpening) return Promise.resolve();
+    balancerSettingsModalOpening = true;
     const balSec = uci.get(UCI_PACKAGE, balId) || {};
     const balType = String(balSec.balancer_type || 'urltest').trim();
     const balName = String(balSec.name || balSec.label || balId).trim();
 
     invalidateSectionOutboundChoicesCache(targetSectionId);
-    return loadOutboundNameChoices(targetSectionId).then(() => {
-      const settingsMap = readItemSettingsMap(
-        targetSectionId,
-        'balancer_settings',
-      );
-      const existing = Object.assign(
-        {},
-        (settingsMap && settingsMap[balId]) || {},
-      );
+    return loadOutboundNameChoices(targetSectionId)
+      .then(() => {
+        const settingsMap = readItemSettingsMap(
+          targetSectionId,
+          'balancer_settings',
+        );
+        const existing = Object.assign(
+          {},
+          (settingsMap && settingsMap[balId]) || {},
+        );
 
-      if (balType === 'priority' && existing.outbound_group_levels == null) {
-        const legacySec = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, targetSectionId, 'outbound_group_levels'),
-        );
-        const legacyBal = normalizeOptionValues(
-          uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
-        );
-        const validSet = new Set(
-          currentSectionPriorityTierChoices(targetSectionId, []).map(
-            (c) => c.value,
-          ),
-        );
-        const seed = (legacySec.length ? legacySec : legacyBal).filter((v) =>
-          validSet.has(v),
-        );
-        existing.outbound_group_levels = seed;
-      }
-
-      const defaults =
-        balType === 'priority'
-          ? { outbound_group_levels: [] }
-          : {
-              filter_mode: 'disabled',
-              detect_server_country: 'flag_emoji',
-              include_prefixes: [],
-              include_countries: [],
-              include_outbounds: [],
-              include_regex: [],
-              include_proxy_parameters: '0',
-              include_protocols: [],
-              include_transports: [],
-              include_securities: [],
-              include_ports: [],
-              exclude_prefixes: [],
-              exclude_countries: [],
-              exclude_outbounds: [],
-              exclude_regex: [],
-              exclude_proxy_parameters: '0',
-              exclude_protocols: [],
-              exclude_transports: [],
-              exclude_securities: [],
-              exclude_ports: [],
-            };
-
-      const data = {
-        settings: Object.assign({}, defaults, existing),
-      };
-      const map = new form.JSONMap(data);
-      const itemSection = map.section(form.NamedSection, 'settings');
-      itemSection.anonymous = true;
-      itemSection.addremove = false;
-
-      if (balType === 'priority') {
-        const tiersOpt = itemSection.option(
-          form.DynamicList,
-          'outbound_group_levels',
-          _('Priority Tiers (Groups / Sources / Servers)'),
-          _(
-            "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
-          ),
-        );
-        tiersOpt.rmempty = true;
-        tiersOpt.placeholder = _('-- Add tier from this section --');
-        tiersOpt.load = function (itemId) {
-          const vals = normalizeDynamicListItems(
-            optionMapValue(this, itemId, 'outbound_group_levels'),
+        if (balType === 'priority' && existing.outbound_group_levels == null) {
+          const legacySec = normalizeOptionValues(
+            uci.get(UCI_PACKAGE, targetSectionId, 'outbound_group_levels'),
           );
-          refreshOptionChoices(
-            this,
-            currentSectionPriorityTierChoices(targetSectionId, vals),
+          const legacyBal = normalizeOptionValues(
+            uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
           );
-          return vals;
-        };
-        configureLiveDynamicListChoices(tiersOpt, (_itemId, vals) =>
-          currentSectionPriorityTierChoices(targetSectionId, vals),
-        );
-      } else {
-        let fOpt = itemSection.option(
-          form.ListValue,
-          'filter_mode',
-          _('Server Selection in This Section'),
-          _(
-            'Choose which servers from the connections added to this section participate in this balancer.',
-          ),
-        );
-        urlTestFilterModeChoices().forEach((choice) =>
-          fOpt.value(choice.value, choice.label),
-        );
-        fOpt.default = 'disabled';
-
-        fOpt = itemSection.option(
-          form.ListValue,
-          'detect_server_country',
-          _('Detect server country'),
-        );
-        fOpt.depends('filter_mode', 'exclude');
-        fOpt.depends('filter_mode', 'include');
-        fOpt.depends('filter_mode', 'mixed');
-        serverCountryDetectionChoices().forEach((choice) =>
-          fOpt.value(choice.value, choice.label),
-        );
-        fOpt.default = 'flag_emoji';
-
-        const includeProxyParameterOptions = {
-          prefix: 'include',
-          toggleLabel: _('Include by proxy parameters'),
-          toggleDescription: _(
-            'Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters.',
-          ),
-          dependencies: [{ filter_mode: 'include' }, { filter_mode: 'mixed' }],
-          protocolDescription: _(
-            'Test only servers with one of the selected protocols.',
-          ),
-          transportDescription: _(
-            'Test only servers with one of the selected transports.',
-          ),
-          securityDescription: _(
-            'Test only servers with one of the selected security types.',
-          ),
-          portDescription: _(
-            'Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000).',
-          ),
-        };
-        const excludeProxyParameterOptions = {
-          prefix: 'exclude',
-          toggleLabel: _('Exclude by proxy parameters'),
-          toggleDescription: _(
-            'Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters.',
-          ),
-          dependencies: [{ filter_mode: 'exclude' }, { filter_mode: 'mixed' }],
-          protocolDescription: _(
-            'Do not test servers with one of the selected protocols.',
-          ),
-          transportDescription: _(
-            'Do not test servers with one of the selected transports.',
-          ),
-          securityDescription: _(
-            'Do not test servers with one of the selected security types.',
-          ),
-          portDescription: _(
-            'Do not test servers with one of the selected ports or port ranges.',
-          ),
-        };
-
-        [
-          [
-            'include_prefixes',
-            _('Include Subscriptions / Connections (by Prefix)'),
-            _(
-              'Test only servers from the selected connections added to this section.',
+          const validSet = new Set(
+            currentSectionPriorityTierChoices(targetSectionId, []).map(
+              (c) => c.value,
             ),
-            null,
-            null,
-            ['include', 'mixed'],
-          ],
-          [
-            'include_countries',
-            _('Include countries'),
-            _('Test servers only from the specified countries.'),
-            countryChoices(),
-            validateCountryCode,
-            ['include', 'mixed'],
-          ],
-          [
-            'include_outbounds',
-            _('Include servers'),
-            _('Test only selected servers from this section.'),
-            null,
-            null,
-            ['include', 'mixed'],
-          ],
-          [
-            'include_regex',
-            _('Include by regular expression'),
-            _('Test servers whose names match the expression.'),
-            null,
-            validateRegex,
-            ['include', 'mixed'],
-          ],
-          [
-            'exclude_prefixes',
-            _('Exclude Subscriptions / Connections (by Prefix)'),
-            _(
-              'Do not test servers from the selected connections of this section.',
-            ),
-            null,
-            null,
-            ['exclude', 'mixed'],
-          ],
-          [
-            'exclude_countries',
-            _('Exclude countries'),
-            _('Do not test servers from these countries.'),
-            countryChoices(),
-            validateCountryCode,
-            ['exclude', 'mixed'],
-          ],
-          [
-            'exclude_outbounds',
-            _('Exclude servers'),
-            _('Do not test specified servers from this section.'),
-            null,
-            null,
-            ['exclude', 'mixed'],
-          ],
-          [
-            'exclude_regex',
-            _('Exclude by regular expression'),
-            _('Do not test servers whose names match the expression.'),
-            null,
-            validateRegex,
-            ['exclude', 'mixed'],
-          ],
-        ].forEach(([key, label, description, choices, validator, modes]) => {
-          const list = itemSection.option(
+          );
+          const seed = (legacySec.length ? legacySec : legacyBal).filter((v) =>
+            validSet.has(v),
+          );
+          existing.outbound_group_levels = seed;
+        }
+
+        const defaults =
+          balType === 'priority'
+            ? { outbound_group_levels: [] }
+            : {
+                filter_mode: 'disabled',
+                detect_server_country: 'flag_emoji',
+                include_prefixes: [],
+                include_countries: [],
+                include_outbounds: [],
+                include_regex: [],
+                include_proxy_parameters: '0',
+                include_protocols: [],
+                include_transports: [],
+                include_securities: [],
+                include_ports: [],
+                exclude_prefixes: [],
+                exclude_countries: [],
+                exclude_outbounds: [],
+                exclude_regex: [],
+                exclude_proxy_parameters: '0',
+                exclude_protocols: [],
+                exclude_transports: [],
+                exclude_securities: [],
+                exclude_ports: [],
+              };
+
+        const data = {
+          settings: Object.assign({}, defaults, existing),
+        };
+        const map = new form.JSONMap(data);
+        const itemSection = map.section(form.NamedSection, 'settings');
+        itemSection.anonymous = true;
+        itemSection.addremove = false;
+
+        if (balType === 'priority') {
+          const tiersOpt = itemSection.option(
             form.DynamicList,
-            key,
-            label,
-            description,
+            'outbound_group_levels',
+            _('Priority Tiers (Groups / Sources / Servers)'),
+            _(
+              "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
+            ),
           );
-          modes.forEach((mode) => list.depends('filter_mode', mode));
-          list.rmempty = true;
-          if (choices) {
-            choices.forEach((choice) => list.value(choice.value, choice.label));
-            list.placeholder = _('-- Select --');
-          }
-          if (key.endsWith('_prefixes')) {
-            list.load = function (itemId) {
-              const vals = normalizeDynamicListItems(
-                optionMapValue(this, itemId, key),
-              );
-              refreshOptionChoices(
-                this,
-                currentSectionPrefixChoices(targetSectionId, vals),
-              );
-              return vals;
-            };
-            list.placeholder = _('-- Select connection of this section --');
-            configureLiveDynamicListChoices(list, (_itemId, vals) =>
-              currentSectionPrefixChoices(targetSectionId, vals),
+          tiersOpt.rmempty = true;
+          tiersOpt.placeholder = _('-- Add tier from this section --');
+          tiersOpt.load = function (itemId) {
+            const vals = normalizeDynamicListItems(
+              optionMapValue(this, itemId, 'outbound_group_levels'),
             );
-          } else if (key.endsWith('_outbounds')) {
-            list.load = function (itemId) {
-              const vals = normalizeDynamicListItems(
-                optionMapValue(this, itemId, key),
-              );
-              refreshOptionChoices(
-                this,
-                currentOutboundNameChoices(targetSectionId, vals),
-              );
-              return vals;
-            };
-            list.placeholder = _('-- Select server of this section --');
-            configureLiveDynamicListChoices(list, (_itemId, vals) =>
-              currentOutboundNameChoices(targetSectionId, vals),
+            refreshOptionChoices(
+              this,
+              currentSectionPriorityTierChoices(targetSectionId, vals),
             );
-          }
-          if (validator) {
-            list.validate = function (_itemId, value) {
-              return validator(null, value);
-            };
-          }
-          if (key === 'include_regex') {
-            addProxyParameterFilterOptions(
-              itemSection,
-              includeProxyParameterOptions,
-            );
-          } else if (key === 'exclude_regex') {
-            addProxyParameterFilterOptions(
-              itemSection,
-              excludeProxyParameterOptions,
-            );
-          }
-        });
-
-        addLiveServerFilterPreviewOption(itemSection, {
-          optionKey: '_balancer_filter_preview',
-          dependencies: [
-            { filter_mode: 'include' },
-            { filter_mode: 'exclude' },
-            { filter_mode: 'mixed' },
-          ],
-          resolveSectionId: () => targetSectionId,
-        });
-      }
-
-      return renderStackedJsonSettingsModal(
-        `${_('Balancer Server Selection in Section')}: ${balName}`,
-        map,
-        (nextSettings) => {
-          const nextMap = Object.assign(
-            {},
-            readItemSettingsMap(targetSectionId, 'balancer_settings'),
+            return vals;
+          };
+          configureLiveDynamicListChoices(
+            tiersOpt,
+            (_itemId, vals) =>
+              currentSectionPriorityTierChoices(targetSectionId, vals),
+            { targetSectionId, skipPerRuleDnsRegistry: true },
           );
-          nextMap[balId] = nextSettings || {};
-          writeItemSettingsMap(targetSectionId, 'balancer_settings', nextMap);
-          if (itemNode) {
-            const summaryNode = itemNode.querySelector(
-              '.tachyon-balancer-item-summary',
+        } else {
+          let fOpt = itemSection.option(
+            form.ListValue,
+            'filter_mode',
+            _('Server Selection in This Section'),
+            _(
+              'Choose which servers from the connections added to this section participate in this balancer.',
+            ),
+          );
+          urlTestFilterModeChoices().forEach((choice) =>
+            fOpt.value(choice.value, choice.label),
+          );
+          fOpt.default = 'disabled';
+
+          fOpt = itemSection.option(
+            form.ListValue,
+            'detect_server_country',
+            _('Detect server country'),
+          );
+          fOpt.depends('filter_mode', 'exclude');
+          fOpt.depends('filter_mode', 'include');
+          fOpt.depends('filter_mode', 'mixed');
+          serverCountryDetectionChoices().forEach((choice) =>
+            fOpt.value(choice.value, choice.label),
+          );
+          fOpt.default = 'flag_emoji';
+
+          const includeProxyParameterOptions = {
+            prefix: 'include',
+            toggleLabel: _('Include by proxy parameters'),
+            toggleDescription: _(
+              'Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters.',
+            ),
+            dependencies: [
+              { filter_mode: 'include' },
+              { filter_mode: 'mixed' },
+            ],
+            protocolDescription: _(
+              'Test only servers with one of the selected protocols.',
+            ),
+            transportDescription: _(
+              'Test only servers with one of the selected transports.',
+            ),
+            securityDescription: _(
+              'Test only servers with one of the selected security types.',
+            ),
+            portDescription: _(
+              'Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000).',
+            ),
+          };
+          const excludeProxyParameterOptions = {
+            prefix: 'exclude',
+            toggleLabel: _('Exclude by proxy parameters'),
+            toggleDescription: _(
+              'Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters.',
+            ),
+            dependencies: [
+              { filter_mode: 'exclude' },
+              { filter_mode: 'mixed' },
+            ],
+            protocolDescription: _(
+              'Do not test servers with one of the selected protocols.',
+            ),
+            transportDescription: _(
+              'Do not test servers with one of the selected transports.',
+            ),
+            securityDescription: _(
+              'Do not test servers with one of the selected security types.',
+            ),
+            portDescription: _(
+              'Do not test servers with one of the selected ports or port ranges.',
+            ),
+          };
+
+          [
+            [
+              'include_prefixes',
+              _('Include Subscriptions / Connections (by Prefix)'),
+              _(
+                'Test only servers from the selected connections added to this section.',
+              ),
+              null,
+              null,
+              ['include', 'mixed'],
+            ],
+            [
+              'include_countries',
+              _('Include countries'),
+              _('Test servers only from the specified countries.'),
+              countryChoices(),
+              validateCountryCode,
+              ['include', 'mixed'],
+            ],
+            [
+              'include_outbounds',
+              _('Include servers'),
+              _('Test only selected servers from this section.'),
+              null,
+              null,
+              ['include', 'mixed'],
+            ],
+            [
+              'include_regex',
+              _('Include by regular expression'),
+              _('Test servers whose names match the expression.'),
+              null,
+              validateRegex,
+              ['include', 'mixed'],
+            ],
+            [
+              'exclude_prefixes',
+              _('Exclude Subscriptions / Connections (by Prefix)'),
+              _(
+                'Do not test servers from the selected connections of this section.',
+              ),
+              null,
+              null,
+              ['exclude', 'mixed'],
+            ],
+            [
+              'exclude_countries',
+              _('Exclude countries'),
+              _('Do not test servers from these countries.'),
+              countryChoices(),
+              validateCountryCode,
+              ['exclude', 'mixed'],
+            ],
+            [
+              'exclude_outbounds',
+              _('Exclude servers'),
+              _('Do not test specified servers from this section.'),
+              null,
+              null,
+              ['exclude', 'mixed'],
+            ],
+            [
+              'exclude_regex',
+              _('Exclude by regular expression'),
+              _('Do not test servers whose names match the expression.'),
+              null,
+              validateRegex,
+              ['exclude', 'mixed'],
+            ],
+          ].forEach(([key, label, description, choices, validator, modes]) => {
+            const list = itemSection.option(
+              form.DynamicList,
+              key,
+              label,
+              description,
             );
-            if (summaryNode) {
-              summaryNode.textContent = summarizeSectionBalancerSettings(
-                targetSectionId,
-                balId,
+            modes.forEach((mode) => list.depends('filter_mode', mode));
+            list.rmempty = true;
+            if (choices) {
+              choices.forEach((choice) =>
+                list.value(choice.value, choice.label),
+              );
+              list.placeholder = _('-- Select --');
+            }
+            if (key.endsWith('_prefixes')) {
+              list.load = function (itemId) {
+                const vals = normalizeDynamicListItems(
+                  optionMapValue(this, itemId, key),
+                );
+                refreshOptionChoices(
+                  this,
+                  currentSectionPrefixChoices(targetSectionId, vals),
+                );
+                return vals;
+              };
+              list.placeholder = _('-- Select connection of this section --');
+              configureLiveDynamicListChoices(
+                list,
+                (_itemId, vals) =>
+                  currentSectionPrefixChoices(targetSectionId, vals),
+                { targetSectionId, skipPerRuleDnsRegistry: true },
+              );
+            } else if (key.endsWith('_outbounds')) {
+              list.load = function (itemId) {
+                const vals = normalizeDynamicListItems(
+                  optionMapValue(this, itemId, key),
+                );
+                refreshOptionChoices(
+                  this,
+                  currentOutboundNameChoices(targetSectionId, vals),
+                );
+                return vals;
+              };
+              list.placeholder = _('-- Select server of this section --');
+              configureLiveDynamicListChoices(
+                list,
+                (_itemId, vals) =>
+                  currentOutboundNameChoices(targetSectionId, vals),
+                { targetSectionId, skipPerRuleDnsRegistry: true },
               );
             }
-          }
-        },
-      );
-    });
+            if (validator) {
+              list.validate = function (_itemId, value) {
+                return validator(null, value);
+              };
+            }
+            if (key === 'include_regex') {
+              addProxyParameterFilterOptions(
+                itemSection,
+                includeProxyParameterOptions,
+              );
+            } else if (key === 'exclude_regex') {
+              addProxyParameterFilterOptions(
+                itemSection,
+                excludeProxyParameterOptions,
+              );
+            }
+          });
+
+          addLiveServerFilterPreviewOption(itemSection, {
+            optionKey: '_balancer_filter_preview',
+            dependencies: [
+              { filter_mode: 'include' },
+              { filter_mode: 'exclude' },
+              { filter_mode: 'mixed' },
+            ],
+            resolveSectionId: () => targetSectionId,
+          });
+        }
+
+        return renderStackedJsonSettingsModal(
+          `${_('Balancer Server Selection in Section')}: ${balName}`,
+          map,
+          (nextSettings) => {
+            const nextMap = Object.assign(
+              {},
+              readItemSettingsMap(targetSectionId, 'balancer_settings'),
+            );
+            nextMap[balId] = nextSettings || {};
+            writeItemSettingsMap(targetSectionId, 'balancer_settings', nextMap);
+            if (itemNode && typeof itemNode.querySelector === 'function') {
+              const summaryNode = itemNode.querySelector(
+                '.tachyon-balancer-item-summary',
+              );
+              if (summaryNode) {
+                summaryNode.textContent = summarizeSectionBalancerSettings(
+                  targetSectionId,
+                  balId,
+                );
+              }
+            }
+          },
+        );
+      })
+      .finally(() => {
+        balancerSettingsModalOpening = false;
+      });
   };
 
   o = section.taboption(
@@ -20372,6 +20488,7 @@ const EntryPoint = {
   cloneSection,
   configureSectionSection,
   createSectionContent,
+  renderStackedJsonSettingsModal,
   setActionProvidersAvailabilityLoader,
   showSectionRulesModal,
 };

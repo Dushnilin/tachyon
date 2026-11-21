@@ -257,6 +257,10 @@ fn default_latency_url() -> String {
     "https://www.gstatic.com/generate_204".to_string()
 }
 
+fn default_balancer_tolerance() -> u32 {
+    50
+}
+
 fn default_log_level() -> String {
     "warn".to_string()
 }
@@ -2633,7 +2637,7 @@ pub struct PriorityLevelConfig {
 /// Policy-only balancer configuration.
 /// Per architectural invariant, candidate outbounds/subscriptions/groups are NEVER stored in the
 /// balancer itself — they are always resolved from the `RoutingSection` referencing this balancer.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalancerConfig {
     pub id: String,
     #[serde(default = "default_true")]
@@ -2661,8 +2665,8 @@ pub struct BalancerConfig {
     pub urltest_active_check_interval: String,
     #[serde(default)]
     pub idle_timeout: String,
-    /// Latency tolerance in ms (default 50).
-    #[serde(default, alias = "tolerance_ms")]
+    /// Latency tolerance in ms (default 50 when omitted).
+    #[serde(default = "default_balancer_tolerance", alias = "tolerance_ms")]
     pub tolerance: u32,
     #[serde(default, alias = "sticky_hash_field")]
     pub sticky_hash: String,
@@ -2740,6 +2744,64 @@ pub struct BalancerConfig {
     pub exclude_security_types: Vec<String>,
     #[serde(default)]
     pub exclude_ports: Vec<String>,
+}
+
+impl Default for BalancerConfig {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            enabled: false,
+            name: String::new(),
+            balancer_type: String::new(),
+            mode: String::new(),
+            testing_url: String::new(),
+            testing_urls: Vec::new(),
+            multi_url_strategy: String::new(),
+            check_interval: 0,
+            check_interval_jitter: 0,
+            urltest_active_check_interval: String::new(),
+            idle_timeout: String::new(),
+            tolerance: default_balancer_tolerance(),
+            sticky_hash: String::new(),
+            quota_mib: 0,
+            fallback_section: String::new(),
+            balancer_pool: Vec::new(),
+            passive_check: false,
+            interrupt_exist_connections: false,
+            health_urls: Vec::new(),
+            active_check_interval: String::new(),
+            check_timeout: String::new(),
+            recovery_check_interval: String::new(),
+            pick_fastest: false,
+            switch_to_faster_same_priority: false,
+            fastest_check_interval: String::new(),
+            outbound_group_levels: Vec::new(),
+            priority_levels: Vec::new(),
+            filter_mode: String::new(),
+            detect_server_country: false,
+            pin_dashboard: false,
+            include_proxy_parameters: false,
+            exclude_proxy_parameters: false,
+            include_prefixes: Vec::new(),
+            include_country_flags: Vec::new(),
+            include_servers: Vec::new(),
+            include_regex: Vec::new(),
+            include_name_regex: String::new(),
+            include_protocols: Vec::new(),
+            include_transports: Vec::new(),
+            include_security_types: Vec::new(),
+            include_ports: Vec::new(),
+            exclude_prefixes: Vec::new(),
+            exclude_country_flags: Vec::new(),
+            exclude_servers: Vec::new(),
+            exclude_regex: Vec::new(),
+            exclude_name_regex: String::new(),
+            exclude_protocols: Vec::new(),
+            exclude_transports: Vec::new(),
+            exclude_security_types: Vec::new(),
+            exclude_ports: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -10824,5 +10886,56 @@ config priority_level 'pl_direct'
         assert_eq!(tier0, vec!["Beta"]);
         assert_eq!(tier1, vec!["Beta", "Gamma"]);
         assert_eq!(tier2, vec!["direct"]);
+    }
+
+    #[test]
+    fn test_balancer_tolerance_defaults_and_explicit_values() {
+        let omitted: BalancerConfig =
+            serde_json::from_str(r#"{"id":"b1","name":"Fast"}"#).expect("omitted tolerance");
+        assert_eq!(omitted.tolerance, 50);
+
+        let explicit_zero: BalancerConfig =
+            serde_json::from_str(r#"{"id":"b2","name":"Zero","tolerance":0}"#)
+                .expect("zero tolerance");
+        assert_eq!(explicit_zero.tolerance, 0);
+
+        let explicit_low: BalancerConfig =
+            serde_json::from_str(r#"{"id":"b3","name":"Low","tolerance":30}"#)
+                .expect("low tolerance");
+        assert_eq!(explicit_low.tolerance, 30);
+
+        assert_eq!(BalancerConfig::default().tolerance, 50);
+
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_bal_tol_test_{}",
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let sub_dir = tmp_dir.join("subs");
+        let _ = std::fs::create_dir_all(&sub_dir);
+        let uci_path = tmp_dir.join("tachyon");
+        std::fs::write(
+            &uci_path,
+            "config urltest 'b_default'\n\toption label 'Default'\n\n\
+             config urltest 'b_zero'\n\toption label 'Zero'\n\toption tolerance '0'\n\n\
+             config urltest 'b_low'\n\toption label 'Low'\n\toption tolerance '30'\n",
+        )
+        .unwrap();
+
+        let mut store = RouterStoreData::empty_base();
+        let imported = store.import_legacy_router_files_with_cache(&[uci_path.as_path()], &sub_dir);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        assert!(imported >= 3);
+
+        let find_tol = |id: &str| {
+            store
+                .balancers
+                .iter()
+                .find(|b| b.id == id)
+                .expect("balancer")
+                .tolerance
+        };
+        assert_eq!(find_tol("b_default"), 50);
+        assert_eq!(find_tol("b_zero"), 0);
+        assert_eq!(find_tol("b_low"), 30);
     }
 }

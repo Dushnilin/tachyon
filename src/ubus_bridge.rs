@@ -2089,71 +2089,38 @@ async fn try_fast_pure_rust_method(
                 .get(1)
                 .map(String::as_str)
                 .unwrap_or("tachyon.internal");
-            let cn: String = cn_raw
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-                .collect();
-            let cn = if cn.is_empty() {
-                "tachyon.internal".to_string()
-            } else {
-                cn
-            };
+            let cn = crypto_gen::sanitize_tls_cn(cn_raw);
             let cert_dir = state
                 .path
                 .parent()
                 .unwrap_or_else(|| Path::new("/etc/tachyon"))
-                .join("certs");
-            let _ = std::fs::create_dir_all(&cert_dir);
+                .join("server-certs");
             let cert_path = cert_dir.join(format!("{sid}.crt"));
             let key_path = cert_dir.join(format!("{sid}.key"));
-            let mut cmd = Command::new("openssl");
-            cmd.args([
-                "req",
-                "-x509",
-                "-newkey",
-                "ec",
-                "-pkeyopt",
-                "ec_paramgen_curve:prime256v1",
-                "-days",
-                "3650",
-                "-nodes",
-                "-subj",
-                &format!("/CN={cn}"),
-                "-keyout",
-                &key_path.to_string_lossy(),
-                "-out",
-                &cert_path.to_string_lossy(),
-            ])
-            .kill_on_drop(true);
-            let payload = match tokio::time::timeout(Duration::from_secs(15), cmd.output()).await {
-                Ok(Ok(out)) if out.status.success() => {
-                    let bytes = std::fs::read(&cert_path).unwrap_or_default();
-                    let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
-                    json!({
-                        "success": true,
+            let core_bin = { state.data.read().await.settings.core_bin_path.clone() };
+            let core_bin_opt = (!core_bin.trim().is_empty()).then_some(core_bin.as_str());
+            let payload =
+                match crypto_gen::generate_tls_keypair_files(core_bin_opt, &cn, &cert_path, &key_path)
+                    .await
+                {
+                    Ok(()) => {
+                        let bytes = std::fs::read(&cert_path).unwrap_or_default();
+                        let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
+                        json!({
+                            "success": true,
+                            "section": sid,
+                            "certificate_path": cert_path.to_string_lossy(),
+                            "key_path": key_path.to_string_lossy(),
+                            "sha256": sha256,
+                            "md5": md5,
+                        })
+                    }
+                    Err(e) => json!({
+                        "success": false,
                         "section": sid,
-                        "certificate_path": cert_path.to_string_lossy(),
-                        "key_path": key_path.to_string_lossy(),
-                        "sha256": sha256,
-                        "md5": md5,
-                    })
-                }
-                Ok(Ok(out)) => json!({
-                    "success": false,
-                    "section": sid,
-                    "error": format!("openssl exited with {}", out.status),
-                }),
-                Ok(Err(e)) => json!({
-                    "success": false,
-                    "section": sid,
-                    "error": format!("openssl failed: {e}"),
-                }),
-                Err(_) => json!({
-                    "success": false,
-                    "section": sid,
-                    "error": "openssl req timed out after 15s",
-                }),
-            };
+                        "error": format!("{e:#}"),
+                    }),
+                };
             let ok = payload
                 .get("success")
                 .and_then(Value::as_bool)
@@ -2163,11 +2130,10 @@ async fn try_fast_pure_rust_method(
         }
         "get_tls_certificate_sha256" => {
             let arg = rest.first().map(String::as_str).unwrap_or("server");
-            let cert_dir = state
+            let base_dir = state
                 .path
                 .parent()
-                .unwrap_or_else(|| Path::new("/etc/tachyon"))
-                .join("certs");
+                .unwrap_or_else(|| Path::new("/etc/tachyon"));
             let cert_path = if arg.starts_with('/') && !arg.contains("..") {
                 PathBuf::from(arg)
             } else {
@@ -2180,7 +2146,12 @@ async fn try_fast_pure_rust_method(
                 } else {
                     &safe_id
                 };
-                cert_dir.join(format!("{sid}.crt"))
+                let preferred = base_dir.join("server-certs").join(format!("{sid}.crt"));
+                if preferred.is_file() {
+                    preferred
+                } else {
+                    base_dir.join("certs").join(format!("{sid}.crt"))
+                }
             };
             if let Ok(bytes) = std::fs::read(&cert_path) {
                 let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);

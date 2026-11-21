@@ -3418,6 +3418,7 @@ fn explain_route_with_mac_table(
             condition_type: "atomic".to_string(),
             community_lists: sec.community_lists.clone(),
             community_subnets: sec.community_subnets,
+            rule_set: sec.rule_set_urls.clone(),
             rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
             user_domains: combined_domains,
             exclude_domains: sec.exclude_domains.clone(),
@@ -3778,7 +3779,7 @@ fn match_condition_community_lists_in_dirs_lang(
         }
     }
 
-    for rset in &cond.rule_set_with_subnets {
+    for rset in cond.rule_set.iter().chain(cond.rule_set_with_subnets.iter()) {
         let clean = rset.trim();
         if crate::config_gen::is_community_list_token(clean) {
             let ll = clean.to_ascii_lowercase();
@@ -3786,9 +3787,9 @@ fn match_condition_community_lists_in_dirs_lang(
                 || check_community_ip_match_in_dirs(target_lower, &ll, dirs)
             {
                 return Some(if en {
-                    format!("Subnet list {clean} in condition \"{}\"", cond.name)
+                    format!("Rule set {clean} in condition \"{}\"", cond.name)
                 } else {
-                    format!("Список с подсетями {clean} в условии «{}»", cond.name)
+                    format!("Набор правил {clean} в условии «{}»", cond.name)
                 });
             }
         }

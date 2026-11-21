@@ -121,6 +121,15 @@ pub fn backups_dir(data_dir: &Path) -> PathBuf {
 }
 
 fn certs_dir(state: &AppState) -> PathBuf {
+    let local = data_dir_for_state(state).join("server-certs");
+    if data_dir_for_state(state) != Path::new("/etc/tachyon") || !cfg!(target_os = "linux") {
+        local
+    } else {
+        PathBuf::from("/etc/tachyon/server-certs")
+    }
+}
+
+fn legacy_certs_dir(state: &AppState) -> PathBuf {
     let local = data_dir_for_state(state).join("certs");
     if local.exists() || !cfg!(target_os = "linux") {
         local
@@ -259,11 +268,9 @@ fn compute_counts(
     )
 }
 
-fn collect_certs(state: &AppState) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    let dir = certs_dir(state);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return map;
+fn read_certs_from_dir(dir: &Path, map: &mut BTreeMap<String, String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -276,12 +283,24 @@ fn collect_certs(state: &AppState) -> BTreeMap<String, String> {
         let Some(fname) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
+        if map.contains_key(fname) {
+            continue;
+        }
         if let Ok(meta) = entry.metadata()
             && meta.len() <= 65_536
             && let Ok(content) = std::fs::read_to_string(&path)
         {
             map.insert(fname.to_string(), content);
         }
+    }
+}
+
+fn collect_certs(state: &AppState) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    read_certs_from_dir(&certs_dir(state), &mut map);
+    let legacy = legacy_certs_dir(state);
+    if legacy != certs_dir(state) {
+        read_certs_from_dir(&legacy, &mut map);
     }
     map
 }
