@@ -4007,10 +4007,6 @@ fn xhttp_normalize_xmux(val: &Value) -> Option<Value> {
             &["cMaxReuseTimes", "c_max_reuse_times"][..],
         ),
         (
-            "c_max_lifetime_ms",
-            &["cMaxLifetimeMs", "c_max_lifetime_ms"][..],
-        ),
-        (
             "h_max_request_times",
             &["hMaxRequestTimes", "h_max_request_times"][..],
         ),
@@ -4035,18 +4031,12 @@ fn xhttp_normalize_xmux(val: &Value) -> Option<Value> {
         out.insert("h_keep_alive_period".into(), json!(i));
     }
 
-    if matches!(
-        out.get("max_connections").and_then(Value::as_str),
-        Some("0" | "0-0")
-    ) {
-        out.remove("max_connections");
+    for k in ["max_connections", "max_concurrency"] {
+        if matches!(out.get(k).and_then(Value::as_str), Some("0" | "0-0")) {
+            out.remove(k);
+        }
     }
-    if out.contains_key("max_connections")
-        && matches!(
-            out.get("max_concurrency").and_then(Value::as_str),
-            Some("0" | "0-0")
-        )
-    {
+    if out.contains_key("max_connections") && out.contains_key("max_concurrency") {
         out.remove("max_concurrency");
     }
 
@@ -4167,12 +4157,9 @@ fn build_xhttp_transport(
         primary,
         &extra,
         &["scMaxConcurrentPosts", "sc_max_concurrent_posts"],
-    ) {
-        if let Some(i) = xhttp_parse_int_bound_val(v, 1) {
-            tr.insert("sc_max_concurrent_posts".into(), json!(i));
-        } else if let Some(r) = xhttp_format_range(v, 1) {
-            tr.insert("sc_max_concurrent_posts".into(), json!(r));
-        }
+    ) && let Some(i) = xhttp_parse_int_bound_val(v, 1)
+    {
+        tr.insert("sc_max_concurrent_posts".into(), json!(i));
     }
     if let Some(v) = xhttp_lookup(
         primary,
@@ -4243,6 +4230,14 @@ fn build_xhttp_transport(
     {
         tr.insert("session_length".into(), json!(r));
     }
+    if tr.contains_key("session_table")
+        && tr
+            .get("session_length")
+            .and_then(Value::as_str)
+            .is_none_or(|s| s.trim().is_empty())
+    {
+        tr.remove("session_table");
+    }
     if let Some(v) = xhttp_lookup(primary, &extra, &["seqPlacement", "seq_placement"])
         && let Some(m) = xhttp_match_enum(v, &["path", "query", "header", "cookie"])
     {
@@ -4258,6 +4253,7 @@ fn build_xhttp_transport(
         &extra,
         &["uplinkDataPlacement", "uplink_data_placement"],
     ) && let Some(m) = xhttp_match_enum(v, &["body", "auto", "header", "cookie"])
+        && (mode == "packet-up" || !matches!(m, "header" | "cookie"))
     {
         tr.insert("uplink_data_placement".into(), json!(m));
     }
@@ -10529,6 +10525,8 @@ fn normalize_xhttp_int_value(val: &mut Value) {
 }
 
 fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
+    obj.remove("c_max_lifetime_ms");
+    obj.remove("cMaxLifetimeMs");
     for key in [
         "sc_max_each_post_bytes",
         "scMaxEachPostBytes",
@@ -10536,8 +10534,6 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
         "scMinPostsIntervalMs",
         "x_padding_bytes",
         "xPaddingBytes",
-        "sc_max_concurrent_posts",
-        "scMaxConcurrentPosts",
         "session_length",
         "sessionLength",
         "sessionIDLength",
@@ -10550,8 +10546,6 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
         "maxConnections",
         "c_max_reuse_times",
         "cMaxReuseTimes",
-        "c_max_lifetime_ms",
-        "cMaxLifetimeMs",
         "h_max_request_times",
         "hMaxRequestTimes",
         "h_max_reusable_secs",
@@ -10567,6 +10561,8 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
         }
     }
     for key in [
+        "sc_max_concurrent_posts",
+        "scMaxConcurrentPosts",
         "sc_max_buffered_posts",
         "scMaxBufferedPosts",
         "server_max_header_bytes",
@@ -10601,6 +10597,39 @@ fn sanitize_xhttp_transports(outbounds: &mut [Value]) {
             })
         {
             sanitize_xhttp_object(tr);
+            if let Some(xmux_val) = tr.get("xmux").cloned() {
+                if let Some(cleaned) = xhttp_normalize_xmux(&xmux_val) {
+                    tr.insert("xmux".into(), cleaned);
+                } else {
+                    tr.remove("xmux");
+                }
+            }
+            for int_field in [
+                "sc_max_concurrent_posts",
+                "server_max_header_bytes",
+                "sc_max_buffered_posts",
+            ] {
+                if tr.get(int_field).is_some_and(|v| !v.is_number()) {
+                    tr.remove(int_field);
+                }
+            }
+            let mode = tr.get("mode").and_then(Value::as_str).unwrap_or("");
+            if mode != "packet-up"
+                && matches!(
+                    tr.get("uplink_data_placement").and_then(Value::as_str),
+                    Some("header" | "cookie")
+                )
+            {
+                tr.remove("uplink_data_placement");
+            }
+            if tr.contains_key("session_table")
+                && tr
+                    .get("session_length")
+                    .and_then(Value::as_str)
+                    .is_none_or(|s| s.trim().is_empty())
+            {
+                tr.remove("session_table");
+            }
         }
     }
 }
@@ -20772,28 +20801,51 @@ config timeserver 'ntp'
 
     #[test]
     fn test_sanitize_xhttp_float_and_string_ranges() {
-        let mut outbounds = vec![json!({
-            "type": "vless",
-            "tag": "vless-xhttp",
-            "transport": {
-                "type": "xhttp",
-                "mode": "auto",
-                "path": "/",
-                "sc_max_each_post_bytes": "1000000.0",
-                "sc_min_posts_interval_ms": 30.0,
-                "sc_stream_up_server_secs": "-1.0",
-                "x_padding_bytes": "100.0-1000.0",
-                "sc_max_buffered_posts": 30.0,
-                "sc_max_concurrent_posts": "16384-65536",
-                "extra": {
-                    "scMaxEachPostBytes": 1000000.0,
+        let mut outbounds = vec![
+            json!({
+                "type": "vless",
+                "tag": "vless-xhttp",
+                "transport": {
+                    "type": "xhttp",
+                    "mode": "auto",
+                    "path": "/",
+                    "sc_max_each_post_bytes": "1000000.0",
+                    "sc_min_posts_interval_ms": 30.0,
+                    "sc_stream_up_server_secs": "-1.0",
+                    "x_padding_bytes": "100.0-1000.0",
+                    "sc_max_buffered_posts": 30.0,
+                    "sc_max_concurrent_posts": "16384-65536",
                     "xmux": {
-                        "maxConcurrency": { "from": 16.0, "to": 32.0 },
-                        "hKeepAlivePeriod": 60.0
+                        "c_max_lifetime_ms": "60000",
+                        "max_connections": "3",
+                        "max_concurrency": "16-32",
+                        "c_max_reuse_times": "64-128"
+                    },
+                    "extra": {
+                        "scMaxEachPostBytes": 1000000.0,
+                        "xmux": {
+                            "maxConcurrency": { "from": 16.0, "to": 32.0 },
+                            "hKeepAlivePeriod": 60.0
+                        }
                     }
                 }
-            }
-        })];
+            }),
+            json!({
+                "type": "vless",
+                "tag": "vless-xhttp-legacy",
+                "transport": {
+                    "type": "xhttp",
+                    "mode": "stream-one",
+                    "path": "/stream",
+                    "sc_max_concurrent_posts": "100.0",
+                    "uplink_data_placement": "header",
+                    "session_table": "hex",
+                    "xmux": {
+                        "c_max_lifetime_ms": "60000"
+                    }
+                }
+            }),
+        ];
 
         sanitize_xhttp_transports(&mut outbounds);
 
@@ -20803,10 +20855,20 @@ config timeserver 'ntp'
         assert_eq!(tr["sc_stream_up_server_secs"], "-1");
         assert_eq!(tr["x_padding_bytes"], "100-1000");
         assert_eq!(tr["sc_max_buffered_posts"].as_i64(), Some(30));
-        assert_eq!(tr["sc_max_concurrent_posts"], "16384-65536");
+        assert!(tr.get("sc_max_concurrent_posts").is_none());
+        assert!(tr["xmux"].get("c_max_lifetime_ms").is_none());
+        assert!(tr["xmux"].get("max_concurrency").is_none());
+        assert_eq!(tr["xmux"]["max_connections"], "3");
+        assert_eq!(tr["xmux"]["c_max_reuse_times"], "64-128");
         assert_eq!(tr["extra"]["scMaxEachPostBytes"].as_i64(), Some(1_000_000));
         assert_eq!(tr["extra"]["xmux"]["maxConcurrency"], "16-32");
         assert_eq!(tr["extra"]["xmux"]["hKeepAlivePeriod"].as_i64(), Some(60));
+
+        let legacy_tr = &outbounds[1]["transport"];
+        assert_eq!(legacy_tr["sc_max_concurrent_posts"].as_i64(), Some(100));
+        assert!(legacy_tr.get("uplink_data_placement").is_none());
+        assert!(legacy_tr.get("session_table").is_none());
+        assert!(legacy_tr.get("xmux").is_none());
     }
 
     #[test]
@@ -22705,7 +22767,7 @@ PersistentKeepalive = 25
         assert_eq!(tr["x_padding_header"], "Referer");
         assert_eq!(tr["x_padding_method"], "tokenish");
         assert_eq!(tr["x_padding_placement"], "queryInHeader");
-        assert_eq!(tr["xmux"]["c_max_lifetime_ms"], "60000");
+        assert!(tr["xmux"].get("c_max_lifetime_ms").is_none());
         assert_eq!(tr["xmux"]["c_max_reuse_times"], "64-128");
         assert_eq!(tr["xmux"]["h_keep_alive_period"], 30);
         assert!(tr["xmux"].get("max_connections").is_none());
@@ -22725,10 +22787,11 @@ PersistentKeepalive = 25
         );
         let uri_node = parse_proxy_uri(&uri, 0).expect("parse vless extra");
         let utr = &uri_node.outbound_json["transport"];
-        assert_eq!(utr["uplink_data_placement"], "header");
+        assert!(utr.get("uplink_data_placement").is_none());
         assert_eq!(utr["uplink_http_method"], "GET");
         assert_eq!(utr["session_length"], "16-32");
-        assert_eq!(utr["xmux"]["c_max_lifetime_ms"], "60000");
+        assert!(utr["xmux"].get("c_max_lifetime_ms").is_none());
+        assert_eq!(utr["xmux"]["c_max_reuse_times"], "64-128");
     }
 
     #[test]
