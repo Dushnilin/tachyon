@@ -1751,13 +1751,13 @@ async fn try_fast_pure_rust_method(
         }
         "get_ui_state" => {
             state.touch_telemetry_access();
-            let val = build_pure_rust_ui_state(state).await;
+            let val = Box::pin(build_pure_rust_ui_state(state)).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_system_info" => {
             state.touch_telemetry_access();
-            let val = build_pure_rust_system_info(state).await;
+            let val = Box::pin(build_pure_rust_system_info(state)).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -1936,7 +1936,7 @@ async fn try_fast_pure_rust_method(
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
-        "clash_api" => handle_pure_rust_clash_api(rest, state, core).await,
+        "clash_api" => Box::pin(handle_pure_rust_clash_api(rest, state, core)).await,
         "core_telemetry_snapshot" => {
             state.touch_telemetry_access();
             let val = Box::pin(build_pure_rust_core_telemetry(state, core)).await;
@@ -2010,15 +2010,16 @@ async fn try_fast_pure_rust_method(
         }
         "dns_block_stats" => {
             let period = rest.first().map(String::as_str).unwrap_or("24h");
-            let val =
-                match crate::adguard_hosts::query_dns_block_stats_for_state(state, core, period)
-                    .await
-                {
-                    Ok(stats) => {
-                        serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
-                    }
-                    Err(e) => json!({ "ok": false, "error": e.to_string() }),
-                };
+            let val = match Box::pin(crate::adguard_hosts::query_dns_block_stats_for_state(
+                state, core, period,
+            ))
+            .await
+            {
+                Ok(stats) => {
+                    serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
+                }
+                Err(e) => json!({ "ok": false, "error": e.to_string() }),
+            };
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -2113,12 +2114,12 @@ async fn try_fast_pure_rust_method(
             let key_path = cert_dir.join(format!("{sid}.key"));
             let core_bin = { state.data.read().await.settings.core_bin_path.clone() };
             let core_bin_opt = (!core_bin.trim().is_empty()).then_some(core_bin.as_str());
-            let payload = match crypto_gen::generate_tls_keypair_files(
+            let payload = match Box::pin(crypto_gen::generate_tls_keypair_files(
                 core_bin_opt,
                 &cn,
                 &cert_path,
                 &key_path,
-            )
+            ))
             .await
             {
                 Ok(()) => {
@@ -8432,7 +8433,7 @@ async fn execute_pure_rust_tachyon_cli(
             })
         }
         "hosts_list_update" => {
-            match crate::adguard_hosts::update_hosts_lists(state, core, true).await {
+            match Box::pin(crate::adguard_hosts::update_hosts_lists(state, core, true)).await {
                 Ok(val) => val,
                 Err(e) => json!({
                     "ok": false,

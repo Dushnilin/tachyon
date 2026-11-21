@@ -1293,7 +1293,7 @@ pub async fn update_hosts_lists_in(
     let mut reloaded = false;
     if trigger_reload_on_change && changed {
         let running = { state.live.read().await.core_running };
-        if running && core.apply_or_reload().await.is_ok() {
+        if running && Box::pin(core.apply_or_reload()).await.is_ok() {
             reloaded = true;
         }
     }
@@ -2302,7 +2302,7 @@ pub async fn query_dns_block_stats_for_state(
     core: &Arc<CoreManager>,
     period: &str,
 ) -> anyhow::Result<DnsBlockStatsResponse> {
-    sync_telemetry_from_core_if_needed(state, core, 2).await;
+    Box::pin(sync_telemetry_from_core_if_needed(state, core, 2)).await;
     let store = { state.data.read().await.clone() };
     let lan_devices = { state.live.read().await.lan_devices.clone() };
     let names = build_client_name_map(&store, &lan_devices);
@@ -2327,21 +2327,26 @@ pub fn spawn_adguard_hosts_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
         // Short initial grace delay so core startup and interface bring-up finish first.
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         loop {
-            let store = { state.data.read().await.clone() };
-            let urls = collect_active_hosts_list_urls(&store);
+            let (urls, schedule) = {
+                let store = state.data.read().await;
+                (
+                    collect_active_hosts_list_urls(&store),
+                    auto_update_schedule(&store),
+                )
+            };
             let rt_dir = runtime_state_dir();
 
             if !urls.is_empty()
-                && let Some(interval_secs) = auto_update_schedule(&store)
+                && let Some(interval_secs) = schedule
             {
                 let last_ts = read_last_update_timestamp_in(&rt_dir);
                 let now = unix_now_secs();
                 if last_ts <= 0 || now.saturating_sub(last_ts) >= interval_secs as i64 {
-                    let _ = update_hosts_lists_in(&rt_dir, &state, &core, true).await;
+                    let _ = Box::pin(update_hosts_lists_in(&rt_dir, &state, &core, true)).await;
                 }
             }
 
-            sync_telemetry_from_core_if_needed(&state, &core, 15).await;
+            Box::pin(sync_telemetry_from_core_if_needed(&state, &core, 15)).await;
             tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         }
     });
