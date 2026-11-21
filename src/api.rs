@@ -37,7 +37,10 @@ fn should_use_dual_stack_v6_bind(listen_addr: &str, bindv6only_content: Option<&
     listen_addr.trim() == "0.0.0.0" && bindv6only_content.map(str::trim) == Some("0")
 }
 
-async fn bind_panel_listener(listen_addr: &str, port: u16) -> anyhow::Result<(TcpListener, String)> {
+async fn bind_panel_listener(
+    listen_addr: &str,
+    port: u16,
+) -> anyhow::Result<(TcpListener, String)> {
     #[cfg(target_os = "linux")]
     let bindv6only = std::fs::read_to_string("/proc/sys/net/ipv6/bindv6only").ok();
     #[cfg(not(target_os = "linux"))]
@@ -2278,16 +2281,21 @@ async fn dispatch_api(
             .await
             {
                 Ok(stats) => {
-                    let body = serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }));
+                    let body =
+                        serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }));
                     send_json(stream, 200, &body).await
                 }
-                Err(e) => send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({ "ok": false, "error": e.to_string() })).await
+                }
             }
         }
         ("POST", "/api/dns/hosts/update") => {
             match Box::pin(crate::adguard_hosts::update_hosts_lists(state, core, true)).await {
                 Ok(res) => send_json(stream, 200, &res).await,
-                Err(e) => send_json(stream, 500, &json!({ "ok": false, "error": e.to_string() })).await,
+                Err(e) => {
+                    send_json(stream, 500, &json!({ "ok": false, "error": e.to_string() })).await
+                }
             }
         }
         ("GET", "/api/agent/v1/logs") => {

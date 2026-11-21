@@ -2318,11 +2318,9 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
             if managed_routers.is_empty() {
                 fleet_monitor.clear_if_nonempty();
             } else {
-                let fleet_alerts = Box::pin(fleet_monitor.poll_tick_if_due(
-                    &managed_routers,
-                    unix_now_secs(),
-                ))
-                .await;
+                let fleet_alerts =
+                    Box::pin(fleet_monitor.poll_tick_if_due(&managed_routers, unix_now_secs()))
+                        .await;
                 for alert in fleet_alerts {
                     let body = fleet::format_fleet_alert_html(&alert, ru);
                     let full_msg = prepend_header_if_missing(&body, &header);

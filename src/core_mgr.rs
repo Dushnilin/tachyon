@@ -336,7 +336,11 @@ impl CoreManager {
             if path_str.is_empty() {
                 anyhow::bail!("custom local rule_set '{tag}' has an empty path");
             }
-            let format = obj.get("format").and_then(Value::as_str).unwrap_or("").trim();
+            let format = obj
+                .get("format")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
             if !matches!(format, "source" | "binary" | "trs" | "tsr") {
                 anyhow::bail!(
                     "custom local rule_set '{tag}' ({path_str}) has unsupported format '{format}'"
@@ -349,7 +353,9 @@ impl CoreManager {
                 )
             })?;
             if !meta.is_file() {
-                anyhow::bail!("custom local rule_set '{tag}' path '{path_str}' is not a regular file");
+                anyhow::bail!(
+                    "custom local rule_set '{tag}' path '{path_str}' is not a regular file"
+                );
             }
             if format == "source" {
                 let raw = std::fs::read_to_string(path).map_err(|e| {
@@ -5235,7 +5241,10 @@ mod core_mgr_tests {
             }
         });
         CoreManager::sanitize_candidate_local_rulesets(&mut preserve_cfg);
-        assert!(custom_trs_path.exists(), "custom .trs must never be removed");
+        assert!(
+            custom_trs_path.exists(),
+            "custom .trs must never be removed"
+        );
         assert_eq!(
             preserve_cfg["route"]["rule_set"][0]["path"],
             json!(custom_trs_path.to_string_lossy())

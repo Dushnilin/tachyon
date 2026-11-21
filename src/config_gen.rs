@@ -8049,8 +8049,8 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
                         "persistentkeepalive"
                         | "persistent_keepalive"
                         | "persistent_keepalive_interval" => {
-                            peer.keepalive = parse_awg_int_or_range(val)
-                                .filter(|v| v.as_u64() != Some(0));
+                            peer.keepalive =
+                                parse_awg_int_or_range(val).filter(|v| v.as_u64() != Some(0));
                         }
                         _ => {}
                     }
@@ -8093,8 +8093,7 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
                 "persistentkeepalive"
                 | "persistent_keepalive"
                 | "persistent_keepalive_interval" => {
-                    iface_keepalive =
-                        parse_awg_int_or_range(val).filter(|v| v.as_u64() != Some(0));
+                    iface_keepalive = parse_awg_int_or_range(val).filter(|v| v.as_u64() != Some(0));
                 }
                 "address" | "local_address" | "ip" | "client_ip" => {
                     for part in val.split(',') {
@@ -9062,8 +9061,7 @@ pub fn community_subnet_url(service: &str) -> Option<String> {
 pub fn is_remote_ruleset_url(token: &str) -> bool {
     let t = token.trim();
     let lc = t.to_ascii_lowercase();
-    !t.chars().any(char::is_whitespace)
-        && (lc.starts_with("http://") || lc.starts_with("https://"))
+    !t.chars().any(char::is_whitespace) && (lc.starts_with("http://") || lc.starts_with("https://"))
 }
 
 pub fn is_local_ruleset_path(token: &str) -> bool {
@@ -14617,7 +14615,11 @@ fn compile_plain_local_ruleset(
 
     for raw_line in raw.lines() {
         let trimmed = raw_line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') || trimmed.starts_with("//") {
+        if trimmed.is_empty()
+            || trimmed.starts_with('#')
+            || trimmed.starts_with(';')
+            || trimmed.starts_with("//")
+        {
             continue;
         }
         let line = trimmed.split('#').next().unwrap_or(trimmed).trim();
@@ -15133,7 +15135,8 @@ fn collect_atomic_condition_parts_with_tables(
         }
     }
 
-    let blocked_unresolved_criteria = unresolved_ruleset_refs && (branches.is_empty() || cond.invert);
+    let blocked_unresolved_criteria =
+        unresolved_ruleset_refs && (branches.is_empty() || cond.invert);
     AtomicConditionParts {
         scope,
         branches,
@@ -15335,10 +15338,7 @@ fn build_condition_rule(
                 let mut and_obj = Map::new();
                 and_obj.insert("type".into(), json!("logical"));
                 and_obj.insert("mode".into(), json!("and"));
-                and_obj.insert(
-                    "rules".into(),
-                    json!([parent_rule, Value::Object(log_obj)]),
-                );
+                and_obj.insert("rules".into(), json!([parent_rule, Value::Object(log_obj)]));
                 and_obj.insert("outbound".into(), json!(outbound_tag));
                 return Some(Value::Object(and_obj));
             }
@@ -16902,7 +16902,8 @@ mod tests {
                     subs.iter()
                         .any(|s| s["domain_suffix"] == json!(["netflix.com", "fast.com"]))
                         && subs.iter().any(|s| {
-                            s["domain_suffix"] == json!(["sberbank.ru"]) && s["invert"] == json!(true)
+                            s["domain_suffix"] == json!(["sberbank.ru"])
+                                && s["invert"] == json!(true)
                         })
                         && subs.iter().any(|s| {
                             s["source_ip_cidr"] == json!(["192.168.1.250/32"])
@@ -20737,7 +20738,8 @@ AllowedIPs = 0.0.0.0/0
                 enabled: true,
                 name: "AWG31 Main".to_string(),
                 source_type: "amnezia_config".to_string(),
-                amnezia_configs: vec!["\
+                amnezia_configs: vec![
+                    "\
 [Interface]
 PrivateKey = cGFzc3dvcmRwYXNzd29yZHBhc3N3b3JkcGFzc3dvcmQ=
 Address = 10.8.0.2/32
@@ -20755,7 +20757,8 @@ PublicKey = QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
 Endpoint = 198.51.100.10:51820
 PersistentKeepalive = 25-35
 "
-                .to_string()],
+                    .to_string(),
+                ],
                 ..Default::default()
             },
             OutboundSource {
@@ -20763,7 +20766,8 @@ PersistentKeepalive = 25-35
                 enabled: true,
                 name: "AWG31 Ctrl".to_string(),
                 source_type: "amnezia_config".to_string(),
-                amnezia_configs: vec!["\
+                amnezia_configs: vec![
+                    "\
 [Interface]
 PrivateKey = REVEREVEVEREVEVEREVEVEREVEVEREVEVEREVEVEREU=
 Address = 10.8.0.3/32
@@ -20774,7 +20778,8 @@ PublicKey = RUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUU=
 Endpoint = 198.51.100.11:51820
 PersistentKeepalive = 25
 "
-                .to_string()],
+                    .to_string(),
+                ],
                 ..Default::default()
             },
         ];
@@ -20852,8 +20857,14 @@ PersistentKeepalive = 25
             store
         };
 
-        for (tol_in, expected) in [(0, 0), (30, 30), (49, 49), (50, 50), (75, 75), (10_000, 10_000)]
-        {
+        for (tol_in, expected) in [
+            (0, 0),
+            (30, 30),
+            (49, 49),
+            (50, 50),
+            (75, 75),
+            (10_000, 10_000),
+        ] {
             let bal = BalancerConfig {
                 id: "bal_tol".to_string(),
                 enabled: true,
@@ -20977,11 +20988,13 @@ PersistentKeepalive = 25
         assert_eq!(media_rs["type"], "local");
         assert_eq!(media_rs["format"], "source");
         let media_tag = media_rs["tag"].as_str().unwrap().to_string();
-        assert!(cfg_local_only["route"]["rules"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|r| r["outbound"] == "block" && r["rule_set"] == json!([media_tag])));
+        assert!(
+            cfg_local_only["route"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["outbound"] == "block" && r["rule_set"] == json!([media_tag]))
+        );
 
         // 2. Local JSON + UDP/3478 must keep BOTH network/port AND rule_set on block rule
         let cfg_scoped = build_with_conds(
@@ -20990,7 +21003,11 @@ PersistentKeepalive = 25
                 enabled: true,
                 name: "Media".to_string(),
                 condition_type: "atomic".to_string(),
-                rule_set_with_subnets: vec![media_a_str.clone(), unix_media.clone(), unix_media_b.clone()],
+                rule_set_with_subnets: vec![
+                    media_a_str.clone(),
+                    unix_media.clone(),
+                    unix_media_b.clone(),
+                ],
                 ports: vec!["3478".to_string()],
                 l4_proto: "udp".to_string(),
                 ..Default::default()
@@ -21159,9 +21176,15 @@ PersistentKeepalive = 25
                 ..Default::default()
             }],
         );
-        assert!(cfg_inline["route"]["rule_set"].as_array().unwrap().iter().any(|rs| {
-            rs["path"] == "/etc/tachyon/rulesets/inline.json" && rs["type"] == "local"
-        }));
+        assert!(
+            cfg_inline["route"]["rule_set"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|rs| {
+                    rs["path"] == "/etc/tachyon/rulesets/inline.json" && rs["type"] == "local"
+                })
+        );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
@@ -21212,13 +21235,21 @@ PersistentKeepalive = 25
 
         let cfg = compile_core_config(&store).expect("compile duplicate basename rulesets");
         let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
-        assert_eq!(rule_sets.len(), 6, "all 6 distinct paths/URLs must get unique entries: {rule_sets:#?}");
+        assert_eq!(
+            rule_sets.len(),
+            6,
+            "all 6 distinct paths/URLs must get unique entries: {rule_sets:#?}"
+        );
 
         let tags: std::collections::HashSet<&str> = rule_sets
             .iter()
             .filter_map(|rs| rs["tag"].as_str())
             .collect();
-        assert_eq!(tags.len(), 6, "duplicate basenames must produce 6 unique tags");
+        assert_eq!(
+            tags.len(),
+            6,
+            "duplicate basenames must produce 6 unique tags"
+        );
 
         assert!(rule_sets.iter().any(|rs| {
             rs["type"] == "local"
@@ -21231,10 +21262,14 @@ PersistentKeepalive = 25
                 && rs["path"] == "/etc/tachyon/rulesets/b/shared.json"
         }));
         assert!(rule_sets.iter().any(|rs| {
-            rs["type"] == "local" && rs["format"] == "binary" && rs["path"] == "./local_a/custom.trs"
+            rs["type"] == "local"
+                && rs["format"] == "binary"
+                && rs["path"] == "./local_a/custom.trs"
         }));
         assert!(rule_sets.iter().any(|rs| {
-            rs["type"] == "local" && rs["format"] == "binary" && rs["path"] == "./local_b/custom.trs"
+            rs["type"] == "local"
+                && rs["format"] == "binary"
+                && rs["path"] == "./local_b/custom.trs"
         }));
         assert!(rule_sets.iter().any(|rs| {
             rs["type"] == "remote"
@@ -21323,7 +21358,10 @@ PersistentKeepalive = 25
         assert!(all_str.contains("custom-remote-extra-"));
         assert!(all_str.contains("3478"));
         assert!(all_str.contains("\"protocol\":[\"tls\"]"));
-        assert!(all_str.contains("\"port\":[80],\"invert\":true") || all_str.contains("\"invert\":true,\"port\":[80]"));
+        assert!(
+            all_str.contains("\"port\":[80],\"invert\":true")
+                || all_str.contains("\"invert\":true,\"port\":[80]")
+        );
 
         // 2. `any` preserves both branches cleanly
         let cfg_any = build_with(
@@ -21484,7 +21522,9 @@ PersistentKeepalive = 25
             .expect("hijack-dns for srv-ts");
         let idx_lo = rules
             .iter()
-            .position(|r| r["outbound"] == "lo-direct-out" && r["ip_cidr"] == json!(["127.0.0.0/8"]))
+            .position(|r| {
+                r["outbound"] == "lo-direct-out" && r["ip_cidr"] == json!(["127.0.0.0/8"])
+            })
             .expect("lo-direct-out rule");
         let idx_lan = rules
             .iter()
@@ -21539,11 +21579,7 @@ PersistentKeepalive = 25
         assert!(!iso_outbounds.iter().any(|o| o["tag"] == "lo-direct-out"));
         assert!(!iso_outbounds.iter().any(|o| o["tag"] == "lan-direct-out"));
         let iso_dns_servers = iso_cfg["dns"]["servers"].as_array().unwrap();
-        assert!(
-            !iso_dns_servers
-                .iter()
-                .any(|s| s["tag"] == "dnsmasq-server")
-        );
+        assert!(!iso_dns_servers.iter().any(|s| s["tag"] == "dnsmasq-server"));
         let iso_rules = iso_cfg["route"]["rules"].as_array().unwrap();
         assert!(iso_rules.iter().any(|r| {
             r["action"] == "reject"
@@ -21627,7 +21663,8 @@ PersistentKeepalive = 25
                     && r["type"] == "logical"
                     && r["mode"] == "and"
                     && r["rules"].as_array().is_some_and(|subs| {
-                        subs.iter().any(|s| s["domain_suffix"] == json!(["scoped.example"]))
+                        subs.iter()
+                            .any(|s| s["domain_suffix"] == json!(["scoped.example"]))
                             && subs.iter().any(|s| {
                                 s["source_ip_cidr"] == json!(["192.168.1.51/32"])
                                     && s["invert"] == json!(true)
@@ -21636,7 +21673,9 @@ PersistentKeepalive = 25
                                 s["ip_cidr"] == json!(["10.30.0.0/16"])
                                     && s["invert"] == json!(true)
                             })
-                            && subs.iter().any(|s| s["port"] == json!([9443]) && s["invert"] == json!(true))
+                            && subs
+                                .iter()
+                                .any(|s| s["port"] == json!([9443]) && s["invert"] == json!(true))
                             && subs.iter().any(|s| {
                                 s["source_ip_cidr"] == json!(["192.168.1.50/32"])
                                     && s["invert"] == json!(true)
@@ -21645,7 +21684,9 @@ PersistentKeepalive = 25
                                 s["ip_cidr"] == json!(["10.20.0.0/16"])
                                     && s["invert"] == json!(true)
                             })
-                            && subs.iter().any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
+                            && subs
+                                .iter()
+                                .any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
                     })
             })
             .expect("sec1 condition rule wraps both condition and section exclusions");
@@ -21661,7 +21702,9 @@ PersistentKeepalive = 25
                                 && s["invert"] == json!(true)
                         }) && subs.iter().any(|s| {
                             s["ip_cidr"] == json!(["10.20.0.0/16"]) && s["invert"] == json!(true)
-                        }) && subs.iter().any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
+                        }) && subs
+                            .iter()
+                            .any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
                     })
             })
             .expect("sec1 match_all rule wraps section exclusions");
@@ -21681,10 +21724,8 @@ PersistentKeepalive = 25
 
     #[test]
     fn adguard_exception_rules_precede_block_rules_before_fakeip() {
-        let tmp_dir = std::env::temp_dir().join(format!(
-            "tachyon-cg-adguard-{}",
-            std::process::id()
-        ));
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon-cg-adguard-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp_dir);
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
@@ -21738,7 +21779,10 @@ PersistentKeepalive = 25
             .iter()
             .find(|s| s["tag"] == "dns-custom-hosts")
             .expect("dns-custom-hosts server present");
-        assert_eq!(custom_hosts_srv["predefined"]["nas.lan"], json!(["192.168.1.50"]));
+        assert_eq!(
+            custom_hosts_srv["predefined"]["nas.lan"],
+            json!(["192.168.1.50"])
+        );
 
         let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
         let idx_allow_imp = dns_rules
@@ -21767,8 +21811,7 @@ PersistentKeepalive = 25
         let idx_remote_allow = dns_rules
             .iter()
             .position(|r| {
-                r["action"] == "route"
-                    && r["rule_set"] == json!([crate::adguard_hosts::TAG_ALLOW])
+                r["action"] == "route" && r["rule_set"] == json!([crate::adguard_hosts::TAG_ALLOW])
             })
             .expect("remote allow rule_set");
         let idx_inline_block = dns_rules
@@ -21801,8 +21844,16 @@ PersistentKeepalive = 25
         assert!(idx_remote_block < idx_fakeip);
 
         let route_rs = cfg["route"]["rule_set"].as_array().unwrap();
-        assert!(route_rs.iter().any(|rs| rs["tag"] == crate::adguard_hosts::TAG_BLOCK && rs["type"] == "local"));
-        assert!(route_rs.iter().any(|rs| rs["tag"] == crate::adguard_hosts::TAG_ALLOW && rs["type"] == "local"));
+        assert!(
+            route_rs
+                .iter()
+                .any(|rs| rs["tag"] == crate::adguard_hosts::TAG_BLOCK && rs["type"] == "local")
+        );
+        assert!(
+            route_rs
+                .iter()
+                .any(|rs| rs["tag"] == crate::adguard_hosts::TAG_ALLOW && rs["type"] == "local")
+        );
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }

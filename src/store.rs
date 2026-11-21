@@ -5218,7 +5218,8 @@ impl RouterStoreData {
                 }
                 "telegram" => {
                     if reset_omitted_fields {
-                        let prev_managed_routers = std::mem::take(&mut self.telegram.managed_routers);
+                        let prev_managed_routers =
+                            std::mem::take(&mut self.telegram.managed_routers);
                         self.telegram = TgBotConfig::default();
                         self.telegram.managed_routers = prev_managed_routers;
                     }

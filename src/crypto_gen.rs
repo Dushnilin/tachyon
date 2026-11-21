@@ -760,7 +760,8 @@ pub async fn generate_tls_keypair_files(
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let _ = std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600));
+                    let _ =
+                        std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600));
                 }
                 return Ok(());
             }
@@ -768,7 +769,11 @@ pub async fn generate_tls_keypair_files(
         }
         Ok(Ok(out)) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            errors.push(format!("openssl exited with {}: {}", out.status, stderr.trim()));
+            errors.push(format!(
+                "openssl exited with {}: {}",
+                out.status,
+                stderr.trim()
+            ));
         }
         Ok(Err(e)) => {
             errors.push(format!("openssl failed: {e}"));
@@ -900,8 +905,14 @@ mod tests {
         assert!(c2.contains("BEGIN CERTIFICATE"));
 
         assert!(split_tls_keypair_pem("").is_none());
-        assert!(split_tls_keypair_pem("-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----").is_none());
-        assert!(split_tls_keypair_pem("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----").is_none());
+        assert!(
+            split_tls_keypair_pem("-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----")
+                .is_none()
+        );
+        assert!(
+            split_tls_keypair_pem("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----")
+                .is_none()
+        );
 
         assert_eq!(sanitize_tls_cn("my.host-1"), "my.host-1");
         assert_eq!(sanitize_tls_cn("///"), "tachyon.lan");

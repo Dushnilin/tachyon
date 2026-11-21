@@ -1748,20 +1748,23 @@ fn test_tg_bot_config_backward_compat_without_managed_routers() {
         "url": "http://192.168.1.1:8080",
         "api_token": "tok_default_enabled"
     }"#;
-    let mr: crate::store::ManagedRouter = serde_json::from_str(router_no_enabled_json)
-        .expect("ManagedRouter without enabled field");
+    let mr: crate::store::ManagedRouter =
+        serde_json::from_str(router_no_enabled_json).expect("ManagedRouter without enabled field");
     assert!(mr.enabled);
 
     // LuCI JSON section import must preserve managed_routers and section export must omit them
     let mut store = crate::store::RouterStoreData::default();
     store.telegram.enabled = true;
-    store.telegram.managed_routers.push(crate::store::ManagedRouter {
-        id: "branch_1".to_string(),
-        name: "Branch-1".to_string(),
-        url: "http://10.0.0.2:8080".to_string(),
-        api_token: "super_secret_sync_tok".to_string(),
-        enabled: true,
-    });
+    store
+        .telegram
+        .managed_routers
+        .push(crate::store::ManagedRouter {
+            id: "branch_1".to_string(),
+            name: "Branch-1".to_string(),
+            url: "http://10.0.0.2:8080".to_string(),
+            api_token: "super_secret_sync_tok".to_string(),
+            enabled: true,
+        });
 
     let sections_val = crate::store::sync_store_to_json_sections(&store, None);
     let sections_str = sections_val.to_string();
@@ -1801,9 +1804,8 @@ fn test_fleet_url_validation_http_parser_and_token_redaction() {
     assert_eq!(ok_http.base_path, "");
     assert_eq!(ok_http.normalized_url, "http://192.168.1.2:8080");
 
-    let ok_https =
-        fleet::normalize_and_validate_router_url("HTTPS://gw.example.com/tachyon-api/")
-            .expect("valid https url");
+    let ok_https = fleet::normalize_and_validate_router_url("HTTPS://gw.example.com/tachyon-api/")
+        .expect("valid https url");
     assert_eq!(ok_https.scheme, "https");
     assert_eq!(ok_https.port, 443);
     assert_eq!(ok_https.base_path, "/tachyon-api");
@@ -1812,8 +1814,8 @@ fn test_fleet_url_validation_http_parser_and_token_redaction() {
         "https://gw.example.com/tachyon-api"
     );
 
-    let ok_v6 = fleet::normalize_and_validate_router_url("http://[::1]:9000")
-        .expect("valid ipv6 url");
+    let ok_v6 =
+        fleet::normalize_and_validate_router_url("http://[::1]:9000").expect("valid ipv6 url");
     assert_eq!(ok_v6.connect_host, "::1");
     assert_eq!(ok_v6.host_header, "[::1]:9000");
     assert_eq!(ok_v6.port, 9000);
@@ -1942,7 +1944,11 @@ async fn test_fleet_overview_and_single_router_inspection_mock_http() {
     assert!(overview.text.contains("online"), "{}", overview.text);
     assert!(overview.text.contains("2.0.0-beta.13"), "{}", overview.text);
     assert!(overview.text.contains("0.5.0"), "{}", overview.text);
-    assert!(overview.text.contains("Warehouse-Offline"), "{}", overview.text);
+    assert!(
+        overview.text.contains("Warehouse-Offline"),
+        "{}",
+        overview.text
+    );
     assert!(overview.text.contains("offline"), "{}", overview.text);
     assert_no_token_leak(&overview, token);
     assert_no_token_leak(&overview, "offline_tok_000");
@@ -1959,19 +1965,19 @@ async fn test_fleet_overview_and_single_router_inspection_mock_http() {
     }
 
     // Single-router detail inspection with doctor summary
-    let detail = handle_incoming_callback(
-        admin_id,
-        "flt_view branch_office",
-        &env.state,
-        &env.core,
-    )
-    .await
-    .expect("flt_view reply");
+    let detail =
+        handle_incoming_callback(admin_id, "flt_view branch_office", &env.state, &env.core)
+            .await
+            .expect("flt_view reply");
     assert!(detail.text.contains("Branch-Office"), "{}", detail.text);
     assert!(detail.text.contains("running [ON]"), "{}", detail.text);
     assert!(detail.text.contains("120/1024 MB"), "{}", detail.text);
     assert!(detail.text.contains("12/12"), "{}", detail.text);
-    assert!(detail.text.contains("All runtime checks OK"), "{}", detail.text);
+    assert!(
+        detail.text.contains("All runtime checks OK"),
+        "{}",
+        detail.text
+    );
     assert_no_token_leak(&detail, token);
 
     let detail_btns = collect_buttons(&detail);
@@ -2195,7 +2201,11 @@ async fn test_fleet_check_updates_confirmation_and_post_verification() {
     assert_no_token_leak(&ubus_ok, token);
     {
         let st = mock_state.lock().expect("lock mock");
-        assert!(st.requests.iter().any(|(m, p, _)| m == "POST" && p == "/ubus"));
+        assert!(
+            st.requests
+                .iter()
+                .any(|(m, p, _)| m == "POST" && p == "/ubus")
+        );
     }
 
     // Confirm Restart -> sends POST /api/core/restart + runs post-action health/version verification
@@ -2255,7 +2265,15 @@ async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
     assert!(rej_401.text.contains("[ERR]"), "{}", rej_401.text);
     assert!(rej_401.text.contains("401"), "{}", rej_401.text);
     assert_no_token_leak(&rej_401, wrong_tok);
-    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+    assert!(
+        env.state
+            .data
+            .read()
+            .await
+            .telegram
+            .managed_routers
+            .is_empty()
+    );
 
     // Reject 403 on forbidden token without saving or leaking token
     mock_state.lock().expect("lock mock").reject_status = Some(403);
@@ -2266,7 +2284,15 @@ async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
     assert!(rej_403.text.contains("[ERR]"), "{}", rej_403.text);
     assert!(rej_403.text.contains("403"), "{}", rej_403.text);
     assert_no_token_leak(&rej_403, tok_403);
-    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+    assert!(
+        env.state
+            .data
+            .read()
+            .await
+            .telegram
+            .managed_routers
+            .is_empty()
+    );
 
     // Allow valid token -> persists to AppState and tachyon-state.json without echoing token
     mock_state.lock().expect("lock mock").reject_status = None;
@@ -2347,7 +2373,10 @@ async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
             .iter()
             .any(|(_, cb)| cb == &format!("flt_del_ok {router_id}"))
     );
-    assert_eq!(env.state.data.read().await.telegram.managed_routers.len(), 1);
+    assert_eq!(
+        env.state.data.read().await.telegram.managed_routers.len(),
+        1
+    );
 
     let del_ok = handle_incoming_callback(
         admin_id,
@@ -2358,7 +2387,15 @@ async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
     .await
     .expect("flt_del_ok");
     assert!(del_ok.text.contains("[OK]"), "{}", del_ok.text);
-    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+    assert!(
+        env.state
+            .data
+            .read()
+            .await
+            .telegram
+            .managed_routers
+            .is_empty()
+    );
 
     let reloaded_after_del =
         AppState::load_or_create(env.dir.join("tachyon-state.json")).expect("reload after del");

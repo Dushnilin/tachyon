@@ -3782,7 +3782,11 @@ fn match_condition_community_lists_in_dirs_lang(
         }
     }
 
-    for rset in cond.rule_set.iter().chain(cond.rule_set_with_subnets.iter()) {
+    for rset in cond
+        .rule_set
+        .iter()
+        .chain(cond.rule_set_with_subnets.iter())
+    {
         let clean = rset.trim();
         if crate::config_gen::is_community_list_token(clean) {
             let ll = clean.to_ascii_lowercase();

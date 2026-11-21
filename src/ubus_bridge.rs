@@ -2010,16 +2010,15 @@ async fn try_fast_pure_rust_method(
         }
         "dns_block_stats" => {
             let period = rest.first().map(String::as_str).unwrap_or("24h");
-            let val = match crate::adguard_hosts::query_dns_block_stats_for_state(
-                state, core, period,
-            )
-            .await
-            {
-                Ok(stats) => {
-                    serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
-                }
-                Err(e) => json!({ "ok": false, "error": e.to_string() }),
-            };
+            let val =
+                match crate::adguard_hosts::query_dns_block_stats_for_state(state, core, period)
+                    .await
+                {
+                    Ok(stats) => {
+                        serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
+                    }
+                    Err(e) => json!({ "ok": false, "error": e.to_string() }),
+                };
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -2114,28 +2113,32 @@ async fn try_fast_pure_rust_method(
             let key_path = cert_dir.join(format!("{sid}.key"));
             let core_bin = { state.data.read().await.settings.core_bin_path.clone() };
             let core_bin_opt = (!core_bin.trim().is_empty()).then_some(core_bin.as_str());
-            let payload =
-                match crypto_gen::generate_tls_keypair_files(core_bin_opt, &cn, &cert_path, &key_path)
-                    .await
-                {
-                    Ok(()) => {
-                        let bytes = std::fs::read(&cert_path).unwrap_or_default();
-                        let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
-                        json!({
-                            "success": true,
-                            "section": sid,
-                            "certificate_path": cert_path.to_string_lossy(),
-                            "key_path": key_path.to_string_lossy(),
-                            "sha256": sha256,
-                            "md5": md5,
-                        })
-                    }
-                    Err(e) => json!({
-                        "success": false,
+            let payload = match crypto_gen::generate_tls_keypair_files(
+                core_bin_opt,
+                &cn,
+                &cert_path,
+                &key_path,
+            )
+            .await
+            {
+                Ok(()) => {
+                    let bytes = std::fs::read(&cert_path).unwrap_or_default();
+                    let (sha256, md5) = crypto_gen::cert_fingerprints_sha256_md5(&bytes);
+                    json!({
+                        "success": true,
                         "section": sid,
-                        "error": format!("{e:#}"),
-                    }),
-                };
+                        "certificate_path": cert_path.to_string_lossy(),
+                        "key_path": key_path.to_string_lossy(),
+                        "sha256": sha256,
+                        "md5": md5,
+                    })
+                }
+                Err(e) => json!({
+                    "success": false,
+                    "section": sid,
+                    "error": format!("{e:#}"),
+                }),
+            };
             let ok = payload
                 .get("success")
                 .and_then(Value::as_bool)

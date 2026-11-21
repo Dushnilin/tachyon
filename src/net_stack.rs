@@ -1305,7 +1305,9 @@ fn compile_nftables_ruleset_full(
         .join(", ");
     let prerouting_bypass_literal = tailscale_bypass_ifaces
         .iter()
-        .filter(|i| !((is_tailscale_source || allow_tailscale_fakeip) && i.as_str() == "tailscale0"))
+        .filter(|i| {
+            !((is_tailscale_source || allow_tailscale_fakeip) && i.as_str() == "tailscale0")
+        })
         .map(|i| format!("\"{i}\""))
         .collect::<Vec<_>>()
         .join(", ");
@@ -1345,7 +1347,10 @@ fn compile_nftables_ruleset_full(
 
     // Exclude virtual tunnel interfaces (Tailscale & FPTN) from self-interception
     if !prerouting_bypass_literal.is_empty() {
-        let _ = writeln!(out, "        iifname {{ {prerouting_bypass_literal} }} return");
+        let _ = writeln!(
+            out,
+            "        iifname {{ {prerouting_bypass_literal} }} return"
+        );
     }
     // Tailscale traffic not addressed to FakeIP must bypass TProxy unless `tailscale0` is explicitly a source iface
     if allow_tailscale_fakeip {
@@ -4087,14 +4092,16 @@ fn build_firewall_sync_commands(store: &RouterStoreData, uci_show: &str) -> Vec<
         && let Some(zone_name) = ts_zone_name
     {
         let port_str = store.settings.listen_port.to_string();
-        let panel_matches = existing.get("tachyon_ts_panel").is_some_and(|(sec_type, opts)| {
-            sec_type == "rule"
-                && opts.get("target").map(String::as_str) == Some("ACCEPT")
-                && opts.get("dest_port").map(String::as_str) == Some(port_str.as_str())
-                && opts.get("proto").map(String::as_str) == Some("tcp")
-                && opts.get("src").map(String::as_str) == Some(zone_name.as_str())
-                && opts.get("enabled").map(String::as_str) == Some("1")
-        });
+        let panel_matches = existing
+            .get("tachyon_ts_panel")
+            .is_some_and(|(sec_type, opts)| {
+                sec_type == "rule"
+                    && opts.get("target").map(String::as_str) == Some("ACCEPT")
+                    && opts.get("dest_port").map(String::as_str) == Some(port_str.as_str())
+                    && opts.get("proto").map(String::as_str) == Some("tcp")
+                    && opts.get("src").map(String::as_str) == Some(zone_name.as_str())
+                    && opts.get("enabled").map(String::as_str) == Some("1")
+            });
         if !panel_matches {
             cmds.push(vec!["set".into(), "firewall.tachyon_ts_panel=rule".into()]);
             cmds.push(vec![
@@ -4612,7 +4619,11 @@ mod tests {
         let nft = compile_nftables_ruleset(&store);
         assert!(nft.contains("oifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
         assert!(nft.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
-        assert!(nft.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"));
+        assert!(
+            nft.contains(
+                "iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"
+            )
+        );
         assert!(nft.contains("meta mark & 0x00340000 != 0 return"));
         assert!(nft.contains("meta mark & 0x00080000 != 0 return"));
         assert!(nft.contains("meta mark & 0x00ff0000 == 0x00300000 return"));
@@ -5666,24 +5677,28 @@ config interface 'wan'
         let nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
 
         let pre_start = nft.find("chain prerouting").expect("chain prerouting");
-        let out_start = nft.find("chain mangle_output").expect("chain mangle_output");
+        let out_start = nft
+            .find("chain mangle_output")
+            .expect("chain mangle_output");
         let pre = &nft[pre_start..out_start];
         let mangle_out = &nft[out_start..];
 
         assert!(pre.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
         assert!(
-            pre.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return")
+            pre.contains(
+                "iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"
+            )
         );
         assert!(
             pre.contains("iifname \"tailscale0\" meta nfproto ipv6 ip6 daddr != fc00::/18 return")
         );
         assert!(pre.contains("\"tailscale0\", \"lo\""));
-        assert!(
-            pre.contains("meta nfproto ipv4 ip daddr != 198.18.0.0/15 meta mark & 0x00340000 != 0 return")
-        );
-        assert!(
-            pre.contains("meta nfproto ipv6 ip6 daddr != fc00::/18 meta mark & 0x00340000 != 0 return")
-        );
+        assert!(pre.contains(
+            "meta nfproto ipv4 ip daddr != 198.18.0.0/15 meta mark & 0x00340000 != 0 return"
+        ));
+        assert!(pre.contains(
+            "meta nfproto ipv6 ip6 daddr != fc00::/18 meta mark & 0x00340000 != 0 return"
+        ));
         assert!(pre.contains("meta mark & 0x00080000 != 0 return"));
         assert!(mangle_out.contains("meta mark & 0x00340000 != 0 return"));
         assert!(mangle_out.contains("meta mark & 0x00080000 != 0 return"));
@@ -5827,7 +5842,11 @@ config redirect 'restricted_src_ip'
 \toption proto 'tcp'
 ";
         let redirects = parse_firewall_dnat_redirects(fw_raw);
-        assert_eq!(redirects.len(), 2, "src_ip-restricted redirect must be skipped");
+        assert_eq!(
+            redirects.len(),
+            2,
+            "src_ip-restricted redirect must be skipped"
+        );
 
         let mut store = RouterStoreData::default();
         store.settings.fakeip_enabled = true;
@@ -5954,7 +5973,8 @@ config redirect 'restricted_src_ip'
     #[test]
     fn test_tls_handshake_packets_not_hitting_ct_direction_reply() {
         let mut store = RouterStoreData::default();
-        store.settings.source_network_interfaces = vec!["br-lan".to_string(), "tailscale0".to_string()];
+        store.settings.source_network_interfaces =
+            vec!["br-lan".to_string(), "tailscale0".to_string()];
         store.settings.fakeip_enabled = true;
         store.settings.disable_quic = true;
         store.settings.block_doh = true;
@@ -5977,8 +5997,12 @@ config redirect 'restricted_src_ip'
         assert!(!pre.contains("\"tailscale0\" } ct direction reply"));
         assert!(!pre.contains("\"lo\" } ct direction reply"));
         let idx_dnat = pre.find("ct status dnat return").expect("dnat bypass");
-        let idx_local = pre.find("fib daddr type local return").expect("local bypass");
-        let idx_tproxy = pre.find("tproxy ip to 127.0.0.1:1602").expect("tproxy target");
+        let idx_local = pre
+            .find("fib daddr type local return")
+            .expect("local bypass");
+        let idx_tproxy = pre
+            .find("tproxy ip to 127.0.0.1:1602")
+            .expect("tproxy target");
 
         assert!(idx_lo_guard < idx_reply);
         assert!(idx_reply < idx_dnat);

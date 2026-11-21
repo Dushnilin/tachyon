@@ -990,8 +990,11 @@ mod tests {
         std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
 
         let valid_json = tmp_dir.join("valid.json");
-        std::fs::write(&valid_json, r#"{"version":3,"rules":[{"domain":["example.com"]}]}"#)
-            .unwrap();
+        std::fs::write(
+            &valid_json,
+            r#"{"version":3,"rules":[{"domain":["example.com"]}]}"#,
+        )
+        .unwrap();
 
         let malformed_json = tmp_dir.join("malformed.json");
         std::fs::write(&malformed_json, b"{broken").unwrap();
@@ -1000,7 +1003,11 @@ mod tests {
         std::fs::write(&no_rules_json, r#"{"version":3}"#).unwrap();
 
         let wrong_rules_type_json = tmp_dir.join("wrong_rules.json");
-        std::fs::write(&wrong_rules_type_json, r#"{"version":3,"rules":"not-array"}"#).unwrap();
+        std::fs::write(
+            &wrong_rules_type_json,
+            r#"{"version":3,"rules":"not-array"}"#,
+        )
+        .unwrap();
 
         let valid_trs = tmp_dir.join("valid.trs");
         let mut trs_bytes = b"TSRS".to_vec();
@@ -1100,7 +1107,12 @@ mod tests {
         assert!(!r_missing.valid);
         assert!(r_missing.errors.len() >= 2);
         assert!(r_missing.errors.iter().any(|e| e.contains("missing.json")));
-        assert!(r_missing.errors.iter().any(|e| e.contains("missing_rel.trs")));
+        assert!(
+            r_missing
+                .errors
+                .iter()
+                .any(|e| e.contains("missing_rel.trs"))
+        );
 
         // 3. Malformed JSON, JSON without 'rules', JSON with non-array 'rules'
         for (bad_path, expected_substr) in [
