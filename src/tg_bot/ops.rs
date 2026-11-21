@@ -3890,6 +3890,66 @@ async fn dispatch_bot_cfg_ops(
     Some(fut.await)
 }
 
+async fn dispatch_fleet_ops(
+    cmd_lc: &str,
+    arg: &str,
+    chat_id: i64,
+    state: &Arc<AppState>,
+) -> Option<BotReply> {
+    let rid = arg.trim();
+    match cmd_lc {
+        "flt_upd_chk" => {
+            clear_chat_prompt(chat_id);
+            Some(Box::pin(super::fleet::render_router_updates(state, rid)).await)
+        }
+        "flt_upd_ask" => {
+            clear_chat_prompt(chat_id);
+            Some(
+                Box::pin(super::fleet::render_router_action_confirm(
+                    state,
+                    rid,
+                    super::fleet::FleetConfirmAction::UpdateTachyon,
+                ))
+                .await,
+            )
+        }
+        "flt_upd_ok" => {
+            clear_chat_prompt(chat_id);
+            Some(
+                Box::pin(super::fleet::execute_router_action_confirmed(
+                    state,
+                    rid,
+                    super::fleet::FleetConfirmAction::UpdateTachyon,
+                ))
+                .await,
+            )
+        }
+        "flt_rst_ask" => {
+            clear_chat_prompt(chat_id);
+            Some(
+                Box::pin(super::fleet::render_router_action_confirm(
+                    state,
+                    rid,
+                    super::fleet::FleetConfirmAction::RestartTachyon,
+                ))
+                .await,
+            )
+        }
+        "flt_rst_ok" => {
+            clear_chat_prompt(chat_id);
+            Some(
+                Box::pin(super::fleet::execute_router_action_confirmed(
+                    state,
+                    rid,
+                    super::fleet::FleetConfirmAction::RestartTachyon,
+                ))
+                .await,
+            )
+        }
+        _ => None,
+    }
+}
+
 async fn try_handle_ops_inner(
     cmd: &str,
     arg: &str,
@@ -3903,6 +3963,9 @@ async fn try_handle_ops_inner(
     }
 
     let cmd_lc = trimmed_cmd.to_ascii_lowercase();
+    if let Some(reply) = Box::pin(dispatch_fleet_ops(&cmd_lc, arg, chat_id, state)).await {
+        return Some(reply);
+    }
     if let Some(reply) = Box::pin(dispatch_diag_ops(&cmd_lc, arg, chat_id, state, core)).await {
         return Some(reply);
     }

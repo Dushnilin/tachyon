@@ -1365,3 +1365,1012 @@ fn test_quiet_hours_suppresses_non_critical_keeps_critical() {
         None
     ));
 }
+
+struct AbortOnDropHandle(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDropHandle {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+struct MockRouterState {
+    expected_token: String,
+    reject_status: Option<u16>,
+    telemetry_status: u16,
+    tachyon_version: String,
+    tachyon_latest: String,
+    core_version: String,
+    core_latest: String,
+    core_running: bool,
+    use_ubus_update_fallback: bool,
+    seen_auth_headers: Vec<String>,
+    requests: Vec<(String, String, String)>,
+}
+
+impl MockRouterState {
+    fn new(expected_token: &str) -> Self {
+        Self {
+            expected_token: expected_token.to_string(),
+            reject_status: None,
+            telemetry_status: 200,
+            tachyon_version: "2.0.0-beta.13".to_string(),
+            tachyon_latest: "2.0.0-beta.14".to_string(),
+            core_version: "0.5.0".to_string(),
+            core_latest: "0.5.1".to_string(),
+            core_running: true,
+            use_ubus_update_fallback: false,
+            seen_auth_headers: Vec::new(),
+            requests: Vec::new(),
+        }
+    }
+
+    fn post_count(&self) -> usize {
+        self.requests.iter().filter(|(m, _, _)| m == "POST").count()
+    }
+}
+
+fn find_bytes_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+async fn spawn_mock_router_server(
+    state: Arc<std::sync::Mutex<MockRouterState>>,
+) -> (String, AbortOnDropHandle) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock router listener");
+    let addr = listener.local_addr().expect("mock listener addr");
+    let url = format!("http://127.0.0.1:{}", addr.port());
+
+    let handle = tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            let st = Arc::clone(&state);
+            tokio::spawn(async move {
+                let mut buf = Vec::with_capacity(4096);
+                let mut tmp = [0u8; 2048];
+                let header_end = loop {
+                    if let Some(pos) = find_bytes_subslice(&buf, b"\r\n\r\n") {
+                        break Some(pos);
+                    }
+                    match stream.read(&mut tmp).await {
+                        Ok(0) | Err(_) => break None,
+                        Ok(n) => {
+                            buf.extend_from_slice(&tmp[..n]);
+                            if buf.len() > 65_536 {
+                                break None;
+                            }
+                        }
+                    }
+                };
+                let Some(hdr_end) = header_end else {
+                    return;
+                };
+                let hdr_text = String::from_utf8_lossy(&buf[..hdr_end]).to_string();
+                let mut lines = hdr_text.split("\r\n");
+                let req_line = lines.next().unwrap_or("");
+                let mut parts = req_line.split_whitespace();
+                let method = parts.next().unwrap_or("GET").to_string();
+                let path = parts.next().unwrap_or("/").to_string();
+
+                let mut auth_header = String::new();
+                let mut content_len = 0usize;
+                for line in lines {
+                    if let Some((k, v)) = line.split_once(':') {
+                        let kl = k.trim().to_ascii_lowercase();
+                        if kl == "authorization" {
+                            auth_header = v.trim().to_string();
+                        } else if kl == "content-length" {
+                            content_len = v.trim().parse::<usize>().unwrap_or(0);
+                        }
+                    }
+                }
+
+                let body_start = hdr_end + 4;
+                while buf.len().saturating_sub(body_start) < content_len {
+                    match stream.read(&mut tmp).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                    }
+                }
+                let body_bytes = &buf[body_start..buf.len().min(body_start + content_len)];
+                let body_str = String::from_utf8_lossy(body_bytes).to_string();
+
+                let (status_code, status_text, resp_body) = {
+                    let mut guard = st.lock().expect("lock mock state");
+                    guard.seen_auth_headers.push(auth_header.clone());
+                    guard
+                        .requests
+                        .push((method.clone(), path.clone(), body_str.clone()));
+
+                    let expected_hdr = format!("Bearer {}", guard.expected_token);
+                    if let Some(code) = guard.reject_status {
+                        let txt = if code == 403 {
+                            "Forbidden"
+                        } else {
+                            "Unauthorized"
+                        };
+                        (code, txt, serde_json::json!({ "error": "auth rejected" }))
+                    } else if auth_header != expected_hdr {
+                        (
+                            401,
+                            "Unauthorized",
+                            serde_json::json!({ "error": "invalid bearer token" }),
+                        )
+                    } else if method == "GET" && path == "/api/telemetry" {
+                        if guard.telemetry_status != 200 {
+                            (
+                                guard.telemetry_status,
+                                "Service Unavailable",
+                                serde_json::json!({ "error": "telemetry unavailable" }),
+                            )
+                        } else {
+                            (
+                                200,
+                                "OK",
+                                serde_json::json!({
+                                    "system": {
+                                        "hostname": "branch-gw",
+                                        "router_model": "GL-MT6000",
+                                        "memory_used_mb": 120,
+                                        "memory_total_mb": 1024,
+                                        "host_uptime_secs": 3700
+                                    },
+                                    "live": {
+                                        "core_running": guard.core_running,
+                                        "core_version": guard.core_version,
+                                        "wan_healthy": true,
+                                        "dns_healthy": true,
+                                        "active_connections": 17,
+                                        "core_uptime_secs": 1850
+                                    }
+                                }),
+                            )
+                        }
+                    } else if method == "GET" && path == "/api/updates/check" {
+                        if guard.telemetry_status != 200 {
+                            (
+                                guard.telemetry_status,
+                                "Service Unavailable",
+                                serde_json::json!({ "error": "updates unavailable" }),
+                            )
+                        } else {
+                            (
+                                200,
+                                "OK",
+                                serde_json::json!({
+                                    "orchestrator_version": guard.tachyon_version,
+                                    "orchestrator_latest": guard.tachyon_latest,
+                                    "core_installed": guard.core_version,
+                                    "core_latest": guard.core_latest,
+                                    "lists_installed_count": 5,
+                                    "subscriptions_count": 2
+                                }),
+                            )
+                        }
+                    } else if method == "GET" && path == "/api/diagnostics/doctor" {
+                        (
+                            200,
+                            "OK",
+                            serde_json::json!({
+                                "healthy": true,
+                                "checks_passed": 12,
+                                "checks_total": 12,
+                                "summary": "All runtime checks OK",
+                                "findings": []
+                            }),
+                        )
+                    } else if method == "POST" && path == "/api/components/action" {
+                        if guard.use_ubus_update_fallback {
+                            (
+                                200,
+                                "OK",
+                                serde_json::json!({
+                                    "ok": false,
+                                    "result": {
+                                        "message": "требует запуска через updater"
+                                    }
+                                }),
+                            )
+                        } else {
+                            guard.tachyon_version = guard.tachyon_latest.clone();
+                            (
+                                200,
+                                "OK",
+                                serde_json::json!({
+                                    "ok": true,
+                                    "result": {
+                                        "message": "Tachyon updated"
+                                    }
+                                }),
+                            )
+                        }
+                    } else if method == "POST" && path == "/ubus" {
+                        let rpc: serde_json::Value =
+                            serde_json::from_str(&body_str).unwrap_or(serde_json::Value::Null);
+                        let subcmd = rpc
+                            .pointer("/params/3/params/0")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("");
+                        let stdout_json = match subcmd {
+                            "component_action_async" => serde_json::json!({
+                                "ok": true,
+                                "running": true,
+                                "job_id": "job-442"
+                            })
+                            .to_string(),
+                            "component_action_status" => {
+                                guard.tachyon_version = guard.tachyon_latest.clone();
+                                serde_json::json!({
+                                    "ok": true,
+                                    "running": false,
+                                    "status": "done",
+                                    "message": "Updater finished"
+                                })
+                                .to_string()
+                            }
+                            "component_list_releases" => serde_json::json!([
+                                { "version": guard.tachyon_latest }
+                            ])
+                            .to_string(),
+                            _ => serde_json::json!({ "ok": true }).to_string(),
+                        };
+                        (
+                            200,
+                            "OK",
+                            serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": 1,
+                                "result": [0, { "stdout": stdout_json }]
+                            }),
+                        )
+                    } else if method == "POST" && path == "/api/core/restart" {
+                        guard.core_running = true;
+                        (
+                            200,
+                            "OK",
+                            serde_json::json!({
+                                "ok": true,
+                                "message": "Service restarted"
+                            }),
+                        )
+                    } else {
+                        (
+                            404,
+                            "Not Found",
+                            serde_json::json!({ "error": "unknown endpoint" }),
+                        )
+                    }
+                };
+
+                let payload = resp_body.to_string();
+                let raw_resp = format!(
+                    "HTTP/1.1 {status_code} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    payload.len(),
+                    payload
+                );
+                let _ = stream.write_all(raw_resp.as_bytes()).await;
+                let _ = stream.shutdown().await;
+            });
+        }
+    });
+
+    (url, AbortOnDropHandle(handle))
+}
+
+fn collect_buttons(reply: &BotReply) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let Some(kb) = reply.keyboard.as_ref() else {
+        return out;
+    };
+    let Some(rows) = kb.get("inline_keyboard").and_then(|v| v.as_array()) else {
+        return out;
+    };
+    for row in rows {
+        let Some(btns) = row.as_array() else {
+            continue;
+        };
+        for btn in btns {
+            let text = btn
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let raw_cb = btn
+                .get("callback_data")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            out.push((text, resolve_callback_data(raw_cb)));
+        }
+    }
+    out
+}
+
+fn assert_no_token_leak(reply: &BotReply, token: &str) {
+    assert!(
+        !reply.text.contains(token),
+        "raw API token leaked in reply text: {}",
+        reply.text
+    );
+    if let Some(kb) = reply.keyboard.as_ref() {
+        let kb_str = kb.to_string();
+        assert!(
+            !kb_str.contains(token),
+            "raw API token leaked in keyboard JSON: {kb_str}"
+        );
+    }
+    for (_, cb) in collect_buttons(reply) {
+        assert!(
+            !cb.contains(token),
+            "raw API token leaked in callback_data: {cb}"
+        );
+    }
+}
+
+#[test]
+fn test_tg_bot_config_backward_compat_without_managed_routers() {
+    let legacy_tg_json = r#"{
+        "enabled": true,
+        "bot_token": "111:LEGACY",
+        "admin_ids": [1001],
+        "router_name": "LegacyNode",
+        "language": "ru",
+        "notify_on_crash": true
+    }"#;
+    let parsed_tg: crate::store::TgBotConfig =
+        serde_json::from_str(legacy_tg_json).expect("legacy TgBotConfig without managed_routers");
+    assert!(parsed_tg.managed_routers.is_empty());
+    assert_eq!(parsed_tg.router_name, "LegacyNode");
+
+    let mut legacy_store_val =
+        serde_json::to_value(crate::store::RouterStoreData::default()).expect("serialize default");
+    if let Some(tg_obj) = legacy_store_val
+        .get_mut("telegram")
+        .and_then(|v| v.as_object_mut())
+    {
+        tg_obj.remove("managed_routers");
+        tg_obj.insert("bot_token".to_string(), serde_json::json!("111:LEGACY"));
+        tg_obj.insert("admin_ids".to_string(), serde_json::json!([1001]));
+    }
+    let parsed_store: crate::store::RouterStoreData = serde_json::from_value(legacy_store_val)
+        .expect("legacy RouterStoreData without managed_routers");
+    assert!(parsed_store.telegram.managed_routers.is_empty());
+
+    // ManagedRouter.enabled defaults to true when omitted
+    let router_no_enabled_json = r#"{
+        "id": "r_home",
+        "name": "Home",
+        "url": "http://192.168.1.1:8080",
+        "api_token": "tok_default_enabled"
+    }"#;
+    let mr: crate::store::ManagedRouter = serde_json::from_str(router_no_enabled_json)
+        .expect("ManagedRouter without enabled field");
+    assert!(mr.enabled);
+
+    // LuCI JSON section import must preserve managed_routers and section export must omit them
+    let mut store = crate::store::RouterStoreData::default();
+    store.telegram.enabled = true;
+    store.telegram.managed_routers.push(crate::store::ManagedRouter {
+        id: "branch_1".to_string(),
+        name: "Branch-1".to_string(),
+        url: "http://10.0.0.2:8080".to_string(),
+        api_token: "super_secret_sync_tok".to_string(),
+        enabled: true,
+    });
+
+    let sections_val = crate::store::sync_store_to_json_sections(&store, None);
+    let sections_str = sections_val.to_string();
+    assert!(!sections_str.contains("managed_routers"));
+    assert!(!sections_str.contains("super_secret_sync_tok"));
+
+    let mut uci_sections = serde_json::Map::new();
+    uci_sections.insert(
+        "telegram".to_string(),
+        serde_json::json!({
+            ".type": "telegram",
+            "enabled": true,
+            "router_name": "UpdatedViaLuCI",
+            "language": "en"
+        }),
+    );
+    store.import_from_json_sections(&uci_sections);
+    assert_eq!(store.telegram.router_name, "UpdatedViaLuCI");
+    assert_eq!(store.telegram.managed_routers.len(), 1);
+    assert_eq!(store.telegram.managed_routers[0].id, "branch_1");
+
+    // Snapshot redaction redacts api_token fields
+    let serialized = serde_json::to_value(&store).expect("serialize store");
+    let redacted = crate::crypto_gen::redact_json_value(&serialized);
+    let redacted_str = redacted.to_string();
+    assert!(!redacted_str.contains("super_secret_sync_tok"));
+}
+
+#[test]
+fn test_fleet_url_validation_http_parser_and_token_redaction() {
+    let ok_http = fleet::normalize_and_validate_router_url("http://192.168.1.2:8080/")
+        .expect("valid http url");
+    assert_eq!(ok_http.scheme, "http");
+    assert_eq!(ok_http.connect_host, "192.168.1.2");
+    assert_eq!(ok_http.host_header, "192.168.1.2:8080");
+    assert_eq!(ok_http.port, 8080);
+    assert_eq!(ok_http.base_path, "");
+    assert_eq!(ok_http.normalized_url, "http://192.168.1.2:8080");
+
+    let ok_https =
+        fleet::normalize_and_validate_router_url("HTTPS://gw.example.com/tachyon-api/")
+            .expect("valid https url");
+    assert_eq!(ok_https.scheme, "https");
+    assert_eq!(ok_https.port, 443);
+    assert_eq!(ok_https.base_path, "/tachyon-api");
+    assert_eq!(
+        ok_https.normalized_url,
+        "https://gw.example.com/tachyon-api"
+    );
+
+    let ok_v6 = fleet::normalize_and_validate_router_url("http://[::1]:9000")
+        .expect("valid ipv6 url");
+    assert_eq!(ok_v6.connect_host, "::1");
+    assert_eq!(ok_v6.host_header, "[::1]:9000");
+    assert_eq!(ok_v6.port, 9000);
+
+    assert!(fleet::normalize_and_validate_router_url("").is_err());
+    assert!(fleet::normalize_and_validate_router_url("ftp://192.168.1.2").is_err());
+    assert!(fleet::normalize_and_validate_router_url("http://user:pass@192.168.1.2").is_err());
+    assert!(fleet::normalize_and_validate_router_url("http://192.168.1.2/a?x=1").is_err());
+    assert!(fleet::normalize_and_validate_router_url("http://192.168.1.2/bad space").is_err());
+
+    let plain_resp = fleet::parse_http_response(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"ok\":true}",
+        true,
+    )
+    .expect("parse plain http");
+    assert_eq!(plain_resp.status, 200);
+    assert_eq!(plain_resp.body, br#"{"ok":true}"#);
+
+    let continue_resp = fleet::parse_http_response(
+        b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}",
+        true,
+    )
+    .expect("parse 100 continue");
+    assert_eq!(continue_resp.status, 200);
+    assert_eq!(continue_resp.body, b"{}");
+
+    let chunked_resp = fleet::parse_http_response(
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\n{\"a\":\r\n2\r\n1}\r\n0\r\n\r\n",
+        true,
+    )
+    .expect("parse chunked http");
+    assert_eq!(chunked_resp.status, 200);
+    assert_eq!(chunked_resp.body, br#"{"a":1}"#);
+
+    let h2_resp = fleet::parse_http_response(
+        b"HTTP/2 200\r\ntransfer-encoding: chunked\r\n\r\n{\"ok\":true}",
+        false,
+    )
+    .expect("parse pre-unchunked curl http/2");
+    assert_eq!(h2_resp.status, 200);
+    assert_eq!(h2_resp.body, br#"{"ok":true}"#);
+
+    let cfg = fleet::build_curl_stdin_config("https://gw.example.com/api", "tok_secret_123")
+        .expect("curl stdin config");
+    assert!(cfg.contains("url = \"https://gw.example.com/api\""));
+    assert!(cfg.contains("Authorization: Bearer tok_secret_123"));
+    assert!(fleet::build_curl_stdin_config("https://gw.example.com", "bad\ntok").is_err());
+
+    let dirty = "failed Authorization: Bearer tok_secret_123 tok_secret_123";
+    let clean = fleet::sanitize_fleet_error(dirty, "tok_secret_123");
+    assert!(!clean.contains("tok_secret_123"));
+    assert!(clean.contains("[REDACTED]"));
+
+    let clean_url = fleet::sanitize_display_url("http://adm:pw@10.0.0.1:8080/path?token=abc");
+    assert!(!clean_url.contains("adm:pw"));
+    assert!(!clean_url.contains("token=abc"));
+    assert!(clean_url.contains("[REDACTED]@10.0.0.1:8080/path"));
+}
+
+#[tokio::test]
+async fn test_fleet_overview_and_single_router_inspection_mock_http() {
+    let admin_id = 710_001i64;
+    let env = TempTestEnv::new("fleet_overview", admin_id).await;
+
+    let token = "secret_branch_tok_987654";
+    let mock_state = Arc::new(std::sync::Mutex::new(MockRouterState::new(token)));
+    let (online_url, _server_guard) = spawn_mock_router_server(Arc::clone(&mock_state)).await;
+
+    // Bind and drop an ephemeral listener so we get a guaranteed closed port
+    let dead_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind temp port for offline router");
+    let dead_port = dead_listener.local_addr().expect("dead port").port();
+    drop(dead_listener);
+    let offline_url = format!("http://127.0.0.1:{dead_port}");
+
+    // /start main menu includes Routers button (EN + RU)
+    let start_en = handle_incoming_text(admin_id, "/start", &env.state, &env.core)
+        .await
+        .expect("en /start");
+    let btns_en = collect_buttons(&start_en);
+    assert!(
+        btns_en
+            .iter()
+            .any(|(label, cb)| label == "Routers" && cb == "/routers"),
+        "missing Routers button in EN /start: {btns_en:?}"
+    );
+
+    {
+        let mut d = env.state.data.write().await;
+        d.telegram.language = "ru".to_string();
+        d.telegram.managed_routers = vec![
+            crate::store::ManagedRouter {
+                id: "branch_office".to_string(),
+                name: "Branch-Office".to_string(),
+                url: online_url.clone(),
+                api_token: token.to_string(),
+                enabled: true,
+            },
+            crate::store::ManagedRouter {
+                id: "warehouse_off".to_string(),
+                name: "Warehouse-Offline".to_string(),
+                url: offline_url,
+                api_token: "offline_tok_000".to_string(),
+                enabled: true,
+            },
+        ];
+    }
+
+    let start_ru = handle_incoming_text(admin_id, "/start", &env.state, &env.core)
+        .await
+        .expect("ru /start");
+    let btns_ru = collect_buttons(&start_ru);
+    assert!(
+        btns_ru
+            .iter()
+            .any(|(label, cb)| label == "Роутеры" && cb == "/routers"),
+        "missing Роутеры button in RU /start: {btns_ru:?}"
+    );
+
+    // /routers -> fleet overview showing online + offline sites
+    let overview = handle_incoming_text(admin_id, "/routers", &env.state, &env.core)
+        .await
+        .expect("/routers overview");
+    assert!(overview.text.contains("Branch-Office"), "{}", overview.text);
+    assert!(overview.text.contains("online"), "{}", overview.text);
+    assert!(overview.text.contains("2.0.0-beta.13"), "{}", overview.text);
+    assert!(overview.text.contains("0.5.0"), "{}", overview.text);
+    assert!(overview.text.contains("Warehouse-Offline"), "{}", overview.text);
+    assert!(overview.text.contains("offline"), "{}", overview.text);
+    assert_no_token_leak(&overview, token);
+    assert_no_token_leak(&overview, "offline_tok_000");
+
+    {
+        let st = mock_state.lock().expect("lock mock");
+        assert!(
+            st.seen_auth_headers
+                .iter()
+                .any(|h| h == &format!("Bearer {token}")),
+            "expected Bearer token header, saw {:?}",
+            st.seen_auth_headers
+        );
+    }
+
+    // Single-router detail inspection with doctor summary
+    let detail = handle_incoming_callback(
+        admin_id,
+        "flt_view branch_office",
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("flt_view reply");
+    assert!(detail.text.contains("Branch-Office"), "{}", detail.text);
+    assert!(detail.text.contains("running [ON]"), "{}", detail.text);
+    assert!(detail.text.contains("120/1024 MB"), "{}", detail.text);
+    assert!(detail.text.contains("12/12"), "{}", detail.text);
+    assert!(detail.text.contains("All runtime checks OK"), "{}", detail.text);
+    assert_no_token_leak(&detail, token);
+
+    let detail_btns = collect_buttons(&detail);
+    for expected_prefix in [
+        "flt_upd_chk branch_office",
+        "flt_upd_ask branch_office",
+        "flt_rst_ask branch_office",
+        "flt_del_ask branch_office",
+    ] {
+        assert!(
+            detail_btns.iter().any(|(_, cb)| cb == expected_prefix),
+            "missing action button {expected_prefix} in {detail_btns:?}"
+        );
+    }
+    {
+        let st = mock_state.lock().expect("lock mock");
+        assert!(
+            st.requests
+                .iter()
+                .any(|(m, p, _)| m == "GET" && p == "/api/diagnostics/doctor"),
+            "expected GET /api/diagnostics/doctor"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_fleet_monitor_hysteresis_cooldown_outage_recovery_no_spam() {
+    let env = TempTestEnv::new("fleet_monitor", 710_002).await;
+    let cache_path = env.dir.join("fleet-health.json");
+    let token = "secret_dc_tok_444";
+    let mock_state = Arc::new(std::sync::Mutex::new(MockRouterState::new(token)));
+    let (url, _server_guard) = spawn_mock_router_server(Arc::clone(&mock_state)).await;
+
+    let routers = vec![crate::store::ManagedRouter {
+        id: "remote_dc".to_string(),
+        name: "Remote-DC".to_string(),
+        url: url.clone(),
+        api_token: token.to_string(),
+        enabled: true,
+    }];
+
+    let mut mon = fleet::FleetMonitor::new_with_config(60, 2, 2, 300, cache_path.clone());
+
+    // Initial healthy poll -> no alert
+    assert!(mon.poll_tick_if_due(&routers, 1000).await.is_empty());
+
+    // Flip remote to 503 outage
+    mock_state.lock().expect("lock mock").telemetry_status = 503;
+
+    // Before poll_interval (60s) elapses -> skipped, no alerts
+    assert!(mon.poll_tick_if_due(&routers, 1030).await.is_empty());
+
+    // 1st consecutive failure -> silent (failure_threshold = 2)
+    assert!(mon.poll_tick_if_due(&routers, 1060).await.is_empty());
+
+    // 2nd consecutive failure -> emits 1 Outage alert naming site without token
+    let alerts_out = mon.poll_tick_if_due(&routers, 1120).await;
+    assert_eq!(alerts_out.len(), 1);
+    assert_eq!(alerts_out[0].kind, fleet::FleetAlertKind::Outage);
+    assert_eq!(alerts_out[0].router_name, "Remote-DC");
+    let out_html = fleet::format_fleet_alert_html(&alerts_out[0], true);
+    assert!(out_html.contains("Remote-DC"));
+    assert!(!out_html.contains(token));
+
+    // Repeated failures while offline -> 0 alerts (no spam)
+    assert!(mon.poll_tick_if_due(&routers, 1180).await.is_empty());
+    assert!(mon.poll_tick_if_due(&routers, 1240).await.is_empty());
+
+    // Remote recovers to 200 OK
+    mock_state.lock().expect("lock mock").telemetry_status = 200;
+
+    // 1st consecutive success -> silent (recovery_threshold = 2)
+    assert!(mon.poll_tick_if_due(&routers, 1300).await.is_empty());
+
+    // 2nd consecutive success -> emits 1 Recovery alert naming site
+    let alerts_rec = mon.poll_tick_if_due(&routers, 1360).await;
+    assert_eq!(alerts_rec.len(), 1);
+    assert_eq!(alerts_rec[0].kind, fleet::FleetAlertKind::Recovery);
+    assert_eq!(alerts_rec[0].router_name, "Remote-DC");
+    let rec_html = fleet::format_fleet_alert_html(&alerts_rec[0], false);
+    assert!(rec_html.contains("Remote-DC"));
+    assert!(!rec_html.contains(token));
+
+    // Tmpfs cache persisted on demand and contains no raw API token
+    let cache_text = std::fs::read_to_string(&cache_path).expect("read fleet-health cache");
+    assert!(cache_text.contains("Remote-DC"));
+    assert!(!cache_text.contains(token));
+
+    // Cooldown suppression: rapid flap within 300s suppresses duplicate outage alert, then allows after cooldown
+    let ok_sample = || {
+        vec![fleet::FleetProbeSample {
+            router_id: "r_cool".to_string(),
+            router_name: "CoolSite".to_string(),
+            url: "http://127.0.0.1:9999".to_string(),
+            reachable: true,
+            core_running: Some(true),
+            tachyon_version: "2.0.0".to_string(),
+            core_version: "0.5.0".to_string(),
+            auth_error: None,
+            error: None,
+        }]
+    };
+    let err_sample = || {
+        vec![fleet::FleetProbeSample {
+            router_id: "r_cool".to_string(),
+            router_name: "CoolSite".to_string(),
+            url: "http://127.0.0.1:9999".to_string(),
+            reachable: false,
+            core_running: None,
+            tachyon_version: String::new(),
+            core_version: String::new(),
+            auth_error: None,
+            error: Some("timeout".to_string()),
+        }]
+    };
+
+    let mut cool_mon =
+        fleet::FleetMonitor::new_with_config(10, 2, 2, 300, env.dir.join("cool-health.json"));
+    assert!(cool_mon.apply_probe_samples(&ok_sample(), 100).is_empty());
+    assert!(cool_mon.apply_probe_samples(&err_sample(), 190).is_empty());
+    assert_eq!(cool_mon.apply_probe_samples(&err_sample(), 200).len(), 1); // outage at T=200
+    assert!(cool_mon.apply_probe_samples(&ok_sample(), 210).is_empty());
+    assert_eq!(cool_mon.apply_probe_samples(&ok_sample(), 220).len(), 1); // recovery at T=220
+
+    // Flap outage at T=240..250 (50s since T=200 < 300s cooldown) -> suppressed
+    assert!(cool_mon.apply_probe_samples(&err_sample(), 240).is_empty());
+    assert!(cool_mon.apply_probe_samples(&err_sample(), 250).is_empty());
+
+    // Recover outside cooldown (T=550 >= 220+300) — note outage_notified was false so recovery stays silent, then new outage at T=600 (> 200+300) triggers again
+    assert!(cool_mon.apply_probe_samples(&ok_sample(), 540).is_empty());
+    assert!(cool_mon.apply_probe_samples(&ok_sample(), 550).is_empty());
+    assert!(cool_mon.apply_probe_samples(&err_sample(), 590).is_empty());
+    let after_cooldown = cool_mon.apply_probe_samples(&err_sample(), 600);
+    assert_eq!(after_cooldown.len(), 1);
+    assert_eq!(after_cooldown[0].kind, fleet::FleetAlertKind::Outage);
+}
+
+#[tokio::test]
+async fn test_fleet_check_updates_confirmation_and_post_verification() {
+    let admin_id = 710_003i64;
+    let env = TempTestEnv::new("fleet_updates", admin_id).await;
+    let token = "secret_upd_tok_555";
+    let mock_state = Arc::new(std::sync::Mutex::new(MockRouterState::new(token)));
+    mock_state.lock().expect("lock mock").core_running = false;
+    let (url, _server_guard) = spawn_mock_router_server(Arc::clone(&mock_state)).await;
+
+    {
+        let mut d = env.state.data.write().await;
+        d.telegram.managed_routers = vec![crate::store::ManagedRouter {
+            id: "r1".to_string(),
+            name: "Edge-1".to_string(),
+            url,
+            api_token: token.to_string(),
+            enabled: true,
+        }];
+    }
+
+    // Check updates
+    let upd = handle_incoming_callback(admin_id, "flt_upd_chk r1", &env.state, &env.core)
+        .await
+        .expect("flt_upd_chk");
+    assert!(upd.text.contains("2.0.0-beta.13"), "{}", upd.text);
+    assert!(upd.text.contains("2.0.0-beta.14"), "{}", upd.text);
+    assert!(upd.text.contains("0.5.0"), "{}", upd.text);
+    assert!(upd.text.contains("0.5.1"), "{}", upd.text);
+    assert_no_token_leak(&upd, token);
+
+    // Update ask requires explicit confirmation, zero POST requests yet
+    let upd_ask = handle_incoming_callback(admin_id, "flt_upd_ask r1", &env.state, &env.core)
+        .await
+        .expect("flt_upd_ask");
+    let ask_btns = collect_buttons(&upd_ask);
+    assert!(ask_btns.iter().any(|(_, cb)| cb == "flt_upd_ok r1"));
+    assert!(ask_btns.iter().any(|(_, cb)| cb == "flt_view r1"));
+    assert_eq!(mock_state.lock().expect("lock mock").post_count(), 0);
+
+    // Cancel returns to router detail without sending POST
+    let _cancel = handle_incoming_callback(admin_id, "flt_view r1", &env.state, &env.core)
+        .await
+        .expect("cancel flt_view");
+    assert_eq!(mock_state.lock().expect("lock mock").post_count(), 0);
+
+    // Restart ask also requires confirmation without sending POST
+    let rst_ask = handle_incoming_callback(admin_id, "flt_rst_ask r1", &env.state, &env.core)
+        .await
+        .expect("flt_rst_ask");
+    let rst_btns = collect_buttons(&rst_ask);
+    assert!(rst_btns.iter().any(|(_, cb)| cb == "flt_rst_ok r1"));
+    assert!(rst_btns.iter().any(|(_, cb)| cb == "flt_view r1"));
+    assert_eq!(mock_state.lock().expect("lock mock").post_count(), 0);
+
+    // Confirm Update -> sends POST /api/components/action + runs post-action verification observing 2.0.0-beta.14
+    let upd_ok = handle_incoming_callback(admin_id, "flt_upd_ok r1", &env.state, &env.core)
+        .await
+        .expect("flt_upd_ok");
+    assert!(upd_ok.text.contains("[OK]"), "{}", upd_ok.text);
+    assert!(upd_ok.text.contains("2.0.0-beta.14"), "{}", upd_ok.text);
+    assert_no_token_leak(&upd_ok, token);
+    {
+        let st = mock_state.lock().expect("lock mock");
+        assert!(st.requests.iter().any(|(m, p, b)| {
+            m == "POST"
+                && p == "/api/components/action"
+                && b.contains("tachyon")
+                && b.contains("update")
+        }));
+    }
+
+    // Verify ubus updater fallback path when /api/components/action declines direct self-update
+    {
+        let mut st = mock_state.lock().expect("lock mock");
+        st.use_ubus_update_fallback = true;
+        st.tachyon_version = "2.0.0-beta.13".to_string();
+        st.requests.clear();
+    }
+    let ubus_ok = handle_incoming_callback(admin_id, "flt_upd_ok r1", &env.state, &env.core)
+        .await
+        .expect("flt_upd_ok ubus fallback");
+    assert!(ubus_ok.text.contains("[OK]"), "{}", ubus_ok.text);
+    assert!(ubus_ok.text.contains("2.0.0-beta.14"), "{}", ubus_ok.text);
+    assert_no_token_leak(&ubus_ok, token);
+    {
+        let st = mock_state.lock().expect("lock mock");
+        assert!(st.requests.iter().any(|(m, p, _)| m == "POST" && p == "/ubus"));
+    }
+
+    // Confirm Restart -> sends POST /api/core/restart + runs post-action health/version verification
+    let rst_ok = handle_incoming_callback(admin_id, "flt_rst_ok r1", &env.state, &env.core)
+        .await
+        .expect("flt_rst_ok");
+    assert!(rst_ok.text.contains("[OK]"), "{}", rst_ok.text);
+    assert!(rst_ok.text.contains("2.0.0-beta.14"), "{}", rst_ok.text);
+    assert!(
+        rst_ok.text.contains("Core: <code>running</code>"),
+        "{}",
+        rst_ok.text
+    );
+    assert_no_token_leak(&rst_ok, token);
+    {
+        let st = mock_state.lock().expect("lock mock");
+        assert!(
+            st.requests
+                .iter()
+                .any(|(m, p, _)| m == "POST" && p == "/api/core/restart")
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
+    let _prompt_guard = prompt_test_lock().lock().await;
+    let admin_id = 710_004i64;
+    clear_chat_prompt(admin_id);
+
+    let env = TempTestEnv::new("fleet_add_remove", admin_id).await;
+    let valid_token = "super_secret_fleet_tok_XYZ_777";
+    let mock_state = Arc::new(std::sync::Mutex::new(MockRouterState::new(valid_token)));
+    let (url, _server_guard) = spawn_mock_router_server(Arc::clone(&mock_state)).await;
+
+    // Step 1: start Add Router prompt -> name -> URL
+    let step1 = handle_incoming_callback(admin_id, "flt_add", &env.state, &env.core)
+        .await
+        .expect("flt_add");
+    assert!(!step1.text.is_empty());
+
+    let step2 = handle_incoming_text(admin_id, "Branch-A", &env.state, &env.core)
+        .await
+        .expect("router name step");
+    assert!(step2.text.contains("Branch-A"), "{}", step2.text);
+
+    let step3 = handle_incoming_text(admin_id, &url, &env.state, &env.core)
+        .await
+        .expect("router url step");
+    assert!(step3.text.contains(&url), "{}", step3.text);
+
+    // Reject 401 on wrong token without saving or leaking token
+    let wrong_tok = "wrong_tok_401_XYZ";
+    let rej_401 = handle_incoming_text(admin_id, wrong_tok, &env.state, &env.core)
+        .await
+        .expect("401 rejection");
+    assert!(rej_401.text.contains("[ERR]"), "{}", rej_401.text);
+    assert!(rej_401.text.contains("401"), "{}", rej_401.text);
+    assert_no_token_leak(&rej_401, wrong_tok);
+    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+
+    // Reject 403 on forbidden token without saving or leaking token
+    mock_state.lock().expect("lock mock").reject_status = Some(403);
+    let tok_403 = "forbidden_tok_403_XYZ";
+    let rej_403 = handle_incoming_text(admin_id, tok_403, &env.state, &env.core)
+        .await
+        .expect("403 rejection");
+    assert!(rej_403.text.contains("[ERR]"), "{}", rej_403.text);
+    assert!(rej_403.text.contains("403"), "{}", rej_403.text);
+    assert_no_token_leak(&rej_403, tok_403);
+    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+
+    // Allow valid token -> persists to AppState and tachyon-state.json without echoing token
+    mock_state.lock().expect("lock mock").reject_status = None;
+    let added = handle_incoming_text(admin_id, valid_token, &env.state, &env.core)
+        .await
+        .expect("valid token accepted");
+    assert!(added.text.contains("[OK]"), "{}", added.text);
+    assert!(added.text.contains("Branch-A"), "{}", added.text);
+    assert!(added.text.contains("configured"), "{}", added.text);
+    assert_no_token_leak(&added, valid_token);
+
+    let router_id = {
+        let d = env.state.data.read().await;
+        assert_eq!(d.telegram.managed_routers.len(), 1);
+        assert_eq!(d.telegram.managed_routers[0].name, "Branch-A");
+        assert_eq!(d.telegram.managed_routers[0].url, url);
+        assert_eq!(d.telegram.managed_routers[0].api_token, valid_token);
+        d.telegram.managed_routers[0].id.clone()
+    };
+
+    // Reload from disk to verify persistence across restarts
+    let reloaded =
+        AppState::load_or_create(env.dir.join("tachyon-state.json")).expect("reload state");
+    {
+        let d = reloaded.data.read().await;
+        assert_eq!(d.telegram.managed_routers.len(), 1);
+        assert_eq!(d.telegram.managed_routers[0].id, router_id);
+        assert_eq!(d.telegram.managed_routers[0].api_token, valid_token);
+    }
+
+    // Remote auth rejection (401 and 403) on saved router never leaks token
+    for status in [401u16, 403u16] {
+        mock_state.lock().expect("lock mock").reject_status = Some(status);
+        let view_err = handle_incoming_callback(
+            admin_id,
+            &format!("flt_view {router_id}"),
+            &env.state,
+            &env.core,
+        )
+        .await
+        .expect("view auth error");
+        assert!(
+            view_err.text.contains(&status.to_string()),
+            "{}",
+            view_err.text
+        );
+        assert_no_token_leak(&view_err, valid_token);
+
+        let upd_err = handle_incoming_callback(
+            admin_id,
+            &format!("flt_upd_chk {router_id}"),
+            &env.state,
+            &env.core,
+        )
+        .await
+        .expect("update check auth error");
+        assert!(
+            upd_err.text.contains(&status.to_string()),
+            "{}",
+            upd_err.text
+        );
+        assert_no_token_leak(&upd_err, valid_token);
+    }
+    mock_state.lock().expect("lock mock").reject_status = None;
+
+    // Remove router with explicit confirmation
+    let del_ask = handle_incoming_callback(
+        admin_id,
+        &format!("flt_del_ask {router_id}"),
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("flt_del_ask");
+    let del_btns = collect_buttons(&del_ask);
+    assert!(
+        del_btns
+            .iter()
+            .any(|(_, cb)| cb == &format!("flt_del_ok {router_id}"))
+    );
+    assert_eq!(env.state.data.read().await.telegram.managed_routers.len(), 1);
+
+    let del_ok = handle_incoming_callback(
+        admin_id,
+        &format!("flt_del_ok {router_id}"),
+        &env.state,
+        &env.core,
+    )
+    .await
+    .expect("flt_del_ok");
+    assert!(del_ok.text.contains("[OK]"), "{}", del_ok.text);
+    assert!(env.state.data.read().await.telegram.managed_routers.is_empty());
+
+    let reloaded_after_del =
+        AppState::load_or_create(env.dir.join("tachyon-state.json")).expect("reload after del");
+    assert!(
+        reloaded_after_del
+            .data
+            .read()
+            .await
+            .telegram
+            .managed_routers
+            .is_empty()
+    );
+
+    clear_chat_prompt(admin_id);
+}

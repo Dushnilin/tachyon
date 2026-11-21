@@ -4,6 +4,7 @@
 //! Public and `pub(crate)` API coordinates `menus`, `ops`, `transport`, `api`,
 //! `ubus_bridge`, and `updater`.
 
+pub(crate) mod fleet;
 mod menus;
 mod ops;
 #[cfg(test)]
@@ -122,6 +123,9 @@ pub(crate) enum PendingPromptKind {
     SetRouterName,
     SetQuietHours,
     AddAdminId,
+    FleetAddName,
+    FleetAddUrl { name: String },
+    FleetAddToken { name: String, url: String },
 }
 
 #[derive(Default)]
@@ -2245,6 +2249,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
         let mut consecutive_failures: u32 = 0;
         let mut route_alert_sent = false;
         let mut observer = BotEventObserver::default();
+        let mut fleet_monitor = fleet::FleetMonitor::default();
 
         loop {
             let (
@@ -2261,6 +2266,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 quiet_end,
                 notify_auto_update,
                 notify_route_alert,
+                managed_routers,
             ) = {
                 let d = state.data.read().await;
                 let core_running = state.live.read().await.core_running;
@@ -2278,6 +2284,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                     d.telegram.quiet_hours_end.clone(),
                     d.telegram.notify_auto_update,
                     d.telegram.notify_route_alert,
+                    d.telegram.managed_routers.clone(),
                 )
             };
 
@@ -2307,6 +2314,33 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 && is_in_quiet_hours_at(local_secs_for_quiet_check(), &quiet_start, &quiet_end);
 
             observe_and_notify_events(&mut observer, &state, &core).await;
+
+            if managed_routers.is_empty() {
+                fleet_monitor.clear_if_nonempty();
+            } else {
+                let fleet_alerts = Box::pin(fleet_monitor.poll_tick_if_due(
+                    &managed_routers,
+                    unix_now_secs(),
+                ))
+                .await;
+                for alert in fleet_alerts {
+                    let body = fleet::format_fleet_alert_html(&alert, ru);
+                    let full_msg = prepend_header_if_missing(&body, &header);
+                    let silent = quiet_now && !matches!(alert.kind, fleet::FleetAlertKind::Outage);
+                    for &cid in &admins {
+                        let _ = transport::send_tg_message(
+                            &token,
+                            cid,
+                            &full_msg,
+                            None,
+                            silent,
+                            proxy_opt.as_deref(),
+                            direct_fallback,
+                        )
+                        .await;
+                    }
+                }
+            }
 
             let job_ctx = JobNotifyCtx {
                 token: &token,

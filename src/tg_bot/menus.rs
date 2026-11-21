@@ -95,11 +95,67 @@ pub(crate) async fn try_handle_menu(
     core: &Arc<CoreManager>,
 ) -> Option<BotReply> {
     let fut = dispatch_menu_system(cmd, chat_id, state, core)
+        .or_else(|| dispatch_menu_fleet(cmd, arg, chat_id, state))
         .or_else(|| dispatch_menu_sections(cmd, arg, chat_id, state, core))
         .or_else(|| dispatch_menu_sources(cmd, arg, chat_id, state, core))
         .or_else(|| dispatch_menu_servers(cmd, arg, state, core))
         .or_else(|| dispatch_menu_lan(cmd, arg, state, core))?;
     Some(fut.await)
+}
+
+fn dispatch_menu_fleet<'a>(
+    cmd: &'a str,
+    arg: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+) -> Option<BoxBotFuture<'a>> {
+    match cmd {
+        "/routers" => Some(Box::pin(super::fleet::handle_routers_command(
+            arg, chat_id, state,
+        ))),
+        "flt_list" => {
+            clear_chat_prompt(chat_id);
+            let page = parse_usize_or(arg, 0);
+            Some(Box::pin(super::fleet::render_fleet_overview(
+                state, page, None,
+            )))
+        }
+        "flt_view" => {
+            clear_chat_prompt(chat_id);
+            Some(Box::pin(super::fleet::render_router_detail(
+                state,
+                arg.trim(),
+                None,
+            )))
+        }
+        "flt_add" => Some(Box::pin(super::fleet::start_add_router_prompt(
+            chat_id, state,
+        ))),
+        "flt_tog" => {
+            clear_chat_prompt(chat_id);
+            Some(Box::pin(super::fleet::toggle_router_enabled(
+                state,
+                arg.trim(),
+            )))
+        }
+        "flt_del_ask" => {
+            clear_chat_prompt(chat_id);
+            Some(Box::pin(super::fleet::render_router_action_confirm(
+                state,
+                arg.trim(),
+                super::fleet::FleetConfirmAction::RemoveRouter,
+            )))
+        }
+        "flt_del_ok" => {
+            clear_chat_prompt(chat_id);
+            Some(Box::pin(super::fleet::execute_router_action_confirmed(
+                state,
+                arg.trim(),
+                super::fleet::FleetConfirmAction::RemoveRouter,
+            )))
+        }
+        _ => None,
+    }
 }
 
 fn dispatch_menu_system<'a>(
@@ -376,6 +432,14 @@ pub(crate) async fn handle_menu_prompt(
             PendingPromptKind::AddSubscriptionOrUri => Box::pin(handle_import_subscription_or_uri(
                 input, chat_id, state, core,
             )),
+            kind @ (PendingPromptKind::FleetAddName
+            | PendingPromptKind::FleetAddUrl { .. }
+            | PendingPromptKind::FleetAddToken { .. }) => {
+                return Box::pin(super::fleet::handle_fleet_prompt(
+                    kind, input, chat_id, state,
+                ))
+                .await;
+            }
             _ => return None,
         };
     Some(fut.await)
@@ -678,13 +742,17 @@ async fn render_main_menu(state: &Arc<AppState>) -> BotReply {
             cb_btn(tr(ru, "Обновления", "Updates"), "/updates"),
         ],
         vec![
+            cb_btn(tr(ru, "Роутеры", "Routers"), "/routers"),
             cb_btn(tr(ru, "Переключатели", "Quick Toggles"), "bot_toggles_menu"),
-            cb_btn(tr(ru, "Настройки бота", "Bot Settings"), "/bot_settings"),
         ],
         vec![
+            cb_btn(tr(ru, "Настройки бота", "Bot Settings"), "/bot_settings"),
             cb_btn(tr(ru, "Ping узлов", "Ping Nodes"), "/ping"),
-            cb_btn(tr(ru, "Перезапуск ядра", "Reload Core"), "sys_reload"),
         ],
+        vec![cb_btn(
+            tr(ru, "Перезапуск ядра", "Reload Core"),
+            "sys_reload",
+        )],
     ]);
 
     BotReply::with_kb(text, kb)

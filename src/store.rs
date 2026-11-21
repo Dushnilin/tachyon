@@ -3362,6 +3362,16 @@ impl Default for GuestModeConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ManagedRouter {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub api_token: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TgBotConfig {
     #[serde(default)]
@@ -3424,6 +3434,8 @@ pub struct TgBotConfig {
     pub quiet_hours_end: String,
     #[serde(default)]
     pub webhook_secret: String,
+    #[serde(default)]
+    pub managed_routers: Vec<ManagedRouter>,
 }
 
 impl Default for TgBotConfig {
@@ -3455,6 +3467,7 @@ impl Default for TgBotConfig {
             quiet_hours_start: default_quiet_start(),
             quiet_hours_end: default_quiet_end(),
             webhook_secret: String::new(),
+            managed_routers: Vec::new(),
         }
     }
 }
@@ -5191,7 +5204,9 @@ impl RouterStoreData {
                 }
                 "telegram" => {
                     if reset_omitted_fields {
+                        let prev_managed_routers = std::mem::take(&mut self.telegram.managed_routers);
                         self.telegram = TgBotConfig::default();
+                        self.telegram.managed_routers = prev_managed_routers;
                     }
                     self.telegram.enabled = b.opt("enabled").is_some_and(parse_bool);
                     self.telegram.bot_token = b.opt("bot_token").unwrap_or("").to_string();
@@ -7605,7 +7620,7 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
             idx,
             &store.telegram,
             &[],
-            &[],
+            &["managed_routers"],
             &[],
             existing_obj("telegram"),
             &[],
