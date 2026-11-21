@@ -3280,6 +3280,9 @@ fn explain_route_with_mac_table(
                 .unwrap_or_else(|| sec.connection_type.clone())
         };
 
+        let is_excluded_client = sec.excluded_ips.iter().any(|ip| {
+            client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
+        });
         let is_excluded_port = sec.exclude_ports.iter().any(|p| p == &port.to_string());
         let is_excluded_domain = sec
             .exclude_domains
@@ -3291,7 +3294,7 @@ fn explain_route_with_mac_table(
                 && (clean.eq_ignore_ascii_case(&target_lower)
                     || crate::store::ip_in_cidr(target.trim(), clean))
         });
-        if is_excluded_port || is_excluded_domain || is_excluded_subnet {
+        if is_excluded_client || is_excluded_port || is_excluded_domain || is_excluded_subnet {
             continue;
         }
 
@@ -6709,5 +6712,56 @@ IP address       HW type     Flags       HW address            Mask     Device
             report.findings
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_explain_route_section_excluded_ips_allows_later_section() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.conditions.clear();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "s1".to_string(),
+            enabled: true,
+            source_type: "socks".to_string(),
+            server: "198.51.100.1".to_string(),
+            server_port: 1080,
+            ..Default::default()
+        });
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "s2".to_string(),
+            enabled: true,
+            source_type: "socks".to_string(),
+            server: "198.51.100.2".to_string(),
+            server_port: 1081,
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec1".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["s1".to_string()],
+            excluded_ips: vec!["192.168.1.50".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec2".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["s2".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+
+        let excluded_res = explain_route(&store, "192.168.1.50", "example.com", 443, "tcp");
+        assert_eq!(excluded_res.matched_section_id, "sec2");
+        assert_eq!(excluded_res.resolved_outbound, "s2");
+
+        let other_res = explain_route(&store, "192.168.1.51", "example.com", 443, "tcp");
+        assert_eq!(other_res.matched_section_id, "sec1");
+        assert_eq!(other_res.resolved_outbound, "s1");
     }
 }

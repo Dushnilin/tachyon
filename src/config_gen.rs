@@ -9243,6 +9243,88 @@ fn allocate_loopback_port(preferred: u16, used_ports: &mut HashSet<u16>) -> u16 
     preferred
 }
 
+fn sanitize_iface_token(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 32 {
+        return None;
+    }
+    if trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+fn primary_lan_interface(store: &RouterStoreData) -> String {
+    for raw in &store.settings.source_network_interfaces {
+        let Some(clean) = sanitize_iface_token(raw) else {
+            continue;
+        };
+        let lower = clean.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "lo" | "wan" | "wan6" | "tailscale0" | "fptn0"
+        ) || lower.starts_with("tun-fptn")
+        {
+            continue;
+        }
+        return clean;
+    }
+    "br-lan".to_string()
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_ip_addr_cidrs(raw: &str, ipv6_active: bool) -> Vec<String> {
+    let mut cidrs = Vec::new();
+    for line in raw.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        for (i, tok) in tokens.iter().enumerate() {
+            let cidr_tok = match *tok {
+                "inet" => tokens.get(i + 1).copied(),
+                "inet6" if ipv6_active => tokens.get(i + 1).copied(),
+                _ => None,
+            };
+            let Some(cand) = cidr_tok else {
+                continue;
+            };
+            if cand.starts_with("fe80:") || cand == "::1/128" || cand.starts_with("127.") {
+                continue;
+            }
+            if let Some(masked) = crate::store::mask_cidr(cand) {
+                push_unique_str(&mut cidrs, &masked);
+            }
+        }
+    }
+    cidrs
+}
+
+fn detect_lan_interface_cidrs(lan_iface: &str, ipv6_active: bool) -> Vec<String> {
+    if lan_iface.trim().is_empty() {
+        return Vec::new();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let out = std::process::Command::new("ip")
+            .args(["-o", "addr", "show", "dev", lan_iface])
+            .output();
+        match out {
+            Ok(res) if res.status.success() => {
+                let raw = String::from_utf8_lossy(&res.stdout);
+                parse_ip_addr_cidrs(&raw, ipv6_active)
+            }
+            _ => Vec::new(),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = ipv6_active;
+        Vec::new()
+    }
+}
+
 fn server_effective_inbound_tag(srv: &InboundServer) -> String {
     if srv.protocol == "shadowtls" {
         format!("srv-{}-inner", srv.id)
@@ -9351,6 +9433,56 @@ fn build_excluded_domain_subrules(excluded: &[String]) -> Vec<Value> {
         vec![Value::Object(sub)]
     } else {
         Vec::new()
+    }
+}
+
+fn build_excluded_source_ip_subrules(excluded: &[String], enable_ipv6: bool) -> Vec<Value> {
+    if excluded.is_empty() {
+        return Vec::new();
+    }
+    let mut cidrs = resolve_device_targets_to_cidrs(excluded);
+    if !enable_ipv6 {
+        cidrs.retain(|s| !s.contains(':'));
+    }
+    if cidrs.is_empty() {
+        Vec::new()
+    } else {
+        vec![json!({ "source_ip_cidr": cidrs, "invert": true })]
+    }
+}
+
+fn build_excluded_subnet_subrules(excluded: &[String], enable_ipv6: bool) -> Vec<Value> {
+    if excluded.is_empty() {
+        return Vec::new();
+    }
+    let mut filtered = Vec::new();
+    for raw in excluded {
+        let Some(cidr) = parse_valid_cidr_token(raw) else {
+            continue;
+        };
+        if !enable_ipv6 && cidr.contains(':') {
+            continue;
+        }
+        push_unique_str(&mut filtered, &cidr);
+    }
+    if filtered.is_empty() {
+        Vec::new()
+    } else {
+        vec![json!({ "ip_cidr": filtered, "invert": true })]
+    }
+}
+
+fn build_excluded_port_subrules(excluded: &[String]) -> Vec<Value> {
+    if excluded.is_empty() {
+        return Vec::new();
+    }
+    let mut pr = Map::new();
+    insert_port_matchers(&mut pr, excluded, "port", "port_range");
+    if pr.is_empty() {
+        Vec::new()
+    } else {
+        pr.insert("invert".into(), json!(true));
+        vec![Value::Object(pr)]
     }
 }
 
@@ -9832,6 +9964,15 @@ pub fn compile_core_config_with_wan6(
 fn compile_core_config_inner(
     store: &RouterStoreData,
     wan6_available: bool,
+    section_tags_out: Option<&mut HashMap<String, String>>,
+) -> anyhow::Result<Value> {
+    compile_core_config_with_lan_env(store, wan6_available, None, section_tags_out)
+}
+
+fn compile_core_config_with_lan_env(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    lan_override: Option<(&str, &[String])>,
     mut section_tags_out: Option<&mut HashMap<String, String>>,
 ) -> anyhow::Result<Value> {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
@@ -10357,6 +10498,17 @@ fn compile_core_config_inner(
             }
         }
         let sec_exc_dom_subs = build_excluded_domain_subrules(&sec_exc_domains);
+        let mut sec_exc_dom_and_src_subs = sec_exc_dom_subs;
+        sec_exc_dom_and_src_subs.extend(build_excluded_source_ip_subrules(
+            &sec.excluded_ips,
+            ipv6_active,
+        ));
+        let mut sec_exc_route_only_subs = sec_exc_proto_subs.clone();
+        sec_exc_route_only_subs.extend(build_excluded_subnet_subrules(
+            &sec.exclude_subnets,
+            ipv6_active,
+        ));
+        sec_exc_route_only_subs.extend(build_excluded_port_subrules(&sec.exclude_ports));
 
         if let Some(ref mut tag_map) = section_tags_out {
             tag_map.insert(sec.id.clone(), target_outbound_tag.clone());
@@ -10408,49 +10560,18 @@ fn compile_core_config_inner(
                     }
                 })
                 .collect();
-            rules.push(json!({
-                "inbound": in_tags,
-                "outbound": target_outbound_tag
-            }));
+            rules.push(wrap_rule_with_inverted_subrules(
+                json!({
+                    "inbound": in_tags,
+                    "outbound": target_outbound_tag
+                }),
+                &sec_exc_dom_and_src_subs,
+                &sec_exc_route_only_subs,
+            ));
         }
 
-        // Section-level Exclusions (excluded LAN devices, subnets, ports) -> bypass to `direct`.
-        // Domain exclusions (`exclude_domains` / `excluded_domains`) are attached as inverted
-        // subrules on this section's rules so later sections can still match them.
-        if !sec.excluded_ips.is_empty() {
-            let mut cidrs = resolve_device_targets_to_cidrs(&sec.excluded_ips);
-            if !ipv6_active {
-                cidrs.retain(|s| !s.contains(':'));
-            }
-            if !cidrs.is_empty() {
-                rules.push(json!({
-                    "source_ip_cidr": cidrs,
-                    "outbound": "direct"
-                }));
-            }
-        }
-        if !sec.exclude_subnets.is_empty() {
-            let filtered: Vec<String> = sec
-                .exclude_subnets
-                .iter()
-                .filter(|c| ipv6_active || !c.contains(':'))
-                .cloned()
-                .collect();
-            if !filtered.is_empty() {
-                rules.push(json!({
-                    "ip_cidr": filtered,
-                    "outbound": "direct"
-                }));
-            }
-        }
-        if !sec.exclude_ports.is_empty() {
-            let mut pr = Map::new();
-            insert_port_matchers(&mut pr, &sec.exclude_ports, "port", "port_range");
-            if !pr.is_empty() {
-                pr.insert("outbound".into(), json!("direct"));
-                rules.push(Value::Object(pr));
-            }
-        }
+        // Section-level exclusions (domains, devices/IPs/MACs, subnets, ports) are attached as
+        // inverted subrules on this section's own rules so subsequent sections can still match them.
 
         // Pinned Server-to-Domain rules (`ServerName=domain1.com, domain2.com`)
         for pin in &sec.server_domain_rules {
@@ -10462,10 +10583,14 @@ fn compile_core_config_inner(
                     .filter(|d| !d.is_empty())
                     .collect();
                 if !st.is_empty() && !doms.is_empty() {
-                    rules.push(json!({
-                        "domain_suffix": doms,
-                        "outbound": st
-                    }));
+                    rules.push(wrap_rule_with_inverted_subrules(
+                        json!({
+                            "domain_suffix": doms,
+                            "outbound": st
+                        }),
+                        &sec_exc_dom_and_src_subs,
+                        &sec_exc_route_only_subs,
+                    ));
                 }
             }
         }
@@ -10481,8 +10606,8 @@ fn compile_core_config_inner(
                         "source_ip_cidr": cidrs,
                         "outbound": target_outbound_tag
                     }),
-                    &sec_exc_dom_subs,
-                    &sec_exc_proto_subs,
+                    &sec_exc_dom_and_src_subs,
+                    &sec_exc_route_only_subs,
                 ));
             }
         }
@@ -10514,8 +10639,8 @@ fn compile_core_config_inner(
                 for rule in cond_rules {
                     let wrapped = wrap_rule_with_inverted_subrules(
                         rule,
-                        &sec_exc_dom_subs,
-                        &sec_exc_proto_subs,
+                        &sec_exc_dom_and_src_subs,
+                        &sec_exc_route_only_subs,
                     );
                     if !section_emitted_rules.contains(&wrapped) {
                         section_emitted_rules.push(wrapped.clone());
@@ -10583,8 +10708,8 @@ fn compile_core_config_inner(
                 for rule in cond_rules {
                     let wrapped = wrap_rule_with_inverted_subrules(
                         rule,
-                        &sec_exc_dom_subs,
-                        &sec_exc_proto_subs,
+                        &sec_exc_dom_and_src_subs,
+                        &sec_exc_route_only_subs,
                     );
                     if !section_emitted_rules.contains(&wrapped) {
                         section_emitted_rules.push(wrapped.clone());
@@ -10600,8 +10725,8 @@ fn compile_core_config_inner(
                 json!({
                     "outbound": target_outbound_tag
                 }),
-                &sec_exc_dom_subs,
-                &sec_exc_proto_subs,
+                &sec_exc_dom_and_src_subs,
+                &sec_exc_route_only_subs,
             ));
         }
 
@@ -10624,13 +10749,73 @@ fn compile_core_config_inner(
                 section_matched_any,
                 &mut per_sec_aaaa_dns_rules,
             );
-            if !sec_exc_dom_subs.is_empty() {
+            if !sec_exc_dom_and_src_subs.is_empty() {
                 for r in &mut per_sec_aaaa_dns_rules[prev_aaaa_len..] {
                     let wrapped =
-                        wrap_rule_with_inverted_subrules(r.clone(), &sec_exc_dom_subs, &[]);
+                        wrap_rule_with_inverted_subrules(r.clone(), &sec_exc_dom_and_src_subs, &[]);
                     *r = wrapped;
                 }
             }
+        }
+    }
+
+    let (lan_iface, lan_cidrs) = match lan_override {
+        Some((iface, cidrs)) => (iface.to_string(), cidrs.to_vec()),
+        None => {
+            let iface = primary_lan_interface(store);
+            let cidrs = detect_lan_interface_cidrs(&iface, ipv6_active);
+            (iface, cidrs)
+        }
+    };
+    let emitted_server_tags: HashSet<String> = inbounds
+        .iter()
+        .chain(endpoints.iter())
+        .filter_map(|v| v.get("tag").and_then(Value::as_str).map(String::from))
+        .collect();
+    let mut all_server_inbounds: Vec<String> = Vec::new();
+    let mut lan_accessible_inbounds: Vec<String> = Vec::new();
+    let mut server_isolate_rules: Vec<Value> = Vec::new();
+    for srv in store.servers.iter().filter(|s| s.enabled) {
+        let inb_tag = server_effective_inbound_tag(srv);
+        if !emitted_server_tags.contains(&inb_tag) {
+            continue;
+        }
+        push_unique_str(&mut all_server_inbounds, &inb_tag);
+        if srv.isolate_lan_for_users {
+            let mut sub_cidrs: Vec<String> = Vec::new();
+            let mut has_explicit_subnets = false;
+            for raw_sub in &srv.isolated_subnets {
+                if !raw_sub.trim().is_empty() {
+                    has_explicit_subnets = true;
+                    if let Some(cidr) = parse_valid_cidr_token(raw_sub)
+                        && (ipv6_active || !cidr.contains(':'))
+                    {
+                        push_unique_str(&mut sub_cidrs, &cidr);
+                    }
+                }
+            }
+            if !has_explicit_subnets || !sub_cidrs.is_empty() {
+                let mut rule = json!({
+                    "action": "reject",
+                    "inbound": [inb_tag],
+                    "ip_is_private": true
+                });
+                let auth_users: Vec<String> = srv
+                    .isolated_users
+                    .iter()
+                    .map(|u| u.trim().to_string())
+                    .filter(|u| !u.is_empty())
+                    .collect();
+                if !auth_users.is_empty() {
+                    rule["auth_user"] = json!(auth_users);
+                }
+                if !sub_cidrs.is_empty() {
+                    rule["ip_cidr"] = json!(sub_cidrs);
+                }
+                server_isolate_rules.push(rule);
+            }
+        } else {
+            push_unique_str(&mut lan_accessible_inbounds, &inb_tag);
         }
     }
 
@@ -10707,9 +10892,6 @@ fn compile_core_config_inner(
             }
         }
     }
-    if !ts_route_rules.is_empty() {
-        rules.splice(ts_route_insert_idx..ts_route_insert_idx, ts_route_rules);
-    }
 
     let mut server_mode_rules: Vec<Value> = Vec::new();
     for srv in store.servers.iter().filter(|s| s.enabled) {
@@ -10735,8 +10917,55 @@ fn compile_core_config_inner(
             _ => {}
         }
     }
-    if !server_mode_rules.is_empty() {
-        rules.splice(ts_route_insert_idx..ts_route_insert_idx, server_mode_rules);
+
+    // Splice all server-pre rules at `ts_route_insert_idx` in exact top-to-bottom order:
+    // isolate -> hijack-dns -> lo/lan direct -> Tailscale CGNAT/ULA/preferred_by -> ip_is_private -> routing_mode.
+    let mut combined_server_pre_rules: Vec<Value> = Vec::new();
+    combined_server_pre_rules.extend(server_isolate_rules);
+    if !all_server_inbounds.is_empty() {
+        combined_server_pre_rules.push(json!({
+            "action": "hijack-dns",
+            "inbound": all_server_inbounds.clone(),
+            "port": 53
+        }));
+        combined_server_pre_rules.push(json!({
+            "action": "hijack-dns",
+            "inbound": all_server_inbounds.clone(),
+            "protocol": "dns"
+        }));
+    }
+    if !lan_accessible_inbounds.is_empty() {
+        combined_server_pre_rules.push(json!({
+            "inbound": lan_accessible_inbounds.clone(),
+            "ip_cidr": if ipv6_active {
+                json!(["127.0.0.0/8", "::1/128"])
+            } else {
+                json!(["127.0.0.0/8"])
+            },
+            "outbound": "lo-direct-out"
+        }));
+        if !lan_iface.is_empty() && !lan_cidrs.is_empty() {
+            combined_server_pre_rules.push(json!({
+                "inbound": lan_accessible_inbounds.clone(),
+                "ip_cidr": lan_cidrs,
+                "outbound": "lan-direct-out"
+            }));
+        }
+    }
+    combined_server_pre_rules.extend(ts_route_rules);
+    if !lan_accessible_inbounds.is_empty() {
+        combined_server_pre_rules.push(json!({
+            "inbound": lan_accessible_inbounds.clone(),
+            "ip_is_private": true,
+            "outbound": "direct"
+        }));
+    }
+    combined_server_pre_rules.extend(server_mode_rules);
+    if !combined_server_pre_rules.is_empty() {
+        rules.splice(
+            ts_route_insert_idx..ts_route_insert_idx,
+            combined_server_pre_rules,
+        );
     }
 
     if !base_policy_emitted {
@@ -10852,6 +11081,21 @@ fn compile_core_config_inner(
     }
     sanitize_xhttp_transports(&mut outbounds);
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
+
+    if !lan_accessible_inbounds.is_empty() {
+        outbounds.push(json!({
+            "type": "direct",
+            "tag": "lo-direct-out",
+            "bind_interface": "lo"
+        }));
+        if !lan_iface.is_empty() {
+            outbounds.push(json!({
+                "type": "direct",
+                "tag": "lan-direct-out",
+                "bind_interface": lan_iface
+            }));
+        }
+    }
 
     // Built-in `direct` and `block` outbounds
     outbounds.push(json!({
@@ -11168,6 +11412,28 @@ fn compile_core_config_inner(
                 );
             }
         }
+    }
+    if !lan_accessible_inbounds.is_empty() {
+        if !dns_servers_vec
+            .iter()
+            .any(|s| s.get("tag").and_then(Value::as_str) == Some("dnsmasq-server"))
+        {
+            dns_servers_vec.push(json!({
+                "type": "udp",
+                "tag": "dnsmasq-server",
+                "server": "127.0.0.1",
+                "server_port": 53
+            }));
+        }
+        dns_rules_vec.insert(
+            0,
+            json!({
+                "action": "route",
+                "inbound": lan_accessible_inbounds,
+                "domain_suffix": ["lan", "local", "internal", "home.arpa", "localdomain"],
+                "server": "dnsmasq-server"
+            }),
+        );
     }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
@@ -12230,10 +12496,20 @@ fn collect_custom_dns_section_rules(
         }
     }
 
+    let mut sec_exc_dom_and_src_subs = build_excluded_domain_subrules(&sec.exclude_domains);
+    sec_exc_dom_and_src_subs.extend(build_excluded_source_ip_subrules(
+        &sec.excluded_ips,
+        enable_ipv6,
+    ));
+
     for mut rule in tmp {
         rewrite_rule_target(&mut rule, server_tag, rewrite_ttl);
         if rule.as_object().is_some_and(|o| o.len() > 3) {
-            out.push(rule);
+            out.push(wrap_rule_with_inverted_subrules(
+                rule,
+                &sec_exc_dom_and_src_subs,
+                &[],
+            ));
         }
     }
     if (out.len() == before && sec.condition_refs.is_empty()) || sec.match_all {
@@ -12244,7 +12520,11 @@ fn collect_custom_dns_section_rules(
         if rewrite_ttl > 0 {
             fallback["rewrite_ttl"] = json!(rewrite_ttl);
         }
-        out.push(fallback);
+        out.push(wrap_rule_with_inverted_subrules(
+            fallback,
+            &sec_exc_dom_and_src_subs,
+            &[],
+        ));
     }
 }
 
@@ -14785,8 +15065,17 @@ fn build_condition_rules(
     pre_resolve_ip: bool,
     outbounds: &mut [Value],
 ) -> Vec<Value> {
-    let cond_exc_subs = build_excluded_protocol_subrules(&cond.excluded_protocol);
-    let cond_exc_dom_subs = build_excluded_domain_subrules(&cond.exclude_domains);
+    let mut cond_exc_subs = build_excluded_protocol_subrules(&cond.excluded_protocol);
+    cond_exc_subs.extend(build_excluded_subnet_subrules(
+        &cond.exclude_subnets,
+        enable_ipv6,
+    ));
+    cond_exc_subs.extend(build_excluded_port_subrules(&cond.exclude_ports));
+    let mut cond_exc_dom_subs = build_excluded_domain_subrules(&cond.exclude_domains);
+    cond_exc_dom_subs.extend(build_excluded_source_ip_subrules(
+        &cond.exclude_client_ips,
+        enable_ipv6,
+    ));
     let ctype = cond.condition_type.trim().to_ascii_lowercase();
     if matches!(ctype.as_str(), "all" | "any" | "not") && !cond.children.is_empty() {
         return build_condition_rule(
@@ -16283,11 +16572,28 @@ mod tests {
                 .any(|r| r["inbound"] == json!(["mixed-sec-sec_media_desync"]))
         );
         assert!(
-            rules
+            !rules
                 .iter()
-                .any(|r| r["domain_suffix"] == json!(["netflix.com", "fast.com"])
-                    && r["outbound"] == "src-src_native_desync")
+                .any(|r| r["source_ip_cidr"] == json!(["192.168.1.250/32"])
+                    && r["outbound"] == "direct"),
+            "section-level excluded_ips must not emit global outbound=direct shortcut"
         );
+        assert!(rules.iter().any(|r| {
+            r["outbound"] == "src-src_native_desync"
+                && r["type"] == "logical"
+                && r["mode"] == "and"
+                && r["rules"].as_array().is_some_and(|subs| {
+                    subs.iter()
+                        .any(|s| s["domain_suffix"] == json!(["netflix.com", "fast.com"]))
+                        && subs.iter().any(|s| {
+                            s["domain_suffix"] == json!(["sberbank.ru"]) && s["invert"] == json!(true)
+                        })
+                        && subs.iter().any(|s| {
+                            s["source_ip_cidr"] == json!(["192.168.1.250/32"])
+                                && s["invert"] == json!(true)
+                        })
+                })
+        }));
         let outbounds = cfg["outbounds"].as_array().unwrap();
         assert!(
             outbounds
@@ -20542,5 +20848,252 @@ PersistentKeepalive = 25
         }));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_embedded_tailscale_server_lan_lo_dns_and_rule_order() {
+        let mut store = RouterStoreData::default();
+        store.servers.push(InboundServer {
+            id: "ts".to_string(),
+            enabled: true,
+            protocol: "tailscale".to_string(),
+            tailscale_mode: "singbox".to_string(),
+            tailscale_auth_key: "tskey-auth-test".to_string(),
+            tailscale_advertise_routes: vec!["192.168.1.0/24".to_string()],
+            routing_mode: "section".to_string(),
+            routing_section: "sec_media_desync".to_string(),
+            ..Default::default()
+        });
+        let lan_cidrs = vec!["192.168.1.0/24".to_string()];
+        let cfg =
+            compile_core_config_with_lan_env(&store, false, Some(("br-lan", &lan_cidrs)), None)
+                .expect("compile config with embedded tailscale server");
+
+        let outbounds = cfg["outbounds"].as_array().unwrap();
+        assert!(
+            outbounds
+                .iter()
+                .any(|o| o["tag"] == "lo-direct-out" && o["bind_interface"] == "lo")
+        );
+        assert!(
+            outbounds
+                .iter()
+                .any(|o| o["tag"] == "lan-direct-out" && o["bind_interface"] == "br-lan")
+        );
+
+        let dns_servers = cfg["dns"]["servers"].as_array().unwrap();
+        assert!(dns_servers.iter().any(|s| {
+            s["tag"] == "dnsmasq-server" && s["server"] == "127.0.0.1" && s["server_port"] == 53
+        }));
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        assert_eq!(dns_rules[0]["server"], "dnsmasq-server");
+        assert_eq!(dns_rules[0]["inbound"], json!(["srv-ts"]));
+        assert!(
+            dns_rules[0]["domain_suffix"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("lan"))
+        );
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let idx_hijack = rules
+            .iter()
+            .position(|r| r["action"] == "hijack-dns" && r["inbound"] == json!(["srv-ts"]))
+            .expect("hijack-dns for srv-ts");
+        let idx_lo = rules
+            .iter()
+            .position(|r| r["outbound"] == "lo-direct-out" && r["ip_cidr"] == json!(["127.0.0.0/8"]))
+            .expect("lo-direct-out rule");
+        let idx_lan = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "lan-direct-out" && r["ip_cidr"] == json!(["192.168.1.0/24"])
+            })
+            .expect("lan-direct-out rule");
+        let idx_ts_cgnat = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "srv-ts"
+                    && r["ip_cidr"] == json!(["100.64.0.0/10", "fd7a:115c:a1e0::/48"])
+            })
+            .expect("tailscale CGNAT/ULA rule");
+        let idx_private_direct = rules
+            .iter()
+            .position(|r| {
+                r["inbound"] == json!(["srv-ts"])
+                    && r["ip_is_private"] == json!(true)
+                    && r["outbound"] == "direct"
+            })
+            .expect("srv-ts ip_is_private -> direct");
+        let idx_mode_section = rules
+            .iter()
+            .position(|r| {
+                r["inbound"] == json!(["srv-ts"]) && r["outbound"] == "desync-src_adaptive_desync"
+            })
+            .expect("srv-ts routing_mode=section");
+
+        let parsed_lan = parse_ip_addr_cidrs(
+            "2: br-lan inet 192.168.1.1/24 brd 192.168.1.255 scope global br-lan\n\
+             2: br-lan inet 127.0.0.1/8 scope host lo\n\
+             2: br-lan inet6 fd00::1/64 scope global\n\
+             2: br-lan inet6 fe80::1/64 scope link\n",
+            true,
+        );
+        assert_eq!(parsed_lan, vec!["192.168.1.0/24", "fd00::/64"]);
+
+        assert!(idx_hijack < idx_lo);
+        assert!(idx_lo < idx_lan);
+        assert!(idx_lan < idx_ts_cgnat);
+        assert!(idx_ts_cgnat < idx_private_direct);
+        assert!(idx_private_direct < idx_mode_section);
+
+        // When isolate_lan_for_users = true, emit reject ip_is_private and omit LAN/lo/dnsmasq bypasses
+        store.servers[0].isolate_lan_for_users = true;
+        store.servers[0].isolated_users = vec!["guest@ts".to_string()];
+        let iso_cfg =
+            compile_core_config_with_lan_env(&store, false, Some(("br-lan", &lan_cidrs)), None)
+                .expect("compile isolated server config");
+        let iso_outbounds = iso_cfg["outbounds"].as_array().unwrap();
+        assert!(!iso_outbounds.iter().any(|o| o["tag"] == "lo-direct-out"));
+        assert!(!iso_outbounds.iter().any(|o| o["tag"] == "lan-direct-out"));
+        let iso_dns_servers = iso_cfg["dns"]["servers"].as_array().unwrap();
+        assert!(
+            !iso_dns_servers
+                .iter()
+                .any(|s| s["tag"] == "dnsmasq-server")
+        );
+        let iso_rules = iso_cfg["route"]["rules"].as_array().unwrap();
+        assert!(iso_rules.iter().any(|r| {
+            r["action"] == "reject"
+                && r["inbound"] == json!(["srv-ts"])
+                && r["ip_is_private"] == json!(true)
+                && r["auth_user"] == json!(["guest@ts"])
+        }));
+    }
+
+    #[test]
+    fn test_section_excluded_ips_subnets_ports_do_not_block_later_sections() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.conditions.clear();
+        store.outbound_sources.push(OutboundSource {
+            id: "s1".to_string(),
+            enabled: true,
+            source_type: "socks".to_string(),
+            server: "198.51.100.1".to_string(),
+            server_port: 1080,
+            ..Default::default()
+        });
+        store.outbound_sources.push(OutboundSource {
+            id: "s2".to_string(),
+            enabled: true,
+            source_type: "socks".to_string(),
+            server: "198.51.100.2".to_string(),
+            server_port: 1081,
+            ..Default::default()
+        });
+        store.conditions.push(TrafficCondition {
+            id: "c_excl".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["scoped.example".to_string()],
+            exclude_client_ips: vec!["192.168.1.51".to_string()],
+            exclude_subnets: vec!["10.30.0.0/16".to_string()],
+            exclude_ports: vec!["9443".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec1".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["s1".to_string()],
+            excluded_ips: vec!["192.168.1.50".to_string()],
+            exclude_subnets: vec!["10.20.0.0/16".to_string()],
+            exclude_ports: vec!["8443".to_string()],
+            match_all: true,
+            condition_refs: vec!["c_excl".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec2".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["s2".to_string()],
+            source_ip_cidr: vec!["192.168.1.50/32".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+
+        assert!(
+            !rules.iter().any(|r| r["outbound"] == "direct"
+                && (r["source_ip_cidr"] == json!(["192.168.1.50/32"])
+                    || r["ip_cidr"] == json!(["10.20.0.0/16"])
+                    || r["port"] == json!([8443]))),
+            "section exclusions must not emit global direct rules: {rules:#?}"
+        );
+
+        let sec1_cond_idx = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "socks-s1"
+                    && r["type"] == "logical"
+                    && r["mode"] == "and"
+                    && r["rules"].as_array().is_some_and(|subs| {
+                        subs.iter().any(|s| s["domain_suffix"] == json!(["scoped.example"]))
+                            && subs.iter().any(|s| {
+                                s["source_ip_cidr"] == json!(["192.168.1.51/32"])
+                                    && s["invert"] == json!(true)
+                            })
+                            && subs.iter().any(|s| {
+                                s["ip_cidr"] == json!(["10.30.0.0/16"])
+                                    && s["invert"] == json!(true)
+                            })
+                            && subs.iter().any(|s| s["port"] == json!([9443]) && s["invert"] == json!(true))
+                            && subs.iter().any(|s| {
+                                s["source_ip_cidr"] == json!(["192.168.1.50/32"])
+                                    && s["invert"] == json!(true)
+                            })
+                            && subs.iter().any(|s| {
+                                s["ip_cidr"] == json!(["10.20.0.0/16"])
+                                    && s["invert"] == json!(true)
+                            })
+                            && subs.iter().any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
+                    })
+            })
+            .expect("sec1 condition rule wraps both condition and section exclusions");
+
+        let sec1_catchall_idx = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "socks-s1"
+                    && r["type"] == "logical"
+                    && r["rules"].as_array().is_some_and(|subs| {
+                        subs.iter().any(|s| {
+                            s["source_ip_cidr"] == json!(["192.168.1.50/32"])
+                                && s["invert"] == json!(true)
+                        }) && subs.iter().any(|s| {
+                            s["ip_cidr"] == json!(["10.20.0.0/16"]) && s["invert"] == json!(true)
+                        }) && subs.iter().any(|s| s["port"] == json!([8443]) && s["invert"] == json!(true))
+                    })
+            })
+            .expect("sec1 match_all rule wraps section exclusions");
+
+        let sec2_idx = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "socks-s2"
+                    && r["source_ip_cidr"] == json!(["192.168.1.50/32"])
+                    && r["domain_suffix"] == json!(["example.com"])
+            })
+            .expect("sec2 rule remains reachable after sec1");
+
+        assert!(sec1_cond_idx < sec2_idx);
+        assert!(sec1_catchall_idx < sec2_idx);
     }
 }

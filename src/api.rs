@@ -33,18 +33,40 @@ use crate::watchdog;
 const MAX_REQ_BYTES: usize = 2 * 1024 * 1024;
 const SESSION_TTL_SECS: i64 = 86400;
 
+fn should_use_dual_stack_v6_bind(listen_addr: &str, bindv6only_content: Option<&str>) -> bool {
+    listen_addr.trim() == "0.0.0.0" && bindv6only_content.map(str::trim) == Some("0")
+}
+
+async fn bind_panel_listener(listen_addr: &str, port: u16) -> anyhow::Result<(TcpListener, String)> {
+    #[cfg(target_os = "linux")]
+    let bindv6only = std::fs::read_to_string("/proc/sys/net/ipv6/bindv6only").ok();
+    #[cfg(not(target_os = "linux"))]
+    let bindv6only: Option<String> = None;
+
+    if should_use_dual_stack_v6_bind(listen_addr, bindv6only.as_deref()) {
+        let v6_addr = format!("[::]:{port}");
+        if let Ok(listener) = TcpListener::bind(&v6_addr).await {
+            return Ok((listener, v6_addr));
+        }
+    }
+
+    let addr = format!("{listen_addr}:{port}");
+    let listener = TcpListener::bind(&addr).await?;
+    Ok((listener, addr))
+}
+
 pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow::Result<()> {
-    let (addr, port, base_path) = {
+    let (listen_addr, port, base_path) = {
         let d = state.data.read().await;
         (
-            format!("{}:{}", d.settings.listen_addr, d.settings.listen_port),
+            d.settings.listen_addr.clone(),
             d.settings.listen_port,
             d.settings.web_base_path.clone(),
         )
     };
     ubus_bridge::sync_router_luci_launcher(port, &base_path).await;
-    let listener = TcpListener::bind(&addr).await?;
-    eprintln!("[tachyon] Router Panel listening on http://{addr}{base_path}");
+    let (listener, bound_addr) = bind_panel_listener(&listen_addr, port).await?;
+    eprintln!("[tachyon] Router Panel listening on http://{bound_addr}{base_path}");
     let conn_sem = Arc::new(tokio::sync::Semaphore::new(256));
 
     loop {
@@ -3921,5 +3943,13 @@ mod tests {
         let head_200 = format_response_head(200, "OK", "application/json", 16);
         assert!(head_200.contains("Content-Type: application/json\r\n"));
         assert!(head_200.contains("Content-Length: 16\r\n"));
+    }
+
+    #[test]
+    fn test_should_use_dual_stack_v6_bind() {
+        assert!(should_use_dual_stack_v6_bind("0.0.0.0", Some("0\n")));
+        assert!(!should_use_dual_stack_v6_bind("0.0.0.0", Some("1\n")));
+        assert!(!should_use_dual_stack_v6_bind("0.0.0.0", None));
+        assert!(!should_use_dual_stack_v6_bind("192.168.1.1", Some("0\n")));
     }
 }

@@ -40,6 +40,14 @@ const DEFAULT_SYSCTL_BBR_CONF: &str = "/etc/sysctl.d/99-tachyon-bbr.conf";
 const DEFAULT_PROC_TCP_AVAIL_CC: &str = "/proc/sys/net/ipv4/tcp_available_congestion_control";
 
 fn append_source_iface_guard(out: &mut String, store: &RouterStoreData) {
+    append_source_iface_guard_with_extra(out, store, &[]);
+}
+
+fn append_source_iface_guard_with_extra(
+    out: &mut String,
+    store: &RouterStoreData,
+    extra_ifaces: &[&str],
+) {
     if !store.settings.source_network_interfaces.is_empty() {
         let mut quoted: Vec<String> = store
             .settings
@@ -49,6 +57,12 @@ fn append_source_iface_guard(out: &mut String, store: &RouterStoreData) {
             .filter(|i| !i.is_empty() && *i != "lo")
             .map(|i| format!("\"{i}\""))
             .collect();
+        for extra in extra_ifaces {
+            let token = format!("\"{}\"", extra.trim());
+            if !extra.trim().is_empty() && !quoted.contains(&token) {
+                quoted.push(token);
+            }
+        }
         quoted.push("\"lo\"".to_string());
         let _ = writeln!(out, "        iifname != {{ {} }} return", quoted.join(", "));
     }
@@ -321,15 +335,21 @@ fn append_webrtc_filter_chain(
 ) {
     let _ = writeln!(out, "    chain webrtc_filter {{");
     let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
-    let _ = writeln!(out, "        meta mark {ROUTER_TPROXY_FWMARK} return");
-    let _ = writeln!(out, "        meta mark {BYPASS_FWMARK} return");
     let _ = writeln!(
         out,
-        "        meta mark & 0x00ff0000 == {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} return"
+        "        meta mark & {ROUTER_TPROXY_FWMARK} == {ROUTER_TPROXY_FWMARK} return"
     );
     let _ = writeln!(
         out,
-        "        meta mark & 0x00ff0000 == {TAILSCALE_DAEMON_BYPASS_MARK} return"
+        "        meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return"
+    );
+    let _ = writeln!(
+        out,
+        "        meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return"
+    );
+    let _ = writeln!(
+        out,
+        "        meta mark & {TAILSCALE_DAEMON_BYPASS_MARK} != 0 return"
     );
     let _ = writeln!(
         out,
@@ -1237,8 +1257,21 @@ fn compile_nftables_ruleset_full(
         );
     }
 
-    let bypass_ifaces_literal = collect_tailscale_bypass_ifaces(store)
-        .into_iter()
+    let is_tailscale_source = store
+        .settings
+        .source_network_interfaces
+        .iter()
+        .any(|i| i.trim() == "tailscale0");
+    let allow_tailscale_fakeip = !is_tailscale_source && store.settings.fakeip_enabled;
+    let tailscale_bypass_ifaces = collect_tailscale_bypass_ifaces(store);
+    let bypass_ifaces_literal = tailscale_bypass_ifaces
+        .iter()
+        .map(|i| format!("\"{i}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let prerouting_bypass_literal = tailscale_bypass_ifaces
+        .iter()
+        .filter(|i| !((is_tailscale_source || allow_tailscale_fakeip) && i.as_str() == "tailscale0"))
         .map(|i| format!("\"{i}\""))
         .collect::<Vec<_>>()
         .join(", ");
@@ -1271,30 +1304,79 @@ fn compile_nftables_ruleset_full(
     );
 
     // Exclude virtual tunnel interfaces (Tailscale & FPTN) from self-interception
-    let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
+    if !prerouting_bypass_literal.is_empty() {
+        let _ = writeln!(out, "        iifname {{ {prerouting_bypass_literal} }} return");
+    }
+    // Tailscale traffic not addressed to FakeIP must bypass TProxy unless `tailscale0` is explicitly a source iface
+    if allow_tailscale_fakeip {
+        let _ = writeln!(
+            out,
+            "        iifname \"tailscale0\" meta nfproto ipv4 ip daddr != {fakeip_v4} return"
+        );
+        if ipv6_active {
+            let _ = writeln!(
+                out,
+                "        iifname \"tailscale0\" meta nfproto ipv6 ip6 daddr != {fakeip_v6} return"
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "        iifname \"tailscale0\" meta nfproto ipv6 return"
+            );
+        }
+    }
 
     // Loopback re-entry is only allowed for packets routed back via `mangle_output` (`ROUTER_TPROXY_FWMARK`)
     let _ = writeln!(
         out,
-        "        iifname \"lo\" meta mark != {ROUTER_TPROXY_FWMARK} return"
+        "        iifname \"lo\" meta mark & {ROUTER_TPROXY_FWMARK} == 0 return"
     );
 
-    // Restrict interception to configured LAN interfaces (`br-lan` by default) plus rerouted `lo`
-    append_source_iface_guard(&mut out, store);
+    // Restrict interception to configured LAN interfaces (`br-lan` by default), optional `tailscale0` FakeIP, plus `lo`
+    append_source_iface_guard_with_extra(
+        &mut out,
+        store,
+        if allow_tailscale_fakeip {
+            &["tailscale0"]
+        } else {
+            &[]
+        },
+    );
     let _ = writeln!(
         out,
         "        iifname {lan_ifaces_literal} ct direction reply counter return comment \"tachyon-inbound-reply\""
     );
 
     // Bypass packets already marked with `BYPASS_FWMARK`, Tailscale marks, or FPTN tunnel mark
-    let _ = writeln!(out, "        meta mark {BYPASS_FWMARK} return");
     let _ = writeln!(
         out,
-        "        meta mark & 0x00ff0000 == {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} return"
+        "        meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return"
     );
+    if store.settings.fakeip_enabled {
+        let _ = writeln!(
+            out,
+            "        meta nfproto ipv4 ip daddr != {fakeip_v4} meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return"
+        );
+        if ipv6_active {
+            let _ = writeln!(
+                out,
+                "        meta nfproto ipv6 ip6 daddr != {fakeip_v6} meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return"
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "        meta nfproto ipv6 meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return"
+            );
+        }
+    } else {
+        let _ = writeln!(
+            out,
+            "        meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return"
+        );
+    }
     let _ = writeln!(
         out,
-        "        meta mark & 0x00ff0000 == {TAILSCALE_DAEMON_BYPASS_MARK} return"
+        "        meta mark & {TAILSCALE_DAEMON_BYPASS_MARK} != 0 return"
     );
     let _ = writeln!(
         out,
@@ -1525,8 +1607,8 @@ fn compile_nftables_ruleset_full(
         meta skgid {DIRECT_PROBE_SKGID} return
         meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return
         meta mark & 0x14000000 != 0 return
-        meta mark & 0x00ff0000 == {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} return
-        meta mark & 0x00ff0000 == {TAILSCALE_DAEMON_BYPASS_MARK} return
+        meta mark & {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} != 0 return
+        meta mark & {TAILSCALE_DAEMON_BYPASS_MARK} != 0 return
         meta mark & 0x00ff0000 == {FPTN_TUNNEL_BYPASS_MARK} return"
     );
     if !fptn_v4.is_empty() {
@@ -3571,7 +3653,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             "iif",
             "lo",
             "fwmark",
-            TPROXY_FWMARK,
+            TPROXY_FWMARK_MASKED,
             "table",
             "main",
             "pref",
@@ -3582,7 +3664,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             "rule",
             "add",
             "fwmark",
-            TPROXY_FWMARK,
+            TPROXY_FWMARK_MASKED,
             "table",
             TPROXY_ROUTE_TABLE,
             "pref",
@@ -3593,7 +3675,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             "rule",
             "add",
             "fwmark",
-            ROUTER_TPROXY_FWMARK,
+            ROUTER_TPROXY_FWMARK_MASKED,
             "table",
             TPROXY_ROUTE_TABLE,
             "pref",
@@ -3617,7 +3699,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 "rule",
                 "add",
                 "fwmark",
-                TPROXY_FWMARK,
+                TPROXY_FWMARK_MASKED,
                 "table",
                 TPROXY_ROUTE_TABLE,
                 "pref",
@@ -3629,7 +3711,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 "rule",
                 "add",
                 "fwmark",
-                ROUTER_TPROXY_FWMARK,
+                ROUTER_TPROXY_FWMARK_MASKED,
                 "table",
                 TPROXY_ROUTE_TABLE,
                 "pref",
@@ -3911,6 +3993,82 @@ fn build_firewall_sync_commands(store: &RouterStoreData, uci_show: &str) -> Vec<
         if existing.contains_key("tachyon_lan_tun") {
             cmds.push(vec!["delete".into(), "firewall.tachyon_lan_tun".into()]);
         }
+    }
+
+    let mut ts_zone_name: Option<String> = None;
+    let mut zone_keys: Vec<&String> = existing.keys().collect();
+    zone_keys.sort();
+    for key in zone_keys {
+        let (sec_type, opts) = &existing[key];
+        if sec_type != "zone" {
+            continue;
+        }
+        let name_opt = opts.get("name").map(String::as_str).unwrap_or("").trim();
+        let has_ts_dev = opts
+            .get("device")
+            .is_some_and(|v| v.split_whitespace().any(|t| t == "tailscale0"));
+        let has_ts_net = opts.get("network").is_some_and(|v| {
+            v.split_whitespace()
+                .any(|t| t.eq_ignore_ascii_case("tailscale"))
+        });
+        if !(has_ts_dev || has_ts_net || name_opt.eq_ignore_ascii_case("tailscale")) {
+            continue;
+        }
+        let input_accept = opts
+            .get("input")
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("ACCEPT"));
+        if !input_accept {
+            ts_zone_name = Some(if name_opt.is_empty() {
+                "tailscale".to_string()
+            } else {
+                name_opt.to_string()
+            });
+            break;
+        }
+    }
+
+    if store.settings.tailscale_web_access.trim() != "0"
+        && store.settings.listen_port > 0
+        && let Some(zone_name) = ts_zone_name
+    {
+        let port_str = store.settings.listen_port.to_string();
+        let panel_matches = existing.get("tachyon_ts_panel").is_some_and(|(sec_type, opts)| {
+            sec_type == "rule"
+                && opts.get("target").map(String::as_str) == Some("ACCEPT")
+                && opts.get("dest_port").map(String::as_str) == Some(port_str.as_str())
+                && opts.get("proto").map(String::as_str) == Some("tcp")
+                && opts.get("src").map(String::as_str) == Some(zone_name.as_str())
+                && opts.get("enabled").map(String::as_str) == Some("1")
+        });
+        if !panel_matches {
+            cmds.push(vec!["set".into(), "firewall.tachyon_ts_panel=rule".into()]);
+            cmds.push(vec![
+                "set".into(),
+                "firewall.tachyon_ts_panel.name=Tachyon panel via Tailscale".into(),
+            ]);
+            cmds.push(vec![
+                "set".into(),
+                format!("firewall.tachyon_ts_panel.src={zone_name}"),
+            ]);
+            cmds.push(vec![
+                "set".into(),
+                format!("firewall.tachyon_ts_panel.dest_port={port_str}"),
+            ]);
+            cmds.push(vec![
+                "set".into(),
+                "firewall.tachyon_ts_panel.proto=tcp".into(),
+            ]);
+            cmds.push(vec![
+                "set".into(),
+                "firewall.tachyon_ts_panel.target=ACCEPT".into(),
+            ]);
+            cmds.push(vec![
+                "set".into(),
+                "firewall.tachyon_ts_panel.enabled=1".into(),
+            ]);
+        }
+    } else if existing.contains_key("tachyon_ts_panel") {
+        cmds.push(vec!["delete".into(), "firewall.tachyon_ts_panel".into()]);
     }
 
     cmds
@@ -4350,7 +4508,7 @@ mod tests {
         assert!(nft.contains("udp dport 443 reject"));
         assert!(nft.contains("th dport { 8090 } return"));
         assert!(nft.contains("chain mangle_output"));
-        assert!(nft.contains("iifname \"lo\" meta mark != 0x10000000 return"));
+        assert!(nft.contains("iifname \"lo\" meta mark & 0x10000000 == 0 return"));
         assert!(nft.contains("meta mark & 0x14000000 != 0 return"));
         assert!(nft.contains(
             "ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000 counter accept"
@@ -4365,7 +4523,7 @@ mod tests {
         store.settings.route_router_traffic = true;
         store.settings.enable_ipv6 = true;
         let nft = compile_nftables_ruleset(&store);
-        assert!(nft.contains("iifname \"lo\" meta mark != 0x10000000 return"));
+        assert!(nft.contains("iifname \"lo\" meta mark & 0x10000000 == 0 return"));
         assert!(nft.contains("meta mark & 0x14000000 != 0 return"));
         assert!(nft.contains("tproxy ip6 to [::1]:1602 meta mark set 0x04000000 counter accept"));
         assert!(nft.contains(
@@ -4397,9 +4555,11 @@ mod tests {
         let mut store = RouterStoreData::default();
         store.sections[0].fptn_preferred_server = "198.51.100.77".to_string();
         let nft = compile_nftables_ruleset(&store);
-        assert!(nft.contains("iifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
-        assert!(nft.contains("meta mark & 0x00ff0000 == 0x00340000 return"));
-        assert!(nft.contains("meta mark & 0x00ff0000 == 0x00080000 return"));
+        assert!(nft.contains("oifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(nft.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(nft.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return"));
+        assert!(nft.contains("meta mark & 0x00340000 != 0 return"));
+        assert!(nft.contains("meta mark & 0x00080000 != 0 return"));
         assert!(nft.contains("meta mark & 0x00ff0000 == 0x00300000 return"));
         assert!(nft.contains("ip daddr { 198.51.100.77 } return"));
     }
@@ -4495,8 +4655,8 @@ mod tests {
         );
         // WebRTC STUN filter with mandatory exemptions (fwmark 0x10000000 + proxy UDP port 4433)
         assert!(guard_nft.contains("chain webrtc_filter"));
-        assert!(guard_nft.contains("meta mark 0x10000000 return"));
-        assert!(guard_nft.contains("meta mark 0x40000000 return"));
+        assert!(guard_nft.contains("meta mark & 0x10000000 == 0x10000000 return"));
+        assert!(guard_nft.contains("meta mark & 0x40000000 == 0x40000000 return"));
         assert!(guard_nft.contains("udp dport {") && guard_nft.contains("4433"));
         assert!(guard_nft.contains("\"tailscale0\"") && guard_nft.contains("\"fptn0\""));
 
@@ -5441,5 +5601,147 @@ config interface 'wan'
             assert!(!tun_nft[guard_start..guard_end].contains("\n        accept\n"));
             store.settings.proxy_mode = "tproxy".to_string();
         }
+    }
+
+    #[test]
+    fn test_tailscale_bitwise_marks_fakeip_and_source_iface() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.enable_ipv6 = true;
+        let nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+
+        let pre_start = nft.find("chain prerouting").expect("chain prerouting");
+        let out_start = nft.find("chain mangle_output").expect("chain mangle_output");
+        let pre = &nft[pre_start..out_start];
+        let mangle_out = &nft[out_start..];
+
+        assert!(pre.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(
+            pre.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr != 198.18.0.0/15 return")
+        );
+        assert!(
+            pre.contains("iifname \"tailscale0\" meta nfproto ipv6 ip6 daddr != fc00::/18 return")
+        );
+        assert!(pre.contains("\"tailscale0\", \"lo\""));
+        assert!(
+            pre.contains("meta nfproto ipv4 ip daddr != 198.18.0.0/15 meta mark & 0x00340000 != 0 return")
+        );
+        assert!(
+            pre.contains("meta nfproto ipv6 ip6 daddr != fc00::/18 meta mark & 0x00340000 != 0 return")
+        );
+        assert!(pre.contains("meta mark & 0x00080000 != 0 return"));
+        assert!(mangle_out.contains("meta mark & 0x00340000 != 0 return"));
+        assert!(mangle_out.contains("meta mark & 0x00080000 != 0 return"));
+
+        // When tailscale0 is configured in source_network_interfaces, prerouting intercepts all tailscale0 traffic
+        store
+            .settings
+            .source_network_interfaces
+            .push("tailscale0".to_string());
+        let src_nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        let src_pre_start = src_nft.find("chain prerouting").expect("chain prerouting");
+        let src_out_start = src_nft
+            .find("chain mangle_output")
+            .expect("chain mangle_output");
+        let src_pre = &src_nft[src_pre_start..src_out_start];
+        assert!(src_pre.contains("iifname { \"fptn0\", \"tun-fptn*\" } return"));
+        assert!(!src_pre.contains("iifname \"tailscale0\" meta nfproto ipv4 ip daddr !="));
+        assert!(src_pre.contains("iifname != { \"br-lan\", \"tailscale0\", \"lo\" } return"));
+
+        // With fakeip_enabled = false and tailscale0 not a source iface, tailscale0 returns unconditionally
+        let mut no_fakeip = RouterStoreData::default();
+        no_fakeip.settings.fakeip_enabled = false;
+        let no_fakeip_nft = compile_nftables_ruleset(&no_fakeip);
+        let nf_pre_start = no_fakeip_nft
+            .find("chain prerouting")
+            .expect("chain prerouting");
+        let nf_out_start = no_fakeip_nft
+            .find("chain mangle_output")
+            .expect("chain mangle_output");
+        let nf_pre = &no_fakeip_nft[nf_pre_start..nf_out_start];
+        assert!(nf_pre.contains("iifname { \"tailscale0\", \"fptn0\", \"tun-fptn*\" } return"));
+    }
+
+    #[test]
+    fn test_firewall_sync_opens_panel_port_for_restrictive_tailscale_zone() {
+        let mut store = RouterStoreData::default();
+        store.settings.listen_port = 1680;
+        store.settings.tailscale_web_access = "auto".to_string();
+
+        let restrictive_uci = "\
+firewall.ts_zone=zone
+firewall.ts_zone.name='tailscale'
+firewall.ts_zone.device='tailscale0'
+firewall.ts_zone.input='REJECT'
+firewall.ts_zone.output='ACCEPT'
+firewall.ts_zone.forward='REJECT'
+";
+        let cmds = build_firewall_sync_commands(&store, restrictive_uci);
+        assert!(
+            cmds.iter()
+                .any(|c| c == &vec!["set", "firewall.tachyon_ts_panel=rule"])
+        );
+        assert!(
+            cmds.iter()
+                .any(|c| c == &vec!["set", "firewall.tachyon_ts_panel.src=tailscale"])
+        );
+        assert!(
+            cmds.iter()
+                .any(|c| c == &vec!["set", "firewall.tachyon_ts_panel.dest_port=1680"])
+        );
+        assert!(
+            cmds.iter()
+                .any(|c| c == &vec!["set", "firewall.tachyon_ts_panel.proto=tcp"])
+        );
+        assert!(
+            cmds.iter()
+                .any(|c| c == &vec!["set", "firewall.tachyon_ts_panel.target=ACCEPT"])
+        );
+
+        let matching_uci = format!(
+            "{restrictive_uci}\
+firewall.tachyon_ts_panel=rule
+firewall.tachyon_ts_panel.name='Tachyon panel via Tailscale'
+firewall.tachyon_ts_panel.src='tailscale'
+firewall.tachyon_ts_panel.dest_port='1680'
+firewall.tachyon_ts_panel.proto='tcp'
+firewall.tachyon_ts_panel.target='ACCEPT'
+firewall.tachyon_ts_panel.enabled='1'
+"
+        );
+        assert!(build_firewall_sync_commands(&store, &matching_uci).is_empty());
+
+        // Zone with input=ACCEPT removes redundant rule
+        let open_zone_uci = "\
+firewall.ts_zone=zone
+firewall.ts_zone.name='tailscale'
+firewall.ts_zone.device='tailscale0'
+firewall.ts_zone.input='ACCEPT'
+firewall.tachyon_ts_panel=rule
+firewall.tachyon_ts_panel.src='tailscale'
+firewall.tachyon_ts_panel.dest_port='1680'
+firewall.tachyon_ts_panel.proto='tcp'
+firewall.tachyon_ts_panel.target='ACCEPT'
+firewall.tachyon_ts_panel.enabled='1'
+";
+        let del_open = build_firewall_sync_commands(&store, open_zone_uci);
+        assert_eq!(
+            del_open,
+            vec![vec![
+                "delete".to_string(),
+                "firewall.tachyon_ts_panel".to_string()
+            ]]
+        );
+
+        // tailscale_web_access = "0" deletes the rule even on restrictive zone
+        store.settings.tailscale_web_access = "0".to_string();
+        let del_disabled = build_firewall_sync_commands(&store, &matching_uci);
+        assert_eq!(
+            del_disabled,
+            vec![vec![
+                "delete".to_string(),
+                "firewall.tachyon_ts_panel".to_string()
+            ]]
+        );
     }
 }
