@@ -115,4 +115,10 @@ describe('Settings IPv6 schema, Simple/Advanced parity, and FakeIP/TUN validatio
     expect(cidrsOverlap('fc00::/18', 'fc00::/64')).toBe(true);
     expect(cidrsOverlap('198.18.0.0/15', '198.19.0.0/24')).toBe(true);
   });
+
+  it('forces retain = true unconditionally on non-internal settings/telegram options so CBIAbstractValue defaults (retain: false) never cause phantom uci.unset deletes', () => {
+    // Regression guard: LuCI CBIAbstractValue initializes `this.retain = false`, not undefined.
+    expect(settingsSource).not.toMatch(/opt\.retain\s*===\s*undefined/);
+    expect(settingsSource).toMatch(/preserveHiddenTabOptions\(section\)/);
+  });
 });
