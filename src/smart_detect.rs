@@ -642,13 +642,13 @@ fn delay_from_batch(resp: &Value, tag: &str) -> Option<u64> {
         .filter(|&ms| ms > 0)
 }
 
-async fn apply_detected_domain_to_section(
-    state: &Arc<AppState>,
-    core: &Arc<CoreManager>,
+type DomainInsertOutcome = (Vec<String>, Option<String>, Option<Vec<String>>);
+
+fn insert_domain_into_section_and_linked_condition(
+    candidate: &mut RouterStoreData,
     section_id: &str,
     domain_rule: &str,
-) -> anyhow::Result<bool> {
-    let mut candidate = state.data.read().await.clone();
+) -> anyhow::Result<Option<DomainInsertOutcome>> {
     let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == section_id) else {
         anyhow::bail!("Целевая секция '{section_id}' не найдена");
     };
@@ -668,9 +668,11 @@ async fn apply_detected_domain_to_section(
     let updated_sec_domains = sec.user_domains.clone();
     let linked_cond_id = sec.condition_refs.first().cloned();
     let mut updated_cond_domains: Option<Vec<String>> = None;
+    let mut sync_cond_id: Option<String> = None;
 
     if let Some(ref cid) = linked_cond_id
         && let Some(cond) = candidate.conditions.iter_mut().find(|c| c.id == *cid)
+        && !cond.is_composite()
     {
         if !cond
             .user_domains
@@ -680,18 +682,39 @@ async fn apply_detected_domain_to_section(
             cond.user_domains.push(domain_rule.to_string());
             changed = true;
         }
+        sync_cond_id = Some(cid.clone());
         updated_cond_domains = Some(cond.user_domains.clone());
     }
 
     if !changed {
-        return Ok(false);
+        return Ok(None);
     }
+
+    Ok(Some((
+        updated_sec_domains,
+        sync_cond_id,
+        updated_cond_domains,
+    )))
+}
+
+async fn apply_detected_domain_to_section(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    section_id: &str,
+    domain_rule: &str,
+) -> anyhow::Result<bool> {
+    let mut candidate = state.data.read().await.clone();
+    let Some((updated_sec_domains, sync_cond_id, updated_cond_domains)) =
+        insert_domain_into_section_and_linked_condition(&mut candidate, section_id, domain_rule)?
+    else {
+        return Ok(false);
+    };
 
     transaction::commit_transaction_with_source(state, candidate, "smart_detect").await?;
     ubus_bridge::sync_section_user_domains_to_json(
         section_id,
         &updated_sec_domains,
-        linked_cond_id.as_deref(),
+        sync_cond_id.as_deref(),
         updated_cond_domains.as_deref(),
     );
     let _ = core.apply_or_reload().await;
@@ -1352,6 +1375,108 @@ mod tests {
                 "geo-ru".to_string(),
                 "ru-direct".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn apply_detected_domain_skips_composite_condition() {
+        let mut candidate = RouterStoreData::default();
+        candidate.outbound_sources.clear();
+        candidate.outbound_sources.push(OutboundSource {
+            id: "src_vpn".to_string(),
+            enabled: true,
+            source_type: "urls".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@203.0.113.10:443#NL".to_string(),
+            ],
+            ..Default::default()
+        });
+
+        candidate.conditions.push(crate::store::TrafficCondition {
+            id: "c_discord".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["discord.com".to_string()],
+            ..Default::default()
+        });
+        candidate.conditions.push(crate::store::TrafficCondition {
+            id: "cond_vpn_policy".to_string(),
+            enabled: true,
+            condition_type: "all".to_string(),
+            children: vec!["c_discord".to_string()],
+            ..Default::default()
+        });
+        candidate.conditions.push(crate::store::TrafficCondition {
+            id: "cond_atomic".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            ..Default::default()
+        });
+
+        candidate.sections.push(RoutingSection {
+            id: "vpn".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            condition_refs: vec!["cond_vpn_policy".to_string()],
+            ..Default::default()
+        });
+        candidate.sections.push(RoutingSection {
+            id: "sec_atomic".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            condition_refs: vec!["cond_atomic".to_string()],
+            ..Default::default()
+        });
+
+        // Composite condition must NOT receive the detected domain
+        let outcome = insert_domain_into_section_and_linked_condition(
+            &mut candidate,
+            "vpn",
+            "detected.example",
+        )
+        .expect("insert into composite-linked section")
+        .expect("changed");
+        assert!(outcome.1.is_none());
+        assert!(outcome.2.is_none());
+        assert_eq!(
+            candidate
+                .sections
+                .iter()
+                .find(|s| s.id == "vpn")
+                .unwrap()
+                .user_domains,
+            vec!["detected.example".to_string()]
+        );
+        assert!(
+            candidate
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_vpn_policy")
+                .unwrap()
+                .user_domains
+                .is_empty(),
+            "composite condition must remain untouched"
+        );
+
+        // Plain atomic condition still mirrors the domain
+        let atomic_outcome = insert_domain_into_section_and_linked_condition(
+            &mut candidate,
+            "sec_atomic",
+            "atomic.example",
+        )
+        .expect("insert into atomic-linked section")
+        .expect("changed");
+        assert_eq!(atomic_outcome.1.as_deref(), Some("cond_atomic"));
+        assert_eq!(
+            candidate
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_atomic")
+                .unwrap()
+                .user_domains,
+            vec!["atomic.example".to_string()]
         );
     }
 }

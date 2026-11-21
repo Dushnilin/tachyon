@@ -2224,6 +2224,7 @@ async fn handle_add_domain_prompt(
         }
         if let Some(ref cid) = first_cond
             && let Some(cond) = candidate.conditions.iter_mut().find(|c| &c.id == cid)
+            && !cond.is_composite()
             && !cond.user_domains.contains(dom)
         {
             cond.user_domains.push(dom.clone());

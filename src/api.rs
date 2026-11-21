@@ -716,6 +716,7 @@ async fn dispatch_api(
                 }
                 if let Some(cref) = sec.condition_refs.first().cloned()
                     && let Some(cond) = candidate.conditions.iter_mut().find(|c| c.id == cref)
+                    && !cond.is_composite()
                     && !cond.user_domains.contains(&domain)
                 {
                     cond.user_domains.push(domain.clone());

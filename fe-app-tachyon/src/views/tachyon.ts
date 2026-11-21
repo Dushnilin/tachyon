@@ -725,13 +725,127 @@ function configureGridSection(sectionRef, type, title, addTitle) {
       sanitizeUciDeletes(targetSectionId);
     };
 
+    const showModalSaveError = (err) => {
+      const errText = err
+        ? String(err.message || err)
+        : _('Failed to save changes.');
+      if (
+        typeof console !== 'undefined' &&
+        typeof console.error === 'function'
+      ) {
+        console.error('[tachyon] modal save failed:', err);
+      }
+      const modalEl =
+        typeof document !== 'undefined'
+          ? document.querySelector('#modal_overlay .cbi-modal, .cbi-modal')
+          : null;
+      if (modalEl) {
+        const prevBanner = modalEl.querySelector('.tachyon-modal-save-error');
+        if (prevBanner) prevBanner.remove();
+        const errBanner = E(
+          'div',
+          {
+            class: 'alert-message danger tachyon-modal-save-error',
+            style:
+              'margin:10px 0;padding:10px 14px;border-radius:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:13px;',
+          },
+          [
+            E(
+              'div',
+              { style: 'white-space:pre-wrap;word-break:break-word;' },
+              errText,
+            ),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button',
+                style: 'padding:2px 8px;min-height:24px;font-size:11px;',
+                click: (e) => {
+                  e.preventDefault();
+                  errBanner.remove();
+                },
+              },
+              '✕',
+            ),
+          ],
+        );
+        let footerEl = null;
+        try {
+          footerEl = modalEl.querySelector(
+            ':scope > .button-row, :scope > .right',
+          );
+        } catch (_selErr) {
+          footerEl = null;
+        }
+        if (!footerEl) {
+          footerEl = modalEl.querySelector('.button-row, .right');
+        }
+        if (footerEl && footerEl.parentNode) {
+          footerEl.parentNode.insertBefore(errBanner, footerEl);
+        } else {
+          modalEl.appendChild(errBanner);
+        }
+        const clearOnEdit = () => {
+          if (errBanner.isConnected) errBanner.remove();
+          modalEl.removeEventListener('input', clearOnEdit);
+          modalEl.removeEventListener('change', clearOnEdit);
+        };
+        modalEl.addEventListener('input', clearOnEdit);
+        modalEl.addEventListener('change', clearOnEdit);
+
+        const invalidField = modalEl.querySelector(
+          '.cbi-value-error, .cbi-input-invalid, .tachyon-duplicate-chip',
+        );
+        if (invalidField && typeof invalidField.closest === 'function') {
+          const tabPane = invalidField.closest('[data-tab]');
+          if (tabPane) {
+            const tabName = tabPane.getAttribute('data-tab');
+            const tabLink = modalEl.querySelector(
+              `.cbi-tabmenu li[data-tab="${tabName}"] a`,
+            );
+            if (tabLink && typeof (tabLink as any).click === 'function') {
+              (tabLink as any).click();
+            }
+          }
+          if (typeof invalidField.scrollIntoView === 'function') {
+            invalidField.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+            });
+          }
+        } else if (typeof errBanner.scrollIntoView === 'function') {
+          errBanner.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+          });
+        }
+        return;
+      }
+      if (
+        typeof ui !== 'undefined' &&
+        typeof ui.addNotification === 'function'
+      ) {
+        ui.addNotification(null, E('p', {}, errText), 'danger');
+      }
+    };
+
     let saveSucceeded = false;
     let res;
     if (origModalSave) {
-      res = Promise.resolve(origModalSave.apply(this, arguments)).then((r) => {
-        saveSucceeded = true;
-        return r;
-      });
+      try {
+        res = Promise.resolve(origModalSave.apply(this, arguments))
+          .then((r) => {
+            saveSucceeded = true;
+            return r;
+          })
+          .catch((err) => {
+            showModalSaveError(err);
+          });
+      } catch (e) {
+        showModalSaveError(e);
+        res = Promise.resolve();
+      }
     } else if (!targetMap) {
       res = Promise.resolve();
     } else {
@@ -742,114 +856,38 @@ function configureGridSection(sectionRef, type, title, addTitle) {
         if (origCallDelete) {
           uci.callDelete = origCallDelete;
         }
-        return Promise.reject(e);
+        showModalSaveError(e);
+        res = Promise.resolve();
       }
 
-      saveTasks = saveTasks.then(() => {
-        saveSucceeded = true;
-        let reloadChain = Promise.resolve();
-        let curr = targetMap;
-        while (curr.parent) {
-          curr = curr.parent;
-          const parentMap = curr;
-          reloadChain = reloadChain
-            .then(() =>
-              typeof parentMap.load === 'function' ? parentMap.load() : null,
-            )
-            .then(() =>
-              typeof parentMap.reset === 'function' ? parentMap.reset() : null,
-            )
-            .catch(() => null);
-        }
-        return reloadChain;
-      });
-
-      res = saveTasks
-        .then(() => this.handleModalCancel(targetMap, ev, true))
-        .catch((err) => {
-          if (!err) return;
-          const errText = String(err.message || err);
-          const modalEl =
-            typeof document !== 'undefined'
-              ? document.querySelector('#modal_overlay .cbi-modal, .cbi-modal')
-              : null;
-          if (modalEl) {
-            const prevBanner = modalEl.querySelector(
-              '.tachyon-modal-save-error',
-            );
-            if (prevBanner) prevBanner.remove();
-            const errBanner = E(
-              'div',
-              {
-                class: 'alert-message danger tachyon-modal-save-error',
-                style:
-                  'margin:10px 0;padding:10px 14px;border-radius:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:13px;',
-              },
-              [
-                E(
-                  'div',
-                  { style: 'white-space:pre-wrap;word-break:break-word;' },
-                  errText,
-                ),
-                E(
-                  'button',
-                  {
-                    type: 'button',
-                    class: 'btn cbi-button',
-                    style: 'padding:2px 8px;min-height:24px;font-size:11px;',
-                    click: (e) => {
-                      e.preventDefault();
-                      errBanner.remove();
-                    },
-                  },
-                  '✕',
-                ),
-              ],
-            );
-            const footerEl = modalEl.querySelector('.right');
-            if (footerEl && footerEl.parentNode) {
-              footerEl.parentNode.insertBefore(errBanner, footerEl);
-            } else {
-              modalEl.appendChild(errBanner);
-            }
-            const clearOnEdit = () => {
-              if (errBanner.isConnected) errBanner.remove();
-              modalEl.removeEventListener('input', clearOnEdit);
-              modalEl.removeEventListener('change', clearOnEdit);
-            };
-            modalEl.addEventListener('input', clearOnEdit);
-            modalEl.addEventListener('change', clearOnEdit);
-
-            const invalidField = modalEl.querySelector(
-              '.cbi-value-error, .cbi-input-invalid, .tachyon-duplicate-chip',
-            );
-            if (invalidField && typeof invalidField.closest === 'function') {
-              const tabPane = invalidField.closest('[data-tab]');
-              if (tabPane) {
-                const tabName = tabPane.getAttribute('data-tab');
-                const tabLink = modalEl.querySelector(
-                  `.cbi-tabmenu li[data-tab="${tabName}"] a`,
-                );
-                if (tabLink && typeof (tabLink as any).click === 'function') {
-                  (tabLink as any).click();
-                }
-              }
-              if (typeof invalidField.scrollIntoView === 'function') {
-                invalidField.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'center',
-                });
-              }
-            }
-            return;
+      if (saveTasks) {
+        saveTasks = Promise.resolve(saveTasks).then(() => {
+          saveSucceeded = true;
+          let reloadChain = Promise.resolve();
+          let curr = targetMap;
+          while (curr.parent) {
+            curr = curr.parent;
+            const parentMap = curr;
+            reloadChain = reloadChain
+              .then(() =>
+                typeof parentMap.load === 'function' ? parentMap.load() : null,
+              )
+              .then(() =>
+                typeof parentMap.reset === 'function'
+                  ? parentMap.reset()
+                  : null,
+              )
+              .catch(() => null);
           }
-          if (
-            typeof ui !== 'undefined' &&
-            typeof ui.addNotification === 'function'
-          ) {
-            ui.addNotification(null, E('p', {}, errText), 'danger');
-          }
+          return reloadChain;
         });
+
+        res = saveTasks
+          .then(() => this.handleModalCancel(targetMap, ev, true))
+          .catch((err) => {
+            showModalSaveError(err);
+          });
+      }
     }
 
     return Promise.resolve(res).finally(() => {
@@ -2199,10 +2237,24 @@ const EntryPoint = {
               .filter((s) => s && s['.name'])
               .map((s) => [s['.name'], s]),
           );
+          const toStrList = (raw) => {
+            if (Array.isArray(raw))
+              return raw.map((x) => String(x || '').trim()).filter(Boolean);
+            if (raw == null) return [];
+            return String(raw)
+              .split(/[\s,]+/)
+              .map((x) => x.trim())
+              .filter(Boolean);
+          };
+          const getSourceUrls = (src) => {
+            if (!src) return [];
+            return [
+              ...toStrList(src.url),
+              ...toStrList(src.subscription_urls),
+            ].filter(Boolean);
+          };
           const allSourceUrls = new Set(
-            Array.from(sourceByName.values())
-              .map((s) => String(s.url || '').trim())
-              .filter(Boolean),
+            Array.from(sourceByName.values()).flatMap((s) => getSourceUrls(s)),
           );
           [
             'urltest',
@@ -2226,13 +2278,11 @@ const EntryPoint = {
                 sourceByName.size > 0
               ) {
                 const childUrl = String(child.url || '').trim();
-                const secRefs = asArray(
+                const secRefs = toStrList(
                   uci.get(self.config, parentSec, 'outbound_source_refs'),
                 );
                 const attachedUrls = new Set(
-                  secRefs
-                    .map((id) => String(sourceByName.get(id)?.url || '').trim())
-                    .filter(Boolean),
+                  secRefs.flatMap((id) => getSourceUrls(sourceByName.get(id))),
                 );
                 const hasNonDpiRef = secRefs.some((id) => {
                   const st = String(
@@ -2381,32 +2431,69 @@ const EntryPoint = {
         // ignore
       }
 
+      const directRef = targetSid ? gridSectionRegistry[resolvedType] : null;
+      if (directRef && typeof directRef.renderMoreOptionsModal === 'function') {
+        const triggerDirect = () => {
+          try {
+            if (typeof document !== 'undefined') {
+              const cardEl = document.querySelector(
+                `.tachyon-studio-card[data-sid="${targetSid}"]`,
+              );
+              if (
+                cardEl &&
+                (cardEl as any).offsetParent !== null &&
+                typeof cardEl.scrollIntoView === 'function'
+              ) {
+                cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }
+            directRef.renderMoreOptionsModal(targetSid);
+          } catch (_err) {
+            // ignore
+          }
+        };
+        if (
+          typeof window !== 'undefined' &&
+          typeof window.setTimeout === 'function'
+        ) {
+          window.setTimeout(triggerDirect, 30);
+        } else {
+          triggerDirect();
+        }
+        return;
+      }
+
       if (
         ['sections', 'conditions', 'outbounds', 'balancers'].includes(
           resolvedSubTab,
         )
       ) {
         activeSectionSubTab = resolvedSubTab;
-        const navSub =
-          typeof document !== 'undefined'
-            ? document.querySelector(
-                `.tachyon-sidebar__subitem[data-nav-key="section:${resolvedSubTab}"]`,
-              )
-            : null;
-        if (navSub && typeof navSub.click === 'function') {
-          navSub.click();
-        } else {
-          const topTab =
+        const switchedByShell =
+          typeof main.activateAppShellNavKey === 'function' &&
+          main.activateAppShellNavKey(`section:${resolvedSubTab}`);
+        if (!switchedByShell) {
+          const navSub =
             typeof document !== 'undefined'
               ? document.querySelector(
-                  '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a, .cbi-tabmenu > li[data-tab="section"] a',
+                  `.tachyon-sidebar__subitem[data-nav-key="section:${resolvedSubTab}"]`,
                 )
               : null;
-          if (topTab && typeof topTab.click === 'function') {
-            topTab.click();
-          }
-          if (typeof selectSectionSubTabFn === 'function') {
-            selectSectionSubTabFn(resolvedSubTab);
+          if (navSub && typeof navSub.click === 'function') {
+            navSub.click();
+          } else {
+            const topTab =
+              typeof document !== 'undefined'
+                ? document.querySelector(
+                    '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a, .cbi-tabmenu > li[data-tab="section"] a',
+                  )
+                : null;
+            if (topTab && typeof topTab.click === 'function') {
+              topTab.click();
+            }
+            if (typeof selectSectionSubTabFn === 'function') {
+              selectSectionSubTabFn(resolvedSubTab);
+            }
           }
         }
       }
@@ -2419,7 +2506,11 @@ const EntryPoint = {
             const cardEl = document.querySelector(
               `.tachyon-studio-card[data-sid="${targetSid}"]`,
             );
-            if (cardEl && typeof cardEl.scrollIntoView === 'function') {
+            if (
+              cardEl &&
+              (cardEl as any).offsetParent !== null &&
+              typeof cardEl.scrollIntoView === 'function'
+            ) {
               cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
           }

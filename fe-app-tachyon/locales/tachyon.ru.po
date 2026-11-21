@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 21:52+0300\n"
-"PO-Revision-Date: 2026-11-21 21:52+0300\n"
+"POT-Creation-Date: 2026-11-21 00:35+0300\n"
+"PO-Revision-Date: 2026-11-21 00:35+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4076,6 +4076,9 @@ msgstr "Не удалось выполнить откат настроек"
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr "Не удалось запустить диагностику — установлен ли бинарник tachyon?"
 
+msgid "Failed to save changes."
+msgstr ""
+
 msgid "Failed to save fuzzer patterns"
 msgstr "Не удалось сохранить паттерны фаззера"
 
@@ -6292,9 +6295,6 @@ msgstr "Ручная настройка"
 
 msgid "Master and family devices with full LAN and router access. Any device NOT in this list will be treated as a guest."
 msgstr "Основные и семейные устройства с полным доступом к локальной сети и роутеру. Любое устройство не из этого списка будет считаться гостевым."
-
-msgid "Match All Traffic (Catch-All Section)"
-msgstr "Весь остальной трафик (Match All / без условий)"
 
 msgid "Match Found"
 msgstr "Совпадение найдено"
@@ -8605,9 +8605,6 @@ msgstr "Маршрутизировать подсети из списков со
 
 msgid "Route all matching device traffic and DNS queries through this section without requiring domain or IP lists."
 msgstr "Маршрутизировать весь трафик подходящих устройств и DNS-запросы через эту секцию без списков доменов и IP."
-
-msgid "Route all remaining traffic through this section without requiring specific domain/IP conditions."
-msgstr "Направлять весь не совпавший выше трафик через эту секцию без дополнительных условий."
 
 msgid "Route all traffic (Global Match All)"
 msgstr "Маршрутизировать весь трафик (глобальное правило)"
@@ -12364,6 +12361,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Match All Traffic (Catch-All Section)"
+msgstr "Весь остальной трафик (Match All / без условий)"
+
+msgid "Route all remaining traffic through this section without requiring specific domain/IP conditions."
+msgstr "Направлять весь не совпавший выше трафик через эту секцию без дополнительных условий."
 
 msgid "Custom DNS Records (Hosts)"
 msgstr "Пользовательские DNS-записи (Hosts)"

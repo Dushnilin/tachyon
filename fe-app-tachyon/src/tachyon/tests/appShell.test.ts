@@ -7,6 +7,7 @@ function createMockElement(tag: string): any {
   const attrs: Record<string, string> = {};
   const dataset: Record<string, string> = {};
   const listeners: Record<string, Array<(ev: any) => void>> = {};
+  const captureListeners: Record<string, Array<(ev: any) => void>> = {};
   const styleObj: Record<string, any> = {
     setProperty(k: string, v: string, priority?: string) {
       styleObj[k] = priority ? `${v} !${priority}` : String(v);
@@ -50,9 +51,42 @@ function createMockElement(tag: string): any {
       if (k === 'class') return Boolean(el.className || attrs.class);
       return k in attrs;
     },
-    addEventListener(type: string, cb: (ev: any) => void) {
-      if (!listeners[type]) listeners[type] = [];
-      listeners[type].push(cb);
+    addEventListener(
+      type: string,
+      cb: (ev: any) => void,
+      opts?: boolean | { capture?: boolean },
+    ) {
+      const isCapture =
+        opts === true ||
+        Boolean(opts && typeof opts === 'object' && opts.capture);
+      const bucket = isCapture ? captureListeners : listeners;
+      if (!bucket[type]) bucket[type] = [];
+      bucket[type].push(cb);
+    },
+    dispatchEvent(ev: any) {
+      const eventObj = Object.assign({ target: el, bubbles: false }, ev || {});
+      const ancestors: any[] = [];
+      let cur = el.parentElement;
+      while (cur) {
+        ancestors.unshift(cur);
+        cur = cur.parentElement;
+      }
+      for (const anc of ancestors) {
+        for (const fn of anc._getCaptureListeners?.(eventObj.type) || []) {
+          fn(eventObj);
+        }
+      }
+      for (const fn of listeners[eventObj.type] || []) {
+        fn(eventObj);
+      }
+      if (eventObj.bubbles) {
+        for (let i = ancestors.length - 1; i >= 0; i--) {
+          for (const fn of ancestors[i]._getListeners?.(eventObj.type) || []) {
+            fn(eventObj);
+          }
+        }
+      }
+      return true;
     },
     contains(other: any): boolean {
       let cur = other;
@@ -101,6 +135,9 @@ function createMockElement(tag: string): any {
     },
     _getListeners(type: string) {
       return listeners[type] || [];
+    },
+    _getCaptureListeners(type: string) {
+      return captureListeners[type] || [];
     },
     appendChild(child: any) {
       if (child != null && child !== '') {
@@ -917,6 +954,54 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(tabLinkClicked).toBe(true);
     expect(serverSec.style.display || '').toBe('');
     expect(serverSec.getAttribute('data-tab-active')).toBe('true');
+    expect(dashboardSec.style.display).toBe('none !important');
+    expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
+  });
+
+  it('handles non-bubbling cbi-tab-active events in capture phase in top navbar mode', () => {
+    setSidebarPos('top');
+    setUiMode('advanced');
+    const E = (globalThis as any).E;
+    const dashboardSec = E('div', {
+      id: 'cbi-tachyon-dashboard',
+      class: 'cbi-section cbi-tab',
+    });
+    const sectionSec = E('div', {
+      id: 'cbi-tachyon-section',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'section' }, [
+          E('a', { href: '#' }, 'Sections'),
+        ]),
+      ]),
+      dashboardSec,
+      sectionSec,
+    ]);
+    (globalThis as any).document.body.appendChild(mapEl);
+
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+    });
+
+    expect(dashboardSec.style.display || '').toBe('');
+    expect(sectionSec.style.display).toBe('none !important');
+
+    // Simulate OpenWrt ui.js tab activation: updates DOM state and dispatches
+    // CustomEvent('cbi-tab-active', { detail: { tab: 'section' }, bubbles: false })
+    sectionSec.dispatchEvent({
+      type: 'cbi-tab-active',
+      detail: { tab: 'section' },
+      bubbles: false,
+    });
+
+    expect(sectionSec.style.display || '').toBe('');
+    expect(sectionSec.getAttribute('data-tab-active')).toBe('true');
     expect(dashboardSec.style.display).toBe('none !important');
     expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
   });

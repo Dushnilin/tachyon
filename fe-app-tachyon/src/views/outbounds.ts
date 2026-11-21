@@ -2685,12 +2685,12 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                       }
                       if (!uci.add(UCI_PACKAGE, 'outbound_group', newGid))
                         return;
-                      Object.entries(grp || {}).forEach(([k, v]) => {
+                      Object.entries(g || {}).forEach(([k, v]) => {
                         if (k.startsWith('.')) return;
                         if (v === undefined || v === null) return;
                         uci.set(UCI_PACKAGE, newGid, k, v);
                       });
-                      const baseName = grp.name || grp.label || gid;
+                      const baseName = g.name || g.label || gid;
                       uci.set(
                         UCI_PACKAGE,
                         newGid,
@@ -3753,7 +3753,14 @@ function createOutboundsContent(section) {
   };
   o.write = function (sectionId, value) {
     const want = new Set(asArray(value));
-    const srcUrl = String(uci.get(UCI_PACKAGE, sectionId, 'url') || '').trim();
+    const srcUrls = new Set(
+      [
+        String(uci.get(UCI_PACKAGE, sectionId, 'url') || '').trim(),
+        ...asArray(uci.get(UCI_PACKAGE, sectionId, 'subscription_urls')).map(
+          (u) => String(u || '').trim(),
+        ),
+      ].filter(Boolean),
+    );
     (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
       const sid = s['.name'];
       if (!sid) return;
@@ -3766,14 +3773,14 @@ function createOutboundsContent(section) {
         if (next.length)
           uci.set(UCI_PACKAGE, sid, 'outbound_source_refs', next);
         else uci.unset(UCI_PACKAGE, sid, 'outbound_source_refs');
-        if (srcUrl) {
+        if (srcUrls.size > 0) {
           (uci.sections(UCI_PACKAGE, 'subscription_url') || []).forEach(
             (sub) => {
               const subId = sub ? sub['.name'] : null;
               if (
                 subId &&
                 String(sub.section || '').trim() === sid &&
-                String(sub.url || '').trim() === srcUrl
+                srcUrls.has(String(sub.url || '').trim())
               ) {
                 uci.remove(UCI_PACKAGE, subId);
               }

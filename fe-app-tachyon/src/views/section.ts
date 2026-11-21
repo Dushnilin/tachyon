@@ -7584,6 +7584,36 @@ function makeUniqueLinkedConditionId(baseId) {
   return `${baseId}_copy${idx}`;
 }
 
+function isCompositeConditionRecord(condId) {
+  const ctype = String(
+    uci.get(UCI_PACKAGE, condId, 'condition_type') || 'atomic',
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    ctype === 'composite' ||
+    ctype === 'all' ||
+    ctype === 'any' ||
+    ctype === 'not' ||
+    ctype === 'and' ||
+    ctype === 'or'
+  ) {
+    return true;
+  }
+  const children = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, condId, 'children'),
+  );
+  if (children.length > 0) return true;
+  const members = normalizeOptionValues(
+    uci.get(UCI_PACKAGE, condId, 'members'),
+  );
+  if (members.length > 0) return true;
+  if (String(uci.get(UCI_PACKAGE, condId, 'expression') || '').trim()) {
+    return true;
+  }
+  return false;
+}
+
 function getLinkedSectionConditionIds(section_id) {
   if (!section_id || String(section_id).startsWith('cond_')) return [];
   if (
@@ -7599,21 +7629,19 @@ function getLinkedSectionConditionIds(section_id) {
   if (refs.length > 0) {
     if (
       refs.length === 1 &&
-      uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition'
+      uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition' &&
+      !isCompositeConditionRecord(refs[0])
     ) {
-      const ctype = String(
-        uci.get(UCI_PACKAGE, refs[0], 'condition_type') || 'atomic',
-      ).toLowerCase();
-      if (ctype !== 'composite') return [refs[0]];
+      return [refs[0]];
     }
     return [];
   }
   const condId = `cond_${section_id}`;
-  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') {
-    const ctype = String(
-      uci.get(UCI_PACKAGE, condId, 'condition_type') || 'atomic',
-    ).toLowerCase();
-    if (ctype !== 'composite') return [condId];
+  if (
+    uci.get(UCI_PACKAGE, condId, '.type') === 'condition' &&
+    !isCompositeConditionRecord(condId)
+  ) {
+    return [condId];
   }
   return [];
 }
@@ -10631,17 +10659,6 @@ function createSectionContent(section) {
     configureDependentServerDisable(this.map);
     return originalEnabledRenderWidget.apply(this, arguments);
   };
-
-  o = section.taboption(
-    'settings',
-    form.Flag,
-    'hidden',
-    _('Hide on Dashboard'),
-    _('Hide this section on the Dashboard while keeping it active in routing'),
-  );
-  o.default = '0';
-  o.rmempty = false;
-  o.modalonly = true;
 
   o = section.taboption(
     'settings',
@@ -15469,7 +15486,9 @@ function createSectionContent(section) {
     const attachedUrls = new Set(
       refs.flatMap((id) => {
         const single = String(uci.get(UCI_PACKAGE, id, 'url') || '').trim();
-        const multi = asArray(uci.get(UCI_PACKAGE, id, 'subscription_urls'));
+        const multi = normalizeOptionValues(
+          uci.get(UCI_PACKAGE, id, 'subscription_urls'),
+        );
         return [single, ...multi].filter(Boolean);
       }),
     );
@@ -16382,9 +16401,13 @@ function createSectionContent(section) {
 
   o.setItemEnabled = function (value, next) {
     const itemId = `${value || ''}`;
+    const ownerId = String(
+      uci.get(UCI_PACKAGE, itemId, 'section') || '',
+    ).trim();
     if (
       !itemId ||
-      !isExistingChildItem(section_id, itemId, 'subscription_url')
+      !ownerId ||
+      !isExistingChildItem(ownerId, itemId, 'subscription_url')
     ) {
       return true;
     }
@@ -17080,19 +17103,6 @@ function createSectionContent(section) {
   o.placeholder = 'baned_domains AND my_devices';
   dependsOnRoutingAction(o);
   o.depends('action', 'dns');
-
-  o = section.taboption(
-    'conditions',
-    form.Flag,
-    'match_all',
-    _('Match All Traffic (Catch-All Section)'),
-    _(
-      'Route all remaining traffic through this section without requiring specific domain/IP conditions.',
-    ),
-  );
-  o.modalonly = true;
-  o.default = '0';
-  dependsOnRoutingAction(o);
 
   let geoipModeOption = section.taboption(
     'conditions',

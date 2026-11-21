@@ -1812,41 +1812,45 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   // Also listen for LuCI's asynchronous ui.tabs initialization or internal sub-tab clicks
   if (!workspaceBodyEl.dataset.shellTabListenerAttached) {
     workspaceBodyEl.dataset.shellTabListenerAttached = 'true';
-    workspaceBodyEl.addEventListener('cbi-tab-active', (ev: Event) => {
-      if (activeShellState.restoringTab) {
-        return;
-      }
-      const targetSec = ev.target as HTMLElement | null;
-      if (
-        targetSec &&
-        targetSec.classList.contains('cbi-section') &&
-        targetSec.id.startsWith('cbi-tachyon-')
-      ) {
-        const tabName = targetSec.id.replace(/^cbi-tachyon-/, '');
-        syncTopLevelTabsDom(tabName);
-        activeShellState.activeNavKey = detectCurrentNavKey();
-        saveActiveNavKey(activeShellState.activeNavKey);
-        renderSidebarAndTopbar();
-      } else if (
-        targetSec &&
-        targetSec.closest('#cbi-tachyon-settings') &&
-        targetSec.hasAttribute('data-tab')
-      ) {
-        const subKey = targetSec.getAttribute('data-tab') || '';
-        const settingsSec = mapEl.querySelector<HTMLElement>(
-          '#cbi-tachyon-settings',
-        );
-        switchSettingsInternalSubTab(settingsSec, subKey, true);
-        const matched = NAV_ITEMS.find(
-          (i) => i.luciTab === 'settings' && i.settingsSubTab === subKey,
-        );
-        if (matched) {
-          activeShellState.activeNavKey = matched.key;
-          saveActiveNavKey(matched.key);
-          renderSidebarAndTopbar();
+    workspaceBodyEl.addEventListener(
+      'cbi-tab-active',
+      (ev: Event) => {
+        if (activeShellState.restoringTab) {
+          return;
         }
-      }
-    });
+        const targetSec = ev.target as HTMLElement | null;
+        if (
+          targetSec &&
+          targetSec.classList.contains('cbi-section') &&
+          targetSec.id.startsWith('cbi-tachyon-')
+        ) {
+          const tabName = targetSec.id.replace(/^cbi-tachyon-/, '');
+          syncTopLevelTabsDom(tabName);
+          activeShellState.activeNavKey = detectCurrentNavKey();
+          saveActiveNavKey(activeShellState.activeNavKey);
+          renderSidebarAndTopbar();
+        } else if (
+          targetSec &&
+          targetSec.closest('#cbi-tachyon-settings') &&
+          targetSec.hasAttribute('data-tab')
+        ) {
+          const subKey = targetSec.getAttribute('data-tab') || '';
+          const settingsSec = mapEl.querySelector<HTMLElement>(
+            '#cbi-tachyon-settings',
+          );
+          switchSettingsInternalSubTab(settingsSec, subKey, true);
+          const matched = NAV_ITEMS.find(
+            (i) => i.luciTab === 'settings' && i.settingsSubTab === subKey,
+          );
+          if (matched) {
+            activeShellState.activeNavKey = matched.key;
+            saveActiveNavKey(matched.key);
+            renderSidebarAndTopbar();
+          }
+        }
+      },
+      true,
+    );
   }
 
   const langSlot = E('div', { class: 'tachyon-topbar__lang-slot' }, []);

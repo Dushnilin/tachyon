@@ -101,6 +101,7 @@ export {
   TACHYON_LANGUAGES,
 } from './tachyon/languageSelector';
 export {
+  activateAppShellNavKey,
   mountTachyonAppShell,
   refreshTachyonAppShell,
   installModalHeaderCloseEnhancements,

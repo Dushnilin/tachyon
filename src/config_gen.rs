@@ -22911,4 +22911,186 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         let cfg = compile_core_config(&store).expect("compile core config");
         assert!(cfg["dns"].get("independent_cache").is_none());
     }
+
+    #[test]
+    fn test_composite_all_parent_domains_migration_and_intentional_intersection() {
+        let base_vpn_store = |parent_domains: Vec<String>, sec_domains: Vec<String>| {
+            let mut store = RouterStoreData::default();
+            store
+                .applied_migrations
+                .retain(|m| m != "strip_redundant_composite_parent_domains_v1");
+            store.outbound_sources.clear();
+            store.balancers.clear();
+            store.outbound_groups.clear();
+            store.sections.clear();
+            store.conditions.clear();
+
+            store.outbound_sources.push(crate::store::OutboundSource {
+                id: "src_vpn".to_string(),
+                enabled: true,
+                source_type: "urls".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-1111-1111-111111111111@203.0.113.10:443#NL-1"
+                        .to_string(),
+                    "vless://11111111-1111-1111-1111-111111111112@203.0.113.11:443#DE-2"
+                        .to_string(),
+                ],
+                ..Default::default()
+            });
+
+            store.conditions = vec![
+                TrafficCondition {
+                    id: "c_discord".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    user_domains: vec!["discord.com".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_telegram".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    community_lists: vec!["telegram".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_apps".to_string(),
+                    enabled: true,
+                    condition_type: "any".to_string(),
+                    children: vec!["c_discord".to_string(), "c_telegram".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_not_openai".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    user_domains: vec!["openai.com".to_string()],
+                    invert: true,
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "cond_vpn_policy".to_string(),
+                    enabled: true,
+                    condition_type: "all".to_string(),
+                    children: vec!["c_apps".to_string(), "c_not_openai".to_string()],
+                    user_domains: parent_domains,
+                    ..Default::default()
+                },
+            ];
+
+            store.sections.push(RoutingSection {
+                id: "vpn".to_string(),
+                enabled: true,
+                label: "VPN".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "vless".to_string(),
+                outbound_source_refs: vec!["src_vpn".to_string()],
+                condition_refs: vec!["cond_vpn_policy".to_string()],
+                user_domains: sec_domains,
+                ..Default::default()
+            });
+
+            store
+        };
+
+        // Scenario A: legacy duplicate `catalog.example` copied onto `cond_vpn_policy`
+        let mut legacy_store = base_vpn_store(
+            vec!["catalog.example".to_string()],
+            vec!["catalog.example".to_string(), "extra.example".to_string()],
+        );
+
+        let before_cfg = compile_core_config(&legacy_store).expect("compile before migration");
+        let before_sec_rule = before_cfg["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| {
+                r["domain_suffix"] == json!(["catalog.example", "extra.example"])
+                    || r["domain_suffix"] == json!(["catalog.example"])
+            })
+            .expect("section domain rule before migration");
+        let vpn_ob = before_sec_rule["outbound"]
+            .as_str()
+            .expect("vpn outbound")
+            .to_string();
+        assert_ne!(vpn_ob, "direct");
+        assert_ne!(vpn_ob, "block");
+
+        let before_comp = before_cfg["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["outbound"] == vpn_ob && r["type"] == "logical" && r["mode"] == "and")
+            .expect("composite rule before migration");
+        let before_comp_str = serde_json::to_string(before_comp).unwrap();
+        assert!(
+            before_comp_str.contains("catalog.example"),
+            "before migration redundant parent domain filtered the AND branch"
+        );
+
+        // Migrate duplicated parent domains away
+        assert!(legacy_store.apply_strip_redundant_composite_parent_domains_v1());
+        assert!(
+            legacy_store
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_vpn_policy")
+                .unwrap()
+                .user_domains
+                .is_empty()
+        );
+
+        let after_cfg = compile_core_config(&legacy_store).expect("compile after migration");
+        let after_rules = after_cfg["route"]["rules"].as_array().unwrap();
+        let after_comp = after_rules
+            .iter()
+            .find(|r| r["outbound"] == vpn_ob && r["type"] == "logical" && r["mode"] == "and")
+            .expect("composite rule after migration");
+        let after_comp_str = serde_json::to_string(after_comp).unwrap();
+        assert!(after_comp_str.contains("discord.com"));
+        assert!(after_comp_str.contains("openai.com"));
+        assert!(after_comp_str.contains("trs-telegram"));
+        assert!(
+            !after_comp_str.contains("catalog.example"),
+            "after migration composite rule must no longer AND with catalog.example"
+        );
+
+        // Section's own user_domains rule still routes independently
+        assert!(after_rules.iter().any(|r| {
+            r["outbound"] == vpn_ob
+                && r["domain_suffix"].as_array().is_some_and(|arr| {
+                    arr.contains(&json!("catalog.example")) && arr.contains(&json!("extra.example"))
+                })
+        }));
+
+        // Scenario B: intentional non-duplicated parent criterion MUST be preserved by migration
+        // and intersected in `build_condition_rule`
+        let mut intentional_store = base_vpn_store(
+            vec!["intentional-parent.example".to_string()],
+            vec!["catalog.example".to_string()],
+        );
+        assert!(intentional_store.apply_strip_redundant_composite_parent_domains_v1());
+        assert_eq!(
+            intentional_store
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_vpn_policy")
+                .unwrap()
+                .user_domains,
+            vec!["intentional-parent.example".to_string()]
+        );
+
+        let intentional_cfg =
+            compile_core_config(&intentional_store).expect("compile intentional composite");
+        let intentional_comp = intentional_cfg["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["outbound"] == vpn_ob && r["type"] == "logical" && r["mode"] == "and")
+            .expect("intentional composite AND rule");
+        let intentional_str = serde_json::to_string(intentional_comp).unwrap();
+        assert!(intentional_str.contains("intentional-parent.example"));
+        assert!(intentional_str.contains("discord.com"));
+        assert!(intentional_str.contains("openai.com"));
+    }
 }

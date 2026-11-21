@@ -2033,6 +2033,20 @@ pub struct TrafficCondition {
     pub source_inbounds: Vec<String>,
 }
 
+impl TrafficCondition {
+    /// Returns `true` when this condition combines other conditions (`all` / `any` / `not` /
+    /// legacy `composite`, or has non-empty `children` / `expression`) rather than being a plain
+    /// atomic predicate.
+    pub fn is_composite(&self) -> bool {
+        let ctype = self.condition_type.trim().to_ascii_lowercase();
+        matches!(
+            ctype.as_str(),
+            "all" | "any" | "not" | "composite" | "and" | "or"
+        ) || self.children.iter().any(|c| !c.trim().is_empty())
+            || !self.expression.trim().is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ParsedProxyNode {
     pub tag: String,
@@ -3534,6 +3548,7 @@ impl RouterStoreData {
         s.apply_relax_probe_intervals_v1();
         s.apply_fail_closed_auto_defaults();
         s.apply_ai_lists_1_8();
+        s.apply_strip_redundant_composite_parent_domains_v1();
         s
     }
 }
@@ -3547,6 +3562,7 @@ impl Default for RouterStoreData {
         s.apply_relax_probe_intervals_v1();
         s.apply_fail_closed_auto_defaults();
         s.apply_ai_lists_1_8();
+        s.apply_strip_redundant_composite_parent_domains_v1();
         s
     }
 }
@@ -4248,6 +4264,98 @@ impl RouterStoreData {
                         has_google_services_anywhere = true;
                     }
                 }
+            }
+        }
+
+        self.applied_migrations.push(MIGRATION_ID.to_string());
+        true
+    }
+
+    /// One-shot migration: strip redundant `user_domains` copied onto composite conditions
+    /// (`all` / `any` / `not` / `composite` with non-empty `children` or `expression`) when every
+    /// section referencing that condition already includes all of those domains in its own
+    /// `user_domains` / `domains`.
+    ///
+    /// Legacy UI and domain-add paths mirrored a section's `user_domains` onto its first
+    /// `condition_refs` entry even when that condition was composite. Once `build_condition_rule`
+    /// began intersecting parent criteria with child branches via logical `and`, that redundant
+    /// copy silently blocked child branches whose domains were not in the copied parent list.
+    ///
+    /// Intentional parent criteria (domains NOT duplicated on the referencing section) are
+    /// preserved untouched.
+    pub fn apply_strip_redundant_composite_parent_domains_v1(&mut self) -> bool {
+        const MIGRATION_ID: &str = "strip_redundant_composite_parent_domains_v1";
+        if self.applied_migrations.iter().any(|m| m == MIGRATION_ID) {
+            return false;
+        }
+
+        fn normalize_domain_tokens(items: &[String]) -> Vec<String> {
+            items
+                .iter()
+                .flat_map(|raw| raw.split(|c: char| c.is_whitespace() || c == ',' || c == ';'))
+                .map(|tok| tok.trim().to_ascii_lowercase())
+                .filter(|tok| !tok.is_empty())
+                .collect()
+        }
+
+        fn section_references_condition(sec: &RoutingSection, cid: &str) -> bool {
+            if sec.condition_refs.iter().any(|r| r.trim() == cid) {
+                return true;
+            }
+            if !sec.condition_expression.trim().is_empty()
+                && sec
+                    .condition_expression
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+                    .any(|tok| tok == cid)
+            {
+                return true;
+            }
+            sec.condition_refs.is_empty()
+                && sec.condition_expression.trim().is_empty()
+                && format!("cond_{}", sec.id) == cid
+        }
+
+        let section_domain_sets: Vec<(&RoutingSection, std::collections::HashSet<String>)> = self
+            .sections
+            .iter()
+            .map(|sec| {
+                let mut set = std::collections::HashSet::new();
+                for tok in normalize_domain_tokens(&sec.user_domains) {
+                    set.insert(tok);
+                }
+                for tok in normalize_domain_tokens(&sec.domains) {
+                    set.insert(tok);
+                }
+                (sec, set)
+            })
+            .collect();
+
+        for cond in &mut self.conditions {
+            let has_nested = cond.children.iter().any(|c| !c.trim().is_empty())
+                || !cond.expression.trim().is_empty();
+            if !cond.is_composite() || !has_nested || cond.user_domains.is_empty() {
+                continue;
+            }
+
+            let cond_tokens = normalize_domain_tokens(&cond.user_domains);
+            if cond_tokens.is_empty() {
+                continue;
+            }
+
+            let mut matched_sections = 0usize;
+            let mut all_refs_cover = true;
+            for (sec, sec_tokens) in &section_domain_sets {
+                if section_references_condition(sec, &cond.id) {
+                    matched_sections += 1;
+                    if !cond_tokens.iter().all(|t| sec_tokens.contains(t)) {
+                        all_refs_cover = false;
+                        break;
+                    }
+                }
+            }
+
+            if matched_sections > 0 && all_refs_cover {
+                cond.user_domains.clear();
             }
         }
 
@@ -7160,6 +7268,7 @@ impl RouterStoreData {
         self.apply_relax_probe_intervals_v1();
         self.apply_fail_closed_auto_defaults();
         self.apply_ai_lists_1_8();
+        self.apply_strip_redundant_composite_parent_domains_v1();
         imported
     }
 
@@ -9230,6 +9339,9 @@ impl AppState {
             if parsed.apply_ai_lists_1_8() {
                 migrated = true;
             }
+            if parsed.apply_strip_redundant_composite_parent_domains_v1() {
+                migrated = true;
+            }
             if parsed.settings.subscription_engine != "core" {
                 parsed.settings.subscription_engine = "core".to_string();
                 migrated = true;
@@ -10968,5 +11080,126 @@ config priority_level 'pl_direct'
         assert_eq!(find_tol("b_default"), 50);
         assert_eq!(find_tol("b_zero"), 0);
         assert_eq!(find_tol("b_low"), 30);
+    }
+
+    #[test]
+    fn test_traffic_condition_is_composite() {
+        let mut cond = TrafficCondition {
+            id: "c_test".to_string(),
+            condition_type: "atomic".to_string(),
+            ..Default::default()
+        };
+        assert!(!cond.is_composite());
+
+        for ctype in [
+            "all",
+            "any",
+            "not",
+            "composite",
+            "and",
+            "or",
+            "ALL",
+            "Composite",
+        ] {
+            cond.condition_type = ctype.to_string();
+            assert!(cond.is_composite(), "{ctype} must be composite");
+        }
+
+        cond.condition_type = "atomic".to_string();
+        cond.children = vec!["child_a".to_string()];
+        assert!(cond.is_composite());
+
+        cond.children.clear();
+        cond.expression = "a AND b".to_string();
+        assert!(cond.is_composite());
+    }
+
+    #[test]
+    fn test_strip_redundant_composite_parent_domains_v1_idempotent_and_preserves_intentional() {
+        let mut store = RouterStoreData::empty_base();
+        store.applied_migrations.clear();
+        store.sections.push(RoutingSection {
+            id: "vpn".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            condition_refs: vec!["cond_vpn_policy".to_string()],
+            user_domains: vec!["catalog.example".to_string(), "extra.example".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_intent".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            condition_refs: vec!["cond_intent".to_string()],
+            user_domains: vec!["catalog.example".to_string()],
+            ..Default::default()
+        });
+        store.conditions.push(TrafficCondition {
+            id: "c_discord".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["discord.com".to_string()],
+            ..Default::default()
+        });
+        store.conditions.push(TrafficCondition {
+            id: "cond_vpn_policy".to_string(),
+            enabled: true,
+            condition_type: "all".to_string(),
+            children: vec!["c_discord".to_string()],
+            // Duplicated subset of sections["vpn"].user_domains
+            user_domains: vec!["CATALOG.example".to_string()],
+            ..Default::default()
+        });
+        store.conditions.push(TrafficCondition {
+            id: "cond_intent".to_string(),
+            enabled: true,
+            condition_type: "all".to_string(),
+            children: vec!["c_discord".to_string()],
+            // Intentional parent criterion NOT present on referencing section
+            user_domains: vec!["intentional-parent.example".to_string()],
+            ..Default::default()
+        });
+
+        assert!(store.apply_strip_redundant_composite_parent_domains_v1());
+
+        let vpn_cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_vpn_policy")
+            .unwrap();
+        assert!(
+            vpn_cond.user_domains.is_empty(),
+            "redundant duplicated user_domains on composite condition must be cleared"
+        );
+
+        let intent_cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_intent")
+            .unwrap();
+        assert_eq!(
+            intent_cond.user_domains,
+            vec!["intentional-parent.example".to_string()],
+            "intentional non-duplicated parent criterion must be preserved"
+        );
+
+        // Idempotent second run returns false and leaves subsequent manual edits intact
+        store
+            .conditions
+            .iter_mut()
+            .find(|c| c.id == "cond_vpn_policy")
+            .unwrap()
+            .user_domains
+            .push("catalog.example".to_string());
+        assert!(!store.apply_strip_redundant_composite_parent_domains_v1());
+        assert_eq!(
+            store
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_vpn_policy")
+                .unwrap()
+                .user_domains,
+            vec!["catalog.example".to_string()]
+        );
     }
 }
