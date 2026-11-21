@@ -625,6 +625,10 @@ fn parse_firewall_dnat_redirects(raw: &str) -> Vec<FirewallDnatRedirect> {
         if !src_port.is_empty() && src_port != "*" {
             continue;
         }
+        let src_ip = first("src_ip");
+        if !src_ip.is_empty() && src_ip != "*" && src_ip != "0.0.0.0/0" {
+            continue;
+        }
         let dest_ip = first("dest_ip");
         if dest_ip.parse::<std::net::Ipv4Addr>().is_err() {
             continue;
@@ -707,7 +711,9 @@ fn collect_lan_router_ipv4s_from_network(raw: &str) -> Vec<String> {
                 && sname != "loopback"
                 && !sname.starts_with("wan")
                 && !sname.starts_with("wg")
-                && !sname.starts_with("awg");
+                && !sname.starts_with("awg")
+                && !sname.starts_with("tailscale")
+                && !sname.starts_with("fptn");
             continue;
         }
         if !in_lan_like {
@@ -731,15 +737,17 @@ fn collect_lan_router_ipv4s_from_network(raw: &str) -> Vec<String> {
             continue;
         }
         let val = unquote_uci_value(val_raw);
-        let ip_only = val.split('/').next().unwrap_or("").trim();
-        if let Ok(v4) = ip_only.parse::<std::net::Ipv4Addr>()
-            && !v4.is_loopback()
-            && !v4.is_unspecified()
-            && v4.is_private()
-        {
-            let s = v4.to_string();
-            if !ips.contains(&s) {
-                ips.push(s);
+        for tok in val.split([',', ' ', '\t']) {
+            let ip_only = tok.split('/').next().unwrap_or("").trim();
+            if let Ok(v4) = ip_only.parse::<std::net::Ipv4Addr>()
+                && !v4.is_loopback()
+                && !v4.is_unspecified()
+                && v4.is_private()
+            {
+                let s = v4.to_string();
+                if !ips.contains(&s) {
+                    ips.push(s);
+                }
             }
         }
     }
@@ -761,6 +769,7 @@ fn append_dnat_output_chains(
     redirects: &[FirewallDnatRedirect],
     lan_v4_ips: &[String],
     lan_ifaces_literal: &str,
+    fakeip_v4: Option<&str>,
 ) {
     if redirects.is_empty() {
         return;
@@ -771,14 +780,10 @@ fn append_dnat_output_chains(
         type nat hook output priority dstnat; policy accept;
         ip daddr 127.0.0.0/8 return"
     );
-    if !lan_v4_ips.is_empty() {
-        let _ = writeln!(
-            out,
-            "        ip daddr {{ {} }} return",
-            lan_v4_ips.join(", ")
-        );
+    if let Some(fip) = fakeip_v4 {
+        let _ = writeln!(out, "        ip daddr {fip} return");
     }
-    for r in redirects {
+    let emit_redirect = |out: &mut String, r: &FirewallDnatRedirect| {
         let dst_target = match &r.dest_port {
             Some(dp) => format!("{}:{dp}", r.dest_ip),
             None => r.dest_ip.clone(),
@@ -794,13 +799,42 @@ fn append_dnat_output_chains(
                 r.src_dport
             );
         }
+    };
+    if !lan_v4_ips.is_empty() {
+        let _ = writeln!(
+            out,
+            "        ip daddr {{ {} }} return",
+            lan_v4_ips.join(", ")
+        );
+        for r in redirects {
+            emit_redirect(out, r);
+        }
+    } else {
+        for r in redirects.iter().filter(|r| r.src_dip.is_some()) {
+            emit_redirect(out, r);
+        }
+        if redirects.iter().any(|r| r.src_dip.is_none()) {
+            // When static LAN router IPs are unavailable, protect @localv4 destinations before
+            // wildcard `fib daddr type local` so router-to-LAN admin traffic is not redirected.
+            let _ = writeln!(out, "        ip daddr @localv4 return");
+            for r in redirects.iter().filter(|r| r.src_dip.is_none()) {
+                emit_redirect(out, r);
+            }
+        }
     }
     let _ = writeln!(out, "    }}");
+    let mut dest_ips: Vec<String> = Vec::new();
+    for r in redirects {
+        if !dest_ips.contains(&r.dest_ip) {
+            dest_ips.push(r.dest_ip.clone());
+        }
+    }
+    let dest_ips_literal = dest_ips.join(", ");
     let _ = writeln!(
         out,
         "    chain postrouting_dnat_output {{
         type nat hook postrouting priority srcnat; policy accept;
-        fib saddr type local oifname {lan_ifaces_literal} ct status dnat masquerade comment \"tachyon-dnat-output-snat\"
+        meta nfproto ipv4 fib saddr type local oifname {lan_ifaces_literal} ip daddr {{ {dest_ips_literal} }} ct status dnat masquerade comment \"tachyon-dnat-output-snat\"
     }}"
     );
 }
@@ -1291,7 +1325,13 @@ fn compile_nftables_ruleset_full(
         append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
     }
     append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
-    append_dnat_output_chains(&mut out, dnat_redirects, lan_v4_ips, &lan_ifaces_literal);
+    append_dnat_output_chains(
+        &mut out,
+        dnat_redirects,
+        lan_v4_ips,
+        &lan_ifaces_literal,
+        store.settings.fakeip_enabled.then_some(fakeip_v4),
+    );
     if guest_mode_has_active_rules(&store.guest_mode) && is_guest_mode_zero_trust(&store.guest_mode)
     {
         append_guest_zero_trust_chain(&mut out, store, need_localv6, ipv6_active, fakeip_v6, true);
@@ -1633,6 +1673,9 @@ fn compile_nftables_ruleset_full(
             ports.join(", ")
         );
     }
+    let _ = writeln!(out, "        ct direction reply return");
+    let _ = writeln!(out, "        ct status dnat return");
+    let _ = writeln!(out, "        fib daddr type local return");
     if eff_webrtc {
         if !proxy_udp_ports_literal.is_empty() {
             let _ = writeln!(
@@ -1664,8 +1707,6 @@ fn compile_nftables_ruleset_full(
             "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
-    let _ = writeln!(out, "        ct status dnat return");
-    let _ = writeln!(out, "        fib daddr type local return");
     let _ = writeln!(out, "        ip daddr @localv4 return");
     if store.settings.fakeip_enabled {
         let _ = writeln!(
@@ -1774,6 +1815,11 @@ fn compile_tun_guard_ruleset_full(
     }
     let lan_ifaces = collect_managed_lan_ifaces(store);
     let lan_ifaces_literal = format_ifname_set_literal(&lan_ifaces);
+    let fakeip_v4 = if store.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        store.settings.fakeip_inet4_range.trim()
+    };
     let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
         "fc00::/18"
     } else {
@@ -1801,7 +1847,10 @@ fn compile_tun_guard_ruleset_full(
     let _ = writeln!(out, "table inet TachyonTable");
     let _ = writeln!(out, "delete table inet TachyonTable");
     let _ = writeln!(out, "table inet TachyonTable {{");
-    if guest_active {
+    let need_localv4_for_dnat = !dnat_redirects.is_empty()
+        && lan_v4_ips.is_empty()
+        && dnat_redirects.iter().any(|r| r.src_dip.is_none());
+    if guest_active || need_localv4_for_dnat {
         append_localv4_set(&mut out);
     }
     let need_localv6 = ipv6_active || forward_guard;
@@ -1871,7 +1920,13 @@ fn compile_tun_guard_ruleset_full(
         );
     }
     append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
-    append_dnat_output_chains(&mut out, dnat_redirects, lan_v4_ips, &lan_ifaces_literal);
+    append_dnat_output_chains(
+        &mut out,
+        dnat_redirects,
+        lan_v4_ips,
+        &lan_ifaces_literal,
+        store.settings.fakeip_enabled.then_some(fakeip_v4),
+    );
     if eff_dns_intercept || store.settings.block_doh {
         let _ = writeln!(
             out,
@@ -5529,7 +5584,7 @@ config interface 'wan'
         assert!(!nft.contains("dport 8080"));
         assert!(nft.contains("chain postrouting_dnat_output {"));
         assert!(nft.contains(
-            "fib saddr type local oifname { \"br-lan\" } ct status dnat masquerade comment \"tachyon-dnat-output-snat\""
+            "meta nfproto ipv4 fib saddr type local oifname { \"br-lan\" } ip daddr { 192.168.1.50 } ct status dnat masquerade comment \"tachyon-dnat-output-snat\""
         ));
 
         // 4. TUN mode guard ruleset also emits dnat_output when port forwards exist
@@ -5743,5 +5798,201 @@ firewall.tachyon_ts_panel.enabled='1'
                 "firewall.tachyon_ts_panel".to_string()
             ]]
         );
+    }
+
+    #[test]
+    fn test_dnat_output_empty_lan_v4_ips_protects_localv4_and_preserves_src_dip() {
+        let fw_raw = "\
+config redirect 'explicit_wan_http'
+\toption src 'wan'
+\toption src_dip '198.51.100.25'
+\toption src_dport '80'
+\toption dest_ip '192.168.1.60'
+\toption dest_port '8080'
+\toption proto 'tcp'
+
+config redirect 'wildcard_wan_https'
+\toption src 'wan'
+\toption src_dport '443'
+\toption dest_ip '192.168.1.50'
+\toption dest_port '443'
+\toption proto 'tcp'
+
+config redirect 'restricted_src_ip'
+\toption src 'wan'
+\toption src_ip '203.0.113.10'
+\toption src_dport '2222'
+\toption dest_ip '192.168.1.50'
+\toption dest_port '22'
+\toption proto 'tcp'
+";
+        let redirects = parse_firewall_dnat_redirects(fw_raw);
+        assert_eq!(redirects.len(), 2, "src_ip-restricted redirect must be skipped");
+
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+
+        // Empty lan_v4_ips in TProxy mode: explicit src_dip comes first, @localv4 return guards fib daddr type local
+        let nft = compile_nftables_ruleset_full(&store, false, &[], &redirects, &[]);
+        let dnat_start = nft.find("chain dnat_output {").expect("dnat_output");
+        let post_start = nft
+            .find("chain postrouting_dnat_output {")
+            .expect("postrouting_dnat_output");
+        let dnat = &nft[dnat_start..post_start];
+        let post = &nft[post_start..];
+
+        let idx_lo = dnat.find("ip daddr 127.0.0.0/8 return").expect("lo return");
+        let idx_fakeip = dnat
+            .find("ip daddr 198.18.0.0/15 return")
+            .expect("fakeip return");
+        let idx_explicit = dnat
+            .find("ip daddr 198.51.100.25 tcp dport 80 dnat ip to 192.168.1.60:8080")
+            .expect("explicit src_dip dnat");
+        let idx_localv4 = dnat
+            .find("ip daddr @localv4 return")
+            .expect("localv4 guard when lan_v4_ips empty");
+        let idx_fib = dnat
+            .find("fib daddr type local tcp dport 443 dnat ip to 192.168.1.50:443")
+            .expect("wildcard fib dnat");
+
+        assert!(idx_lo < idx_explicit);
+        assert!(idx_fakeip < idx_explicit);
+        assert!(idx_explicit < idx_localv4);
+        assert!(idx_localv4 < idx_fib);
+        assert!(!nft.contains("dport 2222"));
+
+        assert!(post.contains(
+            "meta nfproto ipv4 fib saddr type local oifname { \"br-lan\" } ip daddr { 192.168.1.60, 192.168.1.50 } ct status dnat masquerade"
+        ));
+
+        // TUN guard mode with empty lan_v4_ips must also emit `set localv4` so `@localv4` resolves
+        let tun_nft = compile_tun_guard_ruleset_full(&store, true, &[], &redirects, &[])
+            .expect("tun guard emits when dnat_redirects present");
+        assert!(tun_nft.contains("set localv4 {"));
+        assert!(tun_nft.contains("ip daddr @localv4 return"));
+    }
+
+    #[test]
+    fn test_router_originated_fakeip_vs_wan_dnat_reflection_and_reply_safety() {
+        let redirects = vec![FirewallDnatRedirect {
+            protos: vec!["tcp", "udp"],
+            src_dip: None,
+            src_dport: "443".to_string(),
+            dest_ip: "192.168.1.50".to_string(),
+            dest_port: Some("443".to_string()),
+        }];
+        let lan_ips = vec!["192.168.1.1".to_string()];
+
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        store.settings.route_router_traffic = true;
+        store.settings.disable_quic = true;
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "ts_emb".to_string(),
+            enabled: true,
+            source_type: "tailscale".to_string(),
+            tailscale_mode: "singbox".to_string(),
+            ..Default::default()
+        });
+
+        let nft = compile_nftables_ruleset_full(&store, false, &[], &redirects, &lan_ips);
+        let dnat_start = nft.find("chain dnat_output {").expect("dnat_output");
+        let out_start = nft.find("chain mangle_output {").expect("mangle_output");
+        let dnat = &nft[dnat_start..out_start];
+        let out = &nft[out_start..];
+
+        // dnat_output exempts FakeIPv4 and LAN router IPs before WAN DNAT reflection
+        let dnat_fakeip = dnat
+            .find("ip daddr 198.18.0.0/15 return")
+            .expect("dnat_output fakeip return");
+        let dnat_lan = dnat
+            .find("ip daddr { 192.168.1.1 } return")
+            .expect("dnat_output lan return");
+        let dnat_rule = dnat
+            .find("fib daddr type local tcp dport 443 dnat ip to 192.168.1.50:443")
+            .expect("dnat_output reflection rule");
+        assert!(dnat_fakeip < dnat_rule);
+        assert!(dnat_lan < dnat_rule);
+
+        // mangle_output skips reply traffic, DNATed traffic, and local router IPs BEFORE QUIC reject / Tailscale / FakeIP / route_router_traffic
+        let out_reply = out
+            .find("ct direction reply return")
+            .expect("mangle_output ct direction reply return");
+        let out_dnat = out
+            .find("ct status dnat return")
+            .expect("mangle_output ct status dnat return");
+        let out_fib = out
+            .find("fib daddr type local return")
+            .expect("mangle_output fib daddr type local return");
+        let out_quic = out
+            .find("udp dport 443 reject")
+            .expect("mangle_output disable_quic");
+        let out_ts = out
+            .find("ip daddr 100.64.0.0/10")
+            .expect("mangle_output tailscale");
+        let out_localv4 = out
+            .find("ip daddr @localv4 return")
+            .expect("mangle_output localv4 return");
+        let out_fakeip = out
+            .find("ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000")
+            .expect("mangle_output fakeip mark");
+        let out_router_all = out
+            .rfind("\n        meta l4proto { tcp, udp } meta mark set 0x10000000")
+            .expect("mangle_output route_router_traffic");
+
+        assert!(out_reply < out_quic);
+        assert!(out_dnat < out_quic);
+        assert!(out_fib < out_quic);
+        assert!(out_fib < out_ts);
+        assert!(out_ts < out_localv4);
+        assert!(out_localv4 < out_fakeip);
+        assert!(out_fakeip < out_router_all);
+    }
+
+    #[test]
+    fn test_tls_handshake_packets_not_hitting_ct_direction_reply() {
+        let mut store = RouterStoreData::default();
+        store.settings.source_network_interfaces = vec!["br-lan".to_string(), "tailscale0".to_string()];
+        store.settings.fakeip_enabled = true;
+        store.settings.disable_quic = true;
+        store.settings.block_doh = true;
+        store.settings.proxy_mode = "tproxy".to_string();
+
+        let nft = compile_nftables_ruleset_full(&store, false, &[], &[], &[]);
+        let pre_start = nft.find("chain prerouting {").expect("prerouting");
+        let out_start = nft.find("chain mangle_output {").expect("mangle_output");
+        let pre = &nft[pre_start..out_start];
+
+        // 1. Reply bypass in prerouting is strictly scoped to `ct direction reply` on managed LAN interfaces
+        //    (never matching `ct direction original` TLS SYN/ClientHello packets or `lo`/`tailscale0` interfaces).
+        assert!(pre.contains("type filter hook prerouting priority -90; policy accept;"));
+        let idx_lo_guard = pre
+            .find("iifname \"lo\" meta mark & 0x10000000 == 0 return")
+            .expect("lo mark guard");
+        let idx_reply = pre
+            .find("iifname { \"br-lan\" } ct direction reply counter return comment \"tachyon-inbound-reply\"")
+            .expect("lan ct direction reply return");
+        assert!(!pre.contains("\"tailscale0\" } ct direction reply"));
+        assert!(!pre.contains("\"lo\" } ct direction reply"));
+        let idx_dnat = pre.find("ct status dnat return").expect("dnat bypass");
+        let idx_local = pre.find("fib daddr type local return").expect("local bypass");
+        let idx_tproxy = pre.find("tproxy ip to 127.0.0.1:1602").expect("tproxy target");
+
+        assert!(idx_lo_guard < idx_reply);
+        assert!(idx_reply < idx_dnat);
+        assert!(idx_dnat < idx_local);
+        assert!(idx_local < idx_tproxy);
+
+        // 2. TUN fail-closed mode scopes mark 0x2022 exclusively to `ct direction reply` on LAN ifaces,
+        //    so client-originated TLS handshake packets continue through the tunnel.
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.emergency_direct_bypass = false;
+        let tun_nft = compile_tun_guard_ruleset_full(&store, false, &[], &[], &[])
+            .expect("tun guard ruleset");
+        assert!(tun_nft.contains(
+            "iifname { \"br-lan\" } ct direction reply meta mark set 0x00002022 counter return comment \"tachyon-inbound-reply\""
+        ));
     }
 }

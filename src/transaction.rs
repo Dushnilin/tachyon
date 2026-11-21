@@ -1,7 +1,8 @@
 //! 8-phase atomic Transaction Engine (`PLAN -> PREFLIGHT -> SNAPSHOT -> MUTATE -> VALIDATE -> ACTIVATE -> VERIFY -> COMMIT`),
 //! Dry-Run Configuration Planner (`config_plan`), and Last Known Good (`known_good`) snapshot manager.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::io::Read as _;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -118,6 +119,194 @@ fn validate_source_fragment_options(
         "0-2ms",
         errors,
     );
+}
+
+fn validate_local_ruleset_file(
+    raw_ref: &str,
+    owner_label: &str,
+    field_name: &str,
+    errors: &mut Vec<String>,
+) {
+    let clean = raw_ref.trim();
+    if clean.is_empty()
+        || config_gen::is_remote_ruleset_url(clean)
+        || config_gen::is_community_list_token(clean)
+        || !config_gen::is_local_ruleset_path(clean)
+    {
+        return;
+    }
+
+    let path = Path::new(clean);
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            errors.push(format!(
+                "{owner_label} {field_name} references local rule-set '{clean}' which does not exist or is unreadable: {e}"
+            ));
+            return;
+        }
+    };
+    let meta = match file.metadata() {
+        Ok(m) => m,
+        Err(e) => {
+            errors.push(format!(
+                "{owner_label} {field_name} local rule-set '{clean}' metadata could not be read: {e}"
+            ));
+            return;
+        }
+    };
+    if !meta.is_file() {
+        errors.push(format!(
+            "{owner_label} {field_name} local rule-set '{clean}' is not a regular file"
+        ));
+        return;
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("json") => {
+            if meta.len() == 0 {
+                errors.push(format!(
+                    "{owner_label} {field_name} local JSON rule-set '{clean}' is empty"
+                ));
+                return;
+            }
+            let parsed: Value = match serde_json::from_reader(std::io::BufReader::new(file)) {
+                Ok(v) => v,
+                Err(e) => {
+                    errors.push(format!(
+                        "{owner_label} {field_name} local JSON rule-set '{clean}' is invalid JSON: {e}"
+                    ));
+                    return;
+                }
+            };
+            if !parsed
+                .as_object()
+                .is_some_and(|obj| obj.get("rules").is_some_and(Value::is_array))
+            {
+                errors.push(format!(
+                    "{owner_label} {field_name} local JSON rule-set '{clean}' must be a JSON object containing a 'rules' array"
+                ));
+            }
+        }
+        Some("trs") | Some("tsr") => {
+            if meta.len() == 0 {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .trs rule-set '{clean}' is empty"
+                ));
+                return;
+            }
+            if meta.len() < 16 {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .trs rule-set '{clean}' is truncated ({} bytes; expected >= 16 bytes with TRS/TSRS/TCRS header)",
+                    meta.len()
+                ));
+                return;
+            }
+            let mut hdr = [0u8; 4];
+            if let Err(e) = file.read_exact(&mut hdr) {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .trs rule-set '{clean}' could not read header: {e}"
+                ));
+                return;
+            }
+            if !(hdr.starts_with(b"TRS") || hdr == *b"TSRS" || hdr == *b"TCRS") {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .trs rule-set '{clean}' has invalid TRS magic/header"
+                ));
+            }
+        }
+        Some("srs") => {
+            if meta.len() == 0 {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .srs rule-set '{clean}' is empty"
+                ));
+                return;
+            }
+            if meta.len() < 16 {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .srs rule-set '{clean}' is truncated ({} bytes; expected >= 16 bytes with SRS header)",
+                    meta.len()
+                ));
+                return;
+            }
+            let mut hdr = [0u8; 4];
+            if let Err(e) = file.read_exact(&mut hdr) {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .srs rule-set '{clean}' could not read header: {e}"
+                ));
+                return;
+            }
+            if !hdr.starts_with(b"SRS") {
+                errors.push(format!(
+                    "{owner_label} {field_name} local .srs rule-set '{clean}' has invalid SRS magic/header"
+                ));
+            }
+        }
+        Some("txt") | Some("lst") => {
+            let mut buf = String::new();
+            if let Err(e) = file.read_to_string(&mut buf) {
+                errors.push(format!(
+                    "{owner_label} {field_name} local plain rule-set '{clean}' is not valid UTF-8 text: {e}"
+                ));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn validate_condition_local_rulesets<'a>(
+    cond: &'a crate::store::TrafficCondition,
+    cond_map: &HashMap<&'a str, &'a crate::store::TrafficCondition>,
+    visited: &mut HashSet<&'a str>,
+    errors: &mut Vec<String>,
+) {
+    if !cond.enabled || !visited.insert(cond.id.as_str()) {
+        return;
+    }
+    let label = format!("Condition '{}'", cond.id);
+    for r in &cond.rule_set {
+        validate_local_ruleset_file(r, &label, "rule_set", errors);
+    }
+    for r in &cond.rule_set_with_subnets {
+        validate_local_ruleset_file(r, &label, "rule_set_with_subnets", errors);
+    }
+    for child_id in &cond.children {
+        if let Some(child) = cond_map.get(child_id.trim()).copied() {
+            validate_condition_local_rulesets(child, cond_map, visited, errors);
+        }
+    }
+}
+
+fn validate_local_ruleset_paths(candidate: &RouterStoreData, errors: &mut Vec<String>) {
+    let cond_map: HashMap<&str, &crate::store::TrafficCondition> = candidate
+        .conditions
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect();
+    let mut visited_conds: HashSet<&str> = HashSet::new();
+
+    for sec in candidate.sections.iter().filter(|s| s.enabled) {
+        let label = format!("Section '{}'", sec.id);
+        for r in &sec.rule_set_urls {
+            validate_local_ruleset_file(r, &label, "rule_set_urls", errors);
+        }
+        for r in &sec.rule_set_with_subnets {
+            validate_local_ruleset_file(r, &label, "rule_set_with_subnets", errors);
+        }
+        for cref in &sec.condition_refs {
+            if let Some(cond) = cond_map.get(cref.trim()).copied() {
+                validate_condition_local_rulesets(cond, &cond_map, &mut visited_conds, errors);
+            }
+        }
+    }
+
+    for cond in candidate.conditions.iter().filter(|c| c.enabled) {
+        validate_condition_local_rulesets(cond, &cond_map, &mut visited_conds, errors);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,6 +504,8 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
             "TUN IPv6 CIDR '{tun6}' overlaps FakeIPv6 range '{eff_fakeip6}'"
         ));
     }
+
+    validate_local_ruleset_paths(candidate, &mut errors);
 
     // Validate compiled `tachyon-core` JSON generation
     if let Err(e) = config_gen::compile_core_config(candidate) {
@@ -785,5 +976,248 @@ mod tests {
         assert!(joined.contains("tls_fragment_mode"));
         assert!(joined.contains("tcp_fragment_length"));
         assert!(joined.contains("tcp_fragment_delay"));
+    }
+
+    #[test]
+    fn test_analyze_config_plan_validates_local_ruleset_files() {
+        use crate::store::{RoutingSection, TrafficCondition};
+
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_rs_val_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
+
+        let valid_json = tmp_dir.join("valid.json");
+        std::fs::write(&valid_json, r#"{"version":3,"rules":[{"domain":["example.com"]}]}"#)
+            .unwrap();
+
+        let malformed_json = tmp_dir.join("malformed.json");
+        std::fs::write(&malformed_json, b"{broken").unwrap();
+
+        let no_rules_json = tmp_dir.join("no_rules.json");
+        std::fs::write(&no_rules_json, r#"{"version":3}"#).unwrap();
+
+        let wrong_rules_type_json = tmp_dir.join("wrong_rules.json");
+        std::fs::write(&wrong_rules_type_json, r#"{"version":3,"rules":"not-array"}"#).unwrap();
+
+        let valid_trs = tmp_dir.join("valid.trs");
+        let mut trs_bytes = b"TSRS".to_vec();
+        trs_bytes.resize(32, 0x01);
+        std::fs::write(&valid_trs, &trs_bytes).unwrap();
+
+        let empty_trs = tmp_dir.join("empty.trs");
+        std::fs::write(&empty_trs, b"").unwrap();
+
+        let short_trs = tmp_dir.join("short.trs");
+        std::fs::write(&short_trs, b"TSRS").unwrap();
+
+        let bad_magic_trs = tmp_dir.join("bad_magic.trs");
+        std::fs::write(&bad_magic_trs, b"BADMAGIC_1234567890").unwrap();
+
+        let valid_srs = tmp_dir.join("valid.srs");
+        let srs_bytes = b"\x53\x52\x53\x02\x78\xda\x62\x00\x04\x00\x00\xff\xff\x00\x01\x00\x01";
+        std::fs::write(&valid_srs, srs_bytes).unwrap();
+
+        let empty_srs = tmp_dir.join("empty.srs");
+        std::fs::write(&empty_srs, b"").unwrap();
+
+        let short_srs = tmp_dir.join("short.srs");
+        std::fs::write(&short_srs, b"SRS\x02tiny").unwrap();
+
+        let bad_magic_srs = tmp_dir.join("bad_magic.srs");
+        std::fs::write(&bad_magic_srs, b"NOT_SRS_1234567890").unwrap();
+
+        let missing_json = tmp_dir.join("missing.json");
+
+        // 1. Valid local JSON + .trs + .srs + remote URLs + plain built-in tokens + disabled missing file pass
+        let ok_store = RouterStoreData {
+            sections: vec![
+                RoutingSection {
+                    id: "sec_ok".to_string(),
+                    enabled: true,
+                    action: "direct".to_string(),
+                    connection_type: "direct".to_string(),
+                    rule_set_urls: vec![
+                        valid_json.to_string_lossy().into_owned(),
+                        "https://example.com/remote.trs".to_string(),
+                        "youtube".to_string(),
+                    ],
+                    rule_set_with_subnets: vec![
+                        valid_srs.to_string_lossy().into_owned(),
+                        "http://example.com/list.json".to_string(),
+                        "refilter".to_string(),
+                    ],
+                    condition_refs: vec!["cond_parent".to_string()],
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "sec_disabled".to_string(),
+                    enabled: false,
+                    action: "direct".to_string(),
+                    connection_type: "direct".to_string(),
+                    rule_set_urls: vec![missing_json.to_string_lossy().into_owned()],
+                    ..Default::default()
+                },
+            ],
+            conditions: vec![
+                TrafficCondition {
+                    id: "cond_child".to_string(),
+                    enabled: true,
+                    condition_type: "atomic".to_string(),
+                    rule_set: vec![valid_trs.to_string_lossy().into_owned()],
+                    rule_set_with_subnets: vec![valid_json.to_string_lossy().into_owned()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "cond_parent".to_string(),
+                    enabled: true,
+                    condition_type: "all".to_string(),
+                    children: vec!["cond_child".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "cond_disabled".to_string(),
+                    enabled: false,
+                    condition_type: "atomic".to_string(),
+                    rule_set: vec![missing_json.to_string_lossy().into_owned()],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let ok_report = analyze_config_plan(&ok_store);
+        assert!(ok_report.valid, "unexpected errors: {:?}", ok_report.errors);
+
+        // 2. Missing local file (absolute and relative)
+        let mut missing_store = RouterStoreData::default();
+        missing_store.sections[0].rule_set_urls = vec![
+            missing_json.to_string_lossy().into_owned(),
+            "./missing_rel.trs".to_string(),
+        ];
+        let r_missing = analyze_config_plan(&missing_store);
+        assert!(!r_missing.valid);
+        assert!(r_missing.errors.len() >= 2);
+        assert!(r_missing.errors.iter().any(|e| e.contains("missing.json")));
+        assert!(r_missing.errors.iter().any(|e| e.contains("missing_rel.trs")));
+
+        // 3. Malformed JSON, JSON without 'rules', JSON with non-array 'rules'
+        for (bad_path, expected_substr) in [
+            (&malformed_json, "invalid JSON"),
+            (&no_rules_json, "'rules' array"),
+            (&wrong_rules_type_json, "'rules' array"),
+        ] {
+            let mut st = RouterStoreData::default();
+            st.conditions.push(TrafficCondition {
+                id: "c_json_bad".to_string(),
+                enabled: true,
+                condition_type: "atomic".to_string(),
+                rule_set: vec![bad_path.to_string_lossy().into_owned()],
+                ..Default::default()
+            });
+            let rep = analyze_config_plan(&st);
+            assert!(!rep.valid, "expected invalid for {:?}", bad_path);
+            assert!(
+                rep.errors.iter().any(|e| e.contains(expected_substr)),
+                "errors {:?} did not mention {expected_substr}",
+                rep.errors
+            );
+        }
+
+        // 4. Empty / truncated / bad-magic .trs and .srs in child condition & rule_set_with_subnets
+        for (bad_bin, expected_substr) in [
+            (&empty_trs, "is empty"),
+            (&short_trs, "truncated"),
+            (&bad_magic_trs, "invalid TRS magic"),
+            (&empty_srs, "is empty"),
+            (&short_srs, "truncated"),
+            (&bad_magic_srs, "invalid SRS magic"),
+        ] {
+            let mut st = RouterStoreData::default();
+            st.conditions.push(TrafficCondition {
+                id: "c_bin_child".to_string(),
+                enabled: true,
+                condition_type: "atomic".to_string(),
+                rule_set_with_subnets: vec![bad_bin.to_string_lossy().into_owned()],
+                ..Default::default()
+            });
+            st.conditions.push(TrafficCondition {
+                id: "c_bin_parent".to_string(),
+                enabled: true,
+                condition_type: "all".to_string(),
+                children: vec!["c_bin_child".to_string()],
+                ..Default::default()
+            });
+            let rep = analyze_config_plan(&st);
+            assert!(!rep.valid, "expected invalid for {:?}", bad_bin);
+            assert!(
+                rep.errors.iter().any(|e| e.contains(expected_substr)),
+                "errors {:?} did not mention {expected_substr}",
+                rep.errors
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_commit_transaction_aborts_on_bad_local_ruleset_keeping_previous_config() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_abort_rs_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).expect("mkdir");
+        let store_path = tmp_dir.join("store.json");
+        let core_path = tmp_dir.join("tachyon-core-config.json");
+        let bad_trs = tmp_dir.join("corrupt.trs");
+        std::fs::write(&bad_trs, b"not-valid-trs-data-here").unwrap();
+
+        let state = AppState::load_or_create(&store_path).expect("load_or_create");
+        let mut initial = RouterStoreData::default();
+        initial.settings.core_config_path = core_path.to_string_lossy().into_owned();
+        initial.settings.tun_inet4 = "172.19.0.1/30".to_string();
+        initial.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        initial.settings.tun_inet6 = "fdfe:dcba:9876::1/126".to_string();
+        initial.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        initial.sections[0].label = "Known Good Label".to_string();
+        commit_transaction(&state, initial.clone())
+            .await
+            .expect("initial commit succeeds");
+
+        let before_store_bytes = std::fs::read(&store_path).expect("read initial store.json");
+        let before_core_bytes = std::fs::read(&core_path).expect("read initial core config");
+
+        let mut bad_candidate = initial.clone();
+        bad_candidate.sections[0].label = "Broken Label Must Not Persist".to_string();
+        bad_candidate.sections[0]
+            .rule_set_with_subnets
+            .push(bad_trs.to_string_lossy().into_owned());
+
+        let err = commit_transaction(&state, bad_candidate)
+            .await
+            .expect_err("commit_transaction must abort in VALIDATE on bad .trs");
+        assert!(
+            err.to_string().contains("Transaction validation failed"),
+            "unexpected error: {err}"
+        );
+
+        let guard = state.data.read().await;
+        assert_eq!(guard.sections[0].label, "Known Good Label");
+        assert!(guard.sections[0].rule_set_with_subnets.is_empty());
+        drop(guard);
+
+        assert_eq!(
+            std::fs::read(&store_path).expect("read store.json after abort"),
+            before_store_bytes
+        );
+        assert_eq!(
+            std::fs::read(&core_path).expect("read core config after abort"),
+            before_core_bytes
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

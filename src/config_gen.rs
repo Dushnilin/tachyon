@@ -9059,13 +9059,64 @@ pub fn community_subnet_url(service: &str) -> Option<String> {
     Some(format!("{}/{canonical}.lst", base.trim_end_matches('/')))
 }
 
+pub fn is_remote_ruleset_url(token: &str) -> bool {
+    let t = token.trim();
+    let lc = t.to_ascii_lowercase();
+    !t.chars().any(char::is_whitespace)
+        && (lc.starts_with("http://") || lc.starts_with("https://"))
+}
+
+pub fn is_local_ruleset_path(token: &str) -> bool {
+    let t = token.trim();
+    if t.is_empty() || is_remote_ruleset_url(t) || t.contains("://") {
+        return false;
+    }
+    let bytes = t.as_bytes();
+    let has_win_drive = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'/' || bytes[2] == b'\\');
+    if t.starts_with('/')
+        || t.starts_with("./")
+        || t.starts_with("../")
+        || t.starts_with("~/")
+        || t.starts_with('\\')
+        || t.starts_with(".\\")
+        || t.starts_with("..\\")
+        || has_win_drive
+        || t.contains('/')
+        || t.contains('\\')
+    {
+        return true;
+    }
+    if t.contains(':') {
+        return false;
+    }
+    let last_seg = t.rsplit(['/', '\\']).next().unwrap_or(t);
+    if let Some((stem, ext)) = last_seg.rsplit_once('.')
+        && !stem.is_empty()
+        && !ext.is_empty()
+        && ext.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        let ext_lc = ext.to_ascii_lowercase();
+        return !t.chars().any(char::is_whitespace)
+            || matches!(
+                ext_lc.as_str(),
+                "json" | "srs" | "trs" | "tsr" | "txt" | "lst"
+            );
+    }
+    false
+}
+
 pub fn is_community_list_token(token: &str) -> bool {
     let t = token.trim();
     !t.is_empty()
-        && !t.starts_with("http://")
-        && !t.starts_with("https://")
-        && !t.starts_with('/')
+        && !is_remote_ruleset_url(t)
+        && !is_local_ruleset_path(t)
         && !t.chars().any(char::is_whitespace)
+        && !t.contains(':')
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
 }
 
 pub fn parse_valid_cidr_list(raw: &str) -> Vec<String> {
@@ -14133,6 +14184,7 @@ struct AtomicConditionParts {
     discord_udp_voice_fired: bool,
     blocked_unresolved_clients: bool,
     blocked_unresolved_criteria: bool,
+    has_unresolved_ruleset: bool,
 }
 
 fn push_unique_str(vec: &mut Vec<String>, s: &str) {
@@ -14291,7 +14343,7 @@ fn ensure_community_subnet_ruleset(
 
 fn custom_ruleset_tag(prefix: &str, reference: &str) -> String {
     let before_q = reference.split(['?', '#']).next().unwrap_or(reference);
-    let raw_name = before_q.rsplit('/').next().unwrap_or(before_q);
+    let raw_name = before_q.rsplit(['/', '\\']).next().unwrap_or(before_q);
     let raw_stem = match raw_name.rsplit_once('.') {
         Some((stem, _)) if !stem.is_empty() => stem,
         _ => raw_name,
@@ -14325,7 +14377,7 @@ fn infer_ruleset_format(reference: &str) -> Option<&'static str> {
         .next()
         .unwrap_or(reference)
         .trim();
-    let last_seg = before_q.rsplit('/').next().unwrap_or(before_q);
+    let last_seg = before_q.rsplit(['/', '\\']).next().unwrap_or(before_q);
     let (_, ext) = last_seg.rsplit_once('.')?;
     match ext.to_ascii_lowercase().as_str() {
         "json" => Some("source"),
@@ -14473,7 +14525,7 @@ fn register_ruleset_reference(
         return true;
     }
 
-    if clean.starts_with('/') {
+    if is_local_ruleset_path(clean) {
         let tag = custom_ruleset_tag("local", clean);
         if !rs_tags.contains(&tag) {
             rs_tags.push(tag.clone());
@@ -14520,7 +14572,7 @@ fn register_ruleset_reference(
         return true;
     }
 
-    if clean.starts_with("http://") || clean.starts_with("https://") {
+    if is_remote_ruleset_url(clean) {
         let tag = custom_ruleset_tag("remote", clean);
         if !rs_tags.contains(&tag) {
             rs_tags.push(tag.clone());
@@ -14614,6 +14666,7 @@ fn collect_atomic_condition_parts_with_tables(
                 discord_udp_voice_fired: false,
                 blocked_unresolved_clients: true,
                 blocked_unresolved_criteria: false,
+                has_unresolved_ruleset: false,
             };
         }
         scope.insert("source_ip_cidr".into(), json!(cidrs));
@@ -14865,13 +14918,14 @@ fn collect_atomic_condition_parts_with_tables(
         }
     }
 
-    let blocked_unresolved_criteria = unresolved_ruleset_refs && branches.is_empty();
+    let blocked_unresolved_criteria = unresolved_ruleset_refs && (branches.is_empty() || cond.invert);
     AtomicConditionParts {
         scope,
         branches,
         discord_udp_voice_fired,
         blocked_unresolved_clients: false,
         blocked_unresolved_criteria,
+        has_unresolved_ruleset: unresolved_ruleset_refs,
     }
 }
 
@@ -14952,6 +15006,24 @@ fn build_atomic_single_rule(
     Some(Value::Object(and_obj))
 }
 
+fn collect_condition_exclusion_subrules(
+    cond: &TrafficCondition,
+    enable_ipv6: bool,
+) -> (Vec<Value>, Vec<Value>) {
+    let mut cond_exc_subs = build_excluded_protocol_subrules(&cond.excluded_protocol);
+    cond_exc_subs.extend(build_excluded_subnet_subrules(
+        &cond.exclude_subnets,
+        enable_ipv6,
+    ));
+    cond_exc_subs.extend(build_excluded_port_subrules(&cond.exclude_ports));
+    let mut cond_exc_dom_subs = build_excluded_domain_subrules(&cond.exclude_domains);
+    cond_exc_dom_subs.extend(build_excluded_source_ip_subrules(
+        &cond.exclude_client_ips,
+        enable_ipv6,
+    ));
+    (cond_exc_dom_subs, cond_exc_subs)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_condition_rule(
     cond: &TrafficCondition,
@@ -14964,18 +15036,27 @@ fn build_condition_rule(
     enable_ipv6: bool,
     outbounds: &mut [Value],
     depth: usize,
+    in_negation: bool,
 ) -> Option<Value> {
     if depth > 8 {
         return None;
     }
     let ctype = cond.condition_type.trim().to_ascii_lowercase();
+    let effective_negation = in_negation || ctype == "not" || cond.invert;
     if matches!(ctype.as_str(), "all" | "any" | "not") && !cond.children.is_empty() {
         let mut sub_rules = Vec::new();
         let mut enabled_child_count = 0usize;
+        let mut missing_child = false;
         for child_id in &cond.children {
-            if let Some(child_cond) = cond_map.get(child_id.as_str()).copied()
-                && child_cond.enabled
-            {
+            let trimmed_id = child_id.trim();
+            if trimmed_id.is_empty() {
+                continue;
+            }
+            let Some(child_cond) = cond_map.get(trimmed_id).copied() else {
+                missing_child = true;
+                continue;
+            };
+            if child_cond.enabled {
                 enabled_child_count += 1;
                 if let Some(mut child_val) = build_condition_rule(
                     child_cond,
@@ -14988,15 +15069,25 @@ fn build_condition_rule(
                     enable_ipv6,
                     outbounds,
                     depth + 1,
+                    effective_negation,
                 ) {
                     if let Some(m) = child_val.as_object_mut() {
                         m.remove("outbound");
                     }
-                    sub_rules.push(child_val);
+                    let (child_exc_dom_subs, child_exc_subs) =
+                        collect_condition_exclusion_subrules(child_cond, enable_ipv6);
+                    let wrapped_child = wrap_rule_with_inverted_subrules(
+                        child_val,
+                        &child_exc_dom_subs,
+                        &child_exc_subs,
+                    );
+                    sub_rules.push(wrapped_child);
                 }
             }
         }
-        if matches!(ctype.as_str(), "all" | "not") && sub_rules.len() < enabled_child_count {
+        if (matches!(ctype.as_str(), "all" | "not") || effective_negation)
+            && (sub_rules.len() < enabled_child_count || missing_child)
+        {
             return None;
         }
         if !sub_rules.is_empty() {
@@ -15008,7 +15099,10 @@ fn build_condition_rule(
                 seen_rule_sets,
                 enable_ipv6,
             );
-            if parent_parts.blocked_unresolved_clients || parent_parts.blocked_unresolved_criteria {
+            if parent_parts.blocked_unresolved_clients
+                || parent_parts.blocked_unresolved_criteria
+                || (effective_negation && parent_parts.has_unresolved_ruleset)
+            {
                 return None;
             }
             let mut log_obj = Map::new();
@@ -15020,6 +15114,18 @@ fn build_condition_rule(
             log_obj.insert("rules".into(), Value::Array(sub_rules));
             if ctype == "not" || cond.invert {
                 log_obj.insert("invert".into(), json!(true));
+            }
+            if !parent_parts.branches.is_empty() {
+                let parent_rule = build_atomic_single_rule(parent_parts, false, None)?;
+                let mut and_obj = Map::new();
+                and_obj.insert("type".into(), json!("logical"));
+                and_obj.insert("mode".into(), json!("and"));
+                and_obj.insert(
+                    "rules".into(),
+                    json!([parent_rule, Value::Object(log_obj)]),
+                );
+                and_obj.insert("outbound".into(), json!(outbound_tag));
+                return Some(Value::Object(and_obj));
             }
             if !parent_parts.scope.is_empty() {
                 let mut and_obj = Map::new();
@@ -15046,7 +15152,10 @@ fn build_condition_rule(
         seen_rule_sets,
         enable_ipv6,
     );
-    if parts.discord_udp_voice_fired && !cond.invert {
+    if effective_negation && parts.has_unresolved_ruleset {
+        return None;
+    }
+    if parts.discord_udp_voice_fired && !effective_negation {
         enable_desync_udp_fake(outbounds, outbound_tag);
     }
     build_atomic_single_rule(parts, cond.invert, Some(outbound_tag))
@@ -15065,17 +15174,8 @@ fn build_condition_rules(
     pre_resolve_ip: bool,
     outbounds: &mut [Value],
 ) -> Vec<Value> {
-    let mut cond_exc_subs = build_excluded_protocol_subrules(&cond.excluded_protocol);
-    cond_exc_subs.extend(build_excluded_subnet_subrules(
-        &cond.exclude_subnets,
-        enable_ipv6,
-    ));
-    cond_exc_subs.extend(build_excluded_port_subrules(&cond.exclude_ports));
-    let mut cond_exc_dom_subs = build_excluded_domain_subrules(&cond.exclude_domains);
-    cond_exc_dom_subs.extend(build_excluded_source_ip_subrules(
-        &cond.exclude_client_ips,
-        enable_ipv6,
-    ));
+    let (cond_exc_dom_subs, cond_exc_subs) =
+        collect_condition_exclusion_subrules(cond, enable_ipv6);
     let ctype = cond.condition_type.trim().to_ascii_lowercase();
     if matches!(ctype.as_str(), "all" | "any" | "not") && !cond.children.is_empty() {
         return build_condition_rule(
@@ -15089,6 +15189,7 @@ fn build_condition_rules(
             enable_ipv6,
             outbounds,
             0,
+            false,
         )
         .into_iter()
         .map(|r| wrap_rule_with_inverted_subrules(r, &cond_exc_dom_subs, &cond_exc_subs))
@@ -20848,6 +20949,272 @@ PersistentKeepalive = 25
         }));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_rule_set_with_subnets_duplicate_basenames_and_relative_local_paths() {
+        assert!(is_local_ruleset_path("/etc/tachyon/rulesets/media.json"));
+        assert!(is_local_ruleset_path("./local.json"));
+        assert!(is_local_ruleset_path("sub/custom.trs"));
+        assert!(is_local_ruleset_path("custom.srs"));
+        assert!(!is_local_ruleset_path("https://example.com/list.trs"));
+        assert!(!is_local_ruleset_path("refilter"));
+        assert!(!is_local_ruleset_path("not valid token"));
+        assert!(is_community_list_token("refilter"));
+        assert!(!is_community_list_token("./local.json"));
+        assert!(!is_community_list_token("custom.srs"));
+
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.balancers.clear();
+        store.outbound_groups.clear();
+        store.conditions = vec![TrafficCondition {
+            id: "dup_cond".to_string(),
+            enabled: true,
+            name: "Duplicate Basenames".to_string(),
+            condition_type: "atomic".to_string(),
+            rule_set_with_subnets: vec![
+                "/etc/tachyon/rulesets/a/shared.json".to_string(),
+                "/etc/tachyon/rulesets/b/shared.json".to_string(),
+                "./local_a/custom.trs".to_string(),
+                "./local_b/custom.trs".to_string(),
+                "https://cdn1.example.com/feed.srs".to_string(),
+                "https://cdn2.example.com/feed.srs".to_string(),
+            ],
+            l4_proto: "udp".to_string(),
+            ports: vec!["3478".to_string(), "50000-50020".to_string()],
+            protocol: vec!["quic".to_string()],
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "sec_dup".to_string(),
+            enabled: true,
+            action: "block".to_string(),
+            connection_type: "block".to_string(),
+            condition_refs: vec!["dup_cond".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config(&store).expect("compile duplicate basename rulesets");
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+        assert_eq!(rule_sets.len(), 6, "all 6 distinct paths/URLs must get unique entries: {rule_sets:#?}");
+
+        let tags: std::collections::HashSet<&str> = rule_sets
+            .iter()
+            .filter_map(|rs| rs["tag"].as_str())
+            .collect();
+        assert_eq!(tags.len(), 6, "duplicate basenames must produce 6 unique tags");
+
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "local"
+                && rs["format"] == "source"
+                && rs["path"] == "/etc/tachyon/rulesets/a/shared.json"
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "local"
+                && rs["format"] == "source"
+                && rs["path"] == "/etc/tachyon/rulesets/b/shared.json"
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "local" && rs["format"] == "binary" && rs["path"] == "./local_a/custom.trs"
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "local" && rs["format"] == "binary" && rs["path"] == "./local_b/custom.trs"
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "remote"
+                && rs["format"] == "binary"
+                && rs["url"] == "https://cdn1.example.com/feed.srs"
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["type"] == "remote"
+                && rs["format"] == "binary"
+                && rs["url"] == "https://cdn2.example.com/feed.srs"
+        }));
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let block_rule = rules
+            .iter()
+            .find(|r| r["outbound"] == "block")
+            .expect("block rule emitted");
+        assert_eq!(block_rule["network"], "udp");
+        assert_eq!(block_rule["port"], json!([3478]));
+        assert_eq!(block_rule["port_range"], json!(["50000:50020"]));
+        assert_eq!(block_rule["protocol"], json!(["quic"]));
+        assert_eq!(block_rule["rule_set"].as_array().unwrap().len(), 6);
+    }
+
+    #[test]
+    fn test_rule_set_with_subnets_composite_all_any_not_preservation() {
+        let build_with = |conds: Vec<TrafficCondition>, cond_ref: &str| {
+            let mut store = RouterStoreData::default();
+            store.outbound_sources.clear();
+            store.balancers.clear();
+            store.outbound_groups.clear();
+            store.conditions = conds;
+            store.sections = vec![RoutingSection {
+                id: "sec_comp".to_string(),
+                enabled: true,
+                action: "block".to_string(),
+                connection_type: "block".to_string(),
+                condition_refs: vec![cond_ref.to_string()],
+                ..Default::default()
+            }];
+            compile_core_config(&store).expect("compile composite rule_set_with_subnets")
+        };
+
+        let child_media = TrafficCondition {
+            id: "c_media".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            rule_set_with_subnets: vec!["/etc/tachyon/rulesets/media.json".to_string()],
+            l4_proto: "udp".to_string(),
+            ports: vec!["3478".to_string()],
+            exclude_ports: vec!["80".to_string()],
+            ..Default::default()
+        };
+        let child_https = TrafficCondition {
+            id: "c_remote".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            rule_set_with_subnets: vec!["https://example.com/extra.trs".to_string()],
+            protocol: vec!["tls".to_string()],
+            ..Default::default()
+        };
+
+        // 1. `all` preserves both child rule_sets, ports/protocol, and child exclusions
+        let cfg_all = build_with(
+            vec![
+                child_media.clone(),
+                child_https.clone(),
+                TrafficCondition {
+                    id: "c_all".to_string(),
+                    enabled: true,
+                    condition_type: "all".to_string(),
+                    children: vec!["c_media".to_string(), "c_remote".to_string()],
+                    ..Default::default()
+                },
+            ],
+            "c_all",
+        );
+        let all_rule = cfg_all["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["outbound"] == "block" && r["type"] == "logical" && r["mode"] == "and")
+            .expect("logical AND rule");
+        let all_str = serde_json::to_string(all_rule).unwrap();
+        assert!(all_str.contains("custom-local-media-"));
+        assert!(all_str.contains("custom-remote-extra-"));
+        assert!(all_str.contains("3478"));
+        assert!(all_str.contains("\"protocol\":[\"tls\"]"));
+        assert!(all_str.contains("\"port\":[80],\"invert\":true") || all_str.contains("\"invert\":true,\"port\":[80]"));
+
+        // 2. `any` preserves both branches cleanly
+        let cfg_any = build_with(
+            vec![
+                child_media.clone(),
+                child_https.clone(),
+                TrafficCondition {
+                    id: "c_any".to_string(),
+                    enabled: true,
+                    condition_type: "any".to_string(),
+                    children: vec!["c_media".to_string(), "c_remote".to_string()],
+                    ..Default::default()
+                },
+            ],
+            "c_any",
+        );
+        let any_rule = cfg_any["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["outbound"] == "block" && r["type"] == "logical" && r["mode"] == "or")
+            .expect("logical OR rule");
+        let any_str = serde_json::to_string(any_rule).unwrap();
+        assert!(any_str.contains("custom-local-media-"));
+        assert!(any_str.contains("custom-remote-extra-"));
+
+        // 3. `not` preserves invert=true and child rule_set/protocol/port
+        let cfg_not = build_with(
+            vec![
+                child_media.clone(),
+                TrafficCondition {
+                    id: "c_not".to_string(),
+                    enabled: true,
+                    condition_type: "not".to_string(),
+                    children: vec!["c_media".to_string()],
+                    ..Default::default()
+                },
+            ],
+            "c_not",
+        );
+        let not_rule = cfg_not["route"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| {
+                r["outbound"] == "block" && r["type"] == "logical" && r["invert"] == json!(true)
+            })
+            .expect("logical NOT rule");
+        let not_str = serde_json::to_string(not_rule).unwrap();
+        assert!(not_str.contains("custom-local-media-"));
+        assert!(not_str.contains("3478"));
+
+        // 4. Composite `not` and inverted `any` MUST NOT widen when a child has an unresolved ruleset
+        let bad_mixed_child = TrafficCondition {
+            id: "c_bad_mixed".to_string(),
+            enabled: true,
+            condition_type: "atomic".to_string(),
+            rule_set_with_subnets: vec!["not valid token".to_string()],
+            user_domains: vec!["example.org".to_string()],
+            ..Default::default()
+        };
+        let cfg_bad_not = build_with(
+            vec![
+                bad_mixed_child.clone(),
+                TrafficCondition {
+                    id: "c_bad_not".to_string(),
+                    enabled: true,
+                    condition_type: "not".to_string(),
+                    children: vec!["c_bad_mixed".to_string()],
+                    ..Default::default()
+                },
+            ],
+            "c_bad_not",
+        );
+        assert!(
+            !cfg_bad_not["route"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["outbound"] == "block"),
+            "NOT composite over child with unresolved ruleset must not widen"
+        );
+
+        let cfg_bad_nor = build_with(
+            vec![
+                bad_mixed_child,
+                child_https,
+                TrafficCondition {
+                    id: "c_bad_nor".to_string(),
+                    enabled: true,
+                    condition_type: "any".to_string(),
+                    invert: true,
+                    children: vec!["c_bad_mixed".to_string(), "c_remote".to_string()],
+                    ..Default::default()
+                },
+            ],
+            "c_bad_nor",
+        );
+        assert!(
+            !cfg_bad_nor["route"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["outbound"] == "block"),
+            "inverted ANY composite with unresolved child must not widen"
+        );
     }
 
     #[test]
