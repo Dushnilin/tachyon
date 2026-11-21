@@ -4439,8 +4439,6 @@ function subscription_include_urltest_groups(section, value) {
         let settings = item_settings(section, "subscription_url_settings", value);
         if (raw_option(settings, "include_urltest_groups") != null)
             return item_bool(section, "subscription_url_settings", value, "include_urltest_groups", true);
-        if (child[".type"] == "outbound_source")
-            return false;
         return true;
     }
     return item_bool(section, "subscription_url_settings", value, "include_urltest_groups", true);
@@ -4459,8 +4457,6 @@ function subscription_hide_urltest_group_outbounds(section, value) {
         let settings = item_settings(section, "subscription_url_settings", value);
         if (raw_option(settings, "hide_urltest_group_outbounds") != null)
             return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
-        if (child[".type"] == "outbound_source")
-            return false;
         return true;
     }
     return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);

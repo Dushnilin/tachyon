@@ -321,6 +321,24 @@ function country_from_text_name(value) {
 
 let COUNTRY_BY_NAME_CACHE = {};
 
+function flag_emoji_country_code(value) {
+    value = as_string(value);
+    if (value == "")
+        return "";
+
+    for (let i = 0; i + 7 < length(value); i++) {
+        let first = regional_indicator_letter(value, i);
+        if (first == "")
+            continue;
+
+        let second = regional_indicator_letter(value, i + 4);
+        if (second != "")
+            return first + second;
+    }
+
+    return "";
+}
+
 function country_from_flag_emoji(value) {
     value = as_string(value);
     if (value == "")
@@ -329,17 +347,10 @@ function country_from_flag_emoji(value) {
     if (cached != null)
         return cached;
 
-    for (let i = 0; i + 7 < length(value); i++) {
-        let first = regional_indicator_letter(value, i);
-        if (first == "")
-            continue;
-
-        let second = regional_indicator_letter(value, i + 4);
-        if (second != "") {
-            let code = first + second;
-            COUNTRY_BY_NAME_CACHE[value] = code;
-            return code;
-        }
+    let flag_code = flag_emoji_country_code(value);
+    if (flag_code != "") {
+        COUNTRY_BY_NAME_CACHE[value] = flag_code;
+        return flag_code;
     }
 
     let resolved = country_from_text_name(value);
@@ -834,6 +845,8 @@ function filter_mode(mode, tags, names, countries, include_names, include_regexe
 
 return {
     normalized_country_list,
+    flag_emoji_country_code,
+    country_from_flag_emoji,
     countries_from_flag_names,
     regex_matching_tag_array,
     compile_filter_regexes,

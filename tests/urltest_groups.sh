@@ -795,6 +795,54 @@ ucode -e '
 let fs = require("fs");
 let config = json(fs.readfile(ARGV[0]));
 let selector = null;
+let pool = null;
+for (let ob in config.outbounds || []) {
+    if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob && ob.type == "urltest" && ob.tag == "Fastest Pool")
+        pool = ob;
+}
+if (!selector || !pool)
+    die("missing MAIN-out selector or Fastest Pool urltest group when include_urltest_groups defaults to 1 on outbound_source\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (!members["Fastest Pool"] || !members["🇷🇺 Россия Премиум-1"] || members["🇩🇪 Germany-1"] || members["🇫🇮 Finland-1"])
+    die("expected Fastest Pool group and standalone node in MAIN-out with group members hidden by default on outbound_source\n");
+' "$xray_mixed_config" || fail "Xray mixed balancer + standalone subscription defaults to importing urltest groups on outbound_source"
+
+cat >"$WORK_DIR/xray-mixed-outbound-source-off-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_sub_1" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_sub_1",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://mixed.example/sub",
+      "include_urltest_groups": "0"
+    }
+  ]
+}
+JSON
+
+xray_mixed_off_config="$WORK_DIR/xray-mixed-off-config.json"
+generate_config "$WORK_DIR/xray-mixed-outbound-source-off-fixture.json" "$xray_mixed_off_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let selector = null;
 for (let ob in config.outbounds || [])
     if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
         selector = ob;
@@ -804,8 +852,8 @@ let members = {};
 for (let m in selector.outbounds || [])
     members[m] = true;
 if (!members["🇩🇪 Germany-1"] || !members["🇫🇮 Finland-1"] || !members["🇷🇺 Россия Премиум-1"])
-    die("expected all Xray balancer members and standalone nodes in MAIN-out when include_urltest_groups defaults to 0 on outbound_source\n");
-' "$xray_mixed_config" || fail "Xray mixed balancer + standalone subscription preserves all servers on outbound_source"
+    die("expected all Xray balancer members and standalone nodes in MAIN-out when include_urltest_groups=0 on outbound_source\n");
+' "$xray_mixed_off_config" || fail "Xray mixed balancer + standalone subscription preserves all servers when include_urltest_groups=0 on outbound_source"
 
 cat >"$WORK_DIR/arblaze-sub.json" <<'JSON'
 [
@@ -909,6 +957,55 @@ arblaze_normalized="$WORK_DIR/arblaze-normalized.json"
 normalize_subscription "$WORK_DIR/arblaze-sub.json" "$arblaze_normalized"
 prepare_subscription_cache MAIN 1 "https://arblaze.example/sub" "$arblaze_normalized"
 
+cat >"$WORK_DIR/arblaze-outbound-source-off-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_arblaze" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_arblaze",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://arblaze.example/sub",
+      "include_urltest_groups": "0"
+    }
+  ]
+}
+JSON
+
+arblaze_off_config="$WORK_DIR/arblaze-off-config.json"
+generate_config "$WORK_DIR/arblaze-outbound-source-off-fixture.json" "$arblaze_off_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let selector = null;
+for (let ob in config.outbounds || []) {
+    if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob && ob.type == "urltest" && ob.tag == "🇪🇺 Автовыбор")
+        die("urltest group 🇪🇺 Автовыбор must not be emitted when include_urltest_groups=0\n");
+    if (ob && (ob.tag == "bal-1-hysteria" || ob.tag == "bal-1-vless"))
+        die("internal bal-1-* member must not be emitted when include_urltest_groups=0\n");
+}
+if (!selector)
+    die("missing MAIN-out selector for arblaze (include_urltest_groups=0)\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
+    die("expected only standalone servers in MAIN-out when include_urltest_groups=0\n");
+' "$arblaze_off_config" || fail "ARBlazeAG subscription with include_urltest_groups=0 suppresses urltest group and bal-1-* members"
+
 cat >"$WORK_DIR/arblaze-outbound-source-default-fixture.json" <<'JSON'
 {
   "settings": { ".name": "settings", ".type": "settings" },
@@ -940,22 +1037,21 @@ ucode -e '
 let fs = require("fs");
 let config = json(fs.readfile(ARGV[0]));
 let selector = null;
+let auto_grp = null;
 for (let ob in config.outbounds || []) {
     if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
         selector = ob;
     if (ob && ob.type == "urltest" && ob.tag == "🇪🇺 Автовыбор")
-        die("urltest group 🇪🇺 Автовыбор must not be emitted when include_urltest_groups defaults to 0\n");
-    if (ob && (ob.tag == "bal-1-hysteria" || ob.tag == "bal-1-vless"))
-        die("internal bal-1-* member must not be emitted when include_urltest_groups defaults to 0\n");
+        auto_grp = ob;
 }
-if (!selector)
-    die("missing MAIN-out selector for arblaze (default include_urltest_groups=0)\n");
+if (!selector || !auto_grp)
+    die("expected 🇪🇺 Автовыбор urltest group when include_urltest_groups defaults to 1 on outbound_source\n");
 let members = {};
 for (let m in selector.outbounds || [])
     members[m] = true;
-if (members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
-    die("expected only standalone servers in MAIN-out when include_urltest_groups defaults to 0\n");
-' "$arblaze_default_config" || fail "ARBlazeAG subscription with default include_urltest_groups=0 suppresses urltest group and bal-1-* members"
+if (!members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
+    die("expected 🇪🇺 Автовыбор and standalone servers in MAIN-out by default on outbound_source\n");
+' "$arblaze_default_config" || fail "ARBlazeAG subscription defaults to importing urltest group on outbound_source"
 
 cat >"$WORK_DIR/arblaze-outbound-source-fixture.json" <<'JSON'
 {

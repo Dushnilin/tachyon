@@ -98,7 +98,8 @@ function tls_alpn_for_transport(alpn, transport) {
 function is_dummy_server(server, port) {
     server = trim(lc(as_string(server)));
     if (server == "" || server == "0.0.0.0" || server == "::" ||
-        substr(server, 0, 8) == "0.0.0.0:")
+        substr(server, 0, 8) == "0.0.0.0:" ||
+        server == "invalid" || (length(server) >= 8 && substr(server, -8) == ".invalid"))
         return true;
     if (port != null && int(port) == 0)
         return true;
@@ -372,6 +373,7 @@ function xhttp_normalize_xmux(value) {
     xhttp_optional_xmux_range(result, "max_concurrency", xhttp_object_setting_value(source, "maxConcurrency", "max_concurrency"));
     xhttp_optional_xmux_range(result, "max_connections", xhttp_object_setting_value(source, "maxConnections", "max_connections"));
     xhttp_optional_xmux_range(result, "c_max_reuse_times", xhttp_object_setting_value(source, "cMaxReuseTimes", "c_max_reuse_times"));
+    xhttp_optional_xmux_range(result, "c_max_lifetime_ms", xhttp_object_setting_value(source, "cMaxLifetimeMs", "c_max_lifetime_ms"));
     xhttp_optional_xmux_range(result, "h_max_request_times", xhttp_object_setting_value(source, "hMaxRequestTimes", "h_max_request_times"));
     let max_reusable = xhttp_object_setting_value(source, "hMaxReusableSecs", "h_max_reusable_secs");
     if (max_reusable == null)
@@ -4994,6 +4996,8 @@ function xray_transport_from_stream(stream) {
         let settings = object_or_empty(stream.xhttpSettings);
         let extra_settings = {};
         xhttp_merge_extra_settings(extra_settings, settings);
+        if (settings.extra != null)
+            xhttp_merge_extra_settings(extra_settings, settings.extra);
         let result = {
             type: "xhttp",
             mode: as_string(settings.mode || "auto"),
@@ -5609,12 +5613,13 @@ function xray_balancer_plans(config, source_outbounds) {
 function xray_balancer_group_base(plan, display_name, config_index, config_count, plan_index, plan_count) {
     let balancer_tag = as_string(object_or_empty(plan).tag || "");
     display_name = as_string(display_name);
-    if (plan_count == 1 && display_name != "")
-        return display_name;
+    if (display_name != "") {
+        if (plan_count == 1 || plan_index == 0)
+            return display_name;
+        return balancer_tag != "" ? display_name + " (" + balancer_tag + ")" : display_name + "-" + (plan_index + 1);
+    }
     if (balancer_tag != "")
         return balancer_tag;
-    if (display_name != "")
-        return display_name + "-" + (plan_index + 1);
     return xray_tag_base("urltest", config_index, config_count);
 }
 
