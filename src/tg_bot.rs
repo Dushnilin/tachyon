@@ -1930,7 +1930,21 @@ async fn observe_and_notify_events(
         }
         let sub_low = ev.subsystem.to_ascii_lowercase();
         let msg_low = ev.message.to_ascii_lowercase();
-        if sub_low == "watchdog"
+        let watchdog_maintenance = sub_low == "watchdog"
+            && (msg_low.contains("l2_config_drift_reload")
+                || msg_low.contains("l1_memory_trim")
+                || msg_low.contains("l1_dns_flush"));
+        if sub_low == "watchdog" && msg_low.contains("l2_config_drift_reload") {
+            emitted_restart = true;
+            let txt = if ru {
+                format!("<b>Перезапуск ядра:</b> {}", escape_html(&ev.message))
+            } else {
+                format!("<b>Core Restart:</b> {}", escape_html(&ev.message))
+            };
+            notify_if_enabled(&d, "restart", &txt);
+        } else if watchdog_maintenance {
+            continue;
+        } else if sub_low == "watchdog"
             || msg_low.contains("stopped unexpectedly")
             || msg_low.contains("crash")
         {

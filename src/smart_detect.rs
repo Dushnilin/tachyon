@@ -385,6 +385,101 @@ pub fn expand_to_registrable_domain(
     }
 }
 
+/// Extract normalized `.trs` list tokens configured for `smart_detect_exclude_lists`
+/// as well as `community_lists` on active `block` / `direct` sections so domains in those
+/// lists are never pulled into a proxy section.
+fn collect_exclusion_trs_tokens(data: &RouterStoreData) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push_tok = |raw: &str| {
+        let clean = raw
+            .trim()
+            .trim_start_matches("trs-")
+            .trim_end_matches(".trs")
+            .trim_end_matches(".srs")
+            .trim()
+            .to_string();
+        if !clean.is_empty() && !out.contains(&clean) {
+            out.push(clean);
+        }
+    };
+    for raw in &data.settings.smart_detect_exclude_lists {
+        push_tok(raw);
+    }
+    for sec in data.sections.iter().filter(|s| s.enabled) {
+        let act = sec.action.trim().to_ascii_lowercase();
+        let ct = sec.connection_type.trim().to_ascii_lowercase();
+        if matches!(act.as_str(), "block" | "reject" | "bypass" | "direct")
+            || matches!(ct.as_str(), "block" | "reject" | "bypass" | "direct")
+        {
+            for l in &sec.community_lists {
+                push_tok(l);
+            }
+            for cref in &sec.condition_refs {
+                if let Some(cond) = data.conditions.iter().find(|c| c.id == *cref) {
+                    for l in &cond.community_lists {
+                        push_tok(l);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn find_trs_list_paths(data: &RouterStoreData, token: &str) -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if !data.settings.rulesets_dir.trim().is_empty() {
+        dirs.push(Path::new(data.settings.rulesets_dir.trim()).to_path_buf());
+    }
+    dirs.push(Path::new("/etc/tachyon/rulesets").to_path_buf());
+    dirs.push(Path::new("/tmp/tachyon-rulesets").to_path_buf());
+
+    let mut paths = Vec::new();
+    for dir in dirs {
+        for name in [format!("trs-{token}.trs"), format!("{token}.trs")] {
+            let p = dir.join(name);
+            if p.is_file() && !paths.contains(&p) {
+                paths.push(p);
+            }
+        }
+    }
+    paths
+}
+
+async fn domain_matches_exclusion_trs_lists(
+    core: &CoreManager,
+    host: &str,
+    data: &RouterStoreData,
+) -> bool {
+    let tokens = collect_exclusion_trs_tokens(data);
+    if tokens.is_empty() {
+        return false;
+    }
+    let bin_path = core.resolve_bin_path().await;
+    if bin_path.trim().is_empty() || !Path::new(&bin_path).exists() {
+        return false;
+    }
+    for token in tokens {
+        for path in find_trs_list_paths(data, &token) {
+            let mut cmd = tokio::process::Command::new(&bin_path);
+            cmd.args(["rule-set", "match", "--domain", host])
+                .arg(&path)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true);
+            if let Ok(Ok(out)) = tokio::time::timeout(Duration::from_secs(2), cmd.output()).await
+                && out.status.success()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                if text.lines().any(|l| l.trim().starts_with("[0] match")) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Check if a domain is excluded by `smart_detect_exclude` or already matched by any active section
 /// (including `block`, `direct`, `bypass`, or already-learned `user_domains`).
 pub fn is_domain_excluded_or_routed(host: &str, data: &RouterStoreData) -> bool {
@@ -451,8 +546,12 @@ pub fn extract_direct_failure_candidates(
             }
             let status = e.get("status").and_then(Value::as_str).unwrap_or("");
             let err_kind = e.get("error_kind").and_then(Value::as_str).unwrap_or("");
-            let dl = e.get("download").and_then(Value::as_u64).unwrap_or(0);
-            if status == "completed" && err_kind.is_empty() && dl > 0 {
+            let is_explicit_failure = !err_kind.trim().is_empty()
+                || matches!(
+                    status.trim().to_ascii_lowercase().as_str(),
+                    "error" | "failed" | "timeout"
+                );
+            if !is_explicit_failure {
                 continue;
             }
             let raw_host = e
@@ -677,8 +776,9 @@ pub async fn probe_single_domain(
     let batch = run_delay_batch_probe(core, &domain, &names, 5000).await?;
     let mut direct_ms = delay_from_batch(&batch, "direct");
 
-    // In Plus mode confirm direct failure with a second short probe to eliminate single-packet jitter.
-    if direct_ms.is_none() && data.settings.smart_detect_mode.eq_ignore_ascii_case("plus") {
+    // Always confirm an apparent direct failure with a second short probe so transient
+    // handshake/packet jitter on reachable sites cannot poison routing lists.
+    if direct_ms.is_none() {
         tokio::time::sleep(Duration::from_millis(1200)).await;
         if let Ok(recheck) =
             run_delay_batch_probe(core, &domain, &["direct".to_string()], 4000).await
@@ -708,14 +808,37 @@ pub async fn probe_single_domain(
         }
     }
 
-    let saved_rule = expand_to_registrable_domain(
+    let mut saved_rule = expand_to_registrable_domain(
         &domain,
         data.settings.smart_detect_expand_to_root,
         &data.settings.smart_detect_exclude,
     );
 
+    if direct_ms.is_none() && matched_section.is_some() && saved_rule != domain {
+        // Never expand a failing subdomain (e.g. a dead tracker host) onto a root domain
+        // that is either directly reachable itself or covered by an exclusion list.
+        let expanded_excluded = is_domain_excluded_or_routed(&saved_rule, &data)
+            || domain_matches_exclusion_trs_lists(core, &saved_rule, &data).await;
+        if expanded_excluded {
+            saved_rule = domain.clone();
+        } else if let Ok(root_probe) =
+            run_delay_batch_probe(core, &saved_rule, &["direct".to_string()], 4000).await
+            && delay_from_batch(&root_probe, "direct").is_some()
+        {
+            saved_rule = domain.clone();
+        }
+    }
+
+    let rule_excluded = is_domain_excluded_or_routed(&domain, &data)
+        || is_domain_excluded_or_routed(&saved_rule, &data)
+        || domain_matches_exclusion_trs_lists(core, &domain, &data).await
+        || (saved_rule != domain
+            && domain_matches_exclusion_trs_lists(core, &saved_rule, &data).await);
+
     let (verdict, applied) = if direct_ms.is_some() {
         ("direct_reachable".to_string(), false)
+    } else if rule_excluded {
+        ("excluded_by_rule".to_string(), false)
     } else if let Some(ref sec_id) = matched_section {
         if apply {
             let added = apply_detected_domain_to_section(state, core, sec_id, &saved_rule).await?;
@@ -990,6 +1113,12 @@ pub async fn run_smart_detect_tick(state: &Arc<AppState>, core: &Arc<CoreManager
     }
 
     for host in ready_to_probe {
+        if domain_matches_exclusion_trs_lists(core, &host, &data_snap).await {
+            let mut rt = runtime_state().write().await;
+            rt.streaks.remove(&host);
+            rt.cooldowns.insert(host, unix_now_secs());
+            continue;
+        }
         let should_apply = settings.ai_persistent_smart_detect;
         match Box::pin(probe_single_domain(state, core, &host, should_apply)).await {
             Ok(outcome) => {
@@ -1163,6 +1292,7 @@ mod tests {
         let flight = json!({
             "entries": [
                 {"host": "direct-fail.example.org", "outbound": "direct", "status": "error", "error_kind": "timeout", "download": 0},
+                {"host": "vk.com", "outbound": "direct", "status": "completed", "error_kind": "", "download": 0},
                 {"host": "proxy-fail.example.org", "outbound": "bal-Main", "status": "error", "error_kind": "timeout", "download": 0},
                 {"host": "direct-ok.example.org", "outbound": "direct", "status": "completed", "error_kind": "", "download": 1024},
                 {"host": "1.2.3.4", "outbound": "direct", "status": "error", "error_kind": "timeout", "download": 0}
@@ -1185,5 +1315,43 @@ mod tests {
         );
         let plus_cands = extract_direct_failure_candidates(Some(&anomalies), Some(&flight), "plus");
         assert!(plus_cands.contains(&"single-hit.example.net".to_string()));
+    }
+
+    #[test]
+    fn exclusion_trs_tokens_collect_and_normalize() {
+        let mut store = RouterStoreData::default();
+        store.settings.smart_detect_exclude_lists =
+            vec!["trs-russia_outside.trs".to_string(), "geo-ru".to_string()];
+        store.sections.push(RoutingSection {
+            id: "DirectExclude".to_string(),
+            enabled: true,
+            action: "direct".to_string(),
+            ..Default::default()
+        });
+        store.conditions.push(crate::store::TrafficCondition {
+            id: "cond_direct".to_string(),
+            enabled: true,
+            community_lists: vec![
+                "ru-direct".to_string(),
+                "trs-russia_outside.trs".to_string(),
+            ],
+            ..Default::default()
+        });
+        store
+            .sections
+            .last_mut()
+            .unwrap()
+            .condition_refs
+            .push("cond_direct".to_string());
+
+        let tokens = collect_exclusion_trs_tokens(&store);
+        assert_eq!(
+            tokens,
+            vec![
+                "russia_outside".to_string(),
+                "geo-ru".to_string(),
+                "ru-direct".to_string(),
+            ]
+        );
     }
 }

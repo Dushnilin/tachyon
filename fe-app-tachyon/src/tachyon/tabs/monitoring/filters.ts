@@ -117,8 +117,11 @@ export function mergeCoreAndConntrackConnections(
     if (id) seenIds.add(id);
     const tkey = getConnectionTupleKey(conn);
     if (tkey) seenTuples.add(tkey);
+    const dst = normalizeString(conn.metadata?.destinationIP);
     const skey = getConnectionClientSocketKey(conn);
-    if (skey) seenClientSockets.add(skey);
+    // Match by client socket without dst only when core omitted destinationIP;
+    // otherwise two UDP peers on the same (src, sport, dport) would collide.
+    if (!dst && skey) seenClientSockets.add(skey);
     result.push({
       ...conn,
       dataSource: getConnectionDataSource(conn),
@@ -127,7 +130,8 @@ export function mergeCoreAndConntrackConnections(
 
   for (const ct of conntrackConnections) {
     if (!ct || typeof ct !== 'object') continue;
-    if (isFakeIpV4(normalizeString(ct.metadata?.destinationIP))) continue;
+    const dst = normalizeString(ct.metadata?.destinationIP);
+    if (isFakeIpV4(dst)) continue;
     const id = normalizeString(ct.id);
     if (id && seenIds.has(id)) continue;
     const tkey = getConnectionTupleKey(ct);
@@ -136,7 +140,7 @@ export function mergeCoreAndConntrackConnections(
     if (skey && seenClientSockets.has(skey)) continue;
     if (id) seenIds.add(id);
     if (tkey) seenTuples.add(tkey);
-    if (skey) seenClientSockets.add(skey);
+    if (!dst && skey) seenClientSockets.add(skey);
     result.push({
       ...ct,
       dataSource: 'conntrack',

@@ -3291,6 +3291,7 @@ pub fn compile_kill_switch_ruleset(interfaces: &[String]) -> String {
 \t\ttype filter hook input priority -200; policy accept;\n\
 \t}}\n\
 }}\n\
+flush set inet {KILL_SWITCH_TABLE} {KILL_SWITCH_GATE_SET}\n\
 flush chain inet {KILL_SWITCH_TABLE} forward\n\
 add rule inet {KILL_SWITCH_TABLE} forward iifname {set} oifname != {set} iifname != @{KILL_SWITCH_GATE_SET} counter drop comment \"tachyon fail-closed kill-switch\"\n\
 flush chain inet {KILL_SWITCH_TABLE} input\n\
@@ -4155,7 +4156,19 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
         .status()
         .await;
     cleanup_policy_rules().await;
-    if !preserve_fail_closed_dns {
+    if preserve_fail_closed_dns {
+        let _ = run_nft_quiet(
+            &[
+                "flush",
+                "set",
+                "inet",
+                KILL_SWITCH_TABLE,
+                KILL_SWITCH_GATE_SET,
+            ],
+            None,
+        )
+        .await;
+    } else {
         let mut dnsmasq_changed = false;
         for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
             if std::fs::remove_file(dir.join("tachyon.conf")).is_ok() {
@@ -4981,6 +4994,7 @@ fd001122334455660000000000000001 05 40 00 80   br-lan
         let ks = compile_kill_switch_ruleset(&ifaces);
         assert!(ks.contains("table inet TachyonKillSwitch"));
         assert!(ks.contains("set open"));
+        assert!(ks.contains("flush set inet TachyonKillSwitch open"));
         assert!(
             ks.contains(
                 "iifname != @open counter drop comment \"tachyon fail-closed kill-switch\""

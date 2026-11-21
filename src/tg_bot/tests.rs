@@ -1308,6 +1308,10 @@ fn test_quiet_hours_suppresses_non_critical_keeps_critical() {
         "<b>Перезапуск ядра:</b> новый PID 123",
         night_secs
     ));
+    assert!(!is_critical_notification(
+        "restart",
+        "<b>Перезапуск ядра:</b> Watchdog action executed: L2_config_drift_reload"
+    ));
     assert!(!should_emit_notification_at(
         &d,
         "wan",

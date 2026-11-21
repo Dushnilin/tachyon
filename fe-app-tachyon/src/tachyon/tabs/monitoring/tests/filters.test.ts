@@ -688,4 +688,52 @@ describe('monitoring filters and resolution', () => {
     );
     expect(merged.map((c) => c.id)).toEqual(['insta-1']);
   });
+
+  it('keeps UDP conntrack connections with different destination IPs sharing the same local socket (#460)', () => {
+    const coreUdp = {
+      id: 'core-udp-1',
+      chains: ['Main-out'],
+      metadata: {
+        network: 'udp',
+        sourceIP: '192.168.1.50',
+        sourcePort: '54321',
+        destinationIP: '1.1.1.1',
+        destinationPort: '443',
+      },
+    };
+    const ctOtherDst = {
+      id: 'ct:udp:192.168.1.50:54321:8.8.8.8:443',
+      dataSource: 'conntrack' as const,
+      chains: ['direct-out'],
+      metadata: {
+        network: 'udp',
+        type: 'conntrack',
+        sourceIP: '192.168.1.50',
+        sourcePort: '54321',
+        destinationIP: '8.8.8.8',
+        destinationPort: '443',
+      },
+    };
+    const ctSameDst = {
+      id: 'ct:udp:192.168.1.50:54321:1.1.1.1:443',
+      dataSource: 'conntrack' as const,
+      chains: ['direct-out'],
+      metadata: {
+        network: 'udp',
+        type: 'conntrack',
+        sourceIP: '192.168.1.50',
+        sourcePort: '54321',
+        destinationIP: '1.1.1.1',
+        destinationPort: '443',
+      },
+    };
+    const merged = mergeCoreAndConntrackConnections(
+      [coreUdp],
+      [ctOtherDst, ctSameDst],
+    );
+    expect(merged.map((c) => c.id)).toEqual([
+      'core-udp-1',
+      'ct:udp:192.168.1.50:54321:8.8.8.8:443',
+    ]);
+  });
 });

@@ -7037,6 +7037,27 @@ function createSettingsContent(section, capabilities) {
     html += '</ul>';
     return html;
   };
+
+  // Preserve dependency-hidden and default-valued `settings` options across tab saves so
+  // editing an unrelated field (e.g. Telegram) never creates phantom `uci.unset` deletes.
+  if (Array.isArray(section.children)) {
+    for (const opt of section.children) {
+      if (
+        !opt ||
+        opt.disable ||
+        typeof opt.option !== 'string' ||
+        opt.option.startsWith('_')
+      ) {
+        continue;
+      }
+      if (opt.retain === undefined) {
+        opt.retain = true;
+      }
+      if (opt.rmempty === undefined) {
+        opt.rmempty = false;
+      }
+    }
+  }
 }
 
 function createTelegramStatusWidget() {

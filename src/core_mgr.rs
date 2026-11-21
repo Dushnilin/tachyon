@@ -3666,9 +3666,14 @@ impl CoreManager {
                     live.lan_devices = devices;
                 }
             }
+            if !core_alive && prev_core_pid.is_some() && !self.is_manually_stopped() {
+                let d_snap = self.state.data.read().await.clone();
+                let _ = net_stack::hold_kill_switch(&d_snap).await;
+            }
             crate::watchdog::check_and_repair_nft_drift_boxed(
                 &self.state,
                 watchdog_on && !self.is_manually_stopped(),
+                core_alive,
                 &proxy_mode,
                 nft_ok,
             )

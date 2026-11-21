@@ -7929,6 +7929,7 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
     let mut j_params: [Option<String>; 3] = Default::default();
     let mut itime: Option<u64> = None;
     let mut header_protection_key: Option<String> = None;
+    let mut content_padding_addition: Option<String> = None;
 
     let mut peers: Vec<WgPeerDraft> = Vec::new();
     let mut section = "";
@@ -8056,6 +8057,9 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
                 "j2" => j_params[1] = Some(val.to_string()),
                 "j3" => j_params[2] = Some(val.to_string()),
                 "itime" => itime = val.parse().ok(),
+                "contentpaddingaddition" | "content_padding_addition" => {
+                    content_padding_addition = Some(val.to_string());
+                }
                 "headerprotectionkey" | "header_protection_key" => {
                     if decode_b64_flex(val).is_some_and(|b| b.len() == 32) {
                         header_protection_key = Some(val.to_string());
@@ -8115,7 +8119,8 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
         || i_params.iter().any(Option::is_some)
         || j_params.iter().any(Option::is_some)
         || itime.is_some_and(|v| v > 0)
-        || header_protection_key.is_some();
+        || header_protection_key.is_some()
+        || content_padding_addition.is_some();
 
     let multi_peer = valid_peers.len() > 1;
     let mut out = Vec::with_capacity(valid_peers.len());
@@ -8201,6 +8206,9 @@ fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Ve
             }
             if let Some(ref hpk) = header_protection_key {
                 obj.insert("header_protection_key".into(), json!(hpk));
+            }
+            if let Some(ref cpa) = content_padding_addition {
+                obj.insert("content_padding_addition".into(), json!(cpa));
             }
         }
         out.push((tag, Value::Object(obj)));
@@ -12719,9 +12727,9 @@ fn resolve_priority_balancer_outbounds(
     source_tag_map: &HashMap<String, Vec<String>>,
     sources: &[OutboundSource],
     outbounds: &[Value],
-) -> Vec<String> {
+) -> (Vec<String>, Vec<Vec<String>>) {
     if levels.is_empty() {
-        return bal_candidates.to_vec();
+        return (bal_candidates.to_vec(), Vec::new());
     }
     let known_prefixes: Vec<String> = sources
         .iter()
@@ -12732,11 +12740,14 @@ fn resolve_priority_balancer_outbounds(
         bal_candidates.iter().map(|t| (t.as_str(), ())).collect();
 
     let mut ordered = Vec::new();
-    let push_pool_tags = |ordered: &mut Vec<String>, pool: &[String]| {
+    let mut tiers: Vec<Vec<String>> = Vec::new();
+    let resolve_pool_tags = |ordered: &mut Vec<String>, pool: &[String]| -> Vec<String> {
+        let mut tier = Vec::new();
         let mut from_candidates = false;
         for t in pool {
             if candidate_set.contains_key(t.as_str()) {
                 from_candidates = true;
+                push_unique_str(&mut tier, t);
                 push_unique_str(ordered, t);
             }
         }
@@ -12747,9 +12758,11 @@ fn resolve_priority_balancer_outbounds(
                 pool.to_vec()
             };
             for t in &filtered {
+                push_unique_str(&mut tier, t);
                 push_unique_str(ordered, t);
             }
         }
+        tier
     };
 
     for raw_lvl in levels {
@@ -12759,34 +12772,47 @@ fn resolve_priority_balancer_outbounds(
         }
         if lvl.eq_ignore_ascii_case("direct") {
             push_unique_str(&mut ordered, "direct");
+            tiers.push(vec!["direct".to_string()]);
             continue;
         }
         if let Some(sub_bal_tag) = built_tags_by_id.get(lvl) {
             push_unique_str(&mut ordered, sub_bal_tag);
+            tiers.push(vec![sub_bal_tag.clone()]);
             continue;
         }
         if let Some(gtags) = group_tag_map.get(lvl) {
-            push_pool_tags(&mut ordered, gtags);
+            let tier = resolve_pool_tags(&mut ordered, gtags);
+            if !tier.is_empty() {
+                tiers.push(tier);
+            }
             continue;
         }
         if let Some(stags) = source_tag_map.get(lvl) {
-            push_pool_tags(&mut ordered, stags);
+            let tier = resolve_pool_tags(&mut ordered, stags);
+            if !tier.is_empty() {
+                tiers.push(tier);
+            }
             continue;
         }
         let srv_key = lvl.strip_prefix("srv:").unwrap_or(lvl).trim();
         if !srv_key.is_empty() {
+            let mut tier = Vec::new();
             for t in bal_candidates {
                 if t == srv_key || server_filter_name_matches(t, srv_key, &known_prefixes) {
+                    push_unique_str(&mut tier, t);
                     push_unique_str(&mut ordered, t);
                 }
+            }
+            if !tier.is_empty() {
+                tiers.push(tier);
             }
         }
     }
 
     if ordered.is_empty() {
-        bal_candidates.to_vec()
+        (bal_candidates.to_vec(), Vec::new())
     } else {
-        ordered
+        (ordered, tiers)
     }
 }
 
@@ -13383,7 +13409,7 @@ fn resolve_section_outbound(
                 } else {
                     candidate_tags.clone()
                 };
-                let final_candidates = if pass_priority {
+                let (final_candidates, priority_tiers) = if pass_priority {
                     let levels = resolve_priority_tier_levels(sec, bal);
                     resolve_priority_balancer_outbounds(
                         &levels,
@@ -13396,9 +13422,14 @@ fn resolve_section_outbound(
                         outbounds,
                     )
                 } else {
-                    bal_candidates
+                    (bal_candidates, Vec::new())
                 };
-                outbounds.push(build_balancer_outbound(&bal_tag, bal, final_candidates));
+                outbounds.push(build_balancer_outbound(
+                    &bal_tag,
+                    bal,
+                    final_candidates,
+                    &priority_tiers,
+                ));
             }
         }
     }
@@ -13520,10 +13551,19 @@ fn normalize_sticky_hash(raw: &str) -> Vec<&'static str> {
     }
 }
 
-fn build_balancer_outbound(bal_tag: &str, bal: &BalancerConfig, mut tags: Vec<String>) -> Value {
+fn build_balancer_outbound(
+    bal_tag: &str,
+    bal: &BalancerConfig,
+    mut tags: Vec<String>,
+    priority_tiers: &[Vec<String>],
+) -> Value {
     let fb = bal.fallback_section.trim();
+    let mut tiers = priority_tiers.to_vec();
     if !fb.is_empty() && !tags.iter().any(|t| t == fb) {
         tags.push(fb.to_string());
+        if !tiers.is_empty() {
+            tiers.push(vec![fb.to_string()]);
+        }
     }
     if bal.balancer_type.eq_ignore_ascii_case("selector") {
         return json!({
@@ -13594,6 +13634,9 @@ fn build_balancer_outbound(bal_tag: &str, bal: &BalancerConfig, mut tags: Vec<St
     }
     if mode == "quota" && bal.quota_mib > 0 {
         balancer_opts.insert("quota_mib".into(), json!(bal.quota_mib));
+    }
+    if mode == "priority" && !tiers.is_empty() {
+        balancer_opts.insert("tiers".into(), json!(tiers));
     }
     if !balancer_opts.is_empty() {
         obj.insert("balancer".into(), Value::Object(balancer_opts));
@@ -19240,5 +19283,118 @@ config timeserver 'ntp'
             find_bal_outs("bal-Main2-bal_chain"),
             vec!["bal-Main2-sub_urltest".to_string(), "direct".to_string()]
         );
+
+        let find_bal_tiers = |tag: &str| -> Value {
+            outs.iter()
+                .find(|o| o.get("tag").and_then(Value::as_str) == Some(tag))
+                .and_then(|o| o.pointer("/balancer/tiers"))
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
+        assert_eq!(
+            find_bal_tiers("bal-Main-bal_prio"),
+            json!([["Alpha"], ["Beta"]])
+        );
+        assert_eq!(
+            find_bal_tiers("bal-Main-bal_srv"),
+            json!([["Beta"], ["direct"]])
+        );
+        assert_eq!(
+            find_bal_tiers("bal-Main2-bal_chain"),
+            json!([["bal-Main2-sub_urltest"], ["direct"]])
+        );
+    }
+
+    #[test]
+    fn test_priority_tiers_multi_node_group_and_awg_content_padding_addition() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_pool".to_string(),
+            enabled: true,
+            source_type: "links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#NodeA1".to_string(),
+                "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#NodeA2".to_string(),
+                "vless://33333333-3333-3333-3333-333333333333@3.3.3.3:443#NodeB1".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.outbound_groups = vec![
+            crate::store::OutboundGroup {
+                id: "tier_a".to_string(),
+                enabled: true,
+                name: "TierA".to_string(),
+                source_refs: vec!["src_pool".to_string()],
+                filter_mode: "include".to_string(),
+                include_servers: vec!["NodeA1".to_string(), "NodeA2".to_string()],
+                ..Default::default()
+            },
+            crate::store::OutboundGroup {
+                id: "tier_b".to_string(),
+                enabled: true,
+                name: "TierB".to_string(),
+                source_refs: vec!["src_pool".to_string()],
+                filter_mode: "include".to_string(),
+                include_servers: vec!["NodeB1".to_string()],
+                ..Default::default()
+            },
+        ];
+        store.balancers = vec![crate::store::BalancerConfig {
+            id: "bal_prio".to_string(),
+            enabled: true,
+            name: "Priority".to_string(),
+            balancer_type: "priority".to_string(),
+            mode: "priority".to_string(),
+            outbound_group_levels: vec!["tier_a".to_string(), "tier_b".to_string()],
+            ..Default::default()
+        }];
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_group_refs: vec!["tier_a".to_string(), "tier_b".to_string()],
+            balancer_refs: vec!["bal_prio".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let bal_obj = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o.get("tag").and_then(Value::as_str) == Some("bal-Main-bal_prio"))
+            .expect("priority balancer");
+        assert_eq!(bal_obj["outbounds"], json!(["NodeA1", "NodeA2", "NodeB1"]));
+        assert_eq!(
+            bal_obj["balancer"]["tiers"],
+            json!([["NodeA1", "NodeA2"], ["NodeB1"]])
+        );
+
+        let awg_ini = "\
+[Interface]
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Address = 10.8.0.2/32
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 0
+S2 = 0
+H1 = 1
+H2 = 2
+H3 = 3
+H4 = 4
+ContentPaddingAddition = 64
+
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+Endpoint = 203.0.113.10:51820
+AllowedIPs = 0.0.0.0/0
+";
+        let parsed = parse_amnezia_conf_outbounds_with_prefix("awg-cpa", awg_ini);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].1["content_padding_addition"], json!("64"));
     }
 }

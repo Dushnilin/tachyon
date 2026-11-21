@@ -4488,6 +4488,7 @@ impl RouterStoreData {
 
         let parse_bool = |v: &str| v == "1" || v.eq_ignore_ascii_case("true") || v == "yes";
         let mut imported = 0usize;
+        let mut balancer_section_links: Vec<(String, Vec<String>)> = Vec::new();
 
         for b in blocks {
             match b.kind.as_str() {
@@ -5362,6 +5363,7 @@ impl RouterStoreData {
                     } else {
                         b.name.clone()
                     };
+                    balancer_section_links.push((bal_id.clone(), b.list("section")));
                     self.balancers.push(BalancerConfig {
                         id: bal_id,
                         enabled: b.opt("enabled").is_none_or(parse_bool),
@@ -7061,10 +7063,298 @@ impl RouterStoreData {
                 }
             }
         }
+        imported += self.apply_legacy_priority_and_links_migration(blocks, &balancer_section_links);
         self.apply_relax_probe_intervals_v1();
         self.apply_fail_closed_auto_defaults();
         self.apply_ai_lists_1_8();
         imported
+    }
+
+    fn apply_legacy_priority_and_links_migration(
+        &mut self,
+        blocks: &[LegacyUciBlock],
+        balancer_section_links: &[(String, Vec<String>)],
+    ) -> usize {
+        let mut added = 0usize;
+        let push_unique = |vec: &mut Vec<String>, item: String| {
+            if !item.is_empty() && !vec.contains(&item) {
+                vec.push(item);
+            }
+        };
+
+        // 1. Migrate inline section `selector_proxy_links` / `proxy_links` into an OutboundSource.
+        for b in blocks.iter().filter(|b| b.kind == "section") {
+            let mut links: Vec<String> = Vec::new();
+            let mut push_lines = |raw: &str| {
+                for line in raw.lines() {
+                    let t = line.trim();
+                    if !t.is_empty() && !t.starts_with('#') {
+                        push_unique(&mut links, t.to_string());
+                    }
+                }
+            };
+            for key in ["selector_proxy_links", "proxy_links"] {
+                for item in b.raw_list(key) {
+                    push_lines(&item);
+                }
+            }
+            for key in ["selector_proxy_links_text", "proxy_links_text"] {
+                if let Some(raw) = b.opt(key) {
+                    push_lines(raw);
+                }
+            }
+            if links.is_empty() {
+                continue;
+            }
+            let Some(sec_idx) = self.sections.iter().position(|s| s.id == b.name) else {
+                continue;
+            };
+            let existing_src_id = self.sections[sec_idx]
+                .outbound_source_refs
+                .iter()
+                .find(|rid| {
+                    self.outbound_sources.iter().any(|s| {
+                        s.id == **rid && matches!(s.source_type.as_str(), "links" | "selector")
+                    })
+                })
+                .cloned();
+            if let Some(src_id) = existing_src_id {
+                if let Some(src) = self.outbound_sources.iter_mut().find(|s| s.id == src_id) {
+                    for l in links {
+                        push_unique(&mut src.proxy_links, l);
+                    }
+                }
+                continue;
+            }
+            let src_id = format!("src_{}_links", b.name);
+            let sec_label = self.sections[sec_idx].label.clone();
+            if let Some(src) = self.outbound_sources.iter_mut().find(|s| s.id == src_id) {
+                for l in links {
+                    push_unique(&mut src.proxy_links, l);
+                }
+            } else {
+                self.outbound_sources.push(OutboundSource {
+                    id: src_id.clone(),
+                    enabled: true,
+                    name: format!("{sec_label} (links)"),
+                    source_type: "links".to_string(),
+                    proxy_links: links,
+                    ..Default::default()
+                });
+                added += 1;
+            }
+            push_unique(&mut self.sections[sec_idx].outbound_source_refs, src_id);
+        }
+
+        // 2. Link `balancer` / `urltest` / `priority_group` blocks with `option section` to section.balancer_refs.
+        for (bal_id, sec_refs) in balancer_section_links {
+            if !self.balancers.iter().any(|bal| bal.id == *bal_id) {
+                continue;
+            }
+            for sec_id in sec_refs {
+                if let Some(sec) = self.sections.iter_mut().find(|s| s.id == *sec_id) {
+                    push_unique(&mut sec.balancer_refs, bal_id.clone());
+                }
+            }
+        }
+
+        // 3. Import legacy `priority_level` blocks into ordered OutboundGroup + balancer levels (#459).
+        let mut levels_by_group: Vec<(usize, i64, &LegacyUciBlock)> = blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.kind == "priority_level")
+            .map(|(idx, b)| {
+                let order = b
+                    .opt("order")
+                    .and_then(|v| v.trim().parse::<i64>().ok())
+                    .unwrap_or(0);
+                (idx, order, b)
+            })
+            .collect();
+        levels_by_group.sort_by_key(|(idx, order, _)| (*order, *idx));
+
+        for (_, _, b) in levels_by_group {
+            let group_id = b.opt("group").map(str::trim).unwrap_or("");
+            if group_id.is_empty() {
+                continue;
+            }
+            let Some(bal_idx) = self.balancers.iter().position(|bal| bal.id == group_id) else {
+                continue;
+            };
+            let mut linked_sec_ids: Vec<String> = Vec::new();
+            for (bid, srefs) in balancer_section_links {
+                if bid == group_id {
+                    for sid in srefs {
+                        push_unique(&mut linked_sec_ids, sid.clone());
+                    }
+                }
+            }
+            for sec in &self.sections {
+                if sec.balancer_refs.iter().any(|bid| bid == group_id) {
+                    push_unique(&mut linked_sec_ids, sec.id.clone());
+                }
+            }
+            let mut linked_source_refs: Vec<String> = Vec::new();
+            for sid in &linked_sec_ids {
+                if let Some(sec) = self.sections.iter().find(|s| s.id == *sid) {
+                    for sref in &sec.outbound_source_refs {
+                        push_unique(&mut linked_source_refs, sref.clone());
+                    }
+                }
+            }
+
+            let lvl_enabled = b.opt("enabled").is_none_or(parse_uci_bool);
+            let is_direct = b.opt("direct").is_some_and(parse_uci_bool);
+            let lvl_name = b.opt("name").unwrap_or(&b.name).to_string();
+
+            let mut include_countries = b.merge_lists("include_countries", "country");
+            for c in b.list("include_country_flags") {
+                push_unique(&mut include_countries, c);
+            }
+            let exclude_countries = b.merge_lists("exclude_countries", "exclude_country_flags");
+            let mut include_servers = b.merge_lists("include_outbounds", "server_name");
+            for s in b.list("include_servers") {
+                push_unique(&mut include_servers, s);
+            }
+            let exclude_servers = b.merge_lists("exclude_outbounds", "exclude_servers");
+            let mut include_regex = b.raw_list("include_regex");
+            for r in b.raw_list("regex") {
+                push_unique(&mut include_regex, r);
+            }
+            let exclude_regex = b.raw_list("exclude_regex");
+            let include_name_regex = b.opt("include_name_regex").unwrap_or("").to_string();
+            let exclude_name_regex = b.opt("exclude_name_regex").unwrap_or("").to_string();
+            let include_prefixes = b.list("include_prefixes");
+            let exclude_prefixes = b.list("exclude_prefixes");
+            let include_protocols = b.list("include_protocols");
+            let exclude_protocols = b.list("exclude_protocols");
+            let include_transports = b.list("include_transports");
+            let exclude_transports = b.list("exclude_transports");
+            let include_security_types =
+                b.merge_lists("include_securities", "include_security_types");
+            let exclude_security_types =
+                b.merge_lists("exclude_securities", "exclude_security_types");
+            let include_ports = b.list("include_ports");
+            let exclude_ports = b.list("exclude_ports");
+            let include_proxy_parameters = b
+                .opt("include_proxy_parameters")
+                .is_some_and(parse_uci_bool);
+            let exclude_proxy_parameters = b
+                .opt("exclude_proxy_parameters")
+                .is_some_and(parse_uci_bool);
+            let detect_server_country = b.opt("detect_server_country").is_none_or(|v| {
+                !matches!(
+                    v.trim().to_ascii_lowercase().as_str(),
+                    "0" | "false" | "off" | "no" | "disabled"
+                )
+            });
+
+            let has_inc = !include_countries.is_empty()
+                || !include_servers.is_empty()
+                || !include_regex.is_empty()
+                || !include_name_regex.is_empty()
+                || !include_prefixes.is_empty()
+                || !include_protocols.is_empty()
+                || !include_transports.is_empty()
+                || !include_security_types.is_empty()
+                || !include_ports.is_empty();
+            let has_exc = !exclude_countries.is_empty()
+                || !exclude_servers.is_empty()
+                || !exclude_regex.is_empty()
+                || !exclude_name_regex.is_empty()
+                || !exclude_prefixes.is_empty()
+                || !exclude_protocols.is_empty()
+                || !exclude_transports.is_empty()
+                || !exclude_security_types.is_empty()
+                || !exclude_ports.is_empty();
+            let filter_mode = b
+                .opt("filter_mode")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    if has_inc && has_exc {
+                        "mixed".to_string()
+                    } else if has_exc {
+                        "exclude".to_string()
+                    } else {
+                        "include".to_string()
+                    }
+                });
+
+            self.balancers[bal_idx]
+                .priority_levels
+                .push(PriorityLevelConfig {
+                    name: lvl_name.clone(),
+                    direct: is_direct,
+                    filter_mode: filter_mode.clone(),
+                    include_countries: include_countries.clone(),
+                    exclude_countries: exclude_countries.clone(),
+                    include_servers: include_servers.clone(),
+                    exclude_servers: exclude_servers.clone(),
+                    include_regex: include_regex.join("\n"),
+                    exclude_regex: exclude_regex.join("\n"),
+                });
+
+            if is_direct {
+                if lvl_enabled {
+                    push_unique(
+                        &mut self.balancers[bal_idx].outbound_group_levels,
+                        "direct".to_string(),
+                    );
+                }
+                added += 1;
+                continue;
+            }
+
+            let grp = OutboundGroup {
+                id: b.name.clone(),
+                enabled: lvl_enabled,
+                name: lvl_name,
+                source_refs: linked_source_refs,
+                filter_mode,
+                detect_server_country,
+                include_proxy_parameters,
+                exclude_proxy_parameters,
+                include_prefixes,
+                include_country_flags: include_countries,
+                include_servers,
+                include_regex,
+                include_name_regex,
+                include_protocols,
+                include_transports,
+                include_security_types,
+                include_ports,
+                exclude_prefixes,
+                exclude_country_flags: exclude_countries,
+                exclude_servers,
+                exclude_regex,
+                exclude_name_regex,
+                exclude_protocols,
+                exclude_transports,
+                exclude_security_types,
+                exclude_ports,
+                ..Default::default()
+            };
+            if let Some(existing) = self.outbound_groups.iter_mut().find(|g| g.id == grp.id) {
+                *existing = grp;
+            } else {
+                self.outbound_groups.push(grp);
+            }
+            if lvl_enabled {
+                push_unique(
+                    &mut self.balancers[bal_idx].outbound_group_levels,
+                    b.name.clone(),
+                );
+                for sid in &linked_sec_ids {
+                    if let Some(sec) = self.sections.iter_mut().find(|s| s.id == *sid) {
+                        push_unique(&mut sec.outbound_group_refs, b.name.clone());
+                    }
+                }
+            }
+            added += 1;
+        }
+        added
     }
 }
 
@@ -7485,6 +7775,7 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     | "balancer"
                     | "urltest"
                     | "priority_group"
+                    | "priority_level"
                     | "outbound_group"
                     | "server"
                     | "profile"
@@ -10416,5 +10707,121 @@ config outbound_source 'src_DeluxHost2_TewFai'
         assert!(store.telegram.enabled);
         assert!(store.telegram.notify_crash);
         assert_eq!(store.telegram.quiet_hours_start, "23:00");
+    }
+
+    #[test]
+    fn test_legacy_uci_migrates_selector_links_and_priority_levels_in_order() {
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon_legacy_prio_{}", std::process::id()));
+        let sub_dir = tmp_dir.join("subscriptions");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&sub_dir).expect("mkdir sub");
+        let uci_path = tmp_dir.join("tachyon");
+        let uci_content = r#"
+config section 'proxy'
+	option enabled '1'
+	option action 'proxy'
+	list selector_proxy_links 'vless://00000000-0000-4000-8000-000000000001@alpha.example:443?encryption=none&security=tls&sni=alpha.example#Alpha'
+	list selector_proxy_links 'vless://00000000-0000-4000-8000-000000000002@beta.example:443?encryption=none&security=tls&sni=beta.example#Beta'
+	list selector_proxy_links 'vless://00000000-0000-4000-8000-000000000003@gamma.example:443?encryption=none&security=tls&sni=gamma.example#Gamma'
+
+config priority_group 'pg_main'
+	option section 'proxy'
+	option name 'Main priority'
+	option health_url 'https://health.example/generate_204'
+	option active_check_interval '5s'
+	option check_timeout '2s'
+	option recovery_check_interval '15s'
+	option pick_fastest '1'
+	option switch_to_faster_same_priority '1'
+	option fastest_check_interval '3m'
+
+config priority_level 'pl_lower'
+	option group 'pg_main'
+	option name 'Lower level'
+	option order '10'
+	list regex 'Beta|Gamma'
+
+config priority_level 'pl_upper'
+	option group 'pg_main'
+	option name 'Upper level'
+	option order '0'
+	option detect_server_country 'country_is'
+	list server_name 'Beta'
+
+config priority_level 'pl_direct'
+	option group 'pg_main'
+	option name 'Direct fallback'
+	option order '20'
+	option direct '1'
+"#;
+        std::fs::write(&uci_path, uci_content).expect("write uci");
+
+        let mut store = RouterStoreData::default();
+        let imported = store.import_legacy_router_files_with_cache(&[uci_path.as_path()], &sub_dir);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        assert!(imported >= 5);
+
+        let sec = store
+            .sections
+            .iter()
+            .find(|s| s.id == "proxy")
+            .expect("proxy section");
+        assert_eq!(sec.outbound_source_refs, vec!["src_proxy_links"]);
+        assert_eq!(sec.balancer_refs, vec!["pg_main"]);
+        assert_eq!(sec.outbound_group_refs, vec!["pl_upper", "pl_lower"]);
+
+        let src = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_proxy_links")
+            .expect("synthesized links source");
+        assert_eq!(src.source_type, "links");
+        assert_eq!(src.proxy_links.len(), 3);
+
+        let pg = store
+            .balancers
+            .iter()
+            .find(|b| b.id == "pg_main")
+            .expect("pg_main balancer");
+        assert_eq!(pg.balancer_type, "priority");
+        assert_eq!(pg.mode, "priority");
+        assert_eq!(
+            pg.outbound_group_levels,
+            vec!["pl_upper", "pl_lower", "direct"]
+        );
+
+        let compiled = crate::config_gen::compile_core_config(&store).expect("compile");
+        let bal = compiled["outbounds"]
+            .as_array()
+            .expect("outbounds array")
+            .iter()
+            .find(|o| o["tag"] == "bal-proxy-pg_main")
+            .expect("bal-proxy-pg_main outbound");
+        assert_eq!(bal["type"], "urltest");
+        assert_eq!(bal["mode"], "priority");
+        let tiers = bal["balancer"]["tiers"].as_array().expect("priority tiers");
+        assert_eq!(tiers.len(), 3);
+        let tier0: Vec<&str> = tiers[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let tier1: Vec<&str> = tiers[1]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let tier2: Vec<&str> = tiers[2]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert_eq!(tier0, vec!["Beta"]);
+        assert_eq!(tier1, vec!["Beta", "Gamma"]);
+        assert_eq!(tier2, vec!["direct"]);
     }
 }

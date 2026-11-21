@@ -3480,7 +3480,13 @@ async fn handle_pure_rust_clash_api(
                                     seen_tuples
                                         .insert(format!("{proto}|{src}|{sport}|{dst}|{dport}"));
                                 }
-                                if !src.is_empty() && !sport.is_empty() && !dport.is_empty() {
+                                // Only match by 4-tuple (omitting destinationIP) when core left destinationIP empty;
+                                // symmetric/full-cone UDP flows can share (src, sport, dport) across multiple dst IPs.
+                                if dst.is_empty()
+                                    && !src.is_empty()
+                                    && !sport.is_empty()
+                                    && !dport.is_empty()
+                                {
                                     seen_client_sockets
                                         .insert(format!("{proto}|{src}|{sport}|{dport}"));
                                 }
@@ -12663,6 +12669,26 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         );
         assert_eq!(conns.len(), 1, "unexpected conntrack entries: {conns:?}");
         assert_eq!(conns[0]["id"], "ct:udp:192.168.1.50:60123:1.1.1.1:443");
+
+        // When core connection already has a concrete destinationIP (full-cone UDP NAT),
+        // another UDP flow from the same (src, sport, dport) to a different dstIP must be kept.
+        let mut seen_tuples_multi = std::collections::HashSet::new();
+        let seen_client_sockets_multi = std::collections::HashSet::new();
+        seen_tuples_multi.insert("udp|192.168.1.50|60123|8.8.8.8|443".to_string());
+        let udp_raw = "\
+ipv4 2 udp 17 120 src=192.168.1.50 dst=8.8.8.8 sport=60123 dport=443 packets=3 bytes=300 src=8.8.8.8 dst=203.0.113.10 sport=443 dport=60123 packets=3 bytes=900 [ASSURED] mark=0 use=1
+ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 bytes=300 src=1.1.1.1 dst=203.0.113.10 sport=443 dport=60123 packets=3 bytes=900 [ASSURED] mark=0 use=1
+";
+        let udp_conns = parse_conntrack_connections_text(
+            udp_raw,
+            &ip_host_map,
+            &seen_tuples_multi,
+            &seen_client_sockets_multi,
+            Some("198.18.0.0/15"),
+            50,
+        );
+        assert_eq!(udp_conns.len(), 1);
+        assert_eq!(udp_conns[0]["id"], "ct:udp:192.168.1.50:60123:1.1.1.1:443");
     }
 
     #[tokio::test]

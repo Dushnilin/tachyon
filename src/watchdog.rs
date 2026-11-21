@@ -566,7 +566,10 @@ pub fn run_watchdog_tick_boxed(
 #[inline(never)]
 fn compute_desired_digest(store: &crate::store::RouterStoreData) -> String {
     config_gen::compile_core_config(store)
-        .map(|v| compute_config_digest(&v))
+        .map(|mut v| {
+            CoreManager::sanitize_candidate_local_rulesets(&mut v);
+            compute_config_digest(&v)
+        })
         .unwrap_or_default()
 }
 
@@ -850,6 +853,11 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         live.lkg_observing
     };
 
+    if !core_alive && !manual_stop {
+        let store_snapshot = core.state.data.read().await.clone();
+        let _ = net_stack::hold_kill_switch(&store_snapshot).await;
+    }
+
     if !enable_watchdog || manual_stop {
         return;
     }
@@ -1043,25 +1051,37 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
 pub fn check_and_repair_nft_drift_boxed<'a>(
     state: &'a Arc<AppState>,
     watchdog_on: bool,
+    core_alive: bool,
     proxy_mode: &'a str,
     nft_ok: bool,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
     Box::pin(check_and_repair_nft_drift(
         state,
         watchdog_on,
+        core_alive,
         proxy_mode,
         nft_ok,
     ))
 }
 
-/// Apply nftables network stack safely if missing while `tproxy` is configured.
+/// Apply nftables network stack safely if missing while `tachyon-core` is alive under `tproxy`,
+/// or keep the fail-closed kill-switch shut when `tachyon-core` is absent.
 pub async fn check_and_repair_nft_drift(
     state: &Arc<AppState>,
     watchdog_on: bool,
+    core_alive: bool,
     proxy_mode: &str,
     nft_ok: bool,
 ) {
-    if watchdog_on && proxy_mode == "tproxy" && !nft_ok {
+    if !watchdog_on {
+        return;
+    }
+    if !core_alive {
+        let store_snapshot = Box::new(state.data.read().await.clone());
+        let _ = net_stack::hold_kill_switch(&store_snapshot).await;
+        return;
+    }
+    if proxy_mode == "tproxy" && !nft_ok {
         let store_snapshot = Box::new(state.data.read().await.clone());
         let _ = Box::pin(net_stack::apply_network_stack(&store_snapshot)).await;
         state.live.write().await.push_event(

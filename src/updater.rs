@@ -2587,6 +2587,9 @@ pub(crate) fn collect_community_sync_targets(
             }
         }
     }
+    for l in &d.settings.smart_detect_exclude_lists {
+        push_list(&mut list_names, l);
+    }
     (list_names, subnet_services)
 }
 
