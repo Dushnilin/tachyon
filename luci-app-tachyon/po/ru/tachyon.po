@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-22 21:51+0300\n"
-"PO-Revision-Date: 2026-11-22 21:51+0300\n"
+"POT-Creation-Date: 2026-11-22 23:54+0300\n"
+"PO-Revision-Date: 2026-11-22 23:54+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -662,11 +662,17 @@ msgstr "Все устройства"
 msgid "All except selected"
 msgstr "Все кроме выбранных"
 
+msgid "All groups"
+msgstr "Все группы"
+
 msgid "All matching entries are currently disabled and collapsed in the drawer below."
 msgstr "Все подходящие записи сейчас отключены и свернуты в блок ниже."
 
 msgid "All pool sources"
 msgstr "Все источники пула"
+
+msgid "All reasons"
+msgstr "Все причины"
 
 msgid "All remaining except selected"
 msgstr "Все остальные кроме выбранных"
@@ -1286,6 +1292,9 @@ msgstr "Резерв"
 msgid "Backup WAN Interface"
 msgstr "Резервный интерфейс WAN"
 
+msgid "Backup in use"
+msgstr "Задействован резерв"
+
 msgid "Badge background"
 msgstr "Цвет фона бейджа"
 
@@ -1667,6 +1676,9 @@ msgstr "Сменить язык интерфейса"
 msgid "Change subscription URL"
 msgstr "Сменить ссылку подписки"
 
+msgid "Changed nodes within a tier"
+msgstr "Смена узла в одном уровне"
+
 msgid "Changes"
 msgstr "Изменения"
 
@@ -1705,6 +1717,9 @@ msgstr "URL для проверки"
 
 msgid "Check YouTube"
 msgstr "Проверить YouTube"
+
+msgid "Check addresses with sensitive parts removed"
+msgstr "Адреса проверок без секретов"
 
 msgid "Check again"
 msgstr "Проверить снова"
@@ -2872,6 +2887,12 @@ msgstr "Деградировано"
 
 msgid "Delay between split TCP segments in milliseconds"
 msgstr "Задержка между разделёнными TCP-сегментами в миллисекундах"
+
+msgid "Delay from history or snapshot"
+msgstr "Задержка из истории или снимка"
+
+msgid "Delay from the 1.x log"
+msgstr "Задержка из журнала 1.x"
 
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
@@ -4157,6 +4178,9 @@ msgstr "Не удалось обновить подписки"
 msgid "Failed to update subscriptions."
 msgstr "Не удалось обновить подписки."
 
+msgid "Failover"
+msgstr "Переход на резерв"
+
 msgid "Failover & Balancer Groups"
 msgstr "Группы балансировки и резерва"
 
@@ -4297,6 +4321,9 @@ msgstr "Быстро (>1 МБ/с)"
 
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
+
+msgid "Faster node in the same tier"
+msgstr "Более быстрый узел того же уровня"
 
 msgid "Faster server search interval"
 msgstr "Интервал поиска более быстрого сервера"
@@ -5306,6 +5333,9 @@ msgstr "Таймаут init (Itime)"
 msgid "Init.d conflict"
 msgstr "Конфликт init.d"
 
+msgid "Initial selection"
+msgstr "Первичный выбор"
+
 msgid "Initializing benchmark in sandbox..."
 msgstr "Инициализация тестирования в песочнице..."
 
@@ -6155,6 +6185,9 @@ msgstr "Загрузка версий..."
 msgid "Loading..."
 msgstr "Загрузка..."
 
+msgid "Loading…"
+msgstr "Загрузка…"
+
 msgid "Local"
 msgstr "Локальный"
 
@@ -6785,6 +6818,9 @@ msgstr "Включённые серверные inbounds не настроены
 msgid "No errors or duplicates found"
 msgstr "Ошибок и дубликатов не найдено"
 
+msgid "No events match the selected filters"
+msgstr "Нет событий по выбранным фильтрам"
+
 msgid "No explicit DNS detour; default routing applies"
 msgstr "Отдельный маршрут DNS не задан; применяется маршрутизация по умолчанию"
 
@@ -6853,6 +6889,9 @@ msgstr "Нет стратегий, соответствующих выбранн
 
 msgid "No subscription URL"
 msgstr "Нет ссылки для подписки"
+
+msgid "No switches recorded yet"
+msgstr "Переключений пока не зарегистрировано"
 
 msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
 msgstr "Тестовые DNS-имена не обнаружены на порту 53 WAN. Это само по себе не доказывает шифрование или отсутствие других утечек."
@@ -7832,6 +7871,9 @@ msgstr "Предпросмотр:"
 msgid "Previous"
 msgstr "Назад"
 
+msgid "Previous event"
+msgstr "Предыдущее событие"
+
 msgid "Primary"
 msgstr "Основной"
 
@@ -7843,6 +7885,18 @@ msgstr "Основной интерфейс WAN"
 
 msgid "Primary failover nodes probed and restored"
 msgstr "Проверка и восстановление основных узлов выполнены"
+
+msgid "Primary failure counter"
+msgstr "Счётчик отказов основного узла"
+
+msgid "Primary health status"
+msgstr "Статус проверки основного узла"
+
+msgid "Primary in use"
+msgstr "На основном узле"
+
+msgid "Primary node"
+msgstr "Основной узел"
 
 msgid "Primary routing rule"
 msgstr "Основной маршрут"
@@ -7868,6 +7922,9 @@ msgstr "По приоритету с отказоустойчивостью (2-�
 msgid "Priority Tiers (Groups / Sources / Servers)"
 msgstr "Ступени приоритета (группы / источники / серверы)"
 
+msgid "Priority controller (1.x)"
+msgstr "Контроллер Priority (1.x)"
+
 msgid "Priority details"
 msgstr "Детали Priority"
 
@@ -7882,6 +7939,9 @@ msgstr "Уровни приоритета"
 
 msgid "Priority settings"
 msgstr "Настройки приоритета"
+
+msgid "Priority tiers"
+msgstr "Уровни Priority"
 
 msgid "Private Key"
 msgstr "Приватный ключ"
@@ -8081,6 +8141,9 @@ msgstr "Движок приоритета QoS (DSCP)"
 msgid "Quarantine"
 msgstr "Карантин"
 
+msgid "Quarantined in snapshot"
+msgstr "На карантине по снимку"
+
 msgid "Querying direct connection and proxy outbound..."
 msgstr "Опрос прямого подключения и исходящего прокси..."
 
@@ -8243,6 +8306,9 @@ msgstr "Короткий ID Reality"
 msgid "Reality short ID must contain 1-8 hex digits"
 msgstr "Короткий ID Reality должен содержать 1-8 шестнадцатеричных цифр"
 
+msgid "Reason"
+msgstr "Причина"
+
 msgid "Rebuild firewall rules"
 msgstr "Пересобрать правила firewall"
 
@@ -8275,6 +8341,9 @@ msgstr "Записывает задержку прокси/DNS и состоян
 
 msgid "Records: %d"
 msgstr "Записей: %d"
+
+msgid "Recovery"
+msgstr "Восстановление"
 
 msgid "Recovery Check Interval"
 msgstr "Интервал проверки восстановления"
@@ -8560,6 +8629,9 @@ msgstr "Повторить"
 
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
+
+msgid "Returned to a higher tier"
+msgstr "Возврат на более высокий уровень"
 
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
@@ -9893,6 +9965,9 @@ msgstr "Запуск…"
 msgid "State"
 msgstr "Состояние"
 
+msgid "State in snapshot"
+msgstr "Состояние по снимку"
+
 msgid "Status"
 msgstr "Статус"
 
@@ -10112,8 +10187,17 @@ msgstr "Отключать некритичные уведомления Telegra
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
+msgid "Switch"
+msgstr "Переключить"
+
 msgid "Switch DNS to DoH"
 msgstr "Переключить DNS на DoH"
+
+msgid "Switch history"
+msgstr "История переключений"
+
+msgid "Switch history is unavailable"
+msgstr "История переключений недоступна"
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
@@ -10123,6 +10207,12 @@ msgstr "Переключить на боковую панель"
 
 msgid "Switch to top horizontal menu"
 msgstr "Переключить на верхнее меню"
+
+msgid "Switched to a lower tier"
+msgstr "Переход на более низкий уровень"
+
+msgid "Switched to backup"
+msgstr "Переход на резерв"
 
 msgid "Switching interface language..."
 msgstr "Переключение языка интерфейса..."
@@ -10637,6 +10727,9 @@ msgstr "Публичный адрес должен вести к обработ�
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
 msgstr "Правило применяется к домену и всем его поддоменам. Используйте префиксы full:, keyword: или regex: для точного совпадения, совпадения по ключевому слову или регулярного выражения."
 
+msgid "The selected node changed. The core did not report the exact reason."
+msgstr "Обнаружено изменение выбранного узла. Точная причина не предоставлена ядром."
+
 msgid "The server is running and ready to accept client connections."
 msgstr "Сервер работает и готов принимать подключения клиентов."
 
@@ -11114,6 +11207,9 @@ msgstr "Обычный bootstrap DNS сам по себе не доказыва�
 msgid "Unexpected background processes"
 msgstr "Непредвиденные фоновые процессы"
 
+msgid "Unhealthy"
+msgstr "Неуспешный"
+
 msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
 msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации."
 
@@ -11137,6 +11233,9 @@ msgstr "Неизвестная страна"
 
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
+
+msgid "Unknown reason"
+msgstr "Причина неизвестна"
 
 msgid "Unlimited"
 msgstr "Без ограничений"
@@ -12148,6 +12247,9 @@ msgstr "Кэши памяти и неактивные буферы tachyon-core 
 
 msgid "tachyon-core memory usage, DNS tables state and outbound activity"
 msgstr "Потребление памяти tachyon-core, состояние таблиц DNS и активность выходов"
+
+msgid "tier"
+msgstr "уровень"
 
 msgid "timeout"
 msgstr "таймаут"
@@ -14267,9 +14369,6 @@ msgstr "Не удалось загрузить информацию о движ�
 msgid "Loading engine information..."
 msgstr "Загрузка информации о движке..."
 
-msgid "Switch"
-msgstr "Переключить"
-
 msgid "Switch failed"
 msgstr "Не удалось переключить"
 
@@ -14536,9 +14635,6 @@ msgstr "Проверки здоровья"
 
 msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
 msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
-
-msgid "Loading…"
-msgstr "Загрузка…"
 
 msgid "Monitoring & Analytics"
 msgstr "Мониторинг и аналитика"

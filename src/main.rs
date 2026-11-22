@@ -20,6 +20,7 @@ mod simple_regex;
 mod smart_detect;
 mod snapshots;
 mod store;
+mod switch_history;
 mod sys_info;
 mod tg_bot;
 mod transaction;
@@ -247,6 +248,7 @@ fn main() -> anyhow::Result<()> {
             "reload" | "restart" => core.apply_or_reload().await,
             "daemon" | "serve" | "--daemon" => {
                 ubus_bridge::mark_daemon_mode();
+                core.enable_switch_history();
                 eprintln!("[tachyon] store path: {store_path}");
                 if let Some((ext_pid, _)) = sys_info::find_running_process_by_name("tachyon-core") {
                     let expected_bin = core.resolve_bin_path().await;

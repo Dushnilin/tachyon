@@ -28,6 +28,9 @@ use crate::store::{
     AppState, MAX_NODE_LATENCIES, MAX_THROUGHPUT_POINTS, ParsedProxyNode, PortableAtomicU64,
     ThroughputSample, unix_now_secs,
 };
+use crate::switch_history::{
+    Groups as SwitchGroups, Recorder as SwitchRecorder, Source as SwitchSource,
+};
 use crate::sys_info;
 use crate::transaction;
 
@@ -75,6 +78,7 @@ pub struct CoreManager {
     auto_rollback_in_flight: AtomicBool,
     last_ipv6_resync_ts: PortableAtomicU64,
     pub watchdog: Mutex<crate::watchdog::WatchdogState>,
+    switch_history: std::sync::OnceLock<SwitchRecorder>,
 }
 
 impl CoreManager {
@@ -90,6 +94,7 @@ impl CoreManager {
             auto_rollback_in_flight: AtomicBool::new(false),
             last_ipv6_resync_ts: PortableAtomicU64::new(0),
             watchdog: Mutex::new(crate::watchdog::WatchdogState::default()),
+            switch_history: std::sync::OnceLock::new(),
         })
     }
 
@@ -2411,6 +2416,17 @@ impl CoreManager {
         self.proc.lock().await.is_some()
     }
 
+    pub(crate) fn enable_switch_history(&self) {
+        self.switch_history
+            .get_or_init(|| SwitchRecorder::spawn(crate::switch_history::path()));
+    }
+
+    fn switch_history_core(&self) -> Option<(u32, u64)> {
+        let live = self.state.live.try_read().ok()?;
+        let identity = live.core_identity.as_ref()?;
+        Some((identity.pid, identity.starttime_ticks))
+    }
+
     /// Perform an HTTP/1.1 request against the local `tachyon-core` Clash API.
     pub async fn clash_request(
         &self,
@@ -2418,8 +2434,26 @@ impl CoreManager {
         path: &str,
         body: Option<&str>,
     ) -> anyhow::Result<Value> {
-        static CACHED_CLASH_CRED: std::sync::Mutex<Option<(String, u128, String, String)>> =
+        struct ClashConfig {
+            path: String,
+            mtime: u128,
+            addr: String,
+            secret: String,
+            groups: Arc<SwitchGroups>,
+        }
+        static CACHED_CLASH_CRED: std::sync::Mutex<Option<ClashConfig>> =
             std::sync::Mutex::new(None);
+
+        let observer = self.switch_history.get();
+        let source = match (method, path) {
+            ("GET", "/proxies") => Some(SwitchSource::ClashProxies),
+            ("GET", "/tachyon/failover") => Some(SwitchSource::CoreFailover),
+            _ => None,
+        };
+        let observation = observer
+            .zip(source)
+            .and_then(|(observer, source)| Some((observer, source, self.switch_history_core()?)));
+        let mut switch_groups = None;
 
         let (mut addr, mut secret, cfg_path) = {
             let d = self.state.data.read().await;
@@ -2438,13 +2472,16 @@ impl CoreManager {
                     .map(|d| d.as_nanos())
                     .unwrap_or(0);
                 if let Ok(guard) = CACHED_CLASH_CRED.lock()
-                    && let Some((ref cached_path, cached_mtime, ref c_addr, ref c_sec)) = *guard
-                    && cached_path == candidate_cfg
-                    && cached_mtime == mtime
-                    && !c_addr.is_empty()
+                    && let Some(cached) = guard.as_ref()
+                    && cached.path == candidate_cfg
+                    && cached.mtime == mtime
+                    && !cached.addr.is_empty()
                 {
-                    addr = c_addr.clone();
-                    secret = c_sec.clone();
+                    addr = cached.addr.clone();
+                    secret = cached.secret.clone();
+                    if observation.is_some() {
+                        switch_groups = Some(Arc::clone(&cached.groups));
+                    }
                     break;
                 }
                 if let Ok(raw_cfg) = std::fs::read_to_string(candidate_cfg)
@@ -2475,12 +2512,27 @@ impl CoreManager {
                     addr = found_addr.clone();
                     secret = found_sec.clone();
                     if let Ok(mut guard) = CACHED_CLASH_CRED.lock() {
-                        *guard = Some((candidate_cfg.to_string(), mtime, found_addr, found_sec));
+                        let groups = Arc::new(if observer.is_some() {
+                            SwitchGroups::from_config(&val)
+                        } else {
+                            SwitchGroups::default()
+                        });
+                        if observation.is_some() {
+                            switch_groups = Some(Arc::clone(&groups));
+                        }
+                        *guard = Some(ClashConfig {
+                            path: candidate_cfg.to_owned(),
+                            mtime,
+                            addr: found_addr,
+                            secret: found_sec,
+                            groups,
+                        });
                     }
                     break;
                 }
             }
         }
+        let started = observation.as_ref().map(|_| Instant::now());
         let mut stream =
             tokio::time::timeout(Duration::from_secs(2), TcpStream::connect(&addr)).await??;
         let _ = stream.set_nodelay(true);
@@ -2592,7 +2644,14 @@ impl CoreManager {
                 json_part.trim()
             );
         }
-        Ok(serde_json::from_str::<Value>(json_part.trim()).unwrap_or_else(|_| json!({})))
+        let result = serde_json::from_str::<Value>(json_part.trim()).unwrap_or_else(|_| json!({}));
+        if let (Some((recorder, source, identity)), Some(groups), Some(started)) =
+            (observation, switch_groups, started)
+            && self.switch_history_core() == Some(identity)
+        {
+            recorder.observe(groups, identity, started, source, &result);
+        }
+        Ok(result)
     }
 
     pub async fn get_core_health(&self) -> anyhow::Result<Value> {

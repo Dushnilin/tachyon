@@ -3475,6 +3475,27 @@ async fn handle_pure_rust_clash_api(
 ) -> Option<(i32, String, String)> {
     let action = rest.first().map(String::as_str).unwrap_or("");
     match action {
+        "get_switch_history" => {
+            let limit = rest
+                .get(1)
+                .and_then(|arg| arg.parse().ok())
+                .unwrap_or(crate::switch_history::LIMIT);
+            let group = rest.get(2).map(String::as_str).unwrap_or("");
+            let reason = rest.get(3).map(String::as_str).unwrap_or("");
+            match crate::switch_history::recent(
+                &crate::switch_history::path(),
+                limit,
+                group,
+                reason,
+            ) {
+                Ok(events) => Some((
+                    0,
+                    format!("{}\n", json!({ "events": events })),
+                    String::new(),
+                )),
+                Err(_) => Some((1, String::new(), "Switch history unavailable\n".to_owned())),
+            }
+        }
         "get_proxies" => {
             if let Ok(val) = core.clash_request("GET", "/proxies", None).await
                 && let Ok(raw) = serde_json::to_string(&val)
