@@ -5,6 +5,7 @@ import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { decodeSubHeaderValue } from '../helpers/decodeSubHeader';
 import { openConnectionWizardModal } from './connectionWizard';
+import { openSwitchHistory } from './switchHistory';
 import { tr } from './helpers/i18n';
 import { getRouterUiPrefs, setRouterUiPrefs } from './helpers/uiPrefs';
 import { ensureOutboundDisplayFlag } from './helpers/country';
@@ -2989,6 +2990,22 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     }
 
     const extraButtons: HTMLElement[] = [];
+    if (type === 'balancer') {
+      extraButtons.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-studio-btn tachyon-studio-btn--ghost',
+            click: openSwitchHistory,
+          },
+          [
+            renderClockIcon(14),
+            E('span', {}, tr('История переключений', 'Switch history')),
+          ],
+        ),
+      );
+    }
     if (type === 'server') {
       extraButtons.push(
         E(

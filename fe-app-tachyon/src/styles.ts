@@ -1264,6 +1264,89 @@ input.cbi-button-action:hover:not(:disabled),
     margin: 12px auto 24px auto !important;
 }
 
+#modal_overlay > .modal:has(.tachyon-switch-history) {
+    max-width: min(94vw, 680px) !important;
+}
+
+.tachyon-switch-history {
+    color: var(--text);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tachyon-switch-history__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-block: 8px 12px;
+}
+
+.tachyon-switch-history__controls select {
+    flex: 1 1 130px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.tachyon-switch-history__status:not(:empty) {
+    color: var(--text2);
+    padding-block: 8px;
+}
+
+.tachyon-switch-history__list {
+    max-height: min(60vh, 480px);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.tachyon-switch-history__event {
+    border-top: 1px solid var(--border-strong);
+    padding: 10px 8px;
+}
+
+.tachyon-switch-history__event summary {
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.tachyon-switch-history__meta,
+.tachyon-switch-history__route {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.tachyon-switch-history__meta {
+    color: var(--text2);
+    font-size: 12px;
+}
+
+.tachyon-switch-history__meta:first-child {
+    display: inline-flex;
+    max-width: calc(100% - 22px);
+}
+
+.tachyon-switch-history__route {
+    margin-block: 4px;
+}
+
+.tachyon-switch-history__details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 6px 12px;
+    margin: 10px 0 0;
+    padding: 10px 0 2px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.tachyon-switch-history__details dt {
+    color: var(--text2);
+}
+
+.tachyon-switch-history__details dd {
+    margin: 0;
+}
+
 /* Medium modals: Support, Service check, DNS benchmark, Updates, AI Chat, Server info */
 .modal:has(.tachyon-support-modal),
 .cbi-modal:has(.tachyon-support-modal),
