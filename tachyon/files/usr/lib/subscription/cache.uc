@@ -511,8 +511,8 @@ function maintenance_plan(sections, section_cache_dir) {
 }
 
 let auto_user_agent_profiles = [
-    "Happ",
     "Happ/4.6.2",
+    "Happ",
     "v2rayN",
     "v2rayNG",
     "Mihomo",
@@ -556,6 +556,10 @@ function user_agent_matches_config(configured_user_agent, cached_user_agent, def
         return cached_user_agent == configured_user_agent;
 
     return user_agent_supported(cached_user_agent, default_user_agent);
+}
+
+function is_happ_versioned_user_agent(user_agent) {
+    return index(lc(trim(as_string(user_agent))), "happ/") == 0;
 }
 
 let parser_module = null;
@@ -2400,44 +2404,11 @@ function finalize_downloaded_subscription_cache(
     return 0;
 }
 
-function try_fetch_subscription_with_core(
-    section_name_value,
-    subscription_url,
-    subscription_json_path,
-    subscription_url_cache_path,
-    subscription_user_agent_cache_path,
-    subscription_hwid_cache_path,
-    subscription_device_headers_cache_path,
-    raw_tmpfile,
-    headers_tmpfile,
-    normalized_tmpfile,
-    metadata_tmpfile,
-    metadata_output_path,
-    subscription_user_agent,
-    subscription_hwid,
-    subscription_device_headers_signature,
-    source_index,
-    cache_section,
-    sections,
-    allow_insecure,
-    parser
-) {
-    if (type(parser.core_subscription_cli_supported) != "function" || !parser.core_subscription_cli_supported())
-        return -1;
-    if (subscription_device_headers_signature != "")
-        return -1;
-
-    let core_bin = as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
-    let full_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full");
-    let effective_hwid = get_subscription_hwid(subscription_hwid);
-    let cached_ua = trim(as_string(read_text(subscription_user_agent_cache_path)));
-    let args = [ core_bin, "subscription", "fetch", subscription_url, "--format", "full", "-o", full_tmpfile ];
-    if (subscription_user_agent != "") {
+function run_core_subscription_fetch_json(core_bin, subscription_url, requested_ua, effective_hwid, allow_insecure, out_tmpfile) {
+    let args = [ core_bin, "subscription", "fetch", subscription_url, "--format", "full", "-o", out_tmpfile ];
+    if (requested_ua != "") {
         push(args, "--ua");
-        push(args, get_subscription_user_agent(subscription_user_agent));
-    } else if (cached_ua != "") {
-        push(args, "--ua");
-        push(args, cached_ua);
+        push(args, requested_ua);
     }
     if (effective_hwid != "") {
         push(args, "--hwid");
@@ -2446,30 +2417,31 @@ function try_fetch_subscription_with_core(
     if (bool_value(allow_insecure, false))
         push(args, "-k");
 
-    unlink_path(full_tmpfile);
+    unlink_path(out_tmpfile);
     let fetch_cap = common.command_capture(command_from_args(args) + " 2>/dev/null");
     if (fetch_cap == null || int(fetch_cap.status) != 0) {
-        unlink_path(full_tmpfile);
-        return -1;
+        unlink_path(out_tmpfile);
+        return null;
     }
 
-    let full_obj = read_json(full_tmpfile);
-    unlink_path(full_tmpfile);
+    let full_obj = read_json(out_tmpfile);
+    unlink_path(out_tmpfile);
     if (type(full_obj) != "object" || type(full_obj.outbounds) != "array" || length(full_obj.outbounds) == 0)
-        return -1;
+        return null;
+    return full_obj;
+}
 
-    unlink_path(raw_tmpfile);
-    unlink_path(headers_tmpfile);
-    unlink_path(normalized_tmpfile);
-    unlink_path(metadata_tmpfile);
+function apply_core_subscription_result(full_obj, raw_path, headers_path, normalized_path, metadata_path, parser) {
+    unlink_path(raw_path);
+    unlink_path(headers_path);
+    unlink_path(normalized_path);
+    unlink_path(metadata_path);
 
-    let effective_user_agent = as_string(full_obj.user_agent || get_subscription_user_agent(subscription_user_agent));
     let header_lines = [];
     if (type(full_obj.user_info) == "object") {
         let ui = full_obj.user_info;
         let parts = [];
-        let up = ui.Upload != null ? ui.Upload : ui.Upload;
-        up = ui.Upload != null ? ui.Upload : ui.upload;
+        let up = ui.Upload != null ? ui.Upload : ui.upload;
         let dl = ui.Download != null ? ui.Download : ui.download;
         let tot = ui.Total != null ? ui.Total : ui.total;
         let exp = ui.Expire != null ? ui.Expire : ui.expire;
@@ -2504,17 +2476,16 @@ function try_fetch_subscription_with_core(
         if (as_string(md.file_name || "") != "")
             push(header_lines, "Content-Disposition: attachment; filename=\"" + replace(as_string(md.file_name), /"/g, "") + "\"");
     }
-    write_file(headers_tmpfile, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
+    write_file(headers_path, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
 
     let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
     let requires_ucode = (raw_body != "" && (index(raw_body, "fptn:") >= 0 || index(raw_body, "fptnb:") >= 0));
-    write_file(raw_tmpfile, raw_body);
-    parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
-    copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+    write_file(raw_path, raw_body);
+    parser.extract_ui_metadata_file(headers_path, raw_path, metadata_path) || unlink_path(metadata_path);
 
     let normalized_ok = false;
     if (!requires_ucode && type(full_obj.outbounds) == "array" && length(full_obj.outbounds) > 0) {
-        let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
+        let fallback_peer = parser.extract_peer_params_from_headers_file(headers_path);
         let outbounds = parser.normalize_core_json_outbounds(full_obj.outbounds, fallback_peer);
         if (length(outbounds) > 0) {
             let norm_payload = {
@@ -2522,19 +2493,95 @@ function try_fetch_subscription_with_core(
                 format: "tachyon-core-json",
                 outbounds: outbounds
             };
-            if (common.write_json_file(normalized_tmpfile, norm_payload) && parser.validate_subscription(normalized_tmpfile))
+            if (common.write_json_file(normalized_path, norm_payload) && parser.validate_subscription(normalized_path))
                 normalized_ok = true;
         }
     }
     if (!normalized_ok && raw_body != "")
-        normalized_ok = parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core");
+        normalized_ok = parser.normalize_content_validated(raw_path, normalized_path, headers_path, "core");
     if (!normalized_ok) {
-        unlink_path(raw_tmpfile);
-        unlink_path(headers_tmpfile);
-        unlink_path(normalized_tmpfile);
-        unlink_path(metadata_tmpfile);
-        return -1;
+        unlink_path(raw_path);
+        unlink_path(headers_path);
+        unlink_path(normalized_path);
+        unlink_path(metadata_path);
+        return false;
     }
+    return true;
+}
+
+function try_fetch_subscription_with_core(
+    section_name_value,
+    subscription_url,
+    subscription_json_path,
+    subscription_url_cache_path,
+    subscription_user_agent_cache_path,
+    subscription_hwid_cache_path,
+    subscription_device_headers_cache_path,
+    raw_tmpfile,
+    headers_tmpfile,
+    normalized_tmpfile,
+    metadata_tmpfile,
+    metadata_output_path,
+    subscription_user_agent,
+    subscription_hwid,
+    subscription_device_headers_signature,
+    source_index,
+    cache_section,
+    sections,
+    allow_insecure,
+    parser
+) {
+    if (type(parser.core_subscription_cli_supported) != "function" || !parser.core_subscription_cli_supported())
+        return -1;
+    if (subscription_device_headers_signature != "")
+        return -1;
+
+    let core_bin = as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
+    let full_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full");
+    let effective_hwid = get_subscription_hwid(subscription_hwid);
+    let cached_ua = trim(as_string(read_text(subscription_user_agent_cache_path)));
+    let requested_ua = subscription_user_agent != "" ? get_subscription_user_agent(subscription_user_agent) : cached_ua;
+
+    let full_obj = run_core_subscription_fetch_json(core_bin, subscription_url, requested_ua, effective_hwid, allow_insecure, full_tmpfile);
+    if (full_obj == null && subscription_user_agent == "" && cached_ua != "" && cached_ua != "Happ/4.6.2")
+        full_obj = run_core_subscription_fetch_json(core_bin, subscription_url, "Happ/4.6.2", effective_hwid, allow_insecure, full_tmpfile);
+    if (full_obj == null)
+        return -1;
+
+    let effective_user_agent = as_string(full_obj.user_agent || get_subscription_user_agent(subscription_user_agent));
+    let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
+    let body_has_stubs = type(parser.body_has_invalid_stub_host) == "function" && parser.body_has_invalid_stub_host(raw_body);
+
+    if (!apply_core_subscription_result(full_obj, raw_tmpfile, headers_tmpfile, normalized_tmpfile, metadata_tmpfile, parser))
+        return -1;
+
+    let dropped_stubs = type(parser.get_last_dropped_stub_count) == "function" ? parser.get_last_dropped_stub_count() : 0;
+    if (subscription_user_agent == "" && !is_happ_versioned_user_agent(effective_user_agent) && (body_has_stubs || dropped_stubs > 0)) {
+        let retry_full_tmp = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full-happ");
+        let retry_obj = run_core_subscription_fetch_json(core_bin, subscription_url, "Happ/4.6.2", effective_hwid, allow_insecure, retry_full_tmp);
+        if (retry_obj != null) {
+            let retry_raw = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-retry-raw");
+            let retry_hdr = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-retry-hdr");
+            let retry_norm = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-retry-norm");
+            let retry_meta = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-retry-meta");
+            if (apply_core_subscription_result(retry_obj, retry_raw, retry_hdr, retry_norm, retry_meta, parser)) {
+                fs.rename(retry_raw, raw_tmpfile);
+                fs.rename(retry_hdr, headers_tmpfile);
+                fs.rename(retry_norm, normalized_tmpfile);
+                unlink_path(metadata_tmpfile);
+                if (fs.stat(retry_meta) != null)
+                    fs.rename(retry_meta, metadata_tmpfile);
+                effective_user_agent = as_string(retry_obj.user_agent || "Happ/4.6.2");
+            } else {
+                unlink_path(retry_raw);
+                unlink_path(retry_hdr);
+                unlink_path(retry_norm);
+                unlink_path(retry_meta);
+            }
+        }
+    }
+
+    copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
 
     return finalize_downloaded_subscription_cache(
         section_name_value,
@@ -2608,6 +2655,17 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     let attempt_index = 0;
     let deferred_proxy_fallback = false;
     let prefer_fallback_proxy = false;
+    let fallback_ready = false;
+    let fallback_ua = "";
+    let fallback_raw_tmp = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "degraded-raw");
+    let fallback_headers_tmp = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "degraded-headers");
+    let fallback_normalized_tmp = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "degraded-normalized");
+    let fallback_metadata_tmp = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "degraded-metadata");
+    unlink_path(fallback_raw_tmp);
+    unlink_path(fallback_headers_tmp);
+    unlink_path(fallback_normalized_tmp);
+    unlink_path(fallback_metadata_tmp);
+
     for (let effective_user_agent in user_agent_candidates(subscription_user_agent, cached_user_agent, default_user_agent)) {
         attempt_index++;
         unlink_path(raw_tmpfile);
@@ -2674,6 +2732,29 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
             continue;
         }
 
+        let dropped_stubs = type(parser.get_last_dropped_stub_count) == "function" ? parser.get_last_dropped_stub_count() : 0;
+        let has_invalid_stubs = subscription_user_agent == "" &&
+            !is_happ_versioned_user_agent(effective_user_agent) &&
+            (dropped_stubs > 0 || (type(parser.file_has_invalid_stub_host) == "function" && parser.file_has_invalid_stub_host(raw_tmpfile)));
+        if (has_invalid_stubs) {
+            if (!fallback_ready) {
+                fs.rename(raw_tmpfile, fallback_raw_tmp);
+                fs.rename(headers_tmpfile, fallback_headers_tmp);
+                fs.rename(normalized_tmpfile, fallback_normalized_tmp);
+                if (fs.stat(metadata_tmpfile) != null)
+                    fs.rename(metadata_tmpfile, fallback_metadata_tmp);
+                fallback_ua = effective_user_agent;
+                fallback_ready = true;
+            }
+            log_message("Downloaded subscription for rule '" + section_name_value + "' with profile '" + effective_user_agent + "' contained .invalid placeholder hosts; trying another compatibility profile", "info");
+            continue;
+        }
+
+        unlink_path(fallback_raw_tmp);
+        unlink_path(fallback_headers_tmp);
+        unlink_path(fallback_normalized_tmp);
+        unlink_path(fallback_metadata_tmp);
+
         return finalize_downloaded_subscription_cache(
             section_name_value,
             subscription_url,
@@ -2691,6 +2772,39 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
             subscription_hwid,
             effective_user_agent,
             effective_hwid,
+            subscription_device_headers_signature,
+            source_index,
+            cache_section,
+            sections,
+            parser
+        );
+    }
+
+    if (fallback_ready) {
+        fs.rename(fallback_raw_tmp, raw_tmpfile);
+        fs.rename(fallback_headers_tmp, headers_tmpfile);
+        fs.rename(fallback_normalized_tmp, normalized_tmpfile);
+        if (fs.stat(fallback_metadata_tmp) != null)
+            fs.rename(fallback_metadata_tmp, metadata_tmpfile);
+        copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+        let fallback_hwid = get_subscription_hwid(subscription_hwid);
+        return finalize_downloaded_subscription_cache(
+            section_name_value,
+            subscription_url,
+            subscription_json_path,
+            subscription_url_cache_path,
+            subscription_user_agent_cache_path,
+            subscription_hwid_cache_path,
+            subscription_device_headers_cache_path,
+            raw_tmpfile,
+            headers_tmpfile,
+            normalized_tmpfile,
+            metadata_tmpfile,
+            metadata_output_path,
+            subscription_user_agent,
+            subscription_hwid,
+            fallback_ua,
+            fallback_hwid,
             subscription_device_headers_signature,
             source_index,
             cache_section,

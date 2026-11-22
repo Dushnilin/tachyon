@@ -179,8 +179,8 @@ let found_routed_resolve = false;
 let found_route = false;
 for (let r in rules) {
     if (r.action == "resolve" && r.rule_set) {
-        if (r.server != "dns-server") {
-            print("ERROR: desync resolve rule expected server=dns-server, got " + r.server + "\n");
+        if (r.server != "dns-resilient") {
+            print("ERROR: desync resolve rule expected server=dns-resilient, got " + r.server + "\n");
             exit(3);
         }
         found_resolve = true;

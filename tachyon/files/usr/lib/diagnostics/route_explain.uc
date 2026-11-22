@@ -351,7 +351,7 @@ const KNOWN_COMMUNITY_DOMAINS = {
     cursor: [ "cursor.com", "cursor.sh", "cursorapi.com", "opencode.ai", "models.dev", "windsurf.com", "codeium.com", "grazie.ai", "jetbrains.ai", "trae.ai", "cline.bot", "roocode.com", "kilocode.ai", "lovable.dev", "bolt.new", "v0.dev", "devin.ai", "replit.com", "coderabbit.ai", "context7.com" ],
     perplexity: [ "perplexity.ai", "pplx.ai", "you.com", "genspark.ai", "consensus.app", "elicit.com", "scite.ai" ],
     copilot: [ "githubcopilot.com", "copilot-proxy.githubusercontent.com", "copilot.microsoft.com", "sydney.bing.com" ],
-    deepseek: [ "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.ai", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai" ],
+    deepseek: [ "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.com", "kimi.ai", "moonshot.ai", "moonshot.cn", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai" ],
     midjourney: [ "midjourney.com", "civitai.com", "bfl.ai", "leonardo.ai", "ideogram.ai", "krea.ai", "recraft.ai", "magnific.ai", "stability.ai", "comfy.org", "openart.ai", "tripo3d.ai", "meshy.ai" ],
     elevenlabs: [ "elevenlabs.io", "suno.com", "udio.com", "runwayml.com", "klingai.com", "lumalabs.ai", "pika.art", "hailuoai.video", "heygen.com", "synthesia.io", "vidu.com", "pixverse.ai" ],
     huggingface: [ "huggingface.co", "hf.co", "ollama.com", "lmstudio.ai", "openwebui.com", "character.ai", "janitorai.com", "chub.ai", "novelai.net", "wandb.ai", "kaggle.com", "langchain.com" ],
@@ -481,7 +481,7 @@ const KNOWN_COMMUNITY_DOMAINS = {
         "cursor.com", "cursor.sh", "cursorapi.com", "opencode.ai", "models.dev", "windsurf.com", "codeium.com", "grazie.ai", "jetbrains.ai", "trae.ai", "cline.bot", "roocode.com", "kilocode.ai", "lovable.dev", "bolt.new", "v0.dev", "devin.ai", "replit.com", "coderabbit.ai", "context7.com",
         "perplexity.ai", "pplx.ai", "you.com", "genspark.ai", "consensus.app", "elicit.com", "scite.ai",
         "githubcopilot.com", "copilot-proxy.githubusercontent.com", "copilot.microsoft.com", "sydney.bing.com",
-        "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.ai", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai",
+        "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.com", "kimi.ai", "moonshot.ai", "moonshot.cn", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai",
         "midjourney.com", "civitai.com", "bfl.ai", "leonardo.ai", "ideogram.ai", "krea.ai", "recraft.ai", "magnific.ai", "stability.ai", "comfy.org", "openart.ai", "tripo3d.ai", "meshy.ai",
         "elevenlabs.io", "suno.com", "udio.com", "runwayml.com", "klingai.com", "lumalabs.ai", "pika.art", "hailuoai.video", "heygen.com", "synthesia.io", "vidu.com", "pixverse.ai",
         "huggingface.co", "hf.co", "ollama.com", "lmstudio.ai", "openwebui.com", "character.ai", "janitorai.com", "chub.ai", "novelai.net", "wandb.ai", "kaggle.com", "langchain.com"

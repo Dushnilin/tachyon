@@ -671,8 +671,9 @@ const COMMUNITY_LIST_DOMAINS = {
         "dashscope.aliyuncs.com", "modelscope.cn"
     ],
     kimi: [
-        "kimi.com", "kimi.ai", "kimi.moonshot.cn", "moonshot.cn",
-        "byteoversea.com", "volcengine.com", "volces.com", "bytedance.com"
+        "kimi.com", "kimi.ai", "kimi.moonshot.cn", "moonshot.cn", "moonshot.ai",
+        "byteoversea.com", "volcengine.com", "volces.com", "bytedance.com",
+        "bytecdn.com", "byted.org", "byteimg.com"
     ],
     ai_all: [
         "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com",
@@ -682,7 +683,9 @@ const COMMUNITY_LIST_DOMAINS = {
         "generativelanguage.googleapis.com", "alkalimakersuite-pa.clients6.google.com",
         "x.ai", "grok.com", "openrouter.ai", "poe.com", "groq.com", "mistral.ai",
         "cursor.com", "cursor.sh", "perplexity.ai", "pplx.ai", "githubcopilot.com",
-        "deepseek.com", "qwen.ai", "kimi.com", "kimi.ai", "byteoversea.com", "volcengine.com",
+        "deepseek.com", "qwen.ai", "kimi.com", "kimi.ai", "moonshot.ai", "moonshot.cn",
+        "byteoversea.com", "volcengine.com", "volces.com", "bytedance.com",
+        "bytecdn.com", "byted.org", "byteimg.com",
         "huggingface.co", "hf.co"
     ],
     steam: [ "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com" ],

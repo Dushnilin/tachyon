@@ -180,7 +180,7 @@ function config(settings, runtime) {
         auto_detect_interface: output_network_interface == "" && !mwan3_active && !badwan_monitoring && !wan_failover_enabled,
         default_domain_resolver: type(runtime) == "object" && as_string(runtime.default_domain_resolver) != ""
             ? as_string(runtime.default_domain_resolver)
-            : runtime_constants.DNS_SERVER_TAG,
+            : runtime_constants.BOOTSTRAP_DNS_SERVER_TAG,
         default_mark: is_tun_mode ? runtime_constants.TUN_AUTO_ROUTE_MARK : runtime_constants.OUTBOUND_MARK
     };
 
@@ -280,7 +280,7 @@ function resolve_rule_for_section(section, route_rule) {
     resolve_rule.action = "resolve";
     resolve_rule.server = connections.routed_dns_enabled(section)
         ? runtime_constants.tag(section[".name"], "routed-dns-server")
-        : runtime_constants.DNS_SERVER_TAG;
+        : runtime_constants.DNS_RESILIENT_SERVER_TAG;
 
     return { rule: resolve_rule };
 }

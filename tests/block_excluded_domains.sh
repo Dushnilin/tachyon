@@ -209,7 +209,7 @@ for (let i = 0; i < length(dns_rules); i++) {
     let r = dns_rules[i];
     if (r.server == "custom_dns-dns-server" && custom_dns_idx < 0)
         custom_dns_idx = i;
-    if (r.server == "dns-server" && type(r.domain_suffix) == "array" && index(r.domain_suffix, "ok.ads.example.com") >= 0 && bypass_dns_idx < 0)
+    if (r.server == "dns-resilient" && type(r.domain_suffix) == "array" && index(r.domain_suffix, "ok.ads.example.com") >= 0 && bypass_dns_idx < 0)
         bypass_dns_idx = i;
     if (r.action == "predefined" && type(r.domain_suffix) == "array" && index(r.domain_suffix, "ads.example.com") >= 0 && block_dns_idx < 0)
         block_dns_idx = i;

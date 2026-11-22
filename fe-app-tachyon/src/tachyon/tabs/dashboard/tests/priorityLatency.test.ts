@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   collectUnmeasuredTags,
+  computeMultiUrlSummaryLatency,
   measurePriorityLatencies,
   parseDelay,
   parseFailureReason,
@@ -235,5 +236,96 @@ describe('priority modal latency', () => {
     });
 
     expect(failures).toEqual([]);
+  });
+
+  describe('computeMultiUrlSummaryLatency (#473)', () => {
+    const url1 = 'https://one.example/204';
+    const url2 = 'https://two.example/204';
+
+    it('uses min latency for best_case even when secondary URL fails', () => {
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30, [url2]: 120 },
+          [url1, url2],
+          'best_case',
+        ),
+      ).toBe(30);
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30, [url2]: -1 },
+          [url1, url2],
+          'best_case',
+        ),
+      ).toBe(30);
+    });
+
+    it('uses rounded average of positive results for average strategy', () => {
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30, [url2]: 120 },
+          [url1, url2],
+          'average',
+        ),
+      ).toBe(75);
+    });
+
+    it('prefers URL #1 for best_case_target and falls back to fastest if URL #1 fails', () => {
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 120, [url2]: 30 },
+          [url1, url2],
+          'best_case_target',
+        ),
+      ).toBe(120);
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: -1, [url2]: 30 },
+          [url1, url2],
+          'best_case_target',
+        ),
+      ).toBe(30);
+    });
+
+    it('fails worst_case on any failed URL while preserving partial progress during incremental updates', () => {
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30, [url2]: 120 },
+          [url1, url2],
+          'worst_case',
+        ),
+      ).toBe(120);
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30, [url2]: -1 },
+          [url1, url2],
+          'worst_case',
+        ),
+      ).toBe(-1);
+      // Incremental partial result before URL #2 finishes probing
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: 30 },
+          [url1, url2],
+          'worst_case',
+        ),
+      ).toBe(30);
+    });
+
+    it('returns -1 when all URLs fail without keeping stale positive fallbackLatency', () => {
+      expect(
+        computeMultiUrlSummaryLatency(
+          { [url1]: -1, [url2]: -1 },
+          [url1, url2],
+          'best_case',
+          45,
+        ),
+      ).toBe(-1);
+    });
+
+    it('returns fallbackLatency when no target URLs have been measured yet', () => {
+      expect(
+        computeMultiUrlSummaryLatency({}, [url1, url2], 'worst_case', 45),
+      ).toBe(45);
+    });
   });
 });

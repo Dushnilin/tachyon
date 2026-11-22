@@ -1291,7 +1291,7 @@ function dns_server(config, predicate) {
 
 let disabled = cfg("disabled");
 assert(first_remote_ruleset(disabled).update_interval == "876000h", "disabled list update interval");
-assert(route_rule(disabled, r => r.action == "resolve" && r.server == "dns-server") != null, "resolve rule generated");
+assert(route_rule(disabled, r => r.action == "resolve" && r.server == "dns-resilient") != null, "resolve rule generated");
 
 let defaults = cfg("default");
 assert(first_remote_ruleset(defaults).update_interval == "1d", "default list update interval");
@@ -1320,7 +1320,7 @@ assert(mixed && mixed.listen_port == 19090 && mixed.users[0].username == "user",
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.action == "hijack-dns") == null, "mixed inbound must not hijack DNS");
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.ip_is_private == true && r.outbound == "direct-out") != null, "mixed inbound private IP bypass");
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.outbound == "proxy-out") != null, "mixed inbound route");
-assert(dns_rule(matchers, r => contains(r.domain_suffix, "example.org")).server == "dns-server", "bypass domain real DNS rule");
+assert(dns_rule(matchers, r => contains(r.domain_suffix, "example.org")).server == "dns-resilient", "bypass domain real DNS rule");
 assert(dns_rule(matchers, r => contains(r.domain_suffix, "proxy.example.org")).server == "fakeip-server", "proxy domain FakeIP DNS rule");
 assert(dns_rule(matchers, r => contains(r.domain_suffix, "xn--80aswg.xn--p1ai")).server == "fakeip-server", "IDN suffix converted for DNS rule");
 assert(dns_rule(matchers, r => contains(r.domain, "xn--e1afmkfd.xn--80akhbyknj4f")).server == "fakeip-server", "IDN full domain converted for DNS rule");

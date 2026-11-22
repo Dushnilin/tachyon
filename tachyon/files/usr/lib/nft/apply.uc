@@ -4978,6 +4978,148 @@ function nft_build_table_rules_from_uci(table, localv4_set, common_set, port_set
         nft_create_runtime_output_rules(table, localv4_set, common_set, port_set, ip_port_set, fakeip_mark, fakeip_range, localv6_set, common6_set, ip_port6_set, fakeip6_range);
 }
 
+function fw4_flow_offload_include_root() {
+    let env_root = trim(as_string(getenv("TACHYON_FW4_INCLUDE_ROOT") || ""));
+    return env_root != "" ? env_root : "/usr/share/nftables.d";
+}
+
+function fw4_flow_offload_include_path() {
+    return fw4_flow_offload_include_root() + "/chain-pre/forward/10-tachyon-offload.nft";
+}
+
+function sanitize_offload_ifname(raw, fallback) {
+    let name = trim(as_string(raw || ""));
+    return match(name, /^[A-Za-z0-9_.@-]{1,15}$/) != null ? name : fallback;
+}
+
+function format_nft_hex_mark(raw, fallback_hex) {
+    let s = trim(as_string(raw || ""));
+    if (match(s, /^0x[0-9a-fA-F]+$/) != null)
+        return lc(s);
+    if (match(s, /^[0-9]+$/) != null)
+        return sprintf("0x%08x", int(s));
+    return fallback_hex;
+}
+
+function build_fw4_flow_offload_guard_rules(settings) {
+    settings = object_or_empty(settings);
+    let eff_v6 = common.resolve_effective_ipv6_state(settings);
+    let proxy_mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    let fmark = format_nft_hex_mark(getenv("NFT_FAKEIP_MARK") || runtime_constants.FAKEIP_MARK, "0x04000000");
+    let omark = format_nft_hex_mark(runtime_constants.OUTBOUND_MARK, "0x08000000");
+    let fakeip4 = trim(as_string(option(settings, "fakeip_inet4_range", ""))) || as_string(runtime_constants.FAKEIP_INET4_RANGE || "198.18.0.0/15");
+    if (!valid_ipv4_cidr(fakeip4))
+        fakeip4 = "198.18.0.0/15";
+    let fakeip6 = trim(as_string(option(settings, "fakeip_inet6_range", ""))) || as_string(runtime_constants.FAKEIP_INET6_RANGE || "fc00::/18");
+    let comment = "\"Tachyon: skip flow offload\"";
+
+    let marks = [];
+    for (let m in [ fmark, omark, "0x10000000", "0x40000000" ]) {
+        if (m != "" && index(marks, m) < 0)
+            push(marks, m);
+    }
+    if (proxy_mode == "tun") {
+        let tun_mark = format_nft_hex_mark(runtime_constants.TUN_AUTO_ROUTE_MARK, "0x00002022");
+        if (index(marks, tun_mark) < 0)
+            push(marks, tun_mark);
+    }
+
+    let rules = [];
+    for (let m in marks)
+        push(rules, "meta mark & " + m + " != 0 ct state established,related accept comment " + comment);
+
+    if (bool_option(settings, "fakeip", true)) {
+        push(rules, "ip daddr " + fakeip4 + " ct state established,related accept comment " + comment);
+        push(rules, "ip saddr " + fakeip4 + " ct state established,related accept comment " + comment);
+        if (eff_v6.ipv6_active && match(fakeip6, /^[0-9a-fA-F:]+\/[0-9]{1,3}$/) != null) {
+            push(rules, "ip6 daddr " + fakeip6 + " ct state established,related accept comment " + comment);
+            push(rules, "ip6 saddr " + fakeip6 + " ct state established,related accept comment " + comment);
+        }
+    }
+
+    push(rules, "meta l4proto { tcp, udp } th dport 53 ct state established,related accept comment " + comment);
+    push(rules, "meta l4proto { tcp, udp } th sport 53 ct state established,related accept comment " + comment);
+
+    if (proxy_mode == "tun") {
+        let tun_if = sanitize_offload_ifname(option(settings, "tun_interface", ""), as_string(runtime_constants.TUN_INTERFACE || "tun0"));
+        push(rules, "iifname \"" + tun_if + "\" ct state established,related accept comment " + comment);
+        push(rules, "oifname \"" + tun_if + "\" ct state established,related accept comment " + comment);
+    }
+
+    return rules;
+}
+
+function collect_live_fw4_flow_offload_handles_from_listing(listing) {
+    let handles = [];
+    for (let line in split(as_string(listing || ""), "\n")) {
+        if (index(line, "Tachyon: skip flow offload") < 0)
+            continue;
+        let m = match(line, /# handle ([0-9]+)/);
+        if (m)
+            push(handles, m[1]);
+    }
+    return handles;
+}
+
+function apply_fw4_offload_batch_commands(commands) {
+    if (length(commands) == 0)
+        return true;
+    let stamp = clock();
+    let tmp_path = sprintf("/tmp/tachyon_fw4_offload.%d.%d.nft", stamp[0], stamp[1]);
+    if (!write_text_file(tmp_path, join("\n", commands) + "\n")) {
+        unlink_file(tmp_path);
+        return false;
+    }
+    let ok = common.command_status_from_args([ "nft", "-f", tmp_path ]) == 0;
+    unlink_file(tmp_path);
+    return ok;
+}
+
+function sync_fw4_flow_offload_guard_for_settings(settings) {
+    let rules = build_fw4_flow_offload_guard_rules(settings);
+    let content = "# Managed by Tachyon - do not edit manually\n" + join("\n", rules) + "\n";
+    let include_root = fw4_flow_offload_include_root();
+    let include_path = fw4_flow_offload_include_path();
+    if (getenv("TACHYON_FW4_INCLUDE_ROOT") != null || fs.stat(include_root) != null) {
+        common.command_status_from_args([ "mkdir", "-p", common.parent_dir(include_path) ]);
+        common.write_file(include_path, content);
+    }
+    let listing = command_output_quiet_from_args([ "nft", "-a", "list", "chain", "inet", "fw4", "forward" ]);
+    if (index(listing, "chain forward") >= 0) {
+        let commands = [];
+        for (let h in collect_live_fw4_flow_offload_handles_from_listing(listing))
+            push(commands, "delete rule inet fw4 forward handle " + h);
+        for (let i = length(rules) - 1; i >= 0; i--)
+            push(commands, "insert rule inet fw4 forward " + rules[i]);
+        apply_fw4_offload_batch_commands(commands);
+    }
+    return true;
+}
+
+function sync_fw4_flow_offload_guard() {
+    return sync_fw4_flow_offload_guard_for_settings(uci_settings());
+}
+
+function remove_fw4_flow_offload_guard() {
+    unlink_file(fw4_flow_offload_include_path());
+    let listing = command_output_quiet_from_args([ "nft", "-a", "list", "chain", "inet", "fw4", "forward" ]);
+    if (index(listing, "chain forward") >= 0) {
+        let commands = [];
+        for (let h in collect_live_fw4_flow_offload_handles_from_listing(listing))
+            push(commands, "delete rule inet fw4 forward handle " + h);
+        apply_fw4_offload_batch_commands(commands);
+    }
+    return true;
+}
+
+function render_fw4_flow_offload_guard_fixture(path) {
+    let data = object_or_empty(common_read_json_file(path));
+    let settings = object_or_empty(data.settings);
+    let rules = build_fw4_flow_offload_guard_rules(settings);
+    print(join("\n", rules), "\n");
+    return true;
+}
+
 function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Building nftables runtime model");
 
@@ -4996,14 +5138,19 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
         let captured = memory_batch_lines;
         memory_batch_lines = null;
         memory_batch_mode = "";
-        if (built && apply_memory_batch_lines(captured, false))
+        if (built && apply_memory_batch_lines(captured, false)) {
+            sync_fw4_flow_offload_guard();
             return true;
+        }
         if (nft_table_present(table))
             nft_delete_table(table);
         NON_INTERVAL_PORT_SETS = {};
     }
 
-    return nft_build_table_rules_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    let ok = nft_build_table_rules_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    if (ok)
+        sync_fw4_flow_offload_guard();
+    return ok;
 }
 
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
@@ -5973,6 +6120,12 @@ else if (mode == "sync-server-firewall-uci-rules") {
 else if (mode == "nft-sync-dnat-sets") {
     exit(nft_sync_dnat_sets(ARGV[1] || getenv("NFT_TABLE_NAME") || "TachyonTable") ? 0 : 1);
 }
+else if (mode == "sync-fw4-flow-offload-guard")
+    exit(sync_fw4_flow_offload_guard() ? 0 : 1);
+else if (mode == "remove-fw4-flow-offload-guard")
+    exit(remove_fw4_flow_offload_guard() ? 0 : 1);
+else if (mode == "render-fw4-flow-offload-guard-fixture")
+    exit(render_fw4_flow_offload_guard_fixture(ARGV[1]) ? 0 : 1);
 else {
     warn("Usage: nft/apply.uc <operation> ...\n");
     exit(1);

@@ -3780,6 +3780,101 @@ function renderConfigErrorBanner(section: Tachyon.OutboundGroup) {
   );
 }
 
+function formatGlobalConfigErrorLabel(key: string): string {
+  switch (key) {
+    case '_dns':
+      return _('DNS');
+    case '_settings':
+      return _('System Settings');
+    case '_rules':
+      return _('Rules & Lists');
+    case '_servers':
+      return _('Inbound Servers');
+    case '_core_runtime':
+      return _('Core Safe Mode');
+    default:
+      return key;
+  }
+}
+
+export function renderGlobalConfigErrorsBanner(
+  sections: Tachyon.OutboundGroup[],
+  errorsOverride?: Record<string, string>,
+): HTMLElement | null {
+  const host = (typeof window !== 'undefined'
+    ? window
+    : globalThis) as unknown as {
+    __tachyonSectionErrors?: Record<string, string>;
+  };
+  const errMap = errorsOverride ?? host.__tachyonSectionErrors ?? {};
+  const knownSectionIds = new Set<string>();
+  for (const s of sections || []) {
+    if (s.sectionName) {
+      knownSectionIds.add(s.sectionName);
+    }
+    if (s.code) {
+      knownSectionIds.add(s.code);
+    }
+  }
+
+  const entries = Object.entries(errMap).filter(
+    ([key, msg]) =>
+      Boolean(key) &&
+      !knownSectionIds.has(key) &&
+      typeof msg === 'string' &&
+      msg.trim().length > 0,
+  );
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return E(
+    'div',
+    {
+      class:
+        'tachyon_dashboard-page__outbound-section__error-banner tachyon_dashboard-page__global-config-errors',
+      style: 'grid-column: 1 / -1; margin-bottom: 12px;',
+      role: 'alert',
+    },
+    [
+      E(
+        'div',
+        {
+          class:
+            'tachyon_dashboard-page__outbound-section__error-banner__title',
+          style: 'display: flex; align-items: center; gap: 6px;',
+        },
+        [
+          renderAlertTriangleIcon(14),
+          E(
+            'span',
+            {},
+            _('Configuration issues detected (problematic settings isolated):'),
+          ),
+        ],
+      ),
+      E(
+        'div',
+        {
+          class: 'tachyon_dashboard-page__outbound-section__error-banner__text',
+          style:
+            'display: flex; flex-direction: column; gap: 4px; margin-top: 6px;',
+        },
+        entries.map(([key, msg]) =>
+          E(
+            'div',
+            { class: 'tachyon_dashboard-page__global-config-error-item' },
+            [
+              E('strong', {}, `${formatGlobalConfigErrorLabel(key)}: `),
+              E('span', {}, msg),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 export function renderSections(props: IRenderSectionsProps) {
   if (props.failed) {
     return renderFailedState();

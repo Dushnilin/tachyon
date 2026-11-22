@@ -16,8 +16,8 @@ assert_file() {
 default_ua="tachyon-core/0.4.5"
 default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
   "$default_ua" \
-  Happ \
   Happ/4.6.2 \
+  Happ \
   v2rayN \
   v2rayNG \
   Mihomo \
@@ -25,8 +25,8 @@ default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
 preferred_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
   Mihomo \
   "$default_ua" \
-  Happ \
   Happ/4.6.2 \
+  Happ \
   v2rayN \
   v2rayNG \
   Clash.Meta)"

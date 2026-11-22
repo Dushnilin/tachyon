@@ -344,7 +344,7 @@ for (let r in cfg.dns.rules || []) {
         assert(r.rewrite_ttl == null,
             "dnsmasq-server rule must not force rewrite_ttl=15 when dns_rewrite_ttl is not set, got: " + sprintf("%J", r));
     }
-    if (r.server == "dns-server" && r.action == "route") {
+    if (r.server == "dns-resilient" && r.action == "route") {
         assert(r.rewrite_ttl == null,
             "bypass section dns-server rule must not force rewrite_ttl=15 when dns_rewrite_ttl is not set, got: " + sprintf("%J", r));
     }

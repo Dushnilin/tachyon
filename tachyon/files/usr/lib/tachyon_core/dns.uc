@@ -524,8 +524,94 @@ function add_health_candidate(result, kind, index_value, server, override_dns_ty
     push(result.sniff_inbounds, inbound_tag);
 }
 
+function append_resilient_dns_group(result, settings, bootstrap) {
+    let ipv6_ok = common.resolve_effective_ipv6_state(settings, null).ipv6_active;
+    let group_members = [ runtime_constants.DNS_SERVER_TAG ];
+    let seen_endpoints = {};
+    if (type(bootstrap) == "object" && as_string(bootstrap.type) == "udp" && as_string(bootstrap.server) != "") {
+        seen_endpoints[as_string(bootstrap.server) + ":" + as_string(bootstrap.server_port || 53)] = true;
+    }
+
+    let fb_idx = 0;
+    for (let raw_fb in list_option(settings, "dns_fallback_server")) {
+        let fb = trim(as_string(raw_fb));
+        if (fb == "")
+            continue;
+        let host = runtime_url.host(fb);
+        if (host == "")
+            host = fb;
+        if (!ipv6_ok && index(host, ":") >= 0)
+            continue;
+        let port = runtime_url.port(fb);
+        let ep_key = host + ":" + (port != "" ? port : "53");
+        if (seen_endpoints[ep_key])
+            continue;
+        seen_endpoints[ep_key] = true;
+        fb_idx++;
+        let fb_tag = "dns-fallback-" + as_string(fb_idx);
+        let entry = server_from_options(fb_tag, "udp", fb, "", null);
+        if (!entry.unsupported) {
+            push(result.servers, entry);
+            push(group_members, fb_tag);
+        }
+    }
+
+    if (bool_option(settings, "fallback_wan_main", false)) {
+        let wan_idx = 0;
+        for (let wan_ip in get_wan_dns_servers()) {
+            if (!ipv6_ok && index(wan_ip, ":") >= 0)
+                continue;
+            let ep_key = wan_ip + ":53";
+            if (seen_endpoints[ep_key])
+                continue;
+            seen_endpoints[ep_key] = true;
+            wan_idx++;
+            let wan_tag = "dns-wan-fallback-" + as_string(wan_idx);
+            let entry = server_from_options(wan_tag, "udp", wan_ip, "", null);
+            if (!entry.unsupported) {
+                push(result.servers, entry);
+                push(group_members, wan_tag);
+            }
+        }
+    }
+
+    if (index(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG) < 0)
+        push(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG);
+
+    push(result.servers, {
+        type: "group",
+        tag: runtime_constants.DNS_RESILIENT_SERVER_TAG,
+        mode: "stable",
+        error_ttl: "30s",
+        timeout: "4s",
+        servers: group_members
+    });
+}
+
 function config(settings, override_state) {
     let state = runtime_state(settings, override_state);
+    if (getenv("TACHYON_SAFE_DNS_FALLBACK") == "1") {
+        let safe_bootstrap = bootstrap_server(runtime_constants.BOOTSTRAP_DNS_SERVER_TAG, "77.88.8.8");
+        let safe_main = server_from_options(runtime_constants.DNS_SERVER_TAG, "udp", "1.1.1.1", "", null);
+        let safe_group = {
+            type: "group",
+            tag: runtime_constants.DNS_RESILIENT_SERVER_TAG,
+            mode: "stable",
+            error_ttl: "30s",
+            timeout: "4s",
+            servers: [ runtime_constants.DNS_SERVER_TAG, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG ]
+        };
+        return {
+            settings,
+            state,
+            servers: [ safe_bootstrap, safe_main, safe_group ],
+            inbounds: [],
+            rules: [],
+            sniff_inbounds: []
+        };
+    }
+
+    let bootstrap = bootstrap_config(settings, state);
     let main = server_config(settings, state);
     if (main.unsupported)
         return { unsupported: main.unsupported };
@@ -533,7 +619,7 @@ function config(settings, override_state) {
     let result = {
         settings,
         state,
-        servers: [ bootstrap_config(settings, state), main ],
+        servers: [ bootstrap, main ],
         inbounds: [],
         rules: [],
         sniff_inbounds: []
@@ -566,13 +652,13 @@ function config(settings, override_state) {
                 add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i], null, null, settings);
     }
 
+    append_resilient_dns_group(result, settings, bootstrap);
+
     return result;
 }
 
 function default_domain_resolver(settings) {
-    return bool_option(settings, "dns_detour_enabled", false)
-        ? runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
-        : runtime_constants.DNS_SERVER_TAG;
+    return runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
 }
 
 return {

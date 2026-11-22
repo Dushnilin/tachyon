@@ -1118,6 +1118,7 @@ function start_main() {
     status = nft_rebuild_runtime();
     if (status != 0)
         return status;
+    module_success(NFT_UC, [ "sync-fw4-flow-offload-guard" ]);
 
     if (module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
         module_background(HOSTS_UC, [ "list-update" ]);
@@ -1336,6 +1337,7 @@ function stop_main() {
         if (!command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]))
             log_message("Failed to delete nft table " + NFT_TABLE_NAME, "warn");
     }
+    module_success(NFT_UC, [ "remove-fw4-flow-offload-guard" ]);
 
     if (module_success(NFT_UC, [ "tproxy-marking-rule4-present", RT_TABLE_NAME, NFT_FAKEIP_MARK ]))
         command_success_from_args([ "ip", "-4", "rule", "del", "fwmark", NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK, "table", RT_TABLE_NAME, "priority", "105" ]);

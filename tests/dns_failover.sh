@@ -86,14 +86,16 @@ function find_tag(values, tag) { for (let value in values || []) if (value.tag =
 function count_prefix(values, prefix) { let count = 0; for (let value in values || []) if (index(value.tag || "", prefix) == 0) count++; return count; }
 
 let single = cfg(ARGV[0]);
-assert(length(single.dns.servers) == 3, "singleton keeps the legacy three-server shape");
+assert(length(single.dns.servers) == 4, "singleton keeps bootstrap, main, resilient group, and fakeip");
 assert(length(single.inbounds) == 2, "singleton without IPv6 adds no health inbounds");
 assert(count_prefix(single.dns.servers, "dns-health-") == 0, "singleton adds no health servers");
 assert(find_tag(single.dns.servers, "dns-server").server == "77.88.8.8", "singleton main DNS preserved");
-assert(single.route.default_domain_resolver == "dns-server", "singleton keeps main default resolver");
+assert(find_tag(single.dns.servers, "dns-resilient").type == "group", "singleton resilient DNS group generated");
+assert(single.route.default_domain_resolver == "bootstrap-dns-server", "singleton uses bootstrap resolver to avoid DoH deadlocks");
 
 let multi = cfg(ARGV[1]);
-assert(length(multi.dns.servers) == 7, "two main and two bootstrap candidates are generated");
+assert(length(multi.dns.servers) == 8, "two main, two bootstrap, health candidates, resilient group, and fakeip are generated");
+assert(find_tag(multi.dns.servers, "dns-resilient").type == "group", "multi config has resilient DNS group");
 assert(length(multi.inbounds) == 7, "candidate and active health inbounds are generated");
 assert(count_prefix(multi.dns.servers, "dns-health-main-") == 2, "main health servers generated");
 assert(count_prefix(multi.dns.servers, "dns-health-bootstrap-") == 2, "bootstrap health servers generated");

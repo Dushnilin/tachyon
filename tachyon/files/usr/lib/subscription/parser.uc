@@ -11,6 +11,19 @@ let write_json = common.write_json;
 let read_json_file = common.read_json_file;
 let write_json_file = common.write_json_file;
 let shell_quote = common.shell_quote;
+let last_dropped_stub_count = 0;
+
+function reset_dropped_stub_count() {
+    last_dropped_stub_count = 0;
+}
+
+function record_dropped_stub() {
+    last_dropped_stub_count++;
+}
+
+function get_last_dropped_stub_count() {
+    return last_dropped_stub_count;
+}
 
 function first_non_ws_char(value) {
     let m = match(as_string(value), /^[ \t\r\n]*([^ \t\r\n])/);
@@ -98,9 +111,12 @@ function tls_alpn_for_transport(alpn, transport) {
 function is_dummy_server(server, port) {
     server = trim(lc(as_string(server)));
     if (server == "" || server == "0.0.0.0" || server == "::" ||
-        substr(server, 0, 8) == "0.0.0.0:" ||
-        server == "invalid" || (length(server) >= 8 && substr(server, -8) == ".invalid"))
+        substr(server, 0, 8) == "0.0.0.0:")
         return true;
+    if (server == "invalid" || (length(server) >= 8 && substr(server, -8) == ".invalid")) {
+        record_dropped_stub();
+        return true;
+    }
     if (port != null && int(port) == 0)
         return true;
     return false;
@@ -373,7 +389,6 @@ function xhttp_normalize_xmux(value) {
     xhttp_optional_xmux_range(result, "max_concurrency", xhttp_object_setting_value(source, "maxConcurrency", "max_concurrency"));
     xhttp_optional_xmux_range(result, "max_connections", xhttp_object_setting_value(source, "maxConnections", "max_connections"));
     xhttp_optional_xmux_range(result, "c_max_reuse_times", xhttp_object_setting_value(source, "cMaxReuseTimes", "c_max_reuse_times"));
-    xhttp_optional_xmux_range(result, "c_max_lifetime_ms", xhttp_object_setting_value(source, "cMaxLifetimeMs", "c_max_lifetime_ms"));
     xhttp_optional_xmux_range(result, "h_max_request_times", xhttp_object_setting_value(source, "hMaxRequestTimes", "h_max_request_times"));
     let max_reusable = xhttp_object_setting_value(source, "hMaxReusableSecs", "h_max_reusable_secs");
     if (max_reusable == null)
@@ -385,6 +400,8 @@ function xhttp_normalize_xmux(value) {
         delete result.max_connections;
     if (result.max_connections != null && (result.max_concurrency == "0" || result.max_concurrency == "0-0"))
         delete result.max_concurrency;
+    if (result.max_concurrency != null && result.max_connections != null)
+        delete result.max_connections;
 
     return length(keys(result)) > 0 ? result : null;
 }
@@ -443,6 +460,22 @@ function xhttp_optional_enum(object, key, value, allowed) {
     }
 }
 
+function xhttp_sanitize_compat_fields(transport) {
+    if (type(transport) != "object")
+        return;
+
+    let mode = lc(trim(as_string(transport.mode || "auto")));
+    let uplink = lc(trim(as_string(transport.uplink_data_placement || "")));
+    if ((uplink == "header" || uplink == "cookie") && mode != "packet-up")
+        delete transport.uplink_data_placement;
+
+    if (transport.session_table != null) {
+        let slen = xhttp_range_value(transport.session_length, true);
+        if (slen == null)
+            delete transport.session_table;
+    }
+}
+
 function xhttp_apply_v2_settings(result, primary, extra) {
     // XHTTP v2 keys (session/seq placement, uplink-data placement, X-Padding
     // obfuscation). Every field is opt-in per the tachyon-core contract; the
@@ -469,6 +502,7 @@ function xhttp_apply_v2_settings(result, primary, extra) {
     let headers = xhttp_normalize_headers(xhttp_setting_value(primary, extra, "headers", "headers"));
     if (headers)
         result.headers = headers;
+    xhttp_sanitize_compat_fields(result);
 }
 
 function json_decode_text(text) {
@@ -530,6 +564,9 @@ function outbound_is_unsupported_stub(outbound) {
         server == "::1" ||
         server == "0.0.0.1"
     );
+
+    if (server == "invalid" || (length(server) >= 8 && substr(server, -8) == ".invalid"))
+        return true;
 
     if (is_dummy_server && (
         index(tag, "⚠️") >= 0 ||
@@ -4197,6 +4234,7 @@ function parse_clash_record(record) {
 }
 
 function normalize_clash_yaml(input_file, output_file) {
+    reset_dropped_stub_count();
     let outbounds = [];
     let skipped = 0;
 
@@ -4204,6 +4242,7 @@ function normalize_clash_yaml(input_file, output_file) {
         let outbound = parse_clash_record(record);
         if (outbound) {
             if (outbound_is_unsupported_stub(outbound)) {
+                record_dropped_stub();
                 skipped++;
                 continue;
             }
@@ -4227,6 +4266,7 @@ function normalize_clash_yaml(input_file, output_file) {
 }
 
 function normalize_uri_list_data(data, output_file) {
+    reset_dropped_stub_count();
     data = as_string(data);
     if (index(data, "\r") >= 0)
         data = replace(data, /\r/g, "");
@@ -4253,6 +4293,7 @@ function normalize_uri_list_data(data, output_file) {
                             let outbound = parse_share_link(dec_line);
                             if (outbound) {
                                 if (outbound_is_unsupported_stub(outbound)) {
+                                    record_dropped_stub();
                                     skipped++;
                                     continue;
                                 }
@@ -4271,6 +4312,7 @@ function normalize_uri_list_data(data, output_file) {
             let outbound = parse_share_link(line);
             if (outbound) {
                 if (outbound_is_unsupported_stub(outbound)) {
+                    record_dropped_stub();
                     skipped++;
                     continue;
                 }
@@ -4679,6 +4721,7 @@ function is_metadata_preamble_line(line) {
 }
 
 function normalize_uri_list_stream(input, output_file, strip_metadata) {
+    reset_dropped_stub_count();
     let output = fs.open(output_file, "w");
     if (!output)
         return false;
@@ -4706,6 +4749,7 @@ function normalize_uri_list_stream(input, output_file, strip_metadata) {
                             let outbound = parse_share_link(dec_line);
                             if (outbound) {
                                 if (outbound_is_unsupported_stub(outbound)) {
+                                    record_dropped_stub();
                                     skipped++;
                                     continue;
                                 }
@@ -4724,6 +4768,7 @@ function normalize_uri_list_stream(input, output_file, strip_metadata) {
             let outbound = parse_share_link(line);
             if (outbound) {
                 if (outbound_is_unsupported_stub(outbound)) {
+                    record_dropped_stub();
                     skipped++;
                     continue;
                 }
@@ -5882,6 +5927,15 @@ function normalize_core_xhttp_transport(outbound) {
     if (sc_stream_up_server_secs != null)
         outbound.transport.sc_stream_up_server_secs = sc_stream_up_server_secs;
 
+    if (outbound.transport.xmux != null) {
+        let norm_xmux = xhttp_normalize_xmux(outbound.transport.xmux);
+        if (norm_xmux != null)
+            outbound.transport.xmux = norm_xmux;
+        else
+            delete outbound.transport.xmux;
+    }
+    xhttp_sanitize_compat_fields(outbound.transport);
+
     return outbound;
 }
 
@@ -6050,6 +6104,44 @@ let last_normalize_error_reason = "";
 
 function get_last_normalize_error() {
     return last_normalize_error_reason;
+}
+
+function text_contains_invalid_stub_host(text) {
+    text = lc(as_string(text));
+    if (index(text, ".invalid") < 0 && index(text, "\"invalid\"") < 0 && index(text, "@invalid") < 0)
+        return false;
+    if (match(text, /@([a-z0-9._-]+\.)?invalid([:\/?# \t\r\n]|$)/) != null)
+        return true;
+    if (match(text, /"(server|address|host)"[ \t]*:[ \t]*"([a-z0-9._-]+\.)?invalid"/) != null)
+        return true;
+    return false;
+}
+
+function body_has_invalid_stub_host(raw_data) {
+    let data = as_string(raw_data);
+    if (data == "")
+        return false;
+    if (index(data, "\r") >= 0)
+        data = replace(data, /\r/g, "");
+    data = strip_metadata_preamble_data(data);
+    if (text_contains_invalid_stub_host(data))
+        return true;
+
+    let first = first_non_ws_char(data);
+    if (first != "{" && first != "[" && index(data, "://") < 0) {
+        let compact = replace(data, /[\r\n\t ]/g, "");
+        let decoded = base64_decode(compact);
+        if (decoded != null && decoded != "" && text_contains_invalid_stub_host(decoded))
+            return true;
+    }
+    return false;
+}
+
+function file_has_invalid_stub_host(path) {
+    let data = read_file(path);
+    if (data == null || data == "")
+        return false;
+    return body_has_invalid_stub_host(data);
 }
 
 function extract_peer_params_from_object(obj) {
@@ -6357,6 +6449,7 @@ function normalize_core_wireguard_outbound(outbound) {
 }
 
 function normalize_core_json_outbounds(candidates, fallback_peer) {
+    reset_dropped_stub_count();
     candidates = flatten_json_candidate_items(candidates, fallback_peer);
     let outbounds = [];
     let urltest_refs = {};
@@ -6365,8 +6458,12 @@ function normalize_core_json_outbounds(candidates, fallback_peer) {
 
     for (let outbound in candidates) {
         idx++;
-        if (type(outbound) != "object" || outbound_is_unsupported_stub(outbound))
+        if (type(outbound) != "object")
             continue;
+        if (outbound_is_unsupported_stub(outbound)) {
+            record_dropped_stub();
+            continue;
+        }
         let eff_peer = outbound.__fallback_peer || fallback_peer;
         delete outbound.__fallback_peer;
         let expanded_cfg = expand_json_config_outbound_items(outbound, eff_peer);
@@ -6430,6 +6527,7 @@ function normalize_core_json_outbounds(candidates, fallback_peer) {
         }
         outbound = normalize_core_hysteria2_outbound(outbound);
         outbound = normalize_core_tuic_outbound(outbound);
+        outbound = common.sanitize_outbound_dialer_fragments(outbound);
         push(outbounds, normalize_core_xhttp_transport(outbound));
     }
 
@@ -6838,6 +6936,7 @@ parse_wdtt_via_core_cli = function(raw_line) {
 
 function normalize_content_file(input_file, output_file, headers_file, engine_mode) {
     last_normalize_error_reason = "";
+    reset_dropped_stub_count();
     let eff_engine = lc(trim(as_string(engine_mode || getenv("TACHYON_SUBSCRIPTION_ENGINE") || "")));
     if (eff_engine == "core" && try_normalize_with_core_cli(input_file, output_file, headers_file, false))
         return true;
@@ -6936,6 +7035,9 @@ function module_exports() {
         core_subscription_cli_supported,
         try_normalize_with_core_cli,
         get_last_normalize_error,
+        get_last_dropped_stub_count,
+        body_has_invalid_stub_host,
+        file_has_invalid_stub_host,
         normalized_skipped_message,
         try_decode_gzip_content_file,
         extract_ui_metadata_file,

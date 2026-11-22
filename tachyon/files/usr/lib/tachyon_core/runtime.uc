@@ -1863,6 +1863,104 @@ function check_with_field_repairs(temp_config, runtime_log) {
     return check_result;
 }
 
+function is_global_quarantine_key(name) {
+    return substr(as_string(name || ""), 0, 1) == "_";
+}
+
+function build_safe_minimal_config(settings, listen_addr) {
+    settings = object_or_empty(settings);
+    let proxy_mode = lc(trim(option(settings, "proxy_mode", "tproxy")));
+    let host = trim(as_string(listen_addr || "")) || "127.0.0.1";
+    let clash_controller = index(host, ":") >= 0 ? ("[" + host + "]:9090") : (host + ":9090");
+
+    let primary_inbound = proxy_mode == "tun"
+        ? {
+            type: "tun",
+            tag: "tun-in",
+            interface_name: trim(option(settings, "tun_interface", "tun0")) || "tun0",
+            address: [ "172.19.0.1/30" ],
+            mtu: 1400,
+            auto_route: true,
+            strict_route: true,
+            stack: "system"
+        }
+        : {
+            type: "tproxy",
+            tag: "tproxy-in",
+            listen: "::",
+            listen_port: 1602,
+            tcp_fast_open: true,
+            udp_fragment: true
+        };
+
+    return {
+        log: {
+            level: "warn",
+            timestamp: true
+        },
+        dns: {
+            servers: [
+                {
+                    type: "udp",
+                    tag: "bootstrap-dns-server",
+                    server: "77.88.8.8",
+                    server_port: 53,
+                    detour: "direct-out"
+                },
+                {
+                    type: "udp",
+                    tag: "dns-fallback-1",
+                    server: "1.1.1.1",
+                    server_port: 53,
+                    detour: "direct-out"
+                },
+                {
+                    type: "group",
+                    tag: "dns-resilient",
+                    mode: "stable",
+                    error_ttl: "30s",
+                    timeout: "4s",
+                    servers: [ "dns-fallback-1", "bootstrap-dns-server" ]
+                }
+            ],
+            rules: [],
+            "final": "dns-resilient",
+            strategy: "prefer_ipv4",
+            reverse_mapping: true
+        },
+        endpoints: [],
+        inbounds: [
+            primary_inbound,
+            {
+                type: "direct",
+                tag: "dns-in",
+                listen: "127.0.0.42",
+                listen_port: 53
+            }
+        ],
+        outbounds: [
+            { type: "direct", tag: "direct-out" },
+            { type: "block", tag: "block-out" }
+        ],
+        route: {
+            rules: [
+                { action: "sniff" },
+                { inbound: [ "dns-in" ], action: "hijack-dns" }
+            ],
+            rule_set: [],
+            "final": "direct-out",
+            auto_detect_interface: true,
+            default_mark: 1073741824,
+            default_domain_resolver: "bootstrap-dns-server"
+        },
+        experimental: {
+            clash_api: {
+                external_controller: clash_controller
+            }
+        }
+    };
+}
+
 function init_config(populate_nft, caches_prepared, no_refresh) {
     let settings = uci_settings();
     let core_name = "tachyon-core";
@@ -1918,16 +2016,21 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     let pre_quarantined = common.read_json_file(VALIDATOR_QUARANTINED_FILE);
     if (type(pre_quarantined) == "object") {
         for (let qname in keys(pre_quarantined)) {
-            if (section_exists(qname))
+            if (section_exists(qname) || is_global_quarantine_key(qname))
                 quarantined[qname] = as_string(pre_quarantined[qname]);
         }
     }
+    let safe_dns_fallback = (quarantined["_dns"] != null);
+    let last_failure_reason = "";
     let gen_quarantined_file = temp_config + ".quarantined.json";
     let check_result = { status: 1, reason: "configuration was not generated" };
     for (let attempt = 0; attempt < 16; attempt++) {
         remove_file(gen_quarantined_file);
         let generate_status = command_status(
-            command_env({ TACHYON_GENERATOR_QUARANTINE_OUT: gen_quarantined_file }) + " " +
+            command_env({
+                TACHYON_GENERATOR_QUARANTINE_OUT: gen_quarantined_file,
+                TACHYON_SAFE_DNS_FALLBACK: safe_dns_fallback ? "1" : "0"
+            }) + " " +
             module_command([
                 LIB_DIR + "/tachyon_core/generator.uc",
                 "generate-config",
@@ -1965,10 +2068,9 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 quarantined[section] = expanded_gen_reason;
                 continue;
             }
-            log_message("Failed to generate " + core_name + " configuration: " + reason, "fatal");
+            last_failure_reason = reason;
             log_file_lines(runtime_log, "debug", core_name + " config generator output: ");
-            remove_files([ temp_config, temp_config + ".owners.json", gen_quarantined_file, runtime_log ]);
-            exit(1);
+            break;
         }
         log_file_lines(runtime_log, "warn", core_name + " config generator: ");
 
@@ -1999,16 +2101,34 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             exit(1);
         }
 
-        let section = section_from_check_reason(check_result.reason, temp_config);
-        if (section == "" || quarantined[section] != null) {
-            log_message("Generated tachyon-core configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
-            remove_files([ temp_config, temp_config + ".owners.json", runtime_log ]);
-            exit(1);
+        last_failure_reason = check_result.reason;
+        if (!safe_dns_fallback && match(lc(check_result.reason), /(config: dns|dns\.|dns-server|dns-resilient|bootstrap-dns)/) != null) {
+            safe_dns_fallback = true;
+            let expanded_dns_reason = expand_check_error_reason(check_result.reason);
+            quarantined["_dns"] = expanded_dns_reason;
+            log_message(core_name + " rejected DNS configuration (" + expanded_dns_reason +
+                "). Switching to resilient UDP DNS fallback so core startup continues", "warn");
+            continue;
         }
+
+        let section = section_from_check_reason(check_result.reason, temp_config);
+        if (section == "" || quarantined[section] != null)
+            break;
         let expanded_check_reason = expand_check_error_reason(check_result.reason);
         log_message(core_name + " rejected the configuration at section '" + section + "' (" + expanded_check_reason +
             "). Not loading it; the rest of the configuration starts normally", "warn");
         quarantined[section] = expanded_check_reason;
+    }
+    if (check_result.status != 0) {
+        let minimal_cfg = build_safe_minimal_config(settings, service_listen_address_value(settings));
+        if (write_file(temp_config, sprintf("%J", minimal_cfg))) {
+            check_result = core_check(temp_config, runtime_log);
+            if (check_result.status == 0) {
+                let expanded_min_reason = expand_check_error_reason(last_failure_reason != "" ? last_failure_reason : "configuration check failed");
+                quarantined["_core_runtime"] = expanded_min_reason + " — Запущен безопасный минимальный режим (DNS + direct), чтобы сохранить сеть.";
+                log_message(core_name + " started in safe minimal mode (DNS + direct) because full configuration failed: " + expanded_min_reason, "warn");
+            }
+        }
     }
     write_section_errors(quarantined);
     remove_file(temp_config + ".owners.json");
@@ -2019,8 +2139,10 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     }
 
     let nft_deferred_sections = deferred_sections;
-    for (let qname in keys(quarantined))
-        nft_deferred_sections = nft_deferred_sections != "" ? (nft_deferred_sections + " " + qname) : qname;
+    for (let qname in keys(quarantined)) {
+        if (!is_global_quarantine_key(qname))
+            nft_deferred_sections = nft_deferred_sections != "" ? (nft_deferred_sections + " " + qname) : qname;
+    }
 
     if (populate_nft && !module_success([
         LIB_DIR + "/nft/apply.uc",
@@ -2064,6 +2186,10 @@ else if (mode == "check-config-fixture") {
     if (result.reason != "")
         print(result.reason, "\n");
     exit(result.status);
+}
+else if (mode == "safe-minimal-config-fixture") {
+    print(sprintf("%J\n", build_safe_minimal_config({}, ARGV[1] || "127.0.0.1")));
+    exit(0);
 }
 else if (mode == "ensure-local-rulesets-fixture") {
     ensure_local_rulesets_exist(ARGV[1] || "");

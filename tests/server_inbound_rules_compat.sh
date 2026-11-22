@@ -80,7 +80,7 @@ assert(srvRouteRules.some(r =>
 // 2. Non-Tailscale server inbound DNS rule to real DNS must precede FakeIP rules in config.dns.rules.
 const srvDnsIdx = dnsRules.findIndex(r =>
   (r.inbound === srvTag || (Array.isArray(r.inbound) && r.inbound.includes(srvTag))) &&
-  r.server === 'dns-server' &&
+  r.server === 'dns-resilient' &&
   !r.domain_suffix
 );
 const sectionFakeipIdx = dnsRules.findIndex(r =>

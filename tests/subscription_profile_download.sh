@@ -60,7 +60,7 @@ case "${PROVIDER_MODE:-profile}" in
     [ "$(wc -l <"$CURL_LOG")" -ne 1 ] || { printf '%s' "$TRANSIENT_HTTP"; exit 22; }
     ;;
 esac
-if [ "$ua" != "${REQUIRED_UA:-Happ}" ]; then
+if [ "$ua" != "${REQUIRED_UA:-Happ/4.6.2}" ]; then
   printf '%s' "${REJECT_HTTP:-403}"
   exit 22
 fi
@@ -91,13 +91,13 @@ source_base="$TMP_TACHYON_CORE_FOLDER/subscriptions/proxy-subscription-1"
 # A new subscription must reach the compatible UA without mirrors or a proxy
 # detour for every rejected profile, then persist the working profile.
 update_source
-assert_requests $'direct|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token'
-[ "$(cat "$source_base.user_agent")" = Happ ] || fail "working UA was not cached"
-[ "$(cat "$TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR/proxy-subscription-1.user_agent")" = Happ ] || fail "working UA was not persisted"
+assert_requests $'direct|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token'
+[ "$(cat "$source_base.user_agent")" = Happ/4.6.2 ] || fail "working UA was not cached"
+[ "$(cat "$TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR/proxy-subscription-1.user_agent")" = Happ/4.6.2 ] || fail "working UA was not persisted"
 
 : >"$CURL_LOG"
 update_source
-assert_requests 'direct|Happ|https://provider.example/sub/private-token'
+assert_requests 'direct|Happ/4.6.2|https://provider.example/sub/private-token'
 
 # Editing routing lists must reuse this current cache, not fetch the provider.
 : >"$CURL_LOG"
@@ -110,17 +110,17 @@ for extension in json url user_agent hwid device_headers; do
 done
 cache_ucode prepare-caches runtime 0 0
 [ ! -s "$CURL_LOG" ] || fail "runtime prepare did not restore the persistent subscription"
-[ "$(cat "$source_base.user_agent")" = Happ ] || fail "persistent restore lost the working UA"
+[ "$(cat "$source_base.user_agent")" = Happ/4.6.2 ] || fail "persistent restore lost the working UA"
 
 # A source with a working cache still needs the service proxy on transport loss.
 : >"$CURL_LOG"
 PROVIDER_MODE=transport update_source
-assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
+assert_requests $'direct|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token\nproxy|Happ/4.6.2|https://provider.example/sub/private-token'
 
 # IP-based HTTP rejection must keep proxy fallback, after direct profiles.
 : >"$CURL_LOG"
 PROVIDER_MODE=blocked update_source
-assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
+assert_requests $'direct|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|tachyon-core/0.5.7|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ/4.6.2|https://provider.example/sub/private-token'
 
 # Failure must leave both the active node list and its profile intact.
 cp "$source_base.json" "$WORK_DIR/last-good.json"
@@ -129,7 +129,7 @@ if PROVIDER_MODE=unavailable cache_ucode update-source proxy 1 https://provider.
   fail "an unavailable subscription must report failure"
 fi
 cmp "$source_base.json" "$WORK_DIR/last-good.json" || fail "failure replaced the working node list"
-[ "$(cat "$source_base.user_agent")" = Happ ] || fail "failure replaced the working UA"
+[ "$(cat "$source_base.user_agent")" = Happ/4.6.2 ] || fail "failure replaced the working UA"
 [ "$(wc -l <"$CURL_LOG")" -eq 4 ] || fail "transport failure retried unrelated profiles"
 
 # If every automatic profile is rejected on both paths, make only one proxy
@@ -164,14 +164,14 @@ assert_requests $'direct|Custom/1.0|https://provider.example/sub/private-token\n
 # A GitHub 403 can be an IP block. Keep the established mirror fallback for
 # actual GitHub URLs, including URLs normalized from blob to raw.
 : >"$CURL_LOG"
-PROVIDER_MODE=github cache_ucode download-subscription \
+REQUIRED_UA=Happ PROVIDER_MODE=github cache_ucode download-subscription \
   https://github.com/owner/repo/blob/main/sub.txt "$WORK_DIR/github-sub.txt" "" "" Happ
 assert_requests $'direct|Happ|https://raw.githubusercontent.com/owner/repo/main/sub.txt\ndirect|Happ|https://cdn.jsdelivr.net/gh/owner/repo@main/sub.txt'
 
 # Throttling and temporary server errors must still retry the same profile.
 for http_status in 429 503; do
   : >"$CURL_LOG"
-  PROVIDER_MODE=transient TRANSIENT_HTTP="$http_status" cache_ucode download-subscription \
+  REQUIRED_UA=Happ PROVIDER_MODE=transient TRANSIENT_HTTP="$http_status" cache_ucode download-subscription \
     https://provider.example/sub/private-token "$WORK_DIR/transient-sub.txt" "" "" Happ
   assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|Happ|https://provider.example/sub/private-token'
 done

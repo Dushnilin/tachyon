@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 22:41+0300\n"
-"PO-Revision-Date: 2026-11-21 22:41+0300\n"
+"POT-Creation-Date: 2026-11-22 20:45+0300\n"
+"PO-Revision-Date: 2026-11-22 20:45+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2066,6 +2066,9 @@ msgstr "Конфигурация применена"
 msgid "Configuration for Tachyon service"
 msgstr "Конфигурация сервиса Tachyon"
 
+msgid "Configuration issues detected (problematic settings isolated):"
+msgstr ""
+
 msgid "Configuration must contain [Interface] section or valid vpn:// links."
 msgstr "Конфигурация должна содержать секцию [Interface] или корректные ссылки vpn://."
 
@@ -2251,6 +2254,9 @@ msgstr "Скопировать отчёт"
 
 msgid "Copy to Clipboard"
 msgstr "Скопировать в буфер"
+
+msgid "Core Safe Mode"
+msgstr ""
 
 msgid "Core Telemetry HUD"
 msgstr "Приборная панель ядра (HUD)"
@@ -8546,6 +8552,9 @@ msgstr "Наборы правил, из которых также извлека
 msgid "Rules"
 msgstr "Правила"
 
+msgid "Rules & Lists"
+msgstr ""
+
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
 
@@ -9853,6 +9862,9 @@ msgstr "Состояние системы и служб"
 
 msgid "System Health & Subsystems"
 msgstr "Состояние системы и подсистем"
+
+msgid "System Settings"
+msgstr ""
 
 msgid "System Stability & Server Fleet Report"
 msgstr "Отчёт о стабильности системы"

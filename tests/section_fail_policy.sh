@@ -109,7 +109,7 @@ ucode -e '
     let ds = type(r.domain_suffix) == "array" ? r.domain_suffix[0] : r.domain_suffix;
     if (ds == "secret.example" && (r.server == "fakeip-server" || r.action == "predefined"))
       secret_dns_blocked = true;
-    if (ds == "work.example" && r.server == "dns-server")
+    if (ds == "work.example" && r.server == "dns-resilient")
       work_dns_direct = true;
   }
   if (!secret_rejected || !work_bypassed || !secret_dns_blocked || !work_dns_direct) {

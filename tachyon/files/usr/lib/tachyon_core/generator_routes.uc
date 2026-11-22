@@ -3429,17 +3429,17 @@ function section_dns_server(section) {
     let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
     let fakeip_or_real = (!eff_state || eff_state.fakeip_enabled)
         ? runtime_constants.FAKEIP_DNS_SERVER_TAG
-        : runtime_constants.DNS_SERVER_TAG;
+        : runtime_constants.DNS_RESILIENT_SERVER_TAG;
     let override = section_fail_policy_override_target(section);
     if (override != null) {
         if (override.fail_policy == "direct")
-            return runtime_constants.DNS_SERVER_TAG;
+            return runtime_constants.DNS_RESILIENT_SERVER_TAG;
         return fakeip_or_real;
     }
     if (connections.routed_dns_enabled(section))
         return runtime_constants.tag(section[".name"], "routed-dns-server");
     if (option(section, "action", "") == "bypass")
-        return runtime_constants.DNS_SERVER_TAG;
+        return runtime_constants.DNS_RESILIENT_SERVER_TAG;
     return fakeip_or_real;
 }
 
@@ -3749,7 +3749,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
         if (length(response_rule_set_tags) > 0) {
             let eval_rule = {
                 action: "evaluate",
-                server: runtime_constants.DNS_SERVER_TAG
+                server: runtime_constants.DNS_RESILIENT_SERVER_TAG
             };
             add_source_dns_matchers(eval_rule, source_ip_cidr);
             push_dns_matcher_rule(config, eval_rule);
@@ -5006,7 +5006,7 @@ function add_combined_route_for_clause(config, section) {
     let explicit_rewrite_ttl = trim(option(r_settings, "dns_rewrite_ttl", "")) != "";
     let rewrite_ttl = int_option(r_settings, "dns_rewrite_ttl", "15");
     let dns_server_tag = section_dns_server(section);
-    let use_rewrite_ttl = dns_server_tag != runtime_constants.DNS_SERVER_TAG || explicit_rewrite_ttl;
+    let use_rewrite_ttl = dns_server_tag != runtime_constants.DNS_RESILIENT_SERVER_TAG || explicit_rewrite_ttl;
     let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
     let ipv4_only_sec = !section_ipv6_supported(section);
     let ipv4_only_dpi = ipv4_only_sec &&
@@ -5040,7 +5040,7 @@ function add_combined_route_for_clause(config, section) {
             if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
-                    server: runtime_constants.DNS_SERVER_TAG,
+                    server: runtime_constants.DNS_RESILIENT_SERVER_TAG,
                     rewrite_ttl,
                     query_type: [ "AAAA" ]
                 };
@@ -5073,7 +5073,7 @@ function add_combined_route_for_clause(config, section) {
         if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
             let aaaa_rule = {
                 action: "route",
-                server: runtime_constants.DNS_SERVER_TAG,
+                server: runtime_constants.DNS_RESILIENT_SERVER_TAG,
                 rewrite_ttl,
                 query_type: [ "AAAA" ],
                 rule_set: single_or_array(dns_query_rule_set_tags)
@@ -5085,7 +5085,7 @@ function add_combined_route_for_clause(config, section) {
     if (length(dns_response_rule_set_tags) > 0) {
         let eval_rule = {
             action: "evaluate",
-            server: runtime_constants.DNS_SERVER_TAG
+            server: runtime_constants.DNS_RESILIENT_SERVER_TAG
         };
         add_source_dns_matchers(eval_rule, source_ip_cidr);
 
@@ -5115,7 +5115,7 @@ function add_combined_route_for_clause(config, section) {
     }
     if (bool_option(section, "match_all", false) && !closed_geo &&
         !has_domain && length(dns_query_rule_set_tags) == 0 && length(dns_response_rule_set_tags) == 0 &&
-        dns_server_tag != runtime_constants.DNS_SERVER_TAG) {
+        dns_server_tag != runtime_constants.DNS_RESILIENT_SERVER_TAG) {
         let dns_rule = {
             action: "route",
             server: dns_server_tag
@@ -5344,16 +5344,8 @@ function add_service_route_rules(config, sections) {
                 if (single_dns != "")
                     dns_servers = [single_dns];
             }
-            let fallback_servers = list_option(settings, "dns_fallback_server");
-            if (length(fallback_servers) == 0) {
-                let single_fb = option(settings, "dns_fallback_server", "");
-                if (single_fb != "")
-                    fallback_servers = [single_fb];
-            }
             let all_dns = [];
             for (let s in dns_servers)
-                push(all_dns, s);
-            for (let s in fallback_servers)
                 push(all_dns, s);
 
             let detour_ips = [];
@@ -5459,7 +5451,7 @@ function add_service_route_rules(config, sections) {
         push(config.route.rules, {
             action: "resolve",
             inbound: tproxy_inbound_matcher(),
-            server: runtime_constants.DNS_SERVER_TAG,
+            server: runtime_constants.DNS_RESILIENT_SERVER_TAG,
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         });
         let catchall_target = outbound_tag(first[".name"]);

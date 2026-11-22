@@ -1439,6 +1439,29 @@ function run_doctor_checks_impl(repair) {
         } else {
             doc_check("✅", "SQM (CAKE/fq_codel)", "active (QoS cooperative mode)", "");
         }
+    } else {
+        let fo_sw = uci_core.get("firewall.@defaults[0].flow_offloading");
+        let fo_hw = uci_core.get("firewall.@defaults[0].flow_offloading_hw");
+        if (fo_sw == "1" || fo_sw == "true" || fo_hw == "1" || fo_hw == "true") {
+            let offload_inc = (getenv("TACHYON_FW4_INCLUDE_ROOT") || "/usr/share/nftables.d") + "/chain-pre/forward/10-tachyon-offload.nft";
+            if (fs.stat(offload_inc) != null) {
+                doc_check("✅", "Flow Offloading", "compatible (fw4 guard installed)", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " sync-fw4-flow-offload-guard");
+                    doc_check("⚠️", "Flow Offloading", "guard rule missing in fw4 include",
+                        "→ WILL FIX (doctor --fix): установка защиты Flow Offloading в fw4 без его отключения");
+                } else {
+                    if (command_success_from_args([ "ucode", "-L", LIB_DIR, NFT_APPLY_UC, "sync-fw4-flow-offload-guard" ]) && fs.stat(offload_inc) != null) {
+                        doc_check("⚠️", "Flow Offloading", "guard missing", "→ FIXED: защитное правило 10-tachyon-offload.nft установлено");
+                        fixed++;
+                    } else {
+                        doc_check("⚠️", "Flow Offloading", "guard rule missing", "→ не удалось записать 10-tachyon-offload.nft");
+                    }
+                }
+            }
+        }
     }
 
     // 4c. Resolv.conf check

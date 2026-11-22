@@ -2561,7 +2561,18 @@ function buildPriorityInfo({
       ? left.id.localeCompare(right.id)
       : left.order - right.order,
   );
-  const allChildCodes = levels.flatMap((l) => l.outbounds);
+  const runtimeAllCodes = entry?.value.all || [];
+  const levelChildCodes = levels.flatMap((l) => l.outbounds);
+  const fallbackCodes =
+    levelChildCodes.length > 0
+      ? []
+      : uniqueCodes(
+          groupCache?.outbounds?.length
+            ? groupCache.outbounds
+            : runtimeAllCodes,
+        );
+  const allChildCodes =
+    levelChildCodes.length > 0 ? levelChildCodes : fallbackCodes;
   const isChildSelectedInSelector = Boolean(
     selectorNow &&
       selectorNow !== config.code &&
@@ -2573,60 +2584,63 @@ function buildPriorityInfo({
     : entry?.value.now || '';
   const isManualSelection = isChildSelectedInSelector;
 
-  const runtimeAllCodes = entry?.value.all || [];
-  const outbounds = levels.flatMap((level, levelIndex) => {
-    const members = uniqueCodes(level.outbounds || []).map((childCode) => {
-      const childEntry = findProxyEntryForMember(
-        proxyByCode,
-        childCode,
-        runtimeAllCodes,
-      );
-      const effectiveCode = childEntry?.code || childCode;
-      const link =
-        findManualLink(manualLinkByCode, childCode) ||
-        findManualLink(manualLinkByCode, effectiveCode) ||
-        cachedProxyLinks.get(childCode) ||
-        cachedProxyLinks.get(effectiveCode) ||
-        '';
-      const canCopyLink = isCopyableProxyLink(link);
-      const resolved = resolveOutboundNameAndPrefix({
-        code: childCode,
-        entry: childEntry,
-        link,
-        outboundMetadata,
-        preferMetadata:
-          cachedProxyLinks.has(childCode) ||
-          cachedProxyLinks.has(effectiveCode),
-        configuredPrefixes,
-      });
-
-      return {
-        code: effectiveCode,
-        displayName: resolved.displayName,
-        prefix: resolved.prefix,
-        latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: dashboardOutboundType(
-          childCode,
-          childEntry?.value?.type,
-          outboundMetadata,
-          link,
-        ),
-        transport:
-          lookupMetadataField(outboundMetadata?.transports, childCode) ||
-          getProxyUrlTransport(link),
-        details: buildOutboundDetails(childCode, outboundMetadata),
-        selected: selectedCode === childCode || selectedCode === effectiveCode,
-        link,
-        canCopyLink,
-        country: showDetectedCountries
-          ? lookupMetadataField(outboundMetadata?.countries, childCode)
-          : undefined,
-        levelIndex,
-        levelName: level.displayName,
-        levelId: level.id,
-      };
+  const buildMember = (
+    childCode: string,
+    levelIndex: number,
+    levelName: string,
+    levelId: string,
+  ): Tachyon.PriorityMember => {
+    const childEntry = findProxyEntryForMember(
+      proxyByCode,
+      childCode,
+      runtimeAllCodes,
+    );
+    const effectiveCode = childEntry?.code || childCode;
+    const link =
+      findManualLink(manualLinkByCode, childCode) ||
+      findManualLink(manualLinkByCode, effectiveCode) ||
+      cachedProxyLinks.get(childCode) ||
+      cachedProxyLinks.get(effectiveCode) ||
+      '';
+    const canCopyLink = isCopyableProxyLink(link);
+    const resolved = resolveOutboundNameAndPrefix({
+      code: childCode,
+      entry: childEntry,
+      link,
+      outboundMetadata,
+      preferMetadata:
+        cachedProxyLinks.has(childCode) || cachedProxyLinks.has(effectiveCode),
+      configuredPrefixes,
     });
 
+    return {
+      code: effectiveCode,
+      displayName: resolved.displayName,
+      prefix: resolved.prefix,
+      latency: childEntry?.value?.history?.[0]?.delay || 0,
+      type: dashboardOutboundType(
+        childCode,
+        childEntry?.value?.type,
+        outboundMetadata,
+        link,
+      ),
+      transport:
+        lookupMetadataField(outboundMetadata?.transports, childCode) ||
+        getProxyUrlTransport(link),
+      details: buildOutboundDetails(childCode, outboundMetadata),
+      selected: selectedCode === childCode || selectedCode === effectiveCode,
+      link,
+      canCopyLink,
+      country: showDetectedCountries
+        ? lookupMetadataField(outboundMetadata?.countries, childCode)
+        : undefined,
+      levelIndex,
+      levelName,
+      levelId,
+    };
+  };
+
+  const sortIfPickFastest = (members: Tachyon.PriorityMember[]) => {
     if (!config.pickFastest) {
       return members;
     }
@@ -2641,7 +2655,20 @@ function buildPriorityInfo({
         return latencyDiff !== 0 ? latencyDiff : left.index - right.index;
       })
       .map((item) => item.outbound);
-  });
+  };
+
+  const outbounds =
+    levelChildCodes.length > 0
+      ? levels.flatMap((level, levelIndex) =>
+          sortIfPickFastest(
+            uniqueCodes(level.outbounds || []).map((childCode) =>
+              buildMember(childCode, levelIndex, level.displayName, level.id),
+            ),
+          ),
+        )
+      : sortIfPickFastest(
+          fallbackCodes.map((childCode) => buildMember(childCode, 0, '', '')),
+        );
   const selectedName =
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;

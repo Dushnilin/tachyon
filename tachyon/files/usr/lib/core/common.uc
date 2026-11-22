@@ -1174,6 +1174,246 @@ function ipv6_signature_pairs(settings, include_fakeip_detail) {
     return pairs;
 }
 
+function parse_fragment_non_negative_int(val) {
+    if (type(val) == "int" || type(val) == "double") {
+        let n = int(val);
+        return (n == val && n >= 0) ? n : null;
+    }
+    if (type(val) == "string") {
+        let s = trim(val);
+        if (match(s, /^[0-9]+$/) != null)
+            return int(s, 10);
+    }
+    return null;
+}
+
+function sanitize_fragment_u64_range(val, min_lo) {
+    if (val == null)
+        return null;
+
+    if (type(val) == "int" || type(val) == "double") {
+        let n = int(val);
+        return (n == val && n >= min_lo) ? n : null;
+    }
+
+    if (type(val) == "object" || (type(val) == "array" && length(val) == 2)) {
+        let lo = parse_fragment_non_negative_int(type(val) == "object" ? val.from : val[0]);
+        let hi = parse_fragment_non_negative_int(type(val) == "object" ? val.to : val[1]);
+        if (lo == null || hi == null)
+            return null;
+        if (lo > hi) {
+            let tmp = lo;
+            lo = hi;
+            hi = tmp;
+        }
+        if (hi < min_lo)
+            return null;
+        if (lo < min_lo)
+            lo = min_lo;
+        return lo == hi ? as_string(lo) : (as_string(lo) + "-" + as_string(hi));
+    }
+
+    if (type(val) != "string")
+        return null;
+
+    let s = trim(val);
+    if (s == "")
+        return null;
+
+    if (match(s, /^[0-9]+$/) != null) {
+        let n = int(s, 10);
+        return n >= min_lo ? as_string(n) : null;
+    }
+
+    let mr = match(s, /^([0-9]+)[ \t]*-[ \t]*([0-9]+)$/);
+    if (mr != null) {
+        let lo = int(mr[1], 10);
+        let hi = int(mr[2], 10);
+        if (lo > hi) {
+            let tmp = lo;
+            lo = hi;
+            hi = tmp;
+        }
+        if (hi < min_lo)
+            return null;
+        if (lo < min_lo)
+            lo = min_lo;
+        return lo == hi ? as_string(lo) : (as_string(lo) + "-" + as_string(hi));
+    }
+
+    return null;
+}
+
+function parse_fragment_delay_token_ms(tok) {
+    tok = trim(as_string(tok));
+    if (tok == "")
+        return null;
+
+    let ms_m = match(tok, /^([0-9]+)(ms)?$/i);
+    if (ms_m != null) {
+        let canon = ms_m[2] != null ? (ms_m[1] + "ms") : ms_m[1];
+        return { raw: canon, ms: int(ms_m[1], 10) };
+    }
+
+    let s_m = match(tok, /^([0-9]+)(?:\.([0-9]+))?s$/i);
+    if (s_m != null) {
+        let whole = int(s_m[1], 10);
+        let frac = s_m[2] || "";
+        let frac_ms = 0;
+        if (frac != "") {
+            let padded = substr(frac + "0000", 0, 4);
+            frac_ms = int(substr(padded, 0, 3), 10) + (int(substr(padded, 3, 1), 10) >= 5 ? 1 : 0);
+        }
+        return {
+            raw: substr(tok, 0, length(tok) - 1) + "s",
+            ms: whole * 1000 + frac_ms
+        };
+    }
+
+    return null;
+}
+
+function sanitize_fragment_delay_range(val) {
+    if (val == null)
+        return null;
+
+    if (type(val) == "int" || type(val) == "double") {
+        let n = int(val);
+        return (n == val && n >= 0) ? n : null;
+    }
+
+    if (type(val) != "string")
+        return null;
+
+    let s = trim(val);
+    if (s == "")
+        return null;
+
+    let dash = index(s, "-");
+    if (dash < 0) {
+        let single = parse_fragment_delay_token_ms(s);
+        return single != null ? single.raw : null;
+    }
+
+    let tail = substr(s, dash + 1);
+    if (index(tail, "-") >= 0)
+        return null;
+
+    let lo = parse_fragment_delay_token_ms(substr(s, 0, dash));
+    let hi = parse_fragment_delay_token_ms(tail);
+    if (lo == null || hi == null)
+        return null;
+
+    return lo.ms > hi.ms ? (hi.raw + "-" + lo.raw) : (lo.raw + "-" + hi.raw);
+}
+
+function sanitize_dialer_fragment_object(frag) {
+    if (type(frag) != "object")
+        return;
+
+    if ("max_split" in frag || "maxSplit" in frag) {
+        let raw_ms = frag.max_split != null ? frag.max_split : frag.maxSplit;
+        delete frag.maxSplit;
+        let norm_ms = sanitize_fragment_u64_range(raw_ms, 1);
+        if (norm_ms != null)
+            frag.max_split = norm_ms;
+        else
+            delete frag.max_split;
+    }
+
+    for (let k in [ "lengths", "length" ]) {
+        if (k in frag) {
+            let norm_l = sanitize_fragment_u64_range(frag[k], 1);
+            if (norm_l != null)
+                frag[k] = norm_l;
+            else
+                delete frag[k];
+        }
+    }
+
+    for (let k in [ "delays", "delay", "interval" ]) {
+        if (k in frag) {
+            let norm_d = sanitize_fragment_delay_range(frag[k]);
+            if (norm_d != null)
+                frag[k] = norm_d;
+            else
+                delete frag[k];
+        }
+    }
+
+    if ("packets" in frag) {
+        let pv = frag.packets;
+        if (pv == null) {
+            delete frag.packets;
+        } else if (type(pv) == "int" || type(pv) == "double") {
+            let pn = int(pv);
+            if (pn != pv || pn < 0) {
+                delete frag.packets;
+            } else if (pn == 0) {
+                delete frag.packets;
+                frag.enabled = false;
+            }
+        } else if (type(pv) == "string") {
+            let ps = trim(pv);
+            let plc = lc(ps);
+            if (ps == "") {
+                delete frag.packets;
+            } else if (plc == "tlshello" || plc == "tls_hello") {
+                frag.packets = "tlshello";
+            } else if (ps == "0" || ps == "0-0") {
+                delete frag.packets;
+                frag.enabled = false;
+            } else {
+                let norm_p = sanitize_fragment_u64_range(ps, 1);
+                if (norm_p != null)
+                    frag.packets = norm_p;
+                else
+                    delete frag.packets;
+            }
+        } else {
+            delete frag.packets;
+        }
+    }
+}
+
+function sanitize_outbound_dialer_fragments(outbound) {
+    if (type(outbound) != "object")
+        return outbound;
+
+    let otype = lc(trim(as_string(outbound.type || "")));
+    let is_openvpn = (otype == "openvpn" || otype == "openvpn-client");
+    if (!is_openvpn && type(outbound.fragment) == "object")
+        sanitize_dialer_fragment_object(outbound.fragment);
+    if (type(outbound.tcp_fragment) == "object")
+        sanitize_dialer_fragment_object(outbound.tcp_fragment);
+    if (type(outbound.finalmask) == "object" && outbound.finalmask.tcp != null) {
+        let tcp_val = outbound.finalmask.tcp;
+        let items = type(tcp_val) == "array" ? tcp_val : (type(tcp_val) == "object" ? [ tcp_val ] : []);
+        for (let item in items) {
+            if (type(item) == "object") {
+                let itype = lc(as_string(item.type || ""));
+                if (itype == "fragment" || itype == "tcp_fragment")
+                    sanitize_dialer_fragment_object(type(item.settings) == "object" ? item.settings : item);
+            }
+        }
+    }
+    return outbound;
+}
+
+function sanitize_config_dialer_fragments(config) {
+    if (type(config) != "object")
+        return config;
+    if (type(config.outbounds) == "array") {
+        for (let ob in config.outbounds)
+            sanitize_outbound_dialer_fragments(ob);
+    }
+    if (type(config.endpoints) == "array") {
+        for (let ep in config.endpoints)
+            sanitize_outbound_dialer_fragments(ep);
+    }
+    return config;
+}
+
 function log_message(message, level, tag) {
     // Delegate to unified structured logging module.
     // Maintains backward-compatible signature: log_message(message, level, tag)
@@ -1219,6 +1459,11 @@ return {
     bytes_to_hex,
     certificate_pin_base64,
     awg_tag_chain,
+    sanitize_fragment_u64_range,
+    sanitize_fragment_delay_range,
+    sanitize_dialer_fragment_object,
+    sanitize_outbound_dialer_fragments,
+    sanitize_config_dialer_fragments,
     mtproto_secret_canonical,
     shell_quote,
     command_from_args,

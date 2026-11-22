@@ -132,7 +132,6 @@ function add_xhttp_extra_query(params, transport) {
             ["maxConcurrency", "max_concurrency"],
             ["maxConnections", "max_connections"],
             ["cMaxReuseTimes", "c_max_reuse_times"],
-            ["cMaxLifetimeMs", "c_max_lifetime_ms"],
             ["hMaxRequestTimes", "h_max_request_times"],
             ["hMaxReusableSecs", "h_max_reusable_secs"],
             ["hKeepAlivePeriod", "h_keep_alive_period"]

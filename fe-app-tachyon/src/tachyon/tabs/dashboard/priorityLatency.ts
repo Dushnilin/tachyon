@@ -92,6 +92,69 @@ export function collectUnmeasuredTags(
 }
 
 /**
+ * Computes the summary latency for a node across multiple probe URLs according
+ * to the configured multi-URL strategy (`best_case`, `best_case_target`,
+ * `average`, or default `worst_case`).
+ */
+export function computeMultiUrlSummaryLatency(
+  urlDelays: Record<string, number>,
+  urls?: string[],
+  strategy?: string,
+  fallbackLatency = 0,
+): number {
+  const cleanUrls = (urls || [])
+    .map((u) => String(u || '').trim())
+    .filter(Boolean);
+  const targetUrls =
+    cleanUrls.length > 0 ? cleanUrls : Object.keys(urlDelays || {});
+
+  const measured: number[] = [];
+  const positive: number[] = [];
+  const failed: number[] = [];
+  let primaryDelay: number | null = null;
+
+  for (let i = 0; i < targetUrls.length; i++) {
+    const raw = urlDelays ? urlDelays[targetUrls[i]] : undefined;
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+      continue;
+    }
+    measured.push(raw);
+    if (raw > 0) {
+      positive.push(raw);
+      if (i === 0) {
+        primaryDelay = raw;
+      }
+    } else {
+      failed.push(raw);
+    }
+  }
+
+  if (measured.length === 0) {
+    return fallbackLatency;
+  }
+  if (positive.length === 0) {
+    return -1;
+  }
+
+  const key = String(strategy || 'worst_case')
+    .trim()
+    .toLowerCase();
+  if (key === 'best_case') {
+    return Math.min(...positive);
+  }
+  if (key === 'best_case_target') {
+    return primaryDelay !== null ? primaryDelay : Math.min(...positive);
+  }
+  if (key === 'average') {
+    return Math.round(positive.reduce((a, b) => a + b, 0) / positive.length);
+  }
+  if (failed.length > 0) {
+    return -1;
+  }
+  return Math.max(...positive);
+}
+
+/**
  * Pulls a delay out of a Clash API delay answer. The endpoint answers either with
  * a single { delay } object or, for a tag that names a group, with a map of members;
  * the fastest member is what the rest of the dashboard shows.

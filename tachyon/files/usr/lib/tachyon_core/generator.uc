@@ -383,7 +383,7 @@ function build_fakeip_exclude_rules(settings, eff_state, rewrite_ttl) {
             continue;
         let r = {
             action: "route",
-            server: runtime_constants.DNS_SERVER_TAG,
+            server: runtime_constants.DNS_RESILIENT_SERVER_TAG,
             rewrite_ttl: rewrite_ttl
         };
         r[pair[0]] = pair[1];
@@ -1079,7 +1079,7 @@ function base_config(settings, service_address, runtime_context) {
         push(dns_rules, rule);
     let diag_fakeip_rule = {
         action: "route",
-        server: eff_state.fakeip_enabled ? runtime_constants.FAKEIP_DNS_SERVER_TAG : runtime_constants.DNS_SERVER_TAG,
+        server: eff_state.fakeip_enabled ? runtime_constants.FAKEIP_DNS_SERVER_TAG : runtime_constants.DNS_RESILIENT_SERVER_TAG,
         rewrite_ttl,
         domain: [ runtime_constants.FAKEIP_TEST_DOMAIN, runtime_constants.CHECK_PROXY_IP_DOMAIN ],
         // fakeip answers A and AAAA only; see add_fakeip_query_type().
@@ -1187,7 +1187,7 @@ for (let inbound in dns_config.inbounds)
     let dns_section = {
         servers: dns_servers,
         rules: dns_rules,
-        final: runtime_constants.DNS_SERVER_TAG,
+        final: runtime_constants.DNS_RESILIENT_SERVER_TAG,
         strategy: eff_dns_strategy,
         reverse_mapping: bool_option(settings, "dns_reverse_mapping", true)
     };
@@ -2512,7 +2512,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
             push(config.dns.rules, {
                 action: "route",
                 inbound: single_or_array(server_dns_inbounds),
-                server: runtime_constants.DNS_SERVER_TAG
+                server: runtime_constants.DNS_RESILIENT_SERVER_TAG
             });
         }
     }
@@ -2604,6 +2604,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
     normalize_hysteria2_server_ports(config);
+    common.sanitize_config_dialer_fragments(config);
     apply_settings_tcp_profile(config, settings);
     finalize_config_owners(config, owners, output_path);
     if (!atomic_write_json_file(output_path, config)) {

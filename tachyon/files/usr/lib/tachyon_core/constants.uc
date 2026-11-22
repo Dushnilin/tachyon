@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 const DNS_SERVER_TAG = "dns-server";
+const DNS_RESILIENT_SERVER_TAG = "dns-resilient";
 const FAKEIP_DNS_SERVER_TAG = "fakeip-server";
 const BOOTSTRAP_DNS_SERVER_TAG = "bootstrap-dns-server";
 const FAKEIP_DNS_RULE_TAG = "fakeip-dns-rule-tag";
@@ -123,6 +124,7 @@ let as_string = common.as_string;
 
 const RESERVED_TAGS = {
     [DNS_SERVER_TAG]: true,
+    [DNS_RESILIENT_SERVER_TAG]: true,
     [FAKEIP_DNS_SERVER_TAG]: true,
     [BOOTSTRAP_DNS_SERVER_TAG]: true,
     [FAKEIP_DNS_RULE_TAG]: true,
@@ -171,6 +173,7 @@ function tailscale_dns_server_tag(section_name) {
 
 return {
     DNS_SERVER_TAG,
+    DNS_RESILIENT_SERVER_TAG,
     FAKEIP_DNS_SERVER_TAG,
     BOOTSTRAP_DNS_SERVER_TAG,
     FAKEIP_DNS_RULE_TAG,

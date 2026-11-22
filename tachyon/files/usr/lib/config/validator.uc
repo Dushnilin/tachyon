@@ -216,7 +216,7 @@ function expand_validation_error(message) {
 }
 
 function extract_quarantine_target(message) {
-    if (current_validating_section != "")
+    if (current_validating_section != "" && substr(current_validating_section, 0, 1) != "_")
         return current_validating_section;
     let text = as_string(message || "");
     let m = match(text, /(Rule|Section|Server|Section group|rule|section|server) '([A-Za-z0-9_]+)'/);
@@ -225,6 +225,8 @@ function extract_quarantine_target(message) {
     let m2 = match(text, /rule\.([A-Za-z0-9_]+)\./);
     if (m2 && m2[1] != "settings")
         return m2[1];
+    if (current_validating_section != "")
+        return current_validating_section;
     return "";
 }
 
@@ -2817,6 +2819,24 @@ function validate_modular_entities(sections, context) {
     }
 }
 
+function run_quarantinable(target, fn) {
+    if (!runtime_quarantine_mode) {
+        fn();
+        return;
+    }
+    let prev = current_validating_section;
+    current_validating_section = target;
+    try {
+        fn();
+    } catch (e) {
+        current_validating_section = prev;
+        if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+            die(e);
+        return;
+    }
+    current_validating_section = prev;
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
@@ -2827,14 +2847,26 @@ function validate_runtime_config(context) {
     validate_runtime_mark_ranges_context(context);
     validate_modular_entities(sections, context);
 
-    validate_dns_settings(settings, sections, context);
-    validate_ipv6_and_fakeip_settings(settings, sections);
-    validate_list_update_settings(settings);
-    validate_wan_failover_settings(settings);
-    validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");
-    let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
-    if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))
-        fail_validation("Unsupported BitTorrent policy '" + bt_policy + "'. Use off, direct, or block. Aborted.");
+    run_quarantinable("_dns", function() {
+        validate_dns_settings(settings, sections, context);
+    });
+    run_quarantinable("_settings", function() {
+        validate_ipv6_and_fakeip_settings(settings, sections);
+    });
+    run_quarantinable("_settings", function() {
+        validate_list_update_settings(settings);
+    });
+    run_quarantinable("_settings", function() {
+        validate_wan_failover_settings(settings);
+    });
+    run_quarantinable("_settings", function() {
+        validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");
+    });
+    run_quarantinable("_settings", function() {
+        let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
+        if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))
+            fail_validation("Unsupported BitTorrent policy '" + bt_policy + "'. Use off, direct, or block. Aborted.");
+    });
     if (runtime_quarantine_mode) {
         try {
             current_validating_section = "__settings_routing__";
@@ -2898,9 +2930,15 @@ function validate_runtime_config(context) {
         }
     }
 
-    validate_outbound_detours_rows(detour_rows_from_sections(sections));
-    validate_subscription_download_sections(sections, context);
-    validate_server_routing_sections(sections);
+    run_quarantinable("_settings", function() {
+        validate_outbound_detours_rows(detour_rows_from_sections(sections));
+    });
+    run_quarantinable("_settings", function() {
+        validate_subscription_download_sections(sections, context);
+    });
+    run_quarantinable("_settings", function() {
+        validate_server_routing_sections(sections);
+    });
 
     for (let section in sections) {
         let name = section_name(section);
@@ -2917,16 +2955,27 @@ function validate_runtime_config(context) {
         current_validating_section = "";
     }
 
-    validate_global_rules(sections);
+    run_quarantinable("_rules", function() {
+        validate_global_rules(sections);
+    });
 
-    for (let profile in profiles)
-        validate_profile(profile, profiles);
+    for (let profile in profiles) {
+        run_quarantinable("_settings", function() {
+            validate_profile(profile, profiles);
+        });
+    }
 
-    for (let schedule in schedules)
-        validate_schedule(schedule, sections, profiles);
+    for (let schedule in schedules) {
+        run_quarantinable("_settings", function() {
+            validate_schedule(schedule, sections, profiles);
+        });
+    }
 
-    for (let guest_mode in guest_modes)
-        validate_guest_mode(guest_mode);
+    for (let guest_mode in guest_modes) {
+        run_quarantinable("_settings", function() {
+            validate_guest_mode(guest_mode);
+        });
+    }
 
     persist_validator_quarantine();
 }
