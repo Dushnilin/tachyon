@@ -521,4 +521,159 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('retries live delay probe when the first probe times out and avoids false FAIL', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: false,
+          code: 'mieru-src_mieru_VDSina_Miery',
+          sectionName: 'VDSina_Miery',
+          displayName: 'VDSina_Miery',
+          latencyTestTimeout: '5000',
+          outbounds: [
+            {
+              code: 'mieru-src_mieru_VDSina_Miery',
+              displayName: 'VDSina_Miery',
+              latency: 0,
+              type: 'Mieru',
+              selected: true,
+              runtimeAvailable: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency
+      .mockResolvedValueOnce({
+        success: false,
+        error: 'Gateway Timeout',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { delay: 620 },
+      });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).toHaveBeenNthCalledWith(
+      1,
+      'mieru-src_mieru_VDSina_Miery',
+      '5000',
+    );
+    expect(mocks.getClashApiProxyLatency).toHaveBeenNthCalledWith(
+      2,
+      'mieru-src_mieru_VDSina_Miery',
+      '10000',
+    );
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'VDSina_Miery',
+            value: '620 ms',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('falls back to probing parent URLTest group when selected child node fails live probes', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'main-out',
+          sectionName: 'main',
+          displayName: 'Main',
+          outbounds: [
+            {
+              code: 'main-urltest-out',
+              displayName: 'Fastest',
+              latency: 0,
+              type: 'URLTest',
+              selected: true,
+              urlTestInfo: {
+                selectedCode: 'stale-node-out',
+                selectedName: 'Stale Node',
+                outbounds: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+      .mockResolvedValueOnce({ success: true, data: { delay: 145 } });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).toHaveBeenNthCalledWith(
+      3,
+      'main-urltest-out',
+      '10000',
+    );
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'Main',
+            value: '[Fastest] 145ms',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('includes probe reason when all live retries fail with a reason', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: false,
+          code: 'mieru-src_mieru_VDSina_Miery',
+          sectionName: 'VDSina_Miery',
+          displayName: 'VDSina_Miery',
+          outbounds: [
+            {
+              code: 'mieru-src_mieru_VDSina_Miery',
+              displayName: 'VDSina_Miery',
+              latency: 0,
+              type: 'Mieru',
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: { message: 'probe failed', reason: 'dial tcp timeout' },
+    });
+
+    await expect(runSectionsCheck()).rejects.toThrow(
+      'Rule outbounds checks failed',
+    );
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'error',
+        items: [
+          {
+            state: 'error',
+            key: 'VDSina_Miery',
+            value: 'Not responding: dial tcp timeout',
+          },
+        ],
+      }),
+    );
+  });
 });

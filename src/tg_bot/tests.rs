@@ -2411,3 +2411,63 @@ async fn test_fleet_add_remove_router_persistence_and_auth_rejection() {
 
     clear_chat_prompt(admin_id);
 }
+
+#[test]
+fn blackbox_events_do_not_trigger_crash_alerts() {
+    let mut obs = BotEventObserver::default();
+    let res = classify_event_notification(
+        &mut obs,
+        "blackbox",
+        "Captured tmpfs blackbox bb-1795299147-core_crash_lkg_rollback-539a3b (reason: core_crash_lkg_rollback)",
+        1_700_000_000,
+        true,
+    );
+    assert!(res.is_none());
+}
+
+#[test]
+fn crash_alerts_are_deduplicated_within_300s_window() {
+    let mut obs = BotEventObserver::default();
+    let msg = "LKG rollback failed; suppressing repeats until config/LKG changes or core recovers: exit 1";
+    let first = classify_event_notification(&mut obs, "watchdog", msg, 1_700_000_000, true);
+    assert_eq!(first.as_ref().map(|(k, _)| *k), Some("crash"));
+
+    let dup = classify_event_notification(&mut obs, "watchdog", msg, 1_700_000_120, true);
+    assert!(dup.is_none());
+
+    let after_window = classify_event_notification(&mut obs, "watchdog", msg, 1_700_000_301, true);
+    assert_eq!(after_window.as_ref().map(|(k, _)| *k), Some("crash"));
+}
+
+#[test]
+fn outbox_notice_skips_duplicate_pending_content() {
+    let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "tachyon_tg_outbox_dedup_{}_{}_{seq}",
+        std::process::id(),
+        crate::store::unix_now_secs()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(queue_plain_outbox_notice_in(
+        &dir,
+        "<b>Сбой ядра:</b> rollback failed"
+    ));
+    assert!(!queue_plain_outbox_notice_in(
+        &dir,
+        "  <b>Сбой ядра:</b> rollback failed  "
+    ));
+    assert!(queue_plain_outbox_notice_in(
+        &dir,
+        "<b>Сбой ядра:</b> another failure"
+    ));
+
+    let txt_count = std::fs::read_dir(&dir)
+        .expect("read outbox")
+        .flatten()
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("txt"))
+        .count();
+    assert_eq!(txt_count, 2);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

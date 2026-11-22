@@ -711,13 +711,22 @@ async fn dispatch_api(
             }
             let mut candidate = state.data.read().await.clone();
             if let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == section_id) {
-                if !sec.user_domains.contains(&domain) {
+                if !sec
+                    .domains
+                    .iter()
+                    .chain(sec.user_domains.iter())
+                    .any(|d| d.eq_ignore_ascii_case(&domain))
+                {
                     sec.user_domains.push(domain.clone());
                 }
                 if let Some(cref) = sec.condition_refs.first().cloned()
                     && let Some(cond) = candidate.conditions.iter_mut().find(|c| c.id == cref)
                     && !cond.is_composite()
-                    && !cond.user_domains.contains(&domain)
+                    && !cond
+                        .domains
+                        .iter()
+                        .chain(cond.user_domains.iter())
+                        .any(|d| d.eq_ignore_ascii_case(&domain))
                 {
                     cond.user_domains.push(domain.clone());
                 }

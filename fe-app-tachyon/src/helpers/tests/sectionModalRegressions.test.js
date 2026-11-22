@@ -111,6 +111,8 @@ const tachyonSource = readViewSource('tachyon.ts');
 const tachyonAst = parseTsAst(tachyonSource);
 const outboundsSource = readViewSource('outbounds.ts');
 const outboundsAst = parseTsAst(outboundsSource);
+const conditionsSource = readViewSource('conditions.ts');
+const conditionsAst = parseTsAst(conditionsSource);
 
 describe('Tachyon 2.0 beta.16 section & modal regressions', () => {
   it('getLinkedSectionConditionIds returns [] for composite condition types, children, members, and expressions', () => {
@@ -631,5 +633,153 @@ describe('Tachyon 2.0 beta.16 section & modal regressions', () => {
       },
     });
     expect(writeSnippet).toContain('subscription_urls');
+  });
+
+  it('persistSavedGridChanges surfaces apply_unchecked HTTP/JSON errors instead of swallowing them', async () => {
+    const extractErrFn = extractFunctionDecl(
+      tachyonAst,
+      tachyonSource,
+      'extractApplyErrorText',
+    );
+    const persistFn = extractFunctionDecl(
+      tachyonAst,
+      tachyonSource,
+      'persistSavedGridChanges',
+    );
+
+    const addNotification = vi.fn();
+    const setIndicator = vi.fn();
+    const refreshStudioDeck = vi.fn();
+    const uiMock = {
+      addNotification,
+      changes: {
+        changes: { tachyon: [['set', 'Main', 'enabled', '1']] },
+        setIndicator,
+      },
+    };
+    const uciMock = {
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            success: false,
+            error: 'tachyon-core check failed: unknown field',
+          }),
+        ),
+    });
+
+    const compiled = transpileSnippet(`
+      ${extractErrFn}
+      ${persistFn}
+      return persistSavedGridChanges;
+    `);
+    const runPersist = new Function(
+      'sanitizeUciDeletes',
+      'hasPendingUciStateChanges',
+      'uci',
+      'fetch',
+      'ui',
+      'E',
+      '_',
+      compiled,
+    )(
+      () => {},
+      () => true,
+      uciMock,
+      fetchMock,
+      uiMock,
+      (_tag, _attrs, text) => ({ text }),
+      (s) => s,
+    );
+
+    await expect(
+      runPersist({ _refreshStudioDeck: refreshStudioDeck }, 'Main'),
+    ).rejects.toThrow('tachyon-core check failed: unknown field');
+
+    expect(addNotification).toHaveBeenCalledTimes(1);
+    expect(addNotification.mock.calls[0][1]).toEqual({
+      text: 'tachyon-core check failed: unknown field',
+    });
+    expect(addNotification.mock.calls[0][2]).toBe('danger');
+    expect(setIndicator).not.toHaveBeenCalled();
+    expect(Object.keys(uiMock.changes.changes)).toHaveLength(1);
+    expect(refreshStudioDeck).toHaveBeenCalledTimes(1);
+  });
+
+  it('conditions.ts setArrayIfChanged unsets user_domains when cleared even if raw value was empty array or string', () => {
+    const asArrayFn = extractFunctionDecl(
+      conditionsAst,
+      conditionsSource,
+      'asArray',
+    );
+    const asRefFn = extractFunctionDecl(
+      conditionsAst,
+      conditionsSource,
+      'asReferenceArray',
+    );
+    const unsetFn = extractFunctionDecl(
+      conditionsAst,
+      conditionsSource,
+      'unsetIfPresent',
+    );
+    const setArrFn = extractFunctionDecl(
+      conditionsAst,
+      conditionsSource,
+      'setArrayIfChanged',
+    );
+
+    const compiled = transpileSnippet(`
+      ${asArrayFn}
+      ${asRefFn}
+      ${unsetFn}
+      ${setArrFn}
+      return setArrayIfChanged;
+    `);
+
+    for (const initial of [['example.com'], [], '']) {
+      const store = {
+        values: {
+          tachyon: {
+            cond_1: {
+              user_domains: initial,
+            },
+          },
+        },
+        deletes: {},
+      };
+      const unsetMock = vi.fn((_pkg, sid, key) => {
+        delete store.values.tachyon[sid][key];
+      });
+      const setMock = vi.fn((_pkg, sid, key, val) => {
+        store.values.tachyon[sid][key] = val;
+      });
+      const uciMock = {
+        state: store,
+        get: (_pkg, sid, key) => store.values.tachyon[sid]?.[key],
+        unset: unsetMock,
+        set: setMock,
+      };
+      const setArrayIfChanged = new Function('UCI_PACKAGE', 'uci', compiled)(
+        'tachyon',
+        uciMock,
+      );
+
+      setArrayIfChanged('cond_1', 'user_domains', []);
+      expect(unsetMock).toHaveBeenCalledWith(
+        'tachyon',
+        'cond_1',
+        'user_domains',
+      );
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          store.values.tachyon.cond_1,
+          'user_domains',
+        ),
+      ).toBe(false);
+    }
   });
 });

@@ -380,7 +380,7 @@ export const TachyonShellMethods = {
     ]),
   getClashApiProxyLatency: async (
     tag: string,
-    timeout = '5000',
+    timeout = '8000',
     url?: string,
   ) =>
     callBaseMethod<Tachyon.GetClashApiProxyLatency>(
@@ -391,6 +391,7 @@ export const TachyonShellMethods = {
         timeout,
         ...(url ? [url] : []),
       ],
+      { timeout: Math.max(25000, (Number(timeout) || 8000) * 2 + 8000) },
     ),
   getClashApiProxyLatencies: async (tags: string[]) =>
     callBaseMethod<Tachyon.GetClashApiProxyLatencies>(
@@ -414,6 +415,7 @@ export const TachyonShellMethods = {
         timeout,
         ...(url ? [url] : []),
       ],
+      { timeout: Math.max(25000, (Number(timeout) || 10000) * 2 + 8000) },
     ),
   setClashApiGroupProxy: async (group: string, proxy: string) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [

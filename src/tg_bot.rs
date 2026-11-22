@@ -1082,19 +1082,40 @@ pub fn notify_if_enabled(d: &crate::store::RouterStoreData, kind: &str, text: &s
     }
 }
 
-pub fn queue_or_send_notification(text: impl Into<String>) {
-    let msg = text.into();
-    if msg.trim().is_empty() {
-        return;
+pub(crate) fn queue_plain_outbox_notice_in(outbox_dir: &std::path::Path, text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return false;
     }
-    let _ = std::fs::create_dir_all(TG_OUTBOX_DIR);
+    let _ = std::fs::create_dir_all(outbox_dir);
+    if let Ok(entries) = std::fs::read_dir(outbox_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("txt") {
+                continue;
+            }
+            if let Ok(existing) = std::fs::read_to_string(&path)
+                && existing.trim() == trimmed
+            {
+                return false;
+            }
+        }
+    }
     let now = unix_now_secs();
     let seq = OUTBOX_SEQ.fetch_add(1, Ordering::Relaxed);
-    let outbox_dir = std::path::Path::new(TG_OUTBOX_DIR);
     let path = outbox_dir.join(format!("{now}_{seq}.txt"));
-    let _ = std::fs::write(path, msg);
+    if std::fs::write(path, text).is_err() {
+        return false;
+    }
     enforce_outbox_limit(outbox_dir, TG_OUTBOX_MAX_FILES);
-    notify_bot_wakeup();
+    true
+}
+
+pub fn queue_or_send_notification(text: impl Into<String>) {
+    let msg = text.into();
+    if queue_plain_outbox_notice_in(std::path::Path::new(TG_OUTBOX_DIR), &msg) {
+        notify_bot_wakeup();
+    }
 }
 
 fn format_outbox_html(raw: &str, header: &str) -> String {
@@ -1713,6 +1734,24 @@ pub(crate) struct BotEventObserver {
     last_clash_poll_unix: i64,
     last_cert_check_unix: i64,
     warned_cert_paths: HashSet<String>,
+    pub(crate) last_crash_alerts: HashMap<String, i64>,
+}
+
+impl BotEventObserver {
+    pub(crate) fn should_emit_crash_alert(&mut self, key: &str, now: i64) -> bool {
+        self.last_crash_alerts
+            .retain(|_, ts| now.saturating_sub(*ts) < 300);
+        if let Some(&last_ts) = self.last_crash_alerts.get(key)
+            && now.saturating_sub(last_ts) < 300
+        {
+            return false;
+        }
+        if self.last_crash_alerts.len() >= 64 {
+            self.last_crash_alerts.clear();
+        }
+        self.last_crash_alerts.insert(key.to_string(), now);
+        true
+    }
 }
 
 pub(crate) fn collect_section_store_switch_notifications(
@@ -1857,6 +1896,79 @@ async fn check_cert_expiring_soon(path: &str) -> bool {
     matches!(out, Ok(st) if !st.success())
 }
 
+pub(crate) fn classify_event_notification(
+    obs: &mut BotEventObserver,
+    subsystem: &str,
+    message: &str,
+    now: i64,
+    ru: bool,
+) -> Option<(&'static str, String)> {
+    let sub_low = subsystem.to_ascii_lowercase();
+    let msg_low = message.to_ascii_lowercase();
+    let watchdog_maintenance = sub_low == "watchdog"
+        && (msg_low.contains("l2_config_drift_reload")
+            || msg_low.contains("l1_memory_trim")
+            || msg_low.contains("l1_dns_flush"));
+    if sub_low == "watchdog" && msg_low.contains("l2_config_drift_reload") {
+        let txt = if ru {
+            format!("<b>Перезапуск ядра:</b> {}", escape_html(message))
+        } else {
+            format!("<b>Core Restart:</b> {}", escape_html(message))
+        };
+        Some(("restart", txt))
+    } else if watchdog_maintenance {
+        None
+    } else if sub_low != "blackbox"
+        && (sub_low == "watchdog"
+            || msg_low.contains("stopped unexpectedly")
+            || msg_low.contains("crash"))
+    {
+        let dedup_key = msg_low.trim().to_string();
+        if !obs.should_emit_crash_alert(&dedup_key, now) {
+            return None;
+        }
+        let txt = if ru {
+            format!("<b>Сбой ядра:</b> {}", escape_html(message))
+        } else {
+            format!("<b>Core Crash:</b> {}", escape_html(message))
+        };
+        Some(("crash", txt))
+    } else if sub_low == "core_mgr"
+        && (msg_low.contains("started")
+            || msg_low.contains("reloaded")
+            || msg_low.contains("restart"))
+    {
+        let txt = if ru {
+            format!("<b>Перезапуск ядра:</b> {}", escape_html(message))
+        } else {
+            format!("<b>Core Restart:</b> {}", escape_html(message))
+        };
+        Some(("restart", txt))
+    } else if sub_low.contains("failover") || msg_low.contains("failover") {
+        let txt = if ru {
+            format!(
+                "<b>Переключение канала (Failover):</b> {}",
+                escape_html(message)
+            )
+        } else {
+            format!("<b>Failover:</b> {}", escape_html(message))
+        };
+        Some(("failover", txt))
+    } else if sub_low.contains("smart_detect") || msg_low.contains("smart detect") {
+        let txt = format!("<b>Smart Detect:</b> {}", escape_html(message));
+        Some(("smart_detect", txt))
+    } else if sub_low.contains("parental") {
+        let txt = if ru {
+            format!("<b>Семейный режим:</b> {}", escape_html(message))
+        } else {
+            format!("<b>Parental Control:</b> {}", escape_html(message))
+        };
+        Some(("parental", txt))
+    } else {
+        None
+    }
+}
+
 async fn observe_and_notify_events(
     obs: &mut BotEventObserver,
     state: &Arc<AppState>,
@@ -1932,64 +2044,13 @@ async fn observe_and_notify_events(
         if !push_bounded_key(&mut obs.seen_event_keys, key, 128) {
             continue;
         }
-        let sub_low = ev.subsystem.to_ascii_lowercase();
-        let msg_low = ev.message.to_ascii_lowercase();
-        let watchdog_maintenance = sub_low == "watchdog"
-            && (msg_low.contains("l2_config_drift_reload")
-                || msg_low.contains("l1_memory_trim")
-                || msg_low.contains("l1_dns_flush"));
-        if sub_low == "watchdog" && msg_low.contains("l2_config_drift_reload") {
-            emitted_restart = true;
-            let txt = if ru {
-                format!("<b>Перезапуск ядра:</b> {}", escape_html(&ev.message))
-            } else {
-                format!("<b>Core Restart:</b> {}", escape_html(&ev.message))
-            };
-            notify_if_enabled(&d, "restart", &txt);
-        } else if watchdog_maintenance {
-            continue;
-        } else if sub_low == "watchdog"
-            || msg_low.contains("stopped unexpectedly")
-            || msg_low.contains("crash")
+        if let Some((kind, txt)) =
+            classify_event_notification(obs, &ev.subsystem, &ev.message, now, ru)
         {
-            let txt = if ru {
-                format!("<b>Сбой ядра:</b> {}", escape_html(&ev.message))
-            } else {
-                format!("<b>Core Crash:</b> {}", escape_html(&ev.message))
-            };
-            notify_if_enabled(&d, "crash", &txt);
-        } else if sub_low == "core_mgr"
-            && (msg_low.contains("started")
-                || msg_low.contains("reloaded")
-                || msg_low.contains("restart"))
-        {
-            emitted_restart = true;
-            let txt = if ru {
-                format!("<b>Перезапуск ядра:</b> {}", escape_html(&ev.message))
-            } else {
-                format!("<b>Core Restart:</b> {}", escape_html(&ev.message))
-            };
-            notify_if_enabled(&d, "restart", &txt);
-        } else if sub_low.contains("failover") || msg_low.contains("failover") {
-            let txt = if ru {
-                format!(
-                    "<b>Переключение канала (Failover):</b> {}",
-                    escape_html(&ev.message)
-                )
-            } else {
-                format!("<b>Failover:</b> {}", escape_html(&ev.message))
-            };
-            notify_if_enabled(&d, "failover", &txt);
-        } else if sub_low.contains("smart_detect") || msg_low.contains("smart detect") {
-            let txt = format!("<b>Smart Detect:</b> {}", escape_html(&ev.message));
-            notify_if_enabled(&d, "smart_detect", &txt);
-        } else if sub_low.contains("parental") {
-            let txt = if ru {
-                format!("<b>Семейный режим:</b> {}", escape_html(&ev.message))
-            } else {
-                format!("<b>Parental Control:</b> {}", escape_html(&ev.message))
-            };
-            notify_if_enabled(&d, "parental", &txt);
+            if kind == "restart" {
+                emitted_restart = true;
+            }
+            notify_if_enabled(&d, kind, &txt);
         }
     }
 

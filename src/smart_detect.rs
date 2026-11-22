@@ -505,8 +505,9 @@ pub fn is_domain_excluded_or_routed(host: &str, data: &RouterStoreData) -> bool 
         for cref in &sec.condition_refs {
             if let Some(cond) = data.conditions.iter().find(|c| c.id == *cref)
                 && cond
-                    .user_domains
+                    .domains
                     .iter()
+                    .chain(cond.user_domains.iter())
                     .chain(cond.exclude_domains.iter())
                     .any(|d| host_matches_domain_rule(host, d))
             {
@@ -658,8 +659,9 @@ fn insert_domain_into_section_and_linked_condition(
 
     let mut changed = false;
     if !sec
-        .user_domains
+        .domains
         .iter()
+        .chain(sec.user_domains.iter())
         .any(|d| d.eq_ignore_ascii_case(domain_rule))
     {
         sec.user_domains.push(domain_rule.to_string());
@@ -675,8 +677,9 @@ fn insert_domain_into_section_and_linked_condition(
         && !cond.is_composite()
     {
         if !cond
-            .user_domains
+            .domains
             .iter()
+            .chain(cond.user_domains.iter())
             .any(|d| d.eq_ignore_ascii_case(domain_rule))
         {
             cond.user_domains.push(domain_rule.to_string());

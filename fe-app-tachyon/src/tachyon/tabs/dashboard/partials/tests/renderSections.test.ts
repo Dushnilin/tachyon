@@ -113,11 +113,13 @@ globalThis.document = {
 };
 
 let renderSections: any;
+let renderGlobalConfigErrorsBanner: any;
 
 describe('renderSections', () => {
   beforeAll(async () => {
     const mod = await import('../renderSections');
     renderSections = mod.renderSections;
+    renderGlobalConfigErrorsBanner = mod.renderGlobalConfigErrorsBanner;
   });
 
   beforeEach(() => {
@@ -1574,5 +1576,41 @@ describe('renderSections', () => {
     (priorityBtn as any)?.click({ stopPropagation() {} });
     expect(onShowUrlTestInfo).toHaveBeenCalledTimes(1);
     expect(onShowPriorityInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('renderGlobalConfigErrorsBanner hides section-owned errors and renders global/system faults', () => {
+    const sections: any[] = [
+      {
+        code: 'youtube',
+        sectionName: 'youtube',
+        displayName: 'YouTube',
+        outbounds: [],
+        withTagSelect: false,
+      },
+    ];
+
+    expect(
+      renderGlobalConfigErrorsBanner(sections, {
+        youtube: 'Section error already shown on card',
+      }),
+    ).toBeNull();
+
+    const banner = renderGlobalConfigErrorsBanner(sections, {
+      youtube: 'Section error already shown on card',
+      _dns: 'DoH upstream failed; UDP fallback active',
+      _core_runtime: 'Minimal mode started',
+    });
+    expect(banner).not.toBeNull();
+    const text = banner.textContent;
+    expect(text).toContain('DNS: ');
+    expect(text).toContain('DoH upstream failed; UDP fallback active');
+    expect(text).toContain('Minimal mode started');
+    expect(text).not.toContain('Section error already shown on card');
+
+    const emptySecBanner = renderGlobalConfigErrorsBanner([], {
+      _rules: 'Broken custom ruleset',
+    });
+    expect(emptySecBanner).not.toBeNull();
+    expect(emptySecBanner.textContent).toContain('Broken custom ruleset');
   });
 });

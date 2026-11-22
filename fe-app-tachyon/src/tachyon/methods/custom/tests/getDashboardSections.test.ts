@@ -2811,4 +2811,180 @@ describe('getDashboardSections', () => {
       'main-3-out',
     ]);
   });
+
+  it('resolves source-prefixed Clash tag for single-endpoint actions like mieru', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'VDSina_Miery',
+        '.type': 'section',
+        enabled: '1',
+        action: 'mieru',
+        label: 'VDSina_Miery',
+        outbound_source_refs: ['src_mieru_VDSina_Miery'],
+      },
+      {
+        '.name': 'src_mieru_VDSina_Miery',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'mieru',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'mieru-src_mieru_VDSina_Miery': proxy('Mieru', {
+            name: 'mieru-src_mieru_VDSina_Miery',
+            history: [{ time: '2026-11-22T10:00:00Z', delay: 118 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue('{}');
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const sec = result.data.find((s) => s.sectionName === 'VDSina_Miery');
+    expect(sec).toBeDefined();
+    expect(sec?.code).toBe('mieru-src_mieru_VDSina_Miery');
+    expect(sec?.outbounds[0]?.code).toBe('mieru-src_mieru_VDSina_Miery');
+    expect(sec?.outbounds[0]?.runtimeAvailable).toBe(true);
+    expect(sec?.outbounds[0]?.latency).toBe(118);
+  });
+
+  it('falls back to runtime entry.value.all or empty-level groupCache for Priority details (#472)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: undefined,
+        urltest_settings: undefined,
+        priority_groups: ['pg_main'],
+        priority_group_settings: urlTestSettings('pg_main', {
+          name: 'Failover Priority',
+        }),
+      }),
+      priorityGroup('pg_main', { name: 'Failover Priority' }),
+      priorityLevel('pl_de', { name: 'Tier 1', order: '0' }),
+      priorityLevel('pl_nl', { name: 'Tier 2', order: '1' }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-priority-pg_main-out',
+            all: ['main-priority-pg_main-out'],
+          }),
+          'main-priority-pg_main-out': proxy('URLTest', {
+            name: 'main-priority-pg_main-out',
+            now: 'main-2-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+        },
+      },
+    });
+
+    // Case 1: section-cache has outboundMetadata only, no priorityGroups
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'main-1-out': 'Node 1', 'main-2-out': 'Node 2' },
+        },
+      }),
+    );
+
+    const noCacheResult = await getDashboardSections();
+    const prio1 = noCacheResult.data[0].outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+    expect(prio1?.priorityInfo?.selectedCode).toBe('main-2-out');
+    expect(prio1?.priorityInfo?.outbounds).toHaveLength(2);
+    expect(
+      prio1?.priorityInfo?.outbounds.map((m) => ({
+        code: m.code,
+        selected: m.selected,
+        levelName: m.levelName,
+      })),
+    ).toEqual([
+      { code: 'main-1-out', selected: false, levelName: '' },
+      { code: 'main-2-out', selected: true, levelName: '' },
+    ]);
+
+    // Case 2: section-cache has priorityGroups levels with empty outbounds: []
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'main-1-out': 'Node 1', 'main-2-out': 'Node 2' },
+        },
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Failover Priority',
+            outbounds: ['main-2-out', 'main-1-out'],
+            levels: [
+              { id: 'pl_de', displayName: 'Tier 1', order: 0, outbounds: [] },
+              { id: 'pl_nl', displayName: 'Tier 2', order: 1, outbounds: [] },
+            ],
+          },
+        },
+      }),
+    );
+
+    const emptyLevelResult = await getDashboardSections();
+    const prio2 = emptyLevelResult.data[0].outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+    expect(prio2?.priorityInfo?.outbounds.map((m) => m.code)).toEqual([
+      'main-2-out',
+      'main-1-out',
+    ]);
+    expect(
+      prio2?.priorityInfo?.outbounds.find((m) => m.code === 'main-2-out')
+        ?.selected,
+    ).toBe(true);
+
+    // Case 3: section-cache has populated priorityGroups levels -> preserves tier names & indices
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'main-1-out': 'Node 1', 'main-2-out': 'Node 2' },
+        },
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Failover Priority',
+            outbounds: ['main-2-out', 'main-1-out'],
+            levels: [
+              {
+                id: 'pl_de',
+                displayName: 'Tier 1',
+                order: 0,
+                outbounds: ['main-2-out'],
+              },
+              {
+                id: 'pl_nl',
+                displayName: 'Tier 2',
+                order: 1,
+                outbounds: ['main-1-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const populatedLevelResult = await getDashboardSections();
+    const prio3 = populatedLevelResult.data[0].outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+    expect(
+      prio3?.priorityInfo?.outbounds.map((m) => ({
+        code: m.code,
+        levelIndex: m.levelIndex,
+        levelName: m.levelName,
+      })),
+    ).toEqual([
+      { code: 'main-2-out', levelIndex: 0, levelName: 'Tier 1' },
+      { code: 'main-1-out', levelIndex: 1, levelName: 'Tier 2' },
+    ]);
+  });
 });

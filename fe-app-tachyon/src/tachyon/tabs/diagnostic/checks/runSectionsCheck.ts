@@ -41,6 +41,96 @@ function readLatencyReason(data: unknown): string {
   return '';
 }
 
+function extractResponseData(
+  response: unknown,
+): Record<string, unknown> | null {
+  if (!response || typeof response !== 'object' || !('data' in response)) {
+    return null;
+  }
+  const data = (response as { data?: unknown }).data;
+  return data && typeof data === 'object'
+    ? (data as Record<string, unknown>)
+    : null;
+}
+
+function extractPositiveLatencyDelay(response: unknown): number | null {
+  if (!response || typeof response !== 'object') {
+    return null;
+  }
+  if (!(response as { success?: unknown }).success) {
+    return null;
+  }
+  const data = extractResponseData(response);
+  if (!data || data.message) {
+    return null;
+  }
+  const directDelay = data.delay;
+  if (typeof directDelay === 'number' && directDelay > 0) {
+    return directDelay;
+  }
+  const groupDelays = Object.values(data).filter(
+    (v): v is number => typeof v === 'number' && v > 0,
+  );
+  if (groupDelays.length > 0) {
+    return Math.min(...groupDelays);
+  }
+  return null;
+}
+
+async function probeOutboundWithLiveRetry(
+  primaryCode: string,
+  fallbackCode?: string,
+  configuredTimeout?: string,
+) {
+  const primaryResp = await TachyonShellMethods.getClashApiProxyLatency(
+    primaryCode,
+    configuredTimeout,
+  );
+  const primaryDelay = extractPositiveLatencyDelay(primaryResp);
+  if (primaryDelay !== null) {
+    return { delay: primaryDelay, reason: '' };
+  }
+
+  const parsedConfigured = Number(configuredTimeout);
+  const retryTimeout = String(
+    Math.max(
+      Number.isFinite(parsedConfigured) && parsedConfigured > 0
+        ? parsedConfigured
+        : 8000,
+      10000,
+    ),
+  );
+
+  const retryResp = await TachyonShellMethods.getClashApiProxyLatency(
+    primaryCode,
+    retryTimeout,
+  );
+  const retryDelay = extractPositiveLatencyDelay(retryResp);
+  if (retryDelay !== null) {
+    return { delay: retryDelay, reason: '' };
+  }
+
+  let lastResponse: unknown = retryResp || primaryResp;
+  if (fallbackCode && fallbackCode !== primaryCode) {
+    const fallbackResp = await TachyonShellMethods.getClashApiProxyLatency(
+      fallbackCode,
+      retryTimeout,
+    );
+    const fallbackDelay = extractPositiveLatencyDelay(fallbackResp);
+    if (fallbackDelay !== null) {
+      return { delay: fallbackDelay, reason: '' };
+    }
+    if (fallbackResp) {
+      lastResponse = fallbackResp;
+    }
+  }
+
+  return {
+    delay: null,
+    reason: readLatencyReason(extractResponseData(lastResponse)),
+  };
+}
+
 export async function runSectionsCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.OUTBOUNDS;
 
@@ -93,33 +183,21 @@ export async function runSectionsCheck() {
           selectedOutbound?.code;
 
         if (activeNodeCode) {
-          const latencyProxy =
-            await TachyonShellMethods.getClashApiProxyLatency(
-              activeNodeCode,
-              section.latencyTestTimeout,
-            );
-          const proxySuccess =
-            latencyProxy.success && !latencyProxy.data?.message;
+          const fallbackCode =
+            selectedOutbound?.code && selectedOutbound.code !== activeNodeCode
+              ? selectedOutbound.code
+              : undefined;
+          const { delay: liveDelay, reason } = await probeOutboundWithLiveRetry(
+            activeNodeCode,
+            fallbackCode,
+            section.latencyTestTimeout,
+          );
 
-          if (proxySuccess) {
-            const delay = latencyProxy.data?.delay;
-            if (typeof delay === 'number' && delay > 0) {
-              return {
-                state: 'success',
-                latency: `[${selectedOutbound?.displayName ?? ''}] ${delay}ms`,
-              };
-            }
-
-            const groupDelays = Object.values(latencyProxy.data || {}).filter(
-              (v): v is number => typeof v === 'number' && v > 0,
-            );
-            if (groupDelays.length > 0) {
-              const minDelay = Math.min(...groupDelays);
-              return {
-                state: 'success',
-                latency: `[${selectedOutbound?.displayName ?? ''}] ${minDelay}ms`,
-              };
-            }
+          if (liveDelay !== null) {
+            return {
+              state: 'success',
+              latency: `[${selectedOutbound?.displayName ?? ''}] ${liveDelay}ms`,
+            };
           }
 
           if (selectedOutbound?.latency && selectedOutbound.latency > 0) {
@@ -131,7 +209,9 @@ export async function runSectionsCheck() {
 
           return {
             state: 'error',
-            latency: `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
+            latency: reason
+              ? `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}: ${reason}`
+              : `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
           };
         }
 
@@ -250,31 +330,23 @@ export async function runSectionsCheck() {
         selectedOutbound?.priorityInfo?.selectedCode ||
         selectedOutbound?.code ||
         section.code;
-      const latencyProxy = await TachyonShellMethods.getClashApiProxyLatency(
+      const fallbackCode =
+        selectedOutbound?.code && selectedOutbound.code !== targetCode
+          ? selectedOutbound.code
+          : section.code && section.code !== targetCode
+            ? section.code
+            : undefined;
+      const { delay: liveDelay, reason } = await probeOutboundWithLiveRetry(
         targetCode,
+        fallbackCode,
         section.latencyTestTimeout,
       );
 
-      const success = latencyProxy.success && !latencyProxy.data?.message;
-
-      if (success) {
-        const delay = latencyProxy.data?.delay;
-        if (typeof delay === 'number' && delay > 0) {
-          return {
-            state: 'success',
-            latency: `${delay} ms`,
-          };
-        }
-
-        const groupDelays = Object.values(latencyProxy.data || {}).filter(
-          (v): v is number => typeof v === 'number' && v > 0,
-        );
-        if (groupDelays.length > 0) {
-          return {
-            state: 'success',
-            latency: `${Math.min(...groupDelays)} ms`,
-          };
-        }
+      if (liveDelay !== null) {
+        return {
+          state: 'success',
+          latency: `${liveDelay} ms`,
+        };
       }
 
       if (section.action === 'vpn' && selectedOutbound?.runtimeAvailable) {
@@ -293,7 +365,9 @@ export async function runSectionsCheck() {
 
       return {
         state: 'error',
-        latency: _('Not responding'),
+        latency: reason
+          ? `${_('Not responding')}: ${reason}`
+          : _('Not responding'),
       };
     }
 

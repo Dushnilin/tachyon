@@ -292,6 +292,57 @@ function resolveSectionRuntimeSelector(
   return undefined;
 }
 
+function resolveSingleEndpointProxy(
+  section: Tachyon.ConfigSection,
+  sectionName: string,
+  proxies: Array<{ code: string; value: ClashProxyEntry['value'] }>,
+  proxyByCode: Map<string, { code: string; value: ClashProxyEntry['value'] }>,
+  sourceById: Map<string, Tachyon.ConfigSection>,
+) {
+  const isGroupEntry = (entry: { value: ClashProxyEntry['value'] }) =>
+    Array.isArray(entry.value?.all) && entry.value.all.length > 0;
+
+  const primary = proxyByCode.get(getOutboundTagBySection(sectionName));
+  if (primary) return primary;
+
+  const directSectionMatch = proxyByCode.get(sectionName);
+  if (directSectionMatch) return directSectionMatch;
+
+  const sel = proxyByCode.get(`sel-${sectionName}`);
+  if (sel) {
+    const nowTag =
+      typeof sel.value?.now === 'string' ? sel.value.now.trim() : '';
+    if (nowTag && proxyByCode.has(nowTag)) {
+      return proxyByCode.get(nowTag);
+    }
+    return sel;
+  }
+
+  for (const srcId of getListValues(section.outbound_source_refs)) {
+    const src = sourceById.get(srcId);
+    const srcType = String(src?.source_type || section.action || '')
+      .trim()
+      .toLowerCase();
+    const directCandidates = [
+      srcId,
+      `wg-${srcId}`,
+      ...(srcType ? [`${srcType}-${srcId}`] : []),
+      ...(srcType === 'amneziawg' ? [`awg-${srcId}`] : []),
+    ];
+    for (const cand of directCandidates) {
+      const hit = proxyByCode.get(cand);
+      if (hit) return hit;
+    }
+    const suffix = `-${srcId}`;
+    const suffixMatch = proxies.find(
+      (entry) => !isGroupEntry(entry) && entry.code.endsWith(suffix),
+    );
+    if (suffixMatch) return suffixMatch;
+  }
+
+  return undefined;
+}
+
 function getListValues(value?: string[] | string) {
   if (!value) {
     return [];
@@ -2578,7 +2629,18 @@ function buildPriorityInfo({
       ? left.id.localeCompare(right.id)
       : left.order - right.order,
   );
-  const allChildCodes = levels.flatMap((l) => l.outbounds);
+  const runtimeAllCodes = entry?.value.all || [];
+  const levelChildCodes = levels.flatMap((l) => l.outbounds);
+  const fallbackCodes =
+    levelChildCodes.length > 0
+      ? []
+      : uniqueCodes(
+          groupCache?.outbounds?.length
+            ? groupCache.outbounds
+            : runtimeAllCodes,
+        );
+  const allChildCodes =
+    levelChildCodes.length > 0 ? levelChildCodes : fallbackCodes;
   const isChildSelectedInSelector = Boolean(
     selectorNow &&
       selectorNow !== config.code &&
@@ -2590,60 +2652,63 @@ function buildPriorityInfo({
     : entry?.value.now || '';
   const isManualSelection = isChildSelectedInSelector;
 
-  const runtimeAllCodes = entry?.value.all || [];
-  const outbounds = levels.flatMap((level, levelIndex) => {
-    const members = uniqueCodes(level.outbounds || []).map((childCode) => {
-      const childEntry = findProxyEntryForMember(
-        proxyByCode,
-        childCode,
-        runtimeAllCodes,
-      );
-      const effectiveCode = childEntry?.code || childCode;
-      const link =
-        findManualLink(manualLinkByCode, childCode) ||
-        findManualLink(manualLinkByCode, effectiveCode) ||
-        cachedProxyLinks.get(childCode) ||
-        cachedProxyLinks.get(effectiveCode) ||
-        '';
-      const canCopyLink = isCopyableProxyLink(link);
-      const resolved = resolveOutboundNameAndPrefix({
-        code: childCode,
-        entry: childEntry,
-        link,
-        outboundMetadata,
-        preferMetadata:
-          cachedProxyLinks.has(childCode) ||
-          cachedProxyLinks.has(effectiveCode),
-        configuredPrefixes,
-      });
-
-      return {
-        code: effectiveCode,
-        displayName: resolved.displayName,
-        prefix: resolved.prefix,
-        latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: dashboardOutboundType(
-          childCode,
-          childEntry?.value?.type,
-          outboundMetadata,
-          link,
-        ),
-        transport:
-          lookupMetadataField(outboundMetadata?.transports, childCode) ||
-          getProxyUrlTransport(link),
-        details: buildOutboundDetails(childCode, outboundMetadata),
-        selected: selectedCode === childCode || selectedCode === effectiveCode,
-        link,
-        canCopyLink,
-        country: showDetectedCountries
-          ? lookupMetadataField(outboundMetadata?.countries, childCode)
-          : undefined,
-        levelIndex,
-        levelName: level.displayName,
-        levelId: level.id,
-      };
+  const buildMember = (
+    childCode: string,
+    levelIndex: number,
+    levelName: string,
+    levelId: string,
+  ): Tachyon.PriorityMember => {
+    const childEntry = findProxyEntryForMember(
+      proxyByCode,
+      childCode,
+      runtimeAllCodes,
+    );
+    const effectiveCode = childEntry?.code || childCode;
+    const link =
+      findManualLink(manualLinkByCode, childCode) ||
+      findManualLink(manualLinkByCode, effectiveCode) ||
+      cachedProxyLinks.get(childCode) ||
+      cachedProxyLinks.get(effectiveCode) ||
+      '';
+    const canCopyLink = isCopyableProxyLink(link);
+    const resolved = resolveOutboundNameAndPrefix({
+      code: childCode,
+      entry: childEntry,
+      link,
+      outboundMetadata,
+      preferMetadata:
+        cachedProxyLinks.has(childCode) || cachedProxyLinks.has(effectiveCode),
+      configuredPrefixes,
     });
 
+    return {
+      code: effectiveCode,
+      displayName: resolved.displayName,
+      prefix: resolved.prefix,
+      latency: childEntry?.value?.history?.[0]?.delay || 0,
+      type: dashboardOutboundType(
+        childCode,
+        childEntry?.value?.type,
+        outboundMetadata,
+        link,
+      ),
+      transport:
+        lookupMetadataField(outboundMetadata?.transports, childCode) ||
+        getProxyUrlTransport(link),
+      details: buildOutboundDetails(childCode, outboundMetadata),
+      selected: selectedCode === childCode || selectedCode === effectiveCode,
+      link,
+      canCopyLink,
+      country: showDetectedCountries
+        ? lookupMetadataField(outboundMetadata?.countries, childCode)
+        : undefined,
+      levelIndex,
+      levelName,
+      levelId,
+    };
+  };
+
+  const sortIfPickFastest = (members: Tachyon.PriorityMember[]) => {
     if (!config.pickFastest) {
       return members;
     }
@@ -2658,7 +2723,20 @@ function buildPriorityInfo({
         return latencyDiff !== 0 ? latencyDiff : left.index - right.index;
       })
       .map((item) => item.outbound);
-  });
+  };
+
+  const outbounds =
+    levelChildCodes.length > 0
+      ? levels.flatMap((level, levelIndex) =>
+          sortIfPickFastest(
+            uniqueCodes(level.outbounds || []).map((childCode) =>
+              buildMember(childCode, levelIndex, level.displayName, level.id),
+            ),
+          ),
+        )
+      : sortIfPickFastest(
+          fallbackCodes.map((childCode) => buildMember(childCode, 0, '', '')),
+        );
   const selectedName =
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;
@@ -3481,6 +3559,12 @@ export async function getDashboardSections(
           value,
         }))
       : [];
+  const proxyByCode = new Map(proxies.map((entry) => [entry.code, entry]));
+  const sourceById = new Map(
+    configSections
+      .filter((s) => s['.type'] === 'outbound_source' && s['.name'])
+      .map((s) => [s['.name'], s]),
+  );
   const serviceStatusCache = new Map<
     string,
     Promise<Tachyon.ServiceStatus | undefined>
@@ -3812,24 +3896,31 @@ export async function getDashboardSections(
 
         if (SINGLE_ENDPOINT_ACTIONS.has(sectionAction || '')) {
           const outboundTag = getOutboundTagBySection(sectionName);
-          const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+          const outbound = resolveSingleEndpointProxy(
+            section,
+            sectionName,
+            proxies,
+            proxyByCode,
+            sourceById,
+          );
+          const resolvedCode = outbound?.code || outboundTag;
           const defaultLabel =
             ACTION_DISPLAY_NAMES[sectionAction || ''] ||
             (sectionAction || '').toUpperCase();
           const customName =
-            outbound?.value?.name && outbound.value.name !== outboundTag
+            outbound?.value?.name && outbound.value.name !== resolvedCode
               ? outbound.value.name
               : '';
 
           return {
             withTagSelect: false,
-            code: outbound?.code || outboundTag,
+            code: resolvedCode,
             sectionName,
             displayName,
             action: sectionAction,
             outbounds: [
               {
-                code: outbound?.code || outboundTag,
+                code: resolvedCode,
                 displayName:
                   section.label ||
                   section.name ||
@@ -3855,17 +3946,24 @@ export async function getDashboardSections(
 
         if (sectionAction === 'outbound') {
           const outboundTag = getOutboundTagBySection(sectionName);
-          const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+          const outbound = resolveSingleEndpointProxy(
+            section,
+            sectionName,
+            proxies,
+            proxyByCode,
+            sourceById,
+          );
+          const resolvedCode = outbound?.code || outboundTag;
 
           return {
             withTagSelect: false,
-            code: outbound?.code || outboundTag,
+            code: resolvedCode,
             sectionName,
             displayName,
             action: sectionAction,
             outbounds: [
               {
-                code: outbound?.code || outboundTag,
+                code: resolvedCode,
                 displayName:
                   getJsonOutboundDisplayName(section) ||
                   outbound?.value?.name ||
@@ -3874,6 +3972,7 @@ export async function getDashboardSections(
                 type: outbound?.value?.type || '',
                 selected: true,
                 canCopyLink: false,
+                runtimeAvailable: Boolean(outbound),
               },
             ],
           };

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-21 00:35+0300\n"
-"PO-Revision-Date: 2026-11-21 00:35+0300\n"
+"POT-Creation-Date: 2026-11-22 20:02+0300\n"
+"PO-Revision-Date: 2026-11-22 20:02+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2153,6 +2153,9 @@ msgstr "Конфигурация применена"
 msgid "Configuration for Tachyon service"
 msgstr "Конфигурация сервиса Tachyon"
 
+msgid "Configuration issues detected (problematic settings isolated):"
+msgstr ""
+
 msgid "Configuration must contain [Interface] section or valid vpn:// links."
 msgstr "Конфигурация должна содержать секцию [Interface] или корректные ссылки vpn://."
 
@@ -2353,6 +2356,9 @@ msgstr "Скопировать в буфер"
 
 msgid "Core Resources, DNS Caches & Outbounds"
 msgstr "Ресурсы ядра, DNS-кэши и узлы"
+
+msgid "Core Safe Mode"
+msgstr ""
 
 msgid "Core Telemetry HUD"
 msgstr "Приборная панель ядра (HUD)"
@@ -3919,6 +3925,9 @@ msgstr "Не удалось применить конфигурацию DNS"
 
 msgid "Failed to apply DNS settings"
 msgstr "Не удалось применить настройки DNS"
+
+msgid "Failed to apply configuration"
+msgstr ""
 
 msgid "Failed to apply fix"
 msgstr "Не удалось применить исправление"
@@ -8804,6 +8813,9 @@ msgstr "Наборы правил, из которых также извлека
 msgid "Rules"
 msgstr "Правила"
 
+msgid "Rules & Lists"
+msgstr ""
+
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
 
@@ -10147,6 +10159,9 @@ msgstr "Состояние системы и служб"
 
 msgid "System Health & Subsystems"
 msgstr "Состояние системы и подсистем"
+
+msgid "System Settings"
+msgstr ""
 
 msgid "System Stability & Server Fleet Report"
 msgstr "Отчёт о стабильности системы"

@@ -44,6 +44,7 @@ import {
   clearDashboardGridHoverFreeze,
   getLatencyTestLabel,
   renderFlagEmojis,
+  renderGlobalConfigErrorsBanner,
   renderSections,
   renderWidget,
   renderDualWidget,
@@ -234,7 +235,10 @@ function toggleRoutingSectionExpanded(sectionCode: string) {
   });
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
-import { measurePriorityLatencies } from './priorityLatency';
+import {
+  computeMultiUrlSummaryLatency,
+  measurePriorityLatencies,
+} from './priorityLatency';
 import { Tachyon } from '../../types';
 import {
   getCachedRuntimeUiState,
@@ -3080,24 +3084,34 @@ function applyPriorityDaemonStatusToInfo(
   }
   if (st.url_delays && typeof st.url_delays === 'object') {
     const delaysMap = st.url_delays as Record<string, Record<string, number>>;
+    const effectiveUrls =
+      'healthUrls' in info
+        ? normalizeDetailsUrlList(info.healthUrl, info.healthUrls)
+        : normalizeDetailsUrlList(
+            (info as Tachyon.UrlTestInfo).url,
+            (info as Tachyon.UrlTestInfo).urls,
+          );
     info.outbounds = (info.outbounds || []).map((member) => {
       const mDelays = delaysMap[member.code];
       if (mDelays && typeof mDelays === 'object') {
         changed = true;
-        const positive = Object.values(mDelays).filter(
-          (d): d is number => typeof d === 'number' && d > 0,
-        );
+        const mergedUrlDelays = { ...(member.urlDelays || {}), ...mDelays };
         const derivedLatency =
-          (!member.latency || member.latency === 0) && positive.length > 0
-            ? Math.max(...positive)
+          !member.latency || member.latency === 0
+            ? computeMultiUrlSummaryLatency(
+                mergedUrlDelays,
+                effectiveUrls,
+                info.multiUrlStrategy,
+                member.latency,
+              )
             : member.latency;
-        if (derivedLatency && derivedLatency > 0) {
+        if (derivedLatency && derivedLatency !== 0) {
           customProxyLatencies.set(member.code, derivedLatency);
         }
         return {
           ...member,
           latency: derivedLatency,
-          urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+          urlDelays: mergedUrlDelays,
         };
       }
       return member;
@@ -3362,20 +3376,24 @@ function handleShowUrlTestInfo(
 
   const applyPerUrlMapToInfo = (
     perUrlMap: Map<string, Record<string, number>>,
+    activeUrls?: string[],
   ) => {
     if (!body.isConnected || perUrlMap.size === 0) return;
+    const targetUrls =
+      activeUrls && activeUrls.length > 0
+        ? activeUrls
+        : normalizeDetailsUrlList(info.url, info.urls);
     info.updatedAt = Math.floor(Date.now() / 1000);
     info.outbounds = (info.outbounds || []).map((member) => {
       const mDelays = perUrlMap.get(member.code);
       if (!mDelays) return member;
       const mergedUrlDelays = { ...(member.urlDelays || {}), ...mDelays };
-      const positive = Object.values(mergedUrlDelays).filter((d) => d > 0);
-      const nextLatency =
-        positive.length > 0
-          ? Math.max(...positive)
-          : member.latency > 0
-            ? member.latency
-            : -1;
+      const nextLatency = computeMultiUrlSummaryLatency(
+        mergedUrlDelays,
+        targetUrls,
+        info.multiUrlStrategy,
+        member.latency,
+      );
       if (nextLatency !== 0) {
         customProxyLatencies.set(member.code, nextLatency);
       }
@@ -3398,9 +3416,9 @@ function handleShowUrlTestInfo(
       info.outbounds || [],
       probeUrls,
       info.code,
-      (partial) => applyPerUrlMapToInfo(partial),
+      (partial) => applyPerUrlMapToInfo(partial, probeUrls),
     );
-    applyPerUrlMapToInfo(perUrlMap);
+    applyPerUrlMapToInfo(perUrlMap, probeUrls);
   };
 
   if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
@@ -3574,11 +3592,17 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
 
   const elements = [
     ...flagElements,
-    E(
-      'span',
-      { class: 'tachyon_dashboard-page__urltest-details__priority-level' },
-      `[${member.levelName}]`,
-    ),
+    ...(member.levelName
+      ? [
+          E(
+            'span',
+            {
+              class: 'tachyon_dashboard-page__urltest-details__priority-level',
+            },
+            `[${member.levelName}]`,
+          ),
+        ]
+      : []),
     ...renderFlagEmojis(displayTitle),
   ];
 
@@ -3784,15 +3808,23 @@ function handleShowPriorityInfo(
     info.outbounds = (info.outbounds || []).map((member) => {
       const mDelays = perUrlMap.get(member.code);
       if (!mDelays) return member;
-      const positive = Object.values(mDelays).filter((d) => d > 0);
-      const nextLatency =
-        positive.length > 0 ? Math.max(...positive) : member.latency;
+      const mergedUrlDelays = { ...(member.urlDelays || {}), ...mDelays };
+      const nextLatency = computeMultiUrlSummaryLatency(
+        mergedUrlDelays,
+        urls,
+        info.multiUrlStrategy,
+        member.latency,
+      );
+      if (nextLatency !== 0) {
+        customProxyLatencies.set(member.code, nextLatency);
+      }
       return {
         ...member,
         latency: nextLatency,
-        urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+        urlDelays: mergedUrlDelays,
       };
     });
+    capMapSize(customProxyLatencies);
     repaintModal();
   });
 }
@@ -5065,8 +5097,15 @@ async function renderSectionsWidget(forceImmediate = false) {
     }
   }
 
+  const globalConfigErrorsBanner = renderGlobalConfigErrorsBanner(
+    sectionsWithCustomLatencies,
+  );
+
   return preserveScrollForPage(() => {
-    container.replaceChildren(...dashboardBlocks);
+    container.replaceChildren(
+      ...(globalConfigErrorsBanner ? [globalConfigErrorsBanner] : []),
+      ...dashboardBlocks,
+    );
   }, container);
 }
 

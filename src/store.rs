@@ -1974,7 +1974,9 @@ pub struct TrafficCondition {
     pub community_lists: Vec<String>,
     #[serde(default = "default_true")]
     pub community_subnets: bool,
-    #[serde(default, alias = "domains")]
+    #[serde(default)]
+    pub domains: Vec<String>,
+    #[serde(default)]
     pub user_domains: Vec<String>,
     #[serde(default, alias = "excluded_domains")]
     pub exclude_domains: Vec<String>,
@@ -2220,8 +2222,8 @@ pub struct OutboundSource {
     pub wg_mtu: u16,
     #[serde(default)]
     pub awg_version: String,
-    #[serde(default)]
-    pub awg_keepalive: u16,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_keepalive: String,
     #[serde(default)]
     pub awg_jc: u16,
     #[serde(default)]
@@ -2236,14 +2238,14 @@ pub struct OutboundSource {
     pub awg_s3: u16,
     #[serde(default)]
     pub awg_s4: u16,
-    #[serde(default)]
-    pub awg_h1: u32,
-    #[serde(default)]
-    pub awg_h2: u32,
-    #[serde(default)]
-    pub awg_h3: u32,
-    #[serde(default)]
-    pub awg_h4: u32,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_h1: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_h2: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_h3: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_h4: String,
     #[serde(default)]
     pub awg_i1: String,
     #[serde(default)]
@@ -2262,6 +2264,24 @@ pub struct OutboundSource {
     pub awg_j3: String,
     #[serde(default)]
     pub awg_itime: u32,
+    #[serde(default)]
+    pub awg_header_protection_key: String,
+    #[serde(default)]
+    pub awg_content_padding_addition: String,
+    #[serde(default)]
+    pub awg_random_trailers: bool,
+    #[serde(default)]
+    pub awg_disable_cookies: bool,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_rekey_after_time: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_rekey_timeout: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_reject_after_time: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_keepalive_timeout: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_max_handshake_attempts: String,
     #[serde(default)]
     pub server_ports: Vec<String>,
     #[serde(default)]
@@ -3549,6 +3569,7 @@ impl RouterStoreData {
         s.apply_fail_closed_auto_defaults();
         s.apply_ai_lists_1_8();
         s.apply_strip_redundant_composite_parent_domains_v1();
+        s.apply_separate_condition_domains_v1(None);
         s
     }
 }
@@ -3563,6 +3584,7 @@ impl Default for RouterStoreData {
         s.apply_fail_closed_auto_defaults();
         s.apply_ai_lists_1_8();
         s.apply_strip_redundant_composite_parent_domains_v1();
+        s.apply_separate_condition_domains_v1(None);
         s
     }
 }
@@ -3646,8 +3668,9 @@ fn condition_rule_signature(cond: &TrafficCondition) -> Option<String> {
         ("condition_type", vec![norm_type.to_string()]),
     ];
 
-    let list_fields: [(&str, &[String]); 24] = [
+    let list_fields: [(&str, &[String]); 25] = [
         ("community_lists", &cond.community_lists),
+        ("domains", &cond.domains),
         ("user_domains", &cond.user_domains),
         ("exclude_domains", &cond.exclude_domains),
         ("user_subnets", &cond.user_subnets),
@@ -3915,7 +3938,7 @@ impl RouterStoreData {
                 name: "YouTube & Media".to_string(),
                 condition_type: "atomic".to_string(),
                 community_lists: vec!["youtube".to_string(), "discord".to_string()],
-                user_domains: vec!["googlevideo.com".to_string(), "ytimg.com".to_string()],
+                domains: vec!["googlevideo.com".to_string(), "ytimg.com".to_string()],
                 ..Default::default()
             });
             self.conditions.push(TrafficCondition {
@@ -4333,30 +4356,138 @@ impl RouterStoreData {
         for cond in &mut self.conditions {
             let has_nested = cond.children.iter().any(|c| !c.trim().is_empty())
                 || !cond.expression.trim().is_empty();
-            if !cond.is_composite() || !has_nested || cond.user_domains.is_empty() {
-                continue;
-            }
-
-            let cond_tokens = normalize_domain_tokens(&cond.user_domains);
-            if cond_tokens.is_empty() {
+            if !cond.is_composite()
+                || !has_nested
+                || (cond.user_domains.is_empty() && cond.domains.is_empty())
+            {
                 continue;
             }
 
             let mut matched_sections = 0usize;
-            let mut all_refs_cover = true;
+            let mut matched_sets: Vec<&std::collections::HashSet<String>> = Vec::new();
             for (sec, sec_tokens) in &section_domain_sets {
                 if section_references_condition(sec, &cond.id) {
                     matched_sections += 1;
-                    if !cond_tokens.iter().all(|t| sec_tokens.contains(t)) {
-                        all_refs_cover = false;
-                        break;
+                    matched_sets.push(sec_tokens);
+                }
+            }
+            if matched_sections == 0 {
+                continue;
+            }
+
+            if !cond.user_domains.is_empty() {
+                let tok = normalize_domain_tokens(&cond.user_domains);
+                if !tok.is_empty()
+                    && matched_sets
+                        .iter()
+                        .all(|sec_tokens| tok.iter().all(|t| sec_tokens.contains(t)))
+                {
+                    cond.user_domains.clear();
+                }
+            }
+            if !cond.domains.is_empty() {
+                let tok = normalize_domain_tokens(&cond.domains);
+                if !tok.is_empty()
+                    && matched_sets
+                        .iter()
+                        .all(|sec_tokens| tok.iter().all(|t| sec_tokens.contains(t)))
+                {
+                    cond.domains.clear();
+                }
+            }
+        }
+
+        self.applied_migrations.push(MIGRATION_ID.to_string());
+        true
+    }
+
+    /// One-shot migration: separate explicit `domain`/`domains` from auto-detected `user_domains`
+    /// on conditions and sections while preserving inline `//` comments in `config_sections.json`.
+    pub fn apply_separate_condition_domains_v1(
+        &mut self,
+        sections_json_path: Option<&Path>,
+    ) -> bool {
+        const MIGRATION_ID: &str = "separate_condition_domains_v1";
+        if self.applied_migrations.iter().any(|m| m == MIGRATION_ID) {
+            return false;
+        }
+
+        fn deduplicate_pair(
+            domains: &mut Vec<String>,
+            user_domains: &mut Vec<String>,
+            mut obj: Option<&mut serde_json::Map<String, Value>>,
+        ) -> bool {
+            let mut json_dirty = false;
+            if let Some(ref map) = obj {
+                for tok in extract_explicit_domain_tokens_from_json_obj(map) {
+                    if !domains.iter().any(|d| d.eq_ignore_ascii_case(&tok)) {
+                        domains.push(tok);
                     }
                 }
             }
-
-            if matched_sections > 0 && all_refs_cover {
-                cond.user_domains.clear();
+            if !domains.is_empty() {
+                let explicit_keys: std::collections::HashSet<String> = domains
+                    .iter()
+                    .map(|d| norm_domain_compare_key(d))
+                    .filter(|k| !k.is_empty())
+                    .collect();
+                if !user_domains.is_empty() {
+                    let before_len = user_domains.len();
+                    user_domains.retain(|u| !explicit_keys.contains(&norm_domain_compare_key(u)));
+                    if let Some(map) = obj.as_deref_mut()
+                        && (user_domains.len() != before_len
+                            || (user_domains.is_empty() && map.contains_key("user_domains")))
+                    {
+                        if user_domains.is_empty() {
+                            json_dirty |= map.remove("user_domains").is_some();
+                        } else {
+                            map.insert("user_domains".to_string(), json!(user_domains));
+                            json_dirty = true;
+                        }
+                    }
+                } else if let Some(map) = obj
+                    && let Some(raw_ud) = map.get("user_domains")
+                {
+                    let cleaned = clean_domain_tokens_from_json_value(raw_ud);
+                    let remaining: Vec<String> = cleaned
+                        .into_iter()
+                        .filter(|u| !explicit_keys.contains(&norm_domain_compare_key(u)))
+                        .collect();
+                    if remaining.is_empty() {
+                        json_dirty |= map.remove("user_domains").is_some();
+                    }
+                }
             }
+            json_dirty
+        }
+
+        let mut loaded_map = sections_json_path
+            .filter(|p| p.exists())
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|v| match v {
+                Value::Object(m) => Some(m),
+                _ => None,
+            });
+        let mut json_dirty = false;
+
+        for cond in &mut self.conditions {
+            let obj_opt = loaded_map
+                .as_mut()
+                .and_then(|m| m.get_mut(&cond.id))
+                .and_then(Value::as_object_mut);
+            json_dirty |= deduplicate_pair(&mut cond.domains, &mut cond.user_domains, obj_opt);
+        }
+        for sec in &mut self.sections {
+            let obj_opt = loaded_map
+                .as_mut()
+                .and_then(|m| m.get_mut(&sec.id))
+                .and_then(Value::as_object_mut);
+            json_dirty |= deduplicate_pair(&mut sec.domains, &mut sec.user_domains, obj_opt);
+        }
+
+        if json_dirty && let (Some(sec_path), Some(map)) = (sections_json_path, loaded_map) {
+            let _ = crypto_gen::write_json_if_changed(sec_path, &Value::Object(map));
         }
 
         self.applied_migrations.push(MIGRATION_ID.to_string());
@@ -5424,7 +5555,8 @@ impl RouterStoreData {
                     imported += 1;
                 }
                 "condition" => {
-                    let user_domains = b.clean_tokens(&["user_domains", "domain", "domains"]);
+                    let domains = b.explicit_domain_tokens();
+                    let user_domains = b.clean_tokens(&["user_domains", "user_domains_text"]);
                     let user_subnets =
                         b.clean_tokens(&["user_subnets", "ip_cidr", "ip_cidrs", "subnets"]);
                     let mut children = b.list("children");
@@ -5463,6 +5595,7 @@ impl RouterStoreData {
                         children,
                         community_lists: comm_lists,
                         community_subnets: comm_subnets,
+                        domains,
                         user_domains,
                         exclude_domains: b.excluded_domain_tokens(),
                         user_subnets,
@@ -5786,10 +5919,7 @@ impl RouterStoreData {
                         amnezia_configs: b.list("amnezia_configs"),
                         amnezia_conf_text: b.opt("amnezia_conf_text").unwrap_or("").to_string(),
                         awg_version: b.opt("awg_version").unwrap_or("").to_string(),
-                        awg_keepalive: b
-                            .opt("awg_keepalive")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
+                        awg_keepalive: b.opt("awg_keepalive").unwrap_or("").to_string(),
                         awg_jc: b.opt("awg_jc").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_jmin: b.opt("awg_jmin").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_jmax: b.opt("awg_jmax").and_then(|s| s.parse().ok()).unwrap_or(0),
@@ -5797,10 +5927,10 @@ impl RouterStoreData {
                         awg_s2: b.opt("awg_s2").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_s3: b.opt("awg_s3").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_s4: b.opt("awg_s4").and_then(|s| s.parse().ok()).unwrap_or(0),
-                        awg_h1: b.opt("awg_h1").and_then(|s| s.parse().ok()).unwrap_or(0),
-                        awg_h2: b.opt("awg_h2").and_then(|s| s.parse().ok()).unwrap_or(0),
-                        awg_h3: b.opt("awg_h3").and_then(|s| s.parse().ok()).unwrap_or(0),
-                        awg_h4: b.opt("awg_h4").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_h1: b.opt("awg_h1").unwrap_or("").to_string(),
+                        awg_h2: b.opt("awg_h2").unwrap_or("").to_string(),
+                        awg_h3: b.opt("awg_h3").unwrap_or("").to_string(),
+                        awg_h4: b.opt("awg_h4").unwrap_or("").to_string(),
                         awg_i1: b.opt("awg_i1").unwrap_or("").to_string(),
                         awg_i2: b.opt("awg_i2").unwrap_or("").to_string(),
                         awg_i3: b.opt("awg_i3").unwrap_or("").to_string(),
@@ -5810,6 +5940,33 @@ impl RouterStoreData {
                         awg_j2: b.opt("awg_j2").unwrap_or("").to_string(),
                         awg_j3: b.opt("awg_j3").unwrap_or("").to_string(),
                         awg_itime: b.opt("awg_itime").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_header_protection_key: b
+                            .opt("awg_header_protection_key")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_content_padding_addition: b
+                            .opt("awg_content_padding_addition")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_random_trailers: b.opt("awg_random_trailers").is_some_and(parse_bool),
+                        awg_disable_cookies: b.opt("awg_disable_cookies").is_some_and(parse_bool),
+                        awg_rekey_after_time: b
+                            .opt("awg_rekey_after_time")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_rekey_timeout: b.opt("awg_rekey_timeout").unwrap_or("").to_string(),
+                        awg_reject_after_time: b
+                            .opt("awg_reject_after_time")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_keepalive_timeout: b
+                            .opt("awg_keepalive_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_max_handshake_attempts: b
+                            .opt("awg_max_handshake_attempts")
+                            .unwrap_or("")
+                            .to_string(),
                         hop_interval: b.opt("hop_interval").unwrap_or("").to_string(),
                         hop_interval_max: b.opt("hop_interval_max").unwrap_or("").to_string(),
                         warp_device_id: b.opt("warp_device_id").unwrap_or("").to_string(),
@@ -6272,7 +6429,8 @@ impl RouterStoreData {
                             }
                         }
                     };
-                    let user_domains = b.clean_tokens(&["user_domains", "domain", "domains"]);
+                    let domains = b.explicit_domain_tokens();
+                    let user_domains = b.clean_tokens(&["user_domains", "user_domains_text"]);
                     let exclude_domains = b.excluded_domain_tokens();
                     let (sec_comm_subnets, sec_extra_comm_lists) = b.community_subnets_and_lists();
                     let mut sec_comm_lists = b.clean_tokens(&["community_lists"]);
@@ -6366,6 +6524,7 @@ impl RouterStoreData {
                         rule_set_urls: b.clean_tokens(&["rule_set"]),
                         rule_set_with_subnets: b.clean_tokens(&["rule_set_with_subnets"]),
                         domain_ip_lists: b.clean_tokens(&["domain_ip_lists"]),
+                        domains,
                         user_domains,
                         exclude_domains,
                         user_subnets,
@@ -6664,7 +6823,6 @@ impl RouterStoreData {
                             .unwrap_or("")
                             .to_string(),
                         ipv6_support: b.opt("ipv6_support").unwrap_or("").trim().to_string(),
-                        ..Default::default()
                     });
                     imported += 1;
                 }
@@ -7269,6 +7427,7 @@ impl RouterStoreData {
         self.apply_fail_closed_auto_defaults();
         self.apply_ai_lists_1_8();
         self.apply_strip_redundant_composite_parent_domains_v1();
+        self.apply_separate_condition_domains_v1(None);
         imported
     }
 
@@ -7773,6 +7932,11 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         if sec.id.trim().is_empty() {
             continue;
         }
+        let ex_obj = existing_obj(&sec.id);
+        let domain_extra = resolve_json_domain_field(ex_obj, &sec.domains)
+            .into_iter()
+            .map(|val| ("domain", val))
+            .collect::<Vec<_>>();
         out.insert(
             sec.id.clone(),
             struct_to_json_section(
@@ -7786,10 +7950,19 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     ("dns_servers", "dns_server"),
                     ("exclude_domains", "excluded_domains"),
                 ],
-                &[],
-                &[],
-                existing_obj(&sec.id),
-                &[],
+                &["domains"],
+                &[
+                    "domain",
+                    "domains",
+                    "domain_suffix",
+                    "domain_suffix_text",
+                    "domain_text",
+                    "domain_keyword",
+                    "domain_regex",
+                    "user_domains_text",
+                ],
+                ex_obj,
+                &domain_extra,
             ),
         );
         idx += 1;
@@ -7799,6 +7972,11 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         if cond.id.trim().is_empty() {
             continue;
         }
+        let ex_obj = existing_obj(&cond.id);
+        let domain_extra = resolve_json_domain_field(ex_obj, &cond.domains)
+            .into_iter()
+            .map(|val| ("domain", val))
+            .collect::<Vec<_>>();
         out.insert(
             cond.id.clone(),
             struct_to_json_section(
@@ -7813,10 +7991,19 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     ("exclude_client_ips", "excluded_ips"),
                     ("exclude_domains", "excluded_domains"),
                 ],
-                &[],
-                &[],
-                existing_obj(&cond.id),
-                &[],
+                &["domains"],
+                &[
+                    "domain",
+                    "domains",
+                    "domain_suffix",
+                    "domain_suffix_text",
+                    "domain_text",
+                    "domain_keyword",
+                    "domain_regex",
+                    "user_domains_text",
+                ],
+                ex_obj,
+                &domain_extra,
             ),
         );
         idx += 1;
@@ -8071,6 +8258,114 @@ fn strip_uci_inline_comment(line: &str) -> &str {
         s = s[..idx].trim();
     }
     s
+}
+
+fn norm_domain_compare_key(raw: &str) -> String {
+    let lower = raw.trim().to_ascii_lowercase();
+    lower
+        .strip_prefix("domain:")
+        .or_else(|| lower.strip_prefix("domain_suffix:"))
+        .unwrap_or(&lower)
+        .trim()
+        .to_string()
+}
+
+fn push_clean_tokens_from_str(raw: &str, out: &mut Vec<String>) {
+    for line in raw.lines() {
+        let cleaned = strip_uci_inline_comment(line);
+        if cleaned.is_empty() {
+            continue;
+        }
+        for part in cleaned.split([',', ' ', '\t']) {
+            let tok = part.trim();
+            if !tok.is_empty() && !out.iter().any(|existing: &String| existing == tok) {
+                out.push(tok.to_string());
+            }
+        }
+    }
+}
+
+fn clean_domain_tokens_from_json_value(val: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    match val {
+        Value::String(s) => push_clean_tokens_from_str(s, &mut out),
+        Value::Array(arr) => {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    push_clean_tokens_from_str(s, &mut out);
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn extract_explicit_domain_tokens_with<F>(mut fetch_tokens: F) -> Vec<String>
+where
+    F: FnMut(&str) -> Vec<String>,
+{
+    let mut out = Vec::new();
+    let mut push_unique = |tok: String| {
+        if !tok.is_empty() && !out.iter().any(|existing: &String| existing == &tok) {
+            out.push(tok);
+        }
+    };
+    for key in [
+        "domain",
+        "domains",
+        "domain_suffix",
+        "domain_suffix_text",
+        "domain_text",
+    ] {
+        for tok in fetch_tokens(key) {
+            push_unique(tok);
+        }
+    }
+    for tok in fetch_tokens("domain_keyword") {
+        let low = tok.to_ascii_lowercase();
+        let formatted = if low.starts_with("keyword:") || low.starts_with("domain_keyword:") {
+            tok
+        } else {
+            format!("keyword:{tok}")
+        };
+        push_unique(formatted);
+    }
+    for tok in fetch_tokens("domain_regex") {
+        let low = tok.to_ascii_lowercase();
+        let formatted = if low.starts_with("regex:") || low.starts_with("domain_regex:") {
+            tok
+        } else {
+            format!("regex:{tok}")
+        };
+        push_unique(formatted);
+    }
+    out
+}
+
+fn extract_explicit_domain_tokens_from_json_obj(
+    obj: &serde_json::Map<String, Value>,
+) -> Vec<String> {
+    extract_explicit_domain_tokens_with(|key| {
+        obj.get(key)
+            .map(clean_domain_tokens_from_json_value)
+            .unwrap_or_default()
+    })
+}
+
+fn resolve_json_domain_field(
+    existing_obj: Option<&serde_json::Map<String, Value>>,
+    domains: &[String],
+) -> Option<Value> {
+    if domains.is_empty() {
+        return None;
+    }
+    if let Some(ex_val) = existing_obj.and_then(|o| o.get("domain"))
+        && clean_domain_tokens_from_json_value(ex_val) == domains
+    {
+        return Some(ex_val.clone());
+    }
+    Some(Value::String(domains.join("\n")))
 }
 
 fn source_type_server_key(stype: &str) -> Option<&'static str> {
@@ -8442,6 +8737,150 @@ fn fill_outbound_source_from_uci_block(
         if src.wg_mtu == 0 {
             src.wg_mtu = b.opt_u16(&["wg_mtu", "awg_mtu", "mtu"]);
         }
+        if src.awg_version.is_empty()
+            && let Some(v) = b.opt_any(&["awg_version"])
+        {
+            src.awg_version = v.to_string();
+        }
+        if src.awg_keepalive.is_empty()
+            && let Some(v) = b.opt_any(&[
+                "awg_keepalive",
+                "keepalive",
+                "persistent_keepalive",
+                "persistent_keepalive_interval",
+            ])
+        {
+            src.awg_keepalive = v.to_string();
+        }
+        if src.awg_jc == 0 {
+            src.awg_jc = b.opt_u16(&["awg_jc", "jc"]);
+        }
+        if src.awg_jmin == 0 {
+            src.awg_jmin = b.opt_u16(&["awg_jmin", "jmin"]);
+        }
+        if src.awg_jmax == 0 {
+            src.awg_jmax = b.opt_u16(&["awg_jmax", "jmax"]);
+        }
+        if src.awg_s1 == 0 {
+            src.awg_s1 = b.opt_u16(&["awg_s1", "s1"]);
+        }
+        if src.awg_s2 == 0 {
+            src.awg_s2 = b.opt_u16(&["awg_s2", "s2"]);
+        }
+        if src.awg_s3 == 0 {
+            src.awg_s3 = b.opt_u16(&["awg_s3", "s3"]);
+        }
+        if src.awg_s4 == 0 {
+            src.awg_s4 = b.opt_u16(&["awg_s4", "s4"]);
+        }
+        if src.awg_h1.is_empty()
+            && let Some(v) = b.opt_any(&["awg_h1", "h1"])
+        {
+            src.awg_h1 = v.to_string();
+        }
+        if src.awg_h2.is_empty()
+            && let Some(v) = b.opt_any(&["awg_h2", "h2"])
+        {
+            src.awg_h2 = v.to_string();
+        }
+        if src.awg_h3.is_empty()
+            && let Some(v) = b.opt_any(&["awg_h3", "h3"])
+        {
+            src.awg_h3 = v.to_string();
+        }
+        if src.awg_h4.is_empty()
+            && let Some(v) = b.opt_any(&["awg_h4", "h4"])
+        {
+            src.awg_h4 = v.to_string();
+        }
+        if src.awg_i1.is_empty()
+            && let Some(v) = b.opt_any(&["awg_i1", "i1"])
+        {
+            src.awg_i1 = v.to_string();
+        }
+        if src.awg_i2.is_empty()
+            && let Some(v) = b.opt_any(&["awg_i2", "i2"])
+        {
+            src.awg_i2 = v.to_string();
+        }
+        if src.awg_i3.is_empty()
+            && let Some(v) = b.opt_any(&["awg_i3", "i3"])
+        {
+            src.awg_i3 = v.to_string();
+        }
+        if src.awg_i4.is_empty()
+            && let Some(v) = b.opt_any(&["awg_i4", "i4"])
+        {
+            src.awg_i4 = v.to_string();
+        }
+        if src.awg_i5.is_empty()
+            && let Some(v) = b.opt_any(&["awg_i5", "i5"])
+        {
+            src.awg_i5 = v.to_string();
+        }
+        if src.awg_j1.is_empty()
+            && let Some(v) = b.opt_any(&["awg_j1", "j1"])
+        {
+            src.awg_j1 = v.to_string();
+        }
+        if src.awg_j2.is_empty()
+            && let Some(v) = b.opt_any(&["awg_j2", "j2"])
+        {
+            src.awg_j2 = v.to_string();
+        }
+        if src.awg_j3.is_empty()
+            && let Some(v) = b.opt_any(&["awg_j3", "j3"])
+        {
+            src.awg_j3 = v.to_string();
+        }
+        if src.awg_itime == 0
+            && let Some(v) = b.opt_any(&["awg_itime", "itime"])
+            && let Ok(n) = v.trim().parse::<u32>()
+        {
+            src.awg_itime = n;
+        }
+        if src.awg_header_protection_key.is_empty()
+            && let Some(v) = b.opt_any(&["awg_header_protection_key", "header_protection_key"])
+        {
+            src.awg_header_protection_key = v.to_string();
+        }
+        if src.awg_content_padding_addition.is_empty()
+            && let Some(v) =
+                b.opt_any(&["awg_content_padding_addition", "content_padding_addition"])
+        {
+            src.awg_content_padding_addition = v.to_string();
+        }
+        if !src.awg_random_trailers && b.bool_any(&["awg_random_trailers", "random_trailers"]) {
+            src.awg_random_trailers = true;
+        }
+        if !src.awg_disable_cookies && b.bool_any(&["awg_disable_cookies", "disable_cookies"]) {
+            src.awg_disable_cookies = true;
+        }
+        if src.awg_rekey_after_time.is_empty()
+            && let Some(v) = b.opt_any(&["awg_rekey_after_time", "rekey_after_time"])
+        {
+            src.awg_rekey_after_time = v.to_string();
+        }
+        if src.awg_rekey_timeout.is_empty()
+            && let Some(v) = b.opt_any(&["awg_rekey_timeout", "rekey_timeout"])
+        {
+            src.awg_rekey_timeout = v.to_string();
+        }
+        if src.awg_reject_after_time.is_empty()
+            && let Some(v) = b.opt_any(&["awg_reject_after_time", "reject_after_time"])
+        {
+            src.awg_reject_after_time = v.to_string();
+        }
+        if src.awg_keepalive_timeout.is_empty()
+            && let Some(v) = b.opt_any(&["awg_keepalive_timeout", "keepalive_timeout"])
+        {
+            src.awg_keepalive_timeout = v.to_string();
+        }
+        if src.awg_max_handshake_attempts.is_empty()
+            && let Some(v) = b.opt_any(&["awg_max_handshake_attempts", "max_handshake_attempts"])
+        {
+            src.awg_max_handshake_attempts = v.to_string();
+        }
     }
     if !from_section || st == "warp" {
         if src.warp_private_key.is_empty()
@@ -8669,21 +9108,13 @@ impl LegacyUciBlock {
                 .flatten()
                 .chain(self.options.get(key))
             {
-                for line in raw.lines() {
-                    let cleaned = strip_uci_inline_comment(line);
-                    if cleaned.is_empty() {
-                        continue;
-                    }
-                    for part in cleaned.split([',', ' ', '\t']) {
-                        let tok = part.trim();
-                        if !tok.is_empty() && !out.iter().any(|existing: &String| existing == tok) {
-                            out.push(tok.to_string());
-                        }
-                    }
-                }
+                push_clean_tokens_from_str(raw, &mut out);
             }
         }
         out
+    }
+    fn explicit_domain_tokens(&self) -> Vec<String> {
+        extract_explicit_domain_tokens_with(|key| self.clean_tokens(&[key]))
     }
 }
 
@@ -9340,6 +9771,10 @@ impl AppState {
                 migrated = true;
             }
             if parsed.apply_strip_redundant_composite_parent_domains_v1() {
+                migrated = true;
+            }
+            let sections_json = path.parent().map(|p| p.join("config_sections.json"));
+            if parsed.apply_separate_condition_domains_v1(sections_json.as_deref()) {
                 migrated = true;
             }
             if parsed.settings.subscription_engine != "core" {
@@ -11201,5 +11636,263 @@ config priority_level 'pl_direct'
                 .user_domains,
             vec!["catalog.example".to_string()]
         );
+    }
+
+    #[test]
+    fn condition_domain_round_trip_preserves_comments_and_never_populates_user_domains() {
+        let mut store = RouterStoreData::factory_defaults();
+        let initial_sections = serde_json::json!({
+            "cond_rules": {
+                ".type": "condition",
+                ".name": "cond_rules",
+                ".index": 0,
+                "name": "Rules",
+                "condition_type": "atomic",
+                "domain": "// Streaming\nyoutube.com\ntwitch.tv // gaming",
+                "user_domains": []
+            }
+        });
+        let map = initial_sections.as_object().unwrap();
+        store.import_from_json_sections(map);
+
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_rules")
+            .unwrap();
+        assert_eq!(
+            cond.domains,
+            vec!["youtube.com".to_string(), "twitch.tv".to_string()]
+        );
+        assert!(cond.user_domains.is_empty());
+
+        let synced = sync_store_to_json_sections(&store, Some(&initial_sections));
+        let synced_cond = synced.get("cond_rules").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            synced_cond.get("domain").and_then(Value::as_str),
+            Some("// Streaming\nyoutube.com\ntwitch.tv // gaming")
+        );
+        assert!(
+            synced_cond.get("user_domains").is_none(),
+            "empty user_domains must be omitted from config_sections.json"
+        );
+    }
+
+    #[test]
+    fn deleting_condition_user_domains_stays_deleted_on_reimport() {
+        let mut store = RouterStoreData::factory_defaults();
+        let with_auto = serde_json::json!({
+            "cond_rules": {
+                ".type": "condition",
+                ".name": "cond_rules",
+                ".index": 0,
+                "name": "Rules",
+                "condition_type": "atomic",
+                "domain": "example.com",
+                "user_domains": ["auto-discovered.example"]
+            }
+        });
+        let map1 = with_auto.as_object().unwrap();
+        store.import_from_json_sections(map1);
+        assert_eq!(
+            store
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_rules")
+                .unwrap()
+                .user_domains,
+            vec!["auto-discovered.example".to_string()]
+        );
+
+        // User deletes all auto-detected domains from the textarea (key omitted/cleared in UI)
+        let after_clear = serde_json::json!({
+            "cond_rules": {
+                ".type": "condition",
+                ".name": "cond_rules",
+                ".index": 0,
+                "name": "Rules",
+                "condition_type": "atomic",
+                "domain": "example.com"
+            }
+        });
+        let map2 = after_clear.as_object().unwrap();
+        store.import_from_json_sections(map2);
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_rules")
+            .unwrap();
+        assert_eq!(cond.domains, vec!["example.com".to_string()]);
+        assert!(cond.user_domains.is_empty());
+
+        let synced = sync_store_to_json_sections(&store, Some(&with_auto));
+        let synced_obj = synced.get("cond_rules").and_then(Value::as_object).unwrap();
+        assert!(synced_obj.get("user_domains").is_none());
+        assert_eq!(
+            synced_obj.get("domain").and_then(Value::as_str),
+            Some("example.com")
+        );
+
+        let mut reloaded = RouterStoreData::factory_defaults();
+        reloaded.import_from_json_sections(synced.as_object().unwrap());
+        let reloaded_cond = reloaded
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_rules")
+            .unwrap();
+        assert_eq!(reloaded_cond.domains, vec!["example.com".to_string()]);
+        assert!(reloaded_cond.user_domains.is_empty());
+    }
+
+    #[test]
+    fn separate_condition_domains_migration_cleans_beta17_duplicates() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_sep_dom_mig_{}_{}",
+            std::process::id(),
+            unix_now_secs()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sections_path = dir.join("config_sections.json");
+        let state_path = dir.join("tachyon-state.json");
+
+        std::fs::write(
+            &sections_path,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "cond_custom": {
+                    ".type": "condition",
+                    ".name": "cond_custom",
+                    ".index": 0,
+                    "domain": "// keep this comment\nyoutube.com\ntwitch.tv",
+                    "user_domains": ["youtube.com", "twitch.tv", "extra-auto.example"]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let mut beta17_store = RouterStoreData::factory_defaults();
+        beta17_store
+            .applied_migrations
+            .retain(|m| m != "separate_condition_domains_v1");
+        beta17_store.conditions.push(TrafficCondition {
+            id: "cond_custom".to_string(),
+            enabled: true,
+            name: "Custom".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec![
+                "youtube.com".to_string(),
+                "twitch.tv".to_string(),
+                "extra-auto.example".to_string(),
+            ],
+            ..Default::default()
+        });
+        std::fs::write(
+            &state_path,
+            serde_json::to_string_pretty(&beta17_store).unwrap(),
+        )
+        .unwrap();
+
+        let app = AppState::load_or_create(&state_path).expect("load and migrate store");
+        let loaded = app.data.blocking_read();
+        let cond = loaded
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_custom")
+            .unwrap();
+        assert_eq!(
+            cond.domains,
+            vec!["youtube.com".to_string(), "twitch.tv".to_string()]
+        );
+        assert_eq!(cond.user_domains, vec!["extra-auto.example".to_string()]);
+        assert!(
+            loaded
+                .applied_migrations
+                .iter()
+                .any(|m| m == "separate_condition_domains_v1")
+        );
+
+        let updated_json: Value =
+            serde_json::from_str(&std::fs::read_to_string(&sections_path).unwrap()).unwrap();
+        let updated_cond = updated_json["cond_custom"].as_object().unwrap();
+        assert_eq!(
+            updated_cond.get("domain").and_then(Value::as_str),
+            Some("// keep this comment\nyoutube.com\ntwitch.tv")
+        );
+        assert_eq!(
+            updated_cond.get("user_domains"),
+            Some(&serde_json::json!(["extra-auto.example"]))
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_outbound_source_awg31_deser_legacy_numbers_and_uci_import() {
+        let legacy_json = serde_json::json!({
+            "id": "src_legacy_awg",
+            "name": "Legacy AWG",
+            "source_type": "awg",
+            "awg_keepalive": 25,
+            "awg_h1": 12345,
+            "awg_h2": 22345,
+            "awg_h3": 32345,
+            "awg_h4": 42345
+        });
+        let legacy: OutboundSource =
+            serde_json::from_value(legacy_json).expect("deserialize legacy numeric AWG fields");
+        assert_eq!(legacy.awg_keepalive, "25");
+        assert_eq!(legacy.awg_h1, "12345");
+        assert_eq!(legacy.awg_h4, "42345");
+        assert!(legacy.awg_header_protection_key.is_empty());
+        assert!(!legacy.awg_random_trailers);
+
+        let uci = "\
+config outbound_source 'awg31_src'
+\toption enabled '1'
+\toption source_type 'awg'
+\toption wg_endpoint '198.51.100.77:51820'
+\toption wg_private_key 'cGFzc3dvcmRwYXNzd29yZHBhc3N3b3JkcGFzc3dvcmQ='
+\toption wg_peer_public_key 'QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI='
+\toption wg_local_address '10.8.0.2/32, fd00::2/128'
+\toption awg_version '3.1'
+\toption awg_keepalive '25-35'
+\toption awg_h1 '100-200'
+\toption awg_h2 '300-400'
+\toption awg_h3 '500-600'
+\toption awg_h4 '700-800'
+\toption awg_header_protection_key 'QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE='
+\toption awg_content_padding_addition '10-100'
+\toption awg_random_trailers '1'
+\toption awg_disable_cookies '1'
+\toption awg_rekey_after_time '100-120'
+\toption awg_rekey_timeout '3-7'
+\toption awg_reject_after_time '150-180'
+\toption awg_keepalive_timeout '5-15'
+\toption awg_max_handshake_attempts '15-20'
+";
+        let mut store = RouterStoreData::default();
+        let blocks = parse_legacy_uci_blocks(uci);
+        let imported = store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        assert!(imported >= 1);
+        let src = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "awg31_src")
+            .expect("imported awg31 source");
+        assert_eq!(src.awg_keepalive, "25-35");
+        assert_eq!(src.awg_h1, "100-200");
+        assert_eq!(
+            src.awg_header_protection_key,
+            "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
+        );
+        assert_eq!(src.awg_content_padding_addition, "10-100");
+        assert!(src.awg_random_trailers);
+        assert!(src.awg_disable_cookies);
+        assert_eq!(src.awg_rekey_after_time, "100-120");
+        assert_eq!(src.awg_rekey_timeout, "3-7");
+        assert_eq!(src.awg_reject_after_time, "150-180");
+        assert_eq!(src.awg_keepalive_timeout, "5-15");
+        assert_eq!(src.awg_max_handshake_attempts, "15-20");
     }
 }

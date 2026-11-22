@@ -829,6 +829,8 @@ fn is_secret_key(key: &str) -> bool {
             | "wg_private_key"
             | "preshared_key"
             | "wg_preshared_key"
+            | "awg_header_protection_key"
+            | "header_protection_key"
             | "reality_private_key"
             | "bot_token"
             | "ai_api_key"

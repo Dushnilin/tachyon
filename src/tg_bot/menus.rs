@@ -985,7 +985,7 @@ fn collect_section_domains(d: &RouterStoreData, sec: &RoutingSection) -> Vec<Str
     }
     for cref in &sec.condition_refs {
         if let Some(cond) = d.conditions.iter().find(|c| &c.id == cref) {
-            for item in &cond.user_domains {
+            for item in cond.domains.iter().chain(cond.user_domains.iter()) {
                 let clean = item.trim().to_string();
                 if !clean.is_empty() && !doms.contains(&clean) {
                     doms.push(clean);
@@ -1881,7 +1881,7 @@ async fn render_section_conditions(
                 escape_html(cname),
                 escape_html(&cond.condition_type),
                 cond.community_lists.len(),
-                cond.user_domains.len(),
+                cond.domains.len() + cond.user_domains.len(),
                 cond.user_subnets.len()
             ));
             rows.push(vec![cb_btn(
@@ -2218,14 +2218,23 @@ async fn handle_add_domain_prompt(
     let first_cond = candidate.sections[sec_idx].condition_refs.first().cloned();
     let mut added = 0usize;
     for dom in &domains {
-        if !candidate.sections[sec_idx].user_domains.contains(dom) {
+        if !candidate.sections[sec_idx]
+            .domains
+            .iter()
+            .chain(candidate.sections[sec_idx].user_domains.iter())
+            .any(|d| d.eq_ignore_ascii_case(dom))
+        {
             candidate.sections[sec_idx].user_domains.push(dom.clone());
             added += 1;
         }
         if let Some(ref cid) = first_cond
             && let Some(cond) = candidate.conditions.iter_mut().find(|c| &c.id == cid)
             && !cond.is_composite()
-            && !cond.user_domains.contains(dom)
+            && !cond
+                .domains
+                .iter()
+                .chain(cond.user_domains.iter())
+                .any(|d| d.eq_ignore_ascii_case(dom))
         {
             cond.user_domains.push(dom.clone());
         }
@@ -2291,10 +2300,12 @@ async fn handle_remove_domain_prompt(
 
     for cid in &cond_refs {
         if let Some(cond) = candidate.conditions.iter_mut().find(|c| &c.id == cid) {
-            let cb = cond.user_domains.len();
+            let cb = cond.domains.len() + cond.user_domains.len();
+            cond.domains
+                .retain(|d| !domains.contains(&d.to_ascii_lowercase()));
             cond.user_domains
                 .retain(|d| !domains.contains(&d.to_ascii_lowercase()));
-            removed += cb.saturating_sub(cond.user_domains.len());
+            removed += cb.saturating_sub(cond.domains.len() + cond.user_domains.len());
         }
     }
 

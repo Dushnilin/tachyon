@@ -36,6 +36,7 @@ pub const KILL_SWITCH_TABLE: &str = "TachyonKillSwitch";
 pub const KILL_SWITCH_GATE_SET: &str = "open";
 const DEFAULT_FW4_INCLUDE_ROOT: &str = "/usr/share/nftables.d";
 const KILL_SWITCH_INCLUDE_FILE: &str = "90-tachyon-kill-switch.nft";
+const FLOW_OFFLOAD_INCLUDE_FILE: &str = "10-tachyon-offload.nft";
 const DEFAULT_SYSCTL_BBR_CONF: &str = "/etc/sysctl.d/99-tachyon-bbr.conf";
 const DEFAULT_PROC_TCP_AVAIL_CC: &str = "/proc/sys/net/ipv4/tcp_available_congestion_control";
 
@@ -3480,6 +3481,190 @@ fn fw4_include_paths() -> (PathBuf, PathBuf) {
     (root, file)
 }
 
+pub fn fw4_flow_offload_include_path() -> PathBuf {
+    let root = std::env::var("TACHYON_FW4_INCLUDE_ROOT")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_FW4_INCLUDE_ROOT));
+    root.join("chain-pre")
+        .join("forward")
+        .join(FLOW_OFFLOAD_INCLUDE_FILE)
+}
+
+fn compile_fw4_flow_offload_guard_rules(store: &RouterStoreData, ipv6_active: bool) -> Vec<String> {
+    let comment = "\"Tachyon: skip flow offload\"";
+    let mut rules = vec![
+        format!(
+            "meta mark & {TPROXY_FWMARK} != 0 ct state established,related accept comment {comment}"
+        ),
+        format!(
+            "meta mark & {ROUTER_TPROXY_FWMARK} != 0 ct state established,related accept comment {comment}"
+        ),
+        format!(
+            "meta mark & {BYPASS_FWMARK} != 0 ct state established,related accept comment {comment}"
+        ),
+    ];
+    if store.settings.proxy_mode == "tun" {
+        rules.push(format!(
+            "meta mark & 0x00002022 != 0 ct state established,related accept comment {comment}"
+        ));
+    }
+
+    if store.settings.fakeip_enabled {
+        let fakeip4 = if store.settings.fakeip_inet4_range.trim().is_empty() {
+            "198.18.0.0/15"
+        } else {
+            store.settings.fakeip_inet4_range.trim()
+        };
+        rules.push(format!(
+            "ip daddr {fakeip4} ct state established,related accept comment {comment}"
+        ));
+        rules.push(format!(
+            "ip saddr {fakeip4} ct state established,related accept comment {comment}"
+        ));
+        if ipv6_active {
+            let fakeip6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
+                "fc00::/18"
+            } else {
+                store.settings.fakeip_inet6_range.trim()
+            };
+            rules.push(format!(
+                "ip6 daddr {fakeip6} ct state established,related accept comment {comment}"
+            ));
+            rules.push(format!(
+                "ip6 saddr {fakeip6} ct state established,related accept comment {comment}"
+            ));
+        }
+    }
+
+    rules.push(format!(
+        "meta l4proto {{ tcp, udp }} th dport 53 ct state established,related accept comment {comment}"
+    ));
+    rules.push(format!(
+        "meta l4proto {{ tcp, udp }} th sport 53 ct state established,related accept comment {comment}"
+    ));
+
+    if store.settings.proxy_mode == "tun" {
+        let tun_if = sanitize_iface_name(&store.settings.tun_interface)
+            .unwrap_or_else(|| "tun0".to_string());
+        rules.push(format!(
+            "iifname \"{tun_if}\" ct state established,related accept comment {comment}"
+        ));
+        rules.push(format!(
+            "oifname \"{tun_if}\" ct state established,related accept comment {comment}"
+        ));
+    }
+
+    rules
+}
+
+pub fn compile_fw4_flow_offload_guard(store: &RouterStoreData, ipv6_active: bool) -> String {
+    let rules = compile_fw4_flow_offload_guard_rules(store, ipv6_active);
+    format!(
+        "# Managed by Tachyon - do not edit manually\n{}\n",
+        rules.join("\n")
+    )
+}
+
+fn collect_fw4_flow_offload_handles(listing: &str) -> Vec<String> {
+    let mut handles = Vec::new();
+    for line in listing.lines() {
+        if !line.contains("Tachyon: skip flow offload") {
+            continue;
+        }
+        if let Some((_, rest)) = line.split_once("# handle ") {
+            let digits: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if !digits.is_empty() {
+                handles.push(digits);
+            }
+        }
+    }
+    handles
+}
+
+async fn read_fw4_forward_chain_listing() -> Option<String> {
+    if cfg!(not(target_os = "linux")) {
+        return None;
+    }
+    let out = tokio::time::timeout(
+        Duration::from_secs(3),
+        Command::new("nft")
+            .args(["-a", "list", "chain", "inet", "fw4", "forward"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    if text.contains("chain forward") {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+pub async fn sync_fw4_flow_offload_guard(store: &RouterStoreData) {
+    let wan6_cache = tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state)
+        .await
+        .ok()
+        .unwrap_or_default();
+    let ipv6_state =
+        crate::store::resolve_effective_ipv6_state(&store.settings, wan6_cache.wan6_available);
+    let ipv6_active = ipv6_state.is_active();
+    let include_path = fw4_flow_offload_include_path();
+    let root_configured = std::env::var("TACHYON_FW4_INCLUDE_ROOT")
+        .ok()
+        .is_some_and(|s| !s.trim().is_empty());
+    if root_configured || Path::new(DEFAULT_FW4_INCLUDE_ROOT).exists() {
+        if let Some(parent) = include_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let content = compile_fw4_flow_offload_guard(store, ipv6_active);
+        if let Err(e) = crypto_gen::write_file_if_changed(&include_path, content.as_bytes()) {
+            eprintln!("[tachyon] failed to persist flow offload guard include: {e:#}");
+        }
+    }
+    if let Some(listing) = read_fw4_forward_chain_listing().await {
+        let mut batch = String::new();
+        for h in collect_fw4_flow_offload_handles(&listing) {
+            let _ = writeln!(batch, "delete rule inet fw4 forward handle {h}");
+        }
+        for rule in compile_fw4_flow_offload_guard_rules(store, ipv6_active)
+            .into_iter()
+            .rev()
+        {
+            let _ = writeln!(batch, "insert rule inet fw4 forward {rule}");
+        }
+        if !batch.is_empty() {
+            let _ = run_nft_quiet(&["-f", "-"], Some(&batch)).await;
+        }
+    }
+}
+
+pub async fn remove_fw4_flow_offload_guard() {
+    let _ = std::fs::remove_file(fw4_flow_offload_include_path());
+    if let Some(listing) = read_fw4_forward_chain_listing().await {
+        let mut batch = String::new();
+        for h in collect_fw4_flow_offload_handles(&listing) {
+            let _ = writeln!(batch, "delete rule inet fw4 forward handle {h}");
+        }
+        if !batch.is_empty() {
+            let _ = run_nft_quiet(&["-f", "-"], Some(&batch)).await;
+        }
+    }
+}
+
 async fn run_nft_quiet(args: &[&str], stdin_data: Option<&str>) -> bool {
     let mut cmd = Command::new("nft");
     cmd.args(args)
@@ -3853,6 +4038,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
         release_kill_switch(store).await;
     }
     sync_openwrt_firewall_rules(store).await;
+    sync_fw4_flow_offload_guard(store).await;
     apply_tcp_tuning(&store.settings).await;
     apply_sqm_qdisc(store).await;
 
@@ -4430,6 +4616,7 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
         }
     }
     sync_tailscale_magicdns(false, false).await;
+    remove_fw4_flow_offload_guard().await;
     restore_odhcpd_lan_ipv6().await;
     teardown_sqm_qdisc().await;
 }
@@ -6018,5 +6205,63 @@ config redirect 'restricted_src_ip'
         assert!(tun_nft.contains(
             "iifname { \"br-lan\" } ct direction reply meta mark set 0x00002022 counter return comment \"tachyon-inbound-reply\""
         ));
+    }
+
+    #[test]
+    fn test_fw4_flow_offload_guard_tproxy_tun_and_no_ct_state_new() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+
+        let tproxy_guard = compile_fw4_flow_offload_guard(&store, true);
+        assert!(tproxy_guard.contains(
+            "meta mark & 0x04000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tproxy_guard.contains(
+            "meta mark & 0x10000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tproxy_guard.contains(
+            "meta mark & 0x40000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tproxy_guard.contains(
+            "ip daddr 198.18.0.0/15 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tproxy_guard.contains(
+            "ip6 daddr fc00::/18 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tproxy_guard.contains(
+            "meta l4proto { tcp, udp } th dport 53 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(!tproxy_guard.contains("ct state new"));
+        assert!(!tproxy_guard.contains("iifname \"tun0\""));
+
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.tun_interface = "tun0".to_string();
+        let tun_guard = compile_fw4_flow_offload_guard(&store, false);
+        assert!(tun_guard.contains(
+            "iifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tun_guard.contains(
+            "oifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(tun_guard.contains(
+            "meta mark & 0x00002022 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+        ));
+        assert!(!tun_guard.contains("ip6 daddr fc00::/18"));
+        assert!(!tun_guard.contains("ct state new"));
+
+        let sample_listing = "\
+table inet fw4 {
+\tchain forward { # handle 1
+\t\tmeta mark & 0x04000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\" # handle 17
+\t\tmeta l4proto { tcp, udp } flow offload @ft; # handle 21
+\t}
+}";
+        assert_eq!(
+            collect_fw4_flow_offload_handles(sample_listing),
+            vec!["17".to_string()]
+        );
     }
 }

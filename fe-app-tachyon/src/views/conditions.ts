@@ -72,14 +72,17 @@ function setArrayIfChanged(sectionId, key, arr) {
   ].includes(key)
     ? asReferenceArray
     : asArray;
-  const cur = parse(uci.get(UCI_PACKAGE, sectionId, key));
+  const rawCur = uci.get(UCI_PACKAGE, sectionId, key);
+  if (!arr.length) {
+    if (rawCur !== null && rawCur !== undefined) {
+      unsetIfPresent(sectionId, key);
+    }
+    return;
+  }
+  const cur = parse(rawCur);
   const same = cur.length === arr.length && cur.every((v, i) => v === arr[i]);
   if (same) return;
-  if (arr.length) {
-    uci.set(UCI_PACKAGE, sectionId, key, arr);
-  } else {
-    unsetIfPresent(sectionId, key);
-  }
+  uci.set(UCI_PACKAGE, sectionId, key, arr);
 }
 
 function loadCombinedDomainText(sectionId) {

@@ -281,6 +281,23 @@ pub fn sync_telegram_section_to_json(tg: &crate::store::TgBotConfig) {
     }
 }
 
+fn apply_user_domains_to_json_obj(
+    obj: &mut serde_json::Map<String, Value>,
+    domains: &[String],
+) -> bool {
+    if domains.is_empty() {
+        obj.remove("user_domains").is_some()
+    } else {
+        let dom_val = Value::Array(domains.iter().cloned().map(Value::String).collect());
+        if obj.get("user_domains") != Some(&dom_val) {
+            obj.insert("user_domains".to_string(), dom_val);
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Synchronize a section's (and optionally its linked condition's) `user_domains` back into `config_sections.json`.
 pub fn sync_section_user_domains_to_json(
     section_id: &str,
@@ -290,21 +307,13 @@ pub fn sync_section_user_domains_to_json(
 ) {
     if let Ok(mut store) = json_sections_store().write() {
         let mut changed = false;
-        let dom_val = Value::Array(domains.iter().cloned().map(Value::String).collect());
-        if let Some(sec_obj) = store.get_mut(section_id).and_then(Value::as_object_mut)
-            && sec_obj.get("user_domains") != Some(&dom_val)
-        {
-            sec_obj.insert("user_domains".to_string(), dom_val);
-            changed = true;
+        if let Some(sec_obj) = store.get_mut(section_id).and_then(Value::as_object_mut) {
+            changed |= apply_user_domains_to_json_obj(sec_obj, domains);
         }
-        if let (Some(cid), Some(cdoms)) = (linked_condition_id, cond_domains) {
-            let cdom_val = Value::Array(cdoms.iter().cloned().map(Value::String).collect());
-            if let Some(cond_obj) = store.get_mut(cid).and_then(Value::as_object_mut)
-                && cond_obj.get("user_domains") != Some(&cdom_val)
-            {
-                cond_obj.insert("user_domains".to_string(), cdom_val);
-                changed = true;
-            }
+        if let (Some(cid), Some(cdoms)) = (linked_condition_id, cond_domains)
+            && let Some(cond_obj) = store.get_mut(cid).and_then(Value::as_object_mut)
+        {
+            changed |= apply_user_domains_to_json_obj(cond_obj, cdoms);
         }
         if changed {
             persist_json_sections(&store);
@@ -1195,9 +1204,15 @@ async fn handle_file_read(args: &Value, state: &Arc<AppState>) -> Value {
         let data = String::from_utf8_lossy(&bytes).into_owned();
         return json!([0, { "data": data }]);
     }
-    if path == "/var/run/tachyon/section-errors.json"
-        || path == "/var/run/tachyon/rule-conflicts.json"
-    {
+    if path == "/var/run/tachyon/section-errors.json" {
+        let resolved = crate::core_mgr::CoreManager::section_errors_path();
+        if let Ok(bytes) = std::fs::read(&resolved) {
+            let data = String::from_utf8_lossy(&bytes).into_owned();
+            return json!([0, { "data": data }]);
+        }
+        return json!([0, { "data": "{}" }]);
+    }
+    if path == "/var/run/tachyon/rule-conflicts.json" {
         return json!([0, { "data": "{}" }]);
     }
     if path == "/var/run/tachyon/ui-state/snapshot-export.json"
@@ -2937,6 +2952,15 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
             json!(sys.memory_total_mb.saturating_sub(sys.memory_used_mb)),
         );
         populate_system_info_network_fields(obj, &d, &wan_ip, &lan_ip, &wan6_cache, &wan6_iface);
+        let quarantined_sections = crate::core_mgr::CoreManager::read_section_errors();
+        obj.insert(
+            "quarantined_sections_count".to_string(),
+            json!(quarantined_sections.len()),
+        );
+        obj.insert(
+            "quarantined_sections".to_string(),
+            json!(quarantined_sections),
+        );
         for removed in [
             "zapret",
             "zapret2",
@@ -3320,6 +3344,7 @@ fn read_pure_rust_subscription_metadata(
 pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
     let cache_dir = crate::store::runtime_state_dir().join("section-cache");
     let _ = std::fs::create_dir_all(&cache_dir);
+    let mut balancer_caches = crate::config_gen::build_all_section_balancer_caches(store);
 
     let mut active_files = std::collections::HashSet::new();
     for sec in &store.sections {
@@ -3330,12 +3355,17 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
         active_files.insert(fname.clone());
         let (outbound_meta, links, hidden) = build_outbound_metadata_and_links(store, &sec.id);
         let sub_meta = read_pure_rust_subscription_metadata(store, &sec.id);
+        let (urltest_groups, priority_groups) = balancer_caches
+            .remove(&sec.id)
+            .unwrap_or_else(|| (json!({}), json!({})));
         let payload = json!({
             "section": sec.id,
             "outboundMetadata": outbound_meta,
             "subscriptionMetadata": sub_meta,
             "links": links,
             "hiddenOutboundTags": hidden,
+            "urltestGroups": urltest_groups,
+            "priorityGroups": priority_groups,
         });
         let _ = crypto_gen::write_json_if_changed(cache_dir.join(fname), &payload);
     }
@@ -3679,7 +3709,7 @@ async fn handle_pure_rust_clash_api(
         }
         "get_proxy_latency" | "get_group_latency" => {
             let tag = rest.get(1).map(String::as_str).unwrap_or("");
-            let timeout = rest.get(2).map(String::as_str).unwrap_or("5000");
+            let timeout = rest.get(2).map(String::as_str).unwrap_or("8000");
             let url = rest
                 .get(3)
                 .map(String::as_str)
@@ -3691,10 +3721,27 @@ async fn handle_pure_rust_clash_api(
                     String::new(),
                 ));
             }
-            let target_tag = if action == "get_group_latency" {
+            let is_group = action == "get_group_latency";
+            let timeout_ms = timeout
+                .trim()
+                .parse::<u64>()
+                .unwrap_or(8000)
+                .clamp(1000, 20_000);
+            let encoded_url = url_encode_component(url);
+            let build_delay_path = |probe_tag: &str, t_ms: u64| {
+                let enc = url_encode_component(probe_tag);
+                if is_group {
+                    format!("/group/{enc}/delay?url={encoded_url}&timeout={t_ms}")
+                } else {
+                    format!("/proxies/{enc}/delay?url={encoded_url}&timeout={t_ms}")
+                }
+            };
+
+            let mut proxies_cache: Option<Value> = None;
+            let mut probed_tag = if is_group {
                 let d_snap = state.data.read().await.clone();
-                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
-                let proxies_map = proxies_val
+                proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+                let proxies_map = proxies_cache
                     .as_ref()
                     .and_then(|v| v.get("proxies"))
                     .and_then(Value::as_object);
@@ -3702,36 +3749,30 @@ async fn handle_pure_rust_clash_api(
             } else {
                 tag.to_string()
             };
-            let encoded_tag = url_encode_component(&target_tag);
-            let encoded_url = url_encode_component(url);
-            let path = if action == "get_group_latency" {
-                format!("/group/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
-            } else {
-                format!("/proxies/{encoded_tag}/delay?url={encoded_url}&timeout={timeout}")
-            };
-            let primary_res = core.clash_request("GET", &path, None).await;
-            let needs_proxy_fallback = action == "get_proxy_latency"
+
+            let primary_path = build_delay_path(&probed_tag, timeout_ms);
+            let primary_res = core.clash_request("GET", &primary_path, None).await;
+            let mut resolved_fallback = false;
+
+            let mut final_res = if !is_group
                 && match &primary_res {
                     Err(_) => true,
-                    Ok(val) => {
-                        val.get("delay").and_then(Value::as_u64).unwrap_or(0) == 0
-                            && val.get("message").is_some()
-                    }
-                };
-            let final_res = if needs_proxy_fallback {
+                    Ok(val) => !has_positive_delay_response(val),
+                } {
                 let d_snap = state.data.read().await.clone();
-                let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
-                let proxies_map = proxies_val
+                if proxies_cache.is_none() {
+                    proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+                }
+                let proxies_map = proxies_cache
                     .as_ref()
                     .and_then(|v| v.get("proxies"))
                     .and_then(Value::as_object);
                 if let Some(fallback_tag) =
                     proxies_map.and_then(|pm| resolve_clash_proxy_for_target(&d_snap, pm, tag))
                 {
-                    let enc_fallback = url_encode_component(&fallback_tag);
-                    let fallback_path = format!(
-                        "/proxies/{enc_fallback}/delay?url={encoded_url}&timeout={timeout}"
-                    );
+                    probed_tag = fallback_tag;
+                    resolved_fallback = true;
+                    let fallback_path = build_delay_path(&probed_tag, timeout_ms);
                     match core.clash_request("GET", &fallback_path, None).await {
                         Ok(val) => Ok(val),
                         Err(fallback_err) => {
@@ -3748,6 +3789,44 @@ async fn handle_pure_rust_clash_api(
             } else {
                 primary_res
             };
+
+            if is_transient_delay_probe_failure(&final_res) {
+                if proxies_cache.is_none() {
+                    proxies_cache = core.clash_request("GET", "/proxies", None).await.ok();
+                }
+                let tag_exists = proxies_cache
+                    .as_ref()
+                    .and_then(|v| v.get("proxies"))
+                    .and_then(Value::as_object)
+                    .is_some_and(|pm| pm.contains_key(&probed_tag));
+                if tag_exists {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    let retry_timeout_ms = timeout_ms.clamp(8000, 15_000);
+                    let retry_path = build_delay_path(&probed_tag, retry_timeout_ms);
+                    if let Ok(val) = core.clash_request("GET", &retry_path, None).await
+                        && (has_positive_delay_response(&val) || final_res.is_err())
+                    {
+                        final_res = Ok(val);
+                    }
+                }
+            }
+
+            if let Ok(ref val) = final_res
+                && let Some(ms) = val.get("delay").and_then(Value::as_u64)
+                && ms > 0
+            {
+                let mut live = state.live.write().await;
+                if live.node_latencies_ms.len() < crate::store::MAX_NODE_LATENCIES {
+                    live.node_latencies_ms.insert(
+                        if resolved_fallback || !probed_tag.is_empty() {
+                            probed_tag.clone()
+                        } else {
+                            tag.to_string()
+                        },
+                        ms as u32,
+                    );
+                }
+            }
 
             match final_res {
                 Ok(val) => {
@@ -3785,7 +3864,7 @@ async fn handle_pure_rust_clash_api(
                         let _permit = permit_sem.acquire().await.ok();
                         let encoded = url_encode_component(&tag);
                         let path = format!(
-                            "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3000"
+                            "/proxies/{encoded}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
                         );
                         let ms = core_c
                             .clash_request("GET", &path, None)
@@ -3816,7 +3895,7 @@ async fn handle_pure_rust_clash_api(
                 let group_tag = resolve_clash_group_for_target(&d_snap, proxies_map, arg);
                 let encoded_tag = url_encode_component(&group_tag);
                 let path = format!(
-                    "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3000"
+                    "/group/{encoded_tag}/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000"
                 );
                 match core.clash_request("GET", &path, None).await {
                     Ok(val) => {
@@ -3976,6 +4055,39 @@ fn collect_store_section_leaf_tags(
         }
     }
     out
+}
+
+fn has_positive_delay_response(val: &Value) -> bool {
+    if val
+        .get("delay")
+        .and_then(Value::as_u64)
+        .is_some_and(|d| d > 0)
+    {
+        return true;
+    }
+    if val.get("message").is_some() {
+        return false;
+    }
+    val.as_object().is_some_and(|obj| {
+        obj.iter()
+            .any(|(k, v)| k != "delay" && v.as_u64().is_some_and(|d| d > 0))
+    })
+}
+
+fn is_transient_delay_probe_failure(res: &anyhow::Result<Value>) -> bool {
+    match res {
+        Ok(val) => {
+            !has_positive_delay_response(val)
+                && !val
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .is_some_and(|m| m.to_ascii_lowercase().contains("resource not found"))
+        }
+        Err(err) => {
+            let msg = format!("{err:#}").to_ascii_lowercase();
+            !msg.contains("http 404") && !msg.contains("resource not found")
+        }
+    }
 }
 
 fn resolve_clash_proxy_for_target(
@@ -10529,8 +10641,9 @@ fn infer_domain_route_type(
         for cond_id in &sec.condition_refs {
             if let Some(cond) = conditions.iter().find(|c| c.enabled && &c.id == cond_id) {
                 if cond
-                    .user_domains
+                    .domains
                     .iter()
+                    .chain(cond.user_domains.iter())
                     .filter_map(|d| sanitize_probe_host(d))
                     .any(|d| host == d || host.ends_with(&format!(".{d}")))
                 {
@@ -10616,7 +10729,12 @@ fn build_service_health_targets(
                         .chain(cond.domain_ip_lists.iter())
                         .map(String::as_str),
                 );
-                extra_domains.extend(cond.user_domains.iter().map(String::as_str));
+                extra_domains.extend(
+                    cond.domains
+                        .iter()
+                        .chain(cond.user_domains.iter())
+                        .map(String::as_str),
+                );
             }
         }
 
@@ -12919,6 +13037,10 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
             Some("mieru-src_mieru_DeluxHost_Miery")
         );
         assert_eq!(
+            resolve_clash_proxy_for_target(&store, proxies_map, "DeluxHost_Miery-out").as_deref(),
+            Some("mieru-src_mieru_DeluxHost_Miery")
+        );
+        assert_eq!(
             resolve_clash_proxy_for_target(&store, proxies_map, "WARP").as_deref(),
             Some("wg-src_awg_WARP")
         );
@@ -12930,6 +13052,20 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
             resolve_clash_proxy_for_target(&store, proxies_map, "vless-node-1"),
             None
         );
+
+        assert!(is_transient_delay_probe_failure(&Err(anyhow::anyhow!(
+            "clash api GET /proxies/x/delay returned HTTP 504: Gateway Timeout"
+        ))));
+        assert!(is_transient_delay_probe_failure(&Ok(json!({
+            "message": "Gateway Timeout",
+            "reason": "timeout"
+        }))));
+        assert!(!is_transient_delay_probe_failure(&Err(anyhow::anyhow!(
+            "clash api GET /proxies/x/delay returned HTTP 404: {{\"message\":\"Resource not found\"}}"
+        ))));
+        assert!(!is_transient_delay_probe_failure(&Ok(json!({
+            "delay": 180
+        }))));
     }
 
     #[test]

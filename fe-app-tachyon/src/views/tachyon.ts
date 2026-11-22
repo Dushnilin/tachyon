@@ -47,6 +47,26 @@
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 const CBI_PREFIX = UCI_PACKAGE;
 
+function extractApplyErrorText(res, rawBody) {
+  let payload = null;
+  if (rawBody && String(rawBody).trim()) {
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (_parseErr) {
+      payload = null;
+    }
+  }
+  if (!res || !res.ok || (payload && payload.success === false)) {
+    const detail =
+      payload?.error ||
+      payload?.message ||
+      (rawBody ? String(rawBody).trim() : '') ||
+      `HTTP ${res?.status ?? 'error'}`;
+    return String(detail);
+  }
+  return '';
+}
+
 function persistSavedGridChanges(sectionRef, targetSectionId) {
   try {
     sanitizeUciDeletes(targetSectionId);
@@ -60,8 +80,26 @@ function persistSavedGridChanges(sectionRef, targetSectionId) {
       .then(() =>
         fetch('/cgi-bin/luci/admin/uci/apply_unchecked', {
           method: 'POST',
-        }).catch(() => null),
+        }),
       )
+      .then((res) => {
+        if (!res) {
+          throw new Error(
+            typeof _ === 'function'
+              ? _('Failed to apply configuration')
+              : 'Failed to apply configuration',
+          );
+        }
+        return Promise.resolve(typeof res.text === 'function' ? res.text() : '')
+          .catch(() => '')
+          .then((rawBody) => {
+            const errText = extractApplyErrorText(res, rawBody);
+            if (errText) {
+              throw new Error(errText);
+            }
+            return null;
+          });
+      })
       .then(() => {
         if (typeof ui !== 'undefined' && ui.changes) {
           ui.changes.changes = {};
@@ -71,17 +109,32 @@ function persistSavedGridChanges(sectionRef, targetSectionId) {
         }
         return null;
       })
-      .catch(() => null)
+      .catch((err) => {
+        const errText =
+          err?.message ||
+          String(err || '') ||
+          (typeof _ === 'function'
+            ? _('Failed to apply configuration')
+            : 'Failed to apply configuration');
+        if (
+          typeof ui !== 'undefined' &&
+          typeof ui.addNotification === 'function' &&
+          typeof E === 'function'
+        ) {
+          ui.addNotification(null, E('p', {}, errText), 'danger');
+        }
+        throw err instanceof Error ? err : new Error(errText);
+      })
       .finally(() => {
-        if (typeof sectionRef._refreshStudioDeck === 'function') {
+        if (typeof sectionRef?._refreshStudioDeck === 'function') {
           sectionRef._refreshStudioDeck();
         }
       });
-  } catch (_e) {
-    if (typeof sectionRef._refreshStudioDeck === 'function') {
+  } catch (err) {
+    if (typeof sectionRef?._refreshStudioDeck === 'function') {
       sectionRef._refreshStudioDeck();
     }
-    return Promise.resolve();
+    return Promise.reject(err);
   }
 }
 
@@ -118,7 +171,9 @@ function bindServerModalLifecycle(sectionRef) {
       })
       .finally(() => {
         if (saveSucceeded) {
-          persistSavedGridChanges(sectionRef, targetSectionId);
+          persistSavedGridChanges(sectionRef, targetSectionId).catch(
+            () => null,
+          );
         }
       });
   };
@@ -897,7 +952,7 @@ function configureGridSection(sectionRef, type, title, addTitle) {
       if (!saveSucceeded) {
         return;
       }
-      persistSavedGridChanges(sectionRef, targetSectionId);
+      persistSavedGridChanges(sectionRef, targetSectionId).catch(() => null);
     });
   };
 

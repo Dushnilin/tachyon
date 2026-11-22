@@ -262,6 +262,7 @@ pub fn quick_fix_risk_tier(fix_id: &str) -> &'static str {
         | "capture_blackbox"
         | "restore_primary_failover"
         | "upgrade_core"
+        | "sync_flow_offload_guard"
         | "fix_system_time" => "safe",
         "restart_core"
         | "start_core"
@@ -347,6 +348,7 @@ pub fn is_known_quick_fix(fix_id: &str) -> bool {
             | "rollback_core_binary"
             | "upgrade_core"
             | "disable_flow_offloading"
+            | "sync_flow_offload_guard"
             | "reset_outbound_pool"
             | "restore_primary_failover"
             | "capture_blackbox"
@@ -663,6 +665,52 @@ fn assemble_doctor_report(
             evidence: json!({
                 "desired": live.desired_config_digest,
                 "applied": applied_digest,
+            }),
+            ..Default::default()
+        });
+    }
+
+    // 1c. Quarantined / isolated settings reported at startup/reload (`section-errors.json`)
+    let section_errors = crate::core_mgr::CoreManager::read_section_errors();
+    if !section_errors.is_empty() {
+        let keys: Vec<String> = section_errors.keys().cloned().collect();
+        let summary_lines: Vec<String> = section_errors
+            .iter()
+            .take(5)
+            .map(|(k, v)| format!("[{k}] {v}"))
+            .collect();
+        let severity = if section_errors.contains_key("_core_runtime") {
+            "critical"
+        } else {
+            "warning"
+        };
+        findings.push(DoctorFinding {
+            id: "config_quarantine".to_string(),
+            severity: severity.to_string(),
+            subsystem: "config_quarantine".to_string(),
+            title: if en {
+                format!(
+                    "Faulty configuration settings were isolated ({})",
+                    section_errors.len()
+                )
+            } else {
+                format!(
+                    "Обнаружены и изолированы проблемные настройки ({})",
+                    section_errors.len()
+                )
+            },
+            detail: summary_lines.join(" | "),
+            quick_fix_id: "hot_reload_core".to_string(),
+            quick_fix_label: if en {
+                "Re-apply configuration"
+            } else {
+                "Повторно применить конфигурацию"
+            }
+            .to_string(),
+            evidence: json!({
+                "count": section_errors.len(),
+                "keys": keys,
+                "errors": section_errors,
             }),
             ..Default::default()
         });
@@ -1131,25 +1179,31 @@ fn assemble_doctor_report(
         });
     }
 
-    // 10. Firewall flow offloading conflict check
+    // 10. Firewall flow offloading compatibility check (conflict only with SQM, or missing fw4 guard)
     let (sw_offload, hw_offload) = read_firewall_flow_offloading();
-    let flow_offload_active = (sw_offload || hw_offload)
-        && (matches!(proxy_mode.as_str(), "tproxy" | "redirect") || smart_queue);
-    if flow_offload_active {
+    let offload_any = sw_offload || hw_offload;
+    let flow_offload_sqm_conflict = offload_any && smart_queue;
+    let guard_ok = flow_offload_guard_installed()
+        || (cfg!(windows) && std::env::var("TACHYON_FW4_INCLUDE_ROOT").is_err());
+    let flow_offload_guard_missing = offload_any
+        && !smart_queue
+        && matches!(proxy_mode.as_str(), "tproxy" | "redirect" | "tun")
+        && !guard_ok;
+    if flow_offload_sqm_conflict {
         findings.push(DoctorFinding {
             id: "flow_offloading_conflict".to_string(),
             severity: "warning".to_string(),
             subsystem: "firewall".to_string(),
             title: if en {
-                "Firewall Flow Offloading is enabled (conflicts with TProxy/SQM)"
+                "Firewall Flow Offloading is enabled (conflicts with SQM)"
             } else {
-                "Включён Flow Offloading в Firewall (конфликт с TProxy/SQM)"
+                "Включён Flow Offloading в Firewall (конфликт с SQM)"
             }
             .to_string(),
             detail: if en {
-                "Hardware/software Flow Offloading bypasses netfilter/TProxy and causes stalled long-lived TCP streams on LAN clients."
+                "Hardware/software Flow Offloading bypasses SQM/CAKE traffic shaping queues."
             } else {
-                "Аппаратный/программный Flow Offloading обходит netfilter/TProxy и приводит к зависанию долгоживущих TCP-потоков на клиентских устройствах."
+                "Аппаратный/программный Flow Offloading обходит очереди SQM/CAKE."
             }
             .to_string(),
             quick_fix_id: "disable_flow_offloading".to_string(),
@@ -1157,6 +1211,32 @@ fn assemble_doctor_report(
                 "Disable Flow Offloading"
             } else {
                 "Отключить Flow Offloading"
+            }
+            .to_string(),
+            ..Default::default()
+        });
+    } else if flow_offload_guard_missing {
+        findings.push(DoctorFinding {
+            id: "flow_offloading_guard_missing".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "firewall".to_string(),
+            title: if en {
+                "Flow Offloading guard rule is missing in fw4 include"
+            } else {
+                "Отсутствует защитное правило Flow Offloading для fw4"
+            }
+            .to_string(),
+            detail: if en {
+                "Install 10-tachyon-offload.nft so proxied/DNS flows bypass @ft while direct LAN/WAN traffic stays offloaded."
+            } else {
+                "Установите 10-tachyon-offload.nft, чтобы трафик Tachyon/DNS исключался из @ft при сохранении ускорения прямого трафика."
+            }
+            .to_string(),
+            quick_fix_id: "sync_flow_offload_guard".to_string(),
+            quick_fix_label: if en {
+                "Install Flow Offloading guard"
+            } else {
+                "Установить защиту Flow Offloading"
             }
             .to_string(),
             ..Default::default()
@@ -1905,20 +1985,46 @@ fn assemble_doctor_report(
         } else {
             "15. Конфликты Firewall (Flow Offloading)"
         },
-        if flow_offload_active { "warn" } else { "ok" },
-        if flow_offload_active {
+        if flow_offload_sqm_conflict || flow_offload_guard_missing {
+            "warn"
+        } else {
+            "ok"
+        },
+        if flow_offload_sqm_conflict {
             if en {
-                "Flow Offloading active with TProxy/SQM"
+                "Flow Offloading active with SQM"
             } else {
-                "Обнаружен Flow Offloading при TProxy/SQM"
+                "Обнаружен Flow Offloading при включённом SQM"
+            }
+        } else if flow_offload_guard_missing {
+            if en {
+                "Flow Offloading guard missing in fw4 include"
+            } else {
+                "Отсутствует правило исключения трафика Tachyon для Flow Offloading"
+            }
+        } else if offload_any {
+            if en {
+                "Flow Offloading active in compatible mode (Tachyon flows excluded from fw4)"
+            } else {
+                "Flow Offloading активен в совместимом режиме: трафик Tachyon исключён из flowtable fw4"
             }
         } else if en {
             "No conflicts with netfilter/TProxy detected"
         } else {
             "Конфликтов с netfilter/TProxy не обнаружено"
         },
-        "disable_flow_offloading",
-        if en {
+        if flow_offload_guard_missing {
+            "sync_flow_offload_guard"
+        } else {
+            "disable_flow_offloading"
+        },
+        if flow_offload_guard_missing {
+            if en {
+                "Install Flow Offloading guard"
+            } else {
+                "Установить защиту Flow Offloading"
+            }
+        } else if en {
             "Disable Flow Offloading"
         } else {
             "Отключить Flow Offloading"
@@ -2382,6 +2488,11 @@ pub async fn apply_quick_fix(
                     .unwrap_or("актуальная версия")
             ))
         }
+        "sync_flow_offload_guard" => {
+            let store_snapshot = { state.data.read().await.clone() };
+            crate::net_stack::sync_fw4_flow_offload_guard(&store_snapshot).await;
+            Ok("Защитные правила Flow Offloading (10-tachyon-offload.nft) установлены".to_string())
+        }
         "disable_flow_offloading" => {
             if !cfg!(windows) {
                 let _ = Command::new("uci")
@@ -2641,6 +2752,11 @@ pub async fn apply_quick_fix_verified(
         cooldown_blocked: false,
         duration_ms,
     })
+}
+
+fn flow_offload_guard_installed() -> bool {
+    let path = crate::net_stack::fw4_flow_offload_include_path();
+    std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() > 0)
 }
 
 pub fn parse_firewall_flow_offloading(content: &str) -> (bool, bool) {
@@ -2907,9 +3023,9 @@ pub fn search_knowledge_docs(query: &str) -> Vec<Value> {
         ),
         (
             "17_FLOW_OFFLOADING",
-            "Конфликт Hardware/Software Flow Offloading с TProxy",
+            "Совместимость Hardware/Software Flow Offloading с TProxy и TUN",
             "flow offloading hardware software firewall conflict stall",
-            "Аппаратный/программный Flow Offloading обходит netfilter и обрывает перехваченные соединения. Отключайте его действием disable_flow_offloading.",
+            "Tachyon автоматически исключает перехваченный трафик, FakeIP и DNS из @ft через /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft, сохраняя ускорение прямого трафика. Конфликт остаётся только при одновременном использовании Flow Offloading и SQM (disable_flow_offloading).",
         ),
         (
             "18_IPV6_LEAK_GUARD",
@@ -3400,12 +3516,6 @@ fn explain_route_with_mac_table(
         }
 
         // Also check inline section domains/lists/geosite/ports/protocol
-        let mut combined_domains = sec.domains.clone();
-        for d in &sec.user_domains {
-            if !combined_domains.contains(d) {
-                combined_domains.push(d.clone());
-            }
-        }
         let inline_l4_proto = if sec.protocol.len() == 1
             && (sec.protocol[0].eq_ignore_ascii_case("tcp")
                 || sec.protocol[0].eq_ignore_ascii_case("udp"))
@@ -3423,7 +3533,8 @@ fn explain_route_with_mac_table(
             community_subnets: sec.community_subnets,
             rule_set: sec.rule_set_urls.clone(),
             rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
-            user_domains: combined_domains,
+            domains: sec.domains.clone(),
+            user_domains: sec.user_domains.clone(),
             exclude_domains: sec.exclude_domains.clone(),
             user_subnets: sec.user_subnets.clone(),
             exclude_subnets: sec.exclude_subnets.clone(),
@@ -3609,10 +3720,14 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
             "kimi.ai",
             "kimi.moonshot.cn",
             "moonshot.cn",
+            "moonshot.ai",
             "byteoversea.com",
             "volcengine.com",
             "volces.com",
             "bytedance.com",
+            "bytecdn.com",
+            "byted.org",
+            "byteimg.com",
         ]),
         "paas_db" => has(&["vercel.com", "supabase.com", "supabase.co", "neon.tech"]),
         "kick" => has(&["kick.com"]),
@@ -3634,8 +3749,15 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
             "kimi.com",
             "kimi.ai",
             "kimi.moonshot.cn",
+            "moonshot.ai",
+            "moonshot.cn",
             "byteoversea.com",
             "volcengine.com",
+            "volces.com",
+            "bytedance.com",
+            "bytecdn.com",
+            "byted.org",
+            "byteimg.com",
         ]),
         "meta" => has(&[
             "instagram.com",
@@ -3884,10 +4006,16 @@ fn match_condition_against_target_with_table(
         return None;
     }
 
-    if cond.user_domains.iter().any(|d| {
-        let dl = d.trim().to_ascii_lowercase();
-        !dl.is_empty() && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
-    }) {
+    if cond
+        .domains
+        .iter()
+        .chain(cond.user_domains.iter())
+        .any(|d| {
+            let dl = d.trim().to_ascii_lowercase();
+            !dl.is_empty()
+                && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
+        })
+    {
         return Some(if ctx.en {
             format!("Custom domain in condition \"{}\"", cond.name)
         } else {
@@ -3937,6 +4065,7 @@ fn match_condition_against_target_with_table(
     }
 
     if has_client_filter
+        && cond.domains.is_empty()
         && cond.user_domains.is_empty()
         && cond.ports.is_empty()
         && cond.user_subnets.is_empty()
@@ -6767,5 +6896,33 @@ IP address       HW type     Flags       HW address            Mask     Device
         let other_res = explain_route(&store, "192.168.1.51", "example.com", 443, "tcp");
         assert_eq!(other_res.matched_section_id, "sec1");
         assert_eq!(other_res.resolved_outbound, "s1");
+    }
+
+    #[test]
+    fn test_flow_offload_guard_quick_fix_and_file_check() {
+        assert!(is_known_quick_fix("sync_flow_offload_guard"));
+        assert_eq!(quick_fix_risk_tier("sync_flow_offload_guard"), "safe");
+
+        let dir = std::env::temp_dir().join(format!("tachyon_diag_offload_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let inc_file = dir
+            .join("chain-pre")
+            .join("forward")
+            .join("10-tachyon-offload.nft");
+        unsafe {
+            std::env::set_var("TACHYON_FW4_INCLUDE_ROOT", &dir);
+        }
+        assert!(!flow_offload_guard_installed());
+        std::fs::create_dir_all(inc_file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &inc_file,
+            "meta mark & 0x04000000 != 0 ct state established,related accept\n",
+        )
+        .unwrap();
+        assert!(flow_offload_guard_installed());
+        unsafe {
+            std::env::remove_var("TACHYON_FW4_INCLUDE_ROOT");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

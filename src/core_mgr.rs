@@ -1,7 +1,7 @@
 //! `tachyon-core` process lifecycle manager, Clash API & `/tachyon/*` client,
 //! Autonomous Watchdog + Reconciler loop, subscription fetcher, and parallel RTT prober.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -251,8 +251,32 @@ impl CoreManager {
         hdr.starts_with(b"TRS") || hdr == *b"TSRS" || hdr == *b"TCRS"
     }
 
-    pub fn sanitize_candidate_local_rulesets(candidate_cfg: &mut Value) {
+    fn write_empty_ruleset_stub(tag: &str, path_hint: Option<&str>) -> PathBuf {
         let tmp_rs_dir = std::env::temp_dir().join("tachyon-rulesets");
+        let _ = std::fs::create_dir_all(&tmp_rs_dir);
+        let raw_name = path_hint
+            .and_then(|p| Path::new(p).file_name().and_then(|n| n.to_str()))
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(tag);
+        let clean_name: String = raw_name
+            .trim_end_matches(".trs")
+            .trim_end_matches(".srs")
+            .trim_end_matches(".json")
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let fallback_json = tmp_rs_dir.join(format!("{clean_name}.empty.json"));
+        let _ = std::fs::write(&fallback_json, br#"{"version":3,"rules":[]}"#);
+        fallback_json
+    }
+
+    pub fn sanitize_candidate_local_rulesets(candidate_cfg: &mut Value) {
         let persistent_dir = std::env::var("TACHYON_PERSISTENT_RULESETS_DIR")
             .ok()
             .filter(|s| !s.trim().is_empty())
@@ -272,7 +296,11 @@ impl CoreManager {
             if obj.get("type").and_then(Value::as_str) != Some("local") {
                 continue;
             }
-            let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("");
+            let tag = obj
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             if !tag.starts_with("trs-") && !tag.starts_with("builtin-") {
                 continue;
             }
@@ -305,15 +333,59 @@ impl CoreManager {
             // Never write an SRS stub to a .trs path: remove corrupt file and switch
             // the candidate check entry to an empty JSON source rule-set.
             let _ = std::fs::remove_file(rs_path);
-            let _ = std::fs::create_dir_all(&tmp_rs_dir);
-            let empty_name = fname.strip_suffix(".trs").unwrap_or(fname);
-            let fallback_json = tmp_rs_dir.join(format!("{empty_name}.empty.json"));
-            let _ = std::fs::write(&fallback_json, br#"{"version":3,"rules":[]}"#);
+            let fallback_json = Self::write_empty_ruleset_stub(&tag, Some(&rs_path_str));
             obj.insert("format".into(), json!("source"));
             obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
         }
     }
 
+    fn check_custom_local_ruleset(obj: &serde_json::Map<String, Value>) -> Result<(), String> {
+        let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("");
+        let path_str = obj.get("path").and_then(Value::as_str).unwrap_or("").trim();
+        if path_str.is_empty() {
+            return Err(format!("custom local rule_set '{tag}' has an empty path"));
+        }
+        let format = obj
+            .get("format")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if !matches!(format, "source" | "binary" | "trs" | "tsr") {
+            return Err(format!(
+                "custom local rule_set '{tag}' ({path_str}) has unsupported format '{format}'"
+            ));
+        }
+        let path = Path::new(path_str);
+        let meta = std::fs::metadata(path).map_err(|e| {
+            format!("custom local rule_set '{tag}' file not readable at '{path_str}': {e}")
+        })?;
+        if !meta.is_file() {
+            return Err(format!(
+                "custom local rule_set '{tag}' path '{path_str}' is not a regular file"
+            ));
+        }
+        if format == "source" {
+            let raw = std::fs::read_to_string(path).map_err(|e| {
+                format!("failed to read custom local rule_set '{tag}' at '{path_str}': {e}")
+            })?;
+            let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
+                format!("custom local rule_set '{tag}' at '{path_str}' is invalid JSON: {e}")
+            })?;
+            let Some(root) = parsed.as_object() else {
+                return Err(format!(
+                    "custom local rule_set '{tag}' at '{path_str}' must be a JSON object"
+                ));
+            };
+            if !root.get("rules").is_some_and(Value::is_array) {
+                return Err(format!(
+                    "custom local rule_set '{tag}' at '{path_str}' is missing a 'rules' array"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn validate_custom_local_rulesets(candidate_cfg: &Value) -> anyhow::Result<()> {
         let Some(rule_sets) = candidate_cfg
             .pointer("/route/rule_set")
@@ -332,55 +404,113 @@ impl CoreManager {
             if !tag.starts_with("custom-local-") {
                 continue;
             }
-            let path_str = obj.get("path").and_then(Value::as_str).unwrap_or("").trim();
-            if path_str.is_empty() {
-                anyhow::bail!("custom local rule_set '{tag}' has an empty path");
-            }
-            let format = obj
-                .get("format")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim();
-            if !matches!(format, "source" | "binary" | "trs" | "tsr") {
-                anyhow::bail!(
-                    "custom local rule_set '{tag}' ({path_str}) has unsupported format '{format}'"
-                );
-            }
-            let path = Path::new(path_str);
-            let meta = std::fs::metadata(path).map_err(|e| {
-                anyhow::anyhow!(
-                    "custom local rule_set '{tag}' file not readable at '{path_str}': {e}"
-                )
-            })?;
-            if !meta.is_file() {
-                anyhow::bail!(
-                    "custom local rule_set '{tag}' path '{path_str}' is not a regular file"
-                );
-            }
-            if format == "source" {
-                let raw = std::fs::read_to_string(path).map_err(|e| {
-                    anyhow::anyhow!(
-                        "failed to read custom local rule_set '{tag}' at '{path_str}': {e}"
-                    )
-                })?;
-                let parsed: Value = serde_json::from_str(&raw).map_err(|e| {
-                    anyhow::anyhow!(
-                        "custom local rule_set '{tag}' at '{path_str}' is invalid JSON: {e}"
-                    )
-                })?;
-                let Some(root) = parsed.as_object() else {
-                    anyhow::bail!(
-                        "custom local rule_set '{tag}' at '{path_str}' must be a JSON object"
-                    );
+            Self::check_custom_local_ruleset(obj).map_err(anyhow::Error::msg)?;
+        }
+        Ok(())
+    }
+
+    /// Replace unreadable or malformed `custom-local-*` rule-sets with empty stubs and record errors
+    /// instead of aborting `tachyon-core` startup.
+    pub fn sanitize_broken_custom_local_rulesets(
+        candidate_cfg: &mut Value,
+        quarantined: &mut BTreeMap<String, String>,
+    ) -> usize {
+        let mut broken: Vec<(String, Option<String>, String)> = Vec::new();
+        if let Some(rule_sets) = candidate_cfg
+            .pointer("/route/rule_set")
+            .and_then(Value::as_array)
+        {
+            for rs in rule_sets {
+                let Some(obj) = rs.as_object() else {
+                    continue;
                 };
-                if !root.get("rules").is_some_and(Value::is_array) {
-                    anyhow::bail!(
-                        "custom local rule_set '{tag}' at '{path_str}' is missing a 'rules' array"
-                    );
+                if obj.get("type").and_then(Value::as_str) != Some("local") {
+                    continue;
+                }
+                let tag = obj
+                    .get("tag")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if !tag.starts_with("custom-local-") {
+                    continue;
+                }
+                if let Err(err) = Self::check_custom_local_ruleset(obj) {
+                    let path_hint = obj
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string);
+                    broken.push((tag, path_hint, err));
                 }
             }
         }
-        Ok(())
+        if broken.is_empty() {
+            return 0;
+        }
+        let mut tag_to_section: HashMap<String, String> = HashMap::new();
+        if let Some(rules) = candidate_cfg
+            .pointer("/route/rules")
+            .and_then(Value::as_array)
+        {
+            for rule in rules {
+                let Some(out_tag) = rule.get("outbound").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(sec_id) = Self::extract_section_id_from_tag(out_tag) else {
+                    continue;
+                };
+                if let Some(rs_arr) = rule.get("rule_set").and_then(Value::as_array) {
+                    for rs_tag in rs_arr.iter().filter_map(Value::as_str) {
+                        tag_to_section
+                            .entry(rs_tag.to_string())
+                            .or_insert_with(|| sec_id.clone());
+                    }
+                }
+            }
+        }
+        let broken_tags: HashMap<String, (Option<String>, String)> = broken
+            .iter()
+            .map(|(tag, path_hint, err)| (tag.clone(), (path_hint.clone(), err.clone())))
+            .collect();
+        if let Some(rule_sets) = candidate_cfg
+            .pointer_mut("/route/rule_set")
+            .and_then(Value::as_array_mut)
+        {
+            for rs in rule_sets {
+                let Some(obj) = rs.as_object_mut() else {
+                    continue;
+                };
+                let tag = obj
+                    .get("tag")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if let Some((path_hint, _)) = broken_tags.get(&tag) {
+                    let fallback_json = Self::write_empty_ruleset_stub(&tag, path_hint.as_deref());
+                    obj.insert("format".into(), json!("source"));
+                    obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
+                }
+            }
+        }
+        for (tag, _, err) in &broken {
+            let key = tag_to_section
+                .get(tag)
+                .cloned()
+                .unwrap_or_else(|| "_rules".to_string());
+            let msg = format!(
+                "Локальный список правил '{tag}' повреждён или недоступен (подменена пустая заглушка): {err}"
+            );
+            quarantined
+                .entry(key)
+                .and_modify(|prev| {
+                    if !prev.contains(tag.as_str()) {
+                        prev.push_str("; ");
+                        prev.push_str(&msg);
+                    }
+                })
+                .or_insert(msg);
+        }
+        broken.len()
     }
 
     pub fn effective_core_config_path_for(
@@ -430,6 +560,121 @@ impl CoreManager {
         true
     }
 
+    pub fn section_errors_path() -> PathBuf {
+        crate::store::runtime_state_dir().join("section-errors.json")
+    }
+
+    pub fn write_section_errors_to(path: &Path, errors: &BTreeMap<String, String>) {
+        if errors.is_empty() {
+            let _ = std::fs::remove_file(path);
+            return;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut map = serde_json::Map::new();
+        for (k, v) in errors {
+            map.insert(k.clone(), json!(v));
+        }
+        let _ = crypto_gen::write_json_if_changed(path, &Value::Object(map));
+    }
+
+    pub fn read_section_errors_from(path: &Path) -> BTreeMap<String, String> {
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            return BTreeMap::new();
+        };
+        let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) else {
+            return BTreeMap::new();
+        };
+        map.into_iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+            .collect()
+    }
+
+    pub fn write_section_errors(errors: &BTreeMap<String, String>) {
+        Self::write_section_errors_to(&Self::section_errors_path(), errors);
+    }
+
+    pub fn read_section_errors() -> BTreeMap<String, String> {
+        Self::read_section_errors_from(&Self::section_errors_path())
+    }
+
+    pub fn format_fault_reason(raw: &str) -> String {
+        let trimmed = raw.trim();
+        let single: String = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+        let short: String = single.chars().take(240).collect();
+        let lower = single.to_ascii_lowercase();
+        if lower.contains("unknown field") {
+            format!("неподдерживаемое поле настройки ({short})")
+        } else if lower.contains("address already in use")
+            || lower.contains("listen tcp")
+            || lower.contains("listen udp")
+            || lower.contains("bind:")
+        {
+            format!("порт занят или недоступен ({short})")
+        } else if lower.contains("certificate") || lower.contains("private key") {
+            format!("ошибка TLS-сертификата или ключа ({short})")
+        } else if lower.contains("outbound not found")
+            || lower.contains("endpoint not found")
+            || lower.contains("detour")
+        {
+            format!("ссылка на несуществующий узел или outbound ({short})")
+        } else if lower.contains("rule_set") || lower.contains("rule-set") {
+            format!("ошибка списка правил маршрутизации ({short})")
+        } else {
+            short
+        }
+    }
+
+    fn extract_section_id_from_tag(tag: &str) -> Option<String> {
+        let t = tag.trim();
+        if let Some(rest) = t.strip_prefix("sec-") {
+            if let Some(id) = rest
+                .strip_suffix("-out")
+                .or_else(|| rest.strip_suffix("-mix"))
+                && !id.is_empty()
+            {
+                return Some(id.to_string());
+            }
+            if !rest.is_empty() {
+                return Some(rest.to_string());
+            }
+        }
+        for prefix in ["bal-", "urltest-", "pri-", "sel-", "desync-"] {
+            if let Some(rest) = t.strip_prefix(prefix) {
+                let id = rest.strip_suffix("-out").unwrap_or(rest);
+                if !id.is_empty() {
+                    return Some(id.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn extract_bracket_index(reason: &str, key: &str) -> Option<usize> {
+        let pattern = format!("{key}[");
+        let idx = reason.find(&pattern)?;
+        let rest = &reason[idx + pattern.len()..];
+        let end = rest.find(']')?;
+        rest[..end].trim().parse::<usize>().ok()
+    }
+
+    fn extract_unknown_field_name(norm: &str) -> Option<String> {
+        for needle in ["unknown field \"", "unknown field `"] {
+            if let Some(pos) = norm.find(needle) {
+                let rest = &norm[pos + needle.len()..];
+                let delim = needle.chars().last().unwrap_or('"');
+                if let Some(end) = rest.find(delim) {
+                    let field = rest[..end].trim();
+                    if !field.is_empty() {
+                        return Some(field.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn strip_optional_unknown_fields(cfg_val: &mut Value, reason: &str) -> bool {
         let norm = Self::normalize_unknown_field_reason(reason);
         let mut changed = false;
@@ -437,35 +682,654 @@ impl CoreManager {
             if norm.contains(&format!("json: unknown field \"{field}\""))
                 || norm.contains(&format!("unknown field `{field}`"))
             {
-                if let Some(obs) = cfg_val.get_mut("outbounds").and_then(Value::as_array_mut) {
-                    for ob in obs {
-                        if let Some(map) = ob.as_object_mut()
-                            && map.remove(field).is_some()
-                        {
-                            changed = true;
-                        }
-                    }
-                }
-                if let Some(eps) = cfg_val.get_mut("endpoints").and_then(Value::as_array_mut) {
-                    for ep in eps {
-                        if let Some(map) = ep.as_object_mut()
-                            && map.remove(field).is_some()
-                        {
-                            changed = true;
+                for array_key in ["outbounds", "endpoints"] {
+                    if let Some(arr) = cfg_val.get_mut(array_key).and_then(Value::as_array_mut) {
+                        for item in arr {
+                            if let Some(map) = item.as_object_mut()
+                                && map.remove(field).is_some()
+                            {
+                                changed = true;
+                            }
                         }
                     }
                 }
             }
         }
+        if !changed
+            && let Some(field) = Self::extract_unknown_field_name(&norm)
+            && !matches!(
+                field.as_str(),
+                "type" | "tag" | "outbounds" | "servers" | "rules" | "inbounds" | "route" | "dns"
+            )
+        {
+            for array_key in ["outbounds", "endpoints", "inbounds"] {
+                if let Some(idx) = Self::extract_bracket_index(&norm, array_key)
+                    && let Some(map) = cfg_val
+                        .pointer_mut(&format!("/{array_key}/{idx}"))
+                        .and_then(Value::as_object_mut)
+                    && map.remove(&field).is_some()
+                {
+                    return true;
+                }
+            }
+            if norm.contains("dns.servers")
+                && let Some(idx) = Self::extract_bracket_index(&norm, "servers")
+                && let Some(map) = cfg_val
+                    .pointer_mut(&format!("/dns/servers/{idx}"))
+                    .and_then(Value::as_object_mut)
+                && map.remove(&field).is_some()
+            {
+                return true;
+            }
+        }
         changed
     }
 
-    /// Validate candidate config with `tachyon-core check -c` (when binary is present) and write it safely.
-    async fn write_validated_core_config(
+    fn resolve_section_id_for_tag(
+        tag: &str,
+        cfg: &Value,
+        store: &crate::store::RouterStoreData,
+    ) -> Option<String> {
+        if let Some(sec_id) = Self::extract_section_id_from_tag(tag)
+            && (store.sections.iter().any(|s| s.id == sec_id) || tag.starts_with("sec-"))
+        {
+            return Some(sec_id);
+        }
+        if let Some(obs) = cfg.get("outbounds").and_then(Value::as_array) {
+            for ob in obs {
+                let Some(group_tag) = ob.get("tag").and_then(Value::as_str) else {
+                    continue;
+                };
+                if ob
+                    .get("outbounds")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(tag)))
+                    && let Some(sec_id) = Self::extract_section_id_from_tag(group_tag)
+                {
+                    return Some(sec_id);
+                }
+            }
+        }
+        if let Some(rules) = cfg.pointer("/route/rules").and_then(Value::as_array) {
+            for rule in rules {
+                if (rule.get("outbound").and_then(Value::as_str) == Some(tag)
+                    || rule
+                        .get("inbound")
+                        .and_then(Value::as_array)
+                        .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(tag))))
+                    && let Some(out_tag) = rule.get("outbound").and_then(Value::as_str)
+                    && let Some(sec_id) = Self::extract_section_id_from_tag(out_tag)
+                {
+                    return Some(sec_id);
+                }
+            }
+        }
+        for src in &store.outbound_sources {
+            let prefix = format!("src-{}-", src.id);
+            if (tag == format!("src-{}", src.id) || tag.starts_with(&prefix))
+                && let Some(sec) = store
+                    .sections
+                    .iter()
+                    .find(|s| s.outbound_source_refs.iter().any(|id| id == &src.id))
+            {
+                return Some(sec.id.clone());
+            }
+        }
+        Self::extract_section_id_from_tag(tag)
+    }
+
+    fn section_label(store: &crate::store::RouterStoreData, sec_id: &str) -> String {
+        store
+            .sections
+            .iter()
+            .find(|s| s.id == sec_id)
+            .map(|s| {
+                let n = s.label.trim();
+                if n.is_empty() {
+                    format!("Секция '{}'", s.id)
+                } else {
+                    format!("Секция '{n}' ({})", s.id)
+                }
+            })
+            .unwrap_or_else(|| format!("Секция '{sec_id}'"))
+    }
+
+    /// Map a `tachyon-core` validation or runtime error back to an entity key for UI diagnostics.
+    pub fn attribute_error_to_store_entity(
+        reason: &str,
+        cfg: &Value,
+        store: &crate::store::RouterStoreData,
+    ) -> (String, String) {
+        let norm = Self::normalize_unknown_field_reason(reason);
+        let lower = norm.to_ascii_lowercase();
+
+        if lower.contains("config: dns")
+            || lower.contains("dns.servers")
+            || lower.contains("dns.rules")
+        {
+            return ("_dns".to_string(), "Настройки DNS".to_string());
+        }
+        if let Some(idx) = Self::extract_bracket_index(&norm, "outbounds")
+            && let Some(tag) = cfg
+                .pointer(&format!("/outbounds/{idx}/tag"))
+                .and_then(Value::as_str)
+        {
+            if let Some(sec_id) = Self::resolve_section_id_for_tag(tag, cfg, store) {
+                return (sec_id.clone(), Self::section_label(store, &sec_id));
+            }
+            return (format!("outbound:{tag}"), format!("Исходящий узел '{tag}'"));
+        }
+        if let Some(idx) = Self::extract_bracket_index(&norm, "endpoints")
+            && let Some(tag) = cfg
+                .pointer(&format!("/endpoints/{idx}/tag"))
+                .and_then(Value::as_str)
+        {
+            if let Some(sec_id) = Self::resolve_section_id_for_tag(tag, cfg, store) {
+                return (sec_id.clone(), Self::section_label(store, &sec_id));
+            }
+            return (format!("server:{tag}"), format!("Endpoint '{tag}'"));
+        }
+        if let Some(idx) = Self::extract_bracket_index(&norm, "inbounds")
+            && let Some(tag) = cfg
+                .pointer(&format!("/inbounds/{idx}/tag"))
+                .and_then(Value::as_str)
+        {
+            if matches!(tag, "tproxy-in" | "tun-in" | "mixed-in" | "dns-in") {
+                return (
+                    "_settings".to_string(),
+                    format!("Базовые сетевые настройки ({tag})"),
+                );
+            }
+            if let Some(sec_id) = Self::resolve_section_id_for_tag(tag, cfg, store) {
+                return (sec_id.clone(), Self::section_label(store, &sec_id));
+            }
+            return ("_servers".to_string(), format!("Входящий сервер '{tag}'"));
+        }
+        if Self::extract_bracket_index(&norm, "rule_set").is_some()
+            || lower.contains("rule_set")
+            || lower.contains("rule-set")
+        {
+            return (
+                "_rules".to_string(),
+                "Списки правил маршрутизации".to_string(),
+            );
+        }
+        if let Some(idx) = Self::extract_bracket_index(&norm, "route.rules")
+            .or_else(|| Self::extract_bracket_index(&norm, "rules"))
+        {
+            if let Some(out_tag) = cfg
+                .pointer(&format!("/route/rules/{idx}/outbound"))
+                .and_then(Value::as_str)
+                && let Some(sec_id) = Self::resolve_section_id_for_tag(out_tag, cfg, store)
+            {
+                return (sec_id.clone(), Self::section_label(store, &sec_id));
+            }
+            return ("_rules".to_string(), "Правила маршрутизации".to_string());
+        }
+        for ptr in ["/outbounds", "/endpoints", "/inbounds"] {
+            if let Some(items) = cfg.pointer(ptr).and_then(Value::as_array) {
+                for item in items {
+                    let Some(tag) = item.get("tag").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    if matches!(tag, "direct" | "block" | "tproxy-in" | "tun-in" | "dns-in") {
+                        continue;
+                    }
+                    if norm.contains(tag) {
+                        if let Some(sec_id) = Self::resolve_section_id_for_tag(tag, cfg, store) {
+                            return (sec_id.clone(), Self::section_label(store, &sec_id));
+                        }
+                        return ("_settings".to_string(), format!("Элемент '{tag}'"));
+                    }
+                }
+            }
+        }
+        if lower.contains("experimental") || lower.contains("clash_api") || lower.contains("cache")
+        {
+            return (
+                "_settings".to_string(),
+                "Системные настройки ядра".to_string(),
+            );
+        }
+        if lower.contains("route") {
+            return ("_rules".to_string(), "Правила маршрутизации".to_string());
+        }
+        (
+            "_core_runtime".to_string(),
+            "Запуск ядра tachyon-core".to_string(),
+        )
+    }
+
+    fn strip_outbound_tag_and_repair_refs(cfg: &mut Value, target_tag: &str) -> bool {
+        if target_tag.is_empty() || matches!(target_tag, "direct" | "block") {
+            return false;
+        }
+        let mut changed = false;
+        let mut removed_tags: HashSet<String> = HashSet::new();
+        let mut pending: Vec<String> = vec![target_tag.to_string()];
+
+        while let Some(cur_tag) = pending.pop() {
+            if matches!(cur_tag.as_str(), "direct" | "block")
+                || !removed_tags.insert(cur_tag.clone())
+            {
+                continue;
+            }
+            if let Some(obs) = cfg.get_mut("outbounds").and_then(Value::as_array_mut) {
+                let before = obs.len();
+                obs.retain(|o| o.get("tag").and_then(Value::as_str) != Some(cur_tag.as_str()));
+                if obs.len() != before {
+                    changed = true;
+                }
+            }
+            if let Some(eps) = cfg.get_mut("endpoints").and_then(Value::as_array_mut) {
+                let before = eps.len();
+                eps.retain(|e| e.get("tag").and_then(Value::as_str) != Some(cur_tag.as_str()));
+                if eps.len() != before {
+                    changed = true;
+                }
+            }
+            let mut emptied_groups: Vec<String> = Vec::new();
+            if let Some(obs) = cfg.get_mut("outbounds").and_then(Value::as_array_mut) {
+                for ob in obs.iter_mut() {
+                    let Some(map) = ob.as_object_mut() else {
+                        continue;
+                    };
+                    let (first_remaining, became_empty, arr_changed) = {
+                        let Some(arr) = map.get_mut("outbounds").and_then(Value::as_array_mut)
+                        else {
+                            continue;
+                        };
+                        let before = arr.len();
+                        arr.retain(|v| v.as_str() != Some(cur_tag.as_str()));
+                        let first = arr.first().and_then(Value::as_str).map(str::to_string);
+                        (first, arr.is_empty(), arr.len() != before)
+                    };
+                    if arr_changed {
+                        changed = true;
+                    }
+                    if map.get("default").and_then(Value::as_str) == Some(cur_tag.as_str()) {
+                        if let Some(first) = first_remaining {
+                            map.insert("default".into(), json!(first));
+                        } else {
+                            map.remove("default");
+                        }
+                    }
+                    if became_empty && let Some(gtag) = map.get("tag").and_then(Value::as_str) {
+                        emptied_groups.push(gtag.to_string());
+                    }
+                }
+                if !emptied_groups.is_empty() {
+                    obs.retain(|o| {
+                        o.get("tag")
+                            .and_then(Value::as_str)
+                            .is_none_or(|t| !emptied_groups.iter().any(|g| g == t))
+                    });
+                    changed = true;
+                }
+            }
+            pending.extend(emptied_groups);
+        }
+
+        if let Some(dns_servers) = cfg
+            .pointer_mut("/dns/servers")
+            .and_then(Value::as_array_mut)
+        {
+            for srv in dns_servers.iter_mut() {
+                if let Some(map) = srv.as_object_mut()
+                    && map
+                        .get("detour")
+                        .and_then(Value::as_str)
+                        .is_some_and(|d| removed_tags.contains(d))
+                {
+                    map.insert("detour".into(), json!("direct"));
+                    changed = true;
+                }
+            }
+        }
+        if let Some(rules) = cfg
+            .pointer_mut("/route/rules")
+            .and_then(Value::as_array_mut)
+        {
+            let before = rules.len();
+            rules.retain(|r| {
+                r.get("outbound")
+                    .and_then(Value::as_str)
+                    .is_none_or(|o| !removed_tags.contains(o))
+            });
+            if rules.len() != before {
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn apply_safe_udp_dns_block(cfg: &mut Value) -> bool {
+        let desired = json!({
+            "servers": [
+                {
+                    "type": "udp",
+                    "tag": "dns-bootstrap",
+                    "server": "77.88.8.8",
+                    "server_port": 53,
+                    "detour": "direct"
+                },
+                {
+                    "type": "udp",
+                    "tag": "dns-remote-1",
+                    "server": "1.1.1.1",
+                    "server_port": 53,
+                    "detour": "direct"
+                },
+                {
+                    "type": "group",
+                    "tag": "dns-remote",
+                    "mode": "stable",
+                    "error_ttl": "30s",
+                    "timeout": "4s",
+                    "servers": ["dns-remote-1", "dns-bootstrap"]
+                }
+            ],
+            "rules": [],
+            "final": "dns-remote",
+            "strategy": "prefer_ipv4",
+            "reverse_mapping": true
+        });
+        let changed = cfg.get("dns") != Some(&desired);
+        if let Some(map) = cfg.as_object_mut() {
+            map.insert("dns".into(), desired);
+            if let Some(route_map) = map.get_mut("route").and_then(Value::as_object_mut) {
+                route_map.insert("default_domain_resolver".into(), json!("dns-bootstrap"));
+            }
+        }
+        changed
+    }
+
+    fn strip_broken_entity_from_cfg(cfg: &mut Value, reason: &str) -> bool {
+        let norm = Self::normalize_unknown_field_reason(reason);
+        let lower = norm.to_ascii_lowercase();
+
+        if lower.contains("config: dns")
+            || lower.contains("dns.servers")
+            || lower.contains("dns.rules")
+        {
+            if lower.contains("dns.rules")
+                && let Some(idx) = Self::extract_bracket_index(&norm, "rules")
+                && let Some(rules) = cfg.pointer_mut("/dns/rules").and_then(Value::as_array_mut)
+                && idx < rules.len()
+            {
+                rules.remove(idx);
+                return true;
+            }
+            return Self::apply_safe_udp_dns_block(cfg);
+        }
+
+        if let Some(idx) = Self::extract_bracket_index(&norm, "outbounds")
+            && let Some(tag) = cfg
+                .pointer(&format!("/outbounds/{idx}/tag"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+            && Self::strip_outbound_tag_and_repair_refs(cfg, &tag)
+        {
+            return true;
+        }
+
+        if let Some(idx) = Self::extract_bracket_index(&norm, "endpoints")
+            && let Some(tag) = cfg
+                .pointer(&format!("/endpoints/{idx}/tag"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+            && Self::strip_outbound_tag_and_repair_refs(cfg, &tag)
+        {
+            return true;
+        }
+
+        if let Some(idx) = Self::extract_bracket_index(&norm, "inbounds")
+            && let Some(tag) = cfg
+                .pointer(&format!("/inbounds/{idx}/tag"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+            && !matches!(tag.as_str(), "tproxy-in" | "tun-in" | "mixed-in" | "dns-in")
+            && let Some(inbs) = cfg.get_mut("inbounds").and_then(Value::as_array_mut)
+        {
+            inbs.remove(idx);
+            if let Some(rules) = cfg
+                .pointer_mut("/route/rules")
+                .and_then(Value::as_array_mut)
+            {
+                rules.retain(|r| {
+                    !r.get("inbound")
+                        .and_then(Value::as_array)
+                        .is_some_and(|arr| arr.iter().all(|v| v.as_str() == Some(tag.as_str())))
+                });
+            }
+            return true;
+        }
+
+        if let Some(idx) = Self::extract_bracket_index(&norm, "rule_set")
+            && let Some(rs_tag) = cfg
+                .pointer(&format!("/route/rule_set/{idx}/tag"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+            && let Some(rs_obj) = cfg
+                .pointer_mut(&format!("/route/rule_set/{idx}"))
+                .and_then(Value::as_object_mut)
+        {
+            let fallback_json = Self::write_empty_ruleset_stub(&rs_tag, None);
+            rs_obj.remove("url");
+            rs_obj.remove("download_detour");
+            rs_obj.remove("http_client");
+            rs_obj.remove("update_interval");
+            rs_obj.insert("type".into(), json!("local"));
+            rs_obj.insert("format".into(), json!("source"));
+            rs_obj.insert("path".into(), json!(fallback_json.to_string_lossy()));
+            return true;
+        }
+
+        if let Some(idx) = Self::extract_bracket_index(&norm, "route.rules")
+            .or_else(|| Self::extract_bracket_index(&norm, "rules"))
+            && let Some(rules) = cfg
+                .pointer_mut("/route/rules")
+                .and_then(Value::as_array_mut)
+            && idx < rules.len()
+        {
+            rules.remove(idx);
+            return true;
+        }
+
+        let found_tag = ["/outbounds", "/endpoints"].iter().find_map(|ptr| {
+            cfg.pointer(ptr)
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items.iter().find_map(|item| {
+                        let tag = item.get("tag").and_then(Value::as_str)?;
+                        (!matches!(tag, "direct" | "block") && norm.contains(tag))
+                            .then(|| tag.to_string())
+                    })
+                })
+        });
+        if let Some(tag) = found_tag
+            && Self::strip_outbound_tag_and_repair_refs(cfg, &tag)
+        {
+            return true;
+        }
+        false
+    }
+
+    fn apply_quarantine_failure_step(
+        store_snapshot: &crate::store::RouterStoreData,
+        cfg: &mut Value,
+        quarantined: &mut BTreeMap<String, String>,
+        reason: &str,
+    ) -> bool {
+        if Self::strip_optional_unknown_fields(cfg, reason) {
+            return true;
+        }
+        let (key, label) = Self::attribute_error_to_store_entity(reason, cfg, store_snapshot);
+        let pretty = Self::format_fault_reason(reason);
+        let entry_msg = format!("{label} не загружена: {pretty}");
+        let stripped = Self::strip_broken_entity_from_cfg(cfg, reason);
+        quarantined
+            .entry(key)
+            .and_modify(|prev| {
+                if !prev.contains(pretty.as_str()) {
+                    prev.push_str("; ");
+                    prev.push_str(&entry_msg);
+                }
+            })
+            .or_insert(entry_msg);
+        stripped
+    }
+
+    fn finalize_safe_minimal_fallback(
+        store_snapshot: &crate::store::RouterStoreData,
+        failed_cfg: &Value,
+        quarantined: &mut BTreeMap<String, String>,
+        last_err: Option<String>,
+    ) -> Value {
+        let reason = last_err.unwrap_or_else(|| "конфигурация не прошла проверку".to_string());
+        let (attr_key, attr_label) =
+            Self::attribute_error_to_store_entity(&reason, failed_cfg, store_snapshot);
+        let pretty = Self::format_fault_reason(&reason);
+        quarantined.entry(attr_key).or_insert_with(|| {
+            format!("{attr_label}: {pretty}. Активирован безопасный минимальный режим.")
+        });
+        quarantined.entry("_core_runtime".to_string()).or_insert_with(|| {
+            format!(
+                "Основная конфигурация не прошла проверку ядра ({pretty}). Запущен минимальный режим (DNS + direct), чтобы сохранить сеть."
+            )
+        });
+        config_gen::compile_safe_minimal_core_config(store_snapshot)
+    }
+
+    pub fn quarantine_with_checker<F>(
+        store_snapshot: &crate::store::RouterStoreData,
+        initial_cfg: Value,
+        mut quarantined: BTreeMap<String, String>,
+        mut checker: F,
+    ) -> (Value, BTreeMap<String, String>)
+    where
+        F: FnMut(&Value) -> Result<(), String>,
+    {
+        let mut cfg = initial_cfg;
+        Self::sanitize_candidate_local_rulesets(&mut cfg);
+        Self::sanitize_broken_custom_local_rulesets(&mut cfg, &mut quarantined);
+
+        let mut last_err: Option<String> = None;
+        for _ in 0..16 {
+            match checker(&cfg) {
+                Ok(()) => return (cfg, quarantined),
+                Err(reason) => {
+                    let can_continue = Self::apply_quarantine_failure_step(
+                        store_snapshot,
+                        &mut cfg,
+                        &mut quarantined,
+                        &reason,
+                    );
+                    last_err = Some(reason);
+                    if !can_continue {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if checker(&cfg).is_ok() {
+            return (cfg, quarantined);
+        }
+
+        let safe_cfg =
+            Self::finalize_safe_minimal_fallback(store_snapshot, &cfg, &mut quarantined, last_err);
+        (safe_cfg, quarantined)
+    }
+
+    async fn run_core_check_on_value(bin_path: &str, candidate_cfg: &Value) -> Result<(), String> {
+        let tmp_check_path = std::env::temp_dir().join("tachyon-core-candidate.json");
+        crypto_gen::write_json_if_changed(&tmp_check_path, candidate_cfg)
+            .map_err(|e| format!("failed to write check candidate: {e}"))?;
+        let mut cmd = Command::new(bin_path);
+        cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
+        match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await {
+            Ok(out) if out.status.success() => Ok(()),
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                Err(format!("{}{}", stderr.trim(), stdout.trim()))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                Err("tachyon-core check timed out after 15s".to_string())
+            }
+            Err(e) => Err(format!("failed to invoke tachyon-core check: {e}")),
+        }
+    }
+
+    async fn compile_or_safe_minimal(
         &self,
         store_snapshot: &crate::store::RouterStoreData,
-        cfg_val: &Value,
-    ) -> anyhow::Result<std::path::PathBuf> {
+    ) -> (Value, BTreeMap<String, String>) {
+        let mut seed_errors = BTreeMap::new();
+        match config_gen::compile_core_config(store_snapshot) {
+            Ok(v) => (v, seed_errors),
+            Err(e) => {
+                let pretty = Self::format_fault_reason(&format!("{e:#}"));
+                let msg = format!(
+                    "Ошибка компиляции конфигурации ({pretty}). Активирован минимальный режим (DNS + direct)."
+                );
+                self.state
+                    .live
+                    .write()
+                    .await
+                    .push_event("warn", "core_mgr", &msg);
+                seed_errors.insert("_core_runtime".to_string(), msg);
+                (
+                    config_gen::compile_safe_minimal_core_config(store_snapshot),
+                    seed_errors,
+                )
+            }
+        }
+    }
+
+    async fn spawn_and_verify_core(bin_path: &str, cfg_path: &Path) -> Result<Child, String> {
+        let mut cmd = Command::new(bin_path);
+        cmd.args(["run", "-c", &cfg_path.to_string_lossy()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("tachyon-core spawn failed: {e:#}"))?;
+
+        for _ in 0..4 {
+            tokio::time::sleep(Duration::from_millis(75)).await;
+            if let Ok(Some(status)) = child.try_wait() {
+                let mut early_err = String::new();
+                if let Some(stderr) = child.stderr.take() {
+                    let mut buf = Vec::with_capacity(1024);
+                    let _ = tokio::time::timeout(
+                        Duration::from_millis(200),
+                        stderr.take(1024).read_to_end(&mut buf),
+                    )
+                    .await;
+                    let s = String::from_utf8_lossy(&buf).trim().to_string();
+                    if !s.is_empty() {
+                        early_err = format!(": {s}");
+                    }
+                }
+                return Err(format!(
+                    "tachyon-core exited immediately with {status}{early_err}"
+                ));
+            }
+        }
+        Ok(child)
+    }
+
+    /// Prepare a runnable `tachyon-core` config, isolating invalid entities instead of failing startup.
+    async fn prepare_and_write_validated_core_config(
+        &self,
+        store_snapshot: &crate::store::RouterStoreData,
+        initial_cfg: Value,
+        seed_errors: BTreeMap<String, String>,
+    ) -> anyhow::Result<(PathBuf, Value, BTreeMap<String, String>)> {
         let state_dir = self
             .state
             .path
@@ -474,53 +1338,77 @@ impl CoreManager {
         let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
             && Path::new("/etc/init.d/tachyon").exists();
 
-        let mut candidate_cfg = cfg_val.clone();
-        Self::sanitize_candidate_local_rulesets(&mut candidate_cfg);
-        Self::validate_custom_local_rulesets(&candidate_cfg)?;
-        let tmp_check_path = std::env::temp_dir().join("tachyon-core-candidate.json");
-        crypto_gen::write_json_if_changed(&tmp_check_path, &candidate_cfg)?;
-
         let bin_path = self.resolve_bin_path().await;
-        if cfg!(target_os = "linux") && Path::new(&bin_path).exists() {
-            for attempt in 0..=2 {
-                let mut cmd = Command::new(&bin_path);
-                cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
-                match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await
-                {
-                    Ok(out) if !out.status.success() => {
-                        let stderr = String::from_utf8_lossy(&out.stderr);
-                        let stdout = String::from_utf8_lossy(&out.stdout);
-                        let combined = format!("{}{}", stderr.trim(), stdout.trim());
-                        if attempt < 2
-                            && Self::strip_optional_unknown_fields(&mut candidate_cfg, &combined)
-                        {
-                            crypto_gen::write_json_if_changed(&tmp_check_path, &candidate_cfg)?;
-                            continue;
+        let run_binary_check = cfg!(target_os = "linux") && Path::new(&bin_path).exists();
+
+        let (prepared_cfg, quarantined) = if run_binary_check {
+            let mut cfg = initial_cfg;
+            let mut quarantined = seed_errors;
+            Self::sanitize_candidate_local_rulesets(&mut cfg);
+            Self::sanitize_broken_custom_local_rulesets(&mut cfg, &mut quarantined);
+
+            let mut last_err: Option<String> = None;
+            let mut passed = false;
+            for _ in 0..16 {
+                match Self::run_core_check_on_value(&bin_path, &cfg).await {
+                    Ok(()) => {
+                        passed = true;
+                        break;
+                    }
+                    Err(reason) => {
+                        let can_continue = Self::apply_quarantine_failure_step(
+                            store_snapshot,
+                            &mut cfg,
+                            &mut quarantined,
+                            &reason,
+                        );
+                        last_err = Some(reason);
+                        if !can_continue {
+                            break;
                         }
-                        anyhow::bail!("tachyon-core check failed: {combined}");
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        anyhow::bail!("tachyon-core check timed out after 15s");
-                    }
-                    _ => break,
                 }
+            }
+            if !passed {
+                cfg = Self::finalize_safe_minimal_fallback(
+                    store_snapshot,
+                    &cfg,
+                    &mut quarantined,
+                    last_err,
+                );
+            }
+            (cfg, quarantined)
+        } else {
+            Self::quarantine_with_checker(store_snapshot, initial_cfg, seed_errors, |_| Ok(()))
+        };
+
+        Self::write_section_errors(&quarantined);
+        if !quarantined.is_empty() {
+            let mut live = self.state.live.write().await;
+            for (k, msg) in &quarantined {
+                live.push_event(
+                    "warn",
+                    "core_mgr",
+                    &format!("Изолирована проблемная настройка [{k}]: {msg}"),
+                );
             }
         }
 
         if is_tmp_staging {
             let staging_cfg = state_dir.join("tachyon-core-config.json");
-            crypto_gen::write_json_if_changed(&staging_cfg, &candidate_cfg)?;
-            return Ok(staging_cfg);
+            crypto_gen::write_json_if_changed(&staging_cfg, &prepared_cfg)?;
+            return Ok((staging_cfg, prepared_cfg, quarantined));
         }
 
         let p = Path::new(&store_snapshot.settings.core_config_path);
-        if crypto_gen::write_json_if_changed(p, &candidate_cfg).is_ok() {
-            Ok(p.to_path_buf())
+        let written_path = if crypto_gen::write_json_if_changed(p, &prepared_cfg).is_ok() {
+            p.to_path_buf()
         } else {
             let fallback = state_dir.join("tachyon-core-config.json");
-            crypto_gen::write_json_if_changed(&fallback, &candidate_cfg)?;
-            Ok(fallback)
-        }
+            crypto_gen::write_json_if_changed(&fallback, &prepared_cfg)?;
+            fallback
+        };
+        Ok((written_path, prepared_cfg, quarantined))
     }
 
     fn ensure_runtime_cache_dir(cache_path: &str) {
@@ -635,18 +1523,12 @@ impl CoreManager {
         );
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
         self.ensure_server_tls_certs(&store_snapshot).await;
-        let cfg_val = match config_gen::compile_core_config(&store_snapshot) {
-            Ok(v) => v,
-            Err(e) => {
-                cleanup_failed_start(veto.is_some(), format!("config compile failed: {e:#}")).await;
-                return Err(e);
-            }
-        };
-        let cfg_path = match self
-            .write_validated_core_config(&store_snapshot, &cfg_val)
+        let (cfg_val, seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
+        let (cfg_path, prepared_cfg, mut quarantined) = match self
+            .prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors)
             .await
         {
-            Ok(p) => p,
+            Ok(v) => v,
             Err(e) => {
                 cleanup_failed_start(veto.is_some(), format!("config validation failed: {e:#}"))
                     .await;
@@ -661,47 +1543,57 @@ impl CoreManager {
             return Err(err);
         }
 
-        let mut cmd = Command::new(&bin_path);
-        cmd.args(["run", "-c", &cfg_path.to_string_lossy()])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-
-        let mut child = match cmd.spawn() {
+        let mut child = match Self::spawn_and_verify_core(&bin_path, &cfg_path).await {
             Ok(c) => c,
-            Err(e) => {
-                cleanup_failed_start(veto.is_some(), format!("tachyon-core spawn failed: {e:#}"))
+            Err(first_err) if !quarantined.contains_key("_core_runtime") => {
+                let (key, label) = Self::attribute_error_to_store_entity(
+                    &first_err,
+                    &prepared_cfg,
+                    &store_snapshot,
+                );
+                let pretty = Self::format_fault_reason(&first_err);
+                quarantined.entry(key).or_insert_with(|| {
+                    format!("{label}: сбой запуска ({pretty}). Включён безопасный режим.")
+                });
+                quarantined
+                    .entry("_core_runtime".to_string())
+                    .or_insert_with(|| {
+                        format!(
+                            "Ядро завершилось при запуске ({pretty}). Выполнен перезапуск в безопасном минимальном режиме (DNS + direct)."
+                        )
+                    });
+                Self::write_section_errors(&quarantined);
+                self.state.live.write().await.push_event(
+                    "warn",
+                    "core_mgr",
+                    &format!(
+                        "Ранний сбой запуска tachyon-core ({pretty}); повторный запуск в безопасном минимальном режиме"
+                    ),
+                );
+                let safe_cfg = config_gen::compile_safe_minimal_core_config(&store_snapshot);
+                if let Err(e) = crypto_gen::write_json_if_changed(&cfg_path, &safe_cfg) {
+                    cleanup_failed_start(
+                        veto.is_some(),
+                        format!("failed to write safe fallback config: {e:#}"),
+                    )
                     .await;
-                return Err(e.into());
+                    return Err(e);
+                }
+                match Self::spawn_and_verify_core(&bin_path, &cfg_path).await {
+                    Ok(c) => c,
+                    Err(second_err) => {
+                        cleanup_failed_start(veto.is_some(), second_err.clone()).await;
+                        anyhow::bail!("{second_err}");
+                    }
+                }
+            }
+            Err(msg) => {
+                cleanup_failed_start(veto.is_some(), msg.clone()).await;
+                anyhow::bail!("{msg}");
             }
         };
         let pid = child.id().unwrap_or(0);
         let identity = sys_info::capture_process_identity(pid);
-
-        // Give the spawned `tachyon-core` process a brief startup window before switching
-        // router DNS and nftables so an immediate config/runtime exit never blackholes LAN.
-        for _ in 0..4 {
-            tokio::time::sleep(Duration::from_millis(75)).await;
-            if let Ok(Some(status)) = child.try_wait() {
-                let mut early_err = String::new();
-                if let Some(stderr) = child.stderr.take() {
-                    use tokio::io::AsyncReadExt;
-                    let mut buf = Vec::with_capacity(1024);
-                    let _ = tokio::time::timeout(
-                        Duration::from_millis(200),
-                        stderr.take(1024).read_to_end(&mut buf),
-                    )
-                    .await;
-                    let s = String::from_utf8_lossy(&buf).trim().to_string();
-                    if !s.is_empty() {
-                        early_err = format!(": {s}");
-                    }
-                }
-                let msg = format!("tachyon-core exited immediately with {status}{early_err}");
-                cleanup_failed_start(veto.is_some(), msg.clone()).await;
-                anyhow::bail!("{msg}");
-            }
-        }
 
         if let Some(stdout) = child.stdout.take() {
             let st = Arc::clone(&self.state);
@@ -763,10 +1655,14 @@ impl CoreManager {
                     post_ipv6_state.as_str(),
                 ),
             );
-            if let Ok(re_cfg_val) = config_gen::compile_core_config(&store_snapshot)
-                && let Ok(re_cfg_path) = self
-                    .write_validated_core_config(&store_snapshot, &re_cfg_val)
-                    .await
+            let (re_cfg_val, re_seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
+            if let Ok((re_cfg_path, _, _)) = self
+                .prepare_and_write_validated_core_config(
+                    &store_snapshot,
+                    re_cfg_val,
+                    re_seed_errors,
+                )
+                .await
             {
                 let _ = net_stack::apply_network_stack(&store_snapshot).await;
                 let payload = json!({ "path": re_cfg_path, "payload": "" }).to_string();
@@ -914,12 +1810,11 @@ impl CoreManager {
         }
         let store_snapshot = { self.state.data.read().await.clone() };
         self.ensure_server_tls_certs(&store_snapshot).await;
-        let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
-        let cfg_path = self
-            .write_validated_core_config(&store_snapshot, &cfg_val)
-            .await?
-            .to_string_lossy()
-            .to_string();
+        let (cfg_val, seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
+        let (cfg_path_buf, _, _) = self
+            .prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors)
+            .await?;
+        let cfg_path = cfg_path_buf.to_string_lossy().to_string();
         if let Err(e) = net_stack::apply_network_stack(&store_snapshot).await {
             eprintln!("[tachyon] apply_network_stack failed during reload: {e:#}");
             self.state.live.write().await.push_event(
@@ -1276,13 +2171,17 @@ impl CoreManager {
 
     pub(crate) const SUBSCRIPTION_AUTO_USER_AGENTS: &[&str] = &[
         "tachyon-core/2.0",
-        "Happ/4.4.0",
+        "Happ/4.6.2",
         "v2rayNG/2.3.15",
         "v2rayN/7.12",
         "Mihomo/1.19.16",
         "FlClash/v0.8.72",
         "HiddifyNext/2.5.7",
     ];
+
+    pub(crate) fn is_happ_versioned_user_agent(ua: &str) -> bool {
+        ua.trim().to_ascii_lowercase().starts_with("happ/")
+    }
 
     pub(crate) fn normalize_subscription_user_agent(raw: &str) -> String {
         let trimmed = raw.trim();
@@ -1291,7 +2190,7 @@ impl CoreManager {
         }
         match trimmed.to_ascii_lowercase().as_str() {
             "tachyon-core" | "tachyon" | "sing-box" | "singbox" => "tachyon-core/2.0".to_string(),
-            "happ" => "Happ/4.4.0".to_string(),
+            "happ" => "Happ/4.6.2".to_string(),
             "v2rayng" => "v2rayNG/2.3.15".to_string(),
             "v2rayn" => "v2rayN/7.12".to_string(),
             "mihomo" | "clash" | "clash-meta" | "clash.meta" => "Mihomo/1.19.16".to_string(),
@@ -1663,7 +2562,7 @@ impl CoreManager {
                 .unwrap_or(if path.contains("delay-batch") {
                     5000
                 } else {
-                    3500
+                    8000
                 });
             if path.contains("/group/") || path.contains("delay-batch") {
                 Duration::from_millis(
@@ -1673,7 +2572,7 @@ impl CoreManager {
                         .clamp(15_000, 45_000),
                 )
             } else {
-                Duration::from_millis(query_ms.saturating_add(2000).clamp(3000, 30_000))
+                Duration::from_millis(query_ms.saturating_add(6000).clamp(5000, 35_000))
             }
         } else {
             Duration::from_secs(2)
@@ -2022,6 +2921,13 @@ impl CoreManager {
 
     /// Parse raw subscription content (base64 or newline-separated proxy URIs) into `ParsedProxyNode`s.
     pub fn parse_subscription_payload(raw: &str) -> Vec<ParsedProxyNode> {
+        Self::parse_subscription_payload_with_stats(raw).0
+    }
+
+    /// Parse raw subscription content into usable nodes and return the count of dropped `.invalid` stubs.
+    pub(crate) fn parse_subscription_payload_with_stats(
+        raw: &str,
+    ) -> (Vec<ParsedProxyNode>, usize) {
         let trimmed = raw.trim();
         let looks_plain = trimmed.contains("://")
             || trimmed.starts_with('{')
@@ -2063,16 +2969,29 @@ impl CoreManager {
 
         // Drop informational/banner pseudo-nodes pointing to loopback/unspecified addresses
         // (e.g. `127.0.0.1:443#Remaining: 15GB`) that cause immediate ECONNREFUSED after reload.
+        // Track `.invalid` stub hosts separately so auto-UA discovery promotes past degraded feeds.
+        let mut dropped_invalid_stubs = 0usize;
         out.retain(|node| {
             let srv = node.server.trim();
-            srv.is_empty() || config_gen::is_usable_external_sub_host(srv)
+            let keep = srv.is_empty() || config_gen::is_usable_external_sub_host(srv);
+            if !keep {
+                let bare = srv
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .trim_end_matches('.')
+                    .to_ascii_lowercase();
+                if bare == "invalid" || bare.ends_with(".invalid") {
+                    dropped_invalid_stubs += 1;
+                }
+            }
+            keep
         });
 
         let mut taken_tags: HashSet<String> = HashSet::new();
         for node in &mut out {
             config_gen::assign_unique_node_tag(node, &mut taken_tags);
         }
-        out
+        (out, dropped_invalid_stubs)
     }
 
     /// Refresh a single subscription `OutboundSource` (or all sources in a `RoutingSection`, or all if `source_id` is empty).
@@ -2171,6 +3090,7 @@ impl CoreManager {
                 let ua_owned = ua.to_string();
                 async move {
                     let mut out_nodes: Vec<ParsedProxyNode> = Vec::new();
+                    let mut dropped_invalid_stubs = 0usize;
                     let mut err_msg: Option<String> = None;
                     let mut got_http_reply = false;
                     for url in urls_ref {
@@ -2190,7 +3110,9 @@ impl CoreManager {
                                 let raw_resp = String::from_utf8_lossy(&stdout);
                                 let (headers_part, body_part) = split_http_response(&raw_resp);
                                 parse_subscription_headers(headers_part, &mut trial_src);
-                                let parsed_for_url = Self::parse_subscription_payload(body_part);
+                                let (parsed_for_url, stubs_for_url) =
+                                    Self::parse_subscription_payload_with_stats(body_part);
+                                dropped_invalid_stubs += stubs_for_url;
                                 if parsed_for_url.is_empty() && err_msg.is_none() {
                                     err_msg = Some(
                                         if headers_indicate_hwid_not_supported(headers_part) {
@@ -2224,7 +3146,13 @@ impl CoreManager {
                             }
                         }
                     }
-                    (out_nodes, err_msg, got_http_reply, trial_src)
+                    (
+                        out_nodes,
+                        dropped_invalid_stubs,
+                        err_msg,
+                        got_http_reply,
+                        trial_src,
+                    )
                 }
             };
 
@@ -2235,7 +3163,7 @@ impl CoreManager {
                 } else {
                     explicit_ua
                 };
-                let (n, e, _, mut next_src) = probe_with_ua(&src, &effective_ua).await;
+                let (n, _stubs, e, _, mut next_src) = probe_with_ua(&src, &effective_ua).await;
                 if !n.is_empty() {
                     next_src.sub_preferred_user_agent = effective_ua;
                 }
@@ -2243,6 +3171,15 @@ impl CoreManager {
             } else {
                 let preferred =
                     Self::normalize_subscription_user_agent(&src.sub_preferred_user_agent);
+                struct UaProbeCandidate {
+                    ua: String,
+                    count: usize,
+                    dropped_stubs: usize,
+                    nodes: Vec<ParsedProxyNode>,
+                    err: Option<String>,
+                    src: crate::store::OutboundSource,
+                }
+                let mut candidates: Vec<UaProbeCandidate> = Vec::new();
                 let mut fast_winner: Option<(
                     Vec<ParsedProxyNode>,
                     Option<String>,
@@ -2251,23 +3188,27 @@ impl CoreManager {
                 let mut already_tried_preferred = false;
                 if !preferred.is_empty() {
                     already_tried_preferred = true;
-                    let (n, e, _, mut next_src) = probe_with_ua(&src, &preferred).await;
-                    if !n.is_empty() {
+                    let (n, dropped_stubs, e, _, mut next_src) =
+                        probe_with_ua(&src, &preferred).await;
+                    if !n.is_empty()
+                        && (dropped_stubs == 0 || Self::is_happ_versioned_user_agent(&preferred))
+                    {
                         next_src.sub_preferred_user_agent = preferred.clone();
                         fast_winner = Some((n, e, next_src));
+                    } else if !n.is_empty() {
+                        candidates.push(UaProbeCandidate {
+                            ua: preferred.clone(),
+                            count: n.len(),
+                            dropped_stubs,
+                            nodes: n,
+                            err: e,
+                            src: next_src,
+                        });
                     }
                 }
                 if let Some((n, e, next_src)) = fast_winner {
                     (n, e, next_src)
                 } else {
-                    struct UaProbeCandidate<'a> {
-                        ua: &'a str,
-                        count: usize,
-                        nodes: Vec<ParsedProxyNode>,
-                        err: Option<String>,
-                        src: crate::store::OutboundSource,
-                    }
-                    let mut candidates: Vec<UaProbeCandidate<'_>> = Vec::new();
                     let mut first_err: Option<String> = None;
                     for (idx, ua) in Self::SUBSCRIPTION_AUTO_USER_AGENTS.iter().enumerate() {
                         if already_tried_preferred && *ua == preferred {
@@ -2276,14 +3217,16 @@ impl CoreManager {
                         if idx > 0 {
                             tokio::time::sleep(Duration::from_millis(120)).await;
                         }
-                        let (n, e, got_http, next_src) = probe_with_ua(&src, ua).await;
+                        let (n, dropped_stubs, e, got_http, next_src) =
+                            probe_with_ua(&src, ua).await;
                         if first_err.is_none() && e.is_some() {
                             first_err = e.clone();
                         }
                         let count = n.len();
                         candidates.push(UaProbeCandidate {
-                            ua,
+                            ua: (*ua).to_string(),
                             count,
+                            dropped_stubs,
                             nodes: n,
                             err: e,
                             src: next_src,
@@ -2293,12 +3236,14 @@ impl CoreManager {
                             break;
                         }
                     }
-                    if let Some(best_idx) = pick_best_subscription_ua_index(
-                        &candidates.iter().map(|c| c.count).collect::<Vec<_>>(),
-                    ) {
+                    let summary: Vec<(usize, usize)> = candidates
+                        .iter()
+                        .map(|c| (c.count, c.dropped_stubs))
+                        .collect();
+                    if let Some(best_idx) = pick_best_subscription_ua_candidate_index(&summary) {
                         let best = candidates.swap_remove(best_idx);
                         let mut best_src = best.src;
-                        best_src.sub_preferred_user_agent = best.ua.to_string();
+                        best_src.sub_preferred_user_agent = best.ua;
                         (best.nodes, best.err, best_src)
                     } else {
                         let mut fallback_src =
@@ -3955,14 +4900,27 @@ fn headers_indicate_hwid_not_supported(headers: &str) -> bool {
     false
 }
 
-fn pick_best_subscription_ua_index(counts: &[usize]) -> Option<usize> {
-    let mut best: Option<(usize, usize)> = None;
-    for (idx, &count) in counts.iter().enumerate() {
-        if count > 0 && best.is_none_or(|(_, best_count)| count > best_count) {
-            best = Some((idx, count));
+fn pick_best_subscription_ua_candidate_index(candidates: &[(usize, usize)]) -> Option<usize> {
+    let mut best_clean: Option<(usize, usize)> = None;
+    let mut best_any: Option<(usize, usize)> = None;
+    for (idx, &(count, dropped_stubs)) in candidates.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+        if dropped_stubs == 0 && best_clean.is_none_or(|(_, b)| count > b) {
+            best_clean = Some((idx, count));
+        }
+        if best_any.is_none_or(|(_, b)| count > b) {
+            best_any = Some((idx, count));
         }
     }
-    best.map(|(idx, _)| idx)
+    best_clean.or(best_any).map(|(idx, _)| idx)
+}
+
+#[cfg(test)]
+fn pick_best_subscription_ua_index(counts: &[usize]) -> Option<usize> {
+    let pairs: Vec<(usize, usize)> = counts.iter().map(|&count| (count, 0)).collect();
+    pick_best_subscription_ua_candidate_index(&pairs)
 }
 
 async fn send_magic_packet_udp(mac: &str) -> anyhow::Result<()> {
@@ -5184,7 +6142,7 @@ mod core_mgr_tests {
         assert_eq!(CoreManager::normalize_subscription_user_agent("auto"), "");
         assert_eq!(
             CoreManager::normalize_subscription_user_agent("happ"),
-            "Happ/4.4.0"
+            "Happ/4.6.2"
         );
         assert_eq!(
             CoreManager::normalize_subscription_user_agent("v2rayng"),
@@ -5201,6 +6159,31 @@ mod core_mgr_tests {
             Some(2)
         );
         assert_eq!(pick_best_subscription_ua_index(&[0, 0, 0]), None);
+        assert_eq!(
+            pick_best_subscription_ua_candidate_index(&[(43, 12), (20, 0)]),
+            Some(1)
+        );
+        assert_eq!(
+            pick_best_subscription_ua_candidate_index(&[(5, 2), (10, 1)]),
+            Some(1)
+        );
+
+        let mixed_sub = concat!(
+            "vless://11111111-1111-4111-8111-111111111111@super-auto.invalid:4659?security=tls#Stub\n",
+            "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?security=tls#TrafficBanner\n",
+            "vless://11111111-1111-4111-8111-111111111111@real.example.org:443?security=tls#RealNode\n",
+        );
+        let (parsed_nodes, invalid_stubs) =
+            CoreManager::parse_subscription_payload_with_stats(mixed_sub);
+        assert_eq!(parsed_nodes.len(), 1);
+        assert_eq!(parsed_nodes[0].server, "real.example.org");
+        assert_eq!(invalid_stubs, 1);
+
+        assert!(CoreManager::is_happ_versioned_user_agent("Happ/4.6.2"));
+        assert!(!CoreManager::is_happ_versioned_user_agent("Happ"));
+        assert!(!CoreManager::is_happ_versioned_user_agent(
+            "tachyon-core/2.0"
+        ));
     }
 
     #[test]
@@ -5289,6 +6272,230 @@ mod core_mgr_tests {
             }
         });
         assert!(CoreManager::validate_custom_local_rulesets(&broken_cfg).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_quarantine_isolates_bad_outbound_and_keeps_siblings() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.sections.push(crate::store::RoutingSection {
+            id: "broken_sec".to_string(),
+            label: "Broken".to_string(),
+            enabled: true,
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "good_sec".to_string(),
+            label: "Healthy".to_string(),
+            enabled: true,
+            ..Default::default()
+        });
+
+        let initial_cfg = json!({
+            "dns": {
+                "servers": [
+                    { "type": "udp", "tag": "dns-bootstrap", "server": "77.88.8.8", "server_port": 53 },
+                    { "type": "udp", "tag": "dns-remote", "server": "1.1.1.1", "server_port": 53 }
+                ],
+                "final": "dns-remote"
+            },
+            "outbounds": [
+                { "type": "direct", "tag": "direct" },
+                { "type": "vless", "tag": "bad-leaf-1", "server": "bad.example", "server_port": 443 },
+                { "type": "vless", "tag": "good-leaf-1", "server": "good.example", "server_port": 443 },
+                { "type": "selector", "tag": "sec-broken_sec-out", "outbounds": ["bad-leaf-1"] },
+                { "type": "selector", "tag": "sec-good_sec-out", "outbounds": ["good-leaf-1"] }
+            ],
+            "route": {
+                "rules": [
+                    { "domain_suffix": ["broken.example"], "outbound": "sec-broken_sec-out" },
+                    { "domain_suffix": ["good.example"], "outbound": "sec-good_sec-out" }
+                ],
+                "final": "direct"
+            }
+        });
+
+        let (prepared, errs) =
+            CoreManager::quarantine_with_checker(&store, initial_cfg, BTreeMap::new(), |cfg| {
+                let obs = cfg["outbounds"].as_array().unwrap();
+                for (i, ob) in obs.iter().enumerate() {
+                    if ob["tag"].as_str() == Some("bad-leaf-1") {
+                        return Err(format!("outbounds[{i}]: invalid vless uuid"));
+                    }
+                }
+                Ok(())
+            });
+
+        assert!(errs.contains_key("broken_sec"), "errs={errs:?}");
+        assert!(!errs.contains_key("good_sec"), "errs={errs:?}");
+        assert!(!errs.contains_key("_core_runtime"), "errs={errs:?}");
+        let obs = prepared["outbounds"].as_array().unwrap();
+        assert!(!obs.iter().any(|o| o["tag"] == "bad-leaf-1"));
+        assert!(!obs.iter().any(|o| o["tag"] == "sec-broken_sec-out"));
+        assert!(obs.iter().any(|o| o["tag"] == "sec-good_sec-out"));
+        let rules = prepared["route"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["outbound"], json!("sec-good_sec-out"));
+    }
+
+    #[test]
+    fn test_quarantine_falls_back_to_safe_dns_on_bad_dns() {
+        let store = crate::store::RouterStoreData::default();
+        let initial_cfg = json!({
+            "dns": {
+                "servers": [
+                    { "type": "https", "tag": "dns-remote", "server": "invalid host", "detour": "broken-sec" }
+                ],
+                "final": "dns-remote"
+            },
+            "outbounds": [
+                { "type": "direct", "tag": "direct" },
+                { "type": "block", "tag": "block" }
+            ],
+            "route": {
+                "rules": [{ "inbound": ["dns-in"], "action": "hijack-dns" }],
+                "final": "direct",
+                "default_domain_resolver": "dns-remote"
+            }
+        });
+
+        let (prepared, errs) =
+            CoreManager::quarantine_with_checker(&store, initial_cfg, BTreeMap::new(), |cfg| {
+                let first_tag = cfg["dns"]["servers"][0]["tag"].as_str().unwrap_or("");
+                if first_tag == "dns-remote" {
+                    return Err("config: dns.servers[0]: missing host".to_string());
+                }
+                Ok(())
+            });
+
+        assert!(errs.contains_key("_dns"), "errs={errs:?}");
+        assert!(!errs.contains_key("_core_runtime"), "errs={errs:?}");
+        let servers = prepared["dns"]["servers"].as_array().unwrap();
+        assert!(
+            servers
+                .iter()
+                .any(|s| s["tag"] == "dns-bootstrap" && s["server"] == "77.88.8.8")
+        );
+        assert_eq!(
+            prepared["route"]["default_domain_resolver"],
+            json!("dns-bootstrap")
+        );
+    }
+
+    #[test]
+    fn test_quarantine_strips_unknown_fields_and_broken_custom_ruleset() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_quarantine_rs_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bad_rs_path = dir.join("broken_custom.json");
+        std::fs::write(&bad_rs_path, "{ not json").unwrap();
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.sections.push(crate::store::RoutingSection {
+            id: "media".to_string(),
+            label: "Media".to_string(),
+            enabled: true,
+            ..Default::default()
+        });
+
+        let initial_cfg = json!({
+            "outbounds": [
+                { "type": "direct", "tag": "direct" },
+                { "type": "vless", "tag": "node-1", "tcp_profile": "legacy_bad" },
+                { "type": "selector", "tag": "sec-media-out", "outbounds": ["node-1"] }
+            ],
+            "route": {
+                "rule_set": [{
+                    "tag": "custom-local-media-1",
+                    "type": "local",
+                    "format": "source",
+                    "path": bad_rs_path.to_string_lossy()
+                }],
+                "rules": [{
+                    "rule_set": ["custom-local-media-1"],
+                    "outbound": "sec-media-out"
+                }]
+            }
+        });
+
+        let (prepared, errs) =
+            CoreManager::quarantine_with_checker(&store, initial_cfg, BTreeMap::new(), |cfg| {
+                if cfg["outbounds"][1].get("tcp_profile").is_some() {
+                    return Err("outbounds[1]: json: unknown field \"tcp_profile\"".to_string());
+                }
+                Ok(())
+            });
+
+        assert!(
+            prepared["outbounds"][1].get("tcp_profile").is_none(),
+            "tcp_profile must be silently stripped"
+        );
+        assert!(
+            errs.contains_key("media"),
+            "broken custom local rule_set must be reported against referencing section: {errs:?}"
+        );
+        assert_eq!(prepared["route"]["rule_set"][0]["format"], json!("source"));
+        let stub_path = prepared["route"]["rule_set"][0]["path"].as_str().unwrap();
+        let stub_body = std::fs::read_to_string(stub_path).unwrap();
+        assert!(stub_body.contains("\"rules\":[]"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_quarantine_falls_back_to_safe_minimal_on_irrecoverable_error() {
+        let store = crate::store::RouterStoreData::default();
+        let bad_cfg = json!({
+            "dns": { "servers": [] },
+            "inbounds": [{ "type": "tproxy", "tag": "tproxy-in", "listen": "::", "listen_port": 1602 }],
+            "outbounds": [{ "type": "direct", "tag": "direct" }],
+            "route": { "rules": [] }
+        });
+
+        let (prepared, errs) =
+            CoreManager::quarantine_with_checker(&store, bad_cfg, BTreeMap::new(), |cfg| {
+                if cfg["dns"]["servers"].as_array().unwrap().len() >= 2 {
+                    Ok(())
+                } else {
+                    Err("fatal experimental error: corrupted store invariant".to_string())
+                }
+            });
+
+        assert!(errs.contains_key("_core_runtime"), "errs={errs:?}");
+        assert_eq!(prepared["route"]["final"], json!("direct"));
+        assert_eq!(
+            prepared["route"]["default_domain_resolver"],
+            json!("dns-bootstrap")
+        );
+        assert!(prepared["dns"]["servers"].as_array().unwrap().len() >= 3);
+        assert!(prepared["experimental"]["clash_api"].is_object());
+    }
+
+    #[test]
+    fn test_section_errors_persistence_write_read_and_clear() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_sec_err_persist_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let err_path = dir.join("section-errors.json");
+
+        let mut map = BTreeMap::new();
+        map.insert("_dns".to_string(), "DNS fallback active".to_string());
+        map.insert("youtube".to_string(), "Bad key".to_string());
+        CoreManager::write_section_errors_to(&err_path, &map);
+
+        let loaded = CoreManager::read_section_errors_from(&err_path);
+        assert_eq!(
+            loaded.get("_dns").map(String::as_str),
+            Some("DNS fallback active")
+        );
+        assert_eq!(loaded.get("youtube").map(String::as_str), Some("Bad key"));
+
+        CoreManager::write_section_errors_to(&err_path, &BTreeMap::new());
+        assert!(CoreManager::read_section_errors_from(&err_path).is_empty());
+        assert!(!err_path.exists());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

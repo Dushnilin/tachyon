@@ -77,6 +77,7 @@ pub struct WatchdogState {
     pub last_escalation_ts: i64,
     pub last_dns_flush_ts: i64,
     pub last_blackbox_by_reason: HashMap<String, i64>,
+    pub last_failed_lkg_rollback_key: Option<String>,
 }
 
 impl Default for WatchdogState {
@@ -91,6 +92,7 @@ impl Default for WatchdogState {
             last_escalation_ts: 0,
             last_dns_flush_ts: 0,
             last_blackbox_by_reason: HashMap::new(),
+            last_failed_lkg_rollback_key: None,
         }
     }
 }
@@ -573,6 +575,87 @@ fn compute_desired_digest(store: &crate::store::RouterStoreData) -> String {
         .unwrap_or_default()
 }
 
+fn lkg_rollback_state_key(desired_digest: &str, lkg_path: &Path) -> String {
+    let lkg_meta = match std::fs::metadata(lkg_path) {
+        Ok(m) => {
+            let mtime = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            format!("{}:{}", m.len(), mtime)
+        }
+        Err(_) => "missing".to_string(),
+    };
+    format!("{desired_digest}|{lkg_meta}")
+}
+
+async fn current_lkg_rollback_key(core: &CoreManager, cached_digest: &str) -> String {
+    let digest = if !cached_digest.is_empty() {
+        cached_digest.to_string()
+    } else {
+        let store_guard = core.state.data.read().await;
+        compute_desired_digest(&store_guard)
+    };
+    lkg_rollback_state_key(&digest, &core.state.lkg_path)
+}
+
+async fn attempt_l4_lkg_rollback_with<'a, CF, RF, CFut, RFut>(
+    core: &'a CoreManager,
+    now: i64,
+    cached_digest: &str,
+    mut capture_blackbox_fn: CF,
+    mut rollback_fn: RF,
+) -> (Option<&'static str>, Option<String>)
+where
+    CF: FnMut(&'a CoreManager) -> CFut,
+    CFut: std::future::Future<Output = anyhow::Result<BlackboxSummary>>,
+    RF: FnMut(&'a CoreManager) -> RFut,
+    RFut: std::future::Future<Output = anyhow::Result<bool>>,
+{
+    let rollback_key = current_lkg_rollback_key(core, cached_digest).await;
+    {
+        let mut wd = core.watchdog.lock().await;
+        if wd.last_failed_lkg_rollback_key.as_deref() == Some(rollback_key.as_str()) {
+            return (None, Some("lkg_rollback_failed".to_string()));
+        }
+        if !wd.cooldown_ready("l4_lkg_rollback", now, 60) {
+            return (None, None);
+        }
+    }
+
+    let _ = capture_blackbox_fn(core).await;
+    match rollback_fn(core).await {
+        Ok(true) => {
+            core.watchdog.lock().await.last_failed_lkg_rollback_key = None;
+            (Some("L4_lkg_rollback"), Some("rolled_back_lkg".to_string()))
+        }
+        Ok(false) => {
+            let post_key = current_lkg_rollback_key(core, "").await;
+            core.watchdog.lock().await.last_failed_lkg_rollback_key = Some(post_key);
+            core.state.live.write().await.push_event(
+                "warn",
+                "watchdog",
+                "LKG rollback failed; suppressing repeats until config/LKG changes or core recovers: rollback declined",
+            );
+            (None, Some("lkg_rollback_failed".to_string()))
+        }
+        Err(err) => {
+            let post_key = current_lkg_rollback_key(core, "").await;
+            core.watchdog.lock().await.last_failed_lkg_rollback_key = Some(post_key);
+            core.state.live.write().await.push_event(
+                "warn",
+                "watchdog",
+                &format!(
+                    "LKG rollback failed; suppressing repeats until config/LKG changes or core recovers: {err}"
+                ),
+            );
+            (None, Some("lkg_rollback_failed".to_string()))
+        }
+    }
+}
+
 /// Evaluate live probes + `/tachyon/health` + `/tachyon/anomalies` + Flight Recorder failures
 /// and execute deterministic L0-L5 self-healing actions under hysteresis & circuit-breaker protection.
 pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count: u64) {
@@ -587,6 +670,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         };
         (digest, enable)
     };
+    let desired_digest_snapshot = desired_digest.clone();
 
     let bin_path_str = Box::pin(core.resolve_bin_path()).await;
     let binary_check = check_core_binary_integrity(Path::new(&bin_path_str));
@@ -786,6 +870,9 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         restarts_10m,
     ) = {
         let mut wd = core.watchdog.lock().await;
+        if core_alive {
+            wd.last_failed_lkg_rollback_key = None;
+        }
         let w = wd.wan.record(wan_ok);
         let d = wd.dns.record(core_alive && dns_probe_ok);
         let c = wd.core.record(core_alive || manual_stop);
@@ -914,23 +1001,22 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                 >= CIRCUIT_BREAKER_MAX_RESTARTS as u32)
             && core.state.lkg_path.exists()
         {
-            let allow = core
-                .watchdog
-                .lock()
-                .await
-                .cooldown_ready("l4_lkg_rollback", now, 60);
-            if allow {
-                let _ = boxed_capture_blackbox(core, "core_crash_lkg_rollback").await;
-                if boxed_rollback_lkg(
-                    core,
-                    "Автооткат watchdog: ядро остановилось после изменения конфига",
-                )
-                .await
-                .is_ok()
-                {
-                    action_taken = Some("L4_lkg_rollback");
-                    wd_state_label = "rolled_back_lkg".to_string();
-                }
+            let (act, lbl) = attempt_l4_lkg_rollback_with(
+                core,
+                now,
+                &desired_digest_snapshot,
+                |c| boxed_capture_blackbox(c, "core_crash_lkg_rollback"),
+                |c| {
+                    boxed_rollback_lkg(
+                        c,
+                        "Автооткат watchdog: ядро остановилось после изменения конфига",
+                    )
+                },
+            )
+            .await;
+            action_taken = act;
+            if let Some(new_lbl) = lbl {
+                wd_state_label = new_lbl;
             }
         } else {
             let allow_restart =
@@ -942,11 +1028,35 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                 let _ = boxed_capture_blackbox(core, "core_down").await;
                 let tripped = core.watchdog.lock().await.record_restart(now);
                 if tripped && core.state.lkg_path.exists() {
-                    if boxed_rollback_lkg(core, "Автооткат watchdog: частые перезапуски ядра")
+                    let rollback_key =
+                        current_lkg_rollback_key(core, &desired_digest_snapshot).await;
+                    let suppressed = core
+                        .watchdog
+                        .lock()
                         .await
-                        .is_ok()
-                    {
-                        action_taken = Some("L4_circuit_breaker_lkg_rollback");
+                        .last_failed_lkg_rollback_key
+                        .as_deref()
+                        == Some(rollback_key.as_str());
+                    if suppressed {
+                        wd_state_label = "lkg_rollback_failed".to_string();
+                    } else {
+                        match boxed_rollback_lkg(
+                            core,
+                            "Автооткат watchdog: частые перезапуски ядра",
+                        )
+                        .await
+                        {
+                            Ok(true) => {
+                                core.watchdog.lock().await.last_failed_lkg_rollback_key = None;
+                                action_taken = Some("L4_circuit_breaker_lkg_rollback");
+                            }
+                            Ok(false) | Err(_) => {
+                                let post_key = current_lkg_rollback_key(core, "").await;
+                                core.watchdog.lock().await.last_failed_lkg_rollback_key =
+                                    Some(post_key);
+                                wd_state_label = "lkg_rollback_failed".to_string();
+                            }
+                        }
                     }
                 } else if boxed_core_start(core).await.is_ok() {
                     action_taken = Some("L3_core_restart");
@@ -1044,6 +1154,8 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
             "watchdog",
             &format!("Watchdog action executed: {action}"),
         );
+    } else if wd_state_label == "lkg_rollback_failed" {
+        core.state.live.write().await.watchdog_state = wd_state_label;
     }
 }
 
@@ -1238,5 +1350,177 @@ mod tests {
         assert!(!wd.record_restart(base + 30));
         assert!(wd.record_restart(base + 40)); // 5th within 600s trips circuit breaker
         assert!(!wd.record_restart(base + 1000)); // old entries pruned after >600s
+    }
+
+    #[tokio::test]
+    async fn lkg_rollback_suppression_blocks_repeat_until_config_or_lkg_changes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let dir = std::env::temp_dir().join(format!("tachyon-wd-lkg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("tachyon-state.json");
+        let state = AppState::load_or_create(&state_path).unwrap();
+        std::fs::write(&state.lkg_path, "{\"version\":1}").unwrap();
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let bb_calls = Arc::new(AtomicUsize::new(0));
+        let rb_calls = Arc::new(AtomicUsize::new(0));
+        let stub_bb = |calls: Arc<AtomicUsize>| {
+            move |_c: &CoreManager| {
+                let calls = Arc::clone(&calls);
+                async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(BlackboxSummary {
+                        id: "bb-test".to_string(),
+                        reason: "core_crash_lkg_rollback".to_string(),
+                        timestamp: 1_700_000_000,
+                        file_size_bytes: 128,
+                    })
+                }
+            }
+        };
+
+        let t0 = 1_700_000_000;
+        let (act1, lbl1) =
+            attempt_l4_lkg_rollback_with(&core, t0, "", stub_bb(Arc::clone(&bb_calls)), |_c| {
+                let rb = Arc::clone(&rb_calls);
+                async move {
+                    rb.fetch_add(1, Ordering::SeqCst);
+                    Err(anyhow::anyhow!("check failed"))
+                }
+            })
+            .await;
+        assert!(act1.is_none());
+        assert_eq!(lbl1.as_deref(), Some("lkg_rollback_failed"));
+        assert_eq!(bb_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(rb_calls.load(Ordering::SeqCst), 1);
+
+        // Even after 60s cooldown expires, identical broken config + LKG stays suppressed
+        let (act2, lbl2) = attempt_l4_lkg_rollback_with(
+            &core,
+            t0 + 120,
+            "",
+            stub_bb(Arc::clone(&bb_calls)),
+            |_c| {
+                let rb = Arc::clone(&rb_calls);
+                async move {
+                    rb.fetch_add(1, Ordering::SeqCst);
+                    Err(anyhow::anyhow!("check failed"))
+                }
+            },
+        )
+        .await;
+        assert!(act2.is_none());
+        assert_eq!(lbl2.as_deref(), Some("lkg_rollback_failed"));
+        assert_eq!(bb_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(rb_calls.load(Ordering::SeqCst), 1);
+
+        // Modifying store config changes desired digest and re-enables L4 rollback
+        {
+            let mut d = state.data.write().await;
+            d.settings.dns_servers = vec!["1.1.1.1".to_string()];
+        }
+        let (act3, lbl3) = attempt_l4_lkg_rollback_with(
+            &core,
+            t0 + 180,
+            "",
+            stub_bb(Arc::clone(&bb_calls)),
+            |_c| {
+                let rb = Arc::clone(&rb_calls);
+                async move {
+                    rb.fetch_add(1, Ordering::SeqCst);
+                    Ok(true)
+                }
+            },
+        )
+        .await;
+        assert_eq!(act3, Some("L4_lkg_rollback"));
+        assert_eq!(lbl3.as_deref(), Some("rolled_back_lkg"));
+        assert_eq!(bb_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(rb_calls.load(Ordering::SeqCst), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn lkg_rollback_suppression_clears_when_core_recovers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let dir = std::env::temp_dir().join(format!("tachyon-wd-recover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("tachyon-state.json");
+        let state = AppState::load_or_create(&state_path).unwrap();
+        std::fs::write(&state.lkg_path, "{\"version\":1}").unwrap();
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let t0 = 1_700_000_000;
+        let _ = attempt_l4_lkg_rollback_with(
+            &core,
+            t0,
+            "",
+            |_c| async {
+                Ok(BlackboxSummary {
+                    id: "bb-1".to_string(),
+                    reason: "core_crash_lkg_rollback".to_string(),
+                    timestamp: 1_700_000_000,
+                    file_size_bytes: 64,
+                })
+            },
+            |_c| {
+                let a = Arc::clone(&attempts);
+                async move {
+                    a.fetch_add(1, Ordering::SeqCst);
+                    Ok(false)
+                }
+            },
+        )
+        .await;
+        assert!(
+            core.watchdog
+                .lock()
+                .await
+                .last_failed_lkg_rollback_key
+                .is_some()
+        );
+
+        // Simulate core_alive tick clearing the failed key
+        core.watchdog.lock().await.last_failed_lkg_rollback_key = None;
+
+        let (act, lbl) = attempt_l4_lkg_rollback_with(
+            &core,
+            t0 + 65,
+            "",
+            |_c| async {
+                Ok(BlackboxSummary {
+                    id: "bb-2".to_string(),
+                    reason: "core_crash_lkg_rollback".to_string(),
+                    timestamp: 1_700_000_065,
+                    file_size_bytes: 64,
+                })
+            },
+            |_c| {
+                let a = Arc::clone(&attempts);
+                async move {
+                    a.fetch_add(1, Ordering::SeqCst);
+                    Ok(true)
+                }
+            },
+        )
+        .await;
+        assert_eq!(act, Some("L4_lkg_rollback"));
+        assert_eq!(lbl.as_deref(), Some("rolled_back_lkg"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert!(
+            core.watchdog
+                .lock()
+                .await
+                .last_failed_lkg_rollback_key
+                .is_none()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
