@@ -27,6 +27,7 @@ import { TachyonShellMethods } from '../../../methods/shell';
 import { Tachyon } from '../../../types';
 import { renderFlagEmojis } from './renderFlagEmojis';
 import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
+import { isSubscriptionTargetUpdating } from '../../../helpers/subscriptionUpdating';
 import {
   groupOutboundsByCountry,
   detectOutboundCountry,
@@ -469,6 +470,7 @@ interface IRenderSectionsProps {
   latencyFetching: boolean;
   latencyProgress?: Tachyon.LatencyActionProgress;
   subscriptionUpdating: boolean;
+  subscriptionUpdatingTargets?: Record<string, boolean>;
   selectorSwitchingTag?: string;
   onTestSingleOutbound?: (sectionName: string, outboundCode: string) => void;
   testingOutboundCodes?: Record<string, boolean>;
@@ -1639,6 +1641,7 @@ function renderDefaultState({
   latencyFetching,
   latencyProgress,
   subscriptionUpdating,
+  subscriptionUpdatingTargets,
   selectorSwitchingTag,
   onTestSingleOutbound,
   testingOutboundCodes,
@@ -2838,12 +2841,20 @@ function renderDefaultState({
         const targetSourceId =
           String(metaAny.sourceId || metaAny.source_id || '').trim() ||
           undefined;
+        const isCardUpdating =
+          subscriptionUpdating ||
+          isSubscriptionTargetUpdating(
+            section.sectionName,
+            subscriptionUpdatingTargets,
+            targetIndex,
+            targetSourceId,
+          );
         return renderSubscriptionMetadata(enrichedMeta, {
           onUpdateSubscription:
             subSourceCount > 0
               ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
               : undefined,
-          subscriptionUpdating,
+          subscriptionUpdating: isCardUpdating,
         });
       })
       .filter(Boolean) as HTMLElement[];
@@ -3105,6 +3116,14 @@ function renderDefaultState({
             members[0]?.sourceId ||
             '',
         ).trim() || undefined;
+      const isCardUpdating =
+        subscriptionUpdating ||
+        isSubscriptionTargetUpdating(
+          section.sectionName,
+          subscriptionUpdatingTargets,
+          targetIndex,
+          targetSourceId,
+        );
       const metaHeader = renderSubscriptionMetadata(headerMeta, {
         groupCount: visibleMembers.length,
         selectedOutbound: selectedMember,
@@ -3117,7 +3136,7 @@ function renderDefaultState({
           subSourceCount > 0
             ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
             : undefined,
-        subscriptionUpdating,
+        subscriptionUpdating: isCardUpdating,
       });
 
       if (metaHeader) {

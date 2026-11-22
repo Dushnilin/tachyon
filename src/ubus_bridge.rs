@@ -2554,6 +2554,80 @@ fn build_core_health_check_payload(
     })
 }
 
+fn collect_active_subscription_jobs_in_dir(jobs_dir: &Path, now_secs: u64) -> Vec<Value> {
+    let mut jobs = Vec::new();
+    let Ok(rd) = std::fs::read_dir(jobs_dir) else {
+        return jobs;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let file_mtime = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            if file_mtime > 0 && now_secs.saturating_sub(file_mtime) > 3600 {
+                let _ = std::fs::remove_file(&path);
+            }
+            continue;
+        };
+        let Ok(mut val) = serde_json::from_str::<Value>(&raw) else {
+            if file_mtime > 0 && now_secs.saturating_sub(file_mtime) > 3600 {
+                let _ = std::fs::remove_file(&path);
+            }
+            continue;
+        };
+        let started_at = val.get("started_at").and_then(Value::as_u64).unwrap_or(0);
+        let ref_ts = if started_at > 0 {
+            started_at
+        } else {
+            file_mtime
+        };
+        let age = if ref_ts > 0 {
+            now_secs.saturating_sub(ref_ts)
+        } else {
+            0
+        };
+        if age > 3600 {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+        if val.get("running").and_then(Value::as_bool) != Some(true) {
+            continue;
+        }
+        if ref_ts > 0 && age > 900 {
+            continue;
+        }
+        if let Some(obj) = val.as_object_mut() {
+            let has_job_id = obj
+                .get("job_id")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty());
+            if !has_job_id && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                obj.insert("job_id".to_string(), Value::String(stem.to_string()));
+            }
+        }
+        jobs.push(val);
+    }
+    jobs.sort_by(|a, b| {
+        let ja = a.get("job_id").and_then(Value::as_str).unwrap_or("");
+        let jb = b.get("job_id").and_then(Value::as_str).unwrap_or("");
+        ja.cmp(jb)
+    });
+    jobs
+}
+
+fn collect_active_subscription_jobs() -> Vec<Value> {
+    let jobs_dir = crate::store::runtime_state_dir().join("subscription-jobs");
+    collect_active_subscription_jobs_in_dir(&jobs_dir, crate::store::unix_now_u64())
+}
+
 async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
     let sys = sys_info::collect_host_info();
     let d = state.data.read().await;
@@ -2622,7 +2696,7 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
             "service": [],
             "latency": [],
             "component": crate::updater::active_component_job_ids(),
-            "subscription": []
+            "subscription": collect_active_subscription_jobs()
         }
     })
 }
@@ -3006,8 +3080,15 @@ fn collect_section_sources_with_owner<'a>(
         .map(|g| (g.id.as_str(), g))
         .collect();
 
+    let exact_match = !include_all && store.sections.iter().any(|s| s.id == section);
     for sec in &store.sections {
-        if !include_all && sec.id != section {
+        let sec_matches = include_all
+            || if exact_match {
+                sec.id == section
+            } else {
+                sec.id.eq_ignore_ascii_case(section)
+            };
+        if !sec_matches {
             continue;
         }
         for sref in &sec.outbound_source_refs {
@@ -6999,9 +7080,25 @@ async fn execute_pure_rust_tachyon_cli(
                 })
             })
         }
-        "ui_action_ack" | "component_action_ack" => json!({
-            "success": true
-        }),
+        "ui_action_ack" | "component_action_ack" => {
+            if rest.first().map(String::as_str) == Some("subscription")
+                && let Some(job_id) = rest.get(1).map(String::as_str)
+                && is_safe_sub_job_id(job_id)
+            {
+                let job_path = crate::store::runtime_state_dir()
+                    .join("subscription-jobs")
+                    .join(format!("{job_id}.json"));
+                if let Ok(raw) = std::fs::read_to_string(&job_path)
+                    && let Ok(val) = serde_json::from_str::<Value>(&raw)
+                    && val.get("running").and_then(Value::as_bool) != Some(true)
+                {
+                    let _ = std::fs::remove_file(&job_path);
+                }
+            }
+            json!({
+                "success": true
+            })
+        }
         "component_install_version" => {
             let comp = rest.first().map(String::as_str).unwrap_or("tachyon-core");
             let tag = rest.get(1).map(String::as_str);
@@ -7188,11 +7285,11 @@ async fn execute_pure_rust_tachyon_cli(
             let target = rest.first().map(String::as_str).unwrap_or("").to_string();
             let selector = rest.get(1).map(String::as_str).unwrap_or("").to_string();
             let eff_target = resolve_subscription_cli_target(&d, &target, &selector);
+            let started_at = crate::store::unix_now_u64();
             let seq = next_job_seq();
             let job_id = format!(
-                "rust-sub-{}-{}-{seq}",
+                "rust-sub-{}-{started_at}-{seq}",
                 sanitize_job_slug(if target.is_empty() { "all" } else { &target }),
-                crate::store::unix_now_u64()
             );
             let jobs_dir = crate::store::runtime_state_dir().join("subscription-jobs");
             let _ = std::fs::create_dir_all(&jobs_dir);
@@ -7202,7 +7299,9 @@ async fn execute_pure_rust_tachyon_cli(
                 "job_id": job_id,
                 "section": target,
                 "source_selector": selector,
+                "source_index": selector,
                 "resolved_target": eff_target,
+                "started_at": started_at,
                 "status": "running",
                 "running": true,
                 "completed": false,
@@ -7226,7 +7325,9 @@ async fn execute_pure_rust_tachyon_cli(
                             "job_id": job_id_bg,
                             "section": target_bg,
                             "source_selector": selector_bg,
+                            "source_index": selector_bg,
                             "resolved_target": eff_bg,
+                            "started_at": started_at,
                             "status": "completed",
                             "running": false,
                             "completed": true,
@@ -7240,7 +7341,9 @@ async fn execute_pure_rust_tachyon_cli(
                         "job_id": job_id_bg,
                         "section": target_bg,
                         "source_selector": selector_bg,
+                        "source_index": selector_bg,
                         "resolved_target": eff_bg,
+                        "started_at": started_at,
                         "status": "failed",
                         "running": false,
                         "completed": true,
@@ -13277,5 +13380,101 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         let serialized = serde_json::to_string_pretty(&masked).expect("valid json");
         let reparsed: Value = serde_json::from_str(&serialized).expect("reparse masked json");
         assert!(reparsed.is_object());
+    }
+
+    #[test]
+    fn resolve_subscription_cli_target_resolves_single_source_and_case_insensitive_section() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources = ["src_a", "src_b", "src_c", "src_d"]
+            .into_iter()
+            .map(|id| crate::store::OutboundSource {
+                id: id.to_string(),
+                source_type: "subscription".to_string(),
+                ..Default::default()
+            })
+            .collect();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec![
+                "src_a".to_string(),
+                "src_b".to_string(),
+                "src_c".to_string(),
+                "src_d".to_string(),
+            ],
+            ..Default::default()
+        });
+
+        assert_eq!(resolve_subscription_cli_target(&store, "Main", ""), "Main");
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "src_b"),
+            "src_b"
+        );
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "2"),
+            "src_b"
+        );
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "main", "2"),
+            "src_b"
+        );
+        assert_eq!(
+            resolve_subscription_cli_target(&store, "Main", "99"),
+            "__missing_subscription_index__:99"
+        );
+    }
+
+    #[test]
+    fn collect_active_subscription_jobs_in_dir_filters_running_and_preserves_selector() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_sub_jobs_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let now = 1_750_000_000u64;
+        std::fs::write(
+            dir.join("rust-sub-Main-1.json"),
+            serde_json::to_string(&json!({
+                "job_id": "rust-sub-Main-1",
+                "section": "Main",
+                "source_selector": "src_b",
+                "source_index": "src_b",
+                "resolved_target": "src_b",
+                "started_at": now - 10,
+                "running": true
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("rust-sub-Main-2.json"),
+            serde_json::to_string(&json!({
+                "job_id": "rust-sub-Main-2",
+                "section": "Main",
+                "source_selector": "src_a",
+                "started_at": now - 5,
+                "running": false
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("rust-sub-Main-expired.json"),
+            serde_json::to_string(&json!({
+                "job_id": "rust-sub-Main-expired",
+                "section": "Main",
+                "started_at": now - 1200,
+                "running": true
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let active = collect_active_subscription_jobs_in_dir(&dir, now);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0]["job_id"], json!("rust-sub-Main-1"));
+        assert_eq!(active[0]["source_selector"], json!("src_b"));
+        assert_eq!(active[0]["resolved_target"], json!("src_b"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

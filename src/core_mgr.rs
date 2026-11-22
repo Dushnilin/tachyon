@@ -6499,4 +6499,43 @@ mod core_mgr_tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_resolve_subscription_target_ids_isolates_single_source_and_missing_sentinel() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources = ["src_a", "src_b", "src_c"]
+            .into_iter()
+            .map(|id| crate::store::OutboundSource {
+                id: id.to_string(),
+                source_type: "subscription".to_string(),
+                ..Default::default()
+            })
+            .collect();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Main".to_string(),
+            outbound_source_refs: vec![
+                "src_a".to_string(),
+                "src_b".to_string(),
+                "src_c".to_string(),
+            ],
+            ..Default::default()
+        });
+
+        let single = resolve_subscription_target_ids(&store, "src_b").expect("single target set");
+        assert_eq!(single.len(), 1);
+        assert!(single.contains("src_b"));
+        assert!(!single.contains("src_a"));
+        assert!(!single.contains("src_c"));
+
+        let missing = resolve_subscription_target_ids(&store, "__missing_subscription_index__:99")
+            .expect("missing sentinel must stay non-all");
+        assert_eq!(missing.len(), 1);
+        assert!(missing.contains("__missing_subscription_index__:99"));
+        assert!(
+            store
+                .outbound_sources
+                .iter()
+                .all(|s| !missing.contains(&s.id))
+        );
+    }
 }

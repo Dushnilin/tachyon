@@ -8,6 +8,7 @@ import {
   setLocalLatencyAction,
   setLocalServiceAction,
   setLocalSubscriptionAction,
+  setLocalSubscriptionTargetAction,
 } from '../localActionOverlay.service';
 
 function createUiState(
@@ -361,5 +362,36 @@ describe('applyUiStateToStore', () => {
       tachyon_core_tailscale: 0,
     });
     expect(store.get().updatesActions.tachyonCoreInstall.loading).toBe(true);
+  });
+
+  it('tracks single-subscription jobs in subscriptionUpdatingTargets without marking whole section', () => {
+    setLocalSubscriptionTargetAction('Main::src_local', true);
+
+    applyUiStateToStore(
+      createUiState({
+        subscription: [
+          {
+            success: true,
+            running: true,
+            job_id: 'rust-sub-Main-1',
+            section: 'Main',
+            source_selector: '2',
+            source_index: '2',
+            resolved_target: 'src_b',
+          },
+        ],
+      }),
+    );
+
+    expect(store.get().sectionsWidget.subscriptionUpdatingSections).toEqual({});
+    expect(store.get().sectionsWidget.subscriptionUpdatingTargets).toEqual({
+      'Main::2': true,
+      'Main::src_b': true,
+      'Main::src_local': true,
+    });
+
+    clearLocalActionOverlay();
+    applyUiStateToStore(createUiState());
+    expect(store.get().sectionsWidget.subscriptionUpdatingTargets).toEqual({});
   });
 });

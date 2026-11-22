@@ -1,4 +1,8 @@
 import { getComponentActionKey } from '../helpers/getComponentActionKey';
+import {
+  getSubscriptionJobTargetSelector,
+  getSubscriptionUpdateTargetKey,
+} from '../helpers/subscriptionUpdating';
 import type { Tachyon } from '../types';
 import { getLocalActionOverlay } from './localActionOverlay.service';
 import { store } from './store.service';
@@ -128,6 +132,7 @@ function applyActionState(actions: UiActionMap = {}) {
   const currentLatencyProgressSections =
     current.sectionsWidget.latencyProgressSections;
   const subscriptionUpdatingSections: Record<string, boolean> = {};
+  const subscriptionUpdatingTargets: Record<string, boolean> = {};
   const latencyFetchingSections: Record<string, boolean> = {};
   const latencyProgressSections: Record<string, Tachyon.LatencyActionProgress> =
     {};
@@ -136,7 +141,29 @@ function applyActionState(actions: UiActionMap = {}) {
 
   for (const state of actions.subscription || []) {
     if (isRunningAction(state) && state.section) {
-      subscriptionUpdatingSections[state.section] = true;
+      const selector = getSubscriptionJobTargetSelector(state);
+      if (selector) {
+        const key = getSubscriptionUpdateTargetKey(state.section, selector);
+        if (key) {
+          subscriptionUpdatingTargets[key] = true;
+        }
+        const resolvedTarget = String(state.resolved_target || '').trim();
+        if (
+          resolvedTarget &&
+          resolvedTarget !== selector &&
+          resolvedTarget.toLowerCase() !== state.section.toLowerCase()
+        ) {
+          const resolvedKey = getSubscriptionUpdateTargetKey(
+            state.section,
+            resolvedTarget,
+          );
+          if (resolvedKey) {
+            subscriptionUpdatingTargets[resolvedKey] = true;
+          }
+        }
+      } else {
+        subscriptionUpdatingSections[state.section] = true;
+      }
     }
   }
 
@@ -182,6 +209,10 @@ function applyActionState(actions: UiActionMap = {}) {
     subscriptionUpdatingSections[section] = true;
   }
 
+  for (const targetKey of localOverlay.subscriptionTargets) {
+    subscriptionUpdatingTargets[targetKey] = true;
+  }
+
   for (const section of localOverlay.latencySections) {
     latencyFetchingSections[section] = true;
     if (
@@ -205,6 +236,8 @@ function applyActionState(actions: UiActionMap = {}) {
   const sectionsWidgetChanged =
     JSON.stringify(prevSw.subscriptionUpdatingSections) !==
       JSON.stringify(subscriptionUpdatingSections) ||
+    JSON.stringify(prevSw.subscriptionUpdatingTargets) !==
+      JSON.stringify(subscriptionUpdatingTargets) ||
     JSON.stringify(prevSw.latencyFetchingSections) !==
       JSON.stringify(latencyFetchingSections) ||
     JSON.stringify(prevSw.latencyProgressSections) !==
@@ -215,6 +248,7 @@ function applyActionState(actions: UiActionMap = {}) {
       ? {
           ...prevSw,
           subscriptionUpdatingSections,
+          subscriptionUpdatingTargets,
           latencyFetchingSections,
           latencyProgressSections,
         }

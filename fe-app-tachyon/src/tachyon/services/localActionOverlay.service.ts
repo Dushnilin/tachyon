@@ -5,6 +5,7 @@ type ServiceActionKey = 'restart' | 'start' | 'stop';
 
 const componentActions = new Set<UpdatesActionKey>();
 const subscriptionSections = new Set<string>();
+const subscriptionTargets = new Set<string>();
 const latencySections = new Set<string>();
 const serviceActions = new Set<ServiceActionKey>();
 
@@ -29,6 +30,15 @@ export function setLocalSubscriptionAction(section: string, active: boolean) {
   }
 }
 
+export function setLocalSubscriptionTargetAction(
+  targetKey: string,
+  active: boolean,
+) {
+  if (targetKey) {
+    setMembership(subscriptionTargets, targetKey, active);
+  }
+}
+
 export function setLocalLatencyAction(section: string, active: boolean) {
   if (section) {
     setMembership(latencySections, section, active);
@@ -48,6 +58,7 @@ export function getLocalActionOverlay() {
   return {
     componentActions: new Set(componentActions),
     subscriptionSections: new Set(subscriptionSections),
+    subscriptionTargets: new Set(subscriptionTargets),
     latencySections: new Set(latencySections),
     serviceActions: new Set(serviceActions),
   };
@@ -56,6 +67,7 @@ export function getLocalActionOverlay() {
 export function clearLocalActionOverlay() {
   componentActions.clear();
   subscriptionSections.clear();
+  subscriptionTargets.clear();
   latencySections.clear();
   serviceActions.clear();
 }

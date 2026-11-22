@@ -3487,6 +3487,15 @@ pub fn fw4_flow_offload_include_path() -> PathBuf {
         .filter(|s| !s.trim().is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(DEFAULT_FW4_INCLUDE_ROOT));
+    root.join("ruleset-post").join(FLOW_OFFLOAD_INCLUDE_FILE)
+}
+
+pub fn fw4_flow_offload_legacy_include_path() -> PathBuf {
+    let root = std::env::var("TACHYON_FW4_INCLUDE_ROOT")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_FW4_INCLUDE_ROOT));
     root.join("chain-pre")
         .join("forward")
         .join(FLOW_OFFLOAD_INCLUDE_FILE)
@@ -3561,10 +3570,35 @@ fn compile_fw4_flow_offload_guard_rules(store: &RouterStoreData, ipv6_active: bo
 
 pub fn compile_fw4_flow_offload_guard(store: &RouterStoreData, ipv6_active: bool) -> String {
     let rules = compile_fw4_flow_offload_guard_rules(store, ipv6_active);
-    format!(
-        "# Managed by Tachyon - do not edit manually\n{}\n",
-        rules.join("\n")
-    )
+    let mut out = String::from("# Managed by Tachyon - do not edit manually\n");
+    // Reverse order because `ruleset-post` runs `insert rule` at chain index 0 sequentially.
+    for rule in rules.into_iter().rev() {
+        let _ = writeln!(out, "insert rule inet fw4 forward {rule}");
+    }
+    out
+}
+
+pub fn fw4_forward_guard_ordered_before_offload(listing: &str) -> bool {
+    let lines: Vec<&str> = listing.lines().collect();
+    let Some(flow_idx) = lines
+        .iter()
+        .position(|line| line.contains("flow add @ft") || line.contains("flow offload @ft"))
+    else {
+        return true;
+    };
+    let mut has_guard_before = false;
+    let mut has_guard_after = false;
+    for (idx, line) in lines.iter().enumerate() {
+        if !line.contains("Tachyon: skip flow offload") {
+            continue;
+        }
+        if idx < flow_idx {
+            has_guard_before = true;
+        } else if idx > flow_idx {
+            has_guard_after = true;
+        }
+    }
+    has_guard_before && !has_guard_after
 }
 
 fn collect_fw4_flow_offload_handles(listing: &str) -> Vec<String> {
@@ -3587,7 +3621,7 @@ fn collect_fw4_flow_offload_handles(listing: &str) -> Vec<String> {
     handles
 }
 
-async fn read_fw4_forward_chain_listing() -> Option<String> {
+pub(crate) async fn read_fw4_forward_chain_listing() -> Option<String> {
     if cfg!(not(target_os = "linux")) {
         return None;
     }
@@ -3627,6 +3661,7 @@ pub async fn sync_fw4_flow_offload_guard(store: &RouterStoreData) {
         .ok()
         .is_some_and(|s| !s.trim().is_empty());
     if root_configured || Path::new(DEFAULT_FW4_INCLUDE_ROOT).exists() {
+        let _ = std::fs::remove_file(fw4_flow_offload_legacy_include_path());
         if let Some(parent) = include_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -3654,6 +3689,7 @@ pub async fn sync_fw4_flow_offload_guard(store: &RouterStoreData) {
 
 pub async fn remove_fw4_flow_offload_guard() {
     let _ = std::fs::remove_file(fw4_flow_offload_include_path());
+    let _ = std::fs::remove_file(fw4_flow_offload_legacy_include_path());
     if let Some(listing) = read_fw4_forward_chain_listing().await {
         let mut batch = String::new();
         for h in collect_fw4_flow_offload_handles(&listing) {
@@ -6217,23 +6253,34 @@ config redirect 'restricted_src_ip'
 
         let tproxy_guard = compile_fw4_flow_offload_guard(&store, true);
         assert!(tproxy_guard.contains(
-            "meta mark & 0x04000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward meta mark & 0x04000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tproxy_guard.contains(
-            "meta mark & 0x10000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward meta mark & 0x10000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tproxy_guard.contains(
-            "meta mark & 0x40000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward meta mark & 0x40000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tproxy_guard.contains(
-            "ip daddr 198.18.0.0/15 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward ip daddr 198.18.0.0/15 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tproxy_guard.contains(
-            "ip6 daddr fc00::/18 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward ip6 daddr fc00::/18 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tproxy_guard.contains(
-            "meta l4proto { tcp, udp } th dport 53 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward meta l4proto { tcp, udp } th dport 53 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
+        // `sport 53` must appear BEFORE `0x04000000` in file so sequential `insert rule` puts `0x04000000` first in chain.
+        let pos_04 = tproxy_guard
+            .find("0x04000000")
+            .expect("0x04000000 insert rule");
+        let pos_sport53 = tproxy_guard
+            .find("th sport 53")
+            .expect("th sport 53 insert rule");
+        assert!(
+            pos_sport53 < pos_04,
+            "reverse insert ordering required so 0x04000000 ends up first in chain"
+        );
         assert!(!tproxy_guard.contains("ct state new"));
         assert!(!tproxy_guard.contains("iifname \"tun0\""));
 
@@ -6241,13 +6288,13 @@ config redirect 'restricted_src_ip'
         store.settings.tun_interface = "tun0".to_string();
         let tun_guard = compile_fw4_flow_offload_guard(&store, false);
         assert!(tun_guard.contains(
-            "iifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward iifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tun_guard.contains(
-            "oifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward oifname \"tun0\" ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(tun_guard.contains(
-            "meta mark & 0x00002022 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
+            "insert rule inet fw4 forward meta mark & 0x00002022 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\""
         ));
         assert!(!tun_guard.contains("ip6 daddr fc00::/18"));
         assert!(!tun_guard.contains("ct state new"));
@@ -6263,5 +6310,33 @@ table inet fw4 {
             collect_fw4_flow_offload_handles(sample_listing),
             vec!["17".to_string()]
         );
+        assert!(fw4_forward_guard_ordered_before_offload(sample_listing));
+
+        let broken_listing = "\
+table inet fw4 {
+\tchain forward {
+\t\tmeta l4proto { tcp, udp } flow add @ft
+\t\tmeta mark & 0x04000000 != 0x00000000 ct state established,related accept comment \"Tachyon: skip flow offload\"
+\t}
+}";
+        assert!(!fw4_forward_guard_ordered_before_offload(broken_listing));
+
+        let split_listing = "\
+table inet fw4 {
+\tchain forward {
+\t\tmeta mark & 0x04000000 != 0 ct state established,related accept comment \"Tachyon: skip flow offload\"
+\t\tmeta l4proto { tcp, udp } flow add @ft
+\t\tmeta l4proto { tcp, udp } th dport 53 ct state established,related accept comment \"Tachyon: skip flow offload\"
+\t}
+}";
+        assert!(!fw4_forward_guard_ordered_before_offload(split_listing));
+
+        let no_offload_listing = "\
+table inet fw4 {
+\tchain forward {
+\t\tct state vmap { established : accept, related : accept }
+\t}
+}";
+        assert!(fw4_forward_guard_ordered_before_offload(no_offload_listing));
     }
 }

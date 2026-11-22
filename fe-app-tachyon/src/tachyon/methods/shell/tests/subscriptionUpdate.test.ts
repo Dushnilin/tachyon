@@ -109,6 +109,14 @@ describe('TachyonShellMethods.subscriptionUpdate', () => {
       args: ['subscription_update_async', 'Main', '2'],
       timeout: 15000,
     });
+
+    await TachyonShellMethods.subscriptionUpdateStart('Main', 'src_b');
+
+    expect(mocks.executeShellCommand).toHaveBeenLastCalledWith({
+      command: '/usr/bin/tachyon',
+      args: ['subscription_update_async', 'Main', 'src_b'],
+      timeout: 15000,
+    });
   });
 
   it('returns the backend subscription start error message', async () => {

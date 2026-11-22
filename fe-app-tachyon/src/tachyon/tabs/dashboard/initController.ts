@@ -29,12 +29,17 @@ import {
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
+import {
+  getSubscriptionJobTargetSelector,
+  getSubscriptionUpdateTargetKey,
+} from '../../helpers/subscriptionUpdating';
 import { activateAppShellNavKey } from '../../services/tab.service';
 import {
   logger,
   markUiActionOwned,
   setLocalLatencyAction,
   setLocalSubscriptionAction,
+  setLocalSubscriptionTargetAction,
   shouldNotifyOwnedUiAction,
   socket,
   store,
@@ -648,12 +653,39 @@ function setSubscriptionUpdating(
   sectionName: string,
   updating: boolean,
   local = false,
+  targetSelector?: number | string,
 ) {
+  const sectionsWidget = store.get().sectionsWidget;
+  const targetKey = getSubscriptionUpdateTargetKey(sectionName, targetSelector);
+
+  if (targetKey) {
+    if (local || !updating) {
+      setLocalSubscriptionTargetAction(targetKey, updating && local);
+    }
+
+    const subscriptionUpdatingTargets = {
+      ...sectionsWidget.subscriptionUpdatingTargets,
+    };
+
+    if (updating) {
+      subscriptionUpdatingTargets[targetKey] = true;
+    } else {
+      delete subscriptionUpdatingTargets[targetKey];
+    }
+
+    store.set({
+      sectionsWidget: {
+        ...sectionsWidget,
+        subscriptionUpdatingTargets,
+      },
+    });
+    return;
+  }
+
   if (local || !updating) {
     setLocalSubscriptionAction(sectionName, updating && local);
   }
 
-  const sectionsWidget = store.get().sectionsWidget;
   const subscriptionUpdatingSections = {
     ...sectionsWidget.subscriptionUpdatingSections,
   };
@@ -733,14 +765,35 @@ async function completeSubscriptionUpdateJob(
   jobId: string,
   sectionName: string,
   response: Tachyon.MethodResponse<Tachyon.SubscriptionUpdateJobState>,
+  targetSelector?: number | string,
 ) {
+  const responseData = response.success ? response.data : undefined;
+  const effectiveSelector =
+    targetSelector ??
+    (responseData
+      ? getSubscriptionJobTargetSelector(responseData) || undefined
+      : undefined);
+  const resolvedTarget = String(responseData?.resolved_target || '').trim();
+  const extraResolvedTarget =
+    resolvedTarget &&
+    resolvedTarget.toLowerCase() !== sectionName.toLowerCase() &&
+    resolvedTarget !== String(effectiveSelector ?? '')
+      ? resolvedTarget
+      : undefined;
+  const clearSubscriptionUpdatingState = () => {
+    setSubscriptionUpdating(sectionName, false, false, effectiveSelector);
+    if (extraResolvedTarget) {
+      setSubscriptionUpdating(sectionName, false, false, extraResolvedTarget);
+    }
+  };
+
   if (pageUnloading) {
-    setSubscriptionUpdating(sectionName, false);
+    clearSubscriptionUpdatingState();
     return;
   }
 
   if (jobId && handledSubscriptionJobs.has(jobId)) {
-    setSubscriptionUpdating(sectionName, false);
+    clearSubscriptionUpdatingState();
     return;
   }
 
@@ -762,7 +815,7 @@ async function completeSubscriptionUpdateJob(
     capSetSize(handledSubscriptionJobs);
   }
 
-  setSubscriptionUpdating(sectionName, false);
+  clearSubscriptionUpdatingState();
 
   if (jobId && response.success) {
     void TachyonShellMethods.uiActionAck('subscription', jobId);
@@ -790,6 +843,7 @@ async function followSubscriptionUpdateState(
 ) {
   const jobId = state.job_id;
   const sectionName = state.section || '';
+  const targetSelector = getSubscriptionJobTargetSelector(state) || undefined;
 
   if (!jobId || !sectionName || followedSubscriptionJobs.has(jobId)) {
     return;
@@ -801,7 +855,7 @@ async function followSubscriptionUpdateState(
 
   followedSubscriptionJobs.add(jobId);
   if (shouldShowLoadingForRestoredAction(state)) {
-    setSubscriptionUpdating(sectionName, true);
+    setSubscriptionUpdating(sectionName, true, false, targetSelector);
   }
 
   try {
@@ -812,7 +866,12 @@ async function followSubscriptionUpdateState(
           data: state,
         } as Tachyon.MethodSuccessResponse<Tachyon.SubscriptionUpdateJobState>);
 
-    await completeSubscriptionUpdateJob(jobId, sectionName, response);
+    await completeSubscriptionUpdateJob(
+      jobId,
+      sectionName,
+      response,
+      targetSelector,
+    );
   } catch (error) {
     logger.error('[DASHBOARD]', 'followSubscriptionUpdateState failed', error);
     if (!pageUnloading) {
@@ -821,7 +880,7 @@ async function followSubscriptionUpdateState(
           ? error.message
           : _('Failed to update subscriptions');
 
-      setSubscriptionUpdating(sectionName, false);
+      setSubscriptionUpdating(sectionName, false, false, targetSelector);
       if (!isTransientRpcError(message)) {
         showToast(_('Failed to update subscriptions'), 'error');
       }
@@ -3834,21 +3893,36 @@ async function handleUpdateSubscription(
   sourceIndex?: number,
   sourceId?: string,
 ) {
-  if (
-    store.get().sectionsWidget.subscriptionUpdatingSections[section.sectionName]
-  ) {
+  const normalizedSourceId =
+    typeof sourceId === 'string' ? sourceId.trim() : '';
+  const targetSourceSelector =
+    normalizedSourceId ||
+    (typeof sourceIndex === 'number' && sourceIndex > 0
+      ? sourceIndex
+      : undefined);
+
+  const currentSw = store.get().sectionsWidget;
+  const targetKey = getSubscriptionUpdateTargetKey(
+    section.sectionName,
+    targetSourceSelector,
+  );
+  if (currentSw.subscriptionUpdatingSections[section.sectionName]) {
+    return;
+  }
+  if (targetKey && currentSw.subscriptionUpdatingTargets[targetKey]) {
     return;
   }
 
-  setSubscriptionUpdating(section.sectionName, true, true);
+  setSubscriptionUpdating(
+    section.sectionName,
+    true,
+    true,
+    targetSourceSelector,
+  );
   let jobId = '';
   let ownsJobFollow = false;
 
   try {
-    const targetSourceSelector =
-      typeof sourceIndex === 'number' && sourceIndex > 0
-        ? sourceIndex
-        : sourceId || undefined;
     const startResponse = await TachyonShellMethods.subscriptionUpdateStart(
       section.sectionName,
       targetSourceSelector,
@@ -3867,7 +3941,12 @@ async function handleUpdateSubscription(
     followedSubscriptionJobs.add(jobId);
     ownsJobFollow = true;
     const response = await TachyonShellMethods.waitSubscriptionUpdateJob(jobId);
-    await completeSubscriptionUpdateJob(jobId, section.sectionName, response);
+    await completeSubscriptionUpdateJob(
+      jobId,
+      section.sectionName,
+      response,
+      targetSourceSelector,
+    );
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
     if (!pageUnloading) {
@@ -3876,7 +3955,12 @@ async function handleUpdateSubscription(
           ? error.message
           : _('Failed to update subscriptions');
 
-      setSubscriptionUpdating(section.sectionName, false);
+      setSubscriptionUpdating(
+        section.sectionName,
+        false,
+        false,
+        targetSourceSelector,
+      );
       if (!isTransientRpcError(message)) {
         showToast(_('Failed to update subscriptions'), 'error');
       }
@@ -3917,6 +4001,10 @@ function canUpdateLatencyProgressInline(
     shallowRecordEqual(
       prev.subscriptionUpdatingSections,
       next.subscriptionUpdatingSections,
+    ) &&
+    shallowRecordEqual(
+      prev.subscriptionUpdatingTargets,
+      next.subscriptionUpdatingTargets,
     ) &&
     shallowRecordEqual(
       prev.selectorSwitchingSections,
@@ -4499,6 +4587,8 @@ export function renderSectionInspectorModalContent(
             latencyFetching: isLatFetching,
             latencyProgress: latProgress,
             subscriptionUpdating: isSubUpdating,
+            subscriptionUpdatingTargets:
+              sectionsWidget.subscriptionUpdatingTargets,
             selectorSwitchingTag:
               sectionsWidget.selectorSwitchingSections[section.sectionName],
             onTestSingleOutbound: (sectionName, outboundCode) => {
@@ -4856,6 +4946,8 @@ export function renderSectionAccordionBody(
             latencyFetching: isLatFetching,
             latencyProgress: latProgress,
             subscriptionUpdating: isSubUpdating,
+            subscriptionUpdatingTargets:
+              sectionsWidget.subscriptionUpdatingTargets,
             selectorSwitchingTag:
               sectionsWidget.selectorSwitchingSections[section.sectionName],
             onTestSingleOutbound: (sectionName, outboundCode) => {
@@ -7289,6 +7381,10 @@ export async function onStoreUpdate(
         !shallowRecordEqual(
           prev.sectionsWidget.subscriptionUpdatingSections,
           next.sectionsWidget.subscriptionUpdatingSections,
+        ) ||
+        !shallowRecordEqual(
+          prev.sectionsWidget.subscriptionUpdatingTargets,
+          next.sectionsWidget.subscriptionUpdatingTargets,
         ) ||
         !shallowRecordEqual(
           prev.sectionsWidget.latencyFetchingSections,

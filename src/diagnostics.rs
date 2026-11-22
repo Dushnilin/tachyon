@@ -523,14 +523,18 @@ async fn build_doctor_report(
 ) -> DoctorReport {
     let d = Box::new(state.data.read().await.clone());
     let live = Box::new(state.live.read().await.clone());
-    let (odhcpd_present, dhcp_raw) = if cfg!(windows) {
-        (false, String::new())
+    let (odhcpd_present, dhcp_raw, fw4_forward_order_ok) = if cfg!(windows) {
+        (false, String::new(), true)
     } else {
         let present = tokio::fs::metadata("/etc/init.d/odhcpd").await.is_ok();
         let raw = tokio::fs::read_to_string("/etc/config/dhcp")
             .await
             .unwrap_or_default();
-        (present, raw)
+        let order_ok = match crate::net_stack::read_fw4_forward_chain_listing().await {
+            Some(listing) => crate::net_stack::fw4_forward_guard_ordered_before_offload(&listing),
+            None => true,
+        };
+        (present, raw, order_ok)
     };
     assemble_doctor_report(
         state,
@@ -543,6 +547,7 @@ async fn build_doctor_report(
         failover_val,
         odhcpd_present,
         &dhcp_raw,
+        fw4_forward_order_ok,
     )
 }
 
@@ -559,6 +564,7 @@ fn assemble_doctor_report(
     failover_val: Option<Value>,
     odhcpd_present: bool,
     dhcp_raw: &str,
+    fw4_forward_order_ok: bool,
 ) -> DoctorReport {
     let mut findings = Vec::new();
     let en = is_en_lang(&d.settings.lang);
@@ -1183,7 +1189,7 @@ fn assemble_doctor_report(
     let (sw_offload, hw_offload) = read_firewall_flow_offloading();
     let offload_any = sw_offload || hw_offload;
     let flow_offload_sqm_conflict = offload_any && smart_queue;
-    let guard_ok = flow_offload_guard_installed()
+    let guard_ok = (flow_offload_guard_installed() && fw4_forward_order_ok)
         || (cfg!(windows) && std::env::var("TACHYON_FW4_INCLUDE_ROOT").is_err());
     let flow_offload_guard_missing = offload_any
         && !smart_queue
@@ -2755,8 +2761,13 @@ pub async fn apply_quick_fix_verified(
 }
 
 fn flow_offload_guard_installed() -> bool {
+    let legacy_path = crate::net_stack::fw4_flow_offload_legacy_include_path();
+    if legacy_path.exists() {
+        return false;
+    }
     let path = crate::net_stack::fw4_flow_offload_include_path();
-    std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() > 0)
+    std::fs::read_to_string(&path)
+        .is_ok_and(|raw| !raw.trim().is_empty() && raw.contains("insert rule inet fw4 forward"))
 }
 
 pub fn parse_firewall_flow_offloading(content: &str) -> (bool, bool) {
@@ -3025,7 +3036,7 @@ pub fn search_knowledge_docs(query: &str) -> Vec<Value> {
             "17_FLOW_OFFLOADING",
             "Совместимость Hardware/Software Flow Offloading с TProxy и TUN",
             "flow offloading hardware software firewall conflict stall",
-            "Tachyon автоматически исключает перехваченный трафик, FakeIP и DNS из @ft через /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft, сохраняя ускорение прямого трафика. Конфликт остаётся только при одновременном использовании Flow Offloading и SQM (disable_flow_offloading).",
+            "Tachyon автоматически исключает перехваченный трафик, FakeIP и DNS из @ft через /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft, сохраняя ускорение прямого трафика. Конфликт остаётся только при одновременном использовании Flow Offloading и SQM (disable_flow_offloading).",
         ),
         (
             "18_IPV6_LEAK_GUARD",
@@ -6905,7 +6916,8 @@ IP address       HW type     Flags       HW address            Mask     Device
 
         let dir = std::env::temp_dir().join(format!("tachyon_diag_offload_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let inc_file = dir
+        let inc_file = dir.join("ruleset-post").join("10-tachyon-offload.nft");
+        let legacy_file = dir
             .join("chain-pre")
             .join("forward")
             .join("10-tachyon-offload.nft");
@@ -6916,10 +6928,17 @@ IP address       HW type     Flags       HW address            Mask     Device
         std::fs::create_dir_all(inc_file.parent().unwrap()).unwrap();
         std::fs::write(
             &inc_file,
-            "meta mark & 0x04000000 != 0 ct state established,related accept\n",
+            "insert rule inet fw4 forward meta mark & 0x04000000 != 0 ct state established,related accept\n",
         )
         .unwrap();
         assert!(flow_offload_guard_installed());
+        std::fs::create_dir_all(legacy_file.parent().unwrap()).unwrap();
+        std::fs::write(
+            &legacy_file,
+            "meta mark & 0x04000000 != 0 ct state established,related accept\n",
+        )
+        .unwrap();
+        assert!(!flow_offload_guard_installed());
         unsafe {
             std::env::remove_var("TACHYON_FW4_INCLUDE_ROOT");
         }

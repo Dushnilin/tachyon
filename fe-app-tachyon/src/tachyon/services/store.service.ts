@@ -197,6 +197,7 @@ export interface StoreType {
     latencyProgressSections: Record<string, Tachyon.LatencyActionProgress>;
     selectorSwitchingSections: Record<string, string>;
     subscriptionUpdatingSections: Record<string, boolean>;
+    subscriptionUpdatingTargets: Record<string, boolean>;
   };
   tailscaleWidget: {
     loading: boolean;
@@ -360,6 +361,7 @@ const initialStore: StoreType = {
     latencyProgressSections: {},
     selectorSwitchingSections: {},
     subscriptionUpdatingSections: {},
+    subscriptionUpdatingTargets: {},
     data: [],
   },
   tailscaleWidget: {
