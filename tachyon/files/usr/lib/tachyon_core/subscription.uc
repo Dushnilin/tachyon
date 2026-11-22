@@ -228,13 +228,27 @@ function read_source_metadata(section_name, source_section, source_index, source
         if (st != null && int(st.mtime || 0) > updated_at)
             updated_at = int(st.mtime);
     }
-    for (let ts_path in [
-        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + source_section + ".timestamp",
-        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + section_name + ".timestamp"
-    ]) {
-        let raw_ts = file_first_line(ts_path);
-        if (raw_ts != "" && match(raw_ts, /^[0-9]+$/) != null) {
-            let n_ts = int(raw_ts, 10);
+    let has_source_ts = false;
+    let src_raw_ts = file_first_line(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + source_section + ".timestamp");
+    if (src_raw_ts != "" && match(src_raw_ts, /^[0-9]+$/) != null) {
+        has_source_ts = true;
+        let n_ts = int(src_raw_ts, 10);
+        if (n_ts > updated_at)
+            updated_at = n_ts;
+    }
+
+    let has_item_updated_at = false;
+    for (let item in metadata) {
+        if (int(item.updatedAt || 0) > 0) {
+            has_item_updated_at = true;
+            break;
+        }
+    }
+
+    if (!has_source_ts && updated_at == 0 && !has_item_updated_at) {
+        let sec_raw_ts = file_first_line(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + section_name + ".timestamp");
+        if (sec_raw_ts != "" && match(sec_raw_ts, /^[0-9]+$/) != null) {
+            let n_ts = int(sec_raw_ts, 10);
             if (n_ts > updated_at)
                 updated_at = n_ts;
         }

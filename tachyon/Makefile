@@ -358,6 +358,8 @@ fi
 
 rm -f /www/cgi-bin/tachyon-agent /etc/hotplug.d/iface/99-tachyon-wan-monitor 2>/dev/null || true
 rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true
+rm -f /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft 2>/dev/null || true
+rm -f /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft 2>/dev/null || true
 rm -f /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
 nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
 for pref in 9499 9500 9501; do for fam in -4 -6; do while ip $$fam rule del pref $$pref >/dev/null 2>&1; do :; done; done; done

@@ -1193,11 +1193,16 @@ export const TachyonShellMethods = {
       return jobDoneResult(parsedResponse);
     }
   },
-  subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
+  subscriptionUpdateStart: async (
+    section?: string,
+    sourceIndex?: number | string,
+  ) => {
     const startArgs = [
       Tachyon.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
       ...(section ? [section] : []),
-      ...(section && sourceIndex !== undefined ? [String(sourceIndex)] : []),
+      ...(section && sourceIndex !== undefined && sourceIndex !== ''
+        ? [String(sourceIndex)]
+        : []),
     ];
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',

@@ -1426,6 +1426,188 @@ describe('renderSections', () => {
     expect(revealedEl.textContent).toContain('Hidden');
   });
 
+  it('passes sourceIndex and sourceId when updating an individual subscription card, vs section-only on header button', () => {
+    const onUpdateSubscription = vi.fn();
+    const section: any = {
+      code: 'Main',
+      sectionName: 'Main',
+      displayName: 'Main',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'Sub A',
+          sourceIndex: 1,
+          sourceSection: 'Main-subscription-1',
+          sourceId: 'src_a',
+        },
+        {
+          title: 'Sub B',
+          sourceIndex: 2,
+          sourceSection: 'Main-subscription-2',
+          sourceId: 'src_b',
+        },
+      ],
+      outbounds: [
+        {
+          code: 'n1',
+          displayName: 'Node 1',
+          type: 'VLESS',
+          sourceGroup: 'sub:1',
+          sourceId: 'src_a',
+          selected: true,
+        },
+        {
+          code: 'n2',
+          displayName: 'Node 2',
+          type: 'VLESS',
+          sourceGroup: 'sub:2',
+          sourceId: 'src_b',
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription,
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const cardBtns = Array.from(
+      el.querySelectorAll('.tachyon_dashboard-page__subscription-meta__action'),
+    ) as HTMLButtonElement[];
+    expect(cardBtns.length).toBeGreaterThanOrEqual(2);
+    cardBtns[1].click();
+    expect(onUpdateSubscription).toHaveBeenCalledWith(section, 2, 'src_b');
+
+    onUpdateSubscription.mockClear();
+    const headerBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-section__subscription-update',
+    ) as HTMLButtonElement | null;
+    if (headerBtn) {
+      headerBtn.click();
+      expect(onUpdateSubscription).toHaveBeenCalledWith(section);
+    }
+  });
+
+  it('isolates updating spinner and disabled state to the targeted subscription card', () => {
+    const section: any = {
+      code: 'Main',
+      sectionName: 'Main',
+      displayName: 'Main',
+      withTagSelect: true,
+      subscriptionSourceCount: 2,
+      subscriptionMetadata: [
+        {
+          title: 'Sub A',
+          sourceIndex: 1,
+          sourceSection: 'Main-subscription-1',
+          sourceId: 'src_a',
+        },
+        {
+          title: 'Sub B',
+          sourceIndex: 2,
+          sourceSection: 'Main-subscription-2',
+          sourceId: 'src_b',
+        },
+      ],
+      outbounds: [
+        {
+          code: 'n1',
+          displayName: 'Node 1',
+          type: 'VLESS',
+          sourceGroup: 'sub:1',
+          sourceId: 'src_a',
+          selected: true,
+        },
+        {
+          code: 'n2',
+          displayName: 'Node 2',
+          type: 'VLESS',
+          sourceGroup: 'sub:2',
+          sourceId: 'src_b',
+        },
+      ],
+    };
+
+    const singleTargetEl = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+      subscriptionUpdatingTargets: { 'Main::2': true },
+    });
+
+    const singleCardBtns = Array.from(
+      singleTargetEl.querySelectorAll(
+        '.tachyon_dashboard-page__subscription-meta__action',
+      ),
+    ) as HTMLButtonElement[];
+    expect(singleCardBtns).toHaveLength(2);
+    expect(singleCardBtns[0].disabled).toBeFalsy();
+    expect(singleCardBtns[0].querySelector('.lucide-loader-circle')).toBeNull();
+    expect(singleCardBtns[1].disabled).toBe(true);
+    expect(
+      singleCardBtns[1].querySelector('.lucide-loader-circle'),
+    ).not.toBeNull();
+
+    const singleHeaderBtn = singleTargetEl.querySelector(
+      '.tachyon_dashboard-page__outbound-section__subscription-update',
+    ) as HTMLButtonElement | null;
+    if (singleHeaderBtn) {
+      expect(singleHeaderBtn.disabled).toBeFalsy();
+      expect(singleHeaderBtn.querySelector('.lucide-loader-circle')).toBeNull();
+    }
+
+    const wholeSectionEl = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: true,
+      subscriptionUpdatingTargets: {},
+    });
+
+    const wholeCardBtns = Array.from(
+      wholeSectionEl.querySelectorAll(
+        '.tachyon_dashboard-page__subscription-meta__action',
+      ),
+    ) as HTMLButtonElement[];
+    expect(wholeCardBtns).toHaveLength(2);
+    expect(wholeCardBtns[0].disabled).toBe(true);
+    expect(wholeCardBtns[1].disabled).toBe(true);
+    const wholeHeaderBtn = wholeSectionEl.querySelector(
+      '.tachyon_dashboard-page__outbound-section__subscription-update',
+    ) as HTMLButtonElement | null;
+    if (wholeHeaderBtn) {
+      expect(wholeHeaderBtn.disabled).toBe(true);
+      expect(
+        wholeHeaderBtn.querySelector('.lucide-loader-circle'),
+      ).not.toBeNull();
+    }
+  });
+
   it('renders distinct icons, classes, and data-action attrs for URLTest details and Priority details (#466)', () => {
     const onShowUrlTestInfo = vi.fn();
     const onShowPriorityInfo = vi.fn();

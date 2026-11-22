@@ -1443,21 +1443,30 @@ function run_doctor_checks_impl(repair) {
         let fo_sw = uci_core.get("firewall.@defaults[0].flow_offloading");
         let fo_hw = uci_core.get("firewall.@defaults[0].flow_offloading_hw");
         if (fo_sw == "1" || fo_sw == "true" || fo_hw == "1" || fo_hw == "true") {
-            let offload_inc = (getenv("TACHYON_FW4_INCLUDE_ROOT") || "/usr/share/nftables.d") + "/chain-pre/forward/10-tachyon-offload.nft";
-            if (fs.stat(offload_inc) != null) {
+            let inc_root = getenv("TACHYON_FW4_INCLUDE_ROOT") || "/usr/share/nftables.d";
+            let offload_inc = inc_root + "/ruleset-post/10-tachyon-offload.nft";
+            let legacy_inc = inc_root + "/chain-pre/forward/10-tachyon-offload.nft";
+            let inc_raw = fs.stat(offload_inc) != null ? as_string(fs.readfile(offload_inc) || "") : "";
+            let file_ok = inc_raw != "" && index(inc_raw, "insert rule inet fw4 forward") >= 0 && fs.stat(legacy_inc) == null;
+            let live_order_ok = command_success_from_args([ "ucode", "-L", LIB_DIR, NFT_APPLY_UC, "check-fw4-flow-offload-order" ]);
+            if (file_ok && live_order_ok) {
                 doc_check("✅", "Flow Offloading", "compatible (fw4 guard installed)", "");
             } else {
                 issues++;
                 if (!DOCTOR_REPAIR_MODE) {
                     doc_plan("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " sync-fw4-flow-offload-guard");
-                    doc_check("⚠️", "Flow Offloading", "guard rule missing in fw4 include",
-                        "→ WILL FIX (doctor --fix): установка защиты Flow Offloading в fw4 без его отключения");
+                    doc_check("⚠️", "Flow Offloading", "guard rule missing or misordered in fw4",
+                        "→ WILL FIX (doctor --fix): установка правил исключения Flow Offloading в ruleset-post выше @ft");
                 } else {
-                    if (command_success_from_args([ "ucode", "-L", LIB_DIR, NFT_APPLY_UC, "sync-fw4-flow-offload-guard" ]) && fs.stat(offload_inc) != null) {
-                        doc_check("⚠️", "Flow Offloading", "guard missing", "→ FIXED: защитное правило 10-tachyon-offload.nft установлено");
+                    let after_order_ok = command_success_from_args([ "ucode", "-L", LIB_DIR, NFT_APPLY_UC, "sync-fw4-flow-offload-guard" ]) &&
+                        fs.stat(offload_inc) != null &&
+                        fs.stat(legacy_inc) == null &&
+                        command_success_from_args([ "ucode", "-L", LIB_DIR, NFT_APPLY_UC, "check-fw4-flow-offload-order" ]);
+                    if (after_order_ok) {
+                        doc_check("⚠️", "Flow Offloading", "guard missing/misordered", "→ FIXED: защитные правила ruleset-post/10-tachyon-offload.nft установлены выше flow add @ft");
                         fixed++;
                     } else {
-                        doc_check("⚠️", "Flow Offloading", "guard rule missing", "→ не удалось записать 10-tachyon-offload.nft");
+                        doc_check("⚠️", "Flow Offloading", "guard rule missing or misordered", "→ не удалось обновить ruleset-post/10-tachyon-offload.nft");
                     }
                 }
             }

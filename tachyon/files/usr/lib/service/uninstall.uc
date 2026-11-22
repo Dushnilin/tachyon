@@ -358,6 +358,8 @@ function clean_firewall_and_routing() {
     run_cmd(["nft", "delete", "table", "ip", "tachyon"]);
     run_cmd(["nft", "delete", "table", "ip6", "tachyon"]);
     remove_file("/usr/share/nftables.d/chain-pre/input/10-tachyon.nft");
+    remove_file("/usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft");
+    remove_file("/usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft");
 
     // Restart firewall to purge in-memory dynamic rules from inet fw4
     if (fs.stat("/etc/init.d/firewall") != null)

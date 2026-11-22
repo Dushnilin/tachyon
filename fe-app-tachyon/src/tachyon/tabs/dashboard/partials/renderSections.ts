@@ -26,6 +26,7 @@ import { TachyonShellMethods } from '../../../methods/shell';
 import { Tachyon } from '../../../types';
 import { renderFlagEmojis } from './renderFlagEmojis';
 import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
+import { isSubscriptionTargetUpdating } from '../../../helpers/subscriptionUpdating';
 import {
   groupOutboundsByCountry,
   detectOutboundCountry,
@@ -460,10 +461,15 @@ interface IRenderSectionsProps {
     section: Tachyon.OutboundGroup,
     outbound: Tachyon.Outbound,
   ) => void;
-  onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
+  onUpdateSubscription: (
+    section: Tachyon.OutboundGroup,
+    sourceIndex?: number,
+    sourceId?: string,
+  ) => void;
   latencyFetching: boolean;
   latencyProgress?: Tachyon.LatencyActionProgress;
   subscriptionUpdating: boolean;
+  subscriptionUpdatingTargets?: Record<string, boolean>;
   selectorSwitchingTag?: string;
   onTestSingleOutbound?: (sectionName: string, outboundCode: string) => void;
   testingOutboundCodes?: Record<string, boolean>;
@@ -694,9 +700,9 @@ function renderSubscriptionMetadata(
           title: _('Update subscriptions'),
           'aria-label': _('Update subscriptions'),
           disabled: options.subscriptionUpdating ? true : undefined,
-          click: (event: MouseEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
+          click: (event?: MouseEvent) => {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
             if (!options.subscriptionUpdating) {
               options.onUpdateSubscription?.();
             }
@@ -999,7 +1005,11 @@ function renderSubscriptionMetadata(
 function renderSubscriptionUpdateAction(
   section: Tachyon.OutboundGroup,
   subscriptionUpdating: boolean,
-  onUpdateSubscription: (section: Tachyon.OutboundGroup) => void,
+  onUpdateSubscription: (
+    section: Tachyon.OutboundGroup,
+    sourceIndex?: number,
+    sourceId?: string,
+  ) => void,
 ) {
   if (!section.subscriptionSourceCount) {
     return undefined;
@@ -1013,9 +1023,9 @@ function renderSubscriptionUpdateAction(
         'btn tachyon_dashboard-page__outbound-section__subscription-update',
       'aria-label': _('Update subscriptions'),
       disabled: subscriptionUpdating ? true : undefined,
-      click: (event: MouseEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
+      click: (event?: MouseEvent) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
         if (subscriptionUpdating) {
           return;
         }
@@ -1627,6 +1637,7 @@ function renderDefaultState({
   latencyFetching,
   latencyProgress,
   subscriptionUpdating,
+  subscriptionUpdatingTargets,
   selectorSwitchingTag,
   onTestSingleOutbound,
   testingOutboundCodes,
@@ -2815,12 +2826,31 @@ function renderDefaultState({
           metadata.title || metadata.fileName
             ? metadata
             : { ...metadata, title: fallbackTitle };
+        const metaAny = metadata as Tachyon.SubscriptionMetadata & {
+          sourceId?: string;
+          source_id?: string;
+        };
+        const targetIndex =
+          typeof metadata.sourceIndex === 'number'
+            ? metadata.sourceIndex
+            : idx + 1;
+        const targetSourceId =
+          String(metaAny.sourceId || metaAny.source_id || '').trim() ||
+          undefined;
+        const isCardUpdating =
+          subscriptionUpdating ||
+          isSubscriptionTargetUpdating(
+            section.sectionName,
+            subscriptionUpdatingTargets,
+            targetIndex,
+            targetSourceId,
+          );
         return renderSubscriptionMetadata(enrichedMeta, {
           onUpdateSubscription:
             subSourceCount > 0
-              ? () => onUpdateSubscription(section)
+              ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
               : undefined,
-          subscriptionUpdating,
+          subscriptionUpdating: isCardUpdating,
         });
       })
       .filter(Boolean) as HTMLElement[];
@@ -3036,6 +3066,29 @@ function renderDefaultState({
               sourceIndex: subNumber,
             };
 
+      const headerAny = headerMeta as Tachyon.SubscriptionMetadata & {
+        sourceId?: string;
+        source_id?: string;
+      };
+      const targetIndex =
+        typeof headerMeta.sourceIndex === 'number'
+          ? headerMeta.sourceIndex
+          : subNumber;
+      const targetSourceId =
+        String(
+          headerAny.sourceId ||
+            headerAny.source_id ||
+            members[0]?.sourceId ||
+            '',
+        ).trim() || undefined;
+      const isCardUpdating =
+        subscriptionUpdating ||
+        isSubscriptionTargetUpdating(
+          section.sectionName,
+          subscriptionUpdatingTargets,
+          targetIndex,
+          targetSourceId,
+        );
       const metaHeader = renderSubscriptionMetadata(headerMeta, {
         groupCount: visibleMembers.length,
         selectedOutbound: selectedMember,
@@ -3045,8 +3098,10 @@ function renderDefaultState({
             ? () => onToggleSourceGroupCollapse?.(collapseKey)
             : undefined,
         onUpdateSubscription:
-          subSourceCount > 0 ? () => onUpdateSubscription(section) : undefined,
-        subscriptionUpdating,
+          subSourceCount > 0
+            ? () => onUpdateSubscription(section, targetIndex, targetSourceId)
+            : undefined,
+        subscriptionUpdating: isCardUpdating,
       });
 
       if (metaHeader) {

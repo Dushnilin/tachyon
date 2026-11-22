@@ -1247,6 +1247,8 @@ export namespace Tachyon {
     message?: string;
     section?: string;
     source_index?: string;
+    source_selector?: string;
+    resolved_target?: string;
     pid?: string | null;
     started_at?: number;
     exit_code?: number | null;

@@ -260,6 +260,7 @@ describe('dashboard initController', () => {
         latencyFetchingSections: {},
         latencyProgressSections: {},
         subscriptionUpdatingSections: {},
+        subscriptionUpdatingTargets: {},
         selectorSwitchingSections: {},
         data: [
           {
@@ -782,6 +783,7 @@ describe('dashboard initController', () => {
         latencyFetchingSections: {},
         latencyProgressSections: {},
         subscriptionUpdatingSections: {},
+        subscriptionUpdatingTargets: {},
         selectorSwitchingSections: {},
       };
 
@@ -844,6 +846,22 @@ describe('dashboard initController', () => {
       expect(scheduledCallbacks.length).toBeGreaterThanOrEqual(1);
       await flushRaf();
       expect(gridEl.replaceChildren).toHaveBeenCalledTimes(4);
+
+      // Single-subscription target updating state change also triggers re-render
+      const targetUpdatingState = {
+        ...prevState,
+        sectionsWidget: {
+          ...baseSectionsWidget,
+          subscriptionUpdatingTargets: { 'main::2': true },
+        },
+      };
+      store.set({ sectionsWidget: targetUpdatingState.sectionsWidget });
+      await onStoreUpdate(targetUpdatingState, prevState, {
+        sectionsWidget: targetUpdatingState.sectionsWidget,
+      });
+      expect(scheduledCallbacks.length).toBeGreaterThanOrEqual(1);
+      await flushRaf();
+      expect(gridEl.replaceChildren).toHaveBeenCalledTimes(5);
     });
 
     it('updates live progress labels on both accordion and modal latency test buttons', async () => {
@@ -900,6 +918,7 @@ describe('dashboard initController', () => {
             vpn: { completed: 0, total: 4, failed: 0 },
           },
           subscriptionUpdatingSections: {},
+          subscriptionUpdatingTargets: {},
           selectorSwitchingSections: {},
         },
       });
@@ -956,6 +975,7 @@ describe('dashboard initController', () => {
           vpn: { completed: 3, total: 4, failed: 0 },
         },
         subscriptionUpdatingSections: {},
+        subscriptionUpdatingTargets: {},
         selectorSwitchingSections: {},
       });
       expect(updated).toBe(true);
@@ -982,6 +1002,7 @@ describe('dashboard initController', () => {
             vpn: { completed: 4, total: 4, failed: 0 },
           },
           subscriptionUpdatingSections: {},
+          subscriptionUpdatingTargets: {},
           selectorSwitchingSections: {},
         }),
       ).toBe(false);
@@ -1019,6 +1040,7 @@ describe('dashboard initController', () => {
           latencyFetchingSections: {},
           latencyProgressSections: {},
           subscriptionUpdatingSections: {},
+          subscriptionUpdatingTargets: {},
           selectorSwitchingSections: {},
         },
       });

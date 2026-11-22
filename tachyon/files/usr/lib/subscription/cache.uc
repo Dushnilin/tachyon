@@ -3094,21 +3094,48 @@ function source_index_number(value) {
     return result > 0 ? result : null;
 }
 
+function resolve_selected_source_index(section, source_index_value) {
+    let source_index = source_index_number(source_index_value);
+    if (source_index != null)
+        return source_index;
+
+    let selector_id = trim(as_string(source_index_value));
+    if (selector_id == "")
+        return null;
+
+    let src_obj = uci_section(selector_id);
+    if (as_string(src_obj[".type"]) != "outbound_source")
+        return null;
+
+    let target_url = trim(as_string(connections.outbound_source_subscription_url(src_obj) || ""));
+    if (target_url == "")
+        return null;
+
+    let current_index = 0;
+    for (let entry in connections.subscription_urls(section)) {
+        current_index++;
+        if (trim(as_string(entry || "")) == target_url)
+            return current_index;
+    }
+
+    return null;
+}
+
 function subscription_update_selected_source(sections, section_name_value, source_index_value, force) {
     if (!cache_section_is_safe(section_name_value)) {
         log_message("Invalid subscription rule name", "error");
         return 1;
     }
 
-    let source_index = source_index_number(source_index_value);
-    if (source_index == null) {
-        log_message("Invalid subscription source index for rule '" + section_name_value + "'", "error");
-        return 1;
-    }
-
     let section = find_section(sections, section_name_value);
     if (!section_is_subscription_proxy(section)) {
         log_message("Rule '" + section_name_value + "' has no subscription sources", "info");
+        return 1;
+    }
+
+    let source_index = resolve_selected_source_index(section, source_index_value);
+    if (source_index == null) {
+        log_message("Invalid subscription source index for rule '" + section_name_value + "'", "error");
         return 1;
     }
 
@@ -3156,10 +3183,10 @@ function subscription_update_selected_source(sections, section_name_value, sourc
     unlink_path(metadata_output_path);
 
     if (update_result == 0) {
-        write_subscription_update_timestamp(section_name_value);
+        log_message("Subscription source '" + source_index + "' for rule '" + section_name_value + "' updated", "info");
     }
     else if (update_result == 2) {
-        write_subscription_update_timestamp(section_name_value);
+        log_message("Subscription source '" + source_index + "' for rule '" + section_name_value + "' is unchanged", "info");
     }
     else if (update_result == 4) {
         log_message("Subscription source '" + source_index + "' update for rule '" + section_name_value + "' was superseded by newer URLs", "info");

@@ -4984,6 +4984,10 @@ function fw4_flow_offload_include_root() {
 }
 
 function fw4_flow_offload_include_path() {
+    return fw4_flow_offload_include_root() + "/ruleset-post/10-tachyon-offload.nft";
+}
+
+function fw4_flow_offload_legacy_include_path() {
     return fw4_flow_offload_include_root() + "/chain-pre/forward/10-tachyon-offload.nft";
 }
 
@@ -5075,12 +5079,47 @@ function apply_fw4_offload_batch_commands(commands) {
     return ok;
 }
 
+function compile_fw4_flow_offload_include_content(rules) {
+    let lines = [ "# Managed by Tachyon - do not edit manually" ];
+    // Reverse order because `ruleset-post` runs `insert rule` at chain index 0 sequentially.
+    for (let i = length(rules) - 1; i >= 0; i--)
+        push(lines, "insert rule inet fw4 forward " + rules[i]);
+    return join("\n", lines) + "\n";
+}
+
+function fw4_forward_guard_ordered_before_offload(listing) {
+    let lines = split(as_string(listing || ""), "\n");
+    let flow_idx = -1;
+    for (let i = 0; i < length(lines); i++) {
+        let line = as_string(lines[i] || "");
+        if (index(line, "flow add @ft") >= 0 || index(line, "flow offload @ft") >= 0) {
+            flow_idx = i;
+            break;
+        }
+    }
+    if (flow_idx < 0)
+        return true;
+
+    let has_before = false;
+    let has_after = false;
+    for (let i = 0; i < length(lines); i++) {
+        if (index(as_string(lines[i] || ""), "Tachyon: skip flow offload") < 0)
+            continue;
+        if (i < flow_idx)
+            has_before = true;
+        else if (i > flow_idx)
+            has_after = true;
+    }
+    return has_before && !has_after;
+}
+
 function sync_fw4_flow_offload_guard_for_settings(settings) {
     let rules = build_fw4_flow_offload_guard_rules(settings);
-    let content = "# Managed by Tachyon - do not edit manually\n" + join("\n", rules) + "\n";
+    let content = compile_fw4_flow_offload_include_content(rules);
     let include_root = fw4_flow_offload_include_root();
     let include_path = fw4_flow_offload_include_path();
     if (getenv("TACHYON_FW4_INCLUDE_ROOT") != null || fs.stat(include_root) != null) {
+        unlink_file(fw4_flow_offload_legacy_include_path());
         common.command_status_from_args([ "mkdir", "-p", common.parent_dir(include_path) ]);
         common.write_file(include_path, content);
     }
@@ -5102,6 +5141,7 @@ function sync_fw4_flow_offload_guard() {
 
 function remove_fw4_flow_offload_guard() {
     unlink_file(fw4_flow_offload_include_path());
+    unlink_file(fw4_flow_offload_legacy_include_path());
     let listing = command_output_quiet_from_args([ "nft", "-a", "list", "chain", "inet", "fw4", "forward" ]);
     if (index(listing, "chain forward") >= 0) {
         let commands = [];
@@ -6126,6 +6166,13 @@ else if (mode == "remove-fw4-flow-offload-guard")
     exit(remove_fw4_flow_offload_guard() ? 0 : 1);
 else if (mode == "render-fw4-flow-offload-guard-fixture")
     exit(render_fw4_flow_offload_guard_fixture(ARGV[1]) ? 0 : 1);
+else if (mode == "check-fw4-flow-offload-order") {
+    let listing_path = trim(as_string(ARGV[1] || ""));
+    let listing = listing_path != ""
+        ? as_string(fs.readfile(listing_path) || "")
+        : command_output_quiet_from_args([ "nft", "-a", "list", "chain", "inet", "fw4", "forward" ]);
+    exit(fw4_forward_guard_ordered_before_offload(listing) ? 0 : 1);
+}
 else {
     warn("Usage: nft/apply.uc <operation> ...\n");
     exit(1);
