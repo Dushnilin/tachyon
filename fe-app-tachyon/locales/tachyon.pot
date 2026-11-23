@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-23 09:32+0300\n"
-"PO-Revision-Date: 2026-11-23 09:32+0300\n"
+"POT-Creation-Date: 2026-11-23 17:34+0300\n"
+"PO-Revision-Date: 2026-11-23 17:34+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -368,7 +368,7 @@ msgstr ""
 msgid "ASCII Mode"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5291
+#: src/tachyon/studioDeck.ts:5303
 msgid "ATOMIC"
 msgstr ""
 
@@ -543,7 +543,7 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1995
+#: src/tachyon/studioDeck.ts:2007
 msgid "Active Only"
 msgstr ""
 
@@ -614,11 +614,11 @@ msgstr ""
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1973
+#: src/tachyon/studioDeck.ts:1985
 msgid "Add Balancer"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1954
+#: src/tachyon/studioDeck.ts:1966
 msgid "Add Condition"
 msgstr ""
 
@@ -630,7 +630,7 @@ msgstr ""
 msgid "Add Custom Strategy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1992
+#: src/tachyon/studioDeck.ts:2004
 msgid "Add Inbound Server"
 msgstr ""
 
@@ -646,23 +646,23 @@ msgstr ""
 msgid "Add Prefix to Server Names"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2010
+#: src/tachyon/studioDeck.ts:2022
 msgid "Add Profile"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2024
+#: src/tachyon/studioDeck.ts:2036
 msgid "Add Schedule"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1918
+#: src/tachyon/studioDeck.ts:1930
 msgid "Add Section"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1807
+#: src/tachyon/studioDeck.ts:1819
 msgid "Add Server Source or Tunnel"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1934
+#: src/tachyon/studioDeck.ts:1946
 msgid "Add Source"
 msgstr ""
 
@@ -868,7 +868,7 @@ msgstr ""
 msgid "All Active Outbound Servers"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1956
+#: src/tachyon/studioDeck.ts:1968
 msgid "All Conditions"
 msgstr ""
 
@@ -893,15 +893,15 @@ msgstr ""
 msgid "All Internet (Screen time quota or total internet cutoff)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1975
+#: src/tachyon/studioDeck.ts:1987
 msgid "All Policies"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2011
+#: src/tachyon/studioDeck.ts:2023
 msgid "All Profiles"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1994
+#: src/tachyon/studioDeck.ts:2006
 msgid "All Protocols"
 msgstr ""
 
@@ -911,15 +911,15 @@ msgstr ""
 msgid "All Routes"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2025
+#: src/tachyon/studioDeck.ts:2037
 msgid "All Schedules"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1920
+#: src/tachyon/studioDeck.ts:1932
 msgid "All Sections"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1936
+#: src/tachyon/studioDeck.ts:1948
 msgid "All Sources"
 msgstr ""
 
@@ -949,7 +949,7 @@ msgstr ""
 msgid "All groups"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3368
+#: src/tachyon/studioDeck.ts:3380
 msgid "All matching entries are currently disabled and collapsed in the drawer below."
 msgstr ""
 
@@ -997,7 +997,7 @@ msgstr ""
 msgid "All sources"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2784
+#: src/tachyon/studioDeck.ts:2796
 msgid "All subscriptions updated."
 msgstr ""
 
@@ -1279,7 +1279,7 @@ msgstr ""
 msgid "Analyzing transit route behavior..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4717
+#: src/tachyon/studioDeck.ts:4729
 msgid "Announcement:"
 msgstr ""
 
@@ -1423,7 +1423,7 @@ msgstr ""
 msgid "Attach to existing routing section"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1959
+#: src/tachyon/studioDeck.ts:1971
 msgid "Attached to Sections"
 msgstr ""
 
@@ -1637,7 +1637,7 @@ msgstr ""
 msgid "Auto-update mode"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4168
+#: src/tachyon/studioDeck.ts:4180
 msgid "Auto-update: Off"
 msgstr ""
 
@@ -1731,7 +1731,7 @@ msgstr ""
 msgid "Automatically probe the primary WAN interface and switch the default route to the backup WAN interface (e.g. 4G modem or secondary router) when the primary provider loses connectivity, without breaking routing or firewall rules."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1295
+#: src/tachyon/studioDeck.ts:1300
 msgid "Automatically quarantines nodes that drop live connections early (< 64 KiB in < 3 s)"
 msgstr ""
 
@@ -1877,7 +1877,7 @@ msgstr ""
 msgid "Balancer Type"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1968
+#: src/tachyon/studioDeck.ts:1980
 #: src/views/settings.ts:1866
 #: src/views/tachyon.ts:2821
 #: src/views/tachyon.ts:3085
@@ -1888,7 +1888,7 @@ msgstr ""
 msgid "Balancers & Failover Policies"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1967
+#: src/tachyon/studioDeck.ts:1979
 msgid "Balancers & Failover Settings"
 msgstr ""
 
@@ -1963,7 +1963,7 @@ msgstr ""
 msgid "Benchmarking..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3120
+#: src/tachyon/studioDeck.ts:3132
 msgid "Bento Cards View"
 msgstr ""
 
@@ -2008,7 +2008,7 @@ msgid "Block"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:4055
-#: src/tachyon/studioDeck.ts:3753
+#: src/tachyon/studioDeck.ts:3765
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2294
 msgid "Block (Reject)"
 msgstr ""
@@ -2175,7 +2175,7 @@ msgstr ""
 msgid "Built-in OpenVPN client via .ovpn import or manual settings"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3765
+#: src/tachyon/studioDeck.ts:3777
 msgid "Built-in output"
 msgstr ""
 
@@ -2203,7 +2203,7 @@ msgstr ""
 msgid "By schedule"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4835
+#: src/tachyon/studioDeck.ts:4847
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2041
 msgid "Bypass"
 msgstr ""
@@ -2236,7 +2236,7 @@ msgstr ""
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5290
+#: src/tachyon/studioDeck.ts:5302
 msgid "COMPOSITE"
 msgstr ""
 
@@ -2303,7 +2303,7 @@ msgstr ""
 msgid "Cache file path cannot be empty"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4779
+#: src/tachyon/studioDeck.ts:4791
 msgid "Cached nodes not loaded yet — click \"Update\" on the subscription card"
 msgstr ""
 
@@ -2317,7 +2317,7 @@ msgstr ""
 
 #: src/helpers/formatOutboundType.ts:336
 #: src/tachyon/connectionWizard.ts:8849
-#: src/tachyon/studioDeck.ts:1850
+#: src/tachyon/studioDeck.ts:1862
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1796
 #: src/tachyon/tabs/diagnostic/initController.ts:1298
 #: src/views/dns_speed_test.ts:355
@@ -2375,7 +2375,7 @@ msgstr ""
 msgid "Capture diagnostics blackbox"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3127
+#: src/tachyon/studioDeck.ts:3139
 msgid "Cards"
 msgstr ""
 
@@ -2591,7 +2591,7 @@ msgstr ""
 msgid "Choose Hosts File..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1836
+#: src/tachyon/studioDeck.ts:1848
 msgid "Choose Preset Architecture"
 msgstr ""
 
@@ -2698,7 +2698,7 @@ msgstr ""
 msgid "Clear all"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5250
+#: src/tachyon/studioDeck.ts:5262
 msgid "Click Configure to add services or domains"
 msgstr ""
 
@@ -2730,7 +2730,7 @@ msgstr ""
 msgid "Click to change section icon and badge"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3791
+#: src/tachyon/studioDeck.ts:3803
 msgid "Click to choose section icon"
 msgstr ""
 
@@ -2900,8 +2900,8 @@ msgstr ""
 msgid "Clients in Pool"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3882
-#: src/tachyon/studioDeck.ts:5092
+#: src/tachyon/studioDeck.ts:3894
+#: src/tachyon/studioDeck.ts:5104
 #: src/views/outbounds.ts:2673
 #: src/views/outbounds.ts:2718
 #: src/views/tachyon.ts:1056
@@ -2909,11 +2909,11 @@ msgstr ""
 msgid "Clone"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3869
+#: src/tachyon/studioDeck.ts:3881
 msgid "Clone Section"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5048
+#: src/tachyon/studioDeck.ts:5060
 msgid "Clone Source"
 msgstr ""
 
@@ -2953,7 +2953,7 @@ msgstr ""
 msgid "Close active TCP/UDP sessions routed through the previous node when priority failover switches to another server so traffic immediately moves to the active route instead of staying on a stalled connection."
 msgstr ""
 
-#: src/views/balancers.ts:916
+#: src/views/balancers.ts:918
 #: src/views/section.ts:5241
 msgid "Close active TCP/UDP sessions routed through the previous node when the balancer switches to a new server so traffic immediately moves to the new route instead of staying on the old or stalled connection."
 msgstr ""
@@ -3053,7 +3053,7 @@ msgstr ""
 msgid "Community Service Lists"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3106
+#: src/tachyon/studioDeck.ts:3118
 msgid "Compact Pipeline View"
 msgstr ""
 
@@ -3082,7 +3082,7 @@ msgstr ""
 msgid "Composite Boolean Rule (AND / OR / NOT)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1211
+#: src/tachyon/studioDeck.ts:1212
 msgid "Composite score combining EWMA RTT, RFC 3550 jitter, and packet loss penalty"
 msgstr ""
 
@@ -3128,7 +3128,7 @@ msgstr ""
 msgid "Conditional DNS query routing"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3836
+#: src/tachyon/studioDeck.ts:3848
 #: src/views/section.ts:10635
 #: src/views/settings.ts:1869
 #: src/views/tachyon.ts:2819
@@ -3190,11 +3190,11 @@ msgstr ""
 msgid "Configuration rolled back and applied"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3894
-#: src/tachyon/studioDeck.ts:5104
-#: src/tachyon/studioDeck.ts:5396
-#: src/tachyon/studioDeck.ts:5873
-#: src/tachyon/studioDeck.ts:5936
+#: src/tachyon/studioDeck.ts:3906
+#: src/tachyon/studioDeck.ts:5116
+#: src/tachyon/studioDeck.ts:5408
+#: src/tachyon/studioDeck.ts:5911
+#: src/tachyon/studioDeck.ts:5974
 msgid "Configure"
 msgstr ""
 
@@ -3202,7 +3202,7 @@ msgstr ""
 msgid "Configure Bot Token and Admin Chat IDs first"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5682
+#: src/tachyon/studioDeck.ts:5720
 msgid "Configure Policy"
 msgstr ""
 
@@ -3222,7 +3222,7 @@ msgstr ""
 msgid "Configure section & rules →"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3040
+#: src/tachyon/studioDeck.ts:3052
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1625
 #: src/views/server.ts:7914
 #: src/views/server.ts:7987
@@ -3298,7 +3298,7 @@ msgstr ""
 msgid "Connection"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3845
+#: src/tachyon/studioDeck.ts:3857
 msgid "Connection & Balancer"
 msgstr ""
 
@@ -3413,7 +3413,7 @@ msgstr ""
 msgid "Copied"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4407
+#: src/tachyon/studioDeck.ts:4419
 #: src/tachyon/tabs/diagnostic/partials/renderSupportModal.ts:332
 msgid "Copied!"
 msgstr ""
@@ -3456,7 +3456,7 @@ msgstr ""
 msgid "Copy address"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4553
+#: src/tachyon/studioDeck.ts:4565
 #: src/views/outbounds.ts:2472
 msgid "Copy link"
 msgstr ""
@@ -3465,7 +3465,7 @@ msgstr ""
 msgid "Copy log"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4538
+#: src/tachyon/studioDeck.ts:4550
 #: src/tachyon/tabs/dashboard/initController.ts:2892
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2213
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2214
@@ -3532,7 +3532,7 @@ msgstr ""
 msgid "Create & Apply"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1859
+#: src/tachyon/studioDeck.ts:1871
 msgid "Create & Configure"
 msgstr ""
 
@@ -3544,27 +3544,27 @@ msgstr ""
 msgid "Create (Draft)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1812
+#: src/tachyon/studioDeck.ts:1824
 msgid "Create Balancer Policy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1814
+#: src/tachyon/studioDeck.ts:1826
 msgid "Create Family Profile"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1813
+#: src/tachyon/studioDeck.ts:1825
 msgid "Create Inbound Server"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1819
+#: src/tachyon/studioDeck.ts:1831
 msgid "Create Item"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1806
+#: src/tachyon/studioDeck.ts:1818
 msgid "Create Routing Section"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1815
+#: src/tachyon/studioDeck.ts:1827
 msgid "Create Schedule Rule"
 msgstr ""
 
@@ -3572,11 +3572,11 @@ msgstr ""
 msgid "Create Server (Draft)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1811
+#: src/tachyon/studioDeck.ts:1823
 msgid "Create Traffic Condition"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1540
+#: src/tachyon/studioDeck.ts:1552
 msgid "Create a new configuration entry and open its settings modal"
 msgstr ""
 
@@ -3772,7 +3772,7 @@ msgstr ""
 msgid "Cyan"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1384
+#: src/tachyon/studioDeck.ts:1393
 msgid "Cycles new connections evenly across healthy nodes in the active latency pool"
 msgstr ""
 
@@ -4229,12 +4229,12 @@ msgstr ""
 msgid "Delay value cannot be empty"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3903
-#: src/tachyon/studioDeck.ts:5113
-#: src/tachyon/studioDeck.ts:5405
-#: src/tachyon/studioDeck.ts:5691
-#: src/tachyon/studioDeck.ts:5882
-#: src/tachyon/studioDeck.ts:5945
+#: src/tachyon/studioDeck.ts:3915
+#: src/tachyon/studioDeck.ts:5125
+#: src/tachyon/studioDeck.ts:5417
+#: src/tachyon/studioDeck.ts:5729
+#: src/tachyon/studioDeck.ts:5920
+#: src/tachyon/studioDeck.ts:5983
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1426
 #: src/views/outbounds.ts:2748
 #: src/views/server.ts:3935
@@ -4436,7 +4436,7 @@ msgid "Direct (Default)"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:4076
-#: src/tachyon/studioDeck.ts:3758
+#: src/tachyon/studioDeck.ts:3770
 #: src/tachyon/tabs/dashboard/inboundServers.ts:399
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2301
 msgid "Direct (WAN)"
@@ -4604,7 +4604,7 @@ msgstr ""
 msgid "Disorder (out-of-order TCP segments without fake)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1826
+#: src/tachyon/studioDeck.ts:1838
 #: src/views/outbounds.ts:1797
 msgid "Display Name"
 msgstr ""
@@ -4747,7 +4747,7 @@ msgstr ""
 msgid "Domains & Lists"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1962
+#: src/tachyon/studioDeck.ts:1974
 msgid "Domains & Subnets"
 msgstr ""
 
@@ -4879,7 +4879,7 @@ msgstr ""
 msgid "Drag to reorder"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3487
+#: src/tachyon/studioDeck.ts:3499
 msgid "Drag to reorder priority"
 msgstr ""
 
@@ -4891,7 +4891,7 @@ msgstr ""
 msgid "Drop subscription nodes whose name contains any of these keywords. Case-insensitive, emoji supported."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5177
+#: src/tachyon/studioDeck.ts:5189
 #: src/views/conditions.ts:1455
 msgid "Duplicate IPs"
 msgstr ""
@@ -4904,7 +4904,7 @@ msgstr ""
 msgid "Duplicate auto-domains"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5173
+#: src/tachyon/studioDeck.ts:5185
 #: src/views/conditions.ts:1423
 msgid "Duplicate domains"
 msgstr ""
@@ -5586,7 +5586,7 @@ msgstr ""
 msgid "Expecting: %s"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4653
+#: src/tachyon/studioDeck.ts:4665
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:677
 msgid "Expires"
 msgstr ""
@@ -6091,8 +6091,8 @@ msgstr ""
 msgid "Failed to update device"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2798
-#: src/tachyon/studioDeck.ts:2817
+#: src/tachyon/studioDeck.ts:2810
+#: src/tachyon/studioDeck.ts:2829
 msgid "Failed to update subscription."
 msgstr ""
 
@@ -6106,8 +6106,8 @@ msgstr ""
 msgid "Failed to update subscriptions"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2802
-#: src/tachyon/studioDeck.ts:2821
+#: src/tachyon/studioDeck.ts:2814
+#: src/tachyon/studioDeck.ts:2833
 msgid "Failed to update subscriptions."
 msgstr ""
 
@@ -6119,7 +6119,7 @@ msgstr ""
 msgid "Failover & Balancer Groups"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1401
+#: src/tachyon/studioDeck.ts:1411
 #: src/tachyon/tabs/dashboard/initController.ts:2191
 #: src/views/balancers.ts:610
 msgid "Failover (Pin Current Until Failure)"
@@ -6298,12 +6298,12 @@ msgid "Family Profile"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2006
-#: src/tachyon/studioDeck.ts:2005
+#: src/tachyon/studioDeck.ts:2017
 #: src/views/tachyon.ts:3133
 msgid "Family Profiles"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2004
+#: src/tachyon/studioDeck.ts:2016
 msgid "Family Profiles Settings"
 msgstr ""
 
@@ -6320,7 +6320,7 @@ msgid "Faster node in the same tier"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:3752
-#: src/views/balancers.ts:904
+#: src/views/balancers.ts:906
 #: src/views/section.ts:5750
 msgid "Faster server search interval"
 msgstr ""
@@ -6339,7 +6339,7 @@ msgstr ""
 msgid "Files"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2872
+#: src/tachyon/studioDeck.ts:2884
 msgid "Filter"
 msgstr ""
 
@@ -6388,7 +6388,7 @@ msgstr ""
 msgid "Finland (fi)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1315
+#: src/tachyon/studioDeck.ts:1321
 msgid "Fires a parallel backup dial if primary handshake stalls and uses whichever connects first"
 msgstr ""
 
@@ -6589,7 +6589,7 @@ msgstr ""
 msgid "Full width (100%)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1478
+#: src/tachyon/studioDeck.ts:1490
 msgid "Full-device VPN tunnel with junk packet & header obfuscation"
 msgstr ""
 
@@ -6786,7 +6786,7 @@ msgstr ""
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2006
+#: src/tachyon/studioDeck.ts:2018
 msgid "Group household devices to apply SafeSearch, ad blocking, and parental schedules."
 msgstr ""
 
@@ -6925,7 +6925,7 @@ msgstr ""
 msgid "Healthy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1311
+#: src/tachyon/studioDeck.ts:1317
 #: src/tachyon/tabs/dashboard/initController.ts:2183
 #: src/views/balancers.ts:606
 msgid "Hedged (Happy Eyeballs Parallel Backup)"
@@ -6978,7 +6978,7 @@ msgstr ""
 msgid "Hidden widgets (click \"+\" to restore to dashboard)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4734
+#: src/tachyon/studioDeck.ts:4746
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:994
 msgid "Hide"
 msgstr ""
@@ -7106,7 +7106,7 @@ msgstr ""
 msgid "High"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1464
+#: src/tachyon/studioDeck.ts:1476
 msgid "High-throughput QUIC proxy ideal for congested or lossy mobile networks"
 msgstr ""
 
@@ -7143,7 +7143,7 @@ msgstr ""
 msgid "Host"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1988
+#: src/tachyon/studioDeck.ts:2000
 msgid "Host your own VLESS Reality, Hysteria2, TUIC, AmneziaWG, or SOCKS5 server for remote access."
 msgstr ""
 
@@ -7524,15 +7524,15 @@ msgstr ""
 msgid "Imported URLTest Idle Timeout"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4395
+#: src/tachyon/studioDeck.ts:4407
 msgid "In Outbound Group"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5028
+#: src/tachyon/studioDeck.ts:5040
 msgid "In groups:"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4385
+#: src/tachyon/studioDeck.ts:4397
 msgid "In pool"
 msgstr ""
 
@@ -7557,7 +7557,7 @@ msgid "Inbound Server on Router (Host)"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2018
-#: src/tachyon/studioDeck.ts:1987
+#: src/tachyon/studioDeck.ts:1999
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1555
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:3881
 msgid "Inbound Servers"
@@ -7571,7 +7571,7 @@ msgstr ""
 msgid "Inbound Servers (Capture Traffic)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1983
+#: src/tachyon/studioDeck.ts:1995
 msgid "Inbound Servers Settings"
 msgstr ""
 
@@ -7689,7 +7689,7 @@ msgstr ""
 msgid "Include servers"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4396
+#: src/tachyon/studioDeck.ts:4408
 msgid "Included in Group (all sources)"
 msgstr ""
 
@@ -7876,7 +7876,7 @@ msgstr ""
 msgid "Interface language"
 msgstr ""
 
-#: src/views/balancers.ts:915
+#: src/views/balancers.ts:917
 msgid "Interrupt Existing Connections on Switch"
 msgstr ""
 
@@ -7895,7 +7895,7 @@ msgstr ""
 msgid "Interrupt existing connections when group URLTest switches the active server"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5454
+#: src/tachyon/studioDeck.ts:5483
 #: src/tachyon/tabs/dashboard/initController.ts:3091
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4401
 #: src/views/balancers.ts:473
@@ -8661,7 +8661,7 @@ msgstr ""
 msgid "LEAST LOAD • ACTIVE × RTT"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4227
+#: src/tachyon/studioDeck.ts:4239
 msgid "LINKS"
 msgstr ""
 
@@ -8711,7 +8711,7 @@ msgstr ""
 msgid "Latency Tolerance (ms)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1969
+#: src/tachyon/studioDeck.ts:1981
 msgid "Latency URLTest, Stability EWMA+Jitter, Sticky HRW, Least Load, Weighted, Hedged, Throughput, Quota, and tiered Priority failover."
 msgstr ""
 
@@ -8775,7 +8775,7 @@ msgstr ""
 msgid "Least Load (Active Connections × RTT)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1249
+#: src/tachyon/studioDeck.ts:1252
 msgid "Least Load (Active Streams × RTT)"
 msgstr ""
 
@@ -8808,7 +8808,7 @@ msgstr ""
 msgid "Light Yellow"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1523
+#: src/tachyon/studioDeck.ts:1535
 msgid "Lightweight proxy server for LAN devices or Telegram MTProto"
 msgstr ""
 
@@ -8846,7 +8846,7 @@ msgstr ""
 msgid "Listen port"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5838
+#: src/tachyon/studioDeck.ts:5876
 msgid "Listening"
 msgstr ""
 
@@ -9266,7 +9266,7 @@ msgstr ""
 msgid "Matched Sections"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5339
+#: src/tachyon/studioDeck.ts:5351
 msgid "Matched Services, Domains & Subnets"
 msgstr ""
 
@@ -9481,7 +9481,7 @@ msgstr ""
 msgid "Model name to use. Leave empty to auto-detect or use provider default (gpt-4o-mini / claude-haiku-4-5 / deepseek-chat / gemini-2.5-flash / llama3.2)."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1509
+#: src/tachyon/studioDeck.ts:1521
 msgid "Modern multiplexed QUIC or TLS-padding inbound server"
 msgstr ""
 
@@ -9523,7 +9523,7 @@ msgstr ""
 msgid "Move Down"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3520
+#: src/tachyon/studioDeck.ts:3532
 msgid "Move Down (Lower Priority)"
 msgstr ""
 
@@ -9531,7 +9531,7 @@ msgstr ""
 msgid "Move Up"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3500
+#: src/tachyon/studioDeck.ts:3512
 msgid "Move Up (Higher Priority)"
 msgstr ""
 
@@ -9785,7 +9785,7 @@ msgstr ""
 msgid "No Outbound Groups defined yet. Create reusable filtered groups (by prefix, country flag, regex, protocol) to use in Sections and Priority Balancers."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4324
+#: src/tachyon/studioDeck.ts:4336
 msgid "No URL configured"
 msgstr ""
 
@@ -9811,7 +9811,7 @@ msgstr ""
 msgid "No active connections (standby mode)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3363
+#: src/tachyon/studioDeck.ts:3375
 msgid "No active entries"
 msgstr ""
 
@@ -9925,7 +9925,7 @@ msgstr ""
 msgid "No matchers set"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3329
+#: src/tachyon/studioDeck.ts:3341
 msgid "No matching entries found"
 msgstr ""
 
@@ -10029,10 +10029,10 @@ msgstr ""
 msgid "Node list is empty"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4147
-#: src/tachyon/studioDeck.ts:4283
-#: src/tachyon/studioDeck.ts:4335
-#: src/tachyon/studioDeck.ts:4339
+#: src/tachyon/studioDeck.ts:4159
+#: src/tachyon/studioDeck.ts:4295
+#: src/tachyon/studioDeck.ts:4347
+#: src/tachyon/studioDeck.ts:4351
 #: src/tachyon/tabs/dashboard/initController.ts:2969
 #: src/views/settings.ts:1861
 msgid "Nodes"
@@ -10043,11 +10043,11 @@ msgstr ""
 msgid "Nodes & Balancers"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1929
+#: src/tachyon/studioDeck.ts:1941
 msgid "Nodes & Subscriptions"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1928
+#: src/tachyon/studioDeck.ts:1940
 msgid "Nodes & Subscriptions Settings"
 msgstr ""
 
@@ -10091,7 +10091,7 @@ msgstr ""
 msgid "Not applicable for current engine"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5323
+#: src/tachyon/studioDeck.ts:5335
 msgid "Not attached to any section yet"
 msgstr ""
 
@@ -10798,8 +10798,8 @@ msgstr ""
 msgid "Package is not installed"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1922
-#: src/tachyon/studioDeck.ts:1943
+#: src/tachyon/studioDeck.ts:1934
+#: src/tachyon/studioDeck.ts:1955
 #: src/tachyon/studioDeck.ts:530
 msgid "Packet Desync"
 msgstr ""
@@ -10820,7 +10820,7 @@ msgstr ""
 msgid "Packet fragmentation and fake ClientHello for YouTube, Discord & Telegram"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1914
+#: src/tachyon/studioDeck.ts:1926
 msgid "Packets are matched from top (#1) to bottom. Drag cards or use priority arrows to reorder."
 msgstr ""
 
@@ -10837,12 +10837,12 @@ msgid "Parallel (fast failover, ≤3 s)"
 msgstr ""
 
 #: src/tachyon/appShell.ts:2010
-#: src/tachyon/studioDeck.ts:2019
+#: src/tachyon/studioDeck.ts:2031
 #: src/views/tachyon.ts:3152
 msgid "Parental Control"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2015
+#: src/tachyon/studioDeck.ts:2027
 msgid "Parental Control Settings"
 msgstr ""
 
@@ -10854,7 +10854,7 @@ msgstr ""
 msgid "Partial presence match — other AND conditions not supplied"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1291
+#: src/tachyon/studioDeck.ts:1296
 #: src/tachyon/tabs/dashboard/initController.ts:2181
 #: src/views/balancers.ts:605
 msgid "Passive Circuit Breaker (Early-Abort Quarantine)"
@@ -11041,7 +11041,7 @@ msgstr ""
 msgid "Period"
 msgstr ""
 
-#: src/views/balancers.ts:893
+#: src/views/balancers.ts:894
 #: src/views/section.ts:5740
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr ""
@@ -11075,7 +11075,7 @@ msgstr ""
 msgid "Phone"
 msgstr ""
 
-#: src/views/balancers.ts:892
+#: src/views/balancers.ts:893
 msgid "Pick Fastest Server Within Active Tier"
 msgstr ""
 
@@ -11095,7 +11095,7 @@ msgstr ""
 msgid "Ping"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1976
+#: src/tachyon/studioDeck.ts:1988
 msgid "Ping / Stability"
 msgstr ""
 
@@ -11108,7 +11108,7 @@ msgstr ""
 msgid "Pinning"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3113
+#: src/tachyon/studioDeck.ts:3125
 msgid "Pipeline"
 msgstr ""
 
@@ -11129,7 +11129,7 @@ msgstr ""
 msgid "Please enter Subscription URL"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1682
+#: src/tachyon/studioDeck.ts:1694
 msgid "Please enter a name."
 msgstr ""
 
@@ -11214,12 +11214,12 @@ msgstr ""
 msgid "Polymorphic Entropy Mode"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5487
+#: src/tachyon/studioDeck.ts:5516
 #: src/views/outbounds.ts:1025
 msgid "Pool"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1977
+#: src/tachyon/studioDeck.ts:1989
 msgid "Pool / Load Balance"
 msgstr ""
 
@@ -11233,7 +11233,7 @@ msgstr ""
 #: src/tachyon/connectionWizard.ts:4042
 #: src/tachyon/connectionWizard.ts:4549
 #: src/tachyon/connectionWizard.ts:4762
-#: src/tachyon/studioDeck.ts:5838
+#: src/tachyon/studioDeck.ts:5876
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:581
 #: src/views/section.ts:3869
 #: src/views/server.ts:7927
@@ -11337,7 +11337,7 @@ msgstr ""
 msgid "Prefer IPv6"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4840
+#: src/tachyon/studioDeck.ts:4852
 msgid "Preferred"
 msgstr ""
 
@@ -11353,7 +11353,7 @@ msgstr ""
 msgid "Preferred IP"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1336
+#: src/tachyon/studioDeck.ts:1343
 msgid "Prefers nodes with the highest measured peak throughput with exponential decay"
 msgstr ""
 
@@ -11509,7 +11509,7 @@ msgstr ""
 msgid "Priority (Ordered Failover Tiers)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1424
+#: src/tachyon/studioDeck.ts:1435
 msgid "Priority Cascade (Tiered Failover)"
 msgstr ""
 
@@ -11642,7 +11642,7 @@ msgid "Proto"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:392
-#: src/tachyon/studioDeck.ts:4592
+#: src/tachyon/studioDeck.ts:4604
 #: src/tachyon/tabs/dashboard/initController.ts:2978
 #: src/tachyon/tabs/dashboard/initController.ts:6074
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2307
@@ -11698,7 +11698,7 @@ msgstr ""
 msgid "Proxy / Tunnel"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1921
+#: src/tachyon/studioDeck.ts:1933
 msgid "Proxy / VPN"
 msgstr ""
 
@@ -11722,12 +11722,12 @@ msgstr ""
 msgid "Proxy IPv6:"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4596
+#: src/tachyon/studioDeck.ts:4608
 #: src/views/outbounds.ts:2519
 msgid "Proxy Link"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1938
+#: src/tachyon/studioDeck.ts:1950
 #: src/views/outbounds.ts:1338
 msgid "Proxy Links"
 msgstr ""
@@ -11797,7 +11797,7 @@ msgstr ""
 msgid "Purple"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5860
+#: src/tachyon/studioDeck.ts:5898
 msgid "QR / Client Link"
 msgstr ""
 
@@ -11904,11 +11904,11 @@ msgstr ""
 msgid "Quiet Hours Start"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5508
+#: src/tachyon/studioDeck.ts:5537
 msgid "Quota"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1353
+#: src/tachyon/studioDeck.ts:1361
 msgid "Quota (Traffic Cap Balancer)"
 msgstr ""
 
@@ -12311,7 +12311,7 @@ msgstr ""
 msgid "Removing"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1231
+#: src/tachyon/studioDeck.ts:1233
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr ""
 
@@ -12349,7 +12349,8 @@ msgstr ""
 msgid "Reset Stats"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5517
+#: src/tachyon/studioDeck.ts:5546
+#: src/tachyon/studioDeck.ts:5581
 msgid "Reset active sessions"
 msgstr ""
 
@@ -12377,7 +12378,7 @@ msgstr ""
 msgid "Resetting…"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1493
+#: src/tachyon/studioDeck.ts:1505
 msgid "Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
 msgstr ""
 
@@ -12577,7 +12578,7 @@ msgstr ""
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1950
+#: src/tachyon/studioDeck.ts:1962
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr ""
 
@@ -12614,7 +12615,7 @@ msgstr ""
 msgid "Rose"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1380
+#: src/tachyon/studioDeck.ts:1389
 #: src/tachyon/tabs/dashboard/initController.ts:2189
 #: src/views/balancers.ts:609
 msgid "Round-Robin Pool"
@@ -12729,11 +12730,11 @@ msgstr ""
 msgid "Route via Proxy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5751
+#: src/tachyon/studioDeck.ts:5789
 msgid "Route: By router rules"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5756
+#: src/tachyon/studioDeck.ts:5794
 msgid "Route: Direct (WAN)"
 msgstr ""
 
@@ -12815,7 +12816,7 @@ msgstr ""
 msgid "Routes"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1253
+#: src/tachyon/studioDeck.ts:1256
 msgid "Routes new connections to the node with the lowest (active_connections + 1) × RTT score"
 msgstr ""
 
@@ -12852,12 +12853,12 @@ msgstr ""
 msgid "Routing Rule Tracer"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1913
+#: src/tachyon/studioDeck.ts:1925
 #: src/tachyon/tabs/dashboard/initController.ts:6314
 msgid "Routing Sections"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1912
+#: src/tachyon/studioDeck.ts:1924
 msgid "Routing Sections Settings"
 msgstr ""
 
@@ -12939,7 +12940,7 @@ msgstr ""
 msgid "Rule-sets that also extract IP/CIDR subnets into nftables."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3862
+#: src/tachyon/studioDeck.ts:3874
 #: src/views/server.ts:6117
 #: src/views/tachyon.ts:1041
 #: src/views/tachyon.ts:1048
@@ -13114,7 +13115,7 @@ msgstr ""
 msgid "STUN (P2P Calls)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4139
+#: src/tachyon/studioDeck.ts:4151
 msgid "SUBSCRIPTION"
 msgstr ""
 
@@ -13333,7 +13334,7 @@ msgstr ""
 msgid "Section quarantined due to error (other sections continue working):"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3701
+#: src/tachyon/studioDeck.ts:3713
 msgid "Section rules"
 msgstr ""
 
@@ -13349,7 +13350,7 @@ msgstr ""
 msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5612
+#: src/tachyon/studioDeck.ts:5650
 #: src/views/settings.ts:1860
 #: src/views/tachyon.ts:2818
 #: src/views/tachyon.ts:3034
@@ -13630,7 +13631,7 @@ msgstr ""
 msgid "Selected: specified devices become guests. Inverted: all devices on the network become guests EXCEPT the trusted ones (Zero-Trust)."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5625
+#: src/tachyon/studioDeck.ts:5663
 msgid "Selection & Filter Parameters"
 msgstr ""
 
@@ -13724,7 +13725,7 @@ msgid "Sequential: failover to the next server after N failures. Parallel: aggre
 msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:662
-#: src/tachyon/studioDeck.ts:4591
+#: src/tachyon/studioDeck.ts:4603
 #: src/tachyon/tabs/dashboard/initController.ts:2977
 #: src/tachyon/tabs/dashboard/initController.ts:6045
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2255
@@ -13918,16 +13919,16 @@ msgstr ""
 msgid "Servers"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4814
+#: src/tachyon/studioDeck.ts:4826
 msgid "Servers in source"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4759
-#: src/tachyon/studioDeck.ts:4871
+#: src/tachyon/studioDeck.ts:4771
+#: src/tachyon/studioDeck.ts:4883
 msgid "Servers in subscription"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4771
+#: src/tachyon/studioDeck.ts:4783
 msgid "Servers in subscription:"
 msgstr ""
 
@@ -13939,7 +13940,7 @@ msgstr ""
 msgid "Servers →"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4825
+#: src/tachyon/studioDeck.ts:4837
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:503
 msgid "Service"
 msgstr ""
@@ -13956,7 +13957,7 @@ msgstr ""
 msgid "Service Control"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1961
+#: src/tachyon/studioDeck.ts:1973
 msgid "Service Lists"
 msgstr ""
 
@@ -14042,7 +14043,7 @@ msgstr ""
 msgid "Settings saved and applied"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3094
+#: src/tachyon/studioDeck.ts:3106
 msgid "Setup Wizard"
 msgstr ""
 
@@ -14076,7 +14077,7 @@ msgstr ""
 msgid "Shared CDN / Anycast Warning"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1357
+#: src/tachyon/studioDeck.ts:1365
 msgid "Shifts new streams to remaining under-quota nodes once a node reaches its MiB cap"
 msgstr ""
 
@@ -14084,7 +14085,7 @@ msgstr ""
 msgid "Shopping"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5852
+#: src/tachyon/studioDeck.ts:5890
 msgid "Show QR code & client share links"
 msgstr ""
 
@@ -14120,8 +14121,8 @@ msgstr ""
 msgid "Show metadata on dashboard"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4709
-#: src/tachyon/studioDeck.ts:4735
+#: src/tachyon/studioDeck.ts:4721
+#: src/tachyon/studioDeck.ts:4747
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:976
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:995
 msgid "Show more"
@@ -14250,7 +14251,7 @@ msgstr ""
 msgid "Smart Detect mode"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1274
+#: src/tachyon/studioDeck.ts:1278
 msgid "Smooth weighted round-robin across top healthy nodes proportional to 1/RTT²"
 msgstr ""
 
@@ -14363,7 +14364,7 @@ msgstr ""
 msgid "Source Settings"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4380
+#: src/tachyon/studioDeck.ts:4392
 msgid "Source is in the global pool and not attached directly to a specific section"
 msgstr ""
 
@@ -14430,7 +14431,7 @@ msgstr ""
 msgid "Stability & Fleet Report"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1207
+#: src/tachyon/studioDeck.ts:1208
 msgid "Stability (EWMA + Jitter + Loss Filter)"
 msgstr ""
 
@@ -14477,7 +14478,7 @@ msgstr ""
 msgid "Standard (Handshake + HTTP HEAD)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1539
+#: src/tachyon/studioDeck.ts:1551
 msgid "Standard Item"
 msgstr ""
 
@@ -14593,7 +14594,7 @@ msgstr ""
 msgid "Status / Suite"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1405
+#: src/tachyon/studioDeck.ts:1415
 msgid "Stays pinned to the current working server regardless of RTT fluctuations until it fails"
 msgstr ""
 
@@ -14601,7 +14602,7 @@ msgstr ""
 msgid "Step-by-Step Outbound Connection (Client / DPI)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1227
+#: src/tachyon/studioDeck.ts:1229
 msgid "Sticky Flow (Rendezvous HRW Affinity)"
 msgstr ""
 
@@ -14651,7 +14652,7 @@ msgstr ""
 #: src/tachyon/appShell.ts:3329
 #: src/tachyon/methods/custom/getDashboardSections.ts:3623
 #: src/tachyon/methods/custom/getDashboardSections.ts:4019
-#: src/tachyon/studioDeck.ts:5838
+#: src/tachyon/studioDeck.ts:5876
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1410
 #: src/tachyon/tabs/dashboard/initController.ts:6571
 #: src/tachyon/tabs/dashboard/initController.ts:6674
@@ -14770,7 +14771,7 @@ msgstr ""
 msgid "Subscription"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4670
+#: src/tachyon/studioDeck.ts:4682
 msgid "Subscription Info:"
 msgstr ""
 
@@ -14803,7 +14804,7 @@ msgstr ""
 msgid "Subscription auto update"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4215
+#: src/tachyon/studioDeck.ts:4227
 msgid "Subscription cache last updated"
 msgstr ""
 
@@ -14832,16 +14833,16 @@ msgstr ""
 msgid "Subscription update interval"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2793
+#: src/tachyon/studioDeck.ts:2805
 msgid "Subscription update timed out."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2783
+#: src/tachyon/studioDeck.ts:2795
 msgid "Subscription updated."
 msgstr ""
 
 #: src/tachyon/configHistoryModal.ts:682
-#: src/tachyon/studioDeck.ts:1937
+#: src/tachyon/studioDeck.ts:1949
 #: src/views/settings.ts:1863
 msgid "Subscriptions"
 msgstr ""
@@ -14925,7 +14926,7 @@ msgstr ""
 msgid "Switch DNS to DoH"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3004
+#: src/tachyon/studioDeck.ts:3016
 #: src/tachyon/switchHistory.ts:228
 msgid "Switch history"
 msgstr ""
@@ -15136,7 +15137,7 @@ msgstr ""
 msgid "TLS / HTTPS"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1448
+#: src/tachyon/studioDeck.ts:1460
 msgid "TLS 1.3 REALITY inbound server without owning a domain name"
 msgstr ""
 
@@ -15801,7 +15802,7 @@ msgstr ""
 msgid "Throughput (Active Bandwidth Decay)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1332
+#: src/tachyon/studioDeck.ts:1339
 msgid "Throughput (Peak Bandwidth Selection)"
 msgstr ""
 
@@ -15848,7 +15849,7 @@ msgstr ""
 msgid "Time skew tolerance"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:2020
+#: src/tachyon/studioDeck.ts:2032
 msgid "Time-based internet access and section restrictions by day of week."
 msgstr ""
 
@@ -15861,7 +15862,7 @@ msgstr ""
 msgid "Timeout in milliseconds for each probe request through this section."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4638
+#: src/tachyon/studioDeck.ts:4650
 msgid "Title"
 msgstr ""
 
@@ -15873,7 +15874,7 @@ msgstr ""
 msgid "Toddler"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4895
+#: src/tachyon/studioDeck.ts:4907
 msgid "Toggle details & servers"
 msgstr ""
 
@@ -15881,7 +15882,7 @@ msgstr ""
 msgid "Token is required when the bot is enabled"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5466
+#: src/tachyon/studioDeck.ts:5495
 #: src/tachyon/tabs/dashboard/initController.ts:3093
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4411
 #: src/views/balancers.ts:473
@@ -15975,7 +15976,7 @@ msgstr ""
 msgid "Tracing routing rules..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4646
+#: src/tachyon/studioDeck.ts:4658
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1195
 #: src/tachyon/tabs/dashboard/initController.ts:2717
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3764
@@ -15988,11 +15989,11 @@ msgstr ""
 msgid "Traffic & Speed"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1949
+#: src/tachyon/studioDeck.ts:1961
 msgid "Traffic Conditions"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1948
+#: src/tachyon/studioDeck.ts:1960
 msgid "Traffic Conditions Settings"
 msgstr ""
 
@@ -16144,7 +16145,7 @@ msgstr ""
 msgid "Trusted Master Devices (MAC / IP)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3334
+#: src/tachyon/studioDeck.ts:3346
 msgid "Try clearing the filter or click the create button above to add a new entry."
 msgstr ""
 
@@ -16171,7 +16172,7 @@ msgstr ""
 msgid "Tunnel Network (CIDR)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1941
+#: src/tachyon/studioDeck.ts:1953
 msgid "Tunnels & Protocols"
 msgstr ""
 
@@ -16433,7 +16434,7 @@ msgstr ""
 msgid "Unhealthy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1930
+#: src/tachyon/studioDeck.ts:1942
 msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
 msgstr ""
 
@@ -16489,7 +16490,7 @@ msgstr ""
 msgid "Unlimited"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4642
+#: src/tachyon/studioDeck.ts:4654
 msgid "Unlimited (∞)"
 msgstr ""
 
@@ -16537,7 +16538,7 @@ msgstr ""
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4984
+#: src/tachyon/studioDeck.ts:4996
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:751
 #: src/tachyon/tabs/updates/cardDefinitions.ts:108
 #: src/tachyon/tabs/updates/cardDefinitions.ts:118
@@ -16545,7 +16546,7 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3066
+#: src/tachyon/studioDeck.ts:3078
 msgid "Update All Subscriptions"
 msgstr ""
 
@@ -16613,7 +16614,7 @@ msgstr ""
 msgid "Update this subscription automatically"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4967
+#: src/tachyon/studioDeck.ts:4979
 msgid "Update this subscription now"
 msgstr ""
 
@@ -16625,9 +16626,9 @@ msgstr ""
 msgid "Update window start"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4217
-#: src/tachyon/studioDeck.ts:4331
-#: src/tachyon/studioDeck.ts:4661
+#: src/tachyon/studioDeck.ts:4229
+#: src/tachyon/studioDeck.ts:4343
+#: src/tachyon/studioDeck.ts:4673
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:685
 msgid "Updated"
 msgstr ""
@@ -16656,11 +16657,11 @@ msgstr ""
 msgid "Updating lists..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3065
+#: src/tachyon/studioDeck.ts:3077
 msgid "Updating subscriptions..."
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4983
+#: src/tachyon/studioDeck.ts:4995
 #: src/tachyon/tabs/dashboard/initController.ts:4121
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:722
 msgid "Updating..."
@@ -16761,7 +16762,7 @@ msgstr ""
 msgid "Use ISP DNS from WAN port"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1626
+#: src/tachyon/studioDeck.ts:1638
 msgid "Use ISP DNS servers from WAN port"
 msgstr ""
 
@@ -16820,7 +16821,7 @@ msgstr ""
 msgid "Use duration format like 10s, 1m or 2m30s"
 msgstr ""
 
-#: src/views/balancers.ts:905
+#: src/views/balancers.ts:907
 #: src/views/outbounds.ts:4038
 #: src/views/section.ts:4647
 #: src/views/section.ts:5188
@@ -16845,7 +16846,7 @@ msgstr ""
 msgid "Use letters, digits, dots, underscores, or hyphens"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1428
+#: src/tachyon/studioDeck.ts:1439
 msgid "Use primary server tier first and automatically fail over to backup tiers on outage"
 msgstr ""
 
@@ -16857,7 +16858,7 @@ msgstr ""
 msgid "Used by"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5322
+#: src/tachyon/studioDeck.ts:5334
 msgid "Used in"
 msgstr ""
 
@@ -16873,8 +16874,8 @@ msgstr ""
 msgid "Used in Section"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5353
-#: src/tachyon/studioDeck.ts:5639
+#: src/tachyon/studioDeck.ts:5365
+#: src/tachyon/studioDeck.ts:5677
 #: src/views/balancers.ts:660
 #: src/views/balancers.ts:675
 #: src/views/conditions.ts:1505
@@ -16889,7 +16890,7 @@ msgstr ""
 msgid "Used in sections"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4830
+#: src/tachyon/studioDeck.ts:4842
 msgid "User"
 msgstr ""
 
@@ -17101,7 +17102,7 @@ msgstr ""
 msgid "Versions"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:4187
+#: src/tachyon/studioDeck.ts:4199
 msgid "Via"
 msgstr ""
 
@@ -17118,7 +17119,7 @@ msgstr ""
 msgid "Via proxy"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5764
+#: src/tachyon/studioDeck.ts:5802
 msgid "Via section"
 msgstr ""
 
@@ -17362,7 +17363,7 @@ msgstr ""
 msgid "Weekends (Sat-Sun)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1270
+#: src/tachyon/studioDeck.ts:1274
 #: src/tachyon/tabs/dashboard/initController.ts:2179
 #: src/views/balancers.ts:604
 msgid "Weighted (Smooth WRR by 1/RTT²)"
@@ -17537,7 +17538,7 @@ msgstr ""
 msgid "absent"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:3163
+#: src/tachyon/studioDeck.ts:3175
 #: src/tachyon/tabs/dashboard/inboundServers.ts:964
 #: src/tachyon/tabs/diagnostic/initController.ts:1735
 #: src/tachyon/tabs/diagnostic/initController.ts:1768
@@ -17619,7 +17620,7 @@ msgstr ""
 msgid "disorder (Out-of-order TCP Split)"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5213
+#: src/tachyon/studioDeck.ts:5225
 msgid "domains"
 msgstr ""
 
@@ -17643,7 +17644,7 @@ msgstr ""
 msgid "e.g. Banned Domains or My Devices"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1579
+#: src/tachyon/studioDeck.ts:1591
 msgid "e.g. Fast Europe URLTest, Backup Failover"
 msgstr ""
 
@@ -17651,7 +17652,7 @@ msgstr ""
 msgid "e.g. Fastest"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1583
+#: src/tachyon/studioDeck.ts:1595
 msgid "e.g. Home VLESS Reality, Mobile Hysteria2"
 msgstr ""
 
@@ -17671,7 +17672,7 @@ msgstr ""
 msgid "e.g. Main Route, Streaming, Work"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1569
+#: src/tachyon/studioDeck.ts:1581
 msgid "e.g. Main Subscription, EU VLESS, YouTube Desync"
 msgstr ""
 
@@ -17687,7 +17688,7 @@ msgstr ""
 msgid "e.g. SHA256 — leave empty for default"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1574
+#: src/tachyon/studioDeck.ts:1586
 msgid "e.g. Streaming Sites, Gaming Ports, Home Devices"
 msgstr ""
 
@@ -17707,7 +17708,7 @@ msgstr ""
 msgid "e.g. Unlim_RU or Fast_EU"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:1564
+#: src/tachyon/studioDeck.ts:1576
 msgid "e.g. YouTube, Gaming, AI Services, Work VPN"
 msgstr ""
 
@@ -17978,7 +17979,7 @@ msgstr ""
 msgid "server_port must be a number from 1 to 65535"
 msgstr ""
 
-#: src/tachyon/studioDeck.ts:5571
+#: src/tachyon/studioDeck.ts:5609
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:708
 msgid "servers"
 msgstr ""

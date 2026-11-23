@@ -884,6 +884,7 @@ function createBalancersContent(section) {
   );
   o.modalonly = true;
   o.default = '1';
+  o.rmempty = false;
   o.depends('balancer_type', 'priority');
 
   o = section.option(
@@ -896,6 +897,7 @@ function createBalancersContent(section) {
   );
   o.modalonly = true;
   o.default = '0';
+  o.rmempty = false;
   o.depends('balancer_type', 'priority');
 
   o = section.option(
@@ -919,6 +921,7 @@ function createBalancersContent(section) {
   );
   o.modalonly = true;
   o.default = '1';
+  o.rmempty = false;
   o.cfgvalue = function (sectionId) {
     const explicit = uci.get(
       UCI_PACKAGE,

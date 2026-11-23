@@ -99,6 +99,12 @@ pub const TACHYON_VERSION: &str = match option_env!("TACHYON_BUILD_VERSION") {
     _ => env!("CARGO_PKG_VERSION"),
 };
 
+/// Git commit SHA baked into the binary at build time (via `build.rs` / `TACHYON_BUILD_COMMIT`).
+pub const TACHYON_COMMIT_SHA: &str = match option_env!("TACHYON_BUILD_COMMIT") {
+    Some(v) if !v.is_empty() => v,
+    _ => "",
+};
+
 pub fn unix_now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2693,6 +2699,25 @@ pub struct PriorityLevelConfig {
     pub include_regex: String,
     #[serde(default)]
     pub exclude_regex: String,
+}
+
+fn default_balancer_interrupt_exist_connections(balancer_type: &str, mode: &str) -> bool {
+    let btype = balancer_type.trim();
+    if btype.eq_ignore_ascii_case("urltest") {
+        let bmode = mode.trim().to_ascii_lowercase();
+        !matches!(
+            bmode.as_str(),
+            "stability"
+                | "sticky"
+                | "least_load"
+                | "weighted"
+                | "hedged"
+                | "throughput"
+                | "round_robin"
+        )
+    } else {
+        true
+    }
 }
 
 /// Policy-only balancer configuration.
@@ -5737,13 +5762,19 @@ impl RouterStoreData {
                     } else {
                         b.name.clone()
                     };
+                    let balancer_mode = b.opt("mode").unwrap_or(default_mode).to_string();
+                    let default_interrupt = default_balancer_interrupt_exist_connections(
+                        &balancer_type,
+                        &balancer_mode,
+                    );
+                    let default_pick_fastest = balancer_type.eq_ignore_ascii_case("priority");
                     balancer_section_links.push((bal_id.clone(), b.list("section")));
                     self.balancers.push(BalancerConfig {
                         id: bal_id,
                         enabled: b.opt("enabled").is_none_or(parse_bool),
                         name: bal_name,
                         balancer_type,
-                        mode: b.opt("mode").unwrap_or(default_mode).to_string(),
+                        mode: balancer_mode,
                         testing_url: b
                             .opt("testing_url")
                             .or_else(|| b.opt("health_url"))
@@ -5787,7 +5818,8 @@ impl RouterStoreData {
                         passive_check: b.opt("passive_check").is_none_or(parse_bool),
                         interrupt_exist_connections: b
                             .opt("interrupt_exist_connections")
-                            .is_some_and(parse_bool),
+                            .map(parse_bool)
+                            .unwrap_or(default_interrupt),
                         health_urls: b.list("health_urls"),
                         active_check_interval: b
                             .opt("active_check_interval")
@@ -5798,7 +5830,10 @@ impl RouterStoreData {
                             .opt("recovery_check_interval")
                             .unwrap_or("30s")
                             .to_string(),
-                        pick_fastest: b.opt("pick_fastest").is_some_and(parse_bool),
+                        pick_fastest: b
+                            .opt("pick_fastest")
+                            .map(parse_bool)
+                            .unwrap_or(default_pick_fastest),
                         switch_to_faster_same_priority: b
                             .opt("switch_to_faster_same_priority")
                             .is_some_and(parse_bool),
@@ -12406,5 +12441,132 @@ config outbound_source 'awg31_src'
                 .is_none(),
             "cleared routed_dns_server must not resurrect from existing sections"
         );
+    }
+
+    #[test]
+    fn test_balancer_interrupt_and_pick_fastest_persistence_and_defaults() {
+        let mut store = RouterStoreData::default();
+        let initial_json = serde_json::json!({
+            "bal_least_on": {
+                ".type": "balancer",
+                ".name": "bal_least_on",
+                ".index": 0,
+                "name": "Least On",
+                "balancer_type": "urltest",
+                "mode": "least_test",
+                "enabled": "1",
+                "interrupt_exist_connections": "1"
+            },
+            "bal_stability_on": {
+                ".type": "balancer",
+                ".name": "bal_stability_on",
+                ".index": 1,
+                "name": "Stability On",
+                "balancer_type": "urltest",
+                "mode": "stability",
+                "enabled": "1",
+                "interrupt_exist_connections": "1"
+            },
+            "bal_least_off": {
+                ".type": "balancer",
+                ".name": "bal_least_off",
+                ".index": 2,
+                "name": "Least Off",
+                "balancer_type": "urltest",
+                "mode": "least_test",
+                "enabled": "1",
+                "interrupt_exist_connections": "0"
+            },
+            "bal_prio_explicit": {
+                ".type": "balancer",
+                ".name": "bal_prio_explicit",
+                ".index": 3,
+                "name": "Priority Explicit",
+                "balancer_type": "priority",
+                "enabled": "1",
+                "pick_fastest": "0",
+                "interrupt_exist_connections": "1"
+            },
+            "bal_stability_default": {
+                ".type": "balancer",
+                ".name": "bal_stability_default",
+                ".index": 4,
+                "name": "Stability Default",
+                "balancer_type": "urltest",
+                "mode": "stability",
+                "enabled": "1"
+            },
+            "bal_least_default": {
+                ".type": "balancer",
+                ".name": "bal_least_default",
+                ".index": 5,
+                "name": "Least Default",
+                "balancer_type": "urltest",
+                "mode": "least_test",
+                "enabled": "1"
+            },
+            "bal_prio_default": {
+                ".type": "balancer",
+                ".name": "bal_prio_default",
+                ".index": 6,
+                "name": "Priority Default",
+                "balancer_type": "priority",
+                "enabled": "1"
+            }
+        });
+
+        let imported = store.import_from_json_sections(initial_json.as_object().unwrap());
+        assert!(imported >= 7);
+
+        fn find<'a>(s: &'a RouterStoreData, id: &str) -> &'a BalancerConfig {
+            s.balancers
+                .iter()
+                .find(|b| b.id == id)
+                .unwrap_or_else(|| panic!("missing balancer {id}"))
+        }
+
+        assert!(find(&store, "bal_least_on").interrupt_exist_connections);
+        assert!(find(&store, "bal_stability_on").interrupt_exist_connections);
+        assert!(!find(&store, "bal_least_off").interrupt_exist_connections);
+        assert!(find(&store, "bal_prio_explicit").interrupt_exist_connections);
+        assert!(!find(&store, "bal_prio_explicit").pick_fastest);
+        assert!(!find(&store, "bal_stability_default").interrupt_exist_connections);
+        assert!(find(&store, "bal_least_default").interrupt_exist_connections);
+        assert!(find(&store, "bal_prio_default").interrupt_exist_connections);
+        assert!(find(&store, "bal_prio_default").pick_fastest);
+
+        let synced = sync_store_to_json_sections(&store, Some(&initial_json));
+        assert_eq!(synced["bal_least_on"]["interrupt_exist_connections"], "1");
+        assert_eq!(
+            synced["bal_stability_on"]["interrupt_exist_connections"],
+            "1"
+        );
+        assert_eq!(synced["bal_least_off"]["interrupt_exist_connections"], "0");
+        assert_eq!(
+            synced["bal_prio_explicit"]["interrupt_exist_connections"],
+            "1"
+        );
+        assert_eq!(synced["bal_prio_explicit"]["pick_fastest"], "0");
+        assert_eq!(
+            synced["bal_stability_default"]["interrupt_exist_connections"],
+            "0"
+        );
+        assert_eq!(
+            synced["bal_least_default"]["interrupt_exist_connections"],
+            "1"
+        );
+        assert_eq!(
+            synced["bal_prio_default"]["interrupt_exist_connections"],
+            "1"
+        );
+        assert_eq!(synced["bal_prio_default"]["pick_fastest"], "1");
+
+        let mut reimported = RouterStoreData::default();
+        reimported.import_from_json_sections(synced.as_object().unwrap());
+        assert!(find(&reimported, "bal_least_on").interrupt_exist_connections);
+        assert!(find(&reimported, "bal_stability_on").interrupt_exist_connections);
+        assert!(!find(&reimported, "bal_least_off").interrupt_exist_connections);
+        assert!(find(&reimported, "bal_prio_explicit").interrupt_exist_connections);
+        assert!(!find(&reimported, "bal_prio_explicit").pick_fastest);
     }
 }

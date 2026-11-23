@@ -167,6 +167,353 @@ pub fn classify_version_status(current: &str, latest: &str) -> &'static str {
     }
 }
 
+pub fn is_update_available_status(status: &str) -> bool {
+    matches!(status, "outdated" | "outdated_same_release")
+}
+
+pub fn is_valid_commit_sha(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    (7..=40).contains(&trimmed.len()) && trimmed.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn short_sha(sha: &str) -> &str {
+    let trimmed = sha.trim();
+    let n = trimmed.len().min(8);
+    &trimmed[..n]
+}
+
+fn attach_build_metadata(
+    payload: &mut Value,
+    current_sha: &str,
+    latest_sha: &str,
+    current_build: &str,
+    latest_build: &str,
+) {
+    let Some(map) = payload.as_object_mut() else {
+        return;
+    };
+    if !current_sha.trim().is_empty() {
+        map.insert("current_sha".to_string(), json!(current_sha.trim()));
+    }
+    if !latest_sha.trim().is_empty() {
+        map.insert("latest_sha".to_string(), json!(latest_sha.trim()));
+    }
+    if !current_build.trim().is_empty() {
+        map.insert("current_build".to_string(), json!(current_build.trim()));
+    }
+    if !latest_build.trim().is_empty() {
+        map.insert("latest_build".to_string(), json!(latest_build.trim()));
+    }
+}
+
+fn format_installed_release_msg(
+    disp: &str,
+    current: &str,
+    display_ver: &str,
+    local_sha: &str,
+    remote_sha: &str,
+) -> String {
+    if compare_versions(current, display_ver) == std::cmp::Ordering::Equal {
+        if !local_sha.is_empty()
+            && !remote_sha.is_empty()
+            && !short_sha(local_sha).eq_ignore_ascii_case(short_sha(remote_sha))
+        {
+            format!(
+                "{disp} успешно обновлён до новой сборки {display_ver} ({} -> {})",
+                short_sha(local_sha),
+                short_sha(remote_sha)
+            )
+        } else {
+            format!("{disp} успешно обновлён до новой сборки {display_ver}")
+        }
+    } else {
+        format!("{disp} успешно обновлён: {current} -> {display_ver}")
+    }
+}
+
+fn clean_sha_token(tok: &str) -> &str {
+    tok.trim_matches(|c: char| matches!(c, '`' | '\'' | '"' | ',' | '.' | ';' | ')' | '('))
+}
+
+pub fn extract_release_commit_sha(rel: &Value) -> String {
+    if let Some(tc) = rel.get("target_commitish").and_then(Value::as_str)
+        && is_valid_commit_sha(tc)
+    {
+        return tc.trim().to_ascii_lowercase();
+    }
+
+    let body = rel.get("body").and_then(Value::as_str).unwrap_or("");
+    if body.is_empty() {
+        return String::new();
+    }
+
+    // Pass 1: trailer / standalone metadata line ("Commit: <sha>" or "SHA: <sha>") — pick last match.
+    let mut trailer_match: Option<String> = None;
+    for raw_line in body.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let after_prefix = if lower.starts_with("commit:") || lower.starts_with("commit ") {
+            trimmed.get(7..).map(str::trim)
+        } else if lower.starts_with("sha:") || lower.starts_with("sha ") {
+            trimmed.get(4..).map(str::trim)
+        } else {
+            None
+        };
+        if let Some(rest) = after_prefix
+            && let Some(first_tok) = rest.split_whitespace().next()
+        {
+            let clean = clean_sha_token(first_tok);
+            if is_valid_commit_sha(clean) {
+                trailer_match = Some(clean.to_ascii_lowercase());
+            }
+        }
+    }
+    if let Some(found) = trailer_match {
+        return found;
+    }
+
+    // Pass 2: "/commit/<hex>" URL fallback — pick last valid match.
+    let mut url_match: Option<String> = None;
+    let mut cursor = body;
+    while let Some(pos) = cursor.find("/commit/") {
+        let after = &cursor[pos + "/commit/".len()..];
+        let hex: String = after
+            .chars()
+            .take(40)
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        if is_valid_commit_sha(&hex) {
+            url_match = Some(hex.to_ascii_lowercase());
+        }
+        cursor = after;
+    }
+    url_match.unwrap_or_default()
+}
+
+pub fn compute_release_build_fingerprint(
+    rel: &Value,
+    arch_keywords: &[&str],
+    prefer_ext: &str,
+    remote_sha: &str,
+) -> String {
+    if is_valid_commit_sha(remote_sha) {
+        return format!("sha:{}", remote_sha.trim().to_ascii_lowercase());
+    }
+
+    let published = rel
+        .get("published_at")
+        .or_else(|| rel.get("created_at"))
+        .or_else(|| rel.get("published"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+
+    let assets = rel
+        .get("assets")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+
+    if let Some((asset_name, _)) = select_openwrt_package_asset(assets, arch_keywords, prefer_ext)
+        && let Some(asset) = assets
+            .iter()
+            .find(|a| a.get("name").and_then(Value::as_str) == Some(asset_name.as_str()))
+    {
+        if let Some(hex_digest) = asset
+            .get("digest")
+            .and_then(Value::as_str)
+            .and_then(|d| d.trim().strip_prefix("sha256:"))
+            .map(str::trim)
+            .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return format!("digest:{}", hex_digest.to_ascii_lowercase());
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        if !published.is_empty() {
+            parts.push(published.to_string());
+        }
+        let updated = asset
+            .get("updated_at")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if !updated.is_empty() {
+            parts.push(updated.to_string());
+        }
+        if let Some(size) = asset.get("size").and_then(Value::as_u64)
+            && size > 0
+        {
+            parts.push(size.to_string());
+        }
+        if !parts.is_empty() {
+            return format!("build:{}", parts.join("|"));
+        }
+    }
+
+    if !published.is_empty() {
+        return format!("build:{published}");
+    }
+    String::new()
+}
+
+pub fn same_release_build_differs(
+    local_sha: &str,
+    remote_sha: &str,
+    local_fp: &str,
+    remote_fp: &str,
+) -> bool {
+    let l_sha = local_sha.trim().to_ascii_lowercase();
+    let r_sha = remote_sha.trim().to_ascii_lowercase();
+    if is_valid_commit_sha(&l_sha) && is_valid_commit_sha(&r_sha) {
+        let prefix_len = l_sha.len().min(r_sha.len());
+        return l_sha[..prefix_len] != r_sha[..prefix_len];
+    }
+
+    let l_fp = local_fp.trim();
+    let r_fp = remote_fp.trim();
+    if !l_fp.is_empty() && !r_fp.is_empty() {
+        return l_fp != r_fp;
+    }
+
+    false
+}
+
+fn build_state_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("build-state.json")
+}
+
+fn read_installed_build_entry(
+    data_dir: &Path,
+    canon: &str,
+    current_version: &str,
+) -> (String, String) {
+    let cur = current_version.trim();
+    if cur.is_empty() {
+        return (String::new(), String::new());
+    }
+    let path = build_state_path(data_dir);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return (String::new(), String::new());
+    };
+    let Ok(val) = serde_json::from_str::<Value>(&raw) else {
+        return (String::new(), String::new());
+    };
+    let Some(entry) = val.get(canon).and_then(Value::as_object) else {
+        return (String::new(), String::new());
+    };
+    let rec_ver = entry.get("version").and_then(Value::as_str).unwrap_or("");
+    if rec_ver.trim().is_empty() || compare_versions(rec_ver, cur) != std::cmp::Ordering::Equal {
+        return (String::new(), String::new());
+    }
+    let sha = entry
+        .get("sha")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| is_valid_commit_sha(s))
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    let fp = entry
+        .get("fingerprint")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    (sha, fp)
+}
+
+fn write_installed_build_entry(
+    data_dir: &Path,
+    canon: &str,
+    version: &str,
+    sha: &str,
+    fingerprint: &str,
+) {
+    let ver = version.trim();
+    let clean_sha = sha.trim().to_ascii_lowercase();
+    let clean_fp = fingerprint.trim();
+    if ver.is_empty() || (clean_sha.is_empty() && clean_fp.is_empty()) {
+        return;
+    }
+    let path = build_state_path(data_dir);
+    let mut root_map = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Map<String, Value>>(&s).ok())
+        .unwrap_or_default();
+    let mut entry = serde_json::Map::new();
+    entry.insert("version".to_string(), json!(ver));
+    if is_valid_commit_sha(&clean_sha) {
+        entry.insert("sha".to_string(), json!(clean_sha));
+    }
+    if !clean_fp.is_empty() {
+        entry.insert("fingerprint".to_string(), json!(clean_fp));
+    }
+    root_map.insert(canon.to_string(), Value::Object(entry));
+    if let Ok(serialized) = serde_json::to_string_pretty(&Value::Object(root_map)) {
+        let _ = crypto_gen::write_file_if_changed(&path, serialized.as_bytes());
+    }
+}
+
+fn resolve_local_build_identity(
+    core: &Arc<CoreManager>,
+    canon: &str,
+    current_version: &str,
+) -> (String, String) {
+    if canon == "tachyon" && is_valid_commit_sha(store::TACHYON_COMMIT_SHA) {
+        let compiled_sha = store::TACHYON_COMMIT_SHA.trim().to_ascii_lowercase();
+        let compiled_fp = format!("sha:{compiled_sha}");
+        return (compiled_sha, compiled_fp);
+    }
+    let data_dir = snapshots::data_dir_for_state(&core.state);
+    read_installed_build_entry(&data_dir, canon, current_version)
+}
+
+async fn fetch_github_tag_commit_sha(
+    core: &Arc<CoreManager>,
+    repo: &str,
+    tag: &str,
+    proxy: Option<&str>,
+) -> String {
+    let clean_tag = tag.trim();
+    if repo.trim().is_empty() || clean_tag.is_empty() {
+        return String::new();
+    }
+    let url = format!("https://api.github.com/repos/{repo}/commits/{clean_tag}");
+    if let Ok(bytes) = core
+        .curl_fetch_with_doh_fallback(&url, false, 8, proxy)
+        .await
+        && let Ok(val) = serde_json::from_slice::<Value>(&bytes)
+        && let Some(sha) = val.get("sha").and_then(Value::as_str)
+        && is_valid_commit_sha(sha)
+    {
+        return sha.trim().to_ascii_lowercase();
+    }
+    String::new()
+}
+
+async fn resolve_remote_build_identity(
+    core: &Arc<CoreManager>,
+    repo: &str,
+    tag: &str,
+    rel: &Value,
+    proxy: Option<&str>,
+) -> (String, String) {
+    let mut remote_sha = extract_release_commit_sha(rel);
+    if remote_sha.is_empty() && !tag.trim().is_empty() {
+        remote_sha = fetch_github_tag_commit_sha(core, repo, tag, proxy).await;
+    }
+    let remote_fp = compute_release_build_fingerprint(
+        rel,
+        &detect_arch_keywords(),
+        preferred_openwrt_pkg_ext(),
+        &remote_sha,
+    );
+    (remote_sha, remote_fp)
+}
+
 pub fn detect_arch_keywords() -> Vec<&'static str> {
     let mut raw = String::new();
     if let Ok(rel) = std::fs::read_to_string("/etc/openwrt_release") {
@@ -1295,10 +1642,29 @@ async fn perform_check_update(core: &Arc<CoreManager>, canon: &str, job_id: Opti
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let status = classify_version_status(&current, &latest);
+            let (local_sha, local_fp) = resolve_local_build_identity(core, canon, &current);
+            let (remote_sha, remote_fp) =
+                resolve_remote_build_identity(core, &repo, tag, &rel, proxy.as_deref()).await;
+            let mut status = classify_version_status(&current, &latest);
+            if status == "latest"
+                && same_release_build_differs(&local_sha, &remote_sha, &local_fp, &remote_fp)
+            {
+                status = "outdated_same_release";
+            }
             let msg = match status {
                 "outdated" => {
                     format!("{disp}: доступна новая версия {latest} (установлена {current})")
+                }
+                "outdated_same_release" => {
+                    if !local_sha.is_empty() && !remote_sha.is_empty() {
+                        format!(
+                            "{disp}: доступна обновлённая сборка {latest} ({} -> {})",
+                            short_sha(&local_sha),
+                            short_sha(&remote_sha)
+                        )
+                    } else {
+                        format!("{disp}: доступна обновлённая сборка текущей версии {latest}")
+                    }
                 }
                 "dev" => format!("{disp}: установлена сборка {current} (новее релиза {latest})"),
                 _ => format!("{disp}: установлена актуальная версия {current}"),
@@ -1306,7 +1672,7 @@ async fn perform_check_update(core: &Arc<CoreManager>, canon: &str, job_id: Opti
             if let Some(jid) = job_id {
                 append_job_log(jid, Some("completed"), &format!("[OK] {msg}"));
             }
-            let payload = json!({
+            let mut payload = json!({
                 "success": true,
                 "running": false,
                 "completed": true,
@@ -1319,23 +1685,25 @@ async fn perform_check_update(core: &Arc<CoreManager>, canon: &str, job_id: Opti
                 "latest_version": latest,
                 "release_url": release_url,
                 "release_notes": release_notes,
-                "changed": status == "outdated",
+                "changed": is_update_available_status(status),
                 "status": status,
                 "exit_code": 0,
                 "updated_at": now,
             });
+            attach_build_metadata(&mut payload, &local_sha, &remote_sha, &local_fp, &remote_fp);
             write_component_check_cache(canon, &payload);
             payload
         }
         Err(e) => {
             if canon == "tachyon" {
+                let (local_sha, local_fp) = resolve_local_build_identity(core, canon, &current);
                 let msg = format!(
                     "{disp}: установлена локальная сборка {current} (внешний репозиторий {repo} не опубликован)"
                 );
                 if let Some(jid) = job_id {
                     append_job_log(jid, Some("completed"), &format!("[OK] {msg}"));
                 }
-                let payload = json!({
+                let mut payload = json!({
                     "success": true,
                     "running": false,
                     "completed": true,
@@ -1353,6 +1721,7 @@ async fn perform_check_update(core: &Arc<CoreManager>, canon: &str, job_id: Opti
                     "exit_code": 0,
                     "updated_at": now,
                 });
+                attach_build_metadata(&mut payload, &local_sha, "", &local_fp, "");
                 write_component_check_cache(canon, &payload);
                 payload
             } else {
@@ -1604,6 +1973,7 @@ pub fn collect_staged_luci_sync_pairs(
                 || rel_slash.starts_with("usr/share/luci/")
                 || rel_slash.starts_with("usr/share/rpcd/")
                 || rel_slash == "etc/init.d/tachyon"
+                || rel_slash == "etc/hotplug.d/iface/99-tachyon-wan-monitor"
                 || rel_slash == "www/cgi-bin/tachyon-sub"
             {
                 Some(rel_slash)
@@ -1649,6 +2019,7 @@ fn sync_staged_luci_assets(stage_dir: &Path, target_root: &Path) -> usize {
     for (src, dst) in collect_staged_luci_sync_pairs(stage_dir, target_root) {
         let dst_slash = dst.to_string_lossy().replace('\\', "/");
         let mode = if dst_slash.ends_with("/etc/init.d/tachyon")
+            || dst_slash.ends_with("/etc/hotplug.d/iface/99-tachyon-wan-monitor")
             || dst_slash.ends_with("/www/cgi-bin/tachyon-sub")
         {
             0o755
@@ -1710,6 +2081,9 @@ struct StagedRelease {
     release_notes: String,
     backup_enabled: bool,
     current: String,
+    local_sha: String,
+    remote_sha: String,
+    remote_fingerprint: String,
 }
 
 fn component_error_payload(
@@ -1832,13 +2206,20 @@ async fn stage_release_binary(
         .unwrap_or("")
         .to_string();
 
+    let (local_sha, local_fp) = resolve_local_build_identity(core, canon, &current);
+    let (remote_sha, remote_fp) =
+        resolve_remote_build_identity(core, repo, &tag, &rel, proxy.as_deref()).await;
+    let same_release_update = compare_versions(&current, &target_ver) == std::cmp::Ordering::Equal
+        && same_release_build_differs(&local_sha, &remote_sha, &local_fp, &remote_fp);
+
     if action != "reinstall"
         && action != "install_version"
         && compare_versions(&current, &target_ver) == std::cmp::Ordering::Equal
+        && !same_release_update
     {
         let msg = format!("{disp} уже обновлён до версии {target_ver}");
         append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
-        let ok = json!({
+        let mut ok = json!({
             "success": true,
             "running": false,
             "completed": true,
@@ -1856,8 +2237,19 @@ async fn stage_release_binary(
             "exit_code": 0,
             "updated_at": now,
         });
+        attach_build_metadata(&mut ok, &local_sha, &remote_sha, "", "");
         write_component_check_cache(canon, &ok);
         return Err(ok);
+    }
+
+    if same_release_update {
+        append_job_log(
+            job_id,
+            Some("checking"),
+            &format!(
+                "[INFO] Обнаружена новая сборка внутри релиза {target_ver}, выполняю обновление..."
+            ),
+        );
     }
 
     let assets = rel
@@ -2074,6 +2466,9 @@ async fn stage_release_binary(
         release_notes,
         backup_enabled,
         current,
+        local_sha,
+        remote_sha,
+        remote_fingerprint: remote_fp,
     })
 }
 
@@ -2218,20 +2613,33 @@ async fn install_core_binary_release(
         );
     }
 
+    write_installed_build_entry(
+        &data_dir,
+        canon,
+        &target_ver,
+        &staged.remote_sha,
+        &staged.remote_fingerprint,
+    );
     let final_ver = core.refresh_core_version().await;
     let display_ver = if final_ver.is_empty() {
         target_ver.clone()
     } else {
         final_ver
     };
-    let msg = format!("{disp} успешно обновлён: {current} -> {display_ver}");
+    let msg = format_installed_release_msg(
+        disp,
+        &current,
+        &display_ver,
+        &staged.local_sha,
+        &staged.remote_sha,
+    );
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
     {
         let d_guard = core.state.data.read().await;
         crate::tg_bot::notify_if_enabled(&d_guard, "auto_update", &format!("[Tachyon] {msg}"));
     }
 
-    let ok = json!({
+    let mut ok = json!({
         "success": true,
         "running": false,
         "completed": true,
@@ -2249,6 +2657,13 @@ async fn install_core_binary_release(
         "exit_code": 0,
         "updated_at": store::unix_now_secs(),
     });
+    attach_build_metadata(
+        &mut ok,
+        &staged.remote_sha,
+        &staged.remote_sha,
+        &staged.remote_fingerprint,
+        &staged.remote_fingerprint,
+    );
     write_component_check_cache(canon, &ok);
     ok
 }
@@ -2425,7 +2840,21 @@ async fn install_tachyon_release(
         );
     }
 
-    let msg = format!("{disp} успешно обновлён: {current} -> {target_ver}");
+    write_installed_build_entry(
+        &data_dir,
+        canon,
+        &target_ver,
+        &staged.remote_sha,
+        &staged.remote_fingerprint,
+    );
+
+    let msg = format_installed_release_msg(
+        disp,
+        &current,
+        &target_ver,
+        &staged.local_sha,
+        &staged.remote_sha,
+    );
     append_job_log(job_id, Some("completed"), &format!("[OK] {msg}"));
     {
         let d_guard = core.state.data.read().await;
@@ -2442,7 +2871,7 @@ async fn install_tachyon_release(
         schedule_tachyon_service_restart();
     }
 
-    let ok = json!({
+    let mut ok = json!({
         "success": true,
         "running": false,
         "completed": true,
@@ -2462,6 +2891,13 @@ async fn install_tachyon_release(
         "exit_code": 0,
         "updated_at": store::unix_now_secs(),
     });
+    attach_build_metadata(
+        &mut ok,
+        &staged.remote_sha,
+        &staged.remote_sha,
+        &staged.remote_fingerprint,
+        &staged.remote_fingerprint,
+    );
     write_component_check_cache(canon, &ok);
     ok
 }
@@ -3097,7 +3533,7 @@ fn is_cache_outdated(cache_path: &Path) -> bool {
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|v| v.get("status").and_then(Value::as_str).map(str::to_string))
-        .is_some_and(|s| s == "outdated")
+        .is_some_and(|s| is_update_available_status(&s))
 }
 
 async fn run_component_install_and_wait(core: &Arc<CoreManager>, comp: &str) {
@@ -3176,7 +3612,8 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
             let cpath = Path::new(CHECK_CACHE_DIR).join(format!("{comp}.json"));
             if let Ok(raw) = std::fs::read_to_string(&cpath)
                 && let Ok(v) = serde_json::from_str::<Value>(&raw)
-                && v.get("status").and_then(Value::as_str) == Some("outdated")
+                && let Some(st) = v.get("status").and_then(Value::as_str)
+                && is_update_available_status(st)
             {
                 let cur = v
                     .get("current_version")
@@ -3186,7 +3623,19 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
                     .get("latest_version")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                crate::tg_bot::submit_update_available_notice(&d_snap, comp, cur, latest);
+                let latest_sha = v
+                    .get("latest_sha")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                let latest_label = if st == "outdated_same_release" && !latest_sha.is_empty() {
+                    format!("{latest} ({})", short_sha(latest_sha))
+                } else if st == "outdated_same_release" {
+                    format!("{latest} (новая сборка)")
+                } else {
+                    latest.to_string()
+                };
+                crate::tg_bot::submit_update_available_notice(&d_snap, comp, cur, &latest_label);
             }
         }
     }
@@ -3758,11 +4207,17 @@ mod tests {
         let stage = base.join("stage");
         let root = base.join("root");
         std::fs::create_dir_all(stage.join("etc/init.d")).unwrap();
+        std::fs::create_dir_all(stage.join("etc/hotplug.d/iface")).unwrap();
         std::fs::create_dir_all(stage.join("www/cgi-bin")).unwrap();
         std::fs::create_dir_all(stage.join("www/luci-static/resources/view/tachyon")).unwrap();
         std::fs::write(
             stage.join("etc/init.d/tachyon"),
             b"#!/bin/sh /etc/rc.common\n",
+        )
+        .unwrap();
+        std::fs::write(
+            stage.join("etc/hotplug.d/iface/99-tachyon-wan-monitor"),
+            b"#!/bin/sh\n",
         )
         .unwrap();
         std::fs::write(stage.join("www/cgi-bin/tachyon-sub"), b"#!/bin/sh\n").unwrap();
@@ -3773,8 +4228,12 @@ mod tests {
         .unwrap();
 
         let changed = sync_staged_luci_assets(&stage, &root);
-        assert_eq!(changed, 3);
+        assert_eq!(changed, 4);
         assert!(root.join("etc/init.d/tachyon").exists());
+        assert!(
+            root.join("etc/hotplug.d/iface/99-tachyon-wan-monitor")
+                .exists()
+        );
         assert!(root.join("www/cgi-bin/tachyon-sub").exists());
         #[cfg(unix)]
         {
@@ -3784,6 +4243,12 @@ mod tests {
                 .permissions()
                 .mode()
                 & 0o777;
+            let hotplug_mode =
+                std::fs::metadata(root.join("etc/hotplug.d/iface/99-tachyon-wan-monitor"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777;
             let cgi_mode = std::fs::metadata(root.join("www/cgi-bin/tachyon-sub"))
                 .unwrap()
                 .permissions()
@@ -3796,6 +4261,7 @@ mod tests {
                     .mode()
                     & 0o777;
             assert_eq!(init_mode, 0o755);
+            assert_eq!(hotplug_mode, 0o755);
             assert_eq!(cgi_mode, 0o755);
             assert_eq!(js_mode, 0o644);
         }
@@ -3883,5 +4349,181 @@ mod tests {
                 "expected None for unsupported component '{bad}'"
             );
         }
+    }
+
+    #[test]
+    fn test_extract_release_commit_sha_and_fingerprint() {
+        let with_hex_target = json!({
+            "target_commitish": "ABCDEF1234567890",
+            "body": "Commit: 1111111"
+        });
+        assert_eq!(
+            extract_release_commit_sha(&with_hex_target),
+            "abcdef1234567890"
+        );
+
+        let with_branch_target_and_trailer = json!({
+            "target_commitish": "2.0",
+            "body": "Fixes bug from /commit/aaaaaaa\nCommit: `6c85a10eb4ca6c0e4c38368e0428212b0b3adee2`\n"
+        });
+        assert_eq!(
+            extract_release_commit_sha(&with_branch_target_and_trailer),
+            "6c85a10eb4ca6c0e4c38368e0428212b0b3adee2"
+        );
+
+        let with_sha_line = json!({
+            "target_commitish": "main",
+            "body": "Notes\nSHA: FFFF9999AAAA\n"
+        });
+        assert_eq!(extract_release_commit_sha(&with_sha_line), "ffff9999aaaa");
+
+        let with_url_only = json!({
+            "target_commitish": "2.0",
+            "body": "See https://github.com/Dushnilin/tachyon/commit/1234abcd5678 for details"
+        });
+        assert_eq!(extract_release_commit_sha(&with_url_only), "1234abcd5678");
+
+        let digest_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let rel_with_digest = json!({
+            "published_at": "2026-11-23T10:00:00Z",
+            "assets": [{
+                "name": "tachyon-x86_64-v2.0.0-rc.1.ipk",
+                "browser_download_url": "https://example/pkg.ipk",
+                "digest": format!("sha256:{digest_hex}"),
+                "updated_at": "2026-11-23T10:05:00Z",
+                "size": 102400
+            }]
+        });
+        assert_eq!(
+            compute_release_build_fingerprint(
+                &rel_with_digest,
+                &["x86_64"],
+                ".ipk",
+                "6c85a10eb4ca"
+            ),
+            "sha:6c85a10eb4ca"
+        );
+        assert_eq!(
+            compute_release_build_fingerprint(&rel_with_digest, &["x86_64"], ".ipk", ""),
+            format!("digest:{digest_hex}")
+        );
+
+        let rel_with_meta = json!({
+            "published_at": "2026-11-23T10:00:00Z",
+            "assets": [{
+                "name": "tachyon-x86_64-v2.0.0-rc.1.ipk",
+                "browser_download_url": "https://example/pkg.ipk",
+                "updated_at": "2026-11-23T10:05:00Z",
+                "size": 102400
+            }]
+        });
+        assert_eq!(
+            compute_release_build_fingerprint(&rel_with_meta, &["x86_64"], ".ipk", ""),
+            "build:2026-11-23T10:00:00Z|2026-11-23T10:05:00Z|102400"
+        );
+    }
+
+    #[test]
+    fn test_same_release_build_differs_matrix() {
+        assert!(!same_release_build_differs(
+            "6c85a10",
+            "6C85A10EB4CA6C0E4C38368E0428212B0B3ADEE2",
+            "build:old",
+            "build:new"
+        ));
+        assert!(same_release_build_differs(
+            "cc01ab8",
+            "6c85a10eb4ca",
+            "build:same",
+            "build:same"
+        ));
+        assert!(!same_release_build_differs(
+            "",
+            "6c85a10eb4ca",
+            "digest:aaaa",
+            "digest:aaaa"
+        ));
+        assert!(same_release_build_differs(
+            "",
+            "",
+            "build:t1|u1|100",
+            "build:t1|u2|102"
+        ));
+        assert!(!same_release_build_differs(
+            "",
+            "6c85a10eb4ca",
+            "",
+            "sha:6c85a10eb4ca"
+        ));
+    }
+
+    #[test]
+    fn test_build_state_roundtrip_and_version_invalidation() {
+        let uniq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data_dir = std::env::temp_dir().join(format!("tachyon_build_state_{uniq}"));
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        write_installed_build_entry(
+            &data_dir,
+            "tachyon",
+            "2.0.0-rc.1",
+            "6C85A10EB4CA",
+            "sha:6c85a10eb4ca",
+        );
+        write_installed_build_entry(
+            &data_dir,
+            "sing_box",
+            "0.5.1",
+            "",
+            "digest:0123456789abcdef",
+        );
+
+        assert_eq!(
+            read_installed_build_entry(&data_dir, "tachyon", "v2.0.0-rc.1"),
+            ("6c85a10eb4ca".to_string(), "sha:6c85a10eb4ca".to_string())
+        );
+        assert_eq!(
+            read_installed_build_entry(&data_dir, "sing_box", "0.5.1"),
+            (String::new(), "digest:0123456789abcdef".to_string())
+        );
+        assert_eq!(
+            read_installed_build_entry(&data_dir, "tachyon", "2.0.0"),
+            (String::new(), String::new())
+        );
+
+        assert!(is_update_available_status("outdated"));
+        assert!(is_update_available_status("outdated_same_release"));
+        assert!(!is_update_available_status("latest"));
+        assert!(!is_update_available_status("dev"));
+        assert!(!is_update_available_status(""));
+
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn test_is_cache_outdated_recognizes_same_release() {
+        let uniq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("tachyon_cache_outdated_{uniq}"));
+        std::fs::create_dir_all(&base).unwrap();
+
+        let p_same = base.join("same.json");
+        std::fs::write(&p_same, r#"{"status":"outdated_same_release"}"#).unwrap();
+        assert!(is_cache_outdated(&p_same));
+
+        let p_outdated = base.join("outdated.json");
+        std::fs::write(&p_outdated, r#"{"status":"outdated"}"#).unwrap();
+        assert!(is_cache_outdated(&p_outdated));
+
+        let p_latest = base.join("latest.json");
+        std::fs::write(&p_latest, r#"{"status":"latest"}"#).unwrap();
+        assert!(!is_cache_outdated(&p_latest));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

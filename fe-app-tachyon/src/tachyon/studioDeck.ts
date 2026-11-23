@@ -1195,6 +1195,7 @@ function getQuickCreateTemplates(
           check_interval: '3m',
           tolerance: '50',
           testing_url: 'https://www.gstatic.com/generate_204',
+          interrupt_exist_connections: '1',
         },
       },
     ];
@@ -1219,6 +1220,7 @@ function getQuickCreateTemplates(
             check_interval: '2m',
             tolerance: '50',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1241,6 +1243,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1262,6 +1265,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1283,6 +1287,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1303,6 +1308,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '50',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '1',
           },
         },
         {
@@ -1324,6 +1330,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '60',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1345,6 +1352,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1367,6 +1375,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '1',
           },
         },
       );
@@ -1393,6 +1402,7 @@ function getQuickCreateTemplates(
             check_interval: '3m',
             tolerance: '80',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '0',
           },
         },
         {
@@ -1413,6 +1423,7 @@ function getQuickCreateTemplates(
             check_interval: '1m',
             tolerance: '100',
             testing_url: 'https://www.gstatic.com/generate_204',
+            interrupt_exist_connections: '1',
           },
         },
       );
@@ -1434,6 +1445,7 @@ function getQuickCreateTemplates(
         balancer_type: 'priority',
         check_interval: '30s',
         pick_fastest: '1',
+        interrupt_exist_connections: '1',
       },
     });
 
@@ -5440,7 +5452,24 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const balancerPool = Number(raw.balancer_pool || 0);
       const stickyHash = asArray(raw.sticky_hash);
       const quotaMib = Number(raw.quota_mib || 0);
-      const interruptConns = raw.interrupt_exist_connections === '1';
+      const explicitInterrupt = String(
+        raw.interrupt_exist_connections ?? '',
+      ).trim();
+      const interruptConns = explicitInterrupt
+        ? explicitInterrupt === '1' ||
+          explicitInterrupt.toLowerCase() === 'true'
+        : !(
+            btype === 'urltest' &&
+            [
+              'stability',
+              'sticky',
+              'least_load',
+              'weighted',
+              'hedged',
+              'throughput',
+              'round_robin',
+            ].includes(bmode)
+          );
 
       const policyChips: HTMLElement[] = [
         E(
@@ -5544,6 +5573,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ),
           );
         });
+        if (interruptConns) {
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
+              tr('Сброс сессий при смене', 'Reset active sessions'),
+            ),
+          );
+        }
       }
       if (incCountries.length) {
         policyChips.push(

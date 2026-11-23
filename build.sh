@@ -59,7 +59,8 @@ for pair in $TACHYON_TARGETS; do
     read -r -a extra_args <<< "${TACHYON_CARGO_EXTRA_ARGS}"
   fi
   TACHYON_BUILD_STD="${TACHYON_BUILD_STD:-1}"
-  build_env=(TACHYON_BUILD_VERSION="$RELEASE_VERSION")
+  TACHYON_BUILD_COMMIT="${TACHYON_BUILD_COMMIT:-$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)}"
+  build_env=(TACHYON_BUILD_VERSION="$RELEASE_VERSION" TACHYON_BUILD_COMMIT="$TACHYON_BUILD_COMMIT")
   if [[ "$TACHYON_BUILD_STD" == "1" && " ${TACHYON_CARGO_EXTRA_ARGS:-} " != *"build-std"* ]]; then
     build_env+=(RUSTC_BOOTSTRAP=1 CARGO_PROFILE_RELEASE_PANIC=immediate-abort)
     extra_args+=(-Z panic-immediate-abort -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size)

@@ -704,10 +704,22 @@ detect_arch() {
     fi
     _dist_arch=""
     if [ -r /etc/openwrt_release ]; then
-        _dist_arch="$(sed -n "s/^DISTRIB_ARCH='\(.*\)'/\1/p" /etc/openwrt_release 2>/dev/null | head -n 1)"
+        _dist_arch="$(sed -n "s/^DISTRIB_ARCH=['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\}.*/\1/p" /etc/openwrt_release 2>/dev/null | head -n 1)"
+    fi
+    _apk_arch=""
+    if [ -r /etc/apk/arch ]; then
+        _apk_arch="$(tr '\r\n' '  ' < /etc/apk/arch 2>/dev/null || true)"
+    fi
+    if command_exists apk; then
+        _apk_print="$(apk --print-arch 2>/dev/null || true)"
+        [ -n "$_apk_print" ] && _apk_arch="${_apk_arch} ${_apk_print}"
+    fi
+    _opkg_arch=""
+    if command_exists opkg; then
+        _opkg_arch="$(opkg print-architecture 2>/dev/null | awk '$1 == "arch" && $2 != "all" && $2 != "noarch" {printf "%s ", $2}' || true)"
     fi
     _uname="$(uname -m 2>/dev/null || echo unknown)"
-    _raw="${_dist_arch} ${_uname}"
+    _raw="${_dist_arch} ${_apk_arch} ${_opkg_arch} ${_uname}"
     case "$_raw" in
         *aarch64*|*arm64*) echo "aarch64" ;;
         *x86_64*|*amd64*) echo "x86_64" ;;
@@ -1472,9 +1484,13 @@ apply_tachyon_core() {
 }
 
 package_asset_name() {
-    _arch="$1"
-    _ver="$2"
-    _fmt="$3"
+    _arch="${1:-}"
+    _ver="${2:-}"
+    _fmt="${3:-}"
+    if [ -z "$_arch" ] || [ -z "$_ver" ]; then
+        err "Cannot build package asset name without target arch ('${_arch}') and version ('${_ver}')"
+        return 1
+    fi
     case "$_fmt" in
         apk) echo "tachyon-${_arch}-v${_ver}.apk" ;;
         ipk) echo "tachyon-${_arch}-v${_ver}.ipk" ;;
@@ -1552,6 +1568,10 @@ main() {
 
     detect_fetcher || exit 1
     ARCH="$(detect_arch)" || exit 1
+    if [ -z "$ARCH" ]; then
+        err "Failed to detect target architecture"
+        exit 1
+    fi
     detect_pkg_manager
     ensure_bootstrap_fetcher
     FMT="$(resolve_pkg_format)" || exit 1

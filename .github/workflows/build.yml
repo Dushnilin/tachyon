@@ -252,6 +252,7 @@ jobs:
           SKIP_FE_BUILD: '1'
           TACHYON_BUILD_STD: '1'
           TACHYON_BUILD_VERSION: '${{ needs.prepare.outputs.version }}'
+          TACHYON_BUILD_COMMIT: '${{ github.sha }}'
           TACHYON_TARGETS: '${{ matrix.target }}:${{ matrix.arch }}'
         run: bash build.sh "${{ needs.prepare.outputs.version }}" dist/release-final
 
@@ -303,6 +304,19 @@ jobs:
             if [[ "$line_count" -eq 0 ]] || { [[ "$line_count" -le 2 ]] && [[ "$first_line" == Commit:\ * ]]; }; then
               echo "preserve=false" >> "$GITHUB_OUTPUT"
             else
+              awk -v sha="${GITHUB_SHA}" '
+                { lines[NR] = $0 }
+                /^[[:space:]]*[Cc]ommit:[[:space:]]*[0-9a-fA-F]{7,40}[[:space:]]*$/ { last_commit_line = NR }
+                END {
+                  for (i = 1; i <= NR; i++) {
+                    print (i == last_commit_line ? ("Commit: " sha) : lines[i])
+                  }
+                  if (!last_commit_line) {
+                    if (NR > 0 && lines[NR] != "") print ""
+                    print "Commit: " sha
+                  }
+                }
+              ' /tmp/existing_body_lf.txt > /tmp/preserved_release_notes.md
               echo "preserve=true" >> "$GITHUB_OUTPUT"
             fi
           else
@@ -336,6 +350,7 @@ jobs:
           name: ${{ needs.prepare.outputs.tag }}
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.prepare.outputs.make_latest }}
+          body_path: /tmp/preserved_release_notes.md
           files: |
             release-assets/*
 

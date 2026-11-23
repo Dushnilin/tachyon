@@ -3257,10 +3257,21 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
             .filter(|s| !s.is_empty())
             .unwrap_or(tachyon_ver);
         let tachyon_upd = i32::from(
-            tachyon_cached.and_then(|r| r.get("status").and_then(Value::as_str))
-                == Some("outdated"),
+            tachyon_cached
+                .and_then(|r| r.get("status").and_then(Value::as_str))
+                .is_some_and(crate::updater::is_update_available_status),
         );
         obj.insert("tachyon_version".to_string(), json!(tachyon_ver));
+        obj.insert(
+            "tachyon_commit_sha".to_string(),
+            json!(crate::store::TACHYON_COMMIT_SHA),
+        );
+        if let Some(latest_sha) = tachyon_cached
+            .and_then(|r| r.get("latest_sha").and_then(Value::as_str))
+            .filter(|s| !s.is_empty())
+        {
+            obj.insert("tachyon_latest_sha".to_string(), json!(latest_sha));
+        }
         obj.insert("tachyon_latest_version".to_string(), json!(tachyon_latest));
         obj.insert("tachyon_update_available".to_string(), json!(tachyon_upd));
         obj.insert(
@@ -3289,7 +3300,9 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
             .filter(|s| !s.is_empty())
             .unwrap_or(&core_version);
         let core_upd = i32::from(
-            core_cached.and_then(|r| r.get("status").and_then(Value::as_str)) == Some("outdated"),
+            core_cached
+                .and_then(|r| r.get("status").and_then(Value::as_str))
+                .is_some_and(crate::updater::is_update_available_status),
         );
         let core_release_url = core_cached
             .and_then(|r| r.get("release_url").and_then(Value::as_str))
