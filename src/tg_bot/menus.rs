@@ -23,7 +23,6 @@ use crate::sys_info::{
     LanDevice, collect_dnsmasq_status, collect_host_info, count_open_fds, daemon_uptime_secs,
     detect_router_ips, discover_lan_devices, process_rss_bytes, sample_cpu_load_percent,
 };
-use crate::transaction::commit_transaction;
 
 use super::{
     BotReply, PendingPromptKind, cb_btn, clear_chat_prompt, escape_html, inline_kb, is_ru,
@@ -528,36 +527,61 @@ fn sync_tg_store_json_and_cache(store: &RouterStoreData) {
     }
 }
 
-async fn commit_and_sync_tg_tx(
+async fn commit_and_sync_tg_tx_boxed(
     state: &Arc<AppState>,
-    candidate: RouterStoreData,
+    candidate: Box<RouterStoreData>,
 ) -> anyhow::Result<()> {
-    Box::pin(commit_transaction(state, candidate)).await?;
-    let saved = state.data.read().await.clone();
+    Box::pin(crate::transaction::commit_transaction_boxed(
+        state, candidate, "save",
+    ))
+    .await?;
+    let saved = state.data.read().await;
     sync_tg_store_json_and_cache(&saved);
     Ok(())
+}
+
+async fn commit_and_sync_tg_tx(
+    state: &Arc<AppState>,
+    candidate: Box<RouterStoreData>,
+) -> anyhow::Result<()> {
+    commit_and_sync_tg_tx_boxed(state, candidate).await
+}
+
+#[inline(never)]
+fn commit_and_reload_with_warning_boxed<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    candidate: Box<RouterStoreData>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Option<String>>> + Send + 'a>>
+{
+    Box::pin(async move {
+        commit_and_sync_tg_tx_boxed(state, candidate).await?;
+        match Box::pin(core.apply_or_reload()).await {
+            Ok(()) => Ok(None),
+            Err(e) => Ok(Some(e.to_string())),
+        }
+    })
 }
 
 async fn commit_and_reload_with_warning(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
-    candidate: RouterStoreData,
+    candidate: Box<RouterStoreData>,
 ) -> anyhow::Result<Option<String>> {
-    commit_and_sync_tg_tx(state, candidate).await?;
-    match Box::pin(core.apply_or_reload()).await {
-        Ok(()) => Ok(None),
-        Err(e) => Ok(Some(e.to_string())),
-    }
+    commit_and_reload_with_warning_boxed(state, core, candidate).await
 }
 
-async fn commit_and_reload(
-    state: &Arc<AppState>,
-    core: &Arc<CoreManager>,
-    candidate: RouterStoreData,
-) -> anyhow::Result<()> {
-    commit_and_sync_tg_tx(state, candidate).await?;
-    let _ = Box::pin(core.apply_or_reload()).await;
-    Ok(())
+#[inline(never)]
+fn commit_and_reload<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    candidate: Box<RouterStoreData>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        commit_and_sync_tg_tx_boxed(state, candidate).await?;
+        let _ = Box::pin(core.apply_or_reload()).await;
+        Ok(())
+    })
 }
 
 fn parse_usize_or(raw: &str, default_val: usize) -> usize {
@@ -809,7 +833,7 @@ async fn handle_sys_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let mut need_reload = false;
     let label = match field {
@@ -1374,7 +1398,7 @@ async fn handle_sec_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == sec_id) else {
         return render_sections_list(
@@ -1403,7 +1427,7 @@ async fn handle_sec_move(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     if let Some(idx) = candidate.sections.iter().position(|s| s.id == sec_id) {
         let max_idx = candidate.sections.len().saturating_sub(1) as isize;
@@ -1494,7 +1518,7 @@ async fn handle_sec_mode(
         )
         .await;
     }
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == sec_id) else {
         return render_sections_list(state, 0, None).await;
     };
@@ -1671,11 +1695,11 @@ async fn render_section_nodes(
     page: usize,
     notice: Option<String>,
 ) -> BotReply {
-    let d = state.data.read().await.clone();
+    let d = Box::new(state.data.read().await.clone());
     let live = state.live.read().await.clone();
     let ru = is_ru(&d);
     let Some(sec) = d.sections.iter().find(|s| s.id == sec_id) else {
-        return render_sections_list(state, 0, None).await;
+        return Box::pin(render_sections_list(state, 0, None)).await;
     };
     let clash_proxies = if live.core_running {
         Box::pin(core.clash_request("GET", "/proxies", None))
@@ -1864,7 +1888,7 @@ async fn handle_sec_desync(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == sec_id) else {
         return render_sections_list(state, 0, None).await;
@@ -1977,7 +2001,7 @@ async fn handle_sec_cond_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(cond) = candidate.conditions.iter_mut().find(|c| c.id == cond_id) else {
         return render_section_conditions(
@@ -2081,7 +2105,7 @@ async fn handle_sec_list_toggle(
     core: &Arc<CoreManager>,
 ) -> BotReply {
     let clean = list_id.trim().to_string();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(sec_idx) = candidate.sections.iter().position(|s| s.id == sec_id) else {
         return render_sections_list(state, 0, None).await;
@@ -2250,7 +2274,7 @@ async fn handle_add_domain_prompt(
         .split([',', ';', '\n', '\r', ' '])
         .filter_map(normalize_domain_token)
         .collect();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     if domains.is_empty() {
         set_chat_prompt(
@@ -2319,7 +2343,7 @@ async fn handle_remove_domain_prompt(
         .split([',', ';', '\n', '\r', ' '])
         .filter_map(normalize_domain_token)
         .collect();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     if domains.is_empty() {
         set_chat_prompt(
@@ -2433,7 +2457,7 @@ async fn handle_add_ip_prompt(
         .split([',', ';', '\n', '\r', ' '])
         .filter_map(parse_ip_or_cidr_token)
         .collect();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     if tokens.is_empty() {
         set_chat_prompt(
@@ -2493,7 +2517,7 @@ async fn handle_update_fptn_prompt(
     core: &Arc<CoreManager>,
 ) -> BotReply {
     let trimmed = input.trim();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
 
     let Some(decoded) =
@@ -2514,7 +2538,7 @@ async fn handle_update_fptn_prompt(
 
     let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == sec_id) else {
         clear_chat_prompt(chat_id);
-        return render_sections_list(state, 0, None).await;
+        return Box::pin(render_sections_list(state, 0, None)).await;
     };
     sec.fptn_access_token =
         normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
@@ -2525,7 +2549,7 @@ async fn handle_update_fptn_prompt(
     let srv_cnt = count_fptn_token_servers(&decoded);
 
     clear_chat_prompt(chat_id);
-    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+    let note = match commit_and_reload_with_warning_boxed(state, core, candidate).await {
         Ok(warn) => format!(
             "[OK] {}: {srv_cnt}{}",
             tr(
@@ -2537,7 +2561,7 @@ async fn handle_update_fptn_prompt(
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
-    render_section_view(state, core, sec_id, Some(note)).await
+    Box::pin(render_section_view(state, core, sec_id, Some(note))).await
 }
 
 async fn prompt_source_fptn_input(chat_id: i64, state: &Arc<AppState>, src_id: &str) -> BotReply {
@@ -2585,7 +2609,7 @@ async fn handle_update_source_fptn_prompt(
     core: &Arc<CoreManager>,
 ) -> BotReply {
     let trimmed = input.trim();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
 
     let Some(decoded) =
@@ -2610,7 +2634,7 @@ async fn handle_update_source_fptn_prompt(
         .find(|s| s.id == src_id)
     else {
         clear_chat_prompt(chat_id);
-        return render_sources_list(state, 0, None).await;
+        return Box::pin(render_sources_list(state, 0, None)).await;
     };
     src.fptn_access_token =
         normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
@@ -2620,7 +2644,7 @@ async fn handle_update_source_fptn_prompt(
     let srv_cnt = count_fptn_token_servers(&decoded);
 
     clear_chat_prompt(chat_id);
-    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+    let note = match commit_and_reload_with_warning_boxed(state, core, candidate).await {
         Ok(warn) => format!(
             "[OK] {}: {srv_cnt}{}",
             tr(
@@ -2632,7 +2656,7 @@ async fn handle_update_source_fptn_prompt(
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
-    render_source_view(state, src_id, 0, Some(note)).await
+    Box::pin(render_source_view(state, src_id, 0, Some(note))).await
 }
 
 // =========================================================================
@@ -2949,7 +2973,7 @@ async fn handle_src_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(src) = candidate
         .outbound_sources
@@ -3017,7 +3041,7 @@ async fn handle_src_delete(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let before = candidate.outbound_sources.len();
     candidate.outbound_sources.retain(|s| s.id != src_id);
@@ -3287,7 +3311,7 @@ async fn handle_import_subscription_or_uri(
         ));
     }
 
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let existing_ids: Vec<String> = candidate
         .outbound_sources
         .iter()
@@ -3362,12 +3386,12 @@ async fn handle_import_subscription_or_uri(
     }
 
     clear_chat_prompt(chat_id);
-    if let Err(e) = commit_and_sync_tg_tx(state, candidate).await {
-        return render_sources_list(
+    if let Err(e) = commit_and_sync_tg_tx_boxed(state, candidate).await {
+        return Box::pin(render_sources_list(
             state,
             0,
             Some(format!("[ERR] {}", escape_html(&e.to_string()))),
-        )
+        ))
         .await;
     }
 
@@ -3581,7 +3605,7 @@ async fn handle_srv_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(srv) = candidate.servers.iter_mut().find(|s| s.id == srv_id) else {
         return render_servers_list(
@@ -3799,7 +3823,7 @@ async fn handle_srv_create(
     core: &Arc<CoreManager>,
 ) -> BotReply {
     let proto = proto_raw.trim().to_ascii_lowercase();
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
 
     if proto.is_empty() || !SERVER_PROTOCOLS.contains(&proto.as_str()) {
@@ -4009,7 +4033,7 @@ async fn handle_srv_client_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(srv) = candidate.servers.iter_mut().find(|s| s.id == srv_id) else {
         return render_servers_list(state, 0, None).await;
@@ -4295,7 +4319,7 @@ async fn handle_dev_section(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let d_snap = state.data.read().await.clone();
+    let d_snap = Box::new(state.data.read().await.clone());
     let live_snap = state.live.read().await.clone();
     let ru = is_ru(&d_snap);
     let devices = collect_devices(&d_snap, &live_snap);
@@ -4354,7 +4378,7 @@ async fn handle_dev_section(
 }
 
 async fn handle_dev_block(idx: usize, state: &Arc<AppState>, core: &Arc<CoreManager>) -> BotReply {
-    let d_snap = state.data.read().await.clone();
+    let d_snap = Box::new(state.data.read().await.clone());
     let live_snap = state.live.read().await.clone();
     let ru = is_ru(&d_snap);
     let devices = collect_devices(&d_snap, &live_snap);
@@ -4604,7 +4628,7 @@ async fn handle_parental_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(prof) = candidate.profiles.iter_mut().find(|p| p.id == prof_id) else {
         return render_parental_list(
@@ -4699,7 +4723,7 @@ async fn handle_guest_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let label = if toggle_iso {
         candidate.guest_mode.isolate_lan = !candidate.guest_mode.isolate_lan;
         format!(
@@ -4809,7 +4833,7 @@ async fn handle_schedule_toggle(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> BotReply {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     let Some(sched) = candidate.schedules.iter_mut().find(|s| s.id == sched_id) else {
         return render_schedules_list(

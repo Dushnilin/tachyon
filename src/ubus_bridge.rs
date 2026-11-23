@@ -1768,7 +1768,7 @@ async fn execute_pure_rust_uci_cli(
             if let Ok(store) = json_sections_store().read() {
                 persist_json_sections(&store);
             }
-            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+            if let Err(err) = Box::pin(sync_uci_to_rust_store(state, core)).await {
                 return (1, String::new(), format!("{err}\n"));
             }
             (0, String::new(), String::new())
@@ -1918,8 +1918,7 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         if is_fresh_non_empty_file(&cache_path, RULESET_EXTRACT_TTL_SECS) {
             return Ok(cache_path.to_string_lossy().into_owned());
         }
-        let bytes = core
-            .curl_fetch_with_doh_fallback(trimmed, false, 15, None)
+        let bytes = Box::pin(core.curl_fetch_with_doh_fallback(trimmed, false, 15, None))
             .await
             .map_err(|e| format!("failed to fetch remote ruleset: {e}"))?;
         if bytes.is_empty() {
@@ -1981,16 +1980,13 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
     let fallback_url = format!(
         "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_name}.trs"
     );
-    let bytes = match core
-        .curl_fetch_with_doh_fallback(&primary_url, false, 15, None)
-        .await
-    {
-        Ok(b) if !b.is_empty() => b,
-        _ => core
-            .curl_fetch_with_doh_fallback(&fallback_url, false, 15, None)
-            .await
-            .map_err(|e| format!("failed to resolve ruleset '{alias}': {e}"))?,
-    };
+    let bytes =
+        match Box::pin(core.curl_fetch_with_doh_fallback(&primary_url, false, 15, None)).await {
+            Ok(b) if !b.is_empty() => b,
+            _ => Box::pin(core.curl_fetch_with_doh_fallback(&fallback_url, false, 15, None))
+                .await
+                .map_err(|e| format!("failed to resolve ruleset '{alias}': {e}"))?,
+        };
     if bytes.is_empty() {
         return Err(format!("resolved ruleset '{alias}' is empty"));
     }
@@ -2008,6 +2004,51 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
 
 /// Fast pure-Rust implementations of hot RPC methods (`<1 ms` latency, zero process forks).
 async fn try_fast_pure_rust_method(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    if let Some(res) = try_fast_ui_and_settings_boxed(method, rest, state, core).await {
+        return Some(res);
+    }
+    if let Some(res) = try_fast_core_and_crypto_boxed(method, rest, state, core).await {
+        return Some(res);
+    }
+    try_fast_diag_and_ruleset_boxed(method, rest, state, core).await
+}
+
+#[inline(never)]
+fn try_fast_ui_and_settings_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(try_fast_ui_and_settings(method, rest, state, core))
+}
+
+#[inline(never)]
+fn try_fast_core_and_crypto_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(try_fast_core_and_crypto(method, rest, state, core))
+}
+
+#[inline(never)]
+fn try_fast_diag_and_ruleset_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(try_fast_diag_and_ruleset(method, rest, state, core))
+}
+
+async fn try_fast_ui_and_settings(
     method: &str,
     rest: &[String],
     state: &Arc<AppState>,
@@ -2038,7 +2079,7 @@ async fn try_fast_pure_rust_method(
         "get_status" => {
             state.touch_telemetry_access();
             let sys = sys_info::collect_host_info();
-            let live = state.live.read().await.clone();
+            let live = Box::new(state.live.read().await.clone());
             let d = state.data.read().await;
             let daemon_uptime = sys_info::daemon_uptime_secs();
             let cpu_pct = sys_info::sample_cpu_load_percent();
@@ -2129,10 +2170,12 @@ async fn try_fast_pure_rust_method(
                     .unwrap_or_else(|_| "{\"success\":false}".to_string());
                     return Some((1, format!("{s}\n"), format!("{e:#}\n")));
                 }
-                let d_updated = state.data.read().await.clone();
-                sync_from_store_to_json_and_cache(&d_updated);
                 let s = serde_json::to_string(&json!({ "success": true, "ui_prefs": merged }))
                     .unwrap_or_else(|_| "{}".to_string());
+                {
+                    let d_updated = state.data.read().await;
+                    sync_from_store_to_json_and_cache(&d_updated);
+                }
                 return Some((0, format!("{s}\n"), String::new()));
             }
             Some((0, "{\"success\":true}\n".to_string(), String::new()))
@@ -2210,6 +2253,17 @@ async fn try_fast_pure_rust_method(
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
+        _ => None,
+    }
+}
+
+async fn try_fast_core_and_crypto(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    match method {
         "clash_api" => Box::pin(handle_pure_rust_clash_api(rest, state, core)).await,
         "core_telemetry_snapshot" => {
             state.touch_telemetry_access();
@@ -2469,7 +2523,7 @@ async fn try_fast_pure_rust_method(
                 Some((1, format!("{s}\n"), String::new()))
             }
         }
-        "generate_warp" => match core.provision_warp_credentials().await {
+        "generate_warp" => match Box::pin(core.provision_warp_credentials()).await {
             Ok(payload) => {
                 let s = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
                 Some((0, format!("{s}\n"), String::new()))
@@ -2484,9 +2538,20 @@ async fn try_fast_pure_rust_method(
                 Some((1, format!("{s}\n"), format!("{msg}\n")))
             }
         },
+        _ => None,
+    }
+}
+
+async fn try_fast_diag_and_ruleset(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<(i32, String, String)> {
+    match method {
         "extract_ruleset" => {
             let reference = rest.first().map(String::as_str).unwrap_or("");
-            match resolve_and_extract_ruleset(reference, core).await {
+            match resolve_and_extract_ruleset_boxed(reference, core).await {
                 Ok(path) => Some((0, format!("{path}\n"), String::new())),
                 Err(e) => Some((1, String::new(), format!("{e}\n"))),
             }
@@ -2523,60 +2588,7 @@ async fn try_fast_pure_rust_method(
             .unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
-        "doctor" => {
-            let do_fix = rest.iter().any(|a| a == "--fix" || a == "fix");
-            let mut doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
-            let mut fixed_count = 0usize;
-            if do_fix && !doc.findings.is_empty() {
-                for f in &doc.findings {
-                    if f.suppressed_by.is_none()
-                        && !f.quick_fix_id.is_empty()
-                        && diagnostics::quick_fix_risk_tier(&f.quick_fix_id) != "config_change"
-                        && let Ok(res) = Box::pin(diagnostics::apply_quick_fix_verified(
-                            state,
-                            core,
-                            &f.quick_fix_id,
-                            false,
-                            false,
-                        ))
-                        .await
-                        && res.ok
-                    {
-                        fixed_count += 1;
-                    }
-                }
-                doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
-            }
-            let mut report_lines = vec![format!("=== {} ===", doc.summary)];
-            for sub in &doc.subsystems {
-                let name = sub.get("name").and_then(Value::as_str).unwrap_or("");
-                let status = sub.get("status").and_then(Value::as_str).unwrap_or("ok");
-                let detail = sub.get("detail").and_then(Value::as_str).unwrap_or("");
-                let tag = if status == "ok" { "[OK]" } else { "[WARN]" };
-                report_lines.push(format!("{tag} {name} — {detail}"));
-            }
-            if !doc.findings.is_empty() {
-                report_lines.push("\nОбнаруженные замечания:".to_string());
-                for f in &doc.findings {
-                    report_lines.push(format!(
-                        "- [{}] {}: {} ({})",
-                        f.severity.to_uppercase(),
-                        f.title,
-                        f.detail,
-                        f.quick_fix_label
-                    ));
-                }
-            }
-            let report_text = report_lines.join("\n");
-            let mut val = serde_json::to_value(&doc).unwrap_or_else(|_| json!({}));
-            if let Some(obj) = val.as_object_mut() {
-                obj.insert("report".to_string(), json!(report_text));
-                obj.insert("issues".to_string(), json!(doc.findings.len()));
-                obj.insert("fixed".to_string(), json!(fixed_count));
-            }
-            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
-            Some((0, format!("{s}\n"), String::new()))
-        }
+        "doctor" => Some(Box::pin(handle_fast_diag_doctor(rest, state, core)).await),
         "route_explain" => {
             let client_ip = rest.first().map(String::as_str).unwrap_or("192.168.1.100");
             let target = rest.get(1).map(String::as_str).unwrap_or("www.youtube.com");
@@ -2586,10 +2598,10 @@ async fn try_fast_pure_rust_method(
                 .unwrap_or(443);
             let proto = rest.get(3).map(String::as_str).unwrap_or("tcp");
             let nft_active = crate::net_stack::check_nft_table_active().await;
-            let d = state.data.read().await.clone();
-            let val = crate::diagnostics::build_route_trace_json_async(
+            let d = Box::new(state.data.read().await.clone());
+            let val = Box::pin(crate::diagnostics::build_route_trace_json_async(
                 &d, client_ip, target, "", port, proto, nft_active,
-            )
+            ))
             .await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
@@ -2601,12 +2613,79 @@ async fn try_fast_pure_rust_method(
             Some((0, format!("{s}\n"), String::new()))
         }
         "support_bundle" => {
-            let bundle = diagnostics::build_support_bundle(state).await;
+            let bundle = Box::pin(diagnostics::build_support_bundle(state)).await;
             let s = serde_json::to_string(&bundle).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         _ => None,
     }
+}
+
+#[inline(never)]
+fn resolve_and_extract_ruleset_boxed<'a>(
+    raw_ref: &'a str,
+    core: &'a CoreManager,
+) -> BoxedCliFuture<'a, Result<String, String>> {
+    Box::pin(resolve_and_extract_ruleset(raw_ref, core))
+}
+
+async fn handle_fast_diag_doctor(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> CliExecOutput {
+    let do_fix = rest.iter().any(|a| a == "--fix" || a == "fix");
+    let mut doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
+    let mut fixed_count = 0usize;
+    if do_fix && !doc.findings.is_empty() {
+        for f in &doc.findings {
+            if f.suppressed_by.is_none()
+                && !f.quick_fix_id.is_empty()
+                && diagnostics::quick_fix_risk_tier(&f.quick_fix_id) != "config_change"
+                && let Ok(res) = Box::pin(diagnostics::apply_quick_fix_verified(
+                    state,
+                    core,
+                    &f.quick_fix_id,
+                    false,
+                    false,
+                ))
+                .await
+                && res.ok
+            {
+                fixed_count += 1;
+            }
+        }
+        doc = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
+    }
+    let mut report_lines = vec![format!("=== {} ===", doc.summary)];
+    for sub in &doc.subsystems {
+        let name = sub.get("name").and_then(Value::as_str).unwrap_or("");
+        let status = sub.get("status").and_then(Value::as_str).unwrap_or("ok");
+        let detail = sub.get("detail").and_then(Value::as_str).unwrap_or("");
+        let tag = if status == "ok" { "[OK]" } else { "[WARN]" };
+        report_lines.push(format!("{tag} {name} — {detail}"));
+    }
+    if !doc.findings.is_empty() {
+        report_lines.push("\nОбнаруженные замечания:".to_string());
+        for f in &doc.findings {
+            report_lines.push(format!(
+                "- [{}] {}: {} ({})",
+                f.severity.to_uppercase(),
+                f.title,
+                f.detail,
+                f.quick_fix_label
+            ));
+        }
+    }
+    let report_text = report_lines.join("\n");
+    let mut val = serde_json::to_value(&doc).unwrap_or_else(|_| json!({}));
+    if let Some(obj) = val.as_object_mut() {
+        obj.insert("report".to_string(), json!(report_text));
+        obj.insert("issues".to_string(), json!(doc.findings.len()));
+        obj.insert("fixed".to_string(), json!(fixed_count));
+    }
+    let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+    (0, format!("{s}\n"), String::new())
 }
 
 fn build_core_service_json(live: &crate::store::LiveTelemetry) -> Value {
@@ -6790,14 +6869,82 @@ async fn execute_pure_rust_tachyon_cli(
     rest: &[String],
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
-) -> (i32, String, String) {
-    let d = state.data.read().await.clone();
-    let live = state.live.read().await.clone();
+) -> CliExecOutput {
+    let d = Box::new(state.data.read().await.clone());
+    let live = Box::new(state.live.read().await.clone());
 
+    if let Some(res) = execute_cli_part_early_boxed(method, rest, state, core, &d, &live).await {
+        return res;
+    }
+    if let Some(res) = execute_cli_part_components_boxed(method, rest, state, core, &d).await {
+        return res;
+    }
+    if let Some(res) = execute_cli_part_dns_fuzzer_boxed(method, rest, state, core).await {
+        return res;
+    }
+    execute_cli_part_routes_state_boxed(method, rest, state, core, &d, &live).await
+}
+
+#[inline(never)]
+fn execute_cli_part_early_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    d: &'a crate::store::RouterStoreData,
+    live: &'a crate::store::LiveTelemetry,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(execute_cli_part_early(method, rest, state, core, d, live))
+}
+
+#[inline(never)]
+fn execute_cli_part_components_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    d: &'a crate::store::RouterStoreData,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(execute_cli_part_components(method, rest, state, core, d))
+}
+
+#[inline(never)]
+fn execute_cli_part_dns_fuzzer_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(execute_cli_part_dns_fuzzer(method, rest, state, core))
+}
+
+#[inline(never)]
+fn execute_cli_part_routes_state_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    d: &'a crate::store::RouterStoreData,
+    live: &'a crate::store::LiveTelemetry,
+) -> BoxedCliFuture<'a, CliExecOutput> {
+    Box::pin(execute_cli_part_routes_state(
+        method, rest, state, core, d, live,
+    ))
+}
+
+async fn execute_cli_part_early(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    d: &crate::store::RouterStoreData,
+    live: &crate::store::LiveTelemetry,
+) -> Option<CliExecOutput> {
     match method {
         "check_proxy" => {
-            let (code, text) = diagnostics::run_proxy_check_cli(&d, live.core_running).await;
-            return (code, text, String::new());
+            let (code, text) =
+                Box::pin(diagnostics::run_proxy_check_cli(d, live.core_running)).await;
+            return Some((code, text, String::new()));
         }
         "check_logs" | "check_sing_box_logs" | "check_tachyon_core_logs" => {
             let text = if live.recent_logs.is_empty() {
@@ -6808,7 +6955,7 @@ async fn execute_pure_rust_tachyon_cli(
             } else {
                 format!("{}\n", live.recent_logs.join("\n"))
             };
-            return (0, text, String::new());
+            return Some((0, text, String::new()));
         }
         "component_action_log" => {
             let job_id = rest.first().map(String::as_str).unwrap_or("");
@@ -6817,7 +6964,7 @@ async fn execute_pure_rust_tachyon_cli(
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(0);
             let out = crate::updater::read_job_log(job_id, offset);
-            return (0, format!("{out}\n"), String::new());
+            return Some((0, format!("{out}\n"), String::new()));
         }
         "global_check" => {
             let masked = rest.first().map(String::as_str) == Some("masked");
@@ -6863,7 +7010,7 @@ async fn execute_pure_rust_tachyon_cli(
                     f.detail
                 ));
             }
-            return (0, report, String::new());
+            return Some((0, report, String::new()));
         }
         _ => {}
     }
@@ -6876,7 +7023,7 @@ async fn execute_pure_rust_tachyon_cli(
             let ipv6_active =
                 crate::store::resolve_effective_ipv6_state(&d.settings, wan6_cache.wan6_available)
                     .is_active();
-            build_core_health_check_payload(&d, &live, ipv6_active)
+            build_core_health_check_payload(d, live, ipv6_active)
         }
         "check_dns" | "check_dns_available" => {
             let dns_srv = d
@@ -6891,7 +7038,11 @@ async fn execute_pure_rust_tachyon_cli(
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "1.1.1.1".to_string());
-            let dns_probe = diagnostics::run_dns_check_with_engine(core, "www.youtube.com").await;
+            let dns_probe = Box::pin(diagnostics::run_dns_check_with_engine(
+                core,
+                "www.youtube.com",
+            ))
+            .await;
             let dns_ok = dns_probe_succeeded(&dns_probe);
             let boot_target = resolve_dns_bench_target(&boot_srv, "udp");
             let boot_ok = tokio::time::timeout(
@@ -6924,20 +7075,16 @@ async fn execute_pure_rust_tachyon_cli(
         "check_fakeip" => {
             let f4 = d.settings.fakeip_inet4_range.clone();
             let f6 = d.settings.fakeip_inet6_range.clone();
-            let store_snap = d.clone();
-            drop(d);
             let (_lan_v6, wan_v6, _) =
                 tokio::task::spawn_blocking(sys_info::detect_router_ipv6_ips)
                     .await
                     .unwrap_or_default();
-            let ipv6_state = crate::store::resolve_effective_ipv6_state(
-                &store_snap.settings,
-                !wan_v6.is_empty(),
-            );
+            let ipv6_state =
+                crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
             let (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed) =
                 diagnostics::probe_local_fakeip_dns_with(&f4, &f6, ipv6_state.is_active()).await;
             diagnostics::format_fakeip_probe_payload(diagnostics::FakeIpProbePayloadInput {
-                d: &store_snap,
+                d,
                 ipv6_state,
                 via_proxy: true,
                 v4_ok,
@@ -7007,7 +7154,7 @@ async fn execute_pure_rust_tachyon_cli(
                     "proxy_rules_count": summary.proxy_rules_count,
                     "proxy_packets": summary.proxy_packets,
                     "rules_other_mark_exist": 0,
-                    "rules": net_stack::compile_nftables_ruleset(&d),
+                    "rules": net_stack::compile_nftables_ruleset(d),
                 })
             }
         }
@@ -7016,8 +7163,7 @@ async fn execute_pure_rust_tachyon_cli(
             "enabled_count": d.servers.iter().filter(|s| s.enabled).count(),
         }),
         "check_inbounds" => {
-            let d_clone = d.clone();
-            drop(d);
+            let d_clone = Box::new(d.clone());
             tokio::task::spawn_blocking(move || build_check_inbounds_result(&d_clone))
                 .await
                 .unwrap_or_else(|e| json!({ "success": false, "error": e.to_string() }))
@@ -7072,12 +7218,12 @@ async fn execute_pure_rust_tachyon_cli(
             })
         }
         "get_tailscale_peers" | "get_tailscale_status" => {
-            let ts = core.get_tailscale_status().await;
-            let enabled = net_stack::is_tailscale_enabled(&d);
+            let ts = Box::pin(core.get_tailscale_status()).await;
+            let enabled = net_stack::is_tailscale_enabled(d);
             json!({
                 "success": true,
                 "enabled": enabled,
-                "native": net_stack::native_tailscale_enabled(&d),
+                "native": net_stack::native_tailscale_enabled(d),
                 "running": live.core_running && enabled,
                 "status": ts,
                 "peers": ts.get("peers").cloned().unwrap_or_else(|| json!([])),
@@ -7098,7 +7244,7 @@ async fn execute_pure_rust_tachyon_cli(
             ]
         }),
         "engine_plan" => {
-            let plan = transaction::analyze_config_plan(&d);
+            let plan = transaction::analyze_config_plan(d);
             json!({
                 "success": true,
                 "active_engine": "tachyon-core",
@@ -7126,7 +7272,7 @@ async fn execute_pure_rust_tachyon_cli(
         }
         "service_action_async" | "service_action_start" => {
             let act = rest.first().map(String::as_str).unwrap_or("reload");
-            handle_service_action_async(act, state, core).await
+            Box::pin(handle_service_action_async(act, state, core)).await
         }
         "service_action_status" => {
             let job_id = rest.first().map(String::as_str).unwrap_or("");
@@ -7170,14 +7316,16 @@ async fn execute_pure_rust_tachyon_cli(
             };
             let enc_test_url = url_encode_component(&test_url);
 
-            let proxies_val = core.clash_request("GET", "/proxies", None).await.ok();
+            let proxies_val = Box::pin(core.clash_request("GET", "/proxies", None))
+                .await
+                .ok();
             let proxies_map = proxies_val
                 .as_ref()
                 .and_then(|v| v.get("proxies"))
                 .and_then(Value::as_object);
 
             let (target_tags, eff_tag) =
-                resolve_latency_targets(&d, proxies_map, ltype, section, raw_tag);
+                resolve_latency_targets(d, proxies_map, ltype, section, raw_tag);
 
             let seq = next_job_seq();
             let safe_sec = sanitize_job_slug(section);
@@ -7216,7 +7364,7 @@ async fn execute_pure_rust_tachyon_cli(
             let eff_tag_owned = eff_tag.clone();
             let job_path_bg = job_path.clone();
 
-            let worker_fut = async move {
+            let worker_fut = Box::pin(async move {
                 let mut results_map = Map::new();
                 let mut completed_cnt = 0usize;
                 let mut succeeded_cnt = 0usize;
@@ -7365,7 +7513,7 @@ async fn execute_pure_rust_tachyon_cli(
                 }
                 let _ = crypto_gen::write_json_if_changed(&job_path_bg, &done_payload);
                 done_payload
-            };
+            });
 
             if DAEMON_MODE.load(std::sync::atomic::Ordering::Acquire) {
                 tokio::spawn(async move {
@@ -7421,10 +7569,30 @@ async fn execute_pure_rust_tachyon_cli(
                 "success": true
             })
         }
+        _ => return None,
+    };
+    let s = serde_json::to_string(&out_val).unwrap_or_else(|_| "{}".to_string());
+    Some((0, format!("{s}\n"), String::new()))
+}
+
+async fn execute_cli_part_components(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    d: &crate::store::RouterStoreData,
+) -> Option<CliExecOutput> {
+    let out_val = match method {
         "component_install_version" => {
             let comp = rest.first().map(String::as_str).unwrap_or("tachyon-core");
             let tag = rest.get(1).map(String::as_str);
-            crate::updater::start_component_action(core, comp, "install_version", tag).await
+            Box::pin(crate::updater::start_component_action(
+                core,
+                comp,
+                "install_version",
+                tag,
+            ))
+            .await
         }
         "component_action" | "component_action_async" | "component_action_start" => {
             let comp = rest.first().map(String::as_str).unwrap_or("tachyon-core");
@@ -7502,9 +7670,12 @@ async fn execute_pure_rust_tachyon_cli(
                         | "install_lx"
                 )
             {
-                crate::updater::start_component_action(core, comp, act, variant).await
+                Box::pin(crate::updater::start_component_action(
+                    core, comp, act, variant,
+                ))
+                .await
             } else {
-                let v = core.component_action(comp, act, variant).await;
+                let v = Box::pin(core.component_action(comp, act, variant)).await;
                 let ok = v.get("ok").and_then(Value::as_bool).unwrap_or(true);
                 let msg = v
                     .pointer("/result/message")
@@ -7564,19 +7735,25 @@ async fn execute_pure_rust_tachyon_cli(
                 .get(2)
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(1);
-            crate::updater::list_releases(core, comp, count, page).await
+            Box::pin(crate::updater::list_releases(core, comp, count, page)).await
         }
-        "list_update" | "list_update_async" => crate::updater::start_list_update_async(core).await,
-        "list_update_if_due" => crate::updater::start_list_update_if_due_async(core).await,
+        "list_update" | "list_update_async" => {
+            Box::pin(crate::updater::start_list_update_async(core)).await
+        }
+        "list_update_if_due" => {
+            Box::pin(crate::updater::start_list_update_if_due_async(core)).await
+        }
         "list_update_status" => crate::updater::read_list_update_status(),
         "subscription_update" => {
             let target = rest.first().map(String::as_str).unwrap_or("");
             let selector = rest.get(1).map(String::as_str).unwrap_or("");
-            let eff_target = resolve_subscription_cli_target(&d, target, selector);
-            match core.refresh_subscription_source(&eff_target).await {
+            let eff_target = resolve_subscription_cli_target(d, target, selector);
+            match Box::pin(core.refresh_subscription_source(&eff_target)).await {
                 Ok(cnt) => {
-                    let d_now = state.data.read().await.clone();
-                    sync_section_cache(&d_now);
+                    {
+                        let d_now = state.data.read().await;
+                        sync_section_cache(&d_now);
+                    }
                     json!({
                         "success": true,
                         "job_id": "rust-sub-1",
@@ -7606,7 +7783,7 @@ async fn execute_pure_rust_tachyon_cli(
         "subscription_update_async" => {
             let target = rest.first().map(String::as_str).unwrap_or("").to_string();
             let selector = rest.get(1).map(String::as_str).unwrap_or("").to_string();
-            let eff_target = resolve_subscription_cli_target(&d, &target, &selector);
+            let eff_target = resolve_subscription_cli_target(d, &target, &selector);
             let started_at = crate::store::unix_now_u64();
             let seq = next_job_seq();
             let job_id = format!(
@@ -7637,11 +7814,13 @@ async fn execute_pure_rust_tachyon_cli(
             let target_bg = target.clone();
             let selector_bg = selector.clone();
             let eff_bg = eff_target.clone();
-            let work = async move {
+            let work = Box::pin(async move {
                 let done_payload = match core_clone.refresh_subscription_source(&eff_bg).await {
                     Ok(cnt) => {
-                        let d_now = state_clone.data.read().await.clone();
-                        sync_section_cache(&d_now);
+                        {
+                            let d_now = state_clone.data.read().await;
+                            sync_section_cache(&d_now);
+                        }
                         json!({
                             "success": true,
                             "job_id": job_id_bg,
@@ -7675,7 +7854,7 @@ async fn execute_pure_rust_tachyon_cli(
                 };
                 let _ = crypto_gen::write_json_if_changed(&job_path_bg, &done_payload);
                 done_payload
-            };
+            });
             if DAEMON_MODE.load(std::sync::atomic::Ordering::Acquire) {
                 tokio::spawn(async move {
                     let _ = work.await;
@@ -7688,11 +7867,11 @@ async fn execute_pure_rust_tachyon_cli(
         "subscription_update_if_due" => {
             let target = rest.first().map(String::as_str);
             let selector = rest.get(1).map(String::as_str).unwrap_or("");
-            let eff_target = target.map(|t| resolve_subscription_cli_target(&d, t, selector));
-            match core.refresh_due_subscriptions(eff_target.as_deref()).await {
+            let eff_target = target.map(|t| resolve_subscription_cli_target(d, t, selector));
+            match Box::pin(core.refresh_due_subscriptions(eff_target.as_deref())).await {
                 Ok(cnt) => {
                     if cnt > 0 {
-                        let d_now = state.data.read().await.clone();
+                        let d_now = state.data.read().await;
                         sync_section_cache(&d_now);
                     }
                     json!({
@@ -7710,7 +7889,7 @@ async fn execute_pure_rust_tachyon_cli(
             }
         }
         "component_updates_if_due" => {
-            crate::updater::maybe_run_auto_update_tick(core).await;
+            Box::pin(crate::updater::maybe_run_auto_update_tick(core)).await;
             json!({
                 "success": true,
                 "exit_code": 0
@@ -7741,22 +7920,26 @@ async fn execute_pure_rust_tachyon_cli(
                 })
             })
         }
-        "start" => match core.start().await {
+        "start" => match Box::pin(core.start()).await {
             Ok(()) => {
-                let d_now = state.data.read().await.clone();
-                sync_section_cache(&d_now);
+                {
+                    let d_now = state.data.read().await;
+                    sync_section_cache(&d_now);
+                }
                 json!({ "success": true })
             }
             Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
         },
-        "stop" => match core.stop().await {
+        "stop" => match Box::pin(core.stop()).await {
             Ok(()) => json!({ "success": true }),
             Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
         },
-        "restart" | "reload" => match core.apply_or_reload().await {
+        "restart" | "reload" => match Box::pin(core.apply_or_reload()).await {
             Ok(()) => {
-                let d_now = state.data.read().await.clone();
-                sync_section_cache(&d_now);
+                {
+                    let d_now = state.data.read().await;
+                    sync_section_cache(&d_now);
+                }
                 json!({ "success": true })
             }
             Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
@@ -7971,9 +8154,22 @@ async fn execute_pure_rust_tachyon_cli(
                     })
                 }
             } else {
-                run_full_ubus_leak_check(state, core).await
+                Box::pin(run_full_ubus_leak_check(state, core)).await
             }
         }
+        _ => return None,
+    };
+    let s = serde_json::to_string(&out_val).unwrap_or_else(|_| "{}".to_string());
+    Some((0, format!("{s}\n"), String::new()))
+}
+
+async fn execute_cli_part_dns_fuzzer(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<CliExecOutput> {
+    let out_val = match method {
         "dns_benchmark_async" | "dns_benchmark_status" | "dns_benchmark" => {
             let now = crate::store::unix_now_secs();
             let cache_path = crate::store::runtime_state_dir().join("dns-benchmark-cache.json");
@@ -8639,7 +8835,7 @@ async fn execute_pure_rust_tachyon_cli(
                 }
                 persist_json_sections(&store);
             }
-            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+            if let Err(err) = Box::pin(sync_uci_to_rust_store(state, core)).await {
                 json!({
                     "success": false,
                     "error": err
@@ -8671,7 +8867,7 @@ async fn execute_pure_rust_tachyon_cli(
             let timeout_secs =
                 crate::fuzzer::parse_fuzzer_timeout_secs(rest.get(6).map(String::as_str), 2700);
             let bin_path = core.resolve_bin_path().await;
-            crate::fuzzer::start_benchmark(
+            Box::pin(crate::fuzzer::start_benchmark(
                 bin_path,
                 engine,
                 target,
@@ -8680,7 +8876,7 @@ async fn execute_pure_rust_tachyon_cli(
                 custom_file,
                 mode,
                 timeout_secs,
-            )
+            ))
             .await
         }
         "fuzzer_status" => crate::fuzzer::get_status(),
@@ -8690,7 +8886,7 @@ async fn execute_pure_rust_tachyon_cli(
             if method == "fuzzer_apply" {
                 let engine_arg = rest.first().map(String::as_str).unwrap_or("");
                 if let Err(err) = crate::fuzzer::validate_engine_request(engine_arg, &bin_path) {
-                    return (
+                    return Some((
                         0,
                         json!({
                             "success": false,
@@ -8698,7 +8894,7 @@ async fn execute_pure_rust_tachyon_cli(
                         })
                         .to_string(),
                         String::new(),
-                    );
+                    ));
                 }
             }
 
@@ -8713,7 +8909,7 @@ async fn execute_pure_rust_tachyon_cli(
                     })
                 });
                 let Some(best_obj) = best else {
-                    return (
+                    return Some((
                         0,
                         json!({
                             "success": false,
@@ -8721,7 +8917,7 @@ async fn execute_pure_rust_tachyon_cli(
                         })
                         .to_string(),
                         String::new(),
-                    );
+                    ));
                 };
                 let a = best_obj
                     .get("args")
@@ -8766,13 +8962,13 @@ async fn execute_pure_rust_tachyon_cli(
 
             match apply_res {
                 Ok(applied_section) => {
-                    if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                    if let Err(err) = Box::pin(sync_uci_to_rust_store(state, core)).await {
                         json!({
                             "success": false,
                             "error": err
                         })
                     } else {
-                        let _ = core.apply_or_reload().await;
+                        let _ = Box::pin(core.apply_or_reload()).await;
 
                         json!({
                             "success": true,
@@ -8816,10 +9012,28 @@ async fn execute_pure_rust_tachyon_cli(
             let target = rest.first().map(String::as_str).unwrap_or("youtube_suite");
             let custom_url = rest.get(1).map(String::as_str).unwrap_or("");
             let bin_path = core.resolve_bin_path().await;
-            crate::fuzzer::detect_wan_filtering(&bin_path, target, custom_url).await
+            Box::pin(crate::fuzzer::detect_wan_filtering(
+                &bin_path, target, custom_url,
+            ))
+            .await
         }
         "fuzzer_history" => crate::fuzzer::get_history(),
         "fuzzer_clear_history" => crate::fuzzer::clear_history(),
+        _ => return None,
+    };
+    let s = serde_json::to_string(&out_val).unwrap_or_else(|_| "{}".to_string());
+    Some((0, format!("{s}\n"), String::new()))
+}
+
+async fn execute_cli_part_routes_state(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    d: &crate::store::RouterStoreData,
+    live: &crate::store::LiveTelemetry,
+) -> CliExecOutput {
+    let out_val = match method {
         "trace_rules" | "route_explain" => {
             let mut domain = String::new();
             let mut dest_ip = String::new();
@@ -8890,9 +9104,9 @@ async fn execute_pure_rust_tachyon_cli(
                 source_ip.as_str()
             };
             let nft_active = crate::net_stack::check_nft_table_active().await;
-            crate::diagnostics::build_route_trace_json_async(
-                &d, client_ip, &domain, &target, port, &protocol, nft_active,
-            )
+            Box::pin(crate::diagnostics::build_route_trace_json_async(
+                d, client_ip, &domain, &target, port, &protocol, nft_active,
+            ))
             .await
         }
         "probe_outbound_url" => {
@@ -8905,7 +9119,7 @@ async fn execute_pure_rust_tachyon_cli(
                     .unwrap_or(3000)
                     .clamp(1000, 10_000);
                 Box::pin(handle_probe_outbound_url_batch(
-                    &d, core, first, group_id, timeout_ms,
+                    d, core, first, group_id, timeout_ms,
                 ))
                 .await
             } else {
@@ -9028,11 +9242,11 @@ async fn execute_pure_rust_tachyon_cli(
                 }),
             }
         }
-        "hosts_list_status" => crate::adguard_hosts::get_hosts_list_status(&d),
+        "hosts_list_status" => crate::adguard_hosts::get_hosts_list_status(d),
         "toggle_client_bypass" => {
             let ip = rest.first().map(String::as_str).unwrap_or("");
             let mode = rest.get(1).map(String::as_str).unwrap_or("toggle");
-            let mut cand = d.clone();
+            let mut cand = Box::new(d.clone());
             let bypassed = if !ip.is_empty()
                 && let Some(cond) = cand.conditions.first_mut()
             {
@@ -9052,17 +9266,22 @@ async fn execute_pure_rust_tachyon_cli(
             } else {
                 false
             };
-            if let Err(e) = transaction::commit_transaction(state, cand.clone()).await {
+            if let Err(e) =
+                Box::pin(transaction::commit_transaction_boxed(state, cand, "save")).await
+            {
                 json!({
                     "success": false,
                     "ip": ip,
                     "error": format!("{e:#}")
                 })
             } else {
-                sync_from_store_to_json_and_cache(&cand);
+                {
+                    let saved = state.data.read().await;
+                    sync_from_store_to_json_and_cache(&saved);
+                }
                 let core_c = Arc::clone(core);
                 tokio::spawn(async move {
-                    let _ = core_c.apply_or_reload().await;
+                    let _ = Box::pin(core_c.apply_or_reload()).await;
                 });
                 let mode_str = if bypassed { "direct" } else { "proxied" };
                 json!({
@@ -9079,7 +9298,7 @@ async fn execute_pure_rust_tachyon_cli(
             }
         }
         "watchdog" | "watchdog_start" | "watchdog_stop" => {
-            handle_watchdog_command(method, &d, state, core).await
+            Box::pin(handle_watchdog_command(method, d, state, core)).await
         }
         "telegram" | "telegram_status" | "telegram_start" | "telegram_stop"
         | "telegram_diagnose" | "telegram_test" | "telegram_set_lang" => {
@@ -9100,7 +9319,7 @@ async fn execute_pure_rust_tachyon_cli(
 
             match tg_action {
                 "telegram_status" => {
-                    if crate::tg_bot::is_bot_effectively_running(&d) {
+                    if crate::tg_bot::is_bot_effectively_running(d) {
                         return (
                             0,
                             format!("running (pid {})\n", std::process::id()),
@@ -9110,7 +9329,7 @@ async fn execute_pure_rust_tachyon_cli(
                     return (0, "stopped\n".to_string(), String::new());
                 }
                 "telegram_test" => {
-                    return match crate::tg_bot::send_test_notification(state).await {
+                    return match Box::pin(crate::tg_bot::send_test_notification(state)).await {
                         Ok(sent) => (
                             0,
                             format!(
@@ -9139,7 +9358,9 @@ async fn execute_pure_rust_tachyon_cli(
                         ),
                     };
                 }
-                "telegram_diagnose" => crate::tg_bot::diagnose_bot_connection(state, core).await,
+                "telegram_diagnose" => {
+                    Box::pin(crate::tg_bot::diagnose_bot_connection(state, core)).await
+                }
                 "telegram_set_lang" => {
                     let raw = tg_args.first().map(String::as_str).unwrap_or("ru");
                     let lang = if raw.trim().eq_ignore_ascii_case("en") {
@@ -9148,10 +9369,14 @@ async fn execute_pure_rust_tachyon_cli(
                         "ru"
                     };
                     if d.telegram.language != lang {
-                        let mut candidate = d.clone();
+                        let mut candidate = Box::new(d.clone());
                         candidate.telegram.language = lang.to_string();
-                        let _ = transaction::commit_transaction(state, candidate.clone()).await;
-                        sync_telegram_section_to_json(&candidate.telegram);
+                        let tg_copy = candidate.telegram.clone();
+                        let _ = Box::pin(transaction::commit_transaction_boxed(
+                            state, candidate, "save",
+                        ))
+                        .await;
+                        sync_telegram_section_to_json(&tg_copy);
                         crate::tg_bot::notify_bot_wakeup();
                     }
                     json!({
@@ -9164,15 +9389,26 @@ async fn execute_pure_rust_tachyon_cli(
                     let target = tg_action == "telegram_start";
                     crate::tg_bot::set_runtime_override(Some(target));
                     crate::tg_bot::notify_bot_wakeup();
-                    let mut effective = d.clone();
-                    if d.telegram.enabled != target {
+                    let (running, configured) = if d.telegram.enabled != target {
+                        let mut effective = Box::new(d.clone());
                         effective.telegram.enabled = target;
-                        let _ = transaction::commit_transaction(state, effective.clone()).await;
-                        sync_telegram_section_to_json(&effective.telegram);
-                    }
-                    let running = crate::tg_bot::is_bot_effectively_running(&effective);
-                    let configured = !effective.telegram.bot_token.trim().is_empty()
-                        && !effective.telegram.admin_ids.is_empty();
+                        let tg_copy = effective.telegram.clone();
+                        let run = crate::tg_bot::is_bot_effectively_running(&effective);
+                        let cfgd = !effective.telegram.bot_token.trim().is_empty()
+                            && !effective.telegram.admin_ids.is_empty();
+                        let _ = Box::pin(transaction::commit_transaction_boxed(
+                            state, effective, "save",
+                        ))
+                        .await;
+                        sync_telegram_section_to_json(&tg_copy);
+                        (run, cfgd)
+                    } else {
+                        (
+                            crate::tg_bot::is_bot_effectively_running(d),
+                            !d.telegram.bot_token.trim().is_empty()
+                                && !d.telegram.admin_ids.is_empty(),
+                        )
+                    };
                     json!({
                         "success": true,
                         "ok": true,
@@ -9193,16 +9429,18 @@ async fn execute_pure_rust_tachyon_cli(
                 .filter(|s| !s.is_empty())
                 .unwrap_or("manual");
             let cur_secs = get_json_sections_snapshot();
-            crate::snapshots::snapshot_save(state, &cur_secs, name).await
+            Box::pin(crate::snapshots::snapshot_save(state, &cur_secs, name)).await
         }
         "snapshot_restore" => {
             let file_arg = rest.first().map(String::as_str).unwrap_or("");
-            match crate::snapshots::snapshot_restore(state, file_arg).await {
+            match Box::pin(crate::snapshots::snapshot_restore(state, file_arg)).await {
                 Ok((prof, restored_secs)) => {
                     set_json_sections_snapshot(restored_secs);
-                    let cur = state.data.read().await.clone();
-                    sync_section_cache(&cur);
-                    let _ = core.apply_or_reload().await;
+                    {
+                        let cur = state.data.read().await;
+                        sync_section_cache(&cur);
+                    }
+                    let _ = Box::pin(core.apply_or_reload()).await;
                     state.live.write().await.push_event(
                         "info",
                         "snapshots",
@@ -9228,20 +9466,24 @@ async fn execute_pure_rust_tachyon_cli(
         "snapshot_diff" => {
             let file_arg = rest.first().map(String::as_str).unwrap_or("");
             let cur_secs = get_json_sections_snapshot();
-            crate::snapshots::snapshot_diff(state, &cur_secs, file_arg).await
+            Box::pin(crate::snapshots::snapshot_diff(state, &cur_secs, file_arg)).await
         }
         "snapshot_export" => {
             let cur_secs = get_json_sections_snapshot();
-            crate::snapshots::snapshot_export(state, &cur_secs, rest.first().map(String::as_str))
-                .await
-        }
-        "snapshot_import" => {
-            let cur_secs = get_json_sections_snapshot();
-            match crate::snapshots::snapshot_import(
+            Box::pin(crate::snapshots::snapshot_export(
                 state,
                 &cur_secs,
                 rest.first().map(String::as_str),
-            )
+            ))
+            .await
+        }
+        "snapshot_import" => {
+            let cur_secs = get_json_sections_snapshot();
+            match Box::pin(crate::snapshots::snapshot_import(
+                state,
+                &cur_secs,
+                rest.first().map(String::as_str),
+            ))
             .await
             {
                 crate::snapshots::ImportOutcome::ResponseOnly(v) => v,
@@ -9250,9 +9492,11 @@ async fn execute_pure_rust_tachyon_cli(
                     new_sections,
                 } => {
                     set_json_sections_snapshot(new_sections);
-                    let cur = state.data.read().await.clone();
-                    sync_section_cache(&cur);
-                    let _ = core.apply_or_reload().await;
+                    {
+                        let cur = state.data.read().await;
+                        sync_section_cache(&cur);
+                    }
+                    let _ = Box::pin(core.apply_or_reload()).await;
                     state.live.write().await.push_event(
                         "info",
                         "snapshots",
@@ -9264,12 +9508,18 @@ async fn execute_pure_rust_tachyon_cli(
         }
         "reset_settings" => {
             let cur_secs = get_json_sections_snapshot();
-            match crate::snapshots::reset_settings_to_defaults(state, &cur_secs).await {
+            match Box::pin(crate::snapshots::reset_settings_to_defaults(
+                state, &cur_secs,
+            ))
+            .await
+            {
                 Ok((resp, default_secs)) => {
                     set_json_sections_snapshot(default_secs);
-                    let cur = state.data.read().await.clone();
-                    sync_section_cache(&cur);
-                    let _ = core.apply_or_reload().await;
+                    {
+                        let cur = state.data.read().await;
+                        sync_section_cache(&cur);
+                    }
+                    let _ = Box::pin(core.apply_or_reload()).await;
                     state.live.write().await.push_event(
                         "warn",
                         "settings",
@@ -9474,7 +9724,7 @@ async fn execute_pure_rust_tachyon_cli(
             })
         }
         "known_good_promote" | "known_good_save" => {
-            let ok = transaction::promote_to_known_good(&state.lkg_path, &d).is_ok();
+            let ok = transaction::promote_to_known_good(&state.lkg_path, d).is_ok();
             if ok {
                 let active_id = {
                     let mut live = state.live.write().await;
@@ -9504,11 +9754,20 @@ async fn execute_pure_rust_tachyon_cli(
         }
         "known_good_restore" => {
             if let Ok(restored) = transaction::load_known_good(&state.lkg_path) {
-                if let Err(e) = transaction::commit_transaction(state, restored.clone()).await {
+                if let Err(e) = Box::pin(transaction::commit_transaction_boxed(
+                    state,
+                    Box::new(restored),
+                    "save",
+                ))
+                .await
+                {
                     json!({ "success": false, "ok": false, "error": format!("{e:#}") })
                 } else {
-                    sync_from_store_to_json_and_cache(&restored);
-                    let _ = core.apply_or_reload().await;
+                    {
+                        let cur = state.data.read().await;
+                        sync_from_store_to_json_and_cache(&cur);
+                    }
+                    let _ = Box::pin(core.apply_or_reload()).await;
                     json!({ "success": true, "ok": true })
                 }
             } else {
@@ -9567,7 +9826,7 @@ async fn execute_pure_rust_tachyon_cli(
             let mut seen_tags = std::collections::HashSet::new();
             let mut best_cand: Option<(String, u32, String, String)> = None;
 
-            for (owner_sec, src, _) in collect_section_sources_with_owner(&d, "all") {
+            for (owner_sec, src, _) in collect_section_sources_with_owner(d, "all") {
                 let nodes = crate::config_gen::build_source_outbounds(src);
                 if nodes.is_empty() {
                     let tag = src.id.clone();
@@ -9762,7 +10021,7 @@ async fn execute_pure_rust_tachyon_cli(
             let test_url = url_encode_component(&d.settings.latency_test_url);
             let mut targets: Vec<(String, String, String)> = Vec::new();
             let mut seen = std::collections::HashSet::new();
-            for (owner_sec, src, _) in collect_section_sources_with_owner(&d, "all") {
+            for (owner_sec, src, _) in collect_section_sources_with_owner(d, "all") {
                 for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
                     if seen.insert(tag.clone()) {
                         let p = out_val
@@ -9897,7 +10156,7 @@ async fn execute_pure_rust_tachyon_cli(
             } else {
                 let mut sec_counts = Map::new();
                 for sec in &d.sections {
-                    let cnt = collect_section_sources_with_owner(&d, &sec.id).len();
+                    let cnt = collect_section_sources_with_owner(d, &sec.id).len();
                     sec_counts.insert(sec.id.clone(), json!(cnt));
                 }
                 let best_srv = live
@@ -10109,7 +10368,7 @@ pub async fn handle_uci_http_action(
                 .ok()
                 .and_then(|g| g.as_ref().map(|(t, _, _)| t.clone()))
                 .unwrap_or_else(|| crypto_gen::generate_hex(16));
-            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+            if let Err(err) = Box::pin(sync_uci_to_rust_store(state, core)).await {
                 return (400, Some(json!({ "error": err })));
             }
             (200, Some(json!({ "token": token })))

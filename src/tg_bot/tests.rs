@@ -671,9 +671,11 @@ async fn test_ops_snapshots_transfer_code_and_lkg_lifecycle() {
     let env = TempTestEnv::new("snapshots", admin_id).await;
 
     // Save snapshot with document (/backup)
-    let backup_rep = ops::try_handle_ops("/backup", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("/backup reply");
+    let backup_rep = Box::pin(ops::try_handle_ops(
+        "/backup", "", admin_id, &env.state, &env.core,
+    ))
+    .await
+    .expect("/backup reply");
     assert!(backup_rep.text.contains("[OK]"));
     let doc = backup_rep
         .document
@@ -682,21 +684,39 @@ async fn test_ops_snapshots_transfer_code_and_lkg_lifecycle() {
     assert!(!doc.bytes.is_empty());
 
     // List snapshots shows the newly created file
-    let list_rep = ops::try_handle_ops("/snapshots", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("/snapshots reply");
+    let list_rep = Box::pin(ops::try_handle_ops(
+        "/snapshots",
+        "",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("/snapshots reply");
     assert!(list_rep.text.contains("telegram"));
 
     // Download snapshot doc explicitly
-    let doc_rep = ops::try_handle_ops("snap_doc", &doc.filename, admin_id, &env.state, &env.core)
-        .await
-        .expect("snap_doc reply");
+    let doc_rep = Box::pin(ops::try_handle_ops(
+        "snap_doc",
+        &doc.filename,
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("snap_doc reply");
     assert!(doc_rep.document.is_some());
 
     // Transfer code export produces tachyon://rs2/... (inline when <= 3200 B, document when > 3200 B)
-    let code_rep = ops::try_handle_ops("snap_code", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("snap_code reply");
+    let code_rep = Box::pin(ops::try_handle_ops(
+        "snap_code",
+        "",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("snap_code reply");
     let exported_code = if let Some(ref transfer_doc) = code_rep.document {
         assert_eq!(transfer_doc.filename, "tachyon-transfer-code.txt");
         let code = String::from_utf8(transfer_doc.bytes.clone()).expect("utf8 transfer code");
@@ -711,34 +731,48 @@ async fn test_ops_snapshots_transfer_code_and_lkg_lifecycle() {
     };
 
     // Round-trip import of the generated transfer code succeeds cleanly
-    let import_rep = ops::try_handle_ops(
+    let import_rep = Box::pin(ops::try_handle_ops(
         "quick_import",
         &exported_code,
         admin_id,
         &env.state,
         &env.core,
-    )
+    ))
     .await
     .expect("quick_import reply");
     assert!(import_rep.text.contains("[OK]"));
 
     // Promote LKG & inspect /lkg
-    let lkg_prom = ops::try_handle_ops("lkg_promote", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("lkg_promote reply");
+    let lkg_prom = Box::pin(ops::try_handle_ops(
+        "lkg_promote",
+        "",
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("lkg_promote reply");
     assert!(lkg_prom.text.contains("[OK]"));
     assert!(env.state.lkg_path.exists());
 
-    let lkg_view = ops::try_handle_ops("/lkg", "", admin_id, &env.state, &env.core)
-        .await
-        .expect("/lkg reply");
+    let lkg_view = Box::pin(ops::try_handle_ops(
+        "/lkg", "", admin_id, &env.state, &env.core,
+    ))
+    .await
+    .expect("/lkg reply");
     assert!(lkg_view.text.contains("Last Known Good"));
     assert!(lkg_view.text.contains("Snapshot present"));
 
     // Delete snapshot cleans file from disk
-    let del_rep = ops::try_handle_ops("snap_del", &doc.filename, admin_id, &env.state, &env.core)
-        .await
-        .expect("snap_del reply");
+    let del_rep = Box::pin(ops::try_handle_ops(
+        "snap_del",
+        &doc.filename,
+        admin_id,
+        &env.state,
+        &env.core,
+    ))
+    .await
+    .expect("snap_del reply");
     assert!(del_rep.text.contains("[OK]"));
 }
 

@@ -223,18 +223,27 @@ fn sync_tg_store_json_and_cache(store: &RouterStoreData) {
     }
 }
 
-async fn commit_tx_boxed(state: &Arc<AppState>, candidate: RouterStoreData) -> anyhow::Result<()> {
+async fn commit_tx_boxed_store(
+    state: &Arc<AppState>,
+    candidate: Box<RouterStoreData>,
+) -> anyhow::Result<()> {
     let state = Arc::clone(state);
     tokio::spawn(async move {
-        Box::pin(transaction::commit_transaction(&state, candidate))
-            .await
-            .map(|_| ())?;
-        let saved = state.data.read().await.clone();
+        Box::pin(transaction::commit_transaction_boxed(
+            &state, candidate, "save",
+        ))
+        .await
+        .map(|_| ())?;
+        let saved = state.data.read().await;
         sync_tg_store_json_and_cache(&saved);
         Ok(())
     })
     .await
     .map_err(|e| anyhow::anyhow!("commit task panicked: {e}"))?
+}
+
+async fn commit_tx_boxed(state: &Arc<AppState>, candidate: RouterStoreData) -> anyhow::Result<()> {
+    commit_tx_boxed_store(state, Box::new(candidate)).await
 }
 
 async fn reload_core_boxed(core: &Arc<CoreManager>) {
@@ -245,17 +254,17 @@ async fn reload_core_boxed(core: &Arc<CoreManager>) {
 async fn update_telegram_cfg<F>(
     state: &Arc<AppState>,
     mutator: F,
-) -> anyhow::Result<RouterStoreData>
+) -> anyhow::Result<Box<RouterStoreData>>
 where
     F: FnOnce(&mut TgBotConfig) -> anyhow::Result<()>,
 {
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     mutator(&mut candidate.telegram)?;
     let tg_copy = candidate.telegram.clone();
-    commit_tx_boxed(state, candidate.clone()).await?;
+    commit_tx_boxed_store(state, candidate).await?;
     ubus_bridge::sync_telegram_section_to_json(&tg_copy);
     notify_bot_wakeup();
-    Ok(candidate)
+    Ok(Box::new(state.data.read().await.clone()))
 }
 
 fn format_bytes_human(bytes: u64) -> String {
@@ -901,10 +910,10 @@ async fn apply_dns_preset_reply(
         }
     };
 
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     candidate.settings.dns_type = "doh".to_string();
     candidate.settings.dns_servers = servers.clone();
-    let res = commit_tx_boxed(state, candidate).await;
+    let res = commit_tx_boxed_store(state, candidate).await;
     if res.is_ok() {
         reload_core_boxed(core).await;
     }
@@ -3397,7 +3406,7 @@ async fn toggle_feature_setting_reply(
         _ => return render_toggles_menu(state, "core", None).await,
     };
 
-    let mut candidate = state.data.read().await.clone();
+    let mut candidate = Box::new(state.data.read().await.clone());
     let ru = is_ru(&candidate);
     if !flip_quick_toggle_val(&mut candidate.settings, key) {
         return render_toggles_menu(
@@ -3413,23 +3422,27 @@ async fn toggle_feature_setting_reply(
         .find(|sp| sp.key == key)
         .map_or(ToggleApplyKind::None, |sp| sp.apply);
 
-    let save_res = crate::transaction::commit_transaction(state, candidate).await;
+    let save_res = Box::pin(crate::transaction::commit_transaction_boxed(
+        state, candidate, "save",
+    ))
+    .await;
     let notice = match save_res {
         Ok(_report) => {
-            let saved = state.data.read().await.clone();
+            let saved = Box::new(state.data.read().await.clone());
             sync_tg_store_json_and_cache(&saved);
             let apply_warn = match apply_kind {
-                ToggleApplyKind::Reload => core
-                    .apply_or_reload()
+                ToggleApplyKind::Reload => Box::pin(core.apply_or_reload())
                     .await
                     .err()
                     .map(|e| format!("\n[WARN] {}", escape_html(&e.to_string())))
                     .unwrap_or_default(),
-                ToggleApplyKind::Firewall => crate::net_stack::apply_network_stack(&saved)
-                    .await
-                    .err()
-                    .map(|e| format!("\n[WARN] {}", escape_html(&e.to_string())))
-                    .unwrap_or_default(),
+                ToggleApplyKind::Firewall => {
+                    Box::pin(crate::net_stack::apply_network_stack(&saved))
+                        .await
+                        .err()
+                        .map(|e| format!("\n[WARN] {}", escape_html(&e.to_string())))
+                        .unwrap_or_default()
+                }
                 ToggleApplyKind::None => String::new(),
             };
             let new_val = read_quick_toggle_val(&saved.settings, key);

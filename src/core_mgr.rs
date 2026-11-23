@@ -1390,6 +1390,7 @@ impl CoreManager {
         }
     }
 
+    #[inline(never)]
     async fn compile_or_safe_minimal(
         &self,
         store_snapshot: &crate::store::RouterStoreData,
@@ -1452,6 +1453,7 @@ impl CoreManager {
     }
 
     /// Prepare a runnable `tachyon-core` config, isolating invalid entities instead of failing startup.
+    #[inline(never)]
     async fn prepare_and_write_validated_core_config(
         &self,
         store_snapshot: &crate::store::RouterStoreData,
@@ -1660,15 +1662,26 @@ impl CoreManager {
 
     /// Compile `/etc/tachyon-core/config.json`, apply network stack, and start `/usr/bin/tachyon-core`.
     pub async fn start(&self) -> anyhow::Result<()> {
+        self.start_boxed().await
+    }
+
+    #[inline(never)]
+    fn start_boxed(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+        Box::pin(self.start_inner())
+    }
+
+    async fn start_inner(&self) -> anyhow::Result<()> {
         self.set_manual_stop(false);
         let _guard = self.reload_lock.lock().await;
-        let store_snapshot = { self.state.data.read().await.clone() };
-        let veto = net_stack::hold_kill_switch(&store_snapshot).await;
-        self.stop_locked().await;
+        let store_snapshot = Box::new(self.state.data.read().await.clone());
+        let veto = Box::pin(net_stack::hold_kill_switch(&store_snapshot)).await;
+        Box::pin(self.stop_locked()).await;
 
         let cleanup_failed_start = |veto_active: bool, msg: String| {
             let state = Arc::clone(&self.state);
-            async move {
+            Box::pin(async move {
                 net_stack::teardown_network_stack_with_mode(veto_active).await;
                 let mut live = state.live.write().await;
                 live.core_running = false;
@@ -1676,7 +1689,7 @@ impl CoreManager {
                 live.core_identity = None;
                 live.nft_table_active = false;
                 live.push_event("error", "core_mgr", &msg);
-            }
+            })
         };
 
         let startup_wan6 = crate::store::probe_wan6_runtime_state();
@@ -1685,11 +1698,12 @@ impl CoreManager {
             startup_wan6.wan6_available,
         );
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
-        self.ensure_server_tls_certs(&store_snapshot).await;
-        let (cfg_val, seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
-        let (cfg_path, prepared_cfg, mut quarantined) = match self
-            .prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors)
-            .await
+        Box::pin(self.ensure_server_tls_certs(&store_snapshot)).await;
+        let (cfg_val, seed_errors) = Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+        let (cfg_path, prepared_cfg, mut quarantined) = match Box::pin(
+            self.prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors),
+        )
+        .await
         {
             Ok(v) => v,
             Err(e) => {
@@ -1707,7 +1721,7 @@ impl CoreManager {
             return Err(err);
         }
 
-        let mut child = match Self::spawn_and_verify_core(&bin_path, &cfg_path).await {
+        let mut child = match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path)).await {
             Ok(c) => c,
             Err(first_err) if !quarantined.contains_key("_core_runtime") => {
                 safe_minimal_active = true;
@@ -1744,7 +1758,7 @@ impl CoreManager {
                     .await;
                     return Err(e);
                 }
-                match Self::spawn_and_verify_core(&bin_path, &cfg_path).await {
+                match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path)).await {
                     Ok(c) => c,
                     Err(second_err) => {
                         cleanup_failed_start(veto.is_some(), second_err.clone()).await;
@@ -1771,11 +1785,11 @@ impl CoreManager {
 
         *self.proc.lock().await = Some((child, Instant::now()));
         let net_res = if safe_minimal_active {
-            net_stack::apply_network_stack_safe_minimal(&store_snapshot).await
+            Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot)).await
         } else {
-            net_stack::apply_network_stack(&store_snapshot).await
+            Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
         };
-        let _ = self.refresh_core_version().await;
+        let _ = Box::pin(self.refresh_core_version()).await;
         let nft_ok = net_stack::check_nft_table_active().await;
 
         {
@@ -1799,7 +1813,7 @@ impl CoreManager {
                 );
             }
         }
-        self.restore_saved_selectors(&store_snapshot).await;
+        Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
         let post_wan6 = crate::store::probe_wan6_runtime_state();
         let post_ipv6_state = crate::store::resolve_effective_ipv6_state(
             &store_snapshot.settings,
@@ -1815,29 +1829,30 @@ impl CoreManager {
                     post_ipv6_state.as_str(),
                 ),
             );
-            let (re_cfg_val, re_seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
-            if let Ok((re_cfg_path, _, re_quarantined)) = self
-                .prepare_and_write_validated_core_config(
+            let (re_cfg_val, re_seed_errors) =
+                Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+            if let Ok((re_cfg_path, _, re_quarantined)) =
+                Box::pin(self.prepare_and_write_validated_core_config(
                     &store_snapshot,
                     re_cfg_val,
                     re_seed_errors,
-                )
+                ))
                 .await
             {
                 let re_safe_minimal = re_quarantined.contains_key("_core_runtime");
                 self.state.live.write().await.safe_minimal_active = re_safe_minimal;
                 if re_safe_minimal {
-                    let _ = net_stack::apply_network_stack_safe_minimal(&store_snapshot).await;
+                    let _ = Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot))
+                        .await;
                 } else {
-                    let _ = net_stack::apply_network_stack(&store_snapshot).await;
+                    let _ = Box::pin(net_stack::apply_network_stack(&store_snapshot)).await;
                 }
                 let payload = json!({ "path": re_cfg_path, "payload": "" }).to_string();
-                if self
-                    .clash_request("PUT", "/configs?force=true", Some(&payload))
+                if Box::pin(self.clash_request("PUT", "/configs?force=true", Some(&payload)))
                     .await
                     .is_ok()
                 {
-                    self.restore_saved_selectors(&store_snapshot).await;
+                    Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
                 }
             }
         }
@@ -2036,6 +2051,13 @@ impl CoreManager {
         }
     }
 
+    #[inline(never)]
+    fn apply_or_reload_inner_boxed(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
+        Box::pin(self.apply_or_reload_inner())
+    }
+
     async fn apply_or_reload_inner(&self) -> anyhow::Result<()> {
         let reload_guard = self.reload_lock.lock().await;
         let (is_running, core_pid) = {
@@ -2050,21 +2072,22 @@ impl CoreManager {
         if !is_running || exe_deleted {
             // Release reload_lock before calling start(), which acquires reload_lock itself.
             drop(reload_guard);
-            return Box::pin(self.start()).await;
+            return self.start_boxed().await;
         }
-        let store_snapshot = { self.state.data.read().await.clone() };
-        self.ensure_server_tls_certs(&store_snapshot).await;
-        let (cfg_val, seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
-        let (cfg_path_buf, _, quarantined) = self
-            .prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors)
-            .await?;
+        let store_snapshot = Box::new(self.state.data.read().await.clone());
+        Box::pin(self.ensure_server_tls_certs(&store_snapshot)).await;
+        let (cfg_val, seed_errors) = Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
+        let (cfg_path_buf, _, quarantined) = Box::pin(
+            self.prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors),
+        )
+        .await?;
         let safe_minimal_active = quarantined.contains_key("_core_runtime");
         self.state.live.write().await.safe_minimal_active = safe_minimal_active;
         let cfg_path = cfg_path_buf.to_string_lossy().to_string();
         let net_res = if safe_minimal_active {
-            net_stack::apply_network_stack_safe_minimal(&store_snapshot).await
+            Box::pin(net_stack::apply_network_stack_safe_minimal(&store_snapshot)).await
         } else {
-            net_stack::apply_network_stack(&store_snapshot).await
+            Box::pin(net_stack::apply_network_stack(&store_snapshot)).await
         };
         if let Err(e) = net_res {
             eprintln!("[tachyon] apply_network_stack failed during reload: {e:#}");
@@ -2078,16 +2101,15 @@ impl CoreManager {
                 net_stack::check_nft_table_active().await;
         }
         let body = json!({ "path": cfg_path }).to_string();
-        if self
-            .clash_request("PUT", "/configs?force=true", Some(&body))
+        if Box::pin(self.clash_request("PUT", "/configs?force=true", Some(&body)))
             .await
             .is_err()
         {
             // Release reload_lock before falling back to start() to avoid self-deadlock.
             drop(reload_guard);
-            return Box::pin(self.start()).await;
+            return self.start_boxed().await;
         }
-        self.restore_saved_selectors(&store_snapshot).await;
+        Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
         drop(reload_guard);
         Ok(())
     }
@@ -2096,7 +2118,7 @@ impl CoreManager {
     /// Automatically rolls back to the last working config if validation/startup fails during an observation window.
     pub async fn apply_or_reload(&self) -> anyhow::Result<()> {
         let was_running = { self.state.live.read().await.core_running };
-        let res = Box::pin(self.apply_or_reload_inner()).await;
+        let res = self.apply_or_reload_inner_boxed().await;
         if let Err(ref err) = res {
             let err_text = err.to_string();
             let missing_binary = err_text.contains("tachyon-core binary not found");
