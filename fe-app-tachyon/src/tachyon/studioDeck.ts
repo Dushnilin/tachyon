@@ -854,6 +854,16 @@ function getQuickCreateTemplates(
         defaults: { enabled: '1', action: 'connection' },
       },
       {
+        id: 'cs2_faceit',
+        icon: () => renderGamepad2Icon(20),
+        title: 'CS2 / Faceit / Community Servers',
+        desc: tr(
+          'Выделенный UDP-маршрут для игровых портов через нативный desync (GT1-GT4) с автоматическим приоритетом #1',
+          'Dedicated UDP gaming ports route via native desync (GT1-GT4) automatically placed at priority #1',
+        ),
+        defaults: { enabled: '1', action: 'connection' },
+      },
+      {
         id: 'bypass',
         icon: () => renderArrowUpRightIcon(20),
         title: tr('Прямой маршрут (Bypass)', 'Direct Route (Bypass)'),
@@ -925,6 +935,20 @@ function getQuickCreateTemplates(
           enabled: '1',
           source_type: 'desync',
           desync_preset: 'auto',
+        },
+      },
+      {
+        id: 'cs2_udp_desync',
+        icon: () => renderGamepad2Icon(20),
+        title: 'CS2 / Faceit UDP Desync (GT1-GT4)',
+        desc: tr(
+          'Адаптация начальных UDP-пакетов к игровым серверам со встроенным STUN-профилем (без маршрутизации через VPN)',
+          'Initial UDP packet adaptation for game servers with built-in STUN profile (without routing through VPN)',
+        ),
+        defaults: {
+          enabled: '1',
+          source_type: 'desync',
+          desync_preset: 'gt1',
         },
       },
       {
@@ -1720,6 +1744,13 @@ function openStudioCreateModal(
         uciId = `${baseId}_${suffix}`;
       }
 
+      const firstExistingSection =
+        type === 'section' && selectedTemplate.id === 'cs2_faceit'
+          ? (uci.sections(UCI_PACKAGE, 'section') || [])
+              .map((s: any) => s?.['.name'])
+              .find(Boolean) || ''
+          : '';
+
       const dataStore = sectionRef?.map?.data || uci;
       if (typeof dataStore.add === 'function') {
         dataStore.add(UCI_PACKAGE, sectionRef.sectiontype || type, uciId);
@@ -1741,6 +1772,55 @@ function openStudioCreateModal(
 
       if (type === 'section' || type === 'profile' || type === 'server') {
         uci.set(UCI_PACKAGE, uciId, 'label', rawName);
+        if (type === 'section' && selectedTemplate.id === 'cs2_faceit') {
+          let condId = `cond_${uciId}_udp`;
+          let condIdx = 1;
+          while (uci.get(UCI_PACKAGE, condId)) {
+            condIdx += 1;
+            condId = `cond_${uciId}_udp_${condIdx}`;
+          }
+          uci.add(UCI_PACKAGE, 'condition', condId);
+          sanitizeStaleUciDeletes(condId);
+          uci.set(UCI_PACKAGE, condId, 'enabled', '1');
+          uci.set(UCI_PACKAGE, condId, 'name', `${rawName} (UDP)`);
+          uci.set(UCI_PACKAGE, condId, 'condition_type', 'atomic');
+          uci.set(UCI_PACKAGE, condId, 'l4_proto', 'udp');
+          uci.set(UCI_PACKAGE, condId, 'ports', [
+            '88',
+            '1024-2407',
+            '2409-4499',
+            '4502-19293',
+            '19345-49999',
+            '50101-65535',
+          ]);
+
+          let srcId = `src_${uciId}_gt1`;
+          let srcIdx = 1;
+          while (uci.get(UCI_PACKAGE, srcId)) {
+            srcIdx += 1;
+            srcId = `src_${uciId}_gt1_${srcIdx}`;
+          }
+          uci.add(UCI_PACKAGE, 'outbound_source', srcId);
+          sanitizeStaleUciDeletes(srcId);
+          uci.set(UCI_PACKAGE, srcId, 'enabled', '1');
+          uci.set(UCI_PACKAGE, srcId, 'name', `${rawName} (GT1)`);
+          uci.set(UCI_PACKAGE, srcId, 'source_type', 'desync');
+          uci.set(UCI_PACKAGE, srcId, 'desync_preset', 'gt1');
+
+          uci.set(UCI_PACKAGE, uciId, 'condition_refs', [condId]);
+          uci.set(UCI_PACKAGE, uciId, 'outbound_source_refs', [srcId]);
+          if (
+            firstExistingSection &&
+            firstExistingSection !== uciId &&
+            typeof (uci as any).move === 'function'
+          ) {
+            try {
+              (uci as any).move(UCI_PACKAGE, uciId, firstExistingSection);
+            } catch {
+              // ignore move failure
+            }
+          }
+        }
       } else {
         const isProxyShareUri =
           /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
@@ -3772,7 +3852,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               : tel.actionTone === 'dns'
                 ? [
                     renderCompassIcon(11),
-                    E('span', {}, raw.routed_dns_server || 'DNS'),
+                    E(
+                      'span',
+                      {},
+                      raw.routed_dns_use_global === '1'
+                        ? tr('Глобальный DNS', 'Global DNS')
+                        : raw.routed_dns_server || 'DNS',
+                    ),
                   ]
                 : [E('span', {}, tr('Встроенный выход', 'Built-in output'))];
 
@@ -3784,6 +3870,58 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           ),
         );
       }
+
+      const orderedActiveSections =
+        typeof uci !== 'undefined' && typeof uci.sections === 'function'
+          ? (uci.sections(UCI_PACKAGE, 'section') || []).filter(
+              (sec: any) => sec && sec.enabled !== '0',
+            )
+          : [];
+      const curActiveIdx = orderedActiveSections.findIndex(
+        (sec: any) => sec?.['.name'] === sid,
+      );
+      const isUdpDesyncSection =
+        enabled &&
+        tel.actionTone !== 'block' &&
+        tel.actionTone !== 'bypass' &&
+        tel.actionTone !== 'dns' &&
+        (tel.sources.some((s) => {
+          const srcObj =
+            (typeof uci !== 'undefined' && uci.get(UCI_PACKAGE, s.id)) || {};
+          return /^gt[1-4]$/i.test(String(srcObj.desync_preset || ''));
+        }) ||
+          tel.conditions.some((c) => {
+            const cObj =
+              (typeof uci !== 'undefined' && uci.get(UCI_PACKAGE, c.id)) || {};
+            return String(cObj.l4_proto || '').toLowerCase() === 'udp';
+          }) ||
+          String(raw.l4_proto || '').toLowerCase() === 'udp');
+      const hasVpnSectionAbove =
+        isUdpDesyncSection &&
+        curActiveIdx > 0 &&
+        orderedActiveSections.slice(0, curActiveIdx).some((aboveSec: any) => {
+          const aboveAct = String(
+            aboveSec.action || 'connection',
+          ).toLowerCase();
+          if (aboveAct !== 'connection' && aboveAct !== 'proxy') {
+            return false;
+          }
+          const aboveRefs = asArray(aboveSec.outbound_source_refs);
+          const aboveBalRefs = asArray(aboveSec.balancer_refs);
+          if (aboveRefs.length === 0 && aboveBalRefs.length === 0) {
+            return false;
+          }
+          const allDesync =
+            aboveBalRefs.length === 0 &&
+            aboveRefs.length > 0 &&
+            aboveRefs.every((srcId) => {
+              const sObj =
+                (typeof uci !== 'undefined' && uci.get(UCI_PACKAGE, srcId)) ||
+                {};
+              return String(sObj.source_type || '').toLowerCase() === 'desync';
+            });
+          return !allDesync;
+        });
 
       const card = E(
         'div',
@@ -3840,6 +3978,22 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               createStudioToggleSwitch(sid, enabled, sectionRef, renderDeck),
             ]),
           ]),
+          ...(hasVpnSectionAbove
+            ? [
+                E(
+                  'div',
+                  {
+                    class: 'tachyon-studio-card__order-warn',
+                    style:
+                      'margin:8px 0 2px;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,159,10,0.35);background:rgba(255,159,10,0.10);color:var(--warn,#ff9f0a);font-size:12px;',
+                  },
+                  tr(
+                    'UDP-секция расположена ниже VPN/прокси-секции — поднимите её выше в конвейере, чтобы игровой трафик не уходил в туннель.',
+                    'This UDP section is placed below a VPN/proxy section — move it higher in the pipeline so game traffic avoids the tunnel.',
+                  ),
+                ),
+              ]
+            : []),
           E('div', { class: 'tachyon-studio-card__pipeline' }, [
             E('div', { class: 'tachyon-studio-card__pipe-stage' }, [
               E(

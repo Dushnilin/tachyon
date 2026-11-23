@@ -17797,6 +17797,20 @@ function createSectionContent(section) {
   routedDnsEnabledOption.rmempty = false;
   routedDnsEnabledOption.modalonly = true;
 
+  const routedDnsUseGlobalOption = section.taboption(
+    'conditions',
+    form.Flag,
+    'routed_dns_use_global',
+    _('Use Global DNS Servers'),
+    _(
+      'Inherit global DNS servers and backup resolvers automatically instead of configuring separate servers for this section.',
+    ),
+  );
+  routedDnsUseGlobalOption.depends({ routed_dns_enabled: '1' });
+  routedDnsUseGlobalOption.default = '0';
+  routedDnsUseGlobalOption.rmempty = false;
+  routedDnsUseGlobalOption.modalonly = true;
+
   const routedDnsTypeOption = section.taboption(
     'conditions',
     form.ListValue,
@@ -17804,7 +17818,10 @@ function createSectionContent(section) {
     _('Routed DNS Protocol'),
     _('Protocol for the routed DNS resolver.'),
   );
-  routedDnsTypeOption.depends({ routed_dns_enabled: '1' });
+  routedDnsTypeOption.depends({
+    routed_dns_enabled: '1',
+    routed_dns_use_global: '0',
+  });
   routedDnsTypeOption.rmempty = false;
   routedDnsTypeOption.modalonly = true;
   routedDnsTypeOption.value('udp', 'UDP');
@@ -17819,7 +17836,10 @@ function createSectionContent(section) {
       'DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query).',
     ),
   });
-  routedDnsServerOption.depends({ routed_dns_enabled: '1' });
+  routedDnsServerOption.depends({
+    routed_dns_enabled: '1',
+    routed_dns_use_global: '0',
+  });
 
   const portsOption = addDynamicConditionField(section, {
     key: 'ports',

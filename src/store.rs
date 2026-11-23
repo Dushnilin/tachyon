@@ -1759,6 +1759,8 @@ pub struct RoutingSection {
     #[serde(default)]
     pub routed_dns_enabled: bool,
     #[serde(default)]
+    pub routed_dns_use_global: bool,
+    #[serde(default)]
     pub routed_dns_type: String,
     #[serde(default, alias = "routed_dns_server")]
     pub routed_dns_servers: Vec<String>,
@@ -5043,6 +5045,8 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("yacd_secret_key") {
                         self.settings.yacd_secret_key = v.to_string();
+                    } else if reset_omitted_fields {
+                        self.settings.yacd_secret_key.clear();
                     }
                     if let Some(v) = b.opt("dns_type") {
                         self.settings.dns_type = v.to_string();
@@ -6725,6 +6729,9 @@ impl RouterStoreData {
                             .to_string(),
                         dns_type: b.opt("dns_type").unwrap_or("").to_string(),
                         routed_dns_enabled: b.opt("routed_dns_enabled").is_some_and(parse_bool),
+                        routed_dns_use_global: b
+                            .opt("routed_dns_use_global")
+                            .is_some_and(parse_bool),
                         routed_dns_type: b.opt("routed_dns_type").unwrap_or("").to_string(),
                         routed_dns_servers: {
                             let l = b.list("routed_dns_server");
@@ -12328,6 +12335,7 @@ config outbound_source 'awg31_src'
                 "enabled": "1",
                 "source_ip_cidr": ["192.168.1.50"],
                 "routed_dns_enabled": "1",
+                "routed_dns_use_global": "1",
                 "routed_dns_type": "doh",
                 "routed_dns_server": "https://dns.google/dns-query"
             },
@@ -12352,6 +12360,7 @@ config outbound_source 'awg31_src'
             .find(|s| s.id == "bypass_routed")
             .expect("bypass_routed section");
         assert!(sec_bypass.routed_dns_enabled);
+        assert!(sec_bypass.routed_dns_use_global);
         assert_eq!(sec_bypass.routed_dns_type, "doh");
         assert_eq!(
             sec_bypass.routed_dns_servers,
@@ -12434,6 +12443,7 @@ config outbound_source 'awg31_src'
             .find(|s| s.id == "bypass_routed")
             .expect("bypass_routed cleared");
         assert!(sec_cleared.routed_dns_servers.is_empty());
+        assert!(!sec_cleared.routed_dns_use_global);
         let synced_cleared = sync_store_to_json_sections(&store, Some(&multi_json));
         assert!(
             synced_cleared["bypass_routed"]
@@ -12568,5 +12578,30 @@ config outbound_source 'awg31_src'
         assert!(!find(&reimported, "bal_least_off").interrupt_exist_connections);
         assert!(find(&reimported, "bal_prio_explicit").interrupt_exist_connections);
         assert!(!find(&reimported, "bal_prio_explicit").pick_fastest);
+    }
+
+    #[test]
+    fn test_yacd_secret_key_cleared_on_reset_omitted_fields() {
+        let mut store = RouterStoreData::default();
+        store.settings.enable_yacd = true;
+        store.settings.enable_yacd_wan_access = false;
+        store.settings.yacd_secret_key = "legacy-secret".to_string();
+
+        let payload = serde_json::json!({
+            "settings": {
+                ".type": "settings",
+                ".name": "settings",
+                "enable_yacd": "1",
+                "enable_yacd_wan_access": "0"
+            }
+        });
+        let imported = store.import_from_json_sections(payload.as_object().unwrap());
+        assert!(imported >= 1);
+        assert!(store.settings.enable_yacd);
+        assert!(!store.settings.enable_yacd_wan_access);
+        assert!(
+            store.settings.yacd_secret_key.is_empty(),
+            "omitted yacd_secret_key must be cleared during JSON sections save"
+        );
     }
 }

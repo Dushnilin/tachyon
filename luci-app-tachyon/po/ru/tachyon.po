@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-23 20:34+0300\n"
-"PO-Revision-Date: 2026-11-23 20:34+0300\n"
+"POT-Creation-Date: 2026-11-23 01:50+0300\n"
+"PO-Revision-Date: 2026-11-23 01:50+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2858,6 +2858,9 @@ msgstr "Решение и подробности"
 msgid "Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)"
 msgstr "Домен-приманка в фейковом ClientHello (выберите домен из белого списка РФ или введите свой)"
 
+msgid "Dedicated UDP gaming ports route via native desync (GT1-GT4) automatically placed at priority #1"
+msgstr "Выделенный UDP-маршрут для игровых портов через нативный desync (GT1-GT4) с автоматическим приоритетом #1"
+
 msgid "Default"
 msgstr "По умолчанию"
 
@@ -4538,6 +4541,18 @@ msgstr "Дополнительное сужение выбранных груп�
 msgid "GOOD"
 msgstr "ХОРОШО"
 
+msgid "GT1 — UDP Gaming: Min Ping (1 fake, packets 1-2)"
+msgstr "GT1 — Игровой UDP: минимальный пинг (1 фейк, пакеты 1-2)"
+
+msgid "GT2 — UDP Gaming: Fast Connect (5 fakes, packets 1-2)"
+msgstr "GT2 — Игровой UDP: быстрое подключение (5 фейков, пакеты 1-2)"
+
+msgid "GT3 — UDP Gaming: Extended Range (5 fakes, packets 1-3)"
+msgstr "GT3 — Игровой UDP: расширенный диапазон (5 фейков, пакеты 1-3)"
+
+msgid "GT4 — UDP Gaming: Max Redundancy (10 fakes, packets 1-4)"
+msgstr "GT4 — Игровой UDP: максимальная избыточность (10 фейков, пакеты 1-4)"
+
 msgid "Game Console IPs"
 msgstr "IP игровых консолей"
 
@@ -4627,6 +4642,9 @@ msgstr "Получить глобальную проверку"
 
 msgid "GitHub API Token (optional)"
 msgstr "Токен GitHub API (необязательно)"
+
+msgid "Global DNS"
+msgstr "Глобальный DNS"
 
 msgid "Global check"
 msgstr "Глобальная проверка"
@@ -5312,6 +5330,9 @@ msgstr "Параметры"
 msgid "Information"
 msgstr "Информация"
 
+msgid "Inherit global DNS servers and backup resolvers automatically instead of configuring separate servers for this section."
+msgstr "Автоматически наследовать глобальные DNS-серверы и резервные резолверы вместо отдельной настройки серверов для этой секции."
+
 msgid "Init Packet Magic Header (S1)"
 msgstr "Magic-заголовок пакета инициализации (S1)"
 
@@ -5350,6 +5371,9 @@ msgstr "Таймаут init (Itime)"
 
 msgid "Init.d conflict"
 msgstr "Конфликт init.d"
+
+msgid "Initial UDP packet adaptation for game servers with built-in STUN profile (without routing through VPN)"
+msgstr "Адаптация начальных UDP-пакетов к игровым серверам со встроенным STUN-профилем (без маршрутизации через VPN)"
 
 msgid "Initial selection"
 msgstr "Первичный выбор"
@@ -9122,11 +9146,11 @@ msgstr "Поиск серверов в пуле..."
 msgid "Secret"
 msgstr "Секрет"
 
-msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
-msgstr "Секретный ключ для аутентификации доступа к YACD и Clash API (обязателен при включённом YACD)."
+msgid "Secret key for authenticating access to YACD and Clash API (required when YACD WAN access is enabled, optional for LAN)."
+msgstr "Секретный ключ для аутентификации доступа к YACD и Clash API (обязателен при доступе с WAN, для LAN не обязателен)."
 
-msgid "Secret key is required when YACD is enabled"
-msgstr "При включённом YACD требуется секретный ключ"
+msgid "Secret key is required when YACD WAN access is enabled"
+msgstr "При включённом доступе к YACD с WAN требуется секретный ключ"
 
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr "Секретный токен для авторизации операций записи (POST/PUT) на /cgi-bin/tachyon-agent/. Оставьте пустым, если аутентификация не требуется."
@@ -10805,6 +10829,9 @@ msgstr "Настройки маршрутизации сохранены. Пос
 msgid "Thinking..."
 msgstr "Думаю..."
 
+msgid "This UDP section is placed below a VPN/proxy section — move it higher in the pipeline so game traffic avoids the tunnel."
+msgstr "UDP-секция расположена ниже VPN/прокси-секции — поднимите её выше в конвейере, чтобы игровой трафик не уходил в туннель."
+
 msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy and packet-routing firewall rules and restore direct Internet connection through your ISP."
 msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола прокси и маршрутизации пакетов и вернёт прямое подключение к интернету через провайдера."
 
@@ -11476,6 +11503,9 @@ msgstr "Использовать DTLS (только AnyConnect)"
 
 msgid "Use ESP (needs IP mode)"
 msgstr "Использовать ESP (требуется IP-режим)"
+
+msgid "Use Global DNS Servers"
+msgstr "Использовать глобальные DNS-серверы"
 
 msgid "Use HTTP/3 QUIC transport instead of HTTP/2"
 msgstr "Использовать транспорт HTTP/3 QUIC вместо HTTP/2"
@@ -12218,6 +12248,9 @@ msgstr "нет устройств"
 msgid "no prefix"
 msgstr "нет префикса"
 
+msgid "none (UDP Desync Only, TCP Unchanged)"
+msgstr "none (только UDP desync, TCP без изменений)"
+
 msgid "not detected"
 msgstr "не обнаружен"
 
@@ -12544,6 +12577,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
+msgstr "Секретный ключ для аутентификации доступа к YACD и Clash API (обязателен при включённом YACD)."
+
+msgid "Secret key is required when YACD is enabled"
+msgstr "При включённом YACD требуется секретный ключ"
 
 msgid "Auto-Heal Network Stack"
 msgstr "Автолечение сетевого стека"

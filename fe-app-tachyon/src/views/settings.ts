@@ -5240,7 +5240,7 @@ function createSettingsContent(section, capabilities) {
     'yacd_secret_key',
     _('YACD Secret Key'),
     _(
-      'Secret key for authenticating access to YACD and Clash API (required when YACD is enabled).',
+      'Secret key for authenticating access to YACD and Clash API (required when YACD WAN access is enabled, optional for LAN).',
     ),
   );
   o.depends('enable_yacd', '1');
@@ -5248,9 +5248,10 @@ function createSettingsContent(section, capabilities) {
   o.validate = function (section_id, value) {
     if (
       this.section.formvalue(section_id, 'enable_yacd') === '1' &&
+      this.section.formvalue(section_id, 'enable_yacd_wan_access') === '1' &&
       (!value || !`${value}`.trim())
     ) {
-      return _('Secret key is required when YACD is enabled');
+      return _('Secret key is required when YACD WAN access is enabled');
     }
     return true;
   };

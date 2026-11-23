@@ -1395,7 +1395,14 @@ function summarizeOutboundSource(sectionId) {
   if (stype === 'desync') {
     const preset = uci.get(UCI_PACKAGE, sectionId, 'desync_preset') || 'auto';
     const fooling = uci.get(UCI_PACKAGE, sectionId, 'desync_fooling') || '';
-    const label = preset === 'auto' ? 'Adaptive 2.0' : preset;
+    const labelMap: Record<string, string> = {
+      auto: 'Adaptive 2.0',
+      gt1: 'GT1 (UDP Gaming)',
+      gt2: 'GT2 (UDP Gaming)',
+      gt3: 'GT3 (UDP Gaming)',
+      gt4: 'GT4 (UDP Gaming)',
+    };
+    const label = labelMap[preset] || preset;
     return `Desync (${label}${fooling ? ', ' + fooling : ''})`;
   }
   if (stype === 'wdtt') {
@@ -6864,6 +6871,10 @@ function createOutboundsContent(section) {
   o.value('split', _('TCP Split Only (midsld)'));
   o.value('fake', _('Fake Packet Injection Only (RAW/TTL)'));
   o.value('oob', _('TCP Urgent OOB Desync (midsld)'));
+  o.value('gt1', _('GT1 — UDP Gaming: Min Ping (1 fake, packets 1-2)'));
+  o.value('gt2', _('GT2 — UDP Gaming: Fast Connect (5 fakes, packets 1-2)'));
+  o.value('gt3', _('GT3 — UDP Gaming: Extended Range (5 fakes, packets 1-3)'));
+  o.value('gt4', _('GT4 — UDP Gaming: Max Redundancy (10 fakes, packets 1-4)'));
   o.value('custom', _('Custom Parameters'));
   o.depends('source_type', 'desync');
   attachOutboundStrategyScannerButton(section, o, 'desync', 'desync_preset');
@@ -6888,6 +6899,7 @@ function createOutboundsContent(section) {
   o.value('split', _('split (TCP Segment Split)'));
   o.value('fake', _('fake (Fake Packet Only)'));
   o.value('oob', _('oob (TCP Urgent OOB)'));
+  o.value('none', _('none (UDP Desync Only, TCP Unchanged)'));
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
 
   o = section.taboption(
@@ -7175,6 +7187,10 @@ function createOutboundsContent(section) {
     desync_preset: 'discord',
     desync_udp_fake: '1',
   });
+  o.depends({ source_type: 'desync', desync_preset: 'gt1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt2' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt3' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt4' });
 
   o = section.taboption(
     'general',
@@ -7187,6 +7203,10 @@ function createOutboundsContent(section) {
   o.rmempty = true;
   o.placeholder = '0x0001';
   o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt2' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt3' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt4' });
 
   o = section.taboption(
     'general',
@@ -7201,6 +7221,10 @@ function createOutboundsContent(section) {
   o.rmempty = true;
   o.placeholder = '1-2';
   o.depends({ source_type: 'desync', desync_udp_fake: '1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt2' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt3' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt4' });
 
   o = section.taboption(
     'general',
@@ -7241,48 +7265,10 @@ function createOutboundsContent(section) {
     desync_preset: 'discord',
     desync_udp_fake: '1',
   });
-
-  o = section.taboption(
-    'general',
-    form.Value,
-    'desync_udp_fake_payload',
-    _('UDP Fake Payload (HEX)'),
-    _('Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer.'),
-  );
-  o.modalonly = true;
-  o.rmempty = true;
-  o.placeholder = '0x0001';
-  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
-
-  o = section.taboption(
-    'general',
-    form.Value,
-    'desync_udp_out_range',
-    _('UDP Fake Packet Range'),
-    _(
-      'Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer.',
-    ),
-  );
-  o.modalonly = true;
-  o.rmempty = true;
-  o.placeholder = '1-2';
-  o.depends({ source_type: 'desync', desync_udp_fake: '1' });
-
-  o = section.taboption(
-    'general',
-    form.ListValue,
-    'desync_udp_keep_socket',
-    _('Keep UDP Socket'),
-    _(
-      'Retain the outbound socket if replies are delayed. Requires tachyon-core 0.5.9 or newer.',
-    ),
-  );
-  o.modalonly = true;
-  o.rmempty = true;
-  o.value('', _('Default'));
-  o.value('1', _('Enabled'));
-  o.value('0', _('Disabled'));
-  o.depends('source_type', 'desync');
+  o.depends({ source_type: 'desync', desync_preset: 'gt1' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt2' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt3' });
+  o.depends({ source_type: 'desync', desync_preset: 'gt4' });
 
   o = section.taboption(
     'general',

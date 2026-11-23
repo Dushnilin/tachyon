@@ -12,9 +12,9 @@ use base64::engine::general_purpose::{STANDARD as B64_STD, URL_SAFE_NO_PAD as B6
 use serde_json::{Map, Value, json};
 
 use crate::store::{
-    BalancerConfig, InboundClient, InboundServer, OutboundGroup, OutboundSource, ParsedProxyNode,
-    RouterStoreData, RoutingSection, TrafficCondition, parse_csqtt_hashes_tokens, unix_now_secs,
-    url_encode_component,
+    BalancerConfig, GlobalSettings, InboundClient, InboundServer, OutboundGroup, OutboundSource,
+    ParsedProxyNode, RouterStoreData, RoutingSection, TrafficCondition, parse_csqtt_hashes_tokens,
+    unix_now_secs, url_encode_component,
 };
 
 const DIRECT_DOWNLOAD_HTTP_CLIENT_TAG: &str = "tachyon-download-direct";
@@ -4996,6 +4996,18 @@ struct DesyncParams<'a> {
     udplen: u16,
 }
 
+const CS2_STUN_UDP_FAKE_PAYLOAD: &str = "0x000100502112a4425a4b4b7568477865706e64300006000951427a503a746e576b000000c0570004000003e7802a0008b6bcef7bb3f7289800250000002400046e001eff00080014aa4f94f91ff5cebedfec9e66add3dd9bb795ed6e802800042b1fb635";
+
+fn gt_udp_desync_profile(preset: &str) -> Option<(u8, &'static str)> {
+    match preset.trim().to_ascii_lowercase().as_str() {
+        "gt1" => Some((1, "1-2")),
+        "gt2" => Some((5, "1-2")),
+        "gt3" => Some((5, "1-3")),
+        "gt4" => Some((10, "1-4")),
+        _ => None,
+    }
+}
+
 fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bool) -> Value {
     if !p.opts.trim().is_empty() {
         let mut parsed = crate::fuzzer::parse_desync_args_to_outbound(p.opts, tag, false);
@@ -5015,16 +5027,70 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
     let mut obj = Map::new();
     obj.insert("type".into(), json!("desync"));
     obj.insert("tag".into(), json!(tag));
-    if !p.mode.trim().is_empty() && (p.preset.trim().is_empty() || p.preset == "custom") {
-        obj.insert("mode".into(), json!(p.mode.trim()));
+
+    let preset_lc = p.preset.trim().to_ascii_lowercase();
+    let gt_profile = gt_udp_desync_profile(&preset_lc);
+    let has_udp_opts = p.udp_fake
+        || p.udp_repeats > 0
+        || !p.udp_fake_payload.trim().is_empty()
+        || !p.udp_out_range.trim().is_empty()
+        || !p.udp_keep_socket.trim().is_empty()
+        || p.udplen > 0;
+    let has_tcp_opts = !p.fake_sni.trim().is_empty()
+        || !p.sni_pool.is_empty()
+        || !p.split_pos.trim().is_empty()
+        || !p.fooling.trim().is_empty()
+        || !p.fake_payload.trim().is_empty()
+        || !p.fake_tls.trim().is_empty()
+        || p.tlsrec_first
+        || p.seqovl > 0
+        || p.syndata
+        || p.host_fake
+        || p.wsize > 0
+        || p.wscale.is_some();
+
+    let mut effective_mode: Option<&str> = None;
+    if gt_profile.is_some() {
+        let mode = if !p.mode.trim().is_empty() {
+            p.mode.trim()
+        } else {
+            "none"
+        };
+        obj.insert("mode".into(), json!(mode));
+        effective_mode = Some(mode);
+    } else if preset_lc == "custom" {
+        // tachyon-core DesyncPreset has no "custom" variant; resolve to explicit mode.
+        let mode = if !p.mode.trim().is_empty() {
+            p.mode.trim()
+        } else if has_udp_opts && !has_tcp_opts {
+            "none"
+        } else {
+            "fake_split"
+        };
+        obj.insert("mode".into(), json!(mode));
+        effective_mode = Some(mode);
+    } else if matches!(preset_lc.as_str(), "none" | "off" | "disabled") {
+        obj.insert("mode".into(), json!("none"));
+        effective_mode = Some("none");
+    } else if !p.mode.trim().is_empty() && preset_lc.is_empty() {
+        let mode = p.mode.trim();
+        obj.insert("mode".into(), json!(mode));
+        effective_mode = Some(mode);
     } else {
-        let preset = if p.preset.trim().is_empty() || p.preset == "adaptive" {
+        let preset = if preset_lc.is_empty() || preset_lc == "adaptive" {
             "auto"
         } else {
             p.preset.trim()
         };
         obj.insert("preset".into(), json!(preset));
     }
+
+    let apply_tcp_defaults = with_defaults
+        && gt_profile.is_none()
+        && !matches!(
+            effective_mode.map(str::to_ascii_lowercase).as_deref(),
+            Some("none" | "off" | "disabled")
+        );
 
     let pool: Vec<String> = p
         .sni_pool
@@ -5036,7 +5102,7 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
         obj.insert("fake_sni".into(), json!(p.fake_sni.trim()));
     } else if let Some(first) = pool.first() {
         obj.insert("fake_sni".into(), json!(first));
-    } else if with_defaults {
+    } else if apply_tcp_defaults {
         obj.insert("fake_sni".into(), json!("ozon.ru"));
     }
     if !pool.is_empty() {
@@ -5045,7 +5111,7 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
 
     let sp_raw = if !p.split_pos.trim().is_empty() {
         p.split_pos.trim()
-    } else if with_defaults {
+    } else if apply_tcp_defaults {
         "sni"
     } else {
         ""
@@ -5072,7 +5138,7 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
 
     let fooling = if !p.fooling.trim().is_empty() {
         p.fooling.trim()
-    } else if with_defaults {
+    } else if apply_tcp_defaults {
         "autottl"
     } else {
         ""
@@ -5116,18 +5182,48 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
     if p.ipfrag {
         obj.insert("ipfrag".into(), json!(true));
     }
-    if p.udp_fake {
+    if let Some((default_repeats, default_range)) = gt_profile {
         obj.insert("udp_fake".into(), json!(true));
+        obj.insert(
+            "udp_repeats".into(),
+            json!(if p.udp_repeats > 0 {
+                p.udp_repeats
+            } else {
+                default_repeats
+            }),
+        );
+        if p.udp_fake_ttl > 0 {
+            obj.insert("udp_fake_ttl".into(), json!(p.udp_fake_ttl.min(128)));
+        }
+        if !p.udp_fake_payload.trim().is_empty() {
+            crate::fuzzer::insert_desync_udp_fake_payload(&mut obj, p.udp_fake_payload);
+        } else {
+            obj.insert("udp_fake_payload".into(), json!(CS2_STUN_UDP_FAKE_PAYLOAD));
+        }
+        if !p.udp_out_range.trim().is_empty() {
+            crate::fuzzer::insert_desync_udp_out_range(&mut obj, p.udp_out_range);
+        } else {
+            obj.insert("udp_out_range".into(), json!(default_range));
+        }
+        if !p.udp_keep_socket.trim().is_empty() {
+            crate::fuzzer::insert_desync_udp_keep_socket(&mut obj, p.udp_keep_socket);
+        } else {
+            obj.insert("udp_keep_socket".into(), json!(true));
+        }
+    } else {
+        if p.udp_fake {
+            obj.insert("udp_fake".into(), json!(true));
+        }
+        if p.udp_repeats > 0 {
+            obj.insert("udp_repeats".into(), json!(p.udp_repeats));
+        }
+        if p.udp_fake_ttl > 0 {
+            obj.insert("udp_fake_ttl".into(), json!(p.udp_fake_ttl.min(128)));
+        }
+        crate::fuzzer::insert_desync_udp_fake_payload(&mut obj, p.udp_fake_payload);
+        crate::fuzzer::insert_desync_udp_out_range(&mut obj, p.udp_out_range);
+        crate::fuzzer::insert_desync_udp_keep_socket(&mut obj, p.udp_keep_socket);
     }
-    if p.udp_repeats > 0 {
-        obj.insert("udp_repeats".into(), json!(p.udp_repeats));
-    }
-    if p.udp_fake_ttl > 0 {
-        obj.insert("udp_fake_ttl".into(), json!(p.udp_fake_ttl.min(128)));
-    }
-    crate::fuzzer::insert_desync_udp_fake_payload(&mut obj, p.udp_fake_payload);
-    crate::fuzzer::insert_desync_udp_out_range(&mut obj, p.udp_out_range);
-    crate::fuzzer::insert_desync_udp_keep_socket(&mut obj, p.udp_keep_socket);
     if p.udplen > 0 {
         obj.insert("udplen".into(), json!(p.udplen));
     }
@@ -12393,7 +12489,7 @@ fn compile_core_config_with_rt_dir(
         let sec_routed_dns_enabled = sec.routed_dns_enabled
             && !matches!(sec.action.as_str(), "hosts" | "block")
             && !matches!(sec.connection_type.as_str(), "hosts" | "block")
-            && !resolve_routed_dns_servers(sec).is_empty();
+            && (sec.routed_dns_use_global || !resolve_routed_dns_servers(sec).is_empty());
         let sec_routed_dns_tag = sec_routed_dns_enabled.then(|| format!("dns-routed-{}", sec.id));
         let resolve_dns_server = sec_routed_dns_tag.as_deref().unwrap_or("dns-remote");
 
@@ -13087,6 +13183,8 @@ fn compile_core_config_with_rt_dir(
     }
 
     let mut remote_group_members: Vec<String> = Vec::new();
+    let mut has_encrypted_primary = false;
+    let mut seen_encrypted_fb: HashSet<String> = HashSet::new();
     for (i, main_dns) in main_list.iter().enumerate() {
         let tag = format!("dns-remote-{}", i + 1);
         let main_host_owned = extract_host_only(main_dns);
@@ -13149,6 +13247,21 @@ fn compile_core_config_with_rt_dir(
         if !main_is_ip {
             obj["domain_resolver"] = json!("dns-bootstrap");
         }
+        if matches!(
+            obj.get("type").and_then(Value::as_str),
+            Some("https" | "tls" | "quic")
+        ) {
+            has_encrypted_primary = true;
+            let enc_key = format!(
+                "{}|{}|{}|{}|{}",
+                obj["type"].as_str().unwrap_or(""),
+                obj["server"].as_str().unwrap_or(""),
+                obj["server_port"].as_u64().unwrap_or(0),
+                obj.get("path").and_then(Value::as_str).unwrap_or(""),
+                obj.get("detour").and_then(Value::as_str).unwrap_or("")
+            );
+            seen_encrypted_fb.insert(enc_key);
+        }
         dns_servers_vec.push(obj);
         remote_group_members.push(tag);
     }
@@ -13169,53 +13282,101 @@ fn compile_core_config_with_rt_dir(
                 }
             }
         }
-        if store.settings.fallback_wan_main {
-            for wan_ip in get_wan_dns_servers() {
-                if !ipv6_active && wan_ip.contains(':') {
+        if has_encrypted_primary {
+            // Keep encrypted primary DNS strictly isolated from plain UDP resolvers:
+            // tachyon-core's `group[mode=stable]` picks randomly among clean members
+            // and treats ISP-spoofed NXDOMAIN/NODATA from UDP as valid answers.
+            let mut fb_idx = 0usize;
+            for raw_fb in &fallback_candidates {
+                let enc_type = infer_dns_entry_type(raw_fb, "");
+                if !matches!(enc_type, "doh" | "dot" | "doq") {
                     continue;
                 }
-                if !fallback_candidates
-                    .iter()
-                    .any(|x| x.eq_ignore_ascii_case(&wan_ip))
+                let fb_host_owned = extract_host_only(raw_fb);
+                let fb_host = if fb_host_owned.is_empty() {
+                    raw_fb.trim()
+                } else {
+                    fb_host_owned.as_str()
+                };
+                if fb_host.is_empty() || (!ipv6_active && fb_host.contains(':')) {
+                    continue;
+                }
+                fb_idx += 1;
+                let fb_tag = format!("dns-fallback-{fb_idx}");
+                let mut fb_obj = build_dns_server_entry(&fb_tag, enc_type, raw_fb, Some("direct"));
+                if store.settings.dns_doq_ech
+                    && let Some(tls_obj) = fb_obj.get_mut("tls").and_then(Value::as_object_mut)
                 {
-                    fallback_candidates.push(wan_ip);
+                    tls_obj.insert("ech".into(), json!({ "enabled": true }));
+                }
+                let enc_key = format!(
+                    "{}|{}|{}|{}|{}",
+                    fb_obj["type"].as_str().unwrap_or(""),
+                    fb_obj["server"].as_str().unwrap_or(""),
+                    fb_obj["server_port"].as_u64().unwrap_or(0),
+                    fb_obj.get("path").and_then(Value::as_str).unwrap_or(""),
+                    fb_obj.get("detour").and_then(Value::as_str).unwrap_or("")
+                );
+                if !seen_encrypted_fb.insert(enc_key) {
+                    continue;
+                }
+                dns_servers_vec.push(fb_obj);
+                remote_group_members.push(fb_tag);
+            }
+            if bootstrap_udp_endpoints.is_empty()
+                && !remote_group_members.iter().any(|t| t == "dns-bootstrap")
+            {
+                remote_group_members.push("dns-bootstrap".to_string());
+            }
+        } else {
+            if store.settings.fallback_wan_main {
+                for wan_ip in get_wan_dns_servers() {
+                    if !ipv6_active && wan_ip.contains(':') {
+                        continue;
+                    }
+                    if !fallback_candidates
+                        .iter()
+                        .any(|x| x.eq_ignore_ascii_case(&wan_ip))
+                    {
+                        fallback_candidates.push(wan_ip);
+                    }
                 }
             }
-        }
-        let mut fb_idx = 0usize;
-        for raw_fb in &fallback_candidates {
-            let fb_host_owned = extract_host_only(raw_fb);
-            let fb_host = if fb_host_owned.is_empty() {
-                raw_fb.trim()
-            } else {
-                fb_host_owned.as_str()
-            };
-            if fb_host.is_empty() || (!ipv6_active && fb_host.contains(':')) {
-                continue;
+            let mut fb_idx = 0usize;
+            for raw_fb in &fallback_candidates {
+                let fb_host_owned = extract_host_only(raw_fb);
+                let fb_host = if fb_host_owned.is_empty() {
+                    raw_fb.trim()
+                } else {
+                    fb_host_owned.as_str()
+                };
+                if fb_host.is_empty() || (!ipv6_active && fb_host.contains(':')) {
+                    continue;
+                }
+                let fb_port = extract_url_port(raw_fb, 53);
+                let ep_key = format!("{fb_host}:{fb_port}");
+                if !bootstrap_udp_endpoints.insert(ep_key) {
+                    continue;
+                }
+                fb_idx += 1;
+                let fb_tag = format!("dns-fallback-{fb_idx}");
+                let mut fb_obj = json!({
+                    "type": "udp",
+                    "tag": fb_tag,
+                    "server": fb_host,
+                    "server_port": fb_port,
+                    "detour": "direct"
+                });
+                if !crate::store::valid_ip_with_zone(fb_host) {
+                    fb_obj["domain_resolver"] = json!("dns-bootstrap");
+                }
+                dns_servers_vec.push(fb_obj);
+                remote_group_members.push(fb_tag);
             }
-            let fb_port = extract_url_port(raw_fb, 53);
-            let ep_key = format!("{fb_host}:{fb_port}");
-            if !bootstrap_udp_endpoints.insert(ep_key) {
-                continue;
-            }
-            fb_idx += 1;
-            let fb_tag = format!("dns-fallback-{fb_idx}");
-            let mut fb_obj = json!({
-                "type": "udp",
-                "tag": fb_tag,
-                "server": fb_host,
-                "server_port": fb_port,
-                "detour": "direct"
-            });
-            if !crate::store::valid_ip_with_zone(fb_host) {
-                fb_obj["domain_resolver"] = json!("dns-bootstrap");
-            }
-            dns_servers_vec.push(fb_obj);
-            remote_group_members.push(fb_tag);
-        }
 
-        if !remote_group_members.iter().any(|t| t == "dns-bootstrap") {
-            remote_group_members.push("dns-bootstrap".to_string());
+            if !remote_group_members.iter().any(|t| t == "dns-bootstrap") {
+                remote_group_members.push("dns-bootstrap".to_string());
+            }
         }
     }
     dns_servers_vec.push(json!({
@@ -13450,15 +13611,6 @@ fn compile_core_config_with_rt_dir(
                     target_outbound_tag,
                     section_matched_any,
                 } => {
-                    let servers = resolve_routed_dns_servers(sec);
-                    if servers.is_empty() {
-                        continue;
-                    }
-                    let configured_type = if sec.routed_dns_type.trim().is_empty() {
-                        "udp"
-                    } else {
-                        sec.routed_dns_type.trim()
-                    };
                     let detour = if sec.action == "bypass"
                         || sec.connection_type == "bypass"
                         || target_outbound_tag == "direct"
@@ -13468,20 +13620,23 @@ fn compile_core_config_with_rt_dir(
                     } else {
                         Some(target_outbound_tag.as_str())
                     };
+                    let mut entries =
+                        build_section_routed_dns_entries(sec, &store.settings, detour, ipv6_active);
+                    if entries.is_empty() {
+                        continue;
+                    }
                     let base_tag = format!("dns-routed-{}", sec.id);
-                    let target_server_tag = if servers.len() == 1 {
-                        let srv_val = &servers[0];
-                        let eff_type = infer_dns_entry_type(srv_val, configured_type);
-                        dns_servers_vec
-                            .push(build_dns_server_entry(&base_tag, eff_type, srv_val, detour));
+                    let target_server_tag = if entries.len() == 1 {
+                        let mut entry = entries.remove(0);
+                        entry["tag"] = json!(base_tag);
+                        dns_servers_vec.push(entry);
                         base_tag
                     } else {
-                        let mut server_tags = Vec::with_capacity(servers.len());
-                        for (i, srv_val) in servers.iter().enumerate() {
+                        let mut server_tags = Vec::with_capacity(entries.len());
+                        for (i, mut entry) in entries.into_iter().enumerate() {
                             let tag_name = format!("{base_tag}-{}", i + 1);
-                            let eff_type = infer_dns_entry_type(srv_val, configured_type);
-                            dns_servers_vec
-                                .push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
+                            entry["tag"] = json!(tag_name);
+                            dns_servers_vec.push(entry);
                             server_tags.push(tag_name);
                         }
                         dns_servers_vec.push(json!({
@@ -14775,24 +14930,138 @@ enum SectionDnsPlan<'a> {
     },
 }
 
-fn resolve_routed_dns_servers(sec: &RoutingSection) -> Vec<String> {
+fn collect_dns_tokens(items: &[String]) -> Vec<String> {
     let mut result = Vec::new();
     let mut seen = HashSet::new();
-    let collect_from = |items: &[String], out: &mut Vec<String>, seen: &mut HashSet<String>| {
-        for srv in items {
-            for tok in srv.split([',', '\n', ' ', '\t']) {
-                let trimmed = tok.trim();
-                if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
-                    out.push(trimmed.to_string());
-                }
+    for srv in items {
+        for tok in srv.split([',', '\n', ' ', '\t', '\r']) {
+            let trimmed = tok.trim();
+            if !trimmed.is_empty() && seen.insert(trimmed.to_ascii_lowercase()) {
+                result.push(trimmed.to_string());
             }
         }
-    };
-    collect_from(&sec.routed_dns_servers, &mut result, &mut seen);
-    if result.is_empty() {
-        collect_from(&sec.dns_servers, &mut result, &mut seen);
     }
     result
+}
+
+fn resolve_routed_dns_servers(sec: &RoutingSection) -> Vec<String> {
+    let mut result = collect_dns_tokens(&sec.routed_dns_servers);
+    if result.is_empty() {
+        result = collect_dns_tokens(&sec.dns_servers);
+    }
+    result
+}
+
+fn build_section_routed_dns_entries(
+    sec: &RoutingSection,
+    settings: &GlobalSettings,
+    detour: Option<&str>,
+    ipv6_active: bool,
+) -> Vec<Value> {
+    if !sec.routed_dns_use_global {
+        let configured_type = if sec.routed_dns_type.trim().is_empty() {
+            "udp"
+        } else {
+            sec.routed_dns_type.trim()
+        };
+        return resolve_routed_dns_servers(sec)
+            .into_iter()
+            .map(|srv_val| {
+                let eff_type = infer_dns_entry_type(&srv_val, configured_type);
+                build_dns_server_entry("", eff_type, &srv_val, detour)
+            })
+            .collect();
+    }
+
+    let mut entries = Vec::new();
+    let mut seen_keys = HashSet::new();
+    let ech_enabled = settings.dns_doq_ech;
+    let push_entry = |entries: &mut Vec<Value>,
+                      seen_keys: &mut HashSet<String>,
+                      eff_type: &str,
+                      raw_val: &str| {
+        let host_owned = extract_host_only(raw_val);
+        let host = if host_owned.is_empty() {
+            raw_val.trim()
+        } else {
+            host_owned.as_str()
+        };
+        if host.is_empty() || (!ipv6_active && host.contains(':')) {
+            return;
+        }
+        let mut obj = build_dns_server_entry("", eff_type, raw_val, detour);
+        if ech_enabled
+            && matches!(
+                obj.get("type").and_then(Value::as_str),
+                Some("https" | "tls" | "quic")
+            )
+            && let Some(tls_obj) = obj.get_mut("tls").and_then(Value::as_object_mut)
+        {
+            tls_obj.insert("ech".into(), json!({ "enabled": true }));
+        }
+        let key = format!(
+            "{}|{}|{}|{}|{}",
+            obj["type"].as_str().unwrap_or(""),
+            obj["server"].as_str().unwrap_or(""),
+            obj["server_port"].as_u64().unwrap_or(0),
+            obj.get("path").and_then(Value::as_str).unwrap_or(""),
+            obj.get("detour").and_then(Value::as_str).unwrap_or("")
+        );
+        if seen_keys.insert(key) {
+            entries.push(obj);
+        }
+    };
+
+    let global_type = if settings.dns_type.trim().is_empty() {
+        "udp"
+    } else {
+        settings.dns_type.trim()
+    };
+    let mut main_list = collect_dns_tokens(&settings.dns_servers);
+    if main_list.is_empty() {
+        main_list.push("1.1.1.1".to_string());
+    }
+    for raw in &main_list {
+        let eff_type = infer_dns_entry_type(raw, global_type);
+        push_entry(&mut entries, &mut seen_keys, eff_type, raw);
+    }
+
+    let mut fallback_raw = settings.dns_fallback_servers.clone();
+    if !settings.fallback_dns_server.trim().is_empty() {
+        fallback_raw.push(settings.fallback_dns_server.clone());
+    }
+    let fallbacks = collect_dns_tokens(&fallback_raw);
+
+    let has_encrypted_global = entries.iter().any(|e| {
+        matches!(
+            e.get("type").and_then(Value::as_str),
+            Some("https" | "tls" | "quic")
+        )
+    });
+    if has_encrypted_global {
+        for raw_fb in &fallbacks {
+            let enc_type = infer_dns_entry_type(raw_fb, "");
+            if matches!(enc_type, "doh" | "dot" | "doq") {
+                push_entry(&mut entries, &mut seen_keys, enc_type, raw_fb);
+            }
+        }
+    } else {
+        for raw_fb in &fallbacks {
+            push_entry(&mut entries, &mut seen_keys, "udp", raw_fb);
+        }
+        if settings.fallback_wan_main {
+            for wan_ip in get_wan_dns_servers() {
+                push_entry(&mut entries, &mut seen_keys, "udp", &wan_ip);
+            }
+        }
+        for raw_boot in collect_dns_tokens(&settings.bootstrap_dns_servers) {
+            if !matches!(infer_dns_entry_type(&raw_boot, ""), "doh" | "dot" | "doq") {
+                push_entry(&mut entries, &mut seen_keys, "udp", &raw_boot);
+            }
+        }
+    }
+
+    entries
 }
 
 fn infer_dns_entry_type<'a>(raw_server: &str, configured_type: &'a str) -> &'a str {
@@ -14878,7 +15147,7 @@ pub(crate) fn collect_source_aware_dns_cidrs(
             && !matches!(sec.action.as_str(), "hosts" | "block")
             && !matches!(sec.connection_type.as_str(), "hosts" | "block")
             && sec.routed_dns_enabled
-            && !resolve_routed_dns_servers(sec).is_empty();
+            && (sec.routed_dns_use_global || !resolve_routed_dns_servers(sec).is_empty());
         if !active_custom_dns && !active_routed_dns {
             continue;
         }
@@ -25901,12 +26170,10 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         assert_eq!(rem1["detour"], "VPN1");
         assert_eq!(rem1["domain_resolver"], "dns-bootstrap");
 
-        let fb1 = srvs
-            .iter()
-            .find(|s| s["tag"] == "dns-fallback-1")
-            .expect("dns-fallback-1");
-        assert_eq!(fb1["type"], "udp");
-        assert_eq!(fb1["detour"], "direct");
+        assert!(
+            srvs.iter().all(|s| s["tag"] != "dns-fallback-1"),
+            "plain UDP dns-fallback-1 must not be emitted into encrypted dns-remote group"
+        );
 
         let rem_group = srvs
             .iter()
@@ -25914,16 +26181,76 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
             .expect("dns-remote group");
         assert_eq!(rem_group["type"], "group");
         assert_eq!(rem_group["mode"], "stable");
-        assert_eq!(rem_group["servers"][0], "dns-remote-1");
-        assert!(
-            rem_group["servers"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("dns-fallback-1"))
-        );
+        assert_eq!(rem_group["servers"], json!(["dns-remote-1"]));
+    }
+
+    #[test]
+    fn test_dns_remote_encrypted_excludes_plain_udp_fallbacks_issue_489() {
+        let mut store = RouterStoreData::default();
+        store.sections.clear();
+        store.conditions.clear();
+        store.outbound_groups.clear();
+        store.balancers.clear();
+        store.outbound_sources.clear();
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec![
+            "https://1.1.1.1/dns-query".to_string(),
+            "https://dns.google/dns-query".to_string(),
+        ];
+        store.settings.dns_fallback_servers = vec![
+            "8.8.4.4".to_string(),
+            "https://dns.quad9.net/dns-query".to_string(),
+        ];
+        store.settings.bootstrap_dns_servers = vec!["8.8.8.8".to_string()];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile issue 489 doh");
+        let srvs = cfg["dns"]["servers"].as_array().expect("dns servers");
+        let rem_group = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote group");
+        let members = rem_group["servers"].as_array().expect("group members");
         assert_eq!(
-            rem_group["servers"].as_array().unwrap().last(),
-            Some(&json!("dns-bootstrap"))
+            members,
+            &vec![
+                json!("dns-remote-1"),
+                json!("dns-remote-2"),
+                json!("dns-fallback-1"),
+            ]
+        );
+        for tag in members {
+            let entry = srvs
+                .iter()
+                .find(|s| s["tag"] == *tag)
+                .expect("member server must exist");
+            assert_eq!(entry["type"], "https");
+        }
+        assert!(
+            !members.contains(&json!("dns-bootstrap")),
+            "plain UDP dns-bootstrap must never be added to encrypted dns-remote"
+        );
+
+        // Plain UDP mode still includes UDP fallbacks and dns-bootstrap.
+        let mut udp_store = store.clone();
+        udp_store.settings.dns_type = "udp".to_string();
+        udp_store.settings.dns_servers = vec!["77.88.8.8".to_string()];
+        udp_store.settings.dns_fallback_servers = vec!["8.8.4.4".to_string()];
+        let udp_cfg =
+            compile_core_config_with_wan6(&udp_store, false).expect("compile issue 489 udp");
+        let udp_rem = udp_cfg["dns"]["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("udp dns-remote");
+        assert_eq!(
+            udp_rem["servers"],
+            json!([
+                "dns-remote-1",
+                "dns-fallback-1",
+                "dns-fallback-2",
+                "dns-bootstrap"
+            ])
         );
     }
 
@@ -26888,5 +27215,169 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
             .expect("custom udp dns server");
         assert_eq!(udp_srv["type"], "udp");
         assert_eq!(udp_srv["server"], "9.9.9.9");
+    }
+
+    #[test]
+    fn test_routed_dns_use_global_desync_inherits_global_dns_issue_486() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec![
+            "https://1.1.1.1/dns-query".to_string(),
+            "https://dns.google/dns-query".to_string(),
+        ];
+        store.settings.dns_fallback_servers = vec![
+            "8.8.4.4".to_string(),
+            "https://dns.quad9.net/dns-query".to_string(),
+        ];
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string()];
+        store.settings.dns_detour_enabled = true;
+        store.settings.dns_detour_section = "vpn_sec".to_string();
+
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_vpn".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#VpnNode".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections = vec![
+            RoutingSection {
+                id: "desync_global".to_string(),
+                enabled: true,
+                label: "YouTube Desync".to_string(),
+                action: "desync".to_string(),
+                connection_type: "desync".to_string(),
+                user_domains: vec!["youtube.com".to_string()],
+                routed_dns_enabled: true,
+                routed_dns_use_global: true,
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "vpn_sec".to_string(),
+                enabled: true,
+                label: "VPN".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_vpn".to_string()],
+                user_domains: vec!["blocked.example".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg =
+            compile_core_config_with_wan6(&store, false).expect("compile global routed desync");
+        let srvs = cfg["dns"]["servers"].as_array().unwrap();
+        let grp = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-routed-desync_global")
+            .expect("inherited routed dns group");
+        assert_eq!(grp["type"], "group");
+        let members = grp["servers"].as_array().unwrap();
+        assert_eq!(members.len(), 3);
+        for mtag in members {
+            let entry = srvs.iter().find(|s| s["tag"] == *mtag).unwrap();
+            assert_eq!(entry["type"], "https");
+            assert_ne!(
+                entry["detour"], "VpnNode",
+                "desync global routed DNS must stay on desync outbound, not VPN detour"
+            );
+        }
+        assert!(cfg["route"]["rules"].as_array().unwrap().iter().any(|r| {
+            r["action"] == "resolve"
+                && r["server"] == "dns-routed-desync_global"
+                && r["domain_suffix"] == json!(["youtube.com"])
+        }));
+    }
+
+    #[test]
+    fn test_desync_custom_preset_never_emits_unknown_custom_preset_issue_488() {
+        let tcp_src = OutboundSource {
+            id: "desync_tcp_custom".to_string(),
+            enabled: true,
+            source_type: "desync".to_string(),
+            desync_preset: "custom".to_string(),
+            desync_mode: String::new(),
+            desync_fake_sni: "yandex.ru".to_string(),
+            ..Default::default()
+        };
+        let tcp_out = &build_source_outbounds(&tcp_src)[0].1;
+        assert!(
+            tcp_out.get("preset").is_none(),
+            "must never emit preset=custom"
+        );
+        assert_eq!(tcp_out["mode"], "fake_split");
+
+        let udp_src = OutboundSource {
+            id: "desync_udp_custom".to_string(),
+            enabled: true,
+            source_type: "desync".to_string(),
+            desync_preset: "custom".to_string(),
+            desync_mode: String::new(),
+            desync_quic_fake: true,
+            desync_udp_repeats: 5,
+            desync_udp_out_range: "1-2".to_string(),
+            ..Default::default()
+        };
+        let udp_out = &build_source_outbounds(&udp_src)[0].1;
+        assert!(
+            udp_out.get("preset").is_none(),
+            "must never emit preset=custom"
+        );
+        assert_eq!(udp_out["mode"], "none");
+        assert!(udp_out.get("fake_sni").is_none());
+        assert_eq!(udp_out["udp_fake"], true);
+        assert_eq!(udp_out["udp_repeats"], 5);
+        assert_eq!(udp_out["udp_out_range"], "1-2");
+    }
+
+    #[test]
+    fn test_desync_gt1_to_gt4_presets_emit_valid_stun_udp_config_issue_488() {
+        let cases = [
+            ("gt1", 1u64, "1-2"),
+            ("gt2", 5u64, "1-2"),
+            ("gt3", 5u64, "1-3"),
+            ("gt4", 10u64, "1-4"),
+        ];
+        assert_eq!(CS2_STUN_UDP_FAKE_PAYLOAD.len(), 202);
+        for (preset, expected_repeats, expected_range) in cases {
+            let src = OutboundSource {
+                id: format!("cs2_{preset}"),
+                enabled: true,
+                source_type: "desync".to_string(),
+                desync_preset: preset.to_string(),
+                ..Default::default()
+            };
+            let out = &build_source_outbounds(&src)[0].1;
+            assert!(
+                out.get("preset").is_none(),
+                "{preset} must use mode, not preset"
+            );
+            assert_eq!(out["mode"], "none");
+            assert_eq!(out["udp_fake"], true);
+            assert_eq!(out["udp_repeats"], expected_repeats);
+            assert_eq!(out["udp_out_range"], expected_range);
+            assert_eq!(out["udp_fake_payload"], CS2_STUN_UDP_FAKE_PAYLOAD);
+            assert_eq!(out["udp_keep_socket"], true);
+            assert!(out.get("fake_sni").is_none());
+            assert!(out.get("split_pos").is_none());
+        }
+
+        let overridden = OutboundSource {
+            id: "cs2_custom_gt".to_string(),
+            enabled: true,
+            source_type: "desync".to_string(),
+            desync_preset: "gt2".to_string(),
+            desync_udp_repeats: 7,
+            desync_udp_out_range: "1-5".to_string(),
+            desync_udp_keep_socket: "0".to_string(),
+            ..Default::default()
+        };
+        let out_ov = &build_source_outbounds(&overridden)[0].1;
+        assert_eq!(out_ov["udp_repeats"], 7);
+        assert_eq!(out_ov["udp_out_range"], "1-5");
+        assert_eq!(out_ov["udp_keep_socket"], false);
     }
 }
