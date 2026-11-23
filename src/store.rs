@@ -1629,6 +1629,10 @@ pub struct RoutingSection {
     #[serde(default)]
     pub node_filter_deny: String,
     #[serde(default)]
+    pub subscription_filter_include_keywords: Vec<String>,
+    #[serde(default)]
+    pub subscription_filter_exclude_keywords: Vec<String>,
+    #[serde(default)]
     pub include_protocols: Vec<String>,
     #[serde(default)]
     pub exclude_protocols: Vec<String>,
@@ -2562,6 +2566,10 @@ pub struct OutboundSource {
     pub filter_allow_regex: String,
     #[serde(default)]
     pub filter_deny_regex: String,
+    #[serde(default)]
+    pub subscription_filter_include_keywords: Vec<String>,
+    #[serde(default)]
+    pub subscription_filter_exclude_keywords: Vec<String>,
     #[serde(default)]
     pub include_countries: Vec<String>,
     #[serde(default)]
@@ -6200,6 +6208,10 @@ impl RouterStoreData {
                         fail_policy: b.opt("fail_policy").unwrap_or("").to_string(),
                         filter_allow_regex: b.opt("filter_allow_regex").unwrap_or("").to_string(),
                         filter_deny_regex: b.opt("filter_deny_regex").unwrap_or("").to_string(),
+                        subscription_filter_include_keywords: b
+                            .raw_list("subscription_filter_include_keywords"),
+                        subscription_filter_exclude_keywords: b
+                            .raw_list("subscription_filter_exclude_keywords"),
                         include_countries: b.list("include_countries"),
                         exclude_countries: b.list("exclude_countries"),
                         download_via_proxy_enabled: b
@@ -6537,6 +6549,10 @@ impl RouterStoreData {
                         exclude_prefixes: b.list("exclude_prefixes"),
                         node_filter_allow: b.opt("node_filter_allow").unwrap_or("").to_string(),
                         node_filter_deny: b.opt("node_filter_deny").unwrap_or("").to_string(),
+                        subscription_filter_include_keywords: b
+                            .raw_list("subscription_filter_include_keywords"),
+                        subscription_filter_exclude_keywords: b
+                            .raw_list("subscription_filter_exclude_keywords"),
                         include_protocols: b.list("include_protocols"),
                         exclude_protocols: b.list("exclude_protocols"),
                         include_transports: b.list("include_transports"),
@@ -11411,6 +11427,108 @@ config outbound_source 'src_DeluxHost2_TewFai'
             exported_cleared["grp_custom"]
                 .get("exclude_outbounds")
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn test_subscription_keyword_filters_uci_and_json_round_trip() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-sub-kw-test-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp test dir");
+        let uci_path = tmp_dir.join("tachyon");
+        let missing = tmp_dir.join("missing.uci");
+
+        let uci_content = r#"
+config outbound_source 'wpn_me'
+	option name 'WPN.ME'
+	option source_type 'subscription'
+	option subscription_filter_exclude_keywords 'Только LTE'
+	list subscription_filter_include_keywords 'Финляндия'
+	list subscription_filter_include_keywords 'DE Berlin'
+
+config section 'TEST'
+	option label 'TEST'
+	option enabled '1'
+	option action 'proxy'
+	list outbound_source_refs 'wpn_me'
+	option subscription_filter_include_keywords 'Только VIP'
+	list subscription_filter_exclude_keywords 'LTE'
+	list subscription_filter_exclude_keywords 'Mobile Only'
+"#;
+        std::fs::write(&uci_path, uci_content).expect("write uci");
+
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.import_legacy_router_files_from(&uci_path, &missing);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        let src = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "wpn_me")
+            .expect("wpn_me source");
+        assert_eq!(
+            src.subscription_filter_exclude_keywords,
+            vec!["Только LTE".to_string()]
+        );
+        assert_eq!(
+            src.subscription_filter_include_keywords,
+            vec!["Финляндия".to_string(), "DE Berlin".to_string()]
+        );
+
+        let sec = store
+            .sections
+            .iter()
+            .find(|s| s.id == "TEST")
+            .expect("TEST section");
+        assert_eq!(
+            sec.subscription_filter_include_keywords,
+            vec!["Только VIP".to_string()]
+        );
+        assert_eq!(
+            sec.subscription_filter_exclude_keywords,
+            vec!["LTE".to_string(), "Mobile Only".to_string()]
+        );
+
+        let exported = store.to_json_sections(None);
+        let mut reimported = RouterStoreData::default();
+        reimported.outbound_sources.clear();
+        reimported.sections.clear();
+        reimported.import_from_json_sections(exported.as_object().expect("exported map"));
+
+        let src2 = reimported
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "wpn_me")
+            .expect("reimported wpn_me");
+        assert_eq!(
+            src2.subscription_filter_exclude_keywords,
+            vec!["Только LTE".to_string()]
+        );
+        assert_eq!(
+            src2.subscription_filter_include_keywords,
+            vec!["Финляндия".to_string(), "DE Berlin".to_string()]
+        );
+
+        let sec2 = reimported
+            .sections
+            .iter()
+            .find(|s| s.id == "TEST")
+            .expect("reimported TEST");
+        assert_eq!(
+            sec2.subscription_filter_include_keywords,
+            vec!["Только VIP".to_string()]
+        );
+        assert_eq!(
+            sec2.subscription_filter_exclude_keywords,
+            vec!["LTE".to_string(), "Mobile Only".to_string()]
         );
     }
 

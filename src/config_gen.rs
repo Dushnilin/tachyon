@@ -8867,6 +8867,21 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
             {
                 continue;
             }
+            let ut_label = n.raw_uri.strip_prefix("json:urltest|").unwrap_or("").trim();
+            if !src.subscription_filter_exclude_keywords.is_empty()
+                && (!subscription_keyword_passes(
+                    &n.tag,
+                    &[],
+                    &src.subscription_filter_exclude_keywords,
+                ) || (!ut_label.is_empty()
+                    && !subscription_keyword_passes(
+                        ut_label,
+                        &[],
+                        &src.subscription_filter_exclude_keywords,
+                    )))
+            {
+                continue;
+            }
             let base = if src.prefix_nodes && !src.node_prefix.trim().is_empty() {
                 format!("{} {}", src.node_prefix.trim(), n.tag)
             } else {
@@ -8958,7 +8973,11 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
         .map(|(t, _, _, _)| t.clone())
         .collect();
 
-    let mut out = Vec::with_capacity(staged.len());
+    let mut resolved: Vec<(String, Value, bool, bool)> = Vec::with_capacity(staged.len());
+    let mut surviving_ut_members: HashSet<String> = HashSet::new();
+    let mut visible_detours: Vec<String> = Vec::new();
+    let mut hidden_detours: HashMap<String, String> = HashMap::new();
+
     for (tag, mut val, visible, is_ut) in staged {
         if is_ut {
             let mut kept_members = Vec::new();
@@ -8977,14 +8996,46 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
             if kept_members.is_empty() {
                 continue;
             }
+            for m in &kept_members {
+                surviving_ut_members.insert(m.clone());
+            }
             if let Some(m) = val.as_object_mut() {
                 m.insert("outbounds".into(), json!(kept_members));
             }
-        } else if let Some(d_old) = val.get("detour").and_then(Value::as_str).map(String::from)
-            && let Some(d_new) = renamed_tags.get(&d_old)
-            && let Some(m) = val.as_object_mut()
+        } else if let Some(d_old) = val.get("detour").and_then(Value::as_str).map(String::from) {
+            let d_resolved = renamed_tags.get(&d_old).cloned().unwrap_or(d_old);
+            if let Some(m) = val.as_object_mut() {
+                m.insert("detour".into(), json!(&d_resolved));
+            }
+            if visible {
+                visible_detours.push(d_resolved);
+            } else {
+                hidden_detours.insert(tag.clone(), d_resolved);
+            }
+        }
+        resolved.push((tag, val, visible, is_ut));
+    }
+
+    let mut needed_hidden: HashSet<String> = surviving_ut_members;
+    let mut detour_queue: Vec<String> = visible_detours;
+    let seed_members: Vec<String> = needed_hidden.iter().cloned().collect();
+    for m in seed_members {
+        if let Some(d) = hidden_detours.get(&m) {
+            detour_queue.push(d.clone());
+        }
+    }
+    while let Some(cur) = detour_queue.pop() {
+        if needed_hidden.insert(cur.clone())
+            && let Some(next_d) = hidden_detours.get(&cur)
         {
-            m.insert("detour".into(), json!(d_new));
+            detour_queue.push(next_d.clone());
+        }
+    }
+
+    let mut out = Vec::with_capacity(resolved.len());
+    for (tag, val, visible, is_ut) in resolved {
+        if !is_ut && !visible && !needed_hidden.contains(&tag) {
+            continue;
         }
         out.push((tag, val, visible));
     }
@@ -10173,6 +10224,34 @@ fn tag_matches_keyword_or_telemetry(tag: &str, pattern: &str, known_prefixes: &[
     false
 }
 
+/// Case-insensitive Unicode substring check matching `subscription_keyword_name_passes` from 1.8.x:
+/// `exclude` rules always reject first; when `include` has non-empty entries, at least one must match.
+pub(crate) fn subscription_keyword_passes(
+    name: &str,
+    include: &[String],
+    exclude: &[String],
+) -> bool {
+    let name_lc = name.to_lowercase();
+    for kw in exclude {
+        let k = kw.trim();
+        if !k.is_empty() && name_lc.contains(&k.to_lowercase()) {
+            return false;
+        }
+    }
+    let mut has_include = false;
+    for kw in include {
+        let k = kw.trim();
+        if k.is_empty() {
+            continue;
+        }
+        has_include = true;
+        if name_lc.contains(&k.to_lowercase()) {
+            return true;
+        }
+    }
+    !has_include
+}
+
 fn passes_source_filters(src: &OutboundSource, tag: &str, country: &str) -> bool {
     if !src.include_countries.is_empty()
         && !country.is_empty()
@@ -10189,6 +10268,16 @@ fn passes_source_filters(src: &OutboundSource, tag: &str, country: &str) -> bool
             .exclude_countries
             .iter()
             .any(|c| c.eq_ignore_ascii_case(country))
+    {
+        return false;
+    }
+    if (!src.subscription_filter_include_keywords.is_empty()
+        || !src.subscription_filter_exclude_keywords.is_empty())
+        && !subscription_keyword_passes(
+            tag,
+            &src.subscription_filter_include_keywords,
+            &src.subscription_filter_exclude_keywords,
+        )
     {
         return false;
     }
@@ -15568,6 +15657,56 @@ fn push_legacy_pipe_or_regex(target: &mut Vec<String>, raw: &str) {
     }
 }
 
+fn filter_section_subscription_keywords(
+    candidate_tags: &[String],
+    sec: &RoutingSection,
+    sources: &[OutboundSource],
+    source_tag_map: &HashMap<String, Vec<String>>,
+    outbounds: &[Value],
+) -> Vec<String> {
+    if sec.subscription_filter_include_keywords.is_empty()
+        && sec.subscription_filter_exclude_keywords.is_empty()
+    {
+        return candidate_tags.to_vec();
+    }
+    let mut sub_tags: HashSet<&str> = HashSet::new();
+    for src in sources {
+        if src.source_type == "subscription"
+            && let Some(tags) = source_tag_map.get(&src.id)
+        {
+            for t in tags {
+                sub_tags.insert(t.as_str());
+            }
+        }
+    }
+    let urltest_tags: HashSet<&str> = outbounds
+        .iter()
+        .filter_map(|ob| {
+            let is_ut = ob.get("type").and_then(Value::as_str) == Some("urltest");
+            let tag = ob.get("tag").and_then(Value::as_str)?;
+            is_ut.then_some(tag)
+        })
+        .collect();
+    candidate_tags
+        .iter()
+        .filter(|tag| {
+            if !sub_tags.contains(tag.as_str()) {
+                return true;
+            }
+            if urltest_tags.contains(tag.as_str()) {
+                subscription_keyword_passes(tag, &[], &sec.subscription_filter_exclude_keywords)
+            } else {
+                subscription_keyword_passes(
+                    tag,
+                    &sec.subscription_filter_include_keywords,
+                    &sec.subscription_filter_exclude_keywords,
+                )
+            }
+        })
+        .cloned()
+        .collect()
+}
+
 fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec> {
     let mode = sec.section_filter_mode.trim().to_ascii_lowercase();
     if mode.is_empty() || matches!(mode.as_str(), "disabled" | "all") {
@@ -15805,6 +15944,14 @@ fn resolve_section_outbound(
     }
 
     visited.pop();
+
+    candidate_tags = filter_section_subscription_keywords(
+        &candidate_tags,
+        sec,
+        sources,
+        source_tag_map,
+        outbounds,
+    );
 
     // Apply section-level server narrowing filters (country, prefix, regex & proxy params)
     if let Some(sec_spec) = resolve_section_filter_spec(sec) {
@@ -16508,6 +16655,13 @@ pub fn build_all_section_balancer_caches(
                 push_unique_str(&mut candidate_tags, &child_tag);
             }
         }
+        candidate_tags = filter_section_subscription_keywords(
+            &candidate_tags,
+            sec,
+            &store.outbound_sources,
+            &source_tag_map,
+            &outbounds,
+        );
         if let Some(sec_spec) = resolve_section_filter_spec(sec) {
             candidate_tags = apply_server_filter_spec(
                 &candidate_tags,
@@ -25706,5 +25860,283 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
                 .any(|s| s["type"] == "udp" && s["server"] == "77.88.8.8"),
             "numeric fallback 77.88.8.8 must be injected alongside hostname DoT bootstrap"
         );
+    }
+
+    #[test]
+    fn test_subscription_keyword_filters_issue_480_priority_urltest_and_section() {
+        // 1) Unicode case-folding, emojis, and exclude-beats-include precedence
+        let inc = vec!["финляндия".to_string(), "🇩🇪".to_string()];
+        let exc = vec!["lte".to_string(), "VIP".to_string()];
+        assert!(subscription_keyword_passes("🇫🇮 Финляндия Fast", &inc, &exc));
+        assert!(subscription_keyword_passes("🇩🇪 Германия #1", &inc, &exc));
+        assert!(!subscription_keyword_passes("🇫🇮 Финляндия LTE", &inc, &exc));
+        assert!(!subscription_keyword_passes("🇩🇪 Германия vip", &inc, &exc));
+        assert!(!subscription_keyword_passes("🇺🇸 США", &inc, &exc));
+
+        // 2) Exact scenario from issue #480:
+        // source `wpn_me` with `include_urltest_groups = false` and `subscription_filter_exclude_keywords = ["LTE"]`,
+        // section `TEST` with `priority_failover` / `section_filter_mode = "disabled"`.
+        let mut nodes: Vec<ParsedProxyNode> = Vec::new();
+        for i in 1..=9 {
+            let tag = if i == 1 {
+                "Только LTE #1".to_string()
+            } else {
+                format!("Только LTE #{i}")
+            };
+            nodes.push(
+                parse_proxy_uri(
+                    &format!(
+                        "vless://11111111-1111-1111-1111-11111111{:04}@198.51.100.{}:443?security=tls#{}",
+                        i,
+                        i,
+                        urlencoding_simple(&tag)
+                    ),
+                    i,
+                )
+                .expect("lte node"),
+            );
+        }
+        for (idx, (tag, ip)) in [
+            ("🇫🇮 Финляндия", 101),
+            ("🇩🇪 Германия", 102),
+            ("🇳🇱 Нидерланды lte-promo", 103),
+        ]
+        .iter()
+        .enumerate()
+        {
+            nodes.push(
+                parse_proxy_uri(
+                    &format!(
+                        "vless://22222222-2222-2222-2222-22222222{:04}@198.51.100.{ip}:443?security=tls#{}",
+                        idx,
+                        urlencoding_simple(tag)
+                    ),
+                    20 + idx,
+                )
+                .expect("normal node"),
+            );
+        }
+
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.outbound_sources.push(OutboundSource {
+            id: "wpn_me".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            include_urltest_groups: false,
+            subscription_filter_exclude_keywords: vec!["LTE".to_string()],
+            cached_nodes: nodes,
+            ..Default::default()
+        });
+        store.balancers.push(BalancerConfig {
+            id: "bal_pf".to_string(),
+            enabled: true,
+            name: "PF".to_string(),
+            balancer_type: "priority".to_string(),
+            mode: "priority".to_string(),
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "TEST".to_string(),
+            enabled: true,
+            label: "TEST".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "vless".to_string(),
+            section_selection_mode: "priority_failover".to_string(),
+            section_filter_mode: "disabled".to_string(),
+            outbound_source_refs: vec!["wpn_me".to_string()],
+            balancer_refs: vec!["bal_pf".to_string()],
+            user_domains: vec!["example.org".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile issue 480");
+        let obs = cfg["outbounds"].as_array().expect("outbounds");
+        assert!(
+            !obs.iter().any(|o| o["tag"]
+                .as_str()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains("lte")),
+            "no LTE outbound must appear in compiled config"
+        );
+        let sel_test = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-TEST")
+            .expect("sel-TEST")["outbounds"]
+            .as_array()
+            .expect("sel-TEST members");
+        assert!(sel_test.iter().any(|t| t == "🇫🇮 Финляндия"));
+        assert!(sel_test.iter().any(|t| t == "🇩🇪 Германия"));
+        assert!(
+            !sel_test
+                .iter()
+                .any(|t| t.as_str().unwrap_or("").to_lowercase().contains("lte"))
+        );
+
+        let bal_pf = obs
+            .iter()
+            .find(|o| o["tag"] == "bal-TEST-bal_pf")
+            .expect("bal-TEST-bal_pf")["outbounds"]
+            .as_array()
+            .expect("bal members");
+        assert_eq!(
+            bal_pf.len(),
+            2,
+            "only non-LTE nodes remain in priority balancer"
+        );
+
+        let caches = build_all_section_balancer_caches(&store);
+        let (_, pf_cache) = &caches["TEST"];
+        let pf_list = pf_cache["bal-TEST-bal_pf"]["outbounds"]
+            .as_array()
+            .expect("cached priority outbounds");
+        assert_eq!(pf_list.len(), 2);
+
+        // 3) `include_urltest_groups: true` drops excluded urltest group AND its orphaned `json:hidden` children,
+        // while preserving `json:hidden` detour targets used by surviving nodes.
+        let json_sub = serde_json::json!([
+            {
+                "type": "urltest",
+                "tag": "LTE Group",
+                "outbounds": ["secret-hidden-1"]
+            },
+            {
+                "type": "vless",
+                "tag": "secret-hidden-1",
+                "remark": "secret-hidden-1",
+                "__tachyon_hidden": true,
+                "server": "198.51.100.41",
+                "server_port": 443,
+                "uuid": "33333333-3333-3333-3333-333333333331"
+            },
+            {
+                "type": "urltest",
+                "tag": "🌍 Auto",
+                "outbounds": ["hidden-nl-1"]
+            },
+            {
+                "type": "vless",
+                "tag": "hidden-nl-1",
+                "remark": "hidden-nl-1",
+                "__tachyon_hidden": true,
+                "server": "198.51.100.42",
+                "server_port": 443,
+                "uuid": "33333333-3333-3333-3333-333333333332"
+            },
+            {
+                "type": "vless",
+                "tag": "detour-hop",
+                "server": "198.51.100.43",
+                "server_port": 443,
+                "uuid": "33333333-3333-3333-3333-333333333333"
+            },
+            {
+                "type": "vless",
+                "tag": "NL Exit",
+                "server": "198.51.100.44",
+                "server_port": 443,
+                "uuid": "33333333-3333-3333-3333-333333333334",
+                "detour": "detour-hop"
+            }
+        ])
+        .to_string();
+        let parsed_json_sub = parse_json_subscription_payload(&json_sub).expect("parse json sub");
+        let ut_src = OutboundSource {
+            id: "sub_ut".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            include_urltest_groups: true,
+            hide_detour_outbounds: true,
+            subscription_filter_exclude_keywords: vec!["LTE".to_string()],
+            cached_nodes: parsed_json_sub,
+            ..Default::default()
+        };
+        let built_ut = build_source_outbounds(&ut_src);
+        let built_tags: Vec<&str> = built_ut.iter().map(|(t, _, _)| t.as_str()).collect();
+        assert!(!built_tags.contains(&"LTE Group"));
+        assert!(
+            !built_tags.contains(&"secret-hidden-1"),
+            "orphaned hidden child of excluded LTE urltest group must be pruned: {built_tags:?}"
+        );
+        assert!(built_tags.contains(&"🌍 Auto"));
+        assert!(built_tags.contains(&"hidden-nl-1"));
+        assert!(built_tags.contains(&"NL Exit"));
+        assert!(
+            built_tags.contains(&"detour-hop"),
+            "hidden detour target referenced by surviving node must be preserved"
+        );
+
+        // 4) Section-level `subscription_filter_include_keywords` / `exclude_keywords` applies even when
+        // `section_filter_mode = "disabled"`, and leaves non-subscription manual sources untouched.
+        let mut sec_store = RouterStoreData::default();
+        sec_store.outbound_sources.clear();
+        sec_store.sections.clear();
+        sec_store.outbound_sources.push(OutboundSource {
+            id: "sub_s".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            cached_nodes: vec![
+                parse_proxy_uri(
+                    "vless://44444444-4444-4444-4444-444444444441@198.51.100.51:443#DE%20Berlin",
+                    0,
+                )
+                .unwrap(),
+                parse_proxy_uri(
+                    "vless://44444444-4444-4444-4444-444444444442@198.51.100.52:443#NL%20Tokyo",
+                    1,
+                )
+                .unwrap(),
+            ],
+            ..Default::default()
+        });
+        sec_store.outbound_sources.push(OutboundSource {
+            id: "manual_s".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://44444444-4444-4444-4444-444444444443@198.51.100.53:443#Manual%20Direct"
+                    .to_string(),
+            ],
+            ..Default::default()
+        });
+        sec_store.sections.push(RoutingSection {
+            id: "SEC_KW".to_string(),
+            enabled: true,
+            label: "SEC_KW".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "vless".to_string(),
+            section_filter_mode: "disabled".to_string(),
+            outbound_source_refs: vec!["sub_s".to_string(), "manual_s".to_string()],
+            subscription_filter_include_keywords: vec!["Berlin".to_string()],
+            user_domains: vec!["example.net".to_string()],
+            ..Default::default()
+        });
+        let sec_cfg = compile_core_config_with_wan6(&sec_store, false).expect("compile section kw");
+        let sel_sec = sec_cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "sel-SEC_KW")
+            .expect("sel-SEC_KW")["outbounds"]
+            .as_array()
+            .unwrap();
+        assert!(sel_sec.iter().any(|t| t == "DE Berlin"));
+        assert!(sel_sec.iter().any(|t| t == "Manual Direct"));
+        assert!(!sel_sec.iter().any(|t| t == "NL Tokyo"));
+    }
+
+    fn urlencoding_simple(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.as_bytes() {
+            match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(*b as char);
+                }
+                _ => out.push_str(&format!("%{:02X}", b)),
+            }
+        }
+        out
     }
 }

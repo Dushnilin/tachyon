@@ -3607,11 +3607,12 @@ fn read_pure_rust_subscription_metadata(
         obj.insert("urls".into(), json!(src.subscription_urls));
         let built = crate::config_gen::build_source_outbounds(src);
         let visible_count = built.iter().filter(|(_, _, vis)| *vis).count();
-        let effective_node_count = if built.is_empty() && !src.cached_nodes.is_empty() {
-            src.cached_nodes.len()
-        } else {
-            visible_count
-        };
+        let effective_node_count =
+            if !src.enabled && built.is_empty() && !src.cached_nodes.is_empty() {
+                src.cached_nodes.len()
+            } else {
+                visible_count
+            };
         obj.insert("nodeCount".into(), json!(effective_node_count));
         if src.last_updated_unix > 0 {
             obj.insert("updatedAt".into(), json!(src.last_updated_unix));
@@ -4424,10 +4425,23 @@ fn collect_store_section_leaf_tags(
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for (_owner, src, _hidden) in collect_section_sources_with_owner(store, section) {
+    for (owner_sec, src, _hidden) in collect_section_sources_with_owner(store, section) {
+        let sec_owner = store.sections.iter().find(|s| s.id == owner_sec);
         if src.source_type == "subscription" {
-            for node in &src.cached_nodes {
-                let t = node.tag.trim();
+            for (tag, out_val, _visible) in crate::config_gen::build_source_outbounds(src) {
+                if out_val.get("type").and_then(Value::as_str) == Some("urltest") {
+                    continue;
+                }
+                if let Some(sec) = sec_owner
+                    && !crate::config_gen::subscription_keyword_passes(
+                        &tag,
+                        &sec.subscription_filter_include_keywords,
+                        &sec.subscription_filter_exclude_keywords,
+                    )
+                {
+                    continue;
+                }
+                let t = tag.trim();
                 if !t.is_empty() && seen.insert(t.to_string()) {
                     out.push(t.to_string());
                 }
@@ -14042,5 +14056,53 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         assert_eq!(cached["proxies"], original["proxies"]);
         assert_eq!(cached["telemetry"], original["telemetry"]);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn collect_store_leaf_tags_and_node_count_respect_subscription_keyword_filters() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "wpn_me".to_string(),
+            enabled: true,
+            source_type: "subscription".to_string(),
+            subscription_filter_exclude_keywords: vec!["LTE".to_string()],
+            cached_nodes: vec![
+                config_gen::parse_proxy_uri(
+                    "vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443#%D0%A2%D0%BE%D0%BB%D1%8C%D0%BA%D0%BE%20LTE%20%231",
+                    0,
+                )
+                .unwrap(),
+                config_gen::parse_proxy_uri(
+                    "vless://11111111-1111-1111-1111-111111111112@198.51.100.2:443#FI%20Helsinki",
+                    1,
+                )
+                .unwrap(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "TEST".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            outbound_source_refs: vec!["wpn_me".to_string()],
+            ..Default::default()
+        });
+
+        let tags = collect_store_section_leaf_tags(&store, "TEST");
+        assert_eq!(tags, vec!["FI Helsinki".to_string()]);
+        let meta = read_pure_rust_subscription_metadata(&store, "TEST");
+        assert_eq!(meta[0]["nodeCount"], 1);
+
+        // When section-level exclude removes the remaining node, leaf tags must be empty.
+        store.sections[0].subscription_filter_exclude_keywords = vec!["Helsinki".to_string()];
+        assert!(collect_store_section_leaf_tags(&store, "TEST").is_empty());
+
+        // When source-level filter excludes all nodes, enabled source reports nodeCount 0 (not raw cached_nodes len).
+        store.outbound_sources[0].subscription_filter_exclude_keywords =
+            vec![" ".to_string(), "LTE".to_string(), "Helsinki".to_string()];
+        let meta_empty = read_pure_rust_subscription_metadata(&store, "TEST");
+        assert_eq!(meta_empty[0]["nodeCount"], 0);
     }
 }

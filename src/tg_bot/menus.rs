@@ -1628,16 +1628,27 @@ fn resolve_section_outbounds(
             .iter()
             .find(|s| &s.id == sref && s.enabled)
         {
-            for n in &src.cached_nodes {
-                if !tags.contains(&n.tag) {
-                    tags.push(n.tag.clone());
+            for (tag, out_val, visible) in crate::config_gen::build_source_outbounds(src) {
+                if !visible {
+                    continue;
                 }
-            }
-            for (idx, link) in src.proxy_links.iter().enumerate() {
-                if let Some(n) = parse_proxy_uri(link, idx)
-                    && !tags.contains(&n.tag)
-                {
-                    tags.push(n.tag);
+                if src.source_type == "subscription" {
+                    let is_ut = out_val.get("type").and_then(Value::as_str) == Some("urltest");
+                    let inc = if is_ut {
+                        &[][..]
+                    } else {
+                        sec.subscription_filter_include_keywords.as_slice()
+                    };
+                    if !crate::config_gen::subscription_keyword_passes(
+                        &tag,
+                        inc,
+                        &sec.subscription_filter_exclude_keywords,
+                    ) {
+                        continue;
+                    }
+                }
+                if !tags.contains(&tag) {
+                    tags.push(tag);
                 }
             }
         }
