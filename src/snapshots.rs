@@ -1350,22 +1350,14 @@ fn is_allowed_snapshot_import_path(path: &Path) -> bool {
         || path.starts_with("/tmp/tachyon-snapshots")
         || path.starts_with("/var/run/tachyon")
         || path.starts_with("/etc/tachyon/snapshots");
-    if allowed {
-        return true;
-    }
     #[cfg(test)]
-    {
-        let tmp_dir = std::env::temp_dir();
-        if path.starts_with(&tmp_dir)
+    let allowed = allowed
+        || (path.starts_with(std::env::temp_dir())
             && path
                 .file_name()
                 .and_then(|s| s.to_str())
-                .is_some_and(|n| n.starts_with("tachyon"))
-        {
-            return true;
-        }
-    }
-    false
+                .is_some_and(|n| n.starts_with("tachyon")));
+    allowed
 }
 
 fn looks_like_import_file_path(trimmed: &str) -> bool {
