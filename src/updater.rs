@@ -27,13 +27,19 @@ const STALE_JOB_SECS: i64 = 300;
 static AUTO_UPDATE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 static LIST_UPDATE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
-pub fn canonical_component(raw: &str) -> &'static str {
+pub fn resolve_known_component(raw: &str) -> Option<&'static str> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "tachyon" => "tachyon",
-        "lists" | "rulesets" => "lists",
-        "subscriptions" => "subscriptions",
-        _ => "sing_box",
+        "tachyon" | "luci-app-tachyon" => Some("tachyon"),
+        "tachyon-core" | "tachyon_core" | "tachyoncore" | "sing-box" | "sing_box" | "singbox"
+        | "core" => Some("sing_box"),
+        "lists" | "rulesets" | "tachyon-lists" | "tachyon_lists" => Some("lists"),
+        "subscriptions" | "subs" => Some("subscriptions"),
+        _ => None,
     }
+}
+
+pub fn canonical_component(raw: &str) -> &'static str {
+    resolve_known_component(raw).unwrap_or("sing_box")
 }
 
 pub fn public_component_name(comp: &str) -> &'static str {
@@ -918,17 +924,53 @@ fn map_github_release_to_item(rel: &Value) -> Option<Value> {
     }))
 }
 
+pub fn normalize_update_channel(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "stable" => "stable",
+        "beta" | "rc" | "prerelease" => "beta",
+        _ => "auto",
+    }
+}
+
+pub fn resolve_include_prerelease(channel: &str, current_version: &str) -> bool {
+    match normalize_update_channel(channel) {
+        "beta" => true,
+        "stable" => false,
+        _ => split_version_parts(current_version).1.is_some(),
+    }
+}
+
 pub async fn list_releases(
     core: &Arc<CoreManager>,
     raw_comp: &str,
     count: usize,
     page: usize,
 ) -> Value {
+    let Some(canon) = resolve_known_component(raw_comp) else {
+        return json!([]);
+    };
     ensure_runtime_dirs();
-    let canon = canonical_component(raw_comp);
     let per_page = count.clamp(1, 30);
     let page = page.max(1);
-    let cache_path = Path::new(RELEASES_CACHE_DIR).join(format!("{canon}_{per_page}_{page}.json"));
+    let channel = {
+        core.state
+            .data
+            .read()
+            .await
+            .settings
+            .component_update_channel
+            .clone()
+    };
+    let cur_ver = if canon == "tachyon" {
+        store::TACHYON_VERSION.to_string()
+    } else {
+        current_component_version(core, canon).await
+    };
+    let include_prerelease = resolve_include_prerelease(&channel, &cur_ver);
+    let channel_norm = normalize_update_channel(&channel);
+    let cache_path = Path::new(RELEASES_CACHE_DIR).join(format!(
+        "{canon}_{channel_norm}_{include_prerelease}_{per_page}_{page}.json"
+    ));
     let now = store::unix_now_secs();
     if let Ok(meta) = std::fs::metadata(&cache_path)
         && let Ok(mod_t) = meta.modified()
@@ -942,7 +984,11 @@ pub async fn list_releases(
     }
 
     let repo = component_repo(canon);
-    let api_per_page = if canon == "tachyon" { 30 } else { per_page };
+    let api_per_page = if canon == "tachyon" || !include_prerelease {
+        30
+    } else {
+        per_page
+    };
     let api_url =
         format!("https://api.github.com/repos/{repo}/releases?per_page={api_per_page}&page={page}");
     let proxy = resolve_component_proxy(core).await;
@@ -955,6 +1001,13 @@ pub async fn list_releases(
             .iter()
             .filter(|r| !r.get("draft").and_then(Value::as_bool).unwrap_or(false))
             .filter_map(map_github_release_to_item)
+            .filter(|item| {
+                include_prerelease
+                    || !item
+                        .get("prerelease")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
             .filter(|item| {
                 canon != "tachyon"
                     || is_tachyon_v2_or_newer(item.get("tag").and_then(Value::as_str).unwrap_or(""))
@@ -979,6 +1032,13 @@ pub async fn list_releases(
         let xml = String::from_utf8_lossy(&atom_bytes);
         let parsed: Vec<Value> = parse_releases_atom(&xml, &repo)
             .into_iter()
+            .filter(|item| {
+                include_prerelease
+                    || !item
+                        .get("prerelease")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
             .filter(|item| {
                 canon != "tachyon"
                     || is_tachyon_v2_or_newer(item.get("tag").and_then(Value::as_str).unwrap_or(""))
@@ -1022,7 +1082,11 @@ pub async fn list_releases(
     ])
 }
 
-pub fn pick_best_tachyon_v2_release(releases: &[Value], include_prerelease: bool) -> Option<Value> {
+pub fn pick_best_release(
+    releases: &[Value],
+    include_prerelease: bool,
+    require_tachyon_v2: bool,
+) -> Option<Value> {
     let mut best: Option<(String, Value)> = None;
     for rel in releases {
         if rel.get("draft").and_then(Value::as_bool).unwrap_or(false) {
@@ -1034,7 +1098,7 @@ pub fn pick_best_tachyon_v2_release(releases: &[Value], include_prerelease: bool
             .and_then(Value::as_str)
             .unwrap_or("")
             .trim();
-        if tag.is_empty() || !is_tachyon_v2_or_newer(tag) {
+        if tag.is_empty() || (require_tachyon_v2 && !is_tachyon_v2_or_newer(tag)) {
             continue;
         }
         let (_, tag_pre) = split_version_parts(tag);
@@ -1058,6 +1122,11 @@ pub fn pick_best_tachyon_v2_release(releases: &[Value], include_prerelease: bool
     best.map(|(_, val)| val)
 }
 
+#[cfg(test)]
+pub fn pick_best_tachyon_v2_release(releases: &[Value], include_prerelease: bool) -> Option<Value> {
+    pick_best_release(releases, include_prerelease, true)
+}
+
 async fn fetch_component_release_json(
     core: &Arc<CoreManager>,
     canon: &str,
@@ -1066,8 +1135,21 @@ async fn fetch_component_release_json(
     proxy: Option<&str>,
 ) -> anyhow::Result<Value> {
     let is_tachyon_self = canon == "tachyon";
-    let include_prerelease =
-        is_tachyon_self && split_version_parts(store::TACHYON_VERSION).1.is_some();
+    let channel = {
+        core.state
+            .data
+            .read()
+            .await
+            .settings
+            .component_update_channel
+            .clone()
+    };
+    let cur_ver = if is_tachyon_self {
+        store::TACHYON_VERSION.to_string()
+    } else {
+        current_component_version(core, canon).await
+    };
+    let include_prerelease = resolve_include_prerelease(&channel, &cur_ver);
     let wanted_tag = tag.map(str::trim).filter(|s| !s.is_empty());
 
     if let Some(clean) = wanted_tag {
@@ -1093,16 +1175,16 @@ async fn fetch_component_release_json(
                 return Ok(val);
             }
         }
-        if is_tachyon_self {
-            let list_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
-            if let Ok(bytes) = core
-                .curl_fetch_with_doh_fallback(&list_url, false, 10, proxy)
-                .await
-                && let Ok(list) = serde_json::from_slice::<Vec<Value>>(&bytes)
-            {
-                if let Some(best) = pick_best_tachyon_v2_release(&list, include_prerelease) {
-                    return Ok(best);
-                }
+        let list_url = format!("https://api.github.com/repos/{repo}/releases?per_page=30");
+        if let Ok(bytes) = core
+            .curl_fetch_with_doh_fallback(&list_url, false, 10, proxy)
+            .await
+            && let Ok(list) = serde_json::from_slice::<Vec<Value>>(&bytes)
+        {
+            if let Some(best) = pick_best_release(&list, include_prerelease, is_tachyon_self) {
+                return Ok(best);
+            }
+            if is_tachyon_self {
                 anyhow::bail!("В репозитории {repo} нет релиза Tachyon 2.x для текущего канала");
             }
         }
@@ -1125,8 +1207,18 @@ async fn fetch_component_release_json(
                     || v.eq_ignore_ascii_case(wt.trim_start_matches(['v', 'V']))
             })
             .cloned(),
-        None if is_tachyon_self => pick_best_tachyon_v2_release(&entries, include_prerelease),
-        None => entries.first().cloned(),
+        None if is_tachyon_self || include_prerelease => {
+            pick_best_release(&entries, include_prerelease, is_tachyon_self)
+        }
+        None => entries
+            .iter()
+            .find(|e| {
+                !e.get("prerelease")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .or_else(|| entries.first().cloned()),
     };
     let resolved_tag = match picked_entry
         .as_ref()
@@ -2446,7 +2538,22 @@ pub async fn start_component_action(
     raw_action: &str,
     arg: Option<&str>,
 ) -> Value {
-    let canon = canonical_component(raw_comp);
+    let Some(canon) = resolve_known_component(raw_comp) else {
+        let comp_trimmed = raw_comp.trim();
+        let act_trimmed = raw_action.trim();
+        let err_msg = format!("Unsupported component: {comp_trimmed}");
+        return json!({
+            "success": false,
+            "running": false,
+            "completed": true,
+            "kind": "component",
+            "component": comp_trimmed,
+            "action": act_trimmed,
+            "exit_code": 1,
+            "error": err_msg,
+            "message": err_msg,
+        });
+    };
     let disp = component_display_name(canon);
     let act = raw_action.trim();
     let now = store::unix_now_secs();
@@ -3453,6 +3560,26 @@ mod tests {
             pick_best_tachyon_v2_release(&with_stable, true).unwrap()["tag_name"],
             "v2.0.1-alpha.1"
         );
+
+        assert!(!resolve_include_prerelease("auto", "2.0.0"));
+        assert!(resolve_include_prerelease("auto", "2.0.0-rc.1"));
+        assert!(!resolve_include_prerelease("stable", "2.0.0-rc.1"));
+        assert!(resolve_include_prerelease("beta", "2.0.0"));
+        assert!(resolve_include_prerelease("rc", "0.6.3"));
+
+        let core_releases = vec![
+            json!({ "tag_name": "v0.6.3", "prerelease": false, "draft": false }),
+            json!({ "tag_name": "v0.6.4-beta.1", "prerelease": true, "draft": false }),
+            json!({ "tag_name": "v0.6.4-rc.1", "prerelease": true, "draft": false }),
+        ];
+        assert_eq!(
+            pick_best_release(&core_releases, false, false).unwrap()["tag_name"],
+            "v0.6.3"
+        );
+        assert_eq!(
+            pick_best_release(&core_releases, true, false).unwrap()["tag_name"],
+            "v0.6.4-rc.1"
+        );
     }
 
     #[test]
@@ -3726,5 +3853,35 @@ mod tests {
                 .0,
             "tachyon-core-mipsel-v0.6.0.tar.gz"
         );
+    }
+
+    #[test]
+    fn test_resolve_known_component_rejects_unknown_and_legacy() {
+        assert_eq!(resolve_known_component("tachyon"), Some("tachyon"));
+        assert_eq!(resolve_known_component("luci-app-tachyon"), Some("tachyon"));
+        assert_eq!(resolve_known_component("tachyon-core"), Some("sing_box"));
+        assert_eq!(resolve_known_component("sing_box"), Some("sing_box"));
+        assert_eq!(resolve_known_component("lists"), Some("lists"));
+        assert_eq!(resolve_known_component("rulesets"), Some("lists"));
+        assert_eq!(
+            resolve_known_component("subscriptions"),
+            Some("subscriptions")
+        );
+
+        for bad in [
+            "zapret",
+            "zapret2",
+            "byedpi",
+            "direct_bypass",
+            "torrserver_direct",
+            "",
+            "unknown",
+        ] {
+            assert_eq!(
+                resolve_known_component(bad),
+                None,
+                "expected None for unsupported component '{bad}'"
+            );
+        }
     }
 }

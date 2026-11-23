@@ -147,18 +147,9 @@ export const initialDiagnosticStore: Pick<
     tachyonCoreCheck: { loading: false },
     tachyonCoreInstall: { loading: false },
     tachyonCoreRollback: { loading: false },
-    directBypassEnable: { loading: false },
-    directBypassDisable: { loading: false },
-    torrserverDirectCheck: { loading: false },
-    torrserverDirectInstall: { loading: false },
-    torrserverDirectRemove: { loading: false },
-    torrserverDirectEnable: { loading: false },
-    torrserverDirectDisable: { loading: false },
   },
   updatesChecks: {
     tachyon: { status: null, latest_version: '', release_url: '' },
     'tachyon-core': { status: null, latest_version: '', release_url: '' },
-    direct_bypass: { status: null, latest_version: '', release_url: '' },
-    torrserver_direct: { status: null, latest_version: '', release_url: '' },
   },
 };

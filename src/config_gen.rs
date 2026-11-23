@@ -25,6 +25,69 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     if uri.is_empty() || uri.starts_with('#') {
         return None;
     }
+    let lower_uri = uri.to_ascii_lowercase();
+    if (lower_uri.starts_with("fptn:") || lower_uri.starts_with("fptnb:"))
+        && !lower_uri.starts_with("fptn://")
+        && !lower_uri.starts_with("fptnb://")
+        && let Some(decoded) = decode_fptn_token_json(uri)
+        && let Some(first_srv) = [
+            "servers",
+            "censorship_zone_servers",
+            "censored_zone_servers",
+        ]
+        .into_iter()
+        .filter_map(|key| decoded.get(key).and_then(Value::as_array))
+        .flat_map(|arr| arr.iter())
+        .find(|srv| {
+            srv.get("host")
+                .or_else(|| srv.get("ip"))
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty())
+        })
+    {
+        let host = first_srv
+            .get("host")
+            .or_else(|| first_srv.get("ip"))
+            .and_then(Value::as_str)
+            .unwrap_or("127.0.0.1")
+            .trim()
+            .to_string();
+        let port = first_srv.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
+        let srv_name = first_srv
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(&host);
+        let tag = format!("fptn-{srv_name}");
+        let country = detect_country_code(&tag);
+        let mut obj = Map::new();
+        obj.insert("type".into(), json!("fptn"));
+        obj.insert("tag".into(), json!(tag));
+        obj.insert("server".into(), json!(host));
+        obj.insert("server_port".into(), json!(port));
+        if let Some(u) = decoded.get("username").and_then(Value::as_str) {
+            obj.insert("username".into(), json!(u));
+        }
+        if let Some(p) = decoded.get("password").and_then(Value::as_str) {
+            obj.insert("password".into(), json!(p));
+        }
+        if let Some(fp) = first_srv
+            .get("md5_fingerprint")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            obj.insert("md5_fingerprint".into(), json!(fp));
+        }
+        return Some(ParsedProxyNode {
+            tag,
+            protocol: "fptn".to_string(),
+            server: host,
+            server_port: port,
+            country,
+            raw_uri: uri.to_string(),
+            outbound_json: Value::Object(obj),
+        });
+    }
+
     let (scheme, rest) = uri.split_once("://")?;
     let scheme_lower = scheme.to_ascii_lowercase();
 
@@ -42,15 +105,27 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     }
     if (scheme_lower == "fptn" || scheme_lower == "fptnb")
         && let Some(decoded) = decode_fptn_token_json(uri)
-        && let Some(first_srv) = decoded
-            .get("servers")
-            .and_then(Value::as_array)
-            .and_then(|arr| arr.first())
+        && let Some(first_srv) = [
+            "servers",
+            "censorship_zone_servers",
+            "censored_zone_servers",
+        ]
+        .into_iter()
+        .filter_map(|key| decoded.get(key).and_then(Value::as_array))
+        .flat_map(|arr| arr.iter())
+        .find(|srv| {
+            srv.get("host")
+                .or_else(|| srv.get("ip"))
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty())
+        })
     {
         let host = first_srv
             .get("host")
+            .or_else(|| first_srv.get("ip"))
             .and_then(Value::as_str)
             .unwrap_or("127.0.0.1")
+            .trim()
             .to_string();
         let port = first_srv.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
         let srv_name = first_srv
@@ -432,7 +507,7 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             }
             Value::Object(obj)
         }
-        "fptn" => {
+        "fptn" | "fptnb" => {
             json!({
                 "type": "fptn",
                 "tag": tag,
@@ -743,6 +818,64 @@ struct WdttParams<'a> {
     wg_address: &'a str,
 }
 
+struct WdttUriOverrides<'a> {
+    workers: u16,
+    mtu: u16,
+    device_id: &'a str,
+    obfs: &'a str,
+    vk_auth_mode: &'a str,
+    vk_cookie: &'a str,
+    turn_server: &'a str,
+    turn_transport: &'a str,
+}
+
+fn is_valid_wdtt_vk_auth_mode(mode: &str) -> bool {
+    matches!(
+        mode,
+        "vkcalls"
+            | "legacy"
+            | "cookie"
+            | "oneme"
+            | "max"
+            | "yandex"
+            | "telemost"
+            | "auto"
+            | "anonymous"
+            | "token"
+    )
+}
+
+fn apply_wdtt_uri_overrides(obj: &mut Map<String, Value>, ov: &WdttUriOverrides<'_>) {
+    if (1..=126).contains(&ov.workers) {
+        obj.insert("workers".into(), json!(ov.workers));
+    }
+    if (576..=1500).contains(&ov.mtu) {
+        obj.insert("mtu".into(), json!(ov.mtu));
+    }
+    let did = ov.device_id.trim();
+    if !did.is_empty() && !obj.contains_key("device_id") {
+        obj.insert("device_id".into(), json!(did));
+    }
+    let obfs = ov.obfs.trim().to_ascii_lowercase();
+    if matches!(obfs.as_str(), "audio" | "video" | "unified") {
+        obj.insert("obfs".into(), json!(obfs));
+    }
+    let vk_auth = ov.vk_auth_mode.trim().to_ascii_lowercase();
+    if is_valid_wdtt_vk_auth_mode(&vk_auth) {
+        obj.insert("vk_auth_mode".into(), json!(vk_auth));
+    }
+    if !ov.vk_cookie.is_empty() {
+        obj.insert("vk_cookie".into(), json!(ov.vk_cookie));
+    }
+    if !ov.turn_server.trim().is_empty() {
+        obj.insert("turn_server".into(), json!(ov.turn_server.trim()));
+    }
+    let turn_tr = ov.turn_transport.trim().to_ascii_lowercase();
+    if matches!(turn_tr.as_str(), "auto" | "tcp" | "udp" | "tcp_tls" | "tls") {
+        obj.insert("turn_transport".into(), json!(turn_tr));
+    }
+}
+
 fn build_wdtt_outbound_value(tag: &str, p: &WdttParams<'_>) -> Option<Value> {
     let server = p.server.trim();
     if server.is_empty() || p.password.is_empty() {
@@ -788,7 +921,7 @@ fn build_wdtt_outbound_value(tag: &str, p: &WdttParams<'_>) -> Option<Value> {
         obj.insert("hashes".into(), json!(p.hashes));
     }
     let vk_auth = p.vk_auth_mode.trim().to_ascii_lowercase();
-    if !vk_auth.is_empty() {
+    if is_valid_wdtt_vk_auth_mode(&vk_auth) {
         obj.insert("vk_auth_mode".into(), json!(vk_auth));
     }
     if !p.vk_cookie.is_empty() {
@@ -1036,17 +1169,42 @@ fn parse_wdtt_uri(
     // 1. qwdtt://config?ip=...&dtls=...&hashes=...&pass=<unencoded_password>
     if scheme_lower == "qwdtt" {
         let query_raw = body.split_once('?').map_or(body, |(_, q)| q);
-        let (head_q, raw_pass) = if let Some((head, tail)) = query_raw.split_once("&pass=") {
-            (head, Some(url_decode_percent(tail)))
-        } else if let Some(tail) = query_raw.strip_prefix("pass=") {
-            ("", Some(url_decode_percent(tail)))
-        } else {
-            (query_raw, None)
+        let has_known_qwdtt_keys_after = |tail: &str| {
+            let tail_lc = tail.to_ascii_lowercase();
+            [
+                "&ip=",
+                "&server=",
+                "&host=",
+                "&dtls=",
+                "&port=",
+                "&raw=",
+                "&hashes=",
+                "&hash=",
+                "&mode=",
+                "&vpn=",
+                "&obfs=",
+                "&streams=",
+                "&workers=",
+                "&name=",
+            ]
+            .iter()
+            .any(|k| tail_lc.contains(k))
         };
-        let mut params = parse_query_params(head_q);
-        if let Some(p) = raw_pass {
-            params.insert("pass".to_string(), p);
-        }
+        let params = if let Some((head, tail)) = query_raw.split_once("&pass=")
+            && !has_known_qwdtt_keys_after(tail)
+        {
+            let mut p = parse_query_params(head);
+            p.insert("pass".to_string(), url_decode_percent(tail));
+            p
+        } else if let Some(tail) = query_raw.strip_prefix("pass=")
+            && !has_known_qwdtt_keys_after(tail)
+        {
+            let mut p = HashMap::new();
+            p.insert("pass".to_string(), url_decode_percent(tail));
+            p
+        } else {
+            parse_query_params(query_raw)
+        };
         let server = params
             .get("ip")
             .or_else(|| params.get("server"))
@@ -1664,32 +1822,177 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
     })
 }
 
-/// Decodes a Base64-encoded `fptn://` or `fptn:` access token into its JSON payload.
-pub fn decode_fptn_token_json(raw_token: &str) -> Option<Value> {
-    let mut s = raw_token.trim();
-    if let Some((before_hash, _)) = s.split_once('#') {
-        s = before_hash.trim();
-    }
-    for prefix in ["fptn://", "fptnb://", "fptn:", "fptnb:"] {
-        if let Some(stripped) = s.strip_prefix(prefix) {
-            s = stripped.trim_start_matches('/');
-            break;
+fn parse_fptn_prefix(trimmed: &str) -> Option<(bool, &str)> {
+    let lower = trimmed.to_ascii_lowercase();
+    for (prefix, is_brotli) in [
+        ("fptnb://", true),
+        ("fptnb//", true),
+        ("fptnb:", true),
+        ("fptn://", false),
+        ("fptn//", false),
+        ("fptn:", false),
+    ] {
+        if lower.starts_with(prefix) {
+            let rest = trimmed[prefix.len()..].trim_start_matches('/');
+            return Some((is_brotli, rest));
         }
     }
-    let clean: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    None
+}
+
+fn is_valid_fptn_payload_object(val: &Value) -> bool {
+    let Some(obj) = val.as_object() else {
+        return false;
+    };
+    let has_creds = obj
+        .get("username")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty())
+        && obj
+            .get("password")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.trim().is_empty());
+    let has_srv_arr = [
+        "servers",
+        "censorship_zone_servers",
+        "censored_zone_servers",
+    ]
+    .into_iter()
+    .any(|k| obj.get(k).is_some_and(Value::is_array));
+    has_creds && (has_srv_arr || count_fptn_token_servers(val) > 0)
+}
+
+/// Counts valid servers across all supported FPTN server arrays.
+pub fn count_fptn_token_servers(decoded: &Value) -> usize {
+    let mut count = 0usize;
+    for key in [
+        "servers",
+        "censorship_zone_servers",
+        "censored_zone_servers",
+    ] {
+        if let Some(arr) = decoded.get(key).and_then(Value::as_array) {
+            for item in arr {
+                let has_host = item
+                    .get("host")
+                    .or_else(|| item.get("ip"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty());
+                if item.is_object() && has_host {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+/// Normalizes an FPTN token (`fptn:`, `fptn://`, `fptnb:`, `fptnb://`, multi-line, or raw JSON)
+/// into a canonical single-line `fptn:` or `fptnb:` token accepted by `tachyon-core`.
+pub fn normalize_fptn_token_input(raw_token: &str) -> Option<String> {
+    let trimmed = raw_token.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with('{') {
+        let val: Value = serde_json::from_str(trimmed).ok()?;
+        if !is_valid_fptn_payload_object(&val) {
+            return None;
+        }
+        let compact = serde_json::to_vec(&val).ok()?;
+        return Some(format!("fptn:{}", B64_STD.encode(&compact)));
+    }
+    let (is_brotli, mut body) = parse_fptn_prefix(trimmed)?;
+    if let Some((before_hash, _)) = body.split_once('#') {
+        body = before_hash;
+    }
+    let clean: String = body.chars().filter(|c| !c.is_whitespace()).collect();
     if clean.is_empty() {
         return None;
     }
+    Some(if is_brotli {
+        format!("fptnb:{clean}")
+    } else {
+        format!("fptn:{clean}")
+    })
+}
+
+/// Decodes an FPTN access token (`fptn:`, `fptn://`, `fptnb:`, `fptnb://`, raw JSON, or multi-line)
+/// into its JSON payload, falling back to `<core_bin> fptn decode` for Brotli `fptnb:` tokens.
+pub fn decode_fptn_token_json_with_core_bin(
+    raw_token: &str,
+    core_bin: Option<&str>,
+) -> Option<Value> {
+    let trimmed = raw_token.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with('{')
+        && let Ok(val) = serde_json::from_str::<Value>(trimmed)
+        && is_valid_fptn_payload_object(&val)
+    {
+        return Some(val);
+    }
+
+    let (is_brotli, mut body) = parse_fptn_prefix(trimmed).unwrap_or((false, trimmed));
+    if let Some((before_hash, _)) = body.split_once('#') {
+        body = before_hash;
+    }
+    let clean: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    if clean.is_empty() {
+        return None;
+    }
+
     let mut padded = clean.replace('-', "+").replace('_', "/");
     while !padded.len().is_multiple_of(4) {
         padded.push('=');
     }
-    let decoded = B64_STD
+    if let Ok(decoded) = B64_STD
         .decode(&padded)
         .or_else(|_| B64_URL.decode(clean.trim_end_matches('=')))
-        .ok()?;
-    let val: Value = serde_json::from_slice(&decoded).ok()?;
-    if val.is_object() { Some(val) } else { None }
+        && let Ok(val) = serde_json::from_slice::<Value>(&decoded)
+        && val.is_object()
+    {
+        return Some(val);
+    }
+
+    if is_brotli {
+        const MAX_FPTN_DECODED_BYTES: usize = 4 * 1024 * 1024;
+        let cli_token = format!("fptnb:{clean}");
+        let mut candidates: Vec<&str> = Vec::new();
+        if let Some(bin) = core_bin.map(str::trim).filter(|s| !s.is_empty()) {
+            candidates.push(bin);
+        }
+        for fallback in [
+            "/usr/bin/tachyon-core",
+            "/usr/sbin/tachyon-core",
+            "tachyon-core",
+        ] {
+            if !candidates.contains(&fallback) {
+                candidates.push(fallback);
+            }
+        }
+        for bin in candidates {
+            if bin.starts_with('/') && !std::path::Path::new(bin).is_file() {
+                continue;
+            }
+            if let Ok(out) = std::process::Command::new(bin)
+                .args(["fptn", "decode", &cli_token])
+                .output()
+                && out.status.success()
+                && out.stdout.len() <= MAX_FPTN_DECODED_BYTES
+                && let Ok(val) = serde_json::from_slice::<Value>(&out.stdout)
+                && val.is_object()
+            {
+                return Some(val);
+            }
+        }
+    }
+    None
+}
+
+/// Decodes a Base64-encoded `fptn://`, `fptn:`, `fptnb:`, or raw JSON FPTN token into its JSON payload.
+pub fn decode_fptn_token_json(raw_token: &str) -> Option<Value> {
+    decode_fptn_token_json_with_core_bin(raw_token, None)
 }
 
 /// Expands an `fptn://` access token into per-server `tachyon-core` FPTN outbounds,
@@ -1718,7 +2021,11 @@ pub fn expand_fptn_token_outbounds(
         return Vec::new();
     }
     let mut servers = Vec::new();
-    for key in ["servers", "censorship_zone_servers"] {
+    for key in [
+        "servers",
+        "censorship_zone_servers",
+        "censored_zone_servers",
+    ] {
         if let Some(arr) = decoded.get(key).and_then(Value::as_array) {
             for item in arr {
                 if item.is_object() {
@@ -1752,6 +2059,7 @@ pub fn expand_fptn_token_outbounds(
         });
     }
     let mut out = Vec::new();
+    let mut used_tags: HashSet<String> = HashSet::new();
     for (idx, srv) in servers.iter().enumerate() {
         let host = srv
             .get("host")
@@ -1768,11 +2076,17 @@ pub fn expand_fptn_token_outbounds(
             .and_then(Value::as_str)
             .unwrap_or(host)
             .trim();
-        let member_tag = if servers.len() == 1 && idx == 0 {
+        let base_member_tag = if servers.len() == 1 && idx == 0 {
             base_tag.to_string()
         } else {
             format!("{base_tag}/{name}")
         };
+        let mut member_tag = base_member_tag.clone();
+        let mut dup_n = 2usize;
+        while !used_tags.insert(member_tag.clone()) {
+            member_tag = format!("{base_member_tag}-{dup_n}");
+            dup_n += 1;
+        }
         let mut obj = Map::new();
         obj.insert("type".into(), json!("fptn"));
         obj.insert("tag".into(), json!(member_tag));
@@ -1810,7 +2124,11 @@ pub fn extract_fptn_server_ips(store: &RouterStoreData) -> Vec<String> {
     }
     fn inspect_token(ips: &mut Vec<String>, tok: &str) {
         if let Some(decoded) = decode_fptn_token_json(tok) {
-            for key in ["servers", "censorship_zone_servers"] {
+            for key in [
+                "servers",
+                "censorship_zone_servers",
+                "censored_zone_servers",
+            ] {
                 if let Some(arr) = decoded.get(key).and_then(Value::as_array) {
                     for srv in arr {
                         if let Some(h) = srv
@@ -4910,7 +5228,7 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             }
 
             let hpk = src.awg_header_protection_key.trim();
-            let has_hpk = !hpk.is_empty();
+            let has_hpk = is_valid_non_zero_awg_hpk(hpk);
             let has_awg = src.source_type.eq_ignore_ascii_case("awg")
                 || !src.awg_version.trim().is_empty()
                 || src.awg_jc > 0
@@ -4947,10 +5265,11 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                 .any(|s| !s.trim().is_empty() && s.trim() != "0");
 
             if has_awg {
-                if src.awg_jc > 0 || src.awg_jmin > 0 || src.awg_jmax > 0 {
+                let (eff_jmin, eff_jmax) = normalize_awg_jmin_jmax(src.awg_jmin, src.awg_jmax);
+                if src.awg_jc > 0 || eff_jmin > 0 || eff_jmax > 0 {
                     obj.insert("jc".into(), json!(src.awg_jc));
-                    obj.insert("jmin".into(), json!(src.awg_jmin));
-                    obj.insert("jmax".into(), json!(src.awg_jmax));
+                    obj.insert("jmin".into(), json!(eff_jmin));
+                    obj.insert("jmax".into(), json!(eff_jmax));
                 }
                 if has_hpk {
                     let s1 = if src.awg_s1 < 12 { 20 } else { src.awg_s1 };
@@ -5239,6 +5558,19 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                         && let Some(obj) = node.outbound_json.as_object_mut()
                     {
                         obj.insert("tag".into(), json!(tag));
+                        apply_wdtt_uri_overrides(
+                            obj,
+                            &WdttUriOverrides {
+                                workers: src.csqtt_workers,
+                                mtu: src.csqtt_mtu,
+                                device_id: &src.csqtt_device_id,
+                                obfs: &src.csqtt_obfs,
+                                vk_auth_mode: &src.csqtt_vk_auth_mode,
+                                vk_cookie: &src.csqtt_vk_cookie,
+                                turn_server: &src.csqtt_turn_server,
+                                turn_transport: &src.csqtt_turn_transport,
+                            },
+                        );
                         out.push((tag, node.outbound_json));
                     }
                 } else {
@@ -5318,10 +5650,12 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             }
             if out.is_empty() && !src.fptn_access_token.trim().is_empty() {
                 let tag = format!("fptn-{}", src.id);
+                let tok = normalize_fptn_token_input(&src.fptn_access_token)
+                    .unwrap_or_else(|| src.fptn_access_token.trim().to_string());
                 let mut obj = Map::new();
                 obj.insert("type".into(), json!("fptn"));
                 obj.insert("tag".into(), json!(tag));
-                obj.insert("token".into(), json!(src.fptn_access_token.trim()));
+                obj.insert("token".into(), json!(tok));
                 if !sni_val.is_empty() {
                     obj.insert("sni".into(), json!(sni_val));
                 }
@@ -8867,6 +9201,28 @@ fn parse_awg_h_value(raw: &str) -> Option<Value> {
     None
 }
 
+fn is_valid_non_zero_awg_hpk(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let no_pad = trimmed.trim_end_matches('=');
+    if let Ok(decoded) = B64_STD.decode(trimmed).or_else(|_| B64_URL.decode(no_pad)) {
+        return decoded.iter().any(|&b| b != 0);
+    }
+    trimmed.bytes().any(|b| b != b'A' && b != b'=')
+}
+
+fn normalize_awg_jmin_jmax(jmin: u16, jmax: u16) -> (u16, u16) {
+    if jmin > 0 && jmax == 0 {
+        (jmin, jmin)
+    } else if jmin > jmax {
+        (jmax, jmin)
+    } else {
+        (jmin, jmax)
+    }
+}
+
 fn parse_awg_bool(raw: &str) -> Option<bool> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Some(true),
@@ -10505,6 +10861,7 @@ fn wrap_rule_with_inverted_subrules(
         .collect();
     let is_logical_and = obj.get("type").and_then(Value::as_str) == Some("logical")
         && obj.get("mode").and_then(Value::as_str) == Some("and")
+        && !obj.get("invert").and_then(Value::as_bool).unwrap_or(false)
         && obj.get("rules").is_some_and(Value::is_array);
     if is_logical_and {
         if let Some(arr) = obj.get_mut("rules").and_then(Value::as_array_mut) {
@@ -11931,6 +12288,57 @@ fn compile_core_config_with_rt_dir(
 
         let mut section_matched_any = false;
         let mut section_emitted_rules: Vec<Value> = Vec::new();
+        if !sec.geoip_codes.is_empty()
+            && sec.geoip_mode.trim().eq_ignore_ascii_case("exclude_direct")
+            && target_outbound_tag != "direct"
+        {
+            let mut direct_geo_tags = Vec::new();
+            for code in &sec.geoip_codes {
+                let clean = code.trim().to_ascii_lowercase();
+                if clean.is_empty() {
+                    continue;
+                }
+                register_remote_ruleset(
+                    &mut direct_geo_tags,
+                    format!("geoip-{clean}"),
+                    format!(
+                        "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{clean}.srs"
+                    ),
+                    "24h",
+                    &store.settings.github_mirror,
+                    &mut rule_sets,
+                    &mut seen_rule_sets,
+                );
+            }
+            if !direct_geo_tags.is_empty() {
+                let mut direct_rule = Map::new();
+                let mut client_scope_ok = true;
+                if !sec.source_ip_cidr.is_empty() {
+                    let mut cidrs = resolve_device_targets_to_cidrs(&sec.source_ip_cidr);
+                    if !ipv6_active {
+                        cidrs.retain(|s| !s.contains(':'));
+                    }
+                    if cidrs.is_empty() {
+                        client_scope_ok = false;
+                    } else {
+                        direct_rule.insert("source_ip_cidr".into(), json!(cidrs));
+                    }
+                }
+                if client_scope_ok {
+                    direct_rule.insert("rule_set".into(), json!(direct_geo_tags));
+                    direct_rule.insert("outbound".into(), json!("direct"));
+                    let wrapped = wrap_rule_with_inverted_subrules(
+                        Value::Object(direct_rule),
+                        &sec_exc_dom_and_src_subs,
+                        &sec_exc_route_only_subs,
+                    );
+                    if !section_emitted_rules.contains(&wrapped) {
+                        section_emitted_rules.push(wrapped.clone());
+                        rules.push(wrapped);
+                    }
+                }
+            }
+        }
         for cref in &sec.condition_refs {
             let Some(cond) = cond_map.get(cref.as_str()).copied() else {
                 continue;
@@ -12491,7 +12899,11 @@ fn compile_core_config_with_rt_dir(
             }
         }
     }
-    if boot_list.is_empty() {
+    if boot_list.is_empty()
+        || !boot_list
+            .iter()
+            .any(|x| crate::store::valid_ip_with_zone(&extract_host_only(x)))
+    {
         boot_list.push("77.88.8.8".to_string());
     }
 
@@ -12616,60 +13028,66 @@ fn compile_core_config_with_rt_dir(
         remote_group_members.push(tag);
     }
 
-    let mut fallback_candidates = split_dns_tokens(&store.settings.dns_fallback_servers);
-    if !store.settings.fallback_dns_server.trim().is_empty() {
-        for tok in split_dns_tokens(std::slice::from_ref(&store.settings.fallback_dns_server)) {
-            if !fallback_candidates
-                .iter()
-                .any(|x| x.eq_ignore_ascii_case(&tok))
-            {
-                fallback_candidates.push(tok);
+    let fail_closed_detour_dns = primary_detour != "direct"
+        && crate::net_stack::direct_fallback_veto(store).is_some()
+        && !remote_group_members.is_empty();
+
+    if !fail_closed_detour_dns {
+        let mut fallback_candidates = split_dns_tokens(&store.settings.dns_fallback_servers);
+        if !store.settings.fallback_dns_server.trim().is_empty() {
+            for tok in split_dns_tokens(std::slice::from_ref(&store.settings.fallback_dns_server)) {
+                if !fallback_candidates
+                    .iter()
+                    .any(|x| x.eq_ignore_ascii_case(&tok))
+                {
+                    fallback_candidates.push(tok);
+                }
             }
         }
-    }
-    if store.settings.fallback_wan_main {
-        for wan_ip in get_wan_dns_servers() {
-            if !ipv6_active && wan_ip.contains(':') {
+        if store.settings.fallback_wan_main {
+            for wan_ip in get_wan_dns_servers() {
+                if !ipv6_active && wan_ip.contains(':') {
+                    continue;
+                }
+                if !fallback_candidates
+                    .iter()
+                    .any(|x| x.eq_ignore_ascii_case(&wan_ip))
+                {
+                    fallback_candidates.push(wan_ip);
+                }
+            }
+        }
+        let mut fb_idx = 0usize;
+        for raw_fb in &fallback_candidates {
+            let fb_host_owned = extract_host_only(raw_fb);
+            let fb_host = if fb_host_owned.is_empty() {
+                raw_fb.trim()
+            } else {
+                fb_host_owned.as_str()
+            };
+            if fb_host.is_empty() || (!ipv6_active && fb_host.contains(':')) {
                 continue;
             }
-            if !fallback_candidates
-                .iter()
-                .any(|x| x.eq_ignore_ascii_case(&wan_ip))
-            {
-                fallback_candidates.push(wan_ip);
+            let fb_port = extract_url_port(raw_fb, 53);
+            let ep_key = format!("{fb_host}:{fb_port}");
+            if !bootstrap_udp_endpoints.insert(ep_key) {
+                continue;
             }
+            fb_idx += 1;
+            let fb_tag = format!("dns-fallback-{fb_idx}");
+            dns_servers_vec.push(json!({
+                "type": "udp",
+                "tag": fb_tag,
+                "server": fb_host,
+                "server_port": fb_port,
+                "detour": "direct"
+            }));
+            remote_group_members.push(fb_tag);
         }
-    }
-    let mut fb_idx = 0usize;
-    for raw_fb in &fallback_candidates {
-        let fb_host_owned = extract_host_only(raw_fb);
-        let fb_host = if fb_host_owned.is_empty() {
-            raw_fb.trim()
-        } else {
-            fb_host_owned.as_str()
-        };
-        if fb_host.is_empty() || (!ipv6_active && fb_host.contains(':')) {
-            continue;
-        }
-        let fb_port = extract_url_port(raw_fb, 53);
-        let ep_key = format!("{fb_host}:{fb_port}");
-        if !bootstrap_udp_endpoints.insert(ep_key) {
-            continue;
-        }
-        fb_idx += 1;
-        let fb_tag = format!("dns-fallback-{fb_idx}");
-        dns_servers_vec.push(json!({
-            "type": "udp",
-            "tag": fb_tag,
-            "server": fb_host,
-            "server_port": fb_port,
-            "detour": "direct"
-        }));
-        remote_group_members.push(fb_tag);
-    }
 
-    if !remote_group_members.iter().any(|t| t == "dns-bootstrap") {
-        remote_group_members.push("dns-bootstrap".to_string());
+        if !remote_group_members.iter().any(|t| t == "dns-bootstrap") {
+            remote_group_members.push("dns-bootstrap".to_string());
+        }
     }
     dns_servers_vec.push(json!({
         "type": "group",
@@ -13091,6 +13509,11 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
         "listen_port": 53
     });
     let clash_api_obj = build_clash_api_object(store, false);
+    let final_outbound = if crate::net_stack::direct_fallback_veto(store).is_some() {
+        "block"
+    } else {
+        "direct"
+    };
     json!({
         "log": {
             "level": crate::store::normalize_core_log_level(&store.settings.log_level),
@@ -13138,7 +13561,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
                 { "inbound": ["dns-in"], "action": "hijack-dns" }
             ],
             "rule_set": [],
-            "final": "direct",
+            "final": final_outbound,
             "auto_detect_interface": true,
             "default_mark": 1073741824,
             "default_domain_resolver": "dns-bootstrap"
@@ -15413,6 +15836,26 @@ fn resolve_section_outbound(
             }
             candidate_tags.push(m_tag);
         }
+        if candidate_tags.is_empty() {
+            let tag = format!("fptn-sec-{}", sec.id);
+            let tok = normalize_fptn_token_input(&sec.fptn_access_token)
+                .unwrap_or_else(|| sec.fptn_access_token.trim().to_string());
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("fptn"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("token".into(), json!(tok));
+            if !sec.fptn_sni.trim().is_empty() {
+                obj.insert("sni".into(), json!(sec.fptn_sni.trim()));
+            }
+            if !sec.fptn_bypass_method.trim().is_empty() {
+                obj.insert("bypass_method".into(), json!(sec.fptn_bypass_method.trim()));
+            }
+            if !seen_outbound_tags.contains_key(&tag) {
+                seen_outbound_tags.insert(tag.clone(), true);
+                outbounds.push(Value::Object(obj));
+            }
+            candidate_tags.push(tag);
+        }
     }
 
     if candidate_tags.is_empty() {
@@ -15442,15 +15885,19 @@ fn resolve_section_outbound(
                 parse_proxy_uri(uri, 0).map(|mut node| {
                     if let Some(obj) = node.outbound_json.as_object_mut() {
                         obj.insert("tag".into(), json!(sec_tag));
-                        if (1..=126).contains(&eff_workers) {
-                            obj.insert("workers".into(), json!(eff_workers));
-                        }
-                        if (576..=1500).contains(&eff_mtu) {
-                            obj.insert("mtu".into(), json!(eff_mtu));
-                        }
-                        if !eff_did.is_empty() && !obj.contains_key("device_id") {
-                            obj.insert("device_id".into(), json!(eff_did));
-                        }
+                        apply_wdtt_uri_overrides(
+                            obj,
+                            &WdttUriOverrides {
+                                workers: eff_workers,
+                                mtu: eff_mtu,
+                                device_id: eff_did,
+                                obfs: &sec.csqtt_obfs,
+                                vk_auth_mode: &sec.csqtt_vk_auth_mode,
+                                vk_cookie: &sec.csqtt_vk_cookie,
+                                turn_server: &sec.csqtt_turn_server,
+                                turn_transport: &sec.csqtt_turn_transport,
+                            },
+                        );
                     }
                     node.outbound_json
                 })
@@ -16265,10 +16712,18 @@ pub fn build_section_balancer_cache(store: &RouterStoreData, section_id: &str) -
 struct AtomicConditionParts {
     scope: Map<String, Value>,
     branches: Vec<Map<String, Value>>,
+    excluded_geoip_rule_sets: Vec<String>,
     discord_udp_voice_fired: bool,
     blocked_unresolved_clients: bool,
     blocked_unresolved_criteria: bool,
     has_unresolved_ruleset: bool,
+}
+
+fn geoip_mode_inverts(mode: &str) -> bool {
+    matches!(
+        mode.trim().to_ascii_lowercase().as_str(),
+        "exclude" | "exclude_direct" | "invert"
+    )
 }
 
 fn push_unique_str(vec: &mut Vec<String>, s: &str) {
@@ -16587,9 +17042,9 @@ fn register_ruleset_reference(
         }
         register_remote_ruleset(
             rs_tags,
-            format!("trs-{clean}"),
+            format!("trs-{clean_lc}"),
             format!(
-                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
+                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_lc}.trs"
             ),
             "6h",
             github_mirror,
@@ -16751,6 +17206,7 @@ fn collect_atomic_condition_parts_with_tables(
             return AtomicConditionParts {
                 scope,
                 branches,
+                excluded_geoip_rule_sets: Vec::new(),
                 discord_udp_voice_fired: false,
                 blocked_unresolved_clients: true,
                 blocked_unresolved_criteria: false,
@@ -16786,6 +17242,8 @@ fn collect_atomic_condition_parts_with_tables(
     }
 
     let mut rs_tags = Vec::new();
+    let mut excluded_geoip_rule_sets = Vec::new();
+    let geoip_inverted = geoip_mode_inverts(&cond.geoip_mode);
     let mut has_telegram = false;
     let mut has_discord = false;
     let mut has_telegram_with_subnets = false;
@@ -16805,9 +17263,9 @@ fn collect_atomic_condition_parts_with_tables(
         }
         register_remote_ruleset(
             &mut rs_tags,
-            format!("trs-{clean}"),
+            format!("trs-{clean_lc}"),
             format!(
-                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
+                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_lc}.trs"
             ),
             "6h",
             github_mirror,
@@ -16866,8 +17324,13 @@ fn collect_atomic_condition_parts_with_tables(
         if clean.is_empty() {
             continue;
         }
+        let target_tags = if geoip_inverted {
+            &mut excluded_geoip_rule_sets
+        } else {
+            &mut rs_tags
+        };
         register_remote_ruleset(
-            &mut rs_tags,
+            target_tags,
             format!("geoip-{clean}"),
             format!(
                 "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{clean}.srs"
@@ -17006,11 +17469,12 @@ fn collect_atomic_condition_parts_with_tables(
         }
     }
 
-    let blocked_unresolved_criteria =
-        unresolved_ruleset_refs && (branches.is_empty() || cond.invert);
+    let blocked_unresolved_criteria = unresolved_ruleset_refs
+        && ((branches.is_empty() && excluded_geoip_rule_sets.is_empty()) || cond.invert);
     AtomicConditionParts {
         scope,
         branches,
+        excluded_geoip_rule_sets,
         discord_udp_voice_fired,
         blocked_unresolved_clients: false,
         blocked_unresolved_criteria,
@@ -17025,9 +17489,55 @@ fn build_atomic_single_rule(
 ) -> Option<Value> {
     if parts.blocked_unresolved_clients
         || parts.blocked_unresolved_criteria
-        || (parts.branches.is_empty() && parts.scope.is_empty())
+        || (parts.branches.is_empty()
+            && parts.scope.is_empty()
+            && parts.excluded_geoip_rule_sets.is_empty())
     {
         return None;
+    }
+    if !parts.excluded_geoip_rule_sets.is_empty() {
+        let excluded_geoip = std::mem::take(&mut parts.excluded_geoip_rule_sets);
+        if parts.branches.is_empty() && parts.scope.is_empty() {
+            let mut geo_obj = Map::new();
+            geo_obj.insert("rule_set".into(), json!(excluded_geoip));
+            if !invert {
+                geo_obj.insert("invert".into(), json!(true));
+            }
+            if let Some(tag) = outbound_tag {
+                geo_obj.insert("outbound".into(), json!(tag));
+            }
+            return Some(Value::Object(geo_obj));
+        }
+        let base_val = build_atomic_single_rule(parts, false, None)?;
+        let geo_sub = json!({
+            "rule_set": excluded_geoip,
+            "invert": true
+        });
+        let can_append = base_val.as_object().is_some_and(|obj| {
+            obj.get("type").and_then(Value::as_str) == Some("logical")
+                && obj.get("mode").and_then(Value::as_str) == Some("and")
+                && !obj.get("invert").and_then(Value::as_bool).unwrap_or(false)
+                && obj.get("rules").is_some_and(Value::is_array)
+        });
+        let mut combined = if can_append && let Value::Object(mut m) = base_val {
+            if let Some(arr) = m.get_mut("rules").and_then(Value::as_array_mut) {
+                arr.push(geo_sub);
+            }
+            m
+        } else {
+            let mut and_obj = Map::new();
+            and_obj.insert("type".into(), json!("logical"));
+            and_obj.insert("mode".into(), json!("and"));
+            and_obj.insert("rules".into(), json!([base_val, geo_sub]));
+            and_obj
+        };
+        if invert {
+            combined.insert("invert".into(), json!(true));
+        }
+        if let Some(tag) = outbound_tag {
+            combined.insert("outbound".into(), json!(tag));
+        }
+        return Some(Value::Object(combined));
     }
     if parts.branches.is_empty() {
         if invert {
@@ -17204,7 +17714,9 @@ fn build_condition_rule(
             if ctype == "not" || cond.invert {
                 log_obj.insert("invert".into(), json!(true));
             }
-            if !parent_parts.branches.is_empty() {
+            if !parent_parts.branches.is_empty()
+                || !parent_parts.excluded_geoip_rule_sets.is_empty()
+            {
                 let parent_rule = build_atomic_single_rule(parent_parts, false, None)?;
                 let mut and_obj = Map::new();
                 and_obj.insert("type".into(), json!("logical"));
@@ -17309,6 +17821,14 @@ fn build_condition_rules(
             .collect();
     }
 
+    let mut route_exc_subs = cond_exc_subs;
+    if !parts.excluded_geoip_rule_sets.is_empty() {
+        route_exc_subs.push(json!({
+            "rule_set": parts.excluded_geoip_rule_sets,
+            "invert": true
+        }));
+    }
+
     let mut out_rules = Vec::new();
     for branch in parts.branches {
         if pre_resolve_ip
@@ -17336,7 +17856,7 @@ fn build_condition_rules(
         out_rules.push(wrap_rule_with_inverted_subrules(
             Value::Object(route_rule),
             &cond_exc_dom_subs,
-            &cond_exc_subs,
+            &route_exc_subs,
         ));
     }
     out_rules
@@ -17424,6 +17944,14 @@ fn build_endpoint_server(srv: &InboundServer) -> Option<Value> {
                     "persistent_keepalive_interval": srv.awg_keepalive.max(25)
                 }));
             }
+            let ver = srv.awg_version.trim();
+            let allow_v3 = ver == "3.0" || ver == "3.1" || ver.is_empty();
+            let allow_v31 = ver == "3.1" || ver.is_empty();
+            let hpk = srv.awg_header_protection_key.trim();
+            let has_hpk = allow_v3 && is_valid_non_zero_awg_hpk(hpk);
+            let (eff_jmin, eff_jmax) = normalize_awg_jmin_jmax(srv.awg_jmin, srv.awg_jmax);
+            let bump_s = |val: u16| if has_hpk && val < 12 { 20 } else { val };
+
             let mut ep = json!({
                 "type": "wireguard",
                 "tag": tag,
@@ -17433,12 +17961,12 @@ fn build_endpoint_server(srv: &InboundServer) -> Option<Value> {
                 "mtu": srv.awg_mtu.max(1280),
                 "peers": peers,
                 "jc": srv.awg_jc,
-                "jmin": srv.awg_jmin,
-                "jmax": srv.awg_jmax,
-                "s1": srv.awg_s1,
-                "s2": srv.awg_s2,
-                "s3": srv.awg_s3,
-                "s4": srv.awg_s4,
+                "jmin": eff_jmin,
+                "jmax": eff_jmax,
+                "s1": bump_s(srv.awg_s1),
+                "s2": bump_s(srv.awg_s2),
+                "s3": bump_s(srv.awg_s3),
+                "s4": bump_s(srv.awg_s4),
                 "h1": srv.awg_h1,
                 "h2": srv.awg_h2,
                 "h3": srv.awg_h3,
@@ -17460,6 +17988,41 @@ fn build_endpoint_server(srv: &InboundServer) -> Option<Value> {
             }
             if srv.awg_itime > 0 {
                 ep["itime"] = json!(srv.awg_itime);
+            }
+            if allow_v3 {
+                if has_hpk {
+                    ep["header_protection_key"] = json!(hpk);
+                }
+                let cpa = srv.awg_content_padding_addition.trim();
+                if !cpa.is_empty()
+                    && cpa != "0"
+                    && let Some(val) = parse_awg_int_or_range(cpa)
+                {
+                    ep["content_padding_addition"] = val;
+                }
+                if srv.awg_random_trailers {
+                    ep["random_trailers"] = json!(true);
+                }
+                if srv.awg_disable_cookies {
+                    ep["disable_cookies"] = json!(true);
+                }
+            }
+            if allow_v31 {
+                for (r_key, r_raw) in [
+                    ("rekey_after_time", &srv.awg_rekey_after_time),
+                    ("rekey_timeout", &srv.awg_rekey_timeout),
+                    ("reject_after_time", &srv.awg_reject_after_time),
+                    ("keepalive_timeout", &srv.awg_keepalive_timeout),
+                    ("max_handshake_attempts", &srv.awg_max_handshake_attempts),
+                ] {
+                    let trimmed = r_raw.trim();
+                    if !trimmed.is_empty()
+                        && trimmed != "0"
+                        && let Some(val) = parse_awg_int_or_range(trimmed)
+                    {
+                        ep[r_key] = val;
+                    }
+                }
             }
             Some(ep)
         }
@@ -18427,12 +18990,21 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
             }
         }
         "awg" | "wireguard" => {
+            let ver = srv.awg_version.trim();
+            let allow_v3 = ver == "3.0" || ver == "3.1" || ver.is_empty();
+            let allow_v31 = ver == "3.1" || ver.is_empty();
+            let hpk = srv.awg_header_protection_key.trim();
+            let has_hpk = allow_v3 && !hpk.is_empty();
+            let bump_s = |val: u16| if has_hpk && val < 12 { 20 } else { val };
+
             let mut extra = String::new();
-            if srv.awg_s3 > 0 {
-                extra.push_str(&format!("&s3={}", srv.awg_s3));
+            let s3_eff = bump_s(srv.awg_s3);
+            let s4_eff = bump_s(srv.awg_s4);
+            if s3_eff > 0 {
+                extra.push_str(&format!("&s3={s3_eff}"));
             }
-            if srv.awg_s4 > 0 {
-                extra.push_str(&format!("&s4={}", srv.awg_s4));
+            if s4_eff > 0 {
+                extra.push_str(&format!("&s4={s4_eff}"));
             }
             for (k, v) in [
                 ("i1", &srv.awg_i1),
@@ -18440,9 +19012,44 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
                 ("i3", &srv.awg_i3),
                 ("i4", &srv.awg_i4),
                 ("i5", &srv.awg_i5),
+                ("j1", &srv.awg_j1),
+                ("j2", &srv.awg_j2),
+                ("j3", &srv.awg_j3),
             ] {
                 if !v.trim().is_empty() {
                     extra.push_str(&format!("&{k}={}", v.trim()));
+                }
+            }
+            if srv.awg_itime > 0 {
+                extra.push_str(&format!("&itime={}", srv.awg_itime));
+            }
+            if allow_v3 {
+                if has_hpk {
+                    extra.push_str(&format!("&header_protection_key={hpk}"));
+                }
+                let cpa = srv.awg_content_padding_addition.trim();
+                if !cpa.is_empty() && cpa != "0" {
+                    extra.push_str(&format!("&content_padding_addition={cpa}"));
+                }
+                if srv.awg_random_trailers {
+                    extra.push_str("&random_trailers=1");
+                }
+                if srv.awg_disable_cookies {
+                    extra.push_str("&disable_cookies=1");
+                }
+            }
+            if allow_v31 {
+                for (k, v) in [
+                    ("rekey_after_time", &srv.awg_rekey_after_time),
+                    ("rekey_timeout", &srv.awg_rekey_timeout),
+                    ("reject_after_time", &srv.awg_reject_after_time),
+                    ("keepalive_timeout", &srv.awg_keepalive_timeout),
+                    ("max_handshake_attempts", &srv.awg_max_handshake_attempts),
+                ] {
+                    let t = v.trim();
+                    if !t.is_empty() && t != "0" {
+                        extra.push_str(&format!("&{k}={t}"));
+                    }
                 }
             }
             format!(
@@ -18457,8 +19064,8 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
                 srv.awg_jc,
                 srv.awg_jmin,
                 srv.awg_jmax,
-                srv.awg_s1,
-                srv.awg_s2,
+                bump_s(srv.awg_s1),
+                bump_s(srv.awg_s2),
                 srv.awg_h1,
                 srv.awg_h2,
                 srv.awg_h3,
@@ -18539,16 +19146,25 @@ pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) ->
         format!("MTU = {}", srv.awg_mtu.max(1280)),
     ];
     if srv.protocol == "awg" && srv.awg_jc > 0 {
+        let ver = srv.awg_version.trim();
+        let allow_v3 = ver == "3.0" || ver == "3.1" || ver.is_empty();
+        let allow_v31 = ver == "3.1" || ver.is_empty();
+        let hpk = srv.awg_header_protection_key.trim();
+        let has_hpk = allow_v3 && !hpk.is_empty();
+        let bump_s = |val: u16| if has_hpk && val < 12 { 20 } else { val };
+
         lines.push(format!("Jc = {}", srv.awg_jc));
         lines.push(format!("Jmin = {}", srv.awg_jmin));
         lines.push(format!("Jmax = {}", srv.awg_jmax));
-        lines.push(format!("S1 = {}", srv.awg_s1));
-        lines.push(format!("S2 = {}", srv.awg_s2));
-        if srv.awg_s3 > 0 {
-            lines.push(format!("S3 = {}", srv.awg_s3));
+        lines.push(format!("S1 = {}", bump_s(srv.awg_s1)));
+        lines.push(format!("S2 = {}", bump_s(srv.awg_s2)));
+        let s3_eff = bump_s(srv.awg_s3);
+        let s4_eff = bump_s(srv.awg_s4);
+        if s3_eff > 0 {
+            lines.push(format!("S3 = {s3_eff}"));
         }
-        if srv.awg_s4 > 0 {
-            lines.push(format!("S4 = {}", srv.awg_s4));
+        if s4_eff > 0 {
+            lines.push(format!("S4 = {s4_eff}"));
         }
         lines.push(format!("H1 = {}", srv.awg_h1));
         lines.push(format!("H2 = {}", srv.awg_h2));
@@ -18570,6 +19186,29 @@ pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) ->
         }
         if srv.awg_itime > 0 {
             lines.push(format!("ITime = {}", srv.awg_itime));
+        }
+        if allow_v3 {
+            if has_hpk {
+                lines.push(format!("HeaderProtectionKey = {hpk}"));
+            }
+            let cpa = srv.awg_content_padding_addition.trim();
+            if !cpa.is_empty() && cpa != "0" {
+                lines.push(format!("ContentPaddingAddition = {cpa}"));
+            }
+        }
+        if allow_v31 {
+            for (conf_key, raw) in [
+                ("RekeyAfterTime", &srv.awg_rekey_after_time),
+                ("RekeyTimeout", &srv.awg_rekey_timeout),
+                ("RejectAfterTime", &srv.awg_reject_after_time),
+                ("KeepaliveTimeout", &srv.awg_keepalive_timeout),
+                ("MaxHandshakeAttempts", &srv.awg_max_handshake_attempts),
+            ] {
+                let t = raw.trim();
+                if !t.is_empty() && t != "0" {
+                    lines.push(format!("{conf_key} = {t}"));
+                }
+            }
         }
     }
     lines.push(String::new());
@@ -24730,6 +25369,343 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         assert_eq!(
             rem_group["servers"].as_array().unwrap().last(),
             Some(&json!("dns-bootstrap"))
+        );
+    }
+
+    #[test]
+    fn test_safe_minimal_respects_fail_closed_block_final() {
+        let store = RouterStoreData::default();
+        let normal_safe = compile_safe_minimal_core_config(&store);
+        assert_eq!(normal_safe["route"]["final"], "direct");
+
+        let mut fail_closed = RouterStoreData::default();
+        fail_closed.settings.emergency_direct_bypass = false;
+        let blocked_safe = compile_safe_minimal_core_config(&fail_closed);
+        assert_eq!(blocked_safe["route"]["final"], "block");
+    }
+
+    #[test]
+    fn test_dns_remote_omits_direct_fallback_under_fail_closed_detour() {
+        let mut store = RouterStoreData::default();
+        store.sections.clear();
+        store.conditions.clear();
+        store.outbound_groups.clear();
+        store.balancers.clear();
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_vpn".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#VPN1"
+                    .to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections.push(RoutingSection {
+            id: "ProxySec".to_string(),
+            enabled: true,
+            label: "Proxy".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            user_domains: vec!["blocked.example".to_string()],
+            ..Default::default()
+        });
+        store.settings.emergency_direct_bypass = false;
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec!["https://dns.google/dns-query".to_string()];
+        store.settings.dns_detour_enabled = true;
+        store.settings.dns_detour_section = "ProxySec".to_string();
+        store.settings.dns_fallback_servers = vec!["9.9.9.9".to_string()];
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile fail-closed dns");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+
+        let srvs = cfg["dns"]["servers"].as_array().expect("dns servers");
+        assert!(srvs.iter().any(|s| s["tag"] == "dns-bootstrap"));
+        let rem_group = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote group");
+        assert_eq!(rem_group["servers"], json!(["dns-remote-1"]));
+    }
+
+    #[test]
+    fn test_geoip_mode_exclude_emits_inverted_rule_set() {
+        let make_base = || {
+            let mut store = RouterStoreData::default();
+            store.sections.clear();
+            store.conditions.clear();
+            store.outbound_groups.clear();
+            store.balancers.clear();
+            store.outbound_sources = vec![OutboundSource {
+                id: "src_vpn".to_string(),
+                enabled: true,
+                source_type: "proxy_links".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#VPN1"
+                        .to_string(),
+                ],
+                ..Default::default()
+            }];
+            store
+        };
+
+        // (a) Pure geoip exclude without other criteria -> inverted rule_set rule
+        let mut store_only = make_base();
+        store_only.sections.push(RoutingSection {
+            id: "GeoExcludeOnly".to_string(),
+            enabled: true,
+            label: "GeoExcludeOnly".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            geoip_codes: vec!["ru".to_string()],
+            geoip_mode: "exclude".to_string(),
+            ..Default::default()
+        });
+        let cfg_only =
+            compile_core_config_with_wan6(&store_only, false).expect("geoip exclude only");
+        let rules_only = cfg_only["route"]["rules"].as_array().unwrap();
+        assert!(rules_only.iter().any(|r| {
+            r["outbound"] == "VPN1"
+                && r["rule_set"] == json!(["geoip-ru"])
+                && r["invert"] == json!(true)
+        }));
+
+        // (b) Domain + geoip exclude -> logical AND of domain matcher + inverted geoip rule_set
+        let mut store_dom = make_base();
+        store_dom.sections.push(RoutingSection {
+            id: "GeoExcludeDom".to_string(),
+            enabled: true,
+            label: "GeoExcludeDom".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            user_domains: vec!["example.com".to_string()],
+            geoip_codes: vec!["ru".to_string()],
+            geoip_mode: "exclude".to_string(),
+            ..Default::default()
+        });
+        let cfg_dom =
+            compile_core_config_with_wan6(&store_dom, false).expect("geoip exclude + dom");
+        let rules_dom = cfg_dom["route"]["rules"].as_array().unwrap();
+        assert!(rules_dom.iter().any(|r| {
+            r["outbound"] == "VPN1"
+                && r["type"] == "logical"
+                && r["mode"] == "and"
+                && r["rules"].as_array().is_some_and(|arr| {
+                    arr.iter()
+                        .any(|s| s["domain_suffix"] == json!(["example.com"]))
+                        && arr.iter().any(|s| {
+                            s["rule_set"] == json!(["geoip-ru"]) && s["invert"] == json!(true)
+                        })
+                })
+        }));
+
+        // (c) geoip_mode = "exclude_direct" emits earlier direct rule for geoip-ru
+        let mut store_direct = make_base();
+        store_direct.sections.push(RoutingSection {
+            id: "GeoExcludeDirect".to_string(),
+            enabled: true,
+            label: "GeoExcludeDirect".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_vpn".to_string()],
+            geoip_codes: vec!["ru".to_string()],
+            geoip_mode: "exclude_direct".to_string(),
+            match_all: true,
+            ..Default::default()
+        });
+        let cfg_dir =
+            compile_core_config_with_wan6(&store_direct, false).expect("geoip exclude_direct");
+        let rules_dir = cfg_dir["route"]["rules"].as_array().unwrap();
+        let direct_idx = rules_dir
+            .iter()
+            .position(|r| {
+                r["outbound"] == "direct"
+                    && r["rule_set"] == json!(["geoip-ru"])
+                    && r.get("invert").is_none()
+            })
+            .expect("direct geoip-ru rule");
+        let proxy_idx = rules_dir
+            .iter()
+            .position(|r| r["outbound"] == "VPN1" && r.get("inbound").is_none())
+            .expect("VPN1 section rule");
+        assert!(direct_idx < proxy_idx);
+    }
+
+    #[test]
+    fn test_fptn_normalization_and_server_counting() {
+        let token_payload = json!({
+            "version": 2,
+            "service_name": "MyFPTN",
+            "username": "u1",
+            "password": "p1",
+            "servers": [
+                { "name": "DE-1", "host": "198.51.100.10", "port": 443 },
+                { "name": "DE-1", "host": "198.51.100.11", "port": 8443 }
+            ],
+            "censorship_zone_servers": [
+                { "name": "FI-1", "ip": "198.51.100.12", "port": 443 }
+            ]
+        });
+        let raw_json = serde_json::to_string(&token_payload).unwrap();
+        let b64 = B64_STD.encode(raw_json.as_bytes());
+        let multiline = format!("FPTN://{}\n  {}#label", &b64[..20], &b64[20..]);
+
+        let norm_ml = normalize_fptn_token_input(&multiline).expect("multiline normalize");
+        assert!(norm_ml.starts_with("fptn:"));
+        assert!(!norm_ml.contains('\n'));
+        assert!(!norm_ml.contains('#'));
+        assert!(!norm_ml.starts_with("fptn://"));
+
+        let norm_brotli = normalize_fptn_token_input("fptnb://YWJj\nZGVm#frag").expect("fptnb");
+        assert_eq!(norm_brotli, "fptnb:YWJjZGVm");
+
+        let norm_json = normalize_fptn_token_input(&raw_json).expect("raw json normalize");
+        assert!(norm_json.starts_with("fptn:"));
+        let dec = decode_fptn_token_json(&multiline).expect("decode multiline");
+        assert_eq!(count_fptn_token_servers(&dec), 3);
+        let dec_json = decode_fptn_token_json(&raw_json).expect("decode raw json");
+        assert_eq!(count_fptn_token_servers(&dec_json), 3);
+
+        let expanded = expand_fptn_token_outbounds("fptn-main", &multiline, "", "", "");
+        assert_eq!(expanded.len(), 3);
+        let tags: HashSet<&str> = expanded.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(tags.len(), 3, "duplicate server names must get unique tags");
+        assert!(tags.contains("fptn-main/DE-1"));
+        assert!(tags.contains("fptn-main/DE-1-2"));
+        assert!(tags.contains("fptn-main/FI-1"));
+    }
+
+    #[test]
+    fn test_inbound_server_awg31_compiles_and_exports_params() {
+        let mut store = RouterStoreData::factory_defaults();
+        let hpk = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=".to_string();
+        let srv = InboundServer {
+            id: "srv_awg31".to_string(),
+            enabled: true,
+            label: "AWG31".to_string(),
+            protocol: "awg".to_string(),
+            listen_port: 51820,
+            awg_version: "3.1".to_string(),
+            awg_local_address: "10.9.0.1/24".to_string(),
+            awg_client_address: "10.9.0.2/32".to_string(),
+            awg_jc: 4,
+            awg_jmin: 40,
+            awg_jmax: 70,
+            awg_s1: 5,
+            awg_s2: 6,
+            awg_s3: 7,
+            awg_s4: 8,
+            awg_h1: 11,
+            awg_h2: 22,
+            awg_h3: 33,
+            awg_h4: 44,
+            awg_i1: "<b 0x1122>".to_string(),
+            awg_j1: "<r 8>".to_string(),
+            awg_itime: 150,
+            awg_header_protection_key: hpk.clone(),
+            awg_content_padding_addition: "38-104".to_string(),
+            awg_random_trailers: true,
+            awg_disable_cookies: true,
+            awg_rekey_after_time: "120-180".to_string(),
+            awg_rekey_timeout: "5".to_string(),
+            awg_reject_after_time: "240".to_string(),
+            awg_keepalive_timeout: "10-15".to_string(),
+            awg_max_handshake_attempts: "20".to_string(),
+            awg_private_key: "SRV_PRIV".to_string(),
+            awg_server_public_key: "SRV_PUB".to_string(),
+            awg_client_private_key: "CLI_PRIV".to_string(),
+            awg_peer_public_key: "CLI_PUB".to_string(),
+            ..Default::default()
+        };
+        store.servers.push(srv.clone());
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile core config");
+        let ep = cfg["endpoints"]
+            .as_array()
+            .expect("endpoints array")
+            .iter()
+            .find(|e| e["type"] == "wireguard")
+            .expect("wireguard inbound endpoint");
+        assert_eq!(ep["s1"], json!(20));
+        assert_eq!(ep["s2"], json!(20));
+        assert_eq!(ep["s3"], json!(20));
+        assert_eq!(ep["s4"], json!(20));
+        assert_eq!(ep["itime"], json!(150));
+        assert_eq!(ep["header_protection_key"], json!(hpk));
+        assert_eq!(ep["content_padding_addition"], json!("38-104"));
+        assert_eq!(ep["random_trailers"], json!(true));
+        assert_eq!(ep["disable_cookies"], json!(true));
+        assert_eq!(ep["rekey_after_time"], json!("120-180"));
+        assert_eq!(ep["rekey_timeout"], json!(5));
+        assert_eq!(ep["reject_after_time"], json!(240));
+        assert_eq!(ep["keepalive_timeout"], json!("10-15"));
+        assert_eq!(ep["max_handshake_attempts"], json!(20));
+
+        let wg_conf = build_server_wg_conf(&srv, Some("198.51.100.1"));
+        assert!(wg_conf.contains("S1 = 20\n"));
+        assert!(wg_conf.contains("S4 = 20\n"));
+        assert!(wg_conf.contains(&format!("HeaderProtectionKey = {hpk}")));
+        assert!(wg_conf.contains("ContentPaddingAddition = 38-104"));
+        assert!(wg_conf.contains("RekeyAfterTime = 120-180"));
+        assert!(wg_conf.contains("RekeyTimeout = 5"));
+        assert!(wg_conf.contains("RejectAfterTime = 240"));
+        assert!(wg_conf.contains("KeepaliveTimeout = 10-15"));
+        assert!(wg_conf.contains("MaxHandshakeAttempts = 20"));
+
+        let uri = build_server_share_uri(&srv, Some("198.51.100.1"));
+        assert!(uri.contains("&s1=20&s2=20"));
+        assert!(uri.contains("&s3=20&s4=20"));
+        assert!(uri.contains("&itime=150"));
+        assert!(uri.contains(&format!("&header_protection_key={hpk}")));
+        assert!(uri.contains("&content_padding_addition=38-104"));
+        assert!(uri.contains("&random_trailers=1"));
+        assert!(uri.contains("&disable_cookies=1"));
+        assert!(uri.contains("&rekey_after_time=120-180"));
+        assert!(uri.contains("&max_handshake_attempts=20"));
+    }
+
+    #[test]
+    fn test_sprint3_qwdtt_order_awg_bounds_and_dot_bootstrap() {
+        let mid_pass = parse_proxy_uri(
+            "qwdtt://config?ip=198.51.100.4&pass=midpass&dtls=56001&mode=raw&raw=56002",
+            0,
+        )
+        .expect("qwdtt pass in middle");
+        assert_eq!(mid_pass.outbound_json["password"], "midpass");
+        assert_eq!(mid_pass.outbound_json["mode"], "raw");
+        assert_eq!(mid_pass.outbound_json["raw_port"], 56002);
+
+        let first_pass =
+            parse_proxy_uri("qwdtt://config?pass=firstpw&ip=198.51.100.5&dtls=56000", 0)
+                .expect("qwdtt pass first");
+        assert_eq!(first_pass.outbound_json["password"], "firstpw");
+        assert_eq!(first_pass.server, "198.51.100.5");
+
+        let zero_hpk = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        assert!(!is_valid_non_zero_awg_hpk(zero_hpk));
+        assert_eq!(normalize_awg_jmin_jmax(80, 0), (80, 80));
+        assert_eq!(normalize_awg_jmin_jmax(90, 40), (40, 90));
+
+        let mut store = RouterStoreData::default();
+        store.settings.bootstrap_dns_servers = vec!["tls://dns.google".to_string()];
+        store.settings.fallback_wan_bootstrap = false;
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile dot bootstrap");
+        let dns_servers = cfg["dns"]["servers"].as_array().unwrap();
+        let boot_group = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-bootstrap")
+            .expect("dns-bootstrap group when DoT host has no numeric IP");
+        assert_eq!(boot_group["type"], "group");
+        assert!(
+            dns_servers
+                .iter()
+                .any(|s| s["type"] == "udp" && s["server"] == "77.88.8.8"),
+            "numeric fallback 77.88.8.8 must be injected alongside hostname DoT bootstrap"
         );
     }
 }

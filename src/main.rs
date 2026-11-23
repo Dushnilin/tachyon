@@ -36,8 +36,30 @@ use std::time::Duration;
 use crate::core_mgr::CoreManager;
 use crate::store::AppState;
 
+fn resolve_cli_forward_port() -> u16 {
+    let data_dir = std::env::var("TACHYON_DATA_DIR").unwrap_or_else(|_| {
+        if cfg!(target_os = "linux") && std::path::Path::new("/etc/tachyon").exists() {
+            "/etc/tachyon".to_string()
+        } else {
+            "data".to_string()
+        }
+    });
+    let store_path = format!("{data_dir}/tachyon.json");
+    if let Ok(raw) = std::fs::read_to_string(&store_path)
+        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw)
+        && let Some(p) = val
+            .pointer("/settings/listen_port")
+            .and_then(|v| v.as_u64())
+        && (1..=65535).contains(&p)
+    {
+        return p as u16;
+    }
+    1680
+}
+
 fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1680);
+    let port = resolve_cli_forward_port();
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok()?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(25)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
@@ -58,7 +80,7 @@ fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
     });
     let body_bytes = serde_json::to_vec(&rpc_body).ok()?;
     let req = format!(
-        "POST /ubus HTTP/1.1\r\nHost: 127.0.0.1:1680\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
+        "POST /ubus HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
         body_bytes.len()
     );
     stream.write_all(req.as_bytes()).ok()?;
@@ -317,9 +339,10 @@ fn main() -> anyhow::Result<()> {
                     }
                     eprintln!("\n[tachyon] shutting down...");
                     if core_sig.has_spawned_child().await {
-                        let _ = core_sig.stop().await;
+                        let _ = core_sig.stop_for_shutdown().await;
                     }
                     let _ = state_sig.save().await;
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     std::process::exit(0);
                 });
 

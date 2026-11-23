@@ -2471,3 +2471,148 @@ fn outbox_notice_skips_duplicate_pending_content() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn sample_fptn_payload_json() -> Value {
+    json!({
+        "version": 2,
+        "service_name": "DemoNet",
+        "username": "alice",
+        "password": "secret",
+        "servers": [
+            { "name": "DE-1", "host": "198.51.100.10", "port": 443 },
+            { "name": "NL-1", "host": "198.51.100.11", "port": 8443 }
+        ],
+        "censorship_zone_servers": [
+            { "name": "FI-1", "ip": "198.51.100.12", "port": 443 }
+        ]
+    })
+}
+
+#[test]
+fn looks_like_proxy_uri_accepts_fptn_variants_and_json() {
+    use base64::Engine as _;
+    let raw_json = serde_json::to_string(&sample_fptn_payload_json()).unwrap();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(raw_json.as_bytes());
+    assert!(looks_like_proxy_uri(&format!("fptn://{b64}")));
+    assert!(looks_like_proxy_uri(&format!("fptn:{b64}")));
+    assert!(looks_like_proxy_uri("fptnb:YWJjZGVm"));
+    assert!(looks_like_proxy_uri("fptnb://YWJjZGVm"));
+    assert!(looks_like_proxy_uri(&raw_json));
+    assert!(!looks_like_proxy_uri("{\"not_fptn\": true}"));
+}
+
+#[tokio::test]
+async fn import_fptn_variants_create_fptn_source_not_proxy_links() {
+    use base64::Engine as _;
+    let _guard = prompt_test_lock().lock().await;
+    let admin_id = 91001;
+    let env = TempTestEnv::new("fptn_import", admin_id).await;
+
+    let raw_json = serde_json::to_string(&sample_fptn_payload_json()).unwrap();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(raw_json.as_bytes());
+
+    let uri = format!("fptn://{b64}");
+    let rep1 = Box::pin(dispatch_text_message(admin_id, &uri, &env.state, &env.core)).await;
+    assert!(rep1.text.contains("[OK]"), "{}", rep1.text);
+    assert!(rep1.text.contains("3 servers"), "{}", rep1.text);
+
+    let multiline = format!("FPTN://{}\n  {}#label", &b64[..20], &b64[20..]);
+    set_chat_prompt(admin_id, PendingPromptKind::AddSubscriptionOrUri);
+    let rep2 = Box::pin(dispatch_text_message(
+        admin_id, &multiline, &env.state, &env.core,
+    ))
+    .await;
+    assert!(rep2.text.contains("[OK]"), "{}", rep2.text);
+
+    let rep3 = Box::pin(dispatch_text_message(
+        admin_id, &raw_json, &env.state, &env.core,
+    ))
+    .await;
+    assert!(rep3.text.contains("[OK]"), "{}", rep3.text);
+
+    let d = env.state.data.read().await;
+    let fptn_sources: Vec<_> = d
+        .outbound_sources
+        .iter()
+        .filter(|s| s.source_type == "fptn")
+        .collect();
+    assert_eq!(fptn_sources.len(), 3);
+    assert!(
+        !d.outbound_sources
+            .iter()
+            .any(|s| s.source_type == "proxy_links"),
+        "FPTN tokens must not be stored as proxy_links"
+    );
+    for s in fptn_sources {
+        assert_eq!(s.name, "FPTN (DemoNet)");
+        assert!(s.fptn_access_token.starts_with("fptn:"));
+        assert!(!s.fptn_access_token.contains('\n'));
+        assert!(!s.fptn_access_token.contains('#'));
+    }
+}
+
+#[tokio::test]
+async fn update_fptn_prompts_normalize_token_and_count_all_servers() {
+    use base64::Engine as _;
+    let _guard = prompt_test_lock().lock().await;
+    let admin_id = 91002;
+    let env = TempTestEnv::new("fptn_prompts", admin_id).await;
+    {
+        let mut d = env.state.data.write().await;
+        d.sections.push(RoutingSection {
+            id: "sec_fptn".to_string(),
+            enabled: true,
+            label: "FPTN Sec".to_string(),
+            connection_type: "fptn".to_string(),
+            action: "fptn".to_string(),
+            ..Default::default()
+        });
+        d.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_fptn_1".to_string(),
+            enabled: true,
+            name: "FPTN Src".to_string(),
+            source_type: "fptn".to_string(),
+            ..Default::default()
+        });
+    }
+
+    let raw_json = serde_json::to_string(&sample_fptn_payload_json()).unwrap();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(raw_json.as_bytes());
+    let fptn_uri = format!("fptn://{b64}");
+
+    set_chat_prompt(
+        admin_id,
+        PendingPromptKind::UpdateFptnToken {
+            sec_id: "sec_fptn".to_string(),
+        },
+    );
+    let sec_rep = Box::pin(dispatch_text_message(
+        admin_id, &fptn_uri, &env.state, &env.core,
+    ))
+    .await;
+    assert!(sec_rep.text.contains("[OK]"), "{}", sec_rep.text);
+    assert!(sec_rep.text.contains("3"), "{}", sec_rep.text);
+
+    set_chat_prompt(
+        admin_id,
+        PendingPromptKind::UpdateSourceFptnToken {
+            src_id: "src_fptn_1".to_string(),
+        },
+    );
+    let src_rep = Box::pin(dispatch_text_message(
+        admin_id, &raw_json, &env.state, &env.core,
+    ))
+    .await;
+    assert!(src_rep.text.contains("[OK]"), "{}", src_rep.text);
+    assert!(src_rep.text.contains("3"), "{}", src_rep.text);
+
+    let d = env.state.data.read().await;
+    let sec = d.sections.iter().find(|s| s.id == "sec_fptn").unwrap();
+    assert_eq!(sec.fptn_access_token, format!("fptn:{b64}"));
+    let src = d
+        .outbound_sources
+        .iter()
+        .find(|s| s.id == "src_fptn_1")
+        .unwrap();
+    assert!(src.fptn_access_token.starts_with("fptn:"));
+}

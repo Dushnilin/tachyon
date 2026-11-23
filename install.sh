@@ -158,18 +158,40 @@ detect_fetcher() {
     return 1
 }
 
-http_get() {
-    _url="$1"
+http_get_once() {
+    _try="$1"
     case "$FETCHER" in
         curl)
-            curl --connect-timeout "$CONNECT_TIMEOUT" --max-time "$METADATA_TIMEOUT" -fsSL "$_url"
+            curl --connect-timeout "$CONNECT_TIMEOUT" --max-time "$METADATA_TIMEOUT" -fsSL "$_try"
             ;;
         wget)
-            wget -T "$CONNECT_TIMEOUT" -qO- "$_url" 2>/dev/null || \
-                wget --no-check-certificate -T "$CONNECT_TIMEOUT" -qO- "$_url" 2>/dev/null
+            wget -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null || \
+                wget --no-check-certificate -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null
             ;;
         *)
             return 1
+            ;;
+    esac
+}
+
+http_get() {
+    _url="$1"
+    case "$_url" in
+        https://github.com/*|https://raw.githubusercontent.com/*)
+            _tmp_http="/tmp/tachyon-http-$$.tmp"
+            for _prefix in "" "https://ghfast.top/" "https://gh-proxy.com/"; do
+                _try="${_prefix}${_url}"
+                if http_get_once "$_try" > "$_tmp_http" 2>/dev/null && [ -s "$_tmp_http" ]; then
+                    cat "$_tmp_http"
+                    rm -f "$_tmp_http"
+                    return 0
+                fi
+                rm -f "$_tmp_http"
+            done
+            return 1
+            ;;
+        *)
+            http_get_once "$_url"
             ;;
     esac
 }
@@ -641,8 +663,11 @@ migrate_from_v1() {
         nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
         nft delete table ip tachyon >/dev/null 2>&1 || true
         nft delete table ip6 tachyon >/dev/null 2>&1 || true
+        for _h in $(nft -a list chain inet fw4 forward 2>/dev/null | sed -n 's/.*Tachyon: skip flow offload.*# handle \([0-9][0-9]*\).*/\1/p'); do
+            nft delete rule inet fw4 forward handle "$_h" >/dev/null 2>&1 || true
+        done
     fi
-    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft 2>/dev/null || true
 
     if command_exists ip; then
         for _p in 9499 9500 9501; do
@@ -680,7 +705,7 @@ migrate_from_v1() {
                 done
                 uci -q delete dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true
             fi
-            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface serversfile localservice; do
+            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface localservice; do
                 _val="$(uci -q get "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true)"
                 if [ -n "$_val" ]; then
                     if [ "$_val" = "__tachyon_unset__" ] || [ "$_val" = "__absent__" ] || [ "$_val" = "unset" ]; then
@@ -691,6 +716,18 @@ migrate_from_v1() {
                     uci -q delete "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true
                 fi
             done
+            _sf_bak="$(uci -q get dhcp.@dnsmasq[0].tachyon_serversfile 2>/dev/null || true)"
+            if [ -n "$_sf_bak" ]; then
+                if [ "$_sf_bak" = "1" ] || [ "$_sf_bak" = "__tachyon_unset__" ] || [ "$_sf_bak" = "__absent__" ] || [ "$_sf_bak" = "unset" ]; then
+                    _cur_sf="$(uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)"
+                    case "$_cur_sf" in
+                        ""|"1"|*tachyon*) uci -q delete dhcp.@dnsmasq[0].serversfile 2>/dev/null || true ;;
+                    esac
+                else
+                    uci -q set "dhcp.@dnsmasq[0].serversfile=${_sf_bak}" 2>/dev/null || true
+                fi
+                uci -q delete dhcp.@dnsmasq[0].tachyon_serversfile 2>/dev/null || true
+            fi
             if [ "$_had_v1_dns" -eq 1 ]; then
                 if [ "$(uci -q get dhcp.@dnsmasq[0].noresolv 2>/dev/null)" = "1" ]; then
                     uci -q set dhcp.@dnsmasq[0].noresolv="0" 2>/dev/null || true

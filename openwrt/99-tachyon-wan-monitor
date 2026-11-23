@@ -1,0 +1,47 @@
+#!/bin/sh
+# Hotplug handler for WAN / WAN6 interface events (Pure-Rust tachyon daemon)
+
+[ -n "${ACTION:-}" ] && [ -n "${INTERFACE:-}" ] || exit 0
+case "$ACTION" in
+    ifup|ifupdate) ;;
+    *) exit 0 ;;
+esac
+
+case "$INTERFACE" in
+    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*|*_6|6in4*|6to4*|he*|dslite*|v6*|ipv6*)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+[ -e /var/run/tachyon/manual_stop ] || [ -e /tmp/tachyon-rs/manual_stop ] && exit 0
+pidof tachyon >/dev/null 2>&1 || exit 0
+
+mkdir -p /var/run/tachyon 2>/dev/null || true
+_lock="/var/run/tachyon/hotplug-reload.lock"
+
+if ! mkdir "$_lock" 2>/dev/null; then
+    _now="$(date +%s 2>/dev/null || echo 0)"
+    _ts="$(cat "$_lock/ts" 2>/dev/null || echo 0)"
+    case "$_ts" in ''|*[!0-9]*) _ts=0 ;; esac
+    if [ "$_now" -gt 0 ] && [ "$_ts" -gt 0 ] && [ $((_now - _ts)) -ge 15 ]; then
+        rm -rf "$_lock" 2>/dev/null || true
+        mkdir "$_lock" 2>/dev/null || exit 0
+    else
+        exit 0
+    fi
+fi
+
+date +%s >"$_lock/ts" 2>/dev/null || true
+_reason="hotplug_${INTERFACE}_${ACTION}"
+
+(
+    sleep 2
+    if [ ! -e /var/run/tachyon/manual_stop ] && pidof tachyon >/dev/null 2>&1; then
+        /etc/init.d/tachyon reload "$_reason" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$_lock" 2>/dev/null || true
+) >/dev/null 2>&1 &
+
+exit 0

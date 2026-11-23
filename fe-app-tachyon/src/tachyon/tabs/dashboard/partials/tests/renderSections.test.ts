@@ -1618,15 +1618,21 @@ describe('renderSections', () => {
       withTagSelect: false,
       outbounds: [
         {
-          code: 'main-priority-out',
-          displayName: 'Priority Balanced',
-          type: 'Priority',
-          selected: true,
+          code: 'main-urltest-out',
+          displayName: 'Fastest',
+          type: 'URLTest',
+          selected: false,
           urlTestInfo: {
             code: 'main-urltest-out',
             displayName: 'Fastest',
             outbounds: [],
           },
+        },
+        {
+          code: 'main-priority-out',
+          displayName: 'Priority Balanced',
+          type: 'Priority',
+          selected: true,
           priorityInfo: {
             code: 'main-priority-out',
             displayName: 'Priority Balanced',
@@ -1686,6 +1692,63 @@ describe('renderSections', () => {
     (priorityBtn as any)?.click({ stopPropagation() {} });
     expect(onShowUrlTestInfo).toHaveBeenCalledTimes(1);
     expect(onShowPriorityInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders only Priority details button if an outbound ever carries both priorityInfo and urlTestInfo (#478)', () => {
+    const onShowUrlTestInfo = vi.fn();
+    const onShowPriorityInfo = vi.fn();
+    const section: any = {
+      code: 'Main',
+      sectionName: 'Main',
+      displayName: 'Main',
+      withTagSelect: false,
+      outbounds: [
+        {
+          code: 'main-priority-out',
+          displayName: 'Auto',
+          type: 'Priority',
+          selected: true,
+          urlTestInfo: {
+            code: 'main-priority-out',
+            displayName: 'Auto',
+            outbounds: [],
+          },
+          priorityInfo: {
+            code: 'main-priority-out',
+            displayName: 'Auto',
+            tiers: [],
+          },
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo,
+      onShowPriorityInfo,
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const urltestBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__urltest-button',
+    ) as HTMLButtonElement | null;
+    const priorityBtn = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__priority-button',
+    ) as HTMLButtonElement | null;
+
+    expect(urltestBtn).toBeNull();
+    expect(priorityBtn).not.toBeNull();
+
+    (priorityBtn as any)?.click({ stopPropagation() {} });
+    expect(onShowPriorityInfo).toHaveBeenCalledTimes(1);
+    expect(onShowUrlTestInfo).not.toHaveBeenCalled();
   });
 
   it('renderGlobalConfigErrorsBanner hides section-owned errors and renders global/system faults', () => {

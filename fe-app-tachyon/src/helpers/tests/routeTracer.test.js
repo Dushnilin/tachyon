@@ -243,7 +243,29 @@ describe('routing section tracer community caches', () => {
         directoryEntries: new Map(),
       }),
     ).resolves.toBe('/tmp/tachyon-core/rulesets/community-youtube.trs');
-    expect(denied.fs.stat).toHaveBeenCalledTimes(1);
+    expect(denied.fs.stat).toHaveBeenCalledTimes(3);
+
+    const preferNativeTrs = setup(
+      [
+        '/tmp/tachyon-core/rulesets/youtube.trs',
+        '/tmp/tachyon-core/rulesets/community-youtube.trs',
+      ],
+      undefined,
+      {
+        list: async (directory) =>
+          directory === '/tmp/tachyon-core/rulesets'
+            ? [
+                { name: 'youtube.trs', type: 'file' },
+                { name: 'community-youtube.trs', type: 'file' },
+              ]
+            : [],
+      },
+    );
+    await expect(
+      preferNativeTrs.findCachedRulesetFile('desync', 'youtube', [], {
+        directoryEntries: new Map(),
+      }),
+    ).resolves.toBe('/tmp/tachyon-core/rulesets/youtube.trs');
 
     const symlink = setup(
       ['/tmp/tachyon-core/rulesets/community-youtube.trs'],
@@ -338,7 +360,12 @@ describe('routing section tracer community caches', () => {
       ruleType: 'Resolved IP -> Community List (youtube)',
       matchedIp: '192.0.2.42',
     });
-    expect(tracer.fs.stat).toHaveBeenCalledTimes(1);
+    expect(tracer.fs.stat).toHaveBeenCalledTimes(3);
+    expect(
+      tracer.fs.stat.mock.calls.filter(([f]) =>
+        f.endsWith('/community-youtube.trs'),
+      ),
+    ).toHaveLength(1);
   });
 
   it('does not replace a valid TRS miss with a match from an older SRS cache', async () => {

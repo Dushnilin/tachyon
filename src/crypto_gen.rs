@@ -177,6 +177,15 @@ pub fn redact_string(input: &str) -> String {
         "wg://",
         "awg://",
         "fptn://",
+        "wdtt://",
+        "csqtt://",
+        "qwdtt://",
+        "anytls://",
+        "naive://",
+        "socks5://",
+        "socks4://",
+        "http://",
+        "https://",
     ] {
         let mut search_from = 0;
         while let Some(pos) = out[search_from..].find(scheme) {
@@ -197,15 +206,50 @@ pub fn redact_string(input: &str) -> String {
         }
     }
 
+    // Mask opaque Base64/Brotli URI payloads without userinfo `@`.
+    for prefix in ["vmess://", "vpn://", "fptnb:", "fptn:"] {
+        let mut search_from = 0;
+        while let Some(pos) = out[search_from..].find(prefix) {
+            let start = search_from + pos + prefix.len();
+            if prefix == "fptn:" && out[start..].starts_with("//") {
+                search_from = start;
+                continue;
+            }
+            if out[start..].starts_with("[REDACTED]") {
+                search_from = start + "[REDACTED]".len();
+                continue;
+            }
+            let payload_len = out[start..]
+                .find(|c: char| {
+                    c.is_whitespace() || matches!(c, '"' | '\'' | ',' | ')' | ']' | '}' | ';' | '<')
+                })
+                .unwrap_or(out.len() - start);
+            if payload_len > 0 {
+                out.replace_range(start..start + payload_len, "[REDACTED]");
+                search_from = start + "[REDACTED]".len();
+            } else {
+                search_from = start;
+            }
+        }
+    }
+
     // Mask Bearer tokens and sensitive key=value assignments in arbitrary logs/commands.
-    for marker in [
-        "bearer ",
-        "password=",
-        "token=",
-        "secret=",
-        "api_key=",
-        "apikey=",
-        "key=",
+    for (marker, require_boundary) in [
+        ("bearer ", false),
+        ("password=", false),
+        ("token=", false),
+        ("secret=", false),
+        ("api_key=", false),
+        ("apikey=", false),
+        ("key=", false),
+        ("auth_str=", false),
+        ("csqtt_vk_cookie=", false),
+        ("vk_cookie=", false),
+        ("header_protection_key=", false),
+        ("preshared_key=", false),
+        ("private_key=", false),
+        ("bot_token=", false),
+        ("pass=", true),
     ] {
         let mut cursor = 0;
         loop {
@@ -213,10 +257,24 @@ pub fn redact_string(input: &str) -> String {
             let Some(rel) = lower.find(marker) else {
                 break;
             };
-            let val_start = cursor + rel + marker.len();
+            let match_start = cursor + rel;
+            let val_start = match_start + marker.len();
             if !out.is_char_boundary(val_start) {
-                cursor = val_start;
+                let Some(ch) = out[cursor..].chars().next() else {
+                    break;
+                };
+                cursor += ch.len_utf8();
                 continue;
+            }
+            if require_boundary && match_start > 0 && out.is_char_boundary(match_start) {
+                let prev_is_ident = out[..match_start]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                if prev_is_ident {
+                    cursor = val_start;
+                    continue;
+                }
             }
             let val_end_rel = out[val_start..]
                 .find(|c: char| {
@@ -228,31 +286,68 @@ pub fn redact_string(input: &str) -> String {
                 out.replace_range(val_start..val_end, "[REDACTED]");
                 cursor = val_start + "[REDACTED]".len();
             } else {
-                cursor = val_end.max(val_start + 1).min(out.len());
+                let next_char_end = out[val_start..]
+                    .chars()
+                    .next()
+                    .map(|c| val_start + c.len_utf8())
+                    .unwrap_or(out.len());
+                cursor = val_end.max(next_char_end).min(out.len());
             }
         }
     }
 
-    // Mask sk-* provider API keys (length >= 12 token chars).
-    let mut sk_cursor = 0;
-    while sk_cursor < out.len() {
-        let Some(rel) = out[sk_cursor..].find("sk-") else {
+    // Mask sk-* provider API keys (length >= 15) and Google AIza* API keys (length >= 24).
+    for (prefix, min_total_len) in [("sk-", 15usize), ("AIza", 24usize)] {
+        let mut p_cursor = 0;
+        while p_cursor < out.len() {
+            let Some(rel) = out[p_cursor..].find(prefix) else {
+                break;
+            };
+            let start = p_cursor + rel;
+            let boundary_ok = start == 0
+                || out[..start]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| !c.is_ascii_alphanumeric() && c != '_');
+            let tok_len = out[start..]
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+                .unwrap_or(out.len() - start);
+            if boundary_ok && tok_len >= min_total_len {
+                out.replace_range(start..start + tok_len, "[REDACTED]");
+                p_cursor = start + "[REDACTED]".len();
+            } else {
+                p_cursor = (start + prefix.len()).min(out.len());
+            }
+        }
+    }
+
+    // Mask Telegram Bot API tokens (`<8..12 digits>:<>=25 chars>`), including `/bot<token>/`.
+    let mut tg_cursor = 0;
+    while tg_cursor < out.len() {
+        let Some(rel) = out[tg_cursor..].find(':') else {
             break;
         };
-        let start = sk_cursor + rel;
-        let boundary_ok = start == 0
-            || out[..start]
+        let colon = tg_cursor + rel;
+        let digits_before = out[..colon]
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        let start = colon - digits_before;
+        let prev_is_digit = start > 0
+            && out[..start]
                 .chars()
                 .next_back()
-                .is_some_and(|c| !c.is_ascii_alphanumeric() && c != '_');
-        let tok_len = out[start..]
+                .is_some_and(|c| c.is_ascii_digit());
+        let after_colon = colon + 1;
+        let secret_len = out[after_colon..]
             .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
-            .unwrap_or(out.len() - start);
-        if boundary_ok && tok_len >= 15 {
-            out.replace_range(start..start + tok_len, "[REDACTED]");
-            sk_cursor = start + "[REDACTED]".len();
+            .unwrap_or(out.len() - after_colon);
+        if !prev_is_digit && (8..=12).contains(&digits_before) && secret_len >= 25 {
+            out.replace_range(start..after_colon + secret_len, "[REDACTED]");
+            tg_cursor = start + "[REDACTED]".len();
         } else {
-            sk_cursor = (start + 3).min(out.len());
+            tg_cursor = after_colon.min(out.len());
         }
     }
     out
@@ -286,18 +381,38 @@ pub fn redact_json_value(val: &Value) -> Value {
     }
 }
 
-/// Check if an existing file on disk already has identical byte content (fast size pre-check).
+/// Check if an existing file on disk already has identical byte content using constant stack memory.
 pub fn content_unchanged(path: &Path, new_bytes: &[u8]) -> bool {
+    use std::io::Read as _;
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
     if meta.len() != new_bytes.len() as u64 {
         return false;
     }
-    let Ok(existing) = std::fs::read(path) else {
+    let Ok(mut file) = std::fs::File::open(path) else {
         return false;
     };
-    existing == new_bytes
+    let mut buf = [0u8; 8192];
+    let mut offset = 0usize;
+    while offset < new_bytes.len() {
+        let to_read = (new_bytes.len() - offset).min(buf.len());
+        let mut filled = 0usize;
+        while filled < to_read {
+            match file.read(&mut buf[filled..to_read]) {
+                Ok(0) => return false,
+                Ok(n) => filled += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => return false,
+            }
+        }
+        if buf[..to_read] != new_bytes[offset..offset + to_read] {
+            return false;
+        }
+        offset += to_read;
+    }
+    let mut extra = [0u8; 1];
+    matches!(file.read(&mut extra), Ok(0))
 }
 
 /// NAND-wear-safe atomic file writer with explicit Unix permission mode (`content_unchanged` check + `.tmp` + `rename`).
@@ -326,18 +441,37 @@ pub fn write_bytes_with_mode_if_changed(
     {
         std::fs::create_dir_all(parent)?;
     }
+    static TMP_SEQ: crate::store::PortableAtomicU64 = crate::store::PortableAtomicU64::new(0);
     let base_name = path
         .file_name()
         .map(|s| s.to_string_lossy())
         .unwrap_or_else(|| "file".into());
-    let tmp_path = path.with_file_name(format!(".{base_name}.tmp.{}", std::process::id()));
-    std::fs::write(&tmp_path, new_bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(mode));
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = path.with_file_name(format!(".{base_name}.tmp.{}.{seq}", std::process::id()));
+    let write_res = (|| -> anyhow::Result<()> {
+        use std::io::Write as _;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(mode);
+        }
+        let mut file = opts.open(&tmp_path)?;
+        file.write_all(new_bytes)?;
+        file.sync_all()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(mode));
+        }
+        std::fs::rename(&tmp_path, path)?;
+        Ok(())
+    })();
+    if let Err(err) = write_res {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
     }
-    std::fs::rename(&tmp_path, path)?;
     Ok(true)
 }
 
@@ -928,5 +1062,88 @@ mod tests {
 
         assert_eq!(sanitize_tls_cn("my.host-1"), "my.host-1");
         assert_eq!(sanitize_tls_cn("///"), "tachyon.lan");
+    }
+
+    #[test]
+    fn redact_string_handles_multibyte_unicode_whitespace_after_marker() {
+        let raw = "token=\u{00A0}abc bearer \u{3000}xyz password=\u{2003}123 key=\u{202F}";
+        let redacted = redact_string(raw);
+        assert!(redacted.contains("token=\u{00A0}abc"));
+        assert!(redacted.contains("bearer \u{3000}xyz"));
+        assert!(redacted.contains("password=\u{2003}123"));
+        assert!(redacted.contains("key=\u{202F}"));
+
+        let mixed = "token=\u{00A0} token=supersecret bearer \u{00A0} bearer realtok";
+        let redacted_mixed = redact_string(mixed);
+        assert!(!redacted_mixed.contains("supersecret"));
+        assert!(!redacted_mixed.contains("realtok"));
+
+        let extended = "Проверка vmess://eyJhZGQiOiIxLjEuMS4xIn0= vpn://secretPayload99 \
+                        fptn:eyJzZXJ2ZXJzIjpbXX0= fptnb:QkJCQkJCQkI= \
+                        wdtt://user:pass@1.2.3.4:443?pass=qpass&bypass=1 \
+                        csqtt_vk_cookie=vkcookie123 auth_str=hysteriaAuth \
+                        AIzaSyD1234567890ABCDEFGHIJKLMNOPQRS \
+                        https://api.telegram.org/bot1234567890:AAF_abcdefghijklmnopqrstuvwxyz12345/getMe";
+        let out = redact_string(extended);
+        assert!(!out.contains("eyJhZGQi"));
+        assert!(!out.contains("secretPayload99"));
+        assert!(!out.contains("eyJzZXJ2ZXJz"));
+        assert!(!out.contains("QkJCQkJCQkI="));
+        assert!(!out.contains("user:pass@"));
+        assert!(!out.contains("qpass"));
+        assert!(out.contains("bypass=1"));
+        assert!(!out.contains("vkcookie123"));
+        assert!(!out.contains("hysteriaAuth"));
+        assert!(!out.contains("AIzaSyD"));
+        assert!(!out.contains("1234567890:AAF_"));
+        assert!(out.contains("Проверка vmess://[REDACTED]"));
+    }
+
+    #[test]
+    fn write_file_if_changed_leaves_no_tmp_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_atomic_write_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("store.json");
+        assert!(write_file_if_changed(&target, b"{\"v\":1}\n").unwrap());
+        assert!(!write_file_if_changed(&target, b"{\"v\":1}\n").unwrap());
+        assert!(write_file_if_changed(&target, b"{\"v\":2}\n").unwrap());
+        assert_eq!(std::fs::read(&target).unwrap(), b"{\"v\":2}\n");
+
+        let leftover: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect();
+        assert!(leftover.is_empty(), "leftover tmp files: {leftover:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn content_unchanged_streams_large_payload_without_false_positives() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_stream_cmp_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("blob.bin");
+        assert!(!content_unchanged(&target, b"abc"));
+
+        let mut data = vec![b'A'; 32 * 1024 + 17];
+        data[16 * 1024 + 3] = b'B';
+        std::fs::write(&target, &data).unwrap();
+        assert!(content_unchanged(&target, &data));
+
+        let mut modified = data.clone();
+        modified[16 * 1024 + 3] = b'C';
+        assert!(!content_unchanged(&target, &modified));
+        assert!(!content_unchanged(&target, &data[..data.len() - 1]));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

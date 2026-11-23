@@ -353,8 +353,8 @@ const TRAFFIC_PRESETS: Array<{
   },
   {
     id: 'antifilter_refilter',
-    labelRu: 'Расширенный реестр РФ, Антизапрет и Re:filter',
-    labelEn: 'Extended RU Registry, Antizapret & Re:filter',
+    labelRu: 'Расширенный реестр РФ, Antifilter и Re:filter',
+    labelEn: 'Extended RU Registry, Antifilter & Re:filter',
     domains: ['ru_blocked', 'refilter', 'antifilter'],
   },
   {
@@ -988,9 +988,9 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'ПОЛНЫЙ + ADBLOCK',
     badgeEn: 'FULL + ADBLOCK',
     descRu:
-      'Полный реестр ограничений РФ, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой маршрут для банков РФ и игр.',
+      'Полный реестр ограничений РФ, Antifilter и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + фильтрация рекламы HaGeZi Pro и прямой маршрут для банков РФ и игр.',
     descEn:
-      'Full RU/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct routing for RU banks & games.',
+      'Full RU/Antifilter/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct routing for RU banks & games.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: [

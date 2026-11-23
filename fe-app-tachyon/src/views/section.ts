@@ -7363,7 +7363,7 @@ function getActionOptionLabel(action) {
     case 'naive':
       return 'NaiveProxy';
     case 'sudoku':
-      return _tr('Sudoku (не реализован)', 'Sudoku (not implemented)');
+      return 'Sudoku';
     case 'masque':
       return 'MASQUE';
     case 'csqtt':
@@ -9802,17 +9802,17 @@ var DOMAIN_LIST_HINTS = {
   russia_inside:
     '[Маршрут: В Прокси / VPN или Desync] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
   ukraine_inside:
-    '[Маршрут: В Прокси / VPN или Desync] Сводный список заблокированных и ограниченных в Украине ресурсов и сервисов',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный список ресурсов и сервисов с региональными ограничениями в Украине',
   belarus_inside:
-    '[Маршрут: В Прокси / VPN или Desync] Сводный список заблокированных и ограниченных в Беларуси ресурсов, независимых СМИ и сервисов с геоблоком для РБ',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный список ресурсов, независимых СМИ и сервисов с геоблоком и ограничениями в Беларуси',
   geoblock:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab',
   block:
     '[Маршрут: В Прокси / VPN или Desync] Домены и сайты из официальной сводной выгрузки ограниченных в РФ ресурсов',
   ru_blocked:
-    '[Маршрут: В Прокси / VPN или Desync] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РФ без мёртвых сайтов)',
+    '[Маршрут: В Прокси / VPN или Desync] Очищенный и дедуплицированный реестр доменов с ограничениями в РФ (сообщество + сводная выгрузка без недоступных узлов)',
   ru_blocked_all:
-    '[Маршрут: В Прокси / VPN или Desync] Полная выгрузка доменов и зеркал из реестра блокировок РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
+    '[Маршрут: В Прокси / VPN или Desync] Полная выгрузка доменов и зеркал из реестра ограничений РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
   antifilter:
     '[Маршрут: В Прокси / VPN или Desync] Народный список доменов и сервисов, ограниченных на маршруте или замедляемых на транзитных узлах в России',
   refilter:
@@ -10809,31 +10809,9 @@ function createSectionContent(section) {
 
   const super_validate = o.validate;
   o.validate = function (section_id, value) {
-    // mieru is implemented in tachyon-core (outbound/mieru.rs + inbound/mieru.rs
-    // and its type is in KNOWN_OUTBOUND_TYPES), so only sudoku stays blocked.
-    if (value === 'sudoku') {
-      return _('This protocol is not implemented in tachyon-core yet');
-    }
     return super_validate
       ? super_validate.apply(this, [section_id, value])
       : true;
-  };
-
-  const originalActionRenderWidget = o.renderWidget;
-  o.renderWidget = function (section_id, option_index, cfgvalue) {
-    const node = originalActionRenderWidget.apply(this, arguments);
-    Promise.resolve(node).then((elem) => {
-      if (!elem) return;
-      const disabledItems = elem.querySelectorAll
-        ? elem.querySelectorAll('[data-value="sudoku"], option[value="sudoku"]')
-        : [];
-      disabledItems.forEach((opt) => {
-        opt.disabled = true;
-        opt.setAttribute('disabled', 'disabled');
-        opt.classList.add('disabled');
-      });
-    });
-    return node;
   };
 
   o.default = 'connection';
@@ -17568,7 +17546,7 @@ function createSectionContent(section) {
   [
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked.trs',
-      'Tachyon Lists: Реестр ограничений РФ и Антизапрет (.trs) — [Маршрут: В Прокси / VPN или Desync]',
+      'Tachyon Lists: Сводный реестр ограничений РФ (.trs) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_blocked_all.trs',
@@ -17628,7 +17606,7 @@ function createSectionContent(section) {
   [
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked.lst',
-      'Tachyon Lists: Реестр ограничений РФ и Антизапрет — домены (.lst) — [Маршрут: В Прокси / VPN или Desync]',
+      'Tachyon Lists: Сводный реестр ограничений РФ — домены (.lst) — [Маршрут: В Прокси / VPN или Desync]',
     ],
     [
       'https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked_all.lst',
@@ -18504,8 +18482,12 @@ async function findCachedRulesetFile(
   snapshots,
 ) {
   const candidates = [
+    `/tmp/tachyon-core/rulesets/${community}.trs`,
+    `/etc/tachyon/rulesets/${community}.trs`,
     `/tmp/tachyon-core/rulesets/community-${community}.trs`,
     `/etc/tachyon/rulesets/community-${community}.trs`,
+    `/tmp/tachyon-core/rulesets/${community}.srs`,
+    `/etc/tachyon/rulesets/${community}.srs`,
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
@@ -20106,7 +20088,7 @@ function showSectionRulesModal(section_id) {
         ? createCard(_('Excluded Domains'), excludedDomains)
         : null,
       createCard(_('IP Addresses (IP CIDR)'), ips),
-      createCard(_('Rule Sets (.srs / .json)'), ruleSets),
+      createCard(_('Rule Sets (.trs / .srs / .json)'), ruleSets),
       createCard(_('.lst Lists'), domainIpLists),
       geosite.length || geoip.length
         ? createCard(_('GeoSite / GeoIP'), [...geosite, ...geoip])

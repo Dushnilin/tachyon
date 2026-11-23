@@ -63,28 +63,4 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.tachyon_core_tailscale).toBe(1);
     expect(nextSystemInfo.tachyon_core_cert_pin).toBe(1);
   });
-
-  it('updates torrserver_direct installation and removal', () => {
-    const { nextSystemInfo: installed } = computeSystemInfoMutation(
-      initialSystemInfo,
-      {
-        component: 'torrserver_direct',
-        action: 'install',
-        current_version: 'MatriX.136',
-      },
-    );
-
-    expect(installed.torrserver_installed).toBe(1);
-    expect(installed.torrserver_version).toBe('MatriX.136');
-    expect(installed.torrserver_direct_enabled).toBe(1);
-
-    const { nextSystemInfo: removed } = computeSystemInfoMutation(installed, {
-      component: 'torrserver_direct',
-      action: 'remove',
-    });
-
-    expect(removed.torrserver_installed).toBe(0);
-    expect(removed.torrserver_version).toBe('not installed');
-    expect(removed.torrserver_direct_enabled).toBe(0);
-  });
 });

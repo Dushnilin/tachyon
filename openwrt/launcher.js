@@ -3,11 +3,25 @@
 
 return view.extend({
 	load: function() {
-		return Promise.resolve();
+		var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+		var timer = controller ? setTimeout(function() { controller.abort(); }, 1500) : null;
+		return fetch('/cgi-bin/tachyon-sub?panel_port=1', {
+			cache: 'no-store',
+			signal: controller ? controller.signal : undefined
+		})
+			.then(function(res) { return res && res.ok ? res.json() : null; })
+			.then(function(data) {
+				var p = Number(data && data.port);
+				return Number.isInteger(p) && p >= 1 && p <= 65535 ? p : 1680;
+			})
+			.catch(function() { return 1680; })
+			.finally(function() {
+				if (timer) clearTimeout(timer);
+			});
 	},
 
-	render: function() {
-		var port = 1680;
+	render: function(resolvedPort) {
+		var port = Number.isInteger(resolvedPort) && resolvedPort >= 1 && resolvedPort <= 65535 ? resolvedPort : 1680;
 		var basePath = '/';
 		var rawHost = window.location.hostname || '192.168.1.1';
 		var host = rawHost.indexOf(':') !== -1 && rawHost.charAt(0) !== '['

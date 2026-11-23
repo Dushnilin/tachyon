@@ -1262,9 +1262,28 @@ export const TachyonShellMethods = {
       args: ['watchdog', 'status'],
       timeout: 5000,
     });
+    let running = false;
+    try {
+      const raw = (response.stdout || '').trim();
+      if (raw.startsWith('{')) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.running === 'boolean') {
+          running = parsed.running;
+        } else if (typeof parsed?.active === 'boolean') {
+          running = parsed.active;
+        }
+      } else if (
+        /running|active/i.test(raw) &&
+        !/stopped|inactive/i.test(raw)
+      ) {
+        running = (response.code ?? 1) === 0;
+      }
+    } catch (_e) {
+      running = false;
+    }
     return {
       success: true,
-      data: { running: (response.code ?? 1) === 0 },
+      data: { running },
     } as Tachyon.MethodSuccessResponse<{ running: boolean }>;
   },
 

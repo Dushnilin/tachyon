@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read as _;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -16,6 +16,12 @@ use crate::store::{
 };
 
 pub const LKG_OBSERVATION_WINDOW_SECS: u64 = 180;
+
+static COMMIT_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn commit_lock() -> &'static tokio::sync::Mutex<()> {
+    COMMIT_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
 
 fn valid_cidr_with_slash_v4(raw: &str) -> bool {
     let s = raw.trim();
@@ -586,6 +592,7 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
     Box<dyn std::future::Future<Output = anyhow::Result<ConfigPlanReport>> + Send + 'a>,
 > {
     Box::pin(async move {
+        let _commit_guard = commit_lock().lock().await;
         let mut candidate = candidate;
 
         // Phase 1: PLAN (deduplicate cloned conditions and enforce cascade invariants)
@@ -597,6 +604,7 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
         if !plan.valid {
             anyhow::bail!("Transaction validation failed: {}", plan.errors.join("; "));
         }
+        let core_cfg = config_gen::compile_core_config(&candidate)?;
 
         // Phase 3: SNAPSHOT (capture current state on heap for instant LIFO rollback)
         let mut previous = {
@@ -607,20 +615,7 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
             let _ = promote_to_known_good(&state.lkg_path, &previous);
         }
 
-        // Phase 4: MUTATE (write compiled core config + store JSON using NAND-safe atomic writers)
-        {
-            let core_cfg = config_gen::compile_core_config(&candidate)?;
-            let core_cfg_path = Path::new(&candidate.settings.core_config_path);
-            if let Err(e) = crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg) {
-                // Non-fatal on dev hosts where `/etc/tachyon-core` is not writable; fallback to local data dir
-                if let Some(parent) = state.path.parent() {
-                    let fallback_core = parent.join("tachyon-core-config.json");
-                    crypto_gen::write_json_if_changed(&fallback_core, &core_cfg)
-                        .map_err(|fe| anyhow::anyhow!("Failed writing core config ({e} / {fe})"))?;
-                }
-            }
-        }
-
+        // Phase 4: MUTATE (persist store JSON before writing compiled core config)
         {
             let mut d = state.data.write().await;
             std::mem::swap(&mut *d, &mut *candidate);
@@ -628,10 +623,37 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
         drop(candidate);
 
         if let Err(e) = state.save().await {
-            // LIFO Rollback
             let mut d = state.data.write().await;
             std::mem::swap(&mut *d, &mut *previous);
             anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
+        }
+
+        let core_cfg_res = {
+            let committed = state.data.read().await;
+            let core_cfg_path = Path::new(&committed.settings.core_config_path);
+            crypto_gen::write_json_if_changed(core_cfg_path, &core_cfg)
+                .map(|_| ())
+                .or_else(|e| {
+                    // Non-fatal on dev hosts where `/etc/tachyon-core` is not writable; fallback to local data dir
+                    if let Some(parent) = state.path.parent() {
+                        let fallback_core = parent.join("tachyon-core-config.json");
+                        crypto_gen::write_json_if_changed(&fallback_core, &core_cfg)
+                            .map(|_| ())
+                            .map_err(|fe| {
+                                anyhow::anyhow!("Failed writing core config ({e} / {fe})")
+                            })
+                    } else {
+                        Err(anyhow::anyhow!("{e}"))
+                    }
+                })
+        };
+        if let Err(e) = core_cfg_res {
+            {
+                let mut d = state.data.write().await;
+                std::mem::swap(&mut *d, &mut *previous);
+            }
+            let _ = state.save().await;
+            anyhow::bail!("Transaction commit failed writing core config, rolled back state: {e}");
         }
 
         let recorded_id = {
@@ -654,14 +676,16 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
             if let Some(id) = recorded_id {
                 live.active_revision_id = id;
             }
-            if source == "auto_rollback" {
+            if source == "auto_rollback" || source == "subscription" {
                 live.lkg_observing = false;
                 live.lkg_remaining_secs = 0;
-                live.push_event(
-                    "warn",
-                    "transaction",
-                    &format!("Committed automatic rollback at {}", unix_now_secs()),
-                );
+                if source == "auto_rollback" {
+                    live.push_event(
+                        "warn",
+                        "transaction",
+                        &format!("Committed automatic rollback at {}", unix_now_secs()),
+                    );
+                }
             } else {
                 live.lkg_observing = true;
                 live.lkg_remaining_secs = LKG_OBSERVATION_WINDOW_SECS;

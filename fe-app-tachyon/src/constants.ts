@@ -20,9 +20,9 @@ export const DOMAIN_LIST_OPTIONS = {
   ukraine_inside: 'Украина (внутри)',
   belarus_inside: 'Беларусь (внутри)',
   geoblock: 'Геоблок (зарубежные сервисы)',
-  block: 'Реестр ограничений РФ (прямые блокировки)',
-  ru_blocked: 'Реестр ограничений РФ и Антизапрет (очищенный)',
-  ru_blocked_all: 'Реестр ограничений РФ (полный)',
+  block: 'Реестр сетевых ограничений РФ',
+  ru_blocked: 'Сводный реестр ограничений РФ (очищенный)',
+  ru_blocked_all: 'Реестр сетевых ограничений РФ (полный)',
   antifilter: 'Antifilter Community',
   refilter: 'Re:filter',
   russia_outside: 'Россия (снаружи)',
@@ -184,19 +184,19 @@ export const DOMAIN_LIST_OPTIONS = {
 
 export const DOMAIN_LIST_HINTS: Record<string, string> = {
   russia_inside:
-    '[Маршрут: В Прокси / VPN или Desync] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный реестр ресурсов с ограничениями доступа в РФ (соцсети, СМИ, зарубежные платформы и геоблок)',
   ukraine_inside:
-    '[Маршрут: В Прокси / VPN или Desync] Сводный список заблокированных и ограниченных в Украине ресурсов и сервисов',
+    '[Маршрут: В Прокси / VPN или Desync] Сводный список ресурсов и сервисов с региональными ограничениями в Украине',
   belarus_inside:
-    "[Маршрут: В Прокси / VPN или Desync] Сводный список интернет-ресурсов, новостных порталов, правозащитных сайтов и зарубежных платформ, заблокированных Министерством информации и провайдерами на территории Республики Беларусь (Zerkalo / TUT.BY, Наша Ніва, Хартия'97, Белсат, Радыё Свабода, Euroradio, Dev.by, CityDog, Реформация, Трибуна, а также закрытые по геоблоку в РБ LinkedIn, ChatGPT, Claude, Airbnb, Upwork, Coursera)",
+    "[Маршрут: В Прокси / VPN или Desync] Сводный список интернет-ресурсов, новостных порталов и зарубежных платформ с ограничениями доступа на территории Республики Беларусь (Zerkalo / TUT.BY, Наша Ніва, Хартия'97, Белсат, Радыё Свабода, Euroradio, Dev.by, CityDog, Реформация, Трибуна, а также закрытые по геоблоку в РБ LinkedIn, ChatGPT, Claude, Airbnb, Upwork, Coursera)",
   geoblock:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab',
   block:
     '[Маршрут: В Прокси / VPN или Desync] Домены и сайты из официальной сводной выгрузки ограниченных в РФ ресурсов',
   ru_blocked:
-    '[Маршрут: В Прокси / VPN или Desync] Очищенный и дедуплицированный реестр заблокированных в РФ доменов (Антизапрет + выгрузка РФ без мёртвых сайтов)',
+    '[Маршрут: В Прокси / VPN или Desync] Очищенный и дедуплицированный реестр доменов с ограничениями в РФ (сообщество + сводная выгрузка без недоступных узлов)',
   ru_blocked_all:
-    '[Маршрут: В Прокси / VPN или Desync] Полная выгрузка доменов и зеркал из реестра блокировок РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
+    '[Маршрут: В Прокси / VPN или Desync] Полная выгрузка доменов и зеркал из реестра ограничений РФ (1.3M+ доменов; на роутерах ≤ 512 МБ ОЗУ автоматически используется оптимизированный ru_blocked для защиты от OOM)',
   antifilter:
     '[Маршрут: В Прокси / VPN или Desync] Народный список доменов и сервисов, ограниченных на маршруте или замедляемых на транзитных узлах в России',
   refilter:
@@ -259,19 +259,19 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   soundcloud_music:
     '[Маршрут: В Прокси / VPN] Музыкальные сервисы и энциклопедии, ограниченные на маршруте или закрытые геоблоком: SoundCloud (soundcloud.com, sndcdn.com), Deezer (deezer.com, dzcdn.net), Tidal (tidal.com), Qobuz, Bandcamp, Genius (genius.com), Last.fm, Mixcloud, TuneIn и Discogs',
   podcasts_radio:
-    '[Маршрут: В Прокси / VPN] Зарубежные CDN-хостинги подкастов (megaphone.fm, art19.com, simplecast.com, acast.com, omny.fm, buzzsprout.com, libsyn.com, podbean.com — именно из-за их блокировки не скачиваются выпуски в стандартном приложении «Подкасты» на iPhone!), плееры Pocket Casts и Overcast, аудиокниги Audible, Storytel, Bookmate и интернет-радио TuneIn Radio, DI.FM и Radio Garden',
+    '[Маршрут: В Прокси / VPN] Зарубежные CDN-хостинги подкастов (megaphone.fm, art19.com, simplecast.com, acast.com, omny.fm, buzzsprout.com, libsyn.com, podbean.com — именно из-за их фильтрации не скачиваются выпуски в стандартном приложении «Подкасты» на iPhone!), плееры Pocket Casts и Overcast, аудиокниги Audible, Storytel, Bookmate и интернет-радио TuneIn Radio, DI.FM и Radio Garden',
   netflix:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)',
   streaming_west:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Западные стриминговые сервисы и медиасерверы: Disney+ (disneyplus.com, bamgrid.com), Max / HBO (max.com, hbomax.com), Amazon Prime Video (primevideo.com, aiv-cdn.net), Hulu, Paramount+, Peacock, MUBI и облако домашнего медиасервера Plex (plex.tv, plex.direct)',
   tmdb_metadata:
-    '[Маршрут: В Прокси / VPN или Desync] Базы метаданных, обложек, актёров и описаний фильмов и музыки: The Movie Database (themoviedb.org, image.tmdb.org, api.themoviedb.org — блокируются в РФ, из-за чего в Lampa, Plex, Kodi, Jellyfin и Infuse пропадают постеры!), TheTVDB, IMDb, Trakt.tv, Fanart.tv, OpenSubtitles, Last.fm, MusicBrainz и Discogs',
+    '[Маршрут: В Прокси / VPN или Desync] Базы метаданных, обложек, актёров и описаний фильмов и музыки: The Movie Database (themoviedb.org, image.tmdb.org, api.themoviedb.org — ограничены в РФ, из-за чего в Lampa, Plex, Kodi, Jellyfin и Infuse пропадают постеры!), TheTVDB, IMDb, Trakt.tv, Fanart.tv, OpenSubtitles, Last.fm, MusicBrainz и Discogs',
   rutracker_lampa:
     "[Маршрут: В Прокси / VPN или Desync] Народный набор для дома и Android TV: зеркала RuTracker, Rutor, NNM-Club, Kinozal, LostFilm, KinoPub, балансеры и плагины Lampa (Filmix, Cub, BWA, Zetflix), а также книжные и научные библиотеки (Flibusta, Coollib, Z-Library, Anna's Archive, LibGen, Sci-Hub)",
   books_archives:
-    "[Маршрут: В Прокси / VPN или Desync] Архив интернета (archive.org / Wayback Machine — заблокирован в РФ), архивы веб-страниц (archive.is, archive.ph, ghostarchive.org), крупнейшие библиотеки книг, фанфиков и научных статей: Anna's Archive, Z-Library (z-lib.gs, singlelogin.re), Library Genesis (libgen.is), Sci-Hub, Project Gutenberg, ResearchGate, Academia.edu и AO3 (archiveofourown.org)",
+    "[Маршрут: В Прокси / VPN или Desync] Архив интернета (archive.org / Wayback Machine — ограничен в РФ), архивы веб-страниц (archive.is, archive.ph, ghostarchive.org), крупнейшие библиотеки книг, фанфиков и научных статей: Anna's Archive, Z-Library (z-lib.gs, singlelogin.re), Library Genesis (libgen.is), Sci-Hub, Project Gutenberg, ResearchGate, Academia.edu и AO3 (archiveofourown.org)",
   patreon_creators:
-    '[Маршрут: В Прокси / VPN] Платформы поддержки авторов, блогов и цифрового арта, заблокированные в РФ или закрытые геоблоком: Patreon (patreon.com), Medium (medium.com), Substack, DeviantArt, ArtStation, Pixiv (pixiv.net, pximg.net), Gumroad, Ko-fi, AO3, Ficbook, Goodreads и Letterboxd',
+    '[Маршрут: В Прокси / VPN] Платформы поддержки авторов, блогов и цифрового арта с ограничениями в РФ или геоблоком: Patreon (patreon.com), Medium (medium.com), Substack, DeviantArt, ArtStation, Pixiv (pixiv.net, pximg.net), Gumroad, Ko-fi, AO3, Ficbook, Goodreads и Letterboxd',
   tiktok:
     '[Маршрут: Только в Прокси / VPN — региональный блок РФ] Приложение, веб-версия и медиа-CDN ByteDance (tiktok.com, tiktokv.com, tiktokcdn.com) для снятия ограничений на новые видео',
   hdrezka:
@@ -300,7 +300,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   google_meet:
     '[Маршрут: Напрямую (Direct) или в Прокси] Домены и медиа-подсети видеоконференций Google Meet (meet.google.com, stun.l.google.com)',
   linkedin:
-    '[Маршрут: В Прокси / VPN] Профессиональная соцсеть LinkedIn (linkedin.com, licdn.com, lnkd.in, slideshare.net), заблокированная в РФ, а также международные карьерные порталы Glassdoor, Indeed, Wellfound и Levels.fyi',
+    '[Маршрут: В Прокси / VPN] Профессиональная соцсеть LinkedIn (linkedin.com, licdn.com, lnkd.in, slideshare.net), ограниченная в РФ, а также международные карьерные порталы Glassdoor, Indeed, Wellfound и Levels.fyi',
   games_all:
     '[Маршрут: В Прокси / VPN или Direct] Единый сводный список всех популярных игровых лаунчеров, магазинов, античитов (BattlEye, EasyAntiCheat) и серверов: Steam, Epic Games, Ubisoft Connect, War Thunder / Gaijin, Battle.net / Blizzard, EA App / Origin, Riot Games, Xbox Live, PlayStation Network, Nintendo, GOG, Wargaming, HoYoverse, Minecraft, Rockstar, Roblox, Supercell, Escape from Tarkov, FACEIT и PUBG',
   steam:
@@ -342,11 +342,11 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: В Прокси / VPN] Домены Rockstar Games Launcher, Social Club, GTA Online, Red Dead Online, серверов ролевых проектов FiveM / RedM (cfx.re), а также 2K Games (Civilization, NBA 2K, Borderlands, Mafia)',
   pubg: '[Маршрут: В Прокси / VPN] Популярные сетевые игры и античит-системы: PUBG / Krafton, THE FINALS и ARC Raiders, DayZ и Arma, VRChat, Dead by Daylight, Path of Exile, Warframe, Guild Wars 2, Albion Online, Rust, Squad, Mortal Kombat, osu! и BattlEye / EasyAntiCheat',
   survival_coop:
-    '[Маршрут: В Прокси / VPN или Desync] Серверы входа, инвентаря и матчмейкинга популярных мультиплеерных экшенов и выживачей, страдающих от блокировок подсетей Amazon AWS / GameLift и Hetzner на транзитных узлах: Dead by Daylight (bhvrdbd.com), Rust (facepunch.com, playrust.com), Hunt: Showdown 1896 (huntshowdown.com, crytek.com), Helldivers 2, Palworld, ARK, Valheim, Satisfactory, Deep Rock Galactic, Dune: Awakening и Sea of Thieves',
+    '[Маршрут: В Прокси / VPN или Desync] Серверы входа, инвентаря и матчмейкинга популярных мультиплеерных экшенов и выживачей, страдающих от фильтрации подсетей Amazon AWS / GameLift и Hetzner на транзитных узлах: Dead by Daylight (bhvrdbd.com), Rust (facepunch.com, playrust.com), Hunt: Showdown 1896 (huntshowdown.com, crytek.com), Helldivers 2, Palworld, ARK, Valheim, Satisfactory, Deep Rock Galactic, Dune: Awakening и Sea of Thieves',
   mmorpg:
     '[Маршрут: В Прокси / VPN] Серверы авторизации, патчеры и торговые площадки ведущих MMORPG: Path of Exile 1 и PoE 2 (pathofexile.com, poecdn.com, grindinggear.com), Guild Wars 2 (guildwars2.com, arena.net, ncsoft.com), Final Fantasy XIV (finalfantasyxiv.com, sqex.com), The Elder Scrolls Online (elderscrollsonline.com), Albion Online (albiononline.com), Black Desert, EVE Online, Star Citizen, Lost Ark и RuneScape',
   fighting_racing:
-    '[Маршрут: Только в Прокси / VPN — WB Games блокирует РФ по IP] Серверы онлайна и профилей файтингов и гоночных симуляторов: Mortal Kombat 1 / 11 и игры Warner Bros. Games (wbgames.com, wbplay.com, agoragames.com — закрыты для российских IP!), Tekken 8, Street Fighter 6 (buckler.capcom.com), Guilty Gear Strive, а также симрейсинг iRacing (iracing.com), Assetto Corsa / LFM (lowfuelmotorsport.com), Le Mans Ultimate, RaceRoom, Fanatec, Moza Racing и Simagic',
+    '[Маршрут: Только в Прокси / VPN — WB Games ограничивает РФ по IP] Серверы онлайна и профилей файтингов и гоночных симуляторов: Mortal Kombat 1 / 11 и игры Warner Bros. Games (wbgames.com, wbplay.com, agoragames.com — закрыты для российских IP!), Tekken 8, Street Fighter 6 (buckler.capcom.com), Guilty Gear Strive, а также симрейсинг iRacing (iracing.com), Assetto Corsa / LFM (lowfuelmotorsport.com), Le Mans Ultimate, RaceRoom, Fanatec, Moza Racing и Simagic',
   strategy_sim:
     "[Маршрут: В Прокси / VPN] Лаунчеры, моды и мультиплеер глобальных стратегий и симуляторов: Paradox Interactive (Hearts of Iron IV, Stellaris, Europa Universalis IV, Crusader Kings III, Cities: Skylines — paradoxinteractive.com, paradoxplaza.com), Sid Meier's Civilization (2K), Age of Empires, Total War, Euro Truck Simulator 2 (TruckersMP), а также серверы фотограмметрии, погоды и навигации Microsoft Flight Simulator 2020/2024, X-Plane, Navigraph и VATSIM",
   chess_boardgames:
@@ -354,11 +354,11 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   game_backends:
     '[Маршрут: В Прокси / VPN (с UDP) или Desync] Сетевая инфраструктура сотен мультиплеерных игр и внутриигрового голосового чата: войс-движок Vivox (vivox.com, unity3d.com — чинит голосовой чат в Valorant, PUBG, LoL, Fortnite, Overwatch 2, Rainbow Six), облако кооп-игр Photon Engine (photonengine.com, exitgames.com + UDP-подсети — чинит Phasmophobia, R.E.P.O., Content Warning, Lethal Company, VRChat, Among Us), Azure PlayFab (playfabapi.com — Helldivers 2, Sea of Thieves, Minecraft) и Epic Online Services (epicgames.dev)',
   gaming_mods_stats:
-    '[Маршрут: В Прокси / VPN] Платформы моддинга, игровых оверлеев, трейнеров и киберспортивной статистики, часто недоступные из РФ из-за блокировок Cloudflare и геоблока: Thunderstore Mod Manager / r2modman (thunderstore.io, gcdn.thunderstore.io), Overwolf (overwolf.com), WeMod, ModDB, GameBanana, SteamDB, Tracker.gg, OP.GG, U.GG, Mobalytics, Dotabuff, OpenDota, Stratz, Leetify, Maxroll, Wowhead, Poe.ninja и HLTV.org',
+    '[Маршрут: В Прокси / VPN] Платформы моддинга, игровых оверлеев, трейнеров и киберспортивной статистики, часто недоступные из РФ из-за фильтрации Cloudflare и геоблока: Thunderstore Mod Manager / r2modman (thunderstore.io, gcdn.thunderstore.io), Overwolf (overwolf.com), WeMod, ModDB, GameBanana, SteamDB, Tracker.gg, OP.GG, U.GG, Mobalytics, Dotabuff, OpenDota, Stratz, Leetify, Maxroll, Wowhead, Poe.ninja и HLTV.org',
   roblox:
     '[Маршрут: В Прокси / VPN или Desync] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)',
   supercell:
-    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (обход геоблока для РФ и РБ)',
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Brawl Stars, Clash Royale, Clash of Clans, Squad Busters и авторизация Supercell ID (маршрутизация через внешний регион для РФ и РБ)',
   escapefromtarkov:
     '[Маршрут: В Прокси / VPN или Direct] Лаунчер, сайт, API профилей и серверы Battlestate Games (escapefromtarkov.com, tarkov.com, battlestategames.com)',
   faceit:
@@ -388,11 +388,11 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   paas_db:
     '[Маршрут: В Прокси / VPN] Домены облачных платформ развёртывания и управляемых баз данных с региональными ограничениями доступа: Vercel (vercel.com, vercel.app), Supabase (supabase.com, supabase.co), Fly.io (fly.io, fly.dev), Render (render.com, onrender.com), Netlify (netlify.com, netlify.app), Heroku (heroku.com), MongoDB Atlas (mongodb.com, mongodb.net), Redis Cloud и Railway / Neon',
   linux_repos:
-    '[Маршрут: В Прокси / VPN] Пакетные репозитории, магазины приложений Linux и серверные дистрибутивы, которые ограничивают доступ с российских IP (Red Hat, Fedora, Canonical Launchpad) или тормозят из-за блокировок CDN (Flathub): Flathub / Flatpak (flathub.org), Snapcraft (snapcraft.io), Ubuntu / Launchpad PPA (launchpad.net), Arch Linux & AUR (archlinux.org), Proxmox VE (proxmox.com), Red Hat (redhat.com), Fedora, Debian, Alpine, Kali и NixOS',
+    '[Маршрут: В Прокси / VPN] Пакетные репозитории, магазины приложений Linux и серверные дистрибутивы, которые ограничивают доступ с российских IP (Red Hat, Fedora, Canonical Launchpad) или замедляются из-за фильтрации CDN (Flathub): Flathub / Flatpak (flathub.org), Snapcraft (snapcraft.io), Ubuntu / Launchpad PPA (launchpad.net), Arch Linux & AUR (archlinux.org), Proxmox VE (proxmox.com), Red Hat (redhat.com), Fedora, Debian, Alpine, Kali и NixOS',
   captcha_auth:
     '[Маршрут: В Прокси / VPN или Direct (в зависимости от сайта)] Виджеты проверки на робота и провайдеры единой авторизации (SSO / OAuth / Passkeys): Cloudflare Turnstile (challenges.cloudflare.com), hCaptcha (hcaptcha.com), Google reCAPTCHA (recaptcha.net), Arkose Labs / FunCaptcha (arkoselabs.com, funcaptcha.com — капча в Steam, Roblox, EA, GitHub, OpenAI), GeeTest, DataDome, Auth0, Okta и Clerk',
   cloud_gaming_remote:
-    '[Маршрут: В Прокси / VPN] Сервисы облачного гейминга и удалённого управления ПК: NVIDIA GeForce NOW (geforcenow.com, nvidiagrid.net — проверяет зарубежный IP только при входе и старте игры, после чего видеопоток идёт напрямую!), Boosteroid, Parsec (parsec.app), Shadow, а также TeamViewer (заблокировал РФ по IP), AnyDesk (anydesk.com — часто фильтруется на транзитных узлах), RustDesk, NoMachine, Tailscale и ZeroTier',
+    '[Маршрут: В Прокси / VPN] Сервисы облачного гейминга и удалённого управления ПК: NVIDIA GeForce NOW (geforcenow.com, nvidiagrid.net — проверяет зарубежный IP только при входе и старте игры, после чего видеопоток идёт напрямую!), Boosteroid, Parsec (parsec.app), Shadow, а также TeamViewer (ограничил РФ по IP), AnyDesk (anydesk.com — часто фильтруется на транзитных узлах), RustDesk, NoMachine, Tailscale и ZeroTier',
   cloud_storage:
     '[Маршрут: В Прокси / VPN или Desync] Зарубежные облачные диски и популярные файлообменники, где публикуют прошивки, моды и рабочие архивы (многие ограничены на маршруте или закрыли доступ из РФ): MEGA (mega.nz, mega.co.nz, mega.io), Dropbox (dropbox.com), WeTransfer (wetransfer.com, we.tl), Pixeldrain (pixeldrain.com), GoFile (gofile.io), Catbox (catbox.moe), MediaFire, Box.com, pCloud, Sync.com и TeraBox',
   security_passwords:
@@ -400,26 +400,26 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   smarthome_iot:
     '[Маршрут: В Прокси / VPN] Облачные сервисы и репозитории умного дома и 3D-принтеров: облако 3D-печати Bambu Lab / MakerWorld (bambulab.com, bblmw.com, makerworld.com — отправка печати из Bambu Studio и видео с камеры через AWS часто фильтруются на транзитных узлах!), Creality Cloud, Prusa; экосистема Home Assistant и Nabu Casa (home-assistant.io, nabu.casa, esphome.io, zigbee2mqtt.io); глобальные облака Tuya / Smart Life, eWeLink (Sonoff), Aqara, Roborock, Dreame и Philips Hue',
   smarttv_apps:
-    '[Маршрут: Только в Прокси / VPN (на нужный регион при настройке/активации ТВ)] Серверы проверки геолокации, активации Smart Hub и каталогов приложений телевизоров Samsung Smart TV (Tizen OS: samsungcloudsolution.com, samsungotn.net, samsungqbe.com, samsungosp.com) и LG Smart TV (webOS / LG Content Store: lgappstv.com, lgtvsdp.com, lgtvcommon.com). Незаменимо для разблокировки «серых» телевизоров параллельного импорта',
+    '[Маршрут: Только в Прокси / VPN (на нужный регион при настройке/активации ТВ)] Серверы проверки геолокации, активации Smart Hub и каталогов приложений телевизоров Samsung Smart TV (Tizen OS: samsungcloudsolution.com, samsungotn.net, samsungqbe.com, samsungosp.com) и LG Smart TV (webOS / LG Content Store: lgappstv.com, lgtvsdp.com, lgtvcommon.com). Незаменимо для активации «серых» телевизоров параллельного импорта',
   smart_cars:
-    '[Маршрут: Напрямую (Direct) или в китайский/целевой прокси] Серверы телематики, OTA-обновлений, мастер-аккаунтов и штатной навигации современных автомобилей: китайские электрокары и гибриды LiXiang / Li Auto (lixiang.com, chj.com), Zeekr (zeekrlife.com, zeekr.com), BYD, Voyah, Geely, Changan, Xiaomi SU7, NIO, XPeng, а также приложения и облака Tesla (tesla.com), BMW (MyBMW / ConnectedDrive) и Mercedes me. Позволяет на роутере в авто не пускать китайскую телематику в европейский VPN во избежание гео-блокировки экранов!',
+    '[Маршрут: Напрямую (Direct) или в китайский/целевой прокси] Серверы телематики, OTA-обновлений, мастер-аккаунтов и штатной навигации современных автомобилей: китайские электрокары и гибриды LiXiang / Li Auto (lixiang.com, chj.com), Zeekr (zeekrlife.com, zeekr.com), BYD, Voyah, Geely, Changan, Xiaomi SU7, NIO, XPeng, а также приложения и облака Tesla (tesla.com), BMW (MyBMW / ConnectedDrive) и Mercedes me. Позволяет на роутере в авто не пускать китайскую телематику в европейский VPN во избежание геоблока экранов!',
   hodca:
     '[Маршрут: В Прокси / VPN] Серверы проверки отзыва SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, GlobalSign, Entrust, Let’s Encrypt, Amazon Trust, IdenTrust и SSL.com (устраняет зависания HTTPS при региональных ограничениях OCSP)',
   doh_dot_dns:
-    '[Маршрут: В Прокси / VPN (при ограничениях DoH) или Блокировать (Block — чтобы запретить устройствам обходить локальный DNS роутера)] Полная база публичных серверов DNS-over-HTTPS (DoH) и DNS-over-TLS (DoT), включая домены и IP-адреса резолверов Cloudflare (1.1.1.1, cloudflare-dns.com), Google (8.8.8.8, dns.google), Quad9 (9.9.9.9, dns.quad9.net), AdGuard DNS, NextDNS, OpenDNS, Control D и Mullvad DNS',
+    '[Маршрут: В Прокси / VPN (при ограничениях DoH) или Блокировать (Block — чтобы запретить устройствам направлять DNS-запросы мимо роутера)] Полная база публичных серверов DNS-over-HTTPS (DoH) и DNS-over-TLS (DoT), включая домены и IP-адреса резолверов Cloudflare (1.1.1.1, cloudflare-dns.com), Google (8.8.8.8, dns.google), Quad9 (9.9.9.9, dns.quad9.net), AdGuard DNS, NextDNS, OpenDNS, Control D и Mullvad DNS',
   cloudflare:
     '[Маршрут: В Прокси / VPN или Desync] IPv4/IPv6-подсети и домены Cloudflare CDN (десинхронизация пакетов для TLS ECH и сайтов за Cloudflare на транзитных узлах)',
   cloudfront:
-    '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерные блокировки',
+    '[Маршрут: В Прокси / VPN] IP-подсети глобальной CDN-сети Amazon CloudFront (AWS), часто попадающие под веерную фильтрацию',
   fastly:
     '[Маршрут: В Прокси / VPN] Домены и подсети CDN-провайдера Fastly (fastly.net, fastlylb.net, fsdn.com), используемого множеством зарубежных сайтов',
   hetzner:
-    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), блокируемые на транзитных узлах целыми диапазонами',
+    '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров Hetzner (Германия и Финляндия), фильтруемые на транзитных узлах целыми диапазонами',
   ovh: '[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты',
   digitalocean:
-    '[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ',
+    '[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых ограничена или фильтруется в РФ',
   vps_clouds:
-    '[Маршрут: В Прокси / VPN] Сводные IPv4/IPv6-подсети популярных зарубежных облачных провайдеров и VPS-хостингов: Oracle Cloud (AS31898), Vultr / Constant (AS20473), Linode / Akamai Connected Cloud (AS63949), Scaleway / Online.net (AS12876) и GCore Labs (AS199524), диапазоны которых массово блокируются или ограничиваются на транзитных узлах в РФ (в дополнение к спискам Hetzner, OVH и DigitalOcean)',
+    '[Маршрут: В Прокси / VPN] Сводные IPv4/IPv6-подсети популярных зарубежных облачных провайдеров и VPS-хостингов: Oracle Cloud (AS31898), Vultr / Constant (AS20473), Linode / Akamai Connected Cloud (AS63949), Scaleway / Online.net (AS12876) и GCore Labs (AS199524), диапазоны которых массово фильтруются или ограничиваются на транзитных узлах в РФ (в дополнение к спискам Hetzner, OVH и DigitalOcean)',
   speedtest:
     '[Маршрут: В Прокси / VPN (для теста скорости туннеля) или Direct] Сервисы замера скорости интернета, проверки внешнего IP-адреса и DNS-утечек: Speedtest (speedtest.net, ookla.com), Fast.com, Cloudflare Speed, 2ip.ru / 2ip.io, Whoer.net, BrowserLeaks, IPLeak, IPinfo, Check-Host и Ping.pe',
   crypto:
@@ -436,7 +436,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: Только в Прокси / VPN — строгий геоблок по IP] Международные биржи фриланса, контрактов и глобального найма (требуют постоянный не-российский IP): Upwork (upwork.com), Fiverr (fiverr.com), Freelancer.com, Toptal, PeoplePerHour, Guru, 99designs, Behance, Dribbble, а также платформы оформления контрактов и выплат удалённым сотрудникам Deel (deel.com), Remote.com, Oyster HR и Payoneer',
   sports_fitness:
     '[Маршрут: Только в Прокси / VPN] Спортивные трекеры, умные часы, велостанки и результаты матчей: Strava (strava.com — закрыла доступ и синхронизацию тренировок с российских IP!), Garmin Connect (garmin.com, connect.garmin.com), виртуальный велотренажёр Zwift (zwift.com), велонавигатор Komoot, Wahoo, Whoop, MyFitnessPal, результаты матчей Flashscore (flashscore.com — ограничен в РФ), Sofascore, Transfermarkt, F1 TV, UFC Fight Pass, NBA и NHL',
-  news: '[Маршрут: В Прокси / VPN или Desync] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)',
+  news: '[Маршрут: В Прокси / VPN или Desync] Независимые российские и мировые информационные агентства и медиа с ограничениями доступа (Meduza, BBC, DW, Euronews, Радио Свобода)',
   torrent:
     '[Маршрут: В Desync (фрагментация пакетов) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa',
   tor: '[Маршрут: В Прокси / VPN] Домены и узлы сети Tor, каталогов мостов, I2P, Tails, Whonix и анонимайзеров',

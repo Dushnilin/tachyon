@@ -39,8 +39,6 @@ export function getComponentCardTitle(
       return 'Tachyon';
     case 'tachyon-core':
       return 'Tachyon Core';
-    case 'torrserver_direct':
-      return _('TorrServer Direct');
     default:
       return String(component);
   }
@@ -55,8 +53,6 @@ export function getComponentCurrentVersion(
       return sys.tachyon_version;
     case 'tachyon-core':
       return sys.tachyon_core_version;
-    case 'torrserver_direct':
-      return sys.torrserver_version;
     default:
       return undefined;
   }
@@ -67,6 +63,8 @@ export function getComponentBackupVersion(
   sys: StoreType['diagnosticsSystemInfo'],
 ): string {
   switch (component) {
+    case 'tachyon':
+      return sys.tachyon_backup_version || '';
     case 'tachyon-core':
       return sys.tachyon_core_backup_version || '';
     default:
@@ -82,8 +80,6 @@ export function getComponentInstallKey(
       return 'tachyonInstall';
     case 'tachyon-core':
       return 'tachyonCoreInstall';
-    case 'torrserver_direct':
-      return 'torrserverDirectInstall';
     default:
       return 'tachyonInstall';
   }
@@ -174,6 +170,4 @@ export function getInstalledUpdateActions({
 export const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   tachyon: 'https://github.com/Dushnilin/tachyon',
   'tachyon-core': 'https://github.com/Dushnilin/tachyon-core',
-  direct_bypass: '',
-  torrserver_direct: 'https://github.com/YouROK/TorrServer',
 };

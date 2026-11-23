@@ -7,6 +7,13 @@ import { PartialStyles } from './partials';
 import { TACHYON_UCI_PACKAGE as TACHYON_CBI_PREFIX } from './constants';
 
 export const GlobalStyles = `
+@font-face {
+    font-family: 'Twemoji Country Flags';
+    src: url('/luci-static/resources/view/tachyon/fonts/TwemojiCountryFlags.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
 ${DashboardTab.styles}
 ${DiagnosticTab.styles}
 ${MonitoringTab.styles}
@@ -10732,6 +10739,87 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
 
 .tachyon-history-btn__badge.is-hidden {
     display: none;
+}
+
+.tachyon-sidebar__update-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    margin-left: auto;
+    border-radius: 999px;
+    background: var(--tachyon-accent, #0a84ff);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-sidebar__update-badge.is-hidden {
+    display: none;
+}
+
+.tachyon-update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(10, 132, 255, 0.36);
+    background: rgba(10, 132, 255, 0.08);
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.tachyon-update-banner.is-hidden {
+    display: none;
+}
+
+.tachyon-update-banner__lead {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--tachyon-text-primary, inherit);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon-update-banner__controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.tachyon-update-banner__action {
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--tachyon-accent, #0a84ff);
+    background: var(--tachyon-accent, #0a84ff);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tachyon-update-banner__dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 6px;
+    border: 1px solid var(--tachyon-border-subtle, rgba(128, 128, 128, 0.25));
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
 }
 
 .tachyon-topbar.is-collapsed .tachyon-topbar__history-btn,

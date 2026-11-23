@@ -280,7 +280,10 @@ pub fn quick_fix_risk_tier(fix_id: &str) -> &'static str {
         | "fix_gateway"
         | "restart_network"
         | "flush_conntrack"
-        | "fix_resolv_symlink" => "disruptive",
+        | "fix_resolv_symlink"
+        | "restore_native_internet"
+        | "enable_safe_bypass"
+        | "flush_nftables" => "disruptive",
         "switch_to_doh"
         | "fix_bootstrap_dns"
         | "optimize_mtu"
@@ -291,9 +294,6 @@ pub fn quick_fix_risk_tier(fix_id: &str) -> &'static str {
         | "enable_default_desync"
         | "restart_zapret"
         | "disable_flow_offloading"
-        | "restore_native_internet"
-        | "enable_safe_bypass"
-        | "flush_nftables"
         | "update_subscriptions"
         | "restart_providers"
         | "start_watchdog"
@@ -352,6 +352,7 @@ pub fn is_known_quick_fix(fix_id: &str) -> bool {
             | "reset_outbound_pool"
             | "restore_primary_failover"
             | "capture_blackbox"
+            | "doctor_fix"
     )
 }
 
@@ -1250,6 +1251,9 @@ fn assemble_doctor_report(
     }
 
     // 11. odhcpd IPv6 DNS check
+    let wan6_doc = crate::store::probe_wan6_runtime_state();
+    let ipv6_state_doc =
+        crate::store::resolve_effective_ipv6_state(&d.settings, wan6_doc.wan6_available);
     let (odhcpd_ok, odhcpd_detail) = if cfg!(windows) {
         (
             true,
@@ -1257,6 +1261,26 @@ fn assemble_doctor_report(
                 "Windows test mode: odhcpd skipped"
             } else {
                 "Windows test mode: odhcpd пропущен"
+            }
+            .to_string(),
+        )
+    } else if d.settings.dont_touch_dhcp {
+        (
+            true,
+            if en {
+                "DHCP/odhcpd management disabled (dont_touch_dhcp)"
+            } else {
+                "Управление DHCP/odhcpd отключено (dont_touch_dhcp)"
+            }
+            .to_string(),
+        )
+    } else if !ipv6_state_doc.is_active() {
+        (
+            true,
+            if en {
+                "IPv6 inactive: odhcpd IPv6 DNS check skipped"
+            } else {
+                "IPv6 неактивен: проверка odhcpd IPv6 DNS пропущена"
             }
             .to_string(),
         )
@@ -1371,9 +1395,6 @@ fn assemble_doctor_report(
         });
     }
 
-    let wan6_doc = crate::store::probe_wan6_runtime_state();
-    let ipv6_state_doc =
-        crate::store::resolve_effective_ipv6_state(&d.settings, wan6_doc.wan6_available);
     let eff_dns_doc = crate::store::effective_dns_strategy(&d.settings, ipv6_state_doc);
     let core_cfg_doc =
         crate::core_mgr::CoreManager::effective_core_config_path_for(state, &d.settings);
@@ -2692,8 +2713,18 @@ pub async fn apply_quick_fix_verified(
         .filter(|f| f.suppressed_by.is_none())
         .count();
 
+    let base_id = fix_id
+        .split_once(':')
+        .map(|(head, _)| head)
+        .unwrap_or(fix_id);
+    let preserve_bypass_on_ok = exec_ok
+        && matches!(
+            base_id,
+            "restore_native_internet" | "enable_safe_bypass" | "flush_nftables"
+        );
     let mut rolled_back = false;
     if let Some(prev) = prev_snapshot
+        && !preserve_bypass_on_ok
         && (!exec_ok || after_count > before_count || (before.healthy && !after.healthy))
         && rollback_snapshot_pinned(state, core, prev).await
     {
@@ -2820,9 +2851,16 @@ fn read_firewall_flow_offloading() -> (bool, bool) {
         .unwrap_or((false, false))
 }
 
-/// AI Doctor v3.0: Autonomous analysis + RAG knowledge base + optional LLM query.
-pub async fn run_ai_doctor(state: &Arc<AppState>, user_query: Option<&str>) -> Value {
-    let report = run_local_doctor(state).await;
+/// AI Doctor v3.0 with optional live `tachyon-core` health and anomaly probing.
+pub async fn run_ai_doctor_with_core(
+    state: &Arc<AppState>,
+    core: Option<&Arc<CoreManager>>,
+    user_query: Option<&str>,
+) -> Value {
+    let report = match core {
+        Some(c) => Box::pin(run_local_doctor_with_core(state, c)).await,
+        None => run_local_doctor(state).await,
+    };
     let d = Box::new(state.data.read().await.clone());
     let live = state.live.read().await.clone();
     let sys = sys_info::collect_host_info();
@@ -5963,7 +6001,7 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
             v4_ok,
             v4_ip: &exit_ip,
             v6_ok,
-            v6_ip: &v6_ip,
+            v6_ip: if v6_ok { &v6_ip } else { "" },
             aaaa_suppressed,
         })
     } else {
@@ -6943,5 +6981,14 @@ IP address       HW type     Flags       HW address            Mask     Device
             std::env::remove_var("TACHYON_FW4_INCLUDE_ROOT");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_doctor_fix_and_disruptive_quick_fix_risk_tiers() {
+        assert!(is_known_quick_fix("doctor_fix"));
+        assert_eq!(quick_fix_risk_tier("restore_native_internet"), "disruptive");
+        assert_eq!(quick_fix_risk_tier("enable_safe_bypass"), "disruptive");
+        assert_eq!(quick_fix_risk_tier("flush_nftables"), "disruptive");
+        assert_eq!(quick_fix_risk_tier("fix_resolv_symlink"), "disruptive");
     }
 }

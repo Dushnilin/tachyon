@@ -23,13 +23,6 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     tachyonCoreCheck: { loading: false },
     tachyonCoreInstall: { loading: false },
     tachyonCoreRollback: { loading: false },
-    directBypassEnable: { loading: false },
-    directBypassDisable: { loading: false },
-    torrserverDirectCheck: { loading: false },
-    torrserverDirectInstall: { loading: false },
-    torrserverDirectRemove: { loading: false },
-    torrserverDirectEnable: { loading: false },
-    torrserverDirectDisable: { loading: false },
   };
 }
 

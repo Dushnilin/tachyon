@@ -10,7 +10,8 @@ use serde_json::Value;
 
 use crate::config_gen::{
     build_router_subscription_payload, build_server_share_uri, build_server_wg_conf,
-    compile_core_config, decode_fptn_token_json, parse_proxy_uri,
+    compile_core_config, count_fptn_token_servers, decode_fptn_token_json_with_core_bin,
+    expand_fptn_token_outbounds, normalize_fptn_token_input, parse_proxy_uri,
 };
 use crate::core_mgr::CoreManager;
 use crate::crypto_gen::auto_configure_server;
@@ -318,6 +319,11 @@ fn dispatch_menu_sources<'a>(
         "src_del" => Some(Box::pin(render_source_delete_confirm(state, arg.trim()))),
         "src_del_ok" => Some(Box::pin(handle_src_delete(arg.trim(), state, core))),
         "src_add" => Some(Box::pin(prompt_add_source(chat_id, state))),
+        "src_fptn" => Some(Box::pin(prompt_source_fptn_input(
+            chat_id,
+            state,
+            arg.trim(),
+        ))),
         "src_warp" => Some(Box::pin(handle_src_warp(state, core))),
         "src_exit" => Some(Box::pin(handle_src_exit(arg.trim(), state, core))),
         "quick_add_uri" => Some(Box::pin(handle_import_subscription_or_uri(
@@ -429,6 +435,9 @@ pub(crate) async fn handle_menu_prompt(
             PendingPromptKind::UpdateFptnToken { sec_id } => Box::pin(async move {
                 handle_update_fptn_prompt(&sec_id, input, chat_id, state, core).await
             }),
+            PendingPromptKind::UpdateSourceFptnToken { src_id } => Box::pin(async move {
+                handle_update_source_fptn_prompt(&src_id, input, chat_id, state, core).await
+            }),
             PendingPromptKind::AddSubscriptionOrUri => Box::pin(handle_import_subscription_or_uri(
                 input, chat_id, state, core,
             )),
@@ -496,8 +505,8 @@ async fn prompt_add_source(chat_id: i64, state: &Arc<AppState>) -> BotReply {
     BotReply::with_kb(
         tr(
             ru,
-            "<b>Добавить подписку или URI</b>\n\nОтправьте HTTPS-ссылку подписки или одну/несколько строк URI (<code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hy2://</code>, <code>awg://</code>, <code>wg://</code>, <code>fptn:</code>).\nДля отмены: /cancel",
-            "<b>Add Subscription or URI</b>\n\nSend an HTTPS subscription URL or one/more URI lines (<code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hy2://</code>, <code>awg://</code>, <code>wg://</code>, <code>fptn:</code>).\nSend /cancel to abort.",
+            "<b>Добавить подписку или URI</b>\n\nОтправьте HTTPS-ссылку подписки, URI (<code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hy2://</code>, <code>awg://</code>, <code>wg://</code>), токен FPTN (<code>fptn://</code>, <code>fptnb://</code>, JSON) или <code>.fptn</code>-файл.\nДля отмены: /cancel",
+            "<b>Add Subscription or URI</b>\n\nSend an HTTPS subscription URL, URI lines (<code>vless://</code>, <code>vmess://</code>, <code>trojan://</code>, <code>ss://</code>, <code>hy2://</code>, <code>awg://</code>, <code>wg://</code>), an FPTN token (<code>fptn://</code>, <code>fptnb://</code>, JSON), or a <code>.fptn</code> file.\nSend /cancel to abort.",
         ),
         kb,
     )
@@ -508,12 +517,45 @@ async fn current_is_ru(state: &Arc<AppState>) -> bool {
     is_ru(&d)
 }
 
+fn format_reload_warn(warn: Option<String>) -> String {
+    warn.map(|w| format!("\n[WARN] {}", escape_html(&w)))
+        .unwrap_or_default()
+}
+
+fn sync_tg_store_json_and_cache(store: &RouterStoreData) {
+    if std::env::var_os("TACHYON_DATA_DIR").is_some() || cfg!(not(test)) {
+        crate::ubus_bridge::sync_from_store_to_json_and_cache(store);
+    }
+}
+
+async fn commit_and_sync_tg_tx(
+    state: &Arc<AppState>,
+    candidate: RouterStoreData,
+) -> anyhow::Result<()> {
+    Box::pin(commit_transaction(state, candidate)).await?;
+    let saved = state.data.read().await.clone();
+    sync_tg_store_json_and_cache(&saved);
+    Ok(())
+}
+
+async fn commit_and_reload_with_warning(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    candidate: RouterStoreData,
+) -> anyhow::Result<Option<String>> {
+    commit_and_sync_tg_tx(state, candidate).await?;
+    match Box::pin(core.apply_or_reload()).await {
+        Ok(()) => Ok(None),
+        Err(e) => Ok(Some(e.to_string())),
+    }
+}
+
 async fn commit_and_reload(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
     candidate: RouterStoreData,
 ) -> anyhow::Result<()> {
-    Box::pin(commit_transaction(state, candidate)).await?;
+    commit_and_sync_tg_tx(state, candidate).await?;
     let _ = Box::pin(core.apply_or_reload()).await;
     Ok(())
 }
@@ -796,9 +838,7 @@ async fn handle_sys_toggle(
     let res = if need_reload {
         Box::pin(commit_and_reload(state, core, candidate)).await
     } else {
-        Box::pin(commit_transaction(state, candidate))
-            .await
-            .map(|_| ())
+        commit_and_sync_tg_tx(state, candidate).await
     };
     let note = match res {
         Ok(()) => format!("[OK] {label}"),
@@ -1076,6 +1116,11 @@ async fn handle_fptn_shortcut(state: &Arc<AppState>) -> BotReply {
         drop(d);
         return render_section_view_no_core(state, &sec_id, None).await;
     }
+    if let Some(src) = d.outbound_sources.iter().find(|s| s.source_type == "fptn") {
+        let src_id = src.id.clone();
+        drop(d);
+        return render_source_view(state, &src_id, 0, None).await;
+    }
     let ru = is_ru(&d);
     let note = tr(
         ru,
@@ -1200,12 +1245,11 @@ fn render_section_view_inner(
     if sec.connection_type == "fptn" {
         let token_state = if sec.fptn_access_token.trim().is_empty() {
             tr(ru, "[не задан]", "[not set]").to_string()
-        } else if let Some(dec) = decode_fptn_token_json(&sec.fptn_access_token) {
-            let srv_cnt = dec
-                .get("servers")
-                .and_then(Value::as_array)
-                .map(Vec::len)
-                .unwrap_or(0);
+        } else if let Some(dec) = decode_fptn_token_json_with_core_bin(
+            &sec.fptn_access_token,
+            Some(&d.settings.core_bin_path),
+        ) {
+            let srv_cnt = count_fptn_token_servers(&dec);
             format!("[OK] ({srv_cnt} {})", tr(ru, "серв.", "servers"))
         } else {
             "[configured]".to_string()
@@ -1460,10 +1504,11 @@ async fn handle_sec_mode(
         sec.desync_preset = "adaptive".to_string();
         sec.desync_auto_tune = true;
     }
-    let note = match commit_and_reload(state, core, candidate).await {
-        Ok(()) => format!(
-            "[OK] {} -> <code>{mode}</code>",
-            tr(ru_init, "Режим", "Mode")
+    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+        Ok(warn) => format!(
+            "[OK] {} -> <code>{mode}</code>{}",
+            tr(ru_init, "Режим", "Mode"),
+            format_reload_warn(warn)
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
@@ -2141,8 +2186,8 @@ async fn prompt_section_input(
             },
             tr(
                 ru,
-                "Отправьте новый токен доступа FPTN (<code>fptn://...</code> или <code>fptn:...</code>).\nОтмена: /cancel",
-                "Send the new FPTN access token (<code>fptn://...</code> or <code>fptn:...</code>).\nCancel: /cancel",
+                "Отправьте новый токен доступа FPTN (<code>fptn://...</code>, <code>fptnb://...</code>, <code>fptn:...</code>, JSON или <code>.fptn</code>-файл).\nОтмена: /cancel",
+                "Send the new FPTN access token (<code>fptn://...</code>, <code>fptnb://...</code>, <code>fptn:...</code>, JSON, or a <code>.fptn</code> file).\nCancel: /cancel",
             ),
         ),
     };
@@ -2440,7 +2485,9 @@ async fn handle_update_fptn_prompt(
     let mut candidate = state.data.read().await.clone();
     let ru = is_ru(&candidate);
 
-    let Some(decoded) = decode_fptn_token_json(trimmed) else {
+    let Some(decoded) =
+        decode_fptn_token_json_with_core_bin(trimmed, Some(&candidate.settings.core_bin_path))
+    else {
         set_chat_prompt(
             chat_id,
             PendingPromptKind::UpdateFptnToken {
@@ -2449,8 +2496,8 @@ async fn handle_update_fptn_prompt(
         );
         return BotReply::text(tr(
             ru,
-            "[!] Не удалось декодировать токен FPTN. Проверьте формат fptn://... или отправьте /cancel.",
-            "[!] Failed to decode FPTN token. Verify fptn://... format or send /cancel.",
+            "[!] Не удалось декодировать токен FPTN. Проверьте формат (fptn://, fptnb://, JSON) или отправьте /cancel.",
+            "[!] Failed to decode FPTN token. Verify format (fptn://, fptnb://, JSON) or send /cancel.",
         ));
     };
 
@@ -2458,29 +2505,123 @@ async fn handle_update_fptn_prompt(
         clear_chat_prompt(chat_id);
         return render_sections_list(state, 0, None).await;
     };
-    sec.fptn_access_token = trimmed.to_string();
+    sec.fptn_access_token =
+        normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
     sec.connection_type = "fptn".to_string();
     sec.action = "fptn".to_string();
+    sec.outbound_source_refs.clear();
 
-    let srv_cnt = decoded
-        .get("servers")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
+    let srv_cnt = count_fptn_token_servers(&decoded);
 
     clear_chat_prompt(chat_id);
-    let note = match commit_and_reload(state, core, candidate).await {
-        Ok(()) => format!(
-            "[OK] {}: {srv_cnt}",
+    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+        Ok(warn) => format!(
+            "[OK] {}: {srv_cnt}{}",
             tr(
                 ru,
                 "Токен FPTN обновлён, серверов",
                 "FPTN token updated, servers"
-            )
+            ),
+            format_reload_warn(warn)
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
     render_section_view(state, core, sec_id, Some(note)).await
+}
+
+async fn prompt_source_fptn_input(chat_id: i64, state: &Arc<AppState>, src_id: &str) -> BotReply {
+    let d = state.data.read().await.clone();
+    let ru = is_ru(&d);
+    let label = d
+        .outbound_sources
+        .iter()
+        .find(|s| s.id == src_id)
+        .map(|s| {
+            let n = s.name.trim();
+            if n.is_empty() { s.id.as_str() } else { n }
+        })
+        .unwrap_or(src_id);
+
+    set_chat_prompt(
+        chat_id,
+        PendingPromptKind::UpdateSourceFptnToken {
+            src_id: src_id.to_string(),
+        },
+    );
+    let kb = inline_kb(vec![vec![cb_btn(
+        tr(ru, "Отмена", "Cancel"),
+        &format!("src_view {src_id}"),
+    )]]);
+    BotReply::with_kb(
+        format!(
+            "<b>{}</b>\n\n{}",
+            escape_html(label),
+            tr(
+                ru,
+                "Отправьте новый токен доступа FPTN (<code>fptn://...</code>, <code>fptnb://...</code>, <code>fptn:...</code>, JSON или <code>.fptn</code>-файл).\nОтмена: /cancel",
+                "Send the new FPTN access token (<code>fptn://...</code>, <code>fptnb://...</code>, <code>fptn:...</code>, JSON, or a <code>.fptn</code> file).\nCancel: /cancel",
+            )
+        ),
+        kb,
+    )
+}
+
+async fn handle_update_source_fptn_prompt(
+    src_id: &str,
+    input: &str,
+    chat_id: i64,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> BotReply {
+    let trimmed = input.trim();
+    let mut candidate = state.data.read().await.clone();
+    let ru = is_ru(&candidate);
+
+    let Some(decoded) =
+        decode_fptn_token_json_with_core_bin(trimmed, Some(&candidate.settings.core_bin_path))
+    else {
+        set_chat_prompt(
+            chat_id,
+            PendingPromptKind::UpdateSourceFptnToken {
+                src_id: src_id.to_string(),
+            },
+        );
+        return BotReply::text(tr(
+            ru,
+            "[!] Не удалось декодировать токен FPTN. Проверьте формат (fptn://, fptnb://, JSON) или отправьте /cancel.",
+            "[!] Failed to decode FPTN token. Verify format (fptn://, fptnb://, JSON) or send /cancel.",
+        ));
+    };
+
+    let Some(src) = candidate
+        .outbound_sources
+        .iter_mut()
+        .find(|s| s.id == src_id)
+    else {
+        clear_chat_prompt(chat_id);
+        return render_sources_list(state, 0, None).await;
+    };
+    src.fptn_access_token =
+        normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
+    src.source_type = "fptn".to_string();
+    src.last_updated_unix = unix_now_secs();
+
+    let srv_cnt = count_fptn_token_servers(&decoded);
+
+    clear_chat_prompt(chat_id);
+    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+        Ok(warn) => format!(
+            "[OK] {}: {srv_cnt}{}",
+            tr(
+                ru,
+                "Токен FPTN обновлён, серверов",
+                "FPTN token updated, servers"
+            ),
+            format_reload_warn(warn)
+        ),
+        Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
+    };
+    render_source_view(state, src_id, 0, Some(note)).await
 }
 
 // =========================================================================
@@ -2594,6 +2735,24 @@ fn collect_all_source_node_tags(d: &RouterStoreData) -> Vec<String> {
                 tags.push(n.tag);
             }
         }
+        if src.source_type == "fptn" && !src.fptn_access_token.trim().is_empty() {
+            let sni_val = if !src.fptn_sni.trim().is_empty() {
+                src.fptn_sni.trim()
+            } else {
+                src.sni.trim()
+            };
+            for (tag, _) in expand_fptn_token_outbounds(
+                &format!("fptn-{}", src.id),
+                &src.fptn_access_token,
+                sni_val,
+                src.fptn_bypass_method.trim(),
+                src.fptn_preferred_server.trim(),
+            ) {
+                if !tags.contains(&tag) {
+                    tags.push(tag);
+                }
+            }
+        }
     }
     tags
 }
@@ -2671,6 +2830,20 @@ async fn render_source_view(
             escape_html(&src.wg_endpoint)
         ));
     }
+    if src.source_type == "fptn" {
+        let token_state = if src.fptn_access_token.trim().is_empty() {
+            tr(ru, "[не задан]", "[not set]").to_string()
+        } else if let Some(dec) = decode_fptn_token_json_with_core_bin(
+            &src.fptn_access_token,
+            Some(&d.settings.core_bin_path),
+        ) {
+            let srv_cnt = count_fptn_token_servers(&dec);
+            format!("[OK] ({srv_cnt} {})", tr(ru, "серв.", "servers"))
+        } else {
+            "[configured]".to_string()
+        };
+        lines.push(format!("FPTN Token: {token_state}"));
+    }
 
     let mut src_nodes: Vec<String> = src.cached_nodes.iter().map(|n| n.tag.clone()).collect();
     for (idx, link) in src.proxy_links.iter().enumerate() {
@@ -2678,6 +2851,24 @@ async fn render_source_view(
             && !src_nodes.contains(&n.tag)
         {
             src_nodes.push(n.tag);
+        }
+    }
+    if src.source_type == "fptn" && !src.fptn_access_token.trim().is_empty() {
+        let sni_val = if !src.fptn_sni.trim().is_empty() {
+            src.fptn_sni.trim()
+        } else {
+            src.sni.trim()
+        };
+        for (tag, _) in expand_fptn_token_outbounds(
+            &format!("fptn-{}", src.id),
+            &src.fptn_access_token,
+            sni_val,
+            src.fptn_bypass_method.trim(),
+            src.fptn_preferred_server.trim(),
+        ) {
+            if !src_nodes.contains(&tag) {
+                src_nodes.push(tag);
+            }
         }
     }
 
@@ -2695,6 +2886,12 @@ async fn render_source_view(
         action_row.push(cb_btn(
             tr(ru, "Обновить", "Refresh"),
             &format!("src_refresh {}", src.id),
+        ));
+    }
+    if src.source_type == "fptn" {
+        action_row.push(cb_btn(
+            tr(ru, "Обновить FPTN токен", "Update FPTN Token"),
+            &format!("src_fptn {}", src.id),
         ));
     }
     rows.push(action_row);
@@ -2757,11 +2954,12 @@ async fn handle_src_toggle(
     };
     src.enabled = !src.enabled;
     let enabled_now = src.enabled;
-    let note = match commit_and_reload(state, core, candidate).await {
-        Ok(()) => format!(
-            "[OK] {} -> {}",
+    let note = match commit_and_reload_with_warning(state, core, candidate).await {
+        Ok(warn) => format!(
+            "[OK] {} -> {}{}",
             escape_html(src_id),
-            status_badge(enabled_now)
+            status_badge(enabled_now),
+            format_reload_warn(warn)
         ),
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),
     };
@@ -2999,34 +3197,59 @@ async fn handle_import_subscription_or_uri(
         ));
     }
 
+    let core_bin = {
+        let d = state.data.read().await;
+        d.settings.core_bin_path.clone()
+    };
+
     let mut sub_urls: Vec<String> = Vec::new();
     let mut uri_lines: Vec<String> = Vec::new();
     let mut parsed_nodes: Vec<ParsedProxyNode> = Vec::new();
-    let mut fptn_tokens: Vec<String> = Vec::new();
+    let mut fptn_tokens: Vec<(String, Value)> = Vec::new();
 
-    for (idx, raw_line) in trimmed.lines().enumerate() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if line.starts_with("https://") || line.starts_with("http://") {
-            if !sub_urls.contains(&line.to_string()) {
-                sub_urls.push(line.to_string());
+    let has_multiple_uri_lines = trimmed.lines().skip(1).any(|l| {
+        let s = l.trim().to_ascii_lowercase();
+        !s.is_empty()
+            && (s.starts_with("http://")
+                || s.starts_with("https://")
+                || s.contains("://")
+                || s.starts_with("fptn:")
+                || s.starts_with("fptnb:"))
+    });
+    let allow_whole_payload = trimmed.starts_with('{') || !has_multiple_uri_lines;
+    if allow_whole_payload
+        && let Some(decoded) = decode_fptn_token_json_with_core_bin(trimmed, Some(&core_bin))
+    {
+        let norm = normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
+        fptn_tokens.push((norm, decoded));
+    } else {
+        for (idx, raw_line) in trimmed.lines().enumerate() {
+            let line = raw_line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
             }
-            continue;
-        }
-        if (line.starts_with("fptn:") || line.starts_with("fptnb:"))
-            && !line.starts_with("fptn://")
-            && !line.starts_with("fptnb://")
-            && decode_fptn_token_json(line).is_some()
-        {
-            fptn_tokens.push(line.to_string());
-            continue;
-        }
-        if let Some(node) = parse_proxy_uri(line, idx) {
-            uri_lines.push(line.to_string());
-            if !parsed_nodes.iter().any(|n| n.tag == node.tag) {
-                parsed_nodes.push(node);
+            if line.starts_with("https://") || line.starts_with("http://") {
+                if !sub_urls.contains(&line.to_string()) {
+                    sub_urls.push(line.to_string());
+                }
+                continue;
+            }
+            let lower_line = line.to_ascii_lowercase();
+            if (lower_line.starts_with("fptn:")
+                || lower_line.starts_with("fptn//")
+                || lower_line.starts_with("fptnb:")
+                || lower_line.starts_with("fptnb//"))
+                && let Some(decoded) = decode_fptn_token_json_with_core_bin(line, Some(&core_bin))
+            {
+                let norm = normalize_fptn_token_input(line).unwrap_or_else(|| line.to_string());
+                fptn_tokens.push((norm, decoded));
+                continue;
+            }
+            if let Some(node) = parse_proxy_uri(line, idx) {
+                uri_lines.push(line.to_string());
+                if !parsed_nodes.iter().any(|n| n.tag == node.tag) {
+                    parsed_nodes.push(node);
+                }
             }
         }
     }
@@ -3102,14 +3325,23 @@ async fn handle_import_subscription_or_uri(
         created_ids.push(new_id);
     }
 
-    for tok in fptn_tokens {
+    for (tok, decoded) in fptn_tokens {
         let mut all_ids = existing_ids.clone();
         all_ids.extend(created_ids.clone());
         let new_id = unique_id("src_fptn", &all_ids);
+        let svc_name = decoded
+            .get("service_name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let name = match svc_name {
+            Some(svc) => format!("FPTN ({svc})"),
+            None => "FPTN Source".to_string(),
+        };
         candidate.outbound_sources.push(OutboundSource {
             id: new_id.clone(),
             enabled: true,
-            name: "FPTN Source".to_string(),
+            name,
             source_type: "fptn".to_string(),
             fptn_access_token: tok,
             last_updated_unix: now,
@@ -3119,7 +3351,7 @@ async fn handle_import_subscription_or_uri(
     }
 
     clear_chat_prompt(chat_id);
-    if let Err(e) = Box::pin(commit_transaction(state, candidate)).await {
+    if let Err(e) = commit_and_sync_tg_tx(state, candidate).await {
         return render_sources_list(
             state,
             0,
@@ -3131,13 +3363,19 @@ async fn handle_import_subscription_or_uri(
     for sid in &created_sub_ids {
         let _ = Box::pin(core.refresh_subscription_source(sid)).await;
     }
-    let _ = Box::pin(core.apply_or_reload()).await;
+    let reload_warn = format_reload_warn(
+        Box::pin(core.apply_or_reload())
+            .await
+            .err()
+            .map(|e| e.to_string()),
+    );
 
     if let Some(first_id) = created_ids.first() {
         let note = format!(
-            "[OK] {}: {}",
+            "[OK] {}: {}{}",
             tr(ru, "Источник добавлен", "Source added"),
-            escape_html(&created_ids.join(", "))
+            escape_html(&created_ids.join(", ")),
+            reload_warn
         );
         return render_source_view(state, first_id, 0, Some(note)).await;
     }

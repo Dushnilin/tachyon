@@ -125,39 +125,59 @@ async fn handle_conn(
     let head_str = String::from_utf8_lossy(&buf[..header_end]).into_owned();
     let (method, raw_path, query) = parse_request_line(&head_str);
     let host_hdr = parse_header(&head_str, "host");
+    let origin_hdr = parse_header(&head_str, "origin");
+    let referer_hdr = parse_header(&head_str, "referer");
     let content_len = parse_header(&head_str, "content-length")
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0);
 
-    if header_end + content_len > MAX_REQ_BYTES {
+    let Some(body_end) = compute_request_body_end(header_end, content_len, MAX_REQ_BYTES) else {
         return send_json(&mut stream, 413, &json!({"error": "payload too large"})).await;
-    }
+    };
 
-    while total < header_end + content_len {
-        if buf.len() < header_end + content_len {
-            buf.resize(header_end + content_len, 0);
+    while total < body_end {
+        if buf.len() < body_end {
+            buf.resize(body_end, 0);
         }
-        let n = stream
-            .read(&mut buf[total..header_end + content_len])
-            .await?;
+        let n = stream.read(&mut buf[total..body_end]).await?;
         if n == 0 {
             break;
         }
         total += n;
     }
-    let body = &buf[header_end..total.min(header_end + content_len)];
+    let body = &buf[header_end..total.min(body_end)];
 
     if method == "OPTIONS" {
-        let origin = {
+        let allowed_origin = {
             let d = state.data.read().await;
-            d.settings
-                .cors_origins
-                .first()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "*".to_string())
+            origin_hdr
+                .as_deref()
+                .map(str::trim)
+                .filter(|o| !o.is_empty() && host_matches_cors(o, &d.settings.cors_origins))
+                .map(str::to_string)
         };
-        return send_empty_cors(&mut stream, &origin).await;
+        return send_empty_cors(&mut stream, allowed_origin.as_deref()).await;
+    }
+
+    {
+        let cors_origins = {
+            let d = state.data.read().await;
+            d.settings.cors_origins.clone()
+        };
+        if !is_request_origin_allowed(
+            &method,
+            host_hdr.as_deref(),
+            origin_hdr.as_deref(),
+            referer_hdr.as_deref(),
+            &cors_origins,
+        ) {
+            return send_json(
+                &mut stream,
+                403,
+                &json!({"error": "cross-origin request rejected"}),
+            )
+            .await;
+        }
     }
 
     // Normalize `/cgi-bin/tachyon-agent/*` alias to `/api/agent/v1/*`
@@ -168,7 +188,7 @@ async fn handle_conn(
     };
 
     {
-        let (gm_snap, lang_snap, reg_snap) = {
+        let (gm_snap, lang_snap, reg_snap, tailscale_enabled) = {
             let d = state.data.read().await;
             let need_reg = d.guest_mode.enabled && d.guest_mode.block_router_admin;
             (
@@ -179,6 +199,7 @@ async fn handle_conn(
                 } else {
                     None
                 },
+                crate::net_stack::is_tailscale_enabled(&d),
             )
         };
         if let Some(registry) = reg_snap {
@@ -188,7 +209,12 @@ async fn handle_conn(
                 &gm_snap.guest_devices
             };
             let peer_mac = resolve_peer_mac_if_needed(peer_ip, active_list, &registry).await;
-            if is_peer_blocked_by_guest_mode(&gm_snap, peer_ip, peer_mac.as_deref()) {
+            if is_peer_blocked_by_guest_mode(
+                &gm_snap,
+                peer_ip,
+                peer_mac.as_deref(),
+                tailscale_enabled,
+            ) {
                 let is_api_or_cgi = path.starts_with("/api/")
                     || path == "/ubus"
                     || path.starts_with("/ubus/")
@@ -394,9 +420,7 @@ async fn handle_conn(
             )
             .await;
         }
-        if !d.settings.server_subscription_token.is_empty()
-            && sub_tok != d.settings.server_subscription_token
-        {
+        if !is_router_sub_authorized(sub_tok, &d.settings.server_subscription_token) {
             return send_json(
                 &mut stream,
                 401,
@@ -569,6 +593,7 @@ async fn dispatch_api(
             state.touch_telemetry_access();
             let sys = sys_info::collect_host_info();
             let store = Box::new(state.data.read().await.clone());
+            let redacted_store = redact_store_for_bootstrap(&store);
             let live = Box::new(state.live.read().await.clone());
             let doctor = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
             let updates = core.check_updates().await;
@@ -577,7 +602,7 @@ async fn dispatch_api(
                 200,
                 &json!({
                     "system": sys,
-                    "store": &*store,
+                    "store": redacted_store,
                     "live": &*live,
                     "doctor": doctor,
                     "updates": updates,
@@ -684,10 +709,13 @@ async fn dispatch_api(
                 .ok()
                 .and_then(|v| v.get("id").and_then(Value::as_str).map(String::from))
                 .unwrap_or_default();
-            let target = if id.trim().is_empty() {
+            let trimmed = id.trim();
+            let target = if trimmed.is_empty() {
                 "/connections".to_string()
+            } else if !is_safe_clash_connection_id(trimmed) {
+                return send_json(stream, 400, &json!({"error": "invalid connection id"})).await;
             } else {
-                format!("/connections/{}", id.trim())
+                format!("/connections/{trimmed}")
             };
             let _ = core.clash_request("DELETE", &target, None).await;
             send_json(stream, 200, &json!({"ok": true})).await
@@ -2429,12 +2457,193 @@ async fn execute_remediation_plan(
     })
 }
 
+fn compute_request_body_end(
+    header_end: usize,
+    content_len: usize,
+    max_bytes: usize,
+) -> Option<usize> {
+    if content_len > max_bytes {
+        return None;
+    }
+    let body_end = header_end.checked_add(content_len)?;
+    (body_end <= max_bytes).then_some(body_end)
+}
+
+fn extract_url_host_port(raw: &str) -> Option<&str> {
+    let s = raw.trim();
+    let rest = s
+        .strip_prefix("http://")
+        .or_else(|| s.strip_prefix("https://"))
+        .unwrap_or(s);
+    let host_port = rest.split(['/', '?', '#']).next()?.trim();
+    (!host_port.is_empty()).then_some(host_port)
+}
+
+fn is_valid_host_header(host: &str) -> bool {
+    let t = host.trim();
+    !t.is_empty() && !t.contains('/') && !t.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+fn host_matches_cors(candidate: &str, cors_origins: &[String]) -> bool {
+    let cand_trim = candidate.trim();
+    let cand_hp = extract_url_host_port(cand_trim);
+    cors_origins.iter().any(|allowed| {
+        let a = allowed.trim();
+        !a.is_empty()
+            && (a.eq_ignore_ascii_case(cand_trim)
+                || cand_hp.is_some_and(|hp| {
+                    extract_url_host_port(a).is_some_and(|ahp| ahp.eq_ignore_ascii_case(hp))
+                }))
+    })
+}
+
+fn is_request_origin_allowed(
+    method: &str,
+    host_hdr: Option<&str>,
+    origin_hdr: Option<&str>,
+    referer_hdr: Option<&str>,
+    cors_origins: &[String],
+) -> bool {
+    if let Some(h) = host_hdr
+        && !is_valid_host_header(h)
+    {
+        return false;
+    }
+    if !matches!(method, "POST" | "PUT" | "PATCH" | "DELETE") {
+        return true;
+    }
+    let host_trimmed = host_hdr.map(str::trim).filter(|h| !h.is_empty());
+    if let Some(origin) = origin_hdr.map(str::trim).filter(|o| !o.is_empty()) {
+        if host_matches_cors(origin, cors_origins) {
+            return true;
+        }
+        if let (Some(oh), Some(h)) = (extract_url_host_port(origin), host_trimmed) {
+            return oh.eq_ignore_ascii_case(h);
+        }
+        return false;
+    }
+    if let Some(referer) = referer_hdr.map(str::trim).filter(|r| !r.is_empty()) {
+        if host_matches_cors(referer, cors_origins) {
+            return true;
+        }
+        if let (Some(rh), Some(h)) = (extract_url_host_port(referer), host_trimmed) {
+            return rh.eq_ignore_ascii_case(h);
+        }
+        return false;
+    }
+    true
+}
+
+fn mask_if_non_empty(obj: &mut serde_json::Map<String, Value>, key: &str) {
+    if let Some(val) = obj.get_mut(key)
+        && let Some(s) = val.as_str()
+        && !s.trim().is_empty()
+    {
+        *val = json!("[REDACTED]");
+    }
+}
+
+fn redact_store_for_bootstrap(store: &RouterStoreData) -> Value {
+    let mut val = serde_json::to_value(store).unwrap_or_else(|_| json!({}));
+    if let Some(settings) = val.get_mut("settings").and_then(Value::as_object_mut) {
+        settings.remove("admin_pass_hash");
+        settings.remove("admin_pass_salt");
+        settings.remove("session_secret");
+        for secret_key in [
+            "clash_api_secret",
+            "agent_api_token",
+            "ai_doctor_api_key",
+            "server_subscription_token",
+        ] {
+            mask_if_non_empty(settings, secret_key);
+        }
+    }
+    if let Some(tg) = val.get_mut("telegram").and_then(Value::as_object_mut) {
+        mask_if_non_empty(tg, "bot_token");
+        mask_if_non_empty(tg, "webhook_secret");
+        if let Some(routers) = tg.get_mut("managed_routers").and_then(Value::as_array_mut) {
+            for router in routers {
+                if let Some(r_obj) = router.as_object_mut() {
+                    mask_if_non_empty(r_obj, "api_token");
+                }
+            }
+        }
+    }
+    val
+}
+
+fn login_rate_limit_map() -> &'static std::sync::Mutex<std::collections::HashMap<String, (u32, i64)>>
+{
+    static LOGIN_FAILURES: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, (u32, i64)>>,
+    > = std::sync::OnceLock::new();
+    LOGIN_FAILURES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn check_login_rate_limit(
+    map: &std::sync::Mutex<std::collections::HashMap<String, (u32, i64)>>,
+    peer_ip: &str,
+    now: i64,
+) -> bool {
+    const WINDOW_SECS: i64 = 60;
+    const MAX_FAILURES: u32 = 5;
+    let Ok(mut guard) = map.lock() else {
+        return true;
+    };
+    let key = peer_ip.trim();
+    if let Some(&(count, first_ts)) = guard.get(key) {
+        if now.saturating_sub(first_ts) < WINDOW_SECS {
+            return count < MAX_FAILURES;
+        }
+        guard.remove(key);
+    }
+    true
+}
+
+fn record_login_attempt(
+    map: &std::sync::Mutex<std::collections::HashMap<String, (u32, i64)>>,
+    peer_ip: &str,
+    now: i64,
+    failed: bool,
+) {
+    const WINDOW_SECS: i64 = 60;
+    const MAX_ENTRIES: usize = 512;
+    let Ok(mut guard) = map.lock() else {
+        return;
+    };
+    let key = peer_ip.trim().to_string();
+    if !failed {
+        guard.remove(&key);
+        return;
+    }
+    guard.retain(|_, &mut (_, ts)| now.saturating_sub(ts) < WINDOW_SECS);
+    if guard.len() >= MAX_ENTRIES
+        && !guard.contains_key(&key)
+        && let Some(oldest_k) = guard
+            .iter()
+            .min_by_key(|(_, (_, ts))| *ts)
+            .map(|(k, _)| k.clone())
+    {
+        guard.remove(&oldest_k);
+    }
+    let entry = guard.entry(key).or_insert((0, now));
+    if now.saturating_sub(entry.1) >= WINDOW_SECS {
+        *entry = (1, now);
+    } else {
+        entry.0 = entry.0.saturating_add(1);
+    }
+}
+
 async fn handle_login(
     stream: &mut TcpStream,
     state: &Arc<AppState>,
     body: &[u8],
     peer_ip: &str,
 ) -> anyhow::Result<()> {
+    let now = unix_now_secs();
+    if !check_login_rate_limit(login_rate_limit_map(), peer_ip, now) {
+        return send_json(stream, 429, &json!({"error": "too many login attempts"})).await;
+    }
     let Ok(val) = serde_json::from_slice::<Value>(body) else {
         return send_json(stream, 400, &json!({"error": "invalid json"})).await;
     };
@@ -2459,6 +2668,7 @@ async fn handle_login(
     if !crypto_gen::constant_time_eq(user, &expected_user)
         || !crypto_gen::verify_password(pass, &pass_salt, &pass_hash)
     {
+        record_login_attempt(login_rate_limit_map(), peer_ip, now, true);
         state
             .live
             .write()
@@ -2466,9 +2676,9 @@ async fn handle_login(
             .record_honeypot_hit(peer_ip, "/api/login", "failed_auth");
         return send_json(stream, 401, &json!({"error": "invalid credentials"})).await;
     }
+    record_login_attempt(login_rate_limit_map(), peer_ip, now, false);
 
     let token = crypto_gen::generate_alnum(40);
-    let now = unix_now_secs();
     {
         let mut sessions = state.sessions.write().await;
         sessions.retain(|_, exp| *exp > now);
@@ -2601,10 +2811,24 @@ fn peer_matches_device_list(
     false
 }
 
+fn is_router_sub_authorized(sub_tok: &str, configured_token: &str) -> bool {
+    !configured_token.is_empty() && crypto_gen::constant_time_eq(sub_tok, configured_token)
+}
+
+fn is_safe_clash_connection_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && !id.contains("..")
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '@' | '-'))
+}
+
 fn is_peer_blocked_by_guest_mode(
     gm: &crate::store::GuestModeConfig,
     peer_ip: &str,
     peer_mac: Option<&str>,
+    tailscale_enabled: bool,
 ) -> bool {
     if !gm.enabled || !gm.block_router_admin {
         return false;
@@ -2620,7 +2844,7 @@ fn is_peer_blocked_by_guest_mode(
         if !gm.trusted_devices.iter().any(|s| !s.trim().is_empty()) {
             return false;
         }
-        if peer_addr.is_some_and(is_tailscale_ip_addr) {
+        if tailscale_enabled && peer_addr.is_some_and(is_tailscale_ip_addr) {
             return false;
         }
         !peer_matches_device_list(&gm.trusted_devices, peer_addr, peer_mac)
@@ -3007,18 +3231,19 @@ async fn send_plain(stream: &mut TcpStream, text: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn send_empty_cors(stream: &mut TcpStream, cors_origin: &str) -> anyhow::Result<()> {
+async fn send_empty_cors(stream: &mut TcpStream, cors_origin: Option<&str>) -> anyhow::Result<()> {
     let safe_origin: String = cors_origin
+        .unwrap_or("")
         .chars()
         .filter(|c| *c != '\r' && *c != '\n')
         .collect();
-    let origin = if safe_origin.is_empty() {
-        "*"
+    let cors_hdr = if safe_origin.is_empty() {
+        String::new()
     } else {
-        &safe_origin
+        format!("Access-Control-Allow-Origin: {safe_origin}\r\nVary: Origin\r\n")
     };
     let head = format!(
-        "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: {origin}\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        "HTTP/1.1 204 No Content\r\n{cors_hdr}Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     );
     stream.write_all(head.as_bytes()).await?;
     Ok(())
@@ -3218,6 +3443,16 @@ fn apply_settings_save_payload(
     let sent_ipv6_mode = src.contains_key("ipv6_mode");
     let sent_enable_ipv6 = src.contains_key("enable_ipv6");
     if let Some(dst) = cur_json.as_object_mut() {
+        const BLOCKED_SETTINGS_KEYS: &[&str] = &[
+            "admin_pass_hash",
+            "admin_pass_salt",
+            "session_secret",
+            "core_bin_path",
+            "core_config_path",
+            "agent_api_token",
+            "clash_api_secret",
+            "server_subscription_token",
+        ];
         for (k, v) in src {
             if k == "new_password" {
                 if let Some(pw) = v.as_str().filter(|s| !s.trim().is_empty()) {
@@ -3226,6 +3461,11 @@ fn apply_settings_save_payload(
                     dst.insert("admin_pass_salt".to_string(), json!(salt));
                     dst.insert("admin_pass_hash".to_string(), json!(hash));
                 }
+            } else if BLOCKED_SETTINGS_KEYS.contains(&k.as_str())
+                || (k == "ai_doctor_api_key"
+                    && v.as_str().is_some_and(|s| s.trim() == "[REDACTED]"))
+            {
+                continue;
             } else {
                 dst.insert(k.clone(), v.clone());
             }
@@ -3886,7 +4126,12 @@ mod tests {
         };
 
         // Empty trusted_devices must not cause self-lockout
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.99",
+            None,
+            false
+        ));
 
         gm.trusted_devices = vec![
             "192.168.1.50".to_string(),
@@ -3895,22 +4140,39 @@ mod tests {
         ];
 
         // Zero-Trust: untrusted LAN IPv4 / IPv4-mapped / IPv6 blocked
-        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.99",
+            None,
+            false
+        ));
         assert!(is_peer_blocked_by_guest_mode(
             &gm,
             "::ffff:192.168.1.99",
-            None
+            None,
+            false
         ));
-        assert!(is_peer_blocked_by_guest_mode(&gm, "fd00::99", None));
+        assert!(is_peer_blocked_by_guest_mode(&gm, "fd00::99", None, false));
 
         // Trusted IP, CIDR, IPv4-mapped trusted IP, and MAC via ARP/DHCP/registry allowed
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.50", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.50",
+            None,
+            false
+        ));
         assert!(!is_peer_blocked_by_guest_mode(
             &gm,
             "::ffff:192.168.1.50",
-            None
+            None,
+            false
         ));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "10.10.0.42", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "10.10.0.42",
+            None,
+            false
+        ));
 
         let arp_raw = "IP address HW type Flags HW address Mask Device\n\
                        192.168.1.77 0x1 0x2 AA:BB:CC:DD:EE:11 * br-lan\n\
@@ -3930,7 +4192,8 @@ mod tests {
         assert!(!is_peer_blocked_by_guest_mode(
             &gm,
             "192.168.1.77",
-            resolved_arp.as_deref()
+            resolved_arp.as_deref(),
+            false
         ));
         assert_eq!(
             resolve_peer_mac_from_tables("192.168.1.78", arp_raw, leases_raw, &reg),
@@ -3940,35 +4203,83 @@ mod tests {
         assert!(!is_peer_blocked_by_guest_mode(
             &gm,
             "192.168.1.81",
-            resolved_reg.as_deref()
+            resolved_reg.as_deref(),
+            false
         ));
 
-        // Loopback and Tailscale peers are exempt
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "127.0.0.1", None));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "::1", None));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "localhost", None));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "100.64.1.2", None));
+        // Loopback always exempt; CGNAT 100.64.0.0/10 is exempt only when Tailscale is enabled
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "127.0.0.1",
+            None,
+            false
+        ));
+        assert!(!is_peer_blocked_by_guest_mode(&gm, "::1", None, false));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "localhost",
+            None,
+            false
+        ));
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "100.64.1.2",
+            None,
+            false
+        ));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "100.64.1.2",
+            None,
+            true
+        ));
 
         // "all" alias behaves identically to "inverted"
         gm.mode = "all".to_string();
-        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.50", None));
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.99",
+            None,
+            false
+        ));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.50",
+            None,
+            false
+        ));
 
         // Selected mode blocks only listed guest IP/MAC and allows others
         gm.mode = "selected".to_string();
         gm.guest_devices = vec!["192.168.1.150".to_string(), "11:22:33:44:55:66".to_string()];
-        assert!(is_peer_blocked_by_guest_mode(&gm, "192.168.1.150", None));
+        assert!(is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.150",
+            None,
+            false
+        ));
         let guest_mac = resolve_peer_mac_from_tables("192.168.1.80", arp_raw, leases_raw, &reg);
         assert!(is_peer_blocked_by_guest_mode(
             &gm,
             "192.168.1.80",
-            guest_mac.as_deref()
+            guest_mac.as_deref(),
+            false
         ));
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.99", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.99",
+            None,
+            false
+        ));
 
         // block_router_admin = false allows all peers
         gm.block_router_admin = false;
-        assert!(!is_peer_blocked_by_guest_mode(&gm, "192.168.1.150", None));
+        assert!(!is_peer_blocked_by_guest_mode(
+            &gm,
+            "192.168.1.150",
+            None,
+            false
+        ));
     }
 
     #[test]
@@ -4112,5 +4423,164 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    fn test_compute_request_body_end_rejects_usize_max_overflow() {
+        assert_eq!(
+            compute_request_body_end(120, usize::MAX, MAX_REQ_BYTES),
+            None
+        );
+        assert_eq!(
+            compute_request_body_end(120, usize::MAX - 10, MAX_REQ_BYTES),
+            None
+        );
+        assert_eq!(
+            compute_request_body_end(MAX_REQ_BYTES - 10, 20, MAX_REQ_BYTES),
+            None
+        );
+        assert_eq!(compute_request_body_end(120, 64, MAX_REQ_BYTES), Some(184));
+    }
+
+    #[test]
+    fn test_request_origin_guard_and_cors() {
+        let cors = vec!["https://panel.example.org:8443".to_string()];
+        assert!(is_request_origin_allowed(
+            "POST",
+            Some("192.168.1.1:1680"),
+            Some("http://192.168.1.1:1680"),
+            None,
+            &[]
+        ));
+        assert!(!is_request_origin_allowed(
+            "POST",
+            Some("192.168.1.1:1680"),
+            Some("https://evil.example"),
+            None,
+            &[]
+        ));
+        assert!(!is_request_origin_allowed(
+            "POST",
+            Some("192.168.1.1:1680"),
+            None,
+            Some("https://evil.example/csrf.html"),
+            &[]
+        ));
+        assert!(is_request_origin_allowed(
+            "POST",
+            Some("192.168.1.1:1680"),
+            Some("https://panel.example.org:8443"),
+            None,
+            &cors
+        ));
+        assert!(!is_request_origin_allowed(
+            "GET",
+            Some("bad host/path"),
+            None,
+            None,
+            &[]
+        ));
+        assert!(host_matches_cors("https://panel.example.org:8443", &cors));
+        assert!(!host_matches_cors("https://evil.example", &[]));
+    }
+
+    #[test]
+    fn test_bootstrap_redacts_internal_auth_and_bot_secrets() {
+        let mut store = RouterStoreData::default();
+        store.settings.admin_pass_hash = "hash123".to_string();
+        store.settings.admin_pass_salt = "salt123".to_string();
+        store.settings.session_secret = "sess123".to_string();
+        store.settings.clash_api_secret = "clash123".to_string();
+        store.settings.agent_api_token = "agent123".to_string();
+        store.settings.ai_doctor_api_key = "ai123".to_string();
+        store.settings.server_subscription_token = "sub123".to_string();
+        store.telegram.bot_token = "123:ABC".to_string();
+        store.telegram.webhook_secret = "whsec".to_string();
+        store
+            .telegram
+            .managed_routers
+            .push(crate::store::ManagedRouter {
+                api_token: "mr_tok".to_string(),
+                ..Default::default()
+            });
+
+        let redacted = redact_store_for_bootstrap(&store);
+        assert!(redacted["settings"].get("admin_pass_hash").is_none());
+        assert!(redacted["settings"].get("admin_pass_salt").is_none());
+        assert!(redacted["settings"].get("session_secret").is_none());
+        assert_eq!(redacted["settings"]["clash_api_secret"], "[REDACTED]");
+        assert_eq!(redacted["settings"]["agent_api_token"], "[REDACTED]");
+        assert_eq!(redacted["settings"]["ai_doctor_api_key"], "[REDACTED]");
+        assert_eq!(
+            redacted["settings"]["server_subscription_token"],
+            "[REDACTED]"
+        );
+        assert_eq!(redacted["telegram"]["bot_token"], "[REDACTED]");
+        assert_eq!(redacted["telegram"]["webhook_secret"], "[REDACTED]");
+        assert_eq!(
+            redacted["telegram"]["managed_routers"][0]["api_token"],
+            "[REDACTED]"
+        );
+    }
+
+    #[test]
+    fn test_settings_save_blocks_core_bin_path_and_password_hash_override() {
+        let base = crate::store::GlobalSettings {
+            ai_doctor_api_key: "keep-me".to_string(),
+            ..Default::default()
+        };
+        let payload = json!({
+            "core_bin_path": "/tmp/evil",
+            "core_config_path": "/tmp/evil.json",
+            "admin_pass_hash": "forged_hash",
+            "admin_pass_salt": "forged_salt",
+            "session_secret": "forged_sess",
+            "agent_api_token": "forged_tok",
+            "clash_api_secret": "forged_clash",
+            "server_subscription_token": "forged_sub",
+            "ai_doctor_api_key": "[REDACTED]"
+        });
+        let updated = apply_settings_save_payload(&base, &payload).expect("save succeeds");
+        assert_eq!(updated.core_bin_path, base.core_bin_path);
+        assert_eq!(updated.core_config_path, base.core_config_path);
+        assert_eq!(updated.admin_pass_hash, base.admin_pass_hash);
+        assert_eq!(updated.admin_pass_salt, base.admin_pass_salt);
+        assert_eq!(updated.session_secret, base.session_secret);
+        assert_eq!(updated.agent_api_token, base.agent_api_token);
+        assert_eq!(updated.clash_api_secret, base.clash_api_secret);
+        assert_eq!(
+            updated.server_subscription_token,
+            base.server_subscription_token
+        );
+        assert_eq!(updated.ai_doctor_api_key, "keep-me");
+    }
+
+    #[test]
+    fn test_login_rate_limiter_blocks_after_five_failures() {
+        let map = std::sync::Mutex::new(std::collections::HashMap::new());
+        let ip = "192.168.1.50";
+        for _ in 0..5 {
+            assert!(check_login_rate_limit(&map, ip, 1000));
+            record_login_attempt(&map, ip, 1000, true);
+        }
+        assert!(!check_login_rate_limit(&map, ip, 1020));
+        assert!(check_login_rate_limit(&map, ip, 1061));
+        record_login_attempt(&map, ip, 1061, false);
+        assert!(check_login_rate_limit(&map, ip, 1062));
+    }
+
+    #[test]
+    fn test_sub_auth_and_clash_connection_id_validation() {
+        assert!(!is_router_sub_authorized("", ""));
+        assert!(!is_router_sub_authorized("anything", ""));
+        assert!(!is_router_sub_authorized("wrong", "sub-secret"));
+        assert!(is_router_sub_authorized("sub-secret", "sub-secret"));
+
+        assert!(is_safe_clash_connection_id("conn-123_abc:443"));
+        assert!(!is_safe_clash_connection_id(""));
+        assert!(!is_safe_clash_connection_id("../rules"));
+        assert!(!is_safe_clash_connection_id("foo/bar"));
+        assert!(!is_safe_clash_connection_id("foo?timeout=1"));
+        assert!(!is_safe_clash_connection_id("foo bar"));
     }
 }

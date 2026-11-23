@@ -113,6 +113,7 @@ pub(crate) enum PendingPromptKind {
     RemoveDomainFromSection { sec_id: String },
     AddIpToSection { sec_id: String },
     UpdateFptnToken { sec_id: String },
+    UpdateSourceFptnToken { src_id: String },
     AddSubscriptionOrUri,
     RouteTraceInput,
     DnsCheckInput,
@@ -1302,11 +1303,15 @@ fn looks_like_transfer_payload(text: &str) -> bool {
 }
 
 fn looks_like_proxy_uri(text: &str) -> bool {
-    let Some(first_line) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
+    let trimmed = text.trim();
+    if trimmed.starts_with('{') && crate::config_gen::decode_fptn_token_json(trimmed).is_some() {
+        return true;
+    }
+    let Some(first_line) = trimmed.lines().map(str::trim).find(|l| !l.is_empty()) else {
         return false;
     };
     let lower = first_line.to_ascii_lowercase();
-    const PREFIXES: [&str; 13] = [
+    const PREFIXES: [&str; 16] = [
         "vless://",
         "vmess://",
         "trojan://",
@@ -1319,6 +1324,9 @@ fn looks_like_proxy_uri(text: &str) -> bool {
         "wg://",
         "awg://",
         "fptn:",
+        "fptn//",
+        "fptnb:",
+        "fptnb//",
         "https://",
     ];
     PREFIXES.iter().any(|p| lower.starts_with(p))
@@ -2529,11 +2537,83 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .trim();
-                    if text.is_empty() {
+                    let owned_doc_text = if text.is_empty()
+                        && let Some(doc) = msg.get("document")
+                        && let Some(file_id) = doc
+                            .get("file_id")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                    {
+                        const MAX_TG_DOC_BYTES: u64 = 262_144;
+                        let too_big = doc
+                            .get("file_size")
+                            .and_then(Value::as_u64)
+                            .is_some_and(|sz| sz > MAX_TG_DOC_BYTES);
+                        if too_big {
+                            if peek_chat_prompt(chat_id).is_some() {
+                                let ru = {
+                                    let d = state.data.read().await;
+                                    is_ru(&d)
+                                };
+                                let err_reply = BotReply::text(tr(
+                                    ru,
+                                    "[ERR] Файл слишком большой (максимум 256 КБ).",
+                                    "[ERR] File is too large (max 256 KB).",
+                                ));
+                                processed_any = true;
+                                Box::pin(deliver_bot_reply(
+                                    &token,
+                                    chat_id,
+                                    None,
+                                    err_reply,
+                                    &header,
+                                    proxy_opt.as_deref(),
+                                    direct_fallback,
+                                ))
+                                .await;
+                            }
+                            continue;
+                        }
+                        match transport::download_telegram_document_text(
+                            &token,
+                            file_id,
+                            proxy_opt.as_deref(),
+                            direct_fallback,
+                        )
+                        .await
+                        {
+                            Ok(content) => Some(content),
+                            Err(e) => {
+                                if peek_chat_prompt(chat_id).is_some() {
+                                    let err_reply = BotReply::text(format!(
+                                        "[ERR] {}",
+                                        escape_html(&e.to_string())
+                                    ));
+                                    processed_any = true;
+                                    Box::pin(deliver_bot_reply(
+                                        &token,
+                                        chat_id,
+                                        None,
+                                        err_reply,
+                                        &header,
+                                        proxy_opt.as_deref(),
+                                        direct_fallback,
+                                    ))
+                                    .await;
+                                }
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    let eff_text = owned_doc_text.as_deref().map(str::trim).unwrap_or(text);
+                    if eff_text.is_empty() {
                         continue;
                     }
                     processed_any = true;
-                    let reply = dispatch_text_message(chat_id, text, &state, &core).await;
+                    let reply = dispatch_text_message(chat_id, eff_text, &state, &core).await;
                     Box::pin(deliver_bot_reply(
                         &token,
                         chat_id,

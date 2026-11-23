@@ -735,7 +735,18 @@ pub(crate) async fn send_tg_document(
         std::env::temp_dir()
     };
     let tmp_path = tmp_dir.join(format!("tachyon-tg-upload-{pid}-{seq}-{safe_name}"));
-    std::fs::write(&tmp_path, doc.bytes)?;
+    {
+        use std::io::Write as _;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut file = opts.open(&tmp_path)?;
+        file.write_all(doc.bytes)?;
+    }
     let _cleanup = RemoveFileOnDrop(tmp_path.clone());
 
     let url = format!("https://api.telegram.org/bot{clean}/sendDocument");
@@ -850,4 +861,53 @@ pub(crate) async fn register_bot_commands(
             .unwrap_or("setMyCommands failed");
         anyhow::bail!("Telegram API error: {desc}")
     }
+}
+
+pub(crate) async fn download_telegram_document_text(
+    token: &str,
+    file_id: &str,
+    proxy_url: Option<&str>,
+    direct_fallback: bool,
+) -> anyhow::Result<String> {
+    const MAX_DOCUMENT_BYTES: usize = 262_144;
+    let clean_token = token.trim();
+    let clean_file_id = file_id.trim();
+    if clean_token.is_empty() || clean_file_id.is_empty() {
+        anyhow::bail!("Bot token or file_id is missing");
+    }
+
+    let get_file_url = format!("https://api.telegram.org/bot{clean_token}/getFile");
+    let body = json!({ "file_id": clean_file_id }).to_string();
+    let meta_raw =
+        curl_telegram_api(&get_file_url, Some(&body), 10, proxy_url, direct_fallback).await?;
+    let meta: Value = serde_json::from_slice(&meta_raw)?;
+    if meta.get("ok").and_then(Value::as_bool) != Some(true) {
+        let desc = meta
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("getFile failed");
+        anyhow::bail!("Telegram getFile error: {desc}");
+    }
+    if let Some(sz) = meta.pointer("/result/file_size").and_then(Value::as_u64)
+        && sz > MAX_DOCUMENT_BYTES as u64
+    {
+        anyhow::bail!("Document exceeds {MAX_DOCUMENT_BYTES} bytes limit");
+    }
+    let file_path = meta
+        .pointer("/result/file_path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| {
+            !s.is_empty()
+                && !s.contains("..")
+                && !s.chars().any(|c| c.is_control() || c == '?' || c == '#')
+        })
+        .ok_or_else(|| anyhow::anyhow!("Invalid or missing Telegram file_path"))?;
+
+    let download_url = format!("https://api.telegram.org/file/bot{clean_token}/{file_path}");
+    let bytes = curl_telegram_api(&download_url, None, 15, proxy_url, direct_fallback).await?;
+    if bytes.len() > MAX_DOCUMENT_BYTES {
+        anyhow::bail!("Downloaded document exceeds {MAX_DOCUMENT_BYTES} bytes limit");
+    }
+    Ok(String::from_utf8(bytes)?)
 }

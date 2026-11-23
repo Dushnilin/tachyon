@@ -145,17 +145,128 @@ impl CoreManager {
         enabled && !self.is_manually_stopped()
     }
 
+    async fn drain_core_log_stream<R>(stream: R, st: Arc<AppState>)
+    where
+        R: tokio::io::AsyncRead + Unpin,
+    {
+        const MAX_LINE_BYTES: usize = 16 * 1024;
+        let mut reader = BufReader::with_capacity(8192, stream);
+        let mut line_buf: Vec<u8> = Vec::with_capacity(512);
+        let mut discarding = false;
+        loop {
+            let avail = match reader.fill_buf().await {
+                Ok([]) => break,
+                Ok(b) => b,
+                Err(_) => break,
+            };
+            let (consume_len, saw_nl) = if let Some(nl_pos) = avail.iter().position(|&b| b == b'\n')
+            {
+                (nl_pos + 1, true)
+            } else {
+                (avail.len(), false)
+            };
+            if !discarding {
+                let raw_slice = &avail[..consume_len.saturating_sub(usize::from(saw_nl))];
+                let take_bytes = raw_slice.strip_suffix(b"\r").unwrap_or(raw_slice);
+                let room = MAX_LINE_BYTES.saturating_sub(line_buf.len());
+                if take_bytes.len() <= room {
+                    line_buf.extend_from_slice(take_bytes);
+                } else {
+                    line_buf.extend_from_slice(&take_bytes[..room]);
+                    discarding = true;
+                }
+            }
+            reader.consume(consume_len);
+            if saw_nl {
+                if !line_buf.is_empty() {
+                    let msg = String::from_utf8_lossy(&line_buf);
+                    let clean = if discarding {
+                        format!("{msg} [truncated]")
+                    } else {
+                        msg.into_owned()
+                    };
+                    st.live.write().await.push_log(&clean);
+                    line_buf.clear();
+                }
+                discarding = false;
+            }
+        }
+        if !line_buf.is_empty() {
+            let msg = String::from_utf8_lossy(&line_buf);
+            st.live.write().await.push_log(&msg);
+        }
+    }
+
+    async fn read_pipe_bounded<R: tokio::io::AsyncRead + Unpin>(
+        mut r: R,
+        limit: usize,
+    ) -> std::io::Result<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = r.read(&mut buf).await?;
+            if n == 0 {
+                break;
+            }
+            if out.len().saturating_add(n) > limit {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("process output exceeds {limit} byte limit"),
+                ));
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+        Ok(out)
+    }
+
     async fn run_command_output_with_timeout(
         cmd: &mut Command,
         timeout: Duration,
     ) -> std::io::Result<std::process::Output> {
-        cmd.kill_on_drop(true);
-        match tokio::time::timeout(timeout, cmd.output()).await {
-            Ok(res) => res,
-            Err(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("command timed out after {}ms", timeout.as_millis()),
-            )),
+        const MAX_STDOUT_BYTES: usize = 16 * 1024 * 1024;
+        const MAX_STDERR_BYTES: usize = 1024 * 1024;
+        cmd.stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = cmd.spawn()?;
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        let fut = async {
+            let out_fut = async {
+                match stdout_pipe {
+                    Some(r) => Self::read_pipe_bounded(r, MAX_STDOUT_BYTES).await,
+                    None => Ok(Vec::new()),
+                }
+            };
+            let err_fut = async {
+                match stderr_pipe {
+                    Some(r) => Self::read_pipe_bounded(r, MAX_STDERR_BYTES).await,
+                    None => Ok(Vec::new()),
+                }
+            };
+            let (out_bytes, err_bytes) = tokio::try_join!(out_fut, err_fut)?;
+            let status = child.wait().await?;
+            Ok::<std::process::Output, std::io::Error>(std::process::Output {
+                status,
+                stdout: out_bytes,
+                stderr: err_bytes,
+            })
+        };
+        match tokio::time::timeout(timeout, fut).await {
+            Ok(Ok(out)) => Ok(out),
+            Ok(Err(e)) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                Err(e)
+            }
+            Err(_) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("command timed out after {}ms", timeout.as_millis()),
+                ))
+            }
         }
     }
 
@@ -1248,11 +1359,23 @@ impl CoreManager {
     }
 
     async fn run_core_check_on_value(bin_path: &str, candidate_cfg: &Value) -> Result<(), String> {
-        let tmp_check_path = std::env::temp_dir().join("tachyon-core-candidate.json");
-        crypto_gen::write_json_if_changed(&tmp_check_path, candidate_cfg)
+        static CHECK_CANDIDATE_SEQ: PortableAtomicU64 = PortableAtomicU64::new(0);
+        struct CandidateFileGuard(PathBuf);
+        impl Drop for CandidateFileGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+
+        let seq = CHECK_CANDIDATE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let guard = CandidateFileGuard(std::env::temp_dir().join(format!(
+            "tachyon-core-candidate-{}-{seq}.json",
+            std::process::id()
+        )));
+        crypto_gen::write_json_if_changed(&guard.0, candidate_cfg)
             .map_err(|e| format!("failed to write check candidate: {e}"))?;
         let mut cmd = Command::new(bin_path);
-        cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
+        cmd.args(["check", "-c", &guard.0.to_string_lossy()]);
         match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await {
             Ok(out) if out.status.success() => Ok(()),
             Ok(out) => {
@@ -1416,12 +1539,47 @@ impl CoreManager {
         Ok((written_path, prepared_cfg, quarantined))
     }
 
+    fn is_allowed_cache_path(path: &Path) -> bool {
+        if path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return false;
+        }
+        let allowed_roots = [
+            "/tmp",
+            "/var",
+            "/etc/tachyon",
+            "/etc/tachyon-core",
+            "/usr/share/tachyon",
+            "/usr/share/tachyon-core",
+            "/opt",
+            "/mnt",
+            "/overlay",
+        ];
+        let has_posix_root = path.to_str().is_some_and(|s| s.starts_with('/'));
+        if (path.is_absolute() || has_posix_root)
+            && allowed_roots.iter().any(|r| path.starts_with(r))
+        {
+            return true;
+        }
+        #[cfg(test)]
+        if path.starts_with(std::env::temp_dir()) {
+            return true;
+        }
+        false
+    }
+
     fn ensure_runtime_cache_dir(cache_path: &str) {
         let trimmed = cache_path.trim();
         if trimmed.is_empty() {
             return;
         }
         let dst = Path::new(trimmed);
+        if !Self::is_allowed_cache_path(dst) {
+            eprintln!("[tachyon] ignoring disallowed cache_path: {trimmed}");
+            return;
+        }
         if let Some(parent) = dst.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -1540,6 +1698,7 @@ impl CoreManager {
                 return Err(e);
             }
         };
+        let mut safe_minimal_active = quarantined.contains_key("_core_runtime");
 
         let bin_path = self.resolve_bin_path().await;
         if !Path::new(&bin_path).exists() {
@@ -1551,6 +1710,7 @@ impl CoreManager {
         let mut child = match Self::spawn_and_verify_core(&bin_path, &cfg_path).await {
             Ok(c) => c,
             Err(first_err) if !quarantined.contains_key("_core_runtime") => {
+                safe_minimal_active = true;
                 let (key, label) = Self::attribute_error_to_store_entity(
                     &first_err,
                     &prepared_cfg,
@@ -1602,25 +1762,19 @@ impl CoreManager {
 
         if let Some(stdout) = child.stdout.take() {
             let st = Arc::clone(&self.state);
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stdout).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    st.live.write().await.push_log(&line);
-                }
-            });
+            tokio::spawn(Self::drain_core_log_stream(stdout, st));
         }
         if let Some(stderr) = child.stderr.take() {
             let st = Arc::clone(&self.state);
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    st.live.write().await.push_log(&line);
-                }
-            });
+            tokio::spawn(Self::drain_core_log_stream(stderr, st));
         }
 
         *self.proc.lock().await = Some((child, Instant::now()));
-        let net_res = net_stack::apply_network_stack(&store_snapshot).await;
+        let net_res = if safe_minimal_active {
+            net_stack::apply_network_stack_safe_minimal(&store_snapshot).await
+        } else {
+            net_stack::apply_network_stack(&store_snapshot).await
+        };
         let _ = self.refresh_core_version().await;
         let nft_ok = net_stack::check_nft_table_active().await;
 
@@ -1630,6 +1784,7 @@ impl CoreManager {
             live.core_pid = Some(pid);
             live.core_identity = identity;
             live.nft_table_active = nft_ok;
+            live.safe_minimal_active = safe_minimal_active;
             live.push_event(
                 "info",
                 "core_mgr",
@@ -1661,7 +1816,7 @@ impl CoreManager {
                 ),
             );
             let (re_cfg_val, re_seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
-            if let Ok((re_cfg_path, _, _)) = self
+            if let Ok((re_cfg_path, _, re_quarantined)) = self
                 .prepare_and_write_validated_core_config(
                     &store_snapshot,
                     re_cfg_val,
@@ -1669,7 +1824,13 @@ impl CoreManager {
                 )
                 .await
             {
-                let _ = net_stack::apply_network_stack(&store_snapshot).await;
+                let re_safe_minimal = re_quarantined.contains_key("_core_runtime");
+                self.state.live.write().await.safe_minimal_active = re_safe_minimal;
+                if re_safe_minimal {
+                    let _ = net_stack::apply_network_stack_safe_minimal(&store_snapshot).await;
+                } else {
+                    let _ = net_stack::apply_network_stack(&store_snapshot).await;
+                }
                 let payload = json!({ "path": re_cfg_path, "payload": "" }).to_string();
                 if self
                     .clash_request("PUT", "/configs?force=true", Some(&payload))
@@ -1696,11 +1857,55 @@ impl CoreManager {
         })
     }
 
+    #[cfg(target_os = "linux")]
+    fn is_pid_running_non_zombie(pid: u32) -> bool {
+        let status_path = format!("/proc/{pid}/status");
+        let Ok(status) = std::fs::read_to_string(&status_path) else {
+            return false;
+        };
+        !status.lines().any(|line| {
+            line.strip_prefix("State:")
+                .map(str::trim_start)
+                .is_some_and(|st| st.starts_with('Z') || st.starts_with('X'))
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn verify_external_tachyon_core_pid(
+        pid: u32,
+        expected_identity: Option<&sys_info::ProcessIdentity>,
+    ) -> bool {
+        if !Self::is_pid_running_non_zombie(pid) {
+            return false;
+        }
+        if let Some(id) = expected_identity
+            && id.pid == pid
+        {
+            return sys_info::verify_process_identity(id);
+        }
+        std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            .ok()
+            .is_some_and(|comm| comm.trim() == "tachyon-core")
+    }
+
     pub async fn stop(&self) -> anyhow::Result<()> {
-        self.set_manual_stop(true);
+        self.stop_inner(true).await
+    }
+
+    pub async fn stop_for_shutdown(&self) -> anyhow::Result<()> {
+        self.stop_inner(false).await
+    }
+
+    async fn stop_inner(&self, mark_manual_stop: bool) -> anyhow::Result<()> {
+        if mark_manual_stop {
+            self.set_manual_stop(true);
+        }
         let _guard = self.reload_lock.lock().await;
         let store_snapshot = { self.state.data.read().await.clone() };
-        let keep_fail_closed = if Self::service_autostart_enabled() {
+        let keep_fail_closed = if !Self::service_autostart_enabled() {
+            net_stack::remove_kill_switch().await;
+            false
+        } else if mark_manual_stop || net_stack::direct_fallback_veto(&store_snapshot).is_some() {
             net_stack::hold_kill_switch(&store_snapshot).await.is_some()
         } else {
             net_stack::remove_kill_switch().await;
@@ -1713,13 +1918,40 @@ impl CoreManager {
         live.core_pid = None;
         live.core_identity = None;
         live.nft_table_active = false;
+        live.safe_minimal_active = false;
         Ok(())
     }
 
     async fn stop_locked(&self) {
         if let Some((mut child, _)) = self.proc.lock().await.take() {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            #[cfg(unix)]
+            if let Some(child_pid) = child.id() {
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    Command::new("kill")
+                        .args(["-TERM", &child_pid.to_string()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .kill_on_drop(true)
+                        .status(),
+                )
+                .await;
+                if !matches!(
+                    tokio::time::timeout(Duration::from_millis(1500), child.wait()).await,
+                    Ok(Ok(_))
+                ) {
+                    let _ = child.kill().await;
+                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                }
+            } else {
+                let _ = child.kill().await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = child.kill().await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+            }
         }
         #[cfg(target_os = "linux")]
         {
@@ -1729,15 +1961,21 @@ impl CoreManager {
             let mut killed_pids = std::collections::HashSet::new();
             for _ in 0..8 {
                 let target_pid = {
-                    let live_pid = self.state.live.read().await.core_pid;
-                    live_pid
+                    let live = self.state.live.read().await;
+                    live.core_pid
                         .filter(|p| {
-                            Path::new(&format!("/proc/{p}")).exists() && !killed_pids.contains(p)
+                            !killed_pids.contains(p)
+                                && Self::verify_external_tachyon_core_pid(
+                                    *p,
+                                    live.core_identity.as_ref(),
+                                )
                         })
                         .or_else(|| {
                             sys_info::find_running_process_by_name("tachyon-core")
                                 .map(|(p, _)| p)
-                                .filter(|p| !killed_pids.contains(p))
+                                .filter(|p| {
+                                    !killed_pids.contains(p) && Self::is_pid_running_non_zombie(*p)
+                                })
                         })
                 };
                 let Some(ext_pid) = target_pid else {
@@ -1756,7 +1994,7 @@ impl CoreManager {
                 .await;
                 let mut exited = false;
                 for _ in 0..15 {
-                    if !Path::new(&format!("/proc/{ext_pid}")).exists() {
+                    if !Self::is_pid_running_non_zombie(ext_pid) {
                         exited = true;
                         break;
                     }
@@ -1782,6 +2020,7 @@ impl CoreManager {
         live.core_running = false;
         live.core_pid = None;
         live.core_identity = None;
+        live.safe_minimal_active = false;
         live.core_uptime_secs = 0;
         live.core_rss_bytes = 0;
         live.total_up_bps = 0;
@@ -1816,11 +2055,18 @@ impl CoreManager {
         let store_snapshot = { self.state.data.read().await.clone() };
         self.ensure_server_tls_certs(&store_snapshot).await;
         let (cfg_val, seed_errors) = self.compile_or_safe_minimal(&store_snapshot).await;
-        let (cfg_path_buf, _, _) = self
+        let (cfg_path_buf, _, quarantined) = self
             .prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors)
             .await?;
+        let safe_minimal_active = quarantined.contains_key("_core_runtime");
+        self.state.live.write().await.safe_minimal_active = safe_minimal_active;
         let cfg_path = cfg_path_buf.to_string_lossy().to_string();
-        if let Err(e) = net_stack::apply_network_stack(&store_snapshot).await {
+        let net_res = if safe_minimal_active {
+            net_stack::apply_network_stack_safe_minimal(&store_snapshot).await
+        } else {
+            net_stack::apply_network_stack(&store_snapshot).await
+        };
+        if let Err(e) = net_res {
             eprintln!("[tachyon] apply_network_stack failed during reload: {e:#}");
             self.state.live.write().await.push_event(
                 "error",
@@ -2339,6 +2585,8 @@ impl CoreManager {
             }
             a.extend([
                 "-fsSL".to_string(),
+                "--max-filesize".to_string(),
+                "16777216".to_string(),
                 "--connect-timeout".to_string(),
                 "3".to_string(),
                 "--max-time".to_string(),
@@ -2550,6 +2798,7 @@ impl CoreManager {
         if !body_bytes.is_empty() {
             stream.write_all(body_bytes).await?;
         }
+        const MAX_CLASH_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
         let mut buf = Vec::with_capacity(65536);
         let mut chunk = [0u8; 16384];
         let mut expected_total: Option<usize> = None;
@@ -2558,6 +2807,12 @@ impl CoreManager {
                 let n = stream.read(&mut chunk).await?;
                 if n == 0 {
                     break;
+                }
+                if buf.len().saturating_add(n) > MAX_CLASH_RESPONSE_BYTES {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "clash response exceeds 16 MiB limit",
+                    ));
                 }
                 buf.extend_from_slice(&chunk[..n]);
                 if expected_total.is_none()
@@ -2580,7 +2835,14 @@ impl CoreManager {
                                 && k.trim().eq_ignore_ascii_case("content-length")
                                 && let Ok(cl) = v.trim().parse::<usize>()
                             {
-                                expected_total = Some(body_start + cl);
+                                let total = body_start.saturating_add(cl);
+                                if total > MAX_CLASH_RESPONSE_BYTES {
+                                    return Err(std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        "clash response Content-Length exceeds 16 MiB limit",
+                                    ));
+                                }
+                                expected_total = Some(total);
                                 break;
                             }
                         }
@@ -3333,8 +3595,9 @@ impl CoreManager {
         }
         let mut candidate = self.state.data.read().await.clone();
         let mut updated_sources = 0usize;
-        let mut metadata_changed = false;
+        let mut persist_needed = false;
         let mut core_reload_needed = false;
+        let mut mem_updates: Vec<(String, i64, String, u64, u64)> = Vec::new();
 
         for res in fetched_results {
             let Some(src) = candidate
@@ -3344,6 +3607,20 @@ impl CoreManager {
             else {
                 continue;
             };
+            let static_meta_changed = src.sub_title != res.updated_src.sub_title
+                || src.sub_support_url != res.updated_src.sub_support_url
+                || src.sub_web_page_url != res.updated_src.sub_web_page_url
+                || src.sub_announce != res.updated_src.sub_announce
+                || src.sub_total_bytes != res.updated_src.sub_total_bytes
+                || src.sub_expire_unix != res.updated_src.sub_expire_unix
+                || src.sub_preferred_user_agent != res.updated_src.sub_preferred_user_agent
+                || (src.subscription_update_interval.trim().is_empty()
+                    && !res
+                        .updated_src
+                        .subscription_update_interval
+                        .trim()
+                        .is_empty());
+
             src.sub_title = res.updated_src.sub_title;
             src.sub_support_url = res.updated_src.sub_support_url;
             src.sub_web_page_url = res.updated_src.sub_web_page_url;
@@ -3366,14 +3643,17 @@ impl CoreManager {
             }
 
             if !res.nodes.is_empty() {
-                if !nodes_materially_equal(&src.cached_nodes, &res.nodes) {
+                let nodes_changed = !nodes_materially_equal(&src.cached_nodes, &res.nodes);
+                if nodes_changed {
                     core_reload_needed = true;
+                }
+                if nodes_changed || static_meta_changed {
+                    persist_needed = true;
                 }
                 src.cached_nodes = res.nodes;
                 src.last_updated_unix = finish_ts;
                 src.sub_last_error.clear();
                 updated_sources += 1;
-                metadata_changed = true;
             } else {
                 src.sub_last_error = res.last_fetch_err.unwrap_or_else(|| {
                     "Не удалось загрузить или разобрать узлы подписки".to_string()
@@ -3382,11 +3662,17 @@ impl CoreManager {
                 if !src.cached_nodes.is_empty() {
                     updated_sources += 1;
                 }
-                metadata_changed = true;
             }
+            mem_updates.push((
+                src.id.clone(),
+                src.last_updated_unix,
+                src.sub_last_error.clone(),
+                src.sub_upload_bytes,
+                src.sub_download_bytes,
+            ));
         }
 
-        if metadata_changed || updated_sources > 0 {
+        if persist_needed {
             if let Err(e) =
                 transaction::commit_transaction_with_source(&self.state, candidate, "subscription")
                     .await
@@ -3401,6 +3687,21 @@ impl CoreManager {
             if core_reload_needed && !self.is_manually_stopped() {
                 let _ = self.apply_or_reload().await;
             }
+        } else if !mem_updates.is_empty() {
+            let mut d = self.state.data.write().await;
+            for (id, ts, err, up, down) in mem_updates {
+                if let Some(src) = d
+                    .outbound_sources
+                    .iter_mut()
+                    .find(|s| s.id == id && s.source_type == "subscription")
+                {
+                    src.last_updated_unix = ts;
+                    src.sub_last_error = err;
+                    src.sub_upload_bytes = up;
+                    src.sub_download_bytes = down;
+                }
+            }
+            crate::ubus_bridge::sync_section_cache(&d);
         }
         Ok(updated_sources)
     }
@@ -3505,17 +3806,51 @@ impl CoreManager {
         );
         Ok(())
     }
+}
 
-    /// Register or provision a 1-click Cloudflare WARP / MASQUE `OutboundSource`,
-    /// delegating first to `tachyon-core` native `POST /tachyon/warp/register`.
-    pub async fn register_warp_source(&self) -> anyhow::Result<Value> {
+struct WarpProvisioned {
+    payload: Value,
+    access_token: String,
+    endpoint: String,
+    server: String,
+    server_port: u16,
+    private_key: String,
+    peer_public_key: String,
+    dev_id: String,
+    ipv4: String,
+    ipv6: String,
+    reserved_csv: String,
+}
+
+fn split_host_port_with_default(raw: &str, default_port: u16) -> (String, u16) {
+    let trimmed = raw.trim();
+    if let Some(rest) = trimmed.strip_prefix('[')
+        && let Some((host, port_part)) = rest.split_once("]:")
+        && let Ok(port) = port_part.parse::<u16>()
+    {
+        return (host.to_string(), port);
+    }
+    if trimmed.matches(':').count() == 1
+        && let Some((host, port_part)) = trimmed.split_once(':')
+        && let Ok(port) = port_part.parse::<u16>()
+    {
+        return (host.to_string(), port);
+    }
+    (trimmed.trim_matches(['[', ']']).to_string(), default_port)
+}
+
+impl CoreManager {
+    async fn provision_warp_internal(&self) -> anyhow::Result<WarpProvisioned> {
         let mut kp = crypto_gen::generate_wg_keypair();
-        let mut dev_id = format!("warp-{}", crypto_gen::generate_hex(6));
+        kp.private_key.clear();
+        let mut dev_id = String::new();
         let mut access_token = String::new();
         let mut ipv4 = "172.16.0.2/32".to_string();
         let mut ipv6 = String::new();
-        let mut endpoint = "engage.cloudflareclient.com:2408".to_string();
-        let mut peer_pub = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=".to_string();
+        let mut server = "engage.cloudflareclient.com".to_string();
+        let mut server_port: u16 = 2408;
+        let mut peer_pub = String::new();
+        let mut reserved_vec: Vec<u8> = Vec::new();
         let mut masque_outbound = json!(null);
 
         if let Ok(core_warp) = self
@@ -3531,17 +3866,20 @@ impl CoreManager {
             }
             if let Some(wg) = core_warp.get("wireguard_outbound") {
                 if let Some(pk) = wg.get("private_key").and_then(Value::as_str) {
-                    kp.private_key = pk.to_string();
+                    kp.private_key = pk.trim().to_string();
                 }
                 if let Some(ppk) = wg.get("peer_public_key").and_then(Value::as_str) {
-                    peer_pub = ppk.to_string();
+                    peer_pub = ppk.trim().to_string();
                 }
-                if let Some(srv) = wg.get("server").and_then(Value::as_str) {
-                    let port = wg
-                        .get("server_port")
-                        .and_then(Value::as_u64)
-                        .unwrap_or(2408);
-                    endpoint = format!("{srv}:{port}");
+                if let Some(srv) = wg.get("server").and_then(Value::as_str)
+                    && !srv.trim().is_empty()
+                {
+                    server = srv.trim().to_string();
+                }
+                if let Some(port) = wg.get("server_port").and_then(Value::as_u64)
+                    && let Ok(p16) = u16::try_from(port)
+                {
+                    server_port = p16;
                 }
                 if let Some(addrs) = wg.get("local_address").and_then(Value::as_array) {
                     for a in addrs.iter().filter_map(Value::as_str) {
@@ -3552,11 +3890,206 @@ impl CoreManager {
                         }
                     }
                 }
+                if let Some(res) = wg.get("reserved").and_then(Value::as_array) {
+                    reserved_vec = res
+                        .iter()
+                        .filter_map(Value::as_u64)
+                        .filter_map(|v| u8::try_from(v).ok())
+                        .collect();
+                }
+            }
+            if reserved_vec.is_empty()
+                && let Some(res) = core_warp.get("reserved").and_then(Value::as_array)
+            {
+                reserved_vec = res
+                    .iter()
+                    .filter_map(Value::as_u64)
+                    .filter_map(|v| u8::try_from(v).ok())
+                    .collect();
             }
             if let Some(m) = core_warp.get("masque_outbound") {
                 masque_outbound = m.clone();
             }
         }
+
+        if kp.private_key.is_empty() || peer_pub.is_empty() {
+            let fallback_kp = crypto_gen::generate_wg_keypair();
+            let reg_body = json!({
+                "key": fallback_kp.public_key,
+                "install_id": "",
+                "fcm_token": "",
+                "tos": "2026-01-01T00:00:00.000Z",
+                "model": "tachyon-router",
+                "serial_number": crypto_gen::generate_hex(8),
+                "locale": "en_US",
+            });
+            let reg_json = serde_json::to_string(&reg_body)?;
+            let out = tokio::time::timeout(
+                Duration::from_secs(12),
+                Command::new("curl")
+                    .args([
+                        "--silent",
+                        "--show-error",
+                        "--fail",
+                        "--connect-timeout",
+                        "4",
+                        "--max-time",
+                        "10",
+                        "-X",
+                        "POST",
+                        "-H",
+                        "Content-Type: application/json",
+                        "-H",
+                        "User-Agent: okhttp/3.12.1",
+                        "--data",
+                        &reg_json,
+                        "https://api.cloudflareclient.com/v0a2158/reg",
+                    ])
+                    .output(),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("Таймаут регистрации Cloudflare WARP"))??;
+
+            if !out.status.success() {
+                let err_txt = String::from_utf8_lossy(&out.stderr);
+                anyhow::bail!(
+                    "Не удалось зарегистрировать устройство Cloudflare WARP: {}",
+                    err_txt.trim()
+                );
+            }
+            let cf: Value = serde_json::from_slice(&out.stdout)
+                .map_err(|e| anyhow::anyhow!("Некорректный ответ Cloudflare WARP API: {e}"))?;
+            if let Some(id) = cf.get("id").and_then(Value::as_str) {
+                dev_id = id.to_string();
+            }
+            if let Some(tok) = cf.get("token").and_then(Value::as_str) {
+                access_token = tok.to_string();
+            }
+            if let Some(peer) = cf.pointer("/config/peers/0") {
+                if let Some(ppk) = peer.get("public_key").and_then(Value::as_str) {
+                    peer_pub = ppk.trim().to_string();
+                }
+                let ep_raw = peer
+                    .pointer("/endpoint/host")
+                    .or_else(|| peer.pointer("/endpoint/v4"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("engage.cloudflareclient.com:2408");
+                let (h, p) = split_host_port_with_default(ep_raw, 2408);
+                if !h.is_empty() {
+                    server = h;
+                }
+                if p > 0 {
+                    server_port = p;
+                }
+            }
+            if let Some(v4) = cf
+                .pointer("/config/interface/addresses/v4")
+                .and_then(Value::as_str)
+                && !v4.trim().is_empty()
+            {
+                let v4t = v4.trim();
+                ipv4 = if v4t.contains('/') {
+                    v4t.to_string()
+                } else {
+                    format!("{v4t}/32")
+                };
+            }
+            if let Some(v6) = cf
+                .pointer("/config/interface/addresses/v6")
+                .and_then(Value::as_str)
+                && !v6.trim().is_empty()
+            {
+                let v6t = v6.trim();
+                ipv6 = if v6t.contains('/') {
+                    v6t.to_string()
+                } else {
+                    format!("{v6t}/128")
+                };
+            }
+            if let Some(client_id) = cf.pointer("/config/client_id").and_then(Value::as_str)
+                && let Ok(raw_bytes) = B64_STD.decode(client_id.trim())
+                && raw_bytes.len() >= 3
+            {
+                reserved_vec = raw_bytes[..3].to_vec();
+            }
+            kp = fallback_kp;
+        }
+
+        if kp.private_key.is_empty() || peer_pub.is_empty() {
+            anyhow::bail!(
+                "Регистрация WARP не вернула обязательные ключи WireGuard (private_key / peer_public_key)"
+            );
+        }
+        if dev_id.is_empty() {
+            dev_id = format!("warp-{}", crypto_gen::generate_hex(6));
+        }
+
+        let endpoint = if server.contains(':') {
+            format!("[{server}]:{server_port}")
+        } else {
+            format!("{server}:{server_port}")
+        };
+        let reserved_csv = reserved_vec
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let payload = json!({
+            "ok": true,
+            "success": true,
+            "source_id": "warp_cf",
+            "device_id": dev_id,
+            "private_key": kp.private_key,
+            "peer_public_key": peer_pub,
+            "public_key": peer_pub,
+            "client_public_key": kp.public_key,
+            "server_address": server,
+            "server": server,
+            "server_port": server_port,
+            "endpoint": endpoint,
+            "local_address": ipv4,
+            "ipv4": ipv4,
+            "ipv6_address": ipv6,
+            "ipv6": ipv6,
+            "reserved": reserved_vec,
+            "mtu": 1280,
+            "jc": 4,
+            "jmin": 40,
+            "jmax": 70,
+            "s1": 0,
+            "s2": 0,
+            "h1": 1,
+            "h2": 2,
+            "h3": 3,
+            "h4": 4,
+            "masque_outbound": masque_outbound,
+        });
+
+        Ok(WarpProvisioned {
+            payload,
+            access_token,
+            endpoint,
+            server,
+            server_port,
+            private_key: kp.private_key,
+            peer_public_key: peer_pub,
+            dev_id,
+            ipv4,
+            ipv6,
+            reserved_csv,
+        })
+    }
+
+    /// Provision Cloudflare WARP account credentials without mutating persistent router config.
+    pub async fn provision_warp_credentials(&self) -> anyhow::Result<Value> {
+        Ok(self.provision_warp_internal().await?.payload)
+    }
+
+    /// Register or provision a 1-click Cloudflare WARP / MASQUE `OutboundSource`,
+    /// persisting `warp_cf` into the router store and triggering hot reload.
+    pub async fn register_warp_source(&self) -> anyhow::Result<Value> {
+        let prov = self.provision_warp_internal().await?;
 
         let mut candidate = self.state.data.read().await.clone();
         let warp_src = crate::store::OutboundSource {
@@ -3564,15 +4097,21 @@ impl CoreManager {
             enabled: true,
             name: "Cloudflare WARP".to_string(),
             source_type: "warp".to_string(),
-            wg_endpoint: endpoint.clone(),
-            wg_private_key: kp.private_key.clone(),
-            wg_peer_public_key: peer_pub,
-            wg_local_address: ipv4.clone(),
+            wg_endpoint: prov.endpoint,
+            wg_private_key: prov.private_key.clone(),
+            wg_peer_public_key: prov.peer_public_key.clone(),
+            wg_local_address: prov.ipv4.clone(),
             wg_mtu: 1280,
-            warp_device_id: dev_id.clone(),
-            warp_access_token: access_token,
-            warp_ipv4: ipv4.clone(),
-            warp_ipv6: ipv6.clone(),
+            warp_device_id: prov.dev_id,
+            warp_access_token: prov.access_token,
+            warp_ipv4: prov.ipv4,
+            warp_ipv6: prov.ipv6,
+            warp_private_key: prov.private_key,
+            warp_peer_public_key: prov.peer_public_key,
+            warp_server: prov.server,
+            warp_server_port: prov.server_port,
+            warp_reserved: prov.reserved_csv,
+            warp_mtu: 1280,
             last_updated_unix: unix_now_secs(),
             ..Default::default()
         };
@@ -3589,16 +4128,7 @@ impl CoreManager {
         transaction::commit_transaction(&self.state, candidate).await?;
         let _ = self.apply_or_reload().await;
 
-        Ok(json!({
-            "ok": true,
-            "source_id": "warp_cf",
-            "device_id": dev_id,
-            "public_key": kp.public_key,
-            "ipv4": ipv4,
-            "ipv6": ipv6,
-            "endpoint": endpoint,
-            "masque_outbound": masque_outbound
-        }))
+        Ok(prov.payload)
     }
 
     /// Set per-device upload/download rate limit via `tachyon-core` `POST /tachyon/devices/limit`.
@@ -3974,6 +4504,18 @@ impl CoreManager {
         action: &str,
         variant: Option<&str>,
     ) -> Value {
+        let Some(_canon) = crate::updater::resolve_known_component(component) else {
+            return json!({
+                "ok": false,
+                "job_id": "",
+                "result": {
+                    "ok": false,
+                    "component": component,
+                    "action": action,
+                    "error": format!("Unsupported component: {component}")
+                }
+            });
+        };
         let job_id = self.state.live.write().await.start_job(
             component,
             &format!("Выполнение действия '{action}' для компонента '{component}'"),
@@ -4647,18 +5189,12 @@ impl CoreManager {
                 tx_bps: pt_up_bps,
             });
 
-            if live.lkg_observing {
-                let healthy_tick = core_alive
-                    && !self.is_manually_stopped()
-                    && live.core_fail_streak == 0
-                    && live.dns_fail_streak == 0;
-                if healthy_tick {
-                    live.lkg_remaining_secs = live.lkg_remaining_secs.saturating_sub(3);
-                    if live.lkg_remaining_secs == 0 {
-                        live.lkg_observing = false;
-                        promote_lkg = true;
-                        promoted_rev_id = live.active_revision_id.clone();
-                    }
+            if should_tick_lkg_promotion(&live, core_alive, self.is_manually_stopped()) {
+                live.lkg_remaining_secs = live.lkg_remaining_secs.saturating_sub(3);
+                if live.lkg_remaining_secs == 0 {
+                    live.lkg_observing = false;
+                    promote_lkg = true;
+                    promoted_rev_id = live.active_revision_id.clone();
                 }
             }
         }
@@ -5100,6 +5636,20 @@ fn parse_http_url_host_port(url: &str) -> Option<(String, u16)> {
         return Some((h.trim().to_string(), port));
     }
     Some((host_port.to_string(), default_port))
+}
+
+fn should_tick_lkg_promotion(
+    live: &crate::store::LiveTelemetry,
+    core_alive: bool,
+    manually_stopped: bool,
+) -> bool {
+    live.lkg_observing
+        && core_alive
+        && !manually_stopped
+        && live.core_fail_streak == 0
+        && live.dns_fail_streak == 0
+        && !live.safe_minimal_active
+        && !live.config_drift
 }
 
 fn normalize_bootstrap_dns_addr(raw: &str) -> Option<std::net::SocketAddr> {
@@ -6596,5 +7146,84 @@ mod core_mgr_tests {
                 .iter()
                 .all(|s| !missing.contains(&s.id))
         );
+    }
+
+    #[test]
+    fn test_should_tick_lkg_promotion_suppressed_by_safe_minimal_or_drift() {
+        let mut live = crate::store::LiveTelemetry {
+            lkg_observing: true,
+            ..Default::default()
+        };
+        assert!(should_tick_lkg_promotion(&live, true, false));
+
+        live.safe_minimal_active = true;
+        assert!(!should_tick_lkg_promotion(&live, true, false));
+
+        live.safe_minimal_active = false;
+        live.config_drift = true;
+        assert!(!should_tick_lkg_promotion(&live, true, false));
+    }
+
+    #[tokio::test]
+    async fn test_stop_for_shutdown_does_not_write_manual_stop_marker() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_shutdown_stop_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = crate::store::AppState::load_or_create(dir.join("tachyon-state.json")).unwrap();
+        let core = CoreManager::new(Arc::clone(&state));
+        let _ = std::fs::remove_file(core.manual_stop_marker_path());
+
+        core.stop_for_shutdown().await.unwrap();
+        assert!(!core.manual_stop_marker_path().exists());
+        assert!(!core.is_manually_stopped());
+
+        core.stop().await.unwrap();
+        assert!(core.manual_stop_marker_path().exists());
+        assert!(core.is_manually_stopped());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_drain_core_log_stream_handles_invalid_utf8_and_long_lines() {
+        use tokio::io::AsyncWriteExt as _;
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_log_drain_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = crate::store::AppState::load_or_create(dir.join("store.json")).unwrap();
+        let (mut writer, reader) = tokio::io::duplex(64 * 1024);
+        let st_clone = Arc::clone(&state);
+        let task = tokio::spawn(CoreManager::drain_core_log_stream(reader, st_clone));
+
+        writer.write_all(b"bad-utf8:\xff\xfe:ok\n").await.unwrap();
+        let huge = vec![b'x'; 24 * 1024];
+        writer.write_all(&huge).await.unwrap();
+        writer.write_all(b"\nafter-huge\n").await.unwrap();
+        drop(writer);
+        task.await.unwrap();
+
+        let logs = state.live.read().await.recent_logs.clone();
+        assert!(
+            logs.iter()
+                .any(|l| l.contains("bad-utf8:") && l.contains(":ok"))
+        );
+        assert!(logs.iter().any(|l| l.ends_with("[truncated]")));
+        assert!(logs.iter().any(|l| l.contains("after-huge")));
+        assert!(!CoreManager::is_allowed_cache_path(Path::new(
+            "/tmp/../etc/shadow"
+        )));
+        assert!(!CoreManager::is_allowed_cache_path(Path::new(
+            "relative/cache.db"
+        )));
+        assert!(CoreManager::is_allowed_cache_path(Path::new(
+            "/var/run/tachyon/cache.db"
+        )));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

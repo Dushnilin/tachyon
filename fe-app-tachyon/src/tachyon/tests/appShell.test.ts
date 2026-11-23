@@ -318,6 +318,7 @@ vi.hoisted(() => {
 
 import { renderTachyonDuckMascotSvg } from '../../icons/duckMascot';
 import {
+  collectAvailableComponentUpdates,
   getSidebarCollapsed,
   getSidebarPos,
   getTopbarCollapsed,
@@ -1004,5 +1005,111 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(sectionSec.getAttribute('data-tab-active')).toBe('true');
     expect(dashboardSec.style.display).toBe('none !important');
     expect(dashboardSec.getAttribute('data-tab-active')).toBe('false');
+  });
+
+  it('shows update badge and dismissible banner when component updates exist and hides them on dismissal or when latest', () => {
+    expect(
+      collectAvailableComponentUpdates(
+        {
+          tachyon_version: '2.0.0-beta.20',
+          tachyon_latest_version: '2.0.0-rc.1',
+          tachyon_update_available: 1,
+          tachyon_core_version: '0.6.3',
+          tachyon_core_latest_version: '0.6.4',
+          tachyon_core_update_available: 1,
+        },
+        {},
+      ),
+    ).toHaveLength(2);
+
+    expect(
+      collectAvailableComponentUpdates(
+        {
+          tachyon_update_available: 1,
+          tachyon_latest_version: '2.0.0-rc.1',
+        },
+        {
+          tachyon: {
+            status: 'latest',
+            latest_version: '2.0.0-rc.1',
+            release_url: '',
+          },
+        },
+      ),
+    ).toEqual([]);
+
+    setSidebarPos('left');
+    setUiMode('advanced');
+    const E = (globalThis as any).E;
+    const dashboardSec = E('div', {
+      id: 'cbi-tachyon-dashboard',
+      class: 'cbi-section cbi-tab',
+    });
+    const updatesSec = E('div', {
+      id: 'cbi-tachyon-updates',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'updates' }, [
+          E('a', { href: '#' }, 'Updates'),
+        ]),
+      ]),
+      dashboardSec,
+      updatesSec,
+    ]);
+    (globalThis as any).document.body.appendChild(mapEl);
+
+    const prevSys = store.get().diagnosticsSystemInfo;
+    store.set({
+      diagnosticsSystemInfo: {
+        ...prevSys,
+        tachyon_version: '2.0.0-beta.20',
+        tachyon_latest_version: '2.0.0-rc.1',
+        tachyon_update_available: 1,
+        tachyon_core_version: '0.6.3',
+        tachyon_core_latest_version: '0.6.3',
+        tachyon_core_update_available: 0,
+      },
+    });
+
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+    });
+
+    const banner = mapEl.querySelector('.tachyon-update-banner');
+    expect(banner).toBeTruthy();
+    expect(banner.classList.contains('is-hidden')).toBe(false);
+    const badge = mapEl.querySelector(
+      '.tachyon-sidebar__update-badge[data-update-target="updates"]',
+    );
+    expect(badge?.textContent).toBe('1');
+    expect(badge?.classList.contains('is-hidden')).toBe(false);
+
+    const dismissBtn = banner.querySelector('.tachyon-update-banner__dismiss');
+    dismissBtn.click();
+    expect(banner.classList.contains('is-hidden')).toBe(true);
+    expect(storage.get('tachyon_dismissed_update_sig_v1')).toBe(
+      'tachyon@2.0.0-rc.1',
+    );
+
+    // A newer version re-opens the banner even after previous signature dismissal
+    store.set({
+      diagnosticsSystemInfo: {
+        ...store.get().diagnosticsSystemInfo,
+        tachyon_latest_version: '2.0.0',
+      },
+    });
+    expect(banner.classList.contains('is-hidden')).toBe(false);
+
+    // Clicking Open Updates navigates directly to updates tab and hides banner there
+    const openBtn = banner.querySelector('.tachyon-update-banner__action');
+    openBtn.click();
+    expect(updatesSec.getAttribute('data-tab-active')).toBe('true');
+    expect(banner.classList.contains('is-hidden')).toBe(true);
   });
 });

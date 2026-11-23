@@ -902,7 +902,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
     }
     .to_string();
 
-    let lkg_observing = {
+    let (lkg_observing, safe_minimal_active) = {
         let mut live = core.state.live.write().await;
         live.wan_healthy = wan_healthy;
         live.dns_healthy = dns_healthy;
@@ -937,7 +937,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         live.recent_flight_failures = recent_flight_failures;
         live.blackboxes = blackboxes;
         live.watchdog_state = wd_state_label.clone();
-        live.lkg_observing
+        (live.lkg_observing, live.safe_minimal_active)
     };
 
     if !core_alive && !manual_stop {
@@ -1064,7 +1064,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
             }
         }
     } else if core_alive {
-        if config_drift {
+        if should_trigger_drift_reload(config_drift, safe_minimal_active) {
             let allow =
                 core.watchdog
                     .lock()
@@ -1202,6 +1202,10 @@ pub async fn check_and_repair_nft_drift(
             "Repaired inet TachyonTable drift",
         );
     }
+}
+
+fn should_trigger_drift_reload(config_drift: bool, safe_minimal_active: bool) -> bool {
+    config_drift && !safe_minimal_active
 }
 
 #[cfg(test)]
@@ -1522,5 +1526,12 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_should_trigger_drift_reload_suppressed_by_safe_minimal() {
+        assert!(should_trigger_drift_reload(true, false));
+        assert!(!should_trigger_drift_reload(true, true));
+        assert!(!should_trigger_drift_reload(false, false));
     }
 }

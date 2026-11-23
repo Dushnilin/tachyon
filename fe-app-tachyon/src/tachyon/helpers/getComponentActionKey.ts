@@ -14,14 +14,6 @@ const componentActionKeyMap: Record<string, UpdatesActionKey> = {
   'tachyon-core:install_version': 'tachyonCoreInstall',
   'tachyon-core:reinstall': 'tachyonCoreInstall',
   'tachyon-core:rollback': 'tachyonCoreRollback',
-  'direct_bypass:enable': 'directBypassEnable',
-  'direct_bypass:disable': 'directBypassDisable',
-  'torrserver_direct:check_update': 'torrserverDirectCheck',
-  'torrserver_direct:install': 'torrserverDirectInstall',
-  'torrserver_direct:install_version': 'torrserverDirectInstall',
-  'torrserver_direct:remove': 'torrserverDirectRemove',
-  'torrserver_direct:enable': 'torrserverDirectEnable',
-  'torrserver_direct:disable': 'torrserverDirectDisable',
 };
 
 export function getComponentActionKey(

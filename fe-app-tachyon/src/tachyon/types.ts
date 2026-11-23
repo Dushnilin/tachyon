@@ -1185,11 +1185,7 @@ export namespace Tachyon {
     };
   }
 
-  export type ComponentName =
-    | 'tachyon'
-    | 'tachyon-core'
-    | 'direct_bypass'
-    | 'torrserver_direct';
+  export type ComponentName = 'tachyon' | 'tachyon-core';
 
   export type ComponentAction =
     | 'check_update'

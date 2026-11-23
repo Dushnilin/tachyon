@@ -8,14 +8,19 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release version tag (e.g. v2.0.0 or v2.0.0-beta.1)'
+        description: 'Release version tag (e.g. v2.0.0 or v2.0.0-rc.1)'
         required: false
         type: string
       prerelease:
         description: 'Mark manual release as prerelease (auto-detected if tag contains -)'
         required: false
         type: boolean
-        default: true
+        default: false
+      make_latest:
+        description: 'Mark release as GitHub Latest (keep false while 1.8.x owns Latest)'
+        required: false
+        type: boolean
+        default: false
       publish:
         description: 'Create or update GitHub Release on workflow_dispatch'
         required: false
@@ -47,7 +52,6 @@ jobs:
             echo "Failed to parse version from Cargo.toml" >&2
             exit 1
           fi
-          cargo_base="${cargo_ver%%-*}"
 
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             tag="${GITHUB_REF_NAME}"
@@ -66,9 +70,8 @@ jobs:
             exit 1
           fi
 
-          ver_base="${ver%%-*}"
-          if [[ "$ver_base" != "$cargo_base" ]]; then
-            echo "Base version of ${tag} (${ver_base}) does not match Cargo.toml (${cargo_base})" >&2
+          if [ "$ver" != "$cargo_ver" ]; then
+            echo "::error::Tag version ($ver) does not exactly match Cargo.toml ($cargo_ver)"
             exit 1
           fi
 
@@ -79,9 +82,9 @@ jobs:
             is_pre="true"
           fi
 
-          make_latest="legacy"
-          if [[ "$is_pre" == "true" ]]; then
-            make_latest="false"
+          make_latest="false"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${{ inputs.make_latest }}" == "true" ]] && [[ "$is_pre" != "true" ]]; then
+            make_latest="true"
           fi
 
           echo "version=${ver}" >> "$GITHUB_OUTPUT"
@@ -294,7 +297,10 @@ jobs:
           set -euo pipefail
           tag="${{ needs.prepare.outputs.tag }}"
           if gh release view "$tag" --json body --jq '.body' > /tmp/existing_body.txt 2>/dev/null; then
-            if grep -q '^Commit: ' /tmp/existing_body.txt || [ ! -s /tmp/existing_body.txt ]; then
+            tr -d '\r' < /tmp/existing_body.txt > /tmp/existing_body_lf.txt
+            line_count="$(awk 'NF {c++} END {print c+0}' /tmp/existing_body_lf.txt)"
+            first_line="$(awk 'NF {print; exit}' /tmp/existing_body_lf.txt)"
+            if [[ "$line_count" -eq 0 ]] || { [[ "$line_count" -le 2 ]] && [[ "$first_line" == Commit:\ * ]]; }; then
               echo "preserve=false" >> "$GITHUB_OUTPUT"
             else
               echo "preserve=true" >> "$GITHUB_OUTPUT"

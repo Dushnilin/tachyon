@@ -825,12 +825,20 @@ fn is_secret_key(key: &str) -> bool {
     matches!(
         k.as_str(),
         "password"
+            | "admin_pass_hash"
+            | "admin_pass_salt"
+            | "ai_doctor_api_key"
             | "private_key"
             | "wg_private_key"
             | "preshared_key"
             | "wg_preshared_key"
+            | "awg_preshared_key"
             | "awg_header_protection_key"
             | "header_protection_key"
+            | "csqtt_vk_cookie"
+            | "openconnect_cookie"
+            | "mtproto_secret"
+            | "reality_short_id"
             | "reality_private_key"
             | "bot_token"
             | "ai_api_key"
@@ -846,6 +854,8 @@ fn is_secret_key(key: &str) -> bool {
         || k.ends_with("_token")
         || k.ends_with("_password")
         || k.ends_with("_private_key")
+        || k.ends_with("_api_key")
+        || k.ends_with("_preshared_key")
 }
 
 fn mask_secrets_value(val: &Value) -> Value {
@@ -1329,6 +1339,43 @@ pub async fn snapshot_export(
     }
 }
 
+fn is_allowed_snapshot_import_path(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    let allowed = path == Path::new("/tmp/tachyon-snapshot-import.json")
+        || path.starts_with("/tmp/tachyon-snapshots")
+        || path.starts_with("/var/run/tachyon")
+        || path.starts_with("/etc/tachyon/snapshots");
+    if allowed {
+        return true;
+    }
+    #[cfg(test)]
+    {
+        let tmp_dir = std::env::temp_dir();
+        if path.starts_with(&tmp_dir)
+            && path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|n| n.starts_with("tachyon"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn looks_like_import_file_path(trimmed: &str) -> bool {
+    trimmed.starts_with('/')
+        || trimmed.starts_with("./")
+        || trimmed.starts_with("../")
+        || trimmed.contains('\\')
+        || (!trimmed.starts_with('{') && !trimmed.contains("://") && trimmed.ends_with(".json"))
+}
+
 fn read_import_target_text(target: &str) -> anyhow::Result<String> {
     let trimmed = target.trim();
     if trimmed.is_empty() || trimmed == "/tmp/tachyon-snapshot-import.json" {
@@ -1343,15 +1390,19 @@ fn read_import_target_text(target: &str) -> anyhow::Result<String> {
         }
         return Ok(content);
     }
-    if (trimmed.starts_with('/') || trimmed.ends_with(".json"))
-        && !trimmed.starts_with('{')
-        && Path::new(trimmed).is_file()
-    {
-        let meta = std::fs::metadata(trimmed)?;
+    if looks_like_import_file_path(trimmed) {
+        let p = Path::new(trimmed);
+        if !is_allowed_snapshot_import_path(p) {
+            anyhow::bail!("Недопустимый путь для импорта снапшота");
+        }
+        if !p.is_file() {
+            anyhow::bail!("Файл снапшота не найден");
+        }
+        let meta = std::fs::metadata(p)?;
         if meta.len() as usize > MAX_IMPORT_BYTES {
             anyhow::bail!("Файл превышает максимальный размер 4 МБ");
         }
-        return Ok(std::fs::read_to_string(trimmed)?);
+        return Ok(std::fs::read_to_string(p)?);
     }
     Ok(trimmed.to_string())
 }
@@ -1508,7 +1559,11 @@ pub async fn snapshot_import(
             guard.shrink_to_fit();
         }
         if cfg!(target_os = "linux") {
-            let _ = std::fs::write("/tmp/tachyon-snapshot-import.json", b"");
+            let _ = crypto_gen::write_bytes_with_mode_if_changed(
+                Path::new("/tmp/tachyon-snapshot-import.json"),
+                b"",
+                0o600,
+            );
         }
         return ImportOutcome::ResponseOnly(json!({ "success": true }));
     }
@@ -1537,7 +1592,11 @@ pub async fn snapshot_import(
             guard.extend_from_slice(&decoded);
             total_len = guard.len();
             if cfg!(target_os = "linux") {
-                let _ = std::fs::write("/tmp/tachyon-snapshot-import.json", &*guard);
+                let _ = crypto_gen::write_bytes_with_mode_if_changed(
+                    Path::new("/tmp/tachyon-snapshot-import.json"),
+                    &guard,
+                    0o600,
+                );
             }
         }
         return ImportOutcome::ResponseOnly(json!({
@@ -2134,5 +2193,27 @@ mod tests {
         });
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_read_import_target_text_allowlist_and_secret_keys() {
+        assert!(is_secret_key("admin_pass_hash"));
+        assert!(is_secret_key("admin_pass_salt"));
+        assert!(is_secret_key("ai_doctor_api_key"));
+        assert!(is_secret_key("awg_preshared_key"));
+        assert!(is_secret_key("csqtt_vk_cookie"));
+        assert!(is_secret_key("awg_header_protection_key"));
+        assert!(!is_secret_key("dns_type"));
+
+        assert!(read_import_target_text("/etc/passwd").is_err());
+        assert!(read_import_target_text("/tmp/../etc/shadow").is_err());
+        assert!(read_import_target_text("../../etc/passwd.json").is_err());
+        assert!(is_allowed_snapshot_import_path(Path::new(
+            "/etc/tachyon/snapshots/backup.json"
+        )));
+        assert!(!is_allowed_snapshot_import_path(Path::new("/etc/passwd")));
+        assert!(!is_allowed_snapshot_import_path(Path::new(
+            "/etc/tachyon/snapshots/../tachyon.json"
+        )));
     }
 }

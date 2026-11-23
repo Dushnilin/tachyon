@@ -217,12 +217,21 @@ pub(crate) fn apply_desync_strategy_to_section(sec: &mut RoutingSection, args_st
 
 type BoxOpsFuture<'a> = Pin<Box<dyn Future<Output = BotReply> + Send + 'a>>;
 
+fn sync_tg_store_json_and_cache(store: &RouterStoreData) {
+    if std::env::var_os("TACHYON_DATA_DIR").is_some() || cfg!(not(test)) {
+        crate::ubus_bridge::sync_from_store_to_json_and_cache(store);
+    }
+}
+
 async fn commit_tx_boxed(state: &Arc<AppState>, candidate: RouterStoreData) -> anyhow::Result<()> {
     let state = Arc::clone(state);
     tokio::spawn(async move {
         Box::pin(transaction::commit_transaction(&state, candidate))
             .await
-            .map(|_| ())
+            .map(|_| ())?;
+        let saved = state.data.read().await.clone();
+        sync_tg_store_json_and_cache(&saved);
+        Ok(())
     })
     .await
     .map_err(|e| anyhow::anyhow!("commit task panicked: {e}"))?
@@ -263,12 +272,12 @@ fn format_bytes_human(bytes: u64) -> String {
 // 1. Diagnostics, AI Doctor, Trace, DNS, Leaks, Failover, Logs, Support
 // ---------------------------------------------------------------------------
 
-async fn render_doctor(state: &Arc<AppState>) -> BotReply {
+async fn render_doctor(state: &Arc<AppState>, core: &Arc<CoreManager>) -> BotReply {
     let ru = {
         let d = state.data.read().await;
         is_ru(&d)
     };
-    let rep = Box::pin(diagnostics::run_local_doctor(state)).await;
+    let rep = Box::pin(diagnostics::run_local_doctor_with_core(state, core)).await;
 
     let mut lines = Vec::new();
     let badge = if rep.healthy { "[OK]" } else { "[!]" };
@@ -469,13 +478,22 @@ async fn run_quick_fix_reply(
     BotReply::with_kb(text, kb)
 }
 
-async fn render_ai_doctor(state: &Arc<AppState>, query: Option<&str>) -> BotReply {
+async fn render_ai_doctor(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    query: Option<&str>,
+) -> BotReply {
     let ru = {
         let d = state.data.read().await;
         is_ru(&d)
     };
     let clean_query = query.map(str::trim).filter(|s| !s.is_empty());
-    let res = Box::pin(diagnostics::run_ai_doctor(state, clean_query)).await;
+    let res = Box::pin(diagnostics::run_ai_doctor_with_core(
+        state,
+        Some(core),
+        clean_query,
+    ))
+    .await;
     let analysis = res.get("analysis").and_then(Value::as_str).unwrap_or("OK");
 
     let mut rows: Vec<Vec<Value>> = Vec::new();
@@ -3399,18 +3417,27 @@ async fn toggle_feature_setting_reply(
     let notice = match save_res {
         Ok(_report) => {
             let saved = state.data.read().await.clone();
-            match apply_kind {
-                ToggleApplyKind::Reload => {
-                    let _ = core.apply_or_reload().await;
-                }
-                ToggleApplyKind::Firewall => {
-                    let _ = crate::net_stack::apply_network_stack(&saved).await;
-                }
-                ToggleApplyKind::None => {}
-            }
+            sync_tg_store_json_and_cache(&saved);
+            let apply_warn = match apply_kind {
+                ToggleApplyKind::Reload => core
+                    .apply_or_reload()
+                    .await
+                    .err()
+                    .map(|e| format!("\n[WARN] {}", escape_html(&e.to_string())))
+                    .unwrap_or_default(),
+                ToggleApplyKind::Firewall => crate::net_stack::apply_network_stack(&saved)
+                    .await
+                    .err()
+                    .map(|e| format!("\n[WARN] {}", escape_html(&e.to_string())))
+                    .unwrap_or_default(),
+                ToggleApplyKind::None => String::new(),
+            };
             let new_val = read_quick_toggle_val(&saved.settings, key);
             let badge = if new_val { "[ON]" } else { "[OFF]" };
-            format!("[OK] <code>{}</code> -> {badge}", escape_html(key))
+            format!(
+                "[OK] <code>{}</code> -> {badge}{apply_warn}",
+                escape_html(key)
+            )
         }
         Err(e) => format!(
             "[ERR] {}: {}",
@@ -3629,7 +3656,7 @@ async fn dispatch_diag_ops(
     core: &Arc<CoreManager>,
 ) -> Option<BotReply> {
     let fut: BoxOpsFuture<'_> = match cmd_lc {
-        "/doctor" | "doc_run" => Box::pin(render_doctor(state)),
+        "/doctor" | "doc_run" => Box::pin(render_doctor(state, core)),
         "/fix" => {
             if arg.trim().is_empty() {
                 Box::pin(async move {
@@ -3647,7 +3674,7 @@ async fn dispatch_diag_ops(
         }
         "/ai_doctor" | "ai_doc_run" => {
             let q = (!arg.trim().is_empty()).then_some(arg.trim());
-            Box::pin(render_ai_doctor(state, q))
+            Box::pin(render_ai_doctor(state, core, q))
         }
         "ai_doc_ask" => Box::pin(set_prompt_reply(
             state,
@@ -4014,7 +4041,7 @@ async fn handle_ops_prompt_inner(
         PendingPromptKind::AiDoctorQuestion => {
             clear_chat_prompt(chat_id);
             let q = (!input.trim().is_empty()).then_some(input.trim());
-            Box::pin(render_ai_doctor(state, q))
+            Box::pin(render_ai_doctor(state, core, q))
         }
         PendingPromptKind::FuzzerCustomTarget => {
             clear_chat_prompt(chat_id);

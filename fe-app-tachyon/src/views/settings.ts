@@ -1195,12 +1195,12 @@ function createSnapshotsWidget() {
               {
                 style: 'font-size:12px;color:var(--text-color-medium,#888);',
               },
-              _(
-                'Secrets and credentials are masked as ***. Added lines (+): ',
-              ) +
+              _('Secrets and credentials are masked as ***. Added lines (+):') +
+                ' ' +
                 String(data.added_count || 0) +
                 ' · ' +
-                _('Removed lines (-): ') +
+                _('Removed lines (-):') +
+                ' ' +
                 String(data.removed_count || 0),
             ),
             diffPre,
@@ -3572,26 +3572,6 @@ function createComponentsVisibilityWidget(option, section_id) {
       defaultVisible: true,
       fixed: true,
     },
-    {
-      id: 'direct_bypass',
-      label: _tr('Direct Proxy', 'Direct Proxy'),
-      desc: _tr(
-        'Выделенный прямой прокси HTTP/SOCKS5',
-        'Dedicated direct HTTP/SOCKS5 outbound proxy',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
-      id: 'torrserver_direct',
-      label: _tr('TorrServer Direct', 'TorrServer Direct'),
-      desc: _tr(
-        'Прямой обход cgroup для TorrServer',
-        'Direct cgroup bypass for TorrServer',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
   ];
 
   const visibility = {};
@@ -5880,6 +5860,21 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends('list_update_enabled', '1');
   o.default = '0';
+  o.rmempty = false;
+
+  o = section.taboption(
+    'updates',
+    form.ListValue,
+    'component_update_channel',
+    _('Update channel'),
+    _(
+      'Choose whether to receive stable releases only or include beta and RC pre-releases',
+    ),
+  );
+  o.value('auto', _('Auto (match installed build)'));
+  o.value('stable', _('Stable releases only'));
+  o.value('beta', _('Beta and RC (pre-releases)'));
+  o.default = 'auto';
   o.rmempty = false;
 
   o = section.taboption(

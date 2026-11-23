@@ -3688,6 +3688,7 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
       { id: '2.0', label: 'AmneziaWG 2.0' },
       { id: '1.0', label: 'AmneziaWG 1.0' },
       { id: '3.0', label: 'AmneziaWG 3.0' },
+      { id: '3.1', label: 'AmneziaWG 3.1' },
       { id: 'wg', label: 'WireGuard' },
     ];
 

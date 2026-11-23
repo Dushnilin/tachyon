@@ -86,6 +86,7 @@ export function isSensitiveFieldName(field: string): boolean {
     .trim()
     .toLowerCase();
   if (!k) return false;
+  if (k === 'awg_disable_cookies') return false;
   return (
     k === 'key' ||
     k.includes('password') ||
@@ -93,6 +94,7 @@ export function isSensitiveFieldName(field: string): boolean {
     k.includes('token') ||
     k.includes('private_key') ||
     k.includes('preshared_key') ||
+    k.includes('header_protection_key') ||
     k.includes('psk') ||
     k.includes('uuid') ||
     k.includes('auth_key') ||

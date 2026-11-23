@@ -1245,6 +1245,48 @@ fn append_selected_guest_rules(
     }
 }
 
+fn collect_parental_blocked_macs(store: &RouterStoreData) -> Vec<String> {
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut blocked_macs: Vec<String> = Vec::new();
+    for prof in store.profiles.iter().filter(|p| p.enabled) {
+        let paused = prof.paused_until_unix > now_unix;
+        let quota_exhausted =
+            prof.daily_quota_minutes > 0 && prof.used_minutes_today >= prof.daily_quota_minutes;
+        if paused || quota_exhausted {
+            for dev in &prof.device_ips {
+                if crate::store::is_mac_address(dev) {
+                    let mac = dev.trim().to_ascii_lowercase();
+                    if !blocked_macs.contains(&mac) {
+                        blocked_macs.push(mac);
+                    }
+                }
+            }
+        }
+    }
+    blocked_macs
+}
+
+fn collect_bypass_macs(store: &RouterStoreData, blocked_macs: &[String]) -> Vec<String> {
+    let mut bypass_macs: Vec<String> = Vec::new();
+    for sec in store.sections.iter().filter(|s| {
+        s.enabled
+            && (matches!(s.action.as_str(), "direct" | "bypass") || s.connection_type == "direct")
+    }) {
+        for dev in &sec.fully_routed_ips {
+            if crate::store::is_mac_address(dev) {
+                let mac = dev.trim().to_ascii_lowercase();
+                if !blocked_macs.contains(&mac) && !bypass_macs.contains(&mac) {
+                    bypass_macs.push(mac);
+                }
+            }
+        }
+    }
+    bypass_macs
+}
+
 fn compile_nftables_ruleset_full(
     store: &RouterStoreData,
     wan6_available: bool,
@@ -1449,45 +1491,13 @@ fn compile_nftables_ruleset_full(
     }
 
     // Paused / quota-exhausted parental control devices matched by L2 MAC address
-    let now_unix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let mut blocked_macs: Vec<String> = Vec::new();
-    for prof in store.profiles.iter().filter(|p| p.enabled) {
-        let paused = prof.paused_until_unix > now_unix;
-        let quota_exhausted =
-            prof.daily_quota_minutes > 0 && prof.used_minutes_today >= prof.daily_quota_minutes;
-        if paused || quota_exhausted {
-            for dev in &prof.device_ips {
-                if crate::store::is_mac_address(dev) {
-                    let mac = dev.trim().to_ascii_lowercase();
-                    if !blocked_macs.contains(&mac) {
-                        blocked_macs.push(mac);
-                    }
-                }
-            }
-        }
-    }
+    let blocked_macs = collect_parental_blocked_macs(store);
     for mac in &blocked_macs {
         let _ = writeln!(out, "        ether saddr {mac} drop");
     }
 
     // Direct/bypass section `fully_routed_ips` devices specified by MAC bypass TProxy directly
-    let mut bypass_macs: Vec<String> = Vec::new();
-    for sec in store.sections.iter().filter(|s| {
-        s.enabled
-            && (matches!(s.action.as_str(), "direct" | "bypass") || s.connection_type == "direct")
-    }) {
-        for dev in &sec.fully_routed_ips {
-            if crate::store::is_mac_address(dev) {
-                let mac = dev.trim().to_ascii_lowercase();
-                if !blocked_macs.contains(&mac) && !bypass_macs.contains(&mac) {
-                    bypass_macs.push(mac);
-                }
-            }
-        }
-    }
+    let bypass_macs = collect_bypass_macs(store, &blocked_macs);
     for mac in &bypass_macs {
         let _ = writeln!(out, "        ether saddr {mac} return");
     }
@@ -1808,6 +1818,8 @@ fn compile_tun_guard_ruleset_full(
     let eff_dns_intercept = crate::store::effective_dns_intercept_all(store);
     let fail_closed = direct_fallback_veto(store).is_some();
     let guest_active = guest_mode_has_active_rules(&store.guest_mode);
+    let blocked_macs = collect_parental_blocked_macs(store);
+    let bypass_macs = collect_bypass_macs(store, &blocked_macs);
     if !eff_webrtc
         && !eff_dns_intercept
         && !store.settings.block_doh
@@ -1816,6 +1828,7 @@ fn compile_tun_guard_ruleset_full(
         && !forward_guard
         && dnat_redirects.is_empty()
         && !guest_active
+        && blocked_macs.is_empty()
     {
         return None;
     }
@@ -1856,11 +1869,11 @@ fn compile_tun_guard_ruleset_full(
     let need_localv4_for_dnat = !dnat_redirects.is_empty()
         && lan_v4_ips.is_empty()
         && dnat_redirects.iter().any(|r| r.src_dip.is_none());
-    if guest_active || need_localv4_for_dnat {
+    if guest_active || need_localv4_for_dnat || fail_closed {
         append_localv4_set(&mut out);
     }
     let need_localv6 = ipv6_active || forward_guard;
-    if forward_guard || (guest_active && need_localv6) {
+    if forward_guard || ((guest_active || fail_closed) && need_localv6) {
         let localv6_elems = format_localv6_elements(fakeip_v6, extra_local_v6);
         let _ = writeln!(
             out,
@@ -1954,6 +1967,17 @@ fn compile_tun_guard_ruleset_full(
         append_doh_reject_rules(&mut out, ipv6_active);
         let _ = writeln!(out, "    }}");
     }
+    if !blocked_macs.is_empty() {
+        let _ = writeln!(
+            out,
+            "    chain parental_mac_guard {{
+        type filter hook prerouting priority -95; policy accept;"
+        );
+        for mac in &blocked_macs {
+            let _ = writeln!(out, "        ether saddr {mac} drop");
+        }
+        let _ = writeln!(out, "    }}");
+    }
     if fail_closed {
         let _ = writeln!(
             out,
@@ -1963,7 +1987,41 @@ fn compile_tun_guard_ruleset_full(
     }}
     chain fail_closed_forward {{
         type filter hook forward priority -200; policy accept;
-        iifname {lan_ifaces_literal} meta mark & {TPROXY_FWMARK} == {TPROXY_FWMARK} oifname != \"{tun_if}\" counter drop comment \"tachyon-fail-closed-forward\"
+        iifname != {lan_ifaces_literal} return
+        oifname {{ {bypass_ifaces_literal} }} return
+        meta mark & 0x00002022 == 0x00002022 return
+        ct status dnat return"
+        );
+        append_client_exclusion_returns(&mut out, &store.settings.excluded_ips);
+        for mac in &bypass_macs {
+            let _ = writeln!(out, "        ether saddr {mac} return");
+        }
+        if store.settings.exclude_ntp {
+            let _ = writeln!(out, "        udp dport 123 return");
+        }
+        if store.settings.torrserver_direct_enabled && !store.settings.torrserver_ports.is_empty() {
+            let ports: Vec<String> = store
+                .settings
+                .torrserver_ports
+                .iter()
+                .map(u16::to_string)
+                .collect();
+            let _ = writeln!(
+                out,
+                "        meta l4proto {{ tcp, udp }} th dport {{ {} }} return",
+                ports.join(", ")
+            );
+        }
+        let _ = writeln!(out, "        ip daddr @localv4 return");
+        if need_localv6 {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr != {fakeip_v6} ip6 daddr @localv6 return"
+            );
+        }
+        let _ = writeln!(
+            out,
+            "        oifname != \"{tun_if}\" counter drop comment \"tachyon-fail-closed-forward\"
     }}"
         );
     }
@@ -3463,7 +3521,6 @@ pub fn compile_kill_switch_ruleset(interfaces: &[String]) -> String {
 \t\ttype filter hook input priority -200; policy accept;\n\
 \t}}\n\
 }}\n\
-flush set inet {KILL_SWITCH_TABLE} {KILL_SWITCH_GATE_SET}\n\
 flush chain inet {KILL_SWITCH_TABLE} forward\n\
 add rule inet {KILL_SWITCH_TABLE} forward iifname {set} oifname != {set} iifname != @{KILL_SWITCH_GATE_SET} counter drop comment \"tachyon fail-closed kill-switch\"\n\
 flush chain inet {KILL_SWITCH_TABLE} input\n\
@@ -3889,13 +3946,31 @@ async fn apply_nft_stdin_with_fib_fallback(ruleset: &str) -> anyhow::Result<()> 
 
 /// Apply `inet TachyonTable` atomically via `nft -f -` and configure `ip rule` / `ip route`.
 pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> {
+    apply_network_stack_inner(store, false).await
+}
+
+pub async fn apply_network_stack_safe_minimal(store: &RouterStoreData) -> anyhow::Result<()> {
+    apply_network_stack_inner(store, true).await
+}
+
+async fn apply_network_stack_inner(
+    store: &RouterStoreData,
+    keep_kill_switch_held: bool,
+) -> anyhow::Result<()> {
     if cfg!(not(target_os = "linux")) {
         return Ok(());
     }
     if store.settings.proxy_mode == "socks" {
+        teardown_network_stack_with_mode(false).await;
+        sync_openwrt_firewall_rules(store).await;
         if direct_fallback_veto(store).is_none() {
             remove_kill_switch().await;
+        } else if keep_kill_switch_held {
+            let _ = hold_kill_switch(store).await;
+        } else {
+            release_kill_switch(store).await;
         }
+        apply_sqm_qdisc(store).await;
         return Ok(());
     }
 
@@ -4067,14 +4142,18 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
         let _ = std::os::unix::fs::symlink("/etc/tachyon-core/ui", "/www/yacd");
     }
 
+    sync_openwrt_firewall_rules(store).await;
+    sync_fw4_flow_offload_guard(store).await;
     if direct_fallback_veto(store).is_none() {
         remove_kill_switch().await;
     } else {
         tun_guard_sync(store).await;
-        release_kill_switch(store).await;
+        if keep_kill_switch_held {
+            let _ = hold_kill_switch(store).await;
+        } else {
+            release_kill_switch(store).await;
+        }
     }
-    sync_openwrt_firewall_rules(store).await;
-    sync_fw4_flow_offload_guard(store).await;
     apply_tcp_tuning(&store.settings).await;
     apply_sqm_qdisc(store).await;
 
@@ -4149,7 +4228,7 @@ fn build_firewall_sync_commands(store: &RouterStoreData, uci_show: &str) -> Vec<
         .to_string();
 
         let range_clean = srv.listen_port_range.trim();
-        let port_spec = if !range_clean.is_empty()
+        let mut port_spec = if !range_clean.is_empty()
             && range_clean != srv.listen_port.to_string()
             && range_clean
                 .chars()
@@ -4159,6 +4238,13 @@ fn build_firewall_sync_commands(store: &RouterStoreData, uci_show: &str) -> Vec<
         } else {
             srv.listen_port.to_string()
         };
+        if srv.protocol == "wdtt" && srv.wdtt_raw_port > 0 && srv.wdtt_raw_port != srv.listen_port {
+            let raw_s = srv.wdtt_raw_port.to_string();
+            if !port_spec.split_whitespace().any(|t| t == raw_s) {
+                port_spec.push(' ');
+                port_spec.push_str(&raw_s);
+            }
+        }
         let display_name = format!("Tachyon server {}", srv.id);
         desired_rules.insert(sec_name, (display_name, port_spec, proto));
     }
@@ -4561,6 +4647,17 @@ async fn apply_sqm_qdisc(store: &RouterStoreData) {
     let Some(iface) = sanitize_iface_name(&store.settings.sqm_interface) else {
         return;
     };
+    if let Ok(prev) = std::fs::read_to_string(SQM_MARKER_PATH)
+        && let Some(prev_iface) = sanitize_iface_name(&prev)
+        && prev_iface != iface
+    {
+        let _ = Command::new("tc")
+            .args(["qdisc", "del", "dev", &prev_iface, "root"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
 
     let mut applied = false;
     if store.settings.sqm_upload_kbps > 0 {
@@ -5472,7 +5569,7 @@ fd001122334455660000000000000001 05 40 00 80   br-lan
         let ks = compile_kill_switch_ruleset(&ifaces);
         assert!(ks.contains("table inet TachyonKillSwitch"));
         assert!(ks.contains("set open"));
-        assert!(ks.contains("flush set inet TachyonKillSwitch open"));
+        assert!(!ks.contains("flush set inet TachyonKillSwitch open"));
         assert!(
             ks.contains(
                 "iifname != @open counter drop comment \"tachyon fail-closed kill-switch\""
@@ -6338,5 +6435,49 @@ table inet fw4 {
 \t}
 }";
         assert!(fw4_forward_guard_ordered_before_offload(no_offload_listing));
+    }
+
+    #[test]
+    fn test_tun_fail_closed_forward_parental_mac_and_wdtt_raw_port() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.emergency_direct_bypass = false;
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        store.profiles.push(crate::store::ParentalProfile {
+            id: "kid".to_string(),
+            enabled: true,
+            paused_until_unix: i64::MAX / 2,
+            device_ips: vec!["AA:BB:CC:11:22:33".to_string()],
+            ..Default::default()
+        });
+        let tun_nft =
+            compile_tun_guard_ruleset_full(&store, true, &[], &[], &[]).expect("tun guard ruleset");
+        assert!(tun_nft.contains("chain parental_mac_guard"));
+        assert!(tun_nft.contains("ether saddr aa:bb:cc:11:22:33 drop"));
+        assert!(!tun_nft.contains("meta mark & 0x04000000"));
+        assert!(tun_nft.contains("ip daddr @localv4 return"));
+        assert!(tun_nft.contains("ip6 daddr != fc00::/18 ip6 daddr @localv6 return"));
+        assert!(
+            tun_nft.contains(
+                "oifname != \"tun0\" counter drop comment \"tachyon-fail-closed-forward\""
+            )
+        );
+
+        store.servers.push(crate::store::InboundServer {
+            id: "wdtt_srv".to_string(),
+            enabled: true,
+            protocol: "wdtt".to_string(),
+            listen_port: 46000,
+            wdtt_raw_port: 46001,
+            open_firewall_port: true,
+            ..Default::default()
+        });
+        let cmds = build_firewall_sync_commands(&store, "");
+        assert!(
+            cmds.iter()
+                .any(|c| c.iter().any(|a| a.contains("dest_port=46000 46001"))),
+            "wdtt raw port must be opened alongside listen_port: {cmds:?}"
+        );
     }
 }

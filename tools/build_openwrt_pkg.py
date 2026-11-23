@@ -25,7 +25,7 @@ if [ -s /etc/config/tachyon ] && [ ! -s /etc/tachyon/backup-pre-2.0/tachyon.uci 
     chmod 600 /etc/tachyon/backup-pre-2.0/tachyon.uci 2>/dev/null || true
 fi
 _is_v1=0
-if [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/hotplug.d/iface/99-tachyon-wan-monitor ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
+if [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
     _is_v1=1
 elif [ -x /usr/bin/tachyon ] && head -c 2 /usr/bin/tachyon 2>/dev/null | grep -q '^#!'; then
     _is_v1=1
@@ -90,7 +90,7 @@ fi
 # Migrate 1.x (ucode + rpcd) -> 2.0 (Pure-Rust daemon): clean legacy hooks/services/tables,
 # preserving /etc/config/tachyon for automatic store import.
 _is_v1=0
-if [ -f /tmp/tachyon-upgrading-from-v1 ] || [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/hotplug.d/iface/99-tachyon-wan-monitor ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
+if [ -f /tmp/tachyon-upgrading-from-v1 ] || [ -d /usr/lib/tachyon ] || [ -e /usr/libexec/rpcd/tachyon ] || [ -e /usr/bin/tachyon-read ] || [ -e /etc/init.d/tachyon-torrserver-direct ]; then
     _is_v1=1
 fi
 if [ "$_is_v1" -eq 1 ]; then
@@ -126,8 +126,11 @@ if [ "$_is_v1" -eq 1 ]; then
         nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
         nft delete table ip tachyon >/dev/null 2>&1 || true
         nft delete table ip6 tachyon >/dev/null 2>&1 || true
+        for _h in $(nft -a list chain inet fw4 forward 2>/dev/null | sed -n 's/.*Tachyon: skip flow offload.*# handle \\([0-9][0-9]*\\).*/\\1/p'); do
+            nft delete rule inet fw4 forward handle "$_h" >/dev/null 2>&1 || true
+        done
     fi
-    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft 2>/dev/null || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft 2>/dev/null || true
 
     if command -v ip >/dev/null 2>&1; then
         for _p in 9499 9500 9501; do
@@ -165,7 +168,7 @@ if [ "$_is_v1" -eq 1 ]; then
                 done
                 uci -q delete dhcp.@dnsmasq[0].tachyon_server 2>/dev/null || true
             fi
-            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface serversfile localservice; do
+            for _opt in noresolv cachesize rebind_protection localuse addn_hosts notinterface localservice; do
                 _val="$(uci -q get "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true)"
                 if [ -n "$_val" ]; then
                     if [ "$_val" = "__tachyon_unset__" ] || [ "$_val" = "__absent__" ] || [ "$_val" = "unset" ]; then
@@ -176,6 +179,18 @@ if [ "$_is_v1" -eq 1 ]; then
                     uci -q delete "dhcp.@dnsmasq[0].tachyon_${_opt}" 2>/dev/null || true
                 fi
             done
+            _sf_bak="$(uci -q get dhcp.@dnsmasq[0].tachyon_serversfile 2>/dev/null || true)"
+            if [ -n "$_sf_bak" ]; then
+                if [ "$_sf_bak" = "1" ] || [ "$_sf_bak" = "__tachyon_unset__" ] || [ "$_sf_bak" = "__absent__" ] || [ "$_sf_bak" = "unset" ]; then
+                    _cur_sf="$(uci -q get dhcp.@dnsmasq[0].serversfile 2>/dev/null || true)"
+                    case "$_cur_sf" in
+                        ""|"1"|*tachyon*) uci -q delete dhcp.@dnsmasq[0].serversfile 2>/dev/null || true ;;
+                    esac
+                else
+                    uci -q set "dhcp.@dnsmasq[0].serversfile=${_sf_bak}" 2>/dev/null || true
+                fi
+                uci -q delete dhcp.@dnsmasq[0].tachyon_serversfile 2>/dev/null || true
+            fi
             if [ "$_had_v1_dns" -eq 1 ]; then
                 if [ "$(uci -q get dhcp.@dnsmasq[0].noresolv 2>/dev/null)" = "1" ]; then
                     uci -q set dhcp.@dnsmasq[0].noresolv="0" 2>/dev/null || true
@@ -194,7 +209,7 @@ if [ "$_is_v1" -eq 1 ]; then
     fi
 
     rm -rf /usr/lib/tachyon /var/run/tachyon/section-cache /var/run/tachyon/ui-state 2>/dev/null || true
-    rm -f /usr/libexec/rpcd/tachyon /usr/bin/tachyon-read /etc/hotplug.d/iface/99-tachyon-wan-monitor /etc/init.d/tachyon-torrserver-direct /www/cgi-bin/tachyon-agent /usr/lib/cgi-bin/tachyon-agent /etc/uci-defaults/50_luci-tachyon /usr/share/luci/menu.d/luci-app-tachyon.json /usr/share/rpcd/acl.d/luci-app-tachyon.json /usr/lib/lua/luci/i18n/tachyon.ru.lmo 2>/dev/null || true
+    rm -f /usr/libexec/rpcd/tachyon /usr/bin/tachyon-read /etc/init.d/tachyon-torrserver-direct /www/cgi-bin/tachyon-agent /usr/lib/cgi-bin/tachyon-agent /etc/uci-defaults/50_luci-tachyon /usr/share/luci/menu.d/luci-app-tachyon.json /usr/share/rpcd/acl.d/luci-app-tachyon.json /usr/lib/lua/luci/i18n/tachyon.ru.lmo 2>/dev/null || true
     rm -f /tmp/tachyon-upgrading-from-v1 2>/dev/null || true
 fi
 
@@ -251,14 +266,26 @@ exit 0
 CGI_SUB_SCRIPT = """#!/bin/sh
 _port="1680"
 if [ -s /etc/tachyon/tachyon.json ]; then
-    _jport="$(sed -n 's/.*"web_port"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /etc/tachyon/tachyon.json | head -n 1)"
-    [ -n "$_jport" ] && _port="$_jport"
+    _jport="$(sed -n 's/.*"listen_port"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /etc/tachyon/tachyon.json | head -n 1)"
+    [ -z "$_jport" ] && _jport="$(sed -n 's/.*"web_port"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' /etc/tachyon/tachyon.json | head -n 1)"
+    if [ -n "$_jport" ] && [ "$_jport" -ge 1 ] 2>/dev/null && [ "$_jport" -le 65535 ] 2>/dev/null; then
+        _port="$_jport"
+    fi
 elif command -v uci >/dev/null 2>&1; then
-    _uport="$(uci -q get tachyon.settings.web_port 2>/dev/null)"
+    _uport="$(uci -q get tachyon.settings.listen_port 2>/dev/null)"
+    [ -z "$_uport" ] && _uport="$(uci -q get tachyon.settings.web_port 2>/dev/null)"
     case "$_uport" in
         ''|*[!0-9]*) ;;
-        *) _port="$_uport" ;;
+        *)
+            if [ "$_uport" -ge 1 ] 2>/dev/null && [ "$_uport" -le 65535 ] 2>/dev/null; then
+                _port="$_uport"
+            fi
+            ;;
     esac
+fi
+if [ "${QUERY_STRING:-}" = "panel_port=1" ]; then
+    printf 'Status: 200 OK\\r\\nContent-Type: application/json\\r\\nCache-Control: no-store\\r\\n\\r\\n{"port":%s}\\n' "$_port"
+    exit 0
 fi
 _url="http://127.0.0.1:${_port}/cgi-bin/tachyon-sub${PATH_INFO:-}${QUERY_STRING:+?${QUERY_STRING}}"
 _tmp="$(mktemp /tmp/tachyon-cgi-sub.XXXXXX 2>/dev/null || echo "/tmp/tachyon-cgi-sub.$$")"
@@ -292,31 +319,57 @@ printf "Status: 502 Bad Gateway\\r\\nContent-Type: text/plain\\r\\n\\r\\nTachyon
 exit 0
 """
 
-PRERM_SCRIPT = """#!/bin/sh
-[ -n "${IPKG_INSTROOT}" ] && exit 0
-case "${1:-remove}" in
-    remove|deinstall|purge)
-        if [ -x /etc/init.d/tachyon ]; then
-            /etc/init.d/tachyon stop >/dev/null 2>&1 || true
-            /etc/init.d/tachyon disable >/dev/null 2>&1 || true
-        fi
-        rm -f /etc/nftables.d/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /etc/sysctl.d/99-tachyon-bbr.conf /www/cgi-bin/tachyon-sub /tmp/luci-indexcache* 2>/dev/null || true
-        if command -v nft >/dev/null 2>&1; then
-            nft delete table inet TachyonTable >/dev/null 2>&1 || true
-            nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
-            nft delete table inet tachyon >/dev/null 2>&1 || true
-        fi
-        if command -v ip >/dev/null 2>&1; then
-            for _p in 9499 9500 9501; do
-                for _fam in -4 -6; do
-                    while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
-                done
-            done
-        fi
-        ;;
-esac
-exit 0
+_COMMON_DEINSTALL_BODY = """if [ -x /etc/init.d/tachyon ]; then
+    /etc/init.d/tachyon stop >/dev/null 2>&1 || true
+    /etc/init.d/tachyon disable >/dev/null 2>&1 || true
+fi
+rm -f /etc/nftables.d/10-tachyon.nft /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft /etc/sysctl.d/99-tachyon-bbr.conf /www/cgi-bin/tachyon-sub /tmp/luci-indexcache* 2>/dev/null || true
+if command -v nft >/dev/null 2>&1; then
+    nft delete table inet TachyonTable >/dev/null 2>&1 || true
+    nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
+    nft delete table inet tachyon >/dev/null 2>&1 || true
+    for _h in $(nft -a list chain inet fw4 forward 2>/dev/null | sed -n 's/.*Tachyon: skip flow offload.*# handle \\([0-9][0-9]*\\).*/\\1/p'); do
+        nft delete rule inet fw4 forward handle "$_h" >/dev/null 2>&1 || true
+    done
+fi
+if command -v uci >/dev/null 2>&1 && [ -f /etc/config/firewall ]; then
+    _fw_changed=0
+    for _fwsec in $(uci -q show firewall 2>/dev/null | sed -n 's/^firewall\\.\\(tachyon_[^.=]*\\)=.*/\\1/p' | sort -u); do
+        uci -q delete "firewall.${_fwsec}" 2>/dev/null && _fw_changed=1 || true
+    done
+    if [ "$_fw_changed" -eq 1 ]; then
+        uci -q commit firewall 2>/dev/null || true
+        [ -x /etc/init.d/firewall ] && /etc/init.d/firewall reload >/dev/null 2>&1 || true
+    fi
+fi
+if command -v ip >/dev/null 2>&1; then
+    for _p in 9499 9500 9501; do
+        for _fam in -4 -6; do
+            while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
+        done
+    done
+fi
 """
+
+PRERM_SCRIPT = (
+    "#!/bin/sh\n"
+    "[ -n \"${IPKG_INSTROOT}\" ] && exit 0\n"
+    "case \"${1:-remove}\" in\n"
+    "    remove|deinstall|purge)\n"
+    + _COMMON_DEINSTALL_BODY
+    + "        ;;\n"
+    "esac\n"
+    "exit 0\n"
+)
+
+# apk passes the package version as $1 to .pre-deinstall (and never runs it on upgrade),
+# so unlike opkg prerm we must clean up unconditionally rather than matching $1 == remove.
+APK_PRE_DEINSTALL_SCRIPT = (
+    "#!/bin/sh\n"
+    "[ -n \"${IPKG_INSTROOT}\" ] && exit 0\n"
+    + _COMMON_DEINSTALL_BODY
+    + "exit 0\n"
+)
 
 
 def _gzip_bytes(raw: bytes, mtime: int = 0) -> bytes:
@@ -410,12 +463,15 @@ def _collect_view_assets(views_dir: str) -> list[tuple[str, bytes]]:
     assets: list[tuple[str, bytes]] = []
     if not os.path.isdir(views_dir):
         return assets
-    for entry in sorted(os.listdir(views_dir)):
-        full = os.path.join(views_dir, entry)
-        if os.path.isfile(full):
-            with open(full, "rb") as f:
-                assets.append((entry, f.read()))
-    return assets
+    for root, dirs, files in os.walk(views_dir):
+        dirs.sort()
+        for entry in sorted(files):
+            full = os.path.join(root, entry)
+            if os.path.isfile(full):
+                rel = os.path.relpath(full, views_dir).replace(os.sep, "/")
+                with open(full, "rb") as f:
+                    assets.append((rel, f.read()))
+    return sorted(assets, key=lambda item: item[0])
 
 
 def _format_ipk_version(ver_clean: str) -> str:
@@ -537,7 +593,7 @@ def build_apk(
     ).encode("utf-8")
     preinst_bytes = PREINST_SCRIPT.replace("\r\n", "\n").encode("utf-8")
     postinst_bytes = POSTINST_SCRIPT.replace("\r\n", "\n").encode("utf-8")
-    prerm_bytes = PRERM_SCRIPT.replace("\r\n", "\n").encode("utf-8")
+    apk_prerm_bytes = APK_PRE_DEINSTALL_SCRIPT.replace("\r\n", "\n").encode("utf-8")
 
     ctrl_buf = io.BytesIO()
     with tarfile.open(fileobj=ctrl_buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
@@ -546,7 +602,7 @@ def build_apk(
         _add_apk_tar_entry(tf, ".pre-upgrade", preinst_bytes, 0o755, is_dir=False, mtime=mtime)
         _add_apk_tar_entry(tf, ".post-install", postinst_bytes, 0o755, is_dir=False, mtime=mtime)
         _add_apk_tar_entry(tf, ".post-upgrade", postinst_bytes, 0o755, is_dir=False, mtime=mtime)
-        _add_apk_tar_entry(tf, ".pre-deinstall", prerm_bytes, 0o755, is_dir=False, mtime=mtime)
+        _add_apk_tar_entry(tf, ".pre-deinstall", apk_prerm_bytes, 0o755, is_dir=False, mtime=mtime)
 
     ctrl_raw = _strip_tar_eof(ctrl_buf.getvalue())
     control_tar_gz = _gzip_bytes(ctrl_raw, mtime)
@@ -562,6 +618,7 @@ def main() -> None:
     ap.add_argument("--arch", required=True, help="Architecture name (e.g. aarch64, x86_64)")
     ap.add_argument("--version", required=True, help="Version tag (e.g. v2.0.0 or 2.0.0)")
     ap.add_argument("--init", default="openwrt/tachyon.init", help="Path to tachyon procd init script")
+    ap.add_argument("--hotplug", default="", help="Path to 99-tachyon-wan-monitor hotplug script")
     ap.add_argument("--po", default="", help="Optional path to Russian .po dictionary (unused when i18n_ru.js is precompiled)")
     ap.add_argument(
         "--views-dir",
@@ -605,6 +662,8 @@ def main() -> None:
         "usr/share/rpcd/acl.d",
         "etc",
         "etc/init.d",
+        "etc/hotplug.d",
+        "etc/hotplug.d/iface",
         "www",
         "www/cgi-bin",
         "www/luci-static",
@@ -612,12 +671,24 @@ def main() -> None:
         "www/luci-static/resources/view",
         "www/luci-static/resources/view/tachyon",
     ]
+    def _ensure_dir(dpath: str) -> None:
+        cur = ""
+        for part in dpath.strip("/").split("/"):
+            cur = f"{cur}/{part}" if cur else part
+            if cur not in dirs:
+                dirs.append(cur)
+
     files: list[tuple[str, bytes, int]] = [
         ("lib/upgrade/keep.d/tachyon", SYSUPGRADE_KEEP_FILE.encode("utf-8"), 0o644),
         ("usr/bin/tachyon", bin_bytes, 0o755),
         ("etc/init.d/tachyon", init_bytes, 0o755),
         ("www/cgi-bin/tachyon-sub", CGI_SUB_SCRIPT.replace("\r\n", "\n").encode("utf-8"), 0o755),
     ]
+    hotplug_path = args.hotplug or os.path.join(os.path.dirname(os.path.abspath(args.init)), "99-tachyon-wan-monitor")
+    if hotplug_path and os.path.isfile(hotplug_path):
+        with open(hotplug_path, "rb") as f:
+            files.append(("etc/hotplug.d/iface/99-tachyon-wan-monitor", f.read().replace(b"\r\n", b"\n"), 0o755))
+
     if args.po and os.path.isfile(args.po):
         with open(args.po, "rb") as f:
             files.append(("usr/share/tachyon/tachyon.ru.po", f.read().replace(b"\r\n", b"\n"), 0o644))
@@ -645,7 +716,11 @@ def main() -> None:
     for name, content in _collect_view_assets(args.views_dir):
         if has_launcher_js and name == "launcher.js":
             continue
-        files.append((f"www/luci-static/resources/view/tachyon/{name}", content, 0o644))
+        rel_target = f"www/luci-static/resources/view/tachyon/{name}"
+        parent_rel = os.path.dirname(rel_target).replace(os.sep, "/")
+        if parent_rel:
+            _ensure_dir(parent_rel)
+        files.append((rel_target, content, 0o644))
 
     installed_size = sum(len(content) for _, content, _ in files)
 

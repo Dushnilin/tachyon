@@ -81,6 +81,7 @@ for pair in $TACHYON_TARGETS; do
     --arch "$arch" \
     --version "$RELEASE_VERSION" \
     --init "$ROOT_DIR/openwrt/tachyon.init" \
+    --hotplug "$ROOT_DIR/openwrt/99-tachyon-wan-monitor" \
     --views-dir "$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon" \
     --launcher-js "$ROOT_DIR/openwrt/launcher.js" \
     --launcher-menu "$ROOT_DIR/openwrt/tachyon-launcher.menu.json" \

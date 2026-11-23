@@ -229,10 +229,15 @@ export interface StoreType {
     tachyon_version: string;
     tachyon_commit_sha: string;
     tachyon_latest_version: string;
+    tachyon_update_available?: 0 | 1 | boolean;
+    tachyon_release_url?: string;
     tachyon_backup_version?: string;
     tachyon_backup_time?: number;
     luci_app_version: string;
     tachyon_core_version: string;
+    tachyon_core_latest_version?: string;
+    tachyon_core_update_available?: 0 | 1 | boolean;
+    tachyon_core_release_url?: string;
     tachyon_core_fptn?: number;
     tachyon_core_tailscale: number;
     tachyon_core_cert_pin?: number;
@@ -300,13 +305,6 @@ export interface StoreType {
     tachyonCoreCheck: { loading: boolean };
     tachyonCoreInstall: { loading: boolean };
     tachyonCoreRollback: { loading: boolean };
-    directBypassEnable: { loading: boolean };
-    directBypassDisable: { loading: boolean };
-    torrserverDirectCheck: { loading: boolean };
-    torrserverDirectInstall: { loading: boolean };
-    torrserverDirectRemove: { loading: boolean };
-    torrserverDirectEnable: { loading: boolean };
-    torrserverDirectDisable: { loading: boolean };
   };
   updatesChecks: Record<
     Tachyon.ComponentName,

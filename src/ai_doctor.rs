@@ -36,20 +36,22 @@ impl TempFileGuard {
     }
 
     fn write_bytes(&self, bytes: &[u8], restrict_perms: bool) -> anyhow::Result<()> {
+        use std::io::Write as _;
         if let Some(parent) = self.path.parent()
             && !parent.as_os_str().is_empty()
         {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&self.path, bytes)?;
-        if restrict_perms {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ =
-                    std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600));
-            }
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(if restrict_perms { 0o600 } else { 0o644 });
         }
+        let _ = restrict_perms;
+        let mut file = opts.open(&self.path)?;
+        file.write_all(bytes)?;
         Ok(())
     }
 
@@ -165,11 +167,27 @@ fn quote_curl_cfg_val(raw: &str) -> String {
     out
 }
 
+fn validate_ai_endpoint_url(url: &str) -> anyhow::Result<&str> {
+    let trimmed = url.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('-')
+        || trimmed.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        anyhow::bail!("Недопустимый URL LLM-провайдера");
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        anyhow::bail!("URL LLM-провайдера должен использовать схему http:// или https://");
+    }
+    Ok(trimmed)
+}
+
 async fn post_json_via_curl(
     url: &str,
     headers: &[(String, String)],
     payload: &Value,
 ) -> anyhow::Result<(u16, String)> {
+    let clean_url = validate_ai_endpoint_url(url)?;
     let payload_guard = TempFileGuard::new("tachyon-ai-payload", "json");
     let payload_bytes = serde_json::to_vec(payload)?;
     payload_guard.write_bytes(&payload_bytes, false)?;
@@ -202,7 +220,8 @@ async fn post_json_via_curl(
                 &payload_arg,
                 "-w",
                 "\n%{http_code}",
-                url,
+                "--",
+                clean_url,
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1430,5 +1449,16 @@ mod tests {
 
         err_task.abort();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_ai_endpoint_url_rejects_flags_and_non_http_schemes() {
+        assert!(validate_ai_endpoint_url("https://api.openai.com/v1/chat/completions").is_ok());
+        assert!(validate_ai_endpoint_url("http://127.0.0.1:8080/v1/messages").is_ok());
+        assert!(validate_ai_endpoint_url("").is_err());
+        assert!(validate_ai_endpoint_url("--output=/etc/passwd").is_err());
+        assert!(validate_ai_endpoint_url("-K /tmp/foo").is_err());
+        assert!(validate_ai_endpoint_url("file:///etc/passwd").is_err());
+        assert!(validate_ai_endpoint_url("https://api.example.com/\nX-Evil: 1").is_err());
     }
 }

@@ -47,6 +47,7 @@ function proxy(
     history: options.history || [],
     now: options.now,
     all: options.all,
+    ...(options.mode ? { mode: options.mode } : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
   };
 }
@@ -2986,5 +2987,173 @@ describe('getDashboardSections', () => {
       { code: 'main-2-out', levelIndex: 0, levelName: 'Tier 1' },
       { code: 'main-1-out', levelIndex: 1, levelName: 'Tier 2' },
     ]);
+  });
+
+  it('never mixes priorityInfo and urlTestInfo on the same balancer outbound (#478)', async () => {
+    // Case A: modular Priority balancer whose runtime Clash proxy has type URLTest + mode=priority or least_test
+    for (const runtimeMode of ['priority', 'least_test'] as const) {
+      mocks.getConfigSections.mockResolvedValue([
+        proxySection({
+          urltests: undefined,
+          urltest_settings: undefined,
+          balancer_refs: ['bal_auto'],
+        }),
+        {
+          '.name': 'bal_auto',
+          '.type': 'balancer',
+          enabled: '1',
+          balancer_type: 'priority',
+          mode: 'priority',
+          name: 'Auto',
+          health_url: 'https://www.gstatic.com/generate_204',
+          active_check_interval: '5s',
+          check_timeout: '2s',
+          recovery_check_interval: '15s',
+        },
+      ]);
+      mocks.getClashApiProxies.mockResolvedValue({
+        success: true,
+        data: {
+          proxies: {
+            ...clashProxies,
+            'main-out': proxy('Selector', {
+              name: 'main-out',
+              now: 'bal-main-bal_auto',
+              all: ['bal-main-bal_auto'],
+            }),
+            'bal-main-bal_auto': proxy('URLTest', {
+              name: 'bal-main-bal_auto',
+              mode: runtimeMode,
+              now: 'main-1-out',
+              all: ['main-1-out', 'main-2-out'],
+            }),
+          },
+        },
+      });
+      mocks.fsRead.mockResolvedValue(
+        JSON.stringify({
+          priorityGroups: {
+            'bal-main-bal_auto': {
+              displayName: 'Auto',
+              health_url: 'https://www.gstatic.com/generate_204',
+              outbounds: ['main-1-out', 'main-2-out'],
+            },
+          },
+        }),
+      );
+
+      const res = await getDashboardSections();
+      const autoOb = res.data[0].outbounds.find(
+        (item) => item.code === 'bal-main-bal_auto',
+      );
+      expect(autoOb?.priorityInfo?.displayName).toBe('Auto');
+      expect(autoOb?.priorityInfo?.healthUrl).toBe(
+        'https://www.gstatic.com/generate_204',
+      );
+      expect(autoOb?.urlTestInfo).toBeUndefined();
+    }
+
+    // Case B: balancer_type='urltest' with mode='priority' or 'failover' classifies strictly as Priority
+    for (const balMode of ['priority', 'failover'] as const) {
+      mocks.getConfigSections.mockResolvedValue([
+        proxySection({
+          urltests: undefined,
+          urltest_settings: undefined,
+          balancer_refs: ['bal_auto'],
+        }),
+        {
+          '.name': 'bal_auto',
+          '.type': 'balancer',
+          enabled: '1',
+          balancer_type: 'urltest',
+          mode: balMode,
+          name: 'Auto',
+          testing_url: 'https://www.gstatic.com/generate_204',
+        },
+      ]);
+      mocks.getClashApiProxies.mockResolvedValue({
+        success: true,
+        data: {
+          proxies: {
+            ...clashProxies,
+            'main-out': proxy('Selector', {
+              name: 'main-out',
+              now: 'bal-main-bal_auto',
+              all: ['bal-main-bal_auto'],
+            }),
+            'bal-main-bal_auto': proxy('URLTest', {
+              name: 'bal-main-bal_auto',
+              mode: balMode,
+              now: 'main-1-out',
+              all: ['main-1-out', 'main-2-out'],
+            }),
+          },
+        },
+      });
+      mocks.fsRead.mockResolvedValue(JSON.stringify({}));
+
+      const res = await getDashboardSections();
+      const autoOb = res.data[0].outbounds.find(
+        (item) => item.code === 'bal-main-bal_auto',
+      );
+      expect(autoOb?.priorityInfo?.displayName).toBe('Auto');
+      expect(autoOb?.urlTestInfo).toBeUndefined();
+    }
+
+    // Case C: balancer_type='urltest' with mode='stability' classifies strictly as URLTest
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: undefined,
+        urltest_settings: undefined,
+        balancer_refs: ['bal_auto'],
+      }),
+      {
+        '.name': 'bal_auto',
+        '.type': 'balancer',
+        enabled: '1',
+        balancer_type: 'urltest',
+        mode: 'stability',
+        name: 'Auto',
+        testing_url: 'https://cp.cloudflare.com/generate_204',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'bal-main-bal_auto',
+            all: ['bal-main-bal_auto'],
+          }),
+          'bal-main-bal_auto': proxy('URLTest', {
+            name: 'bal-main-bal_auto',
+            mode: 'stability',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        urltestGroups: {
+          'bal-main-bal_auto': {
+            displayName: 'Auto',
+            url: 'https://cp.cloudflare.com/generate_204',
+            outbounds: ['main-1-out', 'main-2-out'],
+          },
+        },
+      }),
+    );
+
+    const stabilityRes = await getDashboardSections();
+    const stabilityOb = stabilityRes.data[0].outbounds.find(
+      (item) => item.code === 'bal-main-bal_auto',
+    );
+    expect(stabilityOb?.urlTestInfo?.displayName).toBe('Auto');
+    expect(stabilityOb?.urlTestInfo?.mode).toBe('stability');
+    expect(stabilityOb?.priorityInfo).toBeUndefined();
   });
 });

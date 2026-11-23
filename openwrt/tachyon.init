@@ -45,3 +45,13 @@ reload_service() {
     trap - INT TERM
     return "$status"
 }
+
+service_triggers() {
+    PROCD_RELOAD_DELAY=2000
+    procd_open_trigger
+    procd_add_reload_trigger "network" "firewall"
+    procd_add_interface_trigger "interface.*" "wan" /etc/init.d/tachyon reload "iface_wan"
+    procd_add_interface_trigger "interface.*" "wan6" /etc/init.d/tachyon reload "iface_wan6"
+    procd_add_interface_trigger "interface.*" "lan" /etc/init.d/tachyon reload "iface_lan"
+    procd_close_trigger
+}

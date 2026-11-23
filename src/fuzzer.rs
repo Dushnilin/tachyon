@@ -2536,8 +2536,16 @@ async fn probe_outbound_in_sandbox(
     dns_cache: &HashMap<(String, u16), IpAddr>,
     is_custom: bool,
 ) -> Vec<SingleProbeMetrics> {
+    struct SandboxFileGuard(String);
+    impl Drop for SandboxFileGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
     let port = pick_sandbox_port();
     let cfg_path = format!("/var/run/tachyon/fuzzer_sandbox_{port}.json");
+    let _cfg_guard = SandboxFileGuard(cfg_path.clone());
     let sandbox_cfg = build_fuzzer_sandbox_config(port, outbound_obj);
 
     let _ = std::fs::create_dir_all("/var/run/tachyon");
@@ -3036,6 +3044,34 @@ fn resolve_fuzzer_max_duration(timeout_secs: u64) -> Option<Duration> {
     }
 }
 
+fn is_allowed_fuzzer_custom_file(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    if path.starts_with("/tmp")
+        || path.starts_with("/var/run/tachyon")
+        || path.starts_with("/etc/tachyon")
+    {
+        return true;
+    }
+    #[cfg(test)]
+    if path.starts_with(std::env::temp_dir()) {
+        return true;
+    }
+    false
+}
+
+fn load_fuzzer_custom_file_text(raw_path: &str) -> Option<String> {
+    let p = Path::new(raw_path.trim());
+    if !is_allowed_fuzzer_custom_file(p) {
+        return None;
+    }
+    std::fs::read_to_string(p).ok()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn start_benchmark(
     bin_path: String,
@@ -3101,39 +3137,36 @@ pub async fn start_benchmark(
     };
 
     let mut candidates: Vec<StrategySpec> = match mode_norm {
-        "ai_custom" if !custom_file.trim().is_empty() => {
-            std::fs::read_to_string(custom_file.trim())
-                .ok()
-                .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok())
-                .map(|arr| {
-                    arr.iter()
-                        .enumerate()
-                        .filter_map(|(i, v)| {
-                            let args = v.get("args").and_then(Value::as_str)?;
-                            Some(StrategySpec {
-                                id: v
-                                    .get("id")
-                                    .and_then(Value::as_str)
-                                    .map(String::from)
-                                    .unwrap_or_else(|| format!("ai_ds_{}", i + 1)),
-                                name: v
-                                    .get("name")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("AI Desync Profile")
-                                    .to_string(),
-                                args: args.to_string(),
-                                description: v
-                                    .get("description")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .to_string(),
-                                source: "ai".to_string(),
-                            })
+        "ai_custom" if !custom_file.trim().is_empty() => load_fuzzer_custom_file_text(custom_file)
+            .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok())
+            .map(|arr| {
+                arr.iter()
+                    .enumerate()
+                    .filter_map(|(i, v)| {
+                        let args = v.get("args").and_then(Value::as_str)?;
+                        Some(StrategySpec {
+                            id: v
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .map(String::from)
+                                .unwrap_or_else(|| format!("ai_ds_{}", i + 1)),
+                            name: v
+                                .get("name")
+                                .and_then(Value::as_str)
+                                .unwrap_or("AI Desync Profile")
+                                .to_string(),
+                            args: args.to_string(),
+                            description: v
+                                .get("description")
+                                .and_then(Value::as_str)
+                                .unwrap_or("")
+                                .to_string(),
+                            source: "ai".to_string(),
                         })
-                        .collect()
-                })
-                .unwrap_or_else(builtin_desync_strategies)
-        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(builtin_desync_strategies),
         "custom_only" => {
             let c = load_custom_strategies(&patterns);
             if c.is_empty() {
@@ -4183,5 +4216,23 @@ nameserver 213.180.193.3
         let (_, dtype, conf, _) = classify_wan_probe_list(&eps, &[probe]);
         assert_eq!(dtype, "sandbox_error");
         assert_eq!(conf, 95);
+    }
+
+    #[test]
+    fn custom_file_allowlist_blocks_arbitrary_paths_and_traversal() {
+        assert!(is_allowed_fuzzer_custom_file(Path::new(
+            "/var/run/tachyon/fuzzer_ai_strategies.json"
+        )));
+        assert!(is_allowed_fuzzer_custom_file(Path::new(
+            "/tmp/custom-desync.json"
+        )));
+        assert!(!is_allowed_fuzzer_custom_file(Path::new("/etc/shadow")));
+        assert!(!is_allowed_fuzzer_custom_file(Path::new(
+            "/tmp/../etc/passwd"
+        )));
+        assert!(!is_allowed_fuzzer_custom_file(Path::new(
+            "relative/secrets.json"
+        )));
+        assert!(load_fuzzer_custom_file_text("/etc/passwd").is_none());
     }
 }

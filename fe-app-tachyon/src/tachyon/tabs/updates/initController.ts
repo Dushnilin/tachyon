@@ -925,81 +925,6 @@ function getComponentCards(): ComponentCard[] {
       ),
     );
   }
-  const directBypassEnabled = Boolean(systemInfo.direct_bypass_enabled);
-  const directBypassEndpoint = systemInfo.direct_bypass_address
-    ? `${systemInfo.direct_bypass_address}:${systemInfo.direct_bypass_port || '2080'}`
-    : '';
-  const torrserverInstalled = Boolean(
-    systemInfo.torrserver_installed || systemInfo.torrserver_running,
-  );
-  const torrserverVersion =
-    systemInfo.torrserver_version &&
-    systemInfo.torrserver_version !== 'not installed'
-      ? systemInfo.torrserver_version
-      : '';
-  const torrserverRunning = Boolean(systemInfo.torrserver_running);
-  const torrserverDirectAvailable = Boolean(
-    systemInfo.torrserver_direct_available,
-  );
-  const torrserverDirectEnabled = Boolean(systemInfo.torrserver_direct_enabled);
-  const torrserverDirectActive = Boolean(systemInfo.torrserver_direct_active);
-
-  const directBypassActions: ComponentActionButton[] = [
-    directBypassEnabled
-      ? {
-          key: 'directBypassDisable' as const,
-          text: _('Disable'),
-          icon: renderXIcon24,
-          component: 'direct_bypass' as const,
-          action: 'disable' as const,
-        }
-      : {
-          key: 'directBypassEnable' as const,
-          text: _('Enable'),
-          icon: renderRotateCcwIcon24,
-          component: 'direct_bypass' as const,
-          action: 'enable' as const,
-        },
-  ];
-
-  const torrserverDirectActions: ComponentActionButton[] = !torrserverInstalled
-    ? [getInstallAction('torrserver_direct', 'torrserverDirectInstall', false)]
-    : [
-        getCheckAction('torrserver_direct', 'torrserverDirectCheck'),
-        ...(shouldShowInstallAfterCheck('torrserver_direct')
-          ? [
-              getInstallAction(
-                'torrserver_direct',
-                'torrserverDirectInstall',
-                true,
-                getComponentCurrentVersion('torrserver_direct'),
-                getLatestVersion('torrserver_direct'),
-              ),
-            ]
-          : []),
-        torrserverDirectEnabled
-          ? {
-              key: 'torrserverDirectDisable' as const,
-              text: _('Disable Direct'),
-              icon: renderXIcon24,
-              component: 'torrserver_direct' as const,
-              action: 'disable' as const,
-            }
-          : {
-              key: 'torrserverDirectEnable' as const,
-              text: _('Enable Direct'),
-              icon: renderRotateCcwIcon24,
-              component: 'torrserver_direct' as const,
-              action: 'enable' as const,
-            },
-        {
-          key: 'torrserverDirectRemove' as const,
-          text: _('Remove'),
-          icon: renderXIcon24,
-          component: 'torrserver_direct' as const,
-          action: 'remove' as const,
-        },
-      ];
 
   const cachedVersionOrLoading = (component: Tachyon.ComponentName) => {
     const check = getVisibleCheckResult(component);
@@ -1040,52 +965,9 @@ function getComponentCards(): ComponentCard[] {
       actions: tachyonCoreActions,
       supportsVersions: true,
     },
-    {
-      component: 'direct_bypass',
-      column: 1,
-      title: _('Direct Proxy'),
-      version: directBypassEnabled
-        ? `HTTP/SOCKS5 · ${directBypassEndpoint || _('Enabled')}`
-        : _('Disabled'),
-      copyValue:
-        directBypassEnabled && directBypassEndpoint
-          ? directBypassEndpoint
-          : undefined,
-      actions: directBypassActions,
-    },
-    {
-      component: 'torrserver_direct',
-      column: 1,
-      title: _('TorrServer Direct'),
-      version: systemInfoLoading
-        ? cachedVersionOrLoading('torrserver_direct')
-        : !torrserverInstalled
-          ? _('Not installed')
-          : `${torrserverVersion || 'TorrServer'} · ${
-              !torrserverRunning
-                ? _('Stopped')
-                : !torrserverDirectAvailable
-                  ? _('Dedicated cgroup unavailable')
-                  : torrserverDirectEnabled && torrserverDirectActive
-                    ? _('Enabled')
-                    : torrserverDirectEnabled
-                      ? _('Waiting for TorrServer')
-                      : _('Disabled')
-            }`,
-      latestVersion: getLatestVersion('torrserver_direct'),
-      releaseUrl: getGitHubReleaseUrl('torrserver_direct'),
-      repoUrl: COMPONENT_REPO_URLS.torrserver_direct,
-      actions: torrserverDirectActions,
-      supportsVersions: true,
-    },
   ];
 
-  return cards.filter(
-    (card) =>
-      !['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc', 'tailscale'].includes(
-        card.component,
-      ),
-  );
+  return cards;
 }
 
 async function toggleVersionPicker(component: Tachyon.ComponentName) {

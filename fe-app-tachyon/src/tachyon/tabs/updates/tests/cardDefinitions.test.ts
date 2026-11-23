@@ -22,14 +22,11 @@ const mockSystemInfo: StoreType['diagnosticsSystemInfo'] = {
   loading: false,
   loaded: true,
   tachyon_version: '2.5.0',
+  tachyon_backup_version: '2.4.0',
   tachyon_core_version: '0.2.4',
   tachyon_core_backup_version: '0.2.3',
   tachyon_core_tailscale: 1,
   tachyon_core_cert_pin: 1,
-  torrserver_version: '1.2.3',
-  direct_bypass_enabled: 0,
-  torrserver_direct_enabled: 0,
-  torrserver_direct_active: 0,
   providerInfoLoaded: true,
 } as unknown as StoreType['diagnosticsSystemInfo'];
 
@@ -37,9 +34,6 @@ describe('updates cardDefinitions helpers', () => {
   it('resolves component card titles correctly', () => {
     expect(getComponentCardTitle('tachyon')).toBe('Tachyon');
     expect(getComponentCardTitle('tachyon-core')).toBe('Tachyon Core');
-    expect(getComponentCardTitle('torrserver_direct')).toBe(
-      'TorrServer Direct',
-    );
   });
 
   it('reads current versions from system info', () => {
@@ -47,24 +41,18 @@ describe('updates cardDefinitions helpers', () => {
     expect(getComponentCurrentVersion('tachyon-core', mockSystemInfo)).toBe(
       '0.2.4',
     );
-    expect(
-      getComponentCurrentVersion('torrserver_direct', mockSystemInfo),
-    ).toBe('1.2.3');
   });
 
   it('reads backup versions from system info', () => {
     expect(getComponentBackupVersion('tachyon-core', mockSystemInfo)).toBe(
       '0.2.3',
     );
-    expect(getComponentBackupVersion('tachyon', mockSystemInfo)).toBe('');
+    expect(getComponentBackupVersion('tachyon', mockSystemInfo)).toBe('2.4.0');
   });
 
   it('maps install keys for components', () => {
     expect(getComponentInstallKey('tachyon')).toBe('tachyonInstall');
     expect(getComponentInstallKey('tachyon-core')).toBe('tachyonCoreInstall');
-    expect(getComponentInstallKey('torrserver_direct')).toBe(
-      'torrserverDirectInstall',
-    );
   });
 
   it('creates check and install actions', () => {
@@ -73,16 +61,16 @@ describe('updates cardDefinitions helpers', () => {
     expect(check.key).toBe('tachyonCoreCheck');
 
     const installNew = getInstallAction(
-      'torrserver_direct',
-      'torrserverDirectInstall',
+      'tachyon-core',
+      'tachyonCoreInstall',
       false,
     );
     expect(installNew.text).toBe('Install');
     expect(installNew.action).toBe('install');
 
     const installExisting = getInstallAction(
-      'torrserver_direct',
-      'torrserverDirectInstall',
+      'tachyon-core',
+      'tachyonCoreInstall',
       true,
     );
     expect(installExisting.text).toBe('Update');

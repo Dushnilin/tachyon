@@ -4823,21 +4823,19 @@ function createOutboundsContent(section) {
           if (kv[k] !== undefined)
             setModalFieldValue(section, sectionId, `awg_${k}`, kv[k]);
         });
-        if (kv.headerprotectionkey) {
-          setModalFieldValue(section, sectionId, 'awg_version', '3.0');
-          setModalFieldValue(
-            section,
-            sectionId,
-            'awg_header_protection_key',
-            kv.headerprotectionkey,
-          );
-        }
         if (kv.contentpaddingaddition)
           setModalFieldValue(
             section,
             sectionId,
             'awg_content_padding_addition',
             kv.contentpaddingaddition,
+          );
+        if (kv.headerprotectionkey)
+          setModalFieldValue(
+            section,
+            sectionId,
+            'awg_header_protection_key',
+            kv.headerprotectionkey,
           );
         if (kv.rekeyaftertime)
           setModalFieldValue(
@@ -4874,24 +4872,47 @@ function createOutboundsContent(section) {
             'awg_max_handshake_attempts',
             kv.maxhandshakeattempts,
           );
-        if (kv.randomtrailers !== undefined) {
-          setModalFieldValue(section, sectionId, 'awg_version', '3.1');
+        if (kv.randomtrailers !== undefined)
           setModalFieldValue(
             section,
             sectionId,
             'awg_random_trailers',
             /^(1|true|yes|on)$/i.test(kv.randomtrailers) ? '1' : '0',
           );
-        }
-        if (kv.disablecookies !== undefined) {
-          setModalFieldValue(section, sectionId, 'awg_version', '3.1');
+        if (kv.disablecookies !== undefined)
           setModalFieldValue(
             section,
             sectionId,
             'awg_disable_cookies',
             /^(1|true|yes|on)$/i.test(kv.disablecookies) ? '1' : '0',
           );
-        }
+        const hasV31Field = [
+          'randomtrailers',
+          'disablecookies',
+          'rekeyaftertime',
+          'rekeytimeout',
+          'rejectaftertime',
+          'keepalivetimeout',
+          'maxhandshakeattempts',
+          'id',
+          'ip',
+          'ib',
+        ].some((k) => kv[k] !== undefined && String(kv[k]).trim() !== '');
+        const hasV30Field = [
+          'headerprotectionkey',
+          'contentpaddingaddition',
+        ].some((k) => kv[k] !== undefined && String(kv[k]).trim() !== '');
+        const detectedAwgVersion = hasV31Field
+          ? '3.1'
+          : hasV30Field
+            ? '3.0'
+            : '2.0';
+        setModalFieldValue(
+          section,
+          sectionId,
+          'awg_version',
+          detectedAwgVersion,
+        );
         ui.addNotification(
           null,
           E(
@@ -4996,6 +5017,28 @@ function createOutboundsContent(section) {
   o.value('3.0', _('AWG 3.0 (Header Protection & Timers)'));
   o.value('3.1', _('AWG 3.1 (Random Trailers & Cookie Control)'));
   o.depends('source_type', 'awg');
+  o.write = function (section_id, formvalue) {
+    if (formvalue === '2.0') {
+      uci.unset('tachyon', section_id, 'awg_header_protection_key');
+      uci.unset('tachyon', section_id, 'awg_content_padding_addition');
+      uci.unset('tachyon', section_id, 'awg_rekey_after_time');
+      uci.unset('tachyon', section_id, 'awg_rekey_timeout');
+      uci.unset('tachyon', section_id, 'awg_reject_after_time');
+      uci.unset('tachyon', section_id, 'awg_keepalive_timeout');
+      uci.unset('tachyon', section_id, 'awg_max_handshake_attempts');
+      uci.unset('tachyon', section_id, 'awg_random_trailers');
+      uci.unset('tachyon', section_id, 'awg_disable_cookies');
+    } else if (formvalue === '3.0') {
+      uci.unset('tachyon', section_id, 'awg_rekey_after_time');
+      uci.unset('tachyon', section_id, 'awg_rekey_timeout');
+      uci.unset('tachyon', section_id, 'awg_reject_after_time');
+      uci.unset('tachyon', section_id, 'awg_keepalive_timeout');
+      uci.unset('tachyon', section_id, 'awg_max_handshake_attempts');
+      uci.unset('tachyon', section_id, 'awg_random_trailers');
+      uci.unset('tachyon', section_id, 'awg_disable_cookies');
+    }
+    return uci.set('tachyon', section_id, 'awg_version', formvalue);
+  };
 
   [
     ['awg_jc', _('Jc (Junk Packet Count)'), '4'],
@@ -5028,6 +5071,15 @@ function createOutboundsContent(section) {
   [
     ['awg_header_protection_key', _('HeaderProtectionKey (Base64)'), ''],
     ['awg_content_padding_addition', _('ContentPaddingAddition'), '0'],
+  ].forEach(([key, title, ph]) => {
+    o = section.taboption('general', form.Value, key, title);
+    o.modalonly = true;
+    if (ph) o.placeholder = ph;
+    o.depends({ source_type: 'awg', awg_version: '3.0' });
+    o.depends({ source_type: 'awg', awg_version: '3.1' });
+  });
+
+  [
     ['awg_rekey_after_time', _('RekeyAfterTime (s)'), '120'],
     ['awg_rekey_timeout', _('RekeyTimeout (s)'), '5'],
     ['awg_reject_after_time', _('RejectAfterTime (s)'), '180'],
@@ -5037,7 +5089,6 @@ function createOutboundsContent(section) {
     o = section.taboption('general', form.Value, key, title);
     o.modalonly = true;
     if (ph) o.placeholder = ph;
-    o.depends({ source_type: 'awg', awg_version: '3.0' });
     o.depends({ source_type: 'awg', awg_version: '3.1' });
   });
 

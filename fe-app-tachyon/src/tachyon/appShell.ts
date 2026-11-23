@@ -15,7 +15,8 @@ import {
 } from '../icons';
 import { TachyonShellMethods } from './methods/shell';
 import { fetchServicesInfo } from './fetchers/fetchServicesInfo';
-import { store } from './services/store.service';
+import { store, StoreType } from './services/store.service';
+import { ensureSystemInfo } from './services/systemInfo.service';
 import { applyUiStateToStore } from './services/uiState.service';
 import {
   activateAppShellNavKey,
@@ -43,6 +44,64 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'tachyon_sidebar_collapsed_v1';
 const TOPBAR_COLLAPSED_STORAGE_KEY = 'tachyon_topbar_collapsed_v1';
 const SIDEBAR_EXPANDED_MENUS_KEY = 'tachyon_sidebar_menus_v1';
 const ACTIVE_NAV_STORAGE_KEY = 'tachyon_active_nav_key_v1';
+const DISMISSED_UPDATE_SIG_KEY = 'tachyon_dismissed_update_sig_v1';
+
+export interface AvailableComponentUpdate {
+  id: 'tachyon' | 'tachyon-core';
+  label: string;
+  current: string;
+  latest: string;
+}
+
+export function collectAvailableComponentUpdates(
+  sysInfo: Partial<StoreType['diagnosticsSystemInfo']> | null | undefined,
+  updatesChecks: Partial<StoreType['updatesChecks']> | null | undefined,
+): AvailableComponentUpdate[] {
+  const out: AvailableComponentUpdate[] = [];
+  const pushIfOutdated = (
+    id: 'tachyon' | 'tachyon-core',
+    label: string,
+    sysFlag: unknown,
+    sysCur: string | undefined,
+    sysLatest: string | undefined,
+    checkEntry: StoreType['updatesChecks']['tachyon'] | undefined,
+  ) => {
+    if (checkEntry?.status === 'latest' || checkEntry?.status === 'dev') {
+      return;
+    }
+    const checkOutdated =
+      checkEntry?.status === 'outdated' ||
+      checkEntry?.status === 'outdated_same_release';
+    const sysOutdated = sysFlag === 1 || sysFlag === true || sysFlag === '1';
+    if (!checkOutdated && !sysOutdated) {
+      return;
+    }
+    const current = String(checkEntry?.current_version || sysCur || '').trim();
+    const latest = String(checkEntry?.latest_version || sysLatest || '').trim();
+    if (!latest) {
+      return;
+    }
+    out.push({ id, label, current, latest });
+  };
+
+  pushIfOutdated(
+    'tachyon',
+    'Tachyon',
+    sysInfo?.tachyon_update_available,
+    sysInfo?.tachyon_version,
+    sysInfo?.tachyon_latest_version,
+    updatesChecks?.tachyon,
+  );
+  pushIfOutdated(
+    'tachyon-core',
+    'Tachyon Core',
+    sysInfo?.tachyon_core_update_available,
+    sysInfo?.tachyon_core_version,
+    sysInfo?.tachyon_core_latest_version,
+    updatesChecks?.['tachyon-core'],
+  );
+  return out;
+}
 
 export function getSavedActiveNavKey(): string | null {
   try {
@@ -1472,17 +1531,27 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   );
   let sidebarEl: HTMLElement;
   let topbarEl: HTMLElement;
+  let updateBannerEl: HTMLElement;
   let workspaceBodyEl: HTMLElement;
 
   if (!shellLayout) {
     sidebarEl = E('aside', { class: 'tachyon-sidebar' }, []);
     topbarEl = E('div', { class: 'tachyon-topbar', role: 'region' }, []);
+    updateBannerEl = E(
+      'div',
+      {
+        class: 'tachyon-update-banner is-hidden',
+        role: 'status',
+        'aria-live': 'polite',
+      } as any,
+      [],
+    );
     workspaceBodyEl = E('div', { class: 'tachyon-workspace-body' }, []);
 
     const mainColumn = E(
       'div',
       { class: 'tachyon-main-workspace tachyon-shell-main' },
-      [topbarEl, workspaceBodyEl],
+      [topbarEl, updateBannerEl, workspaceBodyEl],
     );
 
     shellLayout = E(
@@ -1507,6 +1576,26 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     workspaceBodyEl = shellLayout.querySelector<HTMLElement>(
       '.tachyon-workspace-body',
     )!;
+    const existingBanner = shellLayout.querySelector<HTMLElement>(
+      '.tachyon-update-banner',
+    );
+    if (existingBanner) {
+      updateBannerEl = existingBanner;
+    } else {
+      updateBannerEl = E(
+        'div',
+        {
+          class: 'tachyon-update-banner is-hidden',
+          role: 'status',
+          'aria-live': 'polite',
+        } as any,
+        [],
+      );
+      workspaceBodyEl.parentElement?.insertBefore(
+        updateBannerEl,
+        workspaceBodyEl,
+      );
+    }
 
     const strayChildren = Array.from(
       mapEl.childNodes || mapEl.children || [],
@@ -1855,6 +1944,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
   const langSlot = E('div', { class: 'tachyon-topbar__lang-slot' }, []);
 
+  let refreshUpdateNotifications: () => void = () => {};
+
   const renderSidebarAndTopbar = () => {
     uiMode = getUiMode();
     sidebarPos = getSidebarPos();
@@ -2043,6 +2134,18 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         renderNavIcon(parent.iconPaths, 16),
         E('span', { class: 'tachyon-sidebar__nav-label' }, parentLabel),
       ];
+      if (parent.id === 'system') {
+        parentBtnChildren.push(
+          E(
+            'span',
+            {
+              class: 'tachyon-sidebar__update-badge is-hidden',
+              'data-update-target': 'system',
+            } as any,
+            '',
+          ),
+        );
+      }
 
       if (showNestedMenu) {
         const chevronSvg = svgEl(
@@ -2165,6 +2268,18 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 { class: 'tachyon-sidebar__subitem-label' },
                 childLabel,
               ),
+              ...(child.key === 'updates'
+                ? [
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-sidebar__update-badge is-hidden',
+                        'data-update-target': 'updates',
+                      } as any,
+                      '',
+                    ),
+                  ]
+                : []),
             ],
           );
         }),
@@ -2661,7 +2776,20 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                           activateNavItem(sub);
                         },
                       } as any,
-                      subLabel,
+                      sub.key === 'updates'
+                        ? [
+                            subLabel,
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'tachyon-sidebar__update-badge is-hidden',
+                                'data-update-target': 'updates',
+                              } as any,
+                              '',
+                            ),
+                          ]
+                        : subLabel,
                     ),
                   ],
                 );
@@ -3006,6 +3134,134 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         activeSettingsNav.subtitleEn,
       );
     }
+
+    refreshUpdateNotifications();
+  };
+
+  refreshUpdateNotifications = () => {
+    if (!shellLayout) return;
+    const st = store.get();
+    const updates = collectAvailableComponentUpdates(
+      st.diagnosticsSystemInfo,
+      st.updatesChecks,
+    );
+    const countText = updates.length > 0 ? String(updates.length) : '';
+    const badges = shellLayout.querySelectorAll<HTMLElement>(
+      '.tachyon-sidebar__update-badge',
+    );
+    badges.forEach((badge) => {
+      badge.textContent = countText;
+      if (updates.length > 0) {
+        badge.classList.remove('is-hidden');
+      } else {
+        badge.classList.add('is-hidden');
+      }
+    });
+
+    if (updates.length === 0 || activeShellState.activeNavKey === 'updates') {
+      updateBannerEl.classList.add('is-hidden');
+      updateBannerEl.replaceChildren();
+      return;
+    }
+
+    const sig = updates.map((u) => `${u.id}@${u.latest}`).join('|');
+    let dismissedSig = '';
+    try {
+      if (typeof localStorage !== 'undefined') {
+        dismissedSig = String(
+          localStorage.getItem(DISMISSED_UPDATE_SIG_KEY) || '',
+        );
+      }
+    } catch {
+      dismissedSig = '';
+    }
+    if (dismissedSig === sig) {
+      updateBannerEl.classList.add('is-hidden');
+      updateBannerEl.replaceChildren();
+      return;
+    }
+
+    const summary = updates
+      .map((u) =>
+        u.current
+          ? `${u.label} ${u.current} -> ${u.latest}`
+          : `${u.label} ${u.latest}`,
+      )
+      .join(' · ');
+
+    const leadEl = E('div', { class: 'tachyon-update-banner__lead' }, [
+      svgEl(
+        'svg',
+        {
+          viewBox: '0 0 24 24',
+          width: '15',
+          height: '15',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': '2',
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        },
+        [
+          svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+          svgEl('polyline', { points: '16 12 12 8 8 12' }),
+          svgEl('line', { x1: '12', y1: '16', x2: '12', y2: '8' }),
+        ],
+      ),
+      E(
+        'span',
+        {},
+        `${tr('Доступно обновление:', 'Update available:')} ${summary}`,
+      ),
+    ]);
+
+    const openUpdatesBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'tachyon-update-banner__action',
+        click: (ev: MouseEvent) => {
+          ev?.preventDefault?.();
+          ev?.stopPropagation?.();
+          const updItem = NAV_ITEMS.find((i) => i.key === 'updates');
+          if (updItem) {
+            activateNavItem(updItem);
+          }
+        },
+      } as any,
+      tr('Открыть обновления', 'Open Updates'),
+    );
+
+    const dismissBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'tachyon-update-banner__dismiss',
+        title: tr('Скрыть уведомление', 'Dismiss notice'),
+        'aria-label': tr('Скрыть уведомление', 'Dismiss notice'),
+        click: (ev: MouseEvent) => {
+          ev?.preventDefault?.();
+          ev?.stopPropagation?.();
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(DISMISSED_UPDATE_SIG_KEY, sig);
+            }
+          } catch {
+            // ignore
+          }
+          refreshUpdateNotifications();
+        },
+      } as any,
+      [renderXIcon(12)],
+    );
+
+    const controlsEl = E('div', { class: 'tachyon-update-banner__controls' }, [
+      openUpdatesBtn,
+      dismissBtn,
+    ]);
+
+    updateBannerEl.replaceChildren(leadEl, controlsEl);
+    updateBannerEl.classList.remove('is-hidden');
   };
 
   activeShellState.renderFn = renderSidebarAndTopbar;
@@ -3104,6 +3360,16 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           metaEl.textContent = formatSidebarEngineLabel();
         }
       }
+      if (diff.diagnosticsSystemInfo || diff.updatesChecks) {
+        refreshUpdateNotifications();
+      }
     });
+  }
+  refreshUpdateNotifications();
+  if (
+    !store.get().diagnosticsSystemInfo?.loaded &&
+    typeof (globalThis as any).L !== 'undefined'
+  ) {
+    ensureSystemInfo({ silent: true }).catch(() => null);
   }
 }

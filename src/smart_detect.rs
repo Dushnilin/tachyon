@@ -436,7 +436,11 @@ fn find_trs_list_paths(data: &RouterStoreData, token: &str) -> Vec<std::path::Pa
 
     let mut paths = Vec::new();
     for dir in dirs {
-        for name in [format!("trs-{token}.trs"), format!("{token}.trs")] {
+        for name in [
+            format!("trs-{token}.trs"),
+            format!("{token}.trs"),
+            format!("community-{token}.trs"),
+        ] {
             let p = dir.join(name);
             if p.is_file() && !paths.contains(&p) {
                 paths.push(p);
@@ -700,28 +704,75 @@ fn insert_domain_into_section_and_linked_condition(
     )))
 }
 
+fn stage_detected_domains_batch(
+    candidate: &mut RouterStoreData,
+    items: &[(String, String)],
+) -> anyhow::Result<Vec<(String, DomainInsertOutcome)>> {
+    let mut touched_order: Vec<String> = Vec::new();
+    let mut outcomes: HashMap<String, DomainInsertOutcome> = HashMap::new();
+    let mut added_count = 0usize;
+
+    for (section_id, domain_rule) in items {
+        if let Some(res) =
+            insert_domain_into_section_and_linked_condition(candidate, section_id, domain_rule)?
+        {
+            added_count += 1;
+            if !outcomes.contains_key(section_id) {
+                touched_order.push(section_id.clone());
+            }
+            outcomes.insert(section_id.clone(), res);
+        }
+    }
+
+    if added_count == 0 {
+        return Ok(Vec::new());
+    }
+    Ok(touched_order
+        .into_iter()
+        .filter_map(|id| outcomes.remove(&id).map(|o| (id, o)))
+        .collect())
+}
+
+pub(crate) async fn apply_detected_domains_batch(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    items: &[(String, String)],
+) -> anyhow::Result<usize> {
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let mut candidate = state.data.read().await.clone();
+    let sync_list = stage_detected_domains_batch(&mut candidate, items)?;
+    if sync_list.is_empty() {
+        return Ok(0);
+    }
+
+    transaction::commit_transaction_with_source(state, candidate, "smart_detect").await?;
+    for (sec_id, (updated_sec_domains, sync_cond_id, updated_cond_domains)) in &sync_list {
+        ubus_bridge::sync_section_user_domains_to_json(
+            sec_id,
+            updated_sec_domains,
+            sync_cond_id.as_deref(),
+            updated_cond_domains.as_deref(),
+        );
+    }
+    let _ = core.apply_or_reload().await;
+    Ok(sync_list.len())
+}
+
 async fn apply_detected_domain_to_section(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
     section_id: &str,
     domain_rule: &str,
 ) -> anyhow::Result<bool> {
-    let mut candidate = state.data.read().await.clone();
-    let Some((updated_sec_domains, sync_cond_id, updated_cond_domains)) =
-        insert_domain_into_section_and_linked_condition(&mut candidate, section_id, domain_rule)?
-    else {
-        return Ok(false);
-    };
-
-    transaction::commit_transaction_with_source(state, candidate, "smart_detect").await?;
-    ubus_bridge::sync_section_user_domains_to_json(
-        section_id,
-        &updated_sec_domains,
-        sync_cond_id.as_deref(),
-        updated_cond_domains.as_deref(),
-    );
-    let _ = core.apply_or_reload().await;
-    Ok(true)
+    apply_detected_domains_batch(
+        state,
+        core,
+        &[(section_id.to_string(), domain_rule.to_string())],
+    )
+    .await
+    .map(|n| n > 0)
 }
 
 async fn load_cooldowns_once(st: &mut SmartDetectRuntimeState) {
@@ -1138,6 +1189,15 @@ pub async fn run_smart_detect_tick(state: &Arc<AppState>, core: &Arc<CoreManager
         }
     }
 
+    let should_apply = settings.ai_persistent_smart_detect;
+    struct PendingDetect {
+        domain: String,
+        saved_rule: String,
+        section_id: String,
+        proxy_ms: Option<u64>,
+    }
+    let mut pending_batch: Vec<PendingDetect> = Vec::new();
+
     for host in ready_to_probe {
         if domain_matches_exclusion_trs_lists(core, &host, &data_snap).await {
             let mut rt = runtime_state().write().await;
@@ -1145,9 +1205,35 @@ pub async fn run_smart_detect_tick(state: &Arc<AppState>, core: &Arc<CoreManager
             rt.cooldowns.insert(host, unix_now_secs());
             continue;
         }
-        let should_apply = settings.ai_persistent_smart_detect;
-        match Box::pin(probe_single_domain(state, core, &host, should_apply)).await {
+        match Box::pin(probe_single_domain(state, core, &host, false)).await {
             Ok(outcome) => {
+                if outcome.verdict == "proxy_confirmed"
+                    && let Some(ref sec_id) = outcome.matched_section
+                {
+                    if should_apply {
+                        pending_batch.push(PendingDetect {
+                            domain: outcome.domain.clone(),
+                            saved_rule: outcome.saved_rule.clone(),
+                            section_id: sec_id.clone(),
+                            proxy_ms: outcome.proxy_ms,
+                        });
+                    } else {
+                        let mut rt = runtime_state().write().await;
+                        record_event(
+                            &mut rt,
+                            SmartDetectEvent {
+                                timestamp: unix_now_secs(),
+                                domain: outcome.domain.clone(),
+                                saved_rule: outcome.saved_rule.clone(),
+                                section_id: sec_id.clone(),
+                                action: "detected_non_persistent".to_string(),
+                                detail:
+                                    "Домен подтверждён, но постоянная запись в конфиг отключена"
+                                        .to_string(),
+                            },
+                        );
+                    }
+                }
                 let mut rt = runtime_state().write().await;
                 rt.streaks.remove(&host);
                 rt.cooldowns.insert(host.clone(), unix_now_secs());
@@ -1160,25 +1246,60 @@ pub async fn run_smart_detect_tick(state: &Arc<AppState>, core: &Arc<CoreManager
                 {
                     rt.cooldowns.remove(&oldest);
                 }
-                if !should_apply && outcome.verdict == "proxy_confirmed" {
-                    record_event(
-                        &mut rt,
-                        SmartDetectEvent {
-                            timestamp: unix_now_secs(),
-                            domain: outcome.domain.clone(),
-                            saved_rule: outcome.saved_rule.clone(),
-                            section_id: outcome.matched_section.clone().unwrap_or_default(),
-                            action: "detected_non_persistent".to_string(),
-                            detail: "Домен подтверждён, но постоянная запись в конфиг отключена"
-                                .to_string(),
-                        },
-                    );
-                }
                 persist_cooldowns_tmpfs(&rt.cooldowns);
             }
             Err(_) => {
                 let mut rt = runtime_state().write().await;
                 rt.cooldowns.insert(host, unix_now_secs());
+            }
+        }
+    }
+
+    if !pending_batch.is_empty() {
+        let pairs: Vec<(String, String)> = pending_batch
+            .iter()
+            .map(|p| (p.section_id.clone(), p.saved_rule.clone()))
+            .collect();
+        let batch_res = apply_detected_domains_batch(state, core, &pairs).await;
+        let mut rt = runtime_state().write().await;
+        match batch_res {
+            Ok(applied_sections) => {
+                let action = if applied_sections > 0 {
+                    "added"
+                } else {
+                    "already_present"
+                };
+                for item in pending_batch {
+                    record_event(
+                        &mut rt,
+                        SmartDetectEvent {
+                            timestamp: unix_now_secs(),
+                            domain: item.domain,
+                            saved_rule: item.saved_rule,
+                            section_id: item.section_id,
+                            action: action.to_string(),
+                            detail: format!(
+                                "Прямой доступ не прошёл; подтверждено ({} мс)",
+                                item.proxy_ms.unwrap_or(0)
+                            ),
+                        },
+                    );
+                }
+            }
+            Err(e) => {
+                for item in pending_batch {
+                    record_event(
+                        &mut rt,
+                        SmartDetectEvent {
+                            timestamp: unix_now_secs(),
+                            domain: item.domain,
+                            saved_rule: item.saved_rule,
+                            section_id: item.section_id,
+                            action: "batch_error".to_string(),
+                            detail: format!("Ошибка пакетного сохранения домена: {e}"),
+                        },
+                    );
+                }
             }
         }
     }
@@ -1480,6 +1601,35 @@ mod tests {
                 .unwrap()
                 .user_domains,
             vec!["atomic.example".to_string()]
+        );
+
+        let batch = stage_detected_domains_batch(
+            &mut candidate,
+            &[
+                ("vpn".to_string(), "one.example".to_string()),
+                ("sec_atomic".to_string(), "two.example".to_string()),
+                ("vpn".to_string(), "one.example".to_string()),
+            ],
+        )
+        .expect("batch staging succeeds");
+        assert_eq!(batch.len(), 2);
+        assert!(
+            candidate
+                .sections
+                .iter()
+                .find(|s| s.id == "vpn")
+                .unwrap()
+                .user_domains
+                .contains(&"one.example".to_string())
+        );
+        assert!(
+            candidate
+                .conditions
+                .iter()
+                .find(|c| c.id == "cond_atomic")
+                .unwrap()
+                .user_domains
+                .contains(&"two.example".to_string())
         );
     }
 }

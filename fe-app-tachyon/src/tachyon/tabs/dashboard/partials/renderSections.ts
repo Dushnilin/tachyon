@@ -2221,26 +2221,6 @@ function renderDefaultState({
                   ),
                 ]
               : []),
-            ...(outbound.urlTestInfo
-              ? [
-                  E(
-                    'button',
-                    {
-                      type: 'button',
-                      class:
-                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button tachyon_dashboard-page__outbound-grid__item__urltest-button',
-                      'data-action': 'urltest-details',
-                      title: _('URLTest details'),
-                      'aria-label': _('URLTest details'),
-                      click: (event: MouseEvent) => {
-                        event.stopPropagation();
-                        onShowUrlTestInfo(section, outbound);
-                      },
-                    } as Record<string, unknown>,
-                    renderInfoIcon24(),
-                  ),
-                ]
-              : []),
             ...(outbound.priorityInfo
               ? [
                   E(
@@ -2260,7 +2240,26 @@ function renderDefaultState({
                     renderLayersIcon(16),
                   ),
                 ]
-              : []),
+              : outbound.urlTestInfo
+                ? [
+                    E(
+                      'button',
+                      {
+                        type: 'button',
+                        class:
+                          'btn tachyon_dashboard-page__outbound-grid__item__copy-button tachyon_dashboard-page__outbound-grid__item__urltest-button',
+                        'data-action': 'urltest-details',
+                        title: _('URLTest details'),
+                        'aria-label': _('URLTest details'),
+                        click: (event: MouseEvent) => {
+                          event.stopPropagation();
+                          onShowUrlTestInfo(section, outbound);
+                        },
+                      } as Record<string, unknown>,
+                      renderInfoIcon24(),
+                    ),
+                  ]
+                : []),
           ],
         ),
         ...(activeServerName
@@ -3639,13 +3638,13 @@ function renderDefaultState({
                                     ev.preventDefault();
                                     ev.stopPropagation();
                                     if (!selectedOutbound) return;
-                                    if (hasUrlTest) {
-                                      onShowUrlTestInfo(
+                                    if (hasPriority) {
+                                      onShowPriorityInfo(
                                         section,
                                         selectedOutbound,
                                       );
-                                    } else if (hasPriority) {
-                                      onShowPriorityInfo(
+                                    } else if (hasUrlTest) {
+                                      onShowUrlTestInfo(
                                         section,
                                         selectedOutbound,
                                       );

@@ -161,7 +161,7 @@ function parseFptnPayloadObject(
       const host = String(srv.host || '').trim();
       const port = Number(srv.port || 443);
       const rawSrvName = String(srv.name || host || `FPTN #${idx + 1}`).trim();
-      const display = isCensoredZone ? `${rawSrvName} (DPI)` : rawSrvName;
+      const display = rawSrvName;
       const key = `${display}|${host}|${port}`;
       if (seen.has(key)) return;
       seen.add(key);
@@ -170,7 +170,7 @@ function parseFptnPayloadObject(
         isCensoredZone ||
         Number(srv.is_using_censorship_zone_antidpi) === 1
       ) {
-        transParts.push('AntiDPI');
+        transParts.push('Obfs');
       }
       servers.push({
         name: display,
@@ -1446,8 +1446,8 @@ function getQuickCreateTemplates(
         icon: () => renderZapIcon(20),
         title: 'VLESS + REALITY (TCP / XHTTP / gRPC)',
         desc: tr(
-          'Невидимый для DPI сервер VLESS TLS 1.3 REALITY без необходимости покупать домен',
-          'Stealth TLS 1.3 REALITY inbound server without owning a domain name',
+          'Маскируемый сервер VLESS TLS 1.3 REALITY без необходимости покупать домен',
+          'TLS 1.3 REALITY inbound server without owning a domain name',
         ),
         defaults: {
           enabled: '1',
@@ -1476,8 +1476,8 @@ function getQuickCreateTemplates(
         icon: () => renderLockIcon(20),
         title: 'AmneziaWG 2.0 VPN',
         desc: tr(
-          'Полноценный VPN-сервер с защитой от DPI (мусорные пакеты и обфускация заголовков)',
-          'Full-device VPN tunnel with DPI-resistant junk packet & header obfuscation',
+          'Полноценный VPN-сервер с обфускацией заголовков и шумовыми пакетами',
+          'Full-device VPN tunnel with junk packet & header obfuscation',
         ),
         defaults: {
           enabled: '1',
@@ -1940,7 +1940,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           id: 'tunnel',
           label: tr('Туннели и протоколы', 'Tunnels & Protocols'),
         },
-        { id: 'dpi', label: tr('DPI / Desync', 'DPI / Desync') },
+        { id: 'dpi', label: tr('Десинхронизация (Desync)', 'Packet Desync') },
       ],
     },
     condition: {

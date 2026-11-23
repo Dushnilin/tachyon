@@ -335,13 +335,17 @@ export function showUpdateProgressModal(
     },
     updatePhase: (phase: string, _message?: string) => {
       const phaseLabels: Record<string, string> = {
-        package_index: _('Refreshing package index'),
-        waiting_package_lock: _('Waiting for package manager'),
-        package_transaction: _('Installing packages'),
+        starting: _('Preparing operation'),
+        checking: _('Checking releases'),
         downloading: _('Downloading'),
         extracting: _('Extracting'),
+        verifying: _('Verifying checksum'),
         backup: _('Creating backup'),
-        verify: _('Verifying installation'),
+        installing: _('Installing update'),
+        restarting: _('Restarting service'),
+        rollback: _('Rolling back'),
+        completed: _('Completed'),
+        failed: _('Failed'),
       };
       const label = phaseLabels[phase] || phase;
       phaseBadgeEl.textContent = label;

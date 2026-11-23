@@ -407,6 +407,21 @@ const sectionSourcesHiddenMap = new Map<string, boolean>();
 let latestSourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
   {};
 
+function isPriorityBalancerConfig(
+  bal?: Tachyon.ConfigSection & { mode?: string },
+): boolean {
+  if (!bal) {
+    return false;
+  }
+  const btype = String(bal.balancer_type || 'urltest')
+    .trim()
+    .toLowerCase();
+  const mode = String(bal.mode || '')
+    .trim()
+    .toLowerCase();
+  return btype === 'priority' || mode === 'priority' || mode === 'failover';
+}
+
 function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   manualLinkPrefixMap.clear();
   hiddenManualLinks.clear();
@@ -857,7 +872,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     const seenUtIds = new Set<string>();
     getListValues(next.balancer_refs).forEach((bid) => {
       const bal = balancerById.get(bid);
-      if (bal && (bal.balancer_type || 'urltest').toLowerCase() === 'urltest') {
+      if (
+        bal &&
+        (bal.balancer_type || 'urltest').trim().toLowerCase() !== 'selector' &&
+        !isPriorityBalancerConfig(bal)
+      ) {
         const bname = bal.name || bal['.name'];
         seenUtNames.add(bname);
         if (bal.enabled !== '0' && !seenUtIds.has(bal['.name'])) {
@@ -894,10 +913,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     const seenPgIds = new Set<string>();
     getListValues(next.balancer_refs).forEach((bid) => {
       const bal = balancerById.get(bid);
-      if (
-        bal &&
-        (bal.balancer_type || 'urltest').toLowerCase() === 'priority'
-      ) {
+      if (bal && isPriorityBalancerConfig(bal)) {
         const bname = bal.name || bal['.name'];
         seenPgNames.add(bname);
         if (bal.enabled !== '0' && !seenPgIds.has(bal['.name'])) {
@@ -1188,10 +1204,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
                 ];
               }
               const refBal = balancerById.get(ref);
-              if (
-                refBal &&
-                (refBal.balancer_type || 'urltest').toLowerCase() !== 'priority'
-              ) {
+              if (refBal && !isPriorityBalancerConfig(refBal)) {
                 const refBalSt =
                   itemSettingsMap(next.balancer_settings)[ref] || {};
                 const rawMode = String(
@@ -2996,10 +3009,19 @@ function buildProxyGroupOutbounds(
       resolved.displayName;
     const prefix =
       priorityConfig || urlTestConfig ? undefined : resolved.prefix;
-    const isRuntimeUrlTest = isUrlTestProxyEntry(item);
+    const runtimeMode = String(item?.value?.mode || '')
+      .trim()
+      .toLowerCase();
+    const isPriorityEntry = Boolean(
+      priorityConfig ||
+        priorityGroups[code] ||
+        (!urlTestConfig &&
+          (runtimeMode === 'priority' || runtimeMode === 'failover')),
+    );
+    const isRuntimeUrlTest = !isPriorityEntry && isUrlTestProxyEntry(item);
 
     const urlTestInfo =
-      urlTestConfig || isRuntimeUrlTest
+      !isPriorityEntry && (urlTestConfig || isRuntimeUrlTest)
         ? buildUrlTestInfo({
             code,
             displayName,

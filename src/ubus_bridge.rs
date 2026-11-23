@@ -402,15 +402,22 @@ fn serialize_json_sections_to_uci(map: &Map<String, Value>) -> String {
 pub const TACHYON_FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 4-8 1 6h3l-4 8-1-6z"/></svg>"##;
 
 /// Generate the LuCI HTML shell with the `tachyon-ui` design system and animated superluminal SVG background.
+fn sanitize_luci_subview(subview: Option<&str>) -> Option<&str> {
+    subview.map(|s| s.trim_matches('/')).filter(|s| {
+        !s.is_empty()
+            && s.len() <= 64
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+    })
+}
+
 pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     let lang = if ui_lang.trim().eq_ignore_ascii_case("en") {
         "en"
     } else {
         "ru"
     };
-    let sub = subview
-        .map(|s| s.trim_matches('/'))
-        .filter(|s| !s.is_empty());
+    let sub = sanitize_luci_subview(subview);
     let req_path_json = if let Some(s) = sub {
         format!("[\"admin\", \"services\", \"tachyon\", \"{s}\"]")
     } else {
@@ -1196,10 +1203,84 @@ fn handle_file_stat(args: &Value) -> Value {
     ])
 }
 
+fn is_safe_abs_path(p: &str) -> bool {
+    p.starts_with('/')
+        && !p.contains('\0')
+        && !p.contains("//")
+        && !p.split('/').any(|seg| seg == ".." || seg == ".")
+}
+
+fn is_allowed_bridge_read_path(p: &str) -> bool {
+    is_safe_abs_path(p)
+        && (matches!(
+            p,
+            "/proc/sys/kernel/hostname"
+                | "/etc/config/tachyon"
+                | "/var/run/tachyon/section-errors.json"
+                | "/var/run/tachyon/rule-conflicts.json"
+                | "/tmp/tachyon-snapshot-export.json"
+                | "/var/run/tachyon/ui-state/snapshot-export.json"
+        ) || p.starts_with("/var/run/tachyon/")
+            || p.starts_with("/tmp/run/tachyon/")
+            || p.starts_with("/tmp/tachyon")
+            || p.starts_with("/etc/tachyon/rulesets/")
+            || p.starts_with("/etc/tachyon/subscription-cache/")
+            || p.starts_with("/etc/tachyon/hosts-lists/")
+            || p.starts_with("/etc/tachyon/custom-lists/")
+            || p.starts_with("/usr/share/tachyon/rulesets/"))
+}
+
+fn is_allowed_bridge_write_path(p: &str) -> bool {
+    is_safe_abs_path(p)
+        && (p == "/tmp/tachyon-snapshot-import.json" || p.starts_with("/var/run/tachyon/"))
+}
+
+fn is_allowed_bridge_remove_path(p: &str) -> bool {
+    is_safe_abs_path(p)
+        && (p == "/tmp/tachyon-snapshot-import.json"
+            || p.starts_with("/var/run/tachyon/section-cache/")
+            || p.starts_with("/etc/tachyon/subscription-cache/"))
+}
+
+fn is_allowed_bridge_exec(bin: &str, args: &[String]) -> bool {
+    if args
+        .iter()
+        .any(|a| a.contains('\0') || a.contains('\n') || a.contains('\r'))
+    {
+        return false;
+    }
+    match bin {
+        "/usr/bin/tachyon-core" | "/usr/sbin/tachyon-core" => matches!(
+            args.first().map(String::as_str),
+            Some("version" | "check" | "rule-set" | "fptn")
+        ),
+        "/usr/bin/nslookup" | "/bin/nslookup" => {
+            (1..=4).contains(&args.len())
+                && args.iter().all(|a| {
+                    !a.is_empty()
+                        && (!a.starts_with('-')
+                            || a.starts_with("-type=")
+                            || a.starts_with("-port="))
+                })
+        }
+        "/bin/cat" => args.len() == 1 && is_allowed_bridge_read_path(&args[0]),
+        "/bin/rm" => {
+            args.iter().any(|a| a != "-f")
+                && args
+                    .iter()
+                    .all(|a| a == "-f" || is_allowed_bridge_remove_path(a))
+        }
+        _ => false,
+    }
+}
+
 async fn handle_file_read(args: &Value, state: &Arc<AppState>) -> Value {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json!([2]);
     };
+    if !is_allowed_bridge_read_path(path) {
+        return json!([6]);
+    }
     if let Ok(bytes) = std::fs::read(path) {
         let data = String::from_utf8_lossy(&bytes).into_owned();
         return json!([0, { "data": data }]);
@@ -1230,6 +1311,9 @@ fn handle_file_write(args: &Value) -> Value {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json!([2]);
     };
+    if !is_allowed_bridge_write_path(path) {
+        return json!([6]);
+    }
     let data = args.get("data").and_then(Value::as_str).unwrap_or("");
     let append = args.get("append").and_then(Value::as_bool).unwrap_or(false);
     let target = Path::new(path);
@@ -1254,6 +1338,9 @@ fn handle_file_remove(args: &Value) -> Value {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json!([2]);
     };
+    if !is_allowed_bridge_remove_path(path) {
+        return json!([6]);
+    }
     if Path::new(path).exists() && std::fs::remove_file(path).is_err() {
         return json!([5]);
     }
@@ -1309,15 +1396,12 @@ async fn handle_file_exec(args: &Value, state: &Arc<AppState>, core: &Arc<CoreMa
         ]);
     }
 
+    if !is_allowed_bridge_exec(command, &params) {
+        return json!([6]);
+    }
+
     let mut cmd = Command::new(command);
     cmd.args(&params);
-    if let Some(env_obj) = args.get("env").and_then(Value::as_object) {
-        for (k, v) in env_obj {
-            if let Some(s) = v.as_str() {
-                cmd.env(k, s);
-            }
-        }
-    }
 
     match tokio::time::timeout(Duration::from_secs(60), cmd.output()).await {
         Ok(Ok(out)) => {
@@ -1740,9 +1824,15 @@ pub async fn execute_tachyon_cli(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
 ) -> (i32, String, String) {
-    let Some(method) = params.first().map(|s| s.trim()) else {
+    let Some(raw_method) = params.first().map(|s| s.trim()) else {
         return (0, String::new(), String::new());
     };
+    let normalized = if raw_method.starts_with('-') {
+        raw_method.to_string()
+    } else {
+        raw_method.replace('-', "_")
+    };
+    let method = normalized.as_str();
     let rest = &params[1..];
 
     // 1. Sub-millisecond Pure-Rust handlers for all frequent UI / telemetry / metadata / crypto methods
@@ -1752,6 +1842,168 @@ pub async fn execute_tachyon_cli(
 
     // 2. All remaining CLI / RPC methods are handled 100% in pure Rust without ucode
     execute_pure_rust_tachyon_cli_boxed(method, rest, state, core).await
+}
+
+const MAX_RULESET_EXTRACT_BYTES: usize = 16 * 1024 * 1024;
+const RULESET_EXTRACT_CACHE_DIR: &str = "/tmp/tachyon-core/rulesets";
+const RULESET_EXTRACT_TTL_SECS: u64 = 300;
+
+fn find_cached_ruleset_by_name_in_roots(clean_name: &str, roots: &[&Path]) -> Option<PathBuf> {
+    let candidates = [
+        format!("{clean_name}.trs"),
+        format!("community-{clean_name}.trs"),
+        format!("{clean_name}.srs"),
+        format!("community-{clean_name}.srs"),
+        format!("{clean_name}.json"),
+        format!("community-{clean_name}.json"),
+    ];
+    for root in roots {
+        for name in &candidates {
+            let candidate = root.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn ruleset_ext_from_url(url: &str) -> &'static str {
+    let path_part = url.split(['?', '#']).next().unwrap_or("");
+    let lower = path_part.to_ascii_lowercase();
+    if lower.ends_with(".json") {
+        ".json"
+    } else if lower.ends_with(".srs") {
+        ".srs"
+    } else {
+        ".trs"
+    }
+}
+
+fn is_fresh_non_empty_file(path: &Path, max_age_secs: u64) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() || meta.len() == 0 {
+        return false;
+    }
+    meta.modified()
+        .ok()
+        .and_then(|m| std::time::SystemTime::now().duration_since(m).ok())
+        .is_some_and(|age| age.as_secs() < max_age_secs)
+}
+
+async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Result<String, String> {
+    let trimmed = raw_ref.trim();
+    if trimmed.is_empty() {
+        return Err("empty ruleset reference".to_string());
+    }
+
+    if trimmed.starts_with('/') {
+        if !is_safe_abs_path(trimmed) || !is_allowed_bridge_read_path(trimmed) {
+            return Err("ruleset path is not permitted".to_string());
+        }
+        let p = Path::new(trimmed);
+        if !p.is_file() {
+            return Err(format!("ruleset file not found: {trimmed}"));
+        }
+        return Ok(trimmed.to_string());
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        let ext = ruleset_ext_from_url(trimmed);
+        let url_hash = crypto_gen::sha256_bytes_hex(trimmed.as_bytes());
+        let cache_dir = Path::new(RULESET_EXTRACT_CACHE_DIR);
+        let cache_path = cache_dir.join(format!("url-{url_hash}{ext}"));
+        if is_fresh_non_empty_file(&cache_path, RULESET_EXTRACT_TTL_SECS) {
+            return Ok(cache_path.to_string_lossy().into_owned());
+        }
+        let bytes = core
+            .curl_fetch_with_doh_fallback(trimmed, false, 15, None)
+            .await
+            .map_err(|e| format!("failed to fetch remote ruleset: {e}"))?;
+        if bytes.is_empty() {
+            return Err("downloaded ruleset is empty".to_string());
+        }
+        if bytes.len() > MAX_RULESET_EXTRACT_BYTES {
+            return Err(format!(
+                "ruleset exceeds maximum allowed size ({MAX_RULESET_EXTRACT_BYTES} bytes)"
+            ));
+        }
+        std::fs::create_dir_all(cache_dir)
+            .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
+        crypto_gen::write_file_if_changed(&cache_path, &bytes)
+            .map_err(|e| format!("failed to write cached ruleset: {e}"))?;
+        return Ok(cache_path.to_string_lossy().into_owned());
+    }
+
+    let alias = trimmed
+        .strip_prefix("community:")
+        .unwrap_or(trimmed)
+        .strip_prefix("local:")
+        .unwrap_or_else(|| trimmed.strip_prefix("community:").unwrap_or(trimmed))
+        .trim();
+    if alias.is_empty()
+        || alias == "."
+        || alias == ".."
+        || alias.contains("..")
+        || !alias
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    {
+        return Err(format!("invalid ruleset reference: {trimmed}"));
+    }
+
+    let roots = [
+        Path::new("/etc/tachyon/rulesets"),
+        Path::new(RULESET_EXTRACT_CACHE_DIR),
+        Path::new("/usr/share/tachyon/rulesets"),
+    ];
+    if let Some(found) = find_cached_ruleset_by_name_in_roots(alias, &roots) {
+        return Ok(found.to_string_lossy().into_owned());
+    }
+
+    let cache_dir = Path::new(RULESET_EXTRACT_CACHE_DIR);
+    let clean_name = alias
+        .strip_prefix("community-")
+        .unwrap_or(alias)
+        .trim_end_matches(".trs")
+        .trim_end_matches(".srs")
+        .trim_end_matches(".json");
+    let dest = cache_dir.join(format!("{clean_name}.trs"));
+    if is_fresh_non_empty_file(&dest, RULESET_EXTRACT_TTL_SECS) {
+        return Ok(dest.to_string_lossy().into_owned());
+    }
+
+    let primary_url = format!(
+        "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{clean_name}.trs"
+    );
+    let fallback_url = format!(
+        "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_name}.trs"
+    );
+    let bytes = match core
+        .curl_fetch_with_doh_fallback(&primary_url, false, 15, None)
+        .await
+    {
+        Ok(b) if !b.is_empty() => b,
+        _ => core
+            .curl_fetch_with_doh_fallback(&fallback_url, false, 15, None)
+            .await
+            .map_err(|e| format!("failed to resolve ruleset '{alias}': {e}"))?,
+    };
+    if bytes.is_empty() {
+        return Err(format!("resolved ruleset '{alias}' is empty"));
+    }
+    if bytes.len() > MAX_RULESET_EXTRACT_BYTES {
+        return Err(format!(
+            "ruleset exceeds maximum allowed size ({MAX_RULESET_EXTRACT_BYTES} bytes)"
+        ));
+    }
+    std::fs::create_dir_all(cache_dir)
+        .map_err(|e| format!("failed to create ruleset cache dir: {e}"))?;
+    crypto_gen::write_file_if_changed(&dest, &bytes)
+        .map_err(|e| format!("failed to write cached ruleset: {e}"))?;
+    Ok(dest.to_string_lossy().into_owned())
 }
 
 /// Fast pure-Rust implementations of hot RPC methods (`<1 ms` latency, zero process forks).
@@ -2217,31 +2469,27 @@ async fn try_fast_pure_rust_method(
                 Some((1, format!("{s}\n"), String::new()))
             }
         }
-        "generate_warp" => {
-            let kp = crypto_gen::generate_wg_keypair();
-            let s = serde_json::to_string(&json!({
-                "success": true,
-                "private_key": kp.private_key,
-                "public_key": kp.public_key,
-                "peer_public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-                "server_address": "engage.cloudflareclient.com",
-                "server": "engage.cloudflareclient.com",
-                "server_port": 2408,
-                "local_address": "172.16.0.2/32",
-                "ipv6_address": "2606:4700:110:8a36::2/128",
-                "mtu": 1280,
-                "jc": 4,
-                "jmin": 40,
-                "jmax": 70,
-                "s1": 0,
-                "s2": 0,
-                "h1": 1,
-                "h2": 2,
-                "h3": 3,
-                "h4": 4,
-            }))
-            .unwrap_or_else(|_| "{}".to_string());
-            Some((0, format!("{s}\n"), String::new()))
+        "generate_warp" => match core.provision_warp_credentials().await {
+            Ok(payload) => {
+                let s = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+                Some((0, format!("{s}\n"), String::new()))
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                let s = serde_json::to_string(&json!({
+                    "success": false,
+                    "error": msg,
+                }))
+                .unwrap_or_else(|_| "{\"success\":false}".to_string());
+                Some((1, format!("{s}\n"), format!("{msg}\n")))
+            }
+        },
+        "extract_ruleset" => {
+            let reference = rest.first().map(String::as_str).unwrap_or("");
+            match resolve_and_extract_ruleset(reference, core).await {
+                Ok(path) => Some((0, format!("{path}\n"), String::new())),
+                Err(e) => Some((1, String::new(), format!("{e}\n"))),
+            }
         }
         "get_router_network_env" => {
             let (ip_res, ip6_res, host_res) = tokio::join!(
@@ -7460,7 +7708,34 @@ async fn execute_pure_rust_tachyon_cli(
             }
             Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
         },
-        "enable" | "disable" => json!({ "success": true }),
+        "enable" | "disable" => {
+            if cfg!(target_os = "linux") && Path::new("/etc/init.d/tachyon").is_file() {
+                match tokio::time::timeout(
+                    Duration::from_secs(10),
+                    Command::new("/etc/init.d/tachyon").arg(method).output(),
+                )
+                .await
+                {
+                    Ok(Ok(out)) if out.status.success() => json!({ "success": true }),
+                    Ok(Ok(out)) => {
+                        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                        let msg = if stderr.is_empty() {
+                            format!("init.d {method} exited with {:?}", out.status.code())
+                        } else {
+                            stderr
+                        };
+                        json!({ "success": false, "error": msg })
+                    }
+                    Ok(Err(e)) => json!({ "success": false, "error": format!("{e}") }),
+                    Err(_) => json!({
+                        "success": false,
+                        "error": format!("timeout running /etc/init.d/tachyon {method}")
+                    }),
+                }
+            } else {
+                json!({ "success": true })
+            }
+        }
         "apply_quick_fix" => {
             let fix_id = rest.first().map(String::as_str).unwrap_or("restart_core");
             match Box::pin(diagnostics::apply_quick_fix_verified(
@@ -9709,7 +9984,10 @@ async fn execute_pure_rust_tachyon_cli(
                 })
             }
         }
-        _ => json!({ "success": true }),
+        _ => json!({
+            "success": false,
+            "error": format!("Unsupported method: {method}")
+        }),
     };
 
     let s = serde_json::to_string(&out_val).unwrap_or_else(|_| "{}".to_string());
@@ -10075,11 +10353,28 @@ pub(crate) fn format_show_config_value(
         }
     }
 
-    if let Some(servers) = val.get_mut("inbound_servers").and_then(Value::as_array_mut) {
-        for srv_val in servers.iter_mut() {
-            if let Some(srv_obj) = srv_val.as_object_mut() {
-                for key in ["reality_short_id", "reality_public_key", "inbound_json"] {
-                    redact_non_empty_string_field(srv_obj, key);
+    for array_key in ["servers", "inbound_servers"] {
+        if let Some(servers) = val.get_mut(array_key).and_then(Value::as_array_mut) {
+            for srv_val in servers.iter_mut() {
+                if let Some(srv_obj) = srv_val.as_object_mut() {
+                    for key in [
+                        "password",
+                        "private_key",
+                        "tls_key",
+                        "reality_short_id",
+                        "reality_public_key",
+                        "reality_private_key",
+                        "openconnect_cookie",
+                        "mtproto_secret",
+                        "awg_private_key",
+                        "awg_client_private_key",
+                        "awg_preshared_key",
+                        "awg_header_protection_key",
+                        "tailscale_auth_key",
+                        "inbound_json",
+                    ] {
+                        redact_non_empty_string_field(srv_obj, key);
+                    }
                 }
             }
         }
@@ -10164,7 +10459,27 @@ async fn sync_uci_to_rust_store_inner(
     Ok(())
 }
 
+fn is_allowed_router_ubus_call(object: &str, method: &str) -> bool {
+    matches!(
+        (object, method),
+        ("network.interface", "dump" | "status")
+            | (
+                "luci-rpc",
+                "getHostHints"
+                    | "getDHCPLeases"
+                    | "getNetworkDevices"
+                    | "getWirelessDevices"
+                    | "getBoardJSON"
+            )
+            | ("system", "board" | "info")
+            | ("network.device", "status")
+    )
+}
+
 async fn call_router_ubus_cli(object: &str, method: &str, args: &Value) -> Option<Value> {
+    if !is_allowed_router_ubus_call(object, method) {
+        return None;
+    }
     if !Path::new("/bin/ubus").exists() && !Path::new("/usr/sbin/ubus").exists() {
         return None;
     }
@@ -10255,6 +10570,14 @@ async fn handle_fallback_system_ubus(object: &str, method: &str) -> Value {
     }
 }
 
+fn is_safe_uci_config_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+}
+
 async fn handle_pure_rust_uci(
     uci_method: &str,
     args: &Value,
@@ -10267,6 +10590,9 @@ async fn handle_pure_rust_uci(
         .unwrap_or("tachyon");
 
     if config != "tachyon" {
+        if !is_safe_uci_config_name(config) {
+            return json!([2]);
+        }
         let cfg_path = PathBuf::from(format!("/etc/config/{config}"));
         return match uci_method {
             "get" => {
@@ -10577,6 +10903,9 @@ pub async fn handle_cgi_direct(
         let Some(filepath) = form.get("path") else {
             return (400, "text/plain; charset=utf-8", b"Missing path".to_vec());
         };
+        if !is_allowed_bridge_read_path(filepath) {
+            return (403, "text/plain; charset=utf-8", b"Forbidden".to_vec());
+        }
         if let Ok(bytes) = std::fs::read(filepath) {
             return (200, "application/octet-stream", bytes);
         }
@@ -10592,7 +10921,7 @@ pub async fn handle_cgi_direct(
         (404, "text/plain; charset=utf-8", b"Not found".to_vec())
     } else {
         let cmd_str = form.get("command").map(String::as_str).unwrap_or("");
-        if cmd_str.contains("luci-peeraddr") {
+        if cmd_str.trim() == "/usr/libexec/luci-peeraddr" {
             return (
                 200,
                 "application/json; charset=utf-8",
@@ -10610,6 +10939,10 @@ pub async fn handle_cgi_direct(
         if bin == "/sbin/uci" || bin == "/bin/uci" || bin == "uci" {
             let (_, stdout, _) = execute_pure_rust_uci_cli(args, state, core).await;
             return (200, "text/plain; charset=utf-8", stdout.into_bytes());
+        }
+        let args_vec = args.to_vec();
+        if !is_allowed_bridge_exec(bin, &args_vec) {
+            return (403, "text/plain; charset=utf-8", b"Forbidden".to_vec());
         }
         let mut cmd = Command::new(bin);
         cmd.args(args).kill_on_drop(true);
@@ -13375,6 +13708,16 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
             ..Default::default()
         });
 
+        data.servers.push(crate::store::InboundServer {
+            id: "srv_awg".into(),
+            protocol: "awg".into(),
+            password: "srv-pass-secret".into(),
+            awg_preshared_key: "psk-secret".into(),
+            awg_header_protection_key: "hpk-secret".into(),
+            reality_short_id: "0123456789abcdef".into(),
+            ..Default::default()
+        });
+
         let masked = format_show_config_value(&data, false);
         assert_eq!(masked["settings"]["clash_api_secret"], "[REDACTED]");
         assert_eq!(
@@ -13382,6 +13725,13 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
             "[REDACTED]"
         );
         assert_eq!(masked["settings"]["agent_api_token"], "[REDACTED]");
+        assert_eq!(masked["servers"][0]["password"], "[REDACTED]");
+        assert_eq!(masked["servers"][0]["awg_preshared_key"], "[REDACTED]");
+        assert_eq!(
+            masked["servers"][0]["awg_header_protection_key"],
+            "[REDACTED]"
+        );
+        assert_eq!(masked["servers"][0]["reality_short_id"], "[REDACTED]");
 
         let src_obj = masked["outbound_sources"]
             .as_array()
@@ -13496,6 +13846,144 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         assert_eq!(active[0]["source_selector"], json!("src_b"));
         assert_eq!(active[0]["resolved_target"], json!("src_b"));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bridge_allowlists_reject_arbitrary_exec_paths_and_ubus_calls() {
+        assert!(!is_allowed_bridge_exec(
+            "/bin/sh",
+            &["-c".into(), "id".into()]
+        ));
+        assert!(!is_allowed_bridge_exec("/bin/cat", &["/etc/shadow".into()]));
+        assert!(!is_allowed_bridge_exec(
+            "/bin/rm",
+            &["-rf".into(), "/etc/passwd".into()]
+        ));
+        assert!(!is_allowed_bridge_exec(
+            "/usr/bin/nslookup",
+            &["-debug".into(), "example.com".into()]
+        ));
+        assert!(!is_allowed_bridge_read_path("/etc/shadow"));
+        assert!(!is_allowed_bridge_read_path("/etc/tachyon/tachyon.json"));
+        assert!(!is_allowed_bridge_read_path(
+            "/var/run/tachyon/../etc/shadow"
+        ));
+        assert!(!is_allowed_bridge_write_path("/etc/passwd"));
+        assert!(!is_allowed_bridge_remove_path("/etc/passwd"));
+        assert!(!is_allowed_router_ubus_call("system", "exec"));
+        assert!(!is_allowed_router_ubus_call("file", "write"));
+
+        assert!(is_allowed_bridge_read_path(
+            "/var/run/tachyon/section-cache/Main.json"
+        ));
+        assert!(is_allowed_bridge_write_path(
+            "/tmp/tachyon-snapshot-import.json"
+        ));
+        assert!(is_allowed_bridge_remove_path(
+            "/etc/tachyon/subscription-cache/Main.json"
+        ));
+        assert!(is_allowed_bridge_exec(
+            "/usr/bin/tachyon-core",
+            &["version".into()]
+        ));
+        assert!(is_allowed_bridge_exec(
+            "/usr/bin/nslookup",
+            &["example.com".into()]
+        ));
+        assert!(is_allowed_bridge_exec(
+            "/bin/rm",
+            &[
+                "-f".into(),
+                "/var/run/tachyon/section-cache/Main.json".into()
+            ]
+        ));
+        assert!(is_allowed_router_ubus_call("network.interface", "dump"));
+        assert!(is_allowed_router_ubus_call("luci-rpc", "getHostHints"));
+    }
+
+    #[tokio::test]
+    async fn execute_tachyon_cli_normalizes_hyphens_and_rejects_unknown_methods() {
+        let dir = std::env::temp_dir().join(format!("tachyon_cli_norm_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let (code, stdout, _) =
+            execute_tachyon_cli(&["show-version".to_string()], &state, &core).await;
+        assert_eq!(code, 0);
+        assert_eq!(stdout.trim(), crate::store::TACHYON_VERSION);
+
+        let (unk_code, unk_stdout, _) =
+            execute_tachyon_cli(&["nonexistent-rpc-method".to_string()], &state, &core).await;
+        assert_eq!(unk_code, 0);
+        let parsed: Value = serde_json::from_str(unk_stdout.trim()).unwrap();
+        assert_eq!(parsed.get("success").and_then(Value::as_bool), Some(false));
+        assert!(
+            parsed
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .contains("nonexistent_rpc_method")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn extract_ruleset_rejects_disallowed_paths_and_resolves_local_cache() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_ruleset_ext_s_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        let core = CoreManager::new(Arc::clone(&state));
+
+        let (bad_code, _, bad_err) = execute_tachyon_cli(
+            &["extract_ruleset".to_string(), "/etc/shadow".to_string()],
+            &state,
+            &core,
+        )
+        .await;
+        assert_ne!(bad_code, 0);
+        assert!(!bad_err.trim().is_empty());
+
+        let (trav_code, _, _) = execute_tachyon_cli(
+            &[
+                "extract-ruleset".to_string(),
+                "../../etc/passwd".to_string(),
+            ],
+            &state,
+            &core,
+        )
+        .await;
+        assert_ne!(trav_code, 0);
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon_ruleset_ext_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let sample_trs = tmp_dir.join("sample_test.trs");
+        let sample_community = tmp_dir.join("community-foo.trs");
+        std::fs::write(&sample_trs, b"TRS1").unwrap();
+        std::fs::write(&sample_community, b"TRS1").unwrap();
+
+        assert_eq!(
+            find_cached_ruleset_by_name_in_roots("sample_test", &[tmp_dir.as_path()]),
+            Some(sample_trs)
+        );
+        assert_eq!(
+            find_cached_ruleset_by_name_in_roots("foo", &[tmp_dir.as_path()]),
+            Some(sample_community)
+        );
+        assert_eq!(sanitize_luci_subview(Some("sections")), Some("sections"));
+        assert_eq!(sanitize_luci_subview(Some("foo\"];alert(1);//")), None);
+        assert!(is_safe_uci_config_name("network"));
+        assert!(is_safe_uci_config_name("wireless-extra_1"));
+        assert!(!is_safe_uci_config_name(""));
+        assert!(!is_safe_uci_config_name("../shadow"));
+        assert!(!is_safe_uci_config_name("foo/bar"));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

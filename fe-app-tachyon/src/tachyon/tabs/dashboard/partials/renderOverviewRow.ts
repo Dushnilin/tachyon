@@ -3934,13 +3934,13 @@ export function renderDashboardSectionsAndNodes(
                       ev.preventDefault();
                       ev.stopPropagation();
                       if (!activeInfo.selectedOutbound) return;
-                      if (activeInfo.hasUrlTest) {
-                        onShowUrlTestInfo(section, activeInfo.selectedOutbound);
-                      } else if (activeInfo.hasPriority) {
+                      if (activeInfo.hasPriority) {
                         onShowPriorityInfo(
                           section,
                           activeInfo.selectedOutbound,
                         );
+                      } else if (activeInfo.hasUrlTest) {
+                        onShowUrlTestInfo(section, activeInfo.selectedOutbound);
                       }
                     }
                   : undefined,
@@ -4364,10 +4364,10 @@ export function renderSectionConditionsAndBalancersView(
                     class: 'btn cbi-button cbi-button-neutral',
                     style: 'padding: 3px 10px; font-size: 12px;',
                     click: () => {
-                      if (ag.urlTestInfo) {
-                        callbacks.onShowUrlTestInfo(section, ag);
-                      } else if (ag.priorityInfo) {
+                      if (ag.priorityInfo) {
                         callbacks.onShowPriorityInfo(section, ag);
+                      } else if (ag.urlTestInfo) {
+                        callbacks.onShowUrlTestInfo(section, ag);
                       }
                     },
                   } as any,

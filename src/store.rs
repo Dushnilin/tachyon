@@ -789,6 +789,10 @@ fn default_sub_engine() -> String {
     "core".to_string()
 }
 
+fn default_update_channel() -> String {
+    "auto".to_string()
+}
+
 fn default_comp_check_int() -> String {
     "12h".to_string()
 }
@@ -1183,6 +1187,8 @@ pub struct GlobalSettings {
     pub download_components_via_proxy: bool,
     #[serde(default)]
     pub download_components_via_proxy_section: String,
+    #[serde(default = "default_update_channel")]
+    pub component_update_channel: String,
     #[serde(default = "default_true")]
     pub component_update_check_enabled: bool,
     #[serde(default = "default_comp_check_int")]
@@ -1472,6 +1478,7 @@ impl Default for GlobalSettings {
             download_lists_via_proxy_section: "Main".to_string(),
             download_components_via_proxy: false,
             download_components_via_proxy_section: "Main".to_string(),
+            component_update_channel: "auto".to_string(),
             component_update_check_enabled: true,
             component_update_check_interval: "12h".to_string(),
             component_auto_update_enabled: false,
@@ -3190,6 +3197,24 @@ pub struct InboundServer {
     pub awg_j3: String,
     #[serde(default)]
     pub awg_itime: u32,
+    #[serde(default)]
+    pub awg_header_protection_key: String,
+    #[serde(default)]
+    pub awg_content_padding_addition: String,
+    #[serde(default)]
+    pub awg_random_trailers: bool,
+    #[serde(default)]
+    pub awg_disable_cookies: bool,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_rekey_after_time: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_rekey_timeout: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_reject_after_time: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_keepalive_timeout: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub awg_max_handshake_attempts: String,
     #[serde(default)]
     pub awg_keepalive: u16,
     #[serde(default)]
@@ -5301,6 +5326,10 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("download_components_via_proxy_section") {
                         self.settings.download_components_via_proxy_section = v.to_string();
                     }
+                    if let Some(v) = b.opt("component_update_channel") {
+                        self.settings.component_update_channel =
+                            crate::updater::normalize_update_channel(v).to_string();
+                    }
                     if let Some(v) = b.opt("component_update_check_enabled") {
                         self.settings.component_update_check_enabled = parse_bool(v);
                     }
@@ -6727,10 +6756,26 @@ impl RouterStoreData {
                         olcrtc_crypto_key: b.opt("olcrtc_crypto_key").unwrap_or("").to_string(),
                         olcrtc_socks_port: b.opt("olcrtc_socks_port").unwrap_or("1082").to_string(),
                         olcrtc_subscription_links: b.list("olcrtc_subscription_links"),
-                        fptn_access_token: b.opt("access_token").unwrap_or("").to_string(),
-                        fptn_sni: b.opt("sni").unwrap_or("").to_string(),
-                        fptn_bypass_method: b.opt("bypass_method").unwrap_or("").to_string(),
-                        fptn_preferred_server: b.opt("preferred_server").unwrap_or("").to_string(),
+                        fptn_access_token: b
+                            .opt("fptn_access_token")
+                            .or_else(|| b.opt("access_token"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_sni: b
+                            .opt("fptn_sni")
+                            .or_else(|| b.opt("sni"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_bypass_method: b
+                            .opt("fptn_bypass_method")
+                            .or_else(|| b.opt("bypass_method"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_preferred_server: b
+                            .opt("fptn_preferred_server")
+                            .or_else(|| b.opt("preferred_server"))
+                            .unwrap_or("")
+                            .to_string(),
                         warp_flow_device_id: b.opt_str("warp_flow_device_id"),
                         wdtt_native: b.opt("wdtt_native").is_some_and(parse_bool),
                         wdtt_workers: b.opt_u16(&["wdtt_workers"]),
@@ -7181,6 +7226,33 @@ impl RouterStoreData {
                         awg_j2: b.opt("awg_j2").unwrap_or("").to_string(),
                         awg_j3: b.opt("awg_j3").unwrap_or("").to_string(),
                         awg_itime: b.opt("awg_itime").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_header_protection_key: b
+                            .opt("awg_header_protection_key")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_content_padding_addition: b
+                            .opt("awg_content_padding_addition")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_random_trailers: b.opt("awg_random_trailers").is_some_and(parse_bool),
+                        awg_disable_cookies: b.opt("awg_disable_cookies").is_some_and(parse_bool),
+                        awg_rekey_after_time: b
+                            .opt("awg_rekey_after_time")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_rekey_timeout: b.opt("awg_rekey_timeout").unwrap_or("").to_string(),
+                        awg_reject_after_time: b
+                            .opt("awg_reject_after_time")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_keepalive_timeout: b
+                            .opt("awg_keepalive_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_max_handshake_attempts: b
+                            .opt("awg_max_handshake_attempts")
+                            .unwrap_or("")
+                            .to_string(),
                         awg_keepalive: b
                             .opt("awg_keepalive")
                             .and_then(|s| s.parse().ok())
@@ -7949,6 +8021,10 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     ("geoip_codes", "geoip_country"),
                     ("dns_servers", "dns_server"),
                     ("exclude_domains", "excluded_domains"),
+                    ("fptn_access_token", "access_token"),
+                    ("fptn_sni", "sni"),
+                    ("fptn_bypass_method", "bypass_method"),
+                    ("fptn_preferred_server", "preferred_server"),
                 ],
                 &["domains"],
                 &[
@@ -8013,6 +8089,14 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         if src.id.trim().is_empty() {
             continue;
         }
+        let src_fptn_extra = if src.source_type == "fptn"
+            && src.sni.trim().is_empty()
+            && !src.fptn_sni.trim().is_empty()
+        {
+            vec![("sni", json!(src.fptn_sni.trim()))]
+        } else {
+            Vec::new()
+        };
         out.insert(
             src.id.clone(),
             struct_to_json_section(
@@ -8020,11 +8104,15 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 &src.id,
                 idx,
                 src,
-                &[],
+                &[
+                    ("fptn_access_token", "access_token"),
+                    ("fptn_bypass_method", "bypass_method"),
+                    ("fptn_preferred_server", "preferred_server"),
+                ],
                 &["cached_nodes"],
                 &["url"],
                 existing_obj(&src.id),
-                &[],
+                &src_fptn_extra,
             ),
         );
         idx += 1;
@@ -9527,6 +9615,8 @@ pub struct LiveTelemetry {
     pub desired_config_digest: String,
     pub applied_config_digest: String,
     pub config_drift: bool,
+    #[serde(default)]
+    pub safe_minimal_active: bool,
     pub core_binary_ok: bool,
     pub core_binary_error: String,
     pub wan_probe_ms: u64,
@@ -9673,6 +9763,40 @@ impl AppState {
     }
 }
 
+fn try_load_store_raw_and_parsed(path: &Path) -> anyhow::Result<(String, RouterStoreData)> {
+    let raw = std::fs::read_to_string(path)?;
+    let parsed = serde_json::from_str::<RouterStoreData>(&raw)?;
+    Ok((raw, parsed))
+}
+
+fn recover_or_load_existing_store(
+    path: &Path,
+    lkg_path: &Path,
+) -> anyhow::Result<(String, RouterStoreData, bool)> {
+    match try_load_store_raw_and_parsed(path) {
+        Ok((raw, parsed)) => Ok((raw, parsed, false)),
+        Err(primary_err) => {
+            if let Ok(corrupt_bytes) = std::fs::read(path)
+                && !corrupt_bytes.is_empty()
+            {
+                let corrupt_backup = path.with_file_name("tachyon.json.corrupt");
+                let _ = crate::crypto_gen::write_file_if_changed(&corrupt_backup, &corrupt_bytes);
+            }
+            if lkg_path.exists()
+                && let Ok((lkg_raw, lkg_parsed)) = try_load_store_raw_and_parsed(lkg_path)
+            {
+                eprintln!(
+                    "[tachyon] store {} unreadable ({primary_err:#}); recovering from {}",
+                    path.display(),
+                    lkg_path.display()
+                );
+                return Ok((lkg_raw, lkg_parsed, true));
+            }
+            Err(primary_err)
+        }
+    }
+}
+
 impl AppState {
     pub fn load_or_create(path: impl AsRef<Path>) -> anyhow::Result<Arc<Self>> {
         let path = path.as_ref().to_path_buf();
@@ -9684,7 +9808,8 @@ impl AppState {
         let lkg_path = path.with_file_name("tachyon.known_good.json");
 
         let data = if path.exists() {
-            let raw = std::fs::read_to_string(&path)?;
+            let (raw, mut parsed, recovered_from_lkg) =
+                recover_or_load_existing_store(&path, &lkg_path)?;
             let raw_val = serde_json::from_str::<serde_json::Value>(&raw).ok();
             let raw_has_ipv6_mode = raw_val
                 .as_ref()
@@ -9695,8 +9820,7 @@ impl AppState {
                 .as_ref()
                 .and_then(|v| v.pointer("/settings/enable_ipv6"))
                 .and_then(|v| v.as_bool());
-            let mut parsed = serde_json::from_str::<RouterStoreData>(&raw)?;
-            let mut migrated = false;
+            let mut migrated = recovered_from_lkg;
 
             if !raw_has_ipv6_mode && let Some(en) = raw_enable_ipv6 {
                 parsed.settings.ipv6_mode = if en {
@@ -11894,5 +12018,132 @@ config outbound_source 'awg31_src'
         assert_eq!(src.awg_reject_after_time, "150-180");
         assert_eq!(src.awg_keepalive_timeout, "5-15");
         assert_eq!(src.awg_max_handshake_attempts, "15-20");
+    }
+
+    #[test]
+    fn test_load_or_create_recovers_from_corrupt_store_using_lkg() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_lkg_recover_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store_path = dir.join("tachyon.json");
+        let lkg_path = dir.join("tachyon.known_good.json");
+
+        let mut lkg_data = RouterStoreData::default();
+        lkg_data.settings.listen_port = 1777;
+        let lkg_raw = serde_json::to_string_pretty(&lkg_data).unwrap();
+        std::fs::write(&lkg_path, &lkg_raw).unwrap();
+        std::fs::write(&store_path, "{corrupt json").unwrap();
+
+        let state = AppState::load_or_create(&store_path).expect("should recover from LKG");
+        let guard = state.data.blocking_read();
+        assert_eq!(guard.settings.listen_port, 1777);
+        assert!(dir.join("tachyon.json.corrupt").exists());
+        let healed_raw = std::fs::read_to_string(&store_path).unwrap();
+        let healed: RouterStoreData = serde_json::from_str(&healed_raw).unwrap();
+        assert_eq!(healed.settings.listen_port, 1777);
+
+        drop(guard);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_fptn_access_token_uci_json_roundtrip_section_and_source() {
+        let store = RouterStoreData {
+            sections: vec![RoutingSection {
+                id: "fptn_sec".to_string(),
+                enabled: true,
+                label: "FPTN Sec".to_string(),
+                action: "fptn".to_string(),
+                connection_type: "fptn".to_string(),
+                fptn_access_token: "fptn:sec_tok_123".to_string(),
+                fptn_sni: "sec.example.com".to_string(),
+                fptn_bypass_method: "obfs".to_string(),
+                fptn_preferred_server: "DE-1".to_string(),
+                ..Default::default()
+            }],
+            outbound_sources: vec![OutboundSource {
+                id: "fptn_src".to_string(),
+                enabled: true,
+                name: "FPTN Src".to_string(),
+                source_type: "fptn".to_string(),
+                fptn_access_token: "fptnb:src_tok_456".to_string(),
+                fptn_sni: "src.example.com".to_string(),
+                fptn_bypass_method: "sni".to_string(),
+                fptn_preferred_server: "NL-1".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let uci_json = sync_store_to_json_sections(&store, None);
+        assert_eq!(uci_json["fptn_sec"]["access_token"], "fptn:sec_tok_123");
+        assert_eq!(uci_json["fptn_sec"]["sni"], "sec.example.com");
+        assert_eq!(uci_json["fptn_sec"]["bypass_method"], "obfs");
+        assert_eq!(uci_json["fptn_sec"]["preferred_server"], "DE-1");
+        assert_eq!(uci_json["fptn_src"]["access_token"], "fptnb:src_tok_456");
+        assert_eq!(uci_json["fptn_src"]["sni"], "src.example.com");
+        assert_eq!(uci_json["fptn_src"]["bypass_method"], "sni");
+        assert_eq!(uci_json["fptn_src"]["preferred_server"], "NL-1");
+
+        let mut blocks = Vec::new();
+        for (sec_name, val) in uci_json.as_object().unwrap() {
+            let obj = val.as_object().unwrap();
+            let kind = obj
+                .get(".type")
+                .and_then(Value::as_str)
+                .unwrap()
+                .to_string();
+            let mut blk = LegacyUciBlock {
+                kind,
+                name: sec_name.clone(),
+                options: HashMap::new(),
+                lists: HashMap::new(),
+            };
+            for (k, v) in obj {
+                if k.starts_with('.') {
+                    continue;
+                }
+                match v {
+                    Value::String(s) => {
+                        blk.options.insert(k.clone(), s.clone());
+                    }
+                    Value::Array(arr) => {
+                        let list: Vec<String> = arr
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(String::from)
+                            .collect();
+                        blk.lists.insert(k.clone(), list);
+                    }
+                    _ => {}
+                }
+            }
+            blocks.push(blk);
+        }
+
+        let mut restored = RouterStoreData::default();
+        restored.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        let r_sec = restored
+            .sections
+            .iter()
+            .find(|s| s.id == "fptn_sec")
+            .expect("restored fptn_sec");
+        assert_eq!(r_sec.fptn_access_token, "fptn:sec_tok_123");
+        assert_eq!(r_sec.fptn_sni, "sec.example.com");
+        assert_eq!(r_sec.fptn_bypass_method, "obfs");
+        assert_eq!(r_sec.fptn_preferred_server, "DE-1");
+
+        let r_src = restored
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "fptn_src")
+            .expect("restored fptn_src");
+        assert_eq!(r_src.fptn_access_token, "fptnb:src_tok_456");
+        assert_eq!(r_src.fptn_sni, "src.example.com");
+        assert_eq!(r_src.fptn_bypass_method, "sni");
+        assert_eq!(r_src.fptn_preferred_server, "NL-1");
     }
 }

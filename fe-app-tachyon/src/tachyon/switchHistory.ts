@@ -68,7 +68,19 @@ function transitionLabel(event: SwitchEvent): string {
 }
 
 function dateLabel(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleString();
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return tr('Неизвестно', 'Unknown');
+  }
+  const d = new Date(timestamp * 1000);
+  return Number.isNaN(d.getTime())
+    ? tr('Неизвестно', 'Unknown')
+    : d.toLocaleString();
+}
+
+function formatIsoTime(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  const d = new Date(timestamp * 1000);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
 function renderEvent(event: SwitchEvent) {
@@ -181,12 +193,21 @@ function renderEvent(event: SwitchEvent) {
   const delays = [fromDelay, toDelay]
     .map((delay) => (delay == null ? '—' : String(delay)))
     .join(event.from ? ' → ' : '');
+  const isoTime = formatIsoTime(event.timestamp);
+  const showLatency = event.from
+    ? fromDelay != null || toDelay != null
+    : toDelay != null;
+  const delayValueText = event.from
+    ? delays
+    : toDelay != null
+      ? String(toDelay)
+      : '';
   return E('details', { class: 'tachyon-switch-history__event' }, [
     E('summary', {}, [
       E('span', { class: 'tachyon-switch-history__meta' }, [
         E(
           'time',
-          { dateTime: new Date(event.timestamp * 1000).toISOString() },
+          isoTime ? { dateTime: isoTime } : {},
           dateLabel(event.timestamp),
         ),
         E('span', {}, event.group),
@@ -194,14 +215,8 @@ function renderEvent(event: SwitchEvent) {
       E('span', { class: 'tachyon-switch-history__route' }, route),
       E('span', { class: 'tachyon-switch-history__meta' }, [
         E('span', {}, transitionLabel(event)),
-        ...(fromDelay != null || toDelay != null
-          ? [
-              E(
-                'span',
-                {},
-                `${event.from ? delays : toDelay} ${tr('мс', 'ms')}`,
-              ),
-            ]
+        ...(showLatency
+          ? [E('span', {}, `${delayValueText} ${tr('мс', 'ms')}`)]
           : []),
       ]),
     ]),
@@ -272,36 +287,46 @@ export function openSwitchHistory() {
     refresh.disabled = group.disabled = reason.disabled = true;
     status.textContent = tr('Загрузка…', 'Loading…');
     list.setAttribute('aria-busy', 'true');
-    const result = await callBaseMethod<{ events: SwitchEvent[] }>(
-      Tachyon.AvailableMethods.CLASH_API,
-      ['get_switch_history'],
-    );
-    if (!list.isConnected) return;
-
-    refresh.disabled = false;
-    list.removeAttribute('aria-busy');
-    if (!result.success || !Array.isArray(result.data?.events)) {
-      status.textContent = tr(
-        'История переключений недоступна',
-        'Switch history is unavailable',
+    try {
+      const result = await callBaseMethod<{ events: SwitchEvent[] }>(
+        Tachyon.AvailableMethods.CLASH_API,
+        ['get_switch_history'],
       );
-      return;
+      if (!list.isConnected) return;
+
+      if (!result.success || !Array.isArray(result.data?.events)) {
+        status.textContent = tr(
+          'История переключений недоступна',
+          'Switch history is unavailable',
+        );
+        return;
+      }
+      events = result.data.events;
+      options(
+        group,
+        tr('Все группы', 'All groups'),
+        [...new Set(events.map((event) => event.group))].sort(),
+        (value) => value,
+      );
+      options(
+        reason,
+        tr('Все причины', 'All reasons'),
+        [...new Set(events.map((event) => event.reason))].sort(),
+        reasonLabel,
+      );
+      renderList();
+    } catch (_error) {
+      if (list.isConnected) {
+        status.textContent = tr(
+          'История переключений недоступна',
+          'Switch history is unavailable',
+        );
+      }
+    } finally {
+      refresh.disabled = false;
+      group.disabled = reason.disabled = !events.length;
+      list.removeAttribute('aria-busy');
     }
-    events = result.data.events;
-    options(
-      group,
-      tr('Все группы', 'All groups'),
-      [...new Set(events.map((event) => event.group))].sort(),
-      (value) => value,
-    );
-    options(
-      reason,
-      tr('Все причины', 'All reasons'),
-      [...new Set(events.map((event) => event.reason))].sort(),
-      reasonLabel,
-    );
-    group.disabled = reason.disabled = !events.length;
-    renderList();
   }
 
   options(group, tr('Все группы', 'All groups'), [], (value) => value);
