@@ -102,7 +102,7 @@ function buildDemoStoreData(lang, daemonPort, dataDir) {
       session_secret: 'docs-demo-session-secret',
       ui_mode: 'advanced',
       lite_mode: false,
-      sidebar_pos: 'left',
+      sidebar_pos: 'top',
       sidebar_collapsed: false,
       accent_theme: 'blue',
       lang,
@@ -501,7 +501,7 @@ function buildDemoConfigSections(lang) {
       smart_detect_mode: 'suggest',
       flash_wear_protection: '1',
       ui_mode: 'advanced',
-      sidebar_pos: 'left',
+      sidebar_pos: 'top',
       accent_theme: 'blue',
       lang,
       default_tab: 'dashboard',
@@ -847,7 +847,7 @@ function buildDemoTelemetry(lang) {
     },
     ui_prefs: {
       ui_mode: 'advanced',
-      sidebar_pos: 'left',
+      sidebar_pos: 'top',
       dashboard_show_hidden: false,
     },
     actions: { service: [], latency: [], component: [], subscription: [] },
@@ -1881,8 +1881,8 @@ async function launchChromeCdp(chromePath, profileDir) {
   await pageCdp.send('Page.enable');
   await pageCdp.send('Runtime.enable');
   await pageCdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1280,
-    height: 800,
+    width: 1600,
+    height: 960,
     deviceScaleFactor: 2,
     mobile: false,
   });
@@ -1894,7 +1894,7 @@ async function launchChromeCdp(chromePath, profileDir) {
     source: `
       try {
         localStorage.setItem('tachyon_ui_mode_v1', 'advanced');
-        localStorage.setItem('tachyon_sidebar_pos_v1', 'left');
+        localStorage.setItem('tachyon_sidebar_pos_v1', 'top');
         localStorage.removeItem('tachyon_dismissed_update_sig_v1');
       } catch (e) {}
     `,
@@ -1913,15 +1913,55 @@ async function waitForCondition(pageCdp, jsExpr, timeoutMs = 15000) {
   return false;
 }
 
+const NAV_PARENT_BY_KEY = {
+  'section:sections': 'routing',
+  'section:outbounds': 'routing',
+  'section:conditions': 'routing',
+  'section:balancers': 'routing',
+  profile: 'clients',
+  schedule: 'clients',
+  guest_mode: 'clients',
+  server: 'clients',
+  diagnostic: 'analytics',
+  monitoring: 'analytics',
+  'settings:navigation': 'system',
+  'settings:dns': 'system',
+  'settings:network': 'system',
+  'settings:services': 'system',
+  updates: 'system',
+  'settings:updates': 'system',
+  'settings:ai': 'system',
+  telegram: 'system',
+  'settings:advanced': 'system',
+};
+
 async function clickNav(pageCdp, navKey) {
-  const clicked = await pageCdp.evaluate(`(() => {
-    const el = document.querySelector('.tachyon-sidebar__subitem[data-nav-key="${navKey}"]')
-      || document.querySelector('.tachyon-sidebar__nav-item[data-nav-key="${navKey}"]')
-      || document.querySelector('[data-nav-key="${navKey}"]');
-    if (!el) return false;
-    el.click();
-    return true;
-  })()`);
+  const tryClick = async () =>
+    pageCdp.evaluate(`(() => {
+      const el = document.querySelector('.tachyon-global-subtabs li[data-nav-key="${navKey}"] > a')
+        || document.querySelector('.tachyon-sidebar__subitem[data-nav-key="${navKey}"]')
+        || document.querySelector('.tachyon-sidebar__nav-item[data-nav-key="${navKey}"]')
+        || document.querySelector('[data-nav-key="${navKey}"] > a')
+        || document.querySelector('[data-nav-key="${navKey}"]');
+      if (!el) return false;
+      el.click();
+      return true;
+    })()`);
+
+  let clicked = await tryClick();
+  if (!clicked && NAV_PARENT_BY_KEY[navKey]) {
+    const parentId = NAV_PARENT_BY_KEY[navKey];
+    const parentClicked = await pageCdp.evaluate(`(() => {
+      const p = document.querySelector('.tachyon-sidebar__nav-parent[data-parent-menu="${parentId}"]');
+      if (!p) return false;
+      p.click();
+      return true;
+    })()`);
+    if (parentClicked) {
+      await sleep(250);
+      clicked = await tryClick();
+    }
+  }
   if (!clicked) throw new Error(`Navigation item not found: ${navKey}`);
   await pageCdp.evaluate(`(() => {
     const sc = document.querySelector('.tachyon-workspace-body') || document.scrollingElement;
