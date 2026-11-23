@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <sub><a href="README.md">Русский</a> · <b>English</b> · <a href="https://github.com/Dushnilin/tachyon-core">tachyon-core</a> · <a href="https://github.com/Dushnilin/tachyon-lists">tachyon-lists</a> · <a href="https://boosty.to/tachyon">Boosty</a></sub>
+  <sub><a href="README.md">Русский</a> · <b>English</b> · <a href="docs/en/README.md">Documentation</a> · <a href="https://github.com/Dushnilin/tachyon-core">tachyon-core</a> · <a href="https://github.com/Dushnilin/tachyon-lists">tachyon-lists</a> · <a href="https://boosty.to/tachyon">Boosty</a></sub>
 </p>
 
 ---
@@ -20,6 +20,33 @@
 **Tachyon 2.0** is a network routing, selective proxy orchestration, and L3/L4 traffic-shaping package for **OpenWrt** routers (`23.05`, `24.10`, `25.x`, and `SNAPSHOT`). Branch `2.0` runs on a unified **Pure Rust** stack (`zero-c-crypto`, zero C/FFI dependencies and zero external script runtimes).
 
 A single control daemon (`/usr/bin/tachyon`) provides the web UI (`:1680` + LuCI launcher), routing & `nftables` compiler, autonomous Watchdog with Last-Known-Good (`LKG`) confirmation, **AI Doctor** self-diagnostics, a **Telegram management bot**, an **HTTP REST Agent API (OpenAPI 3.1.0)**, and an **MCP server**. Connection handling, DNS resolution, and built-in packet desynchronization (`Outbound Desync`) run natively inside **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** (~4.2 MiB idle RAM) without third-party proxy engines or external desync daemons.
+
+---
+
+## Documentation
+
+Complete user and engineering documentation for **Tachyon 2.0** with Web UI screenshots is available in English and Russian: **[Browse Documentation Index (EN)](docs/en/README.md)** · **[Русская документация](docs/ru/README.md)**.
+
+<p align="center">
+  <img src="./docs/images/en/01-dashboard.webp" width="92%" alt="Tachyon 2.0 Web UI Dashboard">
+</p>
+
+| Chapter | Summary |
+|:---|:---|
+| [01 — Installation & 1.x Migration](docs/en/01-installation.md) | OpenWrt requirements (`opkg` / `apk`), `install.sh` flags, migrating via `import-legacy`, release cycle |
+| [02 — Quick Start](docs/en/02-quickstart.md) | Accessing LuCI and `:1680`, Dashboard tour, Quick Connection Wizard, route tracing |
+| [03 — Outbound Sources & Protocols](docs/en/03-outbounds-protocols.md) | Subscriptions, URIs (`VLESS`, `Hysteria2`, `WDTT`), `AmneziaWG 2.0–3.1`, `WARP`, `FPTN`, `TrustTunnel`, `AnyTLS` |
+| [04 — Routing Sections, Conditions, .trs & Balancers](docs/en/04-routing-sections-balancers.md) | Priority ordering, Fail-Closed / Kill-Switch, `AND/OR/NOT` conditions, `.trs` lists, all 14 balancer modes |
+| [05 — DNS, FakeIP, Hosts & AdGuard Home](docs/en/05-dns-hosts-adguard.md) | DoH/DoT/DoQ, Bootstrap & Fallback DNS, caches, FakeIP, DNS interception, DNS Speed Test |
+| [06 — Inbound Servers & Tailscale](docs/en/06-inbound-servers-tailscale.md) | Hosting VPN/proxy servers on the router, QR/subscriptions, automatic firewall rules, embedded Tailscale |
+| [07 — Packet Desynchronization & Fuzzer](docs/en/07-desync-fuzzer.md) | Native `desync` in `tachyon-core`, splitting/fooling flags, `auto_tune`, and strategy fuzzer |
+| [08 — Devices, Parental Control, Guest Mode & QoS](docs/en/08-devices-parental-guest-qos.md) | Family profiles, SafeSearch, DoH/DoT blocking, schedules, guest isolation, Smart Queue (SQM) |
+| [09 — Monitoring, Diagnostics & AI](docs/en/09-monitoring-diagnostics-ai.md) | Live connections, DNS block stats, System Doctor, AI Doctor + RAG, Flight Recorder |
+| [10 — Telegram Bot & Fleet Management](docs/en/10-telegram-bot.md) | Bot token setup, notifications, quiet hours, `managed_routers`, full command reference |
+| [11 — Updates, Channels & System Settings](docs/en/11-updates-settings.md) | `auto`/`stable`/`beta` (`rc`) channels, notifications, backups/rollback, NAND wear guard, TProxy/TUN, IPv6 |
+| [12 — Troubleshooting & FAQ](docs/en/12-troubleshooting-faq.md) | Quarantined sections, DNS/leak checks, `LKG` rollback, RAM/Flash tuning, `support_bundle` |
+| [13 — CLI & Configuration Reference](docs/en/13-cli-and-config.md) | `/usr/bin/tachyon` subcommands, `/etc/tachyon/tachyon.json` schema, and `tmpfs` paths |
+| [14 — Agent REST API & MCP Server](docs/en/14-api-and-mcp.md) | `/api/agent/v1/*` endpoints, OpenAPI spec, `stdio` & HTTP MCP setup across all 11 tools |
 
 ---
 
@@ -50,7 +77,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 | Option or Mechanism | Behavior |
 |:---|:---|
 | `--channel <auto\|stable\|beta>` | Selects `2.0` release channel: `auto` prefers stable `2.x` and falls back to the latest `2.x` prerelease; `--prerelease` aliases `--channel beta` |
-| `--tag <vX.Y.Z>` | Installs an exact release tag (e.g. `v2.0.0-beta.1` or `v2.0.0`) |
+| `--tag <vX.Y.Z>` | Installs an exact release tag (e.g. `v2.0.0-rc.1` or `v2.0.0`) |
 | `--format <auto\|apk\|ipk>` | Selects package format: auto-detects `apk` (OpenWrt 25+) / `opkg` (23.05–24.10) |
 | `--arch <arch>` | Overrides target OpenWrt architecture instead of auto-detection |
 | `--reinstall` / `--repair` | Reinstalls packages over existing configs, restarts services, and rebuilds network hooks |

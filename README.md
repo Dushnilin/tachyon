@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <sub><b>Русский</b> · <a href="README.en.md">English</a> · <a href="https://github.com/Dushnilin/tachyon-core">tachyon-core</a> · <a href="https://github.com/Dushnilin/tachyon-lists">tachyon-lists</a> · <a href="https://boosty.to/tachyon">Boosty</a></sub>
+  <sub><b>Русский</b> · <a href="README.en.md">English</a> · <a href="docs/ru/README.md">Документация</a> · <a href="https://github.com/Dushnilin/tachyon-core">tachyon-core</a> · <a href="https://github.com/Dushnilin/tachyon-lists">tachyon-lists</a> · <a href="https://boosty.to/tachyon">Boosty</a></sub>
 </p>
 
 ---
@@ -20,6 +20,33 @@
 **Tachyon 2.0** — пакет оркестрации сетевого трафика, селективной маршрутизации и защищённого туннелирования для роутеров под управлением **OpenWrt** (`23.05`, `24.10`, `25.x` и `SNAPSHOT`). Ветка `2.0` полностью переведена на единый стек **Pure Rust** (`zero-c-crypto`, без C/FFI-зависимостей и внешних интерпретаторов).
 
 Единый управляющий демон `/usr/bin/tachyon` объединяет веб-панель (`:1680` + лаунчер в LuCI), конфигуратор маршрутизации и `nftables`, автономный Watchdog с подтверждением Last-Known-Good (`LKG`), подсистему самодиагностики **AI Doctor**, **Telegram-бота**, **HTTP REST Agent API (OpenAPI 3.1.0)** и **MCP-сервер**. Обработку сетевых соединений, DNS и пакетной десинхронизации (`Outbound Desync`) выполняет нативное ядро **[tachyon-core](https://github.com/Dushnilin/tachyon-core)** (~4.2 MiB RAM в простое) без сторонних прокси-движков и внешних демонов сегментации.
+
+---
+
+## Документация
+
+Полное руководство пользователя и инженера для **Tachyon 2.0** со скриншотами веб-интерфейса доступно на русском и английском языках: **[Открыть оглавление документации (RU)](docs/ru/README.md)** · **[English Documentation](docs/en/README.md)**.
+
+<p align="center">
+  <img src="./docs/images/ru/01-dashboard.webp" width="92%" alt="Веб-интерфейс Tachyon 2.0 — главный экран">
+</p>
+
+| Раздел | Описание |
+|:---|:---|
+| [01 — Установка и миграция с 1.x](docs/ru/01-installation.md) | Требования OpenWrt (`opkg` / `apk`), флаги `install.sh`, импорт из 1.x (`import-legacy`), политика релизов |
+| [02 — Быстрый старт](docs/ru/02-quickstart.md) | Первый вход в LuCI и `:1680`, обзор дашборда, мастер подключения и проверка маршрута |
+| [03 — Исходящие источники и протоколы](docs/ru/03-outbounds-protocols.md) | Подписки, ссылки (`VLESS`, `Hysteria2`, `WDTT`), `AmneziaWG 2.0–3.1`, `WARP`, `FPTN`, `TrustTunnel`, `AnyTLS` |
+| [04 — Секции, условия, списки .trs и балансировщики](docs/ru/04-routing-sections-balancers.md) | Приоритет правил, Fail-Closed / Kill-Switch, условия `AND/OR/NOT`, наборы `.trs`, 14 режимов балансировки |
+| [05 — DNS, FakeIP, Hosts и AdGuard Home](docs/ru/05-dns-hosts-adguard.md) | DoH/DoT/DoQ, Bootstrap и Fallback DNS, кэши, FakeIP, перехват DNS и DNS Speed Test |
+| [06 — Входящие серверы и Tailscale](docs/ru/06-inbound-servers-tailscale.md) | Поднятие VPN/прокси-серверов на роутере, QR/подписки, автооткрытие портов, встроенный Tailscale |
+| [07 — Десинхронизация пакетов и фаззер](docs/ru/07-desync-fuzzer.md) | Нативный `desync` в `tachyon-core`, параметры фрагментации/фулинга, `auto_tune` и фаззер |
+| [08 — Устройства, родительский контроль, гостевой режим и QoS](docs/ru/08-devices-parental-guest-qos.md) | Семейные профили, SafeSearch, блокировка DoH/DoT, расписания, гостевая изоляция, Smart Queue (SQM) |
+| [09 — Мониторинг, диагностика и ИИ](docs/ru/09-monitoring-diagnostics-ai.md) | Живые сессии, статистика блокировок DNS, System Doctor, AI Doctor + RAG, Flight Recorder |
+| [10 — Telegram-бот и управление парком](docs/ru/10-telegram-bot.md) | Настройка токена, уведомления, тихие часы, `managed_routers`, полный справочник команд |
+| [11 — Обновления, каналы и системные настройки](docs/ru/11-updates-settings.md) | Каналы `auto`/`stable`/`beta` (`rc`), уведомления, бэкапы/откат, защита NAND-флеш, TProxy/TUN, IPv6 |
+| [12 — Устранение неполадок и FAQ](docs/ru/12-troubleshooting-faq.md) | Карантин секций, диагностика DNS/утечек, откат `LKG`, экономия RAM/Flash, `support_bundle` |
+| [13 — Справочник CLI и конфигурации](docs/ru/13-cli-and-config.md) | Подкоманды `/usr/bin/tachyon`, схема `/etc/tachyon/tachyon.json` и пути `tmpfs` |
+| [14 — Agent REST API и MCP-сервер](docs/ru/14-api-and-mcp.md) | Эндпоинты `/api/agent/v1/*`, OpenAPI, подключение по `stdio` и HTTP к 11 инструментам MCP |
 
 ---
 
@@ -50,7 +77,7 @@ sh /tmp/tachyon-setup.sh --dry-run --channel beta
 | Параметр или механизм | Назначение и поведение |
 |:---|:---|
 | `--channel <auto\|stable\|beta>` | Выбор канала релизов `2.0`: `auto` устанавливает стабильный `2.x` (или последний пре-релиз, если стабильный ещё не вышел); `--prerelease` эквивалентен `--channel beta` |
-| `--tag <vX.Y.Z>` | Установка точного тега релиза (например, `v2.0.0-beta.1` или `v2.0.0`) |
+| `--tag <vX.Y.Z>` | Установка точного тега релиза (например, `v2.0.0-rc.1` или `v2.0.0`) |
 | `--format <auto\|apk\|ipk>` | Выбор формата установки: автоматическое определение пакетного менеджера (`apk` в OpenWrt 25+ / `opkg` в 23.05–24.10) |
 | `--arch <arch>` | Явное переопределение архитектуры вместо автоопределения |
 | `--reinstall` / `--repair` | Повторная установка поверх существующей конфигурации, перезапуск служб и восстановление таблиц |
