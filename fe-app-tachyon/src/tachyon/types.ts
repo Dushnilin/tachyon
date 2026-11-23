@@ -30,6 +30,7 @@ export namespace ClashAPI {
 
   export interface Proxies {
     proxies: Record<string, ProxyBase>;
+    tachyon_cached?: boolean;
   }
 }
 

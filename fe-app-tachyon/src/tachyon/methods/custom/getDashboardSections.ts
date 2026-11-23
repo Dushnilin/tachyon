@@ -16,6 +16,7 @@ import { compactVpnUri } from '../../../validators/validateVpnUrl';
 interface IGetDashboardSectionsResponse {
   success: boolean;
   data: Tachyon.OutboundGroup[];
+  runtimeCached?: boolean;
 }
 
 interface IGetDashboardSectionsOptions {
@@ -225,10 +226,14 @@ async function getClashApiProxies(
     });
     if (raw) {
       const parsed = JSON.parse(raw) as ClashAPI.Proxies;
-      if (parsed && typeof parsed.proxies === 'object') {
+      if (
+        parsed?.proxies &&
+        typeof parsed.proxies === 'object' &&
+        !Array.isArray(parsed.proxies)
+      ) {
         return {
           success: true,
-          data: parsed,
+          data: { ...parsed, tachyon_cached: true },
         };
       }
     }
@@ -4139,5 +4144,7 @@ export async function getDashboardSections(
   return {
     success: true,
     data: groupsWithErrors,
+    runtimeCached:
+      clashProxies.success && clashProxies.data?.tachyon_cached === true,
   };
 }

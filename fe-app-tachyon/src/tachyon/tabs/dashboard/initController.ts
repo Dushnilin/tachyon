@@ -559,7 +559,8 @@ async function fetchDashboardSectionsOnce(mountId: number) {
   }
 
   try {
-    const { data, success } = await CustomTachyonMethods.getDashboardSections();
+    const { data, success, runtimeCached } =
+      await CustomTachyonMethods.getDashboardSections();
 
     if (
       !dashboardMounted ||
@@ -581,6 +582,7 @@ async function fetchDashboardSectionsOnce(mountId: number) {
         loading: false,
         failed: false,
         data,
+        runtimeCached,
       },
     });
 
@@ -5193,8 +5195,19 @@ async function renderSectionsWidget(forceImmediate = false) {
     sectionsWithCustomLatencies,
   );
 
+  const cachedStatus = sectionsWidget.runtimeCached
+    ? E(
+        'div',
+        { role: 'status', style: 'grid-column: 1 / -1;' },
+        tr(
+          'Показан сохранённый снимок узлов. Текущее состояние может отличаться.',
+          'Showing a cached proxy snapshot. The current state may differ.',
+        ),
+      )
+    : null;
   return preserveScrollForPage(() => {
     container.replaceChildren(
+      ...(cachedStatus ? [cachedStatus] : []),
       ...(globalConfigErrorsBanner ? [globalConfigErrorsBanner] : []),
       ...dashboardBlocks,
     );

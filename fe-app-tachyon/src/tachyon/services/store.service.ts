@@ -193,6 +193,7 @@ export interface StoreType {
     loading: boolean;
     failed: boolean;
     data: Tachyon.OutboundGroup[];
+    runtimeCached?: boolean;
     latencyFetchingSections: Record<string, boolean>;
     latencyProgressSections: Record<string, Tachyon.LatencyActionProgress>;
     selectorSwitchingSections: Record<string, string>;
