@@ -3775,7 +3775,10 @@ async fn handle_pure_rust_clash_api(
             ) {
                 Ok(events) => Some((
                     0,
-                    format!("{}\n", json!({ "events": events })),
+                    format!(
+                        "{}\n",
+                        json!({ "events": events, "stats": core.switch_history_stats() })
+                    ),
                     String::new(),
                 )),
                 Err(_) => Some((1, String::new(), "Switch history unavailable\n".to_owned())),

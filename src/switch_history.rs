@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::Ordering::Relaxed};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::store::PortableAtomicU64;
 
 pub(crate) const LIMIT: usize = 100;
 const MAX_BYTES: usize = 128 * 1024;
@@ -207,7 +209,7 @@ pub(crate) fn recent(
 
 #[cfg(test)]
 fn append(path: &Path, incoming: Vec<Event>) -> anyhow::Result<()> {
-    append_with_retries(path, incoming, 0, std::time::Duration::ZERO)
+    append_with_retries(path, incoming, 0, std::time::Duration::ZERO).map(|_| ())
 }
 
 fn append_with_retries(
@@ -215,7 +217,7 @@ fn append_with_retries(
     incoming: Vec<Event>,
     retries: usize,
     backoff: std::time::Duration,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<usize> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -248,6 +250,7 @@ fn append_with_retries(
         }
         Err(err) => return Err(err.into()),
     };
+    let prior_count = events.len();
     for mut event in incoming {
         if let Some(last) = events.iter().rev().find(|last| last.group == event.group) {
             if (last.timestamp, &last.from, &last.to) == (event.timestamp, &event.from, &event.to) {
@@ -257,6 +260,7 @@ fn append_with_retries(
         }
         events.push(event);
     }
+    let appended = events.len() - prior_count;
     events.drain(..events.len().saturating_sub(LIMIT));
     let mut bytes = serde_json::to_vec(&events)?;
     while bytes.len() > MAX_BYTES {
@@ -264,7 +268,7 @@ fn append_with_retries(
         bytes = serde_json::to_vec(&events)?;
     }
     crate::crypto_gen::write_file_if_changed(path, &bytes)?;
-    Ok(())
+    Ok(appended.min(events.len()))
 }
 
 struct Group {
@@ -458,7 +462,26 @@ impl Observer {
     }
 }
 
+#[derive(Default)]
+struct RecorderCounters {
+    written: PortableAtomicU64,
+    dropped: PortableAtomicU64,
+    write_errors: PortableAtomicU64,
+    last_write_at: PortableAtomicU64,
+}
+
+#[derive(Serialize, Default)]
+pub(crate) struct RecorderStats {
+    // Newly persisted events, excluding deduplication and normal journal rotation.
+    written: u64,
+    // Events discarded by the queue or after a failed write.
+    dropped: u64,
+    write_errors: u64,
+    last_write_at: Option<u64>,
+}
+
 pub(crate) struct Recorder {
+    counters: Arc<RecorderCounters>,
     observer: std::sync::Mutex<Observer>,
     tx: tokio::sync::mpsc::Sender<Vec<Event>>,
 }
@@ -466,6 +489,8 @@ pub(crate) struct Recorder {
 impl Recorder {
     pub(crate) fn spawn(journal_path: PathBuf) -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<Event>>(64);
+        let counters = Arc::new(RecorderCounters::default());
+        let worker_counters = Arc::clone(&counters);
         tokio::spawn(async move {
             while let Some(mut batch) = rx.recv().await {
                 while let Ok(more) = rx.try_recv() {
@@ -475,15 +500,40 @@ impl Recorder {
                     continue;
                 }
                 let path = journal_path.clone();
-                let _ = tokio::task::spawn_blocking(move || {
+                let event_count = batch.len() as u64;
+                match tokio::task::spawn_blocking(move || {
                     append_with_retries(&path, batch, 4, std::time::Duration::from_millis(25))
                 })
-                .await;
+                .await
+                {
+                    Ok(Ok(written)) if written > 0 => {
+                        worker_counters.written.fetch_add(written as u64, Relaxed);
+                        worker_counters
+                            .last_write_at
+                            .store(crate::store::unix_now_secs().max(0) as u64, Relaxed);
+                    }
+                    Ok(Ok(_)) => {}
+                    _ => {
+                        worker_counters.write_errors.fetch_add(1, Relaxed);
+                        worker_counters.dropped.fetch_add(event_count, Relaxed);
+                    }
+                }
             }
         });
         Self {
+            counters,
             observer: std::sync::Mutex::new(Observer::default()),
             tx,
+        }
+    }
+
+    pub(crate) fn stats(&self) -> RecorderStats {
+        let last_write_at = self.counters.last_write_at.load(Relaxed);
+        RecorderStats {
+            written: self.counters.written.load(Relaxed),
+            dropped: self.counters.dropped.load(Relaxed),
+            write_errors: self.counters.write_errors.load(Relaxed),
+            last_write_at: (last_write_at != 0).then_some(last_write_at),
         }
     }
 
@@ -503,8 +553,11 @@ impl Recorder {
         };
         if let Some(events) = events
             && !events.is_empty()
+            && let Err(err) = self.tx.try_send(events)
         {
-            let _ = self.tx.try_send(events);
+            self.counters
+                .dropped
+                .fetch_add(err.into_inner().len() as u64, Relaxed);
         }
     }
 }
@@ -843,6 +896,60 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!((events[0].from.as_str(), events[0].to.as_str()), ("B", "A"));
         assert_eq!((events[1].from.as_str(), events[1].to.as_str()), ("A", "B"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn recorder_counts_queue_overflow_and_write_errors() {
+        let dir = TestDir::new();
+        let path = dir.0.join("events.json");
+        let lock = File::create(path.with_extension("lock")).unwrap();
+        lock.try_lock().unwrap();
+        let recorder = Recorder::spawn(path.clone());
+        let groups = config();
+        let sample = |i| {
+            recorder.observe(
+                Arc::clone(&groups),
+                (1, 10),
+                Instant::now(),
+                Source::ClashProxies,
+                &proxies(if i % 2 == 0 { "A" } else { "B" }, "X", false),
+            );
+        };
+        // With one executor thread the writer cannot run until we yield below.
+        for i in 0..=70 {
+            sample(i);
+        }
+        assert_eq!(recorder.stats().dropped, 6);
+        assert_eq!(recorder.stats().written, 0);
+
+        let wait_for = |failure| {
+            let recorder = &recorder;
+            async move {
+                tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                    loop {
+                        let stats = recorder.stats();
+                        if if failure {
+                            stats.dropped == 70
+                        } else {
+                            stats.last_write_at.is_some()
+                        } {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
+            }
+        };
+        wait_for(true).await;
+        assert_eq!(recorder.stats().write_errors, 1);
+        assert!(!path.exists());
+        drop(lock);
+        sample(71);
+        wait_for(false).await;
+        assert_eq!(recorder.stats().written, 1);
+        assert_eq!(recent(&path, LIMIT, "", "").unwrap().len(), 1);
     }
 
     #[test]

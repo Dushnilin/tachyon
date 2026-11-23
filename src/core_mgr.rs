@@ -2669,6 +2669,10 @@ impl CoreManager {
             .get_or_init(|| SwitchRecorder::spawn(crate::switch_history::path()));
     }
 
+    pub(crate) fn switch_history_stats(&self) -> Option<crate::switch_history::RecorderStats> {
+        self.switch_history.get().map(SwitchRecorder::stats)
+    }
+
     fn switch_history_core(&self) -> Option<(u32, u64)> {
         let live = self.state.live.try_read().ok()?;
         let identity = live.core_identity.as_ref()?;
