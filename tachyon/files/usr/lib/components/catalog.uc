@@ -25,6 +25,10 @@ const TACHYON_BUILD_STATE_FILE = getenv("TACHYON_BUILD_STATE_FILE") || "/etc/.ta
 
 // Forward-referenced helpers
 
+function is_tachyon_v2_tag(tag) {
+    return match(trim(as_string(tag || "")), /^v?([2-9]|[1-9][0-9]+)\./) != null;
+}
+
 function latest_tachyon_release_json() {
     let parts = split(TACHYON_RELEASE_REPO, "/");
     if (length(parts) != 2 || as_string(parts[0]) == "" || as_string(parts[1]) == "")
@@ -173,6 +177,8 @@ function resolve_arch_candidates() {
 }
 
 function resolve_tachyon_release(latest_version) {
+    if (is_tachyon_v2_tag(latest_version))
+        return null;
     let asset_ext = helpers.is_apk() ? "apk" : "ipk";
     let i18n_required = helpers.pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
     let release_json = latest_tachyon_release_json();
@@ -336,6 +342,7 @@ function resolve_torrserver_release(target_tag) {
 
 function module_exports() {
     return {
+        is_tachyon_v2_tag,
         latest_tachyon_release_json,
         latest_tachyon_version,
         fetch_tachyon_latest_release_metadata,

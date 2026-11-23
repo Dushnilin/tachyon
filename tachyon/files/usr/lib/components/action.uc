@@ -331,6 +331,7 @@ function fetch_github_releases_json(owner, repo, per_page, page) { return cmp_dl
 
 
 // Delegated to components/catalog.uc (branch 4 god-module split).
+function is_tachyon_v2_tag(tag) { return cmp_cat.is_tachyon_v2_tag(tag); }
 function latest_tachyon_release_json() { return cmp_cat.latest_tachyon_release_json(); }
 
 // Delegated to components/* modules (branch 4 god-module split).
@@ -1387,6 +1388,8 @@ function install_tachyon_version(target_tag) {
     target_tag = trim(as_string(target_tag));
     if (target_tag == "")
         action_fail("tachyon", "install_version", "Target version tag cannot be empty", TACHYON_VERSION, "");
+    if (is_tachyon_v2_tag(target_tag))
+        action_fail("tachyon", "install_version", "Tachyon " + target_tag + " uses per-architecture packages and requires the 2.0 installer: wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/2.0/install.sh && sh /tmp/tachyon-setup.sh --tag " + target_tag, TACHYON_VERSION, target_tag);
 
     init_tmp_dir() || action_fail("tachyon", "install_version", "Failed to create temporary directory", TACHYON_VERSION, target_tag);
     updates_log("Resolving Tachyon release " + target_tag + " packages");
@@ -1643,6 +1646,7 @@ function list_component_releases(component, count, page) {
                 let html_url = trim(as_string(r.html_url || ""));
                 let body = trim(replace(as_string(r.body || ""), /\r/g, ""));
                 if (tag == "") continue;
+                if (component == "tachyon" && is_tachyon_v2_tag(tag)) continue;
                 let prerelease = !!r.prerelease;
                 push(releases, { tag, name, published, prerelease, release_url: html_url, body });
             }

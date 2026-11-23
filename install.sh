@@ -241,10 +241,12 @@ parse_args() {
         err "--verbose and --quiet cannot be used together"
         return 2
     fi
-    case "$RELEASE_TAG_REQUESTED" in
-        "") ;;
-        *[!0-9.]*|*.*.*.*|.*|*.) err "Invalid --tag value: $RELEASE_TAG_REQUESTED"; return 2 ;;
-    esac
+    if [ -n "$RELEASE_TAG_REQUESTED" ]; then
+        if ! printf '%s' "$RELEASE_TAG_REQUESTED" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z._-]*)?$'; then
+            err "Invalid --tag value: $RELEASE_TAG_REQUESTED"
+            return 2
+        fi
+    fi
     [ -n "$CUSTOM_MIRROR" ] && CUSTOM_MIRROR="$(_normalize_mirror_prefix "$CUSTOM_MIRROR")"
     return 0
 }
@@ -1230,7 +1232,12 @@ install_release_helper() {
 let fs = require("fs");
 function stdin_all() { let f = fs.open("/dev/stdin", "r"); if (!f) return ""; let d = f.read("all"); f.close(); return d || ""; }
 function obj() { try { return json(stdin_all()); } catch (e) { return null; } }
-function valid(v) { return match("" + (v || ""), /^[0-9]+[.][0-9]+[.][0-9]+$/) != null; }
+function valid(v, channel) {
+    let s = "" + (v || "");
+    if (channel == "beta")
+        return match(s, /^v?[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z][0-9A-Za-z._-]*)?$/) != null;
+    return match(s, /^[0-9]+[.][0-9]+[.][0-9]+$/) != null;
+}
 function pick_release(v, channel) {
     if (type(v) == "object") return v;
     if (type(v) != "array") return null;
@@ -1249,11 +1256,12 @@ function asset_name(kind, ext, ver) {
     return "";
 }
 let mode = ARGV[0] || "";
+let channel = ARGV[1] || "stable";
 let v = obj();
-let r = pick_release(v, ARGV[1] || "stable");
+let r = pick_release(v, channel);
 if (!r) exit(2);
 let ver = "" + (r.tag_name || "");
-if (mode == "tag") { if (valid(ver)) print(ver, "\n"); else exit(3); }
+if (mode == "tag") { if (valid(ver, channel)) print(ver, "\n"); else exit(3); }
 else if (mode == "asset") {
     let kind = ARGV[2] || ""; let ext = ARGV[3] || ""; let wanted = asset_name(kind, ext, ver);
     for (let a in (r.assets || [])) if (a.name == wanted) { print("" + (a.browser_download_url || ""), "\n"); exit(0); }
@@ -1270,7 +1278,7 @@ else if (mode == "tags") {
         if (type(rel) != "object" || rel.draft) continue;
         if (channel != "beta" && rel.prerelease) continue;
         let t = "" + (rel.tag_name || "");
-        if (valid(t)) print(t, "\n");
+        if (valid(t, channel)) print(t, "\n");
     }
 }
 else exit(1);
@@ -1390,7 +1398,11 @@ fetch_release_tag_list() {
     fi
     _fr_atom="$(_fetch_github_atom "https://github.com/${REPO_OWNER}/${REPO_NAME}/releases.atom" || true)"
     [ -n "$_fr_atom" ] || return 1
-    printf '%s' "$_fr_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | awk '!seen[$0]++'
+    if [ "$RELEASE_CHANNEL" = "beta" ]; then
+        printf '%s' "$_fr_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z._-]*)?$' | awk '!seen[$0]++'
+    else
+        printf '%s' "$_fr_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | awk '!seen[$0]++'
+    fi
 }
 
 installer_is_interactive() {
@@ -1463,7 +1475,96 @@ release_is_tachyon_core_only() {
     version_ge "$_rit_tag" "1.8.0"
 }
 
+is_v2_tag() {
+    printf '%s' "${1:-}" | grep -Eq '^v?([2-9]|[1-9][0-9]+)\.'
+}
+
+_validate_v2_installer_script() {
+    _v2i_file="$1"
+    [ -s "$_v2i_file" ] || return 1
+    _file_looks_like_html "$_v2i_file" && return 1
+    head -n 1 "$_v2i_file" 2>/dev/null | grep -q '^#!' || return 1
+    grep -q 'package_asset_name' "$_v2i_file" 2>/dev/null || return 1
+    return 0
+}
+
+handoff_to_v2_installer() {
+    _htv_raw="${1:-}"
+    [ -n "$_htv_raw" ] || return 1
+    _htv_tag="v${_htv_raw#[vV]}"
+    [ -n "${TMP_DIR:-}" ] || init_tmp_dir || return 1
+
+    msg "Release ${_htv_tag} uses per-architecture packages; loading Tachyon 2.0 installer"
+    _htv_dl="${TMP_DIR}/tachyon-v2-install.tmp"
+    _htv_script="/tmp/tachyon-v2-install.$$.sh"
+    _htv_urls=""
+    _htv_rel_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${_htv_tag}/install.sh"
+    _htv_raw_url="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/2.0/install.sh"
+
+    for _htv_c in $(_build_gh_candidates); do
+        if [ "$_htv_c" = "direct" ]; then
+            _htv_u="$_htv_rel_url"
+        else
+            _htv_u="${_htv_c}${_htv_rel_url}"
+        fi
+        _htv_urls="$(_append_unique_candidate "$_htv_urls" "$_htv_u")"
+    done
+
+    [ -n "${CUSTOM_MIRROR:-}" ] && _htv_urls="$(_append_unique_candidate "$_htv_urls" "$(_normalize_mirror_prefix "$CUSTOM_MIRROR")${_htv_raw_url}")"
+    _htv_pref="$(_get_working_gh_mirror)"
+    [ -n "$_htv_pref" ] && _htv_urls="$(_append_unique_candidate "$_htv_urls" "${_htv_pref}${_htv_raw_url}")"
+    if [ "$(_get_direct_failed)" != "1" ] || [ -n "$(_resolve_effective_proxy)" ]; then
+        _htv_urls="$(_append_unique_candidate "$_htv_urls" "$_htv_raw_url")"
+    fi
+    for _htv_c in $GH_MIRRORS; do
+        _htv_urls="$(_append_unique_candidate "$_htv_urls" "${_htv_c}${_htv_raw_url}")"
+    done
+    _htv_urls="$(_append_unique_candidate "$_htv_urls" "$_htv_raw_url")"
+
+    _htv_fetched=0
+    for _htv_try in $_htv_urls; do
+        rm -f "$_htv_dl"
+        if download_file_once "$_htv_try" "$_htv_dl" && _validate_v2_installer_script "$_htv_dl"; then
+            mv -f "$_htv_dl" "$_htv_script" || { rm -f "$_htv_dl"; return 1; }
+            chmod 700 "$_htv_script" 2>/dev/null || true
+            _htv_fetched=1
+            break
+        fi
+        rm -f "$_htv_dl"
+    done
+
+    if [ "$_htv_fetched" -ne 1 ]; then
+        err "Failed to download Tachyon 2.0 installer for ${_htv_tag}"
+        return 1
+    fi
+
+    set -- --tag "$_htv_tag" --channel "$RELEASE_CHANNEL"
+    [ "$ASSUME_YES" -eq 1 ] && set -- "$@" -y
+    [ "$DRY_RUN" -eq 1 ] && set -- "$@" -n
+    [ "$QUIET" -eq 1 ] && set -- "$@" -q
+    [ "$REINSTALL_MODE" -eq 1 ] && set -- "$@" --reinstall
+    [ "$REPAIR_MODE" -eq 1 ] && set -- "$@" --repair
+    [ "$SKIP_ENGINE" -eq 1 ] && set -- "$@" --skip-core
+    [ -n "${PROXY_URL_REQUESTED:-}" ] && set -- "$@" --proxy "$PROXY_URL_REQUESTED"
+    [ -n "${CUSTOM_MIRROR:-}" ] && set -- "$@" --mirror "$CUSTOM_MIRROR"
+
+    if [ "${TACHYON_INSTALLER_TEST:-0}" = "1" ] || [ -n "${TACHYON_V2_HANDOFF_RECORD_FILE:-}" ]; then
+        if [ -n "${TACHYON_V2_HANDOFF_RECORD_FILE:-}" ]; then
+            printf '%s|%s\n' "$_htv_script" "$*" >"$TACHYON_V2_HANDOFF_RECORD_FILE"
+        fi
+        return 0
+    fi
+
+    msg "Handing off execution to Tachyon 2.0 installer (${_htv_tag})"
+    cleanup
+    exec sh "$_htv_script" "$@"
+}
+
 resolve_release() {
+    if [ -n "$RELEASE_TAG_REQUESTED" ] && is_v2_tag "$RELEASE_TAG_REQUESTED"; then
+        handoff_to_v2_installer "$RELEASE_TAG_REQUESTED"
+        return $?
+    fi
     _ext="ipk"; [ "$PKG_IS_APK" -eq 1 ] && _ext="apk"
     msg "Querying GitHub release API"
     TACHYON_RELEASE_JSON="$(fetch_release_json 2>/dev/null || true)"
@@ -1480,7 +1581,12 @@ resolve_release() {
             _atom="$(_fetch_github_atom "https://github.com/${REPO_OWNER}/${REPO_NAME}/releases.atom" || true)"
             _atom_tags="$(printf '%s' "$_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null || true)"
             for _at in $_atom_tags; do
-                if printf '%s' "$_at" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                if [ "$RELEASE_CHANNEL" = "beta" ]; then
+                    if printf '%s' "$_at" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z._-]*)?$'; then
+                        TACHYON_RELEASE_TAG="$_at"
+                        break
+                    fi
+                elif printf '%s' "$_at" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
                     TACHYON_RELEASE_TAG="$_at"
                     break
                 fi
@@ -1488,6 +1594,10 @@ resolve_release() {
         fi
     fi
     [ -n "$TACHYON_RELEASE_TAG" ] || { err "Could not resolve a valid release tag"; return 1; }
+    if is_v2_tag "$TACHYON_RELEASE_TAG"; then
+        handoff_to_v2_installer "$TACHYON_RELEASE_TAG"
+        return $?
+    fi
     if [ -n "$RELEASE_TAG_REQUESTED" ] && [ "$TACHYON_RELEASE_TAG" != "$RELEASE_TAG_REQUESTED" ]; then
         err "Resolved release $TACHYON_RELEASE_TAG does not match requested $RELEASE_TAG_REQUESTED"
         return 1
