@@ -3635,27 +3635,66 @@ pub fn compile_fw4_flow_offload_guard(store: &RouterStoreData, ipv6_active: bool
     out
 }
 
-pub fn fw4_forward_guard_ordered_before_offload(listing: &str) -> bool {
-    let lines: Vec<&str> = listing.lines().collect();
-    let Some(flow_idx) = lines
-        .iter()
-        .position(|line| line.contains("flow add @ft") || line.contains("flow offload @ft"))
-    else {
-        return true;
-    };
-    let mut has_guard_before = false;
-    let mut has_guard_after = false;
-    for (idx, line) in lines.iter().enumerate() {
-        if !line.contains("Tachyon: skip flow offload") {
-            continue;
-        }
-        if idx < flow_idx {
-            has_guard_before = true;
-        } else if idx > flow_idx {
-            has_guard_after = true;
-        }
+pub fn fw4_forward_guard_ordered_before_offload(
+    listing: &str,
+    store: &RouterStoreData,
+    ipv6_active: bool,
+) -> bool {
+    const GUARD_COMMENT: &str = "comment \"Tachyon: skip flow offload\"";
+
+    // Handles, a trailing semicolon, and the spelling of the zero mark differ
+    // between the generator and nft's canonical listing.
+    fn rule_words(line: &str) -> impl Iterator<Item = &str> {
+        line.trim()
+            .trim_end_matches(';')
+            .split_whitespace()
+            .map(|word| if word == "0x00000000" { "0" } else { word })
     }
-    has_guard_before && !has_guard_after
+
+    let mut after_offload = false;
+    let mut guards = listing
+        .lines()
+        .filter_map(|line| {
+            let rule = line.split(" # handle ").next()?.trim();
+            let expression = rule.split(" comment ").next()?;
+            let mut words = expression.split_whitespace();
+            if words.any(|word| word == "flow")
+                && matches!(words.next(), Some("add" | "offload"))
+                && words.next().is_some_and(|table| table.starts_with('@'))
+            {
+                after_offload = true;
+            }
+            rule.trim_end_matches(';')
+                .ends_with(GUARD_COMMENT)
+                .then_some((rule, after_offload))
+        })
+        .collect::<Vec<_>>();
+    if !after_offload {
+        return true;
+    }
+
+    let expected = compile_fw4_flow_offload_guard_rules(store, ipv6_active);
+    for expected_rule in &expected {
+        let Some(index) = guards.iter().position(|(rule, after)| {
+            if *after {
+                return false;
+            }
+            let mut actual = rule_words(rule);
+            rule_words(expected_rule).all(|expected| {
+                actual.next().is_some_and(|word| {
+                    word == expected
+                        || (expected.contains('/')
+                            && crate::store::mask_cidr(expected).is_some_and(|net| {
+                                crate::store::mask_cidr(word).as_deref() == Some(net.as_str())
+                            }))
+                })
+            }) && actual.next().is_none()
+        }) else {
+            return false;
+        };
+        guards.swap_remove(index);
+    }
+    guards.is_empty()
 }
 
 fn collect_fw4_flow_offload_handles(listing: &str) -> Vec<String> {
@@ -6407,7 +6446,11 @@ table inet fw4 {
             collect_fw4_flow_offload_handles(sample_listing),
             vec!["17".to_string()]
         );
-        assert!(fw4_forward_guard_ordered_before_offload(sample_listing));
+        assert!(!fw4_forward_guard_ordered_before_offload(
+            sample_listing,
+            &store,
+            false
+        ));
 
         let broken_listing = "\
 table inet fw4 {
@@ -6416,7 +6459,11 @@ table inet fw4 {
 \t\tmeta mark & 0x04000000 != 0x00000000 ct state established,related accept comment \"Tachyon: skip flow offload\"
 \t}
 }";
-        assert!(!fw4_forward_guard_ordered_before_offload(broken_listing));
+        assert!(!fw4_forward_guard_ordered_before_offload(
+            broken_listing,
+            &store,
+            false
+        ));
 
         let split_listing = "\
 table inet fw4 {
@@ -6426,7 +6473,11 @@ table inet fw4 {
 \t\tmeta l4proto { tcp, udp } th dport 53 ct state established,related accept comment \"Tachyon: skip flow offload\"
 \t}
 }";
-        assert!(!fw4_forward_guard_ordered_before_offload(split_listing));
+        assert!(!fw4_forward_guard_ordered_before_offload(
+            split_listing,
+            &store,
+            false
+        ));
 
         let no_offload_listing = "\
 table inet fw4 {
@@ -6434,7 +6485,11 @@ table inet fw4 {
 \t\tct state vmap { established : accept, related : accept }
 \t}
 }";
-        assert!(fw4_forward_guard_ordered_before_offload(no_offload_listing));
+        assert!(fw4_forward_guard_ordered_before_offload(
+            no_offload_listing,
+            &store,
+            false
+        ));
     }
 
     #[test]
@@ -6479,5 +6534,48 @@ table inet fw4 {
                 .any(|c| c.iter().any(|a| a.contains("dest_port=46000 46001"))),
             "wdtt raw port must be opened alongside listen_port: {cmds:?}"
         );
+    }
+
+    #[test]
+    fn fw4_guard_checks_every_rule_for_active_configuration() {
+        let mut store = RouterStoreData::default();
+        let flow = "meta l4proto { tcp, udp } flow add @ft # handle 90";
+        store.settings.fakeip_inet6_range = "FC00:0:0:0:0:0:0:1/18".to_owned();
+        for mode in ["tun", "tproxy"] {
+            store.settings.proxy_mode = mode.to_owned();
+            for fakeip in [false, true] {
+                store.settings.fakeip_enabled = fakeip;
+                for ipv6 in [false, true] {
+                    let rules = compile_fw4_flow_offload_guard_rules(&store, ipv6);
+                    let valid = |lines: &[String], before: usize| {
+                        let text = lines[..before]
+                            .iter()
+                            .map(|rule| {
+                                rule.replace("!= 0 ", "!= 0x00000000 ")
+                                    .replace("FC00:0:0:0:0:0:0:1/18", "fc00::/18")
+                            })
+                            .chain([flow.to_owned(), "jump forward_lan # handle 91".to_owned()])
+                            .chain(lines[before..].iter().cloned())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        fw4_forward_guard_ordered_before_offload(&text, &store, ipv6)
+                    };
+
+                    assert!(valid(&rules, rules.len()));
+                    for index in 0..rules.len() {
+                        let mut missing = rules.clone();
+                        missing.remove(index);
+                        assert!(!valid(&missing, missing.len()));
+                    }
+                    let mut duplicate = rules.clone();
+                    duplicate[0] = rules[1].clone();
+                    assert!(!valid(&duplicate, duplicate.len()));
+                    let mut changed = rules.clone();
+                    changed[0] = changed[0].replace(" accept ", " drop ");
+                    assert!(!valid(&changed, changed.len()));
+                    assert!(!valid(&rules, rules.len() - 1));
+                }
+            }
+        }
     }
 }
