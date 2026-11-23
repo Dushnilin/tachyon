@@ -3051,17 +3051,17 @@ fn is_allowed_fuzzer_custom_file(path: &Path) -> bool {
     {
         return false;
     }
-    if path.starts_with("/tmp")
+    let allowed = path.starts_with("/tmp")
         || path.starts_with("/var/run/tachyon")
-        || path.starts_with("/etc/tachyon")
-    {
-        return true;
-    }
+        || path.starts_with("/etc/tachyon");
     #[cfg(test)]
-    if path.starts_with(std::env::temp_dir()) {
-        return true;
+    {
+        allowed || path.starts_with(std::env::temp_dir())
     }
-    false
+    #[cfg(not(test))]
+    {
+        allowed
+    }
 }
 
 fn load_fuzzer_custom_file_text(raw_path: &str) -> Option<String> {

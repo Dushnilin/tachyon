@@ -1558,16 +1558,16 @@ impl CoreManager {
             "/overlay",
         ];
         let has_posix_root = path.to_str().is_some_and(|s| s.starts_with('/'));
-        if (path.is_absolute() || has_posix_root)
-            && allowed_roots.iter().any(|r| path.starts_with(r))
-        {
-            return true;
-        }
+        let in_allowed_root = (path.is_absolute() || has_posix_root)
+            && allowed_roots.iter().any(|r| path.starts_with(r));
         #[cfg(test)]
-        if path.starts_with(std::env::temp_dir()) {
-            return true;
+        {
+            in_allowed_root || path.starts_with(std::env::temp_dir())
         }
-        false
+        #[cfg(not(test))]
+        {
+            in_allowed_root
+        }
     }
 
     fn ensure_runtime_cache_dir(cache_path: &str) {
