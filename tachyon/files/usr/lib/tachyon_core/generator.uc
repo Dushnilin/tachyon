@@ -2350,6 +2350,47 @@ function apply_settings_tcp_profile(config, settings) {
     }
 }
 
+function apply_bootstrap_domain_resolver_to_transports(config) {
+    if (type(config) != "object" || type(config.dns) != "object" || type(config.dns.servers) != "array")
+        return;
+
+    let has_bootstrap = false;
+    for (let srv in config.dns.servers) {
+        if (type(srv) == "object" && srv.tag == runtime_constants.BOOTSTRAP_DNS_SERVER_TAG) {
+            has_bootstrap = true;
+            break;
+        }
+    }
+    if (!has_bootstrap)
+        return;
+
+    for (let item in array_or_empty(config.outbounds)) {
+        if (type(item) != "object")
+            continue;
+        if (item.domain_resolver != null && trim(as_string(item.domain_resolver)) != "")
+            continue;
+        let t = lc(trim(as_string(item.type || "")));
+        if (t == "" || t == "direct" || t == "desync" || t == "selector" ||
+            t == "urltest" || t == "chain" || t == "block" || t == "bridge" || t == "dns")
+            continue;
+        let detour = trim(as_string(item.detour || ""));
+        if (detour != "" && detour != "direct" && detour != "direct-out")
+            continue;
+        item.domain_resolver = runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
+    }
+
+    for (let ep in array_or_empty(config.endpoints)) {
+        if (type(ep) != "object")
+            continue;
+        if (ep.domain_resolver != null && trim(as_string(ep.domain_resolver)) != "")
+            continue;
+        let detour = trim(as_string(ep.detour || ""));
+        if (detour != "" && detour != "direct" && detour != "direct-out")
+            continue;
+        ep.domain_resolver = runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
+    }
+}
+
 function generate_config_once(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     // Quarantine reuses the same skip set the deferred sections use: every
@@ -2606,6 +2647,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     normalize_hysteria2_server_ports(config);
     common.sanitize_config_dialer_fragments(config);
     apply_settings_tcp_profile(config, settings);
+    apply_bootstrap_domain_resolver_to_transports(config);
     finalize_config_owners(config, owners, output_path);
     if (!atomic_write_json_file(output_path, config)) {
         warn("failed to write ", output_path, "\n");

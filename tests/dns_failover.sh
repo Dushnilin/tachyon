@@ -91,7 +91,7 @@ assert(length(single.inbounds) == 2, "singleton without IPv6 adds no health inbo
 assert(count_prefix(single.dns.servers, "dns-health-") == 0, "singleton adds no health servers");
 assert(find_tag(single.dns.servers, "dns-server").server == "77.88.8.8", "singleton main DNS preserved");
 assert(find_tag(single.dns.servers, "dns-resilient").type == "group", "singleton resilient DNS group generated");
-assert(single.route.default_domain_resolver == "bootstrap-dns-server", "singleton uses bootstrap resolver to avoid DoH deadlocks");
+assert(single.route.default_domain_resolver == "dns-resilient", "singleton uses resilient resolver while direct bootstrap resolves hostnames");
 
 let multi = cfg(ARGV[1]);
 assert(length(multi.dns.servers) == 8, "two main, two bootstrap, health candidates, resilient group, and fakeip are generated");
@@ -105,7 +105,8 @@ assert(main.server == "cloudflare-dns.com", "runtime main index selects the seco
 assert(main.detour == "proxy-out", "main DNS uses selected section detour");
 assert(main.domain_resolver == "bootstrap-dns-server", "main hostname uses direct bootstrap resolver");
 assert(bootstrap.server == "8.8.8.8" && bootstrap.detour == null, "bootstrap index selects direct second server");
-assert(multi.route.default_domain_resolver == "bootstrap-dns-server", "detour mode breaks endpoint DNS cycles with bootstrap");
+assert(multi.route.default_domain_resolver == "dns-resilient", "detour mode keeps default_domain_resolver on dns-resilient");
+assert(find_tag(multi.outbounds, "proxy-out").domain_resolver == null, "direct outbound does not pin bootstrap domain_resolver");
 let health_rules = 0;
 for (let rule in multi.dns.rules || []) {
     if (index(rule.inbound || "", "dns-health-") == 0) {

@@ -166,3 +166,10 @@ jobs:
           overwrite_files: true
           body_path: ./release_notes.md
 
+      - name: Purge jsDelivr branch cache
+        if: always()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 15 "https://purge.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh" || true
+          curl -fsS --max-time 15 "https://purge.jsdelivr.net/gh/Dushnilin/tachyon@main/uninstall.sh" || true
+

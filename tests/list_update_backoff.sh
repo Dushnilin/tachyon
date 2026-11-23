@@ -79,7 +79,7 @@ printf '%s\n' "$*" >> "$TACHYON_CURL_COUNT_FILE"
 # dns_probe_passed checks https://1.1.1.1 or https://dns.google or github; keep dns_probe passing, fail raw.githubusercontent & mirrors
 for a in "$@"; do
   case "$a" in
-    *"raw.githubusercontent.com"*|*"jsdelivr.net"*|*"ghfast"*|*"gh-proxy"*|*"llkk.cc"*|*"ghproxy"*|*"moeyy"*)
+    *"raw.githubusercontent.com"*|*"jsdelivr.net"*|*"ghfast"*|*"gh-proxy"*|*"nxnow.top"*|*"llkk.cc"*|*"ghproxy"*|*"moeyy"*)
       exit 28
       ;;
   esac

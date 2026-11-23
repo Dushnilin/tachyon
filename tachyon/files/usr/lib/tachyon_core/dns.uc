@@ -658,7 +658,7 @@ function config(settings, override_state) {
 }
 
 function default_domain_resolver(settings) {
-    return runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
+    return runtime_constants.DNS_RESILIENT_SERVER_TAG;
 }
 
 return {

@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-INSTALLER_VERSION="3.3.0"
+INSTALLER_VERSION="3.4.0"
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 
@@ -19,8 +19,12 @@ TMP_DIR=""
 SNAPSHOT_DIR=""
 FETCHER=""
 INSTALLER_USER_AGENT="Tachyon-Installer/1.0"
-GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://gh.llkk.cc/ https://ghproxy.net/ https://mirror.ghproxy.com/ https://github.moeyy.xyz/"
+GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://gh-proxy.org/ https://gh.nxnow.top/ https://ghproxy.net/ https://edgeone.gh-proxy.org/"
 _WORKING_GH_MIRROR=""
+_DIRECT_FAILED=0
+_WGET_SUPPORTS_IPV4=""
+PROXY_URL_REQUESTED="${TACHYON_PROXY:-}"
+CUSTOM_MIRROR="${TACHYON_MIRROR:-}"
 PKG_MANAGER=""
 PKG_IS_APK=0
 # Indirected so the rollback contract can be tested without touching a real
@@ -144,6 +148,8 @@ Usage: $0 [options]
       --reinstall       Force reinstall of the selected release
       --tag X.Y.Z            Install an exact published release
       --channel NAME         stable (default) or beta
+      --proxy URL            Use HTTP/HTTPS/SOCKS5 proxy for downloads
+      --mirror URL           Try custom GitHub mirror prefix first
       --tachyon-core         Install tachyon-core routing core
       --skip-engine          Do not install a routing core when none is present
       --zram                 Install zram-swap
@@ -215,6 +221,16 @@ parse_args() {
                 RELEASE_CHANNEL="$1"
                 case "$RELEASE_CHANNEL" in stable|beta) ;; *) err "Unsupported channel: $RELEASE_CHANNEL"; return 2 ;; esac
                 ;;
+            --proxy)
+                shift
+                [ "$#" -gt 0 ] && [ -n "$1" ] || { err "--proxy requires a URL"; return 2; }
+                PROXY_URL_REQUESTED="$1"
+                ;;
+            --mirror)
+                shift
+                [ "$#" -gt 0 ] && [ -n "$1" ] || { err "--mirror requires a URL"; return 2; }
+                CUSTOM_MIRROR="$1"
+                ;;
             --version) printf 'tachyon-installer %s\n' "$INSTALLER_VERSION"; exit 0 ;;
             -h|--help) usage; exit 0 ;;
             *) err "Unknown option: $1"; return 2 ;;
@@ -229,6 +245,7 @@ parse_args() {
         "") ;;
         *[!0-9.]*|*.*.*.*|.*|*.) err "Invalid --tag value: $RELEASE_TAG_REQUESTED"; return 2 ;;
     esac
+    [ -n "$CUSTOM_MIRROR" ] && CUSTOM_MIRROR="$(_normalize_mirror_prefix "$CUSTOM_MIRROR")"
     return 0
 }
 
@@ -448,8 +465,55 @@ curl_supports_doh() {
 
 _curl_is_network_retryable_rc() {
     case "$1" in
-        6|28|35|60) return 0 ;;
+        6|7|28|35|52|56|60) return 0 ;;
         *) return 1 ;;
+    esac
+}
+
+_resolve_effective_proxy() {
+    if [ -n "${PROXY_URL_REQUESTED:-}" ]; then
+        printf '%s' "$PROXY_URL_REQUESTED"
+    elif [ -n "${TACHYON_PROXY:-}" ]; then
+        printf '%s' "$TACHYON_PROXY"
+    elif [ -n "${HTTPS_PROXY:-}" ]; then
+        printf '%s' "$HTTPS_PROXY"
+    elif [ -n "${https_proxy:-}" ]; then
+        printf '%s' "$https_proxy"
+    elif [ -n "${ALL_PROXY:-}" ]; then
+        printf '%s' "$ALL_PROXY"
+    elif [ -n "${all_proxy:-}" ]; then
+        printf '%s' "$all_proxy"
+    elif [ -n "${HTTP_PROXY:-}" ]; then
+        printf '%s' "$HTTP_PROXY"
+    elif [ -n "${http_proxy:-}" ]; then
+        printf '%s' "$http_proxy"
+    fi
+}
+
+_curl_proxy_url() {
+    _cpu_raw="$1"
+    case "$_cpu_raw" in
+        socks5://*) printf 'socks5h://%s' "${_cpu_raw#socks5://}" ;;
+        socks4://*) printf 'socks4a://%s' "${_cpu_raw#socks4://}" ;;
+        *) printf '%s' "$_cpu_raw" ;;
+    esac
+}
+
+_export_proxy_env() {
+    _epe_raw="${PROXY_URL_REQUESTED:-${TACHYON_PROXY:-}}"
+    [ -n "$_epe_raw" ] || return 0
+    _epe_norm="$(_curl_proxy_url "$_epe_raw")"
+    ALL_PROXY="$_epe_norm"
+    all_proxy="$_epe_norm"
+    export ALL_PROXY all_proxy
+    case "$_epe_raw" in
+        http://*|https://*)
+            http_proxy="$_epe_raw"
+            https_proxy="$_epe_raw"
+            HTTP_PROXY="$_epe_raw"
+            HTTPS_PROXY="$_epe_raw"
+            export http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+            ;;
     esac
 }
 
@@ -470,6 +534,99 @@ _set_working_gh_mirror() {
             rm -f "$TMP_DIR/working_gh_mirror" 2>/dev/null || true
         fi
     fi
+}
+
+_get_direct_failed() {
+    if [ "${_DIRECT_FAILED:-0}" = "1" ]; then
+        printf '1'
+    elif [ -n "${TMP_DIR:-}" ] && [ -r "$TMP_DIR/direct_failed" ]; then
+        cat "$TMP_DIR/direct_failed" 2>/dev/null || printf '0'
+    else
+        printf '0'
+    fi
+}
+
+_set_direct_failed() {
+    _DIRECT_FAILED="$1"
+    if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+        if [ "$1" = "1" ]; then
+            printf '1' >"$TMP_DIR/direct_failed" 2>/dev/null || true
+        else
+            rm -f "$TMP_DIR/direct_failed" 2>/dev/null || true
+        fi
+    fi
+}
+
+_wget_supports_ipv4() {
+    if [ -z "${_WGET_SUPPORTS_IPV4:-}" ]; then
+        if wget --help 2>&1 | grep -q -- '-4'; then
+            _WGET_SUPPORTS_IPV4=1
+        else
+            _WGET_SUPPORTS_IPV4=0
+        fi
+    fi
+    [ "$_WGET_SUPPORTS_IPV4" = "1" ]
+}
+
+_normalize_mirror_prefix() {
+    _nmp_val="$1"
+    while :; do
+        case "$_nmp_val" in
+            */) _nmp_val="${_nmp_val%/}" ;;
+            *) break ;;
+        esac
+    done
+    [ -n "$_nmp_val" ] && printf '%s/' "$_nmp_val"
+}
+
+_append_unique_candidate() {
+    _auc_list="$1"
+    _auc_item="$2"
+    [ -n "$_auc_item" ] || { printf '%s' "$_auc_list"; return 0; }
+    case " $_auc_list " in
+        *" $_auc_item "*) printf '%s' "$_auc_list" ;;
+        *)
+            if [ -n "$_auc_list" ]; then
+                printf '%s %s' "$_auc_list" "$_auc_item"
+            else
+                printf '%s' "$_auc_item"
+            fi
+            ;;
+    esac
+}
+
+_build_gh_candidates() {
+    _bgc_pref="$(_get_working_gh_mirror)"
+    _bgc_custom=""
+    [ -n "${CUSTOM_MIRROR:-}" ] && _bgc_custom="$(_normalize_mirror_prefix "$CUSTOM_MIRROR")"
+    _bgc_proxy="$(_resolve_effective_proxy)"
+    _bgc_df="$(_get_direct_failed)"
+    _bgc_list=""
+
+    if [ -n "$_bgc_custom" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_custom")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    elif [ -n "$_bgc_proxy" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    elif [ -n "$_bgc_pref" ] && [ "$_bgc_df" = "1" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+        for _bgc_m in $GH_MIRRORS; do
+            _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_m")"
+        done
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        printf '%s' "$_bgc_list"
+        return 0
+    else
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    fi
+
+    for _bgc_m in $GH_MIRRORS; do
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_m")"
+    done
+    printf '%s' "$_bgc_list"
 }
 
 _file_looks_like_html() {
@@ -514,20 +671,46 @@ http_get() {
     _hg_url="$1"
     case "$FETCHER" in
         wget)
-            _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
-            if [ -z "$_hg_res" ]; then
-                _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+            _hg_t0="$(date +%s 2>/dev/null || echo 0)"
+            _hg_rc=0
+            _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+            if [ "$_hg_rc" -ne 0 ] || [ -z "$_hg_res" ]; then
+                _hg_t1="$(date +%s 2>/dev/null || echo "$_hg_t0")"
+                _hg_el=$((_hg_t1 - _hg_t0))
+                if [ "$_hg_el" -lt $((CONNECT_TIMEOUT_SECONDS - 1)) ]; then
+                    if _wget_supports_ipv4; then
+                        _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -4 -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+                    else
+                        _hg_res="$(run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$_hg_url" 2>/dev/null)" || true
+                    fi
+                fi
             fi
             [ -n "$_hg_res" ] || return 1
             printf '%s' "$_hg_res"
             ;;
         curl)
+            _hg_proxy="$(_resolve_effective_proxy)"
             _hg_rc=0
+            if [ -n "$_hg_proxy" ]; then
+                _hg_cp="$(_curl_proxy_url "$_hg_proxy")"
+                _hg_res="$(curl -x "$_hg_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+                if [ "$_hg_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hg_rc"; then
+                    _hg_rc=0
+                    _hg_res="$(curl -4 -x "$_hg_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+                fi
+                [ "$_hg_rc" -eq 0 ] || return "$_hg_rc"
+                printf '%s' "$_hg_res"
+                return 0
+            fi
             _hg_res="$(curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+            if [ "$_hg_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hg_rc"; then
+                _hg_rc=0
+                _hg_res="$(curl -4 -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+            fi
             if [ "$_hg_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hg_rc" && curl_supports_doh; then
                 for _hg_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
                     _hg_rc=0
-                    _hg_res="$(curl -A "$INSTALLER_USER_AGENT" --doh-url "$_hg_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
+                    _hg_res="$(curl -4 -A "$INSTALLER_USER_AGENT" --doh-url "$_hg_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$_hg_url" 2>/dev/null)" || _hg_rc=$?
                     [ "$_hg_rc" -eq 0 ] && break
                     _curl_is_network_retryable_rc "$_hg_rc" || break
                 done
@@ -543,25 +726,78 @@ download_file_once() {
     _dfo_url="$1"; _dfo_dst="$2"
     case "$FETCHER" in
         wget)
+            _dfo_t0="$(date +%s 2>/dev/null || echo 0)"
             if run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ]; then
                 return 0
             fi
+            _dfo_partial=0
+            [ -s "$_dfo_dst" ] && _dfo_partial=1
             rm -f "$_dfo_dst"
-            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url"
+            [ "$_dfo_partial" -eq 1 ] && return 1
+            _dfo_t1="$(date +%s 2>/dev/null || echo "$_dfo_t0")"
+            _dfo_el=$((_dfo_t1 - _dfo_t0))
+            if [ "$_dfo_el" -lt $((CONNECT_TIMEOUT_SECONDS - 1)) ]; then
+                if _wget_supports_ipv4; then
+                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -4 -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ] && return 0
+                else
+                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$_dfo_dst" "$_dfo_url" && [ -s "$_dfo_dst" ] && return 0
+                fi
+                rm -f "$_dfo_dst"
+            fi
+            return 1
             ;;
         curl)
+            _dfo_proxy="$(_resolve_effective_proxy)"
             _dfo_rc=0
-            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
-            if [ "$_dfo_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_dfo_rc" && curl_supports_doh; then
-                for _dfo_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
-                    rm -f "$_dfo_dst"
+            if [ -n "$_dfo_proxy" ]; then
+                _dfo_cp="$(_curl_proxy_url "$_dfo_proxy")"
+                run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -x "$_dfo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                _dfo_partial=0
+                [ -s "$_dfo_dst" ] && _dfo_partial=1
+                [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+                rm -f "$_dfo_dst"
+                if [ "$_dfo_partial" -eq 0 ] && _curl_is_network_retryable_rc "$_dfo_rc"; then
                     _dfo_rc=0
-                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -A "$INSTALLER_USER_AGENT" --doh-url "$_dfo_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
-                    [ "$_dfo_rc" -eq 0 ] && return 0
-                    _curl_is_network_retryable_rc "$_dfo_rc" || break
-                done
+                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -4 -x "$_dfo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                    [ "$_dfo_rc" -eq 0 ] && [ -s "$_dfo_dst" ] && return 0
+                    rm -f "$_dfo_dst"
+                fi
+                return "${_dfo_rc:-1}"
             fi
-            return "$_dfo_rc"
+
+            run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+            _dfo_partial=0
+            [ -s "$_dfo_dst" ] && _dfo_partial=1
+            [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+            rm -f "$_dfo_dst"
+            # Mid-stream stall (e.g., 16 KB drop): advance straight to the next mirror.
+            if [ "$_dfo_rc" -eq 28 ] && [ "$_dfo_partial" -eq 1 ]; then
+                return 28
+            fi
+            if _curl_is_network_retryable_rc "$_dfo_rc"; then
+                if [ "$_dfo_partial" -eq 0 ]; then
+                    _dfo_rc=0
+                    run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -4 -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                    _dfo_partial=0
+                    [ -s "$_dfo_dst" ] && _dfo_partial=1
+                    [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+                    rm -f "$_dfo_dst"
+                    if [ "$_dfo_rc" -eq 28 ] && [ "$_dfo_partial" -eq 1 ]; then
+                        return 28
+                    fi
+                fi
+                if _curl_is_network_retryable_rc "$_dfo_rc" && curl_supports_doh; then
+                    for _dfo_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
+                        rm -f "$_dfo_dst"
+                        _dfo_rc=0
+                        run_logged_timeout download "$DOWNLOAD_TIMEOUT_SECONDS" curl -4 -A "$INSTALLER_USER_AGENT" --doh-url "$_dfo_doh" --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                        [ "$_dfo_rc" -eq 0 ] && [ -s "$_dfo_dst" ] && return 0
+                        rm -f "$_dfo_dst"
+                        _curl_is_network_retryable_rc "$_dfo_rc" || break
+                    done
+                fi
+            fi
+            return "${_dfo_rc:-1}"
             ;;
         *) return 1 ;;
     esac
@@ -576,15 +812,7 @@ download_with_retry() {
             *) _dwr_kind="generic" ;;
         esac
     fi
-    _dwr_pref="$(_get_working_gh_mirror)"
-    _dwr_candidates="direct"
-    if [ -n "$_dwr_pref" ]; then
-        _dwr_candidates="$_dwr_candidates $_dwr_pref"
-    fi
-    for _dwr_m in $GH_MIRRORS; do
-        [ "$_dwr_m" = "$_dwr_pref" ] && continue
-        _dwr_candidates="$_dwr_candidates $_dwr_m"
-    done
+    _dwr_candidates="$(_build_gh_candidates)"
     _dwr_total=0
     for _dwr_c in $_dwr_candidates; do _dwr_total=$((_dwr_total + 1)); done
     _dwr_attempt=1
@@ -598,11 +826,14 @@ download_with_retry() {
         rm -f "$_dwr_dst"
         if download_file_once "$_dwr_try_url" "$_dwr_dst" && _validate_downloaded_payload "$_dwr_dst" "$_dwr_kind"; then
             if [ "$_dwr_c" = "direct" ]; then
+                _set_direct_failed 0
                 _set_working_gh_mirror ""
             else
                 _set_working_gh_mirror "$_dwr_c"
             fi
             return 0
+        elif [ "$_dwr_c" = "direct" ]; then
+            _set_direct_failed 1
         fi
         rm -f "$_dwr_dst"
         _dwr_attempt=$((_dwr_attempt + 1))
@@ -924,6 +1155,48 @@ release_ip_tiny_conflict() {
     fi
 }
 
+ensure_bootstrap_fetcher() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    _ebf_missing=""
+    command_exists curl || _ebf_missing="$_ebf_missing curl"
+    pkg_is_installed ca-bundle || _ebf_missing="$_ebf_missing ca-bundle"
+    if [ -n "$_ebf_missing" ]; then
+        msg "Bootstrapping TLS and download tools:$_ebf_missing"
+        _ebf_saved_ap="${ALL_PROXY-__UNSET__}"
+        _ebf_saved_apl="${all_proxy-__UNSET__}"
+        _ebf_saved_hp="${http_proxy-__UNSET__}"
+        _ebf_saved_hps="${https_proxy-__UNSET__}"
+        _ebf_saved_HP="${HTTP_PROXY-__UNSET__}"
+        _ebf_saved_HPS="${HTTPS_PROXY-__UNSET__}"
+        unset ALL_PROXY all_proxy
+        case "${http_proxy:-}" in socks*) unset http_proxy ;; esac
+        case "${https_proxy:-}" in socks*) unset https_proxy ;; esac
+        case "${HTTP_PROXY:-}" in socks*) unset HTTP_PROXY ;; esac
+        case "${HTTPS_PROXY:-}" in socks*) unset HTTPS_PROXY ;; esac
+
+        pkg_update_index || true
+        # shellcheck disable=SC2086
+        pkg_install_names $_ebf_missing || warn "Could not preinstall$_ebf_missing; continuing with $FETCHER"
+
+        [ "$_ebf_saved_ap" = "__UNSET__" ] && unset ALL_PROXY || { ALL_PROXY="$_ebf_saved_ap"; export ALL_PROXY; }
+        [ "$_ebf_saved_apl" = "__UNSET__" ] && unset all_proxy || { all_proxy="$_ebf_saved_apl"; export all_proxy; }
+        [ "$_ebf_saved_hp" = "__UNSET__" ] && unset http_proxy || { http_proxy="$_ebf_saved_hp"; export http_proxy; }
+        [ "$_ebf_saved_hps" = "__UNSET__" ] && unset https_proxy || { https_proxy="$_ebf_saved_hps"; export https_proxy; }
+        [ "$_ebf_saved_HP" = "__UNSET__" ] && unset HTTP_PROXY || { HTTP_PROXY="$_ebf_saved_HP"; export HTTP_PROXY; }
+        [ "$_ebf_saved_HPS" = "__UNSET__" ] && unset HTTPS_PROXY || { HTTPS_PROXY="$_ebf_saved_HPS"; export HTTPS_PROXY; }
+
+        detect_fetcher || true
+    fi
+    if [ "$FETCHER" = "wget" ]; then
+        case "$(_resolve_effective_proxy)" in
+            socks*)
+                warn "Configured SOCKS proxy requires curl, but only wget/uclient-fetch is available"
+                ;;
+        esac
+    fi
+    return 0
+}
+
 ensure_runtime_dependencies() {
     release_ip_tiny_conflict
     _missing=""
@@ -933,7 +1206,7 @@ ensure_runtime_dependencies() {
     for _kmod in kmod-nft-tproxy kmod-nft-fib kmod-tun kmod-inet-diag; do
         kmod_is_available "$_kmod" || _missing="$_missing $_kmod"
     done
-    [ -z "$_missing" ] && return 0
+    [ -z "$_missing" ] && { detect_fetcher || true; return 0; }
     pkg_update_index || true
     # shellcheck disable=SC2086
     if ! pkg_install_names $_missing; then
@@ -942,6 +1215,7 @@ ensure_runtime_dependencies() {
             pkg_install_names "$_pkg" || warn "Could not install $_pkg from repository (may be built-in or unavailable in feed); continuing"
         done
     fi
+    detect_fetcher || true
     modprobe nft_tproxy >/dev/null 2>&1 || true
     modprobe nft_fib_inet >/dev/null 2>&1 || true
     modprobe tun >/dev/null 2>&1 || true
@@ -1024,15 +1298,7 @@ _is_valid_release_json() {
 _fetch_github_api_json() {
     _fga_url="$1"
     _fga_warn="${2:-0}"
-    _fga_pref="$(_get_working_gh_mirror)"
-    _fga_candidates="direct"
-    if [ -n "$_fga_pref" ]; then
-        _fga_candidates="$_fga_candidates $_fga_pref"
-    fi
-    for _fga_m in $GH_MIRRORS; do
-        [ "$_fga_m" = "$_fga_pref" ] && continue
-        _fga_candidates="$_fga_candidates $_fga_m"
-    done
+    _fga_candidates="$(_build_gh_candidates)"
     _fga_warned=0
     for _fga_c in $_fga_candidates; do
         if [ "$_fga_c" = "direct" ]; then
@@ -1047,12 +1313,54 @@ _fetch_github_api_json() {
         _fga_json="$(http_get "$_fga_try_url" 2>/dev/null || true)"
         if _is_valid_release_json "$_fga_json"; then
             if [ "$_fga_c" = "direct" ]; then
+                _set_direct_failed 0
                 _set_working_gh_mirror ""
             else
                 _set_working_gh_mirror "$_fga_c"
             fi
             printf '%s' "$_fga_json"
             return 0
+        elif [ "$_fga_c" = "direct" ]; then
+            _set_direct_failed 1
+        fi
+    done
+    return 1
+}
+
+_is_valid_atom_feed() {
+    _vaf_body="$1"
+    [ -n "$_vaf_body" ] || return 1
+    _vaf_head="$(printf '%s' "$_vaf_body" | head -c 512 2>/dev/null | tr -d '\000' | tr 'A-Z' 'a-z')"
+    case "$_vaf_head" in
+        *'<!doctype'*|*'<html'*|*'<head'*|*'error code:'*) return 1 ;;
+    esac
+    case "$_vaf_body" in
+        *'<feed'*|*'<entry'*|*'/releases/tag/'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_fetch_github_atom() {
+    _fga_url="$1"
+    _fga_candidates="$(_build_gh_candidates)"
+    for _fga_c in $_fga_candidates; do
+        if [ "$_fga_c" = "direct" ]; then
+            _fga_try_url="$_fga_url"
+        else
+            _fga_try_url="${_fga_c}${_fga_url}"
+        fi
+        _fga_atom="$(http_get "$_fga_try_url" 2>/dev/null || true)"
+        if _is_valid_atom_feed "$_fga_atom"; then
+            if [ "$_fga_c" = "direct" ]; then
+                _set_direct_failed 0
+                _set_working_gh_mirror ""
+            else
+                _set_working_gh_mirror "$_fga_c"
+            fi
+            printf '%s' "$_fga_atom"
+            return 0
+        elif [ "$_fga_c" = "direct" ]; then
+            _set_direct_failed 1
         fi
     done
     return 1
@@ -1072,8 +1380,17 @@ fetch_release_json() {
 
 fetch_release_tag_list() {
     _fr_url="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=15"
-    _fr_json="$(_fetch_github_api_json "$_fr_url" 0)" || return 1
-    printf '%s' "$_fr_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null
+    _fr_json="$(_fetch_github_api_json "$_fr_url" 0 || true)"
+    if [ -n "$_fr_json" ]; then
+        _fr_tags="$(printf '%s' "$_fr_json" | release_helper tags "$RELEASE_CHANNEL" 2>/dev/null || true)"
+        if [ -n "$_fr_tags" ]; then
+            printf '%s\n' "$_fr_tags"
+            return 0
+        fi
+    fi
+    _fr_atom="$(_fetch_github_atom "https://github.com/${REPO_OWNER}/${REPO_NAME}/releases.atom" || true)"
+    [ -n "$_fr_atom" ] || return 1
+    printf '%s' "$_fr_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | awk '!seen[$0]++'
 }
 
 installer_is_interactive() {
@@ -1149,32 +1466,65 @@ release_is_tachyon_core_only() {
 resolve_release() {
     _ext="ipk"; [ "$PKG_IS_APK" -eq 1 ] && _ext="apk"
     msg "Querying GitHub release API"
-    TACHYON_RELEASE_JSON="$(fetch_release_json)" || return 1
-    TACHYON_RELEASE_TAG="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper tag "$RELEASE_CHANNEL" 2>/dev/null || true)"
+    TACHYON_RELEASE_JSON="$(fetch_release_json 2>/dev/null || true)"
+    TACHYON_RELEASE_TAG=""
+    if [ -n "$TACHYON_RELEASE_JSON" ]; then
+        TACHYON_RELEASE_TAG="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper tag "$RELEASE_CHANNEL" 2>/dev/null || true)"
+    fi
+    if [ -z "$TACHYON_RELEASE_TAG" ]; then
+        warn "GitHub release API unavailable; trying releases.atom fallback"
+        TACHYON_RELEASE_JSON=""
+        if [ -n "$RELEASE_TAG_REQUESTED" ]; then
+            TACHYON_RELEASE_TAG="$RELEASE_TAG_REQUESTED"
+        else
+            _atom="$(_fetch_github_atom "https://github.com/${REPO_OWNER}/${REPO_NAME}/releases.atom" || true)"
+            _atom_tags="$(printf '%s' "$_atom" | sed -n 's|.*/releases/tag/\([^"/?<]*\)".*|\1|p' 2>/dev/null || true)"
+            for _at in $_atom_tags; do
+                if printf '%s' "$_at" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+                    TACHYON_RELEASE_TAG="$_at"
+                    break
+                fi
+            done
+        fi
+    fi
     [ -n "$TACHYON_RELEASE_TAG" ] || { err "Could not resolve a valid release tag"; return 1; }
     if [ -n "$RELEASE_TAG_REQUESTED" ] && [ "$TACHYON_RELEASE_TAG" != "$RELEASE_TAG_REQUESTED" ]; then
         err "Resolved release $TACHYON_RELEASE_TAG does not match requested $RELEASE_TAG_REQUESTED"
         return 1
     fi
-    TACHYON_SHA256_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" sha256 txt 2>/dev/null || true)"
-    TACHYON_BACKEND_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" backend "$_ext" 2>/dev/null || true)"
-    TACHYON_APP_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" app "$_ext" 2>/dev/null || true)"
-    [ -n "$TACHYON_SHA256_URL" ] && [ -n "$TACHYON_BACKEND_URL" ] && [ -n "$TACHYON_APP_URL" ] || {
-        err "Release $TACHYON_RELEASE_TAG is missing required $_ext assets"
-        return 1
-    }
-    TACHYON_BACKEND_NAME="$(basename "$TACHYON_BACKEND_URL")"
-    TACHYON_APP_NAME="$(basename "$TACHYON_APP_URL")"
-    if [ "$TACHYON_I18N_REQUESTED" -eq 1 ]; then
-        TACHYON_I18N_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" i18n "$_ext" 2>/dev/null || true)"
-        [ -n "$TACHYON_I18N_URL" ] || { err "Release is missing Russian LuCI package"; return 1; }
-        TACHYON_I18N_NAME="$(basename "$TACHYON_I18N_URL")"
+    if [ -n "$TACHYON_RELEASE_JSON" ]; then
+        TACHYON_SHA256_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" sha256 txt 2>/dev/null || true)"
+        TACHYON_BACKEND_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" backend "$_ext" 2>/dev/null || true)"
+        TACHYON_APP_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" app "$_ext" 2>/dev/null || true)"
+        [ -n "$TACHYON_SHA256_URL" ] && [ -n "$TACHYON_BACKEND_URL" ] && [ -n "$TACHYON_APP_URL" ] || {
+            err "Release $TACHYON_RELEASE_TAG is missing required $_ext assets"
+            return 1
+        }
+        TACHYON_BACKEND_NAME="$(basename "$TACHYON_BACKEND_URL")"
+        TACHYON_APP_NAME="$(basename "$TACHYON_APP_URL")"
+        if [ "$TACHYON_I18N_REQUESTED" -eq 1 ]; then
+            TACHYON_I18N_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper asset "$RELEASE_CHANNEL" i18n "$_ext" 2>/dev/null || true)"
+            [ -n "$TACHYON_I18N_URL" ] || { err "Release is missing Russian LuCI package"; return 1; }
+            TACHYON_I18N_NAME="$(basename "$TACHYON_I18N_URL")"
+        fi
+        _s1="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" backend "$_ext" 2>/dev/null || echo 0)"
+        _s2="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" app "$_ext" 2>/dev/null || echo 0)"
+        _s3=0
+        [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && _s3="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" i18n "$_ext" 2>/dev/null || echo 0)"
+        TACHYON_DOWNLOAD_BYTES=$((_s1 + _s2 + _s3 + 65536))
+    else
+        _rel_base="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${TACHYON_RELEASE_TAG}"
+        TACHYON_SHA256_URL="${_rel_base}/sha256sums.txt"
+        TACHYON_BACKEND_URL="${_rel_base}/tachyon_${TACHYON_RELEASE_TAG}.${_ext}"
+        TACHYON_APP_URL="${_rel_base}/luci-app-tachyon_${TACHYON_RELEASE_TAG}.${_ext}"
+        TACHYON_BACKEND_NAME="tachyon_${TACHYON_RELEASE_TAG}.${_ext}"
+        TACHYON_APP_NAME="luci-app-tachyon_${TACHYON_RELEASE_TAG}.${_ext}"
+        if [ "$TACHYON_I18N_REQUESTED" -eq 1 ]; then
+            TACHYON_I18N_URL="${_rel_base}/luci-i18n-tachyon-ru_${TACHYON_RELEASE_TAG}.${_ext}"
+            TACHYON_I18N_NAME="luci-i18n-tachyon-ru_${TACHYON_RELEASE_TAG}.${_ext}"
+        fi
+        TACHYON_DOWNLOAD_BYTES=4194304
     fi
-    _s1="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" backend "$_ext" 2>/dev/null || echo 0)"
-    _s2="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" app "$_ext" 2>/dev/null || echo 0)"
-    _s3=0
-    [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && _s3="$(printf '%s' "$TACHYON_RELEASE_JSON" | release_helper size "$RELEASE_CHANNEL" i18n "$_ext" 2>/dev/null || echo 0)"
-    TACHYON_DOWNLOAD_BYTES=$((_s1 + _s2 + _s3 + 65536))
 }
 
 free_kb() {
@@ -1449,9 +1799,12 @@ release_tachyon_init_lock() {
 
 check_name_resolution() {
     [ "$DRY_RUN" -eq 1 ] && return 0
+    if [ -n "$(_resolve_effective_proxy)" ] || [ -n "${CUSTOM_MIRROR:-}" ]; then
+        return 0
+    fi
     command_exists nslookup || command_exists drill || return 0
     _resolved=1
-    for _probe in "github.com" "raw.githubusercontent.com"; do
+    for _probe in "github.com" "raw.githubusercontent.com" "ghfast.top" "gh-proxy.com" "downloads.openwrt.org"; do
         if nslookup "$_probe" >/dev/null 2>&1 || drill "$_probe" >/dev/null 2>&1; then
             _resolved=0
             break
@@ -2112,6 +2465,7 @@ main() {
     trap on_pipe PIPE
 
     parse_args "$@" || exit $?
+    _export_proxy_env
     START_TIME="$(date +%s 2>/dev/null || echo 0)"
     : >"$LOG_FILE" 2>/dev/null || true
 
@@ -2128,6 +2482,7 @@ main() {
 
     msg "Bootstrapping ucode runtime"
     ensure_bootstrap_ucode_runtime || fail "Could not bootstrap ucode runtime"
+    ensure_bootstrap_fetcher
     msg "Detecting language and release selection"
     detect_language_and_i18n
     decide_zram

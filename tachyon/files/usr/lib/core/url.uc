@@ -317,10 +317,10 @@ function download_candidates(value) {
         let mirrors = [
             "https://ghfast.top/",
             "https://gh-proxy.com/",
-            "https://gh.llkk.cc/",
+            "https://gh-proxy.org/",
+            "https://gh.nxnow.top/",
             "https://ghproxy.net/",
-            "https://mirror.ghproxy.com/",
-            "https://github.moeyy.xyz/",
+            "https://edgeone.gh-proxy.org/",
         ];
         for (let prefix in mirrors) {
             if (index(value, prefix) != 0)

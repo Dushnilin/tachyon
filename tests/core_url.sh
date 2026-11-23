@@ -55,10 +55,10 @@ let allowed_hosts = [
     "cdn.jsdelivr.net",
     "ghfast.top",
     "gh-proxy.com",
-    "gh.llkk.cc",
+    "gh-proxy.org",
+    "gh.nxnow.top",
     "ghproxy.net",
-    "mirror.ghproxy.com",
-    "github.moeyy.xyz"
+    "edgeone.gh-proxy.org"
 ];
 for (let c in twitch_candidates) {
     let h = url.host(c);

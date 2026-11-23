@@ -34,11 +34,12 @@ function has(arr, substring) {
 let rel = "https://github.com/owner/repo/releases/download/v1/file.bin";
 let rel_c = url.download_candidates(rel);
 assert(rel_c[0] == rel,                                "release[0] must be original URL (direct)");
+assert(has(rel_c, "ghfast.top"),                       "release must have ghfast.top");
 assert(has(rel_c, "gh-proxy.com"),                     "release must have gh-proxy.com");
+assert(has(rel_c, "gh-proxy.org"),                     "release must have gh-proxy.org");
+assert(has(rel_c, "gh.nxnow.top"),                     "release must have gh.nxnow.top");
 assert(has(rel_c, "ghproxy.net"),                      "release must have ghproxy.net");
-assert(has(rel_c, "mirror.ghproxy.com"),               "release must have mirror.ghproxy.com");
-assert(has(rel_c, "ghfast.top"),                       "release must have ghfast.top (new)");
-assert(has(rel_c, "github.moeyy.xyz"),                 "release must have github.moeyy.xyz (new)");
+assert(has(rel_c, "edgeone.gh-proxy.org"),             "release must have edgeone.gh-proxy.org");
 // jsDelivr does NOT work for release binaries
 assert(!has(rel_c, "jsdelivr"),                        "release must NOT have jsDelivr");
 

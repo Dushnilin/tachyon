@@ -54,19 +54,26 @@ sh /tmp/tachyon-setup.sh -y
 | `--channel beta` / `--tag X.Y.Z` | Переключение на канал предварительных сборок или установка фиксированной версии релиза |
 
 <details>
-<summary><b>Резервные зеркала установки (при ограничении доступа к raw.githubusercontent.com)</b></summary>
+<summary><b>Резервные зеркала установки и параметры прокси</b></summary>
 
 <br>
 
 ```bash
-# Зеркало 1 (jsdelivr.net CDN):
+# Зеркало 1 (jsDelivr CDN: cdn / gcore / fastly):
 wget -O /tmp/tachyon-setup.sh https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh && sh /tmp/tachyon-setup.sh
+wget -O /tmp/tachyon-setup.sh https://gcore.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh && sh /tmp/tachyon-setup.sh
+wget -O /tmp/tachyon-setup.sh https://fastly.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh && sh /tmp/tachyon-setup.sh
 
-# Зеркало 2 (gh-proxy.com):
-wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
+# Зеркало 2 (gh-proxy.com / gh-proxy.org):
+wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
+wget -O /tmp/tachyon-setup.sh https://gh-proxy.org/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 
 # Зеркало 3 (ghfast.top):
 wget -O /tmp/tachyon-setup.sh https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
+
+# Установка через внешний прокси или собственное зеркало:
+sh /tmp/tachyon-setup.sh --proxy socks5h://192.168.1.10:10808
+sh /tmp/tachyon-setup.sh --proxy http://192.168.1.10:8080 --mirror https://gh-proxy.org/
 ```
 
 </details>

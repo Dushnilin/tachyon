@@ -1951,7 +1951,7 @@ function build_safe_minimal_config(settings, listen_addr) {
             "final": "direct-out",
             auto_detect_interface: true,
             default_mark: 1073741824,
-            default_domain_resolver: "bootstrap-dns-server"
+            default_domain_resolver: "dns-resilient"
         },
         experimental: {
             clash_api: {

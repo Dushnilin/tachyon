@@ -90,7 +90,7 @@ function assert(cond, msg) {
 assert(type(cfg) == "object", "minimal config must be JSON object");
 assert(cfg.dns["final"] == "dns-resilient", "dns final must be dns-resilient");
 assert(cfg.route["final"] == "direct-out", "route final must be direct-out");
-assert(cfg.route.default_domain_resolver == "bootstrap-dns-server", "default_domain_resolver must be bootstrap-dns-server");
+assert(cfg.route.default_domain_resolver == "dns-resilient", "default_domain_resolver must be dns-resilient");
 let srvTags = map(cfg.dns.servers || [], (s) => s.tag);
 assert(index(srvTags, "bootstrap-dns-server") >= 0, "must have bootstrap-dns-server");
 assert(index(srvTags, "dns-resilient") >= 0, "must have dns-resilient group");
@@ -144,7 +144,7 @@ function assert(cond, msg) {
 }
 assert(type(cfg) == "object", "generated safe-dns config must be JSON object");
 assert(cfg.dns["final"] == "dns-resilient", "safe-dns final must be dns-resilient");
-assert(cfg.route.default_domain_resolver == "bootstrap-dns-server", "safe-dns default_domain_resolver must be bootstrap-dns-server");
+assert(cfg.route.default_domain_resolver == "dns-resilient", "safe-dns default_domain_resolver must be dns-resilient");
 let nonSafeRemote = filter(cfg.dns.servers || [], (s) => s.type == "https" || s.type == "tls" || s.type == "quic" || s.type == "h3");
 assert(length(nonSafeRemote) == 0, "TACHYON_SAFE_DNS_FALLBACK=1 must not emit broken DoH/DoT/DoQ servers");
 let safeUdpBoot = filter(cfg.dns.servers || [], (s) => s.tag == "bootstrap-dns-server" && s.type == "udp" && s.server == "77.88.8.8");
