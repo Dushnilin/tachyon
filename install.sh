@@ -4,6 +4,7 @@
 
 set -u
 
+INSTALLER_USER_AGENT="Tachyon-Installer/2.0"
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 CORE_REPO="Dushnilin/tachyon-core"
@@ -12,6 +13,13 @@ TMP_DIR=""
 FETCHER=""
 PKG_MANAGER=""
 PKG_IS_APK=0
+GH_MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://gh-proxy.org/ https://gh.nxnow.top/ https://ghproxy.net/ https://edgeone.gh-proxy.org/"
+JSDELIVR_CDN_HOSTS="https://cdn.jsdelivr.net https://gcore.jsdelivr.net https://fastly.jsdelivr.net"
+_WORKING_GH_MIRROR=""
+_DIRECT_FAILED=0
+_WGET_SUPPORTS_IPV4=""
+PROXY_URL_REQUESTED="${TACHYON_PROXY:-}"
+CUSTOM_MIRROR="${TACHYON_MIRROR:-}"
 
 ASSUME_YES=0
 DRY_RUN=0
@@ -74,6 +82,8 @@ Usage: $0 [options]
       --format FMT      Package format: auto, apk, ipk (default: auto)
       --arch ARCH       Override target arch (x86_64, i386_pentium4, aarch64,
                         armv7, armv6, riscv64, mipsel, mips)
+      --proxy URL       Use HTTP/HTTPS/SOCKS5 proxy for downloads
+      --mirror URL      Try custom GitHub mirror prefix first
       --reinstall       Force package reinstall over existing files
       --repair          Repair services, scripts, and package files in place
       --tachyon-core    Compatible flag (tachyon-core is the built-in engine)
@@ -85,63 +95,72 @@ Log file: ${LOG_FILE}
 EOF
 }
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        -y|--yes) ASSUME_YES=1 ;;
-        -n|--dry-run) DRY_RUN=1 ;;
-        -q|--quiet) QUIET=1 ;;
-        --skip-core) SKIP_CORE=1 ;;
-        --tachyon-core) ;;
-        --reinstall|--repair) FORCE_REINSTALL=1 ;;
-        --prerelease) CHANNEL="beta" ;;
-        --channel)
-            shift
-            [ "$#" -gt 0 ] || { err "--channel requires auto, stable, or beta"; exit 2; }
-            case "$1" in
-                auto|stable|beta) CHANNEL="$1" ;;
-                *) err "Invalid --channel value: $1 (expected auto, stable, or beta)"; exit 2 ;;
-            esac
-            ;;
-        --format)
-            shift
-            [ "$#" -gt 0 ] || { err "--format requires auto, apk, or ipk"; exit 2; }
-            case "$1" in
-                auto|apk|ipk)
-                    PKG_FORMAT="$1"
-                    ;;
-                *) err "Invalid --format value: $1 (expected auto, apk, or ipk)"; exit 2 ;;
-            esac
-            ;;
-        --arch)
-            shift
-            [ "$#" -gt 0 ] || { err "--arch requires a value"; exit 2; }
-            ARCH_OVERRIDE="$1"
-            ;;
-        --tag)
-            shift
-            [ "$#" -gt 0 ] || { err "--tag requires a value"; exit 2; }
-            TAG_REQUESTED="$1"
-            ;;
-        --repo)
-            shift
-            [ "$#" -gt 0 ] || { err "--repo requires OWNER/REPO"; exit 2; }
-            REPO_OWNER="${1%%/*}"
-            REPO_NAME="${1#*/}"
-            if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ] || [ "$REPO_OWNER" = "$1" ]; then
-                err "Invalid --repo format: $1"
-                exit 2
-            fi
-            ;;
-        -h|--help) usage; exit 0 ;;
-        *) err "Unknown option: $1"; usage >&2; exit 2 ;;
-    esac
-    shift
-done
-
-if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
-    err "Run this installer as root."
-    exit 1
-fi
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -y|--yes) ASSUME_YES=1 ;;
+            -n|--dry-run) DRY_RUN=1 ;;
+            -q|--quiet) QUIET=1 ;;
+            --skip-core) SKIP_CORE=1 ;;
+            --tachyon-core) ;;
+            --reinstall|--repair) FORCE_REINSTALL=1 ;;
+            --prerelease) CHANNEL="beta" ;;
+            --channel)
+                shift
+                [ "$#" -gt 0 ] || { err "--channel requires auto, stable, or beta"; return 2; }
+                case "$1" in
+                    auto|stable|beta) CHANNEL="$1" ;;
+                    *) err "Invalid --channel value: $1 (expected auto, stable, or beta)"; return 2 ;;
+                esac
+                ;;
+            --format)
+                shift
+                [ "$#" -gt 0 ] || { err "--format requires auto, apk, or ipk"; return 2; }
+                case "$1" in
+                    auto|apk|ipk)
+                        PKG_FORMAT="$1"
+                        ;;
+                    *) err "Invalid --format value: $1 (expected auto, apk, or ipk)"; return 2 ;;
+                esac
+                ;;
+            --arch)
+                shift
+                [ "$#" -gt 0 ] || { err "--arch requires a value"; return 2; }
+                ARCH_OVERRIDE="$1"
+                ;;
+            --proxy)
+                shift
+                [ "$#" -gt 0 ] && [ -n "$1" ] || { err "--proxy requires a URL"; return 2; }
+                PROXY_URL_REQUESTED="$1"
+                ;;
+            --mirror)
+                shift
+                [ "$#" -gt 0 ] && [ -n "$1" ] || { err "--mirror requires a URL"; return 2; }
+                CUSTOM_MIRROR="$1"
+                ;;
+            --tag)
+                shift
+                [ "$#" -gt 0 ] || { err "--tag requires a value"; return 2; }
+                TAG_REQUESTED="$1"
+                ;;
+            --repo)
+                shift
+                [ "$#" -gt 0 ] || { err "--repo requires OWNER/REPO"; return 2; }
+                REPO_OWNER="${1%%/*}"
+                REPO_NAME="${1#*/}"
+                if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ] || [ "$REPO_OWNER" = "$1" ]; then
+                    err "Invalid --repo format: $1"
+                    return 2
+                fi
+                ;;
+            -h|--help) usage; exit 0 ;;
+            *) err "Unknown option: $1"; usage >&2; return 2 ;;
+        esac
+        shift
+    done
+    [ -n "${CUSTOM_MIRROR:-}" ] && CUSTOM_MIRROR="$(_normalize_mirror_prefix "$CUSTOM_MIRROR")"
+    return 0
+}
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
@@ -158,15 +177,319 @@ detect_fetcher() {
     return 1
 }
 
+curl_supports_doh() {
+    curl --help all 2>/dev/null | grep -q -- '--doh-url' && return 0
+    curl --help 2>/dev/null | grep -q -- '--doh-url' && return 0
+    return 1
+}
+
+_curl_is_network_retryable_rc() {
+    case "$1" in
+        6|7|28|35|52|56|60) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_resolve_effective_proxy() {
+    if [ -n "${PROXY_URL_REQUESTED:-}" ]; then
+        printf '%s' "$PROXY_URL_REQUESTED"
+    elif [ -n "${TACHYON_PROXY:-}" ]; then
+        printf '%s' "$TACHYON_PROXY"
+    elif [ -n "${HTTPS_PROXY:-}" ]; then
+        printf '%s' "$HTTPS_PROXY"
+    elif [ -n "${https_proxy:-}" ]; then
+        printf '%s' "$https_proxy"
+    elif [ -n "${ALL_PROXY:-}" ]; then
+        printf '%s' "$ALL_PROXY"
+    elif [ -n "${all_proxy:-}" ]; then
+        printf '%s' "$all_proxy"
+    elif [ -n "${HTTP_PROXY:-}" ]; then
+        printf '%s' "$HTTP_PROXY"
+    elif [ -n "${http_proxy:-}" ]; then
+        printf '%s' "$http_proxy"
+    fi
+}
+
+_curl_proxy_url() {
+    _cpu_raw="$1"
+    case "$_cpu_raw" in
+        socks5://*) printf 'socks5h://%s' "${_cpu_raw#socks5://}" ;;
+        socks4://*) printf 'socks4a://%s' "${_cpu_raw#socks4://}" ;;
+        *) printf '%s' "$_cpu_raw" ;;
+    esac
+}
+
+_export_proxy_env() {
+    _epe_raw="${PROXY_URL_REQUESTED:-${TACHYON_PROXY:-}}"
+    [ -n "$_epe_raw" ] || return 0
+    _epe_norm="$(_curl_proxy_url "$_epe_raw")"
+    ALL_PROXY="$_epe_norm"
+    all_proxy="$_epe_norm"
+    export ALL_PROXY all_proxy
+    case "$_epe_raw" in
+        http://*|https://*)
+            http_proxy="$_epe_raw"
+            https_proxy="$_epe_raw"
+            HTTP_PROXY="$_epe_raw"
+            HTTPS_PROXY="$_epe_raw"
+            export http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+            ;;
+    esac
+}
+
+_get_working_gh_mirror() {
+    if [ -n "${_WORKING_GH_MIRROR:-}" ]; then
+        printf '%s' "$_WORKING_GH_MIRROR"
+    elif [ -n "${TMP_DIR:-}" ] && [ -r "$TMP_DIR/working_gh_mirror" ]; then
+        cat "$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+    fi
+}
+
+_set_working_gh_mirror() {
+    _WORKING_GH_MIRROR="$1"
+    if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+        if [ -n "$1" ]; then
+            printf '%s' "$1" >"$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+        else
+            rm -f "$TMP_DIR/working_gh_mirror" 2>/dev/null || true
+        fi
+    fi
+}
+
+_get_direct_failed() {
+    if [ "${_DIRECT_FAILED:-0}" = "1" ]; then
+        printf '1'
+    elif [ -n "${TMP_DIR:-}" ] && [ -r "$TMP_DIR/direct_failed" ]; then
+        cat "$TMP_DIR/direct_failed" 2>/dev/null || printf '0'
+    else
+        printf '0'
+    fi
+}
+
+_set_direct_failed() {
+    _DIRECT_FAILED="$1"
+    if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+        if [ "$1" = "1" ]; then
+            printf '1' >"$TMP_DIR/direct_failed" 2>/dev/null || true
+        else
+            rm -f "$TMP_DIR/direct_failed" 2>/dev/null || true
+        fi
+    fi
+}
+
+_wget_supports_ipv4() {
+    if [ -z "${_WGET_SUPPORTS_IPV4:-}" ]; then
+        if wget --help 2>&1 | grep -q -- '-4'; then
+            _WGET_SUPPORTS_IPV4=1
+        else
+            _WGET_SUPPORTS_IPV4=0
+        fi
+    fi
+    [ "$_WGET_SUPPORTS_IPV4" = "1" ]
+}
+
+_normalize_mirror_prefix() {
+    _nmp_val="$1"
+    while :; do
+        case "$_nmp_val" in
+            */) _nmp_val="${_nmp_val%/}" ;;
+            *) break ;;
+        esac
+    done
+    [ -n "$_nmp_val" ] && printf '%s/' "$_nmp_val"
+}
+
+_append_unique_candidate() {
+    _auc_list="$1"
+    _auc_item="$2"
+    [ -n "$_auc_item" ] || { printf '%s' "$_auc_list"; return 0; }
+    case " $_auc_list " in
+        *" $_auc_item "*) printf '%s' "$_auc_list" ;;
+        *)
+            if [ -n "$_auc_list" ]; then
+                printf '%s %s' "$_auc_list" "$_auc_item"
+            else
+                printf '%s' "$_auc_item"
+            fi
+            ;;
+    esac
+}
+
+_build_gh_candidates() {
+    _bgc_pref="$(_get_working_gh_mirror)"
+    _bgc_custom=""
+    [ -n "${CUSTOM_MIRROR:-}" ] && _bgc_custom="$(_normalize_mirror_prefix "$CUSTOM_MIRROR")"
+    _bgc_proxy="$(_resolve_effective_proxy)"
+    _bgc_df="$(_get_direct_failed)"
+    _bgc_list=""
+
+    if [ -n "$_bgc_custom" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_custom")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    elif [ -n "$_bgc_proxy" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    elif [ -n "$_bgc_pref" ] && [ "$_bgc_df" = "1" ]; then
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+        for _bgc_m in $GH_MIRRORS; do
+            _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_m")"
+        done
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        printf '%s' "$_bgc_list"
+        return 0
+    else
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "direct")"
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_pref")"
+    fi
+
+    for _bgc_m in $GH_MIRRORS; do
+        _bgc_list="$(_append_unique_candidate "$_bgc_list" "$_bgc_m")"
+    done
+    printf '%s' "$_bgc_list"
+}
+
+_raw_github_to_jsdelivr_urls() {
+    _rgj_url="$1"
+    case "$_rgj_url" in
+        https://raw.githubusercontent.com/*)
+            _rgj_tail="${_rgj_url#https://raw.githubusercontent.com/}"
+            _rgj_tail="${_rgj_tail%%\?*}"
+            _rgj_tail="${_rgj_tail%%#*}"
+            case "$_rgj_tail" in */*) ;; *) return 0 ;; esac
+            _rgj_owner="${_rgj_tail%%/*}"
+            _rgj_rest="${_rgj_tail#*/}"
+            case "$_rgj_rest" in */*) ;; *) return 0 ;; esac
+            _rgj_repo="${_rgj_rest%%/*}"
+            _rgj_rest="${_rgj_rest#*/}"
+            case "$_rgj_rest" in */*) ;; *) return 0 ;; esac
+            _rgj_ref="${_rgj_rest%%/*}"
+            _rgj_file="${_rgj_rest#*/}"
+            if [ -n "$_rgj_owner" ] && [ -n "$_rgj_repo" ] && [ -n "$_rgj_ref" ] && [ -n "$_rgj_file" ]; then
+                for _rgj_host in $JSDELIVR_CDN_HOSTS; do
+                    printf '%s/gh/%s/%s@%s/%s\n' "$_rgj_host" "$_rgj_owner" "$_rgj_repo" "$_rgj_ref" "$_rgj_file"
+                done
+            fi
+            ;;
+    esac
+}
+
+_file_looks_like_html() {
+    _flh_head="$(head -c 512 "$1" 2>/dev/null | tr -d '\000' | tr 'A-Z' 'a-z')"
+    case "$_flh_head" in
+        *'<!doctype'*|*'<html'*|*'<head'*|*'error code:'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_body_looks_like_html() {
+    _blh_head="$(printf '%s' "$1" | head -c 512 2>/dev/null | tr -d '\000' | tr 'A-Z' 'a-z')"
+    case "$_blh_head" in
+        *'<!doctype'*|*'<html'*|*'<head'*|*'error code:'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_is_valid_release_json() {
+    _vrj_body="$1"
+    [ -n "$_vrj_body" ] || return 1
+    _body_looks_like_html "$_vrj_body" && return 1
+    case "$_vrj_body" in
+        *'"tag_name"'*|*'"assets"'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_is_valid_atom_feed() {
+    _vaf_body="$1"
+    [ -n "$_vaf_body" ] || return 1
+    _body_looks_like_html "$_vaf_body" && return 1
+    case "$_vaf_body" in
+        *'<feed'*|*'<entry'*|*'/releases/tag/'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_validate_downloaded_payload() {
+    _vdp_file="$1"
+    _vdp_kind="${2:-generic}"
+    [ -s "$_vdp_file" ] || return 1
+    if _file_looks_like_html "$_vdp_file"; then
+        return 1
+    fi
+    case "$_vdp_kind" in
+        sha256)
+            _vdp_tab="$(printf '\t')"
+            grep -qE "^[0-9a-fA-F]{64}[ ${_vdp_tab}]+" "$_vdp_file" 2>/dev/null || return 1
+            ;;
+        pkg)
+            _vdp_sz="$(wc -c < "$_vdp_file" 2>/dev/null | tr -d ' \t\r\n' || echo 0)"
+            case "$_vdp_sz" in ''|*[!0-9]*) _vdp_sz=0 ;; esac
+            [ "$_vdp_sz" -gt 1024 ] 2>/dev/null || return 1
+            _vdp_magic4="$(head -c 4 "$_vdp_file" 2>/dev/null | tr -d '\000' || true)"
+            _vdp_magic2="$(head -c 2 "$_vdp_file" 2>/dev/null | tr -d '\000' || true)"
+            _vdp_gz="$(printf '\037\213')"
+            case "$_vdp_magic4" in
+                ADBd*|"!<ar"*) return 0 ;;
+            esac
+            [ "$_vdp_magic2" = "$_vdp_gz" ] && return 0
+            tar -ztf "$_vdp_file" >/dev/null 2>&1 && return 0
+            return 1
+            ;;
+    esac
+    return 0
+}
+
 http_get_once() {
     _try="$1"
     case "$FETCHER" in
         curl)
-            curl --connect-timeout "$CONNECT_TIMEOUT" --max-time "$METADATA_TIMEOUT" -fsSL "$_try"
+            _hgo_proxy="$(_resolve_effective_proxy)"
+            _hgo_rc=0
+            if [ -n "$_hgo_proxy" ]; then
+                _hgo_cp="$(_curl_proxy_url "$_hgo_proxy")"
+                _hgo_res="$(curl -x "$_hgo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT" -fsSL "$_try" 2>/dev/null)" || _hgo_rc=$?
+                if [ "$_hgo_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hgo_rc"; then
+                    _hgo_rc=0
+                    _hgo_res="$(curl -4 -x "$_hgo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT" -fsSL "$_try" 2>/dev/null)" || _hgo_rc=$?
+                fi
+                [ "$_hgo_rc" -eq 0 ] || return "$_hgo_rc"
+                printf '%s' "$_hgo_res"
+                return 0
+            fi
+            _hgo_res="$(curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT" -fsSL "$_try" 2>/dev/null)" || _hgo_rc=$?
+            if [ "$_hgo_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hgo_rc"; then
+                _hgo_rc=0
+                _hgo_res="$(curl -4 -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT" -fsSL "$_try" 2>/dev/null)" || _hgo_rc=$?
+            fi
+            if [ "$_hgo_rc" -ne 0 ] && _curl_is_network_retryable_rc "$_hgo_rc" && curl_supports_doh; then
+                for _hgo_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
+                    _hgo_rc=0
+                    _hgo_res="$(curl -4 -A "$INSTALLER_USER_AGENT" --doh-url "$_hgo_doh" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT" -fsSL "$_try" 2>/dev/null)" || _hgo_rc=$?
+                    [ "$_hgo_rc" -eq 0 ] && break
+                    _curl_is_network_retryable_rc "$_hgo_rc" || break
+                done
+            fi
+            [ "$_hgo_rc" -eq 0 ] || return "$_hgo_rc"
+            printf '%s' "$_hgo_res"
             ;;
         wget)
-            wget -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null || \
-                wget --no-check-certificate -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null
+            _hgo_t0="$(date +%s 2>/dev/null || echo 0)"
+            _hgo_rc=0
+            _hgo_res="$(wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null)" || _hgo_rc=$?
+            if [ "$_hgo_rc" -ne 0 ] || [ -z "$_hgo_res" ]; then
+                _hgo_t1="$(date +%s 2>/dev/null || echo "$_hgo_t0")"
+                _hgo_el=$((_hgo_t1 - _hgo_t0))
+                if [ "$_hgo_el" -lt $((CONNECT_TIMEOUT - 1)) ]; then
+                    if _wget_supports_ipv4; then
+                        _hgo_res="$(wget -4 -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null)" || true
+                    else
+                        _hgo_res="$(wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT" -qO- "$_try" 2>/dev/null)" || true
+                    fi
+                fi
+            fi
+            [ -n "$_hgo_res" ] || return 1
+            printf '%s' "$_hgo_res"
             ;;
         *)
             return 1
@@ -177,16 +500,64 @@ http_get_once() {
 http_get() {
     _url="$1"
     case "$_url" in
-        https://github.com/*|https://raw.githubusercontent.com/*)
-            _tmp_http="/tmp/tachyon-http-$$.tmp"
-            for _prefix in "" "https://ghfast.top/" "https://gh-proxy.com/"; do
-                _try="${_prefix}${_url}"
-                if http_get_once "$_try" > "$_tmp_http" 2>/dev/null && [ -s "$_tmp_http" ]; then
-                    cat "$_tmp_http"
-                    rm -f "$_tmp_http"
+        https://api.github.com/*|https://github.com/*/releases.atom|https://github.com/*)
+            _hg_candidates="$(_build_gh_candidates)"
+            for _hg_c in $_hg_candidates; do
+                if [ "$_hg_c" = "direct" ]; then
+                    _hg_try="$_url"
+                else
+                    _hg_try="${_hg_c}${_url}"
+                fi
+                _hg_body="$(http_get_once "$_hg_try" 2>/dev/null || true)"
+                _hg_valid=0
+                case "$_url" in
+                    https://api.github.com/*)
+                        _is_valid_release_json "$_hg_body" && _hg_valid=1
+                        ;;
+                    https://github.com/*/releases.atom)
+                        _is_valid_atom_feed "$_hg_body" && _hg_valid=1
+                        ;;
+                    *)
+                        [ -n "$_hg_body" ] && ! _body_looks_like_html "$_hg_body" && _hg_valid=1
+                        ;;
+                esac
+                if [ "$_hg_valid" -eq 1 ]; then
+                    if [ "$_hg_c" = "direct" ]; then
+                        _set_direct_failed 0
+                        _set_working_gh_mirror ""
+                    else
+                        _set_working_gh_mirror "$_hg_c"
+                    fi
+                    printf '%s' "$_hg_body"
+                    return 0
+                elif [ "$_hg_c" = "direct" ]; then
+                    _set_direct_failed 1
+                fi
+            done
+            return 1
+            ;;
+        https://raw.githubusercontent.com/*)
+            _hg_jsd="$(_raw_github_to_jsdelivr_urls "$_url")"
+            _hg_raw_candidates=""
+            [ -n "${CUSTOM_MIRROR:-}" ] && _hg_raw_candidates="${CUSTOM_MIRROR}${_url}"
+            if [ "$(_get_direct_failed)" != "1" ] || [ -n "$(_resolve_effective_proxy)" ]; then
+                _hg_raw_candidates="${_hg_raw_candidates:+$_hg_raw_candidates }${_url}"
+            fi
+            for _hg_j in $_hg_jsd; do
+                _hg_raw_candidates="${_hg_raw_candidates:+$_hg_raw_candidates }${_hg_j}"
+            done
+            _hg_pref="$(_get_working_gh_mirror)"
+            [ -n "$_hg_pref" ] && _hg_raw_candidates="${_hg_raw_candidates:+$_hg_raw_candidates }${_hg_pref}${_url}"
+            for _hg_m in $GH_MIRRORS; do
+                [ "$_hg_m" = "$_hg_pref" ] && continue
+                _hg_raw_candidates="${_hg_raw_candidates:+$_hg_raw_candidates }${_hg_m}${_url}"
+            done
+            for _hg_try in $_hg_raw_candidates; do
+                _hg_body="$(http_get_once "$_hg_try" 2>/dev/null || true)"
+                if [ -n "$_hg_body" ] && ! _body_looks_like_html "$_hg_body"; then
+                    printf '%s' "$_hg_body"
                     return 0
                 fi
-                rm -f "$_tmp_http"
             done
             return 1
             ;;
@@ -196,37 +567,124 @@ http_get() {
     esac
 }
 
+download_file_once() {
+    _dfo_url="$1"; _dfo_dst="$2"
+    case "$FETCHER" in
+        curl)
+            _dfo_proxy="$(_resolve_effective_proxy)"
+            _dfo_rc=0
+            if [ -n "$_dfo_proxy" ]; then
+                _dfo_cp="$(_curl_proxy_url "$_dfo_proxy")"
+                curl -x "$_dfo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                _dfo_partial=0
+                [ -s "$_dfo_dst" ] && _dfo_partial=1
+                [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+                rm -f "$_dfo_dst"
+                if [ "$_dfo_partial" -eq 0 ] && _curl_is_network_retryable_rc "$_dfo_rc"; then
+                    _dfo_rc=0
+                    curl -4 -x "$_dfo_cp" -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                    [ "$_dfo_rc" -eq 0 ] && [ -s "$_dfo_dst" ] && return 0
+                    rm -f "$_dfo_dst"
+                fi
+                return "${_dfo_rc:-1}"
+            fi
+
+            curl -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+            _dfo_partial=0
+            [ -s "$_dfo_dst" ] && _dfo_partial=1
+            [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+            rm -f "$_dfo_dst"
+            if [ "$_dfo_rc" -eq 28 ] && [ "$_dfo_partial" -eq 1 ]; then
+                return 28
+            fi
+            if _curl_is_network_retryable_rc "$_dfo_rc"; then
+                if [ "$_dfo_partial" -eq 0 ]; then
+                    _dfo_rc=0
+                    curl -4 -A "$INSTALLER_USER_AGENT" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                    _dfo_partial=0
+                    [ -s "$_dfo_dst" ] && _dfo_partial=1
+                    [ "$_dfo_rc" -eq 0 ] && [ "$_dfo_partial" -eq 1 ] && return 0
+                    rm -f "$_dfo_dst"
+                    if [ "$_dfo_rc" -eq 28 ] && [ "$_dfo_partial" -eq 1 ]; then
+                        return 28
+                    fi
+                fi
+                if _curl_is_network_retryable_rc "$_dfo_rc" && curl_supports_doh; then
+                    for _dfo_doh in "https://dns.google/dns-query" "https://1.1.1.1/dns-query"; do
+                        rm -f "$_dfo_dst"
+                        _dfo_rc=0
+                        curl -4 -A "$INSTALLER_USER_AGENT" --doh-url "$_dfo_doh" --connect-timeout "$CONNECT_TIMEOUT" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_dfo_url" -o "$_dfo_dst" || _dfo_rc=$?
+                        [ "$_dfo_rc" -eq 0 ] && [ -s "$_dfo_dst" ] && return 0
+                        rm -f "$_dfo_dst"
+                        _curl_is_network_retryable_rc "$_dfo_rc" || break
+                    done
+                fi
+            fi
+            return "${_dfo_rc:-1}"
+            ;;
+        wget)
+            _dfo_t0="$(date +%s 2>/dev/null || echo 0)"
+            if wget -U "$INSTALLER_USER_AGENT" -T "$CONNECT_TIMEOUT" -q -O "$_dfo_dst" "$_dfo_url" 2>/dev/null && [ -s "$_dfo_dst" ]; then
+                return 0
+            fi
+            _dfo_partial=0
+            [ -s "$_dfo_dst" ] && _dfo_partial=1
+            rm -f "$_dfo_dst"
+            [ "$_dfo_partial" -eq 1 ] && return 1
+            _dfo_t1="$(date +%s 2>/dev/null || echo "$_dfo_t0")"
+            _dfo_el=$((_dfo_t1 - _dfo_t0))
+            if [ "$_dfo_el" -lt $((CONNECT_TIMEOUT - 1)) ]; then
+                if _wget_supports_ipv4; then
+                    wget -4 -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT" -q -O "$_dfo_dst" "$_dfo_url" 2>/dev/null && [ -s "$_dfo_dst" ] && return 0
+                else
+                    wget -U "$INSTALLER_USER_AGENT" --no-check-certificate -T "$CONNECT_TIMEOUT" -q -O "$_dfo_dst" "$_dfo_url" 2>/dev/null && [ -s "$_dfo_dst" ] && return 0
+                fi
+                rm -f "$_dfo_dst"
+            fi
+            return 1
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 download_file() {
     _url="$1"
     _dst="$2"
     _label="$3"
-    _attempt=1
-    while [ "$_attempt" -le 4 ]; do
-        case "$_attempt" in
-            1) _try="$_url" ;;
-            2) _try="https://ghfast.top/$_url" ;;
-            3) _try="https://gh-proxy.com/$_url" ;;
-            4) _try="$_url" ;;
+    _kind="${4:-}"
+    if [ -z "$_kind" ]; then
+        case "$_dst:$_label" in
+            *SHA256SUMS*|*sha256sums*) _kind="sha256" ;;
+            *.apk*|*.ipk*|*.tar.gz*) _kind="pkg" ;;
+            *) _kind="generic" ;;
         esac
-        msg "Downloading ${_label} (attempt ${_attempt}/4)..."
-        case "$FETCHER" in
-            curl)
-                if curl --connect-timeout "$CONNECT_TIMEOUT" --max-time "$DOWNLOAD_TIMEOUT" -fsSL "$_try" -o "$_dst" && [ -s "$_dst" ]; then
-                    return 0
-                fi
-                ;;
-            wget)
-                if wget -T "$CONNECT_TIMEOUT" -q -O "$_dst" "$_try" 2>/dev/null && [ -s "$_dst" ]; then
-                    return 0
-                fi
-                if wget --no-check-certificate -T "$CONNECT_TIMEOUT" -q -O "$_dst" "$_try" 2>/dev/null && [ -s "$_dst" ]; then
-                    return 0
-                fi
-                ;;
-        esac
+    fi
+    _df_candidates="$(_build_gh_candidates)"
+    _df_total=0
+    for _df_c in $_df_candidates; do _df_total=$((_df_total + 1)); done
+    _df_attempt=1
+    for _df_c in $_df_candidates; do
+        if [ "$_df_c" = "direct" ]; then
+            _try="$_url"
+        else
+            _try="${_df_c}${_url}"
+        fi
+        msg "Downloading ${_label} (attempt ${_df_attempt}/${_df_total})..."
         rm -f "$_dst"
-        _attempt=$((_attempt + 1))
-        sleep 1
+        if download_file_once "$_try" "$_dst" && _validate_downloaded_payload "$_dst" "$_kind"; then
+            if [ "$_df_c" = "direct" ]; then
+                _set_direct_failed 0
+                _set_working_gh_mirror ""
+            else
+                _set_working_gh_mirror "$_df_c"
+            fi
+            return 0
+        elif [ "$_df_c" = "direct" ]; then
+            _set_direct_failed 1
+        fi
+        rm -f "$_dst"
+        _df_attempt=$((_df_attempt + 1))
+        [ "$_df_attempt" -le "$_df_total" ] && sleep 1
     done
     return 1
 }
@@ -320,7 +778,7 @@ install_system_deps() {
             _missing="${_missing} ${_d}"
         fi
     done
-    [ -n "$_missing" ] || { ok "System runtime packages already present"; return 0; }
+    [ -n "$_missing" ] || { ok "System runtime packages already present"; detect_fetcher || true; return 0; }
 
     msg "Installing required system packages:${_missing}"
     if [ "$PKG_IS_APK" -eq 1 ]; then
@@ -332,6 +790,56 @@ install_system_deps() {
         # shellcheck disable=SC2086
         opkg install $_missing >>"$LOG_FILE" 2>&1 || warn "Some packages failed to install:${_missing}"
     fi
+    detect_fetcher || true
+}
+
+ensure_bootstrap_fetcher() {
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    [ -n "$PKG_MANAGER" ] || return 0
+    _ebf_missing=""
+    command_exists curl || _ebf_missing="${_ebf_missing} curl"
+    pkg_installed ca-bundle || _ebf_missing="${_ebf_missing} ca-bundle"
+    if [ -n "$_ebf_missing" ]; then
+        msg "Bootstrapping TLS and download tools:${_ebf_missing}"
+        _ebf_saved_ap="${ALL_PROXY-__UNSET__}"
+        _ebf_saved_apl="${all_proxy-__UNSET__}"
+        _ebf_saved_hp="${http_proxy-__UNSET__}"
+        _ebf_saved_hps="${https_proxy-__UNSET__}"
+        _ebf_saved_HP="${HTTP_PROXY-__UNSET__}"
+        _ebf_saved_HPS="${HTTPS_PROXY-__UNSET__}"
+        unset ALL_PROXY all_proxy
+        case "${http_proxy:-}" in socks*) unset http_proxy ;; esac
+        case "${https_proxy:-}" in socks*) unset https_proxy ;; esac
+        case "${HTTP_PROXY:-}" in socks*) unset HTTP_PROXY ;; esac
+        case "${HTTPS_PROXY:-}" in socks*) unset HTTPS_PROXY ;; esac
+
+        if [ "$PKG_IS_APK" -eq 1 ]; then
+            apk update >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            apk add --no-cache $_ebf_missing >>"$LOG_FILE" 2>&1 || warn "Could not preinstall${_ebf_missing}; continuing with $FETCHER"
+        else
+            opkg update >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            opkg install $_ebf_missing >>"$LOG_FILE" 2>&1 || warn "Could not preinstall${_ebf_missing}; continuing with $FETCHER"
+        fi
+
+        [ "$_ebf_saved_ap" = "__UNSET__" ] && unset ALL_PROXY || { ALL_PROXY="$_ebf_saved_ap"; export ALL_PROXY; }
+        [ "$_ebf_saved_apl" = "__UNSET__" ] && unset all_proxy || { all_proxy="$_ebf_saved_apl"; export all_proxy; }
+        [ "$_ebf_saved_hp" = "__UNSET__" ] && unset http_proxy || { http_proxy="$_ebf_saved_hp"; export http_proxy; }
+        [ "$_ebf_saved_hps" = "__UNSET__" ] && unset https_proxy || { https_proxy="$_ebf_saved_hps"; export https_proxy; }
+        [ "$_ebf_saved_HP" = "__UNSET__" ] && unset HTTP_PROXY || { HTTP_PROXY="$_ebf_saved_HP"; export HTTP_PROXY; }
+        [ "$_ebf_saved_HPS" = "__UNSET__" ] && unset HTTPS_PROXY || { HTTPS_PROXY="$_ebf_saved_HPS"; export HTTPS_PROXY; }
+
+        detect_fetcher || true
+    fi
+    if [ "$FETCHER" = "wget" ]; then
+        case "$(_resolve_effective_proxy)" in
+            socks*)
+                warn "Configured SOCKS proxy requires curl, but only wget/uclient-fetch is available"
+                ;;
+        esac
+    fi
+    return 0
 }
 
 write_if_changed() {
@@ -1031,12 +1539,21 @@ install_local_ipk_package() {
 }
 
 main() {
+    parse_args "$@" || exit $?
+    _export_proxy_env
+
+    if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
+        err "Run this installer as root."
+        exit 1
+    fi
+
     TMP_DIR="$(mktemp -d /tmp/tachyon-install.XXXXXX 2>/dev/null || echo "/tmp/tachyon-install.$$")"
     mkdir -p "$TMP_DIR" || { err "Cannot create temporary directory"; exit 1; }
 
     detect_fetcher || exit 1
     ARCH="$(detect_arch)" || exit 1
     detect_pkg_manager
+    ensure_bootstrap_fetcher
     FMT="$(resolve_pkg_format)" || exit 1
 
     REPO="${REPO_OWNER}/${REPO_NAME}"
@@ -1129,4 +1646,6 @@ main() {
     ok "Tachyon panel: http://${_lan_ip}:1680/"
 }
 
-main "$@"
+if [ "${TACHYON_INSTALLER_TEST:-0}" != "1" ]; then
+    main "$@"
+fi

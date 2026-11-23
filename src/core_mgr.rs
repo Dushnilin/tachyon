@@ -1154,7 +1154,7 @@ impl CoreManager {
         if let Some(map) = cfg.as_object_mut() {
             map.insert("dns".into(), desired);
             if let Some(route_map) = map.get_mut("route").and_then(Value::as_object_mut) {
-                route_map.insert("default_domain_resolver".into(), json!("dns-bootstrap"));
+                route_map.insert("default_domain_resolver".into(), json!("dns-remote"));
             }
         }
         changed
@@ -7014,7 +7014,7 @@ mod core_mgr_tests {
         );
         assert_eq!(
             prepared["route"]["default_domain_resolver"],
-            json!("dns-bootstrap")
+            json!("dns-remote")
         );
     }
 
@@ -7102,7 +7102,7 @@ mod core_mgr_tests {
         assert_eq!(prepared["route"]["final"], json!("direct"));
         assert_eq!(
             prepared["route"]["default_domain_resolver"],
-            json!("dns-bootstrap")
+            json!("dns-remote")
         );
         assert!(prepared["dns"]["servers"].as_array().unwrap().len() >= 3);
         assert!(prepared["experimental"]["clash_api"].is_object());

@@ -13110,7 +13110,7 @@ fn compile_core_config_with_rt_dir(
                 "detour": primary_detour
             })
         };
-        if !main_is_ip && obj.get("type").and_then(Value::as_str) != Some("udp") {
+        if !main_is_ip {
             obj["domain_resolver"] = json!("dns-bootstrap");
         }
         dns_servers_vec.push(obj);
@@ -13164,13 +13164,17 @@ fn compile_core_config_with_rt_dir(
             }
             fb_idx += 1;
             let fb_tag = format!("dns-fallback-{fb_idx}");
-            dns_servers_vec.push(json!({
+            let mut fb_obj = json!({
                 "type": "udp",
                 "tag": fb_tag,
                 "server": fb_host,
                 "server_port": fb_port,
                 "detour": "direct"
-            }));
+            });
+            if !crate::store::valid_ip_with_zone(fb_host) {
+                fb_obj["domain_resolver"] = json!("dns-bootstrap");
+            }
+            dns_servers_vec.push(fb_obj);
             remote_group_members.push(fb_tag);
         }
 
@@ -13470,6 +13474,13 @@ fn compile_core_config_with_rt_dir(
         }));
     }
 
+    let has_bootstrap_dns = dns_servers_vec
+        .iter()
+        .any(|s| s.get("tag").and_then(Value::as_str) == Some("dns-bootstrap"));
+    if has_bootstrap_dns {
+        apply_bootstrap_domain_resolver_to_transports(&mut outbounds, &mut endpoints);
+    }
+
     let eff_dns_strategy = crate::store::effective_dns_strategy(&store.settings, ipv6_state);
     let mut dns_map = Map::new();
     dns_map.insert("servers".into(), Value::Array(dns_servers_vec));
@@ -13498,7 +13509,7 @@ fn compile_core_config_with_rt_dir(
         "final": "direct",
         "auto_detect_interface": true,
         "default_mark": 1073741824,
-        "default_domain_resolver": "dns-bootstrap"
+        "default_domain_resolver": "dns-remote"
     });
     if has_remote_rule_set {
         route_obj["default_http_client"] = json!(DIRECT_DOWNLOAD_HTTP_CLIENT_TAG);
@@ -13530,6 +13541,53 @@ fn compile_core_config_with_rt_dir(
         }]);
     }
     Ok(root_cfg)
+}
+
+fn apply_bootstrap_domain_resolver_to_transports(outbounds: &mut [Value], endpoints: &mut [Value]) {
+    let assign_if_needed = |obj: &mut Map<String, Value>| {
+        if obj
+            .get("domain_resolver")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            return;
+        }
+        if obj.get("detour").and_then(Value::as_str).is_some_and(|d| {
+            let t = d.trim();
+            !t.is_empty() && t != "direct"
+        }) {
+            return;
+        }
+        obj.insert("domain_resolver".into(), json!("dns-bootstrap"));
+    };
+
+    for item in outbounds {
+        let Some(obj) = item.as_object_mut() else {
+            continue;
+        };
+        let otype = obj.get("type").and_then(Value::as_str).unwrap_or("");
+        if matches!(
+            otype,
+            "" | "direct"
+                | "desync"
+                | "selector"
+                | "urltest"
+                | "chain"
+                | "block"
+                | "bridge"
+                | "dns"
+        ) {
+            continue;
+        }
+        assign_if_needed(obj);
+    }
+
+    for item in endpoints {
+        let Some(obj) = item.as_object_mut() else {
+            continue;
+        };
+        assign_if_needed(obj);
+    }
 }
 
 fn build_clash_api_object(store: &RouterStoreData, ipv6_active: bool) -> Map<String, Value> {
@@ -13652,7 +13710,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
             "final": final_outbound,
             "auto_detect_interface": true,
             "default_mark": 1073741824,
-            "default_domain_resolver": "dns-bootstrap"
+            "default_domain_resolver": "dns-remote"
         },
         "experimental": {
             "clash_api": Value::Object(clash_api_obj)
@@ -19534,7 +19592,7 @@ mod tests {
         store.sections[0].server_domain_rules =
             vec!["src-src_native_desync=netflix.com, fast.com".to_string()];
         let cfg = compile_core_config(&store).expect("compile core config");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
         let inbounds = cfg["inbounds"].as_array().unwrap();
         assert!(
             inbounds
@@ -22619,7 +22677,7 @@ config timeserver 'ntp'
         ];
 
         let cfg = compile_core_config_with_wan6(&store, false).expect("compile v2 config");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
 
         let route_rules = cfg["route"]["rules"].as_array().unwrap();
         let resolve_yt_count = route_rules
@@ -25477,7 +25535,7 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
 
         let cfg = compile_core_config_with_wan6(&store, false).expect("compile anti-deadlock dns");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
         assert_eq!(cfg["dns"]["final"], "dns-remote");
 
         let srvs = cfg["dns"]["servers"].as_array().expect("dns servers");
@@ -25573,7 +25631,14 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
 
         let cfg = compile_core_config_with_wan6(&store, false).expect("compile fail-closed dns");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
+        let vpn1 = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "VPN1")
+            .expect("VPN1 outbound");
+        assert_eq!(vpn1["domain_resolver"], "dns-bootstrap");
 
         let srvs = cfg["dns"]["servers"].as_array().expect("dns servers");
         assert!(srvs.iter().any(|s| s["tag"] == "dns-bootstrap"));
@@ -26125,6 +26190,107 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         assert!(sel_sec.iter().any(|t| t == "DE Berlin"));
         assert!(sel_sec.iter().any(|t| t == "Manual Direct"));
         assert!(!sel_sec.iter().any(|t| t == "NL Tokyo"));
+    }
+
+    #[test]
+    fn test_l3_tunnel_and_interface_resolve_targets_via_dns_remote_issue_479() {
+        let mut store = RouterStoreData::default();
+        store.sections.clear();
+        store.conditions.clear();
+        store.outbound_groups.clear();
+        store.balancers.clear();
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec!["https://dns.google/dns-query".to_string()];
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string()];
+        store.outbound_sources = vec![
+            OutboundSource {
+                id: "src_iface".to_string(),
+                enabled: true,
+                source_type: "interface".to_string(),
+                interface_name: "awg0".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "src_awg".to_string(),
+                enabled: true,
+                source_type: "amnezia_config".to_string(),
+                amnezia_conf_text: "[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.2.2/32\n[Peer]\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\nEndpoint = awg.example.org:51820\nPersistentKeepalive = 25\n".to_string(),
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "src_vless".to_string(),
+                enabled: true,
+                source_type: "proxy_links".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#VLESS_Node".to_string(),
+                ],
+                ..Default::default()
+            },
+        ];
+        store.sections = vec![
+            RoutingSection {
+                id: "SecIface".to_string(),
+                enabled: true,
+                label: "Interface AWG".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_iface".to_string()],
+                user_domains: vec!["youtube.com".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "SecAwg".to_string(),
+                enabled: true,
+                label: "Built-in AWG".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_awg".to_string()],
+                user_domains: vec!["tunnel.example".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "SecVless".to_string(),
+                enabled: true,
+                label: "VLESS".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_vless".to_string()],
+                user_domains: vec!["vless.example".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile issue 479");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-remote");
+
+        let outbounds = cfg["outbounds"].as_array().unwrap();
+        let direct_out = outbounds
+            .iter()
+            .find(|o| o["tag"] == "direct")
+            .expect("direct outbound");
+        assert!(direct_out.get("domain_resolver").is_none());
+
+        let iface_out = outbounds
+            .iter()
+            .find(|o| o.get("bind_interface").and_then(Value::as_str) == Some("awg0"))
+            .expect("bind_interface awg0 outbound");
+        assert!(
+            iface_out.get("domain_resolver").is_none(),
+            "interface direct outbound must inherit route.default_domain_resolver (dns-remote)"
+        );
+
+        let vless_out = outbounds
+            .iter()
+            .find(|o| o["tag"] == "VLESS_Node")
+            .expect("vless outbound");
+        assert_eq!(vless_out["domain_resolver"], "dns-bootstrap");
+
+        let endpoints = cfg["endpoints"].as_array().unwrap();
+        let wg_ep = endpoints
+            .iter()
+            .find(|ep| ep["type"] == "wireguard")
+            .expect("wireguard endpoint");
+        assert_eq!(wg_ep["domain_resolver"], "dns-bootstrap");
     }
 
     fn urlencoding_simple(s: &str) -> String {

@@ -338,3 +338,10 @@ jobs:
           make_latest: ${{ needs.prepare.outputs.make_latest }}
           files: |
             release-assets/*
+
+      - name: Purge jsDelivr branch cache
+        if: always()
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 15 "https://purge.jsdelivr.net/gh/Dushnilin/tachyon@2.0/install.sh" || true
+          curl -fsS --max-time 15 "https://purge.jsdelivr.net/gh/Dushnilin/tachyon@2.0/uninstall.sh" || true
