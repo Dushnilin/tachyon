@@ -13388,9 +13388,8 @@ fn compile_core_config_with_rt_dir(
     dns_map.insert("final".into(), json!("dns-remote"));
     dns_map.insert("strategy".into(), json!(eff_dns_strategy));
     dns_map.insert("reverse_mapping".into(), json!(true));
-    if !store.settings.dns_local_cache {
-        dns_map.insert("disable_cache".into(), json!(true));
-    }
+    // `dns_local_cache` toggles dnsmasq caching; keep tachyon-core's internal DNS cache
+    // active so balancer health checks do not send uncached UDP bursts to `dns-bootstrap`.
     let dns_block = Value::Object(dns_map);
 
     let clash_api_obj = build_clash_api_object(store, ipv6_active);
@@ -19887,7 +19886,7 @@ config timeserver 'ntp'
         assert_eq!(dns["final"], "dns-remote");
         assert_eq!(dns["strategy"], "ipv4_only");
         assert_eq!(dns["reverse_mapping"], true);
-        assert_eq!(dns["disable_cache"], true);
+        assert!(dns.get("disable_cache").is_none());
 
         let servers = dns["servers"].as_array().unwrap();
         let fakeip_srv = servers
