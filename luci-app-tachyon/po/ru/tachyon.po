@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-23 11:29+0300\n"
-"PO-Revision-Date: 2026-11-23 11:29+0300\n"
+"POT-Creation-Date: 2026-11-23 12:32+0300\n"
+"PO-Revision-Date: 2026-11-23 12:32+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -9754,6 +9754,9 @@ msgstr "Показывать метаданные подписки для это
 
 msgid "Show widget on dashboard"
 msgstr "Показать виджет на дашборде"
+
+msgid "Showing a cached proxy snapshot. The current state may differ."
+msgstr "Показан сохранённый снимок узлов. Текущее состояние может отличаться."
 
 msgid "Sidebar"
 msgstr "Боковое"

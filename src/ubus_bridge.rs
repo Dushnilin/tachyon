@@ -3716,6 +3716,43 @@ fn read_pure_rust_component_update_cache() -> Value {
     crate::updater::read_component_check_cache()
 }
 
+fn read_cached_clash_proxies(path: &Path) -> Option<String> {
+    use serde::de::{Deserializer, IgnoredAny, MapAccess, Visitor};
+
+    #[derive(serde::Deserialize)]
+    struct Snapshot {
+        #[serde(rename = "proxies", deserialize_with = "require_object")]
+        _proxies: (),
+    }
+
+    fn require_object<'de, D: Deserializer<'de>>(de: D) -> Result<(), D::Error> {
+        struct Object;
+
+        impl<'de> Visitor<'de> for Object {
+            type Value = ();
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a proxy object")
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<(), M::Error> {
+                while map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+                Ok(())
+            }
+        }
+
+        de.deserialize_map(Object)
+    }
+
+    let mut raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<Snapshot>(&raw).ok()?;
+    // Preserve the validated payload and avoid allocating a second proxy tree.
+    let end = raw.trim_end().strip_suffix('}')?.len();
+    raw.truncate(end);
+    raw.push_str(",\"tachyon_cached\":true}\n");
+    Some(raw)
+}
+
 async fn handle_pure_rust_clash_api(
     rest: &[String],
     state: &Arc<AppState>,
@@ -3755,9 +3792,8 @@ async fn handle_pure_rust_clash_api(
                 );
                 return Some((0, format!("{raw}\n"), String::new()));
             }
-            if let Ok(cached) =
-                std::fs::read_to_string("/var/run/tachyon/ui-state/clash-proxies.json")
-                && !cached.trim().is_empty()
+            if let Some(cached) =
+                read_cached_clash_proxies(Path::new("/var/run/tachyon/ui-state/clash-proxies.json"))
             {
                 return Some((0, cached, String::new()));
             }
@@ -13985,5 +14021,23 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
         assert!(!is_safe_uci_config_name("foo/bar"));
         let _ = std::fs::remove_dir_all(&tmp_dir);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn clash_proxy_cache_marks_valid_snapshots_and_rejects_invalid_data() {
+        let path =
+            std::env::temp_dir().join(format!("tachyon-proxies-test-{}.json", std::process::id()));
+        assert!(read_cached_clash_proxies(&path).is_none());
+        for invalid in ["{", "[]", r#"{"proxies":null}"#, r#"{"proxies":[]}"#] {
+            std::fs::write(&path, invalid).unwrap();
+            assert!(read_cached_clash_proxies(&path).is_none());
+        }
+        let original = json!({"proxies": {"group": {"now": "node-x"}}, "telemetry": {}});
+        std::fs::write(&path, original.to_string()).unwrap();
+        let cached = read_cached_clash_proxies(&path).unwrap();
+        let cached: Value = serde_json::from_str(&cached).unwrap();
+        assert_eq!(cached["tachyon_cached"], true);
+        assert_eq!(cached["proxies"], original["proxies"]);
+        assert_eq!(cached["telemetry"], original["telemetry"]);
+        std::fs::remove_file(path).unwrap();
     }
 }

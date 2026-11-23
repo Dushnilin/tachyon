@@ -161,6 +161,33 @@ describe('getDashboardSections', () => {
     mocks.canUseDirectClashApi.mockReturnValue(false);
   });
 
+  it('keeps cached proxy data visible and clears its status on live recovery', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValueOnce({
+      success: true,
+      data: { proxies: clashProxies, tachyon_cached: true },
+    });
+    const cached = await getDashboardSections();
+    expect(cached.data[0].outbounds.length).toBeGreaterThan(0);
+    expect(cached.runtimeCached).toBe(true);
+    const live = await getDashboardSections();
+    expect(live.runtimeCached).toBe(false);
+  });
+
+  it('labels the large response file fallback as a cached snapshot', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValueOnce({ success: false });
+    mocks.fsRead.mockImplementation(async (path: string) => {
+      if (path.endsWith('/clash-proxies.json')) {
+        return JSON.stringify({ proxies: clashProxies });
+      }
+      throw new Error('cache miss');
+    });
+    const cached = await getDashboardSections();
+    expect(cached.data[0].outbounds.length).toBeGreaterThan(0);
+    expect(cached.runtimeCached).toBe(true);
+  });
+
   it('shows the full selector group by default', async () => {
     mocks.getConfigSections.mockResolvedValue([proxySection()]);
 

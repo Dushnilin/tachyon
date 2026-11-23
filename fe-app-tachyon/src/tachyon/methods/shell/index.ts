@@ -322,8 +322,15 @@ export const TachyonShellMethods = {
           const parsed = parseJsonObjectOutput<ClashAPI.Proxies>(
             typeof raw === 'string' ? raw : '',
           );
-          if (parsed?.proxies) {
-            return { success: true as const, data: parsed };
+          if (
+            parsed?.proxies &&
+            typeof parsed.proxies === 'object' &&
+            !Array.isArray(parsed.proxies)
+          ) {
+            return {
+              success: true as const,
+              data: { ...parsed, tachyon_cached: true },
+            };
           }
         }
       }
