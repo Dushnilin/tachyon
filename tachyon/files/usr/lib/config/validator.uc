@@ -2128,15 +2128,17 @@ function validate_rule(section, sections, context) {
     if (connections.routed_dns_enabled(section)) {
         if (action == "dns" || action == "hosts" || action == "block")
             fail_validation("Rule '" + name + "' has routed DNS enabled but action '" + action + "' does not support routed DNS. Aborted.");
-        let routed_type = connections.routed_dns_type(section);
-        if (!contains(["udp", "dot", "doh", "doq"], routed_type))
-            fail_validation("Rule '" + name + "' has invalid routed DNS type '" + routed_type + "'. Use udp, dot, doh, or doq. Aborted.");
-        let routed_servers = connections.routed_dns_servers(section);
-        if (length(routed_servers) == 0)
-            fail_validation("Rule '" + name + "' has routed DNS enabled but no DNS server specified. Aborted.");
-        for (let srv in routed_servers)
-            if (!dns_server_value_valid(srv))
-                fail_validation("Rule '" + name + "' has an invalid routed DNS server '" + srv + "'. Aborted.");
+        if (!connections.routed_dns_use_global(section)) {
+            let routed_type = connections.routed_dns_type(section);
+            if (!contains(["udp", "dot", "doh", "doq"], routed_type))
+                fail_validation("Rule '" + name + "' has invalid routed DNS type '" + routed_type + "'. Use udp, dot, doh, or doq. Aborted.");
+            let routed_servers = connections.routed_dns_servers(section);
+            if (length(routed_servers) == 0)
+                fail_validation("Rule '" + name + "' has routed DNS enabled but no DNS server specified. Aborted.");
+            for (let srv in routed_servers)
+                if (!dns_server_value_valid(srv))
+                    fail_validation("Rule '" + name + "' has an invalid routed DNS server '" + srv + "'. Aborted.");
+        }
         if (!connections.has_dns_matchers(section) && length(list_option(section, "fully_routed_ips")) == 0)
             fail_validation("Rule '" + name + "' has routed DNS enabled but no domain conditions or forced devices. Routed DNS requires at least one domain matcher. Aborted.");
     }

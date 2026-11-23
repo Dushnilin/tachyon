@@ -87,8 +87,8 @@ assert(c1.dns.final == "dns-resilient",
 let g1 = find_tag(c1.dns.servers, "dns-resilient");
 assert(g1 && g1.type == "group" && g1.mode == "stable" && g1.error_ttl == "30s",
   "c1 must include stable dns-resilient group: " + sprintf("%J", g1));
-assert(length(g1.servers) >= 2 && g1.servers[0] == "dns-server" && g1.servers[length(g1.servers) - 1] == "bootstrap-dns-server",
-  "c1 dns-resilient must try dns-server first and end with bootstrap-dns-server: " + sprintf("%J", g1));
+assert(length(g1.servers) == 1 && g1.servers[0] == "dns-server",
+  "c1 DoH dns-resilient must contain only encrypted servers (no plain UDP bootstrap leak): " + sprintf("%J", g1));
 
 let c2 = json(fs.readfile(ARGV[1]));
 assert(c2.route.default_domain_resolver == "dns-resilient",
@@ -97,9 +97,10 @@ assert(c2.dns.final == "dns-resilient",
   "c2 dns.final must target dns-resilient");
 let g2 = find_tag(c2.dns.servers, "dns-resilient");
 assert(g2 && g2.type == "group", "c2 dns-resilient group missing");
-assert(g2.servers[0] == "dns-server", "c2 dns-resilient must start with dns-server");
-assert(index(g2.servers, "dns-fallback-1") >= 0, "c2 dns-resilient must include dns-fallback-1");
-assert(g2.servers[length(g2.servers) - 1] == "bootstrap-dns-server", "c2 dns-resilient must end with bootstrap-dns-server");
+assert(length(g2.servers) == 1 && g2.servers[0] == "dns-server",
+  "c2 DoH dns-resilient must not mix plain UDP fallbacks or bootstrap: " + sprintf("%J", g2));
+assert(index(g2.servers, "dns-fallback-1") < 0 && index(g2.servers, "bootstrap-dns-server") < 0,
+  "c2 dns-resilient must exclude plain UDP fallbacks and bootstrap while DoH is active");
 
 let vpn1 = find_tag(c2.outbounds, "vpn-1-out");
 assert(vpn1 && vpn1.domain_resolver == "bootstrap-dns-server",
@@ -110,9 +111,9 @@ for (let dtag in [ "direct-out", "bypass-out" ]) {
     dtag + " must not pin bootstrap domain_resolver: " + sprintf("%J", dob));
 }
 
-let fb1 = find_tag(c2.dns.servers, "dns-fallback-1");
-assert(fb1 && fb1.type == "udp" && fb1.server == "9.9.9.9" && fb1.detour == null,
-  "dns-fallback-1 must be direct UDP without detour: " + sprintf("%J", fb1));
+let health_fb = find_tag(c2.dns.servers, "dns-health-main-2-server");
+assert(health_fb && health_fb.type == "udp" && health_fb.server == "9.9.9.9" && health_fb.detour == null,
+  "fallback candidate 9.9.9.9 must stay direct UDP without detour for health failover: " + sprintf("%J", health_fb));
 
 let main2 = find_tag(c2.dns.servers, "dns-server");
 assert(main2 && main2.detour == "vpn-out",
@@ -221,5 +222,86 @@ for (let ep in (c3.endpoints || [])) {
 assert(wg_ep != null && wg_ep.domain_resolver == "bootstrap-dns-server",
   "#479: wireguard/awg endpoint must pin bootstrap-dns-server for peer resolution, got " + sprintf("%J", wg_ep));
 ' "$WORK_DIR/out-l3-awg.json"
+
+# Issue #489 regression: multi-DoH primary + UDP fallbacks + bootstrap keeps only
+# encrypted servers in dns-resilient; when failover switches main_index to UDP
+# fallback, dns-resilient includes UDP fallbacks and bootstrap.
+cat >"$WORK_DIR/doh-multi-issue489.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_type": "doh",
+    "dns_server": [ "1.1.1.1/dns-query", "dns.google/dns-query", "dns.adguard-dns.com/dns-query" ],
+    "dns_fallback_server": [ "8.8.4.4", "77.88.8.1" ],
+    "bootstrap_dns_server": [ "8.8.8.8" ],
+    "fallback_wan_main": "0",
+    "fakeip": "1"
+  },
+  "section": [
+    {
+      ".name": "vpn",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1081#EdgeNode" ],
+      "domain_suffix": [ "youtube.com" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/doh-multi-udp-state.json" <<'JSON'
+{
+  "version": 1,
+  "dns_type": "doh",
+  "dns_detour": "",
+  "main_servers": [ "1.1.1.1/dns-query", "dns.google/dns-query", "dns.adguard-dns.com/dns-query", "8.8.4.4", "77.88.8.1" ],
+  "bootstrap_servers": [ "8.8.8.8" ],
+  "main_index": 3,
+  "bootstrap_index": 0
+}
+JSON
+
+generate "$WORK_DIR/doh-multi-issue489.json" "$WORK_DIR/out-489-doh.json"
+TACHYON_LIB="$TACHYON_LIB" \
+  TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/doh-multi-udp-state.json" \
+  ucode -L "$TACHYON_LIB" "$GENERATOR" generate-config-fixture "$WORK_DIR/doh-multi-issue489.json" "$WORK_DIR/out-489-udp.json" 192.168.1.1 0 "1"
+
+ucode -e '
+let fs = require("fs");
+function assert(cond, msg) {
+  if (!cond) {
+    warn("FAIL: " + msg + "\n");
+    exit(1);
+  }
+}
+function find_tag(list, tag) {
+  for (let item in (list || []))
+    if (item && item.tag == tag) return item;
+  return null;
+}
+
+let doh = json(fs.readfile(ARGV[0]));
+let gd = find_tag(doh.dns.servers, "dns-resilient");
+assert(gd && gd.type == "group", "#489 doh dns-resilient group missing");
+assert(length(gd.servers) == 3, "#489 doh dns-resilient must contain all 3 primary DoH servers only: " + sprintf("%J", gd.servers));
+for (let tag in gd.servers) {
+  let s = find_tag(doh.dns.servers, tag);
+  assert(s && s.type == "https", "#489 doh dns-resilient member must be https, got: " + sprintf("%J", s));
+}
+assert(index(gd.servers, "bootstrap-dns-server") < 0, "#489 doh dns-resilient must exclude UDP bootstrap");
+assert(index(gd.servers, "dns-fallback-1") < 0 && index(gd.servers, "dns-fallback-2") < 0,
+  "#489 doh dns-resilient must exclude plain UDP fallbacks");
+
+let udp = json(fs.readfile(ARGV[1]));
+let gu = find_tag(udp.dns.servers, "dns-resilient");
+assert(gu && gu.type == "group", "#489 udp failover dns-resilient group missing");
+assert(index(gu.servers, "dns-server") >= 0, "#489 udp failover must include dns-server");
+let fb_rem = find_tag(udp.dns.servers, "dns-fallback-1");
+assert(index(gu.servers, "dns-fallback-1") >= 0 && fb_rem && fb_rem.server == "77.88.8.1",
+  "#489 udp failover must include remaining UDP fallback 77.88.8.1: " + sprintf("%J", gu.servers));
+assert(index(gu.servers, "bootstrap-dns-server") >= 0, "#489 udp failover must include bootstrap UDP");
+' "$WORK_DIR/out-489-doh.json" "$WORK_DIR/out-489-udp.json"
 
 printf 'dns_resilient_failover_anti_deadlock: OK\n'

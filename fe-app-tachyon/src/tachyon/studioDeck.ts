@@ -3685,7 +3685,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               : tel.actionTone === 'dns'
                 ? [
                     renderCompassIcon(11),
-                    E('span', {}, raw.routed_dns_server || 'DNS'),
+                    E(
+                      'span',
+                      {},
+                      raw.routed_dns_use_global === '1'
+                        ? tr('Глобальный DNS', 'Global DNS')
+                        : raw.routed_dns_server || 'DNS',
+                    ),
                   ]
                 : [E('span', {}, tr('Встроенный выход', 'Built-in output'))];
 

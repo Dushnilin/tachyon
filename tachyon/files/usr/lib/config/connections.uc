@@ -3953,6 +3953,10 @@ function routed_dns_enabled(section) {
     return bool_option(section, "routed_dns_enabled", false);
 }
 
+function routed_dns_use_global(section) {
+    return bool_option(section, "routed_dns_use_global", false);
+}
+
 function routed_dns_type(section) {
     let t = option(section, "routed_dns_type", "udp");
     if (!contains(["udp", "dot", "doh", "doq"], t))
@@ -3963,8 +3967,9 @@ function routed_dns_type(section) {
 function routed_dns_servers(section) {
     let servers = list_option(section, "routed_dns_server");
     if (length(servers) == 0) {
-        let single = option(section, "routed_dns_server", "");
-        servers = [single];
+        let single = trim(option(section, "routed_dns_server", ""));
+        if (single != "")
+            servers = [single];
     }
     return servers;
 }
@@ -7240,6 +7245,7 @@ return {
     subscription_engine,
     has_dns_matchers,
     routed_dns_enabled,
+    routed_dns_use_global,
     routed_dns_type,
     routed_dns_servers,
     amnezia_configs,

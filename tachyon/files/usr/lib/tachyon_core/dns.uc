@@ -524,59 +524,171 @@ function add_health_candidate(result, kind, index_value, server, override_dns_ty
     push(result.sniff_inbounds, inbound_tag);
 }
 
-function append_resilient_dns_group(result, settings, bootstrap) {
+function is_encrypted_dns_server(entry) {
+    if (type(entry) != "object")
+        return false;
+    let srv_type = as_string(entry.type);
+    return srv_type == "https" || srv_type == "tls" || srv_type == "quic";
+}
+
+function encrypted_dns_type_from_url(raw) {
+    let s = lc(trim(as_string(raw)));
+    if (substr(s, 0, 8) == "https://")
+        return "doh";
+    if (substr(s, 0, 6) == "tls://" || substr(s, 0, 6) == "dot://")
+        return "dot";
+    if (substr(s, 0, 7) == "quic://" || substr(s, 0, 6) == "doq://")
+        return "doq";
+    return "";
+}
+
+function encrypted_dns_endpoint_key(entry) {
+    if (type(entry) != "object")
+        return "";
+    return as_string(entry.type) + "|" + as_string(entry.server) + "|" +
+        as_string(entry.server_port || "") + "|" + as_string(entry.path || "") + "|" +
+        as_string(entry.detour || "");
+}
+
+function apply_dns_ech_option(entry, settings) {
+    if (type(entry) != "object" || !is_encrypted_dns_server(entry) || !bool_option(settings, "dns_doq_ech", false))
+        return;
+    if (!entry.tls)
+        entry.tls = { enabled: true };
+    entry.tls.ech = { enabled: true };
+}
+
+function append_resilient_dns_group(result, settings, bootstrap, main) {
     let ipv6_ok = common.resolve_effective_ipv6_state(settings, null).ipv6_active;
     let group_members = [ runtime_constants.DNS_SERVER_TAG ];
-    let seen_endpoints = {};
-    if (type(bootstrap) == "object" && as_string(bootstrap.type) == "udp" && as_string(bootstrap.server) != "") {
-        seen_endpoints[as_string(bootstrap.server) + ":" + as_string(bootstrap.server_port || 53)] = true;
-    }
 
-    let fb_idx = 0;
-    for (let raw_fb in list_option(settings, "dns_fallback_server")) {
-        let fb = trim(as_string(raw_fb));
-        if (fb == "")
-            continue;
-        let host = runtime_url.host(fb);
-        if (host == "")
-            host = fb;
-        if (!ipv6_ok && index(host, ":") >= 0)
-            continue;
-        let port = runtime_url.port(fb);
-        let ep_key = host + ":" + (port != "" ? port : "53");
-        if (seen_endpoints[ep_key])
-            continue;
-        seen_endpoints[ep_key] = true;
-        fb_idx++;
-        let fb_tag = "dns-fallback-" + as_string(fb_idx);
-        let entry = server_from_options(fb_tag, "udp", fb, "", null);
-        if (!entry.unsupported) {
-            push(result.servers, entry);
-            push(group_members, fb_tag);
+    if (is_encrypted_dns_server(main)) {
+        // When active DNS is encrypted (DoH/DoT/DoQ), never place plain UDP
+        // servers into dns-resilient: group[mode=stable] picks a clean member
+        // randomly and treats spoofed NXDOMAIN/empty answers as valid successes.
+        // Keep only encrypted primary servers and explicitly encrypted fallbacks
+        // in dns-resilient; dns_failover handles full-outage fallback to UDP.
+        let seen_encrypted = {};
+        seen_encrypted[encrypted_dns_endpoint_key(main)] = true;
+
+        let existing_health_by_key = {};
+        for (let srv in result.servers) {
+            if (is_encrypted_dns_server(srv) && index(as_string(srv.tag), "dns-health-main-") == 0)
+                existing_health_by_key[encrypted_dns_endpoint_key(srv)] = as_string(srv.tag);
         }
-    }
 
-    if (bool_option(settings, "fallback_wan_main", false)) {
-        let wan_idx = 0;
-        for (let wan_ip in get_wan_dns_servers()) {
-            if (!ipv6_ok && index(wan_ip, ":") >= 0)
+        let dns_type = result.state ? result.state.dns_type : option(settings, "dns_type", "udp");
+        let dns_detour = result.state ? result.state.dns_detour : detour_tag(settings);
+        let extra_idx = 1;
+        for (let raw_primary in list_option(settings, "dns_server")) {
+            let primary = trim(as_string(raw_primary));
+            if (primary == "")
                 continue;
-            let ep_key = wan_ip + ":53";
+            let host = runtime_url.host(primary);
+            if (host == "")
+                host = primary;
+            if (!ipv6_ok && index(host, ":") >= 0)
+                continue;
+            let eff_type = encrypted_dns_type_from_url(primary) || dns_type;
+            let entry = server_from_options("", eff_type, primary, dns_detour, settings);
+            if (entry.unsupported || !is_encrypted_dns_server(entry))
+                continue;
+            apply_dns_ech_option(entry, settings);
+            let k = encrypted_dns_endpoint_key(entry);
+            if (seen_encrypted[k])
+                continue;
+            seen_encrypted[k] = true;
+            if (existing_health_by_key[k]) {
+                push(group_members, existing_health_by_key[k]);
+            } else {
+                extra_idx++;
+                entry.tag = "dns-primary-" + as_string(extra_idx);
+                push(result.servers, entry);
+                push(group_members, entry.tag);
+            }
+        }
+
+        let fb_enc_idx = 0;
+        for (let raw_fb in list_option(settings, "dns_fallback_server")) {
+            let fb = trim(as_string(raw_fb));
+            if (fb == "")
+                continue;
+            let enc_type = encrypted_dns_type_from_url(fb);
+            if (enc_type == "")
+                continue;
+            let host = runtime_url.host(fb);
+            if (host == "")
+                host = fb;
+            if (!ipv6_ok && index(host, ":") >= 0)
+                continue;
+            let entry = server_from_options("", enc_type, fb, "", settings);
+            if (entry.unsupported || !is_encrypted_dns_server(entry))
+                continue;
+            apply_dns_ech_option(entry, settings);
+            let k = encrypted_dns_endpoint_key(entry);
+            if (seen_encrypted[k])
+                continue;
+            seen_encrypted[k] = true;
+            fb_enc_idx++;
+            entry.tag = "dns-fallback-enc-" + as_string(fb_enc_idx);
+            push(result.servers, entry);
+            push(group_members, entry.tag);
+        }
+    } else {
+        let seen_endpoints = {};
+        if (type(bootstrap) == "object" && as_string(bootstrap.type) == "udp" && as_string(bootstrap.server) != "") {
+            seen_endpoints[as_string(bootstrap.server) + ":" + as_string(bootstrap.server_port || 53)] = true;
+        }
+        if (type(main) == "object" && as_string(main.type) == "udp" && as_string(main.server) != "") {
+            seen_endpoints[as_string(main.server) + ":" + as_string(main.server_port || 53)] = true;
+        }
+
+        let fb_idx = 0;
+        for (let raw_fb in list_option(settings, "dns_fallback_server")) {
+            let fb = trim(as_string(raw_fb));
+            if (fb == "")
+                continue;
+            let host = runtime_url.host(fb);
+            if (host == "")
+                host = fb;
+            if (!ipv6_ok && index(host, ":") >= 0)
+                continue;
+            let port = runtime_url.port(fb);
+            let ep_key = host + ":" + (port != "" ? port : "53");
             if (seen_endpoints[ep_key])
                 continue;
             seen_endpoints[ep_key] = true;
-            wan_idx++;
-            let wan_tag = "dns-wan-fallback-" + as_string(wan_idx);
-            let entry = server_from_options(wan_tag, "udp", wan_ip, "", null);
+            fb_idx++;
+            let fb_tag = "dns-fallback-" + as_string(fb_idx);
+            let entry = server_from_options(fb_tag, "udp", fb, "", null);
             if (!entry.unsupported) {
                 push(result.servers, entry);
-                push(group_members, wan_tag);
+                push(group_members, fb_tag);
             }
         }
-    }
 
-    if (index(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG) < 0)
-        push(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG);
+        if (bool_option(settings, "fallback_wan_main", false)) {
+            let wan_idx = 0;
+            for (let wan_ip in get_wan_dns_servers()) {
+                if (!ipv6_ok && index(wan_ip, ":") >= 0)
+                    continue;
+                let ep_key = wan_ip + ":53";
+                if (seen_endpoints[ep_key])
+                    continue;
+                seen_endpoints[ep_key] = true;
+                wan_idx++;
+                let wan_tag = "dns-wan-fallback-" + as_string(wan_idx);
+                let entry = server_from_options(wan_tag, "udp", wan_ip, "", null);
+                if (!entry.unsupported) {
+                    push(result.servers, entry);
+                    push(group_members, wan_tag);
+                }
+            }
+        }
+
+        if (index(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG) < 0)
+            push(group_members, runtime_constants.BOOTSTRAP_DNS_SERVER_TAG);
+    }
 
     push(result.servers, {
         type: "group",
@@ -652,7 +764,7 @@ function config(settings, override_state) {
                 add_health_candidate(result, "bootstrap", i, state.bootstrap_servers[i], null, null, settings);
     }
 
-    append_resilient_dns_group(result, settings, bootstrap);
+    append_resilient_dns_group(result, settings, bootstrap, main);
 
     return result;
 }
@@ -665,6 +777,7 @@ return {
     DNS_FAILOVER_STATE_FILE,
     DNS_HEALTH_ADDRESS,
     active_values,
+    apply_dns_ech_option,
     arrays_equal,
     bootstrap_config,
     bootstrap_server,
@@ -672,10 +785,12 @@ return {
     configured_server_count,
     default_domain_resolver,
     detour_tag,
+    encrypted_dns_type_from_url,
     explicit_fallback_count,
     failover_enabled,
     get_wan_dns_servers,
     health_port,
+    is_encrypted_dns_server,
     is_explicit_fallback_index,
     is_wan_fallback_index,
     normalize_state,

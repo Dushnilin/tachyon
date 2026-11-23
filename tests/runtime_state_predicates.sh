@@ -581,6 +581,8 @@ prefer_ipv6
 sequential
 [settings.dns_server]
 9.9.9.9
+[settings.fallback_wan_main]
+0
 [settings.bootstrap_dns_server]
 1.0.0.1
 [settings.dns_check_interval]

@@ -4913,6 +4913,219 @@ function fixture_section_list(data, type_name) {
     return type(plural) == "array" ? plural : [];
 }
 
+function detect_low_ram_router() {
+    let env_override = as_string(getenv("TACHYON_NFT_LOW_RAM") || "");
+    if (env_override == "1")
+        return true;
+    if (env_override == "0")
+        return false;
+    let meminfo_path = getenv("TACHYON_PROC_MEMINFO") || "/proc/meminfo";
+    let meminfo = as_string(fs.readfile(meminfo_path) || "");
+    if (meminfo == "")
+        return false;
+    for (let line in split(meminfo, "\n")) {
+        let m = match(trim(line), /^MemTotal:[ \t]*([0-9]+)[ \t]*kB$/);
+        if (m) {
+            let total_kb = int(m[1], 10);
+            return total_kb > 0 && total_kb <= 393216;
+        }
+    }
+    return false;
+}
+
+function effective_nft_chunk_size() {
+    let raw = trim(as_string(getenv("TACHYON_NFT_CHUNK_SIZE") || ""));
+    if (raw != "" && match(raw, /^[0-9]+$/) != null) {
+        let parsed = int(raw, 10);
+        if (parsed >= 100)
+            return parsed;
+    }
+    return detect_low_ram_router() ? 1500 : 3000;
+}
+
+function is_ipv6_set_name(set_name) {
+    return match(as_string(set_name), /(6|_ip6_ports|subnets6|localv6)$/) != null;
+}
+
+function apply_single_nft_batch_file(commands) {
+    if (length(commands) == 0)
+        return true;
+    let stamp = clock();
+    let tmp_path = sprintf("/tmp/tachyon_nft_batch.%d.%d.nft", stamp[0], stamp[1]);
+    if (!write_text_file(tmp_path, join("\n", commands) + "\n")) {
+        unlink_file(tmp_path);
+        return false;
+    }
+    let ok = common.command_status_from_args([ "nft", "-f", tmp_path ]) == 0;
+    unlink_file(tmp_path);
+    return ok;
+}
+
+function split_array_chunks(items, chunk_size) {
+    let chunks = [];
+    if (chunk_size == null || chunk_size < 1)
+        chunk_size = 1500;
+    let total = length(items);
+    for (let start = 0; start < total; start += chunk_size) {
+        let chunk = [];
+        let stop = start + chunk_size;
+        if (stop > total)
+            stop = total;
+        for (let i = start; i < stop; i++)
+            push(chunk, items[i]);
+        push(chunks, chunk);
+    }
+    return chunks;
+}
+
+function ipv4_to_u32(addr) {
+    let s = trim(as_string(addr));
+    let m = match(s, /^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$/);
+    if (!m)
+        return null;
+    let o0 = int(m[1], 10);
+    let o1 = int(m[2], 10);
+    let o2 = int(m[3], 10);
+    let o3 = int(m[4], 10);
+    if (o0 < 0 || o0 > 255 || o1 < 0 || o1 > 255 || o2 < 0 || o2 > 255 || o3 < 0 || o3 > 255)
+        return null;
+    return (o0 * 16777216) + (o1 * 65536) + (o2 * 256) + o3;
+}
+
+function ipv4_entry_to_interval(entry) {
+    let s = trim(as_string(entry));
+    if (s == "" || index(s, " . ") >= 0 || index(s, ":") >= 0)
+        return null;
+    let m_range = match(s, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)[ \t]*-[ \t]*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
+    if (m_range) {
+        let u1 = ipv4_to_u32(m_range[1]);
+        let u2 = ipv4_to_u32(m_range[2]);
+        if (u1 == null || u2 == null || u1 > u2)
+            return null;
+        return [ u1, u2 ];
+    }
+    let m_cidr = match(s, /^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\/([0-9]+)$/);
+    if (m_cidr) {
+        let u = ipv4_to_u32(m_cidr[1]);
+        let prefix = int(m_cidr[2], 10);
+        if (u == null || prefix < 0 || prefix > 32)
+            return null;
+        if (prefix == 0)
+            return [ 0, 4294967295 ];
+        let span = 1;
+        for (let b = 0; b < 32 - prefix; b++)
+            span = span * 2;
+        let start = int(u / span) * span;
+        return [ start, start + span - 1 ];
+    }
+    let single = ipv4_to_u32(s);
+    return single != null ? [ single, single ] : null;
+}
+
+function canonicalize_ipv4_intervals(intervals) {
+    if (length(intervals) == 0)
+        return "";
+    let sorted = sort(intervals, function(a, b) {
+        if (a[0] != b[0])
+            return a[0] < b[0] ? -1 : 1;
+        return a[1] < b[1] ? -1 : (a[1] > b[1] ? 1 : 0);
+    });
+    let merged = [];
+    let cur_s = sorted[0][0];
+    let cur_e = sorted[0][1];
+    for (let i = 1; i < length(sorted); i++) {
+        let nxt = sorted[i];
+        if (nxt[0] <= cur_e + 1) {
+            if (nxt[1] > cur_e)
+                cur_e = nxt[1];
+        } else {
+            push(merged, sprintf("%d-%d", cur_s, cur_e));
+            cur_s = nxt[0];
+            cur_e = nxt[1];
+        }
+    }
+    push(merged, sprintf("%d-%d", cur_s, cur_e));
+    return join(",", merged);
+}
+
+function current_nft_ipv4_set_signature(table, set_name) {
+    let raw = as_string(command_output_quiet_from_args([ "nft", "-j", "list", "set", "inet", table, set_name ]) || "");
+    if (trim(raw) == "")
+        return null;
+    let parsed = null;
+    try { parsed = json(raw); } catch (e) {}
+    if (type(parsed) != "object" || type(parsed.nftables) != "array")
+        return null;
+    let set_obj = null;
+    for (let item in parsed.nftables) {
+        if (type(item) == "object" && type(item.set) == "object") {
+            set_obj = item.set;
+            break;
+        }
+    }
+    if (set_obj == null || as_string(set_obj.type) != "ipv4_addr")
+        return null;
+    if (set_obj.elem == null)
+        return "";
+    if (type(set_obj.elem) != "array")
+        return null;
+    let intervals = [];
+    for (let raw_el in set_obj.elem) {
+        let el = raw_el;
+        if (type(el) == "object" && type(el.elem) == "object") {
+            if (el.elem.timeout != null || el.elem.expires != null)
+                return null;
+            el = el.elem.val;
+        }
+        let iv = null;
+        if (type(el) == "string") {
+            iv = ipv4_entry_to_interval(el);
+        } else if (type(el) == "object" && type(el.prefix) == "object") {
+            iv = ipv4_entry_to_interval(as_string(el.prefix.addr) + "/" + as_string(el.prefix.len));
+        } else if (type(el) == "object" && type(el.range) == "array" && length(el.range) == 2) {
+            let u1 = ipv4_to_u32(el.range[0]);
+            let u2 = ipv4_to_u32(el.range[1]);
+            if (u1 != null && u2 != null && u1 <= u2)
+                iv = [ u1, u2 ];
+        }
+        if (iv == null)
+            return null;
+        push(intervals, iv);
+    }
+    return canonicalize_ipv4_intervals(intervals);
+}
+
+function parse_nft_batch_add_commands(lines, dedupe) {
+    let other_cmds = [];
+    let groups = {};
+    let order = [];
+    for (let raw_line in lines) {
+        let line = trim(as_string(raw_line));
+        if (line == "")
+            continue;
+        let found = match(line, /^add element inet ([^ ]+) ([^ ]+) \{ (.*) \}$/);
+        if (!found) {
+            push(other_cmds, line);
+            continue;
+        }
+        let key = found[1] + " " + found[2];
+        if (groups[key] == null) {
+            groups[key] = { table: found[1], set: found[2], entries: [], seen: {} };
+            push(order, key);
+        }
+        for (let entry in split(found[3], ",")) {
+            entry = trim(entry);
+            if (entry == "")
+                continue;
+            if (!dedupe || groups[key].seen[entry] != true) {
+                groups[key].seen[entry] = true;
+                push(groups[key].entries, entry);
+            }
+        }
+    }
+    return { other_cmds, groups, order };
+}
+
 function coalesce_nft_batch_commands(lines) {
     let commands = [];
     let groups = {};
@@ -4941,18 +5154,57 @@ function coalesce_nft_batch_commands(lines) {
 }
 
 function apply_memory_batch_lines(lines, coalesce) {
-    let commands = coalesce ? coalesce_nft_batch_commands(lines) : lines;
-    if (length(commands) == 0)
+    if (length(lines) == 0)
         return true;
-    let stamp = clock();
-    let tmp_path = sprintf("/tmp/tachyon_nft_batch.%d.%d.nft", stamp[0], stamp[1]);
-    if (!write_text_file(tmp_path, join("\n", commands) + "\n")) {
-        unlink_file(tmp_path);
+    if (!coalesce)
+        return apply_single_nft_batch_file(lines);
+
+    let parsed = parse_nft_batch_add_commands(lines, true);
+    let total_entries = 0;
+    for (let key in parsed.order)
+        total_entries += length(parsed.groups[key].entries);
+
+    let chunk_size = effective_nft_chunk_size();
+    if (total_entries <= chunk_size) {
+        let batch_cmds = [];
+        for (let cmd in parsed.other_cmds)
+            push(batch_cmds, cmd);
+        for (let key in parsed.order) {
+            let g = parsed.groups[key];
+            if (length(g.entries) > 0)
+                push(batch_cmds, "add element inet " + g.table + " " + g.set + " { " + join(", ", g.entries) + " }");
+        }
+        if (!apply_single_nft_batch_file(batch_cmds)) {
+            log_warn("Batch apply failed for runtime firewall sets");
+            return false;
+        }
+        return true;
+    }
+
+    if (length(parsed.other_cmds) > 0 && !apply_single_nft_batch_file(parsed.other_cmds)) {
+        log_warn("Batch apply failed for base firewall commands");
         return false;
     }
-    let ok = common.command_status_from_args([ "nft", "-f", tmp_path ]) == 0;
-    unlink_file(tmp_path);
-    return ok;
+    for (let key in parsed.order) {
+        let g = parsed.groups[key];
+        let entries = g.entries;
+        if (length(entries) == 0)
+            continue;
+        if (!is_ipv6_set_name(g.set) && length(entries) > chunk_size) {
+            for (let chunk in split_array_chunks(entries, chunk_size)) {
+                if (!apply_single_nft_batch_file([ "add element inet " + g.table + " " + g.set + " { " + join(", ", chunk) + " }" ])) {
+                    log_warn("Batch apply failed for set inet " + g.table + " " + g.set);
+                    return false;
+                }
+            }
+        } else {
+            if (!apply_single_nft_batch_file([ "add element inet " + g.table + " " + g.set + " { " + join(", ", entries) + " }" ])) {
+                log_warn("Batch apply failed for set inet " + g.table + " " + g.set);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 function nft_prepare_host_networking_from_uci(rt_table, fakeip_mark) {
@@ -5289,6 +5541,7 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
     let udp_ports_v4 = priority ? priority.udp_ip_ports : "";
     let udp_ports_v6 = priority ? priority.udp_ip6_ports : "";
 
+    let ok = true;
     for (let community in connections.community_lists(section)) {
         let service = as_string(community);
         if (service == "") continue;
@@ -5309,8 +5562,11 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
         let loaded = false;
         for (let path in candidates) {
             if (helpers.file_is_usable(path, 50)) {
-                nft_add_community_subnet_file_to_family_sets(
-                    path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6, udp_ports_v4, udp_ports_v6);
+                if (!nft_add_community_subnet_file_to_family_sets(
+                        path, table, v4_set, v6_set, service, "5000", ports_v4, ports_v6, udp_ports_v4, udp_ports_v6)) {
+                    log_warn("Failed applying community subnets from " + path + " for " + service);
+                    ok = false;
+                }
                 loaded = true;
                 break;
             }
@@ -5320,24 +5576,36 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
             if (service == "telegram") {
                 let v4 = core_ip.DEFAULT_TELEGRAM_SUBNETS || [];
                 let v6 = core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [];
-                if (length(v4) > 0)
-                    nft_add_values_to_family_sets(v4, table, v4_set, v6_set, "ips", "", "5000");
-                if (length(v6) > 0)
-                    nft_add_values_to_family_sets(v6, table, v4_set, v6_set, "ips", "", "5000");
+                if (length(v4) > 0 && !nft_add_values_to_family_sets(v4, table, v4_set, v6_set, "ips", "", "5000")) {
+                    log_warn("Failed applying built-in IPv4 community subnets for telegram");
+                    ok = false;
+                }
+                if (length(v6) > 0 && !nft_add_values_to_family_sets(v6, table, v4_set, v6_set, "ips", "", "5000")) {
+                    log_warn("Failed applying built-in IPv6 community subnets for telegram");
+                    ok = false;
+                }
                 loaded = true;
             } else if (service == "discord") {
                 let lines = nft_community_subnet_lines("", service, "exclude_cloudflare");
-                if (length(lines) > 0)
-                    nft_add_values_to_family_sets(lines, table, v4_set, v6_set, "ips", "", "5000");
+                if (length(lines) > 0 && !nft_add_values_to_family_sets(lines, table, v4_set, v6_set, "ips", "", "5000")) {
+                    log_warn("Failed applying built-in community subnets for discord");
+                    ok = false;
+                }
                 if (udp_ports_v4) {
                     let cf_voice = nft_community_subnet_lines("", service, "only_cloudflare");
                     let voice_ports = core_ip.DISCORD_VOICE_PORTS_NFT || "5000-5020, 3478, 19294-19344, 50000-65535";
-                    nft_add_values_to_family_sets(cf_voice, table, udp_ports_v4, udp_ports_v6, "ip-port-from-ip", voice_ports, "5000");
+                    if (!nft_add_values_to_family_sets(cf_voice, table, udp_ports_v4, udp_ports_v6, "ip-port-from-ip", voice_ports, "5000")) {
+                        log_warn("Failed applying built-in Discord voice subnets");
+                        ok = false;
+                    }
                 }
                 if (ports_v4) {
                     let cf_media = nft_community_subnet_lines("", service, "only_cloudflare");
                     let media_ports = core_ip.DISCORD_MEDIA_PORTS_NFT || "2053, 2083, 2087, 2096, 8443";
-                    nft_add_values_to_family_sets(cf_media, table, ports_v4, ports_v6, "ip-port-from-ip", media_ports, "5000");
+                    if (!nft_add_values_to_family_sets(cf_media, table, ports_v4, ports_v6, "ip-port-from-ip", media_ports, "5000")) {
+                        log_warn("Failed applying built-in Discord media subnets");
+                        ok = false;
+                    }
                 }
                 loaded = true;
             }
@@ -5353,7 +5621,7 @@ function nft_load_community_subnets(section, table, common_set, common6_set, ip_
                 "); section " + as_string(section[".name"]) +
                 " gets an empty set until the list update runs");
     }
-    return true;
+    return ok;
 }
 
 function nft_populate_runtime_set_for_section(section, deferred_sections, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, mangle_chain_context, inserted_fully_routed_ips, common6_set, ip_port6_set, localv6_set) {
@@ -5399,10 +5667,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                     push(subnets, val);
             }
             if (length(subnets) > 0) {
-                if (ports != "")
-                    nft_add_values_to_section_port_sets(subnets, table, sets, ports, "5000");
-                else
-                    nft_add_values_to_family_sets(subnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                let added = (ports != "")
+                    ? nft_add_values_to_section_port_sets(subnets, table, sets, ports, "5000")
+                    : nft_add_values_to_family_sets(subnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                if (!added)
+                    return false;
             }
         }
         let list_json_candidates = [
@@ -5435,10 +5704,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                         }
                     }
                     if (length(jsubnets) > 0) {
-                        if (ports != "")
-                            nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000");
-                        else
-                            nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                        let added = (ports != "")
+                            ? nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000")
+                            : nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                        if (!added)
+                            return false;
                     }
                 }
             }
@@ -5494,10 +5764,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                                 }
                             }
                             if (length(jsubnets) > 0) {
-                                if (ports != "")
-                                    nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000");
-                                else
-                                    nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                                let added = (ports != "")
+                                    ? nft_add_values_to_section_port_sets(jsubnets, table, sets, ports, "5000")
+                                    : nft_add_values_to_family_sets(jsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                                if (!added)
+                                    return false;
                             }
                         }
                     } else if (match(jpath, /\.(lst|txt)$/) != null) {
@@ -5509,10 +5780,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                                     push(lsubnets, val);
                             }
                             if (length(lsubnets) > 0) {
-                                if (ports != "")
-                                    nft_add_values_to_section_port_sets(lsubnets, table, sets, ports, "5000");
-                                else
-                                    nft_add_values_to_family_sets(lsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                                let added = (ports != "")
+                                    ? nft_add_values_to_section_port_sets(lsubnets, table, sets, ports, "5000")
+                                    : nft_add_values_to_family_sets(lsubnets, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                                if (!added)
+                                    return false;
                             }
                         }
                     }
@@ -5613,10 +5885,11 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
             if (length(bypass_domains) > 0 && getenv("TACHYON_SKIP_BYPASS_DNS_RESOLVE") != "1") {
                 let resolved_ips = require("nft.bypass_resolve").resolve_bypass_domains(bypass_domains, { log: log_warn }).ips;
                 if (length(resolved_ips) > 0) {
-                    if (ports != "")
-                        nft_add_values_to_section_port_sets(resolved_ips, table, sets, ports, "5000");
-                    else
-                        nft_add_values_to_family_sets(resolved_ips, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                    let added = (ports != "")
+                        ? nft_add_values_to_section_port_sets(resolved_ips, table, sets, ports, "5000")
+                        : nft_add_values_to_family_sets(resolved_ips, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                    if (!added)
+                        return false;
                 }
             }
         }
@@ -5625,7 +5898,10 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
 
     // Outside the priority branch on purpose: community subnets must not
     // depend on whether the section happens to have priority matchers.
-    nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set);
+    let community_loaded = true;
+    nft_load_community_subnets(section, table, common_set, common6_set, ip_port_set, ip_port6_set) || (community_loaded = false);
+    if (!community_loaded)
+        return false;
     if (section_action(section) != "dns") {
         let p_action = section_priority_action(section);
         let fr_verdict = p_action == "bypass" ? "bypass" : (p_action == "block" ? "block" : mark);
@@ -5949,15 +6225,140 @@ function nft_commit_list_refresh(prefix, additions) {
     let data = fs.readfile(additions);
     if (reset == null || data == null)
         return false;
-    // nft 1.0.x can re-use stale IPv6 interval state when several add-element
-    // statements follow a flush in one batch. Build one union per destination
-    // set, including inline entries and all sources, before invoking nft.
-    let commands = coalesce_nft_batch_commands(split(reset + "\n" + data, "\n"));
-    if (!write_text_file(prefix, join("\n", commands) + "\n"))
+
+    let lines = split(reset, "\n");
+    for (let line in split(data, "\n"))
+        push(lines, line);
+
+    let parsed = parse_nft_batch_add_commands(lines, true);
+    let setup_cmds = [];
+    let target_order = [];
+    let targets = {};
+    let created_sets = {};
+    let ensure_target = function(table, set_name) {
+        let key = table + " " + set_name;
+        if (targets[key] == null) {
+            let g = parsed.groups[key];
+            targets[key] = {
+                table,
+                set: set_name,
+                has_flush: false,
+                entries: g ? g.entries : []
+            };
+            push(target_order, key);
+        }
+        return targets[key];
+    };
+
+    for (let cmd in parsed.other_cmds) {
+        let m_flush = match(cmd, /^flush set inet ([^ ]+) ([^ ]+)$/);
+        if (m_flush) {
+            let t = ensure_target(m_flush[1], m_flush[2]);
+            t.has_flush = true;
+            continue;
+        }
+        let m_create = match(cmd, /^(add|create) set inet ([^ ]+) ([^ ]+) /);
+        if (m_create)
+            created_sets[m_create[2] + " " + m_create[3]] = true;
+        push(setup_cmds, cmd);
+    }
+    for (let key in parsed.order) {
+        let g = parsed.groups[key];
+        ensure_target(g.table, g.set);
+    }
+
+    // Verify every target set exists in its table before modifying any live set,
+    // so an invalid target fails atomically without leaving partial flushes.
+    let present_sets = {};
+    let checked_tables = {};
+    for (let key in target_order) {
+        let t = targets[key];
+        if (!checked_tables[t.table]) {
+            checked_tables[t.table] = true;
+            let raw_meta = as_string(command_output_quiet_from_args([ "nft", "-j", "-t", "list", "table", "inet", t.table ]) || "");
+            let meta = null;
+            try { meta = json(raw_meta); } catch (e) {}
+            if (type(meta) != "object" || type(meta.nftables) != "array") {
+                log_warn("List refresh aborted: table unavailable inet " + t.table);
+                return false;
+            }
+            for (let item in meta.nftables) {
+                let sname = as_string(object_or_empty(item.set).name);
+                if (sname != "")
+                    present_sets[t.table + " " + sname] = true;
+            }
+        }
+        if (present_sets[key] != true && created_sets[key] != true) {
+            log_warn("List refresh aborted: target set missing inet " + t.table + " " + t.set);
+            return false;
+        }
+    }
+
+    if (length(setup_cmds) > 0 && !apply_single_nft_batch_file(setup_cmds)) {
+        log_warn("List refresh failed applying base setup commands");
         return false;
-    // nft -f applies the entire batch atomically, including flushes. A parse or
-    // kernel error leaves the previous sets in place, without an empty interval.
-    return run_args([ "nft", "-f", prefix ]);
+    }
+
+    let chunk_size = effective_nft_chunk_size();
+    let skip_enabled = as_string(getenv("TACHYON_NFT_SKIP_UNCHANGED") || "1") != "0";
+    let skip_min_raw = trim(as_string(getenv("TACHYON_NFT_SKIP_UNCHANGED_MIN") || "1000"));
+    let skip_min = match(skip_min_raw, /^[0-9]+$/) != null ? int(skip_min_raw, 10) : 1000;
+
+    for (let key in target_order) {
+        let t = targets[key];
+        let entries = t.entries;
+
+        if (skip_enabled && !is_ipv6_set_name(t.set) && length(entries) >= skip_min) {
+            let desired = [];
+            let all_ipv4 = true;
+            for (let entry in entries) {
+                let iv = ipv4_entry_to_interval(entry);
+                if (iv == null) {
+                    all_ipv4 = false;
+                    break;
+                }
+                push(desired, iv);
+            }
+            if (all_ipv4) {
+                let desired_sig = canonicalize_ipv4_intervals(desired);
+                let live_sig = current_nft_ipv4_set_signature(t.table, t.set);
+                if (live_sig != null && live_sig == desired_sig)
+                    continue;
+            }
+        }
+
+        if (length(entries) == 0) {
+            if (t.has_flush && !apply_single_nft_batch_file([ "flush set inet " + t.table + " " + t.set ])) {
+                log_warn("List refresh failed flushing set inet " + t.table + " " + t.set);
+                return false;
+            }
+            continue;
+        }
+
+        if (!is_ipv6_set_name(t.set) && length(entries) > chunk_size) {
+            let chunks = split_array_chunks(entries, chunk_size);
+            for (let i = 0; i < length(chunks); i++) {
+                let cmds = [];
+                if (i == 0 && t.has_flush)
+                    push(cmds, "flush set inet " + t.table + " " + t.set);
+                push(cmds, "add element inet " + t.table + " " + t.set + " { " + join(", ", chunks[i]) + " }");
+                if (!apply_single_nft_batch_file(cmds)) {
+                    log_warn("List refresh failed for set inet " + t.table + " " + t.set);
+                    return false;
+                }
+            }
+        } else {
+            let cmds = [];
+            if (t.has_flush)
+                push(cmds, "flush set inet " + t.table + " " + t.set);
+            push(cmds, "add element inet " + t.table + " " + t.set + " { " + join(", ", entries) + " }");
+            if (!apply_single_nft_batch_file(cmds)) {
+                log_warn("List refresh failed for set inet " + t.table + " " + t.set);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 function nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set) {
@@ -6024,8 +6425,15 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
         let captured = memory_batch_lines;
         memory_batch_lines = null;
         memory_batch_mode = "";
-        if (pop_ok && apply_memory_batch_lines(captured, true))
-            return true;
+        if (!pop_ok) {
+            log_warn("nft_populate_runtime_sets_from_uci: failed preparing runtime sets; aborting batch apply");
+            return false;
+        }
+        if (!apply_memory_batch_lines(captured, true)) {
+            log_warn("nft_populate_runtime_sets_from_uci: failed applying batched runtime sets");
+            return false;
+        }
+        return true;
     }
 
     return nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);

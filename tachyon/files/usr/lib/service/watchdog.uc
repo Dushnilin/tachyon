@@ -37,6 +37,9 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = getenv("TACHYON_WATCHDOG_PID_FILE") || "/var/run/tachyon_watchdog.pid";
 const SUPERVISOR_PID_FILE = getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "/var/run/tachyon_watchdog.supervisor.pid";
+const SUPERVISOR_LOCK_DIR = getenv("TACHYON_WATCHDOG_LOCK_DIR") || (SUPERVISOR_PID_FILE + ".lock");
+const RELOAD_LOCK_DIR = getenv("TACHYON_RELOAD_LOCK_DIR") || "/var/run/tachyon.reload.lock";
+const KMSG_PATH = getenv("TACHYON_WATCHDOG_KMSG") || "/dev/kmsg";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const WATCHDOG_SUPERVISOR_UC = LIB_DIR + "/service/watchdog_supervisor.uc";
 // The supervisor launches this instead of WATCHDOG_UC, so tests can point it
@@ -129,7 +132,7 @@ function log_message(message, level) {
         priority = 7;
     }
     
-    let kmsg = fs.open("/dev/kmsg", "w");
+    let kmsg = fs.open(KMSG_PATH, "w");
     if (kmsg) {
         kmsg.write(sprintf("<%d>tachyon: [%s] Watchdog: %s\n", priority, lvl, as_string(message)));
         kmsg.close();
@@ -286,37 +289,186 @@ function stop_honeypot_listeners() {
     return stopped;
 }
 
+function current_pid() {
+    let self_pid = trim(fs.readlink("/proc/self") || "");
+    if (match(self_pid, /^[0-9]+$/))
+        return self_pid;
+    let status_text = fs.readfile("/proc/self/status") || "";
+    for (let line in split(status_text, "\n")) {
+        let m = match(trim(line), /^Pid:[ \t]*([0-9]+)$/);
+        if (m)
+            return m[1];
+    }
+    return "";
+}
+
+function is_default_watchdog_runtime() {
+    return (getenv("TACHYON_WATCHDOG_PID_FILE") || "") == "" &&
+        (getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "") == "" &&
+        (getenv("TACHYON_WATCHDOG_WORKER_UC") || "") == "" &&
+        PID_FILE == "/var/run/tachyon_watchdog.pid" &&
+        SUPERVISOR_PID_FILE == "/var/run/tachyon_watchdog.supervisor.pid";
+}
+
+function kill_pid_cleanly(target_pid, proc_name) {
+    if (!target_pid || !process_running(target_pid, proc_name))
+        return;
+    command_success_from_args([ "kill", target_pid ]);
+    let wait_limit = 50; // 5 seconds
+    while (wait_limit > 0 && process_running(target_pid, proc_name)) {
+        sleep(100);
+        wait_limit--;
+    }
+    if (process_running(target_pid, proc_name))
+        command_success_from_args([ "kill", "-9", target_pid ]);
+}
+
+function reap_orphan_watchdogs(exclude_sup_pid, exclude_worker_pid) {
+    if (!is_default_watchdog_runtime())
+        return;
+    let my_pid = current_pid();
+    let entries = fs.lsdir("/proc") || [];
+    for (let entry in entries) {
+        if (!match(entry, /^[0-9]+$/))
+            continue;
+        if (entry == my_pid || entry == exclude_sup_pid || entry == exclude_worker_pid)
+            continue;
+        let raw = fs.readfile("/proc/" + entry + "/cmdline") || "";
+        if (raw == "")
+            continue;
+        let args = split(raw, "\x00");
+        let is_sup = false;
+        let is_worker = false;
+        for (let arg in args) {
+            if (arg == WATCHDOG_SUPERVISOR_UC || match(arg, /\/watchdog_supervisor\.uc$/))
+                is_sup = true;
+            else if (arg == WATCHDOG_UC || match(arg, /\/watchdog\.uc$/))
+                is_worker = true;
+        }
+        if ((is_sup && index(args, "supervise") >= 0) ||
+            (is_worker && index(args, "worker") >= 0)) {
+            kill_pid_cleanly(entry, "ucode");
+        }
+    }
+}
+
+function release_watchdog_lock(owner_pid) {
+    owner_pid = owner_pid || current_pid();
+    let recorded = trim(fs.readfile(SUPERVISOR_LOCK_DIR + "/pid") || "");
+    if (recorded != "" && owner_pid != "" && recorded != owner_pid)
+        return false;
+    remove_file(SUPERVISOR_LOCK_DIR + "/pid");
+    command_success_from_args([ "rmdir", SUPERVISOR_LOCK_DIR ]);
+    return true;
+}
+
+function acquire_watchdog_lock(wait_ms) {
+    let owner_pid = current_pid();
+    if (owner_pid == "")
+        owner_pid = "" + int(clock()[0]);
+    let deadline_sec = int(clock()[0]) + int((wait_ms || 10000) / 1000);
+    while (true) {
+        if (command_success_from_args([ "mkdir", SUPERVISOR_LOCK_DIR ])) {
+            if (fs.writefile(SUPERVISOR_LOCK_DIR + "/pid", owner_pid + "\n") != null)
+                return owner_pid;
+            release_watchdog_lock(owner_pid);
+            return "";
+        }
+        let recorded = trim(fs.readfile(SUPERVISOR_LOCK_DIR + "/pid") || "");
+        let busy = recorded != "" && process_running(recorded, "ucode");
+        if (!busy && recorded == "") {
+            let st = fs.stat(SUPERVISOR_LOCK_DIR);
+            let age = (st && st.mtime) ? (int(clock()[0]) - st.mtime) : 999;
+            if (age < 15)
+                busy = true;
+        }
+        if (!busy) {
+            let stale = SUPERVISOR_LOCK_DIR + ".stale." + owner_pid + "." + int(clock()[0]);
+            if (command_success_from_args([ "mv", SUPERVISOR_LOCK_DIR, stale ])) {
+                command_success_from_args([ "rm", "-rf", stale ]);
+                continue;
+            }
+        }
+        if (int(clock()[0]) >= deadline_sec)
+            return "";
+        sleep(100);
+    }
+}
+
 function stop_runtime(worker_exit) {
     // The supervisor first: while it lives it would respawn whatever we kill
     // below. It has no SIGTERM handler, so the wait only exists to give it a
     // chance to notice before the SIGKILL fallback.
-    let sup_pid = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
-    if (!worker_exit && process_running(sup_pid, "ucode")) {
-        command_success_from_args([ "kill", sup_pid ]);
-        let sup_wait = 50; // 5 seconds
-        while (sup_wait > 0 && process_running(sup_pid, "ucode")) {
-            sleep(100);
-            sup_wait--;
-        }
-        if (process_running(sup_pid, "ucode")) {
-            command_success_from_args([ "kill", "-9", sup_pid ]);
-        }
-    }
-    if (!worker_exit) remove_file(SUPERVISOR_PID_FILE);
-
-    let pid = trim(fs.readfile(PID_FILE) || "");
-    if (!worker_exit && process_running(pid, "ucode")) {
-        command_success_from_args([ "kill", pid ]);
+    // Keep stop_runtime() self-contained because isolated tests extract it verbatim.
+    let stop_tracked = function(target_pid) {
+        if (!target_pid || !process_running(target_pid, "ucode"))
+            return;
+        command_success_from_args([ "kill", target_pid ]);
         let wait_limit = 50; // 5 seconds
-        while (wait_limit > 0 && process_running(pid, "ucode")) {
+        while (wait_limit > 0 && process_running(target_pid, "ucode")) {
             sleep(100);
             wait_limit--;
         }
-        if (process_running(pid, "ucode")) {
-            command_success_from_args([ "kill", "-9", pid ]);
+        if (process_running(target_pid, "ucode"))
+            command_success_from_args([ "kill", "-9", target_pid ]);
+    };
+    let read_self_pid = function() {
+        let self_pid = type(fs.readlink) == "function" ? trim(fs.readlink("/proc/self") || "") : "";
+        if (match(self_pid, /^[0-9]+$/))
+            return self_pid;
+        let status_text = fs.readfile("/proc/self/status") || "";
+        for (let line in split(status_text, "\n")) {
+            let m = match(trim(line), /^Pid:[ \t]*([0-9]+)$/);
+            if (m)
+                return m[1];
         }
+        return "";
+    };
+
+    let sup_pid = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+    if (!worker_exit) {
+        stop_tracked(sup_pid);
+        remove_file(SUPERVISOR_PID_FILE);
     }
-    remove_file(PID_FILE);
+
+    let pid = trim(fs.readfile(PID_FILE) || "");
+    if (!worker_exit) {
+        stop_tracked(pid);
+        if (type(fs.lsdir) == "function" && type(getenv) == "function" &&
+            (getenv("TACHYON_WATCHDOG_PID_FILE") || "") == "" &&
+            (getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "") == "" &&
+            (getenv("TACHYON_WATCHDOG_WORKER_UC") || "") == "" &&
+            PID_FILE == "/var/run/tachyon_watchdog.pid" &&
+            SUPERVISOR_PID_FILE == "/var/run/tachyon_watchdog.supervisor.pid") {
+            let my_pid = read_self_pid();
+            let entries = fs.lsdir("/proc") || [];
+            for (let entry in entries) {
+                if (!match(entry, /^[0-9]+$/) || entry == my_pid || entry == sup_pid || entry == pid)
+                    continue;
+                let raw = fs.readfile("/proc/" + entry + "/cmdline") || "";
+                if (raw == "")
+                    continue;
+                let args = split(raw, "\x00");
+                let is_sup = false;
+                let is_w = false;
+                for (let arg in args) {
+                    if (arg == WATCHDOG_SUPERVISOR_UC || match(arg, /\/watchdog_supervisor\.uc$/))
+                        is_sup = true;
+                    else if (arg == WATCHDOG_UC || match(arg, /\/watchdog\.uc$/))
+                        is_w = true;
+                }
+                if ((is_sup && index(args, "supervise") >= 0) ||
+                    (is_w && index(args, "worker") >= 0)) {
+                    stop_tracked(entry);
+                }
+            }
+        }
+        remove_file(PID_FILE);
+    } else {
+        let my_pid = read_self_pid();
+        if (pid != "" && (my_pid == "" || pid == my_pid))
+            remove_file(PID_FILE);
+    }
     let sp = smart_probe || (type(get_smart_probe) == "function" ? get_smart_probe() : null);
     if (sp && type(sp.cleanup) == "function")
         sp.cleanup();
@@ -582,7 +734,7 @@ function smart_detect_apply_domains(entries) {
 
 
 
-function start_runtime() {
+function start_runtime_unlocked() {
     let cfg = settings();
     stop_runtime();
 
@@ -603,6 +755,22 @@ function start_runtime() {
         command_from_args([ "ucode", "-L", LIB_DIR, sup_script, "supervise" ]),
         ">/dev/null", ">" + shell_quote(SUPERVISOR_PID_FILE));
     return command_status(command);
+}
+
+function start_runtime() {
+    let lock_owner = acquire_watchdog_lock(10000);
+    if (lock_owner == "") {
+        let existing_sup = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+        if (existing_sup != "" && process_running(existing_sup, "ucode")) {
+            log_message("Watchdog start skipped: concurrent start already active", "info");
+            return 0;
+        }
+        log_message("Watchdog start failed: could not acquire watchdog lock", "warn");
+        return 1;
+    }
+    let status = start_runtime_unlocked();
+    release_watchdog_lock(lock_owner);
+    return status;
 }
 
 // Keep the worker alive. Delegates to service/watchdog_supervisor.uc when available.
@@ -2818,6 +2986,15 @@ function heal_oom(ev) {
         return;
     }
 
+    let reload_active = fs.stat(RELOAD_LOCK_DIR) != null;
+    if (report.complete && !report.memcg && report.victim == "nft" && reload_active) {
+        log_message("OOM killed nft while Tachyon was applying firewall sets; not restarting Tachyon", "warn");
+        if (notify_enabled(tcfg, "notify_crash")) {
+            send_telegram_notification("*Watchdog:* OOM завершил процесс `nft` во время применения наборов правил Tachyon (нехватка ОЗУ при обновлении firewall). Ядро Tachyon не затронуто и не перезапускается.", "oom_report", 600);
+        }
+        return;
+    }
+
     let scope = report.memcg ? "inside a memory cgroup (a container or a service with its own limit)"
         : (report.complete ? "outside Tachyon" : "(kernel report not complete; victim unknown)");
     log_message("OOM killed " + victim + " " + scope + "; not restarting Tachyon", "warn");
@@ -3969,7 +4146,7 @@ if (!mode) mode = "";
 if (mode == "start-runtime")
     exit(start_runtime());
 else if (mode == "stop-runtime")
-    exit(stop_runtime());
+    exit(stop_runtime(ARGV[1] == "1"));
 else if (mode == "supervise")
     exit(supervise());
 else if (mode == "worker")
@@ -4038,6 +4215,10 @@ else if (mode == "emergency-trigger") {
 else if (mode == "lite-busy-check") {
     let busy = is_lite_data_plane_busy(null, ARGV[1], ARGV[2]);
     print((busy ? "1" : "0") + "\n");
+    exit(0);
+}
+else if (mode == "heal-oom-test") {
+    heal_oom({});
     exit(0);
 }
 else {

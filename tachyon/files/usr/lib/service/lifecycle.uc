@@ -120,6 +120,7 @@ let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
 let startup_ipv6_effective = "";
+let reload_skipped_lock_busy = false;
 
 let shell_quote = common.shell_quote;
 
@@ -172,6 +173,15 @@ function owner_pid() {
     let status = fs.readfile("/proc/self/status") || "";
     let m = match(status, /PPid:\s+([0-9]+)/);
     return m ? m[1] : "0";
+}
+
+function self_pid() {
+    let pid = trim(as_string(fs.readlink("/proc/self") || ""));
+    if (pid != "" && match(pid, /^[0-9]+$/) != null)
+        return pid;
+    let status = fs.readfile("/proc/self/status") || "";
+    let m = match(status, /Pid:\s+([0-9]+)/);
+    return m ? m[1] : owner_pid();
 }
 
 let bool_text = common.bool_value;
@@ -1581,8 +1591,11 @@ function reload_actions_summary(plan) {
     return actions;
 }
 
-function release_reload_lock() {
-    module_success(STATE_UC, [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ]);
+function release_reload_lock(lock_owner) {
+    let args = [ "release-runtime-dir-lock", RELOAD_LOCK_DIR ];
+    if (as_string(lock_owner || "") != "")
+        push(args, as_string(lock_owner));
+    module_success(STATE_UC, args);
 }
 
 function tachyon_core_runtime_pid() {
@@ -1607,12 +1620,13 @@ function dns_failover_apply(candidate_state_path) {
     if (candidate_state_path == "" || fs.stat(candidate_state_path) == null)
         return 1;
 
-    if (!module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, owner_pid(), "2" ]))
+    let lock_owner = self_pid();
+    if (!module_success(STATE_UC, [ "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, lock_owner, "2" ]))
         return 2;
 
     let patch_result = module_capture(TACHYON_CORE_UC, [ "patch-dns-config", candidate_state_path ]);
     if (patch_result.status != 0) {
-        release_reload_lock();
+        release_reload_lock(lock_owner);
         return patch_result.status;
     }
 
@@ -1648,11 +1662,11 @@ function dns_failover_apply(candidate_state_path) {
 
     if (backup_path != "")
         remove_file(backup_path);
-    release_reload_lock();
+    release_reload_lock(lock_owner);
     return status;
 }
 
-function reload(reason) {
+function reload_unlocked(reason) {
     let status;
     let force_runtime_reload = as_string(reason || "") == "on_config_change" ? 0 : 1;
     if (as_string(reason || "") != "section_fail_policy")
@@ -1900,6 +1914,24 @@ function reload(reason) {
     ]), reload_config_fingerprint);
 }
 
+function reload(reason) {
+    reload_skipped_lock_busy = false;
+    if (as_string(getenv("TACHYON_RELOAD_LOCK_HELD") || "0") == "1")
+        return reload_unlocked(reason);
+
+    let lock_owner = self_pid();
+    if (!module_success(STATE_UC, [ "acquire-runtime-dir-lock", RELOAD_LOCK_DIR, lock_owner ])) {
+        log_message("Reload skipped: reload lock is already held by another process", "info");
+        reload_skipped_lock_busy = true;
+        mark_pending_reload("reload_busy");
+        return 0;
+    }
+
+    let status = reload_unlocked(reason);
+    release_reload_lock(lock_owner);
+    return status;
+}
+
 function reload_tracked(reason) {
     if (as_string(getenv("TACHYON_UI_ACTION_TRACKED") || "0") == "1")
         return reload(reason);
@@ -1909,8 +1941,12 @@ function reload_tracked(reason) {
         module_success(UI_UC, [ "service-action-update-pid", job_id, owner_pid() ]);
 
     let status = reload(reason);
-    if (job_id != "")
-        module_success(UI_UC, [ "service-action-finish-after-command", "reload", job_id, as_string(status) ]);
+    if (job_id != "") {
+        if (reload_skipped_lock_busy)
+            module_success(UI_UC, [ "service-action-finish-deferred", "reload", job_id ]);
+        else
+            module_success(UI_UC, [ "service-action-finish-after-command", "reload", job_id, as_string(status) ]);
+    }
 
     return status;
 }

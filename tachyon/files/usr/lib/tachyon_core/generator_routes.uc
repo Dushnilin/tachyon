@@ -1656,10 +1656,100 @@ function add_routed_dns_server_for_section(config, section) {
         return;
     let section_name = section[".name"];
     let action = option(section, "action", "");
-    let servers = connections.routed_dns_servers(section);
-    let dns_type = connections.routed_dns_type(section);
     let tag_name = routed_dns_server_tag(section_name);
     let detour = action == "bypass" ? null : (group_outbound_tag_for_section(section) || outbound_tag(section_name));
+
+    if (connections.routed_dns_use_global(section)) {
+        let settings = object_or_empty(ctx.runtime_settings ? ctx.runtime_settings() : {});
+        let ipv6_ok = common.resolve_effective_ipv6_state(settings, null).ipv6_active;
+        let dns_state = runtime_dns.runtime_state(settings, null);
+        let main_idx = int(dns_state.main_index || 0);
+        let entries = [];
+        let seen_keys = {};
+        let push_entry = function(dns_type, raw_val) {
+            let val = trim(as_string(raw_val));
+            if (val == "")
+                return;
+            let host = core_url.host(val);
+            if (host == "")
+                host = val;
+            if (!ipv6_ok && index(host, ":") >= 0)
+                return;
+            let srv = runtime_dns.server_from_options("", dns_type, val, detour, settings);
+            if (srv.unsupported) {
+                ctx.runtime_generate_unsupported(srv.unsupported);
+                return;
+            }
+            runtime_dns.apply_dns_ech_option(srv, settings);
+            let k = as_string(srv.type) + "|" + as_string(srv.server) + "|" +
+                as_string(srv.server_port || "") + "|" + as_string(srv.path || "") + "|" +
+                as_string(srv.detour || "");
+            if (seen_keys[k])
+                return;
+            seen_keys[k] = true;
+            push(entries, srv);
+        };
+
+        let main_servers = dns_state.main_servers || [];
+        if (main_idx >= 0 && main_idx < length(main_servers)) {
+            let is_wan = runtime_dns.is_wan_fallback_index(settings, main_idx);
+            let is_fb = runtime_dns.is_explicit_fallback_index(settings, main_idx);
+            let active_type = (is_wan || is_fb)
+                ? "udp"
+                : (runtime_dns.encrypted_dns_type_from_url(main_servers[main_idx]) || dns_state.dns_type);
+            push_entry(active_type, main_servers[main_idx]);
+        }
+
+        for (let raw_primary in list_option(settings, "dns_server")) {
+            let p_type = runtime_dns.encrypted_dns_type_from_url(raw_primary) || dns_state.dns_type;
+            push_entry(p_type, raw_primary);
+        }
+
+        let global_encrypted = length(entries) > 0 && runtime_dns.is_encrypted_dns_server(entries[0]);
+        if (global_encrypted) {
+            for (let raw_fb in list_option(settings, "dns_fallback_server")) {
+                let enc_type = runtime_dns.encrypted_dns_type_from_url(raw_fb);
+                if (enc_type != "")
+                    push_entry(enc_type, raw_fb);
+            }
+        } else {
+            for (let raw_fb in list_option(settings, "dns_fallback_server"))
+                push_entry("udp", raw_fb);
+            if (bool_option(settings, "fallback_wan_main", false)) {
+                for (let wan_ip in runtime_dns.get_wan_dns_servers())
+                    push_entry("udp", wan_ip);
+            }
+            for (let raw_boot in list_option(settings, "bootstrap_dns_server")) {
+                if (runtime_dns.encrypted_dns_type_from_url(raw_boot) == "")
+                    push_entry("udp", raw_boot);
+            }
+        }
+
+        if (length(entries) == 1) {
+            entries[0].tag = tag_name;
+            push(config.dns.servers, entries[0]);
+        } else if (length(entries) > 1) {
+            let member_tags = [];
+            for (let i = 0; i < length(entries); i++) {
+                let member_tag = runtime_constants.tag(section_name, "routed-dns-server-" + (i + 1));
+                entries[i].tag = member_tag;
+                push(config.dns.servers, entries[i]);
+                push(member_tags, member_tag);
+            }
+            push(config.dns.servers, {
+                type: "group",
+                tag: tag_name,
+                mode: "stable",
+                error_ttl: "30s",
+                timeout: "4s",
+                servers: member_tags
+            });
+        }
+        return;
+    }
+
+    let servers = connections.routed_dns_servers(section);
+    let dns_type = connections.routed_dns_type(section);
 
     for (let i = 0; i < length(servers); i++) {
         let s_val = servers[i];

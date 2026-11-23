@@ -1824,6 +1824,15 @@ function finish_service_action_after_command_mode(action, job_id_value, status) 
     finish_service_action_after_command(action, job_id_value, status, true);
 }
 
+function finish_service_action_deferred_mode(action, job_id_value) {
+    if (as_string(job_id_value) == "")
+        return 0;
+    let path = job_state_path_value(SERVICE_ACTION_DIR, job_id_value);
+    if (path != "" && fs.stat(path) != null)
+        write_finished_action_state(path, true, "Service " + as_string(action) + " deferred while active reload holds lock", 0);
+    return 0;
+}
+
 function update_service_action_pid_mode(job_id_value, pid) {
     let path = job_state_path_value(SERVICE_ACTION_DIR, job_id_value);
     exit(path != "" && set_running_job_pid_file(path, pid) ? 0 : 1);
@@ -2311,6 +2320,8 @@ else if (mode == "latency-progress-state")
     update_latency_progress_state_mode(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-action-finish-after-command")
     finish_service_action_after_command_mode(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "service-action-finish-deferred")
+    finish_service_action_deferred_mode(ARGV[1], ARGV[2]);
 else if (mode == "service-action-wait-worker")
     service_action_wait_worker(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "service-action-worker")

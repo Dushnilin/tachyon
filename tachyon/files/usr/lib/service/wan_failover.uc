@@ -331,9 +331,10 @@ function signal_core_hup() {
     let lock_timeout = trim(as_string(getenv("TACHYON_HUP_LOCK_TIMEOUT") || "10"));
     if (match(lock_timeout, /^[0-9]+$/) == null)
         lock_timeout = "10";
+    let hup_owner = self_pid();
     if (!command_success_from_args([
         "ucode", "-L", LIB_DIR, STATE_UC,
-        "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, self_pid(), lock_timeout
+        "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, hup_owner, lock_timeout
     ])) {
         log_message("skipping SIGHUP: reload lock busy (" + RELOAD_LOCK_DIR + ")", "warn");
         return false;
@@ -346,7 +347,7 @@ function signal_core_hup() {
     }
     command_success_from_args([
         "ucode", "-L", LIB_DIR, STATE_UC,
-        "release-runtime-dir-lock", RELOAD_LOCK_DIR
+        "release-runtime-dir-lock", RELOAD_LOCK_DIR, hup_owner
     ]);
     return true;
 }

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-23 20:37+0300\n"
-"PO-Revision-Date: 2026-11-23 20:37+0300\n"
+"POT-Creation-Date: 2026-11-23 02:26+0300\n"
+"PO-Revision-Date: 2026-11-23 02:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4412,6 +4412,9 @@ msgstr "Получить глобальную проверку"
 msgid "GitHub API Token (optional)"
 msgstr "Токен GitHub API (необязательно)"
 
+msgid "Global DNS"
+msgstr "Глобальный DNS"
+
 msgid "Global check"
 msgstr "Глобальная проверка"
 
@@ -5086,6 +5089,9 @@ msgstr "Параметры"
 
 msgid "Information"
 msgstr "Информация"
+
+msgid "Inherit global DNS servers and backup resolvers automatically instead of configuring separate servers for this section."
+msgstr "Автоматически наследовать глобальные DNS-серверы и резервные резолверы вместо отдельной настройки серверов для этой секции."
 
 msgid "Init Packet Magic Header (S1)"
 msgstr "Magic-заголовок пакета инициализации (S1)"
@@ -10975,6 +10981,9 @@ msgstr "Использовать DTLS (только AnyConnect)"
 
 msgid "Use ESP (needs IP mode)"
 msgstr "Использовать ESP (требуется IP-режим)"
+
+msgid "Use Global DNS Servers"
+msgstr "Использовать глобальные DNS-серверы"
 
 msgid "Use HTTP/3 QUIC transport instead of HTTP/2"
 msgstr "Использовать транспорт HTTP/3 QUIC вместо HTTP/2"

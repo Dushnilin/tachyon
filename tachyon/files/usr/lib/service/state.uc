@@ -273,10 +273,17 @@ function lock_dir_write_owner(lock_dir, owner_pid) {
     return write_text_file(as_string(lock_dir) + "/pid", as_string(owner_pid) + "\n");
 }
 
-function release_runtime_dir_lock(lock_dir) {
+function release_runtime_dir_lock(lock_dir, owner_pid) {
     lock_dir = as_string(lock_dir);
+    owner_pid = as_string(owner_pid);
     if (lock_dir == "")
         return;
+
+    if (owner_pid != "") {
+        let recorded_pid = first_line_value(lock_dir + "/pid");
+        if (recorded_pid != "" && recorded_pid != owner_pid && pid_alive(recorded_pid))
+            return;
+    }
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
     command_success_from_args([ "rmdir", lock_dir ]);
@@ -291,7 +298,7 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
     if (command_success_from_args([ "mkdir", lock_dir ])) {
         if (lock_dir_write_owner(lock_dir, owner_pid))
             return true;
-        release_runtime_dir_lock(lock_dir);
+        release_runtime_dir_lock(lock_dir, owner_pid);
         return false;
     }
 
@@ -299,7 +306,7 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
     let lock_age = (lock_stat && lock_stat.mtime) ? (int(clock()[0]) - lock_stat.mtime) : 9999;
     let recorded_pid = first_line_value(lock_dir + "/pid");
 
-    if (pid_alive(recorded_pid) && lock_age < 300)
+    if (recorded_pid != "" && pid_alive(recorded_pid))
         return false;
 
     // pid file missing entirely: either another waiter is mid-takeover or a
@@ -2322,6 +2329,7 @@ function append_tachyon_core_rule_signature_body(body, section, sections) {
 
     if (connections.routed_dns_enabled(section)) {
         body = signature_add_value(body, prefix + ".routed_dns_enabled", "1");
+        body = signature_add_value(body, prefix + ".routed_dns_use_global", connections.routed_dns_use_global(section) ? "1" : "0");
         body = signature_add_value(body, prefix + ".routed_dns_type", connections.routed_dns_type(section));
         body = signature_add_value(body, prefix + ".routed_dns_server", join(" ", connections.routed_dns_servers(section)));
     }
@@ -2594,6 +2602,7 @@ function tachyon_core_signature_body(settings, sections, servers, mwan3_active, 
         body = signature_add_value(body, "settings.dns_server", value);
     for (let value in list_option(settings, "dns_fallback_server"))
         body = signature_add_value(body, "settings.dns_fallback_server", value);
+    body = signature_add_value(body, "settings.fallback_wan_main", bool_option_value(settings, "fallback_wan_main", false));
     for (let value in list_option(settings, "bootstrap_dns_server", "77.88.8.8"))
         body = signature_add_value(body, "settings.bootstrap_dns_server", value);
     body = signature_add_value(body, "settings.dns_check_interval", option(settings, "dns_check_interval", "30s"));
@@ -3077,7 +3086,7 @@ else if (mode == "acquire-runtime-dir-lock")
 else if (mode == "acquire-runtime-dir-lock-wait")
     exit(acquire_runtime_dir_lock_wait(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "release-runtime-dir-lock")
-    release_runtime_dir_lock(ARGV[1]);
+    release_runtime_dir_lock(ARGV[1], ARGV[2]);
 else if (mode == "reload-core-runtime")
     reload_tachyon_core_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "sighup-core-runtime")

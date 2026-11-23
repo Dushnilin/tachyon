@@ -474,7 +474,7 @@ function acquire_runtime_lock(lock_dir, wait) {
 }
 
 function release_runtime_lock(lock_dir) {
-    service_state_success([ "release-runtime-dir-lock", lock_dir ]);
+    service_state_success([ "release-runtime-dir-lock", lock_dir, owner_pid() ]);
 }
 
 function unsigned_number(value) {

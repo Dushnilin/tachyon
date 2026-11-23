@@ -71,7 +71,7 @@ reload_service() {
     local reason="$1"
     local result status
 
-    trap 'initd_ucode reload-release >/dev/null 2>&1 || true' INT TERM
+    trap 'initd_ucode reload-release "$$" >/dev/null 2>&1 || true' INT TERM
     result="$(initd_ucode reload-service "$reason" "$$")"
     status="$?"
     trap - INT TERM

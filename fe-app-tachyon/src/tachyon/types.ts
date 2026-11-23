@@ -568,6 +568,7 @@ export namespace Tachyon {
     protocol?: string[];
     excluded_protocol?: string[];
     routed_dns_enabled?: '0' | '1';
+    routed_dns_use_global?: '0' | '1';
     routed_dns_type?: 'udp' | 'dot' | 'doh' | 'doq';
     routed_dns_server?: string | string[];
     dns_type?: string;

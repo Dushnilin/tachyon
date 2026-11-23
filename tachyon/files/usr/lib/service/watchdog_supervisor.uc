@@ -86,25 +86,127 @@ function last_worker_error() {
     return "";
 }
 
+const SUPERVISOR_PID_FILE = getenv("TACHYON_WATCHDOG_SUPERVISOR_PID_FILE") || "/var/run/tachyon_watchdog.supervisor.pid";
+
+function current_pids() {
+    let status_text = fs.readfile("/proc/self/status") || "";
+    let pid = "";
+    let ppid = "";
+    for (let line in split(status_text, "\n")) {
+        let m_pid = match(trim(line), /^Pid:[ \t]*([0-9]+)$/);
+        if (m_pid)
+            pid = m_pid[1];
+        let m_ppid = match(trim(line), /^PPid:[ \t]*([0-9]+)$/);
+        if (m_ppid)
+            ppid = m_ppid[1];
+    }
+    if (pid == "") {
+        let self_pid = trim(fs.readlink("/proc/self") || "");
+        if (match(self_pid, /^[0-9]+$/))
+            pid = self_pid;
+    }
+    return { pid, ppid };
+}
+
+function is_own_supervisor_pid(active, my_pid, my_ppid) {
+    if (active == "")
+        return false;
+    if (my_pid != "" && active == my_pid)
+        return true;
+    // Allow wrapper subshells (e.g. function calls launched with `&` where
+    // the shell records its own `$!` rather than exec'ing ucode directly).
+    return my_ppid != "" && my_ppid != "1" && active == my_ppid;
+}
+
+function stop_worker_pid(worker_pid) {
+    if (!worker_pid || !process_running(worker_pid))
+        return;
+    command_status(command_from_args([ "kill", worker_pid ]));
+    let wait_limit = 50;
+    while (wait_limit > 0 && process_running(worker_pid)) {
+        sleep(100);
+        wait_limit--;
+    }
+    if (process_running(worker_pid))
+        command_status(command_from_args([ "kill", "-9", worker_pid ]));
+}
+
+function is_superseded(my_pid, my_ppid, saw_own_pid) {
+    if (!my_pid)
+        return false;
+    let active = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+    if (active == "")
+        return !!saw_own_pid;
+    return !is_own_supervisor_pid(active, my_pid, my_ppid);
+}
+
 function supervise() {
     log_message("Watchdog supervisor started", "info");
+
+    let ids = current_pids();
+    let my_pid = ids.pid;
+    let my_ppid = ids.ppid;
+    let saw_own_pid = false;
+    for (let i = 0; i < 6 && my_pid != ""; i++) {
+        let cur_sup = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+        if (is_own_supervisor_pid(cur_sup, my_pid, my_ppid)) {
+            saw_own_pid = true;
+            break;
+        }
+        if (cur_sup != "")
+            break;
+        sleep(50);
+    }
 
     let early_deaths = 0;
     let force_legacy = false;
 
     while (true) {
+        if (is_superseded(my_pid, my_ppid, saw_own_pid)) {
+            log_message("Watchdog supervisor superseded; exiting", "info");
+            break;
+        }
         fs.writefile(WORKER_ERR_FILE, "");
+        let worker_pid_tmp = my_pid != "" ? (PID_FILE + "." + my_pid) : PID_FILE;
         let spawn = (force_legacy ? "TACHYON_WATCHDOG_LEGACY=1 " : "") +
             command_from_args([ "ucode", "-L", LIB_DIR, WORKER_UC, "worker" ]);
-        command_status(common.background_command_with_pid(spawn, ">>" + shell_quote(WORKER_ERR_FILE), ">" + shell_quote(PID_FILE)));
+        command_status(common.background_command_with_pid(spawn, ">>" + shell_quote(WORKER_ERR_FILE), ">" + shell_quote(worker_pid_tmp)));
+
+        let worker_pid = trim(fs.readfile(worker_pid_tmp) || "");
+        if (is_superseded(my_pid, my_ppid, saw_own_pid)) {
+            if (worker_pid_tmp != PID_FILE)
+                fs.unlink(worker_pid_tmp);
+            stop_worker_pid(worker_pid);
+            log_message("Watchdog supervisor superseded after spawn; exiting", "info");
+            break;
+        }
+        if (worker_pid_tmp != PID_FILE) {
+            if (worker_pid != "")
+                fs.writefile(PID_FILE, worker_pid + "\n");
+            fs.unlink(worker_pid_tmp);
+        }
 
         let started = time();
+        let superseded = false;
         while (true) {
-            let pid = trim(fs.readfile(PID_FILE) || "");
-            if (pid == "" || !process_running(pid))
+            let active_sup = trim(fs.readfile(SUPERVISOR_PID_FILE) || "");
+            if (is_own_supervisor_pid(active_sup, my_pid, my_ppid))
+                saw_own_pid = true;
+            if (is_superseded(my_pid, my_ppid, saw_own_pid)) {
+                superseded = true;
+                stop_worker_pid(worker_pid);
+                if (worker_pid != "" && trim(fs.readfile(PID_FILE) || "") == worker_pid)
+                    fs.unlink(PID_FILE);
+                break;
+            }
+            if (worker_pid == "" || !process_running(worker_pid))
                 break;
             trim_worker_err_file();
             sleep(1000);
+        }
+        if (superseded) {
+            log_message("Watchdog supervisor superseded; exiting", "info");
+            break;
         }
 
         let lived = time() - started;

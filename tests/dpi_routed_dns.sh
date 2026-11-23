@@ -173,4 +173,138 @@ if [ -n "${TACHYON_CORE_RUNTIME_BIN:-}" ]; then
   done
 fi
 
+# Issue #486: routed_dns_use_global inherits global DNS servers and encrypted/UDP
+# fallbacks automatically, keeps section-local detour (no VPN detour leakage),
+# passes validation without routed_dns_server, and updates core signature.
+global_routed="$WORK_DIR/global-routed-desync.json"
+cat >"$global_routed" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "doh",
+    "dns_server": [ "1.1.1.1/dns-query", "dns.google/dns-query" ],
+    "dns_fallback_server": [ "8.8.4.4", "9.9.9.9" ],
+    "bootstrap_dns_server": [ "77.88.8.8" ],
+    "dns_detour_enabled": "1",
+    "dns_detour_section": "vpn",
+    "fakeip": "1",
+    "ipv6_mode": "ipv4_only"
+  },
+  "section": [
+    {
+      ".name": "dpi",
+      ".type": "section",
+      "enabled": "1",
+      "action": "desync",
+      "desync_preset": "auto",
+      "domain_suffix": [ "youtube.com" ],
+      "routed_dns_enabled": "1",
+      "routed_dns_use_global": "1"
+    },
+    {
+      ".name": "vpn",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1081#VpnNode" ],
+      "domain_suffix": [ "blocked.example" ]
+    }
+  ]
+}
+JSON
+
+VALIDATOR_UC="$TACHYON_LIB/config/validator.uc"
+if ! val_out="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-runtime-fixture "$global_routed" "{}" 2>&1)"; then
+  fail "validator must accept routed_dns_use_global=1 without routed_dns_server: $val_out"
+fi
+
+global_routed_missing_manual="$WORK_DIR/global-routed-missing-manual.json"
+ucode -e '
+  let d = json(require("fs").readfile(ARGV[0]));
+  d.section[0].routed_dns_use_global = "0";
+  print(sprintf("%J\n", d));
+' "$global_routed" >"$global_routed_missing_manual"
+if TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-runtime-fixture "$global_routed_missing_manual" "{}" >/dev/null 2>&1; then
+  fail "validator must still reject routed_dns_enabled=1 when routed_dns_use_global=0 and routed_dns_server is empty"
+fi
+
+mkdir -p "$global_routed.out.section-cache" "$global_routed.out.rulesets"
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
+  TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing-global-failover.json" \
+  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$global_routed" "$global_routed.out" 127.0.0.1 0 1
+
+ucode -e '
+  let cfg = json(require("fs").readfile(ARGV[0]));
+  let grp = null;
+  let members = {};
+  for (let s in cfg.dns.servers || []) {
+    if (s.tag == "dpi-routed-dns-server") grp = s;
+    members[s.tag] = s;
+  }
+  if (!grp || grp.type != "group" || length(grp.servers || []) != 2)
+    die("#486: dpi-routed-dns-server must be a group with 2 inherited DoH primary servers: " + sprintf("%J", grp) + "\n");
+  for (let tag in grp.servers) {
+    let m = members[tag];
+    if (!m || m.type != "https")
+      die("#486: inherited global encrypted member must be https (no plain UDP leak): " + sprintf("%J", m) + "\n");
+    if (m.detour != "dpi-out")
+      die("#486: desync routed DNS must keep section detour dpi-out (not vpn-out): " + sprintf("%J", m) + "\n");
+  }
+  let has_resolve = false;
+  for (let r in cfg.route.rules || []) {
+    if (r.action == "resolve" && r.server == "dpi-routed-dns-server")
+      has_resolve = true;
+  }
+  if (!has_resolve)
+    die("#486: route.rules must resolve desync traffic via dpi-routed-dns-server\n");
+' "$global_routed.out" || fail "#486 routed_dns_use_global with global DoH in desync section"
+
+global_routed_udp="$WORK_DIR/global-routed-udp.json"
+ucode -e '
+  let d = json(require("fs").readfile(ARGV[0]));
+  d.settings.dns_type = "udp";
+  d.settings.dns_server = [ "77.88.8.8" ];
+  print(sprintf("%J\n", d));
+' "$global_routed" >"$global_routed_udp"
+mkdir -p "$global_routed_udp.out.section-cache" "$global_routed_udp.out.rulesets"
+TACHYON_CORE_VERSION_FILE="$WORK_DIR/version" \
+  TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing-global-udp-failover.json" \
+  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture "$global_routed_udp" "$global_routed_udp.out" 127.0.0.1 0 1
+ucode -e '
+  let cfg = json(require("fs").readfile(ARGV[0]));
+  let grp = null;
+  let hosts = [];
+  let members = {};
+  for (let s in cfg.dns.servers || []) {
+    if (s.tag == "dpi-routed-dns-server") grp = s;
+    members[s.tag] = s;
+  }
+  if (!grp || grp.type != "group" || length(grp.servers || []) != 3)
+    die("#486 udp: dpi-routed-dns-server must inherit main+fallbacks+bootstrap when global DNS is UDP: " + sprintf("%J", grp) + "\n");
+  for (let tag in grp.servers) {
+    let m = members[tag];
+    if (!m || m.type != "udp" || m.detour != "dpi-out")
+      die("#486 udp: inherited member must be udp with dpi-out detour: " + sprintf("%J", m) + "\n");
+    push(hosts, m.server);
+  }
+  for (let expected in [ "77.88.8.8", "8.8.4.4", "9.9.9.9" ]) {
+    if (index(hosts, expected) < 0)
+      die("#486 udp: missing inherited server " + expected + " in " + sprintf("%J", hosts) + "\n");
+  }
+' "$global_routed_udp.out" || fail "#486 routed_dns_use_global with global UDP + fallbacks"
+
+sig_global_on="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$global_routed")"
+global_routed_off="$WORK_DIR/global-routed-off.json"
+ucode -e '
+  let d = json(require("fs").readfile(ARGV[0]));
+  d.section[0].routed_dns_use_global = "0";
+  d.section[0].routed_dns_type = "doh";
+  d.section[0].routed_dns_server = [ "https://9.9.9.9/dns-query" ];
+  print(sprintf("%J\n", d));
+' "$global_routed" >"$global_routed_off"
+sig_global_off="$(ucode -L "$TACHYON_LIB" "$STATE_UC" tachyon-core-signature-fixture "$global_routed_off")"
+[ "$sig_global_on" != "$sig_global_off" ] || fail "#486 toggling routed_dns_use_global must invalidate core reload signature"
+
 printf 'DPI routed DNS preserves FakeIP interception and invalidates core reload state\n'
