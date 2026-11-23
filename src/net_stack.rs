@@ -117,8 +117,12 @@ fn append_dns_redirect_chain(
     out: &mut String,
     store: &RouterStoreData,
     bypass_ifaces_literal: &str,
+    ipv6_active: bool,
 ) {
-    if !crate::store::effective_dns_intercept_all(store) {
+    let (src_v4, src_v6) = crate::config_gen::collect_source_aware_dns_cidrs(store, ipv6_active);
+    let has_source_dns = !src_v4.is_empty() || !src_v6.is_empty();
+    let eff_dns_intercept = crate::store::effective_dns_intercept_all(store);
+    if !eff_dns_intercept && !has_source_dns {
         return;
     }
     let _ = writeln!(
@@ -132,14 +136,39 @@ fn append_dns_redirect_chain(
     let _ = writeln!(out, "        iifname \"lo\" return");
     append_source_iface_guard(out, store);
     append_client_exclusion_returns(out, &store.settings.excluded_ips);
-    let _ = writeln!(
-        out,
-        "        tcp dport 53 redirect to :53 comment \"tachyon-dns-intercept\""
-    );
-    let _ = writeln!(
-        out,
-        "        udp dport 53 redirect to :53 comment \"tachyon-dns-intercept\""
-    );
+    let src_port = crate::config_gen::SOURCE_DNS_INBOUND_PORT;
+    if !src_v4.is_empty() {
+        let src_v4_lit = src_v4.join(", ");
+        let _ = writeln!(
+            out,
+            "        ip saddr {{ {src_v4_lit} }} tcp dport 53 redirect to :{src_port} comment \"tachyon-source-dns-intercept\""
+        );
+        let _ = writeln!(
+            out,
+            "        ip saddr {{ {src_v4_lit} }} udp dport 53 redirect to :{src_port} comment \"tachyon-source-dns-intercept\""
+        );
+    }
+    if ipv6_active && !src_v6.is_empty() {
+        let src_v6_lit = src_v6.join(", ");
+        let _ = writeln!(
+            out,
+            "        ip6 saddr {{ {src_v6_lit} }} tcp dport 53 redirect to :{src_port} comment \"tachyon-source-dns-intercept\""
+        );
+        let _ = writeln!(
+            out,
+            "        ip6 saddr {{ {src_v6_lit} }} udp dport 53 redirect to :{src_port} comment \"tachyon-source-dns-intercept\""
+        );
+    }
+    if eff_dns_intercept {
+        let _ = writeln!(
+            out,
+            "        tcp dport 53 redirect to :53 comment \"tachyon-dns-intercept\""
+        );
+        let _ = writeln!(
+            out,
+            "        udp dport 53 redirect to :53 comment \"tachyon-dns-intercept\""
+        );
+    }
     let _ = writeln!(out, "    }}");
 }
 
@@ -982,13 +1011,24 @@ fn guest_mode_has_active_rules(gm: &crate::store::GuestModeConfig) -> bool {
     }
 }
 
-fn format_guest_allowed_ports(gm: &crate::store::GuestModeConfig) -> Option<String> {
+fn has_source_aware_dns(store: &RouterStoreData, ipv6_active: bool) -> bool {
+    let (v4, v6) = crate::config_gen::collect_source_aware_dns_cidrs(store, ipv6_active);
+    !v4.is_empty() || !v6.is_empty()
+}
+
+fn format_guest_allowed_ports(
+    gm: &crate::store::GuestModeConfig,
+    include_source_dns_port: bool,
+) -> Option<String> {
     if gm.allowed_ports.is_empty() {
         return None;
     }
     let mut ports: Vec<u16> = gm.allowed_ports.clone();
     if !ports.contains(&53) {
         ports.push(53);
+    }
+    if include_source_dns_port && !ports.contains(&crate::config_gen::SOURCE_DNS_INBOUND_PORT) {
+        ports.push(crate::config_gen::SOURCE_DNS_INBOUND_PORT);
     }
     ports.sort_unstable();
     ports.dedup();
@@ -1012,7 +1052,13 @@ fn append_guest_zero_trust_chain(
     let (trusted_v4, trusted_v6, trusted_mac) =
         parse_guest_device_buckets(&store.guest_mode.trusted_devices);
     let admin_ports = collect_router_admin_ports(store);
-    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode);
+    let source_dns_active = has_source_aware_dns(store, ipv6_active);
+    let dns_ports_expr = if source_dns_active {
+        format!("{{ 53, {} }}", crate::config_gen::SOURCE_DNS_INBOUND_PORT)
+    } else {
+        "53".to_string()
+    };
+    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode, source_dns_active);
     let fakeip_v6_exempt_clause =
         if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
             format!(" ip6 daddr != {fakeip_v6}")
@@ -1063,12 +1109,12 @@ fn append_guest_zero_trust_chain(
     if store.guest_mode.isolate_lan {
         let _ = writeln!(
             out,
-            "        ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+            "        ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
         );
         if need_localv6 {
             let _ = writeln!(
                 out,
-                "        ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                "        ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
             );
         }
     }
@@ -1108,7 +1154,13 @@ fn append_selected_guest_rules(
     let (guests_v4, guests_v6, guests_mac) =
         parse_guest_device_buckets(&store.guest_mode.guest_devices);
     let admin_ports = collect_router_admin_ports(store);
-    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode);
+    let source_dns_active = has_source_aware_dns(store, ipv6_active);
+    let dns_ports_expr = if source_dns_active {
+        format!("{{ 53, {} }}", crate::config_gen::SOURCE_DNS_INBOUND_PORT)
+    } else {
+        "53".to_string()
+    };
+    let guest_allowed_ports = format_guest_allowed_ports(&store.guest_mode, source_dns_active);
     let fakeip_v6_exempt_clause =
         if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
             format!(" ip6 daddr != {fakeip_v6}")
@@ -1131,7 +1183,7 @@ fn append_selected_guest_rules(
         if store.guest_mode.isolate_lan {
             let _ = writeln!(
                 out,
-                "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
             );
         }
         if let Some(ref port_list) = guest_allowed_ports {
@@ -1171,7 +1223,7 @@ fn append_selected_guest_rules(
             if store.guest_mode.isolate_lan {
                 let _ = writeln!(
                     out,
-                    "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                    "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
                 );
             }
             if let Some(ref port_list) = guest_allowed_ports {
@@ -1217,12 +1269,12 @@ fn append_selected_guest_rules(
         if store.guest_mode.isolate_lan {
             let _ = writeln!(
                 out,
-                "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
             );
             if need_localv6 {
                 let _ = writeln!(
                     out,
-                    "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                    "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != {dns_ports_expr} drop"
                 );
             }
         }
@@ -1369,7 +1421,7 @@ fn compile_nftables_ruleset_full(
     if eff_webrtc {
         append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
     }
-    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
+    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal, ipv6_active);
     append_dnat_output_chains(
         &mut out,
         dnat_redirects,
@@ -1816,12 +1868,14 @@ fn compile_tun_guard_ruleset_full(
     let forward_guard = ipv6_state.is_leak_guard() || ipv6_mode_off;
     let eff_webrtc = crate::store::effective_webrtc_leak_protect(store);
     let eff_dns_intercept = crate::store::effective_dns_intercept_all(store);
+    let has_source_dns = has_source_aware_dns(store, ipv6_active);
     let fail_closed = direct_fallback_veto(store).is_some();
     let guest_active = guest_mode_has_active_rules(&store.guest_mode);
     let blocked_macs = collect_parental_blocked_macs(store);
     let bypass_macs = collect_bypass_macs(store, &blocked_macs);
     if !eff_webrtc
         && !eff_dns_intercept
+        && !has_source_dns
         && !store.settings.block_doh
         && !fail_closed
         && ipv6_active
@@ -1938,7 +1992,7 @@ fn compile_tun_guard_ruleset_full(
     }}"
         );
     }
-    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal);
+    append_dns_redirect_chain(&mut out, store, &bypass_ifaces_literal, ipv6_active);
     append_dnat_output_chains(
         &mut out,
         dnat_redirects,
@@ -6577,5 +6631,62 @@ table inet fw4 {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_source_aware_dns_redirect_for_bypass_routed_dns_client() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.dns_intercept_all = false;
+        store.settings.dns_intercept_all_mode = "off".to_string();
+        store.sections = vec![crate::store::RoutingSection {
+            id: "bypass_lan".to_string(),
+            enabled: true,
+            label: "Bypass LAN DoH".to_string(),
+            action: "bypass".to_string(),
+            connection_type: "bypass".to_string(),
+            source_ip_cidr: vec!["192.168.1.50".to_string()],
+            routed_dns_enabled: true,
+            routed_dns_type: "doh".to_string(),
+            routed_dns_servers: vec!["https://dns.google/dns-query".to_string()],
+            ..Default::default()
+        }];
+
+        let tproxy_nft = compile_nftables_ruleset_with_wan6(&store, false, &[]);
+        assert!(tproxy_nft.contains("chain dns_redirect"));
+        assert!(
+            tproxy_nft.contains(
+                "ip saddr { 192.168.1.50/32 } tcp dport 53 redirect to :1603 comment \"tachyon-source-dns-intercept\""
+            ),
+            "missing TCP 1603 redirect: {tproxy_nft}"
+        );
+        assert!(
+            tproxy_nft.contains(
+                "ip saddr { 192.168.1.50/32 } udp dport 53 redirect to :1603 comment \"tachyon-source-dns-intercept\""
+            ),
+            "missing UDP 1603 redirect: {tproxy_nft}"
+        );
+        assert!(
+            !tproxy_nft.contains("comment \"tachyon-dns-intercept\""),
+            "global intercept must remain off when dns_intercept_all=false"
+        );
+
+        store.settings.proxy_mode = "tun".to_string();
+        let tun_nft = compile_tun_guard_ruleset_with_wan6(&store, false, &[])
+            .expect("tun guard ruleset with source-aware dns");
+        assert!(tun_nft.contains("chain dns_redirect"));
+        assert!(tun_nft.contains("redirect to :1603 comment \"tachyon-source-dns-intercept\""));
+
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.dns_intercept_all = true;
+        store.settings.dns_intercept_all_mode = "on".to_string();
+        let both_nft = compile_nftables_ruleset_with_wan6(&store, false, &[]);
+        let pos_src = both_nft
+            .find("redirect to :1603 comment \"tachyon-source-dns-intercept\"")
+            .expect("source redirect");
+        let pos_global = both_nft
+            .find("tcp dport 53 redirect to :53 comment \"tachyon-dns-intercept\"")
+            .expect("global redirect");
+        assert!(pos_src < pos_global);
     }
 }

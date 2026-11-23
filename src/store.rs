@@ -1749,9 +1749,13 @@ pub struct RoutingSection {
     #[serde(default)]
     pub mixed_proxy_password: String,
     #[serde(default)]
+    pub dns_type: String,
+    #[serde(default)]
     pub routed_dns_enabled: bool,
     #[serde(default)]
     pub routed_dns_type: String,
+    #[serde(default, alias = "routed_dns_server")]
+    pub routed_dns_servers: Vec<String>,
     #[serde(default)]
     pub dns_servers: Vec<String>,
     #[serde(default)]
@@ -6684,8 +6688,17 @@ impl RouterStoreData {
                             .opt("mixed_proxy_password")
                             .unwrap_or("")
                             .to_string(),
+                        dns_type: b.opt("dns_type").unwrap_or("").to_string(),
                         routed_dns_enabled: b.opt("routed_dns_enabled").is_some_and(parse_bool),
-                        routed_dns_type: b.opt("routed_dns_type").unwrap_or("doh").to_string(),
+                        routed_dns_type: b.opt("routed_dns_type").unwrap_or("").to_string(),
+                        routed_dns_servers: {
+                            let l = b.list("routed_dns_server");
+                            if l.is_empty() {
+                                b.list("routed_dns_servers")
+                            } else {
+                                l
+                            }
+                        },
                         dns_servers: {
                             let l = b.list("dns_server");
                             if l.is_empty() {
@@ -8035,6 +8048,7 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 &[
                     ("rule_set_urls", "rule_set"),
                     ("geoip_codes", "geoip_country"),
+                    ("routed_dns_servers", "routed_dns_server"),
                     ("dns_servers", "dns_server"),
                     ("exclude_domains", "excluded_domains"),
                     ("fptn_access_token", "access_token"),
@@ -12263,5 +12277,134 @@ config outbound_source 'awg31_src'
         assert_eq!(r_src.fptn_sni, "src.example.com");
         assert_eq!(r_src.fptn_bypass_method, "sni");
         assert_eq!(r_src.fptn_preferred_server, "NL-1");
+    }
+
+    #[test]
+    fn test_routed_dns_server_and_dns_type_json_sections_roundtrip() {
+        let mut store = RouterStoreData::factory_defaults();
+        let scalar_json = serde_json::json!({
+            "bypass_routed": {
+                ".type": "section",
+                ".name": "bypass_routed",
+                ".index": 0,
+                "label": "Bypass LAN DoH",
+                "action": "bypass",
+                "connection_type": "bypass",
+                "enabled": "1",
+                "source_ip_cidr": ["192.168.1.50"],
+                "routed_dns_enabled": "1",
+                "routed_dns_type": "doh",
+                "routed_dns_server": "https://dns.google/dns-query"
+            },
+            "custom_dot": {
+                ".type": "section",
+                ".name": "custom_dot",
+                ".index": 1,
+                "label": "Custom DoT",
+                "action": "dns",
+                "connection_type": "dns",
+                "enabled": "1",
+                "dns_type": "dot",
+                "dns_server": ["1.1.1.1"]
+            }
+        });
+
+        store.import_from_json_sections(scalar_json.as_object().unwrap());
+
+        let sec_bypass = store
+            .sections
+            .iter()
+            .find(|s| s.id == "bypass_routed")
+            .expect("bypass_routed section");
+        assert!(sec_bypass.routed_dns_enabled);
+        assert_eq!(sec_bypass.routed_dns_type, "doh");
+        assert_eq!(
+            sec_bypass.routed_dns_servers,
+            vec!["https://dns.google/dns-query".to_string()]
+        );
+
+        let sec_dot = store
+            .sections
+            .iter()
+            .find(|s| s.id == "custom_dot")
+            .expect("custom_dot section");
+        assert_eq!(sec_dot.dns_type, "dot");
+        assert_eq!(sec_dot.dns_servers, vec!["1.1.1.1".to_string()]);
+
+        let synced_scalar = sync_store_to_json_sections(&store, Some(&scalar_json));
+        assert_eq!(
+            synced_scalar["bypass_routed"]["routed_dns_server"],
+            serde_json::json!(["https://dns.google/dns-query"])
+        );
+        assert_eq!(synced_scalar["custom_dot"]["dns_type"], "dot");
+        assert_eq!(
+            synced_scalar["custom_dot"]["dns_server"],
+            serde_json::json!(["1.1.1.1"])
+        );
+
+        let multi_json = serde_json::json!({
+            "bypass_routed": {
+                ".type": "section",
+                ".name": "bypass_routed",
+                ".index": 0,
+                "label": "Bypass LAN DoH",
+                "action": "bypass",
+                "connection_type": "bypass",
+                "enabled": "1",
+                "source_ip_cidr": ["192.168.1.50"],
+                "routed_dns_enabled": "1",
+                "routed_dns_type": "doh",
+                "routed_dns_server": [
+                    "https://dns.google/dns-query",
+                    "https://1.1.1.1/dns-query"
+                ]
+            }
+        });
+        store.import_from_json_sections(multi_json.as_object().unwrap());
+        let sec_multi = store
+            .sections
+            .iter()
+            .find(|s| s.id == "bypass_routed")
+            .expect("bypass_routed multi");
+        assert_eq!(
+            sec_multi.routed_dns_servers,
+            vec![
+                "https://dns.google/dns-query".to_string(),
+                "https://1.1.1.1/dns-query".to_string()
+            ]
+        );
+        let synced_multi = sync_store_to_json_sections(&store, Some(&multi_json));
+        assert_eq!(
+            synced_multi["bypass_routed"]["routed_dns_server"],
+            serde_json::json!(["https://dns.google/dns-query", "https://1.1.1.1/dns-query"])
+        );
+
+        let cleared_json = serde_json::json!({
+            "bypass_routed": {
+                ".type": "section",
+                ".name": "bypass_routed",
+                ".index": 0,
+                "label": "Bypass LAN DoH",
+                "action": "bypass",
+                "connection_type": "bypass",
+                "enabled": "1",
+                "source_ip_cidr": ["192.168.1.50"],
+                "routed_dns_enabled": "0"
+            }
+        });
+        store.import_from_json_sections(cleared_json.as_object().unwrap());
+        let sec_cleared = store
+            .sections
+            .iter()
+            .find(|s| s.id == "bypass_routed")
+            .expect("bypass_routed cleared");
+        assert!(sec_cleared.routed_dns_servers.is_empty());
+        let synced_cleared = sync_store_to_json_sections(&store, Some(&multi_json));
+        assert!(
+            synced_cleared["bypass_routed"]
+                .get("routed_dns_server")
+                .is_none(),
+            "cleared routed_dns_server must not resurrect from existing sections"
+        );
     }
 }

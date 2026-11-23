@@ -18,6 +18,7 @@ use crate::store::{
 };
 
 const DIRECT_DOWNLOAD_HTTP_CLIENT_TAG: &str = "tachyon-download-direct";
+pub(crate) const SOURCE_DNS_INBOUND_PORT: u16 = 1603;
 
 /// Universal URI parser converting a proxy link into a `ParsedProxyNode` with native `tachyon-core` JSON.
 pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
@@ -11738,6 +11739,8 @@ fn compile_core_config_with_rt_dir(
 ) -> anyhow::Result<Value> {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
+    let (source_dns_v4, source_dns_v6) = collect_source_aware_dns_cidrs(store, ipv6_active);
+    let has_source_dns = !source_dns_v4.is_empty() || !source_dns_v6.is_empty();
     let mut inbounds: Vec<Value> = Vec::new();
     let mut outbounds: Vec<Value> = Vec::new();
     let mut rules: Vec<Value> = Vec::new();
@@ -11791,6 +11794,14 @@ fn compile_core_config_with_rt_dir(
         "listen": "127.0.0.42",
         "listen_port": 53
     }));
+    if has_source_dns {
+        inbounds.push(json!({
+            "type": "direct",
+            "tag": "source-dns-in",
+            "listen": if ipv6_active { "::" } else { "0.0.0.0" },
+            "listen_port": SOURCE_DNS_INBOUND_PORT
+        }));
+    }
 
     // Optional Direct Bypass SOCKS5/HTTP port (`settings.direct_bypass_enabled`)
     if store.settings.direct_bypass_enabled && store.settings.direct_bypass_port > 0 {
@@ -11973,8 +11984,13 @@ fn compile_core_config_with_rt_dir(
     rules.push(json!({
         "action": "sniff"
     }));
+    let dns_hijack_inbounds: Vec<&'static str> = if has_source_dns {
+        vec!["dns-in", "source-dns-in"]
+    } else {
+        vec!["dns-in"]
+    };
     rules.push(json!({
-        "inbound": ["dns-in"],
+        "inbound": dns_hijack_inbounds,
         "action": "hijack-dns"
     }));
     if store.settings.block_doh || crate::store::effective_dns_intercept_all(store) {
@@ -12208,7 +12224,7 @@ fn compile_core_config_with_rt_dir(
     let mut section_outbound_tags: HashMap<String, String> = HashMap::new();
     let mut section_order_ids: Vec<(String, String)> = Vec::new();
     let mut per_sec_aaaa_dns_rules: Vec<Value> = Vec::new();
-    let mut custom_dns_sections: Vec<&RoutingSection> = Vec::new();
+    let mut section_dns_plans: Vec<SectionDnsPlan<'_>> = Vec::new();
     let mut emitted_mixed_ports: HashSet<u16> = HashSet::new();
     for inb in &inbounds {
         if let Some(p) = inb.get("listen_port").and_then(Value::as_u64)
@@ -12226,7 +12242,7 @@ fn compile_core_config_with_rt_dir(
     }
     for sec in store.sections.iter().filter(|s| s.enabled) {
         if sec.action == "dns" || sec.connection_type == "dns" {
-            custom_dns_sections.push(sec);
+            section_dns_plans.push(SectionDnsPlan::CustomDns(sec));
             continue;
         }
         let mut visited_secs = Vec::new();
@@ -12374,6 +12390,12 @@ fn compile_core_config_with_rt_dir(
         }
 
         let pre_resolve_ip = sec.connection_type == "desync" || sec.resolve_real_ip_for_routing;
+        let sec_routed_dns_enabled = sec.routed_dns_enabled
+            && !matches!(sec.action.as_str(), "hosts" | "block")
+            && !matches!(sec.connection_type.as_str(), "hosts" | "block")
+            && !resolve_routed_dns_servers(sec).is_empty();
+        let sec_routed_dns_tag = sec_routed_dns_enabled.then(|| format!("dns-routed-{}", sec.id));
+        let resolve_dns_server = sec_routed_dns_tag.as_deref().unwrap_or("dns-remote");
 
         let mut section_matched_any = false;
         let mut section_emitted_rules: Vec<Value> = Vec::new();
@@ -12445,6 +12467,7 @@ fn compile_core_config_with_rt_dir(
                 &mut seen_rule_sets,
                 ipv6_active,
                 pre_resolve_ip,
+                resolve_dns_server,
                 &mut outbounds,
             );
             if !cond_rules.is_empty() {
@@ -12510,6 +12533,7 @@ fn compile_core_config_with_rt_dir(
                 &mut seen_rule_sets,
                 ipv6_active,
                 pre_resolve_ip,
+                resolve_dns_server,
                 &mut outbounds,
             );
             if !cond_rules.is_empty() {
@@ -12536,6 +12560,18 @@ fn compile_core_config_with_rt_dir(
                 &sec_exc_dom_and_src_subs,
                 &sec_exc_route_only_subs,
             ));
+        }
+
+        let section_has_route_matchers = section_matched_any
+            || !sec.fully_routed_ips.is_empty()
+            || !sec.source_inbounds.is_empty()
+            || !sec.server_domain_rules.is_empty();
+        if sec_routed_dns_enabled {
+            section_dns_plans.push(SectionDnsPlan::RoutedDns {
+                sec,
+                target_outbound_tag: target_outbound_tag.clone(),
+                section_matched_any: section_has_route_matchers,
+            });
         }
 
         if ipv6_active
@@ -13329,61 +13365,158 @@ fn compile_core_config_with_rt_dir(
             Some(store.settings.dns_rewrite_ttl),
         ));
     }
-    if !custom_dns_sections.is_empty() {
+    if !section_dns_plans.is_empty() {
         let wan_dns = get_wan_dns_servers();
         let eff_dns_strategy = crate::store::effective_dns_strategy(&store.settings, ipv6_state);
-        for sec in &custom_dns_sections {
-            let (servers, wan_set, has_explicit) =
-                resolve_section_dns_servers(sec, &wan_dns, ipv6_active, &eff_dns_strategy);
-            if servers.is_empty() {
-                continue;
-            }
-            let raw_dns_type = if sec.routed_dns_type.trim().is_empty() {
-                "udp"
-            } else {
-                sec.routed_dns_type.trim()
-            };
-            let detour = if sec.dns_detour_enabled {
-                let target = sec.dns_detour_section.trim();
-                section_outbound_tags
-                    .get(target)
-                    .map(|t| t.as_str())
-                    .or((!target.is_empty()).then_some(target))
-            } else {
-                Some("direct")
-            };
-            let mut server_tags = Vec::new();
-            for (i, srv_val) in servers.iter().enumerate() {
-                let tag_name = if servers.len() <= 1 {
-                    format!("dns-sec-{}", sec.id)
-                } else {
-                    format!("dns-sec-{}-{}", sec.id, i + 1)
-                };
-                let eff_type = if wan_set.contains(srv_val) || (sec.dns_use_wan && !has_explicit) {
-                    "udp"
-                } else {
-                    raw_dns_type
-                };
-                dns_servers_vec.push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
-                server_tags.push(tag_name);
-            }
-            if let Some(primary_tag) = server_tags.first() {
-                collect_custom_dns_section_rules(
+        let expand_v4_mapped = has_source_dns && ipv6_active;
+        for plan in &section_dns_plans {
+            match plan {
+                SectionDnsPlan::CustomDns(sec) => {
+                    let (servers, wan_set, has_explicit) =
+                        resolve_section_dns_servers(sec, &wan_dns, ipv6_active, &eff_dns_strategy);
+                    if servers.is_empty() {
+                        continue;
+                    }
+                    let configured_type = if !sec.dns_type.trim().is_empty() {
+                        sec.dns_type.trim()
+                    } else if !sec.routed_dns_type.trim().is_empty() {
+                        sec.routed_dns_type.trim()
+                    } else {
+                        "udp"
+                    };
+                    let detour = if sec.dns_detour_enabled {
+                        let target = sec.dns_detour_section.trim();
+                        section_outbound_tags
+                            .get(target)
+                            .map(String::as_str)
+                            .or((!target.is_empty()).then_some(target))
+                    } else {
+                        Some("direct")
+                    };
+                    let base_tag = format!("dns-sec-{}", sec.id);
+                    let target_server_tag = if servers.len() == 1 {
+                        let srv_val = &servers[0];
+                        let eff_type =
+                            if wan_set.contains(srv_val) || (sec.dns_use_wan && !has_explicit) {
+                                "udp"
+                            } else {
+                                infer_dns_entry_type(srv_val, configured_type)
+                            };
+                        dns_servers_vec
+                            .push(build_dns_server_entry(&base_tag, eff_type, srv_val, detour));
+                        base_tag
+                    } else {
+                        let mut server_tags = Vec::with_capacity(servers.len());
+                        for (i, srv_val) in servers.iter().enumerate() {
+                            let tag_name = format!("{base_tag}-{}", i + 1);
+                            let eff_type = if wan_set.contains(srv_val)
+                                || (sec.dns_use_wan && !has_explicit)
+                            {
+                                "udp"
+                            } else {
+                                infer_dns_entry_type(srv_val, configured_type)
+                            };
+                            dns_servers_vec
+                                .push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
+                            server_tags.push(tag_name);
+                        }
+                        dns_servers_vec.push(json!({
+                            "type": "group",
+                            "tag": base_tag,
+                            "mode": "stable",
+                            "error_ttl": "30s",
+                            "timeout": "4s",
+                            "servers": server_tags
+                        }));
+                        base_tag
+                    };
+                    collect_custom_dns_section_rules(
+                        sec,
+                        &target_server_tag,
+                        store.settings.dns_rewrite_ttl,
+                        &cond_map,
+                        &store.settings.rulesets_dir,
+                        &store.settings.github_mirror,
+                        &mut rule_sets,
+                        &mut seen_rule_sets,
+                        ipv6_active,
+                        false,
+                        expand_v4_mapped,
+                        &mut dns_rules_vec,
+                    );
+                }
+                SectionDnsPlan::RoutedDns {
                     sec,
-                    primary_tag,
-                    store.settings.dns_rewrite_ttl,
-                    &cond_map,
-                    &store.settings.rulesets_dir,
-                    &store.settings.github_mirror,
-                    &mut rule_sets,
-                    &mut seen_rule_sets,
-                    ipv6_active,
-                    &mut dns_rules_vec,
-                );
+                    target_outbound_tag,
+                    section_matched_any,
+                } => {
+                    let servers = resolve_routed_dns_servers(sec);
+                    if servers.is_empty() {
+                        continue;
+                    }
+                    let configured_type = if sec.routed_dns_type.trim().is_empty() {
+                        "udp"
+                    } else {
+                        sec.routed_dns_type.trim()
+                    };
+                    let detour = if sec.action == "bypass"
+                        || sec.connection_type == "bypass"
+                        || target_outbound_tag == "direct"
+                        || target_outbound_tag == "block"
+                    {
+                        Some("direct")
+                    } else {
+                        Some(target_outbound_tag.as_str())
+                    };
+                    let base_tag = format!("dns-routed-{}", sec.id);
+                    let target_server_tag = if servers.len() == 1 {
+                        let srv_val = &servers[0];
+                        let eff_type = infer_dns_entry_type(srv_val, configured_type);
+                        dns_servers_vec
+                            .push(build_dns_server_entry(&base_tag, eff_type, srv_val, detour));
+                        base_tag
+                    } else {
+                        let mut server_tags = Vec::with_capacity(servers.len());
+                        for (i, srv_val) in servers.iter().enumerate() {
+                            let tag_name = format!("{base_tag}-{}", i + 1);
+                            let eff_type = infer_dns_entry_type(srv_val, configured_type);
+                            dns_servers_vec
+                                .push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
+                            server_tags.push(tag_name);
+                        }
+                        dns_servers_vec.push(json!({
+                            "type": "group",
+                            "tag": base_tag,
+                            "mode": "stable",
+                            "error_ttl": "30s",
+                            "timeout": "4s",
+                            "servers": server_tags
+                        }));
+                        base_tag
+                    };
+                    collect_custom_dns_section_rules(
+                        sec,
+                        &target_server_tag,
+                        store.settings.dns_rewrite_ttl,
+                        &cond_map,
+                        &store.settings.rulesets_dir,
+                        &store.settings.github_mirror,
+                        &mut rule_sets,
+                        &mut seen_rule_sets,
+                        ipv6_active,
+                        *section_matched_any,
+                        expand_v4_mapped,
+                        &mut dns_rules_vec,
+                    );
+                }
             }
         }
     }
-    if !lan_accessible_inbounds.is_empty() {
+    let mut local_dns_inbounds = lan_accessible_inbounds;
+    if has_source_dns && !local_dns_inbounds.iter().any(|s| s == "source-dns-in") {
+        local_dns_inbounds.push("source-dns-in".to_string());
+    }
+    if !local_dns_inbounds.is_empty() {
         if !dns_servers_vec
             .iter()
             .any(|s| s.get("tag").and_then(Value::as_str) == Some("dnsmasq-server"))
@@ -13399,7 +13532,7 @@ fn compile_core_config_with_rt_dir(
             0,
             json!({
                 "action": "route",
-                "inbound": lan_accessible_inbounds,
+                "inbound": local_dns_inbounds,
                 "domain_suffix": ["lan", "local", "internal", "home.arpa", "localdomain"],
                 "server": "dnsmasq-server"
             }),
@@ -13738,7 +13871,7 @@ fn extract_url_port(raw: &str, default_port: u16) -> u16 {
 
 fn extract_url_path(raw: &str) -> Option<String> {
     let s = raw.trim();
-    let without_scheme = s.split_once("://").map(|(_, r)| r)?;
+    let without_scheme = s.split_once("://").map_or(s, |(_, r)| r);
     let slash_idx = without_scheme.find('/')?;
     let path_and_more = &without_scheme[slash_idx..];
     let path = path_and_more.split(['?', '#']).next().unwrap_or("").trim();
@@ -14633,6 +14766,159 @@ fn resolve_section_dns_servers(
     (result, wan_set, has_explicit)
 }
 
+enum SectionDnsPlan<'a> {
+    CustomDns(&'a RoutingSection),
+    RoutedDns {
+        sec: &'a RoutingSection,
+        target_outbound_tag: String,
+        section_matched_any: bool,
+    },
+}
+
+fn resolve_routed_dns_servers(sec: &RoutingSection) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    let collect_from = |items: &[String], out: &mut Vec<String>, seen: &mut HashSet<String>| {
+        for srv in items {
+            for tok in srv.split([',', '\n', ' ', '\t']) {
+                let trimmed = tok.trim();
+                if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
+                    out.push(trimmed.to_string());
+                }
+            }
+        }
+    };
+    collect_from(&sec.routed_dns_servers, &mut result, &mut seen);
+    if result.is_empty() {
+        collect_from(&sec.dns_servers, &mut result, &mut seen);
+    }
+    result
+}
+
+fn infer_dns_entry_type<'a>(raw_server: &str, configured_type: &'a str) -> &'a str {
+    let lower = raw_server.trim().to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        "doh"
+    } else if lower.starts_with("tls://") || lower.starts_with("dot://") {
+        "dot"
+    } else if lower.starts_with("quic://") || lower.starts_with("doq://") {
+        "doq"
+    } else if lower.starts_with("udp://") {
+        "udp"
+    } else {
+        let trimmed = configured_type.trim();
+        if trimmed.is_empty() { "udp" } else { trimmed }
+    }
+}
+
+fn expand_ipv4_mapped_cidr(cidr: &str) -> Option<String> {
+    let trimmed = cidr.trim();
+    if trimmed.contains(':') {
+        return None;
+    }
+    let (ip_str, prefix) = match trimmed.split_once('/') {
+        Some((ip_part, mask_part)) => {
+            let p: u8 = mask_part.trim().parse().ok()?;
+            if p > 32 {
+                return None;
+            }
+            (ip_part.trim(), p)
+        }
+        None => (trimmed, 32),
+    };
+    let v4: std::net::Ipv4Addr = ip_str.parse().ok()?;
+    Some(format!("::ffff:{v4}/{}", 96 + u16::from(prefix)))
+}
+
+fn collect_condition_client_targets_recursive(
+    cond_id: &str,
+    cond_map: &HashMap<&str, &TrafficCondition>,
+    depth: usize,
+    out: &mut Vec<String>,
+) {
+    if depth > 8 {
+        return;
+    }
+    let Some(cond) = cond_map.get(cond_id.trim()).copied() else {
+        return;
+    };
+    if !cond.enabled {
+        return;
+    }
+    for tok in cond
+        .client_ips
+        .iter()
+        .chain(cond.source_macs.iter())
+        .chain(cond.exclude_client_ips.iter())
+    {
+        let trimmed = tok.trim();
+        if !trimmed.is_empty() {
+            out.push(trimmed.to_string());
+        }
+    }
+    for child_id in &cond.children {
+        collect_condition_client_targets_recursive(child_id, cond_map, depth + 1, out);
+    }
+}
+
+pub(crate) fn collect_source_aware_dns_cidrs(
+    store: &RouterStoreData,
+    ipv6_active: bool,
+) -> (Vec<String>, Vec<String>) {
+    let cond_map: HashMap<&str, &TrafficCondition> = store
+        .conditions
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect();
+    let mut raw_targets: Vec<String> = Vec::new();
+    for sec in store.sections.iter().filter(|s| s.enabled) {
+        let is_dns_sec = sec.action == "dns" || sec.connection_type == "dns";
+        let active_custom_dns = is_dns_sec && (sec.dns_use_wan || !sec.dns_servers.is_empty());
+        let active_routed_dns = !is_dns_sec
+            && !matches!(sec.action.as_str(), "hosts" | "block")
+            && !matches!(sec.connection_type.as_str(), "hosts" | "block")
+            && sec.routed_dns_enabled
+            && !resolve_routed_dns_servers(sec).is_empty();
+        if !active_custom_dns && !active_routed_dns {
+            continue;
+        }
+        for tok in sec
+            .fully_routed_ips
+            .iter()
+            .chain(sec.source_ip_cidr.iter())
+            .chain(sec.excluded_ips.iter())
+        {
+            let trimmed = tok.trim();
+            if !trimmed.is_empty() {
+                raw_targets.push(trimmed.to_string());
+            }
+        }
+        for cref in &sec.condition_refs {
+            collect_condition_client_targets_recursive(cref, &cond_map, 0, &mut raw_targets);
+        }
+    }
+    if raw_targets.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let cidrs = resolve_device_targets_to_cidrs(&raw_targets);
+    let mut v4 = Vec::new();
+    let mut v6 = Vec::new();
+    let mut seen = HashSet::new();
+    for cidr in cidrs {
+        if !seen.insert(cidr.clone()) {
+            continue;
+        }
+        if cidr.contains(':') {
+            if ipv6_active {
+                v6.push(cidr);
+            }
+        } else {
+            v4.push(cidr);
+        }
+    }
+    (v4, v6)
+}
+
 fn build_dns_server_entry(
     tag: &str,
     eff_type: &str,
@@ -14698,7 +14984,7 @@ fn build_dns_server_entry(
     {
         obj["detour"] = json!(det.trim());
     }
-    if !is_ip && obj.get("type").and_then(Value::as_str) != Some("udp") {
+    if !is_ip {
         obj["domain_resolver"] = json!("dns-bootstrap");
     }
     obj
@@ -14756,6 +15042,44 @@ fn collect_proxy_endpoint_domains(
     domains
 }
 
+fn dns_rule_has_matcher(obj: &Map<String, Value>) -> bool {
+    if obj.get("type").and_then(Value::as_str) == Some("logical") {
+        return obj
+            .get("rules")
+            .and_then(Value::as_array)
+            .is_some_and(|arr| !arr.is_empty());
+    }
+    obj.keys().any(|k| {
+        let key = k.as_str();
+        !RULE_ACTION_KEYS.contains(&key) && !matches!(key, "type" | "mode" | "invert")
+    })
+}
+
+fn expand_source_cidrs_with_v4_mapped(val: &mut Value) {
+    let Some(obj) = val.as_object_mut() else {
+        return;
+    };
+    if let Some(arr) = obj.get_mut("source_ip_cidr").and_then(Value::as_array_mut) {
+        let existing: Vec<String> = arr
+            .iter()
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect();
+        for cidr in existing {
+            if let Some(mapped) = expand_ipv4_mapped_cidr(&cidr)
+                && !arr.iter().any(|v| v.as_str() == Some(mapped.as_str()))
+            {
+                arr.push(json!(mapped));
+            }
+        }
+    }
+    if let Some(sub_rules) = obj.get_mut("rules").and_then(Value::as_array_mut) {
+        for sub in sub_rules {
+            expand_source_cidrs_with_v4_mapped(sub);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn collect_custom_dns_section_rules(
     sec: &RoutingSection,
@@ -14767,6 +15091,8 @@ fn collect_custom_dns_section_rules(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
+    section_matched_any: bool,
+    expand_v4_mapped: bool,
     out: &mut Vec<Value>,
 ) {
     let before = out.len();
@@ -14779,7 +15105,7 @@ fn collect_custom_dns_section_rules(
         rule_sets,
         seen_rule_sets,
         enable_ipv6,
-        false,
+        true,
         &mut tmp,
     );
 
@@ -14802,7 +15128,19 @@ fn collect_custom_dns_section_rules(
         }
     }
 
-    let mut sec_exc_dom_and_src_subs = build_excluded_domain_subrules(&sec.exclude_domains);
+    let mut sec_exc_domains = sec.exclude_domains.clone();
+    for cref in &sec.condition_refs {
+        if let Some(cond) = cond_map.get(cref.as_str()).copied()
+            && cond.enabled
+        {
+            for d in &cond.exclude_domains {
+                if !sec_exc_domains.contains(d) {
+                    sec_exc_domains.push(d.clone());
+                }
+            }
+        }
+    }
+    let mut sec_exc_dom_and_src_subs = build_excluded_domain_subrules(&sec_exc_domains);
     sec_exc_dom_and_src_subs.extend(build_excluded_source_ip_subrules(
         &sec.excluded_ips,
         enable_ipv6,
@@ -14810,15 +15148,18 @@ fn collect_custom_dns_section_rules(
 
     for mut rule in tmp {
         rewrite_rule_target(&mut rule, server_tag, rewrite_ttl);
-        if rule.as_object().is_some_and(|o| o.len() > 3) {
-            out.push(wrap_rule_with_inverted_subrules(
-                rule,
-                &sec_exc_dom_and_src_subs,
-                &[],
-            ));
+        if rule.as_object().is_some_and(dns_rule_has_matcher) {
+            let mut wrapped =
+                wrap_rule_with_inverted_subrules(rule, &sec_exc_dom_and_src_subs, &[]);
+            if expand_v4_mapped {
+                expand_source_cidrs_with_v4_mapped(&mut wrapped);
+            }
+            out.push(wrapped);
         }
     }
-    if (out.len() == before && sec.condition_refs.is_empty()) || sec.match_all {
+    if (out.len() == before && sec.condition_refs.is_empty() && !section_matched_any)
+        || sec.match_all
+    {
         let mut fallback = json!({
             "action": "route",
             "server": server_tag
@@ -14826,11 +15167,12 @@ fn collect_custom_dns_section_rules(
         if rewrite_ttl > 0 {
             fallback["rewrite_ttl"] = json!(rewrite_ttl);
         }
-        out.push(wrap_rule_with_inverted_subrules(
-            fallback,
-            &sec_exc_dom_and_src_subs,
-            &[],
-        ));
+        let mut wrapped =
+            wrap_rule_with_inverted_subrules(fallback, &sec_exc_dom_and_src_subs, &[]);
+        if expand_v4_mapped {
+            expand_source_cidrs_with_v4_mapped(&mut wrapped);
+        }
+        out.push(wrapped);
     }
 }
 
@@ -17981,6 +18323,7 @@ fn build_condition_rules(
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
     pre_resolve_ip: bool,
+    resolve_dns_server: &str,
     outbounds: &mut [Value],
 ) -> Vec<Value> {
     let (cond_exc_dom_subs, cond_exc_subs) =
@@ -18051,7 +18394,7 @@ fn build_condition_rules(
                 resolve_rule.insert(k.clone(), v.clone());
             }
             resolve_rule.insert("action".into(), json!("resolve"));
-            resolve_rule.insert("server".into(), json!("dns-remote"));
+            resolve_rule.insert("server".into(), json!(resolve_dns_server));
             out_rules.push(wrap_rule_with_inverted_subrules(
                 Value::Object(resolve_rule),
                 &cond_exc_dom_subs,
@@ -21959,6 +22302,7 @@ config timeserver 'ntp'
             &mut seen_rs,
             false,
             false,
+            "dns-remote",
             &mut outbounds,
         );
         assert!(
@@ -26304,5 +26648,245 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
             }
         }
         out
+    }
+
+    #[test]
+    fn test_bypass_section_routed_dns_doh_emits_server_rule_and_source_dns_inbound() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.dns_rewrite_ttl = 0;
+        store.sections = vec![RoutingSection {
+            id: "bypass_lan".to_string(),
+            enabled: true,
+            label: "Bypass LAN".to_string(),
+            action: "bypass".to_string(),
+            connection_type: "bypass".to_string(),
+            source_ip_cidr: vec!["192.168.1.50".to_string()],
+            routed_dns_enabled: true,
+            routed_dns_type: "doh".to_string(),
+            routed_dns_servers: vec!["https://dns.google/dns-query".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile bypass routed dns");
+        let dns_servers = cfg["dns"]["servers"].as_array().unwrap();
+        let routed_srv = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-routed-bypass_lan")
+            .expect("dns-routed-bypass_lan server");
+        assert_eq!(routed_srv["type"], "https");
+        assert_eq!(routed_srv["server"], "dns.google");
+        assert_eq!(routed_srv["server_port"], 443);
+        assert_eq!(routed_srv["path"], "/dns-query");
+        assert_eq!(routed_srv["detour"], "direct");
+        assert_eq!(routed_srv["domain_resolver"], "dns-bootstrap");
+        assert_eq!(routed_srv["tls"]["enabled"], true);
+        assert_eq!(routed_srv["tls"]["server_name"], "dns.google");
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        assert_eq!(dns_rules[0]["server"], "dnsmasq-server");
+        assert_eq!(dns_rules[0]["inbound"], json!(["source-dns-in"]));
+
+        let idx_routed = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-routed-bypass_lan"
+                    && r["source_ip_cidr"] == json!(["192.168.1.50/32"])
+            })
+            .expect("dns rule for dns-routed-bypass_lan with dns_rewrite_ttl=0");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_routed < idx_fakeip);
+
+        let inbounds = cfg["inbounds"].as_array().unwrap();
+        let source_in = inbounds
+            .iter()
+            .find(|i| i["tag"] == "source-dns-in")
+            .expect("source-dns-in inbound");
+        assert_eq!(source_in["type"], "direct");
+        assert_eq!(source_in["listen"], "0.0.0.0");
+        assert_eq!(source_in["listen_port"], 1603);
+
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(route_rules.iter().any(|r| {
+            r["action"] == "hijack-dns" && r["inbound"] == json!(["dns-in", "source-dns-in"])
+        }));
+        assert!(route_rules.iter().any(|r| {
+            r["outbound"] == "direct" && r["source_ip_cidr"] == json!(["192.168.1.50/32"])
+        }));
+
+        // Dual-stack IPv6 + fully_routed_ips must listen on `::` and include IPv4-mapped CIDR.
+        let mut store_v6 = RouterStoreData::default();
+        store_v6.settings.ipv6_mode = "dual_stack".to_string();
+        store_v6.settings.fakeip_enabled = true;
+        store_v6.sections = vec![RoutingSection {
+            id: "bypass_full_dev".to_string(),
+            enabled: true,
+            label: "Bypass Full Device".to_string(),
+            action: "bypass".to_string(),
+            connection_type: "bypass".to_string(),
+            fully_routed_ips: vec!["192.168.1.60".to_string()],
+            routed_dns_enabled: true,
+            routed_dns_type: "doh".to_string(),
+            routed_dns_servers: vec!["https://dns.google/dns-query".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg_v6 = compile_core_config_with_wan6(&store_v6, true).expect("compile dual-stack");
+        let source_in_v6 = cfg_v6["inbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["tag"] == "source-dns-in")
+            .expect("source-dns-in v6");
+        assert_eq!(source_in_v6["listen"], "::");
+        assert_eq!(source_in_v6["listen_port"], 1603);
+        let v6_rule = cfg_v6["dns"]["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["server"] == "dns-routed-bypass_full_dev")
+            .expect("dns-routed rule for fully_routed_ips");
+        assert_eq!(
+            v6_rule["source_ip_cidr"],
+            json!(["192.168.1.60/32", "::ffff:192.168.1.60/128"])
+        );
+    }
+
+    #[test]
+    fn test_proxy_desync_and_ip_only_routed_dns_and_custom_dns_type() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_vless".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#ProxyNode".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections = vec![
+            RoutingSection {
+                id: "proxy_sec".to_string(),
+                enabled: true,
+                label: "Proxy DoH".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_vless".to_string()],
+                user_domains: vec!["proxy.example".to_string()],
+                routed_dns_enabled: true,
+                routed_dns_type: "doh".to_string(),
+                routed_dns_servers: vec![
+                    "https://dns.google/dns-query".to_string(),
+                    "https://1.1.1.1/dns-query".to_string(),
+                ],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "desync_sec".to_string(),
+                enabled: true,
+                label: "Desync DoH".to_string(),
+                action: "desync".to_string(),
+                connection_type: "desync".to_string(),
+                user_domains: vec!["desync.example".to_string()],
+                routed_dns_enabled: true,
+                routed_dns_type: "doh".to_string(),
+                routed_dns_servers: vec!["https://dns.google/dns-query".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "ip_only_bypass".to_string(),
+                enabled: true,
+                label: "IP-only Bypass".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "bypass".to_string(),
+                user_subnets: vec!["203.0.113.0/24".to_string()],
+                routed_dns_enabled: true,
+                routed_dns_type: "doh".to_string(),
+                routed_dns_servers: vec!["https://dns.google/dns-query".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "dns_udp_sec".to_string(),
+                enabled: true,
+                label: "Custom UDP DNS".to_string(),
+                action: "dns".to_string(),
+                connection_type: "dns".to_string(),
+                dns_type: "udp".to_string(),
+                routed_dns_type: "doh".to_string(),
+                dns_servers: vec!["9.9.9.9".to_string()],
+                user_domains: vec!["udp.example".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg =
+            compile_core_config_with_wan6(&store, false).expect("compile routed dns variants");
+        let dns_servers = cfg["dns"]["servers"].as_array().unwrap();
+
+        let p1 = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-routed-proxy_sec-1")
+            .expect("proxy routed leaf 1");
+        assert_eq!(p1["detour"], "ProxyNode");
+        assert_eq!(p1["type"], "https");
+
+        let p2 = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-routed-proxy_sec-2")
+            .expect("proxy routed leaf 2");
+        assert_eq!(p2["detour"], "ProxyNode");
+
+        let pgroup = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-routed-proxy_sec")
+            .expect("proxy routed group");
+        assert_eq!(pgroup["type"], "group");
+        assert_eq!(
+            pgroup["servers"],
+            json!(["dns-routed-proxy_sec-1", "dns-routed-proxy_sec-2"])
+        );
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_proxy = dns_rules
+            .iter()
+            .position(|r| {
+                r["server"] == "dns-routed-proxy_sec"
+                    && r["domain_suffix"] == json!(["proxy.example"])
+            })
+            .expect("proxy domain routed dns rule");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_proxy < idx_fakeip);
+
+        // Desync resolve rule must use section's routed DNS tag.
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(route_rules.iter().any(|r| {
+            r["action"] == "resolve"
+                && r["server"] == "dns-routed-desync_sec"
+                && r["domain_suffix"] == json!(["desync.example"])
+        }));
+
+        // IP-only bypass section must not synthesize a global catch-all DNS rule.
+        assert!(
+            !dns_rules
+                .iter()
+                .any(|r| r["server"] == "dns-routed-ip_only_bypass"),
+            "IP-only section without match_all must not emit a catch-all DNS rule"
+        );
+
+        // Custom DNS section with dns_type=udp must not be overridden by stale routed_dns_type=doh.
+        let udp_srv = dns_servers
+            .iter()
+            .find(|s| s["tag"] == "dns-sec-dns_udp_sec")
+            .expect("custom udp dns server");
+        assert_eq!(udp_srv["type"], "udp");
+        assert_eq!(udp_srv["server"], "9.9.9.9");
     }
 }
