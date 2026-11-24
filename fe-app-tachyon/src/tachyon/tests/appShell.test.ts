@@ -317,6 +317,7 @@ vi.hoisted(() => {
 });
 
 import { renderTachyonDuckMascotSvg } from '../../icons/duckMascot';
+import { GlobalStyles } from '../../styles';
 import {
   collectAvailableComponentUpdates,
   getSidebarCollapsed,
@@ -1111,5 +1112,31 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     openBtn.click();
     expect(updatesSec.getAttribute('data-tab-active')).toBe('true');
     expect(banner.classList.contains('is-hidden')).toBe(true);
+  });
+
+  it('uses a two-row header layout and theme CSS variables in desktop top-bar mode', () => {
+    const desktopMediaStart = GlobalStyles.indexOf('@media (min-width: 861px)');
+    expect(desktopMediaStart).toBeGreaterThan(-1);
+    const desktopSection = GlobalStyles.slice(
+      desktopMediaStart,
+      desktopMediaStart + 2500,
+    );
+    expect(desktopSection).toContain('.tachyon-sidebar');
+    expect(desktopSection).toContain('flex-wrap: wrap !important;');
+    expect(desktopSection).toContain('.tachyon-sidebar__nav');
+    expect(desktopSection).toContain('order: 3;');
+    expect(desktopSection).toContain('flex: 1 0 100% !important;');
+
+    const topNavActiveStart = GlobalStyles.indexOf(
+      '.tachyon-shell-layout[data-sidebar-pos="top"] .tachyon-sidebar__nav-item.is-active',
+    );
+    expect(topNavActiveStart).toBeGreaterThan(-1);
+    const topNavActiveBlock = GlobalStyles.slice(
+      topNavActiveStart,
+      topNavActiveStart + 420,
+    );
+    expect(topNavActiveBlock).toContain('var(--text');
+    expect(topNavActiveBlock).toContain('var(--elevated');
+    expect(topNavActiveBlock).not.toContain('background: #222227');
   });
 });
