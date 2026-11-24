@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WIZARD_QUICK_PRESETS,
   detectQuickConnectionInput,
+  shouldAutoCreateWizardBalancer,
 } from '../connectionWizard';
 
 describe('connectionWizard Quick Start Presets', () => {
@@ -75,5 +76,14 @@ describe('connectionWizard Quick Start Presets', () => {
 
     const invalid = detectQuickConnectionInput('not-a-valid-link');
     expect(invalid.valid).toBe(false);
+  });
+
+  it('skips creating a redundant URLTest balancer for a single AWG or proxy link', () => {
+    expect(shouldAutoCreateWizardBalancer('amnezia_config', 1)).toBe(false);
+    expect(shouldAutoCreateWizardBalancer('proxy_links', 1)).toBe(false);
+    expect(shouldAutoCreateWizardBalancer('amnezia_config', 2)).toBe(true);
+    expect(shouldAutoCreateWizardBalancer('proxy_links', 3)).toBe(true);
+    expect(shouldAutoCreateWizardBalancer('subscription', 1)).toBe(true);
+    expect(shouldAutoCreateWizardBalancer('subscription', 0)).toBe(true);
   });
 });

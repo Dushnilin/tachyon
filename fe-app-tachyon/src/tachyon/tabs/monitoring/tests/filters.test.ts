@@ -93,6 +93,8 @@ describe('monitoring filters and resolution', () => {
     expect(routeDisplayNames['bypass-out']).toBe('Bypass');
     expect(routeDisplayNames['proxy_sec-out']).toBe('My Proxy');
     expect(serverDisplayNames['server-srv1-in']).toBe('Shadowsocks Inbound');
+    expect(serverDisplayNames['srv-srv1']).toBe('Shadowsocks Inbound');
+    expect(serverDisplayNames['srv-srv1-inner']).toBe('Shadowsocks Inbound');
 
     expect(getRouteDisplayNameByTag('bypass-out')).toBe('Bypass');
     expect(getRouteDisplayNameByTag('proxy_sec-1-out')).toBe('My Proxy');
@@ -100,6 +102,9 @@ describe('monitoring filters and resolution', () => {
     expect(getRouteDisplayNameByTag('nonexistent')).toBe('');
 
     expect(getServerDisplayNameByInboundTag('server-srv1-in')).toBe(
+      'Shadowsocks Inbound',
+    );
+    expect(getServerDisplayNameByInboundTag('srv-srv1')).toBe(
       'Shadowsocks Inbound',
     );
   });

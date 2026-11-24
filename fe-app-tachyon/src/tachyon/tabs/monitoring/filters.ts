@@ -1,4 +1,5 @@
 import { prettyBytes } from '../../../helpers/prettyBytes';
+import { humanizeRuntimeTag } from '../../helpers/humanizeTag';
 import { tr } from '../../helpers/i18n';
 import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { Tachyon } from '../../types';
@@ -303,6 +304,13 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
   const balancersBySection = new Map<string, string[]>();
   const uniqueSourceOwners = new Map<string, string | null>();
   const SOURCE_TAG_PREFIXES = [
+    'awgconf-',
+    'awg-',
+    'warp-',
+    'ovpn-',
+    'sub-',
+    'link-',
+    'fptn-',
     'iface-',
     'desync-',
     'wg-',
@@ -471,7 +479,10 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
         return;
       }
 
+      serverMap[`srv-${sectionName}`] = displayName;
+      serverMap[`srv-${sectionName}-inner`] = displayName;
       serverMap[`server-${sectionName}-in`] = displayName;
+      serverMap[`server-${sectionName}-in-inner`] = displayName;
     });
 
   routeDisplayNames = map;
@@ -562,7 +573,16 @@ export function getConnectionSourceIp(connection: ClashConnection): string {
 }
 
 export function getConnectionInboundTag(connection: ClashConnection): string {
-  const inbound = normalizeString(connection.metadata?.inbound);
+  const metaExtra = connection.metadata as
+    | (ClashConnection['metadata'] & {
+        inbound?: string;
+        inboundName?: string;
+        inboundTag?: string;
+      })
+    | undefined;
+  const inbound = normalizeString(
+    metaExtra?.inbound || metaExtra?.inboundName || metaExtra?.inboundTag,
+  );
   if (inbound) {
     return inbound;
   }
@@ -836,7 +856,10 @@ export function getRouteTooltip(
     !leafNode.startsWith('tailscale-sec-') &&
     !GENERIC_ROUTE_TAGS.has(leafNode.toLowerCase())
   ) {
-    lines.push(`${tr('Узел', 'Node')}: ${leafNode}`);
+    const cleanLeaf = humanizeRuntimeTag(leafNode, leafDisplay, {
+      directBlockLabels: false,
+    });
+    lines.push(`${tr('Узел', 'Node')}: ${cleanLeaf}`);
   }
 
   return lines.join('\n') || resolvedRoute || '-';

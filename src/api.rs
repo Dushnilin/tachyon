@@ -58,17 +58,57 @@ async fn bind_panel_listener(
     Ok((listener, addr))
 }
 
-pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow::Result<()> {
-    let (listen_addr, port, base_path) = {
-        let d = state.data.read().await;
-        (
-            d.settings.listen_addr.clone(),
-            d.settings.listen_port,
-            d.settings.web_base_path.clone(),
-        )
-    };
+pub async fn bind_panel_listener_with_retry(
+    listen_addr: &str,
+    port: u16,
+) -> anyhow::Result<(TcpListener, String)> {
+    let mut last_err: Option<std::io::Error> = None;
+    for attempt in 0..10 {
+        match bind_panel_listener(listen_addr, port).await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                let io_err = e
+                    .downcast_ref::<std::io::Error>()
+                    .map(|ie| (ie.kind(), ie.to_string()));
+                let retryable = matches!(
+                    io_err.as_ref().map(|(k, _)| k),
+                    Some(std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::AddrInUse)
+                );
+                if retryable && attempt < 9 {
+                    last_err = Some(std::io::Error::other(e.to_string()));
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+                if !matches!(listen_addr.trim(), "0.0.0.0" | "::" | "[::]" | "")
+                    && matches!(
+                        io_err.as_ref().map(|(k, _)| k),
+                        Some(std::io::ErrorKind::AddrNotAvailable)
+                    )
+                {
+                    eprintln!(
+                        "[tachyon] listen_addr {listen_addr}:{port} unavailable ({e:#}); falling back to 0.0.0.0:{port}"
+                    );
+                    return bind_panel_listener("0.0.0.0", port).await;
+                }
+                if let Some(prev) = last_err {
+                    return Err(prev.into());
+                }
+                return Err(e);
+            }
+        }
+    }
+    bind_panel_listener("0.0.0.0", port).await
+}
+
+pub async fn run_server_on_listener(
+    listener: TcpListener,
+    bound_addr: String,
+    base_path: String,
+    state: Arc<AppState>,
+    core: Arc<CoreManager>,
+) -> anyhow::Result<()> {
+    let port = listener.local_addr().map(|a| a.port()).unwrap_or(1680);
     ubus_bridge::sync_router_luci_launcher(port, &base_path).await;
-    let (listener, bound_addr) = bind_panel_listener(&listen_addr, port).await?;
     eprintln!("[tachyon] Router Panel listening on http://{bound_addr}{base_path}");
     let conn_sem = Arc::new(tokio::sync::Semaphore::new(256));
 
@@ -94,6 +134,20 @@ pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow:
             .await;
         });
     }
+}
+
+#[allow(dead_code)]
+pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow::Result<()> {
+    let (listen_addr, port, base_path) = {
+        let d = state.data.read().await;
+        (
+            d.settings.listen_addr.clone(),
+            d.settings.listen_port,
+            d.settings.web_base_path.clone(),
+        )
+    };
+    let (listener, bound_addr) = bind_panel_listener_with_retry(&listen_addr, port).await?;
+    run_server_on_listener(listener, bound_addr, base_path, state, core).await
 }
 
 async fn handle_conn(
@@ -235,10 +289,26 @@ async fn handle_conn(
         }
     }
 
-    // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) at `/` and `/cgi-bin/luci/admin/services/tachyon*`
+    let token = extract_token(&head_str);
+    let local_ipc_hdr = parse_header(&head_str, "x-tachyon-local-token").unwrap_or_default();
+
+    // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) or login page at `/` and `/cgi-bin/luci/admin/services/tachyon*`
     if method == "GET" {
         if path == "/" || path == "/index.html" || path == "/cgi-bin/luci" {
-            let ui_lang = state.data.read().await.settings.lang.clone();
+            let (ui_lang, auth_enabled, auth_mode) = {
+                let d = state.data.read().await;
+                (
+                    d.settings.lang.clone(),
+                    d.settings.panel_auth_enabled,
+                    d.settings.panel_auth_mode.clone(),
+                )
+            };
+            if auth_enabled
+                && !is_authenticated(state, &token, &local_ipc_hdr, peer_ip, local_ip).await
+            {
+                let html = ubus_bridge::serve_login_page(&ui_lang, &auth_mode);
+                return send_html(&mut stream, &html).await;
+            }
             let html = ubus_bridge::serve_luci_shell(None, &ui_lang);
             return send_html(&mut stream, &html).await;
         }
@@ -247,10 +317,23 @@ async fn handle_conn(
             || path.starts_with("/cgi-bin/luci/admin/services/tachyon/")
             || path.starts_with("/admin/services/tachyon/")
         {
+            let (ui_lang, auth_enabled, auth_mode) = {
+                let d = state.data.read().await;
+                (
+                    d.settings.lang.clone(),
+                    d.settings.panel_auth_enabled,
+                    d.settings.panel_auth_mode.clone(),
+                )
+            };
+            if auth_enabled
+                && !is_authenticated(state, &token, &local_ipc_hdr, peer_ip, local_ip).await
+            {
+                let html = ubus_bridge::serve_login_page(&ui_lang, &auth_mode);
+                return send_html(&mut stream, &html).await;
+            }
             let sub = path
                 .strip_prefix("/cgi-bin/luci/admin/services/tachyon")
                 .or_else(|| path.strip_prefix("/admin/services/tachyon"));
-            let ui_lang = state.data.read().await.settings.lang.clone();
             let html = ubus_bridge::serve_luci_shell(sub, &ui_lang);
             return send_html(&mut stream, &html).await;
         }
@@ -315,6 +398,12 @@ async fn handle_conn(
             .await;
         }
         if path == "/yacd" || path.starts_with("/yacd/") {
+            let auth_enabled = state.data.read().await.settings.panel_auth_enabled;
+            if auth_enabled
+                && !is_authenticated(state, &token, &local_ipc_hdr, peer_ip, local_ip).await
+            {
+                return send_redirect(&mut stream, "/").await;
+            }
             let rel_raw = path
                 .strip_prefix("/yacd")
                 .unwrap_or("")
@@ -438,15 +527,32 @@ async fn handle_conn(
         return send_plain(&mut stream, &payload).await;
     }
 
-    // Public auth login endpoint
+    // Public auth status, login, and logout endpoints
+    if method == "GET" && path == "/api/auth/status" {
+        return handle_auth_status(
+            &mut stream,
+            state,
+            &token,
+            &local_ipc_hdr,
+            peer_ip,
+            local_ip,
+        )
+        .await;
+    }
     if method == "POST" && (path == "/api/login" || path == "/login") {
         return handle_login(&mut stream, state, body, peer_ip).await;
     }
+    if method == "POST" && (path == "/api/logout" || path == "/logout") {
+        return handle_logout(&mut stream, state, &token).await;
+    }
 
-    // Authenticate session token, Agent API Bearer token, or trusted LAN/Tailscale peer
-    let token = extract_token(&head_str);
-    if !is_authenticated(state, &token, peer_ip, local_ip).await {
+    // Authenticate session token, local IPC token, Agent API Bearer token, or trusted LAN/Tailscale peer (when auth is disabled)
+    if !is_authenticated(state, &token, &local_ipc_hdr, peer_ip, local_ip).await {
         return send_json(&mut stream, 401, &json!({"error": "unauthorized"})).await;
+    }
+
+    if method == "POST" && path == "/api/auth/credentials" {
+        return handle_update_credentials(&mut stream, state, &token, body).await;
     }
 
     // Model Context Protocol endpoint
@@ -2634,6 +2740,286 @@ fn record_login_attempt(
     }
 }
 
+async fn verify_luci_ubus_session(username: &str, password: &str) -> Result<bool, std::io::Error> {
+    let payload = json!({
+        "username": username,
+        "password": password,
+    })
+    .to_string();
+    let mut cmd = tokio::process::Command::new("ubus");
+    cmd.args(["call", "session", "login", &payload]);
+    let out = tokio::time::timeout(Duration::from_secs(3), cmd.output())
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ubus timed out"))??;
+    if !out.status.success() {
+        return Ok(false);
+    }
+    let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) else {
+        return Ok(false);
+    };
+    let sid = val
+        .get("ubus_rpc_session")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if sid.is_empty() || sid == "00000000000000000000000000000000" {
+        return Ok(false);
+    }
+    let destroy_payload = json!({ "ubus_rpc_session": sid }).to_string();
+    let _ = tokio::process::Command::new("ubus")
+        .args(["call", "session", "destroy", &destroy_payload])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    Ok(true)
+}
+
+async fn verify_panel_credentials(state: &Arc<AppState>, username: &str, password: &str) -> bool {
+    if username.trim().is_empty() {
+        return false;
+    }
+    let (mode, expected_user, pass_hash, pass_salt) = {
+        let d = state.data.read().await;
+        (
+            crate::store::normalize_panel_auth_mode(&d.settings.panel_auth_mode),
+            d.settings.admin_user.clone(),
+            d.settings.admin_pass_hash.clone(),
+            d.settings.admin_pass_salt.clone(),
+        )
+    };
+    if mode == "luci" {
+        match verify_luci_ubus_session(username.trim(), password).await {
+            Ok(matched) => return matched,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Non-OpenWrt dev/test environment without `ubus`: use stored admin credentials.
+            }
+            Err(_) => return false,
+        }
+    }
+    crypto_gen::constant_time_eq(username.trim(), &expected_user)
+        && crypto_gen::verify_password(password, &pass_salt, &pass_hash)
+}
+
+async fn handle_auth_status(
+    stream: &mut TcpStream,
+    state: &Arc<AppState>,
+    token: &str,
+    local_ipc_hdr: &str,
+    peer_ip: &str,
+    local_ip: Option<std::net::IpAddr>,
+) -> anyhow::Result<()> {
+    let authed = is_authenticated(state, token, local_ipc_hdr, peer_ip, local_ip).await;
+    let (auth_enabled, auth_mode, stored_admin) = {
+        let d = state.data.read().await;
+        (
+            d.settings.panel_auth_enabled,
+            crate::store::normalize_panel_auth_mode(&d.settings.panel_auth_mode),
+            d.settings.admin_user.clone(),
+        )
+    };
+    let username = if authed {
+        let from_session = if !token.is_empty() {
+            state.session_users.read().await.get(token).cloned()
+        } else {
+            None
+        };
+        Some(from_session.unwrap_or_else(|| {
+            if auth_mode == "custom" {
+                stored_admin
+            } else {
+                "root".to_string()
+            }
+        }))
+    } else {
+        None
+    };
+    send_json(
+        stream,
+        200,
+        &json!({
+            "ok": true,
+            "authenticated": authed,
+            "auth_enabled": auth_enabled,
+            "auth_mode": auth_mode,
+            "username": username,
+        }),
+    )
+    .await
+}
+
+async fn handle_logout(
+    stream: &mut TcpStream,
+    state: &Arc<AppState>,
+    token: &str,
+) -> anyhow::Result<()> {
+    if !token.is_empty() {
+        state.sessions.write().await.remove(token);
+        state.session_users.write().await.remove(token);
+    }
+    let body_bytes = serde_json::to_vec(&json!({"ok": true}))?;
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nSet-Cookie: tachyon_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        body_bytes.len()
+    );
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(&body_bytes).await?;
+    Ok(())
+}
+
+async fn handle_update_credentials(
+    stream: &mut TcpStream,
+    state: &Arc<AppState>,
+    token: &str,
+    body: &[u8],
+) -> anyhow::Result<()> {
+    let Ok(val) = serde_json::from_slice::<Value>(body) else {
+        return send_json(stream, 400, &json!({"ok": false, "error": "invalid json"})).await;
+    };
+    let requested_mode = val
+        .get("mode")
+        .or_else(|| val.get("auth_mode"))
+        .and_then(Value::as_str)
+        .map(crate::store::normalize_panel_auth_mode);
+    let requested_enabled = val.get("auth_enabled").and_then(Value::as_bool);
+    let requested_user = val
+        .get("username")
+        .and_then(Value::as_str)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let requested_new_pass = val
+        .get("new_password")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+
+    let (cur_enabled, cur_mode, stored_user) = {
+        let d = state.data.read().await;
+        (
+            d.settings.panel_auth_enabled,
+            crate::store::normalize_panel_auth_mode(&d.settings.panel_auth_mode),
+            d.settings.admin_user.clone(),
+        )
+    };
+    let cur_login_user = if cur_mode == "custom" {
+        stored_user.clone()
+    } else {
+        state
+            .session_users
+            .read()
+            .await
+            .get(token)
+            .cloned()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "root".to_string())
+    };
+
+    let disables_auth = cur_enabled && requested_enabled == Some(false);
+    let switches_mode = requested_mode.as_ref().is_some_and(|m| *m != cur_mode);
+    let changes_creds = requested_user.is_some() || requested_new_pass.is_some();
+    if cur_enabled && (disables_auth || switches_mode || changes_creds) {
+        let Some(cur_pw) = val.get("current_password").and_then(Value::as_str) else {
+            return send_json(
+                stream,
+                403,
+                &json!({"ok": false, "error": "Current password is required"}),
+            )
+            .await;
+        };
+        if !verify_panel_credentials(state, &cur_login_user, cur_pw).await {
+            return send_json(
+                stream,
+                403,
+                &json!({"ok": false, "error": "Invalid current password"}),
+            )
+            .await;
+        }
+    }
+
+    let target_mode = requested_mode.unwrap_or(cur_mode.clone());
+    if target_mode == "custom" {
+        if let Some(ref u) = requested_user
+            && (u.len() > 64 || u.chars().any(char::is_control))
+        {
+            return send_json(
+                stream,
+                400,
+                &json!({"ok": false, "error": "Invalid username"}),
+            )
+            .await;
+        }
+        if let Some(pw) = requested_new_pass
+            && (pw.trim().is_empty() || pw.chars().count() < 4)
+        {
+            return send_json(
+                stream,
+                400,
+                &json!({"ok": false, "error": "Password must be at least 4 characters"}),
+            )
+            .await;
+        }
+        if cur_mode != "custom" && (requested_user.is_none() || requested_new_pass.is_none()) {
+            return send_json(
+                stream,
+                400,
+                &json!({"ok": false, "error": "Username and password are required for custom mode"}),
+            )
+            .await;
+        }
+    }
+
+    let (eff_enabled, eff_mode, eff_user) = {
+        let mut d = state.data.write().await;
+        if target_mode == "custom" {
+            if let Some(u) = requested_user {
+                d.settings.admin_user = u;
+            }
+            if let Some(pw) = requested_new_pass {
+                let salt = crypto_gen::generate_hex(8);
+                let hash = crypto_gen::hash_password(pw, &salt);
+                d.settings.admin_pass_salt = salt;
+                d.settings.admin_pass_hash = hash;
+            }
+        }
+        d.settings.panel_auth_mode = target_mode.clone();
+        if let Some(en) = requested_enabled {
+            d.settings.panel_auth_enabled = en;
+        }
+        (
+            d.settings.panel_auth_enabled,
+            d.settings.panel_auth_mode.clone(),
+            if d.settings.panel_auth_mode == "custom" {
+                d.settings.admin_user.clone()
+            } else {
+                cur_login_user.clone()
+            },
+        )
+    };
+    state.save().await?;
+
+    {
+        let mut sessions = state.sessions.write().await;
+        sessions.retain(|k, _| !token.is_empty() && k == token);
+    }
+    {
+        let mut users = state.session_users.write().await;
+        users.retain(|k, _| !token.is_empty() && k == token);
+        if !token.is_empty() {
+            users.insert(token.to_string(), eff_user.clone());
+        }
+    }
+
+    send_json(
+        stream,
+        200,
+        &json!({
+            "ok": true,
+            "auth_enabled": eff_enabled,
+            "auth_mode": eff_mode,
+            "username": eff_user,
+        }),
+    )
+    .await
+}
+
 async fn handle_login(
     stream: &mut TcpStream,
     state: &Arc<AppState>,
@@ -2647,27 +3033,23 @@ async fn handle_login(
     let Ok(val) = serde_json::from_slice::<Value>(body) else {
         return send_json(stream, 400, &json!({"error": "invalid json"})).await;
     };
-    let user = val.get("username").and_then(Value::as_str).unwrap_or("");
+    let user = val
+        .get("username")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
     let pass = val.get("password").and_then(Value::as_str).unwrap_or("");
 
-    let (expected_user, pass_hash, pass_salt, session_ttl) = {
+    let session_ttl = {
         let d = state.data.read().await;
-        let ttl = if d.settings.session_ttl_secs > 0 {
+        if d.settings.session_ttl_secs > 0 {
             d.settings.session_ttl_secs as i64
         } else {
             SESSION_TTL_SECS
-        };
-        (
-            d.settings.admin_user.clone(),
-            d.settings.admin_pass_hash.clone(),
-            d.settings.admin_pass_salt.clone(),
-            ttl,
-        )
+        }
     };
 
-    if !crypto_gen::constant_time_eq(user, &expected_user)
-        || !crypto_gen::verify_password(pass, &pass_salt, &pass_hash)
-    {
+    if !verify_panel_credentials(state, user, pass).await {
         record_login_attempt(login_rate_limit_map(), peer_ip, now, true);
         state
             .live
@@ -2689,8 +3071,15 @@ async fn handle_login(
                 .map(|(k, _)| k.clone())
         {
             sessions.remove(&oldest);
+            state.session_users.write().await.remove(&oldest);
         }
         sessions.insert(token.clone(), now + session_ttl);
+    }
+    {
+        let mut users = state.session_users.write().await;
+        let sessions = state.sessions.read().await;
+        users.retain(|k, _| sessions.contains_key(k));
+        users.insert(token.clone(), user.to_string());
     }
 
     let body_bytes = serde_json::to_vec(&json!({"ok": true, "token": token}))?;
@@ -3072,50 +3461,61 @@ fn is_tailscale_peer_trusted(
 async fn is_authenticated(
     state: &Arc<AppState>,
     token: &str,
+    local_ipc_hdr: &str,
     peer_ip: &str,
     local_ip: Option<std::net::IpAddr>,
 ) -> bool {
-    let (ts_mode, active_ts_iface, ts_store_enabled, agent_tok) = {
+    if !local_ipc_hdr.is_empty()
+        && !state.local_ipc_token.is_empty()
+        && crypto_gen::constant_time_eq(local_ipc_hdr, &state.local_ipc_token)
+    {
+        return true;
+    }
+    let (panel_auth_enabled, ts_mode, active_ts_iface, ts_store_enabled, agent_tok) = {
         let d = state.data.read().await;
         (
+            d.settings.panel_auth_enabled,
             crate::store::normalize_auto_mode(&d.settings.tailscale_web_access),
             has_active_tailscale_interface(&d),
             crate::net_stack::is_tailscale_enabled(&d),
             d.settings.agent_api_token.clone(),
         )
     };
-    if let Some(peer_addr) = parse_peer_ip(peer_ip) {
-        if is_tailscale_ip_addr(peer_addr) {
-            let ts_zone = has_tailscale_firewall_zone();
-            if is_tailscale_peer_trusted(
-                peer_addr,
-                local_ip,
-                &ts_mode,
-                active_ts_iface,
-                ts_store_enabled,
-                ts_zone,
-            ) {
+    if !token.is_empty() {
+        let now = unix_now_secs();
+        let valid_session = {
+            let sessions = state.sessions.read().await;
+            sessions.get(token).is_some_and(|&exp| exp > now)
+        };
+        if valid_session {
+            return true;
+        }
+        if !agent_tok.is_empty() && crypto_gen::constant_time_eq(token, &agent_tok) {
+            return true;
+        }
+    }
+    if !panel_auth_enabled {
+        if let Some(peer_addr) = parse_peer_ip(peer_ip) {
+            if is_tailscale_ip_addr(peer_addr) {
+                let ts_zone = has_tailscale_firewall_zone();
+                if is_tailscale_peer_trusted(
+                    peer_addr,
+                    local_ip,
+                    &ts_mode,
+                    active_ts_iface,
+                    ts_store_enabled,
+                    ts_zone,
+                ) {
+                    return true;
+                }
+            } else if is_trusted_lan_addr(peer_addr) {
                 return true;
             }
-        } else if is_trusted_lan_addr(peer_addr) {
-            return true;
-        }
-    } else if peer_ip.trim().eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    if token.is_empty() {
-        return false;
-    }
-    let now = unix_now_secs();
-    {
-        let sessions = state.sessions.read().await;
-        if let Some(&exp) = sessions.get(token)
-            && exp > now
-        {
+        } else if peer_ip.trim().eq_ignore_ascii_case("localhost") {
             return true;
         }
     }
-    !agent_tok.is_empty() && crypto_gen::constant_time_eq(token, &agent_tok)
+    false
 }
 
 fn extract_token(head: &str) -> String {
@@ -3206,6 +3606,14 @@ async fn send_html_forbidden(stream: &mut TcpStream, lang: &str) -> anyhow::Resu
     );
     stream.write_all(head.as_bytes()).await?;
     stream.write_all(bytes).await?;
+    Ok(())
+}
+
+async fn send_redirect(stream: &mut TcpStream, location: &str) -> anyhow::Result<()> {
+    let head = format!(
+        "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await?;
     Ok(())
 }
 
@@ -3447,6 +3855,8 @@ fn apply_settings_save_payload(
             "admin_pass_hash",
             "admin_pass_salt",
             "session_secret",
+            "panel_auth_enabled",
+            "panel_auth_mode",
             "core_bin_path",
             "core_config_path",
             "agent_api_token",
@@ -4582,5 +4992,180 @@ mod tests {
         assert!(!is_safe_clash_connection_id("foo/bar"));
         assert!(!is_safe_clash_connection_id("foo?timeout=1"));
         assert!(!is_safe_clash_connection_id("foo bar"));
+    }
+
+    #[test]
+    fn test_panel_auth_blocks_lan_without_session_allows_ipc_and_switches_modes() {
+        std::thread::Builder::new()
+            .name("api-panel-auth-test".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(Box::pin(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+                    let dir = std::env::temp_dir().join(format!(
+                        "tachyon-api-panelauth-{}-{:08x}",
+                        std::process::id(),
+                        rand::random::<u32>()
+                    ));
+                    let _ = std::fs::remove_dir_all(&dir);
+                    let state = AppState::load_or_create(dir.join("tachyon.json")).unwrap();
+                    {
+                        let mut d = state.data.write().await;
+                        d.settings.panel_auth_enabled = true;
+                        d.settings.panel_auth_mode = "custom".to_string();
+                        d.settings.admin_user = "routerop".to_string();
+                        let salt = crypto_gen::generate_hex(8);
+                        d.settings.admin_pass_hash = crypto_gen::hash_password("secret-123", &salt);
+                        d.settings.admin_pass_salt = salt;
+                    }
+                    let core = CoreManager::new(Arc::clone(&state));
+                    let (listener, _bound) =
+                        bind_panel_listener_with_retry("127.0.0.1", 0).await.unwrap();
+                    let addr = listener.local_addr().unwrap();
+
+                    let send_lan = |req: String| {
+                        let st = Arc::clone(&state);
+                        let cr = Arc::clone(&core);
+                        let l_ref = &listener;
+                        async move {
+                            let accept_fut = l_ref.accept();
+                            let connect_fut = tokio::net::TcpStream::connect(addr);
+                            let (srv_res, cli_res) = tokio::join!(accept_fut, connect_fut);
+                            let (srv_stream, _) = srv_res.unwrap();
+                            let mut cli_stream = cli_res.unwrap();
+                            let h = tokio::task::spawn_local(Box::pin(async move {
+                                let _ = Box::pin(handle_conn(
+                                    srv_stream,
+                                    &st,
+                                    &cr,
+                                    "192.168.1.50",
+                                    Some("192.168.1.1".parse().unwrap()),
+                                ))
+                                .await;
+                            }));
+                            cli_stream.write_all(req.as_bytes()).await.unwrap();
+                            cli_stream.shutdown().await.unwrap();
+                            let mut buf = Vec::new();
+                            cli_stream.read_to_end(&mut buf).await.unwrap();
+                            let _ = h.await;
+                            String::from_utf8_lossy(&buf).into_owned()
+                        }
+                    };
+
+                    let ipc_tok = state.local_ipc_token.clone();
+                    let local = tokio::task::LocalSet::new();
+                    local
+                        .run_until(async move {
+                            // 1. LAN without session gets login page on GET /, 302 on /yacd, 401 on /ubus
+                            let root_resp = send_lan(
+                                "GET / HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(root_resp.starts_with("HTTP/1.1 200 "), "{root_resp}");
+                            assert!(root_resp.contains("tachyon-login-form"));
+
+                            let yacd_resp = send_lan(
+                                "GET /yacd/ HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(yacd_resp.starts_with("HTTP/1.1 302 "), "{yacd_resp}");
+
+                            let ubus_unauth = send_lan(
+                                "POST /ubus HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(ubus_unauth.starts_with("HTTP/1.1 401 "), "{ubus_unauth}");
+
+                            // 2. Local IPC token bypasses browser auth for CLI forwarding
+                            let ipc_resp = send_lan(format!(
+                                "GET /api/auth/status HTTP/1.1\r\nHost: 127.0.0.1:1680\r\nX-Tachyon-Local-Token: {ipc_tok}\r\nConnection: close\r\n\r\n"
+                            ))
+                            .await;
+                            assert!(ipc_resp.contains("\"authenticated\":true"), "{ipc_resp}");
+
+                            // 3. Login with wrong & right custom credentials
+                            let bad_body = r#"{"username":"routerop","password":"wrong"}"#;
+                            let bad_login = send_lan(format!(
+                                "POST /api/login HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                bad_body.len(),
+                                bad_body
+                            ))
+                            .await;
+                            assert!(bad_login.starts_with("HTTP/1.1 401 "), "{bad_login}");
+
+                            let ok_body = r#"{"username":"routerop","password":"secret-123"}"#;
+                            let ok_login = send_lan(format!(
+                                "POST /api/login HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                ok_body.len(),
+                                ok_body
+                            ))
+                            .await;
+                            assert!(ok_login.starts_with("HTTP/1.1 200 "), "{ok_login}");
+                            assert!(ok_login.contains("Set-Cookie: tachyon_session="));
+                            let login_json: Value = serde_json::from_str(
+                                ok_login.split_once("\r\n\r\n").unwrap().1,
+                            )
+                            .unwrap();
+                            let cookie_tok = login_json["token"].as_str().unwrap().to_string();
+
+                            // Authenticated LAN GET / returns full SPA shell
+                            let authed_root = send_lan(format!(
+                                "GET / HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nCookie: tachyon_session={cookie_tok}\r\nConnection: close\r\n\r\n"
+                            ))
+                            .await;
+                            assert!(authed_root.contains("tachyon-boot-loader"));
+
+                            // 4. Switch credentials -> reject wrong current password, accept valid switch to LuCI, logout revokes
+                            let bad_switch = r#"{"current_password":"nope","mode":"luci"}"#;
+                            let bad_sw_resp = send_lan(format!(
+                                "POST /api/auth/credentials HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nCookie: tachyon_session={cookie_tok}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                bad_switch.len(),
+                                bad_switch
+                            ))
+                            .await;
+                            assert!(bad_sw_resp.starts_with("HTTP/1.1 403 "), "{bad_sw_resp}");
+
+                            let disable_auth = r#"{"current_password":"secret-123","auth_enabled":false,"mode":"luci"}"#;
+                            let ok_sw_resp = send_lan(format!(
+                                "POST /api/auth/credentials HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nCookie: tachyon_session={cookie_tok}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                disable_auth.len(),
+                                disable_auth
+                            ))
+                            .await;
+                            assert!(ok_sw_resp.starts_with("HTTP/1.1 200 "), "{ok_sw_resp}");
+                            assert!(ok_sw_resp.contains("\"auth_enabled\":false"));
+                            assert!(ok_sw_resp.contains("\"auth_mode\":\"luci\""));
+
+                            let logout_resp = send_lan(format!(
+                                "POST /api/logout HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nCookie: tachyon_session={cookie_tok}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            ))
+                            .await;
+                            assert!(logout_resp.starts_with("HTTP/1.1 200 "), "{logout_resp}");
+                            assert!(logout_resp.contains("Max-Age=0"));
+
+                            // 5. With auth disabled, LAN without session can load SPA directly
+                            let lan_open = send_lan(
+                                "GET / HTTP/1.1\r\nHost: 192.168.1.1:1680\r\nConnection: close\r\n\r\n"
+                                    .to_string(),
+                            )
+                            .await;
+                            assert!(lan_open.contains("tachyon-boot-loader"));
+                        })
+                        .await;
+
+                    let _ = std::fs::remove_dir_all(&dir);
+                }));
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }

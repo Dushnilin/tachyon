@@ -57,10 +57,75 @@ fn resolve_cli_forward_port() -> u16 {
     1680
 }
 
+fn runtime_ipc_token_path() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("ipc.token")
+}
+
+fn runtime_daemon_pid_path() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("daemon.pid")
+}
+
+fn write_daemon_runtime_markers(local_ipc_token: &str) {
+    let dir = crate::store::runtime_state_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let pid_path = runtime_daemon_pid_path();
+    let _ = std::fs::write(&pid_path, format!("{}\n", std::process::id()));
+    let tok_path = runtime_ipc_token_path();
+    if std::fs::write(&tok_path, local_ipc_token).is_ok() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tok_path, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+}
+
+fn cleanup_daemon_runtime_markers() {
+    let _ = std::fs::remove_file(runtime_ipc_token_path());
+    let _ = std::fs::remove_file(runtime_daemon_pid_path());
+}
+
+fn daemon_pid_looks_alive() -> bool {
+    let Ok(raw) = std::fs::read_to_string(runtime_daemon_pid_path()) else {
+        return false;
+    };
+    let Ok(pid) = raw.trim().parse::<u32>() else {
+        return false;
+    };
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
     let port = resolve_cli_forward_port();
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok()?;
+    let mut stream = None;
+    for attempt in 0..4u8 {
+        match TcpStream::connect_timeout(&addr, Duration::from_millis(250)) {
+            Ok(s) => {
+                stream = Some(s);
+                break;
+            }
+            Err(e)
+                if attempt < 3
+                    && e.kind() == std::io::ErrorKind::ConnectionRefused
+                    && daemon_pid_looks_alive() =>
+            {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            Err(_) => return None,
+        }
+    }
+    let mut stream = stream?;
     let _ = stream.set_read_timeout(Some(Duration::from_secs(25)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
@@ -79,8 +144,14 @@ fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
         ]
     });
     let body_bytes = serde_json::to_vec(&rpc_body).ok()?;
+    let ipc_hdr = std::fs::read_to_string(runtime_ipc_token_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(|tok| format!("X-Tachyon-Local-Token: {tok}\r\n"))
+        .unwrap_or_default();
     let req = format!(
-        "POST /ubus HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
+        "POST /ubus HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\n{ipc_hdr}Connection: close\r\nContent-Length: {}\r\n\r\n",
         body_bytes.len()
     );
     stream.write_all(req.as_bytes()).ok()?;
@@ -267,57 +338,31 @@ fn main() -> anyhow::Result<()> {
             "mcp" => mcp::run_stdio_mcp(state, core).await,
             "start" => core.start().await,
             "stop" => core.stop().await,
+            "stop-shutdown" => core.stop_for_shutdown().await,
             "reload" | "restart" => core.apply_or_reload().await,
             "daemon" | "serve" | "--daemon" => {
                 ubus_bridge::mark_daemon_mode();
                 core.enable_switch_history();
+                write_daemon_runtime_markers(&state.local_ipc_token);
                 eprintln!("[tachyon] store path: {store_path}");
-                if let Some((ext_pid, _)) = sys_info::find_running_process_by_name("tachyon-core") {
-                    let expected_bin = core.resolve_bin_path().await;
-                    let running_exe = std::fs::read_link(format!("/proc/{ext_pid}/exe"))
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    let stale_exe = running_exe.ends_with(" (deleted)")
-                        || (!running_exe.is_empty()
-                            && !expected_bin.is_empty()
-                            && running_exe != expected_bin);
-                    if stale_exe {
-                        eprintln!(
-                            "[tachyon] restarting stale tachyon-core (PID {ext_pid}, exe={running_exe}, expected={expected_bin})"
-                        );
-                        if let Err(e) = core.start().await {
-                            eprintln!("[tachyon] core restart failed: {e:#}");
-                        }
-                    } else {
-                        eprintln!("[tachyon] attached to running tachyon-core (PID {ext_pid})");
-                        let identity = sys_info::capture_process_identity(ext_pid);
-                        let store_snapshot = { state.data.read().await.clone() };
-                        if let Err(e) = net_stack::apply_network_stack(&store_snapshot).await {
-                            eprintln!("[tachyon] net_stack apply on attach failed: {e:#}");
-                        }
-                        let nft_ok = net_stack::check_nft_table_active().await;
-                        let mut live = state.live.write().await;
-                        live.core_running = true;
-                        live.core_pid = Some(ext_pid);
-                        live.core_identity = identity;
-                        live.nft_table_active = nft_ok;
-                    }
-                } else if !core.is_manually_stopped()
-                    && let Err(e) = core.start().await
-                {
-                    eprintln!("[tachyon] initial core start skipped: {e:#}");
-                }
-                core.refresh_core_version().await;
-                core.poll_telemetry_and_reconcile(0).await;
-                {
-                    let d_snap = state.data.read().await;
-                    ubus_bridge::sync_section_cache(&d_snap);
-                }
-                core.ensure_initial_binary_backups().await;
-                core.spawn_background_loop();
-                adguard_hosts::spawn_adguard_hosts_loop(Arc::clone(&state), Arc::clone(&core));
-                smart_detect::spawn_smart_detect_loop(Arc::clone(&state), Arc::clone(&core));
-                tg_bot::spawn_tg_bot_loop(Arc::clone(&state), Arc::clone(&core));
+
+                let (listen_addr, port, base_path) = {
+                    let d = state.data.read().await;
+                    (
+                        d.settings.listen_addr.clone(),
+                        d.settings.listen_port,
+                        d.settings.web_base_path.clone(),
+                    )
+                };
+                let (listener, bound_addr) =
+                    api::bind_panel_listener_with_retry(&listen_addr, port).await?;
+                let server_handle = tokio::spawn(api::run_server_on_listener(
+                    listener,
+                    bound_addr,
+                    base_path,
+                    Arc::clone(&state),
+                    Arc::clone(&core),
+                ));
 
                 let state_sig = Arc::clone(&state);
                 let core_sig = Arc::clone(&core);
@@ -338,6 +383,7 @@ fn main() -> anyhow::Result<()> {
                         let _ = tokio::signal::ctrl_c().await;
                     }
                     eprintln!("\n[tachyon] shutting down...");
+                    cleanup_daemon_runtime_markers();
                     if core_sig.has_spawned_child().await {
                         let _ = core_sig.stop_for_shutdown().await;
                     }
@@ -346,7 +392,79 @@ fn main() -> anyhow::Result<()> {
                     std::process::exit(0);
                 });
 
-                api::run_server(state, core).await
+                let mut attached = false;
+                if let Some((ext_pid, _)) = sys_info::find_running_process_by_name("tachyon-core") {
+                    let expected_bin = core.resolve_bin_path().await;
+                    let running_exe = std::fs::read_link(format!("/proc/{ext_pid}/exe"))
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let stale_exe = running_exe.ends_with(" (deleted)")
+                        || (!running_exe.is_empty()
+                            && !expected_bin.is_empty()
+                            && running_exe != expected_bin);
+                    if stale_exe {
+                        eprintln!(
+                            "[tachyon] restarting stale tachyon-core (PID {ext_pid}, exe={running_exe}, expected={expected_bin})"
+                        );
+                        match core.start().await {
+                            Ok(()) => attached = true,
+                            Err(e) => eprintln!("[tachyon] core restart failed: {e:#}"),
+                        }
+                    } else {
+                        eprintln!("[tachyon] attached to running tachyon-core (PID {ext_pid})");
+                        let identity = sys_info::capture_process_identity(ext_pid);
+                        let store_snapshot = { state.data.read().await.clone() };
+                        if let Err(e) = net_stack::apply_network_stack(&store_snapshot).await {
+                            eprintln!("[tachyon] net_stack apply on attach failed: {e:#}");
+                        }
+                        let nft_ok = net_stack::check_nft_table_active().await;
+                        let mut live = state.live.write().await;
+                        live.core_running = true;
+                        live.core_pid = Some(ext_pid);
+                        live.core_identity = identity;
+                        live.nft_table_active = nft_ok;
+                        attached = true;
+                    }
+                }
+                if !attached && !core.is_manually_stopped() {
+                    for attempt in 0..3u8 {
+                        if core.is_manually_stopped() {
+                            break;
+                        }
+                        match core.start().await {
+                            Ok(()) => break,
+                            Err(e) => {
+                                eprintln!(
+                                    "[tachyon] initial core start attempt {}/3 failed: {e:#}",
+                                    attempt + 1
+                                );
+                                if attempt < 2 {
+                                    tokio::time::sleep(Duration::from_secs(if attempt == 0 {
+                                        2
+                                    } else {
+                                        5
+                                    }))
+                                    .await;
+                                }
+                            }
+                        }
+                    }
+                }
+                core.refresh_core_version().await;
+                core.poll_telemetry_and_reconcile(0).await;
+                {
+                    let d_snap = state.data.read().await;
+                    ubus_bridge::sync_section_cache(&d_snap);
+                }
+                core.ensure_initial_binary_backups().await;
+                core.spawn_background_loop();
+                adguard_hosts::spawn_adguard_hosts_loop(Arc::clone(&state), Arc::clone(&core));
+                smart_detect::spawn_smart_detect_loop(Arc::clone(&state), Arc::clone(&core));
+                tg_bot::spawn_tg_bot_loop(Arc::clone(&state), Arc::clone(&core));
+
+                server_handle
+                    .await
+                    .map_err(|e| anyhow::anyhow!("panel server task failed: {e}"))?
             }
             _ => {
                 let (code, stdout, stderr) =

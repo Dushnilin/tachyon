@@ -34,12 +34,22 @@ import {
   mountLanguageSelector,
   UiLanguageCapabilities,
 } from './languageSelector';
+import {
+  fetchPanelAuthStatus,
+  installPanelAuth401Interceptor,
+  logoutPanelSession,
+  PANEL_AUTH_CHANGED_EVENT,
+} from './panelAuthCard';
+import { createTopbarThemeDropdown } from './themes/themeControls';
+import { initCommandPalette, openCommandPalette } from './commandPalette';
 
 export type TachyonUiMode = 'simple' | 'advanced';
 export type TachyonSidebarPos = 'left' | 'top';
+export type TachyonLayoutWidth = 'compact' | 'full';
 
 const UI_MODE_STORAGE_KEY = 'tachyon_ui_mode_v1';
 const SIDEBAR_POS_STORAGE_KEY = 'tachyon_sidebar_pos_v1';
+const LAYOUT_WIDTH_STORAGE_KEY = 'tachyon_ui_layout_width_v1';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'tachyon_sidebar_collapsed_v1';
 const TOPBAR_COLLAPSED_STORAGE_KEY = 'tachyon_topbar_collapsed_v1';
 const SIDEBAR_EXPANDED_MENUS_KEY = 'tachyon_sidebar_menus_v1';
@@ -187,6 +197,42 @@ export function setSidebarPos(pos: TachyonSidebarPos): void {
     }
   }
   setRouterUiPrefs({ sidebar_pos: pos });
+}
+
+export function getLayoutWidth(): TachyonLayoutWidth {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(LAYOUT_WIDTH_STORAGE_KEY);
+      if (val === 'compact' || val === 'full') return val;
+    }
+  } catch {
+    // ignore
+  }
+  const fromRouter = String(getRouterUiPrefs()?.layout_width ?? '');
+  if (fromRouter === 'full') return 'full';
+  return 'compact';
+}
+
+export function setLayoutWidth(width: TachyonLayoutWidth): void {
+  const normalized: TachyonLayoutWidth = width === 'full' ? 'full' : 'compact';
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(LAYOUT_WIDTH_STORAGE_KEY, normalized);
+    } catch {
+      // ignore
+    }
+  }
+  setRouterUiPrefs({ layout_width: normalized });
+  if (typeof document !== 'undefined') {
+    document.documentElement?.setAttribute?.('data-tachyon-width', normalized);
+    document.body?.setAttribute?.('data-tachyon-width', normalized);
+    document
+      .querySelector?.('#cbi-tachyon')
+      ?.setAttribute?.('data-tachyon-width', normalized);
+    document
+      .querySelector?.('.tachyon-shell-layout')
+      ?.setAttribute?.('data-tachyon-width', normalized);
+  }
 }
 
 export function getSidebarCollapsed(): boolean {
@@ -1069,7 +1115,30 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   if (typeof document === 'undefined') return;
   installLuciNotificationInterceptor();
   installModalHeaderCloseEnhancements();
+  installPanelAuth401Interceptor();
   activeShellState.options = options;
+
+  let panelAuthEnabled = false;
+  if (typeof window !== 'undefined') {
+    void fetchPanelAuthStatus().then((st) => {
+      if (st.supported && st.auth_enabled !== panelAuthEnabled) {
+        panelAuthEnabled = st.auth_enabled;
+        activeShellState.renderFn?.();
+      }
+    });
+    if (typeof window.addEventListener === 'function') {
+      const g = window as any;
+      if (!g.__tachyonAuthListenerBound) {
+        g.__tachyonAuthListenerBound = true;
+        window.addEventListener(PANEL_AUTH_CHANGED_EVENT, (ev: any) => {
+          if (typeof ev?.detail?.auth_enabled === 'boolean') {
+            panelAuthEnabled = ev.detail.auth_enabled;
+            activeShellState.renderFn?.();
+          }
+        });
+      }
+    }
+  }
 
   const mapEl =
     options.mapEl ||
@@ -1079,6 +1148,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
   let uiMode = getUiMode();
   let sidebarPos = getSidebarPos();
+  let layoutWidth = getLayoutWidth();
   let sidebarCollapsed = getSidebarCollapsed();
   let topbarCollapsed = getTopbarCollapsed();
   let topbarServiceActionInFlight: 'start' | 'stop' | 'restart' | null = null;
@@ -1687,12 +1757,21 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     const topbarCollapsedStr = isTopbarCollapsed ? 'true' : 'false';
     mapEl.setAttribute('data-ui-mode', uiMode);
     mapEl.setAttribute('data-sidebar-pos', sidebarPos);
+    mapEl.setAttribute('data-tachyon-width', layoutWidth);
     mapEl.setAttribute('data-sidebar-collapsed', collapsedStr);
     mapEl.setAttribute('data-topbar-collapsed', topbarCollapsedStr);
     shellLayout!.setAttribute('data-ui-mode', uiMode);
     shellLayout!.setAttribute('data-sidebar-pos', sidebarPos);
+    shellLayout!.setAttribute('data-tachyon-width', layoutWidth);
     shellLayout!.setAttribute('data-sidebar-collapsed', collapsedStr);
     shellLayout!.setAttribute('data-topbar-collapsed', topbarCollapsedStr);
+    if (typeof document !== 'undefined') {
+      document.documentElement?.setAttribute?.(
+        'data-tachyon-width',
+        layoutWidth,
+      );
+      document.body?.setAttribute?.('data-tachyon-width', layoutWidth);
+    }
     topbarEl.setAttribute('data-collapsed', topbarCollapsedStr);
     topbarEl.classList.toggle('is-collapsed', isTopbarCollapsed);
     setUiMode(uiMode);
@@ -1949,6 +2028,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   const renderSidebarAndTopbar = () => {
     uiMode = getUiMode();
     sidebarPos = getSidebarPos();
+    layoutWidth = getLayoutWidth();
     sidebarCollapsed = getSidebarCollapsed();
     topbarCollapsed = getTopbarCollapsed();
     syncShellAttributes();
@@ -2390,6 +2470,46 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       'Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load',
     );
 
+    const buildSearchBtn = () =>
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'tachyon-topbar__icon-btn tachyon-cmdk-trigger',
+          title: tr(
+            'Быстрый поиск и команды (Ctrl+K)',
+            'Quick search and commands (Ctrl+K)',
+          ),
+          'aria-label': tr('Поиск', 'Search'),
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            openCommandPalette();
+          },
+        } as any,
+        [
+          svgEl(
+            'svg',
+            {
+              viewBox: '0 0 24 24',
+              width: '14',
+              height: '14',
+              fill: 'none',
+              stroke: 'currentColor',
+              'stroke-width': '1.9',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+            },
+            [
+              svgEl('circle', { cx: '11', cy: '11', r: '8' }),
+              svgEl('path', { d: 'm21 21-4.3-4.3' }),
+            ],
+          ),
+          E('span', {}, tr('Поиск', 'Search')),
+          E('kbd', { class: 'tachyon-cmdk-kbd' }, 'Ctrl+K'),
+        ],
+      );
+
     const buildWizardBtn = () =>
       E(
         'button',
@@ -2419,6 +2539,46 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         },
         [renderPlusIcon(14), E('span', {}, tr('Подключение', 'Connection'))],
       );
+
+    const buildLogoutBtn = () =>
+      panelAuthEnabled
+        ? E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-topbar__icon-btn tachyon-topbar__logout-btn',
+              title: tr('Выйти из панели', 'Sign out'),
+              'aria-label': tr('Выйти из панели', 'Sign out'),
+              click: (ev: MouseEvent) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                void logoutPanelSession();
+              },
+            } as any,
+            [
+              svgEl(
+                'svg',
+                {
+                  viewBox: '0 0 24 24',
+                  width: '14',
+                  height: '14',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  'stroke-width': '1.9',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                },
+                [
+                  svgEl('path', {
+                    d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4',
+                  }),
+                  svgEl('polyline', { points: '16 17 21 12 16 7' }),
+                  svgEl('line', { x1: '21', y1: '12', x2: '9', y2: '12' }),
+                ],
+              ),
+            ],
+          )
+        : null;
 
     const buildModeSwitcher = () =>
       E(
@@ -2712,6 +2872,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         sidebarPos === 'top'
           ? [
               buildTopbarServiceControls(),
+              buildSearchBtn(),
               createHistoryButton('tachyon-topbar__history-btn', true),
               buildWizardBtn(),
               E('span', {
@@ -2719,7 +2880,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               }),
               buildModeSwitcher(),
               buildSidebarPosBtn(true),
+              createTopbarThemeDropdown(),
               langSlot,
+              ...(panelAuthEnabled ? [buildLogoutBtn()!] : []),
             ]
           : [buildStatusCard(false)],
       ),
@@ -2893,10 +3056,13 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           buildTopbarServiceControls(),
         ]),
         E('div', { class: 'tachyon-topbar__right' }, [
+          buildSearchBtn(),
           createHistoryButton('tachyon-topbar__history-btn', true),
           buildWizardBtn(),
           buildSidebarPosBtn(false),
+          createTopbarThemeDropdown(),
           langSlot,
+          ...(panelAuthEnabled ? [buildLogoutBtn()!] : []),
           E(
             'button',
             {
@@ -3272,6 +3438,44 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     if (!item) return false;
     activateNavItem(item);
     return true;
+  });
+  initCommandPalette({
+    getNavItems: () => NAV_ITEMS,
+    activateNav: (navKey: string) => {
+      const item = NAV_ITEMS.find(
+        (i) => i.key === navKey || i.luciTab === navKey,
+      );
+      if (item) activateNavItem(item);
+    },
+    openWizard: () =>
+      openConnectionWizardModal({
+        onComplete: ({ direction }) => {
+          const targetKey =
+            direction === 'inbound' ? 'server' : 'section:sections';
+          const targetNav = NAV_ITEMS.find((i) => i.key === targetKey);
+          if (targetNav) activateNavItem(targetNav);
+          options.onReloadMap?.();
+        },
+      }),
+    openHistory: () =>
+      openConfigHistoryModal({
+        onReloadMap: options.onReloadMap,
+        onChangesUpdated: refreshHistoryBadges,
+      }),
+    getUiMode,
+    setUiMode,
+    getLayoutWidth,
+    setLayoutWidth,
+    toggleLiteMode: () => {
+      const ecoBtn = shellLayoutRef?.querySelector<HTMLButtonElement>(
+        '.tachyon-topbar__eco-btn',
+      );
+      ecoBtn?.click();
+    },
+    restartService: () => {
+      void runTopbarServiceAction('restart');
+    },
+    refreshShell: () => renderSidebarAndTopbar(),
   });
   renderSidebarAndTopbar();
 

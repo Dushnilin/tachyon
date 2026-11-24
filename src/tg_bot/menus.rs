@@ -1081,6 +1081,7 @@ async fn render_sections_list(
         d.sections.len()
     ));
 
+    let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(&d);
     let mut rows = Vec::new();
     if d.sections.is_empty() {
         lines.push(tr(ru, "Секций пока нет.", "No routing sections configured.").to_string());
@@ -1090,18 +1091,22 @@ async fn render_sections_list(
             let dom_cnt = collect_section_domains(&d, sec).len();
             let list_cnt = collect_section_lists(&d, sec).len();
             let active = if !sec.active_selected_tag.is_empty() {
-                sec.active_selected_tag.as_str()
+                crate::ubus_bridge::resolve_telemetry_tag_display_name(
+                    &sec.active_selected_tag,
+                    &tag_map,
+                    &d,
+                )
             } else if sec.connection_type == "desync" && !sec.desync_preset.is_empty() {
-                sec.desync_preset.as_str()
+                sec.desync_preset.clone()
             } else {
-                "-"
+                "-".to_string()
             };
             lines.push(format!(
                 "#{idx} {} <b>{}</b> | <code>{}</code> | {} | L:{} D:{}",
                 status_badge(sec.enabled),
                 escape_html(section_display_name(sec)),
                 escape_html(&sec.connection_type),
-                escape_html(active),
+                escape_html(&active),
                 list_cnt,
                 dom_cnt
             ));
@@ -1238,6 +1243,9 @@ fn render_section_view_inner(
         escape_html(&sec.connection_type)
     ));
     if !active_tag.is_empty() {
+        let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(d);
+        let active_display =
+            crate::ubus_bridge::resolve_telemetry_tag_display_name(&active_tag, &tag_map, d);
         let rtt = live
             .node_latencies_ms
             .get(&active_tag)
@@ -1246,7 +1254,7 @@ fn render_section_view_inner(
         lines.push(format!(
             "{}: <code>{}</code>{}",
             tr(ru, "Активный узел", "Active node"),
-            escape_html(&active_tag),
+            escape_html(&active_display),
             rtt
         ));
     }
@@ -1728,6 +1736,7 @@ async fn render_section_nodes(
         }
     }
 
+    let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(&d);
     let (safe_page, total_pages, start, end) = paginate(nodes.len(), page, PER_PAGE);
     let mut lines = Vec::new();
     if let Some(n) = notice {
@@ -1740,10 +1749,12 @@ async fn render_section_nodes(
         escape_html(section_display_name(sec))
     ));
     if !active.is_empty() {
+        let active_display =
+            crate::ubus_bridge::resolve_telemetry_tag_display_name(&active, &tag_map, &d);
         lines.push(format!(
             "{}: <code>{}</code>",
             tr(ru, "Выбран", "Selected"),
-            escape_html(&active)
+            escape_html(&active_display)
         ));
     }
 
@@ -1760,15 +1771,20 @@ async fn render_section_nodes(
     } else {
         for tag in &nodes[start..end] {
             let is_cur = active == *tag;
+            let node_display =
+                crate::ubus_bridge::resolve_telemetry_tag_display_name(tag, &tag_map, &d);
             let lat = live
                 .node_latencies_ms
                 .get(tag)
                 .map(|ms| format!(" ({ms} ms)"))
                 .unwrap_or_default();
             let prefix = if is_cur { "[*] " } else { "" };
-            lines.push(format!("{prefix}<code>{}</code>{lat}", escape_html(tag)));
+            lines.push(format!(
+                "{prefix}<code>{}</code>{lat}",
+                escape_html(&node_display)
+            ));
             rows.push(vec![cb_btn(
-                &format!("{prefix}{}{lat}", truncate_label(tag, 26)),
+                &format!("{prefix}{}{lat}", truncate_label(&node_display, 26)),
                 &format!("sec_pick {} {tag}", sec.id),
             )]);
         }
@@ -1839,10 +1855,15 @@ async fn handle_sec_pick(
                 }
                 let _ = switched_via_group;
             }
+            let node_display = {
+                let d_snap = state.data.read().await.clone();
+                let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(&d_snap);
+                crate::ubus_bridge::resolve_telemetry_tag_display_name(tag, &tag_map, &d_snap)
+            };
             format!(
                 "[OK] {} -> <code>{}</code>",
                 tr(ru, "Узел выбран", "Selected node"),
-                escape_html(tag)
+                escape_html(&node_display)
             )
         }
         Err(e) => format!("[ERR] {}", escape_html(&e.to_string())),

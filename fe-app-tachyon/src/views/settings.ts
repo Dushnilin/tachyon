@@ -3359,6 +3359,10 @@ function createInterfaceQuickControlsWidget(section_id) {
       main && typeof main.getSidebarPos === 'function'
         ? main.getSidebarPos()
         : 'left';
+    const curWidth =
+      main && typeof main.getLayoutWidth === 'function'
+        ? main.getLayoutWidth()
+        : 'compact';
     const curCollapsed =
       main && typeof main.getSidebarCollapsed === 'function'
         ? main.getSidebarCollapsed()
@@ -3539,11 +3543,58 @@ function createInterfaceQuickControlsWidget(section_id) {
       ]),
     ]);
 
+    // 4. Interface Width Card
+    const widthCard = E('div', { style: cardStyle }, [
+      E(
+        'div',
+        { style: 'font-weight:600;font-size:13px;color:var(--text,#f4f4f5);' },
+        _tr('Ширина интерфейса', 'Interface Width'),
+      ),
+      E(
+        'div',
+        {
+          style:
+            'font-size:11.5px;color:var(--text2,#a1a1aa);line-height:1.35;',
+        },
+        _tr(
+          'Компактный центрированный макет (до 1360px) по умолчанию или растяжение на всю ширину экрана.',
+          'Centered compact layout (up to 1360px) by default or stretch across the full viewport width.',
+        ),
+      ),
+      E('div', { style: segGroupStyle }, [
+        makeSegBtn(
+          _tr('Компактная (1360px)', 'Compact (1360px)'),
+          curWidth !== 'full',
+          function () {
+            if (main && typeof main.setLayoutWidth === 'function') {
+              main.setLayoutWidth('compact');
+            }
+            if (main && typeof main.refreshTachyonAppShell === 'function') {
+              main.refreshTachyonAppShell();
+            }
+          },
+        ),
+        makeSegBtn(
+          _tr('Во всю ширину', 'Full Width'),
+          curWidth === 'full',
+          function () {
+            if (main && typeof main.setLayoutWidth === 'function') {
+              main.setLayoutWidth('full');
+            }
+            if (main && typeof main.refreshTachyonAppShell === 'function') {
+              main.refreshTachyonAppShell();
+            }
+          },
+        ),
+      ]),
+    ]);
+
     wrap.appendChild(modeCard);
     wrap.appendChild(navCard);
     if (curPos !== 'top') {
       wrap.appendChild(topbarCard);
     }
+    wrap.appendChild(widthCard);
   }
 
   renderPanel();
@@ -3747,6 +3798,44 @@ function createSettingsContent(section, capabilities) {
   };
   uiQuickOpt.write = function () {};
   uiQuickOpt.remove = function () {};
+
+  const uiThemeOpt = section.taboption(
+    'navigation',
+    form.DummyValue,
+    '_ui_theme_widget',
+    _tr('Цветовая тема интерфейса', 'Interface Color Theme'),
+    _tr(
+      'Выбор одной из 12 готовых тем оформления или создание собственной палитры с импортом JSON.',
+      'Choose one of 12 built-in themes or build your own palette with JSON import.',
+    ),
+  );
+  uiThemeOpt.renderWidget = function () {
+    if (main && typeof main.renderThemeSettingsCard === 'function') {
+      return main.renderThemeSettingsCard();
+    }
+    return E('div', {}, '');
+  };
+  uiThemeOpt.write = function () {};
+  uiThemeOpt.remove = function () {};
+
+  const panelAuthOpt = section.taboption(
+    'navigation',
+    form.DummyValue,
+    '_panel_auth_widget',
+    _tr('Авторизация и пароль панели', 'Panel Login & Password'),
+    _tr(
+      'Настройка входа в панель Tachyon: учётные данные роутера (LuCI) по умолчанию или отдельный логин и пароль.',
+      'Configure Tachyon panel login: router (LuCI) credentials by default or a separate username and password.',
+    ),
+  );
+  panelAuthOpt.renderWidget = function () {
+    if (main && typeof main.renderPanelAuthSettingsCard === 'function') {
+      return main.renderPanelAuthSettingsCard();
+    }
+    return E('div', {}, '');
+  };
+  panelAuthOpt.write = function () {};
+  panelAuthOpt.remove = function () {};
 
   const dashLayoutOpt = section.taboption(
     'navigation',
@@ -5246,6 +5335,12 @@ function createSettingsContent(section, capabilities) {
   o.depends('enable_yacd', '1');
   o.rmempty = true;
   o.validate = function (section_id, value) {
+    if (
+      typeof document !== 'undefined' &&
+      document.body?.getAttribute('data-tachyon-ui-mode') === 'simple'
+    ) {
+      return true;
+    }
     if (
       this.section.formvalue(section_id, 'enable_yacd') === '1' &&
       this.section.formvalue(section_id, 'enable_yacd_wan_access') === '1' &&

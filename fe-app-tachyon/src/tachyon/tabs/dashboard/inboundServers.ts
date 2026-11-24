@@ -7,6 +7,7 @@ import {
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
+import { humanizeRuntimeTag } from '../../helpers/humanizeTag';
 import { tr } from '../../helpers/i18n';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { TachyonShellMethods } from '../../methods';
@@ -210,42 +211,38 @@ export function resetInboundTrafficStateForTests() {
   selectedServerSectionFilter = null;
 }
 
+const SERVER_INBOUND_TAG_RE =
+  /(?:^|\/)(?:srv-([A-Za-z0-9_.-]+?)|server-([A-Za-z0-9_.-]+)-in)(?:-inner)?$/;
+const SERVER_INBOUND_RULE_RE =
+  /inbound=\[?(?:srv-([A-Za-z0-9_.-]+?)|server-([A-Za-z0-9_.-]+)-in)(?:-inner)?(?=$|[\s\],)])/;
+
 export function extractServerInboundSectionId(conn: any): string | null {
   if (!conn || typeof conn !== 'object') {
     return null;
   }
 
-  const metaInbound =
-    typeof conn.metadata?.inbound === 'string'
-      ? conn.metadata.inbound.trim()
-      : '';
-  if (metaInbound) {
-    const match = metaInbound.match(
-      /(?:^|\/)server-([A-Za-z0-9_.-]+)-in(?:-inner)?$/,
-    );
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-
-  const metaType =
-    typeof conn.metadata?.type === 'string' ? conn.metadata.type.trim() : '';
-  if (metaType) {
-    const match = metaType.match(
-      /(?:^|\/)server-([A-Za-z0-9_.-]+)-in(?:-inner)?$/,
-    );
-    if (match && match[1]) {
-      return match[1];
+  const candidates = [
+    conn.metadata?.inbound,
+    conn.metadata?.inboundName,
+    conn.metadata?.inboundTag,
+    conn.metadata?.type,
+  ];
+  for (const raw of candidates) {
+    const val = typeof raw === 'string' ? raw.trim() : '';
+    if (!val) continue;
+    const match = val.match(SERVER_INBOUND_TAG_RE);
+    const id = match?.[1] || match?.[2];
+    if (id) {
+      return id;
     }
   }
 
   const rule = typeof conn.rule === 'string' ? conn.rule : '';
   if (rule) {
-    const match = rule.match(
-      /inbound=\[?server-([A-Za-z0-9_.-]+)-in(?:-inner)?\]?/,
-    );
-    if (match && match[1]) {
-      return match[1];
+    const match = rule.match(SERVER_INBOUND_RULE_RE);
+    const id = match?.[1] || match?.[2];
+    if (id) {
+      return id;
     }
   }
 
@@ -457,7 +454,7 @@ function cleanOutboundChain(conn: any): string {
   const chains = Array.isArray(conn?.chains) ? conn.chains : [];
   if (chains.length === 0) return '';
   const first = `${chains[0] || ''}`.trim();
-  return first.replace(/-out$/, '');
+  return humanizeRuntimeTag(first);
 }
 
 function resolveClientDisplayName(

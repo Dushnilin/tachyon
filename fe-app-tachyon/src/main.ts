@@ -96,6 +96,13 @@ export {
   renderDnsBenchmarkModal,
   renderStrategyFuzzerModal,
 } from './tachyon/tabs/diagnostic/partials';
+export { renderPanelAuthSettingsCard } from './tachyon/panelAuthCard';
+export {
+  renderThemeSettingsCard,
+  openCustomThemeModal,
+} from './tachyon/themes/themeControls';
+export { applyThemeToDocument } from './tachyon/themes/themeCatalog';
+export { openCommandPalette } from './tachyon/commandPalette';
 export {
   mountLanguageSelector,
   TACHYON_LANGUAGES,
@@ -109,6 +116,8 @@ export {
   setUiMode,
   getSidebarPos,
   setSidebarPos,
+  getLayoutWidth,
+  setLayoutWidth,
   getSidebarCollapsed,
   setSidebarCollapsed,
   getTopbarCollapsed,

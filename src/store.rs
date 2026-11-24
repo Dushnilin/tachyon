@@ -154,6 +154,17 @@ fn default_true() -> bool {
     true
 }
 
+fn default_panel_auth_mode() -> String {
+    "luci".to_string()
+}
+
+pub fn normalize_panel_auth_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "custom" | "separate" | "panel" | "local" => "custom".to_string(),
+        _ => "luci".to_string(),
+    }
+}
+
 fn default_ui_mode() -> String {
     "simple".to_string()
 }
@@ -909,6 +920,10 @@ pub struct GlobalSettings {
     pub admin_pass_hash: String,
     pub admin_pass_salt: String,
     pub session_secret: String,
+    #[serde(default = "default_true")]
+    pub panel_auth_enabled: bool,
+    #[serde(default = "default_panel_auth_mode")]
+    pub panel_auth_mode: String,
     #[serde(default = "default_ui_mode")]
     pub ui_mode: String,
     #[serde(default)]
@@ -1328,6 +1343,8 @@ impl Default for GlobalSettings {
             admin_pass_hash: pass_hash,
             admin_pass_salt: salt,
             session_secret: crypto_gen::generate_hex(32),
+            panel_auth_enabled: true,
+            panel_auth_mode: "luci".to_string(),
             ui_mode: "simple".to_string(),
             lite_mode: false,
             sidebar_pos: "left".to_string(),
@@ -4890,6 +4907,8 @@ impl RouterStoreData {
                         self.settings.admin_pass_hash = prev.admin_pass_hash;
                         self.settings.admin_pass_salt = prev.admin_pass_salt;
                         self.settings.session_secret = prev.session_secret;
+                        self.settings.panel_auth_enabled = prev.panel_auth_enabled;
+                        self.settings.panel_auth_mode = prev.panel_auth_mode;
                         self.settings.core_bin_path = prev.core_bin_path;
                         self.settings.core_config_path = prev.core_config_path;
                         self.settings.rulesets_dir = prev.rulesets_dir;
@@ -8029,6 +8048,8 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 "admin_pass_hash",
                 "admin_pass_salt",
                 "session_secret",
+                "panel_auth_enabled",
+                "panel_auth_mode",
                 "dns_intercept_all_mode",
                 "webrtc_leak_protect_mode",
             ],
@@ -9555,6 +9576,8 @@ pub fn load_cached_subscription_nodes_from(src: &mut OutboundSource, cache_dir: 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventRecord {
     pub timestamp: i64,
+    #[serde(default)]
+    pub seq: u64,
     pub level: String,
     pub subsystem: String,
     pub message: String,
@@ -9662,6 +9685,9 @@ pub struct LiveTelemetry {
     pub recent_logs: Vec<String>,
     /// Bounded redacted event journal (max `MAX_EVENTS_RING`).
     pub events: Vec<EventRecord>,
+    /// Monotonically increasing sequence counter for emitted events.
+    #[serde(skip)]
+    pub next_event_seq: u64,
     /// Bounded background jobs (max `MAX_JOBS`).
     pub jobs: Vec<JobRecord>,
     /// Bounded honeypot hits (max `MAX_HONEYPOT_HITS`).
@@ -9712,8 +9738,10 @@ impl LiveTelemetry {
         if self.events.len() >= MAX_EVENTS_RING {
             self.events.remove(0);
         }
+        self.next_event_seq = self.next_event_seq.saturating_add(1);
         self.events.push(EventRecord {
             timestamp: unix_now_secs(),
+            seq: self.next_event_seq,
             level: level.to_string(),
             subsystem: subsystem.to_string(),
             message: crypto_gen::redact_string(message),
@@ -9819,6 +9847,10 @@ pub struct AppState {
     pub live: RwLock<LiveTelemetry>,
     /// Session token -> expiry unix timestamp (bounded to `MAX_SESSIONS`).
     pub sessions: RwLock<HashMap<String, i64>>,
+    /// Session token -> authenticated username (for `/api/auth/status`).
+    pub session_users: RwLock<HashMap<String, String>>,
+    /// Random per-daemon runtime token for local CLI IPC forwarding (`X-Tachyon-Local-Token`).
+    pub local_ipc_token: String,
     pub dirty: AtomicBool,
     pub last_telemetry_access_ts: PortableAtomicU64,
 }
@@ -9905,6 +9937,11 @@ impl AppState {
             let norm_ui = normalize_ui_mode(&parsed.settings.ui_mode);
             if norm_ui != parsed.settings.ui_mode {
                 parsed.settings.ui_mode = norm_ui;
+                migrated = true;
+            }
+            let norm_auth_mode = normalize_panel_auth_mode(&parsed.settings.panel_auth_mode);
+            if norm_auth_mode != parsed.settings.panel_auth_mode {
+                parsed.settings.panel_auth_mode = norm_auth_mode;
                 migrated = true;
             }
             let norm_v6 = normalize_ipv6_mode(&parsed.settings.ipv6_mode);
@@ -10032,6 +10069,8 @@ impl AppState {
             data: RwLock::new(data),
             live: RwLock::new(live),
             sessions: RwLock::new(HashMap::new()),
+            session_users: RwLock::new(HashMap::new()),
+            local_ipc_token: crypto_gen::generate_alnum(32),
             dirty: AtomicBool::new(false),
             last_telemetry_access_ts: PortableAtomicU64::new(0),
         }))

@@ -5,6 +5,7 @@ export interface RouterUiPrefs {
   studio_views?: Record<string, 'cards' | 'pipeline'>;
   ui_mode?: 'simple' | 'advanced';
   sidebar_pos?: 'left' | 'top';
+  layout_width?: 'compact' | 'full';
   sidebar_collapsed?: boolean;
   topbar_collapsed?: boolean;
   dashboard_show_hidden?: boolean;

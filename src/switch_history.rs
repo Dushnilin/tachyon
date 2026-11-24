@@ -29,6 +29,10 @@ enum Reason {
     Recovery,
     FasterSameTier,
     Switch,
+    #[serde(alias = "active_unhealthy")]
+    ActiveIneligible,
+    HigherPriorityEligible,
+    ManualRestore,
     #[default]
     #[serde(other)]
     Unknown,
@@ -52,6 +56,8 @@ pub(crate) struct Event {
     from: String,
     to: String,
     reason: Reason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decided_at: Option<u64>,
     source: Source,
     observed: bool,
     priority: Option<bool>,
@@ -123,6 +129,106 @@ fn sample_time(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || b"TtZz+-:.".contains(&c))
 }
 
+fn parse_known_reason(raw: &str) -> Option<Reason> {
+    match raw.trim() {
+        "initial" => Some(Reason::Initial),
+        "failover" => Some(Reason::Failover),
+        "recovery" => Some(Reason::Recovery),
+        "faster_same_tier" => Some(Reason::FasterSameTier),
+        "switch" => Some(Reason::Switch),
+        "active_ineligible" | "active_unhealthy" => Some(Reason::ActiveIneligible),
+        "higher_priority_eligible" => Some(Reason::HigherPriorityEligible),
+        "manual_restore" => Some(Reason::ManualRestore),
+        _ => None,
+    }
+}
+
+fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let max_day = match m {
+        2 => {
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if d > max_day {
+        return None;
+    }
+    let y = y - i64::from(m <= 2);
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+fn parse_decision_timestamp(value: &Value) -> Option<u64> {
+    if let Some(secs) = value.as_u64() {
+        return (1..=MAX_TIMESTAMP).contains(&secs).then_some(secs);
+    }
+    let s = value.as_str()?.trim();
+    let (date_str, rest) = s.split_once(['T', 't'])?;
+    let mut dp = date_str.split('-');
+    let year: i64 = dp.next().filter(|p| p.len() == 4)?.parse().ok()?;
+    let month: i64 = dp.next().filter(|p| p.len() == 2)?.parse().ok()?;
+    let day: i64 = dp.next().filter(|p| p.len() == 2)?.parse().ok()?;
+    if dp.next().is_some() {
+        return None;
+    }
+    let days = days_from_civil(year, month, day)?;
+
+    let (time_and_frac, offset_secs): (&str, i64) =
+        if let Some(bare) = rest.strip_suffix(['Z', 'z']) {
+            (bare, 0)
+        } else {
+            let idx = rest.rfind(['+', '-'])?;
+            let sign = if &rest[idx..=idx] == "+" { 1i64 } else { -1i64 };
+            let tz = &rest[idx + 1..];
+            let (hh_s, mm_s) = tz.split_once(':')?;
+            if hh_s.len() != 2 || mm_s.len() != 2 {
+                return None;
+            }
+            let hh: i64 = hh_s.parse().ok()?;
+            let mm: i64 = mm_s.parse().ok()?;
+            if hh > 23 || mm > 59 {
+                return None;
+            }
+            (&rest[..idx], sign * (hh * 3600 + mm * 60))
+        };
+
+    let hms = time_and_frac
+        .split_once('.')
+        .map_or(time_and_frac, |(main, frac)| {
+            if !frac.is_empty() && frac.bytes().all(|b| b.is_ascii_digit()) {
+                main
+            } else {
+                ""
+            }
+        });
+    let mut tp = hms.split(':');
+    let hour: i64 = tp.next().filter(|p| p.len() == 2)?.parse().ok()?;
+    let minute: i64 = tp.next().filter(|p| p.len() == 2)?.parse().ok()?;
+    let second: i64 = tp.next().filter(|p| p.len() == 2)?.parse().ok()?;
+    if tp.next().is_some() || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+
+    let total = days
+        .checked_mul(86_400)?
+        .checked_add(hour * 3600 + minute * 60 + second)?
+        .checked_sub(offset_secs)?;
+    let secs = u64::try_from(total).ok()?;
+    (1..=MAX_TIMESTAMP).contains(&secs).then_some(secs)
+}
+
 fn read_events(path: &Path) -> io::Result<Vec<Event>> {
     let mut raw = Vec::new();
     match File::open(path) {
@@ -167,6 +273,9 @@ fn read_events(path: &Path) -> io::Result<Vec<Event>> {
             .filter_map(|url| check_url(url))
             .collect();
         event.primary = event.primary.filter(|value| identifier(value));
+        event.decided_at = event
+            .decided_at
+            .filter(|ts| (1..=MAX_TIMESTAMP).contains(ts));
         event.previous_switch_at = event
             .previous_switch_at
             .filter(|time| (1..=MAX_TIMESTAMP).contains(time))
@@ -185,16 +294,13 @@ pub(crate) fn recent(
 ) -> io::Result<Vec<Event>> {
     let reason = if reason.is_empty() {
         None
+    } else if reason == "unknown" {
+        Some(Reason::Unknown)
     } else {
-        Some(match reason {
-            "initial" => Reason::Initial,
-            "failover" => Reason::Failover,
-            "recovery" => Reason::Recovery,
-            "faster_same_tier" => Reason::FasterSameTier,
-            "switch" => Reason::Switch,
-            "unknown" => Reason::Unknown,
-            _ => return Ok(Vec::new()),
-        })
+        match parse_known_reason(reason) {
+            Some(r) => Some(r),
+            None => return Ok(Vec::new()),
+        }
     };
     Ok(read_events(path)?
         .into_iter()
@@ -343,12 +449,18 @@ impl Groups {
     }
 }
 
+struct GroupCursor {
+    selected: String,
+    generation: Option<String>,
+    sequence: Option<u64>,
+}
+
 #[derive(Default)]
 pub(crate) struct Observer {
     config: Option<Arc<Groups>>,
     core: Option<(u32, u64)>,
     last_sample: Option<Instant>,
-    selected: HashMap<String, String>,
+    cursors: HashMap<String, GroupCursor>,
 }
 
 impl Observer {
@@ -377,7 +489,7 @@ impl Observer {
                 .as_ref()
                 .is_some_and(|prev| Arc::ptr_eq(prev, &config))
         {
-            self.selected.clear();
+            self.cursors.clear();
             self.core = Some(core);
             self.config = Some(Arc::clone(&config));
         }
@@ -394,13 +506,82 @@ impl Observer {
             else {
                 return;
             };
-            if self.selected.get(tag).is_some_and(|prev| prev == to) {
-                return;
-            }
-            // The first sample establishes a baseline; it supplies no earlier selection.
-            let Some(from) = self.selected.insert(tag.to_owned(), to.to_owned()) else {
-                return;
+            let generation = status
+                .get("switch_generation")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| identifier(s))
+                .map(str::to_owned);
+            let sequence = status.get("switch_sequence").and_then(Value::as_u64);
+
+            let prev = match self.cursors.get(tag) {
+                None => {
+                    // The first sample establishes a baseline; it supplies no earlier selection.
+                    self.cursors.insert(
+                        tag.to_owned(),
+                        GroupCursor {
+                            selected: to.to_owned(),
+                            generation,
+                            sequence,
+                        },
+                    );
+                    return;
+                }
+                Some(prev) if prev.selected == to => {
+                    self.cursors.insert(
+                        tag.to_owned(),
+                        GroupCursor {
+                            selected: to.to_owned(),
+                            generation,
+                            sequence,
+                        },
+                    );
+                    return;
+                }
+                Some(prev) => GroupCursor {
+                    selected: prev.selected.clone(),
+                    generation: prev.generation.clone(),
+                    sequence: prev.sequence,
+                },
             };
+
+            self.cursors.insert(
+                tag.to_owned(),
+                GroupCursor {
+                    selected: to.to_owned(),
+                    generation: generation.clone(),
+                    sequence,
+                },
+            );
+
+            let from = prev.selected;
+            let (reason, decided_at) = match (
+                prev.generation.as_deref(),
+                generation.as_deref(),
+                prev.sequence,
+                sequence,
+                status.get("last_switch").and_then(Value::as_object),
+            ) {
+                (Some(pg), Some(cg), Some(ps), Some(cs), Some(last))
+                    if pg == cg && cs == ps.saturating_add(1) =>
+                {
+                    let ls_from = last.get("from").and_then(Value::as_str).unwrap_or("");
+                    let ls_to = last.get("to").and_then(Value::as_str).unwrap_or("");
+                    let parsed_reason = last
+                        .get("reason")
+                        .and_then(Value::as_str)
+                        .and_then(parse_known_reason);
+                    match parsed_reason {
+                        Some(r) if ls_from == from && ls_to == to => {
+                            let d_at = last.get("timestamp").and_then(parse_decision_timestamp);
+                            (r, d_at)
+                        }
+                        _ => (Reason::Unknown, None),
+                    }
+                }
+                _ => (Reason::Unknown, None),
+            };
+
             let (from_delay_ms, from_delay_at) = delay(proxies, status, &from);
             let (to_delay_ms, to_delay_at) = delay(proxies, status, to);
             let quarantined = |node| {
@@ -427,6 +608,8 @@ impl Observer {
                 to_quarantined: quarantined(to),
                 from,
                 to: to.to_owned(),
+                reason,
+                decided_at,
                 source,
                 observed: true,
                 priority: Some(group.priority),
@@ -435,7 +618,6 @@ impl Observer {
                 primary: primary.map(str::to_owned),
                 primary_healthy: primary.and_then(|_| status.get("primary_healthy")?.as_bool()),
                 primary_failures: primary.and_then(|_| number(status.get("primary_failures")?)),
-                // The endpoints report snapshots with no decision reason.
                 ..Event::default()
             });
         };
@@ -972,5 +1154,340 @@ mod tests {
         append_with_retries(&path, vec![event], 8, std::time::Duration::from_millis(20)).unwrap();
         holder.join().unwrap();
         assert_eq!(recent(&path, LIMIT, "", "").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn core_last_switch_accepted_for_proxies_and_failover_sequences() {
+        let groups = config();
+        let mut observer = Observer::default();
+        assert!(
+            observe(
+                &mut observer,
+                &groups,
+                &json!({"proxies": {"priority": {
+                    "now": "A",
+                    "switch_generation": "gen-1",
+                    "switch_sequence": 1
+                }}}),
+            )
+            .is_empty()
+        );
+
+        let evs1 = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "gen-1",
+                "switch_sequence": 2,
+                "last_switch": {
+                    "from": "A",
+                    "to": "B",
+                    "reason": "active_ineligible",
+                    "timestamp": 1_795_000_000u64,
+                    "trigger": "probe"
+                }
+            }}}),
+        );
+        assert_eq!(evs1.len(), 1);
+        assert!(evs1[0].reason == Reason::ActiveIneligible);
+        assert_eq!(evs1[0].decided_at, Some(1_795_000_000));
+
+        let evs2 = observer
+            .transitions(
+                Arc::clone(&groups),
+                (1, 10),
+                Instant::now(),
+                Source::CoreFailover,
+                &json!({"groups": [{
+                    "tag": "priority",
+                    "current": "A",
+                    "switch_generation": "gen-1",
+                    "switch_sequence": 3,
+                    "last_switch": {
+                        "from": "B",
+                        "to": "A",
+                        "reason": "higher_priority_eligible",
+                        "timestamp": "2026-11-24T06:00:00Z"
+                    }
+                }]}),
+            )
+            .unwrap();
+        assert_eq!(evs2.len(), 1);
+        assert!(evs2[0].reason == Reason::HigherPriorityEligible);
+        assert_eq!(evs2[0].decided_at, Some(1_795_500_000));
+
+        let evs3 = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "Fast",
+                "switch_generation": "gen-1",
+                "switch_sequence": 4,
+                "last_switch": {
+                    "from": "A",
+                    "to": "Fast",
+                    "reason": "manual_restore",
+                    "timestamp": "2026-11-24T09:00:00+03:00"
+                }
+            }}}),
+        );
+        assert_eq!(evs3.len(), 1);
+        assert!(evs3[0].reason == Reason::ManualRestore);
+        assert_eq!(evs3[0].decided_at, Some(1_795_500_000));
+    }
+
+    #[test]
+    fn core_last_switch_accepts_active_unhealthy_alias() {
+        let groups = config();
+        let mut observer = Observer::default();
+        assert!(
+            observe(
+                &mut observer,
+                &groups,
+                &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 5}}}),
+            )
+            .is_empty()
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 6,
+                "last_switch": {"from": "A", "to": "B", "reason": "active_unhealthy", "timestamp": 12345}
+            }}}),
+        );
+        assert_eq!(evs.len(), 1);
+        assert!(evs[0].reason == Reason::ActiveIneligible);
+        assert_eq!(evs[0].decided_at, Some(12345));
+    }
+
+    #[test]
+    fn core_last_switch_rejected_on_sequence_gap() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 1}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 3,
+                "last_switch": {"from": "A", "to": "B", "reason": "manual_restore", "timestamp": 1000}
+            }}}),
+        );
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn core_last_switch_rejected_on_repeated_sequence() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 4}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 4,
+                "last_switch": {"from": "A", "to": "B", "reason": "failover", "timestamp": 1000}
+            }}}),
+        );
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn core_last_switch_rejected_on_generation_change() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 1}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g2",
+                "switch_sequence": 2,
+                "last_switch": {"from": "A", "to": "B", "reason": "failover", "timestamp": 1000}
+            }}}),
+        );
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn core_last_switch_rejected_on_from_to_mismatch() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 1}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 2,
+                "last_switch": {"from": "Fast", "to": "B", "reason": "failover", "timestamp": 1000}
+            }}}),
+        );
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn core_last_switch_rejected_on_unknown_reason_code() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 1}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 2,
+                "last_switch": {"from": "A", "to": "B", "reason": "future_code", "timestamp": 1000}
+            }}}),
+        );
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn legacy_core_without_switch_metadata_falls_back_to_unknown() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(&mut observer, &groups, &proxies("A", "X", false));
+        let evs = observe(&mut observer, &groups, &proxies("B", "X", false));
+        assert_eq!(evs.len(), 1);
+        assert!(evs[0].reason == Reason::Unknown);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn recent_filters_new_reason_codes_and_alias() {
+        let dir = TestDir::new();
+        let path = dir.0.join("events.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&json!([
+                {"ts":1,"group":"g","from":"A","to":"B","reason":"active_ineligible","decided_at":10},
+                {"ts":2,"group":"g","from":"B","to":"A","reason":"higher_priority_eligible"},
+                {"ts":3,"group":"g","from":"B","to":"A","reason":"manual_restore"}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            recent(&path, LIMIT, "g", "active_ineligible")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            recent(&path, LIMIT, "g", "active_unhealthy").unwrap().len(),
+            1
+        );
+        assert_eq!(
+            recent(&path, LIMIT, "g", "higher_priority_eligible")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            recent(&path, LIMIT, "g", "manual_restore").unwrap().len(),
+            1
+        );
+        assert_eq!(recent(&path, LIMIT, "g", "unknown").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn deserializes_stored_json_without_decided_at_and_with_unhealthy_alias() {
+        let ev: Event = serde_json::from_value(json!({
+            "timestamp": 10,
+            "group": "g",
+            "from": "A",
+            "to": "B",
+            "reason": "active_unhealthy"
+        }))
+        .unwrap();
+        assert!(ev.reason == Reason::ActiveIneligible);
+        assert_eq!(ev.decided_at, None);
+    }
+
+    #[test]
+    fn invalid_decision_timestamp_drops_only_decided_at() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 1}}}),
+        );
+        let evs = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g1",
+                "switch_sequence": 2,
+                "last_switch": {"from": "A", "to": "B", "reason": "manual_restore", "timestamp": "not-a-time"}
+            }}}),
+        );
+        assert_eq!(evs.len(), 1);
+        assert!(evs[0].reason == Reason::ManualRestore);
+        assert_eq!(evs[0].decided_at, None);
+    }
+
+    #[test]
+    fn core_restart_resets_cursor_and_avoids_spurious_transition() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g1", "switch_sequence": 10}}}),
+        );
+        let after_restart = observer
+            .transitions(
+                Arc::clone(&groups),
+                (2, 20),
+                Instant::now(),
+                Source::ClashProxies,
+                &json!({"proxies": {"priority": {
+                    "now": "B",
+                    "switch_generation": "g2",
+                    "switch_sequence": 1,
+                    "last_switch": {"from": "A", "to": "B", "reason": "failover", "timestamp": 1000}
+                }}}),
+            )
+            .unwrap();
+        assert!(after_restart.is_empty());
     }
 }

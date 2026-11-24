@@ -1,14 +1,22 @@
 import { renderRefreshCwIcon } from '../icons';
+import {
+  buildRuntimeTagDisplayContextFromUci,
+  humanizeRuntimeTag,
+} from './helpers/humanizeTag';
 import { tr } from './helpers/i18n';
 import { callBaseMethod } from './methods/shell/callBaseMethod';
 import { Tachyon } from './types';
 
-interface SwitchEvent {
+export interface SwitchEvent {
   timestamp: number;
   group: string;
+  group_display_name?: string;
   from: string;
+  from_display_name?: string;
   to: string;
+  to_display_name?: string;
   reason: string;
+  decided_at?: number;
   source: string;
   observed: boolean;
   priority?: boolean;
@@ -23,12 +31,13 @@ interface SwitchEvent {
   to_quarantined?: boolean;
   on_backup?: boolean;
   primary?: string;
+  primary_display_name?: string;
   primary_healthy?: boolean;
   primary_failures?: number;
   previous_switch_at?: number;
 }
 
-function reasonLabel(reason: string): string {
+export function reasonLabel(reason: string): string {
   switch (reason) {
     case 'initial':
       return tr('Первичный выбор', 'Initial selection');
@@ -43,6 +52,19 @@ function reasonLabel(reason: string): string {
       );
     case 'switch':
       return tr('Переключение', 'Switch');
+    case 'active_ineligible':
+    case 'active_unhealthy':
+      return tr('Активный узел недоступен', 'Active node unavailable');
+    case 'higher_priority_eligible':
+      return tr(
+        'Возврат на более приоритетный узел',
+        'Returned to higher-priority node',
+      );
+    case 'manual_restore':
+      return tr(
+        'Ручной возврат на основной узел',
+        'Manual restore to primary node',
+      );
     default:
       return tr('Причина неизвестна', 'Unknown reason');
   }
@@ -83,7 +105,27 @@ function formatIsoTime(timestamp: number): string {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
-function renderEvent(event: SwitchEvent) {
+export function renderSwitchEvent(event: SwitchEvent) {
+  const tagCtx = buildRuntimeTagDisplayContextFromUci();
+  const groupDisplay = humanizeRuntimeTag(
+    event.group,
+    event.group_display_name,
+    { context: tagCtx },
+  );
+  const fromDisplay = event.from
+    ? humanizeRuntimeTag(event.from, event.from_display_name, {
+        context: tagCtx,
+      })
+    : '';
+  const toDisplay = humanizeRuntimeTag(event.to, event.to_display_name, {
+    context: tagCtx,
+  });
+  const primaryDisplay = event.primary
+    ? humanizeRuntimeTag(event.primary, event.primary_display_name, {
+        context: tagCtx,
+      })
+    : '';
+
   const fromDelay = event.from_delay_ms;
   const toDelay = event.to_delay_ms;
   const delayLabel = (delay: number, time?: string) =>
@@ -115,6 +157,12 @@ function renderEvent(event: SwitchEvent) {
         )
       : reasonLabel(event.reason),
   );
+  if (event.decided_at != null) {
+    add(
+      tr('Время решения ядра', 'Core decision time'),
+      dateLabel(event.decided_at),
+    );
+  }
   if (event.old_level != null || event.new_level != null) {
     const levels =
       event.old_level != null && event.new_level != null
@@ -130,25 +178,25 @@ function renderEvent(event: SwitchEvent) {
   if (fromDelay != null) {
     add(
       event.observed ? cached : legacy,
-      `${event.from} · ${delayLabel(fromDelay, event.from_delay_at)}`,
+      `${fromDisplay} · ${delayLabel(fromDelay, event.from_delay_at)}`,
     );
   }
   if (toDelay != null) {
     add(
       event.observed ? cached : legacy,
-      `${event.to} · ${delayLabel(toDelay, event.to_delay_at)}`,
+      `${toDisplay} · ${delayLabel(toDelay, event.to_delay_at)}`,
     );
   }
   const quarantined = [
-    event.from_quarantined ? event.from : '',
-    event.to_quarantined ? event.to : '',
+    event.from_quarantined ? fromDisplay : '',
+    event.to_quarantined ? toDisplay : '',
   ].filter(Boolean);
   add(
     tr('На карантине по снимку', 'Quarantined in snapshot'),
     quarantined.join(', '),
   );
-  if (event.primary) {
-    add(tr('Основной узел', 'Primary node'), event.primary);
+  if (primaryDisplay) {
+    add(tr('Основной узел', 'Primary node'), primaryDisplay);
   }
   if (event.on_backup != null) {
     add(
@@ -185,10 +233,14 @@ function renderEvent(event: SwitchEvent) {
       dateLabel(event.previous_switch_at),
     );
   }
+  const titleAttr = (display: string, raw: string) =>
+    display !== raw && raw ? { title: raw } : {};
   const route = [
-    event.from ? E('span', {}, event.from) : null,
+    event.from
+      ? E('span', titleAttr(fromDisplay, event.from), fromDisplay)
+      : null,
     event.from ? E('span', {}, '→') : null,
-    E('strong', {}, event.to),
+    E('strong', titleAttr(toDisplay, event.to), toDisplay),
   ].filter((node): node is HTMLElement => node !== null);
   const delays = [fromDelay, toDelay]
     .map((delay) => (delay == null ? '—' : String(delay)))
@@ -210,7 +262,7 @@ function renderEvent(event: SwitchEvent) {
           isoTime ? { dateTime: isoTime } : {},
           dateLabel(event.timestamp),
         ),
-        E('span', {}, event.group),
+        E('span', titleAttr(groupDisplay, event.group), groupDisplay),
       ]),
       E('span', { class: 'tachyon-switch-history__route' }, route),
       E('span', { class: 'tachyon-switch-history__meta' }, [
@@ -269,7 +321,7 @@ export function openSwitchHistory() {
         (!group.value || event.group === group.value) &&
         (!reason.value || event.reason === reason.value),
     );
-    list.replaceChildren(...filtered.map(renderEvent));
+    list.replaceChildren(...filtered.map(renderSwitchEvent));
     status.textContent = filtered.length
       ? ''
       : events.length
@@ -302,11 +354,17 @@ export function openSwitchHistory() {
         return;
       }
       events = result.data.events;
+      const tagCtx = buildRuntimeTagDisplayContextFromUci();
       options(
         group,
         tr('Все группы', 'All groups'),
         [...new Set(events.map((event) => event.group))].sort(),
-        (value) => value,
+        (value) => {
+          const disp = events.find(
+            (event) => event.group === value,
+          )?.group_display_name;
+          return humanizeRuntimeTag(value, disp, { context: tagCtx });
+        },
       );
       options(
         reason,

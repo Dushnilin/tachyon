@@ -2650,3 +2650,135 @@ async fn update_fptn_prompts_normalize_token_and_count_all_servers() {
         .unwrap();
     assert!(src.fptn_access_token.starts_with("fptn:"));
 }
+
+#[test]
+fn test_event_observer_200_ring_does_not_replay_and_advances_seq() {
+    let mut live = crate::store::LiveTelemetry::default();
+    for idx in 0..205 {
+        live.push_event("info", "core_mgr", &format!("tachyon-core reloaded #{idx}"));
+    }
+    assert_eq!(live.events.len(), crate::store::MAX_EVENTS_RING);
+
+    let mut obs = BotEventObserver {
+        initialized: true,
+        ..Default::default()
+    };
+
+    let (first, emitted_first) = collect_observed_event_notifications(&mut obs, &live, 1_000, true);
+    assert_eq!(first.len(), crate::store::MAX_EVENTS_RING);
+    assert!(emitted_first);
+    assert_eq!(obs.last_seen_event_seq, 205);
+
+    // Repeating poll with a full 200-event ring must emit 0 notifications (no replay bug).
+    let (second, emitted_second) =
+        collect_observed_event_notifications(&mut obs, &live, 1_005, true);
+    assert!(second.is_empty());
+    assert!(!emitted_second);
+
+    live.push_event("info", "core_mgr", "tachyon-core started (PID 4242)");
+    let (third, emitted_third) = collect_observed_event_notifications(&mut obs, &live, 1_010, true);
+    assert_eq!(third.len(), 1);
+    assert!(emitted_third);
+    assert!(third[0].1.contains("4242"));
+    assert_eq!(obs.last_seen_event_seq, 206);
+}
+
+#[test]
+fn test_watchdog_config_drift_restart_alert_rate_limited_300s() {
+    let mut live = crate::store::LiveTelemetry::default();
+    let mut obs = BotEventObserver {
+        initialized: true,
+        ..Default::default()
+    };
+
+    live.push_event(
+        "warn",
+        "watchdog",
+        "Watchdog action executed: L2_config_drift_reload",
+    );
+    let (first, emitted_first) = collect_observed_event_notifications(&mut obs, &live, 1_000, true);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].0, "restart");
+    assert!(emitted_first);
+
+    live.push_event(
+        "warn",
+        "watchdog",
+        "Watchdog action executed: L2_config_drift_reload",
+    );
+    let (within_cooldown, _) = collect_observed_event_notifications(&mut obs, &live, 1_060, true);
+    assert!(within_cooldown.is_empty());
+
+    live.push_event(
+        "warn",
+        "watchdog",
+        "Watchdog action executed: L2_config_drift_reload",
+    );
+    let (after_cooldown, emitted_after) =
+        collect_observed_event_notifications(&mut obs, &live, 1_301, true);
+    assert_eq!(after_cooldown.len(), 1);
+    assert_eq!(after_cooldown[0].0, "restart");
+    assert!(emitted_after);
+}
+
+#[test]
+fn test_node_switch_notifications_render_human_readable_group_and_node_names() {
+    let mut d = RouterStoreData::default();
+    d.telegram.enabled = true;
+    d.telegram.notify_server_switch = true;
+    d.outbound_sources.push(crate::store::OutboundSource {
+        id: "src_rtest".to_string(),
+        enabled: true,
+        name: "rtest".to_string(),
+        source_type: "amnezia_config".to_string(),
+        ..Default::default()
+    });
+    d.balancers.push(crate::store::BalancerConfig {
+        id: "bal_Main_auto".to_string(),
+        name: "Main Auto".to_string(),
+        balancer_type: "urltest".to_string(),
+        ..Default::default()
+    });
+    d.sections = vec![RoutingSection {
+        id: "Main".to_string(),
+        enabled: true,
+        label: "Main".to_string(),
+        action: "proxy".to_string(),
+        balancer_refs: vec!["bal_Main_auto".to_string()],
+        ..Default::default()
+    }];
+
+    let mut obs = BotEventObserver::default();
+    let baseline = json!({
+        "sel-Main": { "now": "bal-Main-bal_Main_auto" },
+        "bal-Main-bal_Main_auto": { "now": "rtest" }
+    });
+    let empty_switched = std::collections::HashSet::new();
+    assert!(
+        collect_clash_node_switch_notifications(
+            &mut obs,
+            &d,
+            baseline.as_object().unwrap(),
+            &empty_switched,
+            true,
+        )
+        .is_empty()
+    );
+
+    let switched = json!({
+        "sel-Main": { "now": "bal-Main-bal_Main_auto" },
+        "bal-Main-bal_Main_auto": { "now": "awgconf-src_rtest-1" }
+    });
+    let notices = collect_clash_node_switch_notifications(
+        &mut obs,
+        &d,
+        switched.as_object().unwrap(),
+        &empty_switched,
+        true,
+    );
+    assert_eq!(notices.len(), 1);
+    assert!(notices[0].1.contains("Main Auto"), "{}", notices[0].1);
+    assert!(notices[0].1.contains("rtest #2"), "{}", notices[0].1);
+    assert!(!notices[0].1.contains("bal-Main-bal_Main_auto"));
+    assert!(!notices[0].1.contains("awgconf-src_rtest-1"));
+}

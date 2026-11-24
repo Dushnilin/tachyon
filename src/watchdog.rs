@@ -78,6 +78,9 @@ pub struct WatchdogState {
     pub last_dns_flush_ts: i64,
     pub last_blackbox_by_reason: HashMap<String, i64>,
     pub last_failed_lkg_rollback_key: Option<String>,
+    pub last_applied_desired_digest: String,
+    pub last_applied_core_digest: String,
+    pub last_drift_reload_key: Option<(String, String)>,
 }
 
 impl Default for WatchdogState {
@@ -93,11 +96,19 @@ impl Default for WatchdogState {
             last_dns_flush_ts: 0,
             last_blackbox_by_reason: HashMap::new(),
             last_failed_lkg_rollback_key: None,
+            last_applied_desired_digest: String::new(),
+            last_applied_core_digest: String::new(),
+            last_drift_reload_key: None,
         }
     }
 }
 
 impl WatchdogState {
+    pub fn record_applied_config(&mut self, desired_digest: String) {
+        self.last_applied_desired_digest = desired_digest;
+        self.last_applied_core_digest.clear();
+        self.last_drift_reload_key = None;
+    }
     pub fn prune_restarts(&mut self, now: i64) {
         self.restart_timestamps
             .retain(|&ts| now.saturating_sub(ts) <= CIRCUIT_BREAKER_WINDOW_SECS);
@@ -566,13 +577,55 @@ pub fn run_watchdog_tick_boxed(
 }
 
 #[inline(never)]
-fn compute_desired_digest(store: &crate::store::RouterStoreData) -> String {
+pub(crate) fn compute_desired_digest(store: &crate::store::RouterStoreData) -> String {
     config_gen::compile_core_config(store)
         .map(|mut v| {
             CoreManager::sanitize_candidate_local_rulesets(&mut v);
             compute_config_digest(&v)
         })
         .unwrap_or_default()
+}
+
+fn read_disk_config_digest(path: &str) -> Option<String> {
+    let raw = std::fs::read(path).ok()?;
+    let val: Value = serde_json::from_slice(&raw).ok()?;
+    Some(compute_config_digest(&val))
+}
+
+pub(crate) fn detect_config_drift(
+    wd: &mut WatchdogState,
+    core_alive: bool,
+    config_ready: bool,
+    desired_digest: &str,
+    applied_digest: &str,
+    disk_config_digest: Option<&str>,
+) -> bool {
+    if !core_alive || !config_ready || desired_digest.is_empty() || applied_digest.is_empty() {
+        return false;
+    }
+    if desired_digest == applied_digest {
+        wd.last_applied_desired_digest = desired_digest.to_string();
+        wd.last_applied_core_digest = applied_digest.to_string();
+        wd.last_drift_reload_key = None;
+        return false;
+    }
+    if !wd.last_applied_desired_digest.is_empty() {
+        if wd.last_applied_desired_digest == desired_digest {
+            if wd.last_applied_core_digest.is_empty() {
+                wd.last_applied_core_digest = applied_digest.to_string();
+                return false;
+            }
+            return wd.last_applied_core_digest != applied_digest;
+        }
+        return true;
+    }
+    if disk_config_digest == Some(desired_digest) {
+        wd.last_applied_desired_digest = desired_digest.to_string();
+        wd.last_applied_core_digest = applied_digest.to_string();
+        wd.last_drift_reload_key = None;
+        return false;
+    }
+    true
 }
 
 fn lkg_rollback_state_key(desired_digest: &str, lkg_path: &Path) -> String {
@@ -660,7 +713,7 @@ where
 /// and execute deterministic L0-L5 self-healing actions under hysteresis & circuit-breaker protection.
 pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count: u64) {
     let now = unix_now_secs();
-    let (desired_digest, enable_watchdog) = {
+    let (desired_digest, enable_watchdog, core_config_path) = {
         let store_guard = core.state.data.read().await;
         let enable = store_guard.settings.enable_watchdog;
         let digest = if core_alive && enable {
@@ -668,7 +721,11 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         } else {
             String::new()
         };
-        (digest, enable)
+        (
+            digest,
+            enable,
+            store_guard.settings.core_config_path.clone(),
+        )
     };
     let desired_digest_snapshot = desired_digest.clone();
 
@@ -713,11 +770,33 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         .and_then(|h| h.pointer("/config_state/ready"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let config_drift = core_alive
+    let need_disk_digest = core_alive
         && config_ready
         && !desired_digest.is_empty()
         && !applied_digest.is_empty()
-        && desired_digest != applied_digest;
+        && desired_digest != applied_digest
+        && core
+            .watchdog
+            .lock()
+            .await
+            .last_applied_desired_digest
+            .is_empty();
+    let disk_digest = if need_disk_digest {
+        read_disk_config_digest(&core_config_path)
+    } else {
+        None
+    };
+    let config_drift = {
+        let mut wd = core.watchdog.lock().await;
+        detect_config_drift(
+            &mut wd,
+            core_alive,
+            config_ready,
+            &desired_digest,
+            &applied_digest,
+            disk_digest.as_deref(),
+        )
+    };
 
     let pressure_level = health_val
         .as_ref()
@@ -927,7 +1006,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         live.dns_cache_misses = dns_cache_misses;
         live.dns_upstream_errors = dns_upstream_errors;
         live.desired_config_digest = desired_digest;
-        live.applied_config_digest = applied_digest;
+        live.applied_config_digest = applied_digest.clone();
         live.config_drift = config_drift;
         live.core_binary_ok = core_binary_ok;
         live.core_binary_error = core_binary_error.clone();
@@ -1065,12 +1144,14 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         }
     } else if core_alive {
         if should_trigger_drift_reload(config_drift, safe_minimal_active) {
-            let allow =
-                core.watchdog
-                    .lock()
-                    .await
-                    .cooldown_ready("l2_config_drift_reload", now, 45);
+            let drift_key = (desired_digest_snapshot.clone(), applied_digest.clone());
+            let allow = {
+                let mut wd = core.watchdog.lock().await;
+                wd.last_drift_reload_key.as_ref() != Some(&drift_key)
+                    && wd.cooldown_ready("l2_config_drift_reload", now, 45)
+            };
             if allow && boxed_core_reload(core).await.is_ok() {
+                core.watchdog.lock().await.last_drift_reload_key = Some(drift_key);
                 action_taken = Some("L2_config_drift_reload");
             }
         }
@@ -1533,5 +1614,87 @@ mod tests {
         assert!(should_trigger_drift_reload(true, false));
         assert!(!should_trigger_drift_reload(true, true));
         assert!(!should_trigger_drift_reload(false, false));
+    }
+
+    #[test]
+    fn test_detect_config_drift_calibrates_core_digest_and_detects_real_drift() {
+        let mut wd = WatchdogState::default();
+        wd.record_applied_config("desired-sha-v1".to_string());
+
+        // Core reports its own canonical digest string on first health poll: must calibrate, not drift.
+        assert!(!detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-sha-v1",
+            "core-canonical-sha-a",
+            None
+        ));
+        assert_eq!(wd.last_applied_core_digest, "core-canonical-sha-a");
+
+        // Subsequent polls with the same pair stay clean.
+        assert!(!detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-sha-v1",
+            "core-canonical-sha-a",
+            None
+        ));
+
+        // Real store change changes desired_digest -> must detect drift.
+        assert!(detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-a",
+            None
+        ));
+
+        // Recording the newly applied v2 resets core digest calibration cleanly.
+        wd.record_applied_config("desired-sha-v2".to_string());
+        assert!(!detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-b",
+            None
+        ));
+
+        // External reload changing Core's digest unexpectedly is detected.
+        assert!(detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-c",
+            None
+        ));
+
+        // Cold restart of tachyon while Core already runs calibrates from disk config digest.
+        let mut cold_wd = WatchdogState::default();
+        assert!(!detect_config_drift(
+            &mut cold_wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-b",
+            Some("desired-sha-v2")
+        ));
+        assert_eq!(cold_wd.last_applied_desired_digest, "desired-sha-v2");
+        assert_eq!(cold_wd.last_applied_core_digest, "core-canonical-sha-b");
+
+        // Mismatched disk config on cold start triggers real drift.
+        let mut stale_wd = WatchdogState::default();
+        assert!(detect_config_drift(
+            &mut stale_wd,
+            true,
+            true,
+            "desired-sha-v2",
+            "core-canonical-sha-a",
+            Some("desired-sha-v1")
+        ));
     }
 }

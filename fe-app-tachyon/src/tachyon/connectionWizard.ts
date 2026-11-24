@@ -1108,6 +1108,13 @@ export interface QuickConnectionDetection {
   summaryEn: string;
 }
 
+export function shouldAutoCreateWizardBalancer(
+  outboundMethod: string,
+  expectedNodeCount: number,
+): boolean {
+  return outboundMethod === 'subscription' || expectedNodeCount >= 2;
+}
+
 export function detectQuickConnectionInput(
   rawText: string,
 ): QuickConnectionDetection {
@@ -6950,23 +6957,26 @@ export function openConnectionWizardModal(
         .filter(Boolean);
       uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'proxy_links', links);
     } else if (outboundMethod === 'amnezia_config' && parsedAmnezia) {
-      if (parsedAmnezia.entries.length) {
+      if (parsedAmnezia.entries.length > 0) {
         uciObj.set(
           TACHYON_UCI_PACKAGE,
           srcId,
           'amnezia_configs',
           parsedAmnezia.entries,
         );
-      }
-      if (parsedAmnezia.confBody && parsedAmnezia.vpnLinks.length === 0) {
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          srcId,
-          'amnezia_conf_text',
-          parsedAmnezia.confBody,
-        );
+        unsetUciOpt('amnezia_conf_text');
       } else {
-        uciObj.unset(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text');
+        unsetUciOpt('amnezia_configs');
+        if (parsedAmnezia.confBody && parsedAmnezia.vpnLinks.length === 0) {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'amnezia_conf_text',
+            parsedAmnezia.confBody,
+          );
+        } else {
+          unsetUciOpt('amnezia_conf_text');
+        }
       }
     } else if (outboundMethod === 'warp') {
       if (!warpPrivateKey.trim()) {
@@ -8336,11 +8346,26 @@ export function openConnectionWizardModal(
       ]);
     }
 
-    // Create URLTest balancer if requested
-    const canUseUrlTest =
-      outboundMethod === 'subscription' ||
-      outboundMethod === 'proxy_links' ||
-      outboundMethod === 'amnezia_config';
+    // Create URLTest balancer only when subscription or 2+ nodes are configured
+    const expectedNodeCount =
+      outboundMethod === 'subscription'
+        ? 2
+        : outboundMethod === 'proxy_links'
+          ? proxyLinksText
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter(Boolean).length
+          : outboundMethod === 'amnezia_config' && parsedAmnezia
+            ? Math.max(
+                parsedAmnezia.entries.length,
+                parsedAmnezia.vpnLinks.length,
+                parsedAmnezia.confBody ? 1 : 0,
+              )
+            : 0;
+    const canUseUrlTest = shouldAutoCreateWizardBalancer(
+      outboundMethod,
+      expectedNodeCount,
+    );
     if (canUseUrlTest && enableAutoUrlTest) {
       const curBalsRaw = uciObj.get(
         TACHYON_UCI_PACKAGE,

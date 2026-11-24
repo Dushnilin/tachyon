@@ -38,6 +38,10 @@ pub fn mark_daemon_mode() {
     DAEMON_MODE.store(true, std::sync::atomic::Ordering::Release);
 }
 
+pub fn is_daemon_mode() -> bool {
+    DAEMON_MODE.load(std::sync::atomic::Ordering::Acquire)
+}
+
 fn next_job_seq() -> u64 {
     JOB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
@@ -411,6 +415,432 @@ fn sanitize_luci_subview(subview: Option<&str>) -> Option<&str> {
     })
 }
 
+const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
+(function() {
+  try {
+    var PRESETS = {
+      "default-dark": ["dark","#0b0b0c","#141416","#1c1c1f","#26262b","#0a84ff","#409cff","#f5f5f7","#a1a1a6","#6e6e73","#30d158","#ff9f0a","#ff453a"],
+      "legacy-dark": ["dark","#0d1117","#161b22","#1f2630","#28313d","#58a6ff","#79c0ff","#e6edf3","#8b949e","#6e7681","#3fb950","#d29922","#f85149"],
+      "catppuccin": ["dark","#1e1e2e","#242436","#313244","#3b3d52","#89b4fa","#b4befe","#cdd6f4","#a6adc8","#7f849c","#a6e3a1","#f9e2af","#f38ba8"],
+      "dracula": ["dark","#282a36","#2f3241","#383b4d","#44475a","#bd93f9","#d1b3ff","#f8f8f2","#b6bbd2","#6272a4","#50fa7b","#ffb86c","#ff5555"],
+      "everforest": ["dark","#272e33","#2e383c","#374145","#414b50","#a7c080","#b8d194","#d3c6aa","#9da9a0","#7a8478","#83c092","#dbbc7f","#e67e80"],
+      "gruvbox-material": ["dark","#1d2021","#282828","#32302f","#3c3836","#d8a657","#e78a4e","#d4be98","#a89984","#7c6f64","#a9b665","#e78a4e","#ea6962"],
+      "monokai": ["dark","#272822","#2e2f29","#383a32","#46483e","#a6e22e","#c4f35c","#f8f8f2","#c2c2b4","#75715e","#a6e22e","#e6db74","#f92672"],
+      "nord": ["dark","#2e3440","#343b49","#3b4252","#434c5e","#88c0d0","#8fbcbb","#eceff4","#d8dee9","#8190a5","#a3be8c","#ebcb8b","#bf616a"],
+      "one-dark-pro": ["dark","#21252b","#282c34","#323842","#3e4451","#61afef","#82c4ff","#abb2bf","#8b93a2","#5c6370","#98c379","#e5c07b","#e06c75"],
+      "tokyo-night": ["dark","#1a1b26","#202330","#292e42","#343b58","#7aa2f7","#9ab7ff","#c0caf5","#9aa5ce","#565f89","#9ece6a","#e0af68","#f7768e"],
+      "solarized-dark": ["dark","#002b36","#073642","#0d414f","#144e5e","#268bd2","#2aa198","#eee8d5","#93a1a1","#657b83","#859900","#b58900","#dc322f"],
+      "vesper": ["dark","#101010","#161616","#1f1f1f","#282828","#ffc799","#ffd8b8","#ffffff","#a0a0a0","#666666","#99ffe4","#ffc799","#ff8080"]
+    };
+    function hexRgb(hex, fallback) {
+      var m = /^#([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+      if (!m) return fallback;
+      var n = parseInt(m[1], 16);
+      return ((n >> 16) & 255) + ", " + ((n >> 8) & 255) + ", " + (n & 255);
+    }
+    var tid = localStorage.getItem("tachyon_ui_theme_id") || "default-dark";
+    var customList = [];
+    try { customList = JSON.parse(localStorage.getItem("tachyon_ui_custom_themes") || "[]") || []; } catch (e) {}
+    var matchedCustom = null;
+    for (var i = 0; i < customList.length; i++) {
+      if (customList[i] && customList[i].id === tid && customList[i].colors) { matchedCustom = customList[i]; break; }
+    }
+    var p = null;
+    if (matchedCustom) {
+      var c = matchedCustom.colors;
+      p = [matchedCustom.scheme === "light" ? "light" : "dark", c.bg, c.surface, c.hover, c.elevated, c.accent, c.accentHover || c.accent, c.text, c.text2, c.text3, c.success, c.warn, c.danger];
+    } else {
+      p = PRESETS[tid] || PRESETS["default-dark"];
+    }
+    var r = document.documentElement;
+    var s = r.style;
+    var isLight = p[0] === "light";
+    var vars = {
+      "--color-scheme": isLight ? "light" : "dark",
+      "--bg": p[1], "--surface": p[2], "--bg2": p[2], "--hover": p[3], "--elevated": p[4],
+      "--accent": p[5], "--accent-hover": p[6], "--text": p[7], "--text2": p[8], "--text3": p[9],
+      "--success": p[10], "--ok": p[10], "--warn": p[11], "--danger": p[12],
+      "--border": isLight ? "rgba(0, 0, 0, 0.10)" : "rgba(255, 255, 255, 0.08)",
+      "--border-strong": isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.15)",
+      "--border-hi": isLight ? "rgba(0, 0, 0, 0.18)" : "rgba(255, 255, 255, 0.15)",
+      "--surface-glass": "rgba(" + hexRgb(p[2], "20, 20, 22") + ", 0.84)",
+      "--topbar-glass": "rgba(" + hexRgb(p[2], "20, 20, 22") + ", 0.96)",
+      "--accent-soft": "rgba(" + hexRgb(p[5], "10, 132, 255") + ", 0.16)",
+      "--accent-ring": "rgba(" + hexRgb(p[5], "10, 132, 255") + ", 0.34)",
+      "--bg-grid-stroke": isLight ? "rgba(0, 0, 0, 0.045)" : "rgba(255, 255, 255, 0.028)"
+    };
+    for (var k in vars) s.setProperty(k, vars[k]);
+    r.setAttribute("data-tachyon-theme", tid);
+    r.setAttribute("data-tachyon-theme-scheme", isLight ? "light" : "dark");
+    r.setAttribute("data-darkmode", isLight ? "false" : "true");
+  } catch (e) {}
+})();
+</script>"##;
+
+const TACHYON_BG_LAYER_HTML: &str = r##"<div class="tachyon-bg-layer" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g stroke="var(--bg-grid-stroke, rgba(255,255,255,0.028))" stroke-width="1">
+        <path d="M-100 140 C 420 40, 1080 280, 1700 90"/>
+        <path d="M-100 290 C 480 190, 1020 420, 1700 240"/>
+        <path d="M-100 450 C 520 370, 1080 550, 1700 420"/>
+        <path d="M-100 620 C 460 520, 1120 710, 1700 580"/>
+        <path d="M-100 780 C 540 680, 1060 840, 1700 740"/>
+        <path d="M 180 -60 C 420 320, 880 580, 1480 960"/>
+        <path d="M 640 -60 C 820 300, 1180 560, 1680 880"/>
+      </g>
+      <g stroke-width="1.5" stroke-linecap="round">
+        <path class="tachyon-stream" stroke="var(--accent, #0a84ff)" stroke-opacity="0.55" d="M-100 140 C 420 40, 1080 280, 1700 90"/>
+        <path class="tachyon-stream s2" stroke="var(--text, #f5f5f7)" stroke-opacity="0.32" d="M-100 290 C 480 190, 1020 420, 1700 240"/>
+        <path class="tachyon-stream s3" stroke="var(--accent, #0a84ff)" stroke-opacity="0.62" d="M-100 450 C 520 370, 1080 550, 1700 420"/>
+        <path class="tachyon-stream s4" stroke="var(--accent-hover, #409cff)" stroke-opacity="0.45" d="M-100 620 C 460 520, 1120 710, 1700 580"/>
+        <path class="tachyon-stream s5" stroke="var(--text, #f5f5f7)" stroke-opacity="0.28" d="M-100 780 C 540 680, 1060 840, 1700 740"/>
+        <path class="tachyon-stream s2" stroke="var(--accent, #0a84ff)" stroke-opacity="0.4" d="M 180 -60 C 420 320, 880 580, 1480 960"/>
+        <path class="tachyon-stream s4" stroke="var(--accent, #0a84ff)" stroke-opacity="0.35" d="M 640 -60 C 820 300, 1180 560, 1680 880"/>
+      </g>
+    </svg>
+  </div>"##;
+
+pub fn serve_login_page(ui_lang: &str, auth_mode: &str) -> String {
+    let is_en = ui_lang.trim().eq_ignore_ascii_case("en");
+    let lang = if is_en { "en" } else { "ru" };
+    let is_luci = auth_mode.trim().eq_ignore_ascii_case("luci");
+    let version = crate::store::TACHYON_VERSION;
+    let default_user = if is_luci { "root" } else { "" };
+    let (
+        subtitle,
+        user_label,
+        user_placeholder,
+        pass_label,
+        pass_placeholder,
+        submit_label,
+        hint_text,
+        show_pass_title,
+        err_invalid,
+        err_rate_limit,
+        err_network,
+    ) = if is_en {
+        (
+            if is_luci {
+                "Sign in with router credentials (LuCI)"
+            } else {
+                "Sign in to control panel"
+            },
+            "Username",
+            "root",
+            "Password",
+            "Enter password",
+            "Sign in",
+            if is_luci {
+                "Router (LuCI) username and password are used by default. You can set a separate panel password in Settings after signing in."
+            } else {
+                "Separate control panel username and password are active."
+            },
+            "Show or hide password",
+            "Invalid username or password",
+            "Too many failed sign-in attempts. Wait a minute and try again.",
+            "Connection error while signing in",
+        )
+    } else {
+        (
+            if is_luci {
+                "Вход по учётным данным роутера (LuCI)"
+            } else {
+                "Вход в панель управления"
+            },
+            "Логин",
+            "root",
+            "Пароль",
+            "Введите пароль",
+            "Войти",
+            if is_luci {
+                "По умолчанию используются логин и пароль роутера (LuCI). Отдельный пароль для панели можно задать в настройках после входа."
+            } else {
+                "Используется отдельный логин и пароль панели."
+            },
+            "Показать или скрыть пароль",
+            "Неверный логин или пароль",
+            "Слишком много неудачных попыток. Подождите минуту и повторите.",
+            "Ошибка соединения при входе",
+        )
+    };
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="{lang}" data-darkmode="true">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tachyon v{version}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v={version}">
+  <style>
+    :root {{
+      --bg: #0b0b0c;
+      --surface: #141416;
+      --hover: #1c1c1f;
+      --elevated: #26262b;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      --accent: #0a84ff;
+      --accent-hover: #409cff;
+      --danger: #ff453a;
+      --text: #f5f5f7;
+      --text2: #a1a1a6;
+      --text3: #6e6e73;
+      --surface-glass: rgba(20, 20, 22, 0.88);
+      --accent-soft: rgba(10, 132, 255, 0.16);
+      --accent-ring: rgba(10, 132, 255, 0.34);
+      --bg-grid-stroke: rgba(255, 255, 255, 0.028);
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+      --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
+    }}
+    * {{ box-sizing: border-box; }}
+    html, body {{
+      margin: 0;
+      min-height: 100vh;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }}
+    .tachyon-bg-layer {{ position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }}
+    .tachyon-bg-layer svg {{ width: 100%; height: 100%; display: block; }}
+    .tachyon-stream {{ stroke-dasharray: 80 620; animation: tachyon-flow 5.5s linear infinite; }}
+    .tachyon-stream.s2 {{ stroke-dasharray: 50 540; animation-duration: 4.1s; animation-delay: -1.6s; }}
+    .tachyon-stream.s3 {{ stroke-dasharray: 110 720; animation-duration: 6.8s; animation-delay: -3.2s; }}
+    .tachyon-stream.s4 {{ stroke-dasharray: 40 480; animation-duration: 3.4s; animation-delay: -0.9s; }}
+    .tachyon-stream.s5 {{ stroke-dasharray: 65 600; animation-duration: 4.9s; animation-delay: -2.4s; }}
+    @keyframes tachyon-flow {{ from {{ stroke-dashoffset: 800; }} to {{ stroke-dashoffset: 0; }} }}
+    .auth-shell {{
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+    }}
+    .auth-card {{
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      padding: 28px 24px 24px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+    }}
+    .auth-brand {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }}
+    .auth-brand__icon {{
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-ring);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+    }}
+    .auth-brand__title {{
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }}
+    .auth-brand__ver {{
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      font-family: var(--mono);
+    }}
+    .auth-brand__sub {{
+      margin: 2px 0 0;
+      font-size: 13px;
+      color: var(--text2);
+    }}
+    .auth-field {{ margin-bottom: 14px; }}
+    .auth-label {{
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 6px;
+    }}
+    .auth-input-wrap {{ position: relative; display: flex; align-items: center; }}
+    .auth-input {{
+      width: 100%;
+      height: 40px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }}
+    .auth-input--pass {{ padding-right: 40px; }}
+    .auth-input:focus {{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }}
+    .auth-eye {{
+      position: absolute;
+      right: 6px;
+      width: 30px;
+      height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .auth-eye:hover {{ color: var(--text); background: var(--hover); }}
+    .auth-error {{
+      display: none;
+      margin: 0 0 14px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 69, 58, 0.35);
+      background: rgba(255, 69, 58, 0.12);
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 1.4;
+    }}
+    .auth-error.is-visible {{ display: block; }}
+    .auth-btn {{
+      width: 100%;
+      height: 40px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 140ms ease, opacity 140ms ease;
+    }}
+    .auth-btn:hover {{ background: var(--accent-hover); }}
+    .auth-btn:disabled {{ opacity: 0.6; cursor: wait; }}
+    .auth-hint {{
+      margin: 14px 0 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text3);
+    }}
+  </style>
+  {EARLY_THEME_APPLY_SCRIPT}
+</head>
+<body>
+  {TACHYON_BG_LAYER_HTML}
+  <main class="auth-shell">
+    <section class="auth-card" aria-labelledby="tachyon-login-title">
+      <div class="auth-brand">
+        <div class="auth-brand__icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div>
+          <h1 id="tachyon-login-title" class="auth-brand__title">Tachyon <span class="auth-brand__ver">v{version}</span></h1>
+          <p class="auth-brand__sub">{subtitle}</p>
+        </div>
+      </div>
+      <form id="tachyon-login-form" novalidate>
+        <div class="auth-field">
+          <label class="auth-label" for="tachyon-login-user">{user_label}</label>
+          <input class="auth-input" id="tachyon-login-user" name="username" type="text" autocomplete="username" value="{default_user}" placeholder="{user_placeholder}" required>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="tachyon-login-pass">{pass_label}</label>
+          <div class="auth-input-wrap">
+            <input class="auth-input auth-input--pass" id="tachyon-login-pass" name="password" type="password" autocomplete="current-password" placeholder="{pass_placeholder}">
+            <button type="button" class="auth-eye" id="tachyon-login-eye" title="{show_pass_title}" aria-label="{show_pass_title}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="tachyon-login-err" class="auth-error" role="alert"></div>
+        <button type="submit" id="tachyon-login-btn" class="auth-btn">{submit_label}</button>
+        <p class="auth-hint">{hint_text}</p>
+      </form>
+    </section>
+  </main>
+  <script>
+  (function() {{
+    var form = document.getElementById('tachyon-login-form');
+    var userEl = document.getElementById('tachyon-login-user');
+    var passEl = document.getElementById('tachyon-login-pass');
+    var eyeEl = document.getElementById('tachyon-login-eye');
+    var errEl = document.getElementById('tachyon-login-err');
+    var btnEl = document.getElementById('tachyon-login-btn');
+    if (eyeEl && passEl) {{
+      eyeEl.addEventListener('click', function() {{
+        passEl.type = passEl.type === 'password' ? 'text' : 'password';
+      }});
+    }}
+    function showErr(msg) {{
+      if (!errEl) return;
+      errEl.textContent = msg;
+      errEl.classList.add('is-visible');
+    }}
+    if (form) {{
+      form.addEventListener('submit', function(ev) {{
+        ev.preventDefault();
+        if (errEl) errEl.classList.remove('is-visible');
+        if (btnEl) btnEl.disabled = true;
+        fetch('/api/login', {{
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            username: userEl ? userEl.value.trim() : '',
+            password: passEl ? passEl.value : ''
+          }})
+        }}).then(function(res) {{
+          if (res.ok) {{
+            window.location.reload();
+            return;
+          }}
+          if (res.status === 429) {{
+            showErr({err_rate_limit_json});
+          }} else {{
+            showErr({err_invalid_json});
+          }}
+        }}).catch(function() {{
+          showErr({err_network_json});
+        }}).finally(function() {{
+          if (btnEl) btnEl.disabled = false;
+        }});
+      }});
+    }}
+    if (passEl && userEl && userEl.value) passEl.focus();
+    else if (userEl) userEl.focus();
+  }})();
+  </script>
+</body>
+</html>"##,
+        err_rate_limit_json = serde_json::to_string(err_rate_limit).unwrap_or_default(),
+        err_invalid_json = serde_json::to_string(err_invalid).unwrap_or_default(),
+        err_network_json = serde_json::to_string(err_network).unwrap_or_default(),
+    )
+}
+
 pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     let lang = if ui_lang.trim().eq_ignore_ascii_case("en") {
         "en"
@@ -459,10 +889,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
   <link rel="preload" href="/luci-static/resources/view/tachyon/tachyon.js?v={rev}" as="script">
   <link rel="preload" href="/luci-static/resources/view/tachyon/main.js?v={rev}" as="script">
   <style>
-    :root,
-    html,
-    body,
-    html[data-darkmode="true"] {{
+    :root {{
       --bg: #0b0b0c;
       --surface: #141416;
       --hover: #1c1c1f;
@@ -480,6 +907,12 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       --text3: #6e6e73;
       --bg2: #141416;
       --border-hi: rgba(255, 255, 255, 0.15);
+      --surface-glass: rgba(20, 20, 22, 0.84);
+      --topbar-glass: rgba(20, 20, 22, 0.96);
+      --accent-soft: rgba(10, 132, 255, 0.16);
+      --accent-ring: rgba(10, 132, 255, 0.34);
+      --bg-grid-stroke: rgba(255, 255, 255, 0.028);
+      --color-scheme: dark;
       --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
       --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
       --r-card: 12px;
@@ -487,20 +920,26 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       --r-xs: 6px;
       --spring: cubic-bezier(0.22, 1, 0.36, 1);
       --transition: 160ms var(--spring);
-      --tachyon-theme-accent: #0a84ff;
-      --primary-color-high: #0a84ff;
-      --primary-color-medium: #0a84ff;
-      --primary-color-low: rgba(10, 132, 255, 0.16);
-      --background-color-high: #141416;
-      --background-color-medium: #0b0b0c;
-      --background-color-low: #1c1c1f;
-      --border-color-high: rgba(255, 255, 255, 0.15);
-      --border-color-medium: rgba(255, 255, 255, 0.08);
+    }}
+    :root,
+    html,
+    body,
+    html[data-darkmode="true"],
+    html[data-darkmode="false"] {{
+      --tachyon-theme-accent: var(--accent);
+      --primary-color-high: var(--accent);
+      --primary-color-medium: var(--accent);
+      --primary-color-low: var(--accent-soft);
+      --background-color-high: var(--surface);
+      --background-color-medium: var(--bg);
+      --background-color-low: var(--hover);
+      --border-color-high: var(--border-strong);
+      --border-color-medium: var(--border);
       --border-color-low: rgba(255, 255, 255, 0.06);
-      --text-color-high: #f5f5f7;
-      --text-color-medium: #a1a1a6;
-      --text-color-low: #6e6e73;
-      color-scheme: dark;
+      --text-color-high: var(--text);
+      --text-color-medium: var(--text2);
+      --text-color-low: var(--text3);
+      color-scheme: var(--color-scheme, dark);
     }}
     html, body {{
       background-color: var(--bg) !important;
@@ -556,13 +995,13 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     }}
     .toast {{
       pointer-events: auto !important;
-      background: rgba(22, 22, 26, 0.96) !important;
-      border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      background: var(--topbar-glass, rgba(22, 22, 26, 0.96)) !important;
+      border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14)) !important;
       border-radius: 10px !important;
       padding: 10px 14px !important;
       font-size: 13px !important;
       font-weight: 500 !important;
-      color: #f5f5f7 !important;
+      color: var(--text, #f5f5f7) !important;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -586,8 +1025,8 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       height: 44px;
       border-radius: 12px;
       background: var(--surface);
-      border: 1px solid rgba(10, 132, 255, 0.35);
-      box-shadow: 0 8px 28px rgba(10, 132, 255, 0.18);
+      border: 1px solid var(--accent-ring, rgba(10, 132, 255, 0.35));
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -598,7 +1037,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     }}
     @keyframes tachyonBoltPulse {{
       0%, 100% {{ transform: scale(1); opacity: 0.9; }}
-      50% {{ transform: scale(1.08); opacity: 1; filter: drop-shadow(0 0 8px rgba(10, 132, 255, 0.55)); }}
+      50% {{ transform: scale(1.08); opacity: 1; }}
     }}
     @keyframes tachyonBootFadeIn {{
       from {{ opacity: 0; transform: translateY(4px); }}
@@ -648,6 +1087,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
       .tachyon-stream {{ animation: none !important; }}
     }}
   </style>
+  {EARLY_THEME_APPLY_SCRIPT}
   <script src="/cgi-bin/luci/admin/translations/{lang}?v={rev}"></script>
   {en_reset}
   <script src="/luci-static/resources/cbi.js?v={rev}"></script>
@@ -694,28 +1134,7 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
   </script>
 </head>
 <body class="lang_{lang}" data-page="admin-services-tachyon">
-  <div class="tachyon-bg-layer" aria-hidden="true">
-    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <g stroke="rgba(255,255,255,0.028)" stroke-width="1">
-        <path d="M-100 140 C 420 40, 1080 280, 1700 90"/>
-        <path d="M-100 290 C 480 190, 1020 420, 1700 240"/>
-        <path d="M-100 450 C 520 370, 1080 550, 1700 420"/>
-        <path d="M-100 620 C 460 520, 1120 710, 1700 580"/>
-        <path d="M-100 780 C 540 680, 1060 840, 1700 740"/>
-        <path d="M 180 -60 C 420 320, 880 580, 1480 960"/>
-        <path d="M 640 -60 C 820 300, 1180 560, 1680 880"/>
-      </g>
-      <g stroke-width="1.5" stroke-linecap="round">
-        <path class="tachyon-stream" stroke="#0a84ff" stroke-opacity="0.55" d="M-100 140 C 420 40, 1080 280, 1700 90"/>
-        <path class="tachyon-stream s2" stroke="#f5f5f7" stroke-opacity="0.32" d="M-100 290 C 480 190, 1020 420, 1700 240"/>
-        <path class="tachyon-stream s3" stroke="#0a84ff" stroke-opacity="0.62" d="M-100 450 C 520 370, 1080 550, 1700 420"/>
-        <path class="tachyon-stream s4" stroke="#64d2ff" stroke-opacity="0.45" d="M-100 620 C 460 520, 1120 710, 1700 580"/>
-        <path class="tachyon-stream s5" stroke="#f5f5f7" stroke-opacity="0.28" d="M-100 780 C 540 680, 1060 840, 1700 740"/>
-        <path class="tachyon-stream s2" stroke="#0a84ff" stroke-opacity="0.4" d="M 180 -60 C 420 320, 880 580, 1480 960"/>
-        <path class="tachyon-stream s4" stroke="#0a84ff" stroke-opacity="0.35" d="M 640 -60 C 820 300, 1180 560, 1680 880"/>
-      </g>
-    </svg>
-  </div>
+  {TACHYON_BG_LAYER_HTML}
   <header style="display:none">
     <a class="brand" href="/">OpenWrt</a>
     <ul class="nav" id="topmenu" style="display:none"></ul>
@@ -3866,14 +4285,50 @@ async fn handle_pure_rust_clash_api(
                 group,
                 reason,
             ) {
-                Ok(events) => Some((
-                    0,
-                    format!(
-                        "{}\n",
-                        json!({ "events": events, "stats": core.switch_history_stats() })
-                    ),
-                    String::new(),
-                )),
+                Ok(events) => {
+                    let store_snap = state.data.read().await.clone();
+                    let tag_map = build_telemetry_tag_display_map(&store_snap);
+                    let enriched: Vec<Value> = events
+                        .into_iter()
+                        .map(|ev| {
+                            let mut val = serde_json::to_value(&ev).unwrap_or(Value::Null);
+                            if let Some(obj) = val.as_object_mut() {
+                                for (raw_key, disp_key) in [
+                                    ("group", "group_display_name"),
+                                    ("from", "from_display_name"),
+                                    ("to", "to_display_name"),
+                                    ("primary", "primary_display_name"),
+                                ] {
+                                    if let Some(raw_val) = obj
+                                        .get(raw_key)
+                                        .and_then(Value::as_str)
+                                        .map(str::trim)
+                                        .filter(|s| !s.is_empty())
+                                        .map(str::to_owned)
+                                    {
+                                        obj.insert(
+                                            disp_key.to_string(),
+                                            json!(resolve_telemetry_tag_display_name(
+                                                &raw_val,
+                                                &tag_map,
+                                                &store_snap
+                                            )),
+                                        );
+                                    }
+                                }
+                            }
+                            val
+                        })
+                        .collect();
+                    Some((
+                        0,
+                        format!(
+                            "{}\n",
+                            json!({ "events": enriched, "stats": core.switch_history_stats() })
+                        ),
+                        String::new(),
+                    ))
+                }
                 Err(_) => Some((1, String::new(), "Switch history unavailable\n".to_owned())),
             }
         }
@@ -4811,10 +5266,17 @@ fn clean_balancer_display_id(section_id: &str, raw_bal_id: &str) -> String {
     raw.to_string()
 }
 
-fn build_telemetry_tag_display_map(
+pub(crate) fn build_telemetry_tag_display_map(
     d: &crate::store::RouterStoreData,
 ) -> std::collections::HashMap<String, String> {
     const SOURCE_PREFIXES: &[&str] = &[
+        "awgconf-",
+        "awg-",
+        "warp-",
+        "ovpn-",
+        "sub-",
+        "link-",
+        "fptn-",
         "iface-",
         "desync-",
         "wg-",
@@ -4928,6 +5390,7 @@ fn build_telemetry_tag_display_map(
         };
         for pfx in SOURCE_PREFIXES {
             map.insert(format!("{pfx}{src_id}"), src_label.clone());
+            map.insert(format!("{pfx}{src_id}-0"), src_label.clone());
         }
         if src.source_type == "custom_json"
             && let Ok(parsed) = serde_json::from_str::<Value>(&src.custom_json)
@@ -4942,14 +5405,55 @@ fn build_telemetry_tag_display_map(
         map.entry(src_id.to_string()).or_insert(src_label);
     }
 
+    for srv in &d.servers {
+        let srv_id = srv.id.trim();
+        if srv_id.is_empty() {
+            continue;
+        }
+        let srv_label = if !srv.label.trim().is_empty() {
+            srv.label.trim().to_string()
+        } else {
+            srv_id.to_string()
+        };
+        map.insert(format!("srv-{srv_id}"), srv_label.clone());
+        map.insert(format!("srv-{srv_id}-inner"), srv_label.clone());
+        map.insert(format!("server-{srv_id}-in"), srv_label.clone());
+        map.insert(format!("server-{srv_id}-in-inner"), srv_label);
+    }
+
     map
 }
 
-fn resolve_telemetry_tag_display_name(
+fn clean_technical_source_stem(stem: &str) -> String {
+    let stripped = stem.trim();
+    if let Some(after) = stripped.strip_prefix("src_")
+        && !after.is_empty()
+    {
+        return after.to_string();
+    }
+    stripped.to_string()
+}
+
+pub(crate) fn resolve_telemetry_tag_display_name(
     raw_tag: &str,
     display_map: &std::collections::HashMap<String, String>,
     d: &crate::store::RouterStoreData,
 ) -> String {
+    const INDEXED_SOURCE_PREFIXES: &[&str] = &[
+        "awgconf-",
+        "awg-",
+        "wg-",
+        "warp-",
+        "fptn-",
+        "ovpn-",
+        "desync-",
+        "iface-",
+        "tailscale-",
+        "sub-",
+        "link-",
+        "json-",
+    ];
+
     let tag = raw_tag.trim();
     if tag.is_empty() {
         return String::new();
@@ -4987,6 +5491,43 @@ fn resolve_telemetry_tag_display_name(
     if let Some(rest) = tag.strip_prefix("tailscale-sec-") {
         return find_section_label(rest);
     }
+    if let Some(rest) = tag.strip_prefix("srv-") {
+        let srv_id = rest.strip_suffix("-inner").unwrap_or(rest);
+        if let Some(srv) = d.servers.iter().find(|s| s.id.eq_ignore_ascii_case(srv_id)) {
+            let lbl = srv.label.trim();
+            return if lbl.is_empty() {
+                srv.id.trim().to_string()
+            } else {
+                lbl.to_string()
+            };
+        }
+        return srv_id.to_string();
+    }
+    if let Some(rest) = tag.strip_prefix("server-")
+        && let Some(srv_id) = rest
+            .strip_suffix("-in-inner")
+            .or_else(|| rest.strip_suffix("-in"))
+    {
+        if let Some(srv) = d.servers.iter().find(|s| s.id.eq_ignore_ascii_case(srv_id)) {
+            let lbl = srv.label.trim();
+            return if lbl.is_empty() {
+                srv.id.trim().to_string()
+            } else {
+                lbl.to_string()
+            };
+        }
+        return srv_id.to_string();
+    }
+    if let Some(rest) = tag.strip_suffix("-out")
+        && let Some(sec) = d.sections.iter().find(|s| s.id.eq_ignore_ascii_case(rest))
+    {
+        let lbl = sec.label.trim();
+        return if lbl.is_empty() {
+            sec.id.trim().to_string()
+        } else {
+            lbl.to_string()
+        };
+    }
     if let Some(rest) = tag.strip_prefix("bal-") {
         let mut best_sec: Option<&crate::store::RoutingSection> = None;
         for sec in &d.sections {
@@ -5018,6 +5559,53 @@ fn resolve_telemetry_tag_display_name(
             return clean_balancer_display_id(sec_part, bal_part);
         }
         return rest.to_string();
+    }
+
+    // Multi-peer AWG tags like `awgconf-src_rtest (2)`
+    if let Some(paren_idx) = tag.rfind(" (")
+        && let Some(num_str) = tag[paren_idx + 2..].strip_suffix(')')
+        && let Ok(peer_num) = num_str.parse::<usize>()
+        && peer_num >= 1
+    {
+        let base_tag = &tag[..paren_idx];
+        let base_label = resolve_telemetry_tag_display_name(base_tag, display_map, d);
+        if peer_num == 1 {
+            return base_label;
+        }
+        return format!("{base_label} #{peer_num}");
+    }
+
+    for &pfx in INDEXED_SOURCE_PREFIXES {
+        if tag.len() > pfx.len()
+            && tag
+                .get(..pfx.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(pfx))
+        {
+            let rest = &tag[pfx.len()..];
+            if let Some((stem, idx_str)) = rest.rsplit_once('-')
+                && !stem.is_empty()
+                && idx_str.bytes().all(|b| b.is_ascii_digit())
+                && let Ok(idx_num) = idx_str.parse::<usize>()
+            {
+                let base_key = format!("{pfx}{stem}");
+                let base_label = display_map
+                    .get(&base_key)
+                    .or_else(|| {
+                        display_map
+                            .iter()
+                            .find(|(k, _)| k.eq_ignore_ascii_case(&base_key))
+                            .map(|(_, v)| v)
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| clean_technical_source_stem(stem));
+                return if idx_num == 0 {
+                    base_label
+                } else {
+                    format!("{base_label} #{}", idx_num + 1)
+                };
+            }
+            return clean_technical_source_stem(rest);
+        }
     }
 
     tag.to_string()
@@ -13663,6 +14251,15 @@ mod tests {
         assert_eq!(
             resolve_telemetry_tag_display_name("bal-vpn-bal_vpn_Reserve", &map, &d),
             "Reserve"
+        );
+        // Indexed AWG config and fallback technical tag cleanup
+        assert_eq!(
+            resolve_telemetry_tag_display_name("awgconf-src_rtest-1", &map, &d),
+            "rtest #2"
+        );
+        assert_eq!(
+            resolve_telemetry_tag_display_name("awgconf-src_rtest", &map, &d),
+            "rtest"
         );
     }
 

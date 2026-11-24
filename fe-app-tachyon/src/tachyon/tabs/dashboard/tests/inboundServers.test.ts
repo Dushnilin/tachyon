@@ -796,4 +796,102 @@ describe('inboundServers', () => {
       }
     });
   });
+
+  describe('Tachyon 2.0 srv-* inbound tag matching & human outbound chains', () => {
+    it('extracts sectionId from srv-<id>, srv-<id>-inner, inboundName, inboundTag, type, and rule', () => {
+      expect(
+        extractServerInboundSectionId({
+          metadata: { inbound: 'srv-in_VLESS' },
+        }),
+      ).toBe('in_VLESS');
+      expect(
+        extractServerInboundSectionId({
+          metadata: { inboundName: 'srv-in_AWG' },
+        }),
+      ).toBe('in_AWG');
+      expect(
+        extractServerInboundSectionId({
+          metadata: { inboundTag: 'srv-in_VLESS-inner' },
+        }),
+      ).toBe('in_VLESS');
+      expect(
+        extractServerInboundSectionId({
+          metadata: { type: 'vless/srv-in_VLESS' },
+        }),
+      ).toBe('in_VLESS');
+      expect(
+        extractServerInboundSectionId({
+          rule: 'inbound=srv-in_AWG => route(direct)',
+        }),
+      ).toBe('in_AWG');
+      expect(
+        extractServerInboundSectionId({
+          rule: 'inbound=[srv-in_VLESS] => route(Main)',
+        }),
+      ).toBe('in_VLESS');
+    });
+
+    it('shows connected clients, traffic, and humanized outbound chain instead of waiting on 2.0 srv-* inbounds', () => {
+      const servers: any[] = [
+        {
+          sectionId: 'in_VLESS',
+          enabled: true,
+          label: 'in_VLESS',
+          protocol: 'vless',
+          security: 'Reality',
+          port: '8443',
+          country: 'RU',
+          routingMode: 'direct',
+        },
+        {
+          sectionId: 'in_AWG',
+          enabled: true,
+          label: 'in_AWG',
+          protocol: 'awg',
+          security: 'AWG 2.0',
+          port: '51820',
+          country: 'RU',
+          routingMode: 'direct',
+        },
+      ];
+      const conns = [
+        {
+          id: 'c-vless-1',
+          upload: 2048,
+          download: 16384,
+          chains: ['awgconf-src_rtest-1'],
+          metadata: {
+            inbound: 'srv-in_VLESS',
+            sourceIP: '198.51.100.77',
+            host: 'example.org',
+            destinationPort: '443',
+            network: 'tcp',
+          },
+        },
+      ];
+      const summary = computeInboundsRuntimeSummary(servers, conns, new Map());
+      expect(summary.totalActiveClients).toBe(1);
+      expect(summary.totalActiveConns).toBe(1);
+      expect(summary.totalDownload).toBe(16384);
+      const vlessSummary = summary.bySection.get('in_VLESS');
+      expect(vlessSummary?.activeConns).toBe(1);
+      expect(vlessSummary?.activeClientsCount).toBe(1);
+      expect(vlessSummary?.clients[0]?.chain).toBe('rtest #2');
+
+      const box = new MockElement('div') as any;
+      renderCollapsibleInboundsBlock({
+        container: box,
+        servers,
+        summary,
+        isTachyonRunning: true,
+        storageKey: 'tachyon_test_v2_srv_active',
+        showGoToServersLink: false,
+        onRerender: vi.fn(),
+        viewMode: 'expanded_cards',
+      });
+      expect(box.textContent).toContain('1 устр.');
+      expect(box.textContent).toContain('1 соед.');
+      expect(box.textContent).not.toContain('awgconf-src_rtest-1');
+    });
+  });
 });

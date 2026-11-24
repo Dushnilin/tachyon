@@ -23,12 +23,8 @@ ${PartialStyles}
 /* ==========================================================================
    Tachyon-UI Reusable Design System & High-Performance GPU Tokens (1:1 ui.html)
    ========================================================================== */
-:root,
-html,
-body,
-[data-darkmode="true"],
-[data-darkmode="false"] {
-    color-scheme: dark !important;
+:root {
+    --color-scheme: dark;
     --bg: #0b0b0c;
     --surface: #141416;
     --hover: #1c1c1f;
@@ -46,6 +42,11 @@ body,
     --text3: #6e6e73;
     --bg2: #141416;
     --border-hi: rgba(255, 255, 255, 0.15);
+    --surface-glass: rgba(20, 20, 22, 0.84);
+    --topbar-glass: rgba(20, 20, 22, 0.96);
+    --accent-soft: rgba(10, 132, 255, 0.16);
+    --accent-ring: rgba(10, 132, 255, 0.34);
+    --bg-grid-stroke: rgba(255, 255, 255, 0.028);
     --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", monospace;
     --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
     --r-card: 12px;
@@ -53,6 +54,13 @@ body,
     --r-xs: 6px;
     --spring: cubic-bezier(0.22, 1, 0.36, 1);
     --transition: 160ms var(--spring);
+}
+
+html,
+body,
+[data-darkmode="true"],
+[data-darkmode="false"] {
+    color-scheme: var(--color-scheme, dark) !important;
 
     /* Legacy LuCI / Bootstrap variable mappings -> tachyon-ui tokens */
     --background-color-high: var(--surface) !important;
@@ -60,13 +68,13 @@ body,
     --background-color-low: var(--hover) !important;
     --border-color-high: var(--border-strong) !important;
     --border-color-medium: var(--border) !important;
-    --border-color-low: rgba(255, 255, 255, 0.06) !important;
+    --border-color-low: var(--border) !important;
     --text-color-high: var(--text) !important;
     --text-color-medium: var(--text2) !important;
     --text-color-low: var(--text3) !important;
     --primary-color-high: var(--accent) !important;
     --primary-color-medium: var(--accent) !important;
-    --primary-color-low: rgba(10, 132, 255, 0.15) !important;
+    --primary-color-low: var(--accent-soft, rgba(10, 132, 255, 0.16)) !important;
     --primary: var(--accent) !important;
     --main-color: var(--accent) !important;
 }
@@ -553,9 +561,9 @@ footer {
     transform: translateX(16px) !important;
 }
 
-/* Solid Dark Topbar Surface */
+/* Solid Topbar Surface */
 .tachyon-topbar {
-    background-color: rgba(20, 20, 22, 0.96) !important;
+    background-color: var(--topbar-glass, rgba(20, 20, 22, 0.96)) !important;
 }
 
 .tachyon-sidebar,
@@ -584,7 +592,7 @@ footer {
 .tachyon-studio-card,
 .tachyon-settings-list-card,
 .tachyon-workspace-body .cbi-section:not(#cbi-tachyon-dashboard):not(#cbi-tachyon-diagnostic):not(#cbi-tachyon-monitoring):not(#cbi-tachyon-updates):not(#cbi-tachyon-section) {
-    background-color: rgba(20, 20, 22, 0.82) !important;
+    background-color: var(--surface-glass, rgba(20, 20, 22, 0.82)) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -1756,8 +1764,8 @@ header .dropdown-menu {
     position: relative !important;
     top: auto !important;
     z-index: 130 !important;
-    background: rgba(14, 14, 16, 0.94) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: var(--topbar-glass, rgba(20, 20, 22, 0.94)) !important;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.08)) !important;
     border-radius: 12px !important;
 }
 
@@ -11282,5 +11290,882 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
         flex-direction: column;
         align-items: flex-start;
     }
+}
+
+/* ==========================================================================
+   Compact Centered Website Layout (Default 1360px) & Full Width Toggle
+   ========================================================================== */
+:root:not([data-tachyon-width="full"]) .tachyon-shell-layout:not([data-tachyon-width="full"]) {
+    max-width: 1360px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+:root[data-tachyon-width="full"] .tachyon-shell-layout,
+.tachyon-shell-layout[data-tachyon-width="full"] {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+@media (max-width: 1024px) {
+    :root:not([data-tachyon-width="full"]) .tachyon-shell-layout:not([data-tachyon-width="full"]) {
+        max-width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+}
+
+/* ==========================================================================
+   Panel Authentication Card
+   ========================================================================== */
+.tachyon-auth-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.tachyon-auth-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.tachyon-auth-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.tachyon-auth-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.45;
+    max-width: 680px;
+}
+
+.tachyon-auth-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--r-xs);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text2);
+    background: var(--hover);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.tachyon-auth-badge.is-ok {
+    color: var(--success);
+    border-color: var(--border-strong);
+}
+
+.tachyon-auth-badge.is-warn {
+    color: var(--warn);
+    border-color: var(--border-strong);
+}
+
+.tachyon-auth-switch-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.tachyon-auth-mode-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    max-width: 520px;
+}
+
+.tachyon-auth-mode-btn {
+    flex: 1 1 0;
+    padding: 6px 12px;
+    border-radius: var(--r-xs);
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.tachyon-auth-mode-btn:hover {
+    color: var(--text);
+    background: var(--hover);
+}
+
+.tachyon-auth-mode-btn.is-active {
+    background: var(--elevated);
+    color: var(--text);
+}
+
+.tachyon-auth-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 12px;
+}
+
+.tachyon-auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-auth-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+}
+
+.tachyon-auth-pw-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-auth-input {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 10px !important;
+    border-radius: var(--r-btn) !important;
+    background: var(--bg) !important;
+    border: 1px solid var(--border-strong) !important;
+    color: var(--text) !important;
+    font-size: 13px !important;
+}
+
+.tachyon-auth-eye-btn {
+    padding: 5px 10px !important;
+    font-size: 11.5px !important;
+    flex-shrink: 0;
+}
+
+.tachyon-auth-note {
+    grid-column: 1 / -1;
+    padding: 10px 12px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.45;
+}
+
+.tachyon-auth-warn,
+.tachyon-auth-error {
+    padding: 8px 12px;
+    border-radius: var(--r-btn);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.tachyon-auth-warn {
+    background: rgba(255, 159, 10, 0.12);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    color: var(--warn);
+}
+
+.tachyon-auth-error {
+    background: rgba(255, 69, 58, 0.12);
+    border: 1px solid rgba(255, 69, 58, 0.35);
+    color: var(--danger);
+}
+
+.tachyon-auth-success {
+    padding: 8px 12px;
+    border-radius: var(--r-btn);
+    background: rgba(48, 209, 88, 0.12);
+    border: 1px solid rgba(48, 209, 88, 0.35);
+    color: var(--success);
+    font-size: 12px;
+}
+
+.tachyon-auth-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Unified 12-Theme Dropdown, Settings Grid & Custom Theme Modal
+   ========================================================================== */
+.tachyon-theme-dropdown-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tachyon-theme-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-theme-trigger__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.tachyon-theme-trigger__name {
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-theme-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 224px;
+    max-width: calc(100vw - 24px);
+    max-height: min(440px, 72vh);
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 420;
+}
+
+.tachyon-theme-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text2);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.tachyon-theme-menu__item:hover {
+    background: var(--hover);
+    color: var(--text);
+}
+
+.tachyon-theme-menu__item.is-active {
+    background: var(--elevated);
+    color: var(--text);
+}
+
+.tachyon-theme-menu__swatch-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.tachyon-theme-menu__swatch-bg,
+.tachyon-theme-menu__swatch-accent {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tachyon-theme-menu__label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-theme-menu__check {
+    display: inline-flex;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.tachyon-theme-menu__sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border);
+}
+
+.tachyon-theme-menu__item--create {
+    color: var(--accent);
+}
+
+.tachyon-theme-settings-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--r-card);
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+.tachyon-theme-settings-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tachyon-theme-settings-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.tachyon-theme-settings-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text2);
+}
+
+.tachyon-theme-settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-theme-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+    gap: 10px;
+}
+
+.tachyon-theme-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+}
+
+.tachyon-theme-card:hover {
+    border-color: var(--border-strong);
+    background: var(--hover);
+}
+
+.tachyon-theme-card.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft, rgba(10, 132, 255, 0.14));
+}
+
+.tachyon-theme-card__preview {
+    padding: 8px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-theme-card__preview-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 5px;
+}
+
+.tachyon-theme-card__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.tachyon-theme-card__preview-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tachyon-theme-card__line {
+    height: 4px;
+    border-radius: 2px;
+    display: block;
+}
+
+.tachyon-theme-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.tachyon-theme-card__name-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tachyon-theme-card__name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-theme-card__scheme {
+    font-size: 11px;
+    color: var(--text3);
+}
+
+.tachyon-theme-card__active-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.tachyon-theme-card__custom-ops {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.tachyon-theme-mini-btn {
+    padding: 2px 6px !important;
+    min-height: 22px !important;
+    font-size: 11px !important;
+}
+
+.tachyon-theme-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    background: rgba(0, 0, 0, 0.68);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.tachyon-theme-modal {
+    width: min(760px, 100%);
+    max-height: 90vh;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+}
+
+.tachyon-theme-modal__hdr,
+.tachyon-theme-modal__ftr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.tachyon-theme-modal__ftr {
+    border-bottom: none;
+    border-top: 1px solid var(--border);
+    justify-content: flex-end;
+}
+
+.tachyon-theme-modal__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.tachyon-theme-modal__body {
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.tachyon-theme-meta-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+    gap: 10px;
+}
+
+.tachyon-theme-meta-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-theme-meta-lbl {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text2);
+}
+
+.tachyon-theme-input {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    font-size: 12.5px;
+}
+
+.tachyon-theme-scheme-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+}
+
+.tachyon-theme-scheme-btn {
+    flex: 1 1 0;
+    padding: 5px 8px;
+    border: none;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--text2);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.tachyon-theme-scheme-btn.is-active {
+    background: var(--elevated);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.tachyon-theme-live-preview {
+    padding: 10px 12px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tachyon-theme-live-preview__title {
+    font-size: 12px;
+    color: var(--text2);
+}
+
+.tachyon-theme-live-preview__chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tachyon-theme-live-chip {
+    padding: 2px 8px;
+    border-radius: var(--r-xs);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--hover);
+    border: 1px solid var(--border);
+}
+
+.tachyon-theme-live-chip.is-accent { color: var(--accent); border-color: var(--accent); }
+.tachyon-theme-live-chip.is-ok { color: var(--success); border-color: var(--success); }
+.tachyon-theme-live-chip.is-warn { color: var(--warn); border-color: var(--warn); }
+.tachyon-theme-live-chip.is-err { color: var(--danger); border-color: var(--danger); }
+
+.tachyon-theme-pickers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+    gap: 8px;
+}
+
+.tachyon-theme-picker-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 10px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+}
+
+.tachyon-theme-picker-label {
+    font-size: 11.5px;
+    color: var(--text2);
+}
+
+.tachyon-theme-picker-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tachyon-theme-color-swatch {
+    width: 34px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.tachyon-theme-hex-input {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+}
+
+.tachyon-theme-json-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--r-btn);
+    background: var(--bg);
+    border: 1px solid var(--border);
+}
+
+.tachyon-theme-json-area {
+    width: 100%;
+    padding: 8px;
+    border-radius: var(--r-xs);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    resize: vertical;
+}
+
+.tachyon-theme-json-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-theme-json-ok {
+    font-size: 12px;
+    color: var(--success);
+}
+
+.tachyon-theme-json-err {
+    font-size: 12px;
+    color: var(--danger);
+}
+
+/* ==========================================================================
+   Global Search / Command Palette (Ctrl+K)
+   ========================================================================== */
+.tachyon-cmdk-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-cmdk-kbd {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text3);
+}
+
+.tachyon-cmdk-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 980;
+    background: rgba(0, 0, 0, 0.62);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: min(10vh, 72px) 16px 20px;
+}
+
+.tachyon-cmdk-box {
+    width: min(640px, 100%);
+    max-height: 76vh;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tachyon-cmdk-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.tachyon-cmdk-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none !important;
+    background: transparent !important;
+    color: var(--text) !important;
+    font-size: 14px !important;
+    outline: none !important;
+    padding: 2px 0 !important;
+    box-shadow: none !important;
+}
+
+.tachyon-cmdk-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon-cmdk-group {
+    padding: 6px 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text3);
+}
+
+.tachyon-cmdk-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.tachyon-cmdk-item:hover,
+.tachyon-cmdk-item.is-selected {
+    background: var(--hover);
+    border-color: var(--border-strong);
+}
+
+.tachyon-cmdk-item.is-selected {
+    background: var(--accent-soft, rgba(10, 132, 255, 0.16));
+    border-color: var(--accent-ring, rgba(10, 132, 255, 0.34));
+}
+
+.tachyon-cmdk-item__main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon-cmdk-item__title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-cmdk-item__sub {
+    font-size: 11.5px;
+    color: var(--text2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-cmdk-item__badge {
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: var(--r-xs);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+}
+
+.tachyon-cmdk-empty {
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text3);
+}
+
+.tachyon-cmdk-ftr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 11.5px;
+    color: var(--text3);
+    flex-wrap: wrap;
 }
 `;

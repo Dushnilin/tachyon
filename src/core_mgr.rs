@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -77,6 +77,8 @@ pub struct CoreManager {
     intentional_stop: AtomicBool,
     auto_rollback_in_flight: AtomicBool,
     last_ipv6_resync_ts: PortableAtomicU64,
+    boot_recovery_attempts: AtomicU32,
+    last_boot_recovery_ts: PortableAtomicU64,
     pub watchdog: Mutex<crate::watchdog::WatchdogState>,
     switch_history: std::sync::OnceLock<SwitchRecorder>,
 }
@@ -93,6 +95,8 @@ impl CoreManager {
             intentional_stop: AtomicBool::new(false),
             auto_rollback_in_flight: AtomicBool::new(false),
             last_ipv6_resync_ts: PortableAtomicU64::new(0),
+            boot_recovery_attempts: AtomicU32::new(0),
+            last_boot_recovery_ts: PortableAtomicU64::new(0),
             watchdog: Mutex::new(crate::watchdog::WatchdogState::default()),
             switch_history: std::sync::OnceLock::new(),
         })
@@ -1417,12 +1421,26 @@ impl CoreManager {
         }
     }
 
+    fn configure_core_spawn_command(cmd: &mut Command, daemon_mode: bool) {
+        cmd.stdin(Stdio::null());
+        if daemon_mode {
+            cmd.stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+        } else {
+            // Standalone CLI `start`/`reload` must never kill or SIGPIPE tachyon-core on exit.
+            cmd.stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(false);
+            #[cfg(unix)]
+            cmd.process_group(0);
+        }
+    }
+
     async fn spawn_and_verify_core(bin_path: &str, cfg_path: &Path) -> Result<Child, String> {
         let mut cmd = Command::new(bin_path);
-        cmd.args(["run", "-c", &cfg_path.to_string_lossy()])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        cmd.args(["run", "-c", &cfg_path.to_string_lossy()]);
+        Self::configure_core_spawn_command(&mut cmd, crate::ubus_bridge::is_daemon_mode());
 
         let mut child = cmd
             .spawn()
@@ -1814,6 +1832,8 @@ impl CoreManager {
             }
         }
         Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
+        self.record_watchdog_applied_config(&store_snapshot, &prepared_cfg, &quarantined)
+            .await;
         let post_wan6 = crate::store::probe_wan6_runtime_state();
         let post_ipv6_state = crate::store::resolve_effective_ipv6_state(
             &store_snapshot.settings,
@@ -1831,7 +1851,7 @@ impl CoreManager {
             );
             let (re_cfg_val, re_seed_errors) =
                 Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
-            if let Ok((re_cfg_path, _, re_quarantined)) =
+            if let Ok((re_cfg_path, re_prepared_cfg, re_quarantined)) =
                 Box::pin(self.prepare_and_write_validated_core_config(
                     &store_snapshot,
                     re_cfg_val,
@@ -1853,10 +1873,35 @@ impl CoreManager {
                     .is_ok()
                 {
                     Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
+                    self.record_watchdog_applied_config(
+                        &store_snapshot,
+                        &re_prepared_cfg,
+                        &re_quarantined,
+                    )
+                    .await;
                 }
             }
         }
         Ok(())
+    }
+
+    async fn record_watchdog_applied_config(
+        &self,
+        store_snapshot: &crate::store::RouterStoreData,
+        prepared_cfg: &Value,
+        quarantined: &BTreeMap<String, String>,
+    ) {
+        if quarantined.contains_key("_core_runtime") {
+            return;
+        }
+        let digest = if quarantined.is_empty() {
+            crate::watchdog::compute_config_digest(prepared_cfg)
+        } else {
+            crate::watchdog::compute_desired_digest(store_snapshot)
+        };
+        if !digest.is_empty() {
+            self.watchdog.lock().await.record_applied_config(digest);
+        }
     }
 
     fn service_autostart_enabled() -> bool {
@@ -2077,7 +2122,7 @@ impl CoreManager {
         let store_snapshot = Box::new(self.state.data.read().await.clone());
         Box::pin(self.ensure_server_tls_certs(&store_snapshot)).await;
         let (cfg_val, seed_errors) = Box::pin(self.compile_or_safe_minimal(&store_snapshot)).await;
-        let (cfg_path_buf, _, quarantined) = Box::pin(
+        let (cfg_path_buf, prepared_cfg, quarantined) = Box::pin(
             self.prepare_and_write_validated_core_config(&store_snapshot, cfg_val, seed_errors),
         )
         .await?;
@@ -2110,6 +2155,8 @@ impl CoreManager {
             return self.start_boxed().await;
         }
         Box::pin(self.restore_saved_selectors(&store_snapshot)).await;
+        self.record_watchdog_applied_config(&store_snapshot, &prepared_cfg, &quarantined)
+            .await;
         drop(reload_guard);
         Ok(())
     }
@@ -2507,6 +2554,13 @@ impl CoreManager {
     pub(crate) fn build_subscription_request_headers(
         src: &crate::store::OutboundSource,
     ) -> Vec<(String, String)> {
+        Self::build_subscription_request_headers_inner(src, true)
+    }
+
+    pub(crate) fn build_subscription_request_headers_inner(
+        src: &crate::store::OutboundSource,
+        include_hwid: bool,
+    ) -> Vec<(String, String)> {
         let mut headers = Vec::with_capacity(7);
         let accept_lang = if src.accept_language.trim().is_empty() {
             "ru-RU,ru;q=0.9,en-US;q=0.8"
@@ -2514,6 +2568,10 @@ impl CoreManager {
             src.accept_language.trim()
         };
         headers.push(("Accept-Language".to_string(), accept_lang.to_string()));
+
+        if !include_hwid {
+            return headers;
+        }
 
         let explicit_hwid = src.hwid.trim();
         let hwid = if !explicit_hwid.is_empty() {
@@ -3315,8 +3373,10 @@ impl CoreManager {
             };
 
         // Drop informational/banner pseudo-nodes pointing to loopback/unspecified addresses
-        // (e.g. `127.0.0.1:443#Remaining: 15GB`) that cause immediate ECONNREFUSED after reload.
-        // Track `.invalid` stub hosts separately so auto-UA discovery promotes past degraded feeds.
+        // (e.g. `127.0.0.1:443#Remaining: 15GB`, `0.0.0.0:1#Лимит устройств исчерпан`) that cause
+        // immediate failures after reload. Track `.invalid`, unspecified hosts, and port-1 stub
+        // banners separately so auto-UA discovery promotes past degraded feeds (while keeping
+        // `127.0.0.1:443` traffic banners distinct for legacy behavior/tests).
         let mut dropped_invalid_stubs = 0usize;
         out.retain(|node| {
             let srv = node.server.trim();
@@ -3327,7 +3387,11 @@ impl CoreManager {
                     .trim_end_matches(']')
                     .trim_end_matches('.')
                     .to_ascii_lowercase();
-                if bare == "invalid" || bare.ends_with(".invalid") {
+                if bare == "invalid"
+                    || bare.ends_with(".invalid")
+                    || matches!(bare.as_str(), "0.0.0.0" | "::" | "0:0:0:0:0:0:0:0")
+                    || node.server_port == 1
+                {
                     dropped_invalid_stubs += 1;
                 }
             }
@@ -3427,94 +3491,99 @@ impl CoreManager {
             .map(|p| format!("http://127.0.0.1:{p}"));
 
             let extra_headers = Self::build_subscription_request_headers(&src);
+            let hwid_free_headers = Self::build_subscription_request_headers_inner(&src, false);
             let urls = src.subscription_urls.clone();
 
-            let probe_with_ua = |base_src: &crate::store::OutboundSource, ua: &str| {
-                let mut trial_src = base_src.clone();
-                let headers_ref = &extra_headers;
-                let urls_ref = &urls;
-                let proxy_ref = proxy_opt.as_deref();
-                let ua_owned = ua.to_string();
-                async move {
-                    let mut out_nodes: Vec<ParsedProxyNode> = Vec::new();
-                    let mut dropped_invalid_stubs = 0usize;
-                    let mut err_msg: Option<String> = None;
-                    let mut got_http_reply = false;
-                    for url in urls_ref {
-                        match self
-                            .curl_fetch_with_headers(
-                                url,
-                                true,
-                                12,
-                                proxy_ref,
-                                Some(&ua_owned),
-                                headers_ref,
-                            )
-                            .await
-                        {
-                            Ok(stdout) => {
-                                got_http_reply = true;
-                                let raw_resp = String::from_utf8_lossy(&stdout);
-                                let (headers_part, body_part) = split_http_response(&raw_resp);
-                                parse_subscription_headers(headers_part, &mut trial_src);
-                                let (parsed_for_url, stubs_for_url) =
-                                    Self::parse_subscription_payload_with_stats(body_part);
-                                dropped_invalid_stubs += stubs_for_url;
-                                if parsed_for_url.is_empty() && err_msg.is_none() {
-                                    err_msg = Some(
-                                        if headers_indicate_hwid_not_supported(headers_part) {
-                                            format!(
-                                                "Провайдер подписки ({url}) отклонил параметры устройства (X-Hwid-Not-Supported)"
-                                            )
-                                        } else {
-                                            format!(
-                                                "Ответ подписки ({url}) не содержит поддерживаемых узлов"
-                                            )
-                                        },
-                                    );
+            let probe_with_ua_headers =
+                |base_src: &crate::store::OutboundSource, ua: &str, hdrs: &[(String, String)]| {
+                    let mut trial_src = base_src.clone();
+                    let hdrs_owned = hdrs.to_vec();
+                    let urls_ref = &urls;
+                    let proxy_ref = proxy_opt.as_deref();
+                    let ua_owned = ua.to_string();
+                    async move {
+                        let mut out_nodes: Vec<ParsedProxyNode> = Vec::new();
+                        let mut dropped_invalid_stubs = 0usize;
+                        let mut err_msg: Option<String> = None;
+                        let mut got_http_reply = false;
+                        for url in urls_ref {
+                            match self
+                                .curl_fetch_with_headers(
+                                    url,
+                                    true,
+                                    12,
+                                    proxy_ref,
+                                    Some(&ua_owned),
+                                    &hdrs_owned,
+                                )
+                                .await
+                            {
+                                Ok(stdout) => {
+                                    got_http_reply = true;
+                                    let raw_resp = String::from_utf8_lossy(&stdout);
+                                    let (headers_part, body_part) = split_http_response(&raw_resp);
+                                    parse_subscription_headers(headers_part, &mut trial_src);
+                                    let (parsed_for_url, stubs_for_url) =
+                                        Self::parse_subscription_payload_with_stats(body_part);
+                                    dropped_invalid_stubs += stubs_for_url;
+                                    if parsed_for_url.is_empty() && err_msg.is_none() {
+                                        err_msg = Some(
+                                            if headers_indicate_hwid_not_supported(headers_part) {
+                                                format!(
+                                                    "Провайдер подписки ({url}) отклонил параметры устройства (X-Hwid-Not-Supported)"
+                                                )
+                                            } else {
+                                                format!(
+                                                    "Ответ подписки ({url}) не содержит поддерживаемых узлов"
+                                                )
+                                            },
+                                        );
+                                    }
+                                    for n in parsed_for_url {
+                                        if !out_nodes
+                                            .iter()
+                                            .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                                        {
+                                            out_nodes.push(n);
+                                        }
+                                    }
                                 }
-                                for n in parsed_for_url {
-                                    if !out_nodes
-                                        .iter()
-                                        .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
-                                    {
-                                        out_nodes.push(n);
+                                Err(e) => {
+                                    let es = e.to_string();
+                                    if es.contains("status 22") {
+                                        got_http_reply = true;
+                                    }
+                                    if err_msg.is_none() {
+                                        err_msg = Some(format!("{url}: {es}"));
                                     }
                                 }
                             }
-                            Err(e) => {
-                                let es = e.to_string();
-                                if es.contains("status 22") {
-                                    got_http_reply = true;
-                                }
-                                if err_msg.is_none() {
-                                    err_msg = Some(format!("{url}: {es}"));
-                                }
-                            }
                         }
+                        (
+                            out_nodes,
+                            dropped_invalid_stubs,
+                            err_msg,
+                            got_http_reply,
+                            trial_src,
+                        )
                     }
-                    (
-                        out_nodes,
-                        dropped_invalid_stubs,
-                        err_msg,
-                        got_http_reply,
-                        trial_src,
-                    )
-                }
-            };
+                };
 
-            let (nodes, last_fetch_err, final_src) = if !src.auto_user_agent {
+            let (mut nodes, mut last_fetch_err, mut final_src, any_http_reply) = if !src
+                .auto_user_agent
+            {
                 let explicit_ua = Self::normalize_subscription_user_agent(&src.user_agent);
                 let effective_ua = if explicit_ua.is_empty() {
                     "tachyon-core/2.0".to_string()
                 } else {
                     explicit_ua
                 };
-                let (n, _stubs, e, _, mut next_src) = probe_with_ua(&src, &effective_ua).await;
+                let (n, _stubs, e, got_http, mut next_src) =
+                    probe_with_ua_headers(&src, &effective_ua, &extra_headers).await;
                 if !n.is_empty() {
                     next_src.sub_preferred_user_agent = effective_ua;
                 }
-                (n, e, next_src)
+                (n, e, next_src, got_http)
             } else {
                 let preferred =
                     Self::normalize_subscription_user_agent(&src.sub_preferred_user_agent);
@@ -3533,10 +3602,12 @@ impl CoreManager {
                     crate::store::OutboundSource,
                 )> = None;
                 let mut already_tried_preferred = false;
+                let mut saw_http = false;
                 if !preferred.is_empty() {
                     already_tried_preferred = true;
-                    let (n, dropped_stubs, e, _, mut next_src) =
-                        probe_with_ua(&src, &preferred).await;
+                    let (n, dropped_stubs, e, got_http, mut next_src) =
+                        probe_with_ua_headers(&src, &preferred, &extra_headers).await;
+                    saw_http |= got_http;
                     if !n.is_empty()
                         && (dropped_stubs == 0 || Self::is_happ_versioned_user_agent(&preferred))
                     {
@@ -3554,7 +3625,7 @@ impl CoreManager {
                     }
                 }
                 if let Some((n, e, next_src)) = fast_winner {
-                    (n, e, next_src)
+                    (n, e, next_src, true)
                 } else {
                     let mut first_err: Option<String> = None;
                     for (idx, ua) in Self::SUBSCRIPTION_AUTO_USER_AGENTS.iter().enumerate() {
@@ -3565,7 +3636,8 @@ impl CoreManager {
                             tokio::time::sleep(Duration::from_millis(120)).await;
                         }
                         let (n, dropped_stubs, e, got_http, next_src) =
-                            probe_with_ua(&src, ua).await;
+                            probe_with_ua_headers(&src, ua, &extra_headers).await;
+                        saw_http |= got_http;
                         if first_err.is_none() && e.is_some() {
                             first_err = e.clone();
                         }
@@ -3591,17 +3663,48 @@ impl CoreManager {
                         let best = candidates.swap_remove(best_idx);
                         let mut best_src = best.src;
                         best_src.sub_preferred_user_agent = best.ua;
-                        (best.nodes, best.err, best_src)
+                        (best.nodes, best.err, best_src, saw_http)
                     } else {
-                        let mut fallback_src =
-                            candidates.into_iter().next().map(|c| c.src).unwrap_or(src);
+                        let mut fallback_src = candidates
+                            .into_iter()
+                            .next()
+                            .map(|c| c.src)
+                            .unwrap_or_else(|| src.clone());
                         if !fallback_src.sub_preferred_user_agent.is_empty() {
                             fallback_src.sub_preferred_user_agent.clear();
                         }
-                        (Vec::new(), first_err, fallback_src)
+                        (Vec::new(), first_err, fallback_src, saw_http)
                     }
                 }
             };
+            if nodes.is_empty()
+                && any_http_reply
+                && final_src.auto_hwid
+                && final_src.hwid.trim().is_empty()
+            {
+                let retry_uas: Vec<&str> = if final_src.auto_user_agent {
+                    vec!["Happ/4.6.2", "tachyon-core/2.0"]
+                } else {
+                    let explicit_ua =
+                        Self::normalize_subscription_user_agent(&final_src.user_agent);
+                    if explicit_ua.is_empty() || explicit_ua == "Happ/4.6.2" {
+                        vec!["Happ/4.6.2"]
+                    } else {
+                        vec!["Happ/4.6.2", "tachyon-core/2.0"]
+                    }
+                };
+                for retry_ua in retry_uas {
+                    let (n, _stubs, e, _, mut next_src) =
+                        probe_with_ua_headers(&src, retry_ua, &hwid_free_headers).await;
+                    if !n.is_empty() {
+                        next_src.sub_preferred_user_agent = retry_ua.to_string();
+                        nodes = n;
+                        last_fetch_err = e;
+                        final_src = next_src;
+                        break;
+                    }
+                }
+            }
             src = final_src;
             fetched_results.push(SubFetchResult {
                 id: src.id.clone(),
@@ -5380,6 +5483,34 @@ impl CoreManager {
             )
             .await;
             crate::watchdog::run_watchdog_tick_boxed(self, core_alive, tick_count).await;
+            if core_alive && uptime_secs >= 60 {
+                self.boot_recovery_attempts.store(0, Ordering::Release);
+            } else if crate::ubus_bridge::is_daemon_mode()
+                && !watchdog_on
+                && !core_alive
+                && !self.is_manually_stopped()
+            {
+                let bin_path = self.resolve_bin_path().await;
+                if Path::new(&bin_path).exists() {
+                    let attempts = self.boot_recovery_attempts.load(Ordering::Acquire);
+                    let now_u64 = crate::store::unix_now_u64();
+                    let last_try = self.last_boot_recovery_ts.load(Ordering::Acquire);
+                    if attempts < 5 && now_u64.saturating_sub(last_try) >= 30 {
+                        self.last_boot_recovery_ts.store(now_u64, Ordering::Release);
+                        self.boot_recovery_attempts
+                            .store(attempts.saturating_add(1), Ordering::Release);
+                        self.state.live.write().await.push_event(
+                            "warn",
+                            "core_mgr",
+                            &format!(
+                                "tachyon-core не запущен; попытка автовосстановления {}/5",
+                                attempts + 1
+                            ),
+                        );
+                        let _ = Box::pin(self.start()).await;
+                    }
+                }
+            }
             if watchdog_on
                 && !self.is_manually_stopped()
                 && core_alive
@@ -7251,5 +7382,28 @@ mod core_mgr_tests {
             "/var/run/tachyon/cache.db"
         )));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_device_limit_zero_ip_stub_counted_as_degraded_and_hwid_strip_headers() {
+        let zero_ip_sub = "vless://11111111-1111-4111-8111-111111111111@0.0.0.0:1?security=none#%D0%9B%D0%B8%D0%BC%D0%B8%D1%82\n";
+        let (nodes, stubs) = CoreManager::parse_subscription_payload_with_stats(zero_ip_sub);
+        assert!(nodes.is_empty());
+        assert_eq!(stubs, 1);
+
+        let src = crate::store::OutboundSource {
+            id: "sub_hwid".to_string(),
+            source_type: "subscription".to_string(),
+            auto_hwid: true,
+            ..Default::default()
+        };
+        let stripped = CoreManager::build_subscription_request_headers_inner(&src, false);
+        assert!(stripped.iter().any(|(k, _)| k == "Accept-Language"));
+        assert!(!stripped.iter().any(|(k, _)| {
+            matches!(
+                k.as_str(),
+                "x-hwid" | "x-device-os" | "x-ver-os" | "x-device-model"
+            )
+        }));
     }
 }

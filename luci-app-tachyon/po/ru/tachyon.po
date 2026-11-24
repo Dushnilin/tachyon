@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-23 01:50+0300\n"
-"PO-Revision-Date: 2026-11-23 01:50+0300\n"
+"POT-Creation-Date: 2026-11-24 13:28+0300\n"
+"PO-Revision-Date: 2026-11-24 13:28+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -50,8 +50,14 @@ msgstr "+ Добавить уровень"
 msgid "+ Add priority"
 msgstr "+ Добавить приоритет"
 
+msgid "+ Create custom theme..."
+msgstr "+ Создать свою тему..."
+
 msgid "+ Create new routing section"
 msgstr "+ Создать новую секцию маршрутизации"
+
+msgid "+ Custom Theme"
+msgstr "+ Своя тема"
 
 msgid "+ add"
 msgstr "+ добавить"
@@ -118,6 +124,9 @@ msgstr "1. Куда направить это подключение?"
 
 msgid "1/2 column (50%)"
 msgstr "1/2 колонки (50%)"
+
+msgid "12-color palette editor with live preview"
+msgstr "Палитра 12 токенов с предпросмотром в реальном времени"
 
 msgid "15 min — Quick"
 msgstr "15 мин — быстрый"
@@ -281,6 +290,9 @@ msgstr "AWG 3.1 (Случайные трейлеры и контроль Cookie)
 msgid "AWG Fake Packets / MTU"
 msgstr "Обфускация AWG Fake Packets / MTU"
 
+msgid "Accent"
+msgstr "Акцент"
+
 msgid "Accept Tailscale DNS (MagicDNS)"
 msgstr "Использовать MagicDNS (Accept DNS)"
 
@@ -401,11 +413,17 @@ msgstr "Подсеть активного WAN-интерфейса"
 msgid "Active node transport"
 msgstr "Активный транспорт узла"
 
+msgid "Active node unavailable"
+msgstr "Активный узел недоступен"
+
 msgid "Active routes"
 msgstr "Активные маршруты"
 
 msgid "Active sessions re-evaluated against routing rules"
 msgstr "Активные сессии перепроверены по текущим правилам маршрутизации"
+
+msgid "Active theme:"
+msgstr "Активная тема:"
 
 msgid "Ad & Telemetry Blocker (Block)"
 msgstr "Блокировка рекламы (Block)"
@@ -517,6 +535,9 @@ msgstr "Добавить ключевое слово"
 
 msgid "Add prefix to nodes"
 msgstr "Добавить префикс к узлам"
+
+msgid "Add subscription, proxy link, tunnel or server step by step"
+msgstr "Добавить подписку, прокси-ссылку, туннель или сервер по шагам"
 
 msgid "Add to Connections Pool only"
 msgstr "Только в пул подключений (без секции)"
@@ -932,6 +953,9 @@ msgstr "Применить лучшее совпадение"
 msgid "Apply Configuration"
 msgstr "Применить конфигурацию"
 
+msgid "Apply JSON"
+msgstr "Применить JSON"
+
 msgid "Apply Preset & Launch in 1 Click"
 msgstr "Применить пресет и запустить в 1 клик"
 
@@ -965,11 +989,17 @@ msgstr "Применение..."
 msgid "Arguments"
 msgstr "Аргументы"
 
+msgid "Arrows navigate · Enter execute · Esc close"
+msgstr "Стрелки — выбор · Enter — открыть · Esc — закрыть"
+
 msgid "Ask Tachyon AI Assistant a question..."
 msgstr "Задайте вопрос ИИ-ассистенту..."
 
 msgid "Assigned Devices (MAC / IP)"
 msgstr "Назначенные устройства (MAC / IP)"
+
+msgid "At least 4 characters"
+msgstr "Минимум 4 символа"
 
 msgid "At least one Admin Chat ID is required"
 msgstr "Требуется как минимум один Chat ID администратора"
@@ -1001,6 +1031,9 @@ msgstr "В существующую секцию"
 msgid "Attached to Sections"
 msgstr "Привязанные к секциям"
 
+msgid "Auth"
+msgstr "Вход"
+
 msgid "Auth Digest"
 msgstr "Auth Digest"
 
@@ -1012,6 +1045,9 @@ msgstr "Группа авторизации (Auth Group, необязатель�
 
 msgid "Auth Realm"
 msgstr "Область авторизации (Realm)"
+
+msgid "Authentication settings saved."
+msgstr "Настройки авторизации сохранены."
 
 msgid "Auto"
 msgstr "Авто"
@@ -1331,6 +1367,9 @@ msgstr "Настройки балансировщиков"
 msgid "Balancers (URLTest / Priority)"
 msgstr "Балансировщики (URLTest / Priority)"
 
+msgid "Base preset"
+msgstr "Взять за основу"
+
 msgid "Basic connectivity"
 msgstr "Базовая связность"
 
@@ -1526,6 +1565,9 @@ msgstr "Встроенный туннель Cloudflare WARP с обфускац�
 msgid "Built-in OpenVPN client via .ovpn import or manual settings"
 msgstr "Встроенный клиент OpenVPN с импортом .ovpn или ручными параметрами"
 
+msgid "Built-in interface theme"
+msgstr "Встроенная тема интерфейса"
+
 msgid "Built-in output"
 msgstr "Встроенный выход"
 
@@ -1664,6 +1706,9 @@ msgstr "Карты РФ / СБП"
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
 
+msgid "Centered compact container or full-bleed viewport width"
+msgstr "Центрированный компактный макет или полноэкранная ширина"
+
 msgid "Certificate path"
 msgstr "Путь к сертификату"
 
@@ -1759,6 +1804,9 @@ msgstr "Проверяется"
 
 msgid "Checking Connection..."
 msgstr "Проверка соединения..."
+
+msgid "Checking authentication settings..."
+msgstr "Проверка параметров авторизации..."
 
 msgid "Checking for updates..."
 msgstr "Проверка обновлений..."
@@ -2078,6 +2126,9 @@ msgstr "Свернуть без ошибок"
 msgid "Collapse top toolbar"
 msgstr "Свернуть панель инструментов"
 
+msgid "Color Themes"
+msgstr "Цветовые темы оформления"
+
 msgid "Combinatorial Deep Fuzzing (~150-300+)"
 msgstr "Глубокий комбинаторный перебор (~150–300+)"
 
@@ -2180,6 +2231,9 @@ msgstr "Откатов конфигурации:"
 msgid "Configuration File"
 msgstr "Файл конфигурации"
 
+msgid "Configuration History & Rollback"
+msgstr "История конфигураций и откат"
+
 msgid "Configuration applied"
 msgstr "Конфигурация применена"
 
@@ -2210,6 +2264,9 @@ msgstr "Настройте User-Agent в параметрах элемента"
 msgid "Configure displayed section categories on dashboard"
 msgstr "Настроить отображаемые категории секций на дашборде"
 
+msgid "Configure router (LuCI) login or separate panel credentials"
+msgstr "Настроить вход по данным роутера (LuCI) или отдельный пароль панели"
+
 msgid "Configure section & rules"
 msgstr "Настроить секцию и правила"
 
@@ -2225,8 +2282,14 @@ msgstr "Сгенерировать единую ссылку подписки (U
 msgid "Configured"
 msgstr "Настроено"
 
+msgid "Configured Objects"
+msgstr "Конфигурация узлов и правил"
+
 msgid "Configured detour"
 msgstr "Настроенный маршрут"
+
+msgid "Confirm password"
+msgstr "Подтверждение пароля"
 
 msgid "Confirm rollback?"
 msgstr "Подтвердить откат?"
@@ -2279,6 +2342,9 @@ msgstr "Название подключения"
 msgid "Connection Path"
 msgstr "Маршрут соединения"
 
+msgid "Connection Setup Wizard"
+msgstr "Мастер настройки подключения"
+
 msgid "Connection URI (wdtt://..., csqtt://..., or qwdtt://...)."
 msgstr "URI подключения (wdtt://..., csqtt://... или qwdtt://...)."
 
@@ -2287,6 +2353,9 @@ msgstr "URL подключения"
 
 msgid "Connection URLs (text)"
 msgstr "Ссылки на подключения (текст)"
+
+msgid "Connection error while saving login settings."
+msgstr "Ошибка соединения при сохранении настроек входа."
 
 msgid "Connection error: %s"
 msgstr "Ошибка соединения: %s"
@@ -2330,6 +2399,9 @@ msgstr "Дополнительный паддинг содержимого (Cont
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr "Регулярное измерение пинга и автоматическое переключение на самый быстрый сервер"
 
+msgid "Contrast scheme"
+msgstr "Схема контраста"
+
 msgid "Control URL must start with http:// or https://"
 msgstr "Control URL должен начинаться с http:// или https://"
 
@@ -2353,6 +2425,9 @@ msgstr "Копировать"
 
 msgid "Copy Address"
 msgstr "Скопировать"
+
+msgid "Copy JSON"
+msgstr "Копировать JSON"
 
 msgid "Copy Link"
 msgstr "Скопировать ссылку"
@@ -2396,6 +2471,9 @@ msgstr "Безопасный режим ядра"
 msgid "Core Telemetry HUD"
 msgstr "Приборная панель ядра (HUD)"
 
+msgid "Core decision time"
+msgstr "Время решения ядра"
+
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
@@ -2434,6 +2512,9 @@ msgstr "Создать (в черновик)"
 
 msgid "Create Balancer Policy"
 msgstr "Новый балансировщик"
+
+msgid "Create Custom Theme / Import JSON"
+msgstr "Создать свою цветовую тему / импорт JSON"
 
 msgid "Create Family Profile"
 msgstr "Новый семейный профиль"
@@ -2479,6 +2560,21 @@ msgstr "Текущий конфиг подтверждён как рабочий
 
 msgid "Current downlink speed"
 msgstr "Текущая входящая скорость"
+
+msgid "Current panel password"
+msgstr "Текущий пароль панели"
+
+msgid "Current password (to confirm changes)"
+msgstr "Текущий пароль (для подтверждения изменений)"
+
+msgid "Current password is incorrect."
+msgstr "Неверный текущий пароль."
+
+msgid "Current password is required."
+msgstr "Требуется текущий пароль."
+
+msgid "Current router (LuCI) password"
+msgstr "Текущий пароль роутера (LuCI)"
 
 msgid "Current router address"
 msgstr "Текущий адрес роутера"
@@ -2537,6 +2633,12 @@ msgstr "Собственный JSON-аутбаунд (Tachyon Core)"
 msgid "Custom Target URL(s)..."
 msgstr "Свои целевые URL..."
 
+msgid "Custom Theme"
+msgstr "Моя тема"
+
+msgid "Custom Theme Builder"
+msgstr "Конструктор своей темы"
+
 msgid "Custom UDP fake payload. Requires tachyon-core 0.5.9 or newer."
 msgstr "Своя фейковая нагрузка UDP (HEX). Требуется tachyon-core 0.5.9 или новее."
 
@@ -2569,6 +2671,9 @@ msgstr "Пользовательский заголовок для инициа�
 
 msgid "Custom header for handshake response"
 msgstr "Пользовательский заголовок для ответа рукопожатия"
+
+msgid "Custom interface theme"
+msgstr "Пользовательская тема"
 
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
@@ -2822,6 +2927,9 @@ msgstr "Суточная квота действует только при вы�
 msgid "Dark"
 msgstr "Тёмный"
 
+msgid "Dark base"
+msgstr "Тёмная основа"
+
 msgid "Dashboard"
 msgstr "Дашбоард"
 
@@ -2926,6 +3034,9 @@ msgstr "Удалить снапшот"
 
 msgid "Delete the snapshot"
 msgstr "Удалить снапшот"
+
+msgid "Delete theme"
+msgstr "Удалить тему"
 
 msgid "Dest IP"
 msgstr "IP назначения"
@@ -3113,6 +3224,9 @@ msgstr "Отключить Cookie"
 msgid "Disable DTLS (TCP/TLS Only)"
 msgstr "Отключить DTLS (только TCP/TLS)"
 
+msgid "Disable Eco Mode"
+msgstr "Выключить Эко-режим (Tachyon Lite)"
+
 msgid "Disable QUIC"
 msgstr "Отключить QUIC"
 
@@ -3290,6 +3404,9 @@ msgstr "Скачать"
 msgid "Download .conf"
 msgstr "Скачать .conf"
 
+msgid "Download .json"
+msgstr "Скачать .json"
+
 msgid "Download File (.json)"
 msgstr "Скачать файл (.json)"
 
@@ -3395,8 +3512,14 @@ msgstr "Эко-режим: Вкл"
 msgid "Edit"
 msgstr "Изменить"
 
+msgid "Edit Custom Theme"
+msgstr "Редактирование темы"
+
 msgid "Edit Outbound Group"
 msgstr "Редактировать группу серверов"
+
+msgid "Edit theme"
+msgstr "Редактировать тему"
 
 msgid "Eligible components for auto-update"
 msgstr "Разрешенные компоненты для автообновления"
@@ -3436,6 +3559,9 @@ msgstr "Включить прямой обход WAN"
 
 msgid "Enable ESP UDP Tunnel"
 msgstr "Включить UDP-туннель ESP"
+
+msgid "Enable Eco Mode"
+msgstr "Включить Эко-режим (Tachyon Lite)"
 
 msgid "Enable Firewall Reload Dedup"
 msgstr "Включить дедупликацию перезагрузки файрвола"
@@ -3623,6 +3749,9 @@ msgstr "Введите имя снимка или оставьте поле пу
 msgid "Enter a target domain or IP address to trace how Tachyon routes its traffic across all 7 pipeline stages."
 msgstr "Введите целевой домен или IP-адрес, чтобы отследить маршрутизацию трафика в Tachyon по всем 7 этапам конвейера."
 
+msgid "Enter a username for separate panel login."
+msgstr "Укажите логин для отдельного входа в панель."
+
 msgid "Enter a valid IP, CIDR subnet, or hostname"
 msgstr "Введите корректный IP-адрес, подсеть CIDR или доменное имя"
 
@@ -3652,6 +3781,9 @@ msgstr "Введите время в формате Ч или ЧЧ:ММ (нап�
 
 msgid "Enter valid domain names, one per line."
 msgstr "Введите корректные домены, по одному на строку."
+
+msgid "Enter your current password to confirm the change."
+msgstr "Введите текущий пароль для подтверждения изменения."
 
 msgid "Ephemeral node"
 msgstr "Эфемерный узел"
@@ -4055,6 +4187,9 @@ msgstr "Не удалось получить стратегии фаззера"
 msgid "Failed to import snapshot profile"
 msgstr "Не удалось импортировать профиль снапшота"
 
+msgid "Failed to import theme file"
+msgstr "Не удалось импортировать файл темы"
+
 msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
@@ -4075,6 +4210,9 @@ msgstr "Не удалось загрузить снапшоты"
 
 msgid "Failed to load versions"
 msgstr "Не удалось загрузить версии"
+
+msgid "Failed to parse JSON/JSONC"
+msgstr "Ошибка разбора JSON/JSONC"
 
 msgid "Failed to parse OpenVPN config:"
 msgstr "Не удалось разобрать конфиг OpenVPN:"
@@ -4180,6 +4318,9 @@ msgstr "Не удалось отследить маршрут."
 
 msgid "Failed to update device"
 msgstr "Не удалось обновить устройство"
+
+msgid "Failed to update login settings."
+msgstr "Не удалось обновить настройки входа."
 
 msgid "Failed to update subscription."
 msgstr "Не удалось обновить подписку."
@@ -4817,6 +4958,9 @@ msgstr "Скрывать отдельные серверы внутри импо
 msgid "Hide Intermediate Detour Outbounds"
 msgstr "Скрывать промежуточные (detour) серверы"
 
+msgid "Hide JSON Import / Export"
+msgstr "Скрыть импорт / экспорт JSON"
+
 msgid "Hide N/A servers"
 msgstr "Скрыть недоступные серверы"
 
@@ -5168,11 +5312,17 @@ msgstr "Загрузите .conf для AmneziaWG 2.0, 3.0 и 3.1."
 msgid "Import .ovpn File"
 msgstr "Импорт файла .ovpn"
 
+msgid "Import / Export JSON / JSONC"
+msgstr "Импорт / экспорт JSON / JSONC"
+
 msgid "Import AmneziaWG settings from .conf file"
 msgstr "Импортировать настройки AmneziaWG из файла .conf"
 
 msgid "Import Hosts File"
 msgstr "Импортировать файл Hosts"
+
+msgid "Import JSON"
+msgstr "Импорт JSON"
 
 msgid "Import OpenVPN settings from .ovpn or .conf file"
 msgstr "Импортировать настройки OpenVPN из файла .ovpn или .conf"
@@ -5429,6 +5579,9 @@ msgstr "Перехватывать весь DNS из LAN"
 msgid "Interface"
 msgstr "Интерфейс"
 
+msgid "Interface Color Theme"
+msgstr "Цветовая тема интерфейса"
+
 msgid "Interface IPv4/IPv6 addresses (e.g. 10.8.1.2/32)."
 msgstr "IPv4/IPv6-адреса интерфейса (например, 10.8.1.2/32)."
 
@@ -5443,6 +5596,9 @@ msgstr "Задержка мониторинга интерфейсов"
 
 msgid "Interface Subnet Match (iface=CIDR)"
 msgstr "Подсеть конкретного интерфейса (iface=CIDR)"
+
+msgid "Interface Theme"
+msgstr "Тема интерфейса"
 
 msgid "Interface language"
 msgstr "Язык интерфейса"
@@ -5798,6 +5954,9 @@ msgstr "Некорректное правило: \"%s\". Используйте 
 msgid "Invalid target domain or URL"
 msgstr "Некорректный целевой домен или URL"
 
+msgid "Invalid theme JSON/JSONC"
+msgstr "Некорректный JSON/JSONC темы"
+
 msgid "Invalid time format. Expected HH:MM (e.g. 22:00)"
 msgstr "Неверный формат времени. Ожидается ЧЧ:ММ (например, 22:00)"
 
@@ -6077,11 +6236,17 @@ msgstr "Least Load (Наименьшая нагрузка × RTT)"
 msgid "Leave blank to auto-generate on start or click button above"
 msgstr "Оставьте пустым для автогенерации при старте или нажмите кнопку выше"
 
+msgid "Leave blank to keep current"
+msgstr "Оставьте пустым, чтобы не менять"
+
 msgid "Leave empty to omit this header"
 msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
 
 msgid "Level name"
 msgstr "Имя уровня"
+
+msgid "Light"
+msgstr "Светлая"
 
 msgid "Light Blue"
 msgstr "Светло-синий"
@@ -6094,6 +6259,9 @@ msgstr "Светло-розовый"
 
 msgid "Light Yellow"
 msgstr "Светло-жёлтый"
+
+msgid "Light base"
+msgstr "Светлая основа"
 
 msgid "Lightweight proxy server for LAN devices or Telegram MTProto"
 msgstr "Локальный или внешний прокси-сервер для устройств и Telegram"
@@ -6152,6 +6320,9 @@ msgstr "Live-проверка"
 msgid "Live filter preview"
 msgstr "Предпросмотр фильтра в реальном времени"
 
+msgid "Live palette preview"
+msgstr "Предпросмотр палитры в реальном времени"
+
 msgid "Load & Uptime"
 msgstr "Нагрузка и аптайм"
 
@@ -6163,6 +6334,9 @@ msgstr "Загрузить файл(ы) .conf"
 
 msgid "Load .conf config"
 msgstr "Загрузить конфигурацию .conf"
+
+msgid "Load .json file"
+msgstr "Загрузить файл .json"
 
 msgid "Load .ovpn"
 msgstr "Загрузить .ovpn"
@@ -6353,6 +6527,9 @@ msgstr "Основной интернет-интерфейс (например, 
 msgid "Managed Daemons Status"
 msgstr "Статус управляемых демонов"
 
+msgid "Managed by LuCI"
+msgstr "Встроен в LuCI"
+
 msgid "Managed by Tachyon"
 msgstr "Управляется Tachyon"
 
@@ -6370,6 +6547,9 @@ msgstr "Ручное обновление списков"
 
 msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor, etc.) and routing."
 msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, OpenVPN, Tor и др.) и настройка списков."
+
+msgid "Manual restore to primary node"
+msgstr "Ручной возврат на основной узел"
 
 msgid "Manual selection"
 msgstr "Ручной выбор"
@@ -6746,6 +6926,9 @@ msgstr "Название новой секции"
 msgid "New domains:"
 msgstr "Новые домены:"
 
+msgid "New panel password"
+msgstr "Новый пароль панели"
+
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
 
@@ -6802,6 +6985,9 @@ msgstr "Активные секции маршрутизации не найде
 
 msgid "No applicable rule sections found"
 msgstr "Подходящие секции правил не найдены"
+
+msgid "No authentication changes to apply."
+msgstr "Изменений в параметрах входа нет."
 
 msgid "No balancer groups configured"
 msgstr "Группы балансировки не настроены"
@@ -6880,6 +7066,9 @@ msgstr "Критерии не заданы"
 
 msgid "No matching entries found"
 msgstr "Записи не найдены"
+
+msgid "No matching items found"
+msgstr "По запросу ничего не найдено"
 
 msgid "No more versions found"
 msgstr "Других версий не найдено"
@@ -7493,6 +7682,18 @@ msgstr "Padding"
 msgid "Page"
 msgstr "Страница"
 
+msgid "Palette applied to editor."
+msgstr "Палитра применена к редактору."
+
+msgid "Panel Login & Password"
+msgstr "Авторизация и пароль панели"
+
+msgid "Panel Login & Password Settings"
+msgstr "Логин и пароль входа в панель"
+
+msgid "Panel username"
+msgstr "Логин панели"
+
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr "Параллельный (быстрый failover, ≤3 с)"
 
@@ -7526,11 +7727,17 @@ msgstr "Пароль / ключ"
 msgid "Password / Key / PSK"
 msgstr "Пароль / Ключ / PSK"
 
+msgid "Password and confirmation do not match."
+msgstr "Пароль и подтверждение не совпадают."
+
 msgid "Password cannot be empty"
 msgstr "Пароль не может быть пустым"
 
 msgid "Password for auth-user-pass authentication"
 msgstr "Пароль для авторизации auth-user-pass"
+
+msgid "Password must be at least 4 characters."
+msgstr "Пароль должен содержать минимум 4 символа."
 
 msgid "Paste Transfer Code"
 msgstr "Вставить код"
@@ -7558,6 +7765,9 @@ msgstr "Вставьте ссылки на прокси по одной в ст�
 
 msgid "Paste subscription URL (https://...) or proxy links (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
 msgstr "Вставьте ссылку на подписку (https://...) или прокси-ключи (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
+
+msgid "Paste theme JSON / JSONC (supports colors map, // comments and #hex)..."
+msgstr "Вставьте JSON / JSONC темы (поддерживаются поля colors, комментарии // и #hex)..."
 
 msgid "Paste vpn:// share links or upload .conf files using the button above."
 msgstr "Вставьте ссылки vpn:// или загрузите файлы .conf с помощью кнопки выше."
@@ -8045,6 +8255,9 @@ msgstr "Под контролем"
 msgid "Protection"
 msgstr "Защита"
 
+msgid "Protection disabled"
+msgstr "Защита отключена"
+
 msgid "Proto"
 msgstr "Протокол"
 
@@ -8195,6 +8408,9 @@ msgstr "На карантине по снимку"
 msgid "Querying direct connection and proxy outbound..."
 msgstr "Опрос прямого подключения и исходящего прокси..."
 
+msgid "Quick Actions"
+msgstr "Быстрые действия"
+
 msgid "Quick Benchmark (Presets ~30+)"
 msgstr "Быстрый подбор (пресеты ~30+)"
 
@@ -8212,6 +8428,9 @@ msgstr "Быстрый перевод картами РФ или через СБ
 
 msgid "Quick presets:"
 msgstr "Быстрые пресеты:"
+
+msgid "Quick search and commands (Ctrl+K)"
+msgstr "Быстрый поиск и команды (Ctrl+K)"
 
 msgid "Quick setup for hosting your own VPN / Proxy server"
 msgstr "Быстрое создание своего VPN / Прокси сервера на роутере"
@@ -8522,11 +8741,17 @@ msgstr "Удаление"
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr "Консистентное хэширование Rendezvous HRW: сохраняет один выходной IP для клиента и домена (банки, ИИ, игры)"
 
+msgid "Repeat new password"
+msgstr "Повторите новый пароль"
+
 msgid "Replace current routes"
 msgstr "Заменить текущие маршруты"
 
 msgid "Require a username and password for the local mixed proxy"
 msgstr "Требовать имя пользователя и пароль для локального смешанного прокси"
+
+msgid "Require sign-in with username and password"
+msgstr "Требовать вход по логину и паролю"
 
 msgid "Requires other AND operands"
 msgstr "Требуются остальные операнды И (AND)"
@@ -8594,6 +8819,9 @@ msgstr "Протокол резолвера"
 msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
 msgstr "Принадлежность резолвера не подтверждена. Данных для достоверного вывода об утечке недостаточно."
 
+msgid "Resource-saving mode for constrained routers"
+msgstr "Режим экономии ресурсов для маршрутизаторов с небольшим объёмом ОЗУ"
+
 msgid "Response Packet Magic Header (S2)"
 msgstr "Magic-заголовок ответного пакета (S2)"
 
@@ -8618,6 +8846,9 @@ msgstr "Перезапустить Tachyon"
 msgid "Restart Tachyon Core DNS"
 msgstr "Перезапустить DNS Tachyon Core"
 
+msgid "Restart Tachyon Service"
+msgstr "Перезапустить службу Tachyon"
+
 msgid "Restart Tachyon service"
 msgstr "Перезапустить службу Tachyon"
 
@@ -8638,6 +8869,9 @@ msgstr "Перезапустить сеть"
 
 msgid "Restart outbound providers"
 msgstr "Перезагрузить внешние источники"
+
+msgid "Restart the core routing service"
+msgstr "Перезапуск основного сервиса маршрутизации"
 
 msgid "Restarting service"
 msgstr "Перезапуск службы"
@@ -8702,6 +8936,9 @@ msgstr "Возвращать NXDOMAIN для заблокированных до
 msgid "Returned to a higher tier"
 msgstr "Возврат на более высокий уровень"
 
+msgid "Returned to higher-priority node"
+msgstr "Возврат на более приоритетный узел"
+
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
 
@@ -8713,6 +8950,9 @@ msgstr "Списки сервисов, домены, подсети и сост�
 
 msgid "Revert before"
 msgstr "Откатить до"
+
+msgid "Review unsaved changes and restore points"
+msgstr "Просмотр несохранённых изменений и точек восстановления"
 
 msgid "Roaming / Handover"
 msgstr "Роуминг / бесшовное переключение"
@@ -8834,6 +9074,12 @@ msgstr "Серверы маршрутизированного DNS"
 msgid "Router"
 msgstr "Роутер"
 
+msgid "Router (LuCI) credentials"
+msgstr "Пароль роутера (LuCI)"
+
+msgid "Router (LuCI) username and password are used by default. You can switch to separate credentials for the Tachyon panel only."
+msgstr "По умолчанию используются логин и пароль роутера (LuCI). Вы можете задать отдельные учётные данные только для панели Tachyon."
+
 msgid "Router (WAN)"
 msgstr "Роутер (WAN)"
 
@@ -8905,6 +9151,9 @@ msgstr "Трассировщик правил маршрутизации"
 
 msgid "Routing Sections"
 msgstr "Секции правил"
+
+msgid "Routing Sections & Live Nodes"
+msgstr "Секции, группы и узлы (Runtime)"
 
 msgid "Routing Sections Settings"
 msgstr "Настройки секций маршрутизации"
@@ -9077,6 +9326,9 @@ msgstr "ПОДПИСКА"
 msgid "SafeSearch"
 msgstr "SafeSearch"
 
+msgid "Same as LuCI (default)"
+msgstr "Как в LuCI (по умолчанию)"
+
 msgid "Sat"
 msgstr "Сб"
 
@@ -9107,8 +9359,14 @@ msgstr "Сохранить снапшот рабочей конфигураци�
 msgid "Save component backup before update"
 msgstr "Сохранять резервную копию перед обновлением"
 
+msgid "Save login settings"
+msgstr "Сохранить настройки входа"
+
 msgid "Saved revisions (RAM)"
 msgstr "Сохранённые изменения (RAM)"
+
+msgid "Saving..."
+msgstr "Сохранение..."
 
 msgid "Scale peak"
 msgstr "Пик шкалы"
@@ -9142,6 +9400,9 @@ msgstr "Поиск домена или сервиса..."
 
 msgid "Search servers in pool..."
 msgstr "Поиск серверов в пуле..."
+
+msgid "Search tabs, nodes, settings, themes or actions..."
+msgstr "Поиск разделов, узлов, настроек, тем или команд..."
 
 msgid "Secret"
 msgstr "Секрет"
@@ -9235,6 +9496,9 @@ msgstr "Секции"
 
 msgid "Sections & Sessions"
 msgstr "Секции и сессии"
+
+msgid "Sections & Settings"
+msgstr "Разделы и настройки"
 
 msgid "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members."
 msgstr "Секции, объединённые в одну плоскую группу URLTest: их правила продолжают матчить трафик, но все их серверы выбираются одним общим URLTest. Секции DPI, маркеры и секции, управляющие только маршрутизацией, не могут быть участниками."
@@ -9488,6 +9752,12 @@ msgstr "Отправка российских сайтов, банков или 
 msgid "Send fake low-TTL UDP packets before real UDP/QUIC payload"
 msgstr "Отправлять фейковые UDP-пакеты с малым TTL перед реальными данными UDP/QUIC"
 
+msgid "Separate password"
+msgstr "Отдельный пароль"
+
+msgid "Separate username & password"
+msgstr "Отдельный логин и пароль"
+
 msgid "Sequential (one active at a time)"
 msgstr "Последовательный (один активный)"
 
@@ -9680,6 +9950,9 @@ msgstr "Пик за сессию"
 msgid "Session total"
 msgstr "Всего за сессию"
 
+msgid "Set a password when switching to separate panel login."
+msgstr "При переходе на отдельный вход необходимо задать пароль."
+
 msgid "Settings"
 msgstr "Настройки"
 
@@ -9718,6 +9991,9 @@ msgstr "Автоматический перевод новых соединен�
 
 msgid "Shopping"
 msgstr "Магазины"
+
+msgid "Show"
+msgstr "Показать"
 
 msgid "Show QR code & client share links"
 msgstr "QR-код и ссылка для подключения клиента"
@@ -9761,6 +10037,9 @@ msgstr "Показывать только серверы с одним из вы
 msgid "Show only servers with one of the selected transports."
 msgstr "Показывать только серверы с одним из выбранных транспортов."
 
+msgid "Show or hide password"
+msgstr "Показать или скрыть пароль"
+
 msgid "Show servers"
 msgstr "Показать серверы"
 
@@ -9784,6 +10063,9 @@ msgstr "Показан сохранённый снимок узлов. Теку�
 
 msgid "Sidebar"
 msgstr "Боковое"
+
+msgid "Sign out"
+msgstr "Выйти из панели"
 
 msgid "Simple"
 msgstr "Обычный"
@@ -10283,6 +10565,12 @@ msgstr "История переключений"
 msgid "Switch history is unavailable"
 msgstr "История переключений недоступна"
 
+msgid "Switch to Advanced Mode"
+msgstr "Включить расширенный режим"
+
+msgid "Switch to Simple Mode"
+msgstr "Включить обычный режим"
+
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
 
@@ -10519,6 +10807,9 @@ msgstr "URL TURN-серверов (опционально)"
 
 msgid "TURN Username (optional)"
 msgstr "Логин TURN (необязательно)"
+
+msgid "Tab"
+msgstr "Раздел"
 
 msgid "Table"
 msgstr "Таблица"
@@ -10826,6 +11117,21 @@ msgstr "Сервер работает и готов принимать подк�
 msgid "Their routing settings are preserved. Enable these servers manually after enabling the section."
 msgstr "Настройки маршрутизации сохранены. После включения секции включите нужные серверы вручную."
 
+msgid "Theme"
+msgstr "Тема"
+
+msgid "Theme JSON copied"
+msgstr "JSON темы скопирован"
+
+msgid "Theme name"
+msgstr "Название темы"
+
+msgid "Theme saved:"
+msgstr "Тема сохранена:"
+
+msgid "Theme:"
+msgstr "Тема:"
+
 msgid "Thinking..."
 msgstr "Думаю..."
 
@@ -10846,6 +11152,9 @@ msgstr "Этот роутер"
 
 msgid "This section uses direct or manual node selection (no URLTest / Priority balancers attached)."
 msgstr "В этой секции используется прямой или ручной выбор узла (без групп URLTest / Priority)."
+
+msgid "This session is served through LuCI (uhttpd) and uses its built-in authentication. Separate panel credentials are available when opening the standalone Tachyon web server."
+msgstr "Панель открыта через внешний веб-сервер LuCI (uhttpd) и использует его встроенную сессию. Управление отдельным паролем доступно при входе напрямую во встроенный веб-сервер Tachyon."
 
 msgid "This speed test supports DoH, DoT, DoQ, and UDP DNS servers."
 msgstr "Этот тест скорости поддерживает DNS-серверы DoH, DoT, DoQ и UDP."
@@ -10921,6 +11230,9 @@ msgstr "К секциям"
 
 msgid "Toddler"
 msgstr "Малыш"
+
+msgid "Toggle detailed form parameters"
+msgstr "Переключение детализации параметров в формах и настройках"
 
 msgid "Toggle details & servers"
 msgstr "Развернуть детали и серверы"
@@ -11495,6 +11807,9 @@ msgstr "Используйте CIDR-префиксы, например 192.168.1
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
 msgstr "Используйте префиксы CIDR или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
 
+msgid "Use Compact Layout (1360px)"
+msgstr "Включить компактную ширину (1360px)"
+
 msgid "Use DNS configuration advertised by the tailnet (MagicDNS)."
 msgstr "Использовать настройки DNS, передаваемые сетью Tailnet (MagicDNS)."
 
@@ -11503,6 +11818,9 @@ msgstr "Использовать DTLS (только AnyConnect)"
 
 msgid "Use ESP (needs IP mode)"
 msgstr "Использовать ESP (требуется IP-режим)"
+
+msgid "Use Full Width Layout"
+msgstr "Растянуть интерфейс на всю ширину"
 
 msgid "Use Global DNS Servers"
 msgstr "Использовать глобальные DNS-серверы"
@@ -11623,6 +11941,9 @@ msgstr "Имя пользователя не может быть пустым"
 
 msgid "Username for auth-user-pass authentication"
 msgstr "Имя пользователя для авторизации auth-user-pass"
+
+msgid "Uses router system credentials (verified via OpenWrt ubus session). Changing the router password in System -> Administration applies here automatically."
+msgstr "Используются системные логин и пароль роутера (проверяются через OpenWrt ubus session). Смена пароля роутера в «Система → Администрирование» автоматически действует и здесь."
 
 msgid "VK Auth Mode"
 msgstr "Режим авторизации VK"
@@ -11855,6 +12176,9 @@ msgstr "Порт WireGuard / Локальный порт"
 msgid "Waiting for router services to restart..."
 msgstr "Ожидание перезапуска служб роутера..."
 
+msgid "Warning"
+msgstr "Ожидание"
+
 msgid "Warning: DNS strategy is currently set to \"IPv6 DNS only (AAAA)\". Destinations without AAAA records may fail without end-to-end IPv6."
 msgstr "Внимание: сейчас выбрана DNS-стратегия «Только DNS IPv6 (AAAA)». Сайты без AAAA-записей могут не открываться без полного IPv6."
 
@@ -11902,6 +12226,9 @@ msgstr "Что должен делать Tachyon при совпадении э�
 
 msgid "What's new?"
 msgstr "Что нового?"
+
+msgid "When disabled, any client on the local network can open the panel without entering a password."
+msgstr "При отключённой защите любой клиент в локальной сети сможет открывать панель без ввода пароля."
 
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com), если только это не затронет исключённый поддомен. Если выключено, через прокси направляется только конкретный поддомен."
@@ -11968,6 +12295,9 @@ msgstr "При выключенном перехвате клиенты со с�
 
 msgid "Without Tachyon managing dnsmasq, LAN clients stop getting answers through Tachyon and skip domain-based sections."
 msgstr "Без управления dnsmasq через Tachyon клиенты LAN перестают получать DNS-ответы через Tachyon и обходят доменные секции."
+
+msgid "Wizard"
+msgstr "Мастер"
 
 msgid "Workers"
 msgstr "Количество воркеров"
@@ -12109,6 +12439,9 @@ msgstr "Например: Основная подписка, Германия VL
 
 msgid "e.g. Main Subscription, YouTube Desync, EU AWG"
 msgstr "напр., Основная подписка, YouTube Desync, EU AWG"
+
+msgid "e.g. Midnight Slate"
+msgstr "Например: Midnight Slate"
 
 msgid "e.g. SHA256 — leave empty for default"
 msgstr "напр. SHA256 — оставьте пустым для значения по умолчанию"
@@ -12301,6 +12634,9 @@ msgstr "правил"
 
 msgid "s"
 msgstr "с"
+
+msgid "selected"
+msgstr "выбран сейчас"
 
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
@@ -15124,9 +15460,6 @@ msgstr "Тип маршрута"
 
 msgid "TLS"
 msgstr "TLS"
-
-msgid "Saving..."
-msgstr "Сохранение..."
 
 msgid "Generating..."
 msgstr "Генерация..."

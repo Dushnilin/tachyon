@@ -4100,20 +4100,31 @@ fn build_tls_object_with_default(
     if sec != "tls" && sec != "reality" {
         return None;
     }
-    let sni = params
+    let explicit_sni = params
         .get("sni")
         .or_else(|| params.get("serverName"))
+        .or_else(|| params.get("servername"))
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| default_host.to_string());
+        .filter(|s| !s.is_empty());
+    let sni = if sec == "reality" {
+        explicit_sni
+    } else {
+        explicit_sni.or_else(|| {
+            let h = default_host.trim();
+            (!h.is_empty()).then(|| h.to_string())
+        })
+    };
     let fp = params
         .get("fp")
+        .or_else(|| params.get("fingerprint"))
         .map(|s| normalize_utls_fingerprint(s))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "chrome".to_string());
     let mut tls = Map::new();
     tls.insert("enabled".into(), json!(true));
-    tls.insert("server_name".into(), json!(sni));
+    if let Some(sni_val) = sni {
+        tls.insert("server_name".into(), json!(sni_val));
+    }
     tls.insert(
         "utls".into(),
         json!({
@@ -4165,14 +4176,46 @@ fn build_tls_object_with_default(
         tls.insert("fragment".into(), json!(true));
     }
     if sec == "reality" {
-        tls.insert(
-            "reality".into(),
-            json!({
-                "enabled": true,
-                "public_key": params.get("pbk").cloned().unwrap_or_default(),
-                "short_id": params.get("sid").cloned().unwrap_or_default()
-            }),
+        let mut r_obj = Map::new();
+        r_obj.insert("enabled".into(), json!(true));
+        r_obj.insert(
+            "public_key".into(),
+            json!(params.get("pbk").cloned().unwrap_or_default()),
         );
+        r_obj.insert(
+            "short_id".into(),
+            json!(params.get("sid").cloned().unwrap_or_default()),
+        );
+        let opt_bool = |keys: &[&str]| -> Option<bool> {
+            for k in keys {
+                if let Some(raw) = params.get(*k) {
+                    let lc = raw.trim().to_ascii_lowercase();
+                    if matches!(lc.as_str(), "1" | "true" | "yes" | "on") {
+                        return Some(true);
+                    }
+                    if matches!(lc.as_str(), "0" | "false" | "no" | "off") {
+                        return Some(false);
+                    }
+                }
+            }
+            None
+        };
+        if let Some(mlkem) = opt_bool(&[
+            "support_x25519mlkem768",
+            "support-x25519mlkem768",
+            "supportx25519mlkem768",
+            "supportX25519MLKEM768",
+        ]) {
+            r_obj.insert("support_x25519mlkem768".into(), json!(mlkem));
+        } else if params
+            .get("pqv")
+            .or_else(|| params.get("mldsa65verify"))
+            .or_else(|| params.get("mldsa65Verify"))
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            r_obj.insert("support_x25519mlkem768".into(), json!(true));
+        }
+        tls.insert("reality".into(), Value::Object(r_obj));
     }
     Some(Value::Object(tls))
 }
@@ -5505,6 +5548,7 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
             }
             for (idx, conf_text) in texts.iter().enumerate() {
                 let trimmed = conf_text.trim();
+                let mut batch: Vec<(String, Value)> = Vec::new();
                 if trimmed.starts_with("vpn://") || trimmed.starts_with('{') {
                     let def_prefix = if idx == 0 {
                         format!("awgconf-{}", src.id)
@@ -5515,23 +5559,80 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                         && !nodes.is_empty()
                     {
                         for node in nodes {
-                            out.push((node.tag, node.outbound_json));
+                            batch.push((node.tag, node.outbound_json));
                         }
                         parsed_any = true;
-                        continue;
                     }
                 }
-                if (trimmed.starts_with("awg://") || trimmed.starts_with("wg://"))
+                if batch.is_empty()
+                    && (trimmed.starts_with("awg://") || trimmed.starts_with("wg://"))
                     && let Some(node) = parse_proxy_uri(trimmed, idx)
                 {
-                    out.push((node.tag, node.outbound_json));
+                    batch.push((node.tag, node.outbound_json));
                     parsed_any = true;
-                    continue;
                 }
-                let peers = parse_amnezia_conf_outbounds(&src.id, idx, conf_text);
-                if !peers.is_empty() {
-                    out.extend(peers);
-                    parsed_any = true;
+                if batch.is_empty() {
+                    let peers = parse_amnezia_conf_outbounds(&src.id, idx, conf_text);
+                    if !peers.is_empty() {
+                        batch.extend(peers);
+                        parsed_any = true;
+                    }
+                }
+                for (tag, val) in batch {
+                    if val.get("type").and_then(Value::as_str) == Some("wireguard") {
+                        let server = val
+                            .get("server")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_ascii_lowercase();
+                        let port = val.get("server_port").and_then(Value::as_u64).unwrap_or(0);
+                        let priv_key = val
+                            .get("private_key")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let peer_pub = val
+                            .get("peer_public_key")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let dup = !server.is_empty()
+                            && !priv_key.is_empty()
+                            && out.iter().any(|(_, existing)| {
+                                existing.get("type").and_then(Value::as_str) == Some("wireguard")
+                                    && existing
+                                        .get("server")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("")
+                                        .trim()
+                                        .to_ascii_lowercase()
+                                        == server
+                                    && existing
+                                        .get("server_port")
+                                        .and_then(Value::as_u64)
+                                        .unwrap_or(0)
+                                        == port
+                                    && existing
+                                        .get("private_key")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("")
+                                        .trim()
+                                        == priv_key
+                                    && existing
+                                        .get("peer_public_key")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("")
+                                        .trim()
+                                        == peer_pub
+                            });
+                        if dup {
+                            continue;
+                        }
+                    }
+                    out.push((tag, val));
                 }
             }
             if !parsed_any && !src.wg_private_key.is_empty() {
@@ -8108,13 +8209,13 @@ fn build_clash_tls(
     if !tls_on && pbk.is_empty() {
         return None;
     }
-    let sni = {
-        let v = clash_first_scalar(fields, &["servername", "sni", "peer"]);
-        if v.is_empty() {
-            default_host.to_string()
-        } else {
-            v
-        }
+    let explicit_sni = clash_first_scalar(fields, &["servername", "sni", "peer"]);
+    let sni = if !explicit_sni.is_empty() {
+        Some(explicit_sni)
+    } else if pbk.is_empty() && !default_host.trim().is_empty() {
+        Some(default_host.trim().to_string())
+    } else {
+        None
     };
     let fp = {
         let v = normalize_utls_fingerprint(&clash_first_scalar(
@@ -8129,7 +8230,9 @@ fn build_clash_tls(
     };
     let mut tls = Map::new();
     tls.insert("enabled".into(), json!(true));
-    tls.insert("server_name".into(), json!(sni));
+    if let Some(sni_val) = sni {
+        tls.insert("server_name".into(), json!(sni_val));
+    }
     tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
     if clash_bool(fields, &["skip-cert-verify", "insecure"]).unwrap_or(false) {
         tls.insert("insecure".into(), json!(true));
@@ -8138,14 +8241,35 @@ fn build_clash_tls(
         tls.insert("alpn".into(), json!(alpn));
     }
     if !pbk.is_empty() {
-        tls.insert(
-            "reality".into(),
-            json!({
-                "enabled": true,
-                "public_key": pbk,
-                "short_id": sid
-            }),
-        );
+        let mut r_obj = Map::new();
+        r_obj.insert("enabled".into(), json!(true));
+        r_obj.insert("public_key".into(), json!(pbk));
+        r_obj.insert("short_id".into(), json!(sid));
+        if let Some(mlkem) = clash_bool(
+            fields,
+            &[
+                "reality-opts.support-x25519mlkem768",
+                "reality-opts.support_x25519mlkem768",
+                "reality-opts.supportx25519mlkem768",
+                "support-x25519mlkem768",
+                "support_x25519mlkem768",
+            ],
+        ) {
+            r_obj.insert("support_x25519mlkem768".into(), json!(mlkem));
+        } else if !clash_first_scalar(
+            fields,
+            &[
+                "reality-opts.mldsa65verify",
+                "reality-opts.mldsa65-verify",
+                "reality-opts.pqv",
+                "pqv",
+            ],
+        )
+        .is_empty()
+        {
+            r_obj.insert("support_x25519mlkem768".into(), json!(true));
+        }
+        tls.insert("reality".into(), Value::Object(r_obj));
     }
     Some(Value::Object(tls))
 }
@@ -12586,6 +12710,7 @@ fn compile_core_config_with_rt_dir(
         if !sec.community_lists.is_empty()
             || !sec.rule_set_urls.is_empty()
             || !sec.rule_set_with_subnets.is_empty()
+            || !sec.domain_ip_lists.is_empty()
             || !sec.domains.is_empty()
             || !sec.user_domains.is_empty()
             || !sec.user_subnets.is_empty()
@@ -12606,6 +12731,7 @@ fn compile_core_config_with_rt_dir(
                 community_subnets: sec.community_subnets,
                 rule_set: sec.rule_set_urls.clone(),
                 rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
+                domain_ip_lists: sec.domain_ip_lists.clone(),
                 domains: sec.domains.clone(),
                 user_domains: sec.user_domains.clone(),
                 user_subnets: sec.user_subnets.clone(),
@@ -12666,6 +12792,13 @@ fn compile_core_config_with_rt_dir(
             section_dns_plans.push(SectionDnsPlan::RoutedDns {
                 sec,
                 target_outbound_tag: target_outbound_tag.clone(),
+                section_matched_any: section_has_route_matchers,
+            });
+        } else if store.settings.fakeip_enabled
+            && (sec.disable_fakeip || sec.action == "bypass" || sec.connection_type == "bypass")
+        {
+            section_dns_plans.push(SectionDnsPlan::BypassRealIp {
+                sec,
                 section_matched_any: section_has_route_matchers,
             });
         }
@@ -13535,41 +13668,36 @@ fn compile_core_config_with_rt_dir(
                 SectionDnsPlan::CustomDns(sec) => {
                     let (servers, wan_set, has_explicit) =
                         resolve_section_dns_servers(sec, &wan_dns, ipv6_active, &eff_dns_strategy);
-                    if servers.is_empty() {
-                        continue;
-                    }
-                    let configured_type = if !sec.dns_type.trim().is_empty() {
-                        sec.dns_type.trim()
-                    } else if !sec.routed_dns_type.trim().is_empty() {
-                        sec.routed_dns_type.trim()
+                    let target_server_tag = if servers.is_empty() {
+                        if store.settings.fakeip_enabled
+                            && (sec.disable_fakeip
+                                || sec.action == "dns"
+                                || sec.connection_type == "dns")
+                        {
+                            "dns-remote".to_string()
+                        } else {
+                            continue;
+                        }
                     } else {
-                        "udp"
-                    };
-                    let detour = if sec.dns_detour_enabled {
-                        let target = sec.dns_detour_section.trim();
-                        section_outbound_tags
-                            .get(target)
-                            .map(String::as_str)
-                            .or((!target.is_empty()).then_some(target))
-                    } else {
-                        Some("direct")
-                    };
-                    let base_tag = format!("dns-sec-{}", sec.id);
-                    let target_server_tag = if servers.len() == 1 {
-                        let srv_val = &servers[0];
-                        let eff_type =
-                            if wan_set.contains(srv_val) || (sec.dns_use_wan && !has_explicit) {
-                                "udp"
-                            } else {
-                                infer_dns_entry_type(srv_val, configured_type)
-                            };
-                        dns_servers_vec
-                            .push(build_dns_server_entry(&base_tag, eff_type, srv_val, detour));
-                        base_tag
-                    } else {
-                        let mut server_tags = Vec::with_capacity(servers.len());
-                        for (i, srv_val) in servers.iter().enumerate() {
-                            let tag_name = format!("{base_tag}-{}", i + 1);
+                        let configured_type = if !sec.dns_type.trim().is_empty() {
+                            sec.dns_type.trim()
+                        } else if !sec.routed_dns_type.trim().is_empty() {
+                            sec.routed_dns_type.trim()
+                        } else {
+                            "udp"
+                        };
+                        let detour = if sec.dns_detour_enabled {
+                            let target = sec.dns_detour_section.trim();
+                            section_outbound_tags
+                                .get(target)
+                                .map(String::as_str)
+                                .or((!target.is_empty()).then_some(target))
+                        } else {
+                            Some("direct")
+                        };
+                        let base_tag = format!("dns-sec-{}", sec.id);
+                        if servers.len() == 1 {
+                            let srv_val = &servers[0];
                             let eff_type = if wan_set.contains(srv_val)
                                 || (sec.dns_use_wan && !has_explicit)
                             {
@@ -13578,18 +13706,34 @@ fn compile_core_config_with_rt_dir(
                                 infer_dns_entry_type(srv_val, configured_type)
                             };
                             dns_servers_vec
-                                .push(build_dns_server_entry(&tag_name, eff_type, srv_val, detour));
-                            server_tags.push(tag_name);
+                                .push(build_dns_server_entry(&base_tag, eff_type, srv_val, detour));
+                            base_tag
+                        } else {
+                            let mut server_tags = Vec::with_capacity(servers.len());
+                            for (i, srv_val) in servers.iter().enumerate() {
+                                let tag_name = format!("{base_tag}-{}", i + 1);
+                                let eff_type = if wan_set.contains(srv_val)
+                                    || (sec.dns_use_wan && !has_explicit)
+                                {
+                                    "udp"
+                                } else {
+                                    infer_dns_entry_type(srv_val, configured_type)
+                                };
+                                dns_servers_vec.push(build_dns_server_entry(
+                                    &tag_name, eff_type, srv_val, detour,
+                                ));
+                                server_tags.push(tag_name);
+                            }
+                            dns_servers_vec.push(json!({
+                                "type": "group",
+                                "tag": base_tag,
+                                "mode": "stable",
+                                "error_ttl": "30s",
+                                "timeout": "4s",
+                                "servers": server_tags
+                            }));
+                            base_tag
                         }
-                        dns_servers_vec.push(json!({
-                            "type": "group",
-                            "tag": base_tag,
-                            "mode": "stable",
-                            "error_ttl": "30s",
-                            "timeout": "4s",
-                            "servers": server_tags
-                        }));
-                        base_tag
                     };
                     collect_custom_dns_section_rules(
                         sec,
@@ -13602,6 +13746,25 @@ fn compile_core_config_with_rt_dir(
                         &mut seen_rule_sets,
                         ipv6_active,
                         false,
+                        expand_v4_mapped,
+                        &mut dns_rules_vec,
+                    );
+                }
+                SectionDnsPlan::BypassRealIp {
+                    sec,
+                    section_matched_any,
+                } => {
+                    collect_custom_dns_section_rules(
+                        sec,
+                        "dns-remote",
+                        store.settings.dns_rewrite_ttl,
+                        &cond_map,
+                        &store.settings.rulesets_dir,
+                        &store.settings.github_mirror,
+                        &mut rule_sets,
+                        &mut seen_rule_sets,
+                        ipv6_active,
+                        *section_matched_any,
                         expand_v4_mapped,
                         &mut dns_rules_vec,
                     );
@@ -14688,6 +14851,7 @@ fn collect_section_aaaa_noerror_dns_rules(
     if !sec.community_lists.is_empty()
         || !sec.rule_set_urls.is_empty()
         || !sec.rule_set_with_subnets.is_empty()
+        || !sec.domain_ip_lists.is_empty()
         || !sec.domains.is_empty()
         || !sec.user_domains.is_empty()
         || !sec.geosite_codes.is_empty()
@@ -14702,6 +14866,7 @@ fn collect_section_aaaa_noerror_dns_rules(
             community_subnets: sec.community_subnets,
             rule_set: sec.rule_set_urls.clone(),
             rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
+            domain_ip_lists: sec.domain_ip_lists.clone(),
             domains: sec.domains.clone(),
             user_domains: sec.user_domains.clone(),
             geoip_codes: sec.geoip_codes.clone(),
@@ -14923,6 +15088,10 @@ fn resolve_section_dns_servers(
 
 enum SectionDnsPlan<'a> {
     CustomDns(&'a RoutingSection),
+    BypassRealIp {
+        sec: &'a RoutingSection,
+        section_matched_any: bool,
+    },
     RoutedDns {
         sec: &'a RoutingSection,
         target_outbound_tag: String,
@@ -18132,6 +18301,22 @@ fn collect_atomic_condition_parts_with_tables(
             &mut rs_tags,
             &mut has_telegram_with_subnets,
             &mut has_discord_with_subnets,
+            rulesets_dir,
+            github_mirror,
+            rule_sets,
+            seen_rule_sets,
+            enable_ipv6,
+        ) {
+            unresolved_ruleset_refs = true;
+        }
+    }
+    for dlist in &cond.domain_ip_lists {
+        if !register_ruleset_reference(
+            dlist,
+            false,
+            &mut rs_tags,
+            &mut has_telegram,
+            &mut has_discord,
             rulesets_dir,
             github_mirror,
             rule_sets,
@@ -27379,5 +27564,402 @@ vless://11111111-1111-4111-8111-111111111111@valid.example.org:443?security=tls#
         assert_eq!(out_ov["udp_repeats"], 7);
         assert_eq!(out_ov["udp_out_range"], "1-5");
         assert_eq!(out_ov["udp_keep_socket"], false);
+    }
+
+    #[test]
+    fn test_dns_section_disable_fakeip_empty_servers_routes_to_dns_remote() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.ipv6_mode = "off".to_string();
+        store.sections = vec![RoutingSection {
+            id: "sec_dns_nofake".to_string(),
+            enabled: true,
+            label: "DNS Real IP".to_string(),
+            action: "dns".to_string(),
+            connection_type: "dns".to_string(),
+            disable_fakeip: true,
+            dns_use_wan: false,
+            dns_servers: vec![],
+            domains: vec!["example.ru".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile dns disable_fakeip");
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_dns = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-remote"
+                    && r["domain_suffix"] == json!(["example.ru"])
+            })
+            .expect("DNS section without explicit servers must route to dns-remote");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_dns < idx_fakeip);
+    }
+
+    #[test]
+    fn test_dns_section_domain_ip_lists_local_lst_routes_before_fakeip() {
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon_dns_list_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let lst_path = tmp_dir.join("realip.lst");
+        std::fs::write(&lst_path, "realip.example\n203.0.113.0/24\n").unwrap();
+
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.rulesets_dir = tmp_dir.to_string_lossy().into_owned();
+        store.sections = vec![RoutingSection {
+            id: "sec_dns_list".to_string(),
+            enabled: true,
+            label: "DNS List".to_string(),
+            action: "dns".to_string(),
+            connection_type: "dns".to_string(),
+            disable_fakeip: true,
+            dns_servers: vec!["77.88.8.8".to_string()],
+            domain_ip_lists: vec![lst_path.to_string_lossy().into_owned()],
+            ..Default::default()
+        }];
+
+        let cfg =
+            compile_core_config_with_wan6(&store, false).expect("compile dns domain_ip_lists");
+        let expected_tag = custom_ruleset_tag("local", &lst_path.to_string_lossy());
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+        assert!(
+            rule_sets
+                .iter()
+                .any(|rs| rs["tag"] == expected_tag && rs["type"] == "local")
+        );
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_list = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-sec-sec_dns_list"
+                    && r["rule_set"] == json!([expected_tag])
+            })
+            .expect("DNS rule referencing compiled domain_ip_lists rule_set");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_list < idx_fakeip);
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_bypass_section_routes_dns_to_dns_remote_before_fakeip() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.ipv6_mode = "off".to_string();
+        store.sections = vec![RoutingSection {
+            id: "bypass_banks".to_string(),
+            enabled: true,
+            label: "Bypass Banks".to_string(),
+            action: "bypass".to_string(),
+            connection_type: "bypass".to_string(),
+            domains: vec!["bank.ru".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile bypass real-ip dns");
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_bypass = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-remote"
+                    && r["domain_suffix"] == json!(["bank.ru"])
+            })
+            .expect("bypass section must route its domains to real DNS");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_bypass < idx_fakeip);
+    }
+
+    #[test]
+    fn test_proxy_section_disable_fakeip_routes_domains_to_dns_remote_before_fakeip() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_enabled = true;
+        store.settings.ipv6_mode = "off".to_string();
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_p".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#ProxyNode".to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.sections = vec![RoutingSection {
+            id: "proxy_real".to_string(),
+            enabled: true,
+            label: "Proxy Real IP".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            disable_fakeip: true,
+            outbound_source_refs: vec!["src_p".to_string()],
+            domains: vec!["realip.example".to_string()],
+            ..Default::default()
+        }];
+
+        let cfg =
+            compile_core_config_with_wan6(&store, false).expect("compile proxy disable_fakeip");
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_real = dns_rules
+            .iter()
+            .position(|r| {
+                r["action"] == "route"
+                    && r["server"] == "dns-remote"
+                    && r["domain_suffix"] == json!(["realip.example"])
+            })
+            .expect("proxy section with disable_fakeip must bypass dns-fakeip");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_real < idx_fakeip);
+    }
+
+    #[test]
+    fn test_amnezia_config_deduplicates_duplicate_conf_text_and_configs() {
+        let ini = "\
+[Interface]
+PrivateKey = cGFzc3dvcmRwYXNzd29yZHBhc3N3b3JkcGFzc3dvcmQ=
+Address = 10.8.0.2/32
+Jc = 4
+Jmin = 40
+Jmax = 70
+
+[Peer]
+PublicKey = QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
+Endpoint = 198.51.100.10:51820
+PersistentKeepalive = 25
+";
+        let src = OutboundSource {
+            id: "src_rtest".to_string(),
+            enabled: true,
+            name: "rtest".to_string(),
+            source_type: "amnezia_config".to_string(),
+            amnezia_configs: vec![ini.to_string()],
+            amnezia_conf_text: ini.to_string(),
+            ..Default::default()
+        };
+        let outs = build_source_outbounds(&src);
+        assert_eq!(
+            outs.len(),
+            1,
+            "duplicate AWG endpoint must be suppressed: {outs:?}"
+        );
+        assert_eq!(outs[0].0, "awgconf-src_rtest");
+        assert!(!outs.iter().any(|(tag, _, _)| tag == "awgconf-src_rtest-1"));
+    }
+
+    #[test]
+    fn test_sni_less_reality_uri_and_clash_omit_server_name() {
+        let vless_host = "vless://11111111-1111-4111-8111-111111111111@node.example.org:43000?type=tcp&security=reality&pbk=WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8&fp=chrome&sid=01020304&spx=%2F&flow=xtls-rprx-vision#NodeHost";
+        let node_host = parse_proxy_uri(vless_host, 0).expect("parse vless reality host");
+        assert_eq!(node_host.outbound_json["tls"]["reality"]["enabled"], true);
+        assert!(node_host.outbound_json["tls"].get("server_name").is_none());
+
+        let vless_ip = "vless://11111111-1111-4111-8111-111111111111@198.51.100.10:43000?type=tcp&security=reality&pbk=WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8&fp=chrome&sid=01020304&flow=xtls-rprx-vision#NodeIp";
+        let node_ip = parse_proxy_uri(vless_ip, 1).expect("parse vless reality ip");
+        assert_eq!(node_ip.outbound_json["tls"]["reality"]["enabled"], true);
+        assert!(node_ip.outbound_json["tls"].get("server_name").is_none());
+
+        let vless_tls = "vless://11111111-1111-4111-8111-111111111111@tls.example.org:443?type=tcp&security=tls#PlainTls";
+        let node_tls = parse_proxy_uri(vless_tls, 2).expect("parse plain tls");
+        assert_eq!(
+            node_tls.outbound_json["tls"]["server_name"],
+            "tls.example.org"
+        );
+
+        let xray_json = serde_json::json!([
+            {
+                "remarks": "NodeXray",
+                "outbounds": [{
+                    "tag": "proxy",
+                    "protocol": "vless",
+                    "settings": {
+                        "vnext": [{
+                            "address": "198.51.100.10",
+                            "port": 43000,
+                            "users": [{
+                                "id": "11111111-1111-4111-8111-111111111111",
+                                "encryption": "none",
+                                "flow": "xtls-rprx-vision"
+                            }]
+                        }]
+                    },
+                    "streamSettings": {
+                        "network": "tcp",
+                        "security": "reality",
+                        "realitySettings": {
+                            "serverName": "",
+                            "publicKey": "WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8",
+                            "shortId": "01020304",
+                            "fingerprint": "chrome",
+                            "spiderX": "/"
+                        }
+                    }
+                }]
+            }
+        ])
+        .to_string();
+        let xray_nodes = parse_json_subscription_payload(&xray_json).expect("parse xray json");
+        assert_eq!(xray_nodes.len(), 1);
+        assert!(
+            xray_nodes[0].outbound_json["tls"]
+                .get("server_name")
+                .is_none()
+        );
+
+        let clash_yaml = r#"
+proxies:
+  - name: "Clash-Reality"
+    type: "vless"
+    server: 198.51.100.10
+    port: 43000
+    uuid: 11111111-1111-4111-8111-111111111111
+    network: tcp
+    tls: true
+    reality-opts:
+      public-key: WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8
+      short-id: 01020304
+    client-fingerprint: chrome
+  - name: "Clash-Plain-TLS"
+    type: "vless"
+    server: tls.example.org
+    port: 443
+    uuid: 11111111-1111-4111-8111-111111111111
+    network: tcp
+    tls: true
+"#;
+        let clash_nodes = parse_clash_yaml_subscription_payload(clash_yaml).expect("parse clash");
+        assert_eq!(clash_nodes.len(), 2);
+        assert_eq!(
+            clash_nodes[0].outbound_json["tls"]["reality"]["enabled"],
+            true
+        );
+        assert!(
+            clash_nodes[0].outbound_json["tls"]
+                .get("server_name")
+                .is_none()
+        );
+        assert_eq!(
+            clash_nodes[1].outbound_json["tls"]["server_name"],
+            "tls.example.org"
+        );
+    }
+
+    #[test]
+    fn test_happ_xray_array_auto_balancer_plus_standalone_sni_less_reality() {
+        let mk_vless = |tag: &str, addr: &str, uuid: &str| {
+            serde_json::json!({
+                "tag": tag,
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [{
+                        "address": addr,
+                        "port": 43000,
+                        "users": [{
+                            "id": uuid,
+                            "encryption": "none",
+                            "flow": "xtls-rprx-vision"
+                        }]
+                    }]
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "serverName": "",
+                        "publicKey": "WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8",
+                        "shortId": "01020304",
+                        "fingerprint": "chrome",
+                        "spiderX": "/"
+                    }
+                }
+            })
+        };
+        let payload = serde_json::json!([
+            {
+                "remarks": "Auto-Best",
+                "outbounds": [
+                    mk_vless("cfg-1", "198.51.100.10", "11111111-1111-4111-8111-111111111111"),
+                    mk_vless("cfg-2", "198.51.100.11", "22222222-2222-4222-8222-222222222222"),
+                    { "tag": "direct", "protocol": "freedom" }
+                ],
+                "routing": {
+                    "balancers": [{ "tag": "auto-best", "selector": ["cfg-1", "cfg-2"] }]
+                },
+                "observatory": {
+                    "probeURL": "http://cp.cloudflare.com/generate_204",
+                    "probeInterval": "1m"
+                }
+            },
+            {
+                "remarks": "Node-A",
+                "outbounds": [
+                    mk_vless("proxy", "198.51.100.10", "11111111-1111-4111-8111-111111111111")
+                ]
+            },
+            {
+                "remarks": "Node-B",
+                "outbounds": [
+                    mk_vless("proxy", "198.51.100.11", "22222222-2222-4222-8222-222222222222")
+                ]
+            }
+        ])
+        .to_string();
+
+        let nodes = crate::core_mgr::CoreManager::parse_subscription_payload(&payload);
+        for include_urltest in [false, true] {
+            let store = RouterStoreData {
+                outbound_sources: vec![OutboundSource {
+                    id: "sub_test".to_string(),
+                    enabled: true,
+                    name: "sub_test".to_string(),
+                    source_type: "subscription".to_string(),
+                    include_urltest_groups: include_urltest,
+                    hide_urltest_group_outbounds: true,
+                    cached_nodes: nodes.clone(),
+                    ..Default::default()
+                }],
+                sections: vec![RoutingSection {
+                    id: "MAIN".to_string(),
+                    enabled: true,
+                    label: "Main".to_string(),
+                    action: "route".to_string(),
+                    outbound_source_refs: vec!["sub_test".to_string()],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let compiled = compile_core_config_with_wan6(&store, false)
+                .expect("compile_core_config with Happ array succeeds");
+            let obs = compiled["outbounds"].as_array().unwrap();
+            let vless_obs: Vec<&Value> = obs.iter().filter(|o| o["type"] == "vless").collect();
+            assert!(!vless_obs.is_empty());
+            for ob in vless_obs {
+                assert!(
+                    ob["tls"].get("server_name").is_none(),
+                    "unexpected sni: {ob}"
+                );
+                assert_eq!(ob["tls"]["reality"]["enabled"], true);
+            }
+            if include_urltest {
+                assert!(obs.iter().any(|o| o["type"] == "urltest"));
+            }
+        }
     }
 }

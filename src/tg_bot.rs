@@ -1725,11 +1725,15 @@ async fn check_and_notify_finished_jobs(
     *prev_active_jobs = current_active;
 }
 
+const SEEN_EVENT_KEY_CAP: usize = crate::store::MAX_EVENTS_RING * 4;
+const SEEN_HONEYPOT_KEY_CAP: usize = 512;
+
 #[derive(Default)]
 pub(crate) struct BotEventObserver {
     initialized: bool,
     seen_event_keys: VecDeque<String>,
     seen_honeypot_keys: VecDeque<String>,
+    last_seen_event_seq: u64,
     last_core_pid: Option<u32>,
     last_core_running: bool,
     last_wan_healthy: bool,
@@ -1743,22 +1747,35 @@ pub(crate) struct BotEventObserver {
     last_cert_check_unix: i64,
     warned_cert_paths: HashSet<String>,
     pub(crate) last_crash_alerts: HashMap<String, i64>,
+    pub(crate) last_restart_alerts: HashMap<String, i64>,
 }
 
 impl BotEventObserver {
-    pub(crate) fn should_emit_crash_alert(&mut self, key: &str, now: i64) -> bool {
-        self.last_crash_alerts
-            .retain(|_, ts| now.saturating_sub(*ts) < 300);
-        if let Some(&last_ts) = self.last_crash_alerts.get(key)
-            && now.saturating_sub(last_ts) < 300
+    fn should_emit_rate_limited(
+        map: &mut HashMap<String, i64>,
+        key: &str,
+        now: i64,
+        cooldown_secs: i64,
+    ) -> bool {
+        map.retain(|_, ts| now.saturating_sub(*ts) < cooldown_secs);
+        if let Some(&last_ts) = map.get(key)
+            && now.saturating_sub(last_ts) < cooldown_secs
         {
             return false;
         }
-        if self.last_crash_alerts.len() >= 64 {
-            self.last_crash_alerts.clear();
+        if map.len() >= 64 {
+            map.clear();
         }
-        self.last_crash_alerts.insert(key.to_string(), now);
+        map.insert(key.to_string(), now);
         true
+    }
+
+    pub(crate) fn should_emit_crash_alert(&mut self, key: &str, now: i64) -> bool {
+        Self::should_emit_rate_limited(&mut self.last_crash_alerts, key, now, 300)
+    }
+
+    pub(crate) fn should_emit_restart_alert(&mut self, key: &str, now: i64) -> bool {
+        Self::should_emit_rate_limited(&mut self.last_restart_alerts, key, now, 300)
     }
 }
 
@@ -1769,6 +1786,7 @@ pub(crate) fn collect_section_store_switch_notifications(
 ) -> (HashSet<String>, Vec<(&'static str, String)>) {
     let mut switched_sections = HashSet::new();
     let mut notices = Vec::new();
+    let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(d);
     for sec in &d.sections {
         if !sec.active_selected_tag.is_empty()
             && obs
@@ -1776,17 +1794,27 @@ pub(crate) fn collect_section_store_switch_notifications(
                 .get(&sec.id)
                 .is_some_and(|prev| prev != &sec.active_selected_tag)
         {
+            let sec_label = if !sec.label.trim().is_empty() {
+                sec.label.trim()
+            } else {
+                sec.id.as_str()
+            };
+            let node_label = crate::ubus_bridge::resolve_telemetry_tag_display_name(
+                &sec.active_selected_tag,
+                &tag_map,
+                d,
+            );
             let txt = if ru {
                 format!(
                     "<b>Смена узла:</b> секция <b>{}</b> -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&sec.active_selected_tag)
+                    escape_html(sec_label),
+                    escape_html(&node_label)
                 )
             } else {
                 format!(
                     "<b>Server Switch:</b> section <b>{}</b> -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&sec.active_selected_tag)
+                    escape_html(sec_label),
+                    escape_html(&node_label)
                 )
             };
             switched_sections.insert(sec.id.clone());
@@ -1808,6 +1836,7 @@ pub(crate) fn collect_clash_node_switch_notifications(
     ru: bool,
 ) -> Vec<(&'static str, String)> {
     let mut notices = Vec::new();
+    let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(d);
     for sec in &d.sections {
         let sel_tag = format!("sel-{}", sec.id);
         let active_pair: Option<(String, String)> = if let Some(sel_now) = px_map
@@ -1858,19 +1887,34 @@ pub(crate) fn collect_clash_node_switch_notifications(
             && !store_switched_sections.contains(&sec.id)
             && d.telegram.notify_server_switch
         {
+            let sec_label = if !sec.label.trim().is_empty() {
+                sec.label.trim()
+            } else {
+                sec.id.as_str()
+            };
+            let group_label =
+                crate::ubus_bridge::resolve_telemetry_tag_display_name(&active_group, &tag_map, d);
+            let node_label =
+                crate::ubus_bridge::resolve_telemetry_tag_display_name(&resolved_node, &tag_map, d);
+            let group_suffix =
+                if group_label.is_empty() || group_label.eq_ignore_ascii_case(sec_label) {
+                    String::new()
+                } else {
+                    format!(" ({})", escape_html(&group_label))
+                };
             let txt = if ru {
                 format!(
-                    "<b>Переключение узла:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&active_group),
-                    escape_html(&resolved_node)
+                    "<b>Переключение узла:</b> <b>{}</b>{} -> <code>{}</code>",
+                    escape_html(sec_label),
+                    group_suffix,
+                    escape_html(&node_label)
                 )
             } else {
                 format!(
-                    "<b>Node Switch:</b> <b>{}</b> (<code>{}</code>) -> <code>{}</code>",
-                    escape_html(&sec.label),
-                    escape_html(&active_group),
-                    escape_html(&resolved_node)
+                    "<b>Node Switch:</b> <b>{}</b>{} -> <code>{}</code>",
+                    escape_html(sec_label),
+                    group_suffix,
+                    escape_html(&node_label)
                 )
             };
             notices.push(("server_switch", txt));
@@ -1918,6 +1962,9 @@ pub(crate) fn classify_event_notification(
             || msg_low.contains("l1_memory_trim")
             || msg_low.contains("l1_dns_flush"));
     if sub_low == "watchdog" && msg_low.contains("l2_config_drift_reload") {
+        if !obs.should_emit_restart_alert("watchdog:l2_config_drift_reload", now) {
+            return None;
+        }
         let txt = if ru {
             format!("<b>Перезапуск ядра:</b> {}", escape_html(message))
         } else {
@@ -1977,6 +2024,38 @@ pub(crate) fn classify_event_notification(
     }
 }
 
+pub(crate) fn collect_observed_event_notifications(
+    obs: &mut BotEventObserver,
+    live: &crate::store::LiveTelemetry,
+    now: i64,
+    ru: bool,
+) -> (Vec<(&'static str, String)>, bool) {
+    let mut emitted_restart = false;
+    let mut out = Vec::new();
+    for ev in &live.events {
+        if ev.seq > 0 {
+            if ev.seq <= obs.last_seen_event_seq {
+                continue;
+            }
+            obs.last_seen_event_seq = ev.seq;
+        } else {
+            let key = format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message);
+            if !push_bounded_key(&mut obs.seen_event_keys, key, SEEN_EVENT_KEY_CAP) {
+                continue;
+            }
+        }
+        if let Some((kind, txt)) =
+            classify_event_notification(obs, &ev.subsystem, &ev.message, now, ru)
+        {
+            if kind == "restart" {
+                emitted_restart = true;
+            }
+            out.push((kind, txt));
+        }
+    }
+    (out, emitted_restart)
+}
+
 async fn observe_and_notify_events(
     obs: &mut BotEventObserver,
     state: &Arc<AppState>,
@@ -2014,18 +2093,21 @@ async fn observe_and_notify_events(
         .sum();
 
     if !obs.initialized {
+        obs.last_seen_event_seq = live.events.iter().map(|ev| ev.seq).max().unwrap_or(0);
         for ev in &live.events {
-            push_bounded_key(
-                &mut obs.seen_event_keys,
-                format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message),
-                128,
-            );
+            if ev.seq == 0 {
+                push_bounded_key(
+                    &mut obs.seen_event_keys,
+                    format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message),
+                    SEEN_EVENT_KEY_CAP,
+                );
+            }
         }
         for hit in &live.honeypot_hits {
             push_bounded_key(
                 &mut obs.seen_honeypot_keys,
                 format!("{}|{}|{}", hit.timestamp, hit.ip, hit.path),
-                128,
+                SEEN_HONEYPOT_KEY_CAP,
             );
         }
         obs.last_core_pid = live.core_pid;
@@ -2046,20 +2128,10 @@ async fn observe_and_notify_events(
         return;
     }
 
-    let mut emitted_restart = false;
-    for ev in &live.events {
-        let key = format!("{}|{}|{}", ev.timestamp, ev.subsystem, ev.message);
-        if !push_bounded_key(&mut obs.seen_event_keys, key, 128) {
-            continue;
-        }
-        if let Some((kind, txt)) =
-            classify_event_notification(obs, &ev.subsystem, &ev.message, now, ru)
-        {
-            if kind == "restart" {
-                emitted_restart = true;
-            }
-            notify_if_enabled(&d, kind, &txt);
-        }
+    let (event_notices, emitted_restart) =
+        collect_observed_event_notifications(obs, &live, now, ru);
+    for (kind, txt) in event_notices {
+        notify_if_enabled(&d, kind, &txt);
     }
 
     if !emitted_restart
@@ -2094,7 +2166,7 @@ async fn observe_and_notify_events(
 
     for hit in &live.honeypot_hits {
         let key = format!("{}|{}|{}", hit.timestamp, hit.ip, hit.path);
-        if push_bounded_key(&mut obs.seen_honeypot_keys, key, 128) {
+        if push_bounded_key(&mut obs.seen_honeypot_keys, key, SEEN_HONEYPOT_KEY_CAP) {
             let txt = if ru {
                 format!(
                     "<b>Honeypot:</b> заблокирована попытка с <code>{}</code> (<code>{}</code> — {})",

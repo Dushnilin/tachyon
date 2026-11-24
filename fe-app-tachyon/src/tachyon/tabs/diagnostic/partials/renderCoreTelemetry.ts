@@ -5,6 +5,7 @@ import {
   renderShieldIcon,
 } from '../../../../icons';
 import { tr } from '../../../helpers/i18n';
+import { humanizeRuntimeTag } from '../../../helpers/humanizeTag';
 import { cleanBalancerTagId } from '../../../runtimeTags';
 
 function iconMarkup(
@@ -149,6 +150,12 @@ export function formatTelemetryTagDisplay(
   rawTag?: string,
   explicitDisplayName?: string,
 ): string {
+  const humanized = humanizeRuntimeTag(rawTag, explicitDisplayName, {
+    directBlockLabels: false,
+  });
+  if (humanized && humanized !== String(rawTag || '').trim()) {
+    return humanized;
+  }
   const explicit = String(explicitDisplayName || '').trim();
   const raw = String(rawTag || '').trim();
   if (explicit && (!raw || explicit !== raw)) {
