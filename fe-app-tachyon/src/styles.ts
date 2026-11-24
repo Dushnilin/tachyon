@@ -1697,11 +1697,19 @@ input.cbi-button-action:hover:not(:disabled),
 
 /* Keep LuCI top navigation bar and its dropdown menus above Tachyon stacking contexts */
 body > header,
-header,
 #topmenu,
 #mainmenu,
-header .dropdown-menu {
+body > header .dropdown-menu {
     z-index: 1200 !important;
+}
+
+/* Neutralize OpenWrt Bootstrap sticky header rules on inner <header> elements inside Tachyon cards */
+#cbi-tachyon header,
+.tachyon-shell-layout header {
+    position: static !important;
+    top: auto !important;
+    z-index: auto !important;
+    box-shadow: none !important;
 }
 
 #maincontent {
@@ -1757,7 +1765,7 @@ header .dropdown-menu {
     overflow: visible !important;
     position: relative !important;
     top: auto !important;
-    z-index: 130 !important;
+    z-index: 400 !important;
     background: var(--topbar-glass, rgba(20, 20, 22, 0.94)) !important;
     border: 1px solid var(--border, rgba(255, 255, 255, 0.08)) !important;
     border-radius: 12px !important;
@@ -2605,7 +2613,7 @@ header .dropdown-menu {
     top: auto !important;
     left: auto !important;
     right: auto !important;
-    z-index: 120;
+    z-index: 390;
     overflow: visible !important;
     display: flex;
     align-items: center;
@@ -11591,7 +11599,7 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    z-index: 420;
+    z-index: 600;
 }
 
 .tachyon-theme-menu__item {

@@ -1724,6 +1724,14 @@ function renderDiagnosticSystemInfoWidget() {
     );
   }
 
+  const luciAppVerRaw = normalizeCompiledVersion(TACHYON_LUCI_APP_VERSION);
+  const luciAppVer =
+    luciAppVerRaw === 'dev' &&
+    diagnosticsSystemInfo.tachyon_version &&
+    !diagnosticsSystemInfo.tachyon_version.includes('COMPILED')
+      ? normalizeCompiledVersion(diagnosticsSystemInfo.tachyon_version)
+      : luciAppVerRaw;
+
   const items: Array<IRenderSystemInfoRow> = [
     {
       key: 'Tachyon',
@@ -1739,7 +1747,7 @@ function renderDiagnosticSystemInfoWidget() {
     },
     {
       key: 'Luci App',
-      value: normalizeCompiledVersion(TACHYON_LUCI_APP_VERSION),
+      value: luciAppVer,
       subvalue: svcData.watchdogRunning
         ? tr('Watchdog: активен', 'Watchdog: active')
         : tr('Watchdog: выкл', 'Watchdog: off'),
@@ -1828,8 +1836,12 @@ function renderDiagnosticSystemInfoWidget() {
     if (svcData.cpuLoadPercent != null && diagnosticsSystemInfo.load_avg) {
       cpuSubParts.push(`CPU ${svcData.cpuLoadPercent}%`);
     }
-    if (svcData.cpuTempC != null && svcData.cpuTempC > 0) {
-      cpuSubParts.push(`${svcData.cpuTempC}°C`);
+    if (
+      typeof svcData.cpuTempC === 'number' &&
+      Number.isFinite(svcData.cpuTempC) &&
+      svcData.cpuTempC > 0
+    ) {
+      cpuSubParts.push(`${svcData.cpuTempC.toFixed(1)}°C`);
     }
     if (uptimeLabel) {
       cpuSubParts.push(`${tr('Аптайм', 'Uptime')}: ${uptimeLabel}`);

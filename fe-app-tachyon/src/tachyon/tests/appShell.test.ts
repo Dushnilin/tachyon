@@ -1138,5 +1138,19 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(topNavActiveBlock).toContain('var(--text');
     expect(topNavActiveBlock).toContain('var(--elevated');
     expect(topNavActiveBlock).not.toContain('background: #222227');
+
+    // Guard against OpenWrt Bootstrap sticky header (z-index: 800) leaking onto inner card <header> tags
+    const headerOverrideStart = GlobalStyles.indexOf(
+      '/* Keep LuCI top navigation bar and its dropdown menus above Tachyon stacking contexts */',
+    );
+    expect(headerOverrideStart).toBeGreaterThan(-1);
+    const headerOverrideBlock = GlobalStyles.slice(
+      headerOverrideStart,
+      headerOverrideStart + 650,
+    );
+    expect(headerOverrideBlock).not.toMatch(/^\s*header,\s*$/m);
+    expect(headerOverrideBlock).toContain('#cbi-tachyon header');
+    expect(headerOverrideBlock).toContain('position: static !important;');
+    expect(headerOverrideBlock).toContain('z-index: auto !important;');
   });
 });
