@@ -11032,13 +11032,28 @@ function createSectionContent(section) {
     'disable_fakeip',
     _('Bypass FakeIP (resolve real IP addresses)'),
     _(
-      'Evaluate this DNS section before FakeIP proxy rules so matched domains always resolve to real IP addresses.',
+      'Resolve and match real IP addresses instead of FakeIP for this section. Warning: on proxy/desync sections with domain rules, disabling FakeIP makes domain matching rely on TLS SNI sniffing and DNS reverse_mapping; ECH, QUIC, or cached client IPs may miss domain rules.',
     ),
   );
-  o.depends('action', 'dns');
+  ['dns', ...ROUTING_ACTIONS]
+    .filter((act) => act !== 'block' && act !== 'hosts')
+    .forEach((act) => o.depends('action', act));
   o.default = '0';
   o.rmempty = false;
+  o.enabled = '1';
+  o.disabled = '0';
   o.modalonly = true;
+  o.write = function (section_id: string, value: string) {
+    uci.set(
+      UCI_PACKAGE,
+      section_id,
+      'disable_fakeip',
+      value === '1' ? '1' : '0',
+    );
+  };
+  o.remove = function (section_id: string) {
+    uci.set(UCI_PACKAGE, section_id, 'disable_fakeip', '0');
+  };
 
   o = section.taboption(
     'settings',

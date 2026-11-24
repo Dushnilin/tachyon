@@ -303,6 +303,8 @@ struct DnsBlockStatsStore {
     version: u32,
     max_events: usize,
     #[serde(default)]
+    cleared_after_unix: i64,
+    #[serde(default)]
     events: Vec<DnsBlockEvent>,
 }
 
@@ -311,6 +313,7 @@ impl Default for DnsBlockStatsStore {
         Self {
             version: 1,
             max_events: MAX_STATS_EVENTS,
+            cleared_after_unix: 0,
             events: Vec::new(),
         }
     }
@@ -1683,12 +1686,42 @@ pub fn ingest_dns_block_events_in(
         .lock()
         .map_err(|_| anyhow::anyhow!("stats lock poisoned"))?;
     let mut store = load_stats_store_locked(rt_dir);
-    let count = events.len();
+    let cutoff = store.cleared_after_unix;
+    let mut count = 0usize;
     for ev in events {
-        push_event_into_store(&mut store, ev);
+        if ev.timestamp_unix >= cutoff {
+            push_event_into_store(&mut store, ev);
+            count += 1;
+        }
     }
-    let _ = save_stats_store_locked(rt_dir, &store)?;
+    if count > 0 {
+        let _ = save_stats_store_locked(rt_dir, &store)?;
+    }
     Ok(count)
+}
+
+/// Clear persisted block statistics in `rt_dir` and set `cleared_after_unix`
+/// so already-buffered events older than `clear_unix` are not re-ingested.
+pub fn clear_dns_block_stats_at_in(rt_dir: &Path, clear_unix: i64) -> anyhow::Result<()> {
+    let _guard = stats_lock()
+        .lock()
+        .map_err(|_| anyhow::anyhow!("stats lock poisoned"))?;
+    let mut store = load_stats_store_locked(rt_dir);
+    store.events.clear();
+    store.cleared_after_unix = store.cleared_after_unix.max(clear_unix);
+    let _ = save_stats_store_locked(rt_dir, &store)?;
+    Ok(())
+}
+
+/// Clear persisted block statistics in `rt_dir` at the current timestamp.
+#[allow(dead_code)]
+pub fn clear_dns_block_stats_in(rt_dir: &Path) -> anyhow::Result<()> {
+    clear_dns_block_stats_at_in(rt_dir, unix_now_secs())
+}
+
+/// Clear persisted block statistics in the active runtime tmpfs directory.
+pub fn clear_dns_block_stats() -> anyhow::Result<()> {
+    clear_dns_block_stats_in(&runtime_state_dir())
 }
 
 fn period_cutoff(period: &str, now_unix: i64) -> anyhow::Result<(&'static str, i64)> {
@@ -2061,6 +2094,95 @@ fn parse_text_log_dns_block(
     ))
 }
 
+fn extract_block_target(raw: &str, allow_ip: bool) -> Option<String> {
+    let cleaned = raw
+        .trim()
+        .trim_matches(|c: char| matches!(c, '(' | ')' | ',' | ';' | '"' | '\''));
+    if cleaned.is_empty() {
+        return None;
+    }
+    let host_only = if let Some((h, p)) = cleaned.rsplit_once(':')
+        && p.parse::<u16>().is_ok()
+        && (!h.contains(':') || h.starts_with('['))
+    {
+        h.trim_matches(|c| c == '[' || c == ']')
+    } else {
+        cleaned.trim_matches(|c| c == '[' || c == ']')
+    };
+    if allow_ip
+        && let Ok(ip) = host_only.parse::<IpAddr>()
+        && !ip.is_unspecified()
+        && !ip.is_loopback()
+    {
+        return Some(ip.to_string());
+    }
+    normalize_rule_domain(host_only)
+}
+
+fn extract_route_block_attribution(
+    rule: &str,
+    outbound: &str,
+    error_detail: &str,
+    domain: &str,
+    client_ip: &str,
+    store: &RouterStoreData,
+    index: Option<&CompiledAdguardIndex>,
+) -> (String, String) {
+    let rule_lower = rule.to_ascii_lowercase();
+    if let Some(pos) = rule_lower.find("rule_set=[") {
+        let rest = &rule[pos + "rule_set=[".len()..];
+        if let Some(end) = rest.find(']') {
+            let first = rest[..end]
+                .split([',', ' '])
+                .map(str::trim)
+                .find(|s| !s.is_empty());
+            if let Some(tag) = first {
+                let matched = if rule.trim().is_empty() {
+                    tag.to_string()
+                } else {
+                    rule.trim().to_string()
+                };
+                return (matched, tag.to_string());
+            }
+        }
+    }
+    if let Some(pos) = rule_lower.find("rule_set=") {
+        let rest = &rule[pos + "rule_set=".len()..];
+        let first = rest
+            .split([' ', ',', ']'])
+            .map(|s| s.trim_matches(|c| matches!(c, '[' | ']' | '"')))
+            .find(|s| !s.is_empty());
+        if let Some(tag) = first {
+            let matched = if rule.trim().is_empty() {
+                tag.to_string()
+            } else {
+                rule.trim().to_string()
+            };
+            return (matched, tag.to_string());
+        }
+    }
+    let (attr_rule, attr_src) =
+        resolve_block_attribution(domain, client_ip, rule, "", store, index);
+    if attr_src != TAG_BLOCK {
+        return (attr_rule, attr_src);
+    }
+    let matched = if !rule.trim().is_empty() {
+        rule.trim().to_string()
+    } else if !error_detail.trim().is_empty() {
+        error_detail.trim().to_string()
+    } else if !outbound.trim().is_empty() {
+        outbound.trim().to_string()
+    } else {
+        attr_rule
+    };
+    let list_src = if !outbound.trim().is_empty() {
+        outbound.trim().to_string()
+    } else {
+        "block".to_string()
+    };
+    (matched, list_src)
+}
+
 fn parse_json_entry_dns_block(
     entry: &Value,
     prefix: &str,
@@ -2078,6 +2200,12 @@ fn parse_json_entry_dns_block(
         .and_then(Value::as_str)
         .unwrap_or("");
     let rcode = obj.get("rcode").and_then(Value::as_str).unwrap_or("");
+    let outbound = obj.get("outbound").and_then(Value::as_str).unwrap_or("");
+    let error_detail = obj
+        .get("error_detail")
+        .or_else(|| obj.get("error"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let rule = obj
         .get("rule")
         .or_else(|| obj.get("rule_set"))
@@ -2091,65 +2219,115 @@ fn parse_json_entry_dns_block(
         .or_else(|| obj.get("reason"))
         .and_then(Value::as_str)
         .unwrap_or("");
+    let rule_lower = rule.to_ascii_lowercase();
     let combined_lower = format!("{msg} {rcode} {rule} {status}").to_ascii_lowercase();
 
-    let explicit_adguard = (rule.to_ascii_lowercase().contains("adguard")
+    let has_block_chain = obj
+        .get("chains")
+        .or_else(|| entry.pointer("/metadata/chains"))
+        .and_then(Value::as_array)
+        .is_some_and(|arr| {
+            arr.iter().filter_map(Value::as_str).any(|c| {
+                matches!(
+                    c.trim().to_ascii_lowercase().as_str(),
+                    "block" | "reject" | "block-out"
+                )
+            })
+        });
+    let err_lower = error_detail.to_ascii_lowercase();
+    let is_route_block = !rule_lower.contains("adguard-allow")
+        && (matches!(
+            outbound.trim().to_ascii_lowercase().as_str(),
+            "block" | "reject" | "block-out"
+        ) || has_block_chain
+            || err_lower.contains("blocked by outbound")
+            || err_lower.contains("rejected")
+            || rule_lower.contains("=> route(block)")
+            || rule_lower.contains("=> route(reject)")
+            || rule_lower.contains("=> dns(reject)"));
+
+    let explicit_adguard = (rule_lower.contains("adguard")
         || combined_lower.contains("adguard-block"))
-        && !rule.to_ascii_lowercase().contains("adguard-allow");
+        && !rule_lower.contains("adguard-allow");
     let is_dns_nxdomain = rcode.eq_ignore_ascii_case("nxdomain")
         || (combined_lower.contains("nxdomain")
             && (combined_lower.contains("dns") || combined_lower.contains("predefined")));
     let is_dns_blocked = combined_lower.contains("dns")
         && (combined_lower.contains("blocked") || combined_lower.contains("rejected"));
 
-    if !explicit_adguard && !is_dns_nxdomain && !is_dns_blocked {
+    if !is_route_block && !explicit_adguard && !is_dns_nxdomain && !is_dns_blocked {
         if !msg.is_empty() {
             return parse_text_log_dns_block(msg, now_unix, store, index);
         }
         return None;
     }
 
-    let raw_domain = obj
-        .get("domain")
-        .or_else(|| obj.get("host"))
-        .or_else(|| entry.pointer("/metadata/host"))
-        .or_else(|| entry.pointer("/metadata/sniffHost"))
-        .or_else(|| obj.get("destination"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let domain =
-        normalize_rule_domain(raw_domain).or_else(|| extract_domain_from_log_tokens(msg))?;
+    let domain = [
+        obj.get("domain"),
+        obj.get("host"),
+        entry.pointer("/metadata/host"),
+        entry.pointer("/metadata/sniffHost"),
+        obj.get("destination"),
+        entry.pointer("/metadata/destinationIP"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(Value::as_str)
+    .find_map(|raw| extract_block_target(raw, is_route_block))
+    .or_else(|| extract_domain_from_log_tokens(msg))?;
     if domain == "use-application-dns.net" {
         return None;
     }
 
-    let raw_client = obj
-        .get("client_ip")
-        .or_else(|| obj.get("src_ip"))
-        .or_else(|| obj.get("source_ip"))
-        .or_else(|| obj.get("client"))
-        .or_else(|| entry.pointer("/metadata/sourceIP"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let client_ip = extract_ip_token(raw_client)
-        .or_else(|| extract_client_ip_from_log(msg))
-        .unwrap_or_else(|| "router".to_string());
+    let client_ip = [
+        obj.get("client_ip"),
+        obj.get("src_ip"),
+        obj.get("source_ip"),
+        obj.get("source"),
+        obj.get("client"),
+        entry.pointer("/metadata/sourceIP"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(Value::as_str)
+    .find_map(extract_ip_token)
+    .or_else(|| extract_client_ip_from_log(msg))
+    .unwrap_or_else(|| "router".to_string());
 
-    if !explicit_adguard {
+    if !explicit_adguard && !is_route_block {
         resolve_rule_for_domain(&domain, &client_ip, store, index)
             .filter(|m| m.kind == Some(RuleKind::Block))?;
     }
 
-    let ts = obj
-        .get("ts")
-        .or_else(|| obj.get("timestamp"))
-        .or_else(|| obj.get("timestamp_unix"))
+    let ts_ms_raw = obj
+        .get("timestamp_ms")
         .and_then(Value::as_i64)
-        .filter(|t| *t > 1_000_000_000)
+        .filter(|t| *t > 1_000_000_000_000);
+    let ts = ts_ms_raw
+        .map(|ms| ms / 1000)
+        .or_else(|| {
+            obj.get("ts")
+                .or_else(|| obj.get("timestamp"))
+                .or_else(|| obj.get("timestamp_unix"))
+                .and_then(Value::as_i64)
+                .filter(|t| *t > 1_000_000_000)
+        })
         .unwrap_or(now_unix);
 
-    let (matched_rule, list_source) =
-        resolve_block_attribution(&domain, &client_ip, rule, "", store, index);
+    let (matched_rule, list_source) = if is_route_block {
+        extract_route_block_attribution(
+            rule,
+            outbound,
+            error_detail,
+            &domain,
+            &client_ip,
+            store,
+            index,
+        )
+    } else {
+        resolve_block_attribution(&domain, &client_ip, rule, "", store, index)
+    };
+    let dedup_ts = ts_ms_raw.unwrap_or(ts);
     let entry_id = obj
         .get("id")
         .or_else(|| obj.get("seq"))
@@ -2158,7 +2336,7 @@ fn parse_json_entry_dns_block(
                 .map(str::to_string)
                 .or_else(|| v.as_u64().map(|n| n.to_string()))
         })
-        .unwrap_or_else(|| format!("{ts}|{client_ip}|{domain}|{rule}|{msg}"));
+        .unwrap_or_else(|| format!("{dedup_ts}|{client_ip}|{domain}|{rule}|{msg}"));
 
     Some((
         format!("{prefix}:{entry_id}"),
@@ -2346,8 +2524,8 @@ pub fn spawn_adguard_hosts_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 }
             }
 
-            Box::pin(sync_telemetry_from_core_if_needed(&state, &core, 15)).await;
-            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+            Box::pin(sync_telemetry_from_core_if_needed(&state, &core, 8)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });
 }
@@ -2776,5 +2954,129 @@ example.com#%#//scriptlet('noop')
         sec1.hosts_list_update_interval = "6h".into();
         store.sections[0] = sec1;
         assert_eq!(auto_update_schedule(&store), Some(21_600));
+    }
+
+    #[test]
+    fn ingests_real_flight_outbound_block_and_ip_targets_and_clears_stats() {
+        let rt_dir = temp_rt_dir("flight-outbound-block");
+        let store = RouterStoreData::default();
+        let now = 1_795_520_000i64;
+
+        let flight_json = json!({
+            "entries": [
+                {
+                    "id": 1001,
+                    "timestamp_ms": now * 1000,
+                    "source": "192.168.1.137:36002",
+                    "host": "logservice-dra.dt.hihonorcloud.com",
+                    "destination": "logservice-dra.dt.hihonorcloud.com:443",
+                    "outbound": "block",
+                    "error_detail": "blocked by outbound",
+                    "rule": "rule_set=[trs-ads_hagezi_pro] => route(block)"
+                },
+                {
+                    "id": 1002,
+                    "timestamp_ms": (now + 1) * 1000,
+                    "source": "192.168.1.137:36010",
+                    "host": "logservice-dra.dt.hihonorcloud.com",
+                    "destination": "logservice-dra.dt.hihonorcloud.com:443",
+                    "outbound": "block",
+                    "error_detail": "blocked by outbound",
+                    "rule": "rule_set=[trs-ads_hagezi_pro] => route(block)"
+                },
+                {
+                    "id": 1003,
+                    "timestamp_ms": (now + 2) * 1000,
+                    "source": "192.168.1.140:51234",
+                    "host": "",
+                    "destination": "149.154.167.51:443",
+                    "outbound": "block",
+                    "error_detail": "blocked by outbound",
+                    "rule": "ip_cidr=[149.154.160.0/20] => route(block)"
+                }
+            ]
+        });
+
+        let added = ingest_core_telemetry_payloads_in(
+            &rt_dir,
+            &store,
+            &[],
+            None,
+            Some(&flight_json),
+            None,
+            now + 2,
+        )
+        .unwrap();
+        assert_eq!(added, 3);
+
+        let stats = query_dns_block_stats_in(&rt_dir, "24h", now + 3, &HashMap::new()).unwrap();
+        assert_eq!(stats.total_blocked, 3);
+        assert_eq!(stats.unique_clients, 2);
+        assert_eq!(stats.unique_domains, 2);
+        assert_eq!(
+            stats.top_domains[0].domain,
+            "logservice-dra.dt.hihonorcloud.com"
+        );
+        assert_eq!(stats.top_domains[0].count, 2);
+        assert_eq!(stats.top_domains[0].list_source, "trs-ads_hagezi_pro");
+        assert!(
+            stats
+                .top_domains
+                .iter()
+                .any(|d| d.domain == "149.154.167.51" && d.count == 1)
+        );
+        assert_eq!(stats.clients[0].client_ip, "192.168.1.137");
+        assert_eq!(stats.clients[0].blocked_count, 2);
+
+        clear_dns_block_stats_at_in(&rt_dir, now + 10).unwrap();
+        let after_clear =
+            query_dns_block_stats_in(&rt_dir, "24h", now + 11, &HashMap::new()).unwrap();
+        assert_eq!(after_clear.total_blocked, 0);
+
+        // Older buffered entries must not reappear after clear.
+        let added_again = ingest_core_telemetry_payloads_in(
+            &rt_dir,
+            &store,
+            &[],
+            None,
+            Some(&flight_json),
+            None,
+            now + 12,
+        )
+        .unwrap();
+        assert_eq!(added_again, 0);
+
+        // New block event after clear timestamp is recorded normally.
+        let newer_flight = json!({
+            "entries": [
+                {
+                    "id": 1004,
+                    "timestamp_ms": (now + 15) * 1000,
+                    "source": "192.168.1.140:51290",
+                    "destination": "149.154.167.91:443",
+                    "outbound": "block",
+                    "error_detail": "blocked by outbound",
+                    "rule": "ip_cidr=[149.154.160.0/20] => route(block)"
+                }
+            ]
+        });
+        let added_new = ingest_core_telemetry_payloads_in(
+            &rt_dir,
+            &store,
+            &[],
+            None,
+            Some(&newer_flight),
+            None,
+            now + 16,
+        )
+        .unwrap();
+        assert_eq!(added_new, 1);
+
+        let after_new =
+            query_dns_block_stats_in(&rt_dir, "24h", now + 16, &HashMap::new()).unwrap();
+        assert_eq!(after_new.total_blocked, 1);
+        assert_eq!(after_new.top_domains[0].domain, "149.154.167.91");
+
+        let _ = std::fs::remove_dir_all(&rt_dir);
     }
 }

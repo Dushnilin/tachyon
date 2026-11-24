@@ -2434,6 +2434,14 @@ async fn dispatch_api(
                 }
             }
         }
+        ("POST", "/api/dns/block-stats/clear") => {
+            match crate::adguard_hosts::clear_dns_block_stats() {
+                Ok(()) => send_json(stream, 200, &json!({ "ok": true })).await,
+                Err(e) => {
+                    send_json(stream, 500, &json!({ "ok": false, "error": e.to_string() })).await
+                }
+            }
+        }
         ("POST", "/api/dns/hosts/update") => {
             match Box::pin(crate::adguard_hosts::update_hosts_lists(state, core, true)).await {
                 Ok(res) => send_json(stream, 200, &res).await,

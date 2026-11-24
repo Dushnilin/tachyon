@@ -31,7 +31,10 @@ elif [ -x /usr/bin/tachyon ] && head -c 2 /usr/bin/tachyon 2>/dev/null | grep -q
     _is_v1=1
 fi
 if [ "$_is_v1" -eq 1 ]; then
-    __anc=" "
+    __anc=" $$ "
+    if [ -n "${PPID:-}" ]; then
+        __anc="$__anc$PPID "
+    fi
     __p=$$
     while [ -n "$__p" ] && [ "$__p" -gt 1 ] 2>/dev/null; do
         __anc="$__anc$__p "
@@ -41,7 +44,12 @@ if [ "$_is_v1" -eq 1 ]; then
         __pid="${__pdir##*/}"
         case "$__anc" in *" $__pid "*) continue;; esac
         if [ -r "$__pdir/cmdline" ]; then
-            __cmd="$(tr '\\0' ' ' < "$__pdir/cmdline" 2>/dev/null)"
+            __a0="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\\0' '\\n' | sed -n '1p')"
+            __a1="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\\0' '\\n' | sed -n '2p')"
+            case "$__a0:$__a1" in
+                *sh:-*c*) continue;;
+            esac
+            __cmd="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\\0' ' ')"
             case "$__cmd" in
                 *99-tachyon-wan*|*"flock 1000"*|*"/etc/init.d/tachyon"*)
                     kill -9 "$__pid" >/dev/null 2>&1 || true
@@ -111,11 +119,27 @@ if [ "$_is_v1" -eq 1 ]; then
     done
     rm -f /etc/rc.d/*tachyon-core* /etc/rc.d/*tachyon-torrserver-direct* 2>/dev/null || true
 
+    __post_anc=" $$ "
+    if [ -n "${PPID:-}" ]; then
+        __post_anc="$__post_anc$PPID "
+    fi
+    __post_p=$$
+    while [ -n "$__post_p" ] && [ "$__post_p" -gt 1 ] 2>/dev/null; do
+        __post_anc="$__post_anc$__post_p "
+        __post_p=$(awk '{ sub(/.*\\) /, ""); print $2 }' "/proc/$__post_p/stat" 2>/dev/null)
+    done
     for p in /proc/[0-9]*; do
+        __pid="${p##*/}"
+        case "$__post_anc" in *" $__pid "*) continue;; esac
         [ -r "$p/cmdline" ] || continue
-        case "$(tr '\\0' ' ' < "$p/cmdline" 2>/dev/null)" in
+        __a0="$(head -c 512 "$p/cmdline" 2>/dev/null | tr '\\0' '\\n' | sed -n '1p')"
+        __a1="$(head -c 512 "$p/cmdline" 2>/dev/null | tr '\\0' '\\n' | sed -n '2p')"
+        case "$__a0:$__a1" in
+            *sh:-*c*) continue;;
+        esac
+        case "$(head -c 512 "$p/cmdline" 2>/dev/null | tr '\\0' ' ')" in
             *"/usr/lib/tachyon/"*|*"/usr/bin/tachyon-core"*)
-                kill -9 "${p##*/}" >/dev/null 2>&1 || true
+                kill -9 "$__pid" >/dev/null 2>&1 || true
                 ;;
         esac
     done

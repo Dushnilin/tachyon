@@ -1984,6 +1984,7 @@ export function resolveSectionEngineMeta(
     selectedTypeUpper === 'INTERFACE' ||
     selectedTypeUpper === 'TAILSCALE' ||
     /-interface-\d+-out$/i.test(selectedOutbound?.code || '') ||
+    /^iface-/i.test(selectedOutbound?.code || '') ||
     sourceTypes.includes('interface') ||
     sourceTypes.includes('tailscale');
 
@@ -2064,6 +2065,14 @@ export function resolveSectionEngineMeta(
     }
     for (const ob of section.outbounds || []) {
       const oType = (ob.type || '').toLowerCase();
+      if (
+        oType === 'direct' &&
+        (isInterfaceSelected ||
+          /^iface-/i.test(ob.code) ||
+          /-interface-\d+-out$/i.test(ob.code))
+      ) {
+        continue;
+      }
       if (dpiTypes.has(oType)) {
         addDpiBadgeFor(oType);
       }
@@ -2168,6 +2177,7 @@ export function resolveSectionEngineMeta(
       );
     } else if (
       protoRaw === 'INTERFACE' ||
+      (isInterfaceSelected && (!protoRaw || protoRaw === 'DIRECT')) ||
       (!protoRaw &&
         (singleSourceType === 'interface' || selectedTypeUpper === 'INTERFACE'))
     ) {
@@ -2185,7 +2195,31 @@ export function resolveSectionEngineMeta(
       pushBadge(protoRaw, 'proxy');
     }
 
-    if (selectedOutbound || (section.outbounds || []).length > 0) {
+    const isProxyTransportEligible =
+      !isDpiOnly &&
+      ![
+        'desync',
+        'zapret',
+        'zapret2',
+        'bypass',
+        'direct',
+        'block',
+        'reject',
+        'dns',
+        'hosts',
+      ].includes(rawAction) &&
+      !protoRaw.includes('FPTN') &&
+      !protoRaw.includes('WARP') &&
+      !protoRaw.includes('AWG') &&
+      !protoRaw.includes('WIREGUARD') &&
+      !protoRaw.includes('AMNEZIA') &&
+      !protoRaw.includes('TAILSCALE') &&
+      protoRaw !== 'INTERFACE';
+
+    if (
+      isProxyTransportEligible &&
+      (selectedOutbound || (section.outbounds || []).length > 0)
+    ) {
       // Collect transport protocols (GRPC, XHTTP, WS, HTTPUPGRADE, QUIC, H2, TCP)
       const activeTransport =
         extractNodeTransportLabel(activeChild) ||

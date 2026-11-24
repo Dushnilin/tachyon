@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-24 14:21+0300\n"
-"PO-Revision-Date: 2026-11-24 14:21+0300\n"
+"POT-Creation-Date: 2026-11-24 20:38+0300\n"
+"PO-Revision-Date: 2026-11-24 20:38+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1502,9 +1502,6 @@ msgstr "Блокировать: запретить перечисленные с
 msgid "Blocked"
 msgstr "Блокировок"
 
-msgid "Blocked Domains & Rules"
-msgstr "Заблокированные домены и правила"
-
 msgid "Blocked Sites"
 msgstr "Заблокированные сайты"
 
@@ -1514,8 +1511,11 @@ msgstr "Заблокированные сайты (блокировка указ
 msgid "Blocked Sites (Domains)"
 msgstr "Заблокированные сайты (домены)"
 
-msgid "Blocked queries"
-msgstr "Заблокировано запросов"
+msgid "Blocked domains & ads"
+msgstr "Заблокированные домены и реклама"
+
+msgid "Blocked requests"
+msgstr "Заблокировано обращений"
 
 msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
 msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
@@ -1958,6 +1958,9 @@ msgstr "Нажмите, чтобы увеличить QR-код"
 msgid "Click to expand section nodes, balancers and conditions"
 msgstr "Нажмите, чтобы развернуть узлы, балансировщики и условия секции"
 
+msgid "Click to filter domains and events for this client"
+msgstr "Нажмите, чтобы отфильтровать домены и события этого клиента"
+
 msgid "Click to hide"
 msgstr "Нажмите, чтобы скрыть"
 
@@ -2054,11 +2057,17 @@ msgstr "QR-код клиентской ссылки"
 msgid "Client link is not available yet"
 msgstr "Клиентская ссылка пока недоступна"
 
+msgid "Client:"
+msgstr "Клиент:"
+
 msgid "ClientHello / TCP Fragmentation"
 msgstr "Фрагментация ClientHello / TCP"
 
 msgid "Clients"
 msgstr "Клиенты"
+
+msgid "Clients (click row to filter)"
+msgstr "Клиенты (кликните по строке для фильтрации)"
 
 msgid "Clients in Pool"
 msgstr "Клиенты в пуле"
@@ -2735,9 +2744,6 @@ msgstr "Автоподбор DNS завершён! Оптимальная свя
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr "Автоподбор и бенчмарк DNS"
 
-msgid "DNS Block Statistics"
-msgstr "Статистика блокировки DNS"
-
 msgid "DNS Cache"
 msgstr "Кэш DNS"
 
@@ -3344,6 +3350,9 @@ msgstr "Не резолвится"
 msgid "Domain"
 msgstr "Домен"
 
+msgid "Domain / IP"
+msgstr "Домен / IP"
+
 msgid "Domain Resolver"
 msgstr "Резолвер доменов"
 
@@ -3809,9 +3818,6 @@ msgstr "Ошибка обновления списков:"
 msgid "Estimated RAM usage (max):"
 msgstr "Ориентировочный объём RAM (макс.):"
 
-msgid "Evaluate this DNS section before FakeIP proxy rules so matched domains always resolve to real IP addresses."
-msgstr "Обрабатывать эту секцию DNS до правил FakeIP прокси, чтобы совпавшие домены всегда разрешались в реальные IP-адреса."
-
 msgid "Event bus journal and syslog monitoring report clean operation."
 msgstr "Журнал шины событий и мониторинг syslog не сообщают о проблемах."
 
@@ -4258,6 +4264,12 @@ msgstr "Не удалось запустить диагностику — уст
 
 msgid "Failed to save changes."
 msgstr "Не удалось сохранить изменения."
+
+msgid "Failed to save configuration changes."
+msgstr "Не удалось сохранить изменения конфигурации."
+
+msgid "Failed to save configuration:"
+msgstr "Ошибка сохранения конфигурации:"
 
 msgid "Failed to save fuzzer patterns"
 msgstr "Не удалось сохранить паттерны фаззера"
@@ -6269,9 +6281,6 @@ msgstr "Локальный или внешний прокси-сервер дл�
 msgid "Links"
 msgstr "Ссылки"
 
-msgid "List"
-msgstr "Список"
-
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
 
@@ -6368,8 +6377,8 @@ msgstr "Загружено %d текущих записей"
 msgid "Loaded!"
 msgstr "Загружено!"
 
-msgid "Loading DNS statistics..."
-msgstr "Загрузка статистики DNS..."
+msgid "Loading blocked domains statistics..."
+msgstr "Загрузка статистики блокировок..."
 
 msgid "Loading change history..."
 msgstr "Загрузка истории изменений..."
@@ -7001,8 +7010,11 @@ msgstr "История бенчмарков пуста. Запустите бе�
 msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
 msgstr "Результаты тестирования пока отсутствуют. Настройте параметры и нажмите \"Запустить тест\"."
 
-msgid "No blocked DNS queries recorded for the selected period."
-msgstr "За выбранный период срабатываний правил блокировки DNS не зафиксировано."
+msgid "No blocked requests match the current filter."
+msgstr "По заданному фильтру заблокированных обращений не найдено."
+
+msgid "No blocked requests recorded for the selected period."
+msgstr "За выбранный период срабатываний правил блокировки не зафиксировано."
 
 msgid "No cached servers found for this section yet."
 msgstr "Для этой секции пока не найдено серверов в кэше."
@@ -7832,9 +7844,6 @@ msgstr "Ожидает запуска"
 msgid "Pending..."
 msgstr "Ожидание..."
 
-msgid "Per-Client Statistics"
-msgstr "Статистика по клиентам"
-
 msgid "Per-Server Outbound Interface Overrides"
 msgstr "Переопределение исходящего интерфейса по серверам"
 
@@ -8585,8 +8594,8 @@ msgstr "Пересобранный релиз"
 msgid "Recent"
 msgstr "Недавно"
 
-msgid "Recent Blocked Queries"
-msgstr "Последние срабатывания"
+msgid "Recent Blocked Log"
+msgstr "Журнал последних блокировок"
 
 msgid "Recommended DNS Configuration"
 msgstr "Рекомендованная конфигурация DNS"
@@ -8791,6 +8800,9 @@ msgstr "Сброс…"
 
 msgid "Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing"
 msgstr "Устойчивый мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием"
+
+msgid "Resolve and match real IP addresses instead of FakeIP for this section. Warning: on proxy/desync sections with domain rules, disabling FakeIP makes domain matching rely on TLS SNI sniffing and DNS reverse_mapping; ECH, QUIC, or cached client IPs may miss domain rules."
+msgstr ""
 
 msgid "Resolve domain names before routing so Tachyon Core can use real destination IPs."
 msgstr "Разрешать доменные имена до маршрутизации, чтобы Tachyon Core мог использовать реальные IP-адреса назначения."
@@ -9397,6 +9409,9 @@ msgstr "Режим подбора"
 
 msgid "Search domain or service..."
 msgstr "Поиск домена или сервиса..."
+
+msgid "Search domain, IP, rule or client..."
+msgstr "Поиск домена, IP, правила или клиента..."
 
 msgid "Search servers in pool..."
 msgstr "Поиск серверов в пуле..."
@@ -10196,9 +10211,6 @@ msgstr "Настройки источника"
 msgid "Source is in the global pool and not attached directly to a specific section"
 msgstr "Источник находится в глобальном пуле и не привязан напрямую к конкретной секции"
 
-msgid "Source list"
-msgstr "Список"
-
 msgid "Sources"
 msgstr "Источники"
 
@@ -10973,6 +10985,9 @@ msgstr "Целевой узел доступен напрямую без дес�
 msgid "Target section for detected domains"
 msgstr "Целевая секция для найденных доменов"
 
+msgid "Targets"
+msgstr "Целей"
+
 msgid "Teal"
 msgstr "Бирюзовый"
 
@@ -11246,11 +11261,14 @@ msgstr "Допуск"
 msgid "Tolerance (ms)"
 msgstr "Допуск задержки (мс)"
 
+msgid "Top Blocked Domains & IPs"
+msgstr "Топ заблокированных доменов и IP"
+
 msgid "Top bar"
 msgstr "Верхнее"
 
-msgid "Top domain"
-msgstr "Топ домен"
+msgid "Top domain / IP"
+msgstr "Частый домен / IP"
 
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
@@ -11615,8 +11633,8 @@ msgstr "Неуспешный"
 msgid "Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies."
 msgstr "Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации."
 
-msgid "Unique domains"
-msgstr "Уникальных доменов"
+msgid "Unique domains & IPs"
+msgstr "Уникальных доменов и IP"
 
 msgid "Unique identifier (letters, digits, underscores)."
 msgstr "Уникальный идентификатор (латинские буквы, цифры и подчёркивания)."
@@ -12913,6 +12931,42 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Blocked Domains & Rules"
+msgstr "Заблокированные домены и правила"
+
+msgid "Blocked queries"
+msgstr "Заблокировано запросов"
+
+msgid "DNS Block Statistics"
+msgstr "Статистика блокировки DNS"
+
+msgid "Evaluate this DNS section before FakeIP proxy rules so matched domains always resolve to real IP addresses."
+msgstr "Обрабатывать эту секцию DNS до правил FakeIP прокси, чтобы совпавшие домены всегда разрешались в реальные IP-адреса."
+
+msgid "List"
+msgstr "Список"
+
+msgid "Loading DNS statistics..."
+msgstr "Загрузка статистики DNS..."
+
+msgid "No blocked DNS queries recorded for the selected period."
+msgstr "За выбранный период срабатываний правил блокировки DNS не зафиксировано."
+
+msgid "Per-Client Statistics"
+msgstr "Статистика по клиентам"
+
+msgid "Recent Blocked Queries"
+msgstr "Последние срабатывания"
+
+msgid "Source list"
+msgstr "Список"
+
+msgid "Top domain"
+msgstr "Топ домен"
+
+msgid "Unique domains"
+msgstr "Уникальных доменов"
 
 msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
 msgstr "Секретный ключ для аутентификации доступа к YACD и Clash API (обязателен при включённом YACD)."

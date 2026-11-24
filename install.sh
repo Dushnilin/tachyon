@@ -1076,18 +1076,30 @@ _timeout_cmd() {
     echo ""
 }
 
-_kill_tachyon_init_waiters() {
-    __anc=" "
+_collect_ancestor_pids() {
+    __anc=" $$ "
+    if [ -n "${PPID:-}" ]; then
+        __anc="$__anc$PPID "
+    fi
     __p=$$
     while [ -n "$__p" ] && [ "$__p" -gt 1 ] 2>/dev/null; do
         __anc="$__anc$__p "
         __p=$(awk '{ sub(/.*\) /, ""); print $2 }' "/proc/$__p/stat" 2>/dev/null || true)
     done
+}
+
+_kill_tachyon_init_waiters() {
+    _collect_ancestor_pids
     for __pdir in /proc/[0-9]*; do
         __pid="${__pdir##*/}"
         case "$__anc" in *" $__pid "*) continue;; esac
         if [ -r "$__pdir/cmdline" ]; then
-            __cmd="$(tr '\0' ' ' < "$__pdir/cmdline" 2>/dev/null || true)"
+            __a0="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' '\n' | sed -n '1p')"
+            __a1="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' '\n' | sed -n '2p')"
+            case "$__a0:$__a1" in
+                *sh:-*c*) continue;;
+            esac
+            __cmd="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' ' ' || true)"
             case "$__cmd" in
                 *99-tachyon-wan*|*"flock 1000"*|*"/etc/init.d/tachyon"*)
                     kill -9 "$__pid" >/dev/null 2>&1 || true
@@ -1100,6 +1112,26 @@ _kill_tachyon_init_waiters() {
                 *procd_tachyon*) kill -9 "$__pid" >/dev/null 2>&1 || true ;;
             esac
         fi
+    done
+}
+
+_kill_legacy_v1_processes() {
+    _collect_ancestor_pids
+    for __pdir in /proc/[0-9]*; do
+        __pid="${__pdir##*/}"
+        case "$__anc" in *" $__pid "*) continue;; esac
+        [ -r "$__pdir/cmdline" ] || continue
+        __a0="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' '\n' | sed -n '1p')"
+        __a1="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' '\n' | sed -n '2p')"
+        case "$__a0:$__a1" in
+            *sh:-*c*) continue;;
+        esac
+        __cmd="$(head -c 512 "$__pdir/cmdline" 2>/dev/null | tr '\0' ' ' || true)"
+        case "$__cmd" in
+            *"/usr/lib/tachyon/"*|*"/usr/bin/tachyon-core"*)
+                kill -9 "$__pid" >/dev/null 2>&1 || true
+                ;;
+        esac
     done
 }
 
@@ -1149,14 +1181,7 @@ migrate_from_v1() {
         fi
     done
 
-    for p in /proc/[0-9]*; do
-        [ -r "$p/cmdline" ] || continue
-        case "$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)" in
-            *"/usr/lib/tachyon/"*|*"/usr/bin/tachyon-core"*)
-                kill -9 "${p##*/}" >/dev/null 2>&1 || true
-                ;;
-        esac
-    done
+    _kill_legacy_v1_processes
 
     if command_exists crontab; then
         _tachyon_cron_re='#[[:space:]]*tachyon-(list-update|subscription-update|component-update-check|parental-quota)([[:space:]]|$)|/usr/bin/tachyon[[:space:]]+(list_update(_if_due)?|subscription_update(_if_due)?|component_updates_if_due|component_auto_update_apply|parental_quota_tick)([[:space:]]|$)'

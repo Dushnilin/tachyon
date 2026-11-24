@@ -1253,10 +1253,25 @@ input.cbi-button-action:hover:not(:disabled),
 .cbi-dropdown[open] > ul.dropdown,
 .cbi-dropdown[open] > ul,
 .cbi-dynlist .cbi-dropdown[open] > ul {
+    width: 100% !important;
+    max-width: min(100%, calc(100vw - 40px)) !important;
     max-height: min(320px, 45vh) !important;
+    overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
+    z-index: 2500 !important;
+    box-sizing: border-box !important;
     -webkit-overflow-scrolling: touch;
+}
+
+#modal_overlay .cbi-dropdown[open] > ul > li,
+.cbi-modal .cbi-dropdown[open] > ul > li,
+.cbi-dynlist .cbi-dropdown[open] > ul > li {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    line-height: 1.35 !important;
+    padding: 7px 10px !important;
 }
 
 /* Tachyon modal sizing by content type */
@@ -5642,6 +5657,12 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     overflow-x: hidden !important;
     box-sizing: border-box !important;
     animation: tachyonModalEnter 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#modal_overlay > .modal:has(.cbi-dropdown[open]),
+.modal.cbi-modal:has(.cbi-dropdown[open]),
+.cbi-modal:has(.cbi-dropdown[open]) {
+    overflow: visible !important;
 }
 
 #modal_overlay > .modal > h4:not(.tachyon-modal__sticky-header),

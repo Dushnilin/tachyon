@@ -326,6 +326,26 @@ function sanitizeStaleUciDeletes(targetSectionId?: string): void {
 let pendingUciSaveChain: Promise<unknown> = Promise.resolve(null);
 
 function notifyUciChanged(): Promise<unknown> {
+  const showSaveError = (err: unknown) => {
+    const detail =
+      err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+    if (typeof ui !== 'undefined' && typeof ui.addNotification === 'function') {
+      ui.addNotification(
+        null,
+        E(
+          'p',
+          {},
+          detail
+            ? `${tr('Ошибка сохранения конфигурации:', 'Failed to save configuration:')} ${detail}`
+            : tr(
+                'Не удалось сохранить изменения конфигурации.',
+                'Failed to save configuration changes.',
+              ),
+        ),
+        'error',
+      );
+    }
+  };
   const runSave = () => {
     try {
       sanitizeStaleUciDeletes();
@@ -341,10 +361,13 @@ function notifyUciChanged(): Promise<unknown> {
             }
             return null;
           })
-          .catch(() => null);
+          .catch((err) => {
+            showSaveError(err);
+            return null;
+          });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      showSaveError(err);
     }
     return Promise.resolve(null);
   };
@@ -565,42 +588,50 @@ function resolveSectionTelemetry(sid: string): {
   });
 
   // Inspect store active section outbounds for live VLESS / GRPC / XHTTP transport badges
-  try {
-    const storeMod = (globalThis as any).tachyonStore || null;
-    const secData =
-      storeMod && typeof storeMod.get === 'function'
-        ? storeMod.get()?.connectionsWidget?.data?.sections?.[sid]
-        : null;
-    if (secData && Array.isArray(secData.outbounds)) {
-      secData.outbounds.forEach((ob: any) => {
-        const p = formatOutboundType(ob?.type || ob?.protocol || '');
-        if (
-          p &&
-          !['Direct', 'Block', 'DNS', 'URLTest', 'Selector'].includes(p)
-        ) {
-          protoSet.add(p.toUpperCase());
-        }
-        const trRaw = String(
-          ob?.transport?.type ||
-            ob?.transport ||
-            ob?.network ||
-            getProxyUrlTransport(ob?.link || ob?.url || '') ||
-            '',
-        )
-          .trim()
-          .toUpperCase();
-        if (
-          trRaw &&
-          ['GRPC', 'XHTTP', 'WS', 'HTTPUPGRADE', 'QUIC', 'H2', 'TCP'].includes(
-            trRaw,
+  if (actionTone === 'proxy') {
+    try {
+      const storeMod = (globalThis as any).tachyonStore || null;
+      const secData =
+        storeMod && typeof storeMod.get === 'function'
+          ? storeMod.get()?.connectionsWidget?.data?.sections?.[sid]
+          : null;
+      if (secData && Array.isArray(secData.outbounds)) {
+        secData.outbounds.forEach((ob: any) => {
+          const p = formatOutboundType(ob?.type || ob?.protocol || '');
+          if (
+            p &&
+            !['Direct', 'Block', 'DNS', 'URLTest', 'Selector'].includes(p)
+          ) {
+            protoSet.add(p.toUpperCase());
+          }
+          const trRaw = String(
+            ob?.transport?.type ||
+              ob?.transport ||
+              ob?.network ||
+              getProxyUrlTransport(ob?.link || ob?.url || '') ||
+              '',
           )
-        ) {
-          transSet.add(trRaw);
-        }
-      });
+            .trim()
+            .toUpperCase();
+          if (
+            trRaw &&
+            [
+              'GRPC',
+              'XHTTP',
+              'WS',
+              'HTTPUPGRADE',
+              'QUIC',
+              'H2',
+              'TCP',
+            ].includes(trRaw)
+          ) {
+            transSet.add(trRaw);
+          }
+        });
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   const keyLower = `${sid} ${name}`.toLowerCase();
@@ -851,7 +882,7 @@ function getQuickCreateTemplates(
           'Фрагментация и коррекция рукопожатий YouTube, Discord и Telegram без внешнего прокси-сервера',
           'Handshake desynchronization for YouTube, Discord, or Telegram without a proxy server',
         ),
-        defaults: { enabled: '1', action: 'connection' },
+        defaults: { enabled: '1', action: 'desync' },
       },
       {
         id: 'cs2_faceit',

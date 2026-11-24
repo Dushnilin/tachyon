@@ -662,18 +662,15 @@ fn assemble_doctor_report(
         });
     }
 
-    // 1b. Config digest drift check
+    // 1b. Config digest drift check (reconciled by watchdog::detect_config_drift;
+    // do not compare incompatible core /config-state digest formats directly).
     let applied_digest = health_val
         .as_ref()
         .and_then(|h| h.pointer("/config_state/digest"))
         .and_then(Value::as_str)
         .unwrap_or(&live.applied_config_digest)
         .to_string();
-    let config_drift = live.config_drift
-        || (live.core_running
-            && !live.desired_config_digest.is_empty()
-            && !applied_digest.is_empty()
-            && live.desired_config_digest != applied_digest);
+    let config_drift = live.config_drift;
     if config_drift {
         findings.push(DoctorFinding {
             id: "config_drift".to_string(),
@@ -733,6 +730,22 @@ fn assemble_doctor_report(
                 "keys": keys,
                 "errors": section_errors,
             }),
+            ..Default::default()
+        });
+    }
+
+    if let Some(ref warn_msg) = live.last_store_recovery_warning {
+        findings.push(DoctorFinding {
+            id: "store_recovered_from_lkg".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "store".to_string(),
+            title: if en {
+                "Store fell back to known_good snapshot"
+            } else {
+                "Хранилище восстановлено из резервной копии known_good"
+            }
+            .to_string(),
+            detail: warn_msg.clone(),
             ..Default::default()
         });
     }
@@ -900,6 +913,73 @@ fn assemble_doctor_report(
             quick_fix_id: "trim_core_memory".to_string(),
             quick_fix_label: "Очистить кэши ядра".to_string(),
             evidence: json!({ "used": fip_used, "cap": fip_cap, "evictions": fip_evictions }),
+            ..Default::default()
+        });
+    }
+
+    let fakeip_disabled_domain_sections: Vec<String> = d
+        .sections
+        .iter()
+        .filter(|sec| {
+            sec.enabled
+                && sec.disable_fakeip
+                && !matches!(
+                    sec.action.trim().to_ascii_lowercase().as_str(),
+                    "dns" | "direct" | "bypass" | "block" | "reject" | "hosts"
+                )
+        })
+        .filter(|sec| {
+            let direct_domains = !sec.domains.is_empty()
+                || !sec.community_lists.is_empty()
+                || !sec.rule_set_urls.is_empty();
+            let cond_domains = sec.condition_refs.iter().any(|cid| {
+                d.conditions
+                    .iter()
+                    .find(|c| c.id == *cid && c.enabled)
+                    .is_some_and(|c| {
+                        !c.domains.is_empty()
+                            || !c.user_domains.is_empty()
+                            || !c.community_lists.is_empty()
+                            || !c.remote_domain_lists.is_empty()
+                    })
+            });
+            direct_domains || cond_domains
+        })
+        .map(|sec| {
+            if !sec.label.trim().is_empty() {
+                format!("{} ({})", sec.label.trim(), sec.id)
+            } else {
+                sec.id.clone()
+            }
+        })
+        .collect();
+    if !fakeip_disabled_domain_sections.is_empty() {
+        let sec_list = fakeip_disabled_domain_sections.join(", ");
+        findings.push(DoctorFinding {
+            id: "disable_fakeip_with_domain_rules".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dns".to_string(),
+            title: if en {
+                format!(
+                    "FakeIP disabled on domain routing sections ({})",
+                    fakeip_disabled_domain_sections.len()
+                )
+            } else {
+                format!(
+                    "Отключён FakeIP в секциях с доменными правилами ({})",
+                    fakeip_disabled_domain_sections.len()
+                )
+            },
+            detail: if en {
+                format!(
+                    "Sections [{sec_list}] have disable_fakeip enabled together with domain rules. Without FakeIP, domain matching relies on TLS SNI sniffing and DNS reverse_mapping; connections using ECH, QUIC, or cached client IPs can miss domain rules."
+                )
+            } else {
+                format!(
+                    "В секциях [{sec_list}] включён отказ от FakeIP (disable_fakeip) при наличии доменных правил. Без FakeIP сопоставление доменов опирается на SNI и DNS reverse_mapping: при ECH, QUIC или кэшировании IP клиентом часть трафика может уходить мимо правил."
+                )
+            },
+            evidence: json!({ "sections": fakeip_disabled_domain_sections }),
             ..Default::default()
         });
     }
@@ -7011,5 +7091,63 @@ IP address       HW type     Flags       HW address            Mask     Device
         assert_eq!(quick_fix_risk_tier("enable_safe_bypass"), "disruptive");
         assert_eq!(quick_fix_risk_tier("flush_nftables"), "disruptive");
         assert_eq!(quick_fix_risk_tier("fix_resolv_symlink"), "disruptive");
+    }
+
+    #[test]
+    fn test_assemble_doctor_report_no_false_config_drift_on_mismatched_hash_format() {
+        let dir = std::env::temp_dir().join(format!("tachyon_diag_drift_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = AppState::load_or_create(dir.join("store.json")).unwrap();
+        let store = RouterStoreData::default();
+
+        let mut live = crate::store::LiveTelemetry {
+            core_running: true,
+            nft_table_active: true,
+            wan_healthy: true,
+            dns_healthy: true,
+            desired_config_digest: "abc123desired".to_string(),
+            applied_config_digest: "xyz789core".to_string(),
+            config_drift: false,
+            ..Default::default()
+        };
+        let health = json!({ "config_state": { "digest": "xyz789core" } });
+        let report_clean = assemble_doctor_report(
+            &state,
+            &store,
+            &live,
+            None,
+            Some(health.clone()),
+            None,
+            None,
+            None,
+            false,
+            "",
+            true,
+        );
+        assert!(
+            !report_clean.findings.iter().any(|f| f.id == "config_drift"),
+            "mismatched digest string formats must not raise false config_drift when watchdog reports false"
+        );
+
+        live.config_drift = true;
+        let report_drift = assemble_doctor_report(
+            &state,
+            &store,
+            &live,
+            None,
+            Some(health),
+            None,
+            None,
+            None,
+            false,
+            "",
+            true,
+        );
+        assert!(
+            report_drift.findings.iter().any(|f| f.id == "config_drift"),
+            "real watchdog config_drift must still produce finding"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

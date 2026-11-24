@@ -1152,5 +1152,21 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(headerOverrideBlock).toContain('#cbi-tachyon header');
     expect(headerOverrideBlock).toContain('position: static !important;');
     expect(headerOverrideBlock).toContain('z-index: auto !important;');
+
+    // Guard against modal overflow clipping Priority Tiers / DynamicList dropdowns (#493)
+    expect(GlobalStyles).toContain(
+      '#modal_overlay > .modal:has(.cbi-dropdown[open])',
+    );
+    expect(GlobalStyles).toContain('overflow: visible !important;');
+    const dynDropdownLiStart = GlobalStyles.indexOf(
+      '#modal_overlay .cbi-dropdown[open] > ul > li',
+    );
+    expect(dynDropdownLiStart).toBeGreaterThan(-1);
+    const dynDropdownLiBlock = GlobalStyles.slice(
+      dynDropdownLiStart,
+      dynDropdownLiStart + 280,
+    );
+    expect(dynDropdownLiBlock).toContain('white-space: normal !important;');
+    expect(dynDropdownLiBlock).toContain('overflow-wrap: anywhere !important;');
   });
 });

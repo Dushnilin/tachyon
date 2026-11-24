@@ -11457,6 +11457,119 @@ fn sanitize_xhttp_object(obj: &mut Map<String, Value>) {
     }
 }
 
+pub(crate) fn is_valid_reality_public_key(raw: &str) -> bool {
+    use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+    let s = raw.trim();
+    if s.is_empty() {
+        return false;
+    }
+    let decoded = URL_SAFE_NO_PAD
+        .decode(s)
+        .or_else(|_| URL_SAFE.decode(s))
+        .or_else(|_| STANDARD_NO_PAD.decode(s))
+        .or_else(|_| B64_STD.decode(s));
+    decoded.is_ok_and(|bytes| bytes.len() == 32)
+}
+
+fn strip_removed_tags_from_groups_and_rules(
+    outbounds: &mut Vec<Value>,
+    rules: &mut Vec<Value>,
+    initial_removed: HashSet<String>,
+) {
+    let mut removed_tags = HashSet::new();
+    let mut pending: Vec<String> = initial_removed.into_iter().collect();
+
+    while let Some(cur_tag) = pending.pop() {
+        if matches!(cur_tag.as_str(), "direct" | "block") || !removed_tags.insert(cur_tag.clone()) {
+            continue;
+        }
+        outbounds.retain(|o| o.get("tag").and_then(Value::as_str) != Some(cur_tag.as_str()));
+
+        let mut emptied_groups = Vec::new();
+        for ob in outbounds.iter_mut() {
+            let Some(map) = ob.as_object_mut() else {
+                continue;
+            };
+            let first_remaining = {
+                let Some(arr) = map.get_mut("outbounds").and_then(Value::as_array_mut) else {
+                    continue;
+                };
+                arr.retain(|v| v.as_str() != Some(cur_tag.as_str()));
+                arr.first().and_then(Value::as_str).map(str::to_string)
+            };
+            if let Some(tiers) = map
+                .get_mut("balancer")
+                .and_then(Value::as_object_mut)
+                .and_then(|b| b.get_mut("tiers"))
+                .and_then(Value::as_array_mut)
+            {
+                for tier in tiers.iter_mut() {
+                    if let Some(t_arr) = tier.as_array_mut() {
+                        t_arr.retain(|v| v.as_str() != Some(cur_tag.as_str()));
+                    }
+                }
+                tiers.retain(|t| t.as_array().is_some_and(|a| !a.is_empty()));
+            }
+            if map.get("default").and_then(Value::as_str) == Some(cur_tag.as_str()) {
+                if let Some(first) = first_remaining.clone() {
+                    map.insert("default".into(), json!(first));
+                } else {
+                    map.remove("default");
+                }
+            }
+            if first_remaining.is_none()
+                && let Some(gtag) = map.get("tag").and_then(Value::as_str)
+            {
+                emptied_groups.push(gtag.to_string());
+            }
+        }
+        for empty_tag in emptied_groups {
+            outbounds.retain(|o| o.get("tag").and_then(Value::as_str) != Some(empty_tag.as_str()));
+            pending.push(empty_tag);
+        }
+    }
+
+    if !removed_tags.is_empty() {
+        rules.retain(|r| {
+            r.get("outbound")
+                .and_then(Value::as_str)
+                .is_none_or(|o| !removed_tags.contains(o))
+        });
+    }
+}
+
+/// Skip individual leaf outbounds with malformed Reality `public_key` values before
+/// `tachyon-core check`, keeping the parent section and all valid sibling nodes intact.
+fn sanitize_invalid_reality_outbounds(outbounds: &mut Vec<Value>, rules: &mut Vec<Value>) {
+    let mut bad_tags = HashSet::new();
+    for ob in outbounds.iter() {
+        let Some(reality) = ob.pointer("/tls/reality") else {
+            continue;
+        };
+        if reality.get("enabled").and_then(Value::as_bool) != Some(true) {
+            continue;
+        }
+        let pk = reality
+            .get("public_key")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if !is_valid_reality_public_key(pk)
+            && let Some(tag) = ob.get("tag").and_then(Value::as_str)
+            && !matches!(tag, "direct" | "block")
+        {
+            eprintln!(
+                "[tachyon] skipping outbound '{tag}': invalid Reality public_key (len={}, expected 32-byte base64url)",
+                pk.len()
+            );
+            bad_tags.insert(tag.to_string());
+        }
+    }
+    if !bad_tags.is_empty() {
+        strip_removed_tags_from_groups_and_rules(outbounds, rules, bad_tags);
+    }
+}
+
 fn sanitize_xhttp_transports(outbounds: &mut [Value]) {
     for ob in outbounds {
         if let Some(tr) = ob.get_mut("transport").and_then(Value::as_object_mut)
@@ -13153,6 +13266,7 @@ fn compile_core_config_with_rt_dir(
         share_wireguard_client_outbounds(&mut outbounds, &mut endpoints);
     }
     sanitize_xhttp_transports(&mut outbounds);
+    sanitize_invalid_reality_outbounds(&mut outbounds, &mut rules);
     sanitize_dialer_fragments(&mut outbounds);
     sanitize_dialer_fragments(&mut endpoints);
     apply_settings_tcp_profile(&mut outbounds, &mut endpoints, &store.settings.tcp_profile);
@@ -16578,7 +16692,7 @@ fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec>
         detect_server_country: String::new(),
         include_prefixes,
         include_countries,
-        include_outbounds: Vec::new(),
+        include_outbounds: sec.section_include_outbounds.clone(),
         include_regex,
         include_proxy_parameters: inc_params,
         include_protocols: sec.include_protocols.clone(),
@@ -16587,7 +16701,7 @@ fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec>
         include_ports: Vec::new(),
         exclude_prefixes,
         exclude_countries,
-        exclude_outbounds: Vec::new(),
+        exclude_outbounds: sec.section_exclude_outbounds.clone(),
         exclude_regex,
         exclude_proxy_parameters: exc_params,
         exclude_protocols: sec.exclude_protocols.clone(),
@@ -27961,5 +28075,69 @@ proxies:
                 assert!(obs.iter().any(|o| o["type"] == "urltest"));
             }
         }
+    }
+
+    #[test]
+    fn test_sanitize_invalid_reality_outbound_keeps_section_and_valid_node() {
+        let valid_vless = "vless://11111111-1111-4111-8111-111111111111@198.51.100.10:443?security=reality&sni=www.microsoft.com&pbk=WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8&sid=01020304&type=tcp#GoodReality";
+        let broken_vless = "vless://22222222-2222-4222-8222-222222222222@198.51.100.11:443?security=reality&sni=www.microsoft.com&pbk=SHORT_BAD_KEY&sid=01020304&type=tcp#BadReality";
+
+        assert!(is_valid_reality_public_key(
+            "WkVMCMtQFO4NVyOLay3Pq_ovbayBqJuK7Nx5cxWT8C8"
+        ));
+        assert!(!is_valid_reality_public_key("SHORT_BAD_KEY"));
+        assert!(!is_valid_reality_public_key(""));
+
+        let n_good = parse_proxy_uri(valid_vless, 0).expect("valid vless parse");
+        let n_bad = parse_proxy_uri(broken_vless, 1).expect("broken pbk still parses uri");
+
+        let mut store = RouterStoreData {
+            outbound_sources: vec![OutboundSource {
+                id: "sub_mix".to_string(),
+                enabled: true,
+                name: "MixedSub".to_string(),
+                source_type: "subscription".to_string(),
+                cached_nodes: vec![n_good, n_bad],
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "General".to_string(),
+                enabled: true,
+                label: "General".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["sub_mix".to_string()],
+                user_domains: vec!["example.org".to_string()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        store.settings.ipv6_mode = "off".to_string();
+
+        let cfg = compile_core_config_with_wan6(&store, false)
+            .expect("compile succeeds skipping broken reality leaf");
+        let obs = cfg["outbounds"].as_array().unwrap();
+        assert!(
+            obs.iter().any(|o| o["tag"] == "GoodReality"),
+            "valid Reality node must remain"
+        );
+        assert!(
+            !obs.iter().any(|o| o["tag"] == "BadReality"),
+            "invalid Reality public_key leaf must be skipped"
+        );
+        let sel = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-General")
+            .expect("parent section selector must stay active");
+        let members = sel["outbounds"].as_array().unwrap();
+        assert_eq!(members, &vec![json!("GoodReality")]);
+        assert!(
+            cfg["route"]["rules"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["outbound"] == "sel-General"),
+            "parent section routing rules must remain intact"
+        );
     }
 }

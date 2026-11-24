@@ -1,4 +1,5 @@
 import { renderChevronDownIcon } from '../../../icons';
+import { tr } from '../../helpers/i18n';
 import { renderDnsBlockStatsPanel } from './dnsBlockStatsPanel';
 
 export function render() {
@@ -30,6 +31,15 @@ export function render() {
                 type: 'button',
               },
               `${_('Closed')} 0`,
+            ),
+            E(
+              'button',
+              {
+                id: 'monitoring-tab-blocked',
+                class: 'btn cbi-button tachyon_monitoring-page__tab',
+                type: 'button',
+              },
+              `${tr('Заблокированные', 'Blocked')} 0`,
             ),
           ]),
           E('div', { class: 'tachyon_monitoring-page__filters' }, [

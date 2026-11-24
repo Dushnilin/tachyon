@@ -1380,4 +1380,69 @@ body.dark .tachyon_monitoring-page {
     border: 1px dashed var(--tachyon-monitoring-divider-color);
     border-radius: 6px;
 }
+
+.tachyon_monitoring-page__dns-panel--hidden,
+.tachyon_monitoring-page__body--hidden,
+.tachyon_monitoring-page__filters--hidden,
+.tachyon_monitoring-page__actions--hidden {
+    display: none !important;
+}
+
+.tachyon_monitoring-page__dns-search {
+    min-width: 210px;
+}
+
+.tachyon_monitoring-page__dns-client-row {
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.tachyon_monitoring-page__dns-client-row:hover {
+    background: var(--tachyon-monitoring-soft-bg);
+}
+
+.tachyon_monitoring-page__dns-client-row.is-selected {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.tachyon_monitoring-page__dns-hits-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 112px;
+}
+
+.tachyon_monitoring-page__dns-pct {
+    font-size: 11px;
+    opacity: 0.72;
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tachyon_monitoring-page__dns-bar-track {
+    width: 64px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--tachyon-monitoring-soft-bg);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.tachyon_monitoring-page__dns-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: #3b82f6;
+}
+
+.tachyon_monitoring-page__dns-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+}
 `;

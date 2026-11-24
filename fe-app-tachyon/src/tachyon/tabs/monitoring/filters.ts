@@ -11,7 +11,7 @@ import {
   parseStartedAt,
 } from './formatters';
 
-export type MonitoringTabId = 'active' | 'closed';
+export type MonitoringTabId = 'active' | 'closed' | 'blocked';
 export type ConnectionDataSource = 'core' | 'conntrack';
 export type ConnectionSourceFilter = 'all' | 'core' | 'conntrack';
 

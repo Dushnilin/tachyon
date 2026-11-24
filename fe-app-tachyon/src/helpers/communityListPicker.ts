@@ -625,6 +625,21 @@ export function attachCommunityListPicker(
     return;
   }
 
+  const latestValuesBySection = new Map<string, string[]>();
+  const pickerOverrideBySection = new Map<string, boolean>();
+  const origFormvalue = option.formvalue;
+  option.formvalue = function (section_id: string) {
+    const origVal =
+      typeof origFormvalue === 'function'
+        ? origFormvalue.call(this, section_id)
+        : undefined;
+    const tracked = latestValuesBySection.get(section_id);
+    if (tracked !== undefined && pickerOverrideBySection.get(section_id)) {
+      return [...tracked];
+    }
+    return origVal;
+  };
+
   option.renderWidget = function (
     section_id: string,
     option_index: number,
@@ -644,6 +659,9 @@ export function attachCommunityListPicker(
         : new Set<string>();
 
       let activeCategory = 'popular';
+      let syncingFromPicker = false;
+      pickerOverrideBySection.delete(section_id);
+      latestValuesBySection.delete(section_id);
 
       const { showHint, hideHint } = createInteractiveHintBanner();
 
@@ -659,6 +677,10 @@ export function attachCommunityListPicker(
         } catch (_e) {
           /* ignore */
         }
+        const tracked = latestValuesBySection.get(section_id);
+        if (tracked !== undefined && pickerOverrideBySection.get(section_id)) {
+          return [...tracked];
+        }
         if (Array.isArray(cfgvalue))
           return cfgvalue.map(String).filter(Boolean);
         if (typeof cfgvalue === 'string' && cfgvalue.trim()) {
@@ -668,10 +690,16 @@ export function attachCommunityListPicker(
       };
 
       const setValues = (nextValues: string[]) => {
+        const cleanNext = Array.from(
+          new Set(nextValues.map(String).filter(Boolean)),
+        );
+        latestValuesBySection.set(section_id, cleanNext);
+        pickerOverrideBySection.set(section_id, true);
+        syncingFromPicker = true;
         try {
           const uiEl = this.getUIElement(section_id);
-          if (uiEl && typeof uiEl.getValue === 'function') {
-            uiEl.setValue(nextValues);
+          if (uiEl && typeof uiEl.setValue === 'function') {
+            uiEl.setValue(cleanNext);
             if (uiEl.node) {
               uiEl.node.dispatchEvent(
                 new CustomEvent('widget-change', { bubbles: true }),
@@ -679,10 +707,12 @@ export function attachCommunityListPicker(
             }
           }
           if (typeof this.onchange === 'function') {
-            this.onchange(new Event('change'), section_id, nextValues);
+            this.onchange(new Event('change'), section_id, cleanNext);
           }
         } catch (_e) {
           /* ignore */
+        } finally {
+          syncingFromPicker = false;
         }
         syncChipStates();
         decorateNativeDynamicListItems();
@@ -1094,19 +1124,30 @@ export function attachCommunityListPicker(
       setTimeout(attachToDom, 0);
 
       if (widgetNode instanceof HTMLElement) {
-        widgetNode.addEventListener('click', () => {
+        const handleNativeMutation = () => {
+          if (syncingFromPicker) return;
+          pickerOverrideBySection.set(section_id, false);
+          latestValuesBySection.delete(section_id);
+        };
+        widgetNode.addEventListener('click', (ev: Event) => {
+          const target = ev.target as HTMLElement | null;
+          if (target && !target.closest('.tachyon-ruleset-picker')) {
+            handleNativeMutation();
+          }
           setTimeout(() => {
             syncChipStates();
             decorateNativeDynamicListItems();
           }, 30);
         });
         widgetNode.addEventListener('change', () => {
+          handleNativeMutation();
           setTimeout(() => {
             syncChipStates();
             decorateNativeDynamicListItems();
           }, 30);
         });
         widgetNode.addEventListener('cbi-dynlist-change', () => {
+          handleNativeMutation();
           setTimeout(() => {
             syncChipStates();
             decorateNativeDynamicListItems();

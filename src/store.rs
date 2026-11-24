@@ -1584,6 +1584,44 @@ pub struct RoutingSection {
     pub prefix_color: String,
     #[serde(default)]
     pub dashboard_filter_mode: String,
+    #[serde(default)]
+    pub dashboard_detect_server_country: String,
+    #[serde(default)]
+    pub dashboard_include_countries: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_outbounds: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_regex: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_groups: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_proxy_parameters: bool,
+    #[serde(default)]
+    pub dashboard_include_protocols: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_transports: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_securities: Vec<String>,
+    #[serde(default)]
+    pub dashboard_include_ports: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_countries: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_outbounds: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_regex: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_groups: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_proxy_parameters: bool,
+    #[serde(default)]
+    pub dashboard_exclude_protocols: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_transports: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_securities: Vec<String>,
+    #[serde(default)]
+    pub dashboard_exclude_ports: Vec<String>,
     /// `proxy`, `desync`, `zapret2`, `zapret`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `awg`, `warp`, `tailscale`, `openvpn`, `openconnect`, `tewfai`, `direct`, `block`, `hosts`, `dns`
     #[serde(default, alias = "action_mode")]
     pub connection_type: String,
@@ -1639,6 +1677,10 @@ pub struct RoutingSection {
     pub section_include_regex: Vec<String>,
     #[serde(default)]
     pub section_exclude_regex: Vec<String>,
+    #[serde(default)]
+    pub section_include_outbounds: Vec<String>,
+    #[serde(default)]
+    pub section_exclude_outbounds: Vec<String>,
     #[serde(default)]
     pub include_countries: Vec<String>,
     #[serde(default)]
@@ -5081,13 +5123,13 @@ impl RouterStoreData {
                         self.settings.bootstrap_dns_servers = boot_srvs;
                     }
                     let fb_srvs = b.list("dns_fallback_server");
-                    if !fb_srvs.is_empty()
-                        || (reset_omitted_fields && has_key("dns_fallback_server"))
-                    {
+                    if !fb_srvs.is_empty() || reset_omitted_fields {
                         self.settings.dns_fallback_servers = fb_srvs;
                     }
                     if let Some(v) = b.opt("fallback_dns_server") {
                         self.settings.fallback_dns_server = v.to_string();
+                    } else if reset_omitted_fields {
+                        self.settings.fallback_dns_server.clear();
                     }
                     if let Some(v) = b.opt("dns_strategy") {
                         self.settings.dns_strategy = normalize_dns_strategy(v);
@@ -5320,6 +5362,27 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("wan_failover_enabled") {
                         self.settings.wan_failover_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("wan_failover_failure_threshold")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.wan_failover_failure_threshold = v;
+                    }
+                    if let Some(v) = b
+                        .opt("wan_failover_recovery_threshold")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.wan_failover_recovery_threshold = v;
+                    }
+                    if let Some(v) = b.opt("section_failover_enabled") {
+                        self.settings.section_failover_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("section_failover_threshold")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.section_failover_threshold = v;
                     }
                     if let Some(v) = b.opt("wan_failover_primary") {
                         self.settings.wan_failover_primary = v.to_string();
@@ -6565,6 +6628,32 @@ impl RouterStoreData {
                             .opt("dashboard_filter_mode")
                             .unwrap_or("")
                             .to_string(),
+                        dashboard_detect_server_country: b
+                            .opt("dashboard_detect_server_country")
+                            .unwrap_or("")
+                            .to_string(),
+                        dashboard_include_countries: b.list("dashboard_include_countries"),
+                        dashboard_include_outbounds: b.raw_list("dashboard_include_outbounds"),
+                        dashboard_include_regex: b.raw_list("dashboard_include_regex"),
+                        dashboard_include_groups: b.list("dashboard_include_groups"),
+                        dashboard_include_proxy_parameters: b
+                            .opt("dashboard_include_proxy_parameters")
+                            .is_some_and(parse_bool),
+                        dashboard_include_protocols: b.list("dashboard_include_protocols"),
+                        dashboard_include_transports: b.list("dashboard_include_transports"),
+                        dashboard_include_securities: b.list("dashboard_include_securities"),
+                        dashboard_include_ports: b.list("dashboard_include_ports"),
+                        dashboard_exclude_countries: b.list("dashboard_exclude_countries"),
+                        dashboard_exclude_outbounds: b.raw_list("dashboard_exclude_outbounds"),
+                        dashboard_exclude_regex: b.raw_list("dashboard_exclude_regex"),
+                        dashboard_exclude_groups: b.list("dashboard_exclude_groups"),
+                        dashboard_exclude_proxy_parameters: b
+                            .opt("dashboard_exclude_proxy_parameters")
+                            .is_some_and(parse_bool),
+                        dashboard_exclude_protocols: b.list("dashboard_exclude_protocols"),
+                        dashboard_exclude_transports: b.list("dashboard_exclude_transports"),
+                        dashboard_exclude_securities: b.list("dashboard_exclude_securities"),
+                        dashboard_exclude_ports: b.list("dashboard_exclude_ports"),
                         connection_type: conn_type.to_string(),
                         action: raw_action.to_string(),
                         condition_refs: b.list("condition_refs"),
@@ -6605,6 +6694,8 @@ impl RouterStoreData {
                         section_exclude_countries: b.list("section_exclude_countries"),
                         section_include_regex: b.raw_list("section_include_regex"),
                         section_exclude_regex: b.raw_list("section_exclude_regex"),
+                        section_include_outbounds: b.raw_list("section_include_outbounds"),
+                        section_exclude_outbounds: b.raw_list("section_exclude_outbounds"),
                         include_countries: b.list("include_countries"),
                         exclude_countries: b.list("exclude_countries"),
                         include_prefixes: b.list("include_prefixes"),
@@ -8101,6 +8192,41 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
             .into_iter()
             .map(|val| ("domain", val))
             .collect::<Vec<_>>();
+        let is_desync_sec = matches!(
+            sec.connection_type.as_str(),
+            "desync" | "zapret" | "zapret2"
+        ) || matches!(sec.action.as_str(), "desync" | "zapret" | "zapret2");
+        let sec_skip: &[&str] = if is_desync_sec {
+            &["domains"]
+        } else {
+            &["domains", "nfqws2_opt", "nfqws_opt", "byedpi_cmd_opts"]
+        };
+        let sec_omit: &[&str] = if is_desync_sec {
+            &[
+                "domain",
+                "domains",
+                "domain_suffix",
+                "domain_suffix_text",
+                "domain_text",
+                "domain_keyword",
+                "domain_regex",
+                "user_domains_text",
+            ]
+        } else {
+            &[
+                "domain",
+                "domains",
+                "domain_suffix",
+                "domain_suffix_text",
+                "domain_text",
+                "domain_keyword",
+                "domain_regex",
+                "user_domains_text",
+                "nfqws2_opt",
+                "nfqws_opt",
+                "byedpi_cmd_opts",
+            ]
+        };
         out.insert(
             sec.id.clone(),
             struct_to_json_section(
@@ -8119,17 +8245,8 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     ("fptn_bypass_method", "bypass_method"),
                     ("fptn_preferred_server", "preferred_server"),
                 ],
-                &["domains"],
-                &[
-                    "domain",
-                    "domains",
-                    "domain_suffix",
-                    "domain_suffix_text",
-                    "domain_text",
-                    "domain_keyword",
-                    "domain_regex",
-                    "user_domains_text",
-                ],
+                sec_skip,
+                sec_omit,
                 ex_obj,
                 &domain_extra,
             ),
@@ -8190,6 +8307,20 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         } else {
             Vec::new()
         };
+        let is_desync_src = matches!(
+            src.source_type.trim().to_ascii_lowercase().as_str(),
+            "desync" | "zapret" | "zapret2"
+        );
+        let src_skip: &[&str] = if is_desync_src {
+            &["cached_nodes"]
+        } else {
+            &["cached_nodes", "nfqws2_opt", "nfqws_opt", "byedpi_cmd_opts"]
+        };
+        let src_omit: &[&str] = if is_desync_src {
+            &["url"]
+        } else {
+            &["url", "nfqws2_opt", "nfqws_opt", "byedpi_cmd_opts"]
+        };
         out.insert(
             src.id.clone(),
             struct_to_json_section(
@@ -8202,8 +8333,8 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                     ("fptn_bypass_method", "bypass_method"),
                     ("fptn_preferred_server", "preferred_server"),
                 ],
-                &["cached_nodes"],
-                &["url"],
+                src_skip,
+                src_omit,
                 existing_obj(&src.id),
                 &src_fptn_extra,
             ),
@@ -9731,6 +9862,8 @@ pub struct LiveTelemetry {
     pub recent_flight_failures: usize,
     pub blackboxes: Vec<BlackboxSummary>,
     pub incidents: Vec<IncidentRecord>,
+    #[serde(default)]
+    pub last_store_recovery_warning: Option<String>,
 }
 
 impl LiveTelemetry {
@@ -9840,6 +9973,229 @@ pub fn unix_now_u64() -> u64 {
         .as_secs()
 }
 
+pub fn file_mtime_ns(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+fn file_sha256_hex(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    Some(crypto_gen::sha256_bytes_hex(&bytes))
+}
+
+fn is_json_value_empty(v: &Value) -> bool {
+    match v {
+        Value::Null => true,
+        Value::String(s) => s.trim().is_empty(),
+        Value::Array(a) => a.is_empty(),
+        Value::Object(m) => m.is_empty(),
+        _ => false,
+    }
+}
+
+fn dedup_object_alias_keys(
+    obj: &mut serde_json::Map<String, Value>,
+    pairs: &[(&str, &[&str])],
+) -> usize {
+    let mut fixed = 0usize;
+    for &(canonical, aliases) in pairs {
+        let has_canonical = obj.contains_key(canonical);
+        let present_aliases: Vec<&str> = aliases
+            .iter()
+            .copied()
+            .filter(|a| obj.contains_key(*a))
+            .collect();
+        let total_present = usize::from(has_canonical) + present_aliases.len();
+        if total_present <= 1 {
+            continue;
+        }
+        let mut chosen = if has_canonical {
+            obj.get(canonical).cloned()
+        } else {
+            None
+        };
+        for alias in present_aliases {
+            if let Some(alias_val) = obj.remove(alias) {
+                fixed += 1;
+                if chosen.is_none()
+                    || (chosen.as_ref().is_some_and(is_json_value_empty)
+                        && !is_json_value_empty(&alias_val))
+                {
+                    chosen = Some(alias_val);
+                }
+            }
+        }
+        if let Some(val) = chosen {
+            obj.insert(canonical.to_string(), val);
+        }
+    }
+    fixed
+}
+
+/// Remove conflicting alias keys when both canonical and aliased field names are present
+/// in the same JSON object (e.g. `label` + `name`), preventing strict `serde` duplicate-field failures.
+pub fn sanitize_duplicate_alias_keys(val: &mut Value) -> usize {
+    const SETTINGS_ALIASES: &[(&str, &[&str])] = &[
+        ("accent_theme", &["theme_accent"]),
+        ("smart_queue", &["sqm_enabled"]),
+        ("isolate_p2p", &["torrent_isolation"]),
+        ("game_console_optimizer", &["console_gaming_mode"]),
+        ("torrserver_direct_enabled", &["torrserver_direct"]),
+        ("snapshot_enabled", &["snapshot_enable"]),
+        ("snapshot_max_count", &["snapshot_max"]),
+    ];
+    const SECTION_ALIASES: &[(&str, &[&str])] = &[
+        ("label", &["name"]),
+        ("connection_type", &["action_mode"]),
+        ("outbound_source_refs", &["source_refs"]),
+        ("exclude_domains", &["excluded_domains"]),
+        ("fully_routed_ips", &["client_ips"]),
+        ("routed_dns_servers", &["routed_dns_server"]),
+        ("active_selected_tag", &["selected_node_tag"]),
+        ("tailscale_use_exit_node", &["tailscale_exit_node"]),
+    ];
+    const CONDITION_ALIASES: &[(&str, &[&str])] = &[
+        ("name", &["label"]),
+        ("condition_type", &["operator"]),
+        ("exclude_domains", &["excluded_domains"]),
+        ("user_subnets", &["ip_cidrs"]),
+    ];
+    const SOURCE_ALIASES: &[(&str, &[&str])] = &[
+        ("name", &["display_name", "label"]),
+        ("tailscale_use_exit_node", &["tailscale_exit_node"]),
+    ];
+    const BALANCER_ALIASES: &[(&str, &[&str])] = &[
+        ("name", &["label"]),
+        ("testing_url", &["probe_url"]),
+        ("check_interval", &["interval_secs"]),
+        ("tolerance", &["tolerance_ms"]),
+        ("sticky_hash", &["sticky_hash_field"]),
+    ];
+    const GROUP_ALIASES: &[(&str, &[&str])] = &[("name", &["display_name", "label"])];
+    const SERVER_ALIASES: &[(&str, &[&str])] = &[
+        ("label", &["name"]),
+        ("country", &["server_country"]),
+        ("server_uuid", &["client_uuid"]),
+        ("password", &["server_password"]),
+        ("method", &["ss_method", "shadowsocks_method"]),
+        ("tls_server_name", &["tls_domain"]),
+        ("reality_handshake_server", &["reality_sni"]),
+        ("mtproto_adtag", &["adtag"]),
+        ("tailscale_use_exit_node", &["tailscale_exit_node"]),
+    ];
+    const PROFILE_ALIASES: &[(&str, &[&str])] = &[
+        ("label", &["name"]),
+        ("device_ips", &["device_macs", "device_ip"]),
+        ("blocked_domains", &["custom_blocked_domains"]),
+        ("schedule_ref", &["schedule_window"]),
+    ];
+    const SCHEDULE_ALIASES: &[(&str, &[&str])] = &[
+        ("label", &["name"]),
+        ("profile_refs", &["profile"]),
+        ("device_ips", &["device_ip"]),
+        ("target", &["target_id"]),
+    ];
+    const TELEGRAM_ALIASES: &[(&str, &[&str])] = &[
+        ("admin_ids", &["allowed_chat_ids", "admin_id"]),
+        ("poll_interval", &["polling_interval"]),
+        (
+            "notify_crash",
+            &["notify_on_core_restart", "notify_core_crash"],
+        ),
+        (
+            "notify_server_switch",
+            &["notify_on_wan_drop", "notify_wan_failover"],
+        ),
+    ];
+
+    let Some(root) = val.as_object_mut() else {
+        return 0;
+    };
+    let mut fixed = 0usize;
+
+    if let Some(obj) = root.get_mut("settings").and_then(Value::as_object_mut) {
+        fixed += dedup_object_alias_keys(obj, SETTINGS_ALIASES);
+    }
+    if let Some(obj) = root.get_mut("telegram").and_then(Value::as_object_mut) {
+        fixed += dedup_object_alias_keys(obj, TELEGRAM_ALIASES);
+    }
+
+    type ArrayAliasSpec<'a> = (&'a str, &'a [(&'a str, &'a [&'a str])]);
+    let array_specs: &[ArrayAliasSpec<'_>] = &[
+        ("sections", SECTION_ALIASES),
+        ("conditions", CONDITION_ALIASES),
+        ("outbound_sources", SOURCE_ALIASES),
+        ("balancers", BALANCER_ALIASES),
+        ("outbound_groups", GROUP_ALIASES),
+        ("servers", SERVER_ALIASES),
+        ("profiles", PROFILE_ALIASES),
+        ("schedules", SCHEDULE_ALIASES),
+    ];
+    for &(arr_key, pairs) in array_specs {
+        if let Some(arr) = root.get_mut(arr_key).and_then(Value::as_array_mut) {
+            for item in arr.iter_mut() {
+                if let Some(obj) = item.as_object_mut() {
+                    fixed += dedup_object_alias_keys(obj, pairs);
+                }
+            }
+        }
+    }
+
+    fixed
+}
+
+/// Parse `RouterStoreData` strictly first; if that fails due to duplicate keys or
+/// canonical+alias collisions, normalize via `serde_json::Value` and retry.
+/// Returns `(parsed_store, normalized_count)` where `normalized_count > 0` indicates
+/// duplicate/alias keys were cleaned up without losing user data.
+pub fn parse_store_from_str_tolerant(raw: &str) -> anyhow::Result<(RouterStoreData, usize)> {
+    match serde_json::from_str::<RouterStoreData>(raw) {
+        Ok(parsed) => Ok((parsed, 0)),
+        Err(strict_err) => {
+            let mut val = serde_json::from_str::<Value>(raw).map_err(|_| strict_err)?;
+            let fixed = sanitize_duplicate_alias_keys(&mut val);
+            let parsed = serde_json::from_value::<RouterStoreData>(val)?;
+            Ok((parsed, fixed.max(1)))
+        }
+    }
+}
+
+fn save_rejected_store_backup(path: &Path, corrupt_bytes: &[u8]) -> Option<PathBuf> {
+    if corrupt_bytes.is_empty() {
+        return None;
+    }
+    let corrupt_backup = path.with_file_name("tachyon.json.corrupt");
+    let _ = crate::crypto_gen::write_file_if_changed(&corrupt_backup, corrupt_bytes);
+
+    let ts = unix_now_u64();
+    let rejected_name = format!("tachyon.json.rejected.{ts}");
+    let rejected_path = path.with_file_name(&rejected_name);
+    let _ = crate::crypto_gen::write_file_if_changed(&rejected_path, corrupt_bytes);
+
+    if let Some(parent) = path.parent()
+        && let Ok(entries) = std::fs::read_dir(parent)
+    {
+        let mut rejected_files: Vec<(String, PathBuf)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let fname = e.file_name().to_string_lossy().to_string();
+                fname
+                    .starts_with("tachyon.json.rejected.")
+                    .then(|| (fname, e.path()))
+            })
+            .collect();
+        rejected_files.sort_by(|a, b| b.0.cmp(&a.0));
+        for (_, old_path) in rejected_files.into_iter().skip(3) {
+            let _ = std::fs::remove_file(old_path);
+        }
+    }
+    Some(rejected_path)
+}
+
 pub struct AppState {
     pub path: PathBuf,
     pub lkg_path: PathBuf,
@@ -9853,6 +10209,8 @@ pub struct AppState {
     pub local_ipc_token: String,
     pub dirty: AtomicBool,
     pub last_telemetry_access_ts: PortableAtomicU64,
+    pub last_disk_mtime_ns: PortableAtomicU64,
+    pub last_disk_sha256: std::sync::RwLock<String>,
 }
 
 impl AppState {
@@ -9865,40 +10223,235 @@ impl AppState {
         let last = self.last_telemetry_access_ts.load(Ordering::Acquire);
         last != 0 && now_secs.saturating_sub(last) <= window_secs
     }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::Acquire)
+    }
+
+    pub fn refresh_disk_fingerprint(&self) {
+        self.last_disk_mtime_ns
+            .store(file_mtime_ns(&self.path), Ordering::Release);
+        if let Some(sha) = file_sha256_hex(&self.path)
+            && let Ok(mut guard) = self.last_disk_sha256.write()
+        {
+            *guard = sha;
+        }
+    }
+
+    pub fn is_disk_modified_externally(&self) -> bool {
+        if !self.path.exists() {
+            return false;
+        }
+        let Some(cur_sha) = file_sha256_hex(&self.path) else {
+            return false;
+        };
+        let prev_sha = self
+            .last_disk_sha256
+            .read()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        if prev_sha.is_empty() {
+            let cur_mtime = file_mtime_ns(&self.path);
+            let prev_mtime = self.last_disk_mtime_ns.load(Ordering::Acquire);
+            return prev_mtime != 0 && cur_mtime != prev_mtime;
+        }
+        cur_sha != prev_sha
+    }
 }
 
-fn try_load_store_raw_and_parsed(path: &Path) -> anyhow::Result<(String, RouterStoreData)> {
+fn try_load_store_raw_and_parsed(path: &Path) -> anyhow::Result<(String, RouterStoreData, usize)> {
     let raw = std::fs::read_to_string(path)?;
-    let parsed = serde_json::from_str::<RouterStoreData>(&raw)?;
-    Ok((raw, parsed))
+    let (parsed, normalized) = parse_store_from_str_tolerant(&raw)?;
+    if normalized > 0 {
+        eprintln!(
+            "[tachyon] normalized {normalized} duplicate/alias key(s) in {} without losing store changes",
+            path.display()
+        );
+    }
+    Ok((raw, parsed, normalized))
 }
 
 fn recover_or_load_existing_store(
     path: &Path,
     lkg_path: &Path,
-) -> anyhow::Result<(String, RouterStoreData, bool)> {
+) -> anyhow::Result<(String, RouterStoreData, bool, Option<String>)> {
     match try_load_store_raw_and_parsed(path) {
-        Ok((raw, parsed)) => Ok((raw, parsed, false)),
+        Ok((raw, parsed, normalized)) => Ok((raw, parsed, normalized > 0, None)),
         Err(primary_err) => {
-            if let Ok(corrupt_bytes) = std::fs::read(path)
-                && !corrupt_bytes.is_empty()
-            {
-                let corrupt_backup = path.with_file_name("tachyon.json.corrupt");
-                let _ = crate::crypto_gen::write_file_if_changed(&corrupt_backup, &corrupt_bytes);
-            }
+            let rejected_path = std::fs::read(path)
+                .ok()
+                .and_then(|bytes| save_rejected_store_backup(path, &bytes));
             if lkg_path.exists()
-                && let Ok((lkg_raw, lkg_parsed)) = try_load_store_raw_and_parsed(lkg_path)
+                && let Ok((lkg_raw, lkg_parsed, _)) = try_load_store_raw_and_parsed(lkg_path)
             {
-                eprintln!(
-                    "[tachyon] store {} unreadable ({primary_err:#}); recovering from {}",
+                let saved_hint = rejected_path
+                    .as_ref()
+                    .map(|p| format!("; отвергнутый файл сохранён в {}", p.display()))
+                    .unwrap_or_default();
+                let warn_msg = format!(
+                    "Хранилище {} повреждено ({primary_err:#}); выполнен откат на {}{saved_hint}",
                     path.display(),
                     lkg_path.display()
                 );
-                return Ok((lkg_raw, lkg_parsed, true));
+                eprintln!("[tachyon] {warn_msg}");
+                return Ok((lkg_raw, lkg_parsed, true, Some(warn_msg)));
             }
             Err(primary_err)
         }
     }
+}
+
+pub(crate) fn normalize_loaded_store_data(
+    parsed: &mut RouterStoreData,
+    raw: &str,
+    path: &Path,
+) -> bool {
+    let raw_val = serde_json::from_str::<serde_json::Value>(raw).ok();
+    let raw_has_ipv6_mode = raw_val
+        .as_ref()
+        .and_then(|v| v.pointer("/settings/ipv6_mode"))
+        .and_then(|v| v.as_str())
+        .is_some();
+    let raw_enable_ipv6 = raw_val
+        .as_ref()
+        .and_then(|v| v.pointer("/settings/enable_ipv6"))
+        .and_then(|v| v.as_bool());
+    let mut migrated = false;
+
+    if !raw_has_ipv6_mode && let Some(en) = raw_enable_ipv6 {
+        parsed.settings.ipv6_mode = if en {
+            "dual_stack".to_string()
+        } else {
+            "off".to_string()
+        };
+        migrated = true;
+    }
+    let norm_ui = normalize_ui_mode(&parsed.settings.ui_mode);
+    if norm_ui != parsed.settings.ui_mode {
+        parsed.settings.ui_mode = norm_ui;
+        migrated = true;
+    }
+    let norm_auth_mode = normalize_panel_auth_mode(&parsed.settings.panel_auth_mode);
+    if norm_auth_mode != parsed.settings.panel_auth_mode {
+        parsed.settings.panel_auth_mode = norm_auth_mode;
+        migrated = true;
+    }
+    let norm_v6 = normalize_ipv6_mode(&parsed.settings.ipv6_mode);
+    if norm_v6 != parsed.settings.ipv6_mode {
+        parsed.settings.ipv6_mode = norm_v6;
+        migrated = true;
+    }
+    if parsed.settings.ipv6_mode == "dual_stack" && !parsed.settings.enable_ipv6 {
+        parsed.settings.enable_ipv6 = true;
+        migrated = true;
+    } else if parsed.settings.ipv6_mode == "off" && parsed.settings.enable_ipv6 {
+        parsed.settings.enable_ipv6 = false;
+        migrated = true;
+    }
+    let norm_dns = normalize_dns_strategy(&parsed.settings.dns_strategy);
+    if norm_dns != parsed.settings.dns_strategy {
+        parsed.settings.dns_strategy = norm_dns;
+        migrated = true;
+    }
+    let norm_tcp = normalize_tcp_profile(&parsed.settings.tcp_profile);
+    if norm_tcp != parsed.settings.tcp_profile {
+        parsed.settings.tcp_profile = norm_tcp;
+        migrated = true;
+    }
+    let safe_cache = sanitize_cache_path(&parsed.settings.cache_path);
+    if safe_cache != parsed.settings.cache_path {
+        parsed.settings.cache_path = safe_cache;
+        migrated = true;
+    }
+    let norm_log = normalize_core_log_level(&parsed.settings.log_level);
+    if norm_log != parsed.settings.log_level {
+        parsed.settings.log_level = norm_log.to_string();
+        migrated = true;
+    }
+
+    // If store still matches the unedited initial template (e.g. a package hook
+    // initialized `tachyon.json` before legacy backup/config was restored) and has not
+    // yet recorded `legacy_uci_imported_v1`, perform a one-shot UCI import.
+    let already_imported = parsed
+        .applied_migrations
+        .iter()
+        .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION);
+    if !already_imported
+        && parsed.is_seeded_default_store()
+        && (Path::new("/etc/config/tachyon").exists() || Path::new(LEGACY_UCI_BACKUP_PATH).exists())
+    {
+        let count = parsed.import_legacy_router_files();
+        if count > 0 {
+            migrated = true;
+        }
+    }
+    if parsed.apply_relax_probe_intervals_v1() {
+        migrated = true;
+    }
+    if parsed.apply_fail_closed_auto_defaults() {
+        migrated = true;
+    }
+    if parsed.apply_ai_lists_1_8() {
+        migrated = true;
+    }
+    if parsed.apply_strip_redundant_composite_parent_domains_v1() {
+        migrated = true;
+    }
+    let sections_json = path.parent().map(|p| p.join("config_sections.json"));
+    if parsed.apply_separate_condition_domains_v1(sections_json.as_deref()) {
+        migrated = true;
+    }
+    if parsed.settings.subscription_engine != "core" {
+        parsed.settings.subscription_engine = "core".to_string();
+        migrated = true;
+    }
+    for src in &mut parsed.outbound_sources {
+        if src.source_type == "tewfai" && !src.username.is_empty() {
+            if src.uuid.is_empty() {
+                src.uuid = std::mem::take(&mut src.username);
+            } else {
+                src.username.clear();
+            }
+            migrated = true;
+        }
+        if src.subscription_engine != "core" {
+            src.subscription_engine = "core".to_string();
+            migrated = true;
+        }
+        let dec_title = decode_sub_header_value(&src.sub_title);
+        if dec_title != src.sub_title {
+            src.sub_title = dec_title;
+            migrated = true;
+        }
+        let dec_announce = decode_sub_header_value(&src.sub_announce);
+        if dec_announce != src.sub_announce {
+            src.sub_announce = dec_announce;
+            migrated = true;
+        }
+    }
+    // Strip stale legacy DPI option fields from non-desync sections so they never
+    // trigger false section errors or phantom badges in UI.
+    for sec in &mut parsed.sections {
+        if !matches!(
+            sec.connection_type.as_str(),
+            "desync" | "zapret" | "zapret2"
+        ) && !matches!(sec.action.as_str(), "desync" | "zapret" | "zapret2")
+        {
+            if !sec.nfqws2_opt.is_empty() {
+                sec.nfqws2_opt.clear();
+                migrated = true;
+            }
+            if !sec.nfqws_opt.is_empty() {
+                sec.nfqws_opt.clear();
+                migrated = true;
+            }
+            if !sec.byedpi_cmd_opts.is_empty() {
+                sec.byedpi_cmd_opts.clear();
+                migrated = true;
+            }
+        }
+    }
+    migrated
 }
 
 impl AppState {
@@ -9911,133 +10464,12 @@ impl AppState {
         }
         let lkg_path = path.with_file_name("tachyon.known_good.json");
 
+        let mut recovery_warning: Option<String> = None;
         let data = if path.exists() {
-            let (raw, mut parsed, recovered_from_lkg) =
+            let (raw, mut parsed, needs_rewrite, warn_opt) =
                 recover_or_load_existing_store(&path, &lkg_path)?;
-            let raw_val = serde_json::from_str::<serde_json::Value>(&raw).ok();
-            let raw_has_ipv6_mode = raw_val
-                .as_ref()
-                .and_then(|v| v.pointer("/settings/ipv6_mode"))
-                .and_then(|v| v.as_str())
-                .is_some();
-            let raw_enable_ipv6 = raw_val
-                .as_ref()
-                .and_then(|v| v.pointer("/settings/enable_ipv6"))
-                .and_then(|v| v.as_bool());
-            let mut migrated = recovered_from_lkg;
-
-            if !raw_has_ipv6_mode && let Some(en) = raw_enable_ipv6 {
-                parsed.settings.ipv6_mode = if en {
-                    "dual_stack".to_string()
-                } else {
-                    "off".to_string()
-                };
-                migrated = true;
-            }
-            let norm_ui = normalize_ui_mode(&parsed.settings.ui_mode);
-            if norm_ui != parsed.settings.ui_mode {
-                parsed.settings.ui_mode = norm_ui;
-                migrated = true;
-            }
-            let norm_auth_mode = normalize_panel_auth_mode(&parsed.settings.panel_auth_mode);
-            if norm_auth_mode != parsed.settings.panel_auth_mode {
-                parsed.settings.panel_auth_mode = norm_auth_mode;
-                migrated = true;
-            }
-            let norm_v6 = normalize_ipv6_mode(&parsed.settings.ipv6_mode);
-            if norm_v6 != parsed.settings.ipv6_mode {
-                parsed.settings.ipv6_mode = norm_v6;
-                migrated = true;
-            }
-            if parsed.settings.ipv6_mode == "dual_stack" && !parsed.settings.enable_ipv6 {
-                parsed.settings.enable_ipv6 = true;
-                migrated = true;
-            } else if parsed.settings.ipv6_mode == "off" && parsed.settings.enable_ipv6 {
-                parsed.settings.enable_ipv6 = false;
-                migrated = true;
-            }
-            let norm_dns = normalize_dns_strategy(&parsed.settings.dns_strategy);
-            if norm_dns != parsed.settings.dns_strategy {
-                parsed.settings.dns_strategy = norm_dns;
-                migrated = true;
-            }
-            let norm_tcp = normalize_tcp_profile(&parsed.settings.tcp_profile);
-            if norm_tcp != parsed.settings.tcp_profile {
-                parsed.settings.tcp_profile = norm_tcp;
-                migrated = true;
-            }
-            let safe_cache = sanitize_cache_path(&parsed.settings.cache_path);
-            if safe_cache != parsed.settings.cache_path {
-                parsed.settings.cache_path = safe_cache;
-                migrated = true;
-            }
-            let norm_log = normalize_core_log_level(&parsed.settings.log_level);
-            if norm_log != parsed.settings.log_level {
-                parsed.settings.log_level = norm_log.to_string();
-                migrated = true;
-            }
-
-            // If store still matches the unedited initial template (e.g. a package hook
-            // initialized `tachyon.json` before legacy backup/config was restored) and has not
-            // yet recorded `legacy_uci_imported_v1`, perform a one-shot UCI import.
-            let already_imported = parsed
-                .applied_migrations
-                .iter()
-                .any(|m| m == LEGACY_UCI_IMPORTED_MIGRATION);
-            if !already_imported
-                && parsed.is_seeded_default_store()
-                && (Path::new("/etc/config/tachyon").exists()
-                    || Path::new(LEGACY_UCI_BACKUP_PATH).exists())
-            {
-                let count = parsed.import_legacy_router_files();
-                if count > 0 {
-                    migrated = true;
-                }
-            }
-            if parsed.apply_relax_probe_intervals_v1() {
-                migrated = true;
-            }
-            if parsed.apply_fail_closed_auto_defaults() {
-                migrated = true;
-            }
-            if parsed.apply_ai_lists_1_8() {
-                migrated = true;
-            }
-            if parsed.apply_strip_redundant_composite_parent_domains_v1() {
-                migrated = true;
-            }
-            let sections_json = path.parent().map(|p| p.join("config_sections.json"));
-            if parsed.apply_separate_condition_domains_v1(sections_json.as_deref()) {
-                migrated = true;
-            }
-            if parsed.settings.subscription_engine != "core" {
-                parsed.settings.subscription_engine = "core".to_string();
-                migrated = true;
-            }
-            for src in &mut parsed.outbound_sources {
-                if src.source_type == "tewfai" && !src.username.is_empty() {
-                    if src.uuid.is_empty() {
-                        src.uuid = std::mem::take(&mut src.username);
-                    } else {
-                        src.username.clear();
-                    }
-                    migrated = true;
-                }
-                if src.subscription_engine != "core" {
-                    src.subscription_engine = "core".to_string();
-                    migrated = true;
-                }
-                let dec_title = decode_sub_header_value(&src.sub_title);
-                if dec_title != src.sub_title {
-                    src.sub_title = dec_title;
-                    migrated = true;
-                }
-                let dec_announce = decode_sub_header_value(&src.sub_announce);
-                if dec_announce != src.sub_announce {
-                    src.sub_announce = dec_announce;
-                    migrated = true;
-                }
-            }
+            recovery_warning = warn_opt;
+            let migrated = normalize_loaded_store_data(&mut parsed, &raw, &path) || needs_rewrite;
             if migrated {
                 let _ = crypto_gen::write_json_if_changed(&path, &parsed);
             }
@@ -10047,6 +10479,9 @@ impl AppState {
             let _ = crypto_gen::write_json_if_changed(&path, &default_data);
             default_data
         };
+
+        let disk_mtime = file_mtime_ns(&path);
+        let disk_sha = file_sha256_hex(&path).unwrap_or_default();
 
         let runtime_ver_path = runtime_state_dir().join("tachyon-core-version");
         let core_ver = std::fs::read_to_string(&runtime_ver_path)
@@ -10059,8 +10494,12 @@ impl AppState {
         let mut live = LiveTelemetry {
             core_version: core_ver,
             lan_devices: crate::sys_info::discover_lan_devices(),
+            last_store_recovery_warning: recovery_warning.clone(),
             ..Default::default()
         };
+        if let Some(ref warn_msg) = recovery_warning {
+            live.push_event("warn", "store", warn_msg);
+        }
         live.push_event("info", "store", "Configuration store initialized");
 
         Ok(Arc::new(Self {
@@ -10073,7 +10512,40 @@ impl AppState {
             local_ipc_token: crypto_gen::generate_alnum(32),
             dirty: AtomicBool::new(false),
             last_telemetry_access_ts: PortableAtomicU64::new(0),
+            last_disk_mtime_ns: PortableAtomicU64::new(disk_mtime),
+            last_disk_sha256: std::sync::RwLock::new(disk_sha),
         }))
+    }
+
+    /// Re-read and validate store JSON from disk (e.g. after an external edit via SSH/script).
+    /// Preserves rejected file on error without silently rolling back to `known_good`.
+    pub async fn reload_from_disk(&self) -> anyhow::Result<bool> {
+        let raw = std::fs::read_to_string(&self.path)?;
+        let (mut parsed, normalized) = match parse_store_from_str_tolerant(&raw) {
+            Ok(res) => res,
+            Err(e) => {
+                if let Ok(bytes) = std::fs::read(&self.path) {
+                    let _ = save_rejected_store_backup(&self.path, &bytes);
+                }
+                anyhow::bail!("Failed to parse {}: {e:#}", self.path.display());
+            }
+        };
+        let migrated = normalize_loaded_store_data(&mut parsed, &raw, &self.path) || normalized > 0;
+        if migrated {
+            let _ = crypto_gen::write_json_if_changed(&self.path, &parsed);
+        }
+        {
+            let mut guard = self.data.write().await;
+            *guard = parsed;
+        }
+        self.dirty.store(false, Ordering::Release);
+        self.refresh_disk_fingerprint();
+        self.live.write().await.push_event(
+            "info",
+            "store",
+            &format!("Reloaded store configuration from {}", self.path.display()),
+        );
+        Ok(true)
     }
 
     /// Save current configuration to disk only if bytes changed (NAND flash wear protection).
@@ -10081,6 +10553,7 @@ impl AppState {
         let d = self.data.read().await;
         let written = crypto_gen::write_json_if_changed(&self.path, &*d)?;
         self.dirty.store(false, Ordering::Release);
+        self.refresh_disk_fingerprint();
         Ok(written)
     }
 }
@@ -12642,5 +13115,254 @@ config outbound_source 'awg31_src'
             store.settings.yacd_secret_key.is_empty(),
             "omitted yacd_secret_key must be cleared during JSON sections save"
         );
+    }
+
+    #[test]
+    fn test_section_failover_toggle_omitted_dns_fallback_and_dashboard_filter_roundtrip() {
+        let mut store = RouterStoreData::default();
+        store.settings.section_failover_enabled = true;
+        store.settings.section_failover_threshold = 3;
+        store.settings.dns_fallback_servers = vec!["1.0.0.1".to_string(), "77.88.8.1".to_string()];
+        store.settings.fallback_dns_server = "1.0.0.1".to_string();
+
+        let payload = serde_json::json!({
+            "settings": {
+                ".type": "settings",
+                ".name": "settings",
+                "section_failover_enabled": "0",
+                "section_failover_threshold": "5",
+                "wan_failover_failure_threshold": "4",
+                "wan_failover_recovery_threshold": "6"
+            },
+            "main": {
+                ".type": "section",
+                ".name": "main",
+                "label": "Main",
+                "action": "connection",
+                "dashboard_filter_mode": "include",
+                "dashboard_include_outbounds": ["DE #1", "NL #2"]
+            }
+        });
+
+        let imported = store.import_from_json_sections(payload.as_object().unwrap());
+        assert_eq!(imported, 2);
+        assert!(!store.settings.section_failover_enabled);
+        assert_eq!(store.settings.section_failover_threshold, 5);
+        assert_eq!(store.settings.wan_failover_failure_threshold, 4);
+        assert_eq!(store.settings.wan_failover_recovery_threshold, 6);
+        assert!(
+            store.settings.dns_fallback_servers.is_empty(),
+            "omitted dns_fallback_server must stay empty after reset_omitted_fields save"
+        );
+        assert!(store.settings.fallback_dns_server.is_empty());
+
+        let main_sec = store
+            .sections
+            .iter()
+            .find(|s| s.id == "main")
+            .expect("main section");
+        assert_eq!(main_sec.dashboard_filter_mode, "include");
+        assert_eq!(
+            main_sec.dashboard_include_outbounds,
+            vec!["DE #1".to_string(), "NL #2".to_string()]
+        );
+
+        let exported = store.to_json_sections(None);
+        assert_eq!(exported["main"]["dashboard_filter_mode"], "include");
+        assert_eq!(
+            exported["main"]["dashboard_include_outbounds"],
+            serde_json::json!(["DE #1", "NL #2"])
+        );
+    }
+
+    #[test]
+    fn test_tolerant_load_dedups_conflicting_alias_keys_without_lkg_fallback() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-alias-dedup-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
+        let store_path = tmp_dir.join("tachyon.json");
+        let lkg_path = tmp_dir.join("tachyon.known_good.json");
+
+        // `known_good` has older section list; primary store has new UI edits + duplicate `label` & `name`.
+        let lkg_store = RouterStoreData::default();
+        std::fs::write(&lkg_path, serde_json::to_string_pretty(&lkg_store).unwrap())
+            .expect("write known_good");
+
+        let mut primary_val = serde_json::to_value(RouterStoreData::default()).unwrap();
+        let mut custom_sec = serde_json::to_value(RoutingSection {
+            id: "CustomUI".to_string(),
+            enabled: true,
+            label: "New UI Section".to_string(),
+            connection_type: "desync".to_string(),
+            action: "desync".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+        custom_sec
+            .as_object_mut()
+            .unwrap()
+            .insert("name".to_string(), serde_json::json!("Legacy Name"));
+        primary_val["sections"]
+            .as_array_mut()
+            .unwrap()
+            .push(custom_sec);
+
+        let mut custom_cond = serde_json::to_value(TrafficCondition {
+            id: "cond_ui".to_string(),
+            enabled: true,
+            name: "UI Cond".to_string(),
+            condition_type: "atomic".to_string(),
+            community_lists: vec!["youtube".to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+        custom_cond
+            .as_object_mut()
+            .unwrap()
+            .insert("label".to_string(), serde_json::json!("Old Label"));
+        primary_val["conditions"]
+            .as_array_mut()
+            .unwrap()
+            .push(custom_cond);
+
+        let mut custom_bal = serde_json::to_value(BalancerConfig {
+            id: "bal_ui".to_string(),
+            enabled: true,
+            name: "Sticky Bal".to_string(),
+            balancer_type: "urltest".to_string(),
+            mode: "sticky".to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+        custom_bal
+            .as_object_mut()
+            .unwrap()
+            .insert("label".to_string(), serde_json::json!("Sticky Label"));
+        primary_val["balancers"]
+            .as_array_mut()
+            .unwrap()
+            .push(custom_bal);
+
+        std::fs::write(&store_path, serde_json::to_string(&primary_val).unwrap())
+            .expect("write primary store");
+
+        let state =
+            AppState::load_or_create(&store_path).expect("load_or_create must recover aliases");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let d = state.data.read().await;
+            assert!(
+                d.sections
+                    .iter()
+                    .any(|s| s.id == "CustomUI" && s.label == "New UI Section"),
+                "new UI section must be preserved without rolling back to known_good"
+            );
+            assert!(
+                d.conditions
+                    .iter()
+                    .any(|c| c.id == "cond_ui" && c.community_lists == vec!["youtube"]),
+                "new UI condition must be preserved"
+            );
+            assert!(
+                d.balancers
+                    .iter()
+                    .any(|b| b.id == "bal_ui" && b.name == "Sticky Bal"),
+                "new UI balancer must be preserved"
+            );
+            let live = state.live.read().await;
+            assert!(live.last_store_recovery_warning.is_none());
+        });
+
+        let cleaned_raw = std::fs::read_to_string(&store_path).expect("read normalized file");
+        serde_json::from_str::<RouterStoreData>(&cleaned_raw)
+            .expect("rewritten store must parse cleanly in strict mode");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_corrupt_store_preserves_rejected_backup_and_sets_recovery_warning() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-corrupt-backup-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
+        let store_path = tmp_dir.join("tachyon.json");
+        let lkg_path = tmp_dir.join("tachyon.known_good.json");
+
+        std::fs::write(
+            &lkg_path,
+            serde_json::to_string(&RouterStoreData::default()).unwrap(),
+        )
+        .expect("write known_good");
+        std::fs::write(&store_path, "{broken json").expect("write broken store");
+
+        let state = AppState::load_or_create(&store_path).expect("recover from known_good");
+        assert!(tmp_dir.join("tachyon.json.corrupt").exists());
+        let has_rejected = std::fs::read_dir(&tmp_dir).unwrap().flatten().any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("tachyon.json.rejected.")
+        });
+        assert!(has_rejected, "rejected store snapshot must be preserved");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let live = state.live.read().await;
+            assert!(live.last_store_recovery_warning.is_some());
+        });
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_external_disk_edit_detection_and_reload_from_disk() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon-ext-edit-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp dir");
+        let store_path = tmp_dir.join("tachyon.json");
+
+        let state = AppState::load_or_create(&store_path).expect("init store");
+        assert!(!state.is_disk_modified_externally());
+
+        let raw = std::fs::read_to_string(&store_path).expect("read initial store");
+        let mut parsed: RouterStoreData = serde_json::from_str(&raw).expect("parse initial");
+        parsed.settings.log_level = "debug".to_string();
+        std::fs::write(&store_path, serde_json::to_string_pretty(&parsed).unwrap())
+            .expect("write external edit");
+
+        assert!(
+            state.is_disk_modified_externally(),
+            "external modification on disk must be detected"
+        );
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let reloaded = state
+                .reload_from_disk()
+                .await
+                .expect("reload_from_disk succeeds");
+            assert!(reloaded);
+            assert!(!state.is_disk_modified_externally());
+            let d = state.data.read().await;
+            assert_eq!(d.settings.log_level, "debug");
+        });
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

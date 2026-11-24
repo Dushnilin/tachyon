@@ -741,4 +741,40 @@ describe('monitoring filters and resolution', () => {
       'ct:udp:192.168.1.50:54321:8.8.8.8:443',
     ]);
   });
+
+  it('filters connections by explicit direct route when selected in route filters (#492)', () => {
+    const directConn = {
+      id: 'core-direct-1',
+      dataSource: 'core' as const,
+      lastSeenAt: 1000,
+      chains: ['direct-out'],
+      metadata: {
+        network: 'tcp',
+        sourceIP: '192.168.1.50',
+        destinationIP: '1.1.1.1',
+        destinationPort: '443',
+      },
+    };
+    const proxyConn = {
+      id: 'core-proxy-1',
+      dataSource: 'core' as const,
+      lastSeenAt: 1000,
+      chains: ['sel-Main', 'Main-1-out'],
+      metadata: {
+        network: 'tcp',
+        sourceIP: '192.168.1.50',
+        destinationIP: '8.8.8.8',
+        destinationPort: '443',
+      },
+    };
+
+    const filtered = filterVisibleConnections({
+      tab: 'active',
+      activeConnections: [directConn, proxyConn],
+      closedConnections: [],
+      routeFilters: new Set(['direct']),
+      searchQuery: '',
+    });
+    expect(filtered.map((c) => c.id)).toEqual(['core-direct-1']);
+  });
 });

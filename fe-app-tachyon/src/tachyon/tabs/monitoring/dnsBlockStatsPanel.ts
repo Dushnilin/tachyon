@@ -1,8 +1,12 @@
 import { tr } from '../../helpers/i18n';
 import {
   DNS_BLOCK_PERIODS,
+  DnsBlockClientStat,
+  DnsBlockDomainStat,
+  DnsBlockEventItem,
   DnsBlockPeriod,
   DnsBlockStatsResponse,
+  clearDnsBlockStats,
   createEmptyDnsBlockStats,
   fetchDnsBlockStats,
   formatBlockTimestamp,
@@ -20,6 +24,30 @@ function getPeriodLabel(period: DnsBlockPeriod): string {
     case 'all':
       return tr('Всё время', 'All');
   }
+}
+
+export interface DnsBlockStatsRenderOptions {
+  searchQuery?: string;
+  selectedClientIp?: string;
+  onSelectClient?: (ip: string) => void;
+}
+
+function normalizeFilterQuery(raw?: string): string {
+  return String(raw || '')
+    .trim()
+    .toLowerCase();
+}
+
+function matchesSearch(
+  query: string,
+  ...parts: Array<string | undefined>
+): boolean {
+  if (!query) return true;
+  return parts.some((p) =>
+    String(p || '')
+      .toLowerCase()
+      .includes(query),
+  );
 }
 
 function dnsCell(
@@ -42,7 +70,7 @@ function renderSummaryRow(data: DnsBlockStatsResponse) {
       E(
         'span',
         { class: 'tachyon_monitoring-page__dns-metric-label' },
-        tr('Заблокировано запросов', 'Blocked queries'),
+        tr('Заблокировано обращений', 'Blocked requests'),
       ),
       E(
         'strong',
@@ -66,7 +94,7 @@ function renderSummaryRow(data: DnsBlockStatsResponse) {
       E(
         'span',
         { class: 'tachyon_monitoring-page__dns-metric-label' },
-        tr('Уникальных доменов', 'Unique domains'),
+        tr('Уникальных доменов и IP', 'Unique domains & IPs'),
       ),
       E(
         'strong',
@@ -77,46 +105,101 @@ function renderSummaryRow(data: DnsBlockStatsResponse) {
   ]);
 }
 
-function renderClientsTable(data: DnsBlockStatsResponse) {
-  if (!data.clients.length) {
+function deriveClientDomainsFromEvents(
+  events: DnsBlockEventItem[],
+): DnsBlockDomainStat[] {
+  const byDomain = new Map<string, DnsBlockDomainStat>();
+  for (const ev of events) {
+    const prev = byDomain.get(ev.domain);
+    if (prev) {
+      prev.count += 1;
+      if (ev.timestamp_unix >= prev.last_seen) {
+        prev.last_seen = ev.timestamp_unix;
+        prev.matched_rule = ev.matched_rule;
+        prev.list_source = ev.list_source;
+      }
+    } else {
+      byDomain.set(ev.domain, {
+        domain: ev.domain,
+        count: 1,
+        matched_rule: ev.matched_rule,
+        list_source: ev.list_source,
+        last_seen: ev.timestamp_unix,
+      });
+    }
+  }
+  return Array.from(byDomain.values()).sort(
+    (a, b) => b.count - a.count || a.domain.localeCompare(b.domain),
+  );
+}
+
+function renderClientsTable(
+  clients: DnsBlockClientStat[],
+  selectedClientIp: string,
+  onSelectClient?: (ip: string) => void,
+) {
+  if (!clients.length) {
     return null;
   }
-  const rows = data.clients.map((client) => {
+  const rows = clients.map((client) => {
     const label = client.client_name
       ? `${client.client_name} (${client.client_ip})`
       : client.client_ip;
     const topItem = client.top_domains[0];
     const topDomainText = topItem ? topItem.domain : '-';
     const topRuleText = topItem ? topItem.matched_rule : '-';
-    return E('tr', {}, [
-      dnsCell(
-        tr('Клиент', 'Client'),
-        label,
-        'tachyon_monitoring-page__dns-cell-mono',
-      ),
-      dnsCell(
-        tr('Блокировок', 'Blocked'),
-        String(client.blocked_count),
-        'tachyon_monitoring-page__dns-cell-num',
-      ),
-      dnsCell(
-        tr('Доменов', 'Domains'),
-        String(client.unique_domains),
-        'tachyon_monitoring-page__dns-cell-num',
-      ),
-      dnsCell(tr('Частый домен', 'Top domain'), topDomainText),
-      dnsCell(
-        tr('Правило', 'Matched rule'),
-        E('code', { class: 'tachyon_monitoring-page__dns-code' }, topRuleText),
-      ),
-    ]);
+    const isSelected = Boolean(
+      selectedClientIp && selectedClientIp === client.client_ip,
+    );
+    return E(
+      'tr',
+      {
+        class: `tachyon_monitoring-page__dns-client-row${isSelected ? ' is-selected' : ''}`,
+        title: tr(
+          'Нажмите, чтобы отфильтровать домены и события этого клиента',
+          'Click to filter domains and events for this client',
+        ),
+        click: () => {
+          onSelectClient?.(isSelected ? '' : client.client_ip);
+        },
+      },
+      [
+        dnsCell(
+          tr('Клиент', 'Client'),
+          label,
+          'tachyon_monitoring-page__dns-cell-mono',
+        ),
+        dnsCell(
+          tr('Блокировок', 'Blocked'),
+          String(client.blocked_count),
+          'tachyon_monitoring-page__dns-cell-num',
+        ),
+        dnsCell(
+          tr('Целей', 'Targets'),
+          String(client.unique_domains),
+          'tachyon_monitoring-page__dns-cell-num',
+        ),
+        dnsCell(tr('Частый домен / IP', 'Top domain / IP'), topDomainText),
+        dnsCell(
+          tr('Правило', 'Matched rule'),
+          E(
+            'code',
+            { class: 'tachyon_monitoring-page__dns-code' },
+            topRuleText,
+          ),
+        ),
+      ],
+    );
   });
 
   return E('div', { class: 'tachyon_monitoring-page__dns-block' }, [
     E(
       'div',
       { class: 'tachyon_monitoring-page__dns-subtitle' },
-      tr('Статистика по клиентам', 'Per-Client Statistics'),
+      tr(
+        'Клиенты (кликните по строке для фильтрации)',
+        'Clients (click row to filter)',
+      ),
     ),
     E('div', { class: 'tachyon_monitoring-page__table-wrap' }, [
       E('table', { class: 'tachyon_monitoring-page__table' }, [
@@ -131,9 +214,9 @@ function renderClientsTable(data: DnsBlockStatsResponse) {
             E(
               'th',
               { class: 'tachyon_monitoring-page__dns-col-num' },
-              tr('Доменов', 'Domains'),
+              tr('Целей', 'Targets'),
             ),
-            E('th', {}, tr('Частый домен', 'Top domain')),
+            E('th', {}, tr('Частый домен / IP', 'Top domain / IP')),
             E('th', {}, tr('Правило', 'Matched rule')),
           ]),
         ]),
@@ -143,16 +226,54 @@ function renderClientsTable(data: DnsBlockStatsResponse) {
   ]);
 }
 
-function renderTopDomainsTable(data: DnsBlockStatsResponse) {
-  if (!data.top_domains.length) {
+function renderTopDomainsTable(
+  domains: DnsBlockDomainStat[],
+  totalDenominator: number,
+) {
+  if (!domains.length) {
     return null;
   }
-  const rows = data.top_domains.slice(0, 25).map((item) =>
-    E('tr', {}, [
-      dnsCell(tr('Домен', 'Domain'), item.domain),
+  const sliced = domains.slice(0, 50);
+  const maxCount = Math.max(1, ...sliced.map((d) => d.count));
+  const denom = Math.max(1, totalDenominator);
+
+  const rows = sliced.map((item) => {
+    const sharePct = Math.min(
+      100,
+      Math.round((item.count * 1000) / denom) / 10,
+    );
+    const barPct = Math.max(
+      4,
+      Math.min(100, Math.round((item.count * 100) / maxCount)),
+    );
+    const hitsWidget = E(
+      'div',
+      { class: 'tachyon_monitoring-page__dns-hits-cell' },
+      [
+        E('span', {}, String(item.count)),
+        E(
+          'span',
+          { class: 'tachyon_monitoring-page__dns-pct' },
+          `${sharePct % 1 === 0 ? sharePct.toFixed(0) : sharePct.toFixed(1)}%`,
+        ),
+        E('span', { class: 'tachyon_monitoring-page__dns-bar-track' }, [
+          E('span', {
+            class: 'tachyon_monitoring-page__dns-bar-fill',
+            style: `width:${barPct}%`,
+          }),
+        ]),
+      ],
+    );
+
+    return E('tr', {}, [
+      dnsCell(
+        tr('Домен / IP', 'Domain / IP'),
+        item.domain,
+        'tachyon_monitoring-page__dns-cell-mono',
+      ),
       dnsCell(
         tr('Срабатываний', 'Hits'),
-        String(item.count),
+        hitsWidget,
         'tachyon_monitoring-page__dns-cell-num',
       ),
       dnsCell(
@@ -164,7 +285,7 @@ function renderTopDomainsTable(data: DnsBlockStatsResponse) {
         ),
       ),
       dnsCell(
-        tr('Список', 'List'),
+        tr('Список / причина', 'Source'),
         E(
           'code',
           {
@@ -174,27 +295,27 @@ function renderTopDomainsTable(data: DnsBlockStatsResponse) {
           formatListSourceLabel(item.list_source),
         ),
       ),
-    ]),
-  );
+    ]);
+  });
 
   return E('div', { class: 'tachyon_monitoring-page__dns-block' }, [
     E(
       'div',
       { class: 'tachyon_monitoring-page__dns-subtitle' },
-      tr('Заблокированные домены и правила', 'Blocked Domains & Rules'),
+      tr('Топ заблокированных доменов и IP', 'Top Blocked Domains & IPs'),
     ),
     E('div', { class: 'tachyon_monitoring-page__table-wrap' }, [
       E('table', { class: 'tachyon_monitoring-page__table' }, [
         E('thead', {}, [
           E('tr', {}, [
-            E('th', {}, tr('Домен', 'Domain')),
+            E('th', {}, tr('Домен / IP', 'Domain / IP')),
             E(
               'th',
               { class: 'tachyon_monitoring-page__dns-col-num' },
               tr('Срабатываний', 'Hits'),
             ),
             E('th', {}, tr('Правило', 'Rule')),
-            E('th', {}, tr('Список', 'Source list')),
+            E('th', {}, tr('Список / причина', 'Source')),
           ]),
         ]),
         E('tbody', {}, rows),
@@ -203,11 +324,11 @@ function renderTopDomainsTable(data: DnsBlockStatsResponse) {
   ]);
 }
 
-function renderRecentEventsTable(data: DnsBlockStatsResponse) {
-  if (!data.recent_events.length) {
+function renderRecentEventsTable(events: DnsBlockEventItem[]) {
+  if (!events.length) {
     return null;
   }
-  const rows = data.recent_events.slice(0, 20).map((ev) => {
+  const rows = events.slice(0, 50).map((ev) => {
     const clientLabel = ev.client_name
       ? `${ev.client_name} (${ev.client_ip})`
       : ev.client_ip;
@@ -222,7 +343,11 @@ function renderRecentEventsTable(data: DnsBlockStatsResponse) {
         clientLabel,
         'tachyon_monitoring-page__dns-cell-mono',
       ),
-      dnsCell(tr('Домен', 'Domain'), ev.domain),
+      dnsCell(
+        tr('Домен / IP', 'Domain / IP'),
+        ev.domain,
+        'tachyon_monitoring-page__dns-cell-mono',
+      ),
       dnsCell(
         tr('Правило', 'Rule'),
         E(
@@ -232,7 +357,7 @@ function renderRecentEventsTable(data: DnsBlockStatsResponse) {
         ),
       ),
       dnsCell(
-        tr('Список', 'List'),
+        tr('Список / причина', 'Source'),
         E(
           'code',
           {
@@ -249,7 +374,7 @@ function renderRecentEventsTable(data: DnsBlockStatsResponse) {
     E(
       'div',
       { class: 'tachyon_monitoring-page__dns-subtitle' },
-      tr('Последние срабатывания', 'Recent Blocked Queries'),
+      tr('Журнал последних блокировок', 'Recent Blocked Log'),
     ),
     E('div', { class: 'tachyon_monitoring-page__table-wrap' }, [
       E('table', { class: 'tachyon_monitoring-page__table' }, [
@@ -257,9 +382,9 @@ function renderRecentEventsTable(data: DnsBlockStatsResponse) {
           E('tr', {}, [
             E('th', {}, tr('Время', 'Time')),
             E('th', {}, tr('Клиент', 'Client')),
-            E('th', {}, tr('Домен', 'Domain')),
+            E('th', {}, tr('Домен / IP', 'Domain / IP')),
             E('th', {}, tr('Правило', 'Rule')),
-            E('th', {}, tr('Список', 'List')),
+            E('th', {}, tr('Список / причина', 'Source')),
           ]),
         ]),
         E('tbody', {}, rows),
@@ -271,6 +396,7 @@ function renderRecentEventsTable(data: DnsBlockStatsResponse) {
 export function renderDnsBlockStatsBody(
   data: DnsBlockStatsResponse,
   loading: boolean,
+  options: DnsBlockStatsRenderOptions = {},
 ): HTMLElement {
   if (loading && !data.generated_at) {
     return E(
@@ -279,7 +405,10 @@ export function renderDnsBlockStatsBody(
         class:
           'tachyon_monitoring-page__state tachyon_monitoring-page__state--loading',
       },
-      tr('Загрузка статистики DNS...', 'Loading DNS statistics...'),
+      tr(
+        'Загрузка статистики блокировок...',
+        'Loading blocked domains statistics...',
+      ),
     );
   }
 
@@ -291,24 +420,78 @@ export function renderDnsBlockStatsBody(
     );
   }
 
-  const children: HTMLElement[] = [renderSummaryRow(data)];
-  const clientsTbl = renderClientsTable(data);
-  const domainsTbl = renderTopDomainsTable(data);
-  const recentTbl = renderRecentEventsTable(data);
+  const query = normalizeFilterQuery(options.searchQuery);
+  const selectedClientIp = String(options.selectedClientIp || '').trim();
 
-  if (clientsTbl) children.push(clientsTbl);
+  const matchingClients = data.clients.filter((c) => {
+    if (selectedClientIp && c.client_ip !== selectedClientIp) return false;
+    return matchesSearch(
+      query,
+      c.client_ip,
+      c.client_name,
+      c.top_domains[0]?.domain,
+      c.top_domains[0]?.matched_rule,
+    );
+  });
+
+  const matchingRecent = data.recent_events.filter((ev) => {
+    if (selectedClientIp && ev.client_ip !== selectedClientIp) return false;
+    return matchesSearch(
+      query,
+      ev.domain,
+      ev.client_ip,
+      ev.client_name,
+      ev.matched_rule,
+      ev.list_source,
+    );
+  });
+
+  let domainSource = data.top_domains;
+  let shareTotal = data.total_blocked;
+  if (selectedClientIp) {
+    const clientObj = data.clients.find(
+      (c) => c.client_ip === selectedClientIp,
+    );
+    const derived = deriveClientDomainsFromEvents(matchingRecent);
+    if (clientObj && clientObj.top_domains.length > 0) {
+      domainSource = clientObj.top_domains;
+      shareTotal = Math.max(1, clientObj.blocked_count);
+    } else {
+      domainSource = derived;
+      shareTotal = Math.max(1, matchingRecent.length);
+    }
+  }
+  const matchingDomains = domainSource.filter((d) =>
+    matchesSearch(query, d.domain, d.matched_rule, d.list_source),
+  );
+
+  const children: HTMLElement[] = [renderSummaryRow(data)];
+  const clientsTbl = renderClientsTable(
+    matchingClients,
+    selectedClientIp,
+    options.onSelectClient,
+  );
+  const domainsTbl = renderTopDomainsTable(matchingDomains, shareTotal);
+  const recentTbl = renderRecentEventsTable(matchingRecent);
+
   if (domainsTbl) children.push(domainsTbl);
+  if (clientsTbl) children.push(clientsTbl);
   if (recentTbl) children.push(recentTbl);
 
-  if (!clientsTbl && !domainsTbl) {
+  if (!clientsTbl && !domainsTbl && !recentTbl) {
     children.push(
       E(
         'div',
         { class: 'tachyon_monitoring-page__dns-empty' },
-        tr(
-          'За выбранный период срабатываний правил блокировки DNS не зафиксировано.',
-          'No blocked DNS queries recorded for the selected period.',
-        ),
+        query || selectedClientIp
+          ? tr(
+              'По заданному фильтру заблокированных обращений не найдено.',
+              'No blocked requests match the current filter.',
+            )
+          : tr(
+              'За выбранный период срабатываний правил блокировки не зафиксировано.',
+              'No blocked requests recorded for the selected period.',
+            ),
       ),
     );
   }
@@ -337,16 +520,39 @@ export function renderDnsBlockStatsPanel(): HTMLElement {
     {
       id: 'monitoring-dns-block-stats',
       class:
-        'tachyon_monitoring-page__panel tachyon_monitoring-page__dns-panel',
+        'tachyon_monitoring-page__panel tachyon_monitoring-page__dns-panel tachyon_monitoring-page__dns-panel--hidden',
     },
     [
       E('div', { class: 'tachyon_monitoring-page__dns-header' }, [
         E(
           'div',
           { class: 'tachyon_monitoring-page__dns-title' },
-          tr('Статистика блокировки DNS', 'DNS Block Statistics'),
+          tr('Заблокированные домены и реклама', 'Blocked domains & ads'),
         ),
         E('div', { class: 'tachyon_monitoring-page__dns-controls' }, [
+          E(
+            'button',
+            {
+              id: 'monitoring-dns-client-chip',
+              type: 'button',
+              class: 'btn cbi-button tachyon_monitoring-page__dns-chip-btn',
+              hidden: true,
+            },
+            '',
+          ),
+          E('label', { class: 'tachyon_monitoring-page__search' }, [
+            E('input', {
+              id: 'monitoring-dns-search',
+              type: 'search',
+              class:
+                'cbi-input-text tachyon_monitoring-page__search-input tachyon_monitoring-page__dns-search',
+              placeholder: tr(
+                'Поиск домена, IP, правила или клиента...',
+                'Search domain, IP, rule or client...',
+              ),
+              autocomplete: 'off',
+            }),
+          ]),
           E(
             'div',
             {
@@ -366,6 +572,15 @@ export function renderDnsBlockStatsPanel(): HTMLElement {
             },
             tr('Обновить', 'Refresh'),
           ),
+          E(
+            'button',
+            {
+              id: 'monitoring-dns-clear',
+              type: 'button',
+              class: 'btn cbi-button tachyon_monitoring-page__tab',
+            },
+            tr('Очистить', 'Clear'),
+          ),
         ]),
       ]),
       E(
@@ -380,6 +595,10 @@ export function renderDnsBlockStatsPanel(): HTMLElement {
   );
 }
 
+export interface DnsBlockStatsControllerOptions {
+  onData?: (data: DnsBlockStatsResponse) => void;
+}
+
 export interface DnsBlockStatsController {
   mount: () => void;
   unmount: () => void;
@@ -390,8 +609,12 @@ export interface DnsBlockStatsController {
 
 export function createDnsBlockStatsController(
   fetchImpl?: typeof fetch,
+  controllerOptions: DnsBlockStatsControllerOptions = {},
 ): DnsBlockStatsController {
   let currentPeriod: DnsBlockPeriod = '24h';
+  let searchQuery = '';
+  let selectedClientIp = '';
+  let latestData: DnsBlockStatsResponse = createEmptyDnsBlockStats('24h');
   let timer: ReturnType<typeof setInterval> | null = null;
   let mounted = false;
   let reqSeq = 0;
@@ -407,10 +630,35 @@ export function createDnsBlockStatsController(
     }
   }
 
+  function syncClientChip() {
+    const chip = document.getElementById(
+      'monitoring-dns-client-chip',
+    ) as HTMLButtonElement | null;
+    if (!chip) return;
+    if (!selectedClientIp) {
+      chip.hidden = true;
+      chip.textContent = '';
+      return;
+    }
+    chip.hidden = false;
+    chip.textContent = `${tr('Клиент:', 'Client:')} ${selectedClientIp} ×`;
+  }
+
   function renderData(data: DnsBlockStatsResponse, loading: boolean) {
+    latestData = data;
+    syncClientChip();
     const body = document.getElementById('monitoring-dns-block-stats-body');
     if (!body) return;
-    body.replaceChildren(renderDnsBlockStatsBody(data, loading));
+    body.replaceChildren(
+      renderDnsBlockStatsBody(data, loading, {
+        searchQuery,
+        selectedClientIp,
+        onSelectClient: (nextIp) => {
+          selectedClientIp = nextIp;
+          renderData(latestData, false);
+        },
+      }),
+    );
   }
 
   async function refresh() {
@@ -420,6 +668,7 @@ export function createDnsBlockStatsController(
     const seq = ++reqSeq;
     const data = await fetchDnsBlockStats(currentPeriod, fetchImpl);
     if (!mounted || seq !== reqSeq) return;
+    controllerOptions.onData?.(data);
     renderData(data, false);
   }
 
@@ -428,6 +677,15 @@ export function createDnsBlockStatsController(
     syncPeriodTabs();
     renderData(createEmptyDnsBlockStats(currentPeriod), true);
     await refresh();
+  }
+
+  async function clearStats() {
+    const res = await clearDnsBlockStats(fetchImpl);
+    if (!mounted) return;
+    if (res.ok) {
+      selectedClientIp = '';
+      await refresh();
+    }
   }
 
   function bindEvents() {
@@ -443,6 +701,28 @@ export function createDnsBlockStatsController(
     if (refreshBtn) {
       refreshBtn.onclick = () => {
         void refresh();
+      };
+    }
+    const clearBtn = document.getElementById('monitoring-dns-clear');
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        void clearStats();
+      };
+    }
+    const chip = document.getElementById('monitoring-dns-client-chip');
+    if (chip) {
+      chip.onclick = () => {
+        selectedClientIp = '';
+        renderData(latestData, false);
+      };
+    }
+    const searchInput = document.getElementById(
+      'monitoring-dns-search',
+    ) as HTMLInputElement | null;
+    if (searchInput) {
+      searchInput.oninput = () => {
+        searchQuery = String(searchInput.value || '');
+        renderData(latestData, false);
       };
     }
   }

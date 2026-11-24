@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  clearDnsBlockStats,
   fetchDnsBlockStats,
   formatListSourceLabel,
   parseDnsBlockPeriod,
@@ -235,6 +236,26 @@ describe('dnsBlockStats helper & controller', () => {
       expect(periodBtns['7d'].className).toContain('--active');
       expect(JSON.stringify(mockBody.children)).toContain('42');
       ctrl.unmount();
+
+      const filteredBody = renderDnsBlockStatsBody(direct, false, {
+        searchQuery: '192.168.1.50',
+        selectedClientIp: '192.168.1.50',
+      }) as unknown as { children: unknown[] };
+      expect(JSON.stringify(filteredBody)).toContain('ads.example.org');
+
+      const emptyFiltered = renderDnsBlockStatsBody(direct, false, {
+        searchQuery: 'nonexistent.invalid',
+      }) as unknown as { children: unknown[] };
+      expect(JSON.stringify(emptyFiltered)).toContain(
+        'No blocked requests match the current filter.',
+      );
+
+      const clearRes = await clearDnsBlockStats(fetchMock);
+      expect(clearRes.ok).toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/dns/block-stats/clear',
+        expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
+      );
     } finally {
       (globalThis as Record<string, unknown>).E = prevE;
       (globalThis as Record<string, unknown>)._ = prev_;

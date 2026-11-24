@@ -2236,6 +2236,35 @@ fn execute_pure_rust_tachyon_cli_boxed<'a>(
     Box::pin(execute_pure_rust_tachyon_cli(method, rest, state, core))
 }
 
+pub fn cli_help_text() -> &'static str {
+    concat!(
+        "Tachyon Control Plane CLI\n\n",
+        "Usage: tachyon <command> [args...]\n\n",
+        "Service & Engine:\n",
+        "  daemon | serve               Start control plane daemon and panel server\n",
+        "  start | stop                 Start or stop tachyon-core\n",
+        "  reload | restart             Reload tachyon.json (if edited externally) and apply to core\n",
+        "  engine_status                Show tachyon-core runtime status and digest state\n",
+        "  engine_apply | engine_reload Sync store and apply configuration to tachyon-core\n\n",
+        "Configuration & Validation:\n",
+        "  config_import [path]         Import & validate tachyon.json (or path) and apply\n",
+        "  config_validate              Validate store plan and compiled core config\n",
+        "  config_plan                  Print dry-run execution plan\n",
+        "  compile_config               Print compiled tachyon-core JSON config\n",
+        "  compile_nft                  Print compiled nftables ruleset\n",
+        "  rollback                     Roll back to last known_good snapshot\n\n",
+        "Diagnostics & Telemetry:\n",
+        "  status | diagnose_json       Run doctor diagnostics and output JSON report\n",
+        "  explain <host> [client_ip]   Explain routing decision with engine simulation\n",
+        "  route_explain <ip> <host>    Trace packet route rule by rule\n",
+        "  dns_block_stats [period]     Show blocked domain/IP stats (1h|24h|7d|all)\n",
+        "  dns_block_stats_clear        Clear accumulated blocked domain/IP stats\n",
+        "  fuzzer_start <engine> <target>  Start strategy check (e.g. desync youtube_suite)\n",
+        "  fuzzer_status | fuzzer_stop  Inspect or stop running strategy check\n",
+        "  version | --help             Print version or this help\n"
+    )
+}
+
 /// Execute `/usr/bin/tachyon <method> [args...]` with sub-millisecond Pure-Rust handlers
 /// for all hot paths (`get_ui_state`, `get_system_info`, `get_outbound_metadata`, `clash_api`, etc.).
 pub async fn execute_tachyon_cli(
@@ -2246,6 +2275,9 @@ pub async fn execute_tachyon_cli(
     let Some(raw_method) = params.first().map(|s| s.trim()) else {
         return (0, String::new(), String::new());
     };
+    if matches!(raw_method, "-h" | "--help" | "help") {
+        return (0, cli_help_text().to_string(), String::new());
+    }
     let normalized = if raw_method.starts_with('-') {
         raw_method.to_string()
     } else {
@@ -2257,6 +2289,11 @@ pub async fn execute_tachyon_cli(
     // 1. Sub-millisecond Pure-Rust handlers for all frequent UI / telemetry / metadata / crypto methods
     if let Some(fast) = try_fast_pure_rust_method_boxed(method, rest, state, core).await {
         return fast;
+    }
+
+    // 1b. Thin boxed dispatcher for engine / config / doctor CLI commands (keeps stack < 512 KiB)
+    if let Some(eng) = execute_cli_engine_commands_boxed(method, rest, state, core).await {
+        return eng;
     }
 
     // 2. All remaining CLI / RPC methods are handled 100% in pure Rust without ucode
@@ -2765,6 +2802,14 @@ async fn try_fast_core_and_crypto(
                 Ok(stats) => {
                     serde_json::to_value(&stats).unwrap_or_else(|_| json!({ "ok": false }))
                 }
+                Err(e) => json!({ "ok": false, "error": e.to_string() }),
+            };
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
+        "dns_block_stats_clear" => {
+            let val = match crate::adguard_hosts::clear_dns_block_stats() {
+                Ok(()) => json!({ "ok": true }),
                 Err(e) => json!({ "ok": false, "error": e.to_string() }),
             };
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
@@ -3890,6 +3935,113 @@ fn collect_section_sources_with_owner<'a>(
     result
 }
 
+fn parse_openwrt_network_interface_proto(network_uci: &str, iface_name: &str) -> Option<String> {
+    let target = iface_name.trim();
+    if target.is_empty() {
+        return None;
+    }
+
+    let unquote = |s: &str| -> String {
+        s.trim()
+            .trim_matches(|c| c == '\'' || c == '"')
+            .trim()
+            .to_string()
+    };
+    let normalize_proto = |raw: &str| -> Option<String> {
+        let lower = raw.trim().to_ascii_lowercase();
+        if lower.is_empty() {
+            return None;
+        }
+        if lower.contains("amnezia") || lower == "awg" {
+            Some("amneziawg".to_string())
+        } else if lower.contains("wireguard") || lower == "wg" {
+            Some("wireguard".to_string())
+        } else if lower.contains("openvpn") || lower == "ovpn" {
+            Some("openvpn".to_string())
+        } else if lower.contains("tailscale") {
+            Some("tailscale".to_string())
+        } else {
+            None
+        }
+    };
+
+    let mut cur_name = String::new();
+    let mut cur_device = String::new();
+    let mut cur_proto = String::new();
+
+    let flush_stanza = |sec_name: &str, sec_dev: &str, sec_proto: &str| -> Option<String> {
+        if sec_name.eq_ignore_ascii_case(target)
+            || (!sec_dev.is_empty() && sec_dev.eq_ignore_ascii_case(target))
+        {
+            return normalize_proto(sec_proto);
+        }
+        None
+    };
+
+    for line in network_uci.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("config ") {
+            if !cur_name.is_empty()
+                && let Some(found) = flush_stanza(&cur_name, &cur_device, &cur_proto)
+            {
+                return Some(found);
+            }
+            cur_name.clear();
+            cur_device.clear();
+            cur_proto.clear();
+            let rest_trimmed = rest.trim();
+            if let Some(after_iface) = rest_trimmed.strip_prefix("interface") {
+                cur_name = unquote(after_iface);
+            }
+            continue;
+        }
+        if cur_name.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("option ") {
+            let mut parts = rest.trim().splitn(2, char::is_whitespace);
+            let key = parts.next().unwrap_or("").trim();
+            let val = unquote(parts.next().unwrap_or(""));
+            if key == "proto" {
+                cur_proto = val;
+            } else if key == "device" || key == "ifname" {
+                cur_device = val;
+            }
+        }
+    }
+
+    if !cur_name.is_empty() {
+        return flush_stanza(&cur_name, &cur_device, &cur_proto);
+    }
+    None
+}
+
+fn detect_openwrt_interface_protocol(iface_name: &str) -> String {
+    let trimmed = iface_name.trim();
+    if !trimmed.is_empty()
+        && let Ok(net_cfg) = std::fs::read_to_string("/etc/config/network")
+        && let Some(proto) = parse_openwrt_network_interface_proto(&net_cfg, trimmed)
+    {
+        return proto;
+    }
+
+    let lc = trimmed.to_ascii_lowercase();
+    if lc == "tailscale0" || lc.starts_with("tailscale") {
+        "tailscale".to_string()
+    } else if lc.starts_with("awg") {
+        "amneziawg".to_string()
+    } else if lc.starts_with("wg") {
+        "wireguard".to_string()
+    } else if lc.starts_with("ovpn") {
+        "openvpn".to_string()
+    } else {
+        "interface".to_string()
+    }
+}
+
 fn build_outbound_metadata_and_links(
     store: &crate::store::RouterStoreData,
     section: &str,
@@ -3957,12 +4109,29 @@ fn build_outbound_metadata_and_links(
         }
 
         for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
-            names.entry(tag.clone()).or_insert_with(|| json!(tag));
+            if src.source_type == "interface" {
+                let sname = src.name.trim();
+                let friendly = if !sname.is_empty() && !sname.starts_with("iface-") {
+                    sname.to_string()
+                } else if !src.interface_name.trim().is_empty() {
+                    src.interface_name.trim().to_string()
+                } else {
+                    src_label.clone()
+                };
+                names.entry(tag.clone()).or_insert_with(|| json!(friendly));
+            } else {
+                names.entry(tag.clone()).or_insert_with(|| json!(tag));
+            }
             let cc = crate::config_gen::detect_country_code(&tag);
             if !cc.is_empty() {
                 countries.entry(tag.clone()).or_insert_with(|| json!(cc));
             }
-            if let Some(proto) = out_val.get("type").and_then(Value::as_str) {
+            if src.source_type == "interface" {
+                let detected_proto = detect_openwrt_interface_protocol(&src.interface_name);
+                protocols
+                    .entry(tag.clone())
+                    .or_insert_with(|| json!(detected_proto));
+            } else if let Some(proto) = out_val.get("type").and_then(Value::as_str) {
                 protocols.entry(tag.clone()).or_insert_with(|| json!(proto));
             }
             if let Some(tr) = out_val.pointer("/transport/type").and_then(Value::as_str)
@@ -5002,6 +5171,24 @@ fn collect_store_section_leaf_tags(
                     }
                 }
             }
+        } else if src.source_type != "desync" {
+            for (tag, out_val, _visible) in crate::config_gen::build_source_outbounds(src) {
+                let otype = out_val
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if matches!(
+                    otype,
+                    "urltest" | "selector" | "priority" | "block" | "reject" | "dns-out"
+                ) {
+                    continue;
+                }
+                let t = tag.trim();
+                if !t.is_empty() && seen.insert(t.to_string()) {
+                    out.push(t.to_string());
+                }
+            }
         }
     }
     out
@@ -5614,12 +5801,23 @@ pub(crate) fn resolve_telemetry_tag_display_name(
 async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
     let store_snap = state.data.read().await.clone();
     let tag_display_map = build_telemetry_tag_display_map(&store_snap);
-    let (mem_res, dev_res, conn_res, flight_res, failover_res, leak_res, health_res, anomalies_res) = tokio::join!(
+    let (
+        mem_res,
+        dev_res,
+        conn_res,
+        flight_res,
+        failover_res,
+        proxies_res,
+        leak_res,
+        health_res,
+        anomalies_res,
+    ) = tokio::join!(
         core.clash_request("GET", "/tachyon/memory", None),
         core.clash_request("GET", "/tachyon/devices", None),
         core.clash_request("GET", "/connections", None),
         core.clash_request("GET", "/tachyon/flight", None),
         core.clash_request("GET", "/tachyon/failover", None),
+        core.clash_request("GET", "/proxies", None),
         core.clash_request("GET", "/tachyon/leak", None),
         core.clash_request("GET", "/tachyon/health", None),
         core.clash_request("GET", "/tachyon/anomalies", None),
@@ -5849,6 +6047,7 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
 
     let mut failover_any_backup = false;
     let mut failover_groups = Vec::new();
+    let mut covered_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
     if let Ok(ref fo_val) = failover_res {
         failover_any_backup = fo_val
             .get("any_on_backup")
@@ -5864,6 +6063,9 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                 let raw_tag = g.get("tag").and_then(Value::as_str).unwrap_or("");
                 let raw_primary = g.get("primary").and_then(Value::as_str).unwrap_or("");
                 let raw_current = g.get("current").and_then(Value::as_str).unwrap_or("");
+                if !raw_tag.is_empty() {
+                    covered_tags.insert(raw_tag.to_ascii_lowercase());
+                }
                 failover_groups.push(json!({
                     "tag": raw_tag,
                     "display_name": resolve_telemetry_tag_display_name(raw_tag, &tag_display_map, &store_snap),
@@ -5881,6 +6083,133 @@ async fn build_pure_rust_core_telemetry(state: &Arc<AppState>, core: &Arc<CoreMa
                     "member_count": member_count,
                 }));
             }
+        }
+    }
+
+    // Also include configured active balancers (urltest / sticky / priority / selector) from `/proxies`
+    // and store so Dashboard telemetry reflects live sticky/urltest groups even when `/tachyon/failover`
+    // only reports active-backup failover state.
+    let proxies_map = proxies_res
+        .as_ref()
+        .ok()
+        .and_then(|v| v.get("proxies"))
+        .and_then(Value::as_object);
+    for bal in &store_snap.balancers {
+        let bal_id = bal.id.trim();
+        if !bal.enabled || bal_id.is_empty() {
+            continue;
+        }
+        let bal_id_lower = bal_id.to_ascii_lowercase();
+        let bal_suffix = format!("-{bal_id_lower}");
+        let already_present = covered_tags
+            .iter()
+            .any(|t| t == &bal_id_lower || t.ends_with(&bal_suffix));
+        if already_present {
+            continue;
+        }
+
+        let mut pushed_for_bal = false;
+        if let Some(pmap) = proxies_map {
+            let mut matched_tags: Vec<&String> = pmap
+                .keys()
+                .filter(|k| {
+                    let kl = k.to_ascii_lowercase();
+                    kl == bal_id_lower || (kl.starts_with("bal-") && kl.ends_with(&bal_suffix))
+                })
+                .collect();
+            matched_tags.sort();
+            for ptag in matched_tags {
+                let Some(pobj) = pmap.get(ptag) else {
+                    continue;
+                };
+                covered_tags.insert(ptag.to_ascii_lowercase());
+                let raw_current = pobj.get("now").and_then(Value::as_str).unwrap_or("");
+                let all_members = pobj.get("all").and_then(Value::as_array);
+                let member_count = all_members.map(Vec::len).unwrap_or(0);
+                let raw_primary = all_members
+                    .and_then(|arr| arr.first())
+                    .and_then(Value::as_str)
+                    .unwrap_or(raw_current);
+                let rtt_lookup_tag = if !raw_current.is_empty() {
+                    raw_current
+                } else {
+                    ptag.as_str()
+                };
+                let rtt_ms = pmap
+                    .get(rtt_lookup_tag)
+                    .or(Some(pobj))
+                    .and_then(|o| o.get("history"))
+                    .and_then(Value::as_array)
+                    .and_then(|h| h.last())
+                    .and_then(|entry| entry.get("delay"))
+                    .and_then(Value::as_u64)
+                    .filter(|&d| d > 0);
+                let ptype = pobj.get("type").and_then(Value::as_str).unwrap_or_else(|| {
+                    if bal.balancer_type.trim().is_empty() {
+                        "urltest"
+                    } else {
+                        bal.balancer_type.trim()
+                    }
+                });
+                failover_groups.push(json!({
+                    "tag": ptag,
+                    "display_name": resolve_telemetry_tag_display_name(ptag, &tag_display_map, &store_snap),
+                    "type": if ptype.eq_ignore_ascii_case("urltest") { "urltest" } else { ptype },
+                    "mode": bal.mode,
+                    "primary": raw_primary,
+                    "primary_display_name": resolve_telemetry_tag_display_name(raw_primary, &tag_display_map, &store_snap),
+                    "current": raw_current,
+                    "current_display_name": resolve_telemetry_tag_display_name(raw_current, &tag_display_map, &store_snap),
+                    "on_backup": ptype.eq_ignore_ascii_case("urltest"),
+                    "primary_healthy": true,
+                    "primary_rtt_ms": rtt_ms,
+                    "primary_failures": 0,
+                    "primary_quarantine_rem_s": 0,
+                    "member_count": member_count,
+                }));
+                pushed_for_bal = true;
+            }
+        }
+
+        if !pushed_for_bal {
+            let ref_sec = store_snap
+                .sections
+                .iter()
+                .find(|s| s.enabled && s.balancer_refs.iter().any(|r| r == bal_id));
+            let syn_tag = ref_sec
+                .map(|s| format!("bal-{}-{}", s.id.trim(), bal_id))
+                .unwrap_or_else(|| bal_id.to_string());
+            let disp = if !bal.name.trim().is_empty() {
+                bal.name.trim().to_string()
+            } else {
+                bal_id.to_string()
+            };
+            let est_members = bal
+                .balancer_pool
+                .len()
+                .max(bal.outbound_group_levels.len())
+                .max(bal.priority_levels.len());
+            let bal_type = if bal.balancer_type.trim().is_empty() {
+                "urltest"
+            } else {
+                bal.balancer_type.trim()
+            };
+            failover_groups.push(json!({
+                "tag": syn_tag,
+                "display_name": disp,
+                "type": bal_type,
+                "mode": bal.mode,
+                "primary": "",
+                "primary_display_name": "",
+                "current": "",
+                "current_display_name": "",
+                "on_backup": bal_type.eq_ignore_ascii_case("urltest"),
+                "primary_healthy": true,
+                "primary_rtt_ms": Value::Null,
+                "primary_failures": 0,
+                "primary_quarantine_rem_s": 0,
+                "member_count": est_members,
+            }));
         }
     }
 
@@ -8176,6 +8505,248 @@ async fn execute_cli_part_early(
     Some((0, format!("{s}\n"), String::new()))
 }
 
+type ImportParseOutcome = Result<
+    (
+        Box<crate::store::RouterStoreData>,
+        usize,
+        (usize, usize, usize, usize),
+    ),
+    String,
+>;
+
+#[inline(never)]
+fn load_and_parse_import_store(src_path: &Path, state_path: &Path) -> ImportParseOutcome {
+    let raw = std::fs::read_to_string(src_path)
+        .map_err(|e| format!("Не удалось прочитать {}: {e}", src_path.display()))?;
+    let (candidate_val, normalized_aliases) = crate::store::parse_store_from_str_tolerant(&raw)
+        .map_err(|e| format!("Невалидный JSON хранилища {}: {e:#}", src_path.display()))?;
+    let mut candidate = Box::new(candidate_val);
+    let _ = crate::store::normalize_loaded_store_data(&mut candidate, &raw, state_path);
+    let counts = (
+        candidate.sections.len(),
+        candidate.outbound_sources.len(),
+        candidate.conditions.len(),
+        candidate.balancers.len(),
+    );
+    Ok((candidate, normalized_aliases, counts))
+}
+
+async fn handle_config_import(
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Value {
+    let src_path = rest
+        .first()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.path.clone());
+    if !src_path.is_file() {
+        return json!({
+            "success": false,
+            "error": format!("Файл конфигурации не найден: {}", src_path.display()),
+        });
+    }
+    let src_clone = src_path.clone();
+    let state_path_clone = state.path.clone();
+    let parse_res = tokio::task::spawn_blocking(move || {
+        load_and_parse_import_store(&src_clone, &state_path_clone)
+    })
+    .await
+    .map_err(|e| format!("Задача разбора конфигурации завершилась с ошибкой: {e}"))
+    .and_then(|res| res);
+    let (candidate, normalized_aliases, counts) = match parse_res {
+        Ok(res) => res,
+        Err(err) => {
+            return json!({
+                "success": false,
+                "error": err,
+            });
+        }
+    };
+    if let Err(e) = transaction::commit_transaction_boxed(state, candidate, "config_import").await {
+        return json!({
+            "success": false,
+            "error": format!("{e:#}"),
+        });
+    }
+    {
+        let d_now = state.data.read().await;
+        sync_from_store_to_json_and_cache(&d_now);
+    }
+    let mut applied = false;
+    if !core.is_manually_stopped() {
+        if let Err(e) = Box::pin(core.apply_or_reload()).await {
+            return json!({
+                "success": false,
+                "imported": true,
+                "error": format!("Конфигурация импортирована, но применение к ядру не удалось: {e:#}"),
+            });
+        }
+        applied = true;
+    }
+    json!({
+        "success": true,
+        "path": src_path.to_string_lossy(),
+        "applied": applied,
+        "normalized_aliases": normalized_aliases,
+        "sections": counts.0,
+        "outbounds": counts.1,
+        "conditions": counts.2,
+        "balancers": counts.3,
+    })
+}
+
+async fn handle_reload_with_disk_sync(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let mut reloaded_from_disk = false;
+    if state.is_disk_modified_externally() {
+        if let Err(e) = state.reload_from_disk().await {
+            return json!({
+                "success": false,
+                "error": format!("Хранилище на диске изменено, но перечитать его не удалось: {e:#}"),
+            });
+        }
+        reloaded_from_disk = true;
+    }
+    {
+        let d_now = state.data.read().await;
+        sync_from_store_to_json_and_cache(&d_now);
+    }
+    match Box::pin(core.apply_or_reload()).await {
+        Ok(()) => {
+            {
+                let d_now = state.data.read().await;
+                sync_from_store_to_json_and_cache(&d_now);
+            }
+            let live = state.live.read().await;
+            json!({
+                "success": true,
+                "reloaded_from_disk": reloaded_from_disk,
+                "config_drift": live.config_drift,
+            })
+        }
+        Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
+    }
+}
+
+#[inline(never)]
+fn validate_and_compile_store_sync(
+    d: &crate::store::RouterStoreData,
+) -> (Vec<String>, Vec<String>, Option<Value>) {
+    let plan = transaction::analyze_config_plan(d);
+    let mut errors = plan.errors;
+    let warnings = plan.warnings;
+    let compiled = match config_gen::compile_core_config(d) {
+        Ok(cfg) => Some(cfg),
+        Err(e) => {
+            errors.push(format!("compile_core_config: {e:#}"));
+            None
+        }
+    };
+    (errors, warnings, compiled)
+}
+
+async fn handle_config_validate(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let d = Box::new(state.data.read().await.clone());
+    let (sections_len, outbounds_len, conditions_len, balancers_len) = (
+        d.sections.len(),
+        d.outbound_sources.len(),
+        d.conditions.len(),
+        d.balancers.len(),
+    );
+    let (mut errors, mut warnings, compiled) =
+        tokio::task::spawn_blocking(move || validate_and_compile_store_sync(&d))
+            .await
+            .unwrap_or_else(|e| {
+                (
+                    vec![format!("config_validate task join error: {e}")],
+                    Vec::new(),
+                    None,
+                )
+            });
+
+    if let Some(cfg) = compiled {
+        let bin_path = core.resolve_bin_path().await;
+        if cfg!(target_os = "linux") && !bin_path.is_empty() && Path::new(&bin_path).exists() {
+            if let Err(err) = Box::pin(CoreManager::run_core_check_on_value(&bin_path, &cfg)).await
+            {
+                errors.push(format!("tachyon-core check: {err}"));
+            }
+        } else if !bin_path.is_empty() && !Path::new(&bin_path).exists() {
+            warnings.push(format!(
+                "Бинарный файл tachyon-core не найден ({bin_path}); выполнена проверка схемы"
+            ));
+        }
+    }
+
+    json!({
+        "success": errors.is_empty(),
+        "valid": errors.is_empty(),
+        "errors": errors,
+        "warnings": warnings,
+        "sections": sections_len,
+        "outbounds": outbounds_len,
+        "conditions": conditions_len,
+        "balancers": balancers_len,
+    })
+}
+
+async fn handle_engine_status(state: &Arc<AppState>) -> Value {
+    let live = state.live.read().await.clone();
+    let d = state.data.read().await;
+    json!({
+        "success": true,
+        "engine": "tachyon-core",
+        "running": live.core_running,
+        "pid": live.core_pid,
+        "version": live.core_version,
+        "uptime_seconds": live.core_uptime_secs,
+        "config_drift": live.config_drift,
+        "desired_config_digest": live.desired_config_digest,
+        "applied_config_digest": live.applied_config_digest,
+        "safe_minimal_active": live.safe_minimal_active,
+        "sections": d.sections.len(),
+        "outbounds": d.outbound_sources.len(),
+        "conditions": d.conditions.len(),
+        "balancers": d.balancers.len(),
+    })
+}
+
+#[inline(never)]
+fn execute_cli_engine_commands_boxed<'a>(
+    method: &'a str,
+    rest: &'a [String],
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxedCliFuture<'a, Option<CliExecOutput>> {
+    Box::pin(execute_cli_engine_commands(method, rest, state, core))
+}
+
+async fn execute_cli_engine_commands(
+    method: &str,
+    rest: &[String],
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<CliExecOutput> {
+    let val = match method {
+        "engine_status" => Box::pin(handle_engine_status(state)).await,
+        "engine_apply" | "engine_reload" => {
+            Box::pin(handle_reload_with_disk_sync(state, core)).await
+        }
+        "config_validate" => Box::pin(handle_config_validate(state, core)).await,
+        "diagnose_json" => {
+            let doc = Box::pin(diagnostics::run_local_doctor(state)).await;
+            serde_json::to_value(doc)
+                .unwrap_or_else(|e| json!({ "success": false, "error": e.to_string() }))
+        }
+        "config_import" => Box::pin(handle_config_import(rest, state, core)).await,
+        _ => return None,
+    };
+    let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+    Some((0, format!("{s}\n"), String::new()))
+}
+
 async fn execute_cli_part_components(
     method: &str,
     rest: &[String],
@@ -8525,7 +9096,7 @@ async fn execute_cli_part_components(
             Ok(()) => {
                 {
                     let d_now = state.data.read().await;
-                    sync_section_cache(&d_now);
+                    sync_from_store_to_json_and_cache(&d_now);
                 }
                 json!({ "success": true })
             }
@@ -8535,16 +9106,7 @@ async fn execute_cli_part_components(
             Ok(()) => json!({ "success": true }),
             Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
         },
-        "restart" | "reload" => match Box::pin(core.apply_or_reload()).await {
-            Ok(()) => {
-                {
-                    let d_now = state.data.read().await;
-                    sync_section_cache(&d_now);
-                }
-                json!({ "success": true })
-            }
-            Err(e) => json!({ "success": false, "error": format!("{e:#}") }),
-        },
+        "restart" | "reload" => Box::pin(handle_reload_with_disk_sync(state, core)).await,
         "enable" | "disable" => {
             if cfg!(target_os = "linux") && Path::new("/etc/init.d/tachyon").is_file() {
                 match tokio::time::timeout(
@@ -8762,6 +9324,50 @@ async fn execute_cli_part_components(
     };
     let s = serde_json::to_string(&out_val).unwrap_or_else(|_| "{}".to_string());
     Some((0, format!("{s}\n"), String::new()))
+}
+
+fn is_fuzzer_engine_arg(s: &str) -> bool {
+    matches!(
+        s.trim().to_ascii_lowercase().as_str(),
+        "desync" | "zapret" | "zapret2" | "byedpi" | "all"
+    )
+}
+
+fn is_fuzzer_target_arg(s: &str) -> bool {
+    let lc = s.trim().to_ascii_lowercase();
+    !lc.is_empty()
+        && !is_fuzzer_engine_arg(&lc)
+        && (lc.ends_with("_suite")
+            || matches!(
+                lc.as_str(),
+                "youtube"
+                    | "discord"
+                    | "telegram"
+                    | "twitch"
+                    | "twitter"
+                    | "instagram"
+                    | "meta"
+                    | "google"
+                    | "ai"
+                    | "custom"
+            )
+            || lc.starts_with("http://")
+            || lc.starts_with("https://")
+            || lc.starts_with("udp://"))
+}
+
+pub(crate) fn normalize_fuzzer_start_args<'a>(arg0: &'a str, arg1: &'a str) -> (&'a str, &'a str) {
+    let a0 = arg0.trim();
+    let a1 = arg1.trim();
+    if is_fuzzer_target_arg(a0) && (a1.is_empty() || is_fuzzer_engine_arg(a1)) {
+        let eng = if a1.is_empty() { "desync" } else { a1 };
+        (eng, a0)
+    } else {
+        (
+            if a0.is_empty() { "desync" } else { a0 },
+            if a1.is_empty() { "youtube_suite" } else { a1 },
+        )
+    }
 }
 
 async fn execute_cli_part_dns_fuzzer(
@@ -9459,8 +10065,9 @@ async fn execute_cli_part_dns_fuzzer(
             crate::fuzzer::get_strategies_catalog_for_target(mode, engine_filter, target, &bin_path)
         }
         "fuzzer_start" => {
-            let engine = rest.first().map(String::as_str).unwrap_or("desync");
-            let target = rest.get(1).map(String::as_str).unwrap_or("youtube_suite");
+            let raw0 = rest.first().map(String::as_str).unwrap_or("");
+            let raw1 = rest.get(1).map(String::as_str).unwrap_or("");
+            let (engine, target) = normalize_fuzzer_start_args(raw0, raw1);
             let custom_url = rest.get(2).map(String::as_str).unwrap_or("");
             let rule_section = rest.get(3).map(String::as_str).unwrap_or("");
             let custom_file = rest.get(4).map(String::as_str).unwrap_or("");
@@ -11519,6 +12126,51 @@ async fn handle_pure_rust_uci(
 
     match uci_method {
         "get" => {
+            let need_resync = {
+                let d = state.data.read().await;
+                let mut expected: Vec<(&str, &str)> = Vec::with_capacity(
+                    d.sections.len()
+                        + d.balancers.len()
+                        + d.conditions.len()
+                        + d.outbound_sources.len(),
+                );
+                for s in &d.sections {
+                    if !s.id.trim().is_empty() {
+                        expected.push((s.id.trim(), "section"));
+                    }
+                }
+                for b in &d.balancers {
+                    if !b.id.trim().is_empty() {
+                        expected.push((b.id.trim(), "balancer"));
+                    }
+                }
+                for c in &d.conditions {
+                    if !c.id.trim().is_empty() {
+                        expected.push((c.id.trim(), "condition"));
+                    }
+                }
+                for src in &d.outbound_sources {
+                    if !src.id.trim().is_empty() {
+                        expected.push((src.id.trim(), "outbound_source"));
+                    }
+                }
+                json_sections_store()
+                    .read()
+                    .map(|g| {
+                        g.is_empty()
+                            || expected.iter().any(|(id, ty)| {
+                                g.get(*id)
+                                    .and_then(|v| v.get(".type"))
+                                    .and_then(Value::as_str)
+                                    != Some(*ty)
+                            })
+                    })
+                    .unwrap_or(false)
+            };
+            if need_resync {
+                let d = state.data.read().await.clone();
+                sync_from_store_to_json_and_cache(&d);
+            }
             let store = json_sections_store()
                 .read()
                 .map(|g| g.clone())
@@ -11721,8 +12373,8 @@ async fn handle_pure_rust_uci(
         "changes" => json!([0, { "changes": {} }]),
         "apply" | "commit" | "confirm" => {
             clear_uci_rollback_baseline();
-            if sync_uci_to_rust_store(state, core).await.is_err() {
-                return json!([5]);
+            if let Err(err) = sync_uci_to_rust_store(state, core).await {
+                return json!([5, { "error": err }]);
             }
             json!([0])
         }
@@ -14973,5 +15625,157 @@ ipv4 2 udp 17 120 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 packets=3 b
             vec![" ".to_string(), "LTE".to_string(), "Helsinki".to_string()];
         let meta_empty = read_pure_rust_subscription_metadata(&store, "TEST");
         assert_eq!(meta_empty[0]["nodeCount"], 0);
+    }
+
+    #[test]
+    fn parse_openwrt_network_interface_proto_detects_amneziawg_and_wireguard() {
+        let uci = r#"
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+
+config interface 'VPN'
+	option proto 'amneziawg'
+	option private_key 'secret'
+
+config interface 'wg_peer'
+	option proto "wireguard"
+	option device 'wg0'
+"#;
+        assert_eq!(
+            parse_openwrt_network_interface_proto(uci, "VPN").as_deref(),
+            Some("amneziawg")
+        );
+        assert_eq!(
+            parse_openwrt_network_interface_proto(uci, "wg0").as_deref(),
+            Some("wireguard")
+        );
+        assert_eq!(parse_openwrt_network_interface_proto(uci, "wan"), None);
+    }
+
+    #[test]
+    fn interface_source_metadata_uses_friendly_name_detected_proto_and_leaf_tag() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.outbound_sources.clear();
+        store.sections.clear();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "src_awg_custom".to_string(),
+            enabled: true,
+            name: "AmneziaWG Home".to_string(),
+            source_type: "interface".to_string(),
+            interface_name: "awg_custom".to_string(),
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "Youtube".to_string(),
+            enabled: true,
+            action: "connection".to_string(),
+            outbound_source_refs: vec!["src_awg_custom".to_string()],
+            ..Default::default()
+        });
+
+        let meta = read_pure_rust_outbound_metadata(&store, "Youtube");
+        assert_eq!(meta["names"]["iface-src_awg_custom"], "AmneziaWG Home");
+        assert_eq!(meta["protocols"]["iface-src_awg_custom"], "amneziawg");
+
+        let leaf_tags = collect_store_section_leaf_tags(&store, "Youtube");
+        assert_eq!(leaf_tags, vec!["iface-src_awg_custom".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn cli_help_fuzzer_order_and_engine_aliases_work() {
+        let dir = std::env::temp_dir().join(format!("tachyon_cli_aliases_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let store_path = dir.join("tachyon.json");
+        let state = AppState::load_or_create(&store_path).expect("load state");
+        let core = CoreManager::new(Arc::clone(&state));
+
+        // 1. `--help` and `-h` print help and exit 0
+        for flag in ["--help", "-h"] {
+            let (code, stdout, stderr) =
+                Box::pin(execute_tachyon_cli(&[flag.to_string()], &state, &core)).await;
+            assert_eq!(code, 0, "help flag {flag} must exit 0");
+            assert!(stderr.is_empty());
+            assert!(stdout.contains("Usage: tachyon"));
+            assert!(stdout.contains("engine_status"));
+            assert!(stdout.contains("config_import"));
+        }
+
+        // 2. Flexible fuzzer_start argument ordering
+        assert_eq!(
+            normalize_fuzzer_start_args("desync", "youtube_suite"),
+            ("desync", "youtube_suite")
+        );
+        assert_eq!(
+            normalize_fuzzer_start_args("youtube_suite", "desync"),
+            ("desync", "youtube_suite")
+        );
+        assert_eq!(
+            normalize_fuzzer_start_args("youtube_suite", ""),
+            ("desync", "youtube_suite")
+        );
+
+        // 3. `engine_status`, `config_validate`, `diagnose_json`
+        let (es_code, es_out, _) = Box::pin(execute_tachyon_cli(
+            &["engine_status".to_string()],
+            &state,
+            &core,
+        ))
+        .await;
+        assert_eq!(es_code, 0);
+        let es_val: Value = serde_json::from_str(es_out.trim()).expect("engine_status JSON");
+        assert_eq!(es_val.get("success").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            es_val.get("engine").and_then(Value::as_str),
+            Some("tachyon-core")
+        );
+
+        let (cv_code, cv_out, _) = Box::pin(execute_tachyon_cli(
+            &["config_validate".to_string()],
+            &state,
+            &core,
+        ))
+        .await;
+        assert_eq!(cv_code, 0);
+        let cv_val: Value = serde_json::from_str(cv_out.trim()).expect("config_validate JSON");
+        assert_eq!(cv_val.get("valid").and_then(Value::as_bool), Some(true));
+
+        let (dj_code, dj_out, _) = Box::pin(execute_tachyon_cli(
+            &["diagnose_json".to_string()],
+            &state,
+            &core,
+        ))
+        .await;
+        assert_eq!(dj_code, 0);
+        let dj_val: Value = serde_json::from_str(dj_out.trim()).expect("diagnose_json JSON");
+        assert!(dj_val.get("checks_total").is_some());
+        assert!(dj_val.get("findings").is_some());
+
+        // 4. `config_import` imports an external store file safely
+        let import_path = dir.join("import.json");
+        {
+            let mut ext_val: Value =
+                serde_json::from_str(&std::fs::read_to_string(&store_path).unwrap()).unwrap();
+            ext_val["settings"]["log_level"] = json!("info");
+            std::fs::write(&import_path, serde_json::to_string(&ext_val).unwrap()).unwrap();
+        }
+        core.set_manual_stop(true);
+        let (ci_code, ci_out, _) = Box::pin(execute_tachyon_cli(
+            &[
+                "config_import".to_string(),
+                import_path.to_string_lossy().to_string(),
+            ],
+            &state,
+            &core,
+        ))
+        .await;
+        core.set_manual_stop(false);
+        assert_eq!(ci_code, 0);
+        let ci_val: Value = serde_json::from_str(ci_out.trim()).expect("config_import JSON");
+        assert_eq!(ci_val.get("success").and_then(Value::as_bool), Some(true));
+        assert_eq!(state.data.read().await.settings.log_level, "info");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

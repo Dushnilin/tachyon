@@ -8,6 +8,7 @@ import {
   isCopyableProxyLink,
 } from '../../../helpers';
 import { decodeSubHeaderValue } from '../../../helpers/decodeSubHeader';
+import { serverFilterNameMatches } from '../../../helpers/serverFilterName';
 import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { TachyonShellMethods } from '../shell';
 import { detectOutboundCountry } from '../../helpers/country';
@@ -331,6 +332,7 @@ function resolveSingleEndpointProxy(
     const directCandidates = [
       srcId,
       `wg-${srcId}`,
+      ...(srcType === 'interface' ? [`iface-${srcId}`] : []),
       ...(srcType ? [`${srcType}-${srcId}`] : []),
       ...(srcType === 'amneziawg' ? [`awg-${srcId}`] : []),
     ];
@@ -1458,6 +1460,221 @@ function isNaOutbound(outbound: Tachyon.Outbound) {
   return !outbound.latency && outbound.latency !== -1;
 }
 
+function compileDashboardFilterRegexes(patterns: string[]): RegExp[] {
+  const out: RegExp[] = [];
+  for (const pat of patterns) {
+    const trimmed = pat.trim();
+    if (!trimmed) continue;
+    try {
+      out.push(new RegExp(trimmed, 'i'));
+    } catch {
+      // Ignore invalid user regex so broken pattern never breaks dashboard loading
+    }
+  }
+  return out;
+}
+
+function normalizeDashboardProto(raw: string): string {
+  const lower = raw.trim().toLowerCase();
+  if (lower === 'ss') return 'shadowsocks';
+  if (lower === 'hy2') return 'hysteria2';
+  if (lower === 'socks5') return 'socks';
+  return lower;
+}
+
+function dashboardPortMatches(rawPort: unknown, rules: string[]): boolean {
+  const port = Number.parseInt(String(rawPort ?? '').trim(), 10);
+  if (!Number.isFinite(port) || port <= 0) return false;
+  for (const rule of rules) {
+    const cleaned = rule.trim();
+    if (!cleaned) continue;
+    const rangeMatch = cleaned.match(/^(\d+)\s*[-:]\s*(\d+)$/);
+    if (rangeMatch) {
+      const start = Number.parseInt(rangeMatch[1], 10);
+      const end = Number.parseInt(rangeMatch[2], 10);
+      if (port >= Math.min(start, end) && port <= Math.max(start, end)) {
+        return true;
+      }
+      continue;
+    }
+    const single = Number.parseInt(cleaned, 10);
+    if (Number.isFinite(single) && single === port) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyDashboardServerFilter(
+  section: Tachyon.ConfigSection,
+  outbounds: Tachyon.Outbound[],
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+): Tachyon.Outbound[] {
+  const mode = String(section.dashboard_filter_mode || '')
+    .trim()
+    .toLowerCase();
+  if (mode !== 'include' && mode !== 'exclude' && mode !== 'mixed') {
+    return outbounds;
+  }
+
+  const groupMatches = (ob: Tachyon.Outbound, patterns: string[]) =>
+    patterns.some((pat) => {
+      const trimmed = pat.trim();
+      if (!trimmed) return false;
+      return (
+        ob.code === trimmed ||
+        ob.displayName === trimmed ||
+        ob.code.endsWith(`-${trimmed}`)
+      );
+    });
+
+  const isFlagEnabled = (val: unknown) => val === '1' || val === true;
+
+  const incGroups = getListValues(section.dashboard_include_groups);
+  const excGroups = getListValues(section.dashboard_exclude_groups);
+
+  const incCountries = getListValues(section.dashboard_include_countries).map(
+    (c) => c.toUpperCase(),
+  );
+  const excCountries = getListValues(section.dashboard_exclude_countries).map(
+    (c) => c.toUpperCase(),
+  );
+
+  const incOutbounds = getRawListValues(section.dashboard_include_outbounds);
+  const excOutbounds = getRawListValues(section.dashboard_exclude_outbounds);
+
+  const incRegex = compileDashboardFilterRegexes(
+    getRawListValues(section.dashboard_include_regex),
+  );
+  const excRegex = compileDashboardFilterRegexes(
+    getRawListValues(section.dashboard_exclude_regex),
+  );
+
+  const incParams = isFlagEnabled(section.dashboard_include_proxy_parameters);
+  const excParams = isFlagEnabled(section.dashboard_exclude_proxy_parameters);
+
+  const incProtocols = incParams
+    ? getListValues(section.dashboard_include_protocols).map(
+        normalizeDashboardProto,
+      )
+    : [];
+  const incTransports = incParams
+    ? getListValues(section.dashboard_include_transports).map((t) =>
+        t.toLowerCase(),
+      )
+    : [];
+  const incSecurities = incParams
+    ? getListValues(section.dashboard_include_securities).map((s) =>
+        s.toLowerCase(),
+      )
+    : [];
+  const incPorts = incParams
+    ? getListValues(section.dashboard_include_ports)
+    : [];
+
+  const excProtocols = excParams
+    ? getListValues(section.dashboard_exclude_protocols).map(
+        normalizeDashboardProto,
+      )
+    : [];
+  const excTransports = excParams
+    ? getListValues(section.dashboard_exclude_transports).map((t) =>
+        t.toLowerCase(),
+      )
+    : [];
+  const excSecurities = excParams
+    ? getListValues(section.dashboard_exclude_securities).map((s) =>
+        s.toLowerCase(),
+      )
+    : [];
+  const excPorts = excParams
+    ? getListValues(section.dashboard_exclude_ports)
+    : [];
+
+  const useInclude = mode === 'include' || mode === 'mixed';
+  const useExclude = mode === 'exclude' || mode === 'mixed';
+  const hasLeafIncludeRules =
+    incCountries.length > 0 ||
+    incOutbounds.length > 0 ||
+    incRegex.length > 0 ||
+    incProtocols.length > 0 ||
+    incTransports.length > 0 ||
+    incSecurities.length > 0 ||
+    incPorts.length > 0;
+
+  return outbounds.filter((o) => {
+    if (o.urlTestInfo || o.priorityInfo) {
+      if (useInclude && incGroups.length > 0 && !groupMatches(o, incGroups)) {
+        return false;
+      }
+      if (useExclude && excGroups.length > 0 && groupMatches(o, excGroups)) {
+        return false;
+      }
+      return true;
+    }
+    if (isSelectorOutbound(o)) {
+      return true;
+    }
+
+    const candidates = [
+      o.code,
+      o.displayName,
+      o.prefix ? `${o.prefix} ${o.displayName}` : '',
+    ].filter(Boolean);
+    const metaProto = normalizeDashboardProto(
+      String(
+        lookupMetadataField(outboundMetadata?.protocols, o.code) ||
+          o.type ||
+          '',
+      ),
+    );
+    const metaTrans = String(
+      lookupMetadataField(outboundMetadata?.transports, o.code) ||
+        o.transport ||
+        '',
+    ).toLowerCase();
+    const metaSec = String(
+      lookupMetadataField(outboundMetadata?.securities, o.code) || '',
+    ).toLowerCase();
+    const metaPort = lookupMetadataField(outboundMetadata?.ports, o.code);
+    const country = String(
+      o.country ||
+        lookupMetadataField(outboundMetadata?.countries, o.code) ||
+        '',
+    ).toUpperCase();
+
+    if (useInclude && hasLeafIncludeRules) {
+      const matchedInclude =
+        incOutbounds.some((pat) => serverFilterNameMatches(pat, candidates)) ||
+        (country !== '' && incCountries.includes(country)) ||
+        incRegex.some((re) => candidates.some((c) => re.test(c))) ||
+        (metaProto !== '' && incProtocols.includes(metaProto)) ||
+        (metaTrans !== '' && incTransports.includes(metaTrans)) ||
+        (metaSec !== '' && incSecurities.includes(metaSec)) ||
+        dashboardPortMatches(metaPort, incPorts);
+      if (!matchedInclude) {
+        return false;
+      }
+    }
+
+    if (useExclude) {
+      const matchedExclude =
+        excOutbounds.some((pat) => serverFilterNameMatches(pat, candidates)) ||
+        (country !== '' && excCountries.includes(country)) ||
+        excRegex.some((re) => candidates.some((c) => re.test(c))) ||
+        (metaProto !== '' && excProtocols.includes(metaProto)) ||
+        (metaTrans !== '' && excTransports.includes(metaTrans)) ||
+        (metaSec !== '' && excSecurities.includes(metaSec)) ||
+        dashboardPortMatches(metaPort, excPorts);
+      if (matchedExclude) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
   return (
     section.action === 'group' ||
@@ -2259,7 +2476,10 @@ function dashboardOutboundType(
   if (proto === 'mtproto') return 'MTProto';
   if (proto === 'urltest') return 'URLTest';
   if (proto === 'selector') return 'Selector';
-  if ((proto === 'direct' || !proto) && /-interface-\d+-out$/i.test(code)) {
+  if (
+    (proto === 'direct' || !proto) &&
+    (/-interface-\d+-out$/i.test(code) || /^iface-/i.test(code))
+  ) {
     const rawName = (
       lookupMetadataField(outboundMetadata?.names, code) || ''
     ).toLowerCase();
@@ -2372,6 +2592,16 @@ function resolveOutboundNameAndPrefix({
     if (parts.length > 1 && parts[parts.length - 1].trim()) {
       prefix = parts.slice(0, -1).join('/');
       displayName = parts[parts.length - 1].trim();
+    }
+  }
+
+  if (/^iface-/i.test(code) && /^iface-/i.test(displayName)) {
+    const cleaned = displayName
+      .replace(/^iface-/i, '')
+      .replace(/^src_/i, '')
+      .trim();
+    if (cleaned) {
+      displayName = cleaned;
     }
   }
 
@@ -2948,10 +3178,7 @@ function buildProxyGroupOutbounds(
     urlTestCodes[0] ||
     priorityCodes[0] ||
     (selectorCodes.length > 0 ? selectorCodes[0] : undefined) ||
-    (!selector &&
-    groupCodes.length === 1 &&
-    jsonOutboundByCode.has(groupCodes[0]) &&
-    proxyByCode.has(groupCodes[0])
+    (!selector && groupCodes.length === 1 && proxyByCode.has(groupCodes[0])
       ? groupCodes[0]
       : undefined);
 
@@ -3267,7 +3494,10 @@ function buildProxyGroupOutbounds(
 
   return {
     selector,
-    latencyTestCode: selector?.code || builtInUrltestCode,
+    latencyTestCode:
+      selector?.code ||
+      builtInUrltestCode ||
+      (latencyTestCodes.length === 1 ? latencyTestCodes[0] : undefined),
     latencyTestCodes:
       latencyTestCodes.length > 0 ? latencyTestCodes : undefined,
     outbounds: sortedOutbounds,
@@ -3820,14 +4050,29 @@ export async function getDashboardSections(
               effectiveSortMode,
             );
 
+          const dashboardFilteredOutbounds = applyDashboardServerFilter(
+            section,
+            outbounds,
+            outboundMetadata,
+          );
+          const dashboardFilterMode = String(
+            section.dashboard_filter_mode || '',
+          )
+            .trim()
+            .toLowerCase();
+          const filterModeActive =
+            dashboardFilterMode === 'include' ||
+            dashboardFilterMode === 'exclude' ||
+            dashboardFilterMode === 'mixed';
+
           const hideNa = shouldHideNaServers(section);
-          const leafOutbounds = outbounds.filter(
+          const leafOutbounds = dashboardFilteredOutbounds.filter(
             (o) => !o.urlTestInfo && !o.priorityInfo && !isSelectorOutbound(o),
           );
           const hasTestedServers = leafOutbounds.some((o) => !isNaOutbound(o));
           const filteredOutbounds = (() => {
             if (!hideNa || !hasTestedServers) {
-              return outbounds;
+              return dashboardFilteredOutbounds;
             }
             const proxyHistoryCodes = new Set(
               proxies
@@ -3853,7 +4098,7 @@ export async function getDashboardSections(
                 .map((o) => o.sourceGroup as string),
             );
             const untestedPriorityMemberCodes = new Set<string>();
-            for (const ob of outbounds) {
+            for (const ob of dashboardFilteredOutbounds) {
               if (!ob.priorityInfo?.outbounds?.length) continue;
               const membersByLevel = new Map<
                 number,
@@ -3882,7 +4127,7 @@ export async function getDashboardSections(
               }
             }
 
-            return outbounds.filter((o) => {
+            return dashboardFilteredOutbounds.filter((o) => {
               if (!isNaOutbound(o)) return true;
               if (o.runtimeAvailable === false) return false;
               if (
@@ -3899,14 +4144,28 @@ export async function getDashboardSections(
             });
           })();
 
+          const filteredCodesSet = filterModeActive
+            ? new Set(filteredOutbounds.map((o) => o.code))
+            : null;
+          const filteredLatencyTestCodes =
+            filteredCodesSet && Array.isArray(latencyTestCodes)
+              ? latencyTestCodes.filter((code) => filteredCodesSet.has(code))
+              : latencyTestCodes;
+          const filteredLatencyTestCode =
+            filteredCodesSet &&
+            latencyTestCode &&
+            !filteredCodesSet.has(latencyTestCode)
+              ? filteredLatencyTestCodes?.[0]
+              : latencyTestCode;
+
           return {
             withTagSelect: true,
             code: selector?.code || getOutboundTagBySection(sectionName),
             sectionName,
             displayName,
             action: sectionAction,
-            latencyTestCode,
-            latencyTestCodes,
+            latencyTestCode: filteredLatencyTestCode,
+            latencyTestCodes: filteredLatencyTestCodes,
             proxyConfigType,
             subscriptionSourceCount,
             subscriptionMetadata,

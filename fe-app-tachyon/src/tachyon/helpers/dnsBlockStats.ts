@@ -248,6 +248,37 @@ export async function fetchDnsBlockStats(
   }
 }
 
+export async function clearDnsBlockStats(
+  fetchImpl: typeof fetch | undefined = typeof fetch === 'function'
+    ? fetch
+    : undefined,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!fetchImpl) {
+    return { ok: false, error: 'Fetch unavailable' };
+  }
+  try {
+    const res = await fetchImpl('/api/dns/block-stats/clear', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const errText =
+        payload && typeof payload === 'object' && 'error' in payload
+          ? asString((payload as Record<string, unknown>).error)
+          : `HTTP ${res.status}`;
+      return { ok: false, error: errText || `HTTP ${res.status}` };
+    }
+    return { ok: payload?.ok !== false };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err || 'Error'),
+    };
+  }
+}
+
 export function formatListSourceLabel(source: string): string {
   const s = (source || '').trim();
   if (!s) return '-';

@@ -149,8 +149,42 @@ impl CoreManager {
         enabled && !self.is_manually_stopped()
     }
 
-    async fn drain_core_log_stream<R>(stream: R, st: Arc<AppState>)
-    where
+    pub(crate) fn rotate_core_log_on_start(log_dir: &Path) -> PathBuf {
+        let _ = std::fs::create_dir_all(log_dir);
+        let log_path = log_dir.join("tachyon-core.log");
+        let prev_path = log_dir.join("tachyon-core.log.prev");
+        if std::fs::metadata(&log_path).is_ok_and(|m| m.len() > 0) {
+            let _ = std::fs::rename(&log_path, &prev_path);
+        }
+        let header = format!(
+            "--- tachyon-core started (unix={}) ---\n",
+            crate::store::unix_now_u64()
+        );
+        let _ = std::fs::write(&log_path, header.as_bytes());
+        log_path
+    }
+
+    fn append_core_log_line(path: &Path, line: &str) {
+        use std::io::Write as _;
+        const MAX_CORE_LOG_BYTES: u64 = 512 * 1024;
+        if std::fs::metadata(path).is_ok_and(|m| m.len() >= MAX_CORE_LOG_BYTES) {
+            let prev_path = path.with_file_name("tachyon-core.log.prev");
+            let _ = std::fs::rename(path, &prev_path);
+        }
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+
+    async fn drain_core_log_stream_to_file<R>(
+        stream: R,
+        st: Arc<AppState>,
+        log_file_path: Option<PathBuf>,
+    ) where
         R: tokio::io::AsyncRead + Unpin,
     {
         const MAX_LINE_BYTES: usize = 16 * 1024;
@@ -189,6 +223,9 @@ impl CoreManager {
                     } else {
                         msg.into_owned()
                     };
+                    if let Some(ref p) = log_file_path {
+                        Self::append_core_log_line(p, &clean);
+                    }
                     st.live.write().await.push_log(&clean);
                     line_buf.clear();
                 }
@@ -197,6 +234,9 @@ impl CoreManager {
         }
         if !line_buf.is_empty() {
             let msg = String::from_utf8_lossy(&line_buf);
+            if let Some(ref p) = log_file_path {
+                Self::append_core_log_line(p, &msg);
+            }
             st.live.write().await.push_log(&msg);
         }
     }
@@ -930,6 +970,7 @@ impl CoreManager {
             return ("_dns".to_string(), "Настройки DNS".to_string());
         }
         if let Some(idx) = Self::extract_bracket_index(&norm, "outbounds")
+            .or_else(|| Self::extract_bracket_index(&norm, "outbound"))
             && let Some(tag) = cfg
                 .pointer(&format!("/outbounds/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -940,6 +981,7 @@ impl CoreManager {
             return (format!("outbound:{tag}"), format!("Исходящий узел '{tag}'"));
         }
         if let Some(idx) = Self::extract_bracket_index(&norm, "endpoints")
+            .or_else(|| Self::extract_bracket_index(&norm, "endpoint"))
             && let Some(tag) = cfg
                 .pointer(&format!("/endpoints/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -950,6 +992,7 @@ impl CoreManager {
             return (format!("server:{tag}"), format!("Endpoint '{tag}'"));
         }
         if let Some(idx) = Self::extract_bracket_index(&norm, "inbounds")
+            .or_else(|| Self::extract_bracket_index(&norm, "inbound"))
             && let Some(tag) = cfg
                 .pointer(&format!("/inbounds/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -1184,6 +1227,7 @@ impl CoreManager {
         }
 
         if let Some(idx) = Self::extract_bracket_index(&norm, "outbounds")
+            .or_else(|| Self::extract_bracket_index(&norm, "outbound"))
             && let Some(tag) = cfg
                 .pointer(&format!("/outbounds/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -1194,6 +1238,7 @@ impl CoreManager {
         }
 
         if let Some(idx) = Self::extract_bracket_index(&norm, "endpoints")
+            .or_else(|| Self::extract_bracket_index(&norm, "endpoint"))
             && let Some(tag) = cfg
                 .pointer(&format!("/endpoints/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -1204,6 +1249,7 @@ impl CoreManager {
         }
 
         if let Some(idx) = Self::extract_bracket_index(&norm, "inbounds")
+            .or_else(|| Self::extract_bracket_index(&norm, "inbound"))
             && let Some(tag) = cfg
                 .pointer(&format!("/inbounds/{idx}/tag"))
                 .and_then(Value::as_str)
@@ -1256,23 +1302,55 @@ impl CoreManager {
             return true;
         }
 
-        let found_tag = ["/outbounds", "/endpoints"].iter().find_map(|ptr| {
-            cfg.pointer(ptr)
-                .and_then(Value::as_array)
-                .and_then(|items| {
-                    items.iter().find_map(|item| {
-                        let tag = item.get("tag").and_then(Value::as_str)?;
-                        (!matches!(tag, "direct" | "block") && norm.contains(tag))
-                            .then(|| tag.to_string())
-                    })
-                })
-        });
+        let found_tag = ["/outbounds", "/endpoints"]
+            .iter()
+            .filter_map(|ptr| cfg.pointer(ptr).and_then(Value::as_array))
+            .flatten()
+            .filter_map(|item| item.get("tag").and_then(Value::as_str))
+            .filter(|tag| !matches!(*tag, "direct" | "block") && norm.contains(*tag))
+            .max_by_key(|tag| tag.len())
+            .map(ToString::to_string);
         if let Some(tag) = found_tag
             && Self::strip_outbound_tag_and_repair_refs(cfg, &tag)
         {
             return true;
         }
         false
+    }
+
+    fn section_still_has_active_route(cfg: &Value, sec_id: &str) -> bool {
+        let candidate_tags = [
+            format!("sec-{sec_id}-out"),
+            format!("sel-{sec_id}"),
+            format!("sec-{sec_id}"),
+        ];
+        let has_group = cfg
+            .get("outbounds")
+            .and_then(Value::as_array)
+            .is_some_and(|obs| {
+                obs.iter().any(|ob| {
+                    let tag = ob.get("tag").and_then(Value::as_str).unwrap_or("");
+                    let matches_sec = candidate_tags.iter().any(|c| c == tag)
+                        || tag.starts_with(&format!("bal-{sec_id}-"));
+                    matches_sec
+                        && ob
+                            .get("outbounds")
+                            .and_then(Value::as_array)
+                            .is_some_and(|m| !m.is_empty())
+                })
+            });
+        let has_rule = cfg
+            .pointer("/route/rules")
+            .and_then(Value::as_array)
+            .is_some_and(|rules| {
+                rules.iter().any(|r| {
+                    r.get("outbound").and_then(Value::as_str).is_some_and(|o| {
+                        candidate_tags.iter().any(|c| c == o)
+                            || o.starts_with(&format!("bal-{sec_id}-"))
+                    })
+                })
+            });
+        has_group && has_rule
     }
 
     fn apply_quarantine_failure_step(
@@ -1288,6 +1366,17 @@ impl CoreManager {
         let pretty = Self::format_fault_reason(reason);
         let entry_msg = format!("{label} не загружена: {pretty}");
         let stripped = Self::strip_broken_entity_from_cfg(cfg, reason);
+        let sec_survived = stripped
+            && !key.starts_with('_')
+            && !key.starts_with("outbound:")
+            && !key.starts_with("server:")
+            && Self::section_still_has_active_route(cfg, &key);
+        if sec_survived {
+            eprintln!(
+                "[tachyon] {label}: пропущен проблемный узел ({pretty}); секция остаётся активной"
+            );
+            return true;
+        }
         quarantined
             .entry(key)
             .and_modify(|prev| {
@@ -1362,7 +1451,10 @@ impl CoreManager {
         (safe_cfg, quarantined)
     }
 
-    async fn run_core_check_on_value(bin_path: &str, candidate_cfg: &Value) -> Result<(), String> {
+    pub(crate) async fn run_core_check_on_value(
+        bin_path: &str,
+        candidate_cfg: &Value,
+    ) -> Result<(), String> {
         static CHECK_CANDIDATE_SEQ: PortableAtomicU64 = PortableAtomicU64::new(0);
         struct CandidateFileGuard(PathBuf);
         impl Drop for CandidateFileGuard {
@@ -1739,6 +1831,16 @@ impl CoreManager {
             return Err(err);
         }
 
+        let core_log_dir = if cfg!(target_os = "linux") {
+            PathBuf::from("/tmp/tachyon-core")
+        } else {
+            self.state
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("data"))
+                .join("logs")
+        };
+        let core_log_path = Self::rotate_core_log_on_start(&core_log_dir);
         let mut child = match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path)).await {
             Ok(c) => c,
             Err(first_err) if !quarantined.contains_key("_core_runtime") => {
@@ -1794,11 +1896,19 @@ impl CoreManager {
 
         if let Some(stdout) = child.stdout.take() {
             let st = Arc::clone(&self.state);
-            tokio::spawn(Self::drain_core_log_stream(stdout, st));
+            tokio::spawn(Self::drain_core_log_stream_to_file(
+                stdout,
+                st,
+                Some(core_log_path.clone()),
+            ));
         }
         if let Some(stderr) = child.stderr.take() {
             let st = Arc::clone(&self.state);
-            tokio::spawn(Self::drain_core_log_stream(stderr, st));
+            tokio::spawn(Self::drain_core_log_stream_to_file(
+                stderr,
+                st,
+                Some(core_log_path),
+            ));
         }
 
         *self.proc.lock().await = Some((child, Instant::now()));
@@ -1900,7 +2010,13 @@ impl CoreManager {
             crate::watchdog::compute_desired_digest(store_snapshot)
         };
         if !digest.is_empty() {
-            self.watchdog.lock().await.record_applied_config(digest);
+            self.watchdog
+                .lock()
+                .await
+                .record_applied_config(digest.clone());
+            let mut live = self.state.live.write().await;
+            live.desired_config_digest = digest;
+            live.config_drift = false;
         }
     }
 
@@ -4300,7 +4416,7 @@ impl CoreManager {
     }
 
     pub async fn get_core_flight_recorder(&self) -> Value {
-        self.clash_request("GET", "/tachyon/flight", None)
+        self.clash_request("GET", "/tachyon/flight?limit=250", None)
             .await
             .unwrap_or_else(|_| json!({"records": [], "total": 0}))
     }
@@ -7356,7 +7472,9 @@ mod core_mgr_tests {
         let state = crate::store::AppState::load_or_create(dir.join("store.json")).unwrap();
         let (mut writer, reader) = tokio::io::duplex(64 * 1024);
         let st_clone = Arc::clone(&state);
-        let task = tokio::spawn(CoreManager::drain_core_log_stream(reader, st_clone));
+        let task = tokio::spawn(CoreManager::drain_core_log_stream_to_file(
+            reader, st_clone, None,
+        ));
 
         writer.write_all(b"bad-utf8:\xff\xfe:ok\n").await.unwrap();
         let huge = vec![b'x'; 24 * 1024];
@@ -7405,5 +7523,102 @@ mod core_mgr_tests {
                 "x-hwid" | "x-device-os" | "x-ver-os" | "x-device-model"
             )
         }));
+    }
+
+    #[test]
+    fn test_quarantine_skips_single_broken_node_and_preserves_multi_node_section() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Gneral".to_string(),
+            label: "General".to_string(),
+            enabled: true,
+            ..Default::default()
+        });
+
+        let initial_cfg = json!({
+            "dns": {
+                "servers": [
+                    { "type": "udp", "tag": "dns-bootstrap", "server": "77.88.8.8", "server_port": 53 },
+                    { "type": "udp", "tag": "dns-remote", "server": "1.1.1.1", "server_port": 53 }
+                ],
+                "final": "dns-remote"
+            },
+            "outbounds": [
+                { "type": "direct", "tag": "direct" },
+                { "type": "vless", "tag": "PROM Good", "server": "198.51.100.1", "server_port": 443 },
+                { "type": "vless", "tag": "PROM Bad", "server": "198.51.100.2", "server_port": 443 },
+                {
+                    "type": "selector",
+                    "tag": "sel-Gneral",
+                    "default": "PROM Bad",
+                    "outbounds": ["PROM Bad", "PROM Good"]
+                }
+            ],
+            "route": {
+                "rules": [
+                    { "rule_set": ["trs-geoblock"], "outbound": "sel-Gneral" }
+                ],
+                "final": "direct"
+            }
+        });
+
+        let (prepared, errs) =
+            CoreManager::quarantine_with_checker(&store, initial_cfg, BTreeMap::new(), |cfg| {
+                let obs = cfg["outbounds"].as_array().unwrap();
+                for (i, ob) in obs.iter().enumerate() {
+                    if ob["tag"].as_str() == Some("PROM Bad") {
+                        return Err(format!(
+                            "check: initialize outbound[{i}] vless[PROM Bad]: invalid public_key"
+                        ));
+                    }
+                }
+                Ok(())
+            });
+
+        assert!(
+            !errs.contains_key("Gneral"),
+            "working section must not be marked broken when only 1 leaf is skipped: {errs:?}"
+        );
+        let obs = prepared["outbounds"].as_array().unwrap();
+        assert!(!obs.iter().any(|o| o["tag"] == "PROM Bad"));
+        assert!(obs.iter().any(|o| o["tag"] == "PROM Good"));
+        let sel = obs
+            .iter()
+            .find(|o| o["tag"] == "sel-Gneral")
+            .expect("sel-Gneral must stay active");
+        assert_eq!(sel["outbounds"], json!(["PROM Good"]));
+        assert_eq!(sel["default"], json!("PROM Good"));
+        assert_eq!(
+            prepared["route"]["rules"][0]["outbound"],
+            json!("sel-Gneral")
+        );
+    }
+
+    #[test]
+    fn test_rotate_core_log_on_start_moves_previous_log_and_writes_header() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_core_log_rot_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log_path = dir.join("tachyon-core.log");
+        let prev_path = dir.join("tachyon-core.log.prev");
+        std::fs::write(&log_path, "2026-11-22 stale entry\n").unwrap();
+
+        let created = CoreManager::rotate_core_log_on_start(&dir);
+        assert_eq!(created, log_path);
+        assert!(prev_path.exists());
+        assert_eq!(
+            std::fs::read_to_string(&prev_path).unwrap(),
+            "2026-11-22 stale entry\n"
+        );
+        let cur = std::fs::read_to_string(&log_path).unwrap();
+        assert!(cur.contains("tachyon-core started"));
+        assert!(!cur.contains("stale entry"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

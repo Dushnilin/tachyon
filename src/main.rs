@@ -189,6 +189,10 @@ fn main() -> anyhow::Result<()> {
         println!("tachyon {}", crate::store::TACHYON_VERSION);
         return Ok(());
     }
+    if matches!(subcommand_early, "-h" | "--help" | "help") {
+        print!("{}", ubus_bridge::cli_help_text());
+        return Ok(());
+    }
     if !matches!(
         subcommand_early,
         "daemon"
@@ -339,7 +343,13 @@ fn main() -> anyhow::Result<()> {
             "start" => core.start().await,
             "stop" => core.stop().await,
             "stop-shutdown" => core.stop_for_shutdown().await,
-            "reload" | "restart" => core.apply_or_reload().await,
+            "reload" | "restart" => {
+                {
+                    let d_snap = state.data.read().await;
+                    ubus_bridge::sync_from_store_to_json_and_cache(&d_snap);
+                }
+                core.apply_or_reload().await
+            }
             "daemon" | "serve" | "--daemon" => {
                 ubus_bridge::mark_daemon_mode();
                 core.enable_switch_history();
@@ -387,7 +397,11 @@ fn main() -> anyhow::Result<()> {
                     if core_sig.has_spawned_child().await {
                         let _ = core_sig.stop_for_shutdown().await;
                     }
-                    let _ = state_sig.save().await;
+                    if state_sig.is_disk_modified_externally() {
+                        eprintln!("[tachyon] preserving externally modified store on shutdown");
+                    } else if state_sig.is_dirty() {
+                        let _ = state_sig.save().await;
+                    }
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     std::process::exit(0);
                 });
@@ -454,7 +468,7 @@ fn main() -> anyhow::Result<()> {
                 core.poll_telemetry_and_reconcile(0).await;
                 {
                     let d_snap = state.data.read().await;
-                    ubus_bridge::sync_section_cache(&d_snap);
+                    ubus_bridge::sync_from_store_to_json_and_cache(&d_snap);
                 }
                 core.ensure_initial_binary_backups().await;
                 core.spawn_background_loop();

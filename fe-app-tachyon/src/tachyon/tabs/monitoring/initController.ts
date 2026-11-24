@@ -1,4 +1,5 @@
 import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
+import { tr } from '../../helpers/i18n';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { showToast } from '../../../helpers/showToast';
 import {
@@ -65,7 +66,23 @@ let monitoringMounted = false;
 let monitoringMountId = 0;
 let monitoringLifecycleRegistered = false;
 let monitoringControllerInitialized = false;
-const dnsBlockStatsController = createDnsBlockStatsController();
+let blockedTotalCount = 0;
+const dnsBlockStatsController = createDnsBlockStatsController(undefined, {
+  onData: (data) => {
+    blockedTotalCount = data.total_blocked || 0;
+    const blockedButton = document.getElementById(
+      'monitoring-tab-blocked',
+    ) as HTMLButtonElement | null;
+    if (blockedButton) {
+      blockedButton.replaceChildren(
+        ...renderTabButtonContent(
+          tr('Заблокированные', 'Blocked'),
+          blockedTotalCount,
+        ),
+      );
+    }
+  },
+});
 let serviceStateUnsubscribe: (() => void) | null = null;
 let layoutChangeUnsubscribe: (() => void) | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
@@ -326,6 +343,9 @@ function setTab(tab: MonitoringTabId) {
 
   activeTab = tab;
   renderControls();
+  if (tab === 'blocked') {
+    void dnsBlockStatsController.refresh();
+  }
   renderConnections();
 }
 
@@ -377,8 +397,15 @@ function getAvailableRoutes(): string[] {
   });
 
   return Array.from(uniqueRoutes)
-    .filter((name) => !isExcludedRoutingName(name))
-    .sort((a, b) => a.localeCompare(b));
+    .filter(
+      (name) => name.toLowerCase() === 'direct' || !isExcludedRoutingName(name),
+    )
+    .sort((a, b) => {
+      const aDirect = a.toLowerCase() === 'direct';
+      const bDirect = b.toLowerCase() === 'direct';
+      if (aDirect !== bDirect) return aDirect ? 1 : -1;
+      return a.localeCompare(b);
+    });
 }
 
 function getRouteConnectionCounts(): Map<string, number> {
@@ -893,12 +920,16 @@ function renderControls() {
   const closedButton = document.getElementById(
     'monitoring-tab-closed',
   ) as HTMLButtonElement | null;
+  const blockedButton = document.getElementById(
+    'monitoring-tab-blocked',
+  ) as HTMLButtonElement | null;
   const closeAllButton = document.getElementById(
     'monitoring-close-all',
   ) as HTMLButtonElement | null;
   const pauseToggleButton = document.getElementById(
     'monitoring-pause-toggle',
   ) as HTMLButtonElement | null;
+  const isBlockedTab = activeTab === 'blocked';
   const isCoreOnlyStopped =
     serviceAvailability === 'stopped' && selectedDataSourceFilter === 'core';
 
@@ -916,8 +947,41 @@ function renderControls() {
     closedButton.disabled = isCoreOnlyStopped;
   }
 
+  if (blockedButton) {
+    blockedButton.replaceChildren(
+      ...renderTabButtonContent(
+        tr('Заблокированные', 'Blocked'),
+        blockedTotalCount,
+      ),
+    );
+    blockedButton.disabled = false;
+  }
+
   setButtonActive(activeButton, activeTab === 'active');
   setButtonActive(closedButton, activeTab === 'closed');
+  setButtonActive(blockedButton, isBlockedTab);
+
+  document
+    .querySelector('.tachyon_monitoring-page__filters')
+    ?.classList.toggle(
+      'tachyon_monitoring-page__filters--hidden',
+      isBlockedTab,
+    );
+  document
+    .querySelector('.tachyon_monitoring-page__actions')
+    ?.classList.toggle(
+      'tachyon_monitoring-page__actions--hidden',
+      isBlockedTab,
+    );
+  document
+    .getElementById('monitoring-connections')
+    ?.classList.toggle('tachyon_monitoring-page__body--hidden', isBlockedTab);
+  document
+    .getElementById('monitoring-dns-block-stats')
+    ?.classList.toggle(
+      'tachyon_monitoring-page__dns-panel--hidden',
+      !isBlockedTab,
+    );
 
   const hasActiveCoreConnections = Array.from(activeConnections.values()).some(
     (c) => getConnectionDataSource(c) === 'core',
@@ -1185,6 +1249,9 @@ function isTextSelectionInsideMonitoring(): boolean {
 }
 
 function renderConnections(options: { force?: boolean } = {}) {
+  if (activeTab === 'blocked') {
+    return;
+  }
   const container = document.getElementById('monitoring-connections');
   if (!container) {
     return;
@@ -1514,6 +1581,7 @@ function handleDocumentKeyDown(event: KeyboardEvent) {
 function bindControls() {
   const activeButton = document.getElementById('monitoring-tab-active');
   const closedButton = document.getElementById('monitoring-tab-closed');
+  const blockedButton = document.getElementById('monitoring-tab-blocked');
   const dsAllButton = document.getElementById('monitoring-datasource-all');
   const dsCoreButton = document.getElementById('monitoring-datasource-core');
   const dsConntrackButton = document.getElementById(
@@ -1541,6 +1609,10 @@ function bindControls() {
 
   if (closedButton) {
     closedButton.onclick = () => setTab('closed');
+  }
+
+  if (blockedButton) {
+    blockedButton.onclick = () => setTab('blocked');
   }
 
   if (dsAllButton) {

@@ -3183,4 +3183,121 @@ describe('getDashboardSections', () => {
     expect(stabilityOb?.urlTestInfo?.mode).toBe('stability');
     expect(stabilityOb?.priorityInfo).toBeUndefined();
   });
+
+  it('applies dashboard_filter_mode and dashboard_include_outbounds to section pool and latencyTestCodes (#68)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        action: 'connection',
+        selector_proxy_links: undefined,
+        urltests: undefined,
+        urltest_settings: undefined,
+        outbound_source_refs: ['src_sub'],
+        dashboard_filter_mode: 'include',
+        dashboard_include_outbounds: ['Germany 01'],
+      }),
+      {
+        '.name': 'src_sub',
+        '.type': 'outbound_source',
+        source_type: 'subscription',
+        name: 'MySub',
+        url: 'https://sub.example.com',
+        enabled: '1',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'sel-main': proxy('Selector', {
+            name: 'sel-main',
+            now: 'Germany 01',
+            all: ['Germany 01', 'Netherlands 01', 'Finland 01'],
+          }),
+          'Germany 01': proxy('VLESS', {
+            name: 'Germany 01',
+            history: [{ time: '2026', delay: 45 }],
+          }),
+          'Netherlands 01': proxy('VLESS', {
+            name: 'Netherlands 01',
+            history: [{ time: '2026', delay: 55 }],
+          }),
+          'Finland 01': proxy('VLESS', {
+            name: 'Finland 01',
+            history: [{ time: '2026', delay: 65 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'Germany 01': 'Germany 01',
+            'Netherlands 01': 'Netherlands 01',
+            'Finland 01': 'Finland 01',
+          },
+          protocols: {
+            'Germany 01': 'vless',
+            'Netherlands 01': 'vless',
+            'Finland 01': 'vless',
+          },
+        },
+      }),
+    );
+
+    const res = await getDashboardSections();
+    expect(res.success).toBe(true);
+    expect(res.data[0].outbounds.map((o) => o.code)).toEqual(['Germany 01']);
+    expect(res.data[0].latencyTestCodes).toEqual(['Germany 01']);
+  });
+
+  it('maps interface outbound iface-* to friendly name, AmneziaWG type, selected=true and testable code (#492)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        action: 'connection',
+        selector_proxy_links: undefined,
+        urltests: undefined,
+        urltest_settings: undefined,
+        outbound_source_refs: ['src_awg'],
+      }),
+      {
+        '.name': 'src_awg',
+        '.type': 'outbound_source',
+        source_type: 'interface',
+        interface_name: 'VPN',
+        name: 'VPN WG',
+        enabled: '1',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'iface-src_awg': proxy('Direct', {
+            name: 'iface-src_awg',
+            history: [{ time: '2026', delay: 42 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'iface-src_awg': 'VPN WG' },
+          protocols: { 'iface-src_awg': 'amneziawg' },
+        },
+      }),
+    );
+
+    const res = await getDashboardSections();
+    expect(res.success).toBe(true);
+    const section = res.data[0];
+    expect(section.outbounds).toHaveLength(1);
+    expect(section.outbounds[0].displayName).toBe('VPN WG');
+    expect(section.outbounds[0].prefix).toBeUndefined();
+    expect(section.outbounds[0].type).toBe('AmneziaWG');
+    expect(section.outbounds[0].selected).toBe(true);
+    expect(section.latencyTestCode).toBe('iface-src_awg');
+    expect(section.latencyTestCodes).toEqual(['iface-src_awg']);
+  });
 });
