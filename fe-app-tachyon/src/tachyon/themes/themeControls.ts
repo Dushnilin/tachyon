@@ -4,6 +4,7 @@ import { renderCheckIcon } from '../../icons';
 import { tr } from '../helpers/i18n';
 import {
   BUILTIN_THEMES,
+  BG_ANIMATION_CHANGED_EVENT,
   THEME_COLOR_FIELDS,
   TachyonThemeColors,
   TachyonThemeDefinition,
@@ -14,11 +15,13 @@ import {
   getActiveTheme,
   getAllThemes,
   inferSchemeFromBg,
+  isBgAnimationEnabled,
   normalizeHexColor,
   normalizeThemeColors,
   parseThemeImportText,
   saveCustomTheme,
   setActiveTheme,
+  setBgAnimationEnabled,
   subscribeThemeChange,
 } from './themeCatalog';
 
@@ -664,8 +667,29 @@ export function createTopbarThemeDropdown(): HTMLElement {
         );
       });
 
+      const animEnabled = isBgAnimationEnabled();
       menuItems.push(
         createEl('div', { class: 'tachyon-theme-menu__sep' }),
+        createEl(
+          'button',
+          {
+            type: 'button',
+            class: `tachyon-theme-menu__item${animEnabled ? ' is-active' : ''}`,
+            click: (ev: MouseEvent) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              setBgAnimationEnabled(!animEnabled);
+              render();
+            },
+          },
+          [
+            createEl('span', { class: 'tachyon-theme-menu__label' }, [
+              animEnabled
+                ? tr('✓ Анимация фона: Вкл', '✓ Background animation: On')
+                : tr('○ Анимация фона: Выкл', '○ Background animation: Off'),
+            ]),
+          ],
+        ),
         createEl(
           'button',
           {
@@ -716,6 +740,15 @@ export function createTopbarThemeDropdown(): HTMLElement {
     render();
   });
 
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function'
+  ) {
+    window.addEventListener(BG_ANIMATION_CHANGED_EVENT, () => {
+      render();
+    });
+  }
+
   render();
   return wrap;
 }
@@ -762,6 +795,22 @@ export function renderThemeSettingsCard(): HTMLElement {
       ]),
       createEl('div', { class: 'tachyon-theme-settings-actions' }, [
         importFileInput,
+        createEl(
+          'button',
+          {
+            type: 'button',
+            class: `btn${isBgAnimationEnabled() ? ' cbi-button-action' : ''}`,
+            click: () => {
+              setBgAnimationEnabled(!isBgAnimationEnabled());
+              render();
+            },
+          },
+          [
+            isBgAnimationEnabled()
+              ? tr('Анимация фона: Вкл', 'Background animation: On')
+              : tr('Анимация фона: Выкл', 'Background animation: Off'),
+          ],
+        ),
         createEl(
           'button',
           {
@@ -903,6 +952,15 @@ export function renderThemeSettingsCard(): HTMLElement {
   subscribeThemeChange(() => {
     render();
   });
+
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function'
+  ) {
+    window.addEventListener(BG_ANIMATION_CHANGED_EVENT, () => {
+      render();
+    });
+  }
 
   render();
   return card;

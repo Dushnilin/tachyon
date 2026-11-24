@@ -41,6 +41,11 @@ import {
   PANEL_AUTH_CHANGED_EVENT,
 } from './panelAuthCard';
 import { createTopbarThemeDropdown } from './themes/themeControls';
+import {
+  BG_ANIMATION_CHANGED_EVENT,
+  isBgAnimationEnabled,
+  setBgAnimationEnabled,
+} from './themes/themeCatalog';
 import { initCommandPalette, openCommandPalette } from './commandPalette';
 
 export type TachyonUiMode = 'simple' | 'advanced';
@@ -1135,6 +1140,12 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             panelAuthEnabled = ev.detail.auth_enabled;
             activeShellState.renderFn?.();
           }
+        });
+      }
+      if (!g.__tachyonBgAnimListenerBound) {
+        g.__tachyonBgAnimListenerBound = true;
+        window.addEventListener(BG_ANIMATION_CHANGED_EVENT, () => {
+          activeShellState.renderFn?.();
         });
       }
     }
@@ -2706,6 +2717,96 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         ],
       );
 
+    const buildBgAnimationBtn = (compact: boolean) => {
+      const isEnabled = isBgAnimationEnabled();
+      return E(
+        'button',
+        {
+          type: 'button',
+          class: `tachyon-topbar__icon-btn tachyon-topbar__bg-anim-btn${isEnabled ? ' is-active' : ' is-disabled'}`,
+          title: isEnabled
+            ? tr(
+                'Фоновая анимация: включена (нажмите, чтобы отключить)',
+                'Background animation: Enabled (click to disable)',
+              )
+            : tr(
+                'Фоновая анимация: отключена (нажмите, чтобы включить)',
+                'Background animation: Disabled (click to enable)',
+              ),
+          'aria-label': isEnabled
+            ? tr('Фоновая анимация: включена', 'Background animation: Enabled')
+            : tr(
+                'Фоновая анимация: отключена',
+                'Background animation: Disabled',
+              ),
+          'aria-pressed': isEnabled ? 'true' : 'false',
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            setBgAnimationEnabled(!isEnabled);
+            renderSidebarAndTopbar();
+          },
+        } as any,
+        [
+          svgEl(
+            'svg',
+            {
+              viewBox: '0 0 24 24',
+              width: '14',
+              height: '14',
+              fill: 'none',
+              stroke: 'currentColor',
+              'stroke-width': '1.8',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+              style: compact
+                ? 'flex-shrink: 0;'
+                : 'margin-right: 5px; flex-shrink: 0;',
+            },
+            isEnabled
+              ? [
+                  svgEl('path', { d: 'M2 6c3-2 6-2 9 0s6 2 9 0' }),
+                  svgEl('path', { d: 'M2 12c3-2 6-2 9 0s6 2 9 0' }),
+                  svgEl('path', { d: 'M2 18c3-2 6-2 9 0s6 2 9 0' }),
+                ]
+              : [
+                  svgEl('path', {
+                    d: 'M2 6c3-2 6-2 9 0s6 2 9 0',
+                    opacity: '0.35',
+                  }),
+                  svgEl('path', {
+                    d: 'M2 12c3-2 6-2 9 0s6 2 9 0',
+                    opacity: '0.35',
+                  }),
+                  svgEl('path', {
+                    d: 'M2 18c3-2 6-2 9 0s6 2 9 0',
+                    opacity: '0.35',
+                  }),
+                  svgEl('line', {
+                    x1: '2',
+                    y1: '2',
+                    x2: '22',
+                    y2: '22',
+                    stroke: 'var(--danger, #ff453a)',
+                    'stroke-width': '2',
+                  }),
+                ],
+          ),
+          ...(compact
+            ? []
+            : [
+                E(
+                  'span',
+                  {},
+                  isEnabled
+                    ? tr('Анимация', 'Animation')
+                    : tr('Без анимации', 'No animation'),
+                ),
+              ]),
+        ],
+      );
+    };
+
     const buildStatusCard = (inlineTop: boolean) =>
       E(
         'div',
@@ -2880,6 +2981,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               }),
               buildModeSwitcher(),
               buildSidebarPosBtn(true),
+              buildBgAnimationBtn(true),
               createTopbarThemeDropdown(),
               langSlot,
               ...(panelAuthEnabled ? [buildLogoutBtn()!] : []),
@@ -3060,6 +3162,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
           createHistoryButton('tachyon-topbar__history-btn', true),
           buildWizardBtn(),
           buildSidebarPosBtn(false),
+          buildBgAnimationBtn(false),
           createTopbarThemeDropdown(),
           langSlot,
           ...(panelAuthEnabled ? [buildLogoutBtn()!] : []),

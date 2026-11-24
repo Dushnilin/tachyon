@@ -119,6 +119,11 @@ header .fill,
     background: transparent !important;
 }
 
+[data-tachyon-bg-animation="false"] .tachyon-bg-layer,
+[data-tachyon-bg-animation="false"] .tachyon-bg-layer svg {
+    display: none !important;
+}
+
 .tachyon-bg-layer svg {
     width: 100%;
     height: 100%;
@@ -10504,10 +10509,15 @@ body > footer {
     animation: tachyonUiModalScaleIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.tachyon-topbar__sidebar-pos-btn {
+.tachyon-topbar__sidebar-pos-btn,
+.tachyon-topbar__bg-anim-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+}
+
+.tachyon-topbar__bg-anim-btn.is-disabled {
+    opacity: 0.6;
 }
 
 /* ==========================================================================

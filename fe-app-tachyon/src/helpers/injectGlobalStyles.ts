@@ -2,6 +2,7 @@ import { GlobalStyles } from '../styles';
 import {
   applyThemeToDocument,
   getActiveTheme,
+  isBgAnimationEnabled,
 } from '../tachyon/themes/themeCatalog';
 
 const TACHYON_GLOBAL_STYLES_ID = 'tachyon-global-styles';
@@ -43,6 +44,11 @@ export function injectGlobalStyles() {
       document.documentElement.setAttribute('data-darkmode', 'true');
       document.body?.classList?.add('dark');
     }
+    const bgAnim = isBgAnimationEnabled();
+    document.documentElement.setAttribute(
+      'data-tachyon-bg-animation',
+      bgAnim ? 'true' : 'false',
+    );
   } catch {
     // ignore DOM attribute errors in headless test runners
   }
