@@ -203,7 +203,7 @@ fn push_nz_port(ports: &mut Vec<u16>, p: u16) {
     }
 }
 
-fn collect_proxy_udp_ports(store: &RouterStoreData) -> Vec<u16> {
+pub(crate) fn collect_proxy_udp_ports(store: &RouterStoreData) -> Vec<u16> {
     let mut ports: Vec<u16> = Vec::new();
 
     for src in store.outbound_sources.iter().filter(|s| s.enabled) {
@@ -306,7 +306,7 @@ fn format_localv6_elements(fakeip_v6: &str, extra_local_v6: &[String]) -> String
     elems.join(",\n            ")
 }
 
-fn collect_managed_lan_ifaces(store: &RouterStoreData) -> Vec<String> {
+pub(crate) fn collect_managed_lan_ifaces(store: &RouterStoreData) -> Vec<String> {
     let mut excluded: Vec<String> = collect_tailscale_bypass_ifaces(store)
         .into_iter()
         .map(|s| s.to_ascii_lowercase())
@@ -353,7 +353,7 @@ fn collect_managed_lan_ifaces(store: &RouterStoreData) -> Vec<String> {
         }
     }
     if lan_ifaces.is_empty() {
-        lan_ifaces.push("br-lan".to_string());
+        lan_ifaces.push(crate::platform::detect_default_lan_iface());
     }
     lan_ifaces
 }
@@ -1087,7 +1087,9 @@ fn append_localv4_set(out: &mut String) {
     );
 }
 
-fn parse_guest_device_buckets(items: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
+pub(crate) fn parse_guest_device_buckets(
+    items: &[String],
+) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut v4 = Vec::new();
     let mut v6 = Vec::new();
     let mut macs = Vec::new();
@@ -1136,7 +1138,7 @@ fn parse_guest_device_buckets(items: &[String]) -> (Vec<String>, Vec<String>, Ve
     (v4, v6, macs)
 }
 
-fn collect_router_admin_ports(store: &RouterStoreData) -> String {
+pub(crate) fn collect_router_admin_ports(store: &RouterStoreData) -> String {
     let mut ports: Vec<u16> = vec![22, 80, 443, 1680, 9090];
     if store.settings.listen_port > 0 {
         ports.push(store.settings.listen_port);
@@ -1156,14 +1158,14 @@ fn collect_router_admin_ports(store: &RouterStoreData) -> String {
         .join(", ")
 }
 
-fn is_guest_mode_zero_trust(gm: &crate::store::GuestModeConfig) -> bool {
+pub(crate) fn is_guest_mode_zero_trust(gm: &crate::store::GuestModeConfig) -> bool {
     matches!(
         gm.mode.trim().to_ascii_lowercase().as_str(),
         "inverted" | "all"
     )
 }
 
-fn guest_mode_has_active_rules(gm: &crate::store::GuestModeConfig) -> bool {
+pub(crate) fn guest_mode_has_active_rules(gm: &crate::store::GuestModeConfig) -> bool {
     if !gm.enabled {
         return false;
     }
@@ -1184,12 +1186,12 @@ fn guest_mode_has_active_rules(gm: &crate::store::GuestModeConfig) -> bool {
     }
 }
 
-fn has_source_aware_dns(store: &RouterStoreData, ipv6_active: bool) -> bool {
+pub(crate) fn has_source_aware_dns(store: &RouterStoreData, ipv6_active: bool) -> bool {
     let (v4, v6) = crate::config_gen::collect_source_aware_dns_cidrs(store, ipv6_active);
     !v4.is_empty() || !v6.is_empty()
 }
 
-fn format_guest_allowed_ports(
+pub(crate) fn format_guest_allowed_ports(
     gm: &crate::store::GuestModeConfig,
     include_source_dns_port: bool,
 ) -> Option<String> {
@@ -1470,7 +1472,7 @@ fn append_selected_guest_rules(
     }
 }
 
-fn collect_parental_blocked_macs(store: &RouterStoreData) -> Vec<String> {
+pub(crate) fn collect_parental_blocked_macs(store: &RouterStoreData) -> Vec<String> {
     let now_unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -1494,7 +1496,7 @@ fn collect_parental_blocked_macs(store: &RouterStoreData) -> Vec<String> {
     blocked_macs
 }
 
-fn collect_bypass_macs(store: &RouterStoreData, blocked_macs: &[String]) -> Vec<String> {
+pub(crate) fn collect_bypass_macs(store: &RouterStoreData, blocked_macs: &[String]) -> Vec<String> {
     let mut bypass_macs: Vec<String> = Vec::new();
     for sec in store.sections.iter().filter(|s| {
         s.enabled
@@ -2257,7 +2259,7 @@ fn compile_tun_guard_ruleset_full(
     Some(out)
 }
 
-async fn run_checked_ip(args: &[&str]) -> anyhow::Result<()> {
+pub(crate) async fn run_checked_ip(args: &[&str]) -> anyhow::Result<()> {
     let out = Command::new("ip").args(args).output().await?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
@@ -2430,7 +2432,7 @@ pub fn is_tailscale_enabled(store: &RouterStoreData) -> bool {
     native_tailscale_enabled(store) || embedded_tailscale_enabled(store)
 }
 
-fn collect_tailscale_bypass_ifaces(store: &RouterStoreData) -> Vec<String> {
+pub(crate) fn collect_tailscale_bypass_ifaces(store: &RouterStoreData) -> Vec<String> {
     let mut ifaces = vec![
         "tailscale0".to_string(),
         "fptn0".to_string(),
@@ -3396,7 +3398,9 @@ pub async fn sync_odhcpd_lan_ipv6(store: &RouterStoreData, ipv6_state: Effective
                 .status()
                 .await;
         }
-    } else if plan.check_renew_lan && !detect_iface_has_global_v6("br-lan").await {
+    } else if plan.check_renew_lan
+        && !detect_iface_has_global_v6(&crate::platform::detect_default_lan_iface()).await
+    {
         let _ = Command::new("ubus")
             .args(["call", "network.interface.lan", "renew"])
             .stdout(Stdio::null())
@@ -3439,7 +3443,9 @@ pub async fn restore_odhcpd_lan_ipv6() {
         uci_run(&["commit", "dhcp"]).await;
         run_odhcpd_reload().await;
     }
-    if plan.check_renew_lan && !detect_iface_has_global_v6("br-lan").await {
+    if plan.check_renew_lan
+        && !detect_iface_has_global_v6(&crate::platform::detect_default_lan_iface()).await
+    {
         let _ = Command::new("ubus")
             .args(["call", "network.interface.lan", "renew"])
             .stdout(Stdio::null())
@@ -3600,7 +3606,7 @@ pub fn legacy_policy_cleanup_specs() -> &'static [(bool, &'static [&'static str]
     ]
 }
 
-async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
+pub(crate) async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
     for &(ipv6, args) in legacy_policy_cleanup_specs() {
         del_ip_rule_all(ipv6, args).await;
     }
@@ -3638,11 +3644,11 @@ async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
     tun_guard_clear().await;
 }
 
-async fn cleanup_policy_rules() {
+pub(crate) async fn cleanup_policy_rules() {
     cleanup_policy_rules_for(None).await;
 }
 
-async fn ensure_bridge_netfilter_disabled() {
+pub(crate) async fn ensure_bridge_netfilter_disabled() {
     #[cfg(target_os = "linux")]
     {
         for sysctl_key in [
@@ -3703,7 +3709,7 @@ pub fn kill_switch_source_interfaces(settings: &GlobalSettings) -> Vec<String> {
         }
     }
     if out.is_empty() {
-        out.push("br-lan".to_string());
+        out.push(crate::platform::detect_default_lan_iface());
     }
     out
 }
@@ -3730,7 +3736,7 @@ pub fn direct_fallback_veto(store: &RouterStoreData) -> Option<String> {
 pub fn compile_kill_switch_ruleset(interfaces: &[String]) -> String {
     let owned;
     let effective = if interfaces.is_empty() {
-        owned = vec!["br-lan".to_string()];
+        owned = vec![crate::platform::detect_default_lan_iface()];
         owned.as_slice()
     } else {
         interfaces
@@ -4073,6 +4079,10 @@ async fn install_kill_switch_ruleset(store: &RouterStoreData) -> bool {
 }
 
 pub async fn remove_kill_switch() {
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        crate::net_stack_iptables::remove_iptables_kill_switch().await;
+        return;
+    }
     tun_guard_clear().await;
     let (_, fw4_file) = fw4_include_paths();
     let _ = std::fs::remove_file(fw4_file);
@@ -4137,6 +4147,9 @@ async fn tun_guard_sync(store: &RouterStoreData) {
 }
 
 pub async fn hold_kill_switch(store: &RouterStoreData) -> Option<String> {
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        return crate::net_stack_iptables::hold_iptables_kill_switch(store).await;
+    }
     let Some(veto) = direct_fallback_veto(store) else {
         remove_kill_switch().await;
         return None;
@@ -4158,6 +4171,10 @@ pub async fn hold_kill_switch(store: &RouterStoreData) -> Option<String> {
 }
 
 pub async fn release_kill_switch(store: &RouterStoreData) {
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        crate::net_stack_iptables::release_iptables_kill_switch(store).await;
+        return;
+    }
     if cfg!(not(target_os = "linux")) {
         return;
     }
@@ -4210,9 +4227,19 @@ async fn apply_nft_stdin_with_fib_fallback(ruleset: &str) -> anyhow::Result<()> 
     }
 }
 
-/// Apply `inet TachyonTable` atomically via `nft -f -` and configure `ip rule` / `ip route`.
+/// Apply the active firewall backend (`nftables` on OpenWrt, `iptables` on Entware) and policy routing.
 pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> {
     apply_network_stack_inner(store, false).await
+}
+
+/// Idempotently reconcile the active firewall and routing stack (used by netfilter hooks and watchdog).
+pub async fn reconcile_network_stack(store: &RouterStoreData) -> anyhow::Result<()> {
+    match crate::platform::firewall_kind() {
+        crate::platform::FirewallKind::Iptables => {
+            crate::net_stack_iptables::reconcile_iptables_network_stack(store).await
+        }
+        crate::platform::FirewallKind::Nftables => apply_network_stack(store).await,
+    }
 }
 
 pub async fn apply_network_stack_safe_minimal(store: &RouterStoreData) -> anyhow::Result<()> {
@@ -4224,6 +4251,32 @@ async fn apply_network_stack_inner(
     keep_kill_switch_held: bool,
 ) -> anyhow::Result<()> {
     if cfg!(not(target_os = "linux")) {
+        return Ok(());
+    }
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        if store.settings.proxy_mode == "socks" {
+            crate::net_stack_iptables::teardown_iptables_network_stack().await;
+            if direct_fallback_veto(store).is_none() {
+                remove_kill_switch().await;
+            } else if keep_kill_switch_held {
+                let _ = hold_kill_switch(store).await;
+            } else {
+                release_kill_switch(store).await;
+            }
+            apply_sqm_qdisc(store).await;
+            return Ok(());
+        }
+        let _ = hold_kill_switch(store).await;
+        crate::net_stack_iptables::apply_iptables_network_stack(store).await?;
+        if direct_fallback_veto(store).is_none() {
+            remove_kill_switch().await;
+        } else if keep_kill_switch_held {
+            let _ = hold_kill_switch(store).await;
+        } else {
+            release_kill_switch(store).await;
+        }
+        apply_tcp_tuning(&store.settings).await;
+        apply_sqm_qdisc(store).await;
         return Ok(());
     }
     if store.settings.proxy_mode == "socks" {
@@ -4773,7 +4826,7 @@ async fn read_sysctl_fast(key: &str) -> String {
         .unwrap_or_default()
 }
 
-async fn try_modprobe_quiet(module: &str) {
+pub(crate) async fn try_modprobe_quiet(module: &str) {
     let _ = Command::new("modprobe")
         .arg(module)
         .stdout(Stdio::null())
@@ -4887,7 +4940,7 @@ pub async fn apply_tcp_tuning(settings: &GlobalSettings) {
 
 const SQM_MARKER_PATH: &str = "/tmp/tachyon-sqm-iface";
 
-fn sanitize_iface_name(raw: &str) -> Option<String> {
+pub(crate) fn sanitize_iface_name(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed.len() > 32 {
         return None;
@@ -4978,9 +5031,14 @@ async fn teardown_sqm_qdisc() {
     }
 }
 
-/// Remove `inet TachyonTable`, policy routing rules and (unless preserving fail-closed DNS) dnsmasq drop-in cleanly.
+/// Remove `inet TachyonTable` (or iptables `TACHYON_*` chains on Entware), policy routing rules and dnsmasq drop-in cleanly.
 pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
     if cfg!(not(target_os = "linux")) {
+        return;
+    }
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        crate::net_stack_iptables::teardown_iptables_network_stack().await;
+        teardown_sqm_qdisc().await;
         return;
     }
     let _ = Command::new("nft")
@@ -5034,8 +5092,11 @@ pub(crate) async fn run_status_with_timeout(
     }
 }
 
-/// Check if `table inet TachyonTable` is currently loaded in the kernel.
+/// Check if `table inet TachyonTable` (or iptables `TACHYON_*` hooks on Entware) is currently loaded in the kernel.
 pub async fn check_nft_table_active() -> bool {
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        return crate::net_stack_iptables::check_iptables_active("").await;
+    }
     if cfg!(not(target_os = "linux")) {
         return true;
     }

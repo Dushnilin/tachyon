@@ -266,6 +266,14 @@ fn default_dns_strategy() -> String {
     "prefer_ipv4".to_string()
 }
 
+fn default_entware_dns_mode() -> String {
+    "redirect".to_string()
+}
+
+fn default_entware_dns_port() -> u16 {
+    1053
+}
+
 fn default_dns_ttl() -> u32 {
     60
 }
@@ -578,11 +586,11 @@ pub fn ip_in_cidr(ip_str: &str, cidr_str: &str) -> bool {
 }
 
 pub fn runtime_state_dir() -> std::path::PathBuf {
-    #[cfg(not(test))]
+    #[cfg(all(target_os = "linux", not(test)))]
     {
-        let var_run = std::path::Path::new("/var/run/tachyon");
-        if var_run.is_dir() || std::fs::create_dir_all(var_run).is_ok() {
-            return var_run.to_path_buf();
+        let primary = crate::platform::paths().runtime_tmpfs_dir.clone();
+        if primary.is_dir() || std::fs::create_dir_all(&primary).is_ok() {
+            return primary;
         }
         let tmp_dir = std::path::Path::new("/tmp/tachyon-rs");
         if tmp_dir.is_dir() || std::fs::create_dir_all(tmp_dir).is_ok() {
@@ -661,6 +669,7 @@ pub fn probe_wan6_runtime_state() -> RuntimeIpv6Cache {
                 }
                 let lower_if = ifname.to_ascii_lowercase();
                 let is_lan = lower_if == "br-lan"
+                    || lower_if == "br0"
                     || lower_if.starts_with("br-")
                     || lower_if.starts_with("lan");
                 if is_lan {
@@ -1328,12 +1337,39 @@ pub struct GlobalSettings {
     pub ai_temperature: f32,
     #[serde(default = "default_ai_max_tokens")]
     pub ai_max_tokens: u32,
+    #[serde(default = "default_entware_dns_mode")]
+    pub entware_dns_mode: String,
+    #[serde(default = "default_entware_dns_port")]
+    pub entware_dns_port: u16,
 }
 
 impl Default for GlobalSettings {
     fn default() -> Self {
         let salt = crypto_gen::generate_hex(8);
         let pass_hash = crypto_gen::hash_password("admin", &salt);
+        #[cfg(target_os = "linux")]
+        let (default_core_bin, default_core_cfg, default_rulesets, default_lan) = {
+            let p = crate::platform::paths();
+            (
+                p.bin_dir
+                    .join("tachyon-core")
+                    .to_string_lossy()
+                    .into_owned(),
+                p.core_config_dir
+                    .join("config.json")
+                    .to_string_lossy()
+                    .into_owned(),
+                p.rulesets_dir.to_string_lossy().into_owned(),
+                crate::platform::detect_default_lan_iface(),
+            )
+        };
+        #[cfg(not(target_os = "linux"))]
+        let (default_core_bin, default_core_cfg, default_rulesets, default_lan) = (
+            "/usr/bin/tachyon-core".to_string(),
+            "/etc/tachyon-core/config.json".to_string(),
+            "/etc/tachyon/rulesets".to_string(),
+            "br-lan".to_string(),
+        );
         Self {
             config_version: "2.0.0".to_string(),
             listen_addr: "0.0.0.0".to_string(),
@@ -1381,10 +1417,10 @@ impl Default for GlobalSettings {
             show_tab_diagnostic: true,
             show_tab_updates: true,
             show_tab_telegram: true,
-            core_bin_path: "/usr/bin/tachyon-core".to_string(),
-            core_config_path: "/etc/tachyon-core/config.json".to_string(),
+            core_bin_path: default_core_bin,
+            core_config_path: default_core_cfg,
             cache_path: "/tmp/tachyon-core/cache.db".to_string(),
-            rulesets_dir: "/etc/tachyon/rulesets".to_string(),
+            rulesets_dir: default_rulesets,
             clash_api_addr: "127.0.0.1:9090".to_string(),
             clash_api_secret: crypto_gen::generate_alnum(24),
             agent_api_token: crypto_gen::generate_alnum(32),
@@ -1408,7 +1444,7 @@ impl Default for GlobalSettings {
             tcp_profile: "default".to_string(),
             tcp_bbr: true,
             selector_auto_failover: true,
-            source_network_interfaces: vec!["br-lan".to_string()],
+            source_network_interfaces: vec![default_lan],
             enable_output_network_interface: false,
             excluded_ips: Vec::new(),
             output_network_interface: String::new(),
@@ -1559,6 +1595,8 @@ impl Default for GlobalSettings {
             session_ttl_secs: 86_400,
             ai_temperature: 0.3,
             ai_max_tokens: 2048,
+            entware_dns_mode: default_entware_dns_mode(),
+            entware_dns_port: default_entware_dns_port(),
         }
     }
 }
@@ -10454,6 +10492,21 @@ pub(crate) fn normalize_loaded_store_data(
     migrated
 }
 
+fn write_store_json_if_changed(path: &Path, data: &RouterStoreData) -> anyhow::Result<bool> {
+    if crate::platform::is_entware() {
+        let raw = serde_json::to_vec_pretty(data)?;
+        let written = crate::platform::write_file_if_changed_durable(path, &raw)?;
+        #[cfg(unix)]
+        if written {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(written)
+    } else {
+        crypto_gen::write_json_if_changed(path, data)
+    }
+}
+
 impl AppState {
     pub fn load_or_create(path: impl AsRef<Path>) -> anyhow::Result<Arc<Self>> {
         let path = path.as_ref().to_path_buf();
@@ -10471,12 +10524,12 @@ impl AppState {
             recovery_warning = warn_opt;
             let migrated = normalize_loaded_store_data(&mut parsed, &raw, &path) || needs_rewrite;
             if migrated {
-                let _ = crypto_gen::write_json_if_changed(&path, &parsed);
+                let _ = write_store_json_if_changed(&path, &parsed);
             }
             parsed
         } else {
             let default_data = RouterStoreData::default();
-            let _ = crypto_gen::write_json_if_changed(&path, &default_data);
+            let _ = write_store_json_if_changed(&path, &default_data);
             default_data
         };
 
@@ -10484,7 +10537,11 @@ impl AppState {
         let disk_sha = file_sha256_hex(&path).unwrap_or_default();
 
         let runtime_ver_path = runtime_state_dir().join("tachyon-core-version");
+        let persistent_ver_path = crate::platform::paths()
+            .data_dir
+            .join("tachyon-core-version");
         let core_ver = std::fs::read_to_string(&runtime_ver_path)
+            .or_else(|_| std::fs::read_to_string(&persistent_ver_path))
             .or_else(|_| std::fs::read_to_string("/etc/tachyon/tachyon-core-version"))
             .ok()
             .map(|s| s.trim().to_string())
@@ -10532,7 +10589,7 @@ impl AppState {
         };
         let migrated = normalize_loaded_store_data(&mut parsed, &raw, &self.path) || normalized > 0;
         if migrated {
-            let _ = crypto_gen::write_json_if_changed(&self.path, &parsed);
+            let _ = write_store_json_if_changed(&self.path, &parsed);
         }
         {
             let mut guard = self.data.write().await;
@@ -10551,7 +10608,7 @@ impl AppState {
     /// Save current configuration to disk only if bytes changed (NAND flash wear protection).
     pub async fn save(&self) -> anyhow::Result<bool> {
         let d = self.data.read().await;
-        let written = crypto_gen::write_json_if_changed(&self.path, &*d)?;
+        let written = write_store_json_if_changed(&self.path, &d)?;
         self.dirty.store(false, Ordering::Release);
         self.refresh_disk_fingerprint();
         Ok(written)
@@ -13364,5 +13421,22 @@ config outbound_source 'awg31_src'
             assert_eq!(d.settings.log_level, "debug");
         });
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_entware_dns_defaults_and_backward_compat_deserialization() {
+        let defaults = GlobalSettings::default();
+        assert_eq!(defaults.entware_dns_mode, "redirect");
+        assert_eq!(defaults.entware_dns_port, 1053);
+
+        let mut val = serde_json::to_value(&defaults).expect("serialize settings");
+        let obj = val.as_object_mut().expect("settings object");
+        obj.remove("entware_dns_mode");
+        obj.remove("entware_dns_port");
+
+        let restored: GlobalSettings = serde_json::from_value(val)
+            .expect("deserialize legacy settings without entware fields");
+        assert_eq!(restored.entware_dns_mode, "redirect");
+        assert_eq!(restored.entware_dns_port, 1053);
     }
 }

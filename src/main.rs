@@ -16,6 +16,9 @@ mod diagnostics;
 mod fuzzer;
 mod mcp;
 mod net_stack;
+mod net_stack_iptables;
+mod platform;
+mod platform_keenetic;
 mod simple_regex;
 mod smart_detect;
 mod snapshots;
@@ -36,15 +39,29 @@ use std::time::Duration;
 use crate::core_mgr::CoreManager;
 use crate::store::AppState;
 
-fn resolve_cli_forward_port() -> u16 {
-    let data_dir = std::env::var("TACHYON_DATA_DIR").unwrap_or_else(|_| {
-        if cfg!(target_os = "linux") && std::path::Path::new("/etc/tachyon").exists() {
-            "/etc/tachyon".to_string()
-        } else {
-            "data".to_string()
+fn resolve_effective_data_dir() -> std::path::PathBuf {
+    if let Ok(explicit) = std::env::var("TACHYON_DATA_DIR") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return std::path::PathBuf::from(trimmed);
         }
-    });
-    let store_path = format!("{data_dir}/tachyon.json");
+    }
+    let paths = platform::paths();
+    #[cfg(target_os = "linux")]
+    {
+        if paths.data_dir.exists() || platform::is_entware() {
+            return paths.data_dir.clone();
+        }
+        std::path::PathBuf::from("data")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        paths.data_dir.clone()
+    }
+}
+
+fn resolve_cli_forward_port() -> u16 {
+    let store_path = resolve_effective_data_dir().join("tachyon.json");
     if let Ok(raw) = std::fs::read_to_string(&store_path)
         && let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw)
         && let Some(p) = val
@@ -129,6 +146,11 @@ fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(25)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
+    let tachyon_bin = platform::paths()
+        .bin_dir
+        .join("tachyon")
+        .to_string_lossy()
+        .replace('\\', "/");
     let rpc_body = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -138,7 +160,7 @@ fn try_forward_cli_to_daemon(args: &[String]) -> Option<(i32, String, String)> {
             "file",
             "exec",
             {
-                "command": "/usr/bin/tachyon",
+                "command": tachyon_bin,
                 "params": args
             }
         ]
@@ -209,6 +231,9 @@ fn main() -> anyhow::Result<()> {
             | "config_plan"
             | "compile_config"
             | "compile_nft"
+            | "compile_iptables"
+            | "reconcile-net"
+            | "reconcile_net"
             | "support_bundle"
     ) && let Some((code, stdout, stderr)) = try_forward_cli_to_daemon(&args)
     {
@@ -224,14 +249,8 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let data_dir = std::env::var("TACHYON_DATA_DIR").unwrap_or_else(|_| {
-        if cfg!(target_os = "linux") && std::path::Path::new("/etc/tachyon").exists() {
-            "/etc/tachyon".to_string()
-        } else {
-            "data".to_string()
-        }
-    });
-    let store_path = format!("{data_dir}/tachyon.json");
+    let data_dir = resolve_effective_data_dir();
+    let store_path = data_dir.join("tachyon.json");
 
     let state = AppState::load_or_create(&store_path)?;
     let core = CoreManager::new(Arc::clone(&state));
@@ -334,6 +353,16 @@ fn main() -> anyhow::Result<()> {
                 print!("{}", net_stack::compile_nftables_ruleset(&d));
                 Ok(())
             }
+            "compile_iptables" => {
+                let d = state.data.read().await;
+                print!("{}", net_stack_iptables::compile_iptables_preview(&d));
+                Ok(())
+            }
+            "reconcile-net" | "reconcile_net" => {
+                let d = state.data.read().await.clone();
+                net_stack::reconcile_network_stack(&d).await?;
+                Ok(())
+            }
             "support_bundle" => {
                 let bundle = diagnostics::build_support_bundle(&state).await;
                 println!("{}", serde_json::to_string_pretty(&bundle)?);
@@ -354,7 +383,7 @@ fn main() -> anyhow::Result<()> {
                 ubus_bridge::mark_daemon_mode();
                 core.enable_switch_history();
                 write_daemon_runtime_markers(&state.local_ipc_token);
-                eprintln!("[tachyon] store path: {store_path}");
+                eprintln!("[tachyon] store path: {}", store_path.display());
 
                 let (listen_addr, port, base_path) = {
                     let d = state.data.read().await;

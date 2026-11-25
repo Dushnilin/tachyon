@@ -317,7 +317,13 @@ pub fn compute_release_build_fingerprint(
         .map(Vec::as_slice)
         .unwrap_or(&[]);
 
-    if let Some((asset_name, _)) = select_openwrt_package_asset(assets, arch_keywords, prefer_ext)
+    let selected_asset = if crate::platform::is_entware() {
+        select_entware_tachyon_asset(assets, arch_keywords)
+            .or_else(|| select_entware_core_asset(assets, arch_keywords))
+    } else {
+        select_openwrt_package_asset(assets, arch_keywords, prefer_ext)
+    };
+    if let Some((asset_name, _)) = selected_asset
         && let Some(asset) = assets
             .iter()
             .find(|a| a.get("name").and_then(Value::as_str) == Some(asset_name.as_str()))
@@ -514,10 +520,75 @@ async fn resolve_remote_build_identity(
     (remote_sha, remote_fp)
 }
 
+/// Parse Entware `/opt/bin/opkg print-architecture` output and pick the highest-priority
+/// non-generic architecture token (e.g. `mipsel-3.4`, `aarch64-3.10`, `armv7sf-3.2`, `x64-3.2`).
+pub fn parse_entware_opkg_arch(raw: &str) -> Option<String> {
+    let mut best: Option<(u32, String)> = None;
+    for line in raw.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 && parts[0] == "arch" {
+            let arch = parts[1].trim();
+            if arch.is_empty()
+                || arch.eq_ignore_ascii_case("all")
+                || arch.eq_ignore_ascii_case("noarch")
+            {
+                continue;
+            }
+            let prio = parts
+                .get(2)
+                .and_then(|p| p.parse::<u32>().ok())
+                .unwrap_or(1);
+            if best.as_ref().is_none_or(|(bp, _)| prio >= *bp) {
+                best = Some((prio, arch.to_string()));
+            }
+        }
+    }
+    best.map(|(_, a)| a)
+}
+
 pub fn detect_arch_keywords() -> Vec<&'static str> {
+    if crate::platform::is_entware() {
+        let mut ent_raw = String::new();
+        let opkg_path = crate::platform::paths().bin_dir.join("opkg");
+        let opkg_candidates = [opkg_path.as_path(), Path::new("/opt/bin/opkg")];
+        for opkg_bin in opkg_candidates {
+            if opkg_bin.is_file()
+                && let Ok(out) = std::process::Command::new(opkg_bin)
+                    .arg("print-architecture")
+                    .output()
+                && out.status.success()
+            {
+                let text = String::from_utf8_lossy(&out.stdout);
+                if let Some(arch) = parse_entware_opkg_arch(&text) {
+                    ent_raw.push_str(&arch);
+                    ent_raw.push('\n');
+                    break;
+                }
+            }
+        }
+        let entware_release_path = crate::platform::paths().root.join("etc/entware_release");
+        for rel_path in [
+            entware_release_path.as_path(),
+            Path::new("/opt/etc/entware_release"),
+        ] {
+            if let Ok(rel) = std::fs::read_to_string(rel_path) {
+                ent_raw.push_str(&rel);
+                ent_raw.push('\n');
+                break;
+            }
+        }
+        if !ent_raw.trim().is_empty() {
+            return map_arch_str_to_keywords(&ent_raw);
+        }
+    }
+
     let mut raw = String::new();
     if let Ok(rel) = std::fs::read_to_string("/etc/openwrt_release") {
         raw.push_str(&rel);
+        raw.push('\n');
+    }
+    if let Ok(ent_rel) = std::fs::read_to_string("/opt/etc/entware_release") {
+        raw.push_str(&ent_rel);
         raw.push('\n');
     }
     if let Ok(os_rel) = std::fs::read_to_string("/etc/os-release") {
@@ -530,9 +601,15 @@ pub fn detect_arch_keywords() -> Vec<&'static str> {
 
 pub fn map_arch_str_to_keywords(raw: &str) -> Vec<&'static str> {
     let lower = raw.to_ascii_lowercase();
+    let has_entware_x64 = lower.contains("x64-")
+        || lower.contains("x64_")
+        || lower == "x64"
+        || lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|tok| tok == "x64");
     if lower.contains("aarch64") || lower.contains("arm64") {
         vec!["aarch64", "arm64"]
-    } else if lower.contains("x86_64") || lower.contains("amd64") {
+    } else if lower.contains("x86_64") || lower.contains("amd64") || has_entware_x64 {
         vec!["x86_64", "amd64", "linux-amd64"]
     } else if lower.contains("riscv64") {
         vec!["riscv64"]
@@ -637,6 +714,38 @@ pub fn preferred_openwrt_pkg_ext() -> &'static str {
     } else {
         ".ipk"
     }
+}
+
+/// Select an Entware bundle archive (`tachyon-entware-<arch>-v<ver>.tar.gz`) matching `arch_keywords`.
+pub fn select_entware_tachyon_asset(
+    assets: &[Value],
+    arch_keywords: &[&str],
+) -> Option<(String, String)> {
+    find_matching_asset(assets, arch_keywords, |lower| {
+        lower.starts_with("tachyon-entware-")
+            && (lower.ends_with(".tar.gz") || lower.ends_with(".tgz"))
+    })
+}
+
+/// Select a `tachyon-core` tarball for Entware, preferring `*-musl.tar.gz` before generic `.tar.gz`.
+pub fn select_entware_core_asset(
+    assets: &[Value],
+    arch_keywords: &[&str],
+) -> Option<(String, String)> {
+    find_matching_asset(assets, arch_keywords, |lower| {
+        lower.ends_with(".tar.gz")
+            && lower.contains("musl")
+            && !lower.starts_with("tachyon-entware-")
+    })
+    .or_else(|| {
+        find_matching_asset(assets, arch_keywords, |lower| {
+            lower.ends_with(".tar.gz")
+                && !lower.ends_with(".ipk")
+                && !lower.ends_with(".apk")
+                && !lower.starts_with("tachyon-entware-")
+        })
+    })
+    .or_else(|| select_release_asset(assets, arch_keywords))
 }
 
 pub fn select_openwrt_package_asset(
@@ -2038,6 +2147,104 @@ fn sync_staged_luci_assets(stage_dir: &Path, target_root: &Path) -> usize {
     updated
 }
 
+pub fn collect_staged_entware_sync_pairs(
+    stage_dir: &Path,
+    paths: &crate::platform::PlatformPaths,
+) -> Vec<(PathBuf, PathBuf)> {
+    let mut pairs = Vec::new();
+    let mut stack = vec![stage_dir.to_path_buf()];
+    while let Some(cur) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&cur) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if !p.is_file() {
+                continue;
+            }
+            let Ok(rel) = p.strip_prefix(stage_dir) else {
+                continue;
+            };
+            let rel_slash = rel.to_string_lossy().replace('\\', "/");
+            let trimmed = rel_slash
+                .trim_start_matches("./")
+                .strip_prefix("opt/")
+                .unwrap_or(rel_slash.trim_start_matches("./"));
+            let dst = if let Some(sub) = trimmed.strip_prefix("share/tachyon/www/") {
+                let mut out = paths.share_dir.join("www");
+                for seg in sub.split('/').filter(|s| !s.is_empty()) {
+                    out.push(seg);
+                }
+                Some(out)
+            } else if trimmed == "etc/init.d/S99tachyon" {
+                Some(paths.init_script.clone())
+            } else if let Some(sub) = trimmed.strip_prefix("etc/ndm/") {
+                let mut out = paths.ndm_dir.clone();
+                for seg in sub.split('/').filter(|s| !s.is_empty()) {
+                    out.push(seg);
+                }
+                Some(out)
+            } else {
+                None
+            };
+            if let Some(target) = dst {
+                pairs.push((p, target));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| a.1.cmp(&b.1));
+    pairs
+}
+
+fn set_unix_mode(path: &Path, mode: u32) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+    }
+}
+
+pub fn sync_staged_entware_assets(
+    stage_dir: &Path,
+    paths: &crate::platform::PlatformPaths,
+) -> usize {
+    let mut updated = 0usize;
+    for (src, dst) in collect_staged_entware_sync_pairs(stage_dir, paths) {
+        let dst_slash = dst.to_string_lossy().replace('\\', "/");
+        let is_exec = dst == paths.init_script
+            || dst_slash.ends_with(".sh")
+            || dst_slash.contains("/etc/ndm/");
+        if let Ok(bytes) = std::fs::read(&src) {
+            let changed =
+                crate::platform::write_file_if_changed_durable(&dst, &bytes).unwrap_or(false);
+            if is_exec {
+                set_unix_mode(&dst, 0o755);
+            } else if changed {
+                set_unix_mode(&dst, 0o644);
+            }
+            if changed {
+                updated += 1;
+            }
+        }
+    }
+    updated
+}
+
+fn install_binary_durable(extracted_bin: &Path, target_bin: &Path) -> std::io::Result<()> {
+    let bytes = std::fs::read(extracted_bin)?;
+    let _ = crate::platform::write_file_if_changed_durable(target_bin, &bytes)?;
+    set_unix_mode(target_bin, 0o755);
+    Ok(())
+}
+
 pub fn resolve_tachyon_self_bin_path() -> PathBuf {
     if let Ok(over) = std::env::var("TACHYON_BIN") {
         let trimmed = over.trim();
@@ -2045,11 +2252,11 @@ pub fn resolve_tachyon_self_bin_path() -> PathBuf {
             return PathBuf::from(trimmed);
         }
     }
-    let default_bin = Path::new("/usr/bin/tachyon");
+    let default_bin = crate::platform::paths().bin_dir.join("tachyon");
     if default_bin.exists() || cfg!(target_os = "linux") {
-        return default_bin.to_path_buf();
+        return default_bin;
     }
-    std::env::current_exe().unwrap_or_else(|_| default_bin.to_path_buf())
+    std::env::current_exe().unwrap_or(default_bin)
 }
 
 async fn run_command_checked(bin: &Path, args: &[&str]) -> Result<String, String> {
@@ -2258,7 +2465,15 @@ async fn stage_release_binary(
         .map(Vec::as_slice)
         .unwrap_or(&[]);
     let arch_kws = detect_arch_keywords();
-    let selected = select_openwrt_package_asset(assets, &arch_kws, preferred_openwrt_pkg_ext());
+    let selected = if crate::platform::is_entware() {
+        match canon {
+            "tachyon" => select_entware_tachyon_asset(assets, &arch_kws),
+            "sing_box" => select_entware_core_asset(assets, &arch_kws),
+            _ => select_release_asset(assets, &arch_kws),
+        }
+    } else {
+        select_openwrt_package_asset(assets, &arch_kws, preferred_openwrt_pkg_ext())
+    };
     let Some((asset_name, asset_url)) = selected else {
         return Err(component_error_payload(
             canon,
@@ -2337,7 +2552,13 @@ async fn stage_release_binary(
         ));
     };
 
-    let stage_dir = PathBuf::from(format!("/tmp/tachyon-update-{job_id}"));
+    let stage_dir = if cfg!(target_os = "linux") {
+        crate::platform::paths()
+            .runtime_tmpfs_dir
+            .join(format!("update-{job_id}"))
+    } else {
+        std::env::temp_dir().join(format!("tachyon-update-{job_id}"))
+    };
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
         return Err(component_error_payload(
@@ -2480,11 +2701,23 @@ async fn install_core_binary_release(
 ) -> Value {
     let canon = "sing_box";
     let disp = "Tachyon Core";
-    let core_bin_cfg = core.state.data.read().await.settings.core_bin_path.clone();
+    let (core_bin_cfg, core_cfg_str) = {
+        let d = core.state.data.read().await;
+        (
+            d.settings.core_bin_path.clone(),
+            d.settings.core_config_path.clone(),
+        )
+    };
+    let p_layout = crate::platform::paths();
     let core_bin_path = if !core_bin_cfg.trim().is_empty() {
         PathBuf::from(core_bin_cfg.trim())
     } else {
-        PathBuf::from("/usr/bin/tachyon-core")
+        p_layout.bin_dir.join("tachyon-core")
+    };
+    let core_config_path = if !core_cfg_str.trim().is_empty() {
+        PathBuf::from(core_cfg_str.trim())
+    } else {
+        p_layout.core_config_dir.join("config.json")
     };
 
     let staged = match stage_release_binary(
@@ -2512,13 +2745,9 @@ async fn install_core_binary_release(
     let target_ver = staged.target_ver;
     let current = staged.current;
 
-    if Path::new("/etc/tachyon-core/config.json").exists() {
-        if let Err(e) = run_command_checked(
-            &extracted_bin,
-            &["check", "-c", "/etc/tachyon-core/config.json"],
-        )
-        .await
-        {
+    if core_config_path.exists() {
+        let cfg_str = core_config_path.to_string_lossy();
+        if let Err(e) = run_command_checked(&extracted_bin, &["check", "-c", &cfg_str]).await {
             let _ = std::fs::remove_dir_all(&stage_dir);
             return component_error_payload(
                 canon,
@@ -2560,7 +2789,11 @@ async fn install_core_binary_release(
         ),
     );
     let _ = core.stop().await;
-    let install_res = atomic_swap_binary(&extracted_bin, &core_bin_path);
+    let install_res = if crate::platform::is_entware() {
+        install_binary_durable(&extracted_bin, &core_bin_path)
+    } else {
+        atomic_swap_binary(&extracted_bin, &core_bin_path)
+    };
 
     if let Err(e) = install_res {
         let _ = std::fs::remove_dir_all(&stage_dir);
@@ -2574,14 +2807,14 @@ async fn install_core_binary_release(
         );
     }
 
-    if core_bin_path == Path::new("/usr/bin/tachyon-core") {
+    if !crate::platform::is_entware() && core_bin_path == Path::new("/usr/bin/tachyon-core") {
         sync_apk_pkg_db(job_id, &archive_path, true).await;
     }
     let _ = std::fs::remove_dir_all(&stage_dir);
 
     let core_ver_path = store::runtime_state_dir().join("tachyon-core-version");
     let _ = crypto_gen::write_file_if_changed(&core_ver_path, format!("{target_ver}\n").as_bytes());
-    let _ = std::fs::remove_file("/etc/tachyon/tachyon-core-version");
+    let _ = std::fs::remove_file(p_layout.data_dir.join("tachyon-core-version"));
 
     append_job_log(
         job_id,
@@ -2741,7 +2974,7 @@ async fn sync_apk_pkg_db(job_id: &str, archive_path: &Path, is_core: bool) {
 }
 
 fn schedule_tachyon_service_restart() {
-    let init = PathBuf::from("/etc/init.d/tachyon");
+    let init = crate::platform::paths().init_script.clone();
     if !init.exists() {
         return;
     }
@@ -2817,7 +3050,13 @@ async fn install_tachyon_release(
             self_bin_path.display()
         ),
     );
-    let swap_res = atomic_swap_binary(&extracted_bin, &self_bin_path);
+    let p_layout = crate::platform::paths();
+    let is_entware = crate::platform::is_entware();
+    let swap_res = if is_entware {
+        install_binary_durable(&extracted_bin, &self_bin_path)
+    } else {
+        atomic_swap_binary(&extracted_bin, &self_bin_path)
+    };
     if let Err(e) = swap_res {
         let _ = std::fs::remove_dir_all(&stage_dir);
         return component_error_payload(
@@ -2829,14 +3068,19 @@ async fn install_tachyon_release(
         );
     }
 
-    let luci_updated = sync_staged_luci_assets(&stage_dir, Path::new("/"));
-    sync_apk_pkg_db(job_id, &archive_path, false).await;
+    let luci_updated = if is_entware {
+        sync_staged_entware_assets(&stage_dir, p_layout)
+    } else {
+        let updated = sync_staged_luci_assets(&stage_dir, Path::new("/"));
+        sync_apk_pkg_db(job_id, &archive_path, false).await;
+        updated
+    };
     let _ = std::fs::remove_dir_all(&stage_dir);
     if luci_updated > 0 {
         append_job_log(
             job_id,
             Some("installing"),
-            &format!("[OK] Обновлено статических файлов LuCI: {luci_updated}"),
+            &format!("[OK] Обновлено статических файлов веб-интерфейса: {luci_updated}"),
         );
     }
 
@@ -2861,12 +3105,16 @@ async fn install_tachyon_release(
         crate::tg_bot::notify_if_enabled(&d_guard, "auto_update", &format!("[Tachyon] {msg}"));
     }
 
-    let restart_scheduled = Path::new("/etc/init.d/tachyon").exists();
+    let init_script = &p_layout.init_script;
+    let restart_scheduled = init_script.exists();
     if restart_scheduled {
         append_job_log(
             job_id,
             Some("restarting"),
-            "[INFO] Планирую перезапуск службы /etc/init.d/tachyon...",
+            &format!(
+                "[INFO] Планирую перезапуск службы {}...",
+                init_script.display()
+            ),
         );
         schedule_tachyon_service_restart();
     }
@@ -4523,6 +4771,153 @@ mod tests {
         let p_latest = base.join("latest.json");
         std::fs::write(&p_latest, r#"{"status":"latest"}"#).unwrap();
         assert!(!is_cache_outdated(&p_latest));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_entware_arch_mapping_and_opkg_parse() {
+        assert_eq!(map_arch_str_to_keywords("mipsel-3.4")[0], "mipsel");
+        assert_eq!(map_arch_str_to_keywords("mips-3.4")[0], "mips");
+        assert_eq!(map_arch_str_to_keywords("aarch64-3.10")[0], "aarch64");
+        assert_eq!(map_arch_str_to_keywords("armv7sf-3.2")[0], "armv7");
+        assert_eq!(map_arch_str_to_keywords("x64-3.2")[0], "x86_64");
+        assert_eq!(map_arch_str_to_keywords("x86-3.2")[0], "i386_pentium4");
+
+        let opkg_out = "\
+arch all 1
+arch noarch 1
+arch mipsel-3.4 10
+arch mipsel-3.4_kn 20
+";
+        assert_eq!(
+            parse_entware_opkg_arch(opkg_out).as_deref(),
+            Some("mipsel-3.4_kn")
+        );
+        assert_eq!(
+            map_arch_str_to_keywords(&parse_entware_opkg_arch(opkg_out).unwrap())[0],
+            "mipsel"
+        );
+    }
+
+    #[test]
+    fn test_select_entware_tachyon_and_core_assets() {
+        let tachyon_assets = vec![
+            json!({
+                "name": "tachyon-2.0.0-aarch64.apk",
+                "browser_download_url": "https://example/tachyon-2.0.0-aarch64.apk"
+            }),
+            json!({
+                "name": "tachyon-2.0.0-mipsel.ipk",
+                "browser_download_url": "https://example/tachyon-2.0.0-mipsel.ipk"
+            }),
+            json!({
+                "name": "tachyon-entware-mipsel-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-mipsel-v2.0.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-entware-mips-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-mips-v2.0.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-entware-aarch64-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-aarch64-v2.0.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-entware-armv7-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-armv7-v2.0.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-entware-x86_64-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-x86_64-v2.0.0.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-entware-i386_pentium4-v2.0.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-entware-i386_pentium4-v2.0.0.tar.gz"
+            }),
+        ];
+
+        for (ent_arch, expected_name) in [
+            ("mipsel-3.4", "tachyon-entware-mipsel-v2.0.0.tar.gz"),
+            ("mips-3.4", "tachyon-entware-mips-v2.0.0.tar.gz"),
+            ("aarch64-3.10", "tachyon-entware-aarch64-v2.0.0.tar.gz"),
+            ("armv7sf-3.2", "tachyon-entware-armv7-v2.0.0.tar.gz"),
+            ("x64-3.2", "tachyon-entware-x86_64-v2.0.0.tar.gz"),
+            ("x86-3.2", "tachyon-entware-i386_pentium4-v2.0.0.tar.gz"),
+        ] {
+            let kws = map_arch_str_to_keywords(ent_arch);
+            let picked = select_entware_tachyon_asset(&tachyon_assets, &kws)
+                .unwrap_or_else(|| panic!("no asset picked for {ent_arch} ({kws:?})"));
+            assert_eq!(picked.0, expected_name);
+        }
+
+        let core_assets = vec![
+            json!({
+                "name": "tachyon-core-aarch64-v0.6.0.apk",
+                "browser_download_url": "https://example/tachyon-core-aarch64-v0.6.0.apk"
+            }),
+            json!({
+                "name": "tachyon-core-aarch64-musl.tar.gz",
+                "browser_download_url": "https://example/tachyon-core-aarch64-musl.tar.gz"
+            }),
+            json!({
+                "name": "tachyon-core-mipsel-v0.6.0.tar.gz",
+                "browser_download_url": "https://example/tachyon-core-mipsel-v0.6.0.tar.gz"
+            }),
+        ];
+        assert_eq!(
+            select_entware_core_asset(&core_assets, &map_arch_str_to_keywords("aarch64-3.10"))
+                .unwrap()
+                .0,
+            "tachyon-core-aarch64-musl.tar.gz"
+        );
+        assert_eq!(
+            select_entware_core_asset(&core_assets, &map_arch_str_to_keywords("mipsel-3.4"))
+                .unwrap()
+                .0,
+            "tachyon-core-mipsel-v0.6.0.tar.gz"
+        );
+    }
+
+    #[test]
+    fn test_sync_staged_entware_assets_durable_and_idempotent() {
+        let uniq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("tachyon_entware_sync_{uniq}"));
+        let stage = base.join("stage");
+        let root = base.join("opt");
+        std::fs::create_dir_all(stage.join("share/tachyon/www/luci-static/resources/view/tachyon"))
+            .unwrap();
+        std::fs::create_dir_all(stage.join("etc/init.d")).unwrap();
+        std::fs::write(
+            stage.join("share/tachyon/www/luci-static/resources/view/tachyon/main.js"),
+            b"console.log('tachyon');",
+        )
+        .unwrap();
+        std::fs::write(stage.join("etc/init.d/S99tachyon"), b"#!/bin/sh\nexit 0\n").unwrap();
+
+        let paths = crate::platform::resolve_paths_for(
+            crate::platform::PlatformKind::KeeneticEntware,
+            Some(&root.to_string_lossy()),
+            None,
+            base.join("tmpfs"),
+        );
+
+        let first = sync_staged_entware_assets(&stage, &paths);
+        assert_eq!(first, 2);
+        assert!(
+            paths
+                .share_dir
+                .join("www/luci-static/resources/view/tachyon/main.js")
+                .is_file()
+        );
+        assert!(paths.init_script.is_file());
+
+        // Second identical sync must be a zero-write no-op (wear-safe).
+        let second = sync_staged_entware_assets(&stage, &paths);
+        assert_eq!(second, 0);
 
         let _ = std::fs::remove_dir_all(&base);
     }

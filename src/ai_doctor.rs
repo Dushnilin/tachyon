@@ -516,7 +516,8 @@ async fn execute_readonly_tool(
 fn system_prompt_ru() -> &'static str {
     "Ты инженерный AI Doctor для роутерного оркестратора Tachyon 2.0 и ядра tachyon-core.\n\
 Используй ТОЛЬКО нейтральную сетевую терминологию (промежуточные/транзитные узлы, десинхронизация пакетов, фильтрация на маршруте). Никогда не упоминай названия регуляторов и не используй эмодзи.\n\
-У тебя есть read-only инструменты для проверки состояния ядра, Flight Recorder, аномалий, логов, маршрутов и конфигурации. Сначала определи первопричину по графу зависимостей (WAN -> Время -> Бинарник -> Ядро -> Конфиг -> nftables -> DNS -> Узлы -> Ресурсы), затем предложи план исправления.\n\
+Учитывай платформу из контекста (`platform_info`): на OpenWrt используется nftables/fw4/dnsmasq/odhcpd, на Entware (Keenetic, Merlin, Padavan) используется iptables/ipset, USB/внутреннее хранилище и RAM tmpfs. На Entware НЕ предлагай OpenWrt-действия (`disable_flow_offloading`, `sync_flow_offload_guard`, `fix_dnsmasq`); на Keenetic в режиме `tproxy` при проблемах маршрутизации учитывай аппаратное ускорение NAT (PPE) или переключение на `tun`.\n\
+У тебя есть read-only инструменты для проверки состояния ядра, Flight Recorder, аномалий, логов, маршрутов и конфигурации. Сначала определи первопричину по графу зависимостей (WAN -> Время -> Бинарник -> Ядро -> Конфиг -> Firewall -> DNS -> Узлы -> Ресурсы), затем предложи план исправления.\n\
 Верни строго JSON-объект следующей структуры (без лишнего текста вне JSON, можно внутри ```json):\n\
 {\n\
   \"root_cause\": \"краткая техническая формулировка первопричины\",\n\
@@ -531,7 +532,7 @@ fn system_prompt_ru() -> &'static str {
     }\n\
   ]\n\
 }\n\
-Доступные fix_id: trim_core_memory, flush_core_dns, clear_dns_cache, capture_blackbox, restore_primary_failover, hot_reload_core, restart_core, reset_outbound_pool, reset_outbound_pool:<tag>, reconcile_nftables, fix_dnsmasq, fix_wan_interface, switch_to_doh, fix_bootstrap_dns, optimize_mtu, fix_system_time, disable_flow_offloading, rollback_core_binary, rollback_known_good, update_subscriptions."
+Доступные fix_id: trim_core_memory, flush_core_dns, clear_dns_cache, capture_blackbox, restore_primary_failover, hot_reload_core, restart_core, reset_outbound_pool, reset_outbound_pool:<tag>, reconcile_nftables, reconcile_firewall, fix_dnsmasq, fix_wan_interface, switch_to_doh, fix_bootstrap_dns, optimize_mtu, fix_system_time, disable_flow_offloading, rollback_core_binary, rollback_known_good, update_subscriptions."
 }
 
 fn extract_json_object_from_text(text: &str) -> Option<Value> {
@@ -1038,6 +1039,16 @@ pub async fn run_ai_doctor_v4_with_endpoint(
         .collect();
 
     let redacted_context = crypto_gen::redact_json_value(&json!({
+        "platform_info": {
+            "platform": sys.platform,
+            "is_entware": crate::platform::is_entware(),
+            "is_keenetic": crate::platform::is_keenetic(),
+            "firewall_backend": sys.firewall_backend,
+            "storage_kind": sys.storage_kind,
+            "storage_fs": sys.storage_fs,
+            "storage_mount": sys.storage_mount,
+            "runtime_tmpfs_ok": sys.runtime_tmpfs_ok,
+        },
         "doctor_summary": report.summary,
         "healthy": report.healthy,
         "root_causes": report.root_causes,
@@ -1160,8 +1171,16 @@ pub async fn run_ai_doctor_v4_with_endpoint(
         remediation_plan = steps;
 
         let mem_mb = live.core_rss_bytes as f64 / (1024.0 * 1024.0);
+        let fw_label =
+            if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+                "iptables"
+            } else {
+                "nftables"
+            };
         let findings_md = if report.findings.is_empty() {
-            "Критических сбоев не выявлено. Pipeline WAN -> Часы -> Бинарник -> Ядро -> Конфиг -> nftables -> DNS -> Узлы согласован.".to_string()
+            format!(
+                "Критических сбоев не выявлено. Pipeline WAN -> Часы -> Бинарник -> Ядро -> Конфиг -> {fw_label} -> DNS -> Узлы согласован."
+            )
         } else {
             report
                 .findings
@@ -1248,6 +1267,12 @@ pub async fn run_ai_doctor_v4_with_endpoint(
         "llm_error": llm_error,
         "system": {
             "hostname": sys.router_model,
+            "platform": sys.platform,
+            "firewall_backend": sys.firewall_backend,
+            "storage_kind": sys.storage_kind,
+            "storage_fs": sys.storage_fs,
+            "storage_mount": sys.storage_mount,
+            "runtime_tmpfs_ok": sys.runtime_tmpfs_ok,
             "mem_available_bytes": sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes),
             "mem_total_bytes": sys.mem_total_bytes
         }

@@ -1959,24 +1959,30 @@ pub fn decode_fptn_token_json_with_core_bin(
     if is_brotli {
         const MAX_FPTN_DECODED_BYTES: usize = 4 * 1024 * 1024;
         let cli_token = format!("fptnb:{clean}");
-        let mut candidates: Vec<&str> = Vec::new();
+        let mut candidates: Vec<String> = Vec::new();
         if let Some(bin) = core_bin.map(str::trim).filter(|s| !s.is_empty()) {
-            candidates.push(bin);
+            candidates.push(bin.to_string());
         }
+        let platform_core_bin = crate::platform::paths()
+            .bin_dir
+            .join("tachyon-core")
+            .to_string_lossy()
+            .replace('\\', "/");
         for fallback in [
+            platform_core_bin.as_str(),
             "/usr/bin/tachyon-core",
             "/usr/sbin/tachyon-core",
             "tachyon-core",
         ] {
-            if !candidates.contains(&fallback) {
-                candidates.push(fallback);
+            if !fallback.is_empty() && !candidates.iter().any(|c| c == fallback) {
+                candidates.push(fallback.to_string());
             }
         }
         for bin in candidates {
-            if bin.starts_with('/') && !std::path::Path::new(bin).is_file() {
+            if bin.starts_with('/') && !std::path::Path::new(&bin).is_file() {
                 continue;
             }
-            if let Ok(out) = std::process::Command::new(bin)
+            if let Ok(out) = std::process::Command::new(&bin)
                 .args(["fptn", "decode", &cli_token])
                 .output()
                 && out.status.success()
@@ -6560,6 +6566,27 @@ fn split_csv_list(items: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn resolve_tailscale_state_dir(ephemeral: bool, safe_id: &str) -> String {
+    if crate::platform::is_entware() {
+        let p = crate::platform::paths();
+        let base = if ephemeral {
+            &p.runtime_tmpfs_dir
+        } else {
+            &p.data_dir
+        };
+        format!(
+            "{}/tailscale/{safe_id}",
+            base.to_string_lossy()
+                .replace('\\', "/")
+                .trim_end_matches('/')
+        )
+    } else if ephemeral {
+        format!("/var/run/tachyon/tailscale/{safe_id}")
+    } else {
+        format!("/etc/tachyon/tailscale/{safe_id}")
+    }
+}
+
 fn build_tailscale_endpoint_json(
     tag: &str,
     state_id: &str,
@@ -6567,14 +6594,7 @@ fn build_tailscale_endpoint_json(
     p: &TailscaleEndpointParams<'_>,
 ) -> Value {
     let safe_id = safe_tailscale_id(state_id);
-    let state_dir = format!(
-        "{}{safe_id}",
-        if p.ephemeral {
-            "/var/run/tachyon/tailscale/"
-        } else {
-            "/etc/tachyon/tailscale/"
-        }
-    );
+    let state_dir = resolve_tailscale_state_dir(p.ephemeral, &safe_id);
     let ctrl = if p.control_url.trim().is_empty() {
         "https://controlplane.tailscale.com"
     } else {
@@ -6716,14 +6736,12 @@ fn normalize_imported_tailscale_endpoint(
                 .get("ephemeral")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let base = if ephemeral {
-                "/var/run/tachyon/tailscale/"
-            } else {
-                "/etc/tachyon/tailscale/"
-            };
             obj.insert(
                 "state_directory".into(),
-                json!(format!("{base}{}", safe_tailscale_id(&ep_tag))),
+                json!(resolve_tailscale_state_dir(
+                    ephemeral,
+                    &safe_tailscale_id(&ep_tag)
+                )),
             );
         }
     }
@@ -10922,7 +10940,7 @@ fn primary_lan_interface(store: &RouterStoreData) -> String {
         }
         return clean;
     }
-    "br-lan".to_string()
+    crate::platform::detect_default_lan_iface()
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -12063,6 +12081,114 @@ fn compile_core_config_with_lan_env(
     compile_core_config_with_rt_dir(store, wan6_available, lan_override, section_tags_out, None)
 }
 
+pub(crate) fn resolve_dns_inbound_bind(
+    platform: crate::platform::PlatformKind,
+    settings: &GlobalSettings,
+) -> (&'static str, u16) {
+    if platform.is_entware() {
+        if settings
+            .entware_dns_mode
+            .trim()
+            .eq_ignore_ascii_case("override")
+        {
+            ("0.0.0.0", 53)
+        } else {
+            let port = if settings.entware_dns_port > 0 {
+                settings.entware_dns_port
+            } else {
+                1053
+            };
+            ("0.0.0.0", port)
+        }
+    } else {
+        ("127.0.0.42", 53)
+    }
+}
+
+fn section_effective_builtin_outbound(sec: &RoutingSection) -> Option<&'static str> {
+    let act = sec.action.trim().to_ascii_lowercase();
+    match act.as_str() {
+        "bypass" | "direct" | "hosts" => return Some("direct"),
+        "block" | "reject" => return Some("block"),
+        _ => {}
+    }
+    match sec.connection_type.trim().to_ascii_lowercase().as_str() {
+        "bypass" | "direct" | "hosts" => Some("direct"),
+        "block" | "reject" => Some("block"),
+        _ => None,
+    }
+}
+
+fn is_section_bypass_or_direct(sec: &RoutingSection) -> bool {
+    matches!(
+        sec.action.trim().to_ascii_lowercase().as_str(),
+        "bypass" | "direct"
+    ) || matches!(
+        sec.connection_type.trim().to_ascii_lowercase().as_str(),
+        "bypass" | "direct"
+    )
+}
+
+fn rule_matches_ip_criteria(rule: &Value, rule_sets: &[Value]) -> bool {
+    let Some(obj) = rule.as_object() else {
+        return false;
+    };
+    if obj.contains_key("ip_cidr") {
+        return true;
+    }
+    if let Some(rs_val) = obj.get("rule_set") {
+        let tags: Vec<&str> = match rs_val {
+            Value::String(s) => vec![s.as_str()],
+            Value::Array(arr) => arr.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        for tag in tags {
+            if tag.starts_with("geoip-")
+                || tag.starts_with("trs-geoip_")
+                || tag.ends_with("-subnets-ruleset")
+            {
+                return true;
+            }
+            if tag.starts_with("custom-local-")
+                && let Some(entry) = rule_sets
+                    .iter()
+                    .find(|rs| rs.get("tag").and_then(Value::as_str) == Some(tag))
+                && entry.get("format").and_then(Value::as_str) == Some("source")
+                && let Some(path) = entry.get("path").and_then(Value::as_str)
+                && local_json_ruleset_is_ip_only(path)
+            {
+                return true;
+            }
+        }
+    }
+    if let Some(subs) = obj.get("rules").and_then(Value::as_array) {
+        return subs.iter().any(|s| rule_matches_ip_criteria(s, rule_sets));
+    }
+    false
+}
+
+fn extract_rule_source_ip_cidr(rule: &Value) -> Option<Value> {
+    let obj = rule.as_object()?;
+    if let Some(src) = obj.get("source_ip_cidr") {
+        return Some(src.clone());
+    }
+    if obj.get("type").and_then(Value::as_str) == Some("logical")
+        && obj.get("mode").and_then(Value::as_str) == Some("and")
+        && !obj.get("invert").and_then(Value::as_bool).unwrap_or(false)
+        && let Some(subs) = obj.get("rules").and_then(Value::as_array)
+    {
+        for sub in subs {
+            if sub.get("invert").and_then(Value::as_bool).unwrap_or(false) {
+                continue;
+            }
+            if let Some(src) = sub.get("source_ip_cidr") {
+                return Some(src.clone());
+            }
+        }
+    }
+    None
+}
+
 fn compile_core_config_with_rt_dir(
     store: &RouterStoreData,
     wan6_available: bool,
@@ -12120,12 +12246,14 @@ fn compile_core_config_with_rt_dir(
         }
     }
 
-    // Dedicated DNS inbound on `127.0.0.42:53`
+    // Dedicated DNS inbound (`127.0.0.42:53` on OpenWrt; `0.0.0.0:<port>` on Entware)
+    let (dns_in_listen, dns_in_port) =
+        resolve_dns_inbound_bind(crate::platform::detect_platform(), &store.settings);
     inbounds.push(json!({
         "type": "direct",
         "tag": "dns-in",
-        "listen": "127.0.0.42",
-        "listen_port": 53
+        "listen": dns_in_listen,
+        "listen_port": dns_in_port
     }));
     if has_source_dns {
         inbounds.push(json!({
@@ -12558,6 +12686,14 @@ fn compile_core_config_with_rt_dir(
     let mut section_order_ids: Vec<(String, String)> = Vec::new();
     let mut per_sec_aaaa_dns_rules: Vec<Value> = Vec::new();
     let mut section_dns_plans: Vec<SectionDnsPlan<'_>> = Vec::new();
+    let mut emitted_ip_resolve_keys: HashSet<String> = HashSet::new();
+    let any_routed_dns_section = store.sections.iter().any(|s| {
+        s.enabled
+            && s.routed_dns_enabled
+            && !matches!(s.action.as_str(), "hosts" | "block" | "dns")
+            && !matches!(s.connection_type.as_str(), "hosts" | "block" | "dns")
+            && (s.routed_dns_use_global || !resolve_routed_dns_servers(s).is_empty())
+    });
     let mut emitted_mixed_ports: HashSet<u16> = HashSet::new();
     for inb in &inbounds {
         if let Some(p) = inb.get("listen_port").and_then(Value::as_u64)
@@ -12777,6 +12913,23 @@ fn compile_core_config_with_rt_dir(
                         &sec_exc_route_only_subs,
                     );
                     if !section_emitted_rules.contains(&wrapped) {
+                        if store.settings.fakeip_enabled {
+                            let src_scope = extract_rule_source_ip_cidr(&wrapped);
+                            let rkey = format!(
+                                "{resolve_dns_server}|{}",
+                                src_scope.as_ref().map(Value::to_string).unwrap_or_default()
+                            );
+                            if emitted_ip_resolve_keys.insert(rkey) {
+                                let mut res_rule = json!({
+                                    "action": "resolve",
+                                    "server": resolve_dns_server
+                                });
+                                if let Some(src) = src_scope {
+                                    res_rule["source_ip_cidr"] = src;
+                                }
+                                rules.push(res_rule);
+                            }
+                        }
                         section_emitted_rules.push(wrapped.clone());
                         rules.push(wrapped);
                     }
@@ -12811,6 +12964,26 @@ fn compile_core_config_with_rt_dir(
                         &sec_exc_route_only_subs,
                     );
                     if !section_emitted_rules.contains(&wrapped) {
+                        if store.settings.fakeip_enabled
+                            && target_outbound_tag == "direct"
+                            && rule_matches_ip_criteria(&wrapped, &rule_sets)
+                        {
+                            let src_scope = extract_rule_source_ip_cidr(&wrapped);
+                            let rkey = format!(
+                                "{resolve_dns_server}|{}",
+                                src_scope.as_ref().map(Value::to_string).unwrap_or_default()
+                            );
+                            if emitted_ip_resolve_keys.insert(rkey) {
+                                let mut res_rule = json!({
+                                    "action": "resolve",
+                                    "server": resolve_dns_server
+                                });
+                                if let Some(src) = src_scope {
+                                    res_rule["source_ip_cidr"] = src;
+                                }
+                                rules.push(res_rule);
+                            }
+                        }
                         section_emitted_rules.push(wrapped.clone());
                         rules.push(wrapped);
                     }
@@ -12879,6 +13052,26 @@ fn compile_core_config_with_rt_dir(
                         &sec_exc_route_only_subs,
                     );
                     if !section_emitted_rules.contains(&wrapped) {
+                        if store.settings.fakeip_enabled
+                            && target_outbound_tag == "direct"
+                            && rule_matches_ip_criteria(&wrapped, &rule_sets)
+                        {
+                            let src_scope = extract_rule_source_ip_cidr(&wrapped);
+                            let rkey = format!(
+                                "{resolve_dns_server}|{}",
+                                src_scope.as_ref().map(Value::to_string).unwrap_or_default()
+                            );
+                            if emitted_ip_resolve_keys.insert(rkey) {
+                                let mut res_rule = json!({
+                                    "action": "resolve",
+                                    "server": resolve_dns_server
+                                });
+                                if let Some(src) = src_scope {
+                                    res_rule["source_ip_cidr"] = src;
+                                }
+                                rules.push(res_rule);
+                            }
+                        }
                         section_emitted_rules.push(wrapped.clone());
                         rules.push(wrapped);
                     }
@@ -12887,7 +13080,12 @@ fn compile_core_config_with_rt_dir(
             }
         }
 
-        if (!section_matched_any && sec.condition_refs.is_empty()) || sec.match_all {
+        let section_has_route_matchers = section_matched_any
+            || !section_emitted_rules.is_empty()
+            || !sec.fully_routed_ips.is_empty()
+            || !sec.source_inbounds.is_empty()
+            || !sec.server_domain_rules.is_empty();
+        if (!section_has_route_matchers && sec.condition_refs.is_empty()) || sec.match_all {
             rules.push(wrap_rule_with_inverted_subrules(
                 json!({
                     "outbound": target_outbound_tag
@@ -12897,18 +13095,14 @@ fn compile_core_config_with_rt_dir(
             ));
         }
 
-        let section_has_route_matchers = section_matched_any
-            || !sec.fully_routed_ips.is_empty()
-            || !sec.source_inbounds.is_empty()
-            || !sec.server_domain_rules.is_empty();
         if sec_routed_dns_enabled {
             section_dns_plans.push(SectionDnsPlan::RoutedDns {
                 sec,
                 target_outbound_tag: target_outbound_tag.clone(),
                 section_matched_any: section_has_route_matchers,
             });
-        } else if store.settings.fakeip_enabled
-            && (sec.disable_fakeip || sec.action == "bypass" || sec.connection_type == "bypass")
+        } else if (store.settings.fakeip_enabled || any_routed_dns_section)
+            && (sec.disable_fakeip || is_section_bypass_or_direct(sec))
         {
             section_dns_plans.push(SectionDnsPlan::BypassRealIp {
                 sec,
@@ -13168,7 +13362,10 @@ fn compile_core_config_with_rt_dir(
                 .iter()
                 .filter(|(_, ctype)| {
                     let c = ctype.trim().to_ascii_lowercase();
-                    !matches!(c.as_str(), "direct" | "block" | "desync" | "dns")
+                    !matches!(
+                        c.as_str(),
+                        "direct" | "bypass" | "hosts" | "block" | "reject" | "desync" | "dns"
+                    )
                 })
                 .find_map(|(id, _)| {
                     section_outbound_tags
@@ -13888,8 +14085,7 @@ fn compile_core_config_with_rt_dir(
                     target_outbound_tag,
                     section_matched_any,
                 } => {
-                    let detour = if sec.action == "bypass"
-                        || sec.connection_type == "bypass"
+                    let detour = if is_section_bypass_or_direct(sec)
                         || target_outbound_tag == "direct"
                         || target_outbound_tag == "block"
                     {
@@ -13948,6 +14144,8 @@ fn compile_core_config_with_rt_dir(
     if has_source_dns && !local_dns_inbounds.iter().any(|s| s == "source-dns-in") {
         local_dns_inbounds.push("source-dns-in".to_string());
     }
+    let managed_dnsmasq = !store.settings.dont_touch_dhcp
+        && crate::platform::has_managed_dnsmasq(store.settings.dont_touch_dhcp);
     let mut local_domain_suffixes = vec![
         "lan".to_string(),
         "local".to_string(),
@@ -13955,29 +14153,28 @@ fn compile_core_config_with_rt_dir(
         "home.arpa".to_string(),
         "localdomain".to_string(),
     ];
-    let dhcp_ctx = crate::net_stack::read_runtime_dhcp_split_dns_context();
-    for dom in dhcp_ctx.local_domain_suffixes {
-        if !local_domain_suffixes
-            .iter()
-            .any(|d| d.eq_ignore_ascii_case(&dom))
-        {
-            local_domain_suffixes.push(dom);
-        }
-    }
-    let inline = crate::adguard_hosts::collect_inline_rules(store);
-    for dom in inline.static_hosts.keys() {
-        let clean = dom.trim().trim_start_matches('.').to_ascii_lowercase();
-        if !clean.is_empty()
-            && !local_domain_suffixes
-                .iter()
-                .any(|d| d.eq_ignore_ascii_case(&clean))
-        {
-            local_domain_suffixes.push(clean);
-        }
-    }
-
     let servers_isolated = !all_server_inbounds.is_empty() && lan_accessible_inbounds.is_empty();
-    if !servers_isolated {
+    if !servers_isolated && managed_dnsmasq {
+        let dhcp_ctx = crate::net_stack::read_runtime_dhcp_split_dns_context();
+        for dom in dhcp_ctx.local_domain_suffixes {
+            if !local_domain_suffixes
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&dom))
+            {
+                local_domain_suffixes.push(dom);
+            }
+        }
+        let inline = crate::adguard_hosts::collect_inline_rules(store);
+        for dom in inline.static_hosts.keys() {
+            let clean = dom.trim().trim_start_matches('.').to_ascii_lowercase();
+            if !clean.is_empty()
+                && !local_domain_suffixes
+                    .iter()
+                    .any(|d| d.eq_ignore_ascii_case(&clean))
+            {
+                local_domain_suffixes.push(clean);
+            }
+        }
         if !dns_servers_vec
             .iter()
             .any(|s| s.get("tag").and_then(Value::as_str) == Some("dnsmasq-server"))
@@ -14021,6 +14218,31 @@ fn compile_core_config_with_rt_dir(
                 }),
             );
         }
+    } else if !servers_isolated && store.settings.fakeip_enabled {
+        // Without managed dnsmasq (e.g. dont_touch_dhcp=true with AdGuard Home on :53, or Entware),
+        // never loop queries back to 127.0.0.1:53; resolve local suffixes via built-in `local`
+        // while leaving static_hosts to `dns-custom-hosts`.
+        if !dns_servers_vec
+            .iter()
+            .any(|s| s.get("tag").and_then(Value::as_str) == Some("dns-local"))
+        {
+            dns_servers_vec.push(json!({
+                "type": "local",
+                "tag": "dns-local"
+            }));
+        }
+        let insert_idx = dns_rules_vec
+            .iter()
+            .position(|r| r.get("server").and_then(Value::as_str) == Some("dns-custom-hosts"))
+            .map_or(0, |idx| idx + 1);
+        dns_rules_vec.insert(
+            insert_idx,
+            json!({
+                "action": "route",
+                "domain_suffix": local_domain_suffixes,
+                "server": "dns-local"
+            }),
+        );
     }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
@@ -14265,11 +14487,13 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
             "udp_fragment": true
         }),
     };
+    let (dns_in_listen, dns_in_port) =
+        resolve_dns_inbound_bind(crate::platform::detect_platform(), &store.settings);
     let dns_inbound = json!({
         "type": "direct",
         "tag": "dns-in",
-        "listen": "127.0.0.42",
-        "listen_port": 53
+        "listen": dns_in_listen,
+        "listen_port": dns_in_port
     });
     let clash_api_obj = build_clash_api_object(store, false);
     let final_outbound = if crate::net_stack::direct_fallback_veto(store).is_some() {
@@ -16885,10 +17109,8 @@ fn resolve_section_outbound(
     seen_outbound_tags: &mut HashMap<String, bool>,
     visited: &mut Vec<String>,
 ) -> String {
-    match sec.connection_type.as_str() {
-        "direct" | "hosts" => return "direct".to_string(),
-        "block" => return "block".to_string(),
-        _ => {}
+    if let Some(builtin) = section_effective_builtin_outbound(sec) {
+        return builtin.to_string();
     }
 
     if visited.contains(&sec.id) || visited.len() >= 8 {
@@ -17604,10 +17826,8 @@ pub fn build_all_section_balancer_caches(
         visited: &mut Vec<String>,
         push_direct_refs: &dyn Fn(&RoutingSection, &mut Vec<String>),
     ) -> String {
-        match sec.connection_type.as_str() {
-            "direct" | "hosts" => return "direct".to_string(),
-            "block" => return "block".to_string(),
-            _ => {}
+        if let Some(builtin) = section_effective_builtin_outbound(sec) {
+            return builtin.to_string();
         }
         if visited.contains(&sec.id) || visited.len() >= 8 {
             return "direct".to_string();
@@ -17969,8 +18189,17 @@ fn ensure_community_subnet_ruleset(
     }
 
     let mut search_dirs: Vec<String> = Vec::new();
+    let plat_paths = crate::platform::paths();
+    let plat_rulesets = plat_paths.rulesets_dir.to_string_lossy().replace('\\', "/");
+    let plat_share_rulesets = plat_paths
+        .share_dir
+        .join("rulesets")
+        .to_string_lossy()
+        .replace('\\', "/");
     for d in [
         rulesets_dir.trim(),
+        plat_rulesets.as_str(),
+        plat_share_rulesets.as_str(),
         "/tmp/tachyon-core/rulesets",
         "/etc/tachyon/rulesets",
         "/usr/share/tachyon/rulesets",
@@ -19270,8 +19499,20 @@ pub fn server_requires_tls(srv: &InboundServer) -> bool {
 
 pub fn server_tls_cert_key_paths(srv: &InboundServer) -> (String, String) {
     let safe_id = server_safe_cert_name(&srv.id);
-    let default_cert = format!("/etc/tachyon/server-certs/{safe_id}.crt");
-    let default_key = format!("/etc/tachyon/server-certs/{safe_id}.key");
+    let cert_base = if crate::platform::is_entware() {
+        format!(
+            "{}/server-certs",
+            crate::platform::paths()
+                .data_dir
+                .to_string_lossy()
+                .replace('\\', "/")
+                .trim_end_matches('/')
+        )
+    } else {
+        "/etc/tachyon/server-certs".to_string()
+    };
+    let default_cert = format!("{cert_base}/{safe_id}.crt");
+    let default_key = format!("{cert_base}/{safe_id}.key");
     let cert_path = if srv.tls_certificate_path.trim().is_empty() {
         default_cert
     } else {
@@ -28221,5 +28462,307 @@ proxies:
         assert!(suffixes.contains(&json!("lan")));
         assert!(suffixes.contains(&json!("myhome.example.net")));
         assert!(suffixes.contains(&json!("custom.lan")));
+    }
+
+    #[test]
+    fn test_split_dns_guard_skips_dnsmasq_server_when_dont_touch_dhcp() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.dont_touch_dhcp = true;
+        store.settings.static_hosts = vec!["192.168.1.50 nas.lan".to_string()];
+
+        let cfg = compile_core_config_with_wan6(&store, false)
+            .expect("compile core config with dont_touch_dhcp=true");
+        let dns_servers = cfg["dns"]["servers"].as_array().expect("dns servers");
+        assert!(
+            !dns_servers.iter().any(|s| s["tag"] == "dnsmasq-server"),
+            "dont_touch_dhcp=true must not add dnsmasq-server 127.0.0.1:53"
+        );
+        assert!(
+            dns_servers.iter().any(|s| s["tag"] == "dns-custom-hosts"),
+            "static_hosts must still be served by built-in dns-custom-hosts"
+        );
+        assert!(
+            dns_servers
+                .iter()
+                .any(|s| s["tag"] == "dns-local" && s["type"] == "local"),
+            "local suffixes must resolve via built-in dns-local when FakeIP is enabled"
+        );
+
+        let dns_rules = cfg["dns"]["rules"].as_array().expect("dns rules");
+        assert!(!dns_rules.iter().any(|r| r["server"] == "dnsmasq-server"));
+        let idx_hosts = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-custom-hosts")
+            .expect("dns-custom-hosts rule");
+        let idx_local = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-local")
+            .expect("dns-local rule");
+        let idx_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_hosts < idx_local && idx_local < idx_fakeip);
+    }
+
+    #[test]
+    fn test_resolve_dns_inbound_bind_openwrt_and_entware_modes() {
+        let mut settings = GlobalSettings::default();
+        assert_eq!(
+            resolve_dns_inbound_bind(crate::platform::PlatformKind::OpenWrt, &settings),
+            ("127.0.0.42", 53)
+        );
+        settings.entware_dns_mode = "redirect".to_string();
+        settings.entware_dns_port = 1053;
+        assert_eq!(
+            resolve_dns_inbound_bind(crate::platform::PlatformKind::KeeneticEntware, &settings),
+            ("0.0.0.0", 1053)
+        );
+        settings.entware_dns_port = 5353;
+        assert_eq!(
+            resolve_dns_inbound_bind(crate::platform::PlatformKind::MerlinEntware, &settings),
+            ("0.0.0.0", 5353)
+        );
+        settings.entware_dns_mode = "override".to_string();
+        assert_eq!(
+            resolve_dns_inbound_bind(crate::platform::PlatformKind::KeeneticEntware, &settings),
+            ("0.0.0.0", 53)
+        );
+    }
+
+    fn make_bypass_before_match_all_store(fakeip_enabled: bool) -> RouterStoreData {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.fakeip_enabled = fakeip_enabled;
+        store.outbound_sources = vec![OutboundSource {
+            id: "src_proxy".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@vpn.example.org:443?security=tls#ProxyNode"
+                    .to_string(),
+            ],
+            ..Default::default()
+        }];
+        store
+    }
+
+    #[test]
+    fn test_bypass_section_before_match_all_proxy_domains_and_stale_outbound_refs() {
+        // Reproduces user bug: a section switched to action=bypass (with stale connection_type=proxy
+        // and stale outbound_source_refs / fail_policy=block) before a match_all proxy section.
+        let mut store = make_bypass_before_match_all_store(true);
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_bypass".to_string(),
+                enabled: true,
+                label: "Direct Bypass".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                fail_policy: "block".to_string(),
+                domains: vec!["bank.ru".to_string()],
+                community_lists: vec!["russia_inside".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_all".to_string(),
+                enabled: true,
+                label: "All via Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                match_all: true,
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile bypass+match_all");
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        let idx_bypass_dom = route_rules
+            .iter()
+            .position(|r| r["domain_suffix"] == json!(["bank.ru"]) && r["outbound"] == "direct")
+            .expect("bypass domain rule must target direct, never ProxyNode");
+        let idx_bypass_list = route_rules
+            .iter()
+            .position(|r| {
+                r["rule_set"] == json!(["trs-russia_inside"]) && r["outbound"] == "direct"
+            })
+            .expect("bypass list rule must target direct");
+        let idx_match_all = route_rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "ProxyNode"
+                    && r.get("domain_suffix").is_none()
+                    && r.get("rule_set").is_none()
+                    && r.get("inbound").is_none()
+            })
+            .expect("match_all proxy rule");
+        assert!(idx_bypass_dom < idx_match_all);
+        assert!(idx_bypass_list < idx_match_all);
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_dns_bypass = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-remote" && r["domain_suffix"] == json!(["bank.ru"]))
+            .expect("bypass domain must resolve via real DNS before fakeip");
+        let idx_dns_fakeip = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule");
+        assert!(idx_dns_bypass < idx_dns_fakeip);
+    }
+
+    #[test]
+    fn test_bypass_section_before_match_all_proxy_subnets_and_geoip_under_fakeip() {
+        // Under FakeIP, IP/GeoIP bypass rules before match_all require an earlier `resolve` action
+        // so FakeIP-backed Target::Domain connections populate destination_addresses and match bypass.
+        let mut store = make_bypass_before_match_all_store(true);
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_bypass_ip".to_string(),
+                enabled: true,
+                label: "Bypass Subnets & RU".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "bypass".to_string(),
+                user_subnets: vec!["185.71.76.0/24".to_string()],
+                geoip_codes: vec!["ru".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_all".to_string(),
+                enabled: true,
+                label: "All via Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                match_all: true,
+                ..Default::default()
+            },
+        ];
+
+        let cfg =
+            compile_core_config_with_wan6(&store, false).expect("compile subnet+geoip bypass");
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        let idx_resolve = route_rules
+            .iter()
+            .position(|r| r["action"] == "resolve" && r["server"] == "dns-remote")
+            .expect("FakeIP IP/GeoIP bypass must emit resolve rule before IP matchers");
+        let idx_geoip = route_rules
+            .iter()
+            .position(|r| r["rule_set"] == json!(["geoip-ru"]) && r["outbound"] == "direct")
+            .expect("geoip-ru direct rule");
+        let idx_subnet = route_rules
+            .iter()
+            .position(|r| r["ip_cidr"] == json!(["185.71.76.0/24"]) && r["outbound"] == "direct")
+            .expect("subnet direct rule");
+        let idx_proxy = route_rules
+            .iter()
+            .position(|r| r["outbound"] == "ProxyNode" && r.get("inbound").is_none())
+            .expect("match_all proxy rule");
+        assert!(idx_resolve < idx_geoip);
+        assert!(idx_resolve < idx_subnet);
+        assert!(idx_geoip < idx_proxy);
+        assert!(idx_subnet < idx_proxy);
+
+        // When FakeIP is disabled, no extra resolve rule is needed for IP/GeoIP bypass
+        store.settings.fakeip_enabled = false;
+        let cfg_nofake = compile_core_config_with_wan6(&store, false).expect("compile no-fakeip");
+        let rules_nofake = cfg_nofake["route"]["rules"].as_array().unwrap();
+        assert!(!rules_nofake.iter().any(|r| r["action"] == "resolve"));
+    }
+
+    #[test]
+    fn test_bypass_section_before_match_all_proxy_routed_dns_and_full_tunnel() {
+        // When FakeIP is OFF (or ON) and match_all proxy has routed_dns_enabled=true,
+        // an earlier bypass/direct section must still emit real-IP DNS rules BEFORE match_all's routed DNS,
+        // and bypass device (fully_routed_ips) must not emit an unintended catch-all direct rule.
+        let mut store = make_bypass_before_match_all_store(false);
+        store.settings.routing_strategy = "full_tunnel".to_string();
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_bypass_dev".to_string(),
+                enabled: true,
+                label: "Bypass TV".to_string(),
+                action: "direct".to_string(),
+                connection_type: "direct".to_string(),
+                fully_routed_ips: vec!["192.168.1.88".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_bypass_dom".to_string(),
+                enabled: true,
+                label: "Bypass RU".to_string(),
+                action: "direct".to_string(),
+                connection_type: "direct".to_string(),
+                domains: vec!["gosuslugi.ru".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_all".to_string(),
+                enabled: true,
+                label: "Match All Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                match_all: true,
+                routed_dns_enabled: true,
+                routed_dns_type: "doh".to_string(),
+                routed_dns_servers: vec!["https://1.1.1.1/dns-query".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false)
+            .expect("compile bypass + routed_dns match_all + full_tunnel");
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+
+        // fully_routed_ips bypass section must NOT emit an unconditional catch-all direct rule
+        assert!(
+            !route_rules.iter().any(|r| {
+                r.as_object()
+                    .is_some_and(|m| m.len() == 1 && m.get("outbound") == Some(&json!("direct")))
+            }),
+            "fully_routed_ips bypass must not synthesize catch-all direct rule"
+        );
+        let idx_dev = route_rules
+            .iter()
+            .position(|r| {
+                r["source_ip_cidr"] == json!(["192.168.1.88/32"]) && r["outbound"] == "direct"
+            })
+            .expect("device bypass rule");
+        let idx_dom = route_rules
+            .iter()
+            .position(|r| {
+                r["domain_suffix"] == json!(["gosuslugi.ru"]) && r["outbound"] == "direct"
+            })
+            .expect("domain bypass rule");
+        let idx_match_all = route_rules
+            .iter()
+            .position(|r| r["outbound"] == "ProxyNode" && r.get("inbound").is_none())
+            .expect("match_all proxy rule");
+        let idx_full_tunnel = route_rules
+            .iter()
+            .position(|r| r["outbound"] == "ProxyNode" && r["inbound"] == json!(["tproxy-in"]))
+            .expect("full_tunnel proxy rule");
+        assert!(idx_dev < idx_match_all);
+        assert!(idx_dom < idx_match_all);
+        assert!(idx_match_all < idx_full_tunnel);
+
+        // DNS: bypass domain must hit dns-remote BEFORE match_all's dns-routed-sec_all
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let idx_dns_bypass = dns_rules
+            .iter()
+            .position(|r| {
+                r["server"] == "dns-remote" && r["domain_suffix"] == json!(["gosuslugi.ru"])
+            })
+            .expect("direct section domain must emit BypassRealIp before match_all routed DNS");
+        let idx_dns_match_all = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-routed-sec_all" && r.get("domain_suffix").is_none())
+            .expect("match_all routed DNS rule");
+        assert!(idx_dns_bypass < idx_dns_match_all);
     }
 }

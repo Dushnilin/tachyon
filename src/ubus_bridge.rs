@@ -83,23 +83,42 @@ fn uci_mutex() -> &'static tokio::sync::Mutex<()> {
     PURE_UCI_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
+fn next_section_index(store: &Map<String, Value>) -> usize {
+    store
+        .values()
+        .filter_map(|v| v.get(".index").and_then(Value::as_u64))
+        .map(|i| (i as usize).saturating_add(1))
+        .max()
+        .unwrap_or(0)
+}
+
+pub fn normalize_entware_dns_mode(raw: &str) -> &'static str {
+    if raw.trim().eq_ignore_ascii_case("override") {
+        "override"
+    } else {
+        "redirect"
+    }
+}
+
 fn json_sections_path() -> PathBuf {
-    let data_dir = std::env::var("TACHYON_DATA_DIR").unwrap_or_else(|_| {
-        if cfg!(target_os = "linux") && Path::new("/etc/tachyon").exists() {
-            "/etc/tachyon".to_string()
-        } else {
-            "data".to_string()
+    if let Ok(env_dir) = std::env::var("TACHYON_DATA_DIR") {
+        let trimmed = env_dir.trim();
+        if !trimmed.is_empty() {
+            return Path::new(trimmed).join("config_sections.json");
         }
-    });
-    Path::new(&data_dir).join("config_sections.json")
+    }
+    crate::platform::paths()
+        .data_dir
+        .join("config_sections.json")
 }
 
 fn json_sections_store() -> &'static RwLock<Map<String, Value>> {
+    let is_entware = crate::platform::is_entware();
     let lock = JSON_SECTIONS_STORE.get_or_init(|| {
         let path = json_sections_path();
         let legacy_path = Path::new("/etc/config/tachyon");
         let backup_path = Path::new(crate::store::LEGACY_UCI_BACKUP_PATH);
-        if legacy_path.exists() {
+        if !is_entware && legacy_path.exists() {
             LAST_UCI_MTIME_NS.store(
                 file_mtime_ns(legacy_path),
                 std::sync::atomic::Ordering::Relaxed,
@@ -111,12 +130,16 @@ fn json_sections_store() -> &'static RwLock<Map<String, Value>> {
         {
             return RwLock::new(map);
         }
-        let uci_raw = match std::fs::read_to_string(legacy_path) {
-            Ok(s) if !s.trim().is_empty() => Some(s),
-            _ => match std::fs::read_to_string(backup_path) {
+        let uci_raw = if is_entware {
+            None
+        } else {
+            match std::fs::read_to_string(legacy_path) {
                 Ok(s) if !s.trim().is_empty() => Some(s),
-                _ => None,
-            },
+                _ => match std::fs::read_to_string(backup_path) {
+                    Ok(s) if !s.trim().is_empty() => Some(s),
+                    _ => None,
+                },
+            }
         };
         let initial_map = if let Some(raw) = uci_raw {
             crate::store::parse_uci_text_to_json_sections(&raw)
@@ -130,7 +153,9 @@ fn json_sections_store() -> &'static RwLock<Map<String, Value>> {
                     ".name": "settings",
                     ".index": 0,
                     "proxy_mode": "tproxy",
-                    "dns_type": "doh"
+                    "dns_type": "doh",
+                    "entware_dns_mode": "redirect",
+                    "entware_dns_port": "1053"
                 }),
             );
             m
@@ -141,22 +166,24 @@ fn json_sections_store() -> &'static RwLock<Map<String, Value>> {
         let _ = crypto_gen::write_json_if_changed(&path, &Value::Object(initial_map.clone()));
         RwLock::new(initial_map)
     });
-    let legacy_path = Path::new("/etc/config/tachyon");
-    if legacy_path.exists() {
-        let cur_mtime = file_mtime_ns(legacy_path);
-        let prev_mtime = LAST_UCI_MTIME_NS.load(std::sync::atomic::Ordering::Relaxed);
-        if cur_mtime > 0
-            && cur_mtime != prev_mtime
-            && let Ok(raw) = std::fs::read_to_string(legacy_path)
-        {
-            let parsed = crate::store::parse_uci_text_to_json_sections(&raw);
-            if !parsed.is_empty()
-                && let Ok(mut guard) = lock.write()
+    if !is_entware {
+        let legacy_path = Path::new("/etc/config/tachyon");
+        if legacy_path.exists() {
+            let cur_mtime = file_mtime_ns(legacy_path);
+            let prev_mtime = LAST_UCI_MTIME_NS.load(std::sync::atomic::Ordering::Relaxed);
+            if cur_mtime > 0
+                && cur_mtime != prev_mtime
+                && let Ok(raw) = std::fs::read_to_string(legacy_path)
             {
-                *guard = parsed.clone();
-                LAST_UCI_MTIME_NS.store(cur_mtime, std::sync::atomic::Ordering::Relaxed);
-                let path = json_sections_path();
-                let _ = crypto_gen::write_json_if_changed(&path, &Value::Object(parsed));
+                let parsed = crate::store::parse_uci_text_to_json_sections(&raw);
+                if !parsed.is_empty()
+                    && let Ok(mut guard) = lock.write()
+                {
+                    *guard = parsed.clone();
+                    LAST_UCI_MTIME_NS.store(cur_mtime, std::sync::atomic::Ordering::Relaxed);
+                    let path = json_sections_path();
+                    let _ = crypto_gen::write_json_if_changed(&path, &Value::Object(parsed));
+                }
             }
         }
     }
@@ -169,7 +196,10 @@ fn persist_json_sections(map: &Map<String, Value>) {
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = crypto_gen::write_json_if_changed(&path, &Value::Object(map.clone()));
-    if cfg!(target_os = "linux") && Path::new("/etc/config").exists() {
+    if cfg!(target_os = "linux")
+        && !crate::platform::is_entware()
+        && Path::new("/etc/config").exists()
+    {
         let legacy_path = Path::new("/etc/config/tachyon");
         let uci_text = serialize_json_sections_to_uci(map);
         let _ = crypto_gen::write_file_if_changed(legacy_path, uci_text.as_bytes());
@@ -198,7 +228,7 @@ fn apply_telegram_config_to_sections_map(
     store: &mut Map<String, Value>,
     tg: &crate::store::TgBotConfig,
 ) -> bool {
-    let next_idx = store.len();
+    let next_idx = next_section_index(store);
     let existed = store.contains_key("telegram");
     let entry = store.entry("telegram".to_string()).or_insert_with(|| {
         json!({
@@ -406,6 +436,7 @@ fn serialize_json_sections_to_uci(map: &Map<String, Value>) -> String {
 pub const TACHYON_FAVICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 4-8 1 6h3l-4 8-1-6z"/></svg>"##;
 
 /// Generate the LuCI HTML shell with the `tachyon-ui` design system and animated superluminal SVG background.
+#[cfg_attr(not(test), allow(dead_code))]
 fn sanitize_luci_subview(subview: Option<&str>) -> Option<&str> {
     subview.map(|s| s.trim_matches('/')).filter(|s| {
         !s.is_empty()
@@ -413,6 +444,32 @@ fn sanitize_luci_subview(subview: Option<&str>) -> Option<&str> {
             && s.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
     })
+}
+
+fn sanitize_luci_subview_segments(subview: Option<&str>) -> Vec<&str> {
+    let Some(raw) = subview else {
+        return Vec::new();
+    };
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for seg in trimmed.split('/') {
+        if seg.is_empty()
+            || seg.len() > 64
+            || !seg
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        {
+            return Vec::new();
+        }
+        out.push(seg);
+        if out.len() > 4 {
+            return Vec::new();
+        }
+    }
+    out
 }
 
 const EARLY_THEME_APPLY_SCRIPT: &str = r##"<script>
@@ -847,28 +904,34 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
     } else {
         "ru"
     };
-    let sub = sanitize_luci_subview(subview);
-    let req_path_json = if let Some(s) = sub {
-        format!("[\"admin\", \"services\", \"tachyon\", \"{s}\"]")
-    } else {
-        "[\"admin\", \"services\", \"tachyon\"]".to_string()
-    };
-    let pathinfo = if let Some(s) = sub {
-        format!("/admin/services/tachyon/{s}")
-    } else {
+    let sub_segments = sanitize_luci_subview_segments(subview);
+    let mut req_parts = vec![
+        "\"admin\"".to_string(),
+        "\"services\"".to_string(),
+        "\"tachyon\"".to_string(),
+    ];
+    for seg in &sub_segments {
+        req_parts.push(format!("\"{seg}\""));
+    }
+    let req_path_json = format!("[{}]", req_parts.join(", "));
+    let pathinfo = if sub_segments.is_empty() {
         "/admin/services/tachyon".to_string()
+    } else {
+        format!("/admin/services/tachyon/{}", sub_segments.join("/"))
     };
 
-    let rev = file_mtime_ns(Path::new(
-        "/tmp/tachyon-rs/www/luci-static/resources/view/tachyon/main.js",
-    ))
-    .max(file_mtime_ns(Path::new(
-        "/www/luci-static/resources/view/tachyon/main.js",
-    )))
-    .max(file_mtime_ns(Path::new(
-        "luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js",
-    )))
-    .max(1);
+    let p = crate::platform::paths();
+    let rev = file_mtime_ns(&p.www_dir.join("resources/view/tachyon/main.js"))
+        .max(file_mtime_ns(Path::new(
+            "/tmp/tachyon-rs/www/luci-static/resources/view/tachyon/main.js",
+        )))
+        .max(file_mtime_ns(Path::new(
+            "/www/luci-static/resources/view/tachyon/main.js",
+        )))
+        .max(file_mtime_ns(Path::new(
+            "luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js",
+        )))
+        .max(1);
 
     let version = crate::store::TACHYON_VERSION;
     let en_reset = if lang == "en" {
@@ -1178,13 +1241,17 @@ pub fn serve_luci_shell(subview: Option<&str>, ui_lang: &str) -> String {
 }
 
 fn load_tachyon_ru_po_from_disk() -> String {
-    for p in [
-        "/tmp/tachyon-rs/fe-app-tachyon/locales/tachyon.ru.po",
-        "/usr/share/tachyon/tachyon.ru.po",
-        "fe-app-tachyon/locales/tachyon.ru.po",
-        "luci-app-tachyon/po/ru/tachyon.po",
-    ] {
-        if let Ok(raw) = std::fs::read_to_string(p)
+    let p = crate::platform::paths();
+    let candidates = [
+        p.share_dir.join("tachyon.ru.po"),
+        p.share_dir.join("locales/tachyon.ru.po"),
+        PathBuf::from("/tmp/tachyon-rs/fe-app-tachyon/locales/tachyon.ru.po"),
+        PathBuf::from("/usr/share/tachyon/tachyon.ru.po"),
+        PathBuf::from("fe-app-tachyon/locales/tachyon.ru.po"),
+        PathBuf::from("luci-app-tachyon/po/ru/tachyon.po"),
+    ];
+    for path in &candidates {
+        if let Ok(raw) = std::fs::read_to_string(path)
             && !raw.is_empty()
         {
             return raw;
@@ -1218,11 +1285,14 @@ pub fn serve_translations_js(lang: &str) -> &'static str {
         return "window.TR = {}; window.TR_RAW = {};\n";
     }
     TRANSLATIONS_RU_JS.get_or_init(|| {
-        for precompiled in [
-            "/www/luci-static/resources/view/tachyon/i18n_ru.js",
-            "/tmp/tachyon-rs/www/luci-static/resources/view/tachyon/i18n_ru.js",
-            "luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/i18n_ru.js",
-        ] {
+        let p = crate::platform::paths();
+        let precompiled_candidates = [
+            p.www_dir.join("resources/view/tachyon/i18n_ru.js"),
+            PathBuf::from("/www/luci-static/resources/view/tachyon/i18n_ru.js"),
+            PathBuf::from("/tmp/tachyon-rs/www/luci-static/resources/view/tachyon/i18n_ru.js"),
+            PathBuf::from("luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/i18n_ru.js"),
+        ];
+        for precompiled in &precompiled_candidates {
             if let Ok(js) = std::fs::read_to_string(precompiled)
                 && !js.is_empty()
             {
@@ -1344,9 +1414,11 @@ fn unquote_po_into(s: &str, out: &mut String) {
     }
 }
 
-/// Resolve a static asset under `/luci-static/<rel_path>` on disk without caching megabytes in heap.
-/// Returns `(file_path, mime_type, size_bytes, etag)`.
-pub fn resolve_static_asset(rel_path: &str) -> Option<(PathBuf, &'static str, u64, String)> {
+/// Resolve a static asset under `/luci-static/<rel_path>` inside explicit root directories.
+pub fn resolve_static_asset_in_roots(
+    rel_path: &str,
+    roots: &[PathBuf],
+) -> Option<(PathBuf, &'static str, u64, String)> {
     let clean = rel_path
         .split('?')
         .next()
@@ -1356,13 +1428,7 @@ pub fn resolve_static_asset(rel_path: &str) -> Option<(PathBuf, &'static str, u6
         return None;
     }
 
-    let roots = [
-        PathBuf::from("/www/luci-static"),
-        PathBuf::from("/tmp/tachyon-rs/www/luci-static"),
-        PathBuf::from("luci-app-tachyon/htdocs/luci-static"),
-    ];
-
-    for root in &roots {
+    for root in roots {
         let candidate = root.join(clean);
         if let Ok(meta) = std::fs::metadata(&candidate)
             && meta.is_file()
@@ -1380,6 +1446,21 @@ pub fn resolve_static_asset(rel_path: &str) -> Option<(PathBuf, &'static str, u6
         }
     }
     None
+}
+
+/// Resolve a static asset under `/luci-static/<rel_path>` on disk without caching megabytes in heap.
+/// Returns `(file_path, mime_type, size_bytes, etag)`.
+pub fn resolve_static_asset(rel_path: &str) -> Option<(PathBuf, &'static str, u64, String)> {
+    let p = crate::platform::paths();
+    let roots = [
+        p.www_dir.clone(),
+        p.share_dir.join("www/luci-static"),
+        PathBuf::from("/www/luci-static"),
+        p.runtime_tmpfs_dir.join("www/luci-static"),
+        PathBuf::from("/tmp/tachyon-rs/www/luci-static"),
+        PathBuf::from("luci-app-tachyon/htdocs/luci-static"),
+    ];
+    resolve_static_asset_in_roots(rel_path, &roots)
 }
 
 fn guess_mime_type(path: &str) -> &'static str {
@@ -1427,6 +1508,7 @@ pub async fn handle_ubus_post(
         match obj {
             "uci" => !matches!(meth, "get" | "changes"),
             "file" => matches!(meth, "write" | "remove" | "exec"),
+            "tachyon" => !matches!(meth, "get_exit_country" | "get_status"),
             _ => true,
         }
     };
@@ -1527,16 +1609,50 @@ async fn dispatch_ubus_call(
                 }
             }
         ]),
-        ("luci", "getFeatures") => json!([
-            0,
-            {
-                "firewall": true,
-                "nftables": true,
-                "ipv6": true,
-                "dnsmasq": true,
-                "offloading": true
-            }
-        ]),
+        ("luci", "getFeatures") => {
+            let is_nft =
+                crate::platform::firewall_kind() == crate::platform::FirewallKind::Nftables;
+            let is_owrt = crate::platform::is_openwrt();
+            json!([
+                0,
+                {
+                    "firewall": true,
+                    "nftables": is_nft,
+                    "ipv6": true,
+                    "dnsmasq": is_owrt,
+                    "offloading": is_owrt
+                }
+            ])
+        }
+        ("tachyon", "get_exit_country") => {
+            let refresh = args
+                .get("refresh")
+                .map(|v| {
+                    v.as_bool().unwrap_or_else(|| {
+                        v.as_i64().is_some_and(|n| n != 0)
+                            || v.as_str().is_some_and(|s| {
+                                matches!(
+                                    s.trim().to_ascii_lowercase().as_str(),
+                                    "1" | "true" | "yes"
+                                )
+                            })
+                    })
+                })
+                .unwrap_or(false);
+            let node = args
+                .get("node")
+                .or_else(|| args.get("active_node"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let res = Box::pin(get_exit_country(state, core, refresh, node)).await;
+            json!([0, res])
+        }
+        ("tachyon", "get_status") => {
+            state.touch_telemetry_access();
+            let res = Box::pin(build_status_json(state)).await;
+            json!([0, res])
+        }
         ("file", "list") => handle_file_list(args),
         ("file", "stat" | "lstat") => handle_file_stat(args),
         ("file", "read") => handle_file_read(args, state).await,
@@ -1629,36 +1745,76 @@ fn is_safe_abs_path(p: &str) -> bool {
         && !p.split('/').any(|seg| seg == ".." || seg == ".")
 }
 
+fn path_starts_with_dir(p: &str, dir: &Path) -> bool {
+    let base = dir.to_string_lossy();
+    let trimmed = base.trim_end_matches('/');
+    !trimmed.is_empty()
+        && p.strip_prefix(trimmed)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
 fn is_allowed_bridge_read_path(p: &str) -> bool {
-    is_safe_abs_path(p)
-        && (matches!(
-            p,
-            "/proc/sys/kernel/hostname"
-                | "/etc/config/tachyon"
-                | "/var/run/tachyon/section-errors.json"
-                | "/var/run/tachyon/rule-conflicts.json"
-                | "/tmp/tachyon-snapshot-export.json"
-                | "/var/run/tachyon/ui-state/snapshot-export.json"
-        ) || p.starts_with("/var/run/tachyon/")
-            || p.starts_with("/tmp/run/tachyon/")
-            || p.starts_with("/tmp/tachyon")
-            || p.starts_with("/etc/tachyon/rulesets/")
-            || p.starts_with("/etc/tachyon/subscription-cache/")
-            || p.starts_with("/etc/tachyon/hosts-lists/")
-            || p.starts_with("/etc/tachyon/custom-lists/")
-            || p.starts_with("/usr/share/tachyon/rulesets/"))
+    if !is_safe_abs_path(p) {
+        return false;
+    }
+    let plat = crate::platform::paths();
+    matches!(
+        p,
+        "/proc/sys/kernel/hostname"
+            | "/etc/config/tachyon"
+            | "/var/run/tachyon/section-errors.json"
+            | "/var/run/tachyon/rule-conflicts.json"
+            | "/tmp/tachyon-snapshot-export.json"
+            | "/var/run/tachyon/ui-state/snapshot-export.json"
+    ) || p.starts_with("/var/run/tachyon/")
+        || p.starts_with("/tmp/run/tachyon/")
+        || p.starts_with("/tmp/tachyon")
+        || p.starts_with("/etc/tachyon/rulesets/")
+        || p.starts_with("/etc/tachyon/subscription-cache/")
+        || p.starts_with("/etc/tachyon/hosts-lists/")
+        || p.starts_with("/etc/tachyon/custom-lists/")
+        || p.starts_with("/usr/share/tachyon/rulesets/")
+        || path_starts_with_dir(p, &plat.runtime_tmpfs_dir)
+        || path_starts_with_dir(p, &plat.rulesets_dir)
+        || path_starts_with_dir(p, &plat.data_dir.join("subscription-cache"))
+        || path_starts_with_dir(p, &plat.data_dir.join("hosts-lists"))
+        || path_starts_with_dir(p, &plat.data_dir.join("custom-lists"))
+        || path_starts_with_dir(p, &plat.share_dir.join("rulesets"))
 }
 
 fn is_allowed_bridge_write_path(p: &str) -> bool {
-    is_safe_abs_path(p)
-        && (p == "/tmp/tachyon-snapshot-import.json" || p.starts_with("/var/run/tachyon/"))
+    if !is_safe_abs_path(p) {
+        return false;
+    }
+    let plat = crate::platform::paths();
+    p == "/tmp/tachyon-snapshot-import.json"
+        || p.starts_with("/var/run/tachyon/")
+        || path_starts_with_dir(p, &plat.runtime_tmpfs_dir)
 }
 
 fn is_allowed_bridge_remove_path(p: &str) -> bool {
-    is_safe_abs_path(p)
-        && (p == "/tmp/tachyon-snapshot-import.json"
-            || p.starts_with("/var/run/tachyon/section-cache/")
-            || p.starts_with("/etc/tachyon/subscription-cache/"))
+    if !is_safe_abs_path(p) {
+        return false;
+    }
+    let plat = crate::platform::paths();
+    p == "/tmp/tachyon-snapshot-import.json"
+        || p.starts_with("/var/run/tachyon/section-cache/")
+        || p.starts_with("/etc/tachyon/subscription-cache/")
+        || path_starts_with_dir(p, &plat.runtime_tmpfs_dir.join("section-cache"))
+        || path_starts_with_dir(p, &plat.data_dir.join("subscription-cache"))
+}
+
+fn is_tachyon_cli_command(cmd: &str) -> bool {
+    if matches!(
+        cmd,
+        "/usr/bin/tachyon" | "/usr/bin/tachyon-read" | "tachyon"
+    ) {
+        return true;
+    }
+    let bin_dir = &crate::platform::paths().bin_dir;
+    let plat_bin = bin_dir.join("tachyon");
+    let plat_read = bin_dir.join("tachyon-read");
+    Path::new(cmd) == plat_bin || Path::new(cmd) == plat_read
 }
 
 fn is_allowed_bridge_exec(bin: &str, args: &[String]) -> bool {
@@ -1668,12 +1824,18 @@ fn is_allowed_bridge_exec(bin: &str, args: &[String]) -> bool {
     {
         return false;
     }
-    match bin {
-        "/usr/bin/tachyon-core" | "/usr/sbin/tachyon-core" => matches!(
+    let plat_core_bin = crate::platform::paths().bin_dir.join("tachyon-core");
+    if bin == "/usr/bin/tachyon-core"
+        || bin == "/usr/sbin/tachyon-core"
+        || Path::new(bin) == plat_core_bin
+    {
+        return matches!(
             args.first().map(String::as_str),
             Some("version" | "check" | "rule-set" | "fptn")
-        ),
-        "/usr/bin/nslookup" | "/bin/nslookup" => {
+        );
+    }
+    match bin {
+        "/usr/bin/nslookup" | "/bin/nslookup" | "/opt/bin/nslookup" => {
             (1..=4).contains(&args.len())
                 && args.iter().all(|a| {
                     !a.is_empty()
@@ -1780,7 +1942,7 @@ async fn handle_file_exec(args: &Value, state: &Arc<AppState>, core: &Arc<CoreMa
         })
         .unwrap_or_default();
 
-    if command == "/usr/bin/tachyon" || command == "/usr/bin/tachyon-read" || command == "tachyon" {
+    if is_tachyon_cli_command(command) {
         let (code, stdout, stderr) = execute_tachyon_cli(&params, state, core).await;
         return json!([
             0,
@@ -1949,7 +2111,7 @@ async fn execute_pure_rust_uci_cli(
                 let Ok(mut store) = json_sections_store().write() else {
                     return (1, String::new(), "Lock error\n".to_string());
                 };
-                let idx_sec = store.len();
+                let idx_sec = next_section_index(&store);
                 let mut n = idx_sec + 1;
                 let name = loop {
                     let candidate = format!("cfg{n:02x}{stype}");
@@ -2078,7 +2240,7 @@ async fn execute_pure_rust_uci_cli(
                 let clean_lhs = lhs.strip_prefix("tachyon.").unwrap_or(lhs);
                 let val_str = rhs.trim_matches('\'').trim_matches('"').to_string();
                 if let Ok(mut store) = json_sections_store().write() {
-                    let next_idx = store.len();
+                    let next_idx = next_section_index(&store);
                     if let Some((sec, opt)) = clean_lhs.split_once('.') {
                         let entry = store.entry(sec.to_string()).or_insert_with(|| {
                             json!({
@@ -2119,7 +2281,7 @@ async fn execute_pure_rust_uci_cli(
                 if let Some((sec, opt)) = clean_lhs.split_once('.')
                     && let Ok(mut store) = json_sections_store().write()
                 {
-                    let next_idx = store.len();
+                    let next_idx = next_section_index(&store);
                     let entry = store.entry(sec.to_string()).or_insert_with(|| {
                         json!({
                             ".anonymous": false,
@@ -2409,9 +2571,13 @@ async fn resolve_and_extract_ruleset(raw_ref: &str, core: &CoreManager) -> Resul
         return Err(format!("invalid ruleset reference: {trimmed}"));
     }
 
+    let plat = crate::platform::paths();
+    let share_rulesets = plat.share_dir.join("rulesets");
     let roots = [
+        plat.rulesets_dir.as_path(),
         Path::new("/etc/tachyon/rulesets"),
         Path::new(RULESET_EXTRACT_CACHE_DIR),
+        share_rulesets.as_path(),
         Path::new("/usr/share/tachyon/rulesets"),
     ];
     if let Some(found) = find_cached_ruleset_by_name_in_roots(alias, &roots) {
@@ -2504,6 +2670,466 @@ fn try_fast_diag_and_ruleset_boxed<'a>(
     Box::pin(try_fast_diag_and_ruleset(method, rest, state, core))
 }
 
+/// Build the `platform_info` JSON object from explicit platform, firewall, storage, and DNS settings.
+pub fn build_platform_info_from(
+    platform: crate::platform::PlatformKind,
+    fw: crate::platform::FirewallKind,
+    storage: &crate::platform::StorageInfo,
+    runtime_tmpfs_ok: bool,
+    entware_dns_mode: &str,
+    entware_dns_port: u16,
+) -> Value {
+    let dns_port = if entware_dns_port == 0 {
+        1053
+    } else {
+        entware_dns_port
+    };
+    json!({
+        "platform": platform.as_str(),
+        "display_name": platform.display_name(),
+        "is_entware": platform.is_entware(),
+        "is_keenetic": platform.is_keenetic(),
+        "firewall": fw.as_str(),
+        "storage_kind": storage.kind.as_str(),
+        "storage_fs": storage.fs_type,
+        "storage_mount": storage.mount_point,
+        "storage_posix": storage.is_posix,
+        "runtime_tmpfs_ok": runtime_tmpfs_ok,
+        "entware_dns_mode": normalize_entware_dns_mode(entware_dns_mode),
+        "entware_dns_port": dns_port,
+    })
+}
+
+/// Collect host platform, storage, firewall, and Entware DNS metadata for status responses.
+pub fn build_platform_info_json(d: &crate::store::RouterStoreData) -> Value {
+    let platform = crate::platform::detect_platform();
+    let fw = crate::platform::firewall_kind();
+    let p = crate::platform::paths();
+    let storage = crate::platform::detect_storage_info(&p.data_dir);
+    let runtime_dir = crate::platform::resolve_ram_tmpfs_dir();
+    let runtime_str = runtime_dir.to_string_lossy();
+    let runtime_tmpfs_ok = if cfg!(target_os = "linux") {
+        let rt_storage = crate::platform::detect_storage_info(&runtime_dir);
+        !runtime_str.starts_with("/opt")
+            && (rt_storage.kind == crate::platform::StorageKind::TmpfsOnly
+                || rt_storage.fs_type.eq_ignore_ascii_case("tmpfs"))
+    } else {
+        !runtime_str.starts_with("/opt")
+    };
+    build_platform_info_from(
+        platform,
+        fw,
+        &storage,
+        runtime_tmpfs_ok,
+        &d.settings.entware_dns_mode,
+        d.settings.entware_dns_port,
+    )
+}
+
+/// Build the unified router/core status payload used by `get_status` and `GET /api/status`.
+pub async fn build_status_json(state: &Arc<AppState>) -> Value {
+    let sys = sys_info::collect_host_info();
+    let live = Box::new(state.live.read().await.clone());
+    let d = state.data.read().await;
+    let daemon_uptime = sys_info::daemon_uptime_secs();
+    let cpu_pct = sys_info::sample_cpu_load_percent();
+    let panel_mb = ((sys.panel_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
+    let platform_info = build_platform_info_json(&d);
+    json!({
+        "ok": true,
+        "running": i32::from(live.core_running),
+        "enabled": 1,
+        "status": if live.core_running { "running & enabled" } else { "stopped" },
+        "dns_configured": 1,
+        "lite_mode": i32::from(d.settings.lite_mode),
+        "pid": std::process::id(),
+        "memory_rss_mb": panel_mb,
+        "uptime_seconds": daemon_uptime,
+        "uptime_pretty": format_uptime_pretty(daemon_uptime),
+        "cpu_load_percent": cpu_pct,
+        "cpu_temp_c": if sys.cpu_temp_c > 0.0 { json!(sys.cpu_temp_c) } else { Value::Null },
+        "engine_variant": "tachyon-core",
+        "engine_version": live.core_version,
+        "platform_info": platform_info,
+    })
+}
+
+const EXIT_COUNTRY_CACHE_TTL_SECS: u64 = 120;
+
+#[derive(Debug, Clone)]
+struct ExitCountryCache {
+    active_node: String,
+    country_code: String,
+    ip: String,
+    source: String,
+    checked_at: u64,
+    cached_at: std::time::Instant,
+}
+
+impl ExitCountryCache {
+    fn is_valid_for(&self, active_node: &str, refresh: bool, ttl: Duration) -> bool {
+        !refresh
+            && self.active_node == active_node
+            && !self.country_code.is_empty()
+            && self.cached_at.elapsed() < ttl
+    }
+}
+
+static EXIT_COUNTRY_CACHE: OnceLock<tokio::sync::Mutex<Option<ExitCountryCache>>> = OnceLock::new();
+
+fn exit_country_cache_slot() -> &'static tokio::sync::Mutex<Option<ExitCountryCache>> {
+    EXIT_COUNTRY_CACHE.get_or_init(|| tokio::sync::Mutex::new(None))
+}
+
+fn normalize_iso_country_code(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().to_ascii_uppercase();
+    if trimmed.len() == 2 && trimmed.bytes().all(|b| b.is_ascii_uppercase()) && trimmed != "XX" {
+        Some(trimmed)
+    } else {
+        None
+    }
+}
+
+fn normalize_valid_ip(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return None;
+    }
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .map(|ip| ip.to_string())
+}
+
+/// Parse Cloudflare `/cdn-cgi/trace` plain-text response into `(ip, country_code)`.
+pub fn parse_cloudflare_trace(raw: &str) -> Option<(String, String)> {
+    let mut ip: Option<String> = None;
+    let mut loc: Option<String> = None;
+    for line in raw.lines() {
+        let Some((k, v)) = line.trim().split_once('=') else {
+            continue;
+        };
+        match k.trim() {
+            "ip" => ip = normalize_valid_ip(v),
+            "loc" => loc = normalize_iso_country_code(v),
+            _ => {}
+        }
+        if ip.is_some() && loc.is_some() {
+            break;
+        }
+    }
+    match (ip, loc) {
+        (Some(ip), Some(loc)) => Some((ip, loc)),
+        _ => None,
+    }
+}
+
+/// Parse `https://ipwho.is/` JSON response into `(ip, country_code)`.
+pub fn parse_ipwhois_json(raw: &str) -> Option<(String, String)> {
+    let val: Value = serde_json::from_str(raw.trim()).ok()?;
+    if val.get("success").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
+    let ip = val
+        .get("ip")
+        .and_then(Value::as_str)
+        .and_then(normalize_valid_ip)?;
+    let country_code = val
+        .get("country_code")
+        .and_then(Value::as_str)
+        .and_then(normalize_iso_country_code)?;
+    Some((ip, country_code))
+}
+
+fn resolve_local_proxy_url_from_core_config(d: &crate::store::RouterStoreData) -> Option<String> {
+    // 1. Inspect core config JSON for local mixed/http/socks inbounds
+    let cfg_path = if d.settings.core_config_path.trim().is_empty() {
+        crate::platform::paths()
+            .core_config_dir
+            .join("config.json")
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        d.settings.core_config_path.clone()
+    };
+    if let Ok(raw) = std::fs::read_to_string(&cfg_path)
+        && let Ok(val) = serde_json::from_str::<Value>(&raw)
+        && let Some(inbounds) = val.get("inbounds").and_then(Value::as_array)
+    {
+        let mut preferred: Option<(&str, u16)> = None;
+        let mut fallback: Option<(&str, u16)> = None;
+        for inb in inbounds {
+            let ty = inb.get("type").and_then(Value::as_str).unwrap_or("");
+            if !matches!(ty, "mixed" | "http" | "socks") {
+                continue;
+            }
+            let Some(port) = inb
+                .get("listen_port")
+                .and_then(Value::as_u64)
+                .and_then(|p| u16::try_from(p).ok())
+                .filter(|&p| p > 0)
+            else {
+                continue;
+            };
+            let tag = inb.get("tag").and_then(Value::as_str).unwrap_or("");
+            if matches!(tag, "service-mixed-in" | "client-mixed-in" | "mixed-in") {
+                preferred = Some((ty, port));
+                break;
+            }
+            if fallback.is_none() {
+                fallback = Some((ty, port));
+            }
+        }
+        if let Some((ty, port)) = preferred.or(fallback) {
+            let scheme = if ty == "socks" { "socks5h" } else { "http" };
+            return Some(format!("{scheme}://127.0.0.1:{port}"));
+        }
+    }
+
+    // 2. Fallback to any enabled section's configured mixed_proxy_port
+    if let Some(port) = d
+        .sections
+        .iter()
+        .find(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0)
+        .map(|s| s.mixed_proxy_port)
+    {
+        return Some(format!("http://127.0.0.1:{port}"));
+    }
+
+    None
+}
+
+async fn resolve_active_exit_node_tag(
+    d: &crate::store::RouterStoreData,
+    core: &Arc<CoreManager>,
+    requested_node: Option<&str>,
+) -> String {
+    if let Some(node) = requested_node.map(str::trim).filter(|s| !s.is_empty()) {
+        return node.to_string();
+    }
+    let primary_target = d
+        .sections
+        .iter()
+        .find(|s| s.enabled && !matches!(s.action.as_str(), "bypass" | "block" | "direct"))
+        .map(|s| s.id.as_str())
+        .unwrap_or("Main");
+    if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
+        && let Some(proxies_map) = proxies_val.get("proxies").and_then(Value::as_object)
+    {
+        let mut cur = resolve_clash_group_for_target(d, Some(proxies_map), primary_target);
+        for _ in 0..8 {
+            let Some(next) = proxies_map
+                .get(&cur)
+                .and_then(|v| v.get("now"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty() && *s != cur)
+            else {
+                break;
+            };
+            cur = next.to_string();
+        }
+        if !cur.is_empty() {
+            return cur;
+        }
+    }
+    d.sections
+        .iter()
+        .find(|s| s.enabled && !s.active_selected_tag.trim().is_empty())
+        .map(|s| s.active_selected_tag.trim().to_string())
+        .unwrap_or_default()
+}
+
+async fn run_exit_country_curl_probe(url: &str, proxy_url: Option<&str>) -> Result<String, String> {
+    let mut cmd = Command::new("curl");
+    cmd.args(["--silent", "--show-error", "--max-time", "4"]);
+    if let Some(proxy) = proxy_url.filter(|s| !s.trim().is_empty()) {
+        cmd.args(["-x", proxy]);
+    }
+    cmd.arg(url).kill_on_drop(true);
+    let out = tokio::time::timeout(Duration::from_secs(6), cmd.output())
+        .await
+        .map_err(|_| format!("probe timed out for {url}"))?
+        .map_err(|e| format!("failed to invoke curl: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("curl exited with {:?}", out.status.code())
+        } else {
+            stderr
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Determine actual outbound exit IP and ISO country code with RAM caching (TTL 120s).
+pub async fn get_exit_country(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    refresh: bool,
+    requested_node: Option<&str>,
+) -> Value {
+    let d = state.data.read().await.clone();
+    let active_node = resolve_active_exit_node_tag(&d, core, requested_node).await;
+    let ttl = Duration::from_secs(EXIT_COUNTRY_CACHE_TTL_SECS);
+
+    {
+        let guard = exit_country_cache_slot().lock().await;
+        if let Some(entry) = guard.as_ref()
+            && entry.is_valid_for(&active_node, refresh, ttl)
+        {
+            return json!({
+                "ok": true,
+                "country_code": entry.country_code,
+                "ip": entry.ip,
+                "active_node": entry.active_node,
+                "source": entry.source,
+                "checked_at": entry.checked_at,
+                "cached": true,
+                "error": "",
+            });
+        }
+    }
+
+    let proxy_url = resolve_local_proxy_url_from_core_config(&d);
+    let mut last_err = String::new();
+    let mut resolved: Option<(String, String, &'static str)> = None;
+
+    match run_exit_country_curl_probe("https://cloudflare.com/cdn-cgi/trace", proxy_url.as_deref())
+        .await
+    {
+        Ok(raw) => {
+            if let Some((ip, cc)) = parse_cloudflare_trace(&raw) {
+                resolved = Some((ip, cc, "cloudflare"));
+            } else {
+                last_err = "cloudflare trace response missing ip/loc".to_string();
+            }
+        }
+        Err(e) => {
+            last_err = e;
+        }
+    }
+
+    if resolved.is_none() {
+        match run_exit_country_curl_probe("https://ipwho.is/", proxy_url.as_deref()).await {
+            Ok(raw) => {
+                if let Some((ip, cc)) = parse_ipwhois_json(&raw) {
+                    resolved = Some((ip, cc, "ipwhois"));
+                } else if last_err.is_empty() {
+                    last_err = "ipwhois response missing ip/country_code".to_string();
+                } else {
+                    last_err = format!("{last_err}; ipwhois response missing ip/country_code");
+                }
+            }
+            Err(e) => {
+                if last_err.is_empty() {
+                    last_err = e;
+                } else {
+                    last_err = format!("{last_err}; {e}");
+                }
+            }
+        }
+    }
+
+    let now_unix = crate::store::unix_now_u64();
+    if let Some((ip, country_code, source)) = resolved {
+        let entry = ExitCountryCache {
+            active_node: active_node.clone(),
+            country_code: country_code.clone(),
+            ip: ip.clone(),
+            source: source.to_string(),
+            checked_at: now_unix,
+            cached_at: std::time::Instant::now(),
+        };
+        {
+            let mut guard = exit_country_cache_slot().lock().await;
+            *guard = Some(entry);
+        }
+        json!({
+            "ok": true,
+            "country_code": country_code,
+            "ip": ip,
+            "active_node": active_node,
+            "source": source,
+            "checked_at": now_unix,
+            "cached": false,
+            "error": "",
+        })
+    } else {
+        json!({
+            "ok": false,
+            "country_code": "",
+            "ip": "",
+            "active_node": active_node,
+            "source": "",
+            "checked_at": now_unix,
+            "cached": false,
+            "error": last_err,
+        })
+    }
+}
+
+fn parse_exit_country_cli_args(rest: &[String]) -> (bool, Option<String>) {
+    let mut refresh = false;
+    let mut node: Option<String> = None;
+    let mut i = 0;
+    while i < rest.len() {
+        let arg = rest[i].trim();
+        if arg.starts_with('{')
+            && let Ok(val) = serde_json::from_str::<Value>(arg)
+        {
+            if let Some(r) = val.get("refresh") {
+                refresh = r.as_bool().unwrap_or_else(|| {
+                    r.as_i64().is_some_and(|n| n != 0)
+                        || r.as_str().is_some_and(|s| {
+                            matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
+                        })
+                });
+            }
+            if let Some(n) = val
+                .get("node")
+                .or_else(|| val.get("active_node"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                node = Some(n.to_string());
+            }
+            i += 1;
+            continue;
+        }
+        if matches!(arg, "--refresh" | "-r" | "refresh" | "1" | "true") {
+            refresh = true;
+        } else if let Some(val) = arg
+            .strip_prefix("refresh=")
+            .or_else(|| arg.strip_prefix("--refresh="))
+        {
+            refresh = matches!(
+                val.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            );
+        } else if let Some(val) = arg
+            .strip_prefix("node=")
+            .or_else(|| arg.strip_prefix("--node="))
+            .or_else(|| arg.strip_prefix("active_node="))
+        {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                node = Some(trimmed.to_string());
+            }
+        } else if matches!(arg, "--node" | "-n") {
+            if let Some(next) = rest.get(i + 1).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                node = Some(next.to_string());
+                i += 1;
+            }
+        } else if !arg.is_empty() && !matches!(arg, "0" | "false") && node.is_none() {
+            node = Some(arg.to_string());
+        }
+        i += 1;
+    }
+    (refresh, node)
+}
+
 async fn try_fast_ui_and_settings(
     method: &str,
     rest: &[String],
@@ -2534,27 +3160,13 @@ async fn try_fast_ui_and_settings(
         }
         "get_status" => {
             state.touch_telemetry_access();
-            let sys = sys_info::collect_host_info();
-            let live = Box::new(state.live.read().await.clone());
-            let d = state.data.read().await;
-            let daemon_uptime = sys_info::daemon_uptime_secs();
-            let cpu_pct = sys_info::sample_cpu_load_percent();
-            let panel_mb = ((sys.panel_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
-            let val = json!({
-                "running": i32::from(live.core_running),
-                "enabled": 1,
-                "status": if live.core_running { "running & enabled" } else { "stopped" },
-                "dns_configured": 1,
-                "lite_mode": i32::from(d.settings.lite_mode),
-                "pid": std::process::id(),
-                "memory_rss_mb": panel_mb,
-                "uptime_seconds": daemon_uptime,
-                "uptime_pretty": format_uptime_pretty(daemon_uptime),
-                "cpu_load_percent": cpu_pct,
-                "cpu_temp_c": if sys.cpu_temp_c > 0.0 { json!(sys.cpu_temp_c) } else { Value::Null },
-                "engine_variant": "tachyon-core",
-                "engine_version": live.core_version,
-            });
+            let val = Box::pin(build_status_json(state)).await;
+            let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
+            Some((0, format!("{s}\n"), String::new()))
+        }
+        "get_exit_country" => {
+            let (refresh, node) = parse_exit_country_cli_args(rest);
+            let val = Box::pin(get_exit_country(state, core, refresh, node.as_deref())).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -2657,7 +3269,7 @@ async fn try_fast_ui_and_settings(
                 prev
             };
             if let Ok(mut store) = json_sections_store().write() {
-                let next_idx = store.len();
+                let next_idx = next_section_index(&store);
                 let sec = store.entry("settings".to_string()).or_insert_with(|| {
                     json!({
                         ".anonymous": false,
@@ -2850,7 +3462,15 @@ async fn try_fast_core_and_crypto(
         }
         "show_sing_box_config" | "show_tachyon_core_config" => {
             let want_raw = rest.iter().any(|a| a == "raw" || a == "--raw");
-            let val = if let Ok(raw) = std::fs::read_to_string("/etc/tachyon-core/config.json")
+            let cfg_path = {
+                let d = state.data.read().await;
+                if d.settings.core_config_path.trim().is_empty() {
+                    crate::platform::paths().core_config_dir.join("config.json")
+                } else {
+                    PathBuf::from(d.settings.core_config_path.trim())
+                }
+            };
+            let val = if let Ok(raw) = std::fs::read_to_string(&cfg_path)
                 && !raw.trim().is_empty()
                 && let Ok(parsed) = serde_json::from_str::<Value>(&raw)
             {
@@ -2905,7 +3525,7 @@ async fn try_fast_core_and_crypto(
             let cert_dir = state
                 .path
                 .parent()
-                .unwrap_or_else(|| Path::new("/etc/tachyon"))
+                .unwrap_or(crate::platform::paths().data_dir.as_path())
                 .join("server-certs");
             let cert_path = cert_dir.join(format!("{sid}.crt"));
             let key_path = cert_dir.join(format!("{sid}.key"));
@@ -2949,7 +3569,7 @@ async fn try_fast_core_and_crypto(
             let base_dir = state
                 .path
                 .parent()
-                .unwrap_or_else(|| Path::new("/etc/tachyon"));
+                .unwrap_or(crate::platform::paths().data_dir.as_path());
             let cert_path = if arg.starts_with('/') && !arg.contains("..") {
                 PathBuf::from(arg)
             } else {
@@ -3205,10 +3825,21 @@ fn build_core_health_check_payload(
     live: &crate::store::LiveTelemetry,
     ipv6_active: bool,
 ) -> Value {
+    let plat = crate::platform::paths();
+    let core_bin_path = plat
+        .bin_dir
+        .join("tachyon-core")
+        .to_string_lossy()
+        .into_owned();
+    let core_init_path = if crate::platform::is_entware() {
+        plat.init_script.to_string_lossy().into_owned()
+    } else {
+        "/etc/init.d/tachyon-core".to_string()
+    };
     let installed = tachyon_core_binary_installed();
     let version_ok =
         installed && !live.core_version.is_empty() && live.core_version != "not installed";
-    let service_exist = Path::new("/etc/init.d/tachyon-core").exists();
+    let service_exist = Path::new(&core_init_path).exists() || plat.init_script.exists();
     let mut missing_ports: Vec<String> = Vec::new();
     let mut active_ports: Vec<String> = Vec::new();
     let cfg_path = std::env::var("TACHYON_CORE_CONFIG_PATH")
@@ -3217,7 +3848,10 @@ fn build_core_health_check_payload(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| {
             if d.settings.core_config_path.trim().is_empty() {
-                "/etc/tachyon-core/config.json".to_string()
+                plat.core_config_dir
+                    .join("config.json")
+                    .to_string_lossy()
+                    .into_owned()
             } else {
                 d.settings.core_config_path.clone()
             }
@@ -3308,13 +3942,17 @@ fn build_core_health_check_payload(
     if !missing_ports.is_empty() {
         listen_ports_str.push_str(&format!(" (missing: {})", missing_ports.join(", ")));
     }
-    let autostart_disabled = !std::fs::read_dir("/etc/rc.d")
-        .ok()
-        .map(|rd| {
-            rd.flatten()
-                .any(|e| e.file_name().to_string_lossy().ends_with("tachyon-core"))
-        })
-        .unwrap_or(false);
+    let autostart_disabled = if crate::platform::is_entware() {
+        !plat.init_script.is_file()
+    } else {
+        !std::fs::read_dir("/etc/rc.d")
+            .ok()
+            .map(|rd| {
+                rd.flatten()
+                    .any(|e| e.file_name().to_string_lossy().ends_with("tachyon-core"))
+            })
+            .unwrap_or(false)
+    };
     json!({
         "tachyon_core_installed": i32::from(installed),
         "tachyon_core_version_ok": i32::from(version_ok),
@@ -3326,8 +3964,8 @@ fn build_core_health_check_payload(
         "tachyon_core_fptn": 0,
         "tachyon_core_cert_pin": 1,
         "tachyon_core_version": live.core_version,
-        "tachyon_core_bin_path": "/usr/bin/tachyon-core",
-        "tachyon_core_init_path": "/etc/init.d/tachyon-core",
+        "tachyon_core_bin_path": core_bin_path,
+        "tachyon_core_init_path": core_init_path,
         "tachyon_core_listen_ports": listen_ports_str,
         "sing_box_installed": i32::from(installed),
         "sing_box_version_ok": i32::from(version_ok),
@@ -3339,8 +3977,8 @@ fn build_core_health_check_payload(
         "sing_box_extended": 0,
         "sing_box_cert_pin": 1,
         "sing_box_version": live.core_version,
-        "sing_box_bin_path": "/usr/bin/tachyon-core",
-        "sing_box_init_path": "/etc/init.d/tachyon-core",
+        "sing_box_bin_path": core_bin_path,
+        "sing_box_init_path": core_init_path,
         "sing_box_listen_ports": listen_ports_str,
     })
 }
@@ -3503,7 +4141,13 @@ fn tachyon_core_binary_installed() -> bool {
     } else {
         "tachyon-core"
     };
-    crate::fuzzer::is_desync_engine_installed(&format!("/usr/bin/{bin_name}"))
+    let plat_bin = crate::platform::paths()
+        .bin_dir
+        .join(bin_name)
+        .to_string_lossy()
+        .into_owned();
+    crate::fuzzer::is_desync_engine_installed(&plat_bin)
+        || crate::fuzzer::is_desync_engine_installed(&format!("/usr/bin/{bin_name}"))
         || crate::fuzzer::is_desync_engine_installed(&format!("data/bin/{bin_name}"))
         || crate::fuzzer::is_desync_engine_installed(&format!(
             "../tachyon-core/target/release/{bin_name}"
@@ -3674,8 +4318,10 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
         .unwrap_or("");
     let wan6_iface = detect_wan6_iface(wan_ipv6).await;
 
-    let mut base = if let Ok(raw) =
-        tokio::fs::read_to_string("/var/run/tachyon/system-info.json").await
+    let sys_info_path = crate::store::runtime_state_dir().join("system-info.json");
+    let mut base = if let Ok(raw) = tokio::fs::read_to_string(&sys_info_path)
+        .await
+        .or(tokio::fs::read_to_string("/var/run/tachyon/system-info.json").await)
         && let Ok(parsed) = serde_json::from_str::<Value>(&raw)
     {
         parsed
@@ -4022,6 +4668,7 @@ fn parse_openwrt_network_interface_proto(network_uci: &str, iface_name: &str) ->
 fn detect_openwrt_interface_protocol(iface_name: &str) -> String {
     let trimmed = iface_name.trim();
     if !trimmed.is_empty()
+        && !crate::platform::is_entware()
         && let Ok(net_cfg) = std::fs::read_to_string("/etc/config/network")
         && let Some(proto) = parse_openwrt_network_interface_proto(&net_cfg, trimmed)
     {
@@ -7073,7 +7720,11 @@ fn parse_nft_table_summary(text: &str) -> NftTableSummary {
 
 fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
     let config_path = if d.settings.core_config_path.trim().is_empty() {
-        "/etc/tachyon-core/config.json".to_string()
+        crate::platform::paths()
+            .core_config_dir
+            .join("config.json")
+            .to_string_lossy()
+            .into_owned()
     } else {
         d.settings.core_config_path.clone()
     };
@@ -7635,7 +8286,7 @@ fn write_uci_ui_prefs(patch: &Value) -> Value {
     }
     let serialized = serde_json::to_string(&current).unwrap_or_else(|_| "{}".to_string());
     if let Ok(mut store) = json_sections_store().write() {
-        let next_idx = store.len();
+        let next_idx = next_section_index(&store);
         let sec = store.entry("settings".to_string()).or_insert_with(|| {
             json!({
                 ".anonymous": false,
@@ -9108,10 +9759,12 @@ async fn execute_cli_part_components(
         },
         "restart" | "reload" => Box::pin(handle_reload_with_disk_sync(state, core)).await,
         "enable" | "disable" => {
-            if cfg!(target_os = "linux") && Path::new("/etc/init.d/tachyon").is_file() {
+            let init_script = &crate::platform::paths().init_script;
+            if cfg!(target_os = "linux") && !crate::platform::is_entware() && init_script.is_file()
+            {
                 match tokio::time::timeout(
                     Duration::from_secs(10),
-                    Command::new("/etc/init.d/tachyon").arg(method).output(),
+                    Command::new(init_script).arg(method).output(),
                 )
                 .await
                 {
@@ -9128,7 +9781,7 @@ async fn execute_cli_part_components(
                     Ok(Err(e)) => json!({ "success": false, "error": format!("{e}") }),
                     Err(_) => json!({
                         "success": false,
-                        "error": format!("timeout running /etc/init.d/tachyon {method}")
+                        "error": format!("timeout running {} {method}", init_script.display())
                     }),
                 }
             } else {
@@ -11926,6 +12579,28 @@ pub async fn sync_uci_to_rust_store_with_reload(
     sync_uci_to_rust_store_inner(state, core, trigger_reload, true).await
 }
 
+fn apply_entware_dns_from_json_sections(
+    snapshot: &Map<String, Value>,
+    candidate: &mut crate::store::RouterStoreData,
+) {
+    let Some(settings_obj) = snapshot.get("settings").and_then(Value::as_object) else {
+        return;
+    };
+    if let Some(raw_mode) = settings_obj.get("entware_dns_mode").and_then(Value::as_str) {
+        candidate.settings.entware_dns_mode = normalize_entware_dns_mode(raw_mode).to_string();
+    }
+    if let Some(port_val) = settings_obj.get("entware_dns_port") {
+        let parsed = match port_val {
+            Value::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
+            Value::String(s) => s.trim().parse::<u16>().ok(),
+            _ => None,
+        };
+        if let Some(p) = parsed.filter(|&p| p >= 1) {
+            candidate.settings.entware_dns_port = p;
+        }
+    }
+}
+
 async fn sync_uci_to_rust_store_inner(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
@@ -11936,6 +12611,7 @@ async fn sync_uci_to_rust_store_inner(
     let mut candidate = state.data.read().await.clone();
     let old_telegram = candidate.telegram.clone();
     let imported = candidate.import_from_json_sections(&snapshot);
+    apply_entware_dns_from_json_sections(&snapshot, &mut candidate);
     if imported > 0 {
         let tg_changed = candidate.telegram != old_telegram;
         let has_empty_sub = candidate.outbound_sources.iter().any(|s| {
@@ -11997,6 +12673,9 @@ fn is_allowed_router_ubus_call(object: &str, method: &str) -> bool {
 }
 
 async fn call_router_ubus_cli(object: &str, method: &str, args: &Value) -> Option<Value> {
+    if crate::platform::is_entware() {
+        return None;
+    }
     if !is_allowed_router_ubus_call(object, method) {
         return None;
     }
@@ -12090,6 +12769,75 @@ async fn handle_fallback_system_ubus(object: &str, method: &str) -> Value {
     }
 }
 
+/// Deterministically reorder UCI sections according to `requested` while preserving
+/// the relative order and slot positions of untouched sections (e.g. `settings`, `telegram`),
+/// and assign contiguous `.index` values (`0..N`) so `bypass` before `match_all` is never lost.
+fn apply_uci_sections_order(store: &mut Map<String, Value>, requested: &[String]) {
+    if requested.is_empty() || store.is_empty() {
+        return;
+    }
+    let mut ordered: Vec<(usize, String, Value)> = std::mem::take(store)
+        .into_iter()
+        .map(|(k, v)| {
+            let old_idx = v
+                .get(".index")
+                .and_then(Value::as_u64)
+                .map(|n| n as usize)
+                .unwrap_or(usize::MAX);
+            (old_idx, k, v)
+        })
+        .collect();
+    ordered.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    let mut req_unique: Vec<&str> = Vec::with_capacity(requested.len());
+    let mut seen_req = std::collections::HashSet::new();
+    for s in requested {
+        if seen_req.insert(s.as_str()) {
+            req_unique.push(s.as_str());
+        }
+    }
+
+    let mut target_slots: Vec<usize> = Vec::new();
+    let mut extracted: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for (slot_idx, (_, k, _)) in ordered.iter().enumerate() {
+        if seen_req.contains(k.as_str()) {
+            target_slots.push(slot_idx);
+        }
+    }
+
+    let mut flat: Vec<Option<(String, Value)>> = ordered
+        .into_iter()
+        .map(|(_, k, v)| {
+            if seen_req.contains(k.as_str()) {
+                extracted.insert(k, v);
+                None
+            } else {
+                Some((k, v))
+            }
+        })
+        .collect();
+
+    let mut reordered_items: Vec<(String, Value)> = Vec::with_capacity(extracted.len());
+    for key in req_unique {
+        if let Some(val) = extracted.remove(key) {
+            reordered_items.push((key.to_string(), val));
+        }
+    }
+
+    for (slot_idx, item) in target_slots.into_iter().zip(reordered_items) {
+        if let Some(slot) = flat.get_mut(slot_idx) {
+            *slot = Some(item);
+        }
+    }
+
+    for (idx, (k, mut val)) in flat.into_iter().flatten().enumerate() {
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert(".index".to_string(), json!(idx));
+        }
+        store.insert(k, val);
+    }
+}
+
 fn is_safe_uci_config_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
@@ -12112,6 +12860,13 @@ async fn handle_pure_rust_uci(
     if config != "tachyon" {
         if !is_safe_uci_config_name(config) {
             return json!([2]);
+        }
+        if crate::platform::is_entware() {
+            return match uci_method {
+                "get" => json!([0, { "values": {} }]),
+                "changes" => json!([0, { "changes": {} }]),
+                _ => json!([0]),
+            };
         }
         let cfg_path = PathBuf::from(format!("/etc/config/{config}"));
         return match uci_method {
@@ -12208,7 +12963,7 @@ async fn handle_pure_rust_uci(
                     Ok(g) => g,
                     Err(_) => return json!([1]),
                 };
-                let idx = store.len();
+                let idx = next_section_index(&store);
                 let name = if let Some(n) = raw_name {
                     n.to_string()
                 } else {
@@ -12253,7 +13008,7 @@ async fn handle_pure_rust_uci(
                     Ok(g) => g,
                     Err(_) => return json!([1]),
                 };
-                let next_idx = store.len();
+                let next_idx = next_section_index(&store);
                 let sec_entry = store.entry(sec_name.to_string()).or_insert_with(|| {
                     json!({
                         ".anonymous": false,
@@ -12329,42 +13084,23 @@ async fn handle_pure_rust_uci(
         }
         "order" => {
             capture_uci_rollback_baseline(state).await;
-            if let Some(order_arr) = args.get("sections").and_then(Value::as_array) {
+            if let Some(order_arr) = args
+                .get("sections")
+                .or_else(|| args.get("order"))
+                .and_then(Value::as_array)
+            {
+                let requested: Vec<String> = order_arr
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect();
                 let mut store = match json_sections_store().write() {
                     Ok(g) => g,
                     Err(_) => return json!([1]),
                 };
-                let mut new_map = Map::new();
-                let mut idx = 0usize;
-                for s in order_arr.iter().filter_map(Value::as_str) {
-                    if let Some(mut val) = store.remove(s) {
-                        if let Some(obj) = val.as_object_mut() {
-                            obj.insert(".index".to_string(), json!(idx));
-                        }
-                        new_map.insert(s.to_string(), val);
-                        idx += 1;
-                    }
-                }
-                let mut remaining: Vec<(usize, String, Value)> = std::mem::take(&mut *store)
-                    .into_iter()
-                    .map(|(k, v)| {
-                        let old_idx = v
-                            .get(".index")
-                            .and_then(Value::as_u64)
-                            .map(|n| n as usize)
-                            .unwrap_or(usize::MAX);
-                        (old_idx, k, v)
-                    })
-                    .collect();
-                remaining.sort_by_key(|(old_idx, _, _)| *old_idx);
-                for (_, k, mut val) in remaining {
-                    if let Some(obj) = val.as_object_mut() {
-                        obj.insert(".index".to_string(), json!(idx));
-                    }
-                    new_map.insert(k, val);
-                    idx += 1;
-                }
-                *store = new_map;
+                apply_uci_sections_order(&mut store, &requested);
                 persist_json_sections(&store);
             }
             let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
@@ -12497,7 +13233,7 @@ pub async fn handle_cgi_direct(
         let Some((bin, args)) = tokens.split_first() else {
             return (200, "text/plain; charset=utf-8", Vec::new());
         };
-        if bin == "/usr/bin/tachyon" || bin == "/usr/bin/tachyon-read" || bin == "tachyon" {
+        if is_tachyon_cli_command(bin) {
             let (_, stdout, _) = execute_tachyon_cli(args, state, core).await;
             return (200, "text/plain; charset=utf-8", stdout.into_bytes());
         }
@@ -13275,7 +14011,7 @@ pub async fn ensure_luci_launcher_installed_in(
 }
 
 pub async fn sync_router_luci_launcher(port: u16, web_base_path: &str) {
-    if !cfg!(target_os = "linux") {
+    if !cfg!(target_os = "linux") || crate::platform::is_entware() {
         return;
     }
     let changed = ensure_luci_launcher_installed_in(Path::new("/"), port, web_base_path).await;
@@ -15777,5 +16513,211 @@ config interface 'wg_peer'
         assert_eq!(state.data.read().await.settings.log_level, "info");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_cloudflare_trace_extracts_valid_ip_and_iso_country() {
+        let trace_v4 = "\
+fl=29f123
+h=cloudflare.com
+ip=198.51.100.42
+ts=1700000000.123
+visit_scheme=https
+uag=curl/8.5.0
+loc=nl
+tls=TLSv1.3
+";
+        assert_eq!(
+            parse_cloudflare_trace(trace_v4),
+            Some(("198.51.100.42".to_string(), "NL".to_string()))
+        );
+
+        let trace_v6 = "ip=2001:db8::1\nloc=DE\n";
+        assert_eq!(
+            parse_cloudflare_trace(trace_v6),
+            Some(("2001:db8::1".to_string(), "DE".to_string()))
+        );
+
+        // Unknown sentinel XX, malformed loc, or invalid IP must be rejected.
+        assert_eq!(parse_cloudflare_trace("ip=198.51.100.42\nloc=XX\n"), None);
+        assert_eq!(parse_cloudflare_trace("ip=198.51.100.42\nloc=NLD\n"), None);
+        assert_eq!(parse_cloudflare_trace("ip=not-an-ip\nloc=NL\n"), None);
+        assert_eq!(parse_cloudflare_trace("loc=NL\n"), None);
+    }
+
+    #[test]
+    fn parse_ipwhois_json_extracts_ip_and_country_and_rejects_failures() {
+        let valid = r#"{"ip":"203.0.113.7","success":true,"country_code":"fi"}"#;
+        assert_eq!(
+            parse_ipwhois_json(valid),
+            Some(("203.0.113.7".to_string(), "FI".to_string()))
+        );
+
+        let failed = r#"{"ip":"203.0.113.7","success":false,"country_code":"FI"}"#;
+        assert_eq!(parse_ipwhois_json(failed), None);
+
+        let bad_cc = r#"{"ip":"203.0.113.7","success":true,"country_code":"12"}"#;
+        assert_eq!(parse_ipwhois_json(bad_cc), None);
+        assert_eq!(parse_ipwhois_json("not json"), None);
+    }
+
+    #[test]
+    fn exit_country_cache_respects_ttl_active_node_and_refresh() {
+        let entry = ExitCountryCache {
+            active_node: "NL-01".to_string(),
+            country_code: "NL".to_string(),
+            ip: "198.51.100.10".to_string(),
+            source: "cloudflare".to_string(),
+            checked_at: 1_700_000_000,
+            cached_at: std::time::Instant::now(),
+        };
+        let ttl = Duration::from_secs(EXIT_COUNTRY_CACHE_TTL_SECS);
+        assert!(entry.is_valid_for("NL-01", false, ttl));
+        // Changing active node invalidates cache immediately.
+        assert!(!entry.is_valid_for("DE-02", false, ttl));
+        // Explicit refresh bypasses cache.
+        assert!(!entry.is_valid_for("NL-01", true, ttl));
+        // Zero TTL simulates expiry.
+        assert!(!entry.is_valid_for("NL-01", false, Duration::ZERO));
+    }
+
+    #[test]
+    fn platform_info_and_resolve_static_asset_support_entware_layout() {
+        let storage = crate::platform::StorageInfo {
+            kind: crate::platform::StorageKind::UsbExternal,
+            fs_type: "ext4".to_string(),
+            mount_point: "/opt".to_string(),
+            device: "/dev/sda1".to_string(),
+            is_posix: true,
+        };
+        let info = build_platform_info_from(
+            crate::platform::PlatformKind::KeeneticEntware,
+            crate::platform::FirewallKind::Iptables,
+            &storage,
+            true,
+            "override",
+            5353,
+        );
+        assert_eq!(info["platform"], "keenetic_entware");
+        assert_eq!(info["display_name"], "Keenetic (Entware)");
+        assert_eq!(info["is_entware"], true);
+        assert_eq!(info["is_keenetic"], true);
+        assert_eq!(info["firewall"], "iptables");
+        assert_eq!(info["storage_kind"], "usb_external");
+        assert_eq!(info["storage_fs"], "ext4");
+        assert_eq!(info["storage_mount"], "/opt");
+        assert_eq!(info["storage_posix"], true);
+        assert_eq!(info["runtime_tmpfs_ok"], true);
+        assert_eq!(info["entware_dns_mode"], "override");
+        assert_eq!(info["entware_dns_port"], 5353);
+
+        // Static asset resolution inside an Entware-like www_dir root.
+        let dir = std::env::temp_dir().join(format!("tachyon_entware_www_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let asset_dir = dir.join("resources/view/tachyon");
+        std::fs::create_dir_all(&asset_dir).unwrap();
+        std::fs::write(asset_dir.join("main.js"), "console.log('ok');").unwrap();
+
+        let roots = [dir.clone()];
+        let resolved =
+            resolve_static_asset_in_roots("resources/view/tachyon/main.js?v=123", &roots)
+                .expect("asset must resolve in entware www_dir");
+        assert_eq!(resolved.0, asset_dir.join("main.js"));
+        assert_eq!(resolved.1, "application/javascript; charset=utf-8");
+        assert!(resolved.2 > 0);
+        // Traversal must always be rejected.
+        assert!(resolve_static_asset_in_roots("../etc/passwd", &roots).is_none());
+
+        // Subview shell preserves exact sub-path without shifting.
+        let html_settings = serve_luci_shell(Some("/settings/"), "ru");
+        assert!(html_settings.contains("pathinfo: \"/admin/services/tachyon/settings\""));
+        assert!(
+            html_settings
+                .contains("requestpath: [\"admin\", \"services\", \"tachyon\", \"settings\"]")
+        );
+        let html_nested = serve_luci_shell(Some("settings/dns"), "en");
+        assert!(html_nested.contains("pathinfo: \"/admin/services/tachyon/settings/dns\""));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn entware_dns_settings_and_bypass_before_match_all_order_persist_across_uci_sync() {
+        let mut sections = Map::new();
+        sections.insert(
+            "settings".to_string(),
+            json!({
+                ".anonymous": false,
+                ".type": "settings",
+                ".name": "settings",
+                ".index": 0,
+                "entware_dns_mode": "override",
+                "entware_dns_port": "1153"
+            }),
+        );
+        sections.insert(
+            "match_all_proxy".to_string(),
+            json!({
+                ".anonymous": false,
+                ".type": "section",
+                ".name": "match_all_proxy",
+                ".index": 1,
+                "enabled": "1",
+                "action": "connection",
+                "match_all": "1"
+            }),
+        );
+        sections.insert(
+            "bypass_ru".to_string(),
+            json!({
+                ".anonymous": false,
+                ".type": "section",
+                ".name": "bypass_ru",
+                ".index": 2,
+                "enabled": "1",
+                "action": "bypass",
+                "domain": ["example.ru"]
+            }),
+        );
+
+        // User reorders `bypass_ru` ahead of `match_all_proxy` via uci.order.
+        apply_uci_sections_order(
+            &mut sections,
+            &["bypass_ru".to_string(), "match_all_proxy".to_string()],
+        );
+        assert_eq!(sections["settings"][".index"], 0);
+        assert_eq!(sections["bypass_ru"][".index"], 1);
+        assert_eq!(sections["match_all_proxy"][".index"], 2);
+
+        // Import into RouterStoreData + apply Entware DNS settings.
+        let mut store = crate::store::RouterStoreData::default();
+        let imported = store.import_from_json_sections(&sections);
+        apply_entware_dns_from_json_sections(&sections, &mut store);
+        assert!(imported >= 3);
+        assert_eq!(store.settings.entware_dns_mode, "override");
+        assert_eq!(store.settings.entware_dns_port, 1153);
+        let ids: Vec<&str> = store.sections.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, vec!["bypass_ru", "match_all_proxy"]);
+
+        // Round-trip back to JSON sections and UCI text: order must stay `bypass_ru` before `match_all_proxy`.
+        let synced =
+            crate::store::sync_store_to_json_sections(&store, Some(&Value::Object(sections)));
+        let synced_map = synced.as_object().expect("synced object");
+        assert!(
+            synced_map["bypass_ru"][".index"].as_u64().unwrap()
+                < synced_map["match_all_proxy"][".index"].as_u64().unwrap()
+        );
+        assert_eq!(synced_map["settings"]["entware_dns_mode"], "override");
+        assert_eq!(synced_map["settings"]["entware_dns_port"], "1153");
+
+        let uci_text = serialize_json_sections_to_uci(synced_map);
+        let reparsed = crate::store::parse_uci_text_to_json_sections(&uci_text);
+        let mut store2 = crate::store::RouterStoreData::default();
+        store2.import_from_json_sections(&reparsed);
+        apply_entware_dns_from_json_sections(&reparsed, &mut store2);
+        let ids2: Vec<&str> = store2.sections.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids2, vec!["bypass_ru", "match_all_proxy"]);
+        assert_eq!(store2.settings.entware_dns_mode, "override");
+        assert_eq!(store2.settings.entware_dns_port, 1153);
     }
 }

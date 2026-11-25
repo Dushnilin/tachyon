@@ -4,14 +4,26 @@
 use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::path::Path;
-#[cfg(target_os = "linux")]
-use std::sync::Mutex;
-use std::sync::OnceLock;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::platform;
+use crate::platform_keenetic::{self, KeeneticHostEntry, KeeneticVersionInfo};
+
+type KeeneticVersionCacheEntry = (Instant, Option<KeeneticVersionInfo>);
+
 static DAEMON_START_INSTANT: OnceLock<Instant> = OnceLock::new();
+static KEENETIC_VERSION_CACHE: OnceLock<Mutex<Option<KeeneticVersionCacheEntry>>> = OnceLock::new();
+static KEENETIC_VERSION_INFLIGHT: AtomicBool = AtomicBool::new(false);
+static KEENETIC_HOTSPOT_CACHE: OnceLock<Mutex<(Option<Instant>, Vec<KeeneticHostEntry>)>> =
+    OnceLock::new();
+static KEENETIC_HOTSPOT_INFLIGHT: AtomicBool = AtomicBool::new(false);
+
+const KEENETIC_VERSION_CACHE_TTL: Duration = Duration::from_secs(300);
+const KEENETIC_HOTSPOT_CACHE_TTL: Duration = Duration::from_secs(15);
 
 pub fn init_daemon_start_time() {
     let _ = DAEMON_START_INSTANT.get_or_init(Instant::now);
@@ -52,6 +64,18 @@ pub struct HostSysInfo {
     pub load_avg: String,
     pub router_model: String,
     pub openwrt_release: String,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub firewall_backend: String,
+    #[serde(default)]
+    pub storage_kind: String,
+    #[serde(default)]
+    pub storage_fs: String,
+    #[serde(default)]
+    pub storage_mount: String,
+    #[serde(default)]
+    pub runtime_tmpfs_ok: bool,
 }
 
 /// Triple process identity (`pid` + `/proc/<pid>/stat` `starttime` + `/proc/sys/kernel/random/boot_id`)
@@ -193,6 +217,84 @@ pub fn find_running_process_by_name(comm_name: &str) -> Option<(u32, u64)> {
     }
 }
 
+/// Check whether `dir` is backed by RAM `tmpfs` (never `/opt` USB external storage).
+pub fn is_runtime_dir_on_tmpfs(dir: &Path) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let s = dir.to_string_lossy();
+        if s == "/opt" || s.starts_with("/opt/") {
+            return false;
+        }
+        platform::detect_storage_info(dir).kind == platform::StorageKind::TmpfsOnly
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        true
+    }
+}
+
+/// Refresh cached Keenetic RCI version info asynchronously without blocking the Tokio runtime.
+pub async fn refresh_keenetic_version_cache() -> Option<KeeneticVersionInfo> {
+    if !platform::is_keenetic() {
+        return None;
+    }
+    let fetched = platform_keenetic::fetch_rci_version().await;
+    let lock = KEENETIC_VERSION_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = lock.lock() {
+        *guard = Some((Instant::now(), fetched.clone()));
+    }
+    fetched
+}
+
+fn read_cached_keenetic_version() -> Option<KeeneticVersionInfo> {
+    if !platform::is_keenetic() {
+        return None;
+    }
+    let lock = KEENETIC_VERSION_CACHE.get_or_init(|| Mutex::new(None));
+    let (cached, needs_refresh) = match lock.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some((at, info)) => (
+                info.clone(),
+                at.elapsed() >= KEENETIC_VERSION_CACHE_TTL && info.is_none(),
+            ),
+            None => (None, true),
+        },
+        Err(_) => (None, false),
+    };
+    if needs_refresh
+        && let Ok(handle) = tokio::runtime::Handle::try_current()
+        && KEENETIC_VERSION_INFLIGHT
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    {
+        handle.spawn(async {
+            let _ = refresh_keenetic_version_cache().await;
+            KEENETIC_VERSION_INFLIGHT.store(false, Ordering::Release);
+        });
+    }
+    cached
+}
+
+/// Async system info collection that refreshes Keenetic RCI version metadata before reading host telemetry.
+#[allow(dead_code)]
+pub async fn collect_system_info() -> HostSysInfo {
+    if platform::is_keenetic() {
+        let needs_fetch = {
+            let lock = KEENETIC_VERSION_CACHE.get_or_init(|| Mutex::new(None));
+            lock.lock().ok().is_none_or(|g| {
+                g.as_ref().is_none_or(|(at, info)| {
+                    info.is_none() && at.elapsed() >= KEENETIC_VERSION_CACHE_TTL
+                })
+            })
+        };
+        if needs_fetch {
+            let _ = refresh_keenetic_version_cache().await;
+        }
+    }
+    collect_host_info()
+}
+
 pub fn collect_host_info() -> HostSysInfo {
     let model = read_router_model();
     let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
@@ -200,6 +302,10 @@ pub fn collect_host_info() -> HostSysInfo {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| model.clone());
+    let plat = platform::detect_platform();
+    let fw_kind = platform::firewall_kind();
+    let storage = platform::detect_storage_info(&platform::paths().data_dir);
+    let runtime_tmpfs_ok = is_runtime_dir_on_tmpfs(&crate::store::runtime_state_dir());
 
     #[allow(unused_mut)]
     let mut info = HostSysInfo {
@@ -217,7 +323,13 @@ pub fn collect_host_info() -> HostSysInfo {
         host_uptime_secs: 0,
         load_avg: "0.00 / 0.00 / 0.00".to_string(),
         router_model: model,
-        openwrt_release: read_openwrt_release(),
+        openwrt_release: read_os_release(),
+        platform: plat.as_str().to_string(),
+        firewall_backend: fw_kind.as_str().to_string(),
+        storage_kind: storage.kind.as_str().to_string(),
+        storage_fs: storage.fs_type,
+        storage_mount: storage.mount_point,
+        runtime_tmpfs_ok,
     };
 
     #[cfg(target_os = "linux")]
@@ -290,7 +402,61 @@ pub fn collect_host_info() -> HostSysInfo {
     info
 }
 
+fn format_keenetic_model(ver: &KeeneticVersionInfo) -> Option<String> {
+    let raw = ver.model.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if raw.to_ascii_lowercase().contains("keenetic") {
+        Some(raw.to_string())
+    } else {
+        Some(format!("Keenetic {raw}"))
+    }
+}
+
+fn format_keenetic_release(ver: &KeeneticVersionInfo) -> Option<String> {
+    let rel = if !ver.release.trim().is_empty() {
+        ver.release.trim()
+    } else {
+        ver.ndms.trim()
+    };
+    if rel.is_empty() {
+        return None;
+    }
+    let lower = rel.to_ascii_lowercase();
+    if lower.contains("keenetic") || lower.contains("ndms") {
+        Some(rel.to_string())
+    } else {
+        Some(format!("KeeneticOS {rel}"))
+    }
+}
+
+fn parse_entware_release(raw: &str) -> Option<String> {
+    for prefix in ["DISTRIB_DESCRIPTION=", "PRETTY_NAME="] {
+        for line in raw.lines() {
+            if let Some(rest) = line.trim().strip_prefix(prefix) {
+                let cleaned = rest.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+                if !cleaned.is_empty() {
+                    return Some(cleaned.to_string());
+                }
+            }
+        }
+    }
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
 fn read_router_model() -> String {
+    if let Some(ver) = read_cached_keenetic_version()
+        && let Some(model) = format_keenetic_model(&ver)
+    {
+        return model;
+    }
     for p in ["/tmp/sysinfo/model", "/proc/device-tree/model"] {
         if let Ok(s) = std::fs::read_to_string(p) {
             let trimmed = s.trim_matches(|c: char| c.is_whitespace() || c == '\0');
@@ -299,23 +465,168 @@ fn read_router_model() -> String {
             }
         }
     }
+    if platform::is_entware() {
+        return platform::detect_platform().display_name().to_string();
+    }
     "Generic Router / Host".to_string()
 }
 
-fn read_openwrt_release() -> String {
+pub fn read_os_release() -> String {
+    if let Some(ver) = read_cached_keenetic_version()
+        && let Some(rel) = format_keenetic_release(&ver)
+    {
+        return rel;
+    }
     if let Ok(raw) = std::fs::read_to_string("/etc/openwrt_release") {
         for line in raw.lines() {
             if let Some(rest) = line.strip_prefix("DISTRIB_DESCRIPTION=") {
-                return rest.trim_matches(|c| c == '\'' || c == '"').to_string();
+                let cleaned = rest.trim_matches(|c| c == '\'' || c == '"').trim();
+                if !cleaned.is_empty() {
+                    return cleaned.to_string();
+                }
+            }
+        }
+    }
+    if let Ok(raw) = std::fs::read_to_string("/opt/etc/entware_release")
+        && let Some(desc) = parse_entware_release(&raw)
+    {
+        return desc;
+    }
+    if let Ok(raw) = std::fs::read_to_string("/etc/os-release") {
+        for line in raw.lines() {
+            if let Some(rest) = line.trim().strip_prefix("PRETTY_NAME=") {
+                let cleaned = rest.trim_matches(|c| c == '\'' || c == '"').trim();
+                if !cleaned.is_empty() {
+                    return cleaned.to_string();
+                }
             }
         }
     }
     format!("{} ({})", std::env::consts::OS, std::env::consts::ARCH)
 }
 
-/// Discover LAN devices from `/tmp/dhcp.leases` and `/proc/net/arp`.
-pub fn discover_lan_devices() -> Vec<LanDevice> {
+/// Merge Keenetic RCI `/rci/show/ip/hotspot` entries into a base LAN device map/list.
+pub fn merge_keenetic_hotspot_devices(
+    base: Vec<LanDevice>,
+    rci_hosts: &[KeeneticHostEntry],
+) -> Vec<LanDevice> {
+    if rci_hosts.is_empty() {
+        return base;
+    }
+    let default_iface = platform::detect_default_lan_iface();
+    let mut by_ip: HashMap<String, LanDevice> =
+        base.into_iter().map(|d| (d.ip.clone(), d)).collect();
+    for h in rci_hosts {
+        let ip = h.ip.trim();
+        if ip.is_empty() {
+            continue;
+        }
+        let mac = h.mac.trim().to_ascii_uppercase();
+        let vendor = if mac.is_empty() {
+            String::new()
+        } else {
+            lookup_mac_vendor(&mac)
+        };
+        let iface = if h.interface.trim().is_empty() {
+            default_iface.clone()
+        } else {
+            h.interface.trim().to_string()
+        };
+        let name = h.name.trim().to_string();
+        by_ip
+            .entry(ip.to_string())
+            .and_modify(|d| {
+                if d.mac.is_empty() && !mac.is_empty() {
+                    d.mac = mac.clone();
+                }
+                if d.vendor.is_empty() && !vendor.is_empty() {
+                    d.vendor = vendor.clone();
+                }
+                if d.hostname.is_empty() && !name.is_empty() {
+                    d.hostname = name.clone();
+                }
+                if d.interface.is_empty() && !iface.is_empty() {
+                    d.interface = iface.clone();
+                }
+                if h.active {
+                    d.reachable = true;
+                }
+            })
+            .or_insert_with(|| LanDevice {
+                ip: ip.to_string(),
+                mac,
+                hostname: name,
+                vendor,
+                interface: iface,
+                reachable: h.active,
+                lease_expires: 0,
+                ..Default::default()
+            });
+    }
+    let mut list: Vec<LanDevice> = by_ip.into_values().collect();
+    list.sort_by(|a, b| a.ip.cmp(&b.ip));
+    list
+}
+
+fn read_cached_keenetic_hotspot_devices() -> Vec<KeeneticHostEntry> {
+    if !platform::is_keenetic() {
+        return Vec::new();
+    }
+    let lock = KEENETIC_HOTSPOT_CACHE.get_or_init(|| Mutex::new((None, Vec::new())));
+    let (cached, needs_refresh) = match lock.lock() {
+        Ok(guard) => match guard.0 {
+            Some(at) => (guard.1.clone(), at.elapsed() >= KEENETIC_HOTSPOT_CACHE_TTL),
+            None => (Vec::new(), true),
+        },
+        Err(_) => (Vec::new(), false),
+    };
+    if needs_refresh
+        && let Ok(handle) = tokio::runtime::Handle::try_current()
+        && KEENETIC_HOTSPOT_INFLIGHT
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    {
+        handle.spawn(async {
+            let hosts = platform_keenetic::fetch_rci_hotspot_devices().await;
+            let lock = KEENETIC_HOTSPOT_CACHE.get_or_init(|| Mutex::new((None, Vec::new())));
+            if let Ok(mut guard) = lock.lock() {
+                guard.0 = Some(Instant::now());
+                guard.1 = hosts;
+            }
+            KEENETIC_HOTSPOT_INFLIGHT.store(false, Ordering::Release);
+        });
+    }
+    cached
+}
+
+/// Async LAN device discovery: on Keenetic fetches `/rci/show/ip/hotspot` and merges with
+/// `/tmp/dhcp.leases` and `/proc/net/arp`; on other platforms uses local leases/ARP.
+pub async fn discover_lan_devices_async() -> Vec<LanDevice> {
+    let base = discover_lan_devices_local();
+    if platform::is_keenetic() {
+        // Also populate RCI version cache opportunistically if still empty.
+        let version_empty = KEENETIC_VERSION_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .ok()
+            .is_none_or(|g| g.is_none());
+        if version_empty {
+            let _ = refresh_keenetic_version_cache().await;
+        }
+        let hosts = platform_keenetic::fetch_rci_hotspot_devices().await;
+        let lock = KEENETIC_HOTSPOT_CACHE.get_or_init(|| Mutex::new((None, Vec::new())));
+        if let Ok(mut guard) = lock.lock() {
+            guard.0 = Some(Instant::now());
+            guard.1 = hosts.clone();
+        }
+        return merge_keenetic_hotspot_devices(base, &hosts);
+    }
+    base
+}
+
+fn discover_lan_devices_local() -> Vec<LanDevice> {
     let mut by_ip: HashMap<String, LanDevice> = HashMap::new();
+    let default_iface = platform::detect_default_lan_iface();
 
     if Path::new("/tmp/dhcp.leases").exists()
         && let Ok(leases) = std::fs::read_to_string("/tmp/dhcp.leases")
@@ -339,7 +650,7 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
                         mac,
                         hostname: host,
                         vendor,
-                        interface: "br-lan".to_string(),
+                        interface: default_iface.clone(),
                         reachable: true,
                         lease_expires: expires,
                         ..Default::default()
@@ -393,6 +704,16 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
     let mut list: Vec<LanDevice> = by_ip.into_values().collect();
     list.sort_by(|a, b| a.ip.cmp(&b.ip));
     list
+}
+
+/// Discover LAN devices from `/tmp/dhcp.leases`, `/proc/net/arp`, and cached Keenetic RCI hotspot entries.
+pub fn discover_lan_devices() -> Vec<LanDevice> {
+    let base = discover_lan_devices_local();
+    if platform::is_keenetic() {
+        let cached = read_cached_keenetic_hotspot_devices();
+        return merge_keenetic_hotspot_devices(base, &cached);
+    }
+    base
 }
 
 /// Fast offline OUI vendor lookup for common LAN devices.
@@ -803,5 +1124,72 @@ cpu1 50 0 50 400 0 0 0 0 0 0
         let (cpus, agg) = count_proc_stat_cpus_and_totals(stat_sample);
         assert_eq!(cpus, 2);
         assert_eq!(agg, Some((1000, 800)));
+    }
+
+    #[test]
+    fn test_format_keenetic_model_release_and_entware_release_parsing() {
+        let ver = KeeneticVersionInfo {
+            model: "Ultra (KN-1811)".to_string(),
+            release: "4.2.3".to_string(),
+            ndms: "0-4.2.3".to_string(),
+            hw_id: "KN-1811".to_string(),
+        };
+        assert_eq!(
+            format_keenetic_model(&ver).as_deref(),
+            Some("Keenetic Ultra (KN-1811)")
+        );
+        assert_eq!(
+            format_keenetic_release(&ver).as_deref(),
+            Some("KeeneticOS 4.2.3")
+        );
+
+        let ent_raw = "DISTRIB_DESCRIPTION='Entware mipsel-3.4'\n";
+        assert_eq!(
+            parse_entware_release(ent_raw).as_deref(),
+            Some("Entware mipsel-3.4")
+        );
+    }
+
+    #[test]
+    fn test_merge_keenetic_hotspot_devices_enriches_and_adds() {
+        let base = vec![LanDevice {
+            ip: "192.168.1.42".to_string(),
+            mac: "AA:BB:CC:DD:EE:01".to_string(),
+            hostname: String::new(),
+            interface: "br0".to_string(),
+            reachable: false,
+            ..Default::default()
+        }];
+        let rci = vec![
+            KeeneticHostEntry {
+                ip: "192.168.1.42".to_string(),
+                mac: "aa:bb:cc:dd:ee:01".to_string(),
+                name: "Workstation".to_string(),
+                interface: "Home".to_string(),
+                active: true,
+            },
+            KeeneticHostEntry {
+                ip: "192.168.1.99".to_string(),
+                mac: "50:ff:20:11:22:33".to_string(),
+                name: "Keenetic Mesh".to_string(),
+                interface: "Home".to_string(),
+                active: true,
+            },
+        ];
+        let merged = merge_keenetic_hotspot_devices(base, &rci);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].ip, "192.168.1.42");
+        assert_eq!(merged[0].hostname, "Workstation");
+        assert!(merged[0].reachable);
+        assert_eq!(merged[1].ip, "192.168.1.99");
+        assert_eq!(merged[1].vendor, "Keenetic");
+    }
+
+    #[test]
+    fn test_collect_host_info_includes_platform_fields() {
+        let info = collect_host_info();
+        assert!(!info.platform.is_empty());
+        assert!(!info.firewall_backend.is_empty());
+        assert!(!info.storage_kind.is_empty());
     }
 }

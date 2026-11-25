@@ -307,7 +307,7 @@ pub fn compute_config_digest(cfg: &Value) -> String {
 pub fn blackbox_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
-        PathBuf::from("/tmp/tachyon/blackbox")
+        crate::store::runtime_state_dir().join("blackbox")
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -1173,6 +1173,28 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
             }
         }
 
+        if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+            let fw_ok = net_stack::check_nft_table_active().await;
+            if !fw_ok {
+                let allow =
+                    core.watchdog
+                        .lock()
+                        .await
+                        .cooldown_ready("l1_iptables_reconcile", now, 15);
+                if allow {
+                    let store_snapshot = Box::new(core.state.data.read().await.clone());
+                    if Box::pin(net_stack::reconcile_network_stack(&store_snapshot))
+                        .await
+                        .is_ok()
+                    {
+                        let restored = net_stack::check_nft_table_active().await;
+                        core.state.live.write().await.nft_table_active = restored;
+                        action_taken = Some("L1_iptables_reconcile");
+                    }
+                }
+            }
+        }
+
         if !dns_healthy {
             let last_flush = core.watchdog.lock().await.last_dns_flush_ts;
             if now.saturating_sub(last_flush) > 45 {
@@ -1257,7 +1279,25 @@ pub fn check_and_repair_nft_drift_boxed<'a>(
     ))
 }
 
-/// Apply nftables network stack safely if missing while `tachyon-core` is alive under `tproxy`,
+/// Decide whether firewall chain drift repair should run for the given backend and proxy mode.
+/// On `FirewallKind::Iptables` (Entware/Keenetic/Merlin/Padavan), firmware events can flush
+/// iptables chains in any proxy mode (`tproxy`, `tun`, `redirect`), whereas OpenWrt nftables
+/// table drift repair specifically guards `tproxy`.
+pub fn should_reconcile_firewall_chains(
+    fw_kind: crate::platform::FirewallKind,
+    proxy_mode: &str,
+    chains_active: bool,
+) -> bool {
+    if chains_active {
+        return false;
+    }
+    match fw_kind {
+        crate::platform::FirewallKind::Iptables => true,
+        crate::platform::FirewallKind::Nftables => proxy_mode == "tproxy",
+    }
+}
+
+/// Apply nftables/iptables network stack safely if missing while `tachyon-core` is alive,
 /// or keep the fail-closed kill-switch shut when `tachyon-core` is absent.
 pub async fn check_and_repair_nft_drift(
     state: &Arc<AppState>,
@@ -1274,14 +1314,20 @@ pub async fn check_and_repair_nft_drift(
         let _ = net_stack::hold_kill_switch(&store_snapshot).await;
         return;
     }
-    if proxy_mode == "tproxy" && !nft_ok {
+    let fw_kind = crate::platform::firewall_kind();
+    if should_reconcile_firewall_chains(fw_kind, proxy_mode, nft_ok) {
         let store_snapshot = Box::new(state.data.read().await.clone());
-        let _ = Box::pin(net_stack::apply_network_stack(&store_snapshot)).await;
-        state.live.write().await.push_event(
-            "warn",
-            "reconciler",
-            "Repaired inet TachyonTable drift",
-        );
+        let _ = Box::pin(net_stack::reconcile_network_stack(&store_snapshot)).await;
+        let restored = net_stack::check_nft_table_active().await;
+        let mut live = state.live.write().await;
+        live.nft_table_active = restored;
+        let msg = match fw_kind {
+            crate::platform::FirewallKind::Iptables => {
+                "Repaired iptables firewall chains after external reset"
+            }
+            crate::platform::FirewallKind::Nftables => "Repaired inet TachyonTable drift",
+        };
+        live.push_event("warn", "reconciler", msg);
     }
 }
 
@@ -1695,6 +1741,36 @@ mod tests {
             "desired-sha-v2",
             "core-canonical-sha-a",
             Some("desired-sha-v1")
+        ));
+    }
+
+    #[test]
+    fn test_should_reconcile_firewall_chains_iptables_and_nftables() {
+        use crate::platform::FirewallKind;
+        assert!(!should_reconcile_firewall_chains(
+            FirewallKind::Iptables,
+            "tproxy",
+            true
+        ));
+        assert!(should_reconcile_firewall_chains(
+            FirewallKind::Iptables,
+            "tproxy",
+            false
+        ));
+        assert!(should_reconcile_firewall_chains(
+            FirewallKind::Iptables,
+            "tun",
+            false
+        ));
+        assert!(should_reconcile_firewall_chains(
+            FirewallKind::Nftables,
+            "tproxy",
+            false
+        ));
+        assert!(!should_reconcile_firewall_chains(
+            FirewallKind::Nftables,
+            "tun",
+            false
         ));
     }
 }

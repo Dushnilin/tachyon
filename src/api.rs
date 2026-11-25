@@ -37,6 +37,94 @@ fn should_use_dual_stack_v6_bind(listen_addr: &str, bindv6only_content: Option<&
     listen_addr.trim() == "0.0.0.0" && bindv6only_content.map(str::trim) == Some("0")
 }
 
+/// Extract LuCI SPA subview path for GET requests targeting the router control panel.
+/// Returns `Some(None)` for the root SPA view, `Some(Some(sub))` for a subview
+/// (`/tachyon/settings`, `/admin/services/tachyon/section`, etc.), and `None` for other routes.
+fn extract_luci_shell_subview(path: &str) -> Option<Option<&str>> {
+    if matches!(
+        path,
+        "/" | "/index.html" | "/cgi-bin/luci" | "/cgi-bin/luci/"
+    ) {
+        return Some(None);
+    }
+    for prefix in [
+        "/cgi-bin/luci/admin/services/tachyon",
+        "/admin/services/tachyon",
+        "/tachyon",
+    ] {
+        if path == prefix {
+            return Some(None);
+        }
+        if let Some(rest) = path.strip_prefix(prefix)
+            && rest.starts_with('/')
+        {
+            let trimmed = rest.trim_matches('/');
+            return Some((!trimmed.is_empty()).then_some(trimmed));
+        }
+    }
+    None
+}
+
+fn percent_decode_query_val(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                if let (Ok(s), Some(Ok(v))) = (
+                    std::str::from_utf8(&bytes[i + 1..i + 3]),
+                    std::str::from_utf8(&bytes[i + 1..i + 3])
+                        .ok()
+                        .map(|h| u8::from_str_radix(h, 16)),
+                ) {
+                    let _ = s;
+                    out.push(v);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn parse_exit_country_query(query: &str) -> (bool, Option<String>) {
+    let mut refresh = false;
+    let mut node: Option<String> = None;
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        match k {
+            "refresh" => {
+                let lv = v.trim().to_ascii_lowercase();
+                refresh = matches!(lv.as_str(), "1" | "true" | "yes" | "on");
+            }
+            "node" | "active_node" => {
+                let decoded = percent_decode_query_val(v);
+                let trimmed = decoded.trim();
+                if !trimmed.is_empty() {
+                    node = Some(trimmed.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    (refresh, node)
+}
+
 async fn bind_panel_listener(
     listen_addr: &str,
     port: u16,
@@ -108,7 +196,9 @@ pub async fn run_server_on_listener(
     core: Arc<CoreManager>,
 ) -> anyhow::Result<()> {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(1680);
-    ubus_bridge::sync_router_luci_launcher(port, &base_path).await;
+    if !crate::platform::is_entware() {
+        ubus_bridge::sync_router_luci_launcher(port, &base_path).await;
+    }
     eprintln!("[tachyon] Router Panel listening on http://{bound_addr}{base_path}");
     let conn_sem = Arc::new(tokio::sync::Semaphore::new(256));
 
@@ -292,9 +382,9 @@ async fn handle_conn(
     let token = extract_token(&head_str);
     let local_ipc_hdr = parse_header(&head_str, "x-tachyon-local-token").unwrap_or_default();
 
-    // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) or login page at `/` and `/cgi-bin/luci/admin/services/tachyon*`
+    // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) or login page at `/`, `/tachyon*`, and `/cgi-bin/luci/admin/services/tachyon*`
     if method == "GET" {
-        if path == "/" || path == "/index.html" || path == "/cgi-bin/luci" {
+        if let Some(sub) = extract_luci_shell_subview(&path) {
             let (ui_lang, auth_enabled, auth_mode) = {
                 let d = state.data.read().await;
                 (
@@ -309,31 +399,6 @@ async fn handle_conn(
                 let html = ubus_bridge::serve_login_page(&ui_lang, &auth_mode);
                 return send_html(&mut stream, &html).await;
             }
-            let html = ubus_bridge::serve_luci_shell(None, &ui_lang);
-            return send_html(&mut stream, &html).await;
-        }
-        if path == "/cgi-bin/luci/admin/services/tachyon"
-            || path == "/admin/services/tachyon"
-            || path.starts_with("/cgi-bin/luci/admin/services/tachyon/")
-            || path.starts_with("/admin/services/tachyon/")
-        {
-            let (ui_lang, auth_enabled, auth_mode) = {
-                let d = state.data.read().await;
-                (
-                    d.settings.lang.clone(),
-                    d.settings.panel_auth_enabled,
-                    d.settings.panel_auth_mode.clone(),
-                )
-            };
-            if auth_enabled
-                && !is_authenticated(state, &token, &local_ipc_hdr, peer_ip, local_ip).await
-            {
-                let html = ubus_bridge::serve_login_page(&ui_lang, &auth_mode);
-                return send_html(&mut stream, &html).await;
-            }
-            let sub = path
-                .strip_prefix("/cgi-bin/luci/admin/services/tachyon")
-                .or_else(|| path.strip_prefix("/admin/services/tachyon"));
             let html = ubus_bridge::serve_luci_shell(sub, &ui_lang);
             return send_html(&mut stream, &html).await;
         }
@@ -414,16 +479,21 @@ async fn handle_conn(
                 rel_raw
             };
             if !rel.contains("..") {
-                for root in [
-                    "/etc/tachyon-core/ui",
-                    "/www/yacd",
-                    "/usr/share/tachyon-core/ui",
-                ] {
-                    let candidate = std::path::Path::new(root).join(rel);
+                let p = crate::platform::paths();
+                let yacd_roots = [
+                    p.core_config_dir.join("ui"),
+                    p.share_dir.join("ui"),
+                    p.www_dir.join("yacd"),
+                    std::path::PathBuf::from("/etc/tachyon-core/ui"),
+                    std::path::PathBuf::from("/www/yacd"),
+                    std::path::PathBuf::from("/usr/share/tachyon-core/ui"),
+                ];
+                for root in &yacd_roots {
+                    let candidate = root.join(rel);
                     let target = if candidate.is_file() {
                         candidate
                     } else {
-                        std::path::Path::new(root).join("index.html")
+                        root.join("index.html")
                     };
                     if target.is_file()
                         && let Ok(meta) = std::fs::metadata(&target)
@@ -730,6 +800,22 @@ async fn dispatch_api(
             )
             .await
         }
+        ("GET", "/api/status") => {
+            state.touch_telemetry_access();
+            let status = Box::pin(ubus_bridge::build_status_json(state)).await;
+            send_json(stream, 200, &status).await
+        }
+        ("GET", "/api/exit-country") => {
+            let (refresh, node) = parse_exit_country_query(query);
+            let res = Box::pin(ubus_bridge::get_exit_country(
+                state,
+                core,
+                refresh,
+                node.as_deref(),
+            ))
+            .await;
+            send_json(stream, 200, &res).await
+        }
         ("POST", "/api/core/start") => match core.start().await {
             Ok(()) => send_json(stream, 200, &json!({"ok": true})).await,
             Err(e) => send_json(stream, 500, &json!({"ok": false, "error": e.to_string()})).await,
@@ -938,7 +1024,9 @@ async fn dispatch_api(
             let new_base = candidate.settings.web_base_path.clone();
             match commit_and_sync(state, candidate).await {
                 Ok(plan) => {
-                    ubus_bridge::sync_router_luci_launcher(new_port, &new_base).await;
+                    if !crate::platform::is_entware() {
+                        ubus_bridge::sync_router_luci_launcher(new_port, &new_base).await;
+                    }
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
                 }
@@ -2356,7 +2444,7 @@ async fn dispatch_api(
                     let cert_dir = state
                         .path
                         .parent()
-                        .unwrap_or_else(|| std::path::Path::new("/etc/tachyon"))
+                        .unwrap_or(crate::platform::paths().data_dir.as_path())
                         .join("server-certs");
                     let cert_path = cert_dir.join(format!("{safe_id}.crt"));
                     let key_path = cert_dir.join(format!("{safe_id}.key"));
@@ -2795,7 +2883,7 @@ async fn verify_panel_credentials(state: &Arc<AppState>, username: &str, passwor
             d.settings.admin_pass_salt.clone(),
         )
     };
-    if mode == "luci" {
+    if mode == "luci" && !crate::platform::is_entware() {
         match verify_luci_ubus_session(username.trim(), password).await {
             Ok(matched) => return matched,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -3439,6 +3527,9 @@ fn has_tailscale_firewall_zone_in(firewall_cfg: Option<&str>) -> bool {
 }
 
 fn has_tailscale_firewall_zone() -> bool {
+    if crate::platform::is_entware() {
+        return false;
+    }
     let raw = std::fs::read_to_string("/etc/config/firewall").ok();
     has_tailscale_firewall_zone_in(raw.as_deref())
 }
@@ -3855,6 +3946,39 @@ fn apply_settings_save_payload(
         }
     }
 
+    if let Some(raw_ent_mode) = src.get("entware_dns_mode").and_then(Value::as_str) {
+        let lower = raw_ent_mode.trim().to_ascii_lowercase();
+        if !lower.is_empty() && !matches!(lower.as_str(), "redirect" | "override") {
+            return Err(format!(
+                "Unsupported entware_dns_mode '{raw_ent_mode}'. Expected redirect or override."
+            ));
+        }
+    }
+    let parsed_entware_dns_port = if let Some(port_val) = src.get("entware_dns_port") {
+        let parsed = match port_val {
+            Value::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
+            Value::String(s) => {
+                let t = s.trim();
+                if t.is_empty() {
+                    Some(1053)
+                } else {
+                    t.parse::<u16>().ok()
+                }
+            }
+            _ => None,
+        };
+        match parsed {
+            Some(p) if p >= 1 => Some(p),
+            _ => {
+                return Err(
+                    "Invalid entware_dns_port: expected an integer in range 1..=65535.".to_string(),
+                );
+            }
+        }
+    } else {
+        None
+    };
+
     let mut cur_json = serde_json::to_value(current).map_err(|e| e.to_string())?;
     let sent_ipv6_mode = src.contains_key("ipv6_mode");
     let sent_enable_ipv6 = src.contains_key("enable_ipv6");
@@ -3878,6 +4002,10 @@ fn apply_settings_save_payload(
                     let hash = crypto_gen::hash_password(pw.trim(), &salt);
                     dst.insert("admin_pass_salt".to_string(), json!(salt));
                     dst.insert("admin_pass_hash".to_string(), json!(hash));
+                }
+            } else if k == "entware_dns_port" {
+                if let Some(p) = parsed_entware_dns_port {
+                    dst.insert("entware_dns_port".to_string(), json!(p));
                 }
             } else if BLOCKED_SETTINGS_KEYS.contains(&k.as_str())
                 || (k == "ai_doctor_api_key"
@@ -3904,6 +4032,11 @@ fn apply_settings_save_payload(
     }
     updated.dns_strategy = crate::store::normalize_dns_strategy(&updated.dns_strategy);
     updated.tailscale_web_access = crate::store::normalize_auto_mode(&updated.tailscale_web_access);
+    updated.entware_dns_mode =
+        ubus_bridge::normalize_entware_dns_mode(&updated.entware_dns_mode).to_string();
+    if updated.entware_dns_port == 0 {
+        updated.entware_dns_port = 1053;
+    }
     updated.subscription_engine = "core".to_string();
     updated.cache_path = crate::store::sanitize_cache_path(&updated.cache_path);
     updated.fakeip_inet4_range = if updated.fakeip_inet4_range.trim().is_empty() {
@@ -5175,5 +5308,79 @@ mod tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    fn extract_luci_shell_subview_handles_root_and_submenus() {
+        assert_eq!(extract_luci_shell_subview("/"), Some(None));
+        assert_eq!(extract_luci_shell_subview("/index.html"), Some(None));
+        assert_eq!(extract_luci_shell_subview("/cgi-bin/luci"), Some(None));
+        assert_eq!(extract_luci_shell_subview("/tachyon"), Some(None));
+        assert_eq!(extract_luci_shell_subview("/tachyon/"), Some(None));
+        assert_eq!(
+            extract_luci_shell_subview("/tachyon/settings"),
+            Some(Some("settings"))
+        );
+        assert_eq!(
+            extract_luci_shell_subview("/tachyon/section"),
+            Some(Some("section"))
+        );
+        assert_eq!(
+            extract_luci_shell_subview("/tachyon/diagnostic"),
+            Some(Some("diagnostic"))
+        );
+        assert_eq!(
+            extract_luci_shell_subview("/cgi-bin/luci/admin/services/tachyon/settings"),
+            Some(Some("settings"))
+        );
+        assert_eq!(
+            extract_luci_shell_subview("/admin/services/tachyon/diagnostic/"),
+            Some(Some("diagnostic"))
+        );
+        assert_eq!(extract_luci_shell_subview("/api/status"), None);
+        assert_eq!(
+            extract_luci_shell_subview("/luci-static/resources/main.js"),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_exit_country_query_supports_refresh_and_encoded_node() {
+        assert_eq!(parse_exit_country_query(""), (false, None));
+        assert_eq!(parse_exit_country_query("refresh=1"), (true, None));
+        assert_eq!(
+            parse_exit_country_query("refresh=true&node=NL%20Fast%2B1"),
+            (true, Some("NL Fast+1".to_string()))
+        );
+        assert_eq!(
+            parse_exit_country_query("node=DE-01&refresh=0"),
+            (false, Some("DE-01".to_string()))
+        );
+    }
+
+    #[test]
+    fn apply_settings_save_validates_entware_dns_fields() {
+        let base = crate::store::GlobalSettings::default();
+        let ok_num = apply_settings_save_payload(
+            &base,
+            &json!({ "entware_dns_mode": "override", "entware_dns_port": 5353 }),
+        )
+        .expect("valid numeric entware dns settings");
+        assert_eq!(ok_num.entware_dns_mode, "override");
+        assert_eq!(ok_num.entware_dns_port, 5353);
+
+        let ok_str = apply_settings_save_payload(
+            &base,
+            &json!({ "entware_dns_mode": "REDIRECT", "entware_dns_port": "1053" }),
+        )
+        .expect("valid string entware dns settings");
+        assert_eq!(ok_str.entware_dns_mode, "redirect");
+        assert_eq!(ok_str.entware_dns_port, 1053);
+
+        assert!(
+            apply_settings_save_payload(&base, &json!({ "entware_dns_mode": "invalid" })).is_err()
+        );
+        assert!(apply_settings_save_payload(&base, &json!({ "entware_dns_port": 0 })).is_err());
+        assert!(apply_settings_save_payload(&base, &json!({ "entware_dns_port": 70000 })).is_err());
     }
 }

@@ -272,6 +272,7 @@ pub fn quick_fix_risk_tier(fix_id: &str) -> &'static str {
         | "restart_tachyon_core_dns"
         | "reset_outbound_pool"
         | "reconcile_nftables"
+        | "reconcile_firewall"
         | "heal_network_stack"
         | "rebuild_rules"
         | "reset_firewall"
@@ -317,6 +318,7 @@ pub fn is_known_quick_fix(fix_id: &str) -> bool {
             | "rebuild_rules"
             | "reset_firewall"
             | "reconcile_nftables"
+            | "reconcile_firewall"
             | "fix_bootstrap_dns"
             | "switch_to_doh"
             | "clear_dns_cache"
@@ -514,6 +516,71 @@ pub async fn run_local_doctor_with_core(
     .await
 }
 
+/// Platform-specific environment signals evaluated by Local Doctor (pure & testable).
+#[derive(Debug, Clone)]
+pub struct PlatformDoctorContext {
+    pub platform: crate::platform::PlatformKind,
+    pub firewall_kind: crate::platform::FirewallKind,
+    pub storage: crate::platform::StorageInfo,
+    pub runtime_dir: PathBuf,
+    pub runtime_tmpfs_ok: bool,
+    pub has_iptables: bool,
+    pub has_ipset: bool,
+    pub has_dev_tun: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn bin_available_in_system(bin: &str) -> bool {
+    if let Ok(path_env) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_env) {
+            if dir.join(bin).is_file() {
+                return true;
+            }
+        }
+    }
+    for dir in [
+        "/usr/sbin",
+        "/sbin",
+        "/usr/bin",
+        "/bin",
+        "/opt/sbin",
+        "/opt/bin",
+    ] {
+        if Path::new(dir).join(bin).is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+impl PlatformDoctorContext {
+    pub fn detect_live() -> Self {
+        let platform = crate::platform::detect_platform();
+        let firewall_kind = crate::platform::firewall_kind();
+        let storage = crate::platform::detect_storage_info(&crate::platform::paths().data_dir);
+        let runtime_dir = crate::store::runtime_state_dir();
+        let runtime_tmpfs_ok = sys_info::is_runtime_dir_on_tmpfs(&runtime_dir);
+        #[cfg(target_os = "linux")]
+        let (has_iptables, has_ipset, has_dev_tun) = (
+            bin_available_in_system("iptables"),
+            bin_available_in_system("ipset"),
+            Path::new("/dev/net/tun").exists(),
+        );
+        #[cfg(not(target_os = "linux"))]
+        let (has_iptables, has_ipset, has_dev_tun) = (true, true, true);
+        Self {
+            platform,
+            firewall_kind,
+            storage,
+            runtime_dir,
+            runtime_tmpfs_ok,
+            has_iptables,
+            has_ipset,
+            has_dev_tun,
+        }
+    }
+}
+
 async fn build_doctor_report(
     state: &Arc<AppState>,
     resolved_bin_path: Option<&str>,
@@ -524,11 +591,13 @@ async fn build_doctor_report(
 ) -> DoctorReport {
     let d = Box::new(state.data.read().await.clone());
     let live = Box::new(state.live.read().await.clone());
-    let (odhcpd_present, dhcp_raw, fw4_guard_ok) = if cfg!(windows) {
+    let pctx = PlatformDoctorContext::detect_live();
+    let (odhcpd_present, dhcp_raw, fw4_guard_ok) = if cfg!(windows) || pctx.platform.is_entware() {
         (
             false,
             String::new(),
-            std::env::var_os("TACHYON_FW4_INCLUDE_ROOT").is_none()
+            pctx.platform.is_entware()
+                || std::env::var_os("TACHYON_FW4_INCLUDE_ROOT").is_none()
                 || flow_offload_guard_installed(&d, false),
         )
     } else {
@@ -551,7 +620,7 @@ async fn build_doctor_report(
             };
         (present, raw, guard_ok)
     };
-    assemble_doctor_report(
+    assemble_doctor_report_with_platform(
         state,
         &d,
         &live,
@@ -563,10 +632,12 @@ async fn build_doctor_report(
         odhcpd_present,
         &dhcp_raw,
         fw4_guard_ok,
+        &pctx,
     )
 }
 
 #[inline(never)]
+#[cfg_attr(not(test), allow(dead_code))]
 #[allow(clippy::too_many_arguments)]
 fn assemble_doctor_report(
     state: &Arc<AppState>,
@@ -581,6 +652,41 @@ fn assemble_doctor_report(
     dhcp_raw: &str,
     fw4_guard_ok: bool,
 ) -> DoctorReport {
+    let pctx = PlatformDoctorContext::detect_live();
+    assemble_doctor_report_with_platform(
+        state,
+        d,
+        live,
+        resolved_bin_path,
+        health_val,
+        anomalies_val,
+        flight_val,
+        failover_val,
+        odhcpd_present,
+        dhcp_raw,
+        fw4_guard_ok,
+        &pctx,
+    )
+}
+
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn assemble_doctor_report_with_platform(
+    state: &Arc<AppState>,
+    d: &RouterStoreData,
+    live: &crate::store::LiveTelemetry,
+    resolved_bin_path: Option<&str>,
+    health_val: Option<Value>,
+    anomalies_val: Option<Value>,
+    flight_val: Option<Value>,
+    failover_val: Option<Value>,
+    odhcpd_present: bool,
+    dhcp_raw: &str,
+    fw4_guard_ok: bool,
+    pctx: &PlatformDoctorContext,
+) -> DoctorReport {
+    let is_entware = pctx.platform.is_entware();
+    let is_iptables = pctx.firewall_kind == crate::platform::FirewallKind::Iptables;
     let mut findings = Vec::new();
     let en = is_en_lang(&d.settings.lang);
     let core_bin_path = d.settings.core_bin_path.clone();
@@ -783,25 +889,46 @@ fn assemble_doctor_report(
         });
     }
 
-    // 4. nftables TProxy table check
-    if proxy_mode == "tproxy" && !live.nft_table_active {
+    // 4. Firewall interception rules check (nftables / iptables)
+    let fw_rules_missing = if is_iptables {
+        !live.nft_table_active
+    } else {
+        proxy_mode == "tproxy" && !live.nft_table_active
+    };
+    if fw_rules_missing {
         findings.push(DoctorFinding {
             id: "nft_missing".to_string(),
             severity: "warning".to_string(),
             subsystem: "nftables".to_string(),
-            title: if en {
+            title: if is_iptables {
+                if en {
+                    "iptables TACHYON chains are inactive"
+                } else {
+                    "Цепочки iptables TACHYON не активны"
+                }
+            } else if en {
                 "nftables table inet TachyonTable is inactive"
             } else {
                 "Таблица nftables inet TachyonTable не активна"
             }
             .to_string(),
-            detail: if en {
+            detail: if is_iptables {
+                if en {
+                    "iptables/ipset routing chains are not loaded in the kernel (may have been flushed by router firmware)."
+                } else {
+                    "Цепочки iptables/ipset не загружены в ядро Linux (возможно, сброшены прошивкой роутера)."
+                }
+            } else if en {
                 "Transparent TProxy interception rules are not loaded in the Linux kernel."
             } else {
                 "Правила перехвата TProxy не загружены в ядро Linux."
             }
             .to_string(),
-            quick_fix_id: "reconcile_nftables".to_string(),
+            quick_fix_id: if is_iptables {
+                "reconcile_firewall".to_string()
+            } else {
+                "reconcile_nftables".to_string()
+            },
             quick_fix_label: if en {
                 "Restore network stack"
             } else {
@@ -1280,9 +1407,13 @@ fn assemble_doctor_report(
         });
     }
 
-    // 10. Firewall flow offloading compatibility check (conflict only with SQM, or missing fw4 guard)
-    let (sw_offload, hw_offload) = read_firewall_flow_offloading();
-    let offload_any = sw_offload || hw_offload;
+    // 10. Firewall flow offloading compatibility check (OpenWrt fw4 only; skipped on Entware)
+    let (sw_offload, hw_offload) = if is_entware {
+        (false, false)
+    } else {
+        read_firewall_flow_offloading()
+    };
+    let offload_any = !is_entware && (sw_offload || hw_offload);
     let flow_offload_sqm_conflict = offload_any && smart_queue;
     let flow_offload_guard_missing = offload_any
         && !smart_queue
@@ -1342,11 +1473,21 @@ fn assemble_doctor_report(
         });
     }
 
-    // 11. odhcpd IPv6 DNS check
+    // 11. odhcpd IPv6 DNS check (OpenWrt only; skipped on Entware)
     let wan6_doc = crate::store::probe_wan6_runtime_state();
     let ipv6_state_doc =
         crate::store::resolve_effective_ipv6_state(&d.settings, wan6_doc.wan6_available);
-    let (odhcpd_ok, odhcpd_detail) = if cfg!(windows) {
+    let (odhcpd_ok, odhcpd_detail) = if is_entware {
+        (
+            true,
+            if en {
+                "Entware environment: OpenWrt odhcpd check not applicable"
+            } else {
+                "Среда Entware: проверка OpenWrt odhcpd не применяется"
+            }
+            .to_string(),
+        )
+    } else if cfg!(windows) {
         (
             true,
             if en {
@@ -1402,7 +1543,7 @@ fn assemble_doctor_report(
         });
     }
 
-    let resolv_ok = if cfg!(windows) {
+    let resolv_ok = if cfg!(windows) || is_entware {
         true
     } else {
         std::fs::read_to_string("/etc/resolv.conf")
@@ -1450,8 +1591,8 @@ fn assemble_doctor_report(
         });
     }
 
-    let dnsmasq_cascade_ok = if cfg!(windows) || d.settings.dont_touch_dhcp {
-        live.dns_healthy
+    let dnsmasq_cascade_ok = if cfg!(windows) || is_entware || d.settings.dont_touch_dhcp {
+        true
     } else {
         let dropin_present = net_stack::collect_dnsmasq_conf_dirs_in(std::path::Path::new("/tmp"))
             .into_iter()
@@ -1459,7 +1600,7 @@ fn assemble_doctor_report(
         let dnsmasq_running = sys_info::find_running_process_by_name("dnsmasq").is_some();
         live.dns_healthy && dropin_present && dnsmasq_running
     };
-    if !dnsmasq_cascade_ok && !cfg!(windows) {
+    if !dnsmasq_cascade_ok && !cfg!(windows) && !is_entware {
         findings.push(DoctorFinding {
             id: "dnsmasq_cascade_broken".to_string(),
             severity: "warning".to_string(),
@@ -1485,6 +1626,196 @@ fn assemble_doctor_report(
             .to_string(),
             ..Default::default()
         });
+    }
+
+    // 11b. Entware / Keenetic / USB runtime & kernel checks
+    if is_entware {
+        if !pctx.has_iptables {
+            findings.push(DoctorFinding {
+                id: "entware_iptables_missing".to_string(),
+                severity: "critical".to_string(),
+                subsystem: "nftables".to_string(),
+                title: if en {
+                    "iptables utility is not available in Entware"
+                } else {
+                    "Утилита iptables не найдена в среде Entware"
+                }
+                .to_string(),
+                detail: if en {
+                    "Install iptables (opkg install iptables) or verify firmware netfilter support."
+                } else {
+                    "Установите iptables (opkg install iptables) или проверьте поддержку netfilter в прошивке."
+                }
+                .to_string(),
+                quick_fix_id: "reconcile_firewall".to_string(),
+                quick_fix_label: if en {
+                    "Reconcile firewall"
+                } else {
+                    "Восстановить правила фаервола"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
+        if !pctx.has_ipset {
+            findings.push(DoctorFinding {
+                id: "entware_ipset_missing".to_string(),
+                severity: "warning".to_string(),
+                subsystem: "nftables".to_string(),
+                title: if en {
+                    "ipset utility is not installed in Entware"
+                } else {
+                    "Утилита ipset не установлена в Entware"
+                }
+                .to_string(),
+                detail: if en {
+                    "Install ipset (opkg install ipset) for atomic bypass and routing subnet sets."
+                } else {
+                    "Установите ipset (opkg install ipset) для атомарных наборов подсетей и исключений."
+                }
+                .to_string(),
+                quick_fix_id: "reconcile_firewall".to_string(),
+                quick_fix_label: if en {
+                    "Reconcile firewall"
+                } else {
+                    "Восстановить правила фаервола"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
+        if proxy_mode == "tun" && !pctx.has_dev_tun {
+            findings.push(DoctorFinding {
+                id: "entware_tun_missing".to_string(),
+                severity: "critical".to_string(),
+                subsystem: "nftables".to_string(),
+                title: if en {
+                    "/dev/net/tun device is unavailable for TUN mode"
+                } else {
+                    "Устройство /dev/net/tun недоступно для режима TUN"
+                }
+                .to_string(),
+                detail: if en {
+                    "Kernel TUN module is missing or /dev/net/tun was not created. Load the tun kernel module or switch proxy mode to TProxy."
+                } else {
+                    "Модуль ядра tun не загружен или отсутствует /dev/net/tun. Включите модуль ядра tun в прошивке или переключите режим на TProxy."
+                }
+                .to_string(),
+                quick_fix_id: "reconcile_firewall".to_string(),
+                quick_fix_label: if en {
+                    "Restore network stack"
+                } else {
+                    "Восстановить сетевой стек"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
+        let runtime_on_opt = {
+            let s = pctx.runtime_dir.to_string_lossy();
+            s == "/opt" || s.starts_with("/opt/")
+        };
+        if !pctx.runtime_tmpfs_ok || runtime_on_opt {
+            findings.push(DoctorFinding {
+                id: "entware_runtime_not_tmpfs".to_string(),
+                severity: "warning".to_string(),
+                subsystem: "resources".to_string(),
+                title: if en {
+                    "Runtime state directory is not on RAM tmpfs"
+                } else {
+                    "Каталог временных данных не размещён в RAM tmpfs"
+                }
+                .to_string(),
+                detail: if en {
+                    format!(
+                        "runtime_state_dir ({}) is located on persistent storage instead of RAM tmpfs (/var/run or /tmp), which accelerates USB/flash wear.",
+                        pctx.runtime_dir.display()
+                    )
+                } else {
+                    format!(
+                        "Каталог runtime_state_dir ({}) размещён на постоянном накопителе вместо RAM tmpfs (/var/run или /tmp), что ускоряет износ USB/флеш-памяти.",
+                        pctx.runtime_dir.display()
+                    )
+                },
+                quick_fix_id: "capture_blackbox".to_string(),
+                quick_fix_label: if en {
+                    "Capture diagnostic snapshot"
+                } else {
+                    "Снять диагностический снимок"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
+        if !pctx.storage.is_posix
+            && (!pctx.storage.fs_type.is_empty()
+                || pctx.storage.kind == crate::platform::StorageKind::UsbExternal)
+        {
+            findings.push(DoctorFinding {
+                id: "entware_non_posix_storage".to_string(),
+                severity: "critical".to_string(),
+                subsystem: "resources".to_string(),
+                title: if en {
+                    "Non-POSIX filesystem detected on Entware storage"
+                } else {
+                    "Обнаружена не-POSIX файловая система на накопителе Entware"
+                }
+                .to_string(),
+                detail: if en {
+                    format!(
+                        "Mount {} uses filesystem '{}' (FAT/NTFS/exFAT lacks POSIX permissions, symlinks, and atomic rename guarantees). Format the USB drive to ext4.",
+                        pctx.storage.mount_point, pctx.storage.fs_type
+                    )
+                } else {
+                    format!(
+                        "Точка монтирования {} использует ФС '{}' (FAT/NTFS/exFAT не поддерживает права доступа POSIX, симлинки и надёжный атомарный rename). Рекомендуется переформатировать USB-накопитель в ext4.",
+                        pctx.storage.mount_point, pctx.storage.fs_type
+                    )
+                },
+                quick_fix_id: "capture_blackbox".to_string(),
+                quick_fix_label: if en {
+                    "Capture diagnostic snapshot"
+                } else {
+                    "Снять диагностический снимок"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
+        let has_diag_issues = !live.nft_table_active
+            || !live.dns_healthy
+            || live.recent_flight_failures > 0
+            || live.anomalies_count > 0
+            || findings
+                .iter()
+                .any(|f| f.severity == "critical" || f.id.starts_with("outbound_"));
+        if pctx.platform.is_keenetic() && proxy_mode == "tproxy" && has_diag_issues {
+            findings.push(DoctorFinding {
+                id: "keenetic_tproxy_ppe_hint".to_string(),
+                severity: "warning".to_string(),
+                subsystem: "nftables".to_string(),
+                title: if en {
+                    "Keenetic TProxy: verify Hardware NAT acceleration (PPE)"
+                } else {
+                    "Keenetic TProxy: проверьте аппаратное ускорение NAT (PPE)"
+                }
+                .to_string(),
+                detail: if en {
+                    "Hardware NAT offloading (PPE) on Keenetic can bypass iptables TPROXY hooks for forwarded flows. Disable hardware PPE acceleration in router settings or switch proxy mode to TUN."
+                } else {
+                    "Аппаратное ускорение NAT (PPE) на роутерах Keenetic может пропускать транзитные потоки мимо правил iptables TPROXY. Проверьте отключение аппаратного PPE в настройках роутера или переключите режим на TUN."
+                }
+                .to_string(),
+                quick_fix_id: "reconcile_firewall".to_string(),
+                quick_fix_label: if en {
+                    "Reconcile firewall"
+                } else {
+                    "Восстановить правила фаервола"
+                }
+                .to_string(),
+                ..Default::default()
+            });
+        }
     }
 
     let eff_dns_doc = crate::store::effective_dns_strategy(&d.settings, ipv6_state_doc);
@@ -1790,18 +2121,33 @@ fn assemble_doctor_report(
         },
     ));
     subsystems.push(make_sub(
-        if en {
+        if is_iptables {
+            if en {
+                "2. iptables / ipset Rules"
+            } else {
+                "2. Правила iptables / ipset"
+            }
+        } else if en {
             "2. nftables TProxy Table"
         } else {
             "2. Таблица nftables TProxy"
         },
-        if proxy_mode == "tproxy" && !live.nft_table_active {
-            "err"
+        if fw_rules_missing { "err" } else { "ok" },
+        if is_iptables {
+            format!(
+                "iptables ({}) · ipset:{} · tun:{}",
+                proxy_mode,
+                if pctx.has_ipset { "ok" } else { "missing" },
+                if pctx.has_dev_tun { "ok" } else { "missing" }
+            )
         } else {
-            "ok"
+            "inet TachyonTable :1602".to_string()
         },
-        "inet TachyonTable :1602",
-        "reconcile_nftables",
+        if is_iptables {
+            "reconcile_firewall"
+        } else {
+            "reconcile_nftables"
+        },
         if en {
             "Restore stack"
         } else {
@@ -2230,7 +2576,7 @@ fn qf_core_reload(
 fn qf_apply_net_stack(
     snap: &RouterStoreData,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>> {
-    Box::pin(net_stack::apply_network_stack(snap))
+    Box::pin(net_stack::reconcile_network_stack(snap))
 }
 
 #[inline(never)]
@@ -2342,11 +2688,16 @@ pub async fn apply_quick_fix(
             }
             Ok("Выполнено автовосстановление конфигурации, правил IPv6 и списков".to_string())
         }
-        "heal_network_stack" | "rebuild_rules" | "reset_firewall" | "reconcile_nftables" => {
+        "heal_network_stack" | "rebuild_rules" | "reset_firewall" | "reconcile_nftables"
+        | "reconcile_firewall" => {
             let snap = Box::new(state.data.read().await.clone());
             qf_apply_net_stack(&snap).await?;
             state.live.write().await.nft_table_active = net_stack::check_nft_table_active().await;
-            Ok("Сетевой стек (inet TachyonTable и ip rule) перестроен".to_string())
+            if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+                Ok("Сетевой стек (цепочки iptables/ipset и ip rule) перестроен".to_string())
+            } else {
+                Ok("Сетевой стек (inet TachyonTable и ip rule) перестроен".to_string())
+            }
         }
         "fix_bootstrap_dns" => {
             qf_commit_and_reload(state, core, true, |c| {
@@ -2378,7 +2729,7 @@ pub async fn apply_quick_fix(
                 }
                 Err(e) => msg_parts.push(format!("Сброс DNS ядра не выполнен: {e}")),
             }
-            if fix_id != "flush_core_dns" && !cfg!(windows) {
+            if fix_id != "flush_core_dns" && !cfg!(windows) && !crate::platform::is_entware() {
                 let _ = Command::new("/etc/init.d/dnsmasq")
                     .arg("restart")
                     .status()
@@ -2388,6 +2739,13 @@ pub async fn apply_quick_fix(
             Ok(msg_parts.join("; "))
         }
         "fix_dnsmasq" => {
+            if crate::platform::is_entware() {
+                let _ = core.flush_core_dns("all").await;
+                return Ok(
+                    "Среда Entware: DNS-кэш ядра очищен (OpenWrt dnsmasq не используется)"
+                        .to_string(),
+                );
+            }
             if !cfg!(windows) {
                 let _ = Command::new("/etc/init.d/dnsmasq")
                     .arg("restart")
@@ -2564,11 +2922,22 @@ pub async fn apply_quick_fix(
             Ok("Перехват трафика отключён, прямой доступ в интернет восстановлен".to_string())
         }
         "enable_autostart" => {
-            if !cfg!(windows) && std::path::Path::new("/etc/init.d/tachyon").exists() {
-                let _ = Command::new("/etc/init.d/tachyon")
-                    .arg("enable")
-                    .status()
-                    .await;
+            if !cfg!(windows) {
+                let init_script = &crate::platform::paths().init_script;
+                if init_script.exists() {
+                    if crate::platform::is_entware() {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let _ = std::fs::set_permissions(
+                                init_script,
+                                std::fs::Permissions::from_mode(0o755),
+                            );
+                        }
+                    } else {
+                        let _ = Command::new(init_script).arg("enable").status().await;
+                    }
+                }
             }
             Ok("Автозапуск службы Tachyon при загрузке роутера проверен и включён".to_string())
         }
@@ -2608,11 +2977,23 @@ pub async fn apply_quick_fix(
             ))
         }
         "sync_flow_offload_guard" => {
+            if crate::platform::is_entware() {
+                return Ok(
+                    "Среда Entware: защита fw4 Flow Offloading применяется только на OpenWrt"
+                        .to_string(),
+                );
+            }
             let store_snapshot = { state.data.read().await.clone() };
             crate::net_stack::sync_fw4_flow_offload_guard(&store_snapshot).await;
             Ok("Защитные правила Flow Offloading (10-tachyon-offload.nft) установлены".to_string())
         }
         "disable_flow_offloading" => {
+            if crate::platform::is_entware() {
+                return Ok(
+                    "Среда Entware: отключение Flow Offloading через uci применяется только на OpenWrt; на Keenetic проверьте настройки аппаратного ускорения NAT (PPE)"
+                        .to_string(),
+                );
+            }
             if !cfg!(windows) {
                 let _ = Command::new("uci")
                     .args(["-q", "set", "firewall.@defaults[0].flow_offloading=0"])
@@ -2643,7 +3024,7 @@ pub async fn apply_quick_fix(
 pub fn incidents_path() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
-        PathBuf::from("/tmp/tachyon/incidents.json")
+        crate::store::runtime_state_dir().join("incidents.json")
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -3525,9 +3906,11 @@ fn explain_route_with_mac_table(
         if sec.action == "dns" || sec.connection_type == "dns" {
             continue;
         }
-        let resolved_out = if sec.action == "block" {
+        let resolved_out = if sec.action == "block" || sec.connection_type == "block" {
             "block".to_string()
-        } else if sec.action == "direct" {
+        } else if matches!(sec.action.as_str(), "direct" | "bypass")
+            || matches!(sec.connection_type.as_str(), "direct" | "bypass" | "hosts")
+        {
             "direct".to_string()
         } else if !sec.balancer_refs.is_empty() {
             format!("bal-{}-{}", sec.id, sec.balancer_refs[0])
@@ -7148,6 +7531,122 @@ IP address       HW type     Flags       HW address            Mask     Device
             report_drift.findings.iter().any(|f| f.id == "config_drift"),
             "real watchdog config_drift must still produce finding"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_entware_diagnostics_no_false_openwrt_alerts_and_reports_entware_issues() {
+        use crate::platform::{FirewallKind, PlatformKind, StorageInfo, StorageKind};
+
+        let dir = std::env::temp_dir().join(format!("tachyon_diag_entware_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = AppState::load_or_create(dir.join("store.json")).unwrap();
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.smart_queue = true;
+
+        let live_ok = crate::store::LiveTelemetry {
+            core_running: true,
+            nft_table_active: true,
+            wan_healthy: true,
+            dns_healthy: true,
+            ..Default::default()
+        };
+        let pctx_healthy = PlatformDoctorContext {
+            platform: PlatformKind::KeeneticEntware,
+            firewall_kind: FirewallKind::Iptables,
+            storage: StorageInfo {
+                kind: StorageKind::UsbExternal,
+                fs_type: "ext4".to_string(),
+                mount_point: "/opt".to_string(),
+                device: "/dev/sda1".to_string(),
+                is_posix: true,
+            },
+            runtime_dir: PathBuf::from("/var/run/tachyon"),
+            runtime_tmpfs_ok: true,
+            has_iptables: true,
+            has_ipset: true,
+            has_dev_tun: true,
+        };
+        let report_ok = assemble_doctor_report_with_platform(
+            &state,
+            &store,
+            &live_ok,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+            "",
+            false,
+            &pctx_healthy,
+        );
+        for forbidden in [
+            "flow_offloading_conflict",
+            "flow_offloading_guard_missing",
+            "odhcpd_ipv6_dns_missing",
+            "dnsmasq_cascade_broken",
+            "resolv_conf_invalid",
+            "entware_non_posix_storage",
+            "entware_runtime_not_tmpfs",
+            "keenetic_tproxy_ppe_hint",
+        ] {
+            assert!(
+                !report_ok.findings.iter().any(|f| f.id == forbidden),
+                "unexpected finding '{forbidden}' on healthy Keenetic Entware: {:?}",
+                report_ok.findings
+            );
+        }
+
+        // Now simulate broken Entware environment: FAT32 USB, /opt/tmp runtime, missing ipset, inactive iptables chains
+        let live_bad = crate::store::LiveTelemetry {
+            core_running: true,
+            nft_table_active: false,
+            wan_healthy: true,
+            dns_healthy: true,
+            ..Default::default()
+        };
+        let pctx_bad = PlatformDoctorContext {
+            platform: PlatformKind::KeeneticEntware,
+            firewall_kind: FirewallKind::Iptables,
+            storage: StorageInfo {
+                kind: StorageKind::UsbExternal,
+                fs_type: "vfat".to_string(),
+                mount_point: "/opt".to_string(),
+                device: "/dev/sda1".to_string(),
+                is_posix: false,
+            },
+            runtime_dir: PathBuf::from("/opt/tmp/tachyon"),
+            runtime_tmpfs_ok: false,
+            has_iptables: false,
+            has_ipset: false,
+            has_dev_tun: false,
+        };
+        let report_bad = assemble_doctor_report_with_platform(
+            &state, &store, &live_bad, None, None, None, None, None, true, "", false, &pctx_bad,
+        );
+        for expected in [
+            "entware_iptables_missing",
+            "entware_ipset_missing",
+            "entware_runtime_not_tmpfs",
+            "entware_non_posix_storage",
+            "keenetic_tproxy_ppe_hint",
+        ] {
+            assert!(
+                report_bad.findings.iter().any(|f| f.id == expected),
+                "missing expected Entware finding '{expected}': {:?}",
+                report_bad
+                    .findings
+                    .iter()
+                    .map(|f| &f.id)
+                    .collect::<Vec<_>>()
+            );
+        }
+        assert!(is_known_quick_fix("reconcile_firewall"));
+        assert_eq!(quick_fix_risk_tier("reconcile_firewall"), "disruptive");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

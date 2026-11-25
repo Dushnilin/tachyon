@@ -336,7 +336,13 @@ impl CoreManager {
         } else {
             "tachyon-core"
         };
+        let platform_bin = crate::platform::paths()
+            .bin_dir
+            .join(bin_name)
+            .to_string_lossy()
+            .into_owned();
         for candidate in [
+            platform_bin,
             format!("/usr/bin/{bin_name}"),
             format!("data/bin/{bin_name}"),
             format!("../tachyon-core/target/release/{bin_name}"),
@@ -441,7 +447,7 @@ impl CoreManager {
             .ok()
             .filter(|s| !s.trim().is_empty())
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/etc/tachyon/rulesets"));
+            .unwrap_or_else(|| crate::platform::paths().rulesets_dir.clone());
 
         let Some(rule_sets) = candidate_cfg
             .pointer_mut("/route/rule_set")
@@ -677,15 +683,16 @@ impl CoreManager {
         state: &AppState,
         settings: &crate::store::GlobalSettings,
     ) -> PathBuf {
+        let p = crate::platform::paths();
         let state_dir = state.path.parent().unwrap_or_else(|| Path::new("data"));
         let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
-            && Path::new("/etc/init.d/tachyon").exists();
+            && (p.init_script.exists() || Path::new("/etc/init.d/tachyon").exists());
         if is_tmp_staging {
             return state_dir.join("tachyon-core-config.json");
         }
         let configured = settings.core_config_path.trim();
         if configured.is_empty() {
-            PathBuf::from("/etc/tachyon-core/config.json")
+            p.core_config_dir.join("config.json")
         } else {
             PathBuf::from(configured)
         }
@@ -1575,8 +1582,9 @@ impl CoreManager {
             .path
             .parent()
             .unwrap_or_else(|| Path::new("data"));
+        let p_layout = crate::platform::paths();
         let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
-            && Path::new("/etc/init.d/tachyon").exists();
+            && (p_layout.init_script.exists() || Path::new("/etc/init.d/tachyon").exists());
 
         let bin_path = self.resolve_bin_path().await;
         let run_binary_check = cfg!(target_os = "linux") && Path::new(&bin_path).exists();
@@ -1658,6 +1666,7 @@ impl CoreManager {
         {
             return false;
         }
+        let p_layout = crate::platform::paths();
         let allowed_roots = [
             "/tmp",
             "/var",
@@ -1671,7 +1680,11 @@ impl CoreManager {
         ];
         let has_posix_root = path.to_str().is_some_and(|s| s.starts_with('/'));
         let in_allowed_root = (path.is_absolute() || has_posix_root)
-            && allowed_roots.iter().any(|r| path.starts_with(r));
+            && (allowed_roots.iter().any(|r| path.starts_with(r))
+                || path.starts_with(&p_layout.data_dir)
+                || path.starts_with(&p_layout.core_config_dir)
+                || path.starts_with(&p_layout.share_dir)
+                || path.starts_with(&p_layout.runtime_tmpfs_dir));
         #[cfg(test)]
         {
             in_allowed_root || path.starts_with(std::env::temp_dir())
@@ -1698,11 +1711,14 @@ impl CoreManager {
             let _ = std::fs::create_dir_all(parent);
         }
         if !dst.exists() {
-            for seed in [
-                "/etc/tachyon-core/cache.db",
-                "/usr/share/tachyon-core/cache.db",
-            ] {
-                let src = Path::new(seed);
+            let p_layout = crate::platform::paths();
+            let seed_candidates = [
+                p_layout.core_config_dir.join("cache.db"),
+                p_layout.share_dir.join("cache.db"),
+                PathBuf::from("/etc/tachyon-core/cache.db"),
+                PathBuf::from("/usr/share/tachyon-core/cache.db"),
+            ];
+            for src in &seed_candidates {
                 if src.exists() {
                     let _ = std::fs::copy(src, dst);
                     break;
@@ -2020,17 +2036,47 @@ impl CoreManager {
         }
     }
 
+    fn service_autostart_enabled_for(
+        platform: crate::platform::PlatformKind,
+        init_script: &Path,
+        rc_d_dir: &Path,
+    ) -> bool {
+        if platform.is_entware() {
+            let Ok(meta) = std::fs::metadata(init_script) else {
+                return false;
+            };
+            if !meta.is_file() {
+                return false;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                meta.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        } else {
+            std::fs::read_dir(rc_d_dir).ok().is_some_and(|rd| {
+                rd.flatten().any(|e| {
+                    let name = e.file_name();
+                    let s = name.to_string_lossy();
+                    s.starts_with('S') && s.ends_with("tachyon") && !s.ends_with("tachyon-core")
+                })
+            })
+        }
+    }
+
     fn service_autostart_enabled() -> bool {
         if cfg!(not(target_os = "linux")) {
             return false;
         }
-        std::fs::read_dir("/etc/rc.d").ok().is_some_and(|rd| {
-            rd.flatten().any(|e| {
-                let name = e.file_name();
-                let s = name.to_string_lossy();
-                s.starts_with('S') && s.ends_with("tachyon") && !s.ends_with("tachyon-core")
-            })
-        })
+        Self::service_autostart_enabled_for(
+            crate::platform::detect_platform(),
+            &crate::platform::paths().init_script,
+            Path::new("/etc/rc.d"),
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -2434,7 +2480,11 @@ impl CoreManager {
 
     async fn restore_saved_selectors(&self, store_snapshot: &crate::store::RouterStoreData) {
         let sel_path = crate::store::runtime_state_dir().join("selector_state.json");
+        let legacy_sel = crate::platform::paths()
+            .data_dir
+            .join("selector_state.json");
         let mut sel_map: HashMap<String, String> = std::fs::read_to_string(&sel_path)
+            .or_else(|_| std::fs::read_to_string(&legacy_sel))
             .or_else(|_| std::fs::read_to_string("/etc/tachyon/selector_state.json"))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -2512,7 +2562,11 @@ impl CoreManager {
 
     pub fn save_selector_choice(group_or_sec: &str, chosen_tag: &str) {
         let path = crate::store::runtime_state_dir().join("selector_state.json");
+        let legacy_sel = crate::platform::paths()
+            .data_dir
+            .join("selector_state.json");
         let mut map: HashMap<String, String> = std::fs::read_to_string(&path)
+            .or_else(|_| std::fs::read_to_string(&legacy_sel))
             .or_else(|_| std::fs::read_to_string("/etc/tachyon/selector_state.json"))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -2911,7 +2965,16 @@ impl CoreManager {
                 d.settings.core_config_path.clone(),
             )
         };
-        for candidate_cfg in [cfg_path.as_str(), "/etc/tachyon-core/config.json"] {
+        let default_core_cfg = crate::platform::paths()
+            .core_config_dir
+            .join("config.json")
+            .to_string_lossy()
+            .into_owned();
+        for candidate_cfg in [
+            cfg_path.as_str(),
+            default_core_cfg.as_str(),
+            "/etc/tachyon-core/config.json",
+        ] {
             if let Ok(meta) = std::fs::metadata(candidate_cfg) {
                 let mtime = meta
                     .modified()
@@ -4622,6 +4685,14 @@ impl CoreManager {
                 "backup_version": core_bak.as_ref().map(|m| m.version.as_str()).unwrap_or(""),
                 "backup_time": core_bak.as_ref().map(|m| m.backed_up_at).unwrap_or(0),
                 "can_rollback": core_bak.is_some()
+                    || crate::platform::paths()
+                        .bin_dir
+                        .join("tachyon-core.prev")
+                        .exists()
+                    || crate::platform::paths()
+                        .bin_dir
+                        .join("tachyon-core.bak")
+                        .exists()
                     || Path::new("/usr/bin/tachyon-core.prev").exists()
                     || Path::new("/usr/bin/tachyon-core.bak").exists()
             }),
@@ -4717,10 +4788,13 @@ impl CoreManager {
                 }
             }
             if crate::snapshots::read_backup_meta(&data_dir, "tachyon-core").is_none() {
+                let platform_bin = crate::platform::paths().bin_dir.join("tachyon-core");
                 let core_path = if !core_bin_cfg.trim().is_empty()
                     && Path::new(core_bin_cfg.trim()).is_file()
                 {
                     Path::new(core_bin_cfg.trim()).to_path_buf()
+                } else if platform_bin.is_file() {
+                    platform_bin
                 } else {
                     Path::new("/usr/bin/tachyon-core").to_path_buf()
                 };
@@ -4774,9 +4848,12 @@ impl CoreManager {
                 d.settings.core_bin_path.clone(),
             )
         };
+        let platform_core_bin = crate::platform::paths().bin_dir.join("tachyon-core");
         let core_bin_path =
             if !core_bin_cfg.trim().is_empty() && Path::new(core_bin_cfg.trim()).is_file() {
                 Path::new(core_bin_cfg.trim()).to_path_buf()
+            } else if platform_core_bin.is_file() {
+                platform_core_bin
             } else {
                 Path::new("/usr/bin/tachyon-core").to_path_buf()
             };
@@ -4924,7 +5001,11 @@ impl CoreManager {
             }
             ("tachyon-core", "set_variant") => {
                 let mut candidate = self.state.data.read().await.clone();
-                candidate.settings.core_bin_path = "/usr/bin/tachyon-core".to_string();
+                candidate.settings.core_bin_path = crate::platform::paths()
+                    .bin_dir
+                    .join("tachyon-core")
+                    .to_string_lossy()
+                    .into_owned();
                 let _ = transaction::commit_transaction(&self.state, candidate).await;
                 let _ = self.apply_or_reload().await;
                 json!({ "ok": true, "component": component, "variant": variant.unwrap_or("tachyon-core"), "message": "Ядро tachyon-core активировано" })
@@ -5476,7 +5557,8 @@ impl CoreManager {
             let nft_ok = net_stack::check_nft_table_active().await;
 
             let devices_opt = if telemetry_active && !data_plane_busy {
-                let mut devices = sys_info::discover_lan_devices();
+                let mut devices = sys_info::discover_lan_devices_async().await;
+                let default_lan_iface = crate::platform::detect_default_lan_iface();
                 if core_alive
                     && let Ok(core_devs) = self.clash_request("GET", "/tachyon/devices", None).await
                     && let Some(arr) = core_devs.get("devices").and_then(Value::as_array)
@@ -5506,7 +5588,7 @@ impl CoreManager {
                                 interface: cd
                                     .get("interface")
                                     .and_then(Value::as_str)
-                                    .unwrap_or("br-lan")
+                                    .unwrap_or(default_lan_iface.as_str())
                                     .to_string(),
                                 reachable: cd
                                     .get("reachable")
@@ -7618,6 +7700,58 @@ mod core_mgr_tests {
         let cur = std::fs::read_to_string(&log_path).unwrap();
         assert!(cur.contains("tachyon-core started"));
         assert!(!cur.contains("stale entry"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_service_autostart_enabled_for_openwrt_and_entware() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_autostart_{}_{:08x}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rc_d = dir.join("rc.d");
+        std::fs::create_dir_all(&rc_d).unwrap();
+        let init_script = dir.join("S99tachyon");
+
+        // OpenWrt: requires S*tachyon in rc.d
+        assert!(!CoreManager::service_autostart_enabled_for(
+            crate::platform::PlatformKind::OpenWrt,
+            &init_script,
+            &rc_d
+        ));
+        std::fs::write(rc_d.join("S99tachyon"), "#!/bin/sh\n").unwrap();
+        assert!(CoreManager::service_autostart_enabled_for(
+            crate::platform::PlatformKind::OpenWrt,
+            &init_script,
+            &rc_d
+        ));
+
+        // Entware: requires init_script file (and executable on Unix)
+        assert!(!CoreManager::service_autostart_enabled_for(
+            crate::platform::PlatformKind::KeeneticEntware,
+            &init_script,
+            &rc_d
+        ));
+        std::fs::write(&init_script, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&init_script, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(!CoreManager::service_autostart_enabled_for(
+                crate::platform::PlatformKind::KeeneticEntware,
+                &init_script,
+                &rc_d
+            ));
+            std::fs::set_permissions(&init_script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert!(CoreManager::service_autostart_enabled_for(
+            crate::platform::PlatformKind::KeeneticEntware,
+            &init_script,
+            &rc_d
+        ));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
