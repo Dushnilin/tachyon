@@ -294,6 +294,60 @@ fn dispatch_menu_sections<'a>(
     }
 }
 
+#[inline(never)]
+fn handle_import_subscription_or_uri_boxed<'a>(
+    input: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> BoxBotFuture<'a> {
+    Box::pin(handle_import_subscription_or_uri(
+        input, chat_id, state, core,
+    ))
+}
+
+#[inline(never)]
+fn menu_commit_and_sync_boxed<'a>(
+    state: &'a Arc<AppState>,
+    candidate: Box<RouterStoreData>,
+) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(commit_and_sync_tg_tx_boxed(state, candidate))
+}
+
+#[inline(never)]
+fn menu_refresh_sub_boxed<'a>(
+    core: &'a Arc<CoreManager>,
+    sid: &'a str,
+) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<usize>> + Send + 'a>> {
+    Box::pin(core.refresh_subscription_source(sid))
+}
+
+#[inline(never)]
+fn menu_apply_or_reload_boxed<'a>(
+    core: &'a Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>> {
+    Box::pin(core.apply_or_reload())
+}
+
+#[inline(never)]
+fn menu_render_source_view_boxed<'a>(
+    state: &'a Arc<AppState>,
+    src_id: &'a str,
+    page: usize,
+    notice: Option<String>,
+) -> BoxBotFuture<'a> {
+    Box::pin(render_source_view(state, src_id, page, notice))
+}
+
+#[inline(never)]
+fn menu_render_sources_list_boxed<'a>(
+    state: &'a Arc<AppState>,
+    page: usize,
+    notice: Option<String>,
+) -> BoxBotFuture<'a> {
+    Box::pin(render_sources_list(state, page, notice))
+}
+
 fn dispatch_menu_sources<'a>(
     cmd: &'a str,
     arg: &'a str,
@@ -325,9 +379,9 @@ fn dispatch_menu_sources<'a>(
         ))),
         "src_warp" => Some(Box::pin(handle_src_warp(state, core))),
         "src_exit" => Some(Box::pin(handle_src_exit(arg.trim(), state, core))),
-        "quick_add_uri" => Some(Box::pin(handle_import_subscription_or_uri(
+        "quick_add_uri" => Some(handle_import_subscription_or_uri_boxed(
             arg, chat_id, state, core,
-        ))),
+        )),
         _ => None,
     }
 }
@@ -437,9 +491,9 @@ pub(crate) async fn handle_menu_prompt(
             PendingPromptKind::UpdateSourceFptnToken { src_id } => Box::pin(async move {
                 handle_update_source_fptn_prompt(&src_id, input, chat_id, state, core).await
             }),
-            PendingPromptKind::AddSubscriptionOrUri => Box::pin(handle_import_subscription_or_uri(
-                input, chat_id, state, core,
-            )),
+            PendingPromptKind::AddSubscriptionOrUri => {
+                handle_import_subscription_or_uri_boxed(input, chat_id, state, core)
+            }
             kind @ (PendingPromptKind::FleetAddName
             | PendingPromptKind::FleetAddUrl { .. }
             | PendingPromptKind::FleetAddToken { .. }) => {
@@ -3431,20 +3485,20 @@ async fn handle_import_subscription_or_uri(
     }
 
     clear_chat_prompt(chat_id);
-    if let Err(e) = Box::pin(commit_and_sync_tg_tx_boxed(state, candidate)).await {
-        return Box::pin(render_sources_list(
+    if let Err(e) = menu_commit_and_sync_boxed(state, candidate).await {
+        return menu_render_sources_list_boxed(
             state,
             0,
             Some(format!("[ERR] {}", escape_html(&e.to_string()))),
-        ))
+        )
         .await;
     }
 
     for sid in &created_sub_ids {
-        let _ = Box::pin(core.refresh_subscription_source(sid)).await;
+        let _ = menu_refresh_sub_boxed(core, sid).await;
     }
     let reload_warn = format_reload_warn(
-        Box::pin(core.apply_or_reload())
+        menu_apply_or_reload_boxed(core)
             .await
             .err()
             .map(|e| e.to_string()),
@@ -3457,9 +3511,9 @@ async fn handle_import_subscription_or_uri(
             escape_html(&created_ids.join(", ")),
             reload_warn
         );
-        return Box::pin(render_source_view(state, first_id, 0, Some(note))).await;
+        return menu_render_source_view_boxed(state, first_id, 0, Some(note)).await;
     }
-    Box::pin(render_sources_list(state, 0, None)).await
+    menu_render_sources_list_boxed(state, 0, None).await
 }
 
 // =========================================================================

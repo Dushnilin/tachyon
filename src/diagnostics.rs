@@ -2662,6 +2662,22 @@ fn qf_commit_tx(
 }
 
 #[inline(never)]
+fn qf_sync_flow_offload(
+    snap: &RouterStoreData,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+    Box::pin(net_stack::sync_fw4_flow_offload_guard(snap))
+}
+
+#[inline(never)]
+fn qf_single<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    fix_id: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send + 'a>> {
+    Box::pin(apply_quick_fix_single(state, core, fix_id))
+}
+
+#[inline(never)]
 fn is_builtin_non_proxy_outbound(tag: &str) -> bool {
     matches!(
         tag.trim().to_ascii_lowercase().as_str(),
@@ -2677,13 +2693,13 @@ pub async fn apply_quick_fix(
     if fix_id.contains(',') {
         let mut results = Vec::new();
         for part in fix_id.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            let msg = Box::pin(apply_quick_fix_single(state, core, part)).await?;
+            let msg = qf_single(state, core, part).await?;
             results.push(msg);
         }
         anyhow::ensure!(!results.is_empty(), "Пустой список действий quick_fix");
         return Ok(results.join("; "));
     }
-    apply_quick_fix_single(state, core, fix_id).await
+    qf_single(state, core, fix_id).await
 }
 
 async fn apply_quick_fix_single(
@@ -2788,9 +2804,9 @@ async fn apply_quick_fix_single(
                         .to_string(),
                 );
             }
-            let d_snap = state.data.read().await.clone();
+            let dont_touch = state.data.read().await.settings.dont_touch_dhcp;
             if !cfg!(windows) {
-                if !d_snap.settings.dont_touch_dhcp {
+                if !dont_touch {
                     let dropin = "server=127.0.0.42#53\nno-resolv\n";
                     for dir in
                         crate::net_stack::collect_dnsmasq_conf_dirs_in(std::path::Path::new("/tmp"))
@@ -3035,7 +3051,7 @@ async fn apply_quick_fix_single(
             Ok("Выполнен откат к снимку Last Known Good".to_string())
         }
         "upgrade_core" => {
-            let res = core.component_action("tachyon-core", "update", None).await;
+            let res = qf_component_action(core, "tachyon-core", "update").await;
             let msg = res
                 .get("message")
                 .and_then(Value::as_str)
@@ -3050,8 +3066,8 @@ async fn apply_quick_fix_single(
                         .to_string(),
                 );
             }
-            let store_snapshot = { state.data.read().await.clone() };
-            crate::net_stack::sync_fw4_flow_offload_guard(&store_snapshot).await;
+            let store_snapshot = Box::new(state.data.read().await.clone());
+            qf_sync_flow_offload(&store_snapshot).await;
             Ok("Защитные правила Flow Offloading (10-tachyon-offload.nft) установлены".to_string())
         }
         "disable_flow_offloading" => {
@@ -3155,6 +3171,13 @@ fn rollback_snapshot_pinned<'a>(
     Box::pin(rollback_snapshot_boxed(state, core, prev))
 }
 
+#[inline(never)]
+fn poll_telemetry_and_reconcile_boxed<'a>(
+    core: &'a CoreManager,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(core.poll_telemetry_and_reconcile(0))
+}
+
 /// Verified Quick Fix executor with dry-run preview, per-action cooldown, before/after verification,
 /// automatic config rollback on regression, and zero-flash-wear tmpfs IncidentMemory recording.
 pub async fn apply_quick_fix_verified(
@@ -3247,7 +3270,7 @@ pub async fn apply_quick_fix_verified(
     };
 
     let core_c = core.clone();
-    core_c.poll_telemetry_and_reconcile(0).await;
+    poll_telemetry_and_reconcile_boxed(&core_c).await;
     let after = run_local_doctor_with_core_boxed(state, core).await;
     let after_count = after
         .findings

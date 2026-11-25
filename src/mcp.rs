@@ -155,6 +155,56 @@ fn mcp_apply_quick_fix<'a>(
 }
 
 #[inline(never)]
+fn mcp_run_local_doctor<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = diagnostics::DoctorReport> + Send + 'a>> {
+    Box::pin(diagnostics::run_local_doctor_with_core(state, core))
+}
+
+#[inline(never)]
+fn mcp_read_resource<'a>(
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+    id: Value,
+    uri: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Value> + Send + 'a>> {
+    Box::pin(async move {
+        let res_val = match uri {
+            "tachyon://status" => mcp_build_support_bundle(state).await,
+            "tachyon://config-plan" => {
+                let d = state.data.read().await;
+                json!(transaction::analyze_config_plan(&d))
+            }
+            "tachyon://doctor" => {
+                json!(mcp_run_local_doctor(state, core).await)
+            }
+            "tachyon://health" => core
+                .get_core_health()
+                .await
+                .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
+            "tachyon://anomalies" => core
+                .get_core_anomalies()
+                .await
+                .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
+            _ => json!({ "error": format!("Unknown resource URI: {uri}") }),
+        };
+        let redacted = crypto_gen::redact_json_value(&res_val);
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "contents": [{
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                }]
+            }
+        })
+    })
+}
+
+#[inline(never)]
 fn mcp_capture_blackbox<'a>(
     state: &'a Arc<AppState>,
     core: &'a Arc<CoreManager>,
@@ -203,37 +253,7 @@ pub async fn handle_mcp_rpc(state: &Arc<AppState>, core: &Arc<CoreManager>, req:
         }),
         "resources/read" => {
             let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
-            let res_val = match uri {
-                "tachyon://status" => mcp_build_support_bundle(state).await,
-                "tachyon://config-plan" => {
-                    let d = state.data.read().await;
-                    json!(transaction::analyze_config_plan(&d))
-                }
-                "tachyon://doctor" => {
-                    json!(diagnostics::run_local_doctor_with_core(state, core).await)
-                }
-                "tachyon://health" => core
-                    .get_core_health()
-                    .await
-                    .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
-                "tachyon://anomalies" => core
-                    .get_core_anomalies()
-                    .await
-                    .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
-                _ => json!({ "error": format!("Unknown resource URI: {uri}") }),
-            };
-            let redacted = crypto_gen::redact_json_value(&res_val);
-            json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": {
-                    "contents": [{
-                        "uri": uri,
-                        "mimeType": "application/json",
-                        "text": serde_json::to_string_pretty(&redacted).unwrap_or_default()
-                    }]
-                }
-            })
+            mcp_read_resource(state, core, id, uri).await
         }
         "tools/list" => mcp_tools_list_response(id),
         "tools/call" => {

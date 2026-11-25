@@ -1375,6 +1375,50 @@ fn dispatch_command_or_callback<'a>(
     })
 }
 
+#[inline(never)]
+fn dispatch_menu_prompt_boxed<'a>(
+    kind: PendingPromptKind,
+    text: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = Option<BotReply>> + Send + 'a>> {
+    Box::pin(menus::handle_menu_prompt(kind, text, chat_id, state, core))
+}
+
+#[inline(never)]
+fn dispatch_ops_prompt_boxed<'a>(
+    kind: PendingPromptKind,
+    text: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = Option<BotReply>> + Send + 'a>> {
+    Box::pin(ops::handle_ops_prompt(kind, text, chat_id, state, core))
+}
+
+#[inline(never)]
+fn dispatch_try_ops_boxed<'a>(
+    cmd: &'a str,
+    text: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = Option<BotReply>> + Send + 'a>> {
+    Box::pin(ops::try_handle_ops(cmd, text, chat_id, state, core))
+}
+
+#[inline(never)]
+fn dispatch_try_menu_boxed<'a>(
+    cmd: &'a str,
+    text: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = Option<BotReply>> + Send + 'a>> {
+    Box::pin(menus::try_handle_menu(cmd, text, chat_id, state, core))
+}
+
 fn dispatch_text_message<'a>(
     chat_id: i64,
     raw_text: &'a str,
@@ -1409,25 +1453,13 @@ fn dispatch_text_message<'a>(
         }
 
         if let Some(prompt_kind) = take_chat_prompt(chat_id) {
-            if let Some(reply) = Box::pin(menus::handle_menu_prompt(
-                prompt_kind.clone(),
-                text,
-                chat_id,
-                state,
-                core,
-            ))
-            .await
+            if let Some(reply) =
+                dispatch_menu_prompt_boxed(prompt_kind.clone(), text, chat_id, state, core).await
             {
                 return reply;
             }
-            if let Some(reply) = Box::pin(ops::handle_ops_prompt(
-                prompt_kind,
-                text,
-                chat_id,
-                state,
-                core,
-            ))
-            .await
+            if let Some(reply) =
+                dispatch_ops_prompt_boxed(prompt_kind, text, chat_id, state, core).await
             {
                 return reply;
             }
@@ -1435,26 +1467,14 @@ fn dispatch_text_message<'a>(
 
         if !text.starts_with('/') {
             if looks_like_transfer_payload(text)
-                && let Some(reply) = Box::pin(ops::try_handle_ops(
-                    "quick_import",
-                    text,
-                    chat_id,
-                    state,
-                    core,
-                ))
-                .await
+                && let Some(reply) =
+                    dispatch_try_ops_boxed("quick_import", text, chat_id, state, core).await
             {
                 return reply;
             }
             if looks_like_proxy_uri(text)
-                && let Some(reply) = Box::pin(menus::try_handle_menu(
-                    "quick_add_uri",
-                    text,
-                    chat_id,
-                    state,
-                    core,
-                ))
-                .await
+                && let Some(reply) =
+                    dispatch_try_menu_boxed("quick_add_uri", text, chat_id, state, core).await
             {
                 return reply;
             }
