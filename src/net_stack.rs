@@ -40,6 +40,13 @@ const FLOW_OFFLOAD_INCLUDE_FILE: &str = "10-tachyon-offload.nft";
 const DEFAULT_SYSCTL_BBR_CONF: &str = "/etc/sysctl.d/99-tachyon-bbr.conf";
 const DEFAULT_PROC_TCP_AVAIL_CC: &str = "/proc/sys/net/ipv4/tcp_available_congestion_control";
 
+static DNSMASQ_INIT_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+#[derive(Default, Clone, Debug)]
+pub(crate) struct NftCompileOpts {
+    pub torrserver_cgroup: Option<(usize, String)>,
+}
+
 pub(crate) fn effective_disable_quic_global(store: &RouterStoreData) -> bool {
     let mode = store.settings.disable_quic_mode.trim().to_ascii_lowercase();
     mode == "all" || (store.settings.disable_quic && (mode.is_empty() || mode == "off"))
@@ -1215,13 +1222,28 @@ pub fn compile_nftables_ruleset_with_wan6(
     wan6_available: bool,
     extra_local_v6: &[String],
 ) -> String {
+    compile_nftables_ruleset_with_wan6_and_opts(
+        store,
+        wan6_available,
+        extra_local_v6,
+        &NftCompileOpts::default(),
+    )
+}
+
+fn compile_nftables_ruleset_with_wan6_and_opts(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+    opts: &NftCompileOpts,
+) -> String {
     let (redirects, lan_v4_ips) = read_runtime_dnat_context();
-    compile_nftables_ruleset_full(
+    compile_nftables_ruleset_full_with_opts(
         store,
         wan6_available,
         extra_local_v6,
         &redirects,
         &lan_v4_ips,
+        opts,
     )
 }
 
@@ -1665,12 +1687,171 @@ pub(crate) fn collect_bypass_macs(store: &RouterStoreData, blocked_macs: &[Strin
     bypass_macs
 }
 
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn is_torrserver_cmdline_bytes(raw: &[u8]) -> bool {
+    let argv0_bytes = raw.split(|&b| b == 0).next().unwrap_or(&[]);
+    let argv0_raw = String::from_utf8_lossy(argv0_bytes);
+    let argv0 = argv0_raw.trim();
+    if argv0.is_empty() {
+        return false;
+    }
+    let first_tok = if raw.contains(&0) {
+        argv0
+    } else {
+        argv0.split_whitespace().next().unwrap_or("")
+    };
+    let base = first_tok
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    base == "torrserver" || base.starts_with("torrserver-")
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn parse_cgroupv2_level_and_path(cgroup_raw: &str) -> Option<(usize, String)> {
+    let is_valid_seg = |seg: &str| {
+        !seg.is_empty()
+            && seg
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'@' | b':' | b'-'))
+    };
+    for line in cgroup_raw.lines() {
+        let Some(rest) = line.trim().strip_prefix("0::") else {
+            continue;
+        };
+        let parts: Vec<&str> = rest
+            .trim()
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.is_empty() || !parts.iter().all(|s| is_valid_seg(s)) {
+            return None;
+        }
+        if parts.len() == 1
+            && (matches!(parts[0], "services" | "system.slice" | "user.slice")
+                || !parts[0].to_ascii_lowercase().contains("torrserver"))
+        {
+            return None;
+        }
+        let level = parts.len().min(2);
+        let path = parts[..level].join("/");
+        return Some((level, path));
+    }
+    None
+}
+
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn is_dedicated_cgroup_dir(
+    cgroup_root: &Path,
+    proc_root: &Path,
+    matched_rel: &str,
+) -> bool {
+    let base = cgroup_root.join(matched_rel);
+    if !base.join("cgroup.procs").is_file() {
+        return false;
+    }
+    let mut stack = vec![base];
+    let mut visited_dirs = 0usize;
+    let mut found_pids = 0usize;
+    while let Some(dir) = stack.pop() {
+        visited_dirs += 1;
+        if visited_dirs > 64 {
+            return false;
+        }
+        if let Ok(procs_raw) = std::fs::read_to_string(dir.join("cgroup.procs")) {
+            for line in procs_raw.lines() {
+                let pid = line.trim();
+                if pid.is_empty() {
+                    continue;
+                }
+                if !pid.bytes().all(|b| b.is_ascii_digit()) {
+                    return false;
+                }
+                let Ok(cmdline) = std::fs::read(proc_root.join(pid).join("cmdline")) else {
+                    return false;
+                };
+                if !is_torrserver_cmdline_bytes(&cmdline) {
+                    return false;
+                }
+                found_pids += 1;
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                }
+            }
+        }
+    }
+    found_pids > 0
+}
+
+#[cfg(target_os = "linux")]
+fn discover_torrserver_cgroupv2() -> Option<(usize, String)> {
+    let cgroup_root = Path::new("/sys/fs/cgroup");
+    let proc_root = Path::new("/proc");
+    let entries = std::fs::read_dir(proc_root).ok()?;
+    for entry in entries.flatten() {
+        let fname = entry.file_name();
+        let Some(pid_str) = fname.to_str() else {
+            continue;
+        };
+        if pid_str.is_empty() || !pid_str.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let proc_dir = entry.path();
+        let Ok(cmdline) = std::fs::read(proc_dir.join("cmdline")) else {
+            continue;
+        };
+        if !is_torrserver_cmdline_bytes(&cmdline) {
+            continue;
+        }
+        let Ok(cg_raw) = std::fs::read_to_string(proc_dir.join("cgroup")) else {
+            continue;
+        };
+        if let Some((level, rel)) = parse_cgroupv2_level_and_path(&cg_raw)
+            && is_dedicated_cgroup_dir(cgroup_root, proc_root, &rel)
+        {
+            return Some((level, rel));
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn discover_torrserver_cgroupv2() -> Option<(usize, String)> {
+    None
+}
+
+#[cfg(test)]
 fn compile_nftables_ruleset_full(
     store: &RouterStoreData,
     wan6_available: bool,
     extra_local_v6: &[String],
     dnat_redirects: &[FirewallDnatRedirect],
     lan_v4_ips: &[String],
+) -> String {
+    compile_nftables_ruleset_full_with_opts(
+        store,
+        wan6_available,
+        extra_local_v6,
+        dnat_redirects,
+        lan_v4_ips,
+        &NftCompileOpts::default(),
+    )
+}
+
+fn compile_nftables_ruleset_full_with_opts(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+    dnat_redirects: &[FirewallDnatRedirect],
+    lan_v4_ips: &[String],
+    opts: &NftCompileOpts,
 ) -> String {
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
@@ -2062,7 +2243,7 @@ fn compile_nftables_ruleset_full(
         for mac in &targets.src_macs {
             let _ = writeln!(
                 out,
-                "        ether saddr {mac} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+                "        meta nfproto ipv4 ether saddr {mac} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
             );
         }
         if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
@@ -2078,6 +2259,12 @@ fn compile_nftables_ruleset_full(
                     out,
                     "        ip6 saddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
                     targets.src_v6.join(", ")
+                );
+            }
+            for mac in &targets.src_macs {
+                let _ = writeln!(
+                    out,
+                    "        meta nfproto ipv6 ether saddr {mac} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
                 );
             }
         }
@@ -2109,7 +2296,6 @@ fn compile_nftables_ruleset_full(
         out,
         "    chain mangle_output {{
         type route hook output priority mangle; policy accept;
-        oifname \"lo\" return
         oifname {{ {bypass_ifaces_literal} }} return
         meta skgid {DIRECT_PROBE_SKGID} return
         meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return
@@ -2139,6 +2325,27 @@ fn compile_nftables_ruleset_full(
             "        meta l4proto {{ tcp, udp }} th dport {{ {} }} return",
             ports.join(", ")
         );
+    }
+    if store.settings.torrserver_direct_enabled
+        && let Some((level, ref cgroup_rel)) = opts.torrserver_cgroup
+    {
+        if store.settings.fakeip_enabled {
+            let _ = writeln!(
+                out,
+                "        ip daddr != {fakeip_v4} socket cgroupv2 level {level} \"{cgroup_rel}\" meta mark set {BYPASS_FWMARK} counter return comment \"tachyon-torrserver-direct\""
+            );
+            if ipv6_active {
+                let _ = writeln!(
+                    out,
+                    "        ip6 daddr != {fakeip_v6} socket cgroupv2 level {level} \"{cgroup_rel}\" meta mark set {BYPASS_FWMARK} counter return comment \"tachyon-torrserver-direct-v6\""
+                );
+            }
+        } else {
+            let _ = writeln!(
+                out,
+                "        socket cgroupv2 level {level} \"{cgroup_rel}\" meta mark set {BYPASS_FWMARK} counter return comment \"tachyon-torrserver-direct\""
+            );
+        }
     }
     let _ = writeln!(out, "        ct direction reply return");
     let _ = writeln!(out, "        ct status dnat return");
@@ -2173,27 +2380,28 @@ fn compile_nftables_ruleset_full(
             out,
             "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
+        if ipv6_active {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
+            );
+        }
     }
     if store.settings.fakeip_enabled {
         let _ = writeln!(
             out,
             "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
-    }
-    let _ = writeln!(out, "        ip daddr @localv4 return");
-    if ipv6_active {
-        if store.settings.fakeip_enabled {
+        if ipv6_active {
             let _ = writeln!(
                 out,
                 "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
             );
         }
-        if intercept_embedded_ts {
-            let _ = writeln!(
-                out,
-                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
-            );
-        }
+    }
+    let _ = writeln!(out, "        oifname \"lo\" return");
+    let _ = writeln!(out, "        ip daddr @localv4 return");
+    if ipv6_active {
         let _ = writeln!(out, "        ip6 daddr @localv6 return");
     } else if forward_guard {
         let _ = writeln!(
@@ -3012,12 +3220,14 @@ async fn release_dnsmasq_settings(names: &[String], servers_file: &str) -> bool 
 }
 
 async fn run_dnsmasq_init(action: &str) {
-    let _ = Command::new("/etc/init.d/dnsmasq")
-        .arg(action)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await;
+    let lock = DNSMASQ_INIT_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    let mut cmd = Command::new("/etc/init.d/dnsmasq");
+    cmd.arg(action).stdout(Stdio::null()).stderr(Stdio::null());
+    let _ = run_status_with_timeout(&mut cmd, Duration::from_secs(8)).await;
+    if action == "restart" {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -3037,6 +3247,7 @@ pub struct DnsmasqSyncPlan {
     pub changed: bool,
     pub set_opts: Vec<(&'static str, String)>,
     pub del_opts: Vec<&'static str>,
+    pub add_list_opts: Vec<(&'static str, Vec<String>)>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -3176,28 +3387,43 @@ fn compute_dnsmasq_sync_plan_detailed(
         );
     }
 
+    let mut add_list_opts: Vec<(&'static str, Vec<String>)> = Vec::new();
     if manage_servers {
-        let non_tachyon_servers: Vec<String> = cur
-            .servers
-            .iter()
-            .filter(|s| {
-                let clean = s.trim();
-                !clean.is_empty() && clean != "127.0.0.42#53" && clean != "127.0.0.42"
-            })
-            .cloned()
-            .collect();
-        if !cur.servers.is_empty() {
-            if cur.backup_prev_servers.is_none() && !non_tachyon_servers.is_empty() {
-                set_opts.push(("tachyon_prev_server", non_tachyon_servers.join(" ")));
+        let mut plain_upstreams: Vec<String> = Vec::new();
+        let mut domain_rules: Vec<String> = Vec::new();
+        let mut has_legacy_tachyon_srv = false;
+        for raw_srv in &cur.servers {
+            let clean = raw_srv.trim();
+            if clean.is_empty() {
+                continue;
             }
-            del_opts.push("server");
+            if clean == "127.0.0.42#53" || clean == "127.0.0.42" {
+                has_legacy_tachyon_srv = true;
+            } else if clean.starts_with('/') {
+                if !domain_rules.iter().any(|existing| existing == clean) {
+                    domain_rules.push(clean.to_string());
+                }
+            } else if !plain_upstreams.iter().any(|existing| existing == clean) {
+                plain_upstreams.push(clean.to_string());
+            }
+        }
+        if !plain_upstreams.is_empty() || has_legacy_tachyon_srv {
+            if cur.backup_prev_servers.is_none() && !plain_upstreams.is_empty() {
+                set_opts.push(("tachyon_prev_server", plain_upstreams.join(" ")));
+            }
+            if domain_rules.is_empty() {
+                del_opts.push("server");
+            } else {
+                add_list_opts.push(("server", domain_rules));
+            }
         }
     }
 
     DnsmasqSyncPlan {
-        changed: !set_opts.is_empty() || !del_opts.is_empty(),
+        changed: !set_opts.is_empty() || !del_opts.is_empty() || !add_list_opts.is_empty(),
         set_opts,
         del_opts,
+        add_list_opts,
     }
 }
 
@@ -3225,11 +3451,18 @@ pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan
         &mut del_opts,
     );
     if let Some(prev) = cur.backup_prev_servers.as_deref() {
-        let restored: Vec<String> = prev
-            .split_whitespace()
-            .filter(|s| !s.is_empty())
+        let mut restored: Vec<String> = cur
+            .servers
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && *s != "127.0.0.42#53" && *s != "127.0.0.42")
             .map(String::from)
             .collect();
+        for tok in prev.split_whitespace().filter(|s| !s.is_empty()) {
+            if !restored.iter().any(|existing| existing == tok) {
+                restored.push(tok.to_string());
+            }
+        }
         if !restored.is_empty() {
             add_list_opts.push(("server", restored));
         }
@@ -3241,6 +3474,26 @@ pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan
         del_opts,
         add_list_opts,
     }
+}
+
+async fn apply_uci_dnsmasq_mutations(
+    set_opts: &[(&'static str, String)],
+    del_opts: &[&'static str],
+    add_list_opts: &[(&'static str, Vec<String>)],
+) {
+    for (k, v) in set_opts {
+        uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+    }
+    for k in del_opts {
+        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
+    }
+    for (k, vals) in add_list_opts {
+        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
+        for v in vals {
+            uci_run(&["add_list", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+        }
+    }
+    uci_run(&["commit", "dhcp"]).await;
 }
 
 async fn sync_dnsmasq_uci_for_settings(settings: &GlobalSettings) -> Option<(bool, bool)> {
@@ -3256,13 +3509,7 @@ async fn sync_dnsmasq_uci_for_settings(settings: &GlobalSettings) -> Option<(boo
     if !plan.changed {
         return Some((false, false));
     }
-    for (k, v) in &plan.set_opts {
-        uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
-    }
-    for k in &plan.del_opts {
-        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
-    }
-    uci_run(&["commit", "dhcp"]).await;
+    apply_uci_dnsmasq_mutations(&plan.set_opts, &plan.del_opts, &plan.add_list_opts).await;
     Some((true, false))
 }
 
@@ -3278,19 +3525,7 @@ async fn restore_dnsmasq_uci() -> bool {
     if !plan.changed {
         return false;
     }
-    for (k, v) in &plan.set_opts {
-        uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
-    }
-    for k in &plan.del_opts {
-        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
-    }
-    for (k, vals) in &plan.add_list_opts {
-        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
-        for v in vals {
-            uci_run(&["add_list", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
-        }
-    }
-    uci_run(&["commit", "dhcp"]).await;
+    apply_uci_dnsmasq_mutations(&plan.set_opts, &plan.del_opts, &plan.add_list_opts).await;
     true
 }
 
@@ -3833,13 +4068,17 @@ pub async fn restore_odhcpd_lan_ipv6() {
     let _ = tokio::fs::remove_file(state_path).await;
 }
 
-async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
+async fn sync_tailscale_magicdns_with_apply(
+    enabled: bool,
+    release: bool,
+    apply_init: bool,
+) -> Option<&'static str> {
     let sections = discover_dnsmasq_sections().await;
     let legacy_uci_released =
         release_dnsmasq_settings(&sections, TAILSCALE_LEGACY_SERVERS_FILE).await;
     let legacy_servers_removed = std::fs::remove_file(TAILSCALE_LEGACY_SERVERS_FILE).is_ok();
 
-    if enabled {
+    let desired_action = if enabled {
         let file_sync = tokio::task::spawn_blocking(|| {
             sync_tailscale_magicdns_files_at(
                 Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE),
@@ -3859,9 +4098,11 @@ async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
         match claim_dnsmasq_settings(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await {
             Some(uci_changed) => {
                 if file_sync.legacy_removed || legacy_servers_removed {
-                    run_dnsmasq_init("restart").await;
+                    Some("restart")
                 } else if file_sync.file_changed || uci_changed || legacy_uci_released {
-                    run_dnsmasq_init("reload").await;
+                    Some("reload")
+                } else {
+                    None
                 }
             }
             None => {
@@ -3872,45 +4113,53 @@ async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
                     let _ = tokio::fs::remove_file(TAILSCALE_MAGICDNS_SERVERS_FILE).await;
                 }
                 if file_sync.legacy_removed || legacy_servers_removed || legacy_uci_released {
-                    run_dnsmasq_init("restart").await;
+                    Some("restart")
+                } else {
+                    None
                 }
             }
         }
-        return;
-    }
-
-    let uci_changed = if release {
-        release_dnsmasq_settings(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await
     } else {
-        false
-    };
-    let in_use = if release {
-        dnsmasq_servers_file_in_use(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await
-    } else {
-        true
-    };
-    let file_sync = tokio::task::spawn_blocking(move || {
-        sync_tailscale_magicdns_files_at(
-            Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE),
-            Path::new(TAILSCALE_LEGACY_DNSMASQ_CONF),
-            false,
-            release,
-            in_use,
-        )
-    })
-    .await
-    .ok()
-    .and_then(|res| res.ok())
-    .unwrap_or(MagicDnsFileSync {
-        file_changed: false,
-        legacy_removed: false,
-    });
+        let uci_changed = if release {
+            release_dnsmasq_settings(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await
+        } else {
+            false
+        };
+        let in_use = if release {
+            dnsmasq_servers_file_in_use(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await
+        } else {
+            true
+        };
+        let file_sync = tokio::task::spawn_blocking(move || {
+            sync_tailscale_magicdns_files_at(
+                Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE),
+                Path::new(TAILSCALE_LEGACY_DNSMASQ_CONF),
+                false,
+                release,
+                in_use,
+            )
+        })
+        .await
+        .ok()
+        .and_then(|res| res.ok())
+        .unwrap_or(MagicDnsFileSync {
+            file_changed: false,
+            legacy_removed: false,
+        });
 
-    if file_sync.legacy_removed || legacy_servers_removed {
-        run_dnsmasq_init("restart").await;
-    } else if uci_changed || legacy_uci_released || file_sync.file_changed {
-        run_dnsmasq_init("reload").await;
+        if file_sync.legacy_removed || legacy_servers_removed {
+            Some("restart")
+        } else if uci_changed || legacy_uci_released || file_sync.file_changed {
+            Some("reload")
+        } else {
+            None
+        }
+    };
+
+    if apply_init && let Some(action) = desired_action {
+        run_dnsmasq_init(action).await;
     }
+    desired_action
 }
 
 pub fn legacy_policy_cleanup_specs() -> &'static [(bool, &'static [&'static str])] {
@@ -3921,6 +4170,14 @@ pub fn legacy_policy_cleanup_specs() -> &'static [(bool, &'static [&'static str]
         ),
         (
             false,
+            &["iif", "lo", "fwmark", TPROXY_FWMARK_MASKED, "table", "main"],
+        ),
+        (
+            true,
+            &["iif", "lo", "fwmark", TPROXY_FWMARK, "table", "main"],
+        ),
+        (
+            true,
             &["iif", "lo", "fwmark", TPROXY_FWMARK_MASKED, "table", "main"],
         ),
         (
@@ -3982,6 +4239,31 @@ pub fn legacy_policy_cleanup_specs() -> &'static [(bool, &'static [&'static str]
     ]
 }
 
+async fn flush_tproxy_route_tables() {
+    for fam in ["", "-6"] {
+        let mut r_100 = Vec::new();
+        let mut r_tachyon = Vec::new();
+        if !fam.is_empty() {
+            r_100.push(fam);
+            r_tachyon.push(fam);
+        }
+        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
+        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
+        let _ = Command::new("ip")
+            .args(&r_100)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        let _ = Command::new("ip")
+            .args(&r_tachyon)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+}
+
 pub(crate) async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
     for &(ipv6, args) in legacy_policy_cleanup_specs() {
         del_ip_rule_all(ipv6, args).await;
@@ -4032,28 +4314,7 @@ pub(crate) async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
             .status()
             .await;
     }
-    for fam in ["", "-6"] {
-        let mut r_100 = Vec::new();
-        let mut r_tachyon = Vec::new();
-        if !fam.is_empty() {
-            r_100.push(fam);
-            r_tachyon.push(fam);
-        }
-        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
-        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
-        let _ = Command::new("ip")
-            .args(&r_100)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-        let _ = Command::new("ip")
-            .args(&r_tachyon)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-    }
+    flush_tproxy_route_tables().await;
     tun_guard_clear().await;
 }
 
@@ -4496,28 +4757,6 @@ pub async fn remove_kill_switch() {
         crate::net_stack_iptables::remove_iptables_kill_switch().await;
         return;
     }
-    for fam in ["", "-6"] {
-        let mut r_100 = Vec::new();
-        let mut r_tachyon = Vec::new();
-        if !fam.is_empty() {
-            r_100.push(fam);
-            r_tachyon.push(fam);
-        }
-        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
-        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
-        let _ = Command::new("ip")
-            .args(&r_100)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-        let _ = Command::new("ip")
-            .args(&r_tachyon)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-    }
     tun_guard_clear().await;
     let (_, fw4_file) = fw4_include_paths();
     let _ = std::fs::remove_file(fw4_file);
@@ -4536,6 +4775,52 @@ async fn tun_guard_clear() {
         for pref in ["9499", "9500", "9501"] {
             del_ip_rule_all(fam, &["pref", pref]).await;
         }
+    }
+}
+
+async fn probe_local_dns_once(addr: &str) -> bool {
+    const ROOT_A_QUERY: [u8; 17] = [
+        0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x01,
+    ];
+    let bind_addr = if addr.starts_with('[') {
+        "[::1]:0"
+    } else {
+        "127.0.0.1:0"
+    };
+    if let Ok(sock) = tokio::net::UdpSocket::bind(bind_addr).await
+        && sock.connect(addr).await.is_ok()
+        && sock.send(&ROOT_A_QUERY).await.is_ok()
+    {
+        let mut buf = [0u8; 512];
+        if let Ok(Ok(n)) =
+            tokio::time::timeout(Duration::from_millis(150), sock.recv(&mut buf)).await
+            && n >= 12
+        {
+            return true;
+        }
+    }
+    matches!(
+        tokio::time::timeout(
+            Duration::from_millis(150),
+            tokio::net::TcpStream::connect(addr)
+        )
+        .await,
+        Ok(Ok(_))
+    )
+}
+
+pub(crate) async fn wait_local_dns_ready_at(addr: &str, max_wait: Duration) -> bool {
+    let capped = max_wait.min(Duration::from_millis(1200));
+    let deadline = tokio::time::Instant::now() + capped;
+    loop {
+        if probe_local_dns_once(addr).await {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(60)).await;
     }
 }
 
@@ -4560,52 +4845,22 @@ pub(crate) async fn wait_local_dns_ready(store: &RouterStoreData, max_wait: Dura
     } else {
         "127.0.0.42:53".to_string()
     };
-    let deadline = tokio::time::Instant::now() + max_wait;
-    loop {
-        if let Ok(Ok(_stream)) = tokio::time::timeout(
-            Duration::from_millis(200),
-            tokio::net::TcpStream::connect(&addr),
-        )
-        .await
-        {
-            return true;
-        }
-        if tokio::time::Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(Duration::from_millis(120)).await;
-    }
+    wait_local_dns_ready_at(&addr, max_wait).await
+}
+
+pub(crate) fn should_flush_route_tables_in_tun_guard(proxy_mode: &str) -> bool {
+    proxy_mode == "tun"
 }
 
 pub(crate) async fn tun_guard_sync(store: &RouterStoreData) {
-    for fam in ["", "-6"] {
-        let mut r_100 = Vec::new();
-        let mut r_tachyon = Vec::new();
-        if !fam.is_empty() {
-            r_100.push(fam);
-            r_tachyon.push(fam);
-        }
-        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
-        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
-        let _ = Command::new("ip")
-            .args(&r_100)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-        let _ = Command::new("ip")
-            .args(&r_tachyon)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-    }
     tun_guard_clear().await;
     if cfg!(not(target_os = "linux"))
-        || store.settings.proxy_mode != "tun"
-        || !store.settings.tun_kill_switch
-        || direct_fallback_veto(store).is_none()
+        || !should_flush_route_tables_in_tun_guard(&store.settings.proxy_mode)
     {
+        return;
+    }
+    flush_tproxy_route_tables().await;
+    if !store.settings.tun_kill_switch || direct_fallback_veto(store).is_none() {
         return;
     }
     for iface in kill_switch_source_interfaces(&store.settings) {
@@ -4704,23 +4959,107 @@ pub async fn sync_kill_switch_after_apply(store: &RouterStoreData) {
     }
 }
 
+fn strip_nft_lines_containing(ruleset: &str, needle: &str) -> String {
+    ruleset
+        .lines()
+        .filter(|line| !line.contains(needle))
+        .map(|line| format!("{line}\n"))
+        .collect()
+}
+
 async fn apply_nft_stdin_with_fib_fallback(ruleset: &str) -> anyhow::Result<()> {
     try_modprobe_quiet("nft_fib_inet").await;
     match apply_nft_stdin(ruleset).await {
         Ok(()) => Ok(()),
+        Err(first_err) if ruleset.contains("socket cgroupv2") => {
+            eprintln!(
+                "[tachyon] nft apply with socket cgroupv2 failed ({first_err:#}); retrying without cgroupv2 rules"
+            );
+            let without_cg = strip_nft_lines_containing(ruleset, "socket cgroupv2");
+            match apply_nft_stdin(&without_cg).await {
+                Ok(()) => Ok(()),
+                Err(second_err) if without_cg.contains("fib ") => {
+                    eprintln!(
+                        "[tachyon] nft apply with fib expressions failed ({second_err:#}); retrying without fib rules"
+                    );
+                    let without_fib = strip_nft_lines_containing(&without_cg, "fib ");
+                    apply_nft_stdin(&without_fib).await
+                }
+                Err(err) => Err(err),
+            }
+        }
         Err(first_err) if ruleset.contains("fib ") => {
             eprintln!(
                 "[tachyon] nft apply with fib expressions failed ({first_err:#}); retrying without fib rules"
             );
-            let stripped: String = ruleset
-                .lines()
-                .filter(|line| !line.contains("fib "))
-                .map(|line| format!("{line}\n"))
-                .collect();
+            let stripped = strip_nft_lines_containing(ruleset, "fib ");
             apply_nft_stdin(&stripped).await
         }
         Err(err) => Err(err),
     }
+}
+
+async fn apply_tproxy_policy_rules_for_family(ip6: bool) -> anyhow::Result<()> {
+    let local_cidr = if ip6 { "::/0" } else { "0.0.0.0/0" };
+    let mut r99 = Vec::with_capacity(10);
+    let mut r100 = Vec::with_capacity(8);
+    let mut r101 = Vec::with_capacity(8);
+    let mut rt = Vec::with_capacity(8);
+    if ip6 {
+        r99.push("-6");
+        r100.push("-6");
+        r101.push("-6");
+        rt.push("-6");
+    }
+    // Rule pref 99 answers reverse-path `iif lo` checks for LAN packets (`0x04000000`)
+    // from `main` when `net.ipv4.conf.all.src_valid_mark=1` (e.g. Tailscale netfilter mode).
+    r99.extend([
+        "rule",
+        "add",
+        "iif",
+        "lo",
+        "fwmark",
+        TPROXY_FWMARK_MASKED,
+        "table",
+        "main",
+        "pref",
+        "99",
+    ]);
+    r100.extend([
+        "rule",
+        "add",
+        "fwmark",
+        TPROXY_FWMARK_MASKED,
+        "table",
+        TPROXY_ROUTE_TABLE,
+        "pref",
+        "100",
+    ]);
+    r101.extend([
+        "rule",
+        "add",
+        "fwmark",
+        ROUTER_TPROXY_FWMARK_MASKED,
+        "table",
+        TPROXY_ROUTE_TABLE,
+        "pref",
+        "101",
+    ]);
+    rt.extend([
+        "route",
+        "replace",
+        "local",
+        local_cidr,
+        "dev",
+        "lo",
+        "table",
+        TPROXY_ROUTE_TABLE,
+    ]);
+    run_checked_ip(&r99).await?;
+    run_checked_ip(&r100).await?;
+    run_checked_ip(&r101).await?;
+    run_checked_ip(&rt).await?;
+    Ok(())
 }
 
 /// Apply the active firewall backend (`nftables` on OpenWrt, `iptables` on Entware) and policy routing.
@@ -4813,101 +5152,25 @@ async fn apply_network_stack_inner(
             if intercept_embedded_ts {
                 neutralize_standalone_tailscale_service().await;
             }
-            let ruleset = compile_nftables_ruleset_with_wan6(
+            let torrserver_cgroup = if store.settings.torrserver_direct_enabled {
+                discover_torrserver_cgroupv2()
+            } else {
+                None
+            };
+            let ruleset = compile_nftables_ruleset_with_wan6_and_opts(
                 store,
                 wan6_cache.wan6_available,
                 &wan6_cache.wan6_prefixes,
+                &NftCompileOpts { torrserver_cgroup },
             );
             apply_nft_stdin_with_fib_fallback(&ruleset).await?;
 
             // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
             cleanup_policy_rules_for(Some(fakeip_v6)).await;
 
-            // Rule pref 99 answers reverse-path `iif lo` checks for LAN packets (`0x04000000`)
-            // from `main` when `net.ipv4.conf.all.src_valid_mark=1` (e.g. Tailscale netfilter mode).
-            run_checked_ip(&[
-                "rule",
-                "add",
-                "iif",
-                "lo",
-                "fwmark",
-                TPROXY_FWMARK_MASKED,
-                "table",
-                "main",
-                "pref",
-                "99",
-            ])
-            .await?;
-            run_checked_ip(&[
-                "rule",
-                "add",
-                "fwmark",
-                TPROXY_FWMARK_MASKED,
-                "table",
-                TPROXY_ROUTE_TABLE,
-                "pref",
-                "100",
-            ])
-            .await?;
-            run_checked_ip(&[
-                "rule",
-                "add",
-                "fwmark",
-                ROUTER_TPROXY_FWMARK_MASKED,
-                "table",
-                TPROXY_ROUTE_TABLE,
-                "pref",
-                "101",
-            ])
-            .await?;
-            run_checked_ip(&[
-                "route",
-                "replace",
-                "local",
-                "0.0.0.0/0",
-                "dev",
-                "lo",
-                "table",
-                TPROXY_ROUTE_TABLE,
-            ])
-            .await?;
+            apply_tproxy_policy_rules_for_family(false).await?;
             if ipv6_state.is_active() {
-                run_checked_ip(&[
-                    "-6",
-                    "rule",
-                    "add",
-                    "fwmark",
-                    TPROXY_FWMARK_MASKED,
-                    "table",
-                    TPROXY_ROUTE_TABLE,
-                    "pref",
-                    "100",
-                ])
-                .await?;
-                run_checked_ip(&[
-                    "-6",
-                    "rule",
-                    "add",
-                    "fwmark",
-                    ROUTER_TPROXY_FWMARK_MASKED,
-                    "table",
-                    TPROXY_ROUTE_TABLE,
-                    "pref",
-                    "101",
-                ])
-                .await?;
-                run_checked_ip(&[
-                    "-6",
-                    "route",
-                    "replace",
-                    "local",
-                    "::/0",
-                    "dev",
-                    "lo",
-                    "table",
-                    TPROXY_ROUTE_TABLE,
-                ])
-                .await?;
+                apply_tproxy_policy_rules_for_family(true).await?;
                 if store.settings.fakeip_enabled {
                     // Ensure kernel initial `OUTPUT` route lookup succeeds for FakeIPv6 when no WAN6 default route exists (`tunnel_over_v4` / offline WAN6) before `mangle_output` sets fwmark.
                     let _ =
@@ -4933,6 +5196,7 @@ async fn apply_network_stack_inner(
         }
 
         if !store.settings.dont_touch_dhcp {
+            let mut need_dnsmasq_restart = false;
             let (dnsmasq_uci_changed, is_adguard_mode) =
                 sync_dnsmasq_uci_for_settings(&store.settings)
                     .await
@@ -4949,20 +5213,27 @@ async fn apply_network_stack_inner(
                     }
                 }
                 if dnsmasq_changed || dnsmasq_uci_changed {
-                    let _ = wait_local_dns_ready(store, Duration::from_secs(3)).await;
-                    run_dnsmasq_init("restart").await;
+                    need_dnsmasq_restart = true;
                 }
             } else {
                 for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
                     let _ = std::fs::remove_file(dir.join("tachyon.conf"));
                 }
             }
-            if intercept_embedded_ts {
+            let ts_dns_action = if intercept_embedded_ts {
                 let _ = std::fs::remove_file("/tmp/resolv.conf.d/resolv.conf.tailscale");
-                sync_tailscale_magicdns(false, true).await;
+                sync_tailscale_magicdns_with_apply(false, true, false).await
             } else {
                 let ts_dns = native_tailscale_magicdns_enabled(store);
-                sync_tailscale_magicdns(ts_dns, !ts_dns).await;
+                sync_tailscale_magicdns_with_apply(ts_dns, !ts_dns, false).await
+            };
+            if need_dnsmasq_restart || ts_dns_action == Some("restart") {
+                if need_dnsmasq_restart {
+                    let _ = wait_local_dns_ready(store, Duration::from_millis(1200)).await;
+                }
+                run_dnsmasq_init("restart").await;
+            } else if ts_dns_action == Some("reload") && !is_adguard_mode {
+                run_dnsmasq_init("reload").await;
             }
             sync_odhcpd_lan_ipv6(store, ipv6_state).await;
         }
@@ -5736,6 +6007,7 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
         .status()
         .await;
     cleanup_policy_rules().await;
+    let mut need_dnsmasq_restart = false;
     if preserve_fail_closed_dns {
         let _ = run_nft_quiet(
             &[
@@ -5757,10 +6029,15 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
         }
         let dnsmasq_uci_restored = restore_dnsmasq_uci().await;
         if dnsmasq_changed || dnsmasq_uci_restored {
-            run_dnsmasq_init("restart").await;
+            need_dnsmasq_restart = true;
         }
     }
-    sync_tailscale_magicdns(false, false).await;
+    let ts_dns_action = sync_tailscale_magicdns_with_apply(false, false, false).await;
+    if need_dnsmasq_restart || ts_dns_action == Some("restart") {
+        run_dnsmasq_init("restart").await;
+    } else if ts_dns_action == Some("reload") {
+        run_dnsmasq_init("reload").await;
+    }
     remove_fw4_flow_offload_guard().await;
     restore_odhcpd_lan_ipv6().await;
     teardown_sqm_qdisc().await;
@@ -5839,6 +6116,11 @@ mod tests {
             && args.contains(&TPROXY_FWMARK_MASKED)
             && args.contains(&"tachyon")));
         assert!(specs.iter().any(|(v6, args)| !v6
+            && args.contains(&"iif")
+            && args.contains(&"lo")
+            && args.contains(&TPROXY_FWMARK_MASKED)
+            && args.contains(&"main")));
+        assert!(specs.iter().any(|(v6, args)| *v6
             && args.contains(&"iif")
             && args.contains(&"lo")
             && args.contains(&TPROXY_FWMARK_MASKED)
@@ -7340,12 +7622,15 @@ config redirect 'restricted_src_ip'
         let out_ts = out
             .find("ip daddr 100.64.0.0/10")
             .expect("mangle_output tailscale");
-        let out_localv4 = out
-            .find("ip daddr @localv4 return")
-            .expect("mangle_output localv4 return");
         let out_fakeip = out
             .find("ip daddr 198.18.0.0/15 meta l4proto { tcp, udp } meta mark set 0x10000000")
             .expect("mangle_output fakeip mark");
+        let out_lo = out
+            .find("oifname \"lo\" return")
+            .expect("mangle_output lo return");
+        let out_localv4 = out
+            .find("ip daddr @localv4 return")
+            .expect("mangle_output localv4 return");
         let out_router_all = out
             .rfind("\n        meta l4proto { tcp, udp } meta mark set 0x10000000")
             .expect("mangle_output route_router_traffic");
@@ -7355,8 +7640,22 @@ config redirect 'restricted_src_ip'
         assert!(out_fib < out_quic);
         assert!(out_fib < out_ts);
         assert!(out_ts < out_fakeip);
-        assert!(out_fakeip < out_localv4);
+        assert!(out_fakeip < out_lo);
+        assert!(out_lo < out_localv4);
         assert!(out_localv4 < out_router_all);
+
+        // In tunnel_over_v4 (wan6_available = false), FakeIPv6 mark rule MUST precede `oifname "lo" return`.
+        store.settings.ipv6_mode = "tunnel_over_v4".to_string();
+        let nft_v6 = compile_nftables_ruleset_full(&store, false, &[], &redirects, &lan_ips);
+        let out_v6_start = nft_v6.find("chain mangle_output {").expect("mangle_output");
+        let out_v6 = &nft_v6[out_v6_start..];
+        let v6_fakeip = out_v6
+            .find("ip6 daddr fc00::/18 meta l4proto { tcp, udp } meta mark set 0x10000000")
+            .expect("mangle_output fakeip6 mark");
+        let v6_lo = out_v6
+            .find("oifname \"lo\" return")
+            .expect("mangle_output lo return");
+        assert!(v6_fakeip < v6_lo);
     }
 
     #[test]
@@ -7801,5 +8100,236 @@ config host
         assert!(
             guest_dl.contains("ip daddr { 192.168.4.10 } limit rate over 1000 kbytes/second drop")
         );
+    }
+
+    #[test]
+    fn test_dnsmasq_preserves_domain_forward_rules_on_sync_and_restore() {
+        let settings = GlobalSettings {
+            fakeip_enabled: true,
+            ..GlobalSettings::default()
+        };
+
+        // 1. Only conditional domain-forward rules -> do not mutate `server` at all.
+        let domain_only = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='0'
+dhcp.cfg01411c.server='/corp.local/10.0.0.1' '/lan/'
+",
+        );
+        let plan_only = compute_dnsmasq_sync_plan_with_settings(&domain_only, &settings);
+        assert!(!plan_only.changed);
+        assert!(plan_only.del_opts.is_empty());
+        assert!(plan_only.add_list_opts.is_empty());
+
+        // 2. Mixed plain upstreams + domain-forward rules -> back up ONLY plain upstreams, keep domain rules.
+        let mixed = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='0'
+dhcp.cfg01411c.server='/corp.local/10.0.0.1' '1.1.1.1' '8.8.8.8'
+",
+        );
+        let plan_mixed = compute_dnsmasq_sync_plan_with_settings(&mixed, &settings);
+        assert!(plan_mixed.changed);
+        assert!(
+            plan_mixed
+                .set_opts
+                .contains(&("tachyon_prev_server", "1.1.1.1 8.8.8.8".to_string()))
+        );
+        assert!(!plan_mixed.del_opts.contains(&"server"));
+        assert_eq!(
+            plan_mixed.add_list_opts,
+            vec![("server", vec!["/corp.local/10.0.0.1".to_string()])]
+        );
+
+        // 3. Restore merges preserved domain-forward rules with backed-up plain upstreams.
+        let synced_mixed = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='0'
+dhcp.cfg01411c.server='/corp.local/10.0.0.1'
+dhcp.cfg01411c.tachyon_prev_server='1.1.1.1 8.8.8.8'
+",
+        );
+        let restore_mixed = compute_dnsmasq_restore_plan(&synced_mixed);
+        assert_eq!(
+            restore_mixed.add_list_opts,
+            vec![(
+                "server",
+                vec![
+                    "/corp.local/10.0.0.1".to_string(),
+                    "1.1.1.1".to_string(),
+                    "8.8.8.8".to_string(),
+                ]
+            )]
+        );
+        assert!(restore_mixed.del_opts.contains(&"tachyon_prev_server"));
+    }
+
+    #[test]
+    fn test_selective_tproxy_mac_targets_ipv4_and_ipv6() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.selective_tproxy = true;
+        store.settings.ipv6_mode = "tunnel_over_v4".to_string();
+        store.sections = vec![crate::store::RoutingSection {
+            id: "Proxy".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            fully_routed_ips: vec!["AA:BB:CC:11:22:33".to_string()],
+            ..Default::default()
+        }];
+
+        let nft_v6 = compile_nftables_ruleset_full(&store, false, &[], &[], &[]);
+        assert!(nft_v6.contains(
+            "meta nfproto ipv4 ether saddr aa:bb:cc:11:22:33 meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(nft_v6.contains(
+            "meta nfproto ipv6 ether saddr aa:bb:cc:11:22:33 meta l4proto { tcp, udp } tproxy ip6 to [::1]:1602"
+        ));
+
+        store.settings.ipv6_mode = "off".to_string();
+        let nft_v4 = compile_nftables_ruleset_full(&store, false, &[], &[], &[]);
+        assert!(nft_v4.contains(
+            "meta nfproto ipv4 ether saddr aa:bb:cc:11:22:33 meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(!nft_v4.contains("tproxy ip6 to [::1]:1602"));
+    }
+
+    #[test]
+    fn test_torrserver_cgroupv2_cmdline_and_fakeip_exemption() {
+        assert!(is_torrserver_cmdline_bytes(
+            b"/opt/torrserver/torrserver\0-p\08090\0-d\0/mnt/data\0"
+        ));
+        assert!(is_torrserver_cmdline_bytes(
+            b"TorrServer-linux-arm64\0--port\08090\0"
+        ));
+        assert!(!is_torrserver_cmdline_bytes(
+            b"/bin/sh\0-c\0pgrep -f torrserver\0"
+        ));
+        assert!(!is_torrserver_cmdline_bytes(b""));
+
+        assert_eq!(
+            parse_cgroupv2_level_and_path("0::/services/torrserver/sub\n"),
+            Some((2, "services/torrserver".to_string()))
+        );
+        assert_eq!(
+            parse_cgroupv2_level_and_path("1:name=systemd:/\n0::/torrserver.service\n"),
+            Some((1, "torrserver.service".to_string()))
+        );
+        assert_eq!(parse_cgroupv2_level_and_path("0::/\n"), None);
+        assert_eq!(parse_cgroupv2_level_and_path("0::/services\n"), None);
+        assert_eq!(parse_cgroupv2_level_and_path("0::/system.slice\n"), None);
+        assert_eq!(parse_cgroupv2_level_and_path("0::/user.slice\n"), None);
+        assert_eq!(parse_cgroupv2_level_and_path("0::/init.scope\n"), None);
+
+        // Dedicated cgroup verification: reject shared cgroups with non-TorrServer PIDs.
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let cg_tmp = std::env::temp_dir().join(format!("tachyon_ts_cg_{uniq}"));
+        let cg_root = cg_tmp.join("cgroup");
+        let proc_root = cg_tmp.join("proc");
+        let ts_cg = cg_root.join("services/torrserver");
+        std::fs::create_dir_all(&ts_cg).expect("mkdir cg");
+        std::fs::create_dir_all(proc_root.join("101")).expect("mkdir p101");
+        std::fs::create_dir_all(proc_root.join("102")).expect("mkdir p102");
+        std::fs::write(
+            proc_root.join("101/cmdline"),
+            b"/usr/bin/torrserver\0-p\08090\0",
+        )
+        .expect("write 101");
+        std::fs::write(proc_root.join("102/cmdline"), b"/usr/sbin/dropbear\0-F\0")
+            .expect("write 102");
+        std::fs::write(ts_cg.join("cgroup.procs"), "101\n").expect("write procs");
+        assert!(is_dedicated_cgroup_dir(
+            &cg_root,
+            &proc_root,
+            "services/torrserver"
+        ));
+        std::fs::write(ts_cg.join("cgroup.procs"), "101\n102\n").expect("write mixed procs");
+        assert!(!is_dedicated_cgroup_dir(
+            &cg_root,
+            &proc_root,
+            "services/torrserver"
+        ));
+        let _ = std::fs::remove_dir_all(&cg_tmp);
+
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.ipv6_mode = "tunnel_over_v4".to_string();
+        store.settings.torrserver_direct_enabled = true;
+        let opts = NftCompileOpts {
+            torrserver_cgroup: Some((2, "services/torrserver".to_string())),
+        };
+        let nft = compile_nftables_ruleset_full_with_opts(&store, false, &[], &[], &[], &opts);
+        assert!(nft.contains(
+            "ip daddr != 198.18.0.0/15 socket cgroupv2 level 2 \"services/torrserver\" meta mark set 0x40000000 counter return comment \"tachyon-torrserver-direct\""
+        ));
+        assert!(nft.contains(
+            "ip6 daddr != fc00::/18 socket cgroupv2 level 2 \"services/torrserver\" meta mark set 0x40000000 counter return comment \"tachyon-torrserver-direct-v6\""
+        ));
+
+        let stripped = strip_nft_lines_containing(&nft, "socket cgroupv2");
+        assert!(!stripped.contains("socket cgroupv2"));
+        assert!(stripped.contains("chain mangle_output"));
+
+        store.settings.fakeip_enabled = false;
+        let nft_no_fakeip =
+            compile_nftables_ruleset_full_with_opts(&store, false, &[], &[], &[], &opts);
+        assert!(nft_no_fakeip.contains(
+            "        socket cgroupv2 level 2 \"services/torrserver\" meta mark set 0x40000000 counter return comment \"tachyon-torrserver-direct\""
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_tun_guard_route_table_guard_and_wait_local_dns_ready_udp_tcp() {
+        assert!(!should_flush_route_tables_in_tun_guard("tproxy"));
+        assert!(!should_flush_route_tables_in_tun_guard("socks"));
+        assert!(should_flush_route_tables_in_tun_guard("tun"));
+
+        // 1. UDP-only listener should succeed immediately.
+        let udp_srv = tokio::net::UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("bind udp");
+        let udp_addr = udp_srv.local_addr().expect("udp addr").to_string();
+        let udp_task = tokio::spawn(async move {
+            let mut buf = [0u8; 64];
+            if let Ok((n, peer)) = udp_srv.recv_from(&mut buf).await {
+                let _ = udp_srv.send_to(&buf[..n.max(12)], peer).await;
+            }
+        });
+        assert!(wait_local_dns_ready_at(&udp_addr, Duration::from_secs(2)).await);
+        let _ = udp_task.await;
+
+        // 2. TCP-only listener should also succeed immediately after UDP ECONNREFUSED.
+        let tcp_srv = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind tcp");
+        let tcp_addr = tcp_srv.local_addr().expect("tcp addr").to_string();
+        let tcp_task = tokio::spawn(async move {
+            let _ = tcp_srv.accept().await;
+        });
+        assert!(wait_local_dns_ready_at(&tcp_addr, Duration::from_secs(2)).await);
+        let _ = tcp_task.await;
+
+        // 3. Closed port respects 1200ms cap even if caller passes 5s.
+        let closed_sock = tokio::net::UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("bind temp");
+        let closed_addr = closed_sock.local_addr().expect("addr").to_string();
+        drop(closed_sock);
+        let started = std::time::Instant::now();
+        assert!(!wait_local_dns_ready_at(&closed_addr, Duration::from_secs(5)).await);
+        assert!(started.elapsed() < Duration::from_millis(2500));
     }
 }
