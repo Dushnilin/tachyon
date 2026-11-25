@@ -1,6 +1,6 @@
 [package]
 name = "tachyon"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.3"
 edition = "2024"
 description = "Pure-Rust OpenWrt routing orchestrator and control panel for tachyon-core"
 license = "GPL-2.0-only"
