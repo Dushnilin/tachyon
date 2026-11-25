@@ -375,19 +375,13 @@ pub fn paths() -> &'static PlatformPaths {
     PATHS.get_or_init(|| {
         let platform = detect_platform();
         let root_override = std::env::var("TACHYON_ROOT").ok();
-        let data_dir_override = std::env::var("TACHYON_DATA_DIR")
+        let env_data_dir = std::env::var("TACHYON_DATA_DIR")
             .ok()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                #[cfg(not(target_os = "linux"))]
-                {
-                    Some("data".to_string())
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    None
-                }
-            });
+            .filter(|s| !s.trim().is_empty());
+        #[cfg(not(target_os = "linux"))]
+        let data_dir_override = env_data_dir.or_else(|| Some("data".to_string()));
+        #[cfg(target_os = "linux")]
+        let data_dir_override = env_data_dir;
         let runtime_tmpfs = resolve_ram_tmpfs_dir();
         resolve_paths_for(
             platform,
