@@ -23,9 +23,23 @@ function command_output(args) {
     return status == 0 && data != null ? text(data) : "";
 }
 function read(path) { let value = fs.readfile(path); return value == null ? "" : text(value); }
+// /proc/<pid>/cmdline uses NUL bytes as argument separators; ucode regex/string
+// replace treats "\0" as an empty C-string, so decode bytes explicitly.
+function normalize_cmdline(value) {
+    let raw = text(value);
+    let parts = [];
+    for (let i = 0; i < length(raw); i++) {
+        let b = ord(raw, i);
+        push(parts, b == 0 ? " " : chr(b));
+    }
+    return join("", parts);
+}
 function is_torrserver_cmdline(value) {
-    value = lc(replace(text(value), /\x00/g, " "));
-    return match(value, /(^|[/ ])torrserver([^/ ]*)?( |$)/) != null;
+    let cmd = trim(normalize_cmdline(value));
+    if (cmd == "") return false;
+    let space = index(cmd, " ");
+    let argv0 = lc(space >= 0 ? substr(cmd, 0, space) : cmd);
+    return match(argv0, /(^|\/)torrserver(-[^/]*)?$/) != null;
 }
 function numeric_pid(path) {
     let parts = split(path, "/");
@@ -80,15 +94,33 @@ function discover() {
     return { running: 0, available: 0, pid: "", cgroup: "" };
 }
 function enabled() { return trim(uci.get(CONFIG_NAME + ".settings.torrserver_direct_enabled")) == "1"; }
+function fakeip_enabled() {
+    let v = lc(trim(text(uci.get(CONFIG_NAME + ".settings.fakeip_enabled"))));
+    return v == "" || v == "1" || v == "true";
+}
+function fakeip4_range() {
+    if (!fakeip_enabled()) return "";
+    let v = trim(text(uci.get(CONFIG_NAME + ".settings.fakeip_inet4_range")));
+    return match(v, /^[0-9.]+\/[0-9]+$/) != null ? v : "198.18.0.0/15";
+}
+function fakeip6_range() {
+    if (!fakeip_enabled()) return "";
+    let v = trim(text(uci.get(CONFIG_NAME + ".settings.fakeip_inet6_range")));
+    return match(v, /^[0-9a-fA-F:]+\/[0-9]+$/) != null ? v : "fc00::/18";
+}
 function rule_output_active(output, info) {
     if (!info.available) return false;
     let path = substr(info.cgroup, 1);
     let parts = split(path, "/");
     let level = length(parts) > 2 ? 2 : length(parts);
     if (level == 2) path = parts[0] + "/" + parts[1];
+    let f4 = fakeip4_range();
+    let f6 = fakeip6_range();
     return (index(output, "type route hook output priority mangle - 1") >= 0 ||
             index(output, "type route hook output priority -151") >= 0) &&
         index(output, "socket cgroupv2 level " + level + " \"" + path + "\"") >= 0 &&
+        (f4 == "" || index(output, "ip daddr != " + f4) >= 0) &&
+        (f6 == "" || index(output, "ip6 daddr != " + f6) >= 0) &&
         (index(output, "meta mark set 0x08000000") >= 0 ||
          index(output, "meta mark set 0x8000000") >= 0) &&
         index(output, "Tachyon TorrServer Direct") >= 0;
@@ -104,16 +136,29 @@ function apply_rule(info) {
     let level = length(parts) > 2 ? 2 : length(parts);
     if (level == 2)
         path = parts[0] + "/" + parts[1];
-    remove_rule();
-    let ruleset_path = "/tmp/tachyon-torrserver-direct.nft";
+    let f4 = fakeip4_range();
+    let f6 = fakeip6_range();
     let ruleset = "add table inet " + TABLE + "\n" +
         "add chain inet " + TABLE + " output { type route hook output priority -151; policy accept; }\n" +
-        "add rule inet " + TABLE + " output socket cgroupv2 level " + level + " \"" + path +
-        "\" meta mark set " + OUTBOUND_MARK + " counter comment \"Tachyon TorrServer Direct\"\n";
-    if (fs.writefile(ruleset_path, ruleset) == null)
+        "flush chain inet " + TABLE + " output\n";
+    if (f4 != "") {
+        ruleset += "add rule inet " + TABLE + " output ip daddr != " + f4 +
+            " socket cgroupv2 level " + level + " \"" + path +
+            "\" meta mark set " + OUTBOUND_MARK + " counter comment \"Tachyon TorrServer Direct\"\n";
+        if (f6 != "") {
+            ruleset += "add rule inet " + TABLE + " output ip6 daddr != " + f6 +
+                " socket cgroupv2 level " + level + " \"" + path +
+                "\" meta mark set " + OUTBOUND_MARK + " counter comment \"Tachyon TorrServer Direct v6\"\n";
+        }
+    } else {
+        ruleset += "add rule inet " + TABLE + " output socket cgroupv2 level " + level + " \"" + path +
+            "\" meta mark set " + OUTBOUND_MARK + " counter comment \"Tachyon TorrServer Direct\"\n";
+    }
+    let pipe = fs.popen("nft -f - >/dev/null 2>&1", "w");
+    if (!pipe)
         return false;
-    let applied = success([ "nft", "-f", ruleset_path ]);
-    try { fs.unlink(ruleset_path); } catch (e) { }
+    pipe.write(ruleset);
+    let applied = pipe.close() == 0;
     if (!applied || !active(info)) {
         remove_rule();
         return false;
@@ -158,6 +203,7 @@ function reconcile() {
 function worker() {
     let last_cgroup = "";
     while (enabled()) {
+        uci.reload(CONFIG_NAME);
         let info = discover();
         if (info.available && (info.cgroup != last_cgroup || !active(info))) {
             if (apply_rule(info)) last_cgroup = info.cgroup;
@@ -182,5 +228,8 @@ else if (mode == "worker") worker();
 else if (mode == "rule-output-active") {
     let info = { available: 1, cgroup: ARGV[1] || "" };
     exit(rule_output_active(read("/dev/stdin"), info) ? 0 : 1);
+}
+else if (mode == "is-torrserver-cmdline") {
+    exit(is_torrserver_cmdline(read("/dev/stdin")) ? 0 : 1);
 }
 else exit(1);
