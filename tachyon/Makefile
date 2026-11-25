@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +curl +openssl-util +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full +kmod-nft-tproxy +kmod-tun +kmod-inet-diag
+	DEPENDS:=+ca-bundle +curl +openssl-util +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full +kmod-nft-tproxy +kmod-tun +kmod-inet-diag +luasocket
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	TITLE:=Tachyon backend service
 	URL:=https://github.com/Dushnilin/tachyon

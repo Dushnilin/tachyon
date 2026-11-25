@@ -1836,6 +1836,81 @@ function recent_connections_snapshot(path) {
     return (type(parsed) == "object" && type(parsed.connections) == "array") ? parsed : null;
 }
 
+function load_outbound_server_map() {
+    let cfg = common.read_json_file("/etc/tachyon-core/config.json");
+    let map = {};
+    if (type(cfg) == "object" && type(cfg.outbounds) == "array") {
+        for (let o in cfg.outbounds) {
+            if (o.tag && o.server && o.server_port)
+                map[o.tag] = { server: o.server, port: int(o.server_port) };
+        }
+    }
+    return map;
+}
+
+function run_tcp_ping_single(server, port, timeout_ms) {
+    if (server == null || server == "" || !port)
+        return null;
+    let cmd = sprintf("/usr/lib/tachyon/diagnostics/tcp_ping.lua single %s %d %d", shell_quote(as_string(server)), int(port), int(timeout_ms || 2000));
+    let out = command_output(cmd);
+    return parse_json_or_null(out);
+}
+
+function run_tcp_ping_batch(tags, srv_map, timeout_ms) {
+    if (length(tags) == 0)
+        return {};
+    let targets = [];
+    for (let t in tags) {
+        let srv = srv_map[t];
+        if (srv != null && srv.server && srv.port)
+            push(targets, { tag: t, server: srv.server, port: srv.port });
+    }
+    if (length(targets) == 0)
+        return {};
+    let tmp_req = sprintf("/tmp/tcp_ping_req_%d_%d.json", time(), clock()[1]);
+    common.write_json_file(tmp_req, targets);
+    let cmd = sprintf("/usr/lib/tachyon/diagnostics/tcp_ping.lua batch %s %d", shell_quote(tmp_req), int(timeout_ms || 2500));
+    let out = command_output(cmd);
+    try { fs.unlink(tmp_req); } catch(e) {}
+    let parsed = parse_json_or_null(out);
+    return (type(parsed) == "object" && type(parsed.results) == "object") ? parsed.results : {};
+}
+
+function update_cached_proxy_latency(tag, delay) {
+    let d = int(delay || 0);
+    if (d <= 0 || as_string(tag) == "")
+        return;
+    let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
+    let state_file = ui_state_dir + "/clash-proxies.json";
+    let state = parse_json_or_null(fs.readfile(state_file));
+    if (type(state) == "object" && type(state.proxies) == "object" && state.proxies[tag] != null) {
+        let iso_now = trim(command_output("date -u +%Y-%m-%dT%H:%M:%S.000000000Z"));
+        state.proxies[tag].history = [ { time: iso_now, delay: d } ];
+        common.write_file(state_file, sprintf("%J\n", state));
+    }
+}
+
+function update_clash_proxies_cache(measured_map) {
+    if (type(measured_map) != "object" || length(keys(measured_map)) == 0)
+        return;
+    let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
+    let state_file = ui_state_dir + "/clash-proxies.json";
+    let state = parse_json_or_null(fs.readfile(state_file));
+    if (type(state) != "object" || type(state.proxies) != "object")
+        return;
+    let iso_now = trim(command_output("date -u +%Y-%m-%dT%H:%M:%S.000000000Z"));
+    let updated = false;
+    for (let tag, delay in measured_map) {
+        let d = int(delay || 0);
+        if (d > 0 && state.proxies[tag] != null) {
+            state.proxies[tag].history = [ { time: iso_now, delay: d } ];
+            updated = true;
+        }
+    }
+    if (updated)
+        common.write_file(state_file, sprintf("%J\n", state));
+}
+
 function clash_api(action, arg1, arg2, arg3) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
@@ -1853,20 +1928,26 @@ function clash_api(action, arg1, arg2, arg3) {
         if (getenv("FAKE_CURL_LOG") == null) {
             let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
             common.ensure_dir(ui_state_dir);
-            common.write_file(ui_state_dir + "/clash-proxies.json", out);
-            if (length(out) > 56000) {
-                let parsed = parse_json_or_null(out);
-                if (type(parsed) == "object" && type(parsed.proxies) == "object") {
-                    for (let k, p in parsed.proxies) {
-                        if (type(p) == "object") {
-                            delete p.telemetry;
-                            if (type(p.history) == "array" && length(p.history) > 1)
-                                p.history = [ p.history[0] ];
+            let parsed = parse_json_or_null(out);
+            if (type(parsed) == "object" && type(parsed.proxies) == "object") {
+                let cached_file = ui_state_dir + "/clash-proxies.json";
+                let old_state = parse_json_or_null(fs.readfile(cached_file));
+                let old_proxies = (type(old_state) == "object" && type(old_state.proxies) == "object") ? old_state.proxies : {};
+                for (let k, p in parsed.proxies) {
+                    if (type(p) == "object") {
+                        delete p.telemetry;
+                        if (type(p.history) == "array" && length(p.history) > 1)
+                            p.history = [ p.history[0] ];
+                        if (length(p.history || []) == 0) {
+                            let prev_p = old_proxies[k];
+                            if (type(prev_p) == "object" && type(prev_p.history) == "array" && length(prev_p.history) > 0 && int(prev_p.history[0].delay || 0) > 0)
+                                p.history = [ prev_p.history[0] ];
                         }
                     }
-                    out = sprintf("%J\n", parsed);
                 }
+                out = sprintf("%J\n", parsed);
             }
+            common.write_file(ui_state_dir + "/clash-proxies.json", out);
         }
         print(out);
         return 0;
@@ -2005,7 +2086,29 @@ function clash_api(action, arg1, arg2, arg3) {
         push(args, "url=" + url);
         push(args, "--data-urlencode");
         push(args, "timeout=" + timeout_ms);
-        return clash_json_output(args);
+        let out = command_output(command_from_args(args));
+        let parsed = parse_json_or_null(out);
+        let is_ok = (type(parsed) == "object" && parsed.message == null && parsed.error == null && int(parsed.delay || 0) > 0);
+        if (is_ok) {
+            update_cached_proxy_latency(resolved_tag, int(parsed.delay));
+            print(out);
+            return 0;
+        }
+        let srv_map = load_outbound_server_map();
+        let target = srv_map[resolved_tag] || srv_map[arg1];
+        if (target != null && target.server && target.port) {
+            let tcp_res = run_tcp_ping_single(target.server, target.port, int(timeout_ms));
+            if (type(tcp_res) == "object" && int(tcp_res.delay || 0) > 0) {
+                update_cached_proxy_latency(resolved_tag, int(tcp_res.delay));
+                print(sprintf("%J\n", { delay: int(tcp_res.delay) }));
+                return 0;
+            }
+        }
+        if (out != null && out != "")
+            print(out);
+        else
+            print("{}\n");
+        return 0;
     }
 
     if (action == "get_proxy_latencies") {
@@ -2107,6 +2210,7 @@ function clash_api(action, arg1, arg2, arg3) {
         }
 
         let total = length(proxy_tags);
+        let all_wave_results = {};
         if (progress_path != "")
             module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
 
@@ -2168,7 +2272,7 @@ function clash_api(action, arg1, arg2, arg3) {
                 let batch_supported = false;
                 let probe_chunk_size = 48;
                 let parallel_chunks = 1;
-                let all_wave_results = {};
+                all_wave_results = {};
                 let retry_failed_batch = function(failed_tags, wave_results, wave_id) {
                     if (length(failed_tags) == 0)
                         return;
@@ -2245,13 +2349,28 @@ function clash_api(action, arg1, arg2, arg3) {
                             }
                             if (!any_ok && length(retry_tags) > 0)
                                 retry_failed_batch(retry_tags, wave_results, 0);
+                            let tcp_retry_tags_0 = [];
                             for (let t in wave_tags) {
                                 let entry = wave_results[t];
                                 let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
                                 if (is_ok)
                                     all_wave_results[t] = int(entry.delay);
-                                else
+                                else if (lc(as_string(proxy_types[t])) != "urltest")
+                                    push(tcp_retry_tags_0, t);
+                            }
+                            if (length(tcp_retry_tags_0) > 0) {
+                                let srv_map = load_outbound_server_map();
+                                let tcp_res = run_tcp_ping_batch(tcp_retry_tags_0, srv_map, 2000);
+                                for (let t, d in tcp_res) {
+                                    if (int(d || 0) > 0)
+                                        all_wave_results[t] = int(d);
+                                }
+                            }
+                            for (let t in wave_tags) {
+                                if (int(all_wave_results[t] || 0) > 0) {
+                                } else {
                                     failed++;
+                                }
                                 count++;
                             }
                             if (progress_path != "")
@@ -2307,13 +2426,28 @@ function clash_api(action, arg1, arg2, arg3) {
                             }
                             if (!any_ok && length(retry_tags) > 0)
                                 retry_failed_batch(retry_tags, wave_results, w);
+                            let tcp_retry_tags_w = [];
                             for (let t in w_tags) {
                                 let entry = wave_results[t];
                                 let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
                                 if (is_ok)
                                     all_wave_results[t] = int(entry.delay);
-                                else
+                                else if (lc(as_string(proxy_types[t])) != "urltest")
+                                    push(tcp_retry_tags_w, t);
+                            }
+                            if (length(tcp_retry_tags_w) > 0) {
+                                let srv_map = load_outbound_server_map();
+                                let tcp_res = run_tcp_ping_batch(tcp_retry_tags_w, srv_map, 2000);
+                                for (let t, d in tcp_res) {
+                                    if (int(d || 0) > 0)
+                                        all_wave_results[t] = int(d);
+                                }
+                            }
+                            for (let t in w_tags) {
+                                if (int(all_wave_results[t] || 0) > 0) {
+                                } else {
                                     failed++;
+                                }
                                 count++;
                             }
                             if (progress_path != "")
@@ -2341,7 +2475,8 @@ function clash_api(action, arg1, arg2, arg3) {
                             let cur_delay = int(all_wave_results[cur_now] || 0);
                             if (cur_now == "" || cur_delay <= 0 || best_delay + 50 < cur_delay) {
                                 let put_payload = status_output([ "clash-set-group-proxy-payload", best_child ], null);
-                                let put_args = [ "curl", "-X", "PUT", "-s", "--connect-timeout", "2", "-m", "3", base_url + "/proxies/" + clash_urlencode(gt) ];
+                                let target_gt = match(gt, /-urltest-out$/) ? replace(gt, /-urltest-out$/, "-out") : gt;
+                                let put_args = [ "curl", "-X", "PUT", "-s", "--connect-timeout", "2", "-m", "3", base_url + "/proxies/" + clash_urlencode(target_gt) ];
                                 for (let item in auth) push(put_args, item);
                                 push(put_args, "--data-raw", put_payload);
                                 common.command_status(command_from_args(put_args));
@@ -2399,6 +2534,22 @@ function clash_api(action, arg1, arg2, arg3) {
                 system("rm -rf " + shell_quote(tmp_dir) + " >/dev/null 2>&1 || true");
             }
         }
+        let missing_tags = [];
+        for (let t in ordered_proxy_tags) {
+            if (int(all_wave_results[t] || 0) <= 0)
+                push(missing_tags, t);
+        }
+        if (length(missing_tags) > 0) {
+            let srv_map = load_outbound_server_map();
+            let tcp_res = run_tcp_ping_batch(missing_tags, srv_map, 2500);
+            for (let t, d in tcp_res) {
+                if (int(d || 0) > 0) {
+                    all_wave_results[t] = int(d);
+                    if (failed > 0) failed--;
+                }
+            }
+        }
+        update_clash_proxies_cache(all_wave_results);
         let result = status_capture([ "clash-proxy-latencies-result", count, failed ], null);
         if (result.output != "")
             print(result.output);
@@ -2517,6 +2668,19 @@ function clash_api(action, arg1, arg2, arg3) {
                                 }
                                 if (!any_ok && length(retry_tags) > 0)
                                     retry_failed_group_batch(retry_tags, out_map, w);
+                                let g_tcp_retry = [];
+                                for (let t in w_tags) {
+                                    if (out_map[t] == null || out_map[t] <= 0)
+                                        push(g_tcp_retry, t);
+                                }
+                                if (length(g_tcp_retry) > 0) {
+                                    let srv_map = load_outbound_server_map();
+                                    let tcp_res = run_tcp_ping_batch(g_tcp_retry, srv_map, 2000);
+                                    for (let t, d in tcp_res) {
+                                        if (int(d || 0) > 0)
+                                            out_map[t] = int(d);
+                                    }
+                                }
                                 for (let t in w_tags) {
                                     count++;
                                     if (out_map[t] == null || out_map[t] <= 0)
@@ -2548,13 +2712,15 @@ function clash_api(action, arg1, arg2, arg3) {
                                 let cur_now = trim(as_string(grp.now || ""));
                                 if (cur_now == "" || int(out_map[cur_now] || 0) <= 0) {
                                     let put_payload = status_output([ "clash-set-group-proxy-payload", best_member ], null);
-                                    let put_args = [ "curl", "-X", "PUT", "-s", "--connect-timeout", "2", "-m", "3", base_url + "/proxies/" + clash_urlencode(group_tag) ];
+                                    let target_grp = match(group_tag, /-urltest-out$/) ? replace(group_tag, /-urltest-out$/, "-out") : group_tag;
+                                    let put_args = [ "curl", "-X", "PUT", "-s", "--connect-timeout", "2", "-m", "3", base_url + "/proxies/" + clash_urlencode(target_grp) ];
                                     for (let item in auth) push(put_args, item);
                                     push(put_args, "--data-raw", put_payload);
                                     common.command_status(command_from_args(put_args));
                                 }
                             }
                         }
+                        update_clash_proxies_cache(out_map);
                         print(sprintf("%J\n", out_map));
                         return 0;
                     }
