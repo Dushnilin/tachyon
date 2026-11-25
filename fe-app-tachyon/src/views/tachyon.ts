@@ -562,6 +562,28 @@ function attachModalNoOpParseGuard(modalMap, defaultSid) {
   };
 }
 
+function isRecoverableModalLoadError(err) {
+  if (
+    !err ||
+    err instanceof TypeError ||
+    err instanceof ReferenceError ||
+    err instanceof SyntaxError
+  ) {
+    return false;
+  }
+  const msg = String(err.message || err || '');
+  if (
+    /uci\.(save|commit|apply)|save failed|commit failed|apply failed|access denied|permission denied|unauthorized/i.test(
+      msg,
+    )
+  ) {
+    return false;
+  }
+  return /no related rpc reply|rpc call|ubus|ipc|object not found|notfounderror|timeout|timed out|aborted|networkerror|fetch failed|-32000/i.test(
+    msg,
+  );
+}
+
 function configureGridSection(sectionRef, type, title, addTitle) {
   sectionRef.anonymous = false;
   sectionRef.addremove = true;
@@ -589,6 +611,117 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   };
   sectionRef.renderSectionAdd = function (extra_class) {
     return renderSectionAdd(sectionRef, extra_class);
+  };
+
+  const origAddModalOptions = Object.prototype.hasOwnProperty.call(
+    sectionRef,
+    'addModalOptions',
+  )
+    ? sectionRef.addModalOptions
+    : null;
+  sectionRef.addModalOptions = function (modalSection, section_id, ev) {
+    if (modalSection) {
+      const origLoadChildren = modalSection.loadChildren;
+      if (
+        typeof origLoadChildren === 'function' &&
+        !modalSection.__tachyonLoadChildrenGuarded
+      ) {
+        modalSection.__tachyonLoadChildrenGuarded = true;
+        modalSection.loadChildren = function (...args) {
+          const sectionId = args[0] !== undefined ? args[0] : section_id;
+          const patched = [];
+          if (Array.isArray(this.children)) {
+            for (let i = 0; i < this.children.length; i += 1) {
+              const child = this.children[i];
+              if (!child || child.disable || typeof child.load !== 'function') {
+                continue;
+              }
+              const origChildLoad = child.load;
+              patched.push({ child, origChildLoad });
+              child.load = function (...childArgs) {
+                const targetSid =
+                  childArgs.length > 0 ? childArgs[0] : sectionId;
+                const fallbackValue = () =>
+                  typeof this.cfgvalue === 'function'
+                    ? this.cfgvalue(targetSid)
+                    : null;
+                try {
+                  return Promise.resolve(
+                    origChildLoad.apply(this, childArgs),
+                  ).catch((loadErr) => {
+                    if (!isRecoverableModalLoadError(loadErr)) {
+                      return Promise.reject(loadErr);
+                    }
+                    console.warn(
+                      `[tachyon] option load fallback for ${String(this.option || i)}:`,
+                      loadErr,
+                    );
+                    return fallbackValue();
+                  });
+                } catch (syncErr) {
+                  if (!isRecoverableModalLoadError(syncErr)) {
+                    return Promise.reject(syncErr);
+                  }
+                  console.warn(
+                    `[tachyon] option load fallback for ${String(this.option || i)}:`,
+                    syncErr,
+                  );
+                  return Promise.resolve(fallbackValue());
+                }
+              };
+            }
+          }
+          const restoreChildren = () => {
+            for (const entry of patched) {
+              entry.child.load = entry.origChildLoad;
+            }
+          };
+          try {
+            return Promise.resolve(origLoadChildren.apply(this, args)).finally(
+              restoreChildren,
+            );
+          } catch (err) {
+            restoreChildren();
+            return Promise.reject(err);
+          }
+        };
+      }
+
+      const modalMap = modalSection.map;
+      if (
+        modalMap &&
+        typeof modalMap.load === 'function' &&
+        !modalMap.__tachyonMapLoadGuarded
+      ) {
+        modalMap.__tachyonMapLoadGuarded = true;
+        const origMapLoad = modalMap.load;
+        modalMap.load = function (...args) {
+          return Promise.resolve(origMapLoad.apply(this, args)).catch(
+            (mapErr) => {
+              if (
+                this.__tachyonSaving ||
+                !isRecoverableModalLoadError(mapErr)
+              ) {
+                return Promise.reject(mapErr);
+              }
+              console.warn('[tachyon] modal map load fallback:', mapErr);
+              if (typeof modalSection.loadChildren === 'function') {
+                const targetSid = args[0] !== undefined ? args[0] : section_id;
+                return modalSection.loadChildren(targetSid);
+              }
+              return typeof this.loadChildren === 'function'
+                ? this.loadChildren(...args)
+                : Promise.resolve();
+            },
+          );
+        };
+      }
+    }
+
+    if (origAddModalOptions) {
+      return origAddModalOptions.apply(this, arguments);
+    }
+    return form.GridSection.prototype.addModalOptions.apply(this, arguments);
   };
 
   if (!Object.prototype.hasOwnProperty.call(sectionRef, 'load')) {
@@ -887,6 +1020,9 @@ function configureGridSection(sectionRef, type, title, addTitle) {
 
     let saveSucceeded = false;
     let res;
+    if (targetMap) {
+      targetMap.__tachyonSaving = true;
+    }
     if (origModalSave) {
       try {
         res = Promise.resolve(origModalSave.apply(this, arguments))
@@ -946,6 +1082,9 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     }
 
     return Promise.resolve(res).finally(() => {
+      if (targetMap) {
+        targetMap.__tachyonSaving = false;
+      }
       if (origCallDelete) {
         uci.callDelete = origCallDelete;
       }

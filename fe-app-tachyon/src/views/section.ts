@@ -864,33 +864,31 @@ function resolveEffectiveSectionOutboundSourceIds(section_id) {
     ).forEach(addSourceId);
   });
 
-  let hasExplicitNonDpi = resultIds.some((sid) =>
-    isNonDpiSource(uci.get(UCI_PACKAGE, sid)),
-  );
-
   const addGroupById = (grpId) => {
     const gid = `${grpId || ''}`.trim();
     if (!gid) return;
     const grp = uci.get(UCI_PACKAGE, gid);
     if (!grp || grp.enabled === '0') return;
-    const gSrcs = normalizeOptionValues(grp.source_refs);
-    if (gSrcs.length === 0 || gSrcs[0] === '*') {
-      if (!hasExplicitNonDpi) {
-        allNonDpiSourceIds.forEach(addSourceId);
-      }
-    } else if (!hasExplicitNonDpi) {
+    const gSrcs = [
+      ...normalizeOptionValues(grp.primary_refs),
+      ...normalizeOptionValues(grp.backup_refs),
+      ...normalizeOptionValues(grp.source_refs),
+    ];
+    if (gSrcs.length === 0 || gSrcs.includes('*')) {
+      allNonDpiSourceIds.forEach(addSourceId);
+    } else {
       gSrcs.forEach(addSourceId);
     }
   };
 
-  currentSourceOptionValues(targetId, 'outbound_group_refs').forEach(
-    addGroupById,
+  [
+    ...currentSourceOptionValues(targetId, 'outbound_group_ref'),
+    ...currentSourceOptionValues(targetId, 'outbound_group_refs'),
+  ].forEach(addGroupById);
+
+  const hasExplicitNonDpi = resultIds.some((sid) =>
+    isNonDpiSource(uci.get(UCI_PACKAGE, sid)),
   );
-  if (!hasExplicitNonDpi) {
-    hasExplicitNonDpi = resultIds.some((sid) =>
-      isNonDpiSource(uci.get(UCI_PACKAGE, sid)),
-    );
-  }
 
   const balSettingsMap = readItemSettingsMap(targetId, 'balancer_settings');
   currentSourceOptionValues(targetId, 'balancer_refs').forEach((balId) => {
@@ -3654,10 +3652,22 @@ function refreshNetworkInterfaceOptionValues(option) {
 
 const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
   load(section_id) {
-    return network.getDevices().then(
+    let devicesPromise;
+    try {
+      devicesPromise =
+        network && typeof network.getDevices === 'function'
+          ? Promise.resolve(network.getDevices()).catch(() => [])
+          : Promise.resolve([]);
+    } catch (_e) {
+      devicesPromise = Promise.resolve([]);
+    }
+
+    return devicesPromise.then(
       L.bind(function (devices) {
-        this.devices = devices || [];
-        refreshNetworkInterfaceOptionValues(this);
+        this.devices = Array.isArray(devices) ? devices : [];
+        try {
+          refreshNetworkInterfaceOptionValues(this);
+        } catch (_e) {}
 
         return this.super('load', section_id);
       }, this),
