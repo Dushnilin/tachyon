@@ -1748,6 +1748,7 @@ pub(crate) struct BotEventObserver {
     warned_cert_paths: HashSet<String>,
     pub(crate) last_crash_alerts: HashMap<String, i64>,
     pub(crate) last_restart_alerts: HashMap<String, i64>,
+    pub(crate) last_switch_alerts: HashMap<String, (i64, u32)>,
 }
 
 impl BotEventObserver {
@@ -1828,12 +1829,53 @@ pub(crate) fn collect_section_store_switch_notifications(
     (switched_sections, notices)
 }
 
+fn is_per_flow_balancer_group(d: &RouterStoreData, sec_id: &str, group_tag: &str) -> bool {
+    let prefix = format!("bal-{sec_id}-");
+    let Some(bal_id) = group_tag.strip_prefix(&prefix) else {
+        return false;
+    };
+    let Some(bal) = d.balancers.iter().find(|b| b.id == bal_id) else {
+        return false;
+    };
+    matches!(
+        bal.mode.trim().to_ascii_lowercase().as_str(),
+        "sticky"
+            | "round_robin"
+            | "random"
+            | "least_load"
+            | "least_connections"
+            | "weighted"
+            | "hedged"
+            | "throughput"
+            | "quota"
+    )
+}
+
+#[cfg(test)]
 pub(crate) fn collect_clash_node_switch_notifications(
     obs: &mut BotEventObserver,
     d: &RouterStoreData,
     px_map: &serde_json::Map<String, Value>,
     store_switched_sections: &HashSet<String>,
     ru: bool,
+) -> Vec<(&'static str, String)> {
+    collect_clash_node_switch_notifications_at(
+        obs,
+        d,
+        px_map,
+        store_switched_sections,
+        ru,
+        unix_now_secs(),
+    )
+}
+
+pub(crate) fn collect_clash_node_switch_notifications_at(
+    obs: &mut BotEventObserver,
+    d: &RouterStoreData,
+    px_map: &serde_json::Map<String, Value>,
+    store_switched_sections: &HashSet<String>,
+    ru: bool,
+    now: i64,
 ) -> Vec<(&'static str, String)> {
     let mut notices = Vec::new();
     let tag_map = crate::ubus_bridge::build_telemetry_tag_display_map(d);
@@ -1881,43 +1923,82 @@ pub(crate) fn collect_clash_node_switch_notifications(
         let Some((active_group, resolved_node)) = active_pair else {
             continue;
         };
+        if is_per_flow_balancer_group(d, &sec.id, &active_group) {
+            obs.clash_active_nodes
+                .insert(format!("{}::{}", sec.id, active_group), resolved_node);
+            continue;
+        }
         let track_key = format!("{}::{}", sec.id, active_group);
         if let Some(prev) = obs.clash_active_nodes.get(&track_key)
             && prev != &resolved_node
             && !store_switched_sections.contains(&sec.id)
             && d.telegram.notify_server_switch
         {
-            let sec_label = if !sec.label.trim().is_empty() {
-                sec.label.trim()
+            let suppress = if let Some((last_ts, suppressed)) =
+                obs.last_switch_alerts.get_mut(&track_key)
+                && now.saturating_sub(*last_ts) < 300
+            {
+                *suppressed = suppressed.saturating_add(1);
+                true
             } else {
-                sec.id.as_str()
+                false
             };
-            let group_label =
-                crate::ubus_bridge::resolve_telemetry_tag_display_name(&active_group, &tag_map, d);
-            let node_label =
-                crate::ubus_bridge::resolve_telemetry_tag_display_name(&resolved_node, &tag_map, d);
-            let group_suffix =
-                if group_label.is_empty() || group_label.eq_ignore_ascii_case(sec_label) {
-                    String::new()
+            if !suppress {
+                let suppressed_count = obs
+                    .last_switch_alerts
+                    .get(&track_key)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(0);
+                obs.last_switch_alerts.insert(track_key.clone(), (now, 0));
+                let sec_label = if !sec.label.trim().is_empty() {
+                    sec.label.trim()
                 } else {
-                    format!(" ({})", escape_html(&group_label))
+                    sec.id.as_str()
                 };
-            let txt = if ru {
-                format!(
-                    "<b>Переключение узла:</b> <b>{}</b>{} -> <code>{}</code>",
-                    escape_html(sec_label),
-                    group_suffix,
-                    escape_html(&node_label)
-                )
-            } else {
-                format!(
-                    "<b>Node Switch:</b> <b>{}</b>{} -> <code>{}</code>",
-                    escape_html(sec_label),
-                    group_suffix,
-                    escape_html(&node_label)
-                )
-            };
-            notices.push(("server_switch", txt));
+                let group_label = crate::ubus_bridge::resolve_telemetry_tag_display_name(
+                    &active_group,
+                    &tag_map,
+                    d,
+                );
+                let node_label = crate::ubus_bridge::resolve_telemetry_tag_display_name(
+                    &resolved_node,
+                    &tag_map,
+                    d,
+                );
+                let group_suffix =
+                    if group_label.is_empty() || group_label.eq_ignore_ascii_case(sec_label) {
+                        String::new()
+                    } else {
+                        format!(" ({})", escape_html(&group_label))
+                    };
+                let window_suffix = if suppressed_count > 0 {
+                    if ru {
+                        format!(" (ещё переключений за 5 мин: +{suppressed_count})")
+                    } else {
+                        format!(" (+{suppressed_count} switches in 5m)")
+                    }
+                } else {
+                    String::new()
+                };
+                let txt = if ru {
+                    format!(
+                        "<b>Переключение узла:</b> <b>{}</b>{} -> <code>{}</code>{}",
+                        escape_html(sec_label),
+                        group_suffix,
+                        escape_html(&node_label),
+                        window_suffix
+                    )
+                } else {
+                    format!(
+                        "<b>Node Switch:</b> <b>{}</b>{} -> <code>{}</code>{}",
+                        escape_html(sec_label),
+                        group_suffix,
+                        escape_html(&node_label),
+                        window_suffix
+                    )
+                };
+                notices.push(("server_switch", txt));
+            }
         }
         obs.clash_active_nodes.insert(track_key, resolved_node);
     }
@@ -1993,6 +2074,9 @@ pub(crate) fn classify_event_notification(
             || msg_low.contains("reloaded")
             || msg_low.contains("restart"))
     {
+        if !obs.should_emit_restart_alert("core_mgr:restart", now) {
+            return None;
+        }
         let txt = if ru {
             format!("<b>Перезапуск ядра:</b> {}", escape_html(message))
         } else {
@@ -2230,12 +2314,13 @@ async fn observe_and_notify_events(
         if let Ok(px) = core.clash_request("GET", "/proxies", None).await
             && let Some(px_map) = px.get("proxies").and_then(Value::as_object)
         {
-            for (kind, txt) in collect_clash_node_switch_notifications(
+            for (kind, txt) in collect_clash_node_switch_notifications_at(
                 obs,
                 &d,
                 px_map,
                 &store_switched_sections,
                 ru,
+                now,
             ) {
                 notify_if_enabled(&d, kind, &txt);
             }

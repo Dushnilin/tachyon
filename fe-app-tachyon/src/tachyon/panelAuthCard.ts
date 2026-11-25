@@ -270,6 +270,11 @@ function createPasswordField(
 
 export function renderPanelAuthSettingsCard(): HTMLElement {
   const root = createEl('div', { class: 'tachyon-auth-card' });
+  const stopBubble = (ev: Event) => {
+    ev.stopPropagation();
+  };
+  root.addEventListener('change', stopBubble);
+  root.addEventListener('input', stopBubble);
 
   const state: {
     loaded: boolean;
@@ -567,6 +572,10 @@ export function renderPanelAuthSettingsCard(): HTMLElement {
       children.push(fieldsGrid);
     }
 
+    const hasPendingCardChange =
+      state.draftEnabled !== state.serverEnabled ||
+      state.draftMode !== state.serverMode;
+
     if (state.errorText) {
       children.push(
         createEl('div', { class: 'tachyon-auth-error' }, [state.errorText]),
@@ -575,6 +584,15 @@ export function renderPanelAuthSettingsCard(): HTMLElement {
       children.push(
         createEl('div', { class: 'tachyon-auth-success' }, [
           state.statusMessage,
+        ]),
+      );
+    } else if (hasPendingCardChange) {
+      children.push(
+        createEl('div', { class: 'tachyon-auth-note' }, [
+          tr(
+            'Нажмите кнопку «Сохранить настройки входа» ниже — общая кнопка сохранения настроек роутера не применяет параметры входа.',
+            'Click "Save login settings" below to apply — the general router save button does not apply panel login settings.',
+          ),
         ]),
       );
     }
@@ -697,6 +715,7 @@ export function renderPanelAuthSettingsCard(): HTMLElement {
         'Enter your current password to confirm the change.',
       );
       render();
+      curPwInput?.focus?.();
       return;
     }
 

@@ -70,7 +70,7 @@ fn telemetry_poll_interval_with(period: Duration) -> tokio::time::Interval {
 pub struct CoreManager {
     pub state: Arc<AppState>,
     proc: Mutex<Option<(Child, Instant)>>,
-    reload_lock: Mutex<()>,
+    pub(crate) reload_lock: Mutex<()>,
     sub_refresh_lock: Mutex<()>,
     sub_last_attempt: Mutex<HashMap<String, i64>>,
     prev_totals: Mutex<Option<TrafficSampleBaseline>>,
@@ -2020,11 +2020,10 @@ impl CoreManager {
         if quarantined.contains_key("_core_runtime") {
             return;
         }
-        let digest = if quarantined.is_empty() {
-            crate::watchdog::compute_config_digest(prepared_cfg)
-        } else {
-            crate::watchdog::compute_desired_digest(store_snapshot)
-        };
+        let mut digest = crate::watchdog::compute_desired_digest(store_snapshot);
+        if digest.is_empty() {
+            digest = crate::watchdog::compute_config_digest(prepared_cfg);
+        }
         if !digest.is_empty() {
             self.watchdog
                 .lock()

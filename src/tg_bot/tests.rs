@@ -2654,9 +2654,10 @@ async fn update_fptn_prompts_normalize_token_and_count_all_servers() {
 #[test]
 fn test_event_observer_200_ring_does_not_replay_and_advances_seq() {
     let mut live = crate::store::LiveTelemetry::default();
-    for idx in 0..205 {
-        live.push_event("info", "core_mgr", &format!("tachyon-core reloaded #{idx}"));
+    for idx in 0..204 {
+        live.push_event("info", "smart_detect", &format!("Smart Detect rule #{idx}"));
     }
+    live.push_event("info", "core_mgr", "tachyon-core reloaded #204");
     assert_eq!(live.events.len(), crate::store::MAX_EVENTS_RING);
 
     let mut obs = BotEventObserver {
@@ -2676,7 +2677,7 @@ fn test_event_observer_200_ring_does_not_replay_and_advances_seq() {
     assert!(!emitted_second);
 
     live.push_event("info", "core_mgr", "tachyon-core started (PID 4242)");
-    let (third, emitted_third) = collect_observed_event_notifications(&mut obs, &live, 1_010, true);
+    let (third, emitted_third) = collect_observed_event_notifications(&mut obs, &live, 1_305, true);
     assert_eq!(third.len(), 1);
     assert!(emitted_third);
     assert!(third[0].1.contains("4242"));
@@ -2781,4 +2782,163 @@ fn test_node_switch_notifications_render_human_readable_group_and_node_names() {
     assert!(notices[0].1.contains("rtest #2"), "{}", notices[0].1);
     assert!(!notices[0].1.contains("bal-Main-bal_Main_auto"));
     assert!(!notices[0].1.contains("awgconf-src_rtest-1"));
+}
+
+#[test]
+fn test_sticky_balancer_suppresses_per_flow_switch_spam_and_urltest_aggregates_window() {
+    let mut d = RouterStoreData::default();
+    d.telegram.enabled = true;
+    d.telegram.notify_server_switch = true;
+    d.balancers = vec![
+        crate::store::BalancerConfig {
+            id: "bal_sticky".to_string(),
+            name: "Sticky Bal".to_string(),
+            balancer_type: "urltest".to_string(),
+            mode: "sticky".to_string(),
+            ..Default::default()
+        },
+        crate::store::BalancerConfig {
+            id: "bal_auto".to_string(),
+            name: "Auto Bal".to_string(),
+            balancer_type: "urltest".to_string(),
+            mode: "least_test".to_string(),
+            ..Default::default()
+        },
+    ];
+    d.sections = vec![
+        RoutingSection {
+            id: "FPTN".to_string(),
+            enabled: true,
+            label: "FPTN".to_string(),
+            action: "connection".to_string(),
+            balancer_refs: vec!["bal_sticky".to_string()],
+            ..Default::default()
+        },
+        RoutingSection {
+            id: "Proxy".to_string(),
+            enabled: true,
+            label: "Proxy".to_string(),
+            action: "connection".to_string(),
+            balancer_refs: vec!["bal_auto".to_string()],
+            ..Default::default()
+        },
+    ];
+
+    let mut obs = BotEventObserver::default();
+    let empty = std::collections::HashSet::new();
+    let px1 = json!({
+        "sel-FPTN": { "now": "bal-FPTN-bal_sticky" },
+        "bal-FPTN-bal_sticky": { "now": "WARPv2" },
+        "sel-Proxy": { "now": "bal-Proxy-bal_auto" },
+        "bal-Proxy-bal_auto": { "now": "NodeA" }
+    });
+    assert!(
+        collect_clash_node_switch_notifications_at(
+            &mut obs,
+            &d,
+            px1.as_object().unwrap(),
+            &empty,
+            true,
+            1_000,
+        )
+        .is_empty()
+    );
+
+    // Sticky switches never emit notifications; regular urltest emits on first change.
+    let px2 = json!({
+        "sel-FPTN": { "now": "bal-FPTN-bal_sticky" },
+        "bal-FPTN-bal_sticky": { "now": "WARPc2" },
+        "sel-Proxy": { "now": "bal-Proxy-bal_auto" },
+        "bal-Proxy-bal_auto": { "now": "NodeB" }
+    });
+    let n2 = collect_clash_node_switch_notifications_at(
+        &mut obs,
+        &d,
+        px2.as_object().unwrap(),
+        &empty,
+        true,
+        1_030,
+    );
+    assert_eq!(n2.len(), 1);
+    assert!(n2[0].1.contains("NodeB"));
+
+    // Rapid switches within 300s cooldown are suppressed and counted.
+    let px3 = json!({
+        "sel-FPTN": { "now": "bal-FPTN-bal_sticky" },
+        "bal-FPTN-bal_sticky": { "now": "WARPgen8" },
+        "sel-Proxy": { "now": "bal-Proxy-bal_auto" },
+        "bal-Proxy-bal_auto": { "now": "NodeC" }
+    });
+    assert!(
+        collect_clash_node_switch_notifications_at(
+            &mut obs,
+            &d,
+            px3.as_object().unwrap(),
+            &empty,
+            true,
+            1_060,
+        )
+        .is_empty()
+    );
+
+    let px4 = json!({
+        "sel-FPTN": { "now": "bal-FPTN-bal_sticky" },
+        "bal-FPTN-bal_sticky": { "now": "WARPc3" },
+        "sel-Proxy": { "now": "bal-Proxy-bal_auto" },
+        "bal-Proxy-bal_auto": { "now": "NodeD" }
+    });
+    assert!(
+        collect_clash_node_switch_notifications_at(
+            &mut obs,
+            &d,
+            px4.as_object().unwrap(),
+            &empty,
+            true,
+            1_120,
+        )
+        .is_empty()
+    );
+
+    // After 300s window expires, next switch includes suppressed window summary.
+    let px5 = json!({
+        "sel-FPTN": { "now": "bal-FPTN-bal_sticky" },
+        "bal-FPTN-bal_sticky": { "now": "WARPv2" },
+        "sel-Proxy": { "now": "bal-Proxy-bal_auto" },
+        "bal-Proxy-bal_auto": { "now": "NodeE" }
+    });
+    let n5 = collect_clash_node_switch_notifications_at(
+        &mut obs,
+        &d,
+        px5.as_object().unwrap(),
+        &empty,
+        true,
+        1_331,
+    );
+    assert_eq!(n5.len(), 1);
+    assert!(n5[0].1.contains("NodeE"));
+    assert!(n5[0].1.contains("+2"), "{}", n5[0].1);
+}
+
+#[test]
+fn test_core_mgr_restart_alerts_rate_limited_300s() {
+    let mut live = crate::store::LiveTelemetry::default();
+    let mut obs = BotEventObserver {
+        initialized: true,
+        ..Default::default()
+    };
+    live.push_event("info", "core_mgr", "Started tachyon-core (PID 101)");
+    let (n1, emitted1) = collect_observed_event_notifications(&mut obs, &live, 2_000, true);
+    assert_eq!(n1.len(), 1);
+    assert_eq!(n1[0].0, "restart");
+    assert!(emitted1);
+
+    live.push_event("info", "core_mgr", "Started tachyon-core (PID 102)");
+    let (n2, _) = collect_observed_event_notifications(&mut obs, &live, 2_050, true);
+    assert!(n2.is_empty());
+
+    live.push_event("info", "core_mgr", "Started tachyon-core (PID 103)");
+    let (n3, emitted3) = collect_observed_event_notifications(&mut obs, &live, 2_301, true);
+    assert_eq!(n3.len(), 1);
+    assert_eq!(n3[0].0, "restart");
+    assert!(emitted3);
 }

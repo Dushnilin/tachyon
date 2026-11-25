@@ -5,6 +5,7 @@ function createMockElement(tag: string): any {
   const attrs: Record<string, string> = {};
   const listeners: Record<string, Array<(ev: any) => void>> = {};
   const el: any = {
+    _listeners: listeners,
     tagName: tag.toUpperCase(),
     parentElement: null as any,
     children: [] as any[],
@@ -59,6 +60,33 @@ function createMockElement(tag: string): any {
     triggerChange(nextChecked?: boolean) {
       if (typeof nextChecked === 'boolean') el.checked = nextChecked;
       for (const fn of listeners.change || []) fn({ target: el });
+    },
+    dispatchEvent(ev: any) {
+      let stopped = false;
+      const evType = ev?.type || '';
+      const wrapped: any = {
+        type: evType,
+        bubbles: ev?.bubbles !== false,
+        target: el,
+        currentTarget: el,
+        preventDefault() {
+          ev?.preventDefault?.();
+        },
+        stopPropagation() {
+          stopped = true;
+          ev?.stopPropagation?.();
+        },
+      };
+      let cur: any = el;
+      while (cur) {
+        wrapped.currentTarget = cur;
+        for (const fn of cur._listeners?.[evType] || []) {
+          fn(wrapped);
+        }
+        if (stopped || !wrapped.bubbles) break;
+        cur = cur.parentElement;
+      }
+      return true;
     },
     appendChild(child: any) {
       if (child != null) {
@@ -232,6 +260,46 @@ describe('panelAuthCard', () => {
     expect(
       dispatchedEvents.some((e) => e.type === PANEL_AUTH_CHANGED_EVENT),
     ).toBe(true);
+  });
+
+  it('stops change and input events from bubbling into parent LuCI CBI form', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        authenticated: true,
+        auth_enabled: true,
+        auth_mode: 'luci',
+        username: 'root',
+      }),
+    });
+
+    const { renderPanelAuthSettingsCard } = await import('../panelAuthCard');
+    const hostForm = document.createElement('div');
+    const parentChanges = vi.fn();
+    const parentInputs = vi.fn();
+    hostForm.addEventListener('change', parentChanges);
+    hostForm.addEventListener('input', parentInputs);
+
+    const card: any = renderPanelAuthSettingsCard();
+    hostForm.appendChild(card);
+    await flushPromises();
+
+    const chk = card.querySelector('#tachyon-auth-enabled-chk') as any;
+    expect(chk).toBeTruthy();
+    chk.checked = false;
+    chk.dispatchEvent({ type: 'change', bubbles: true });
+    chk.triggerChange(false);
+    expect(parentChanges).not.toHaveBeenCalled();
+
+    const pwInput = card.querySelector('#tachyon-auth-current-password') as any;
+    expect(pwInput).toBeTruthy();
+    pwInput.value = 'secret';
+    pwInput.dispatchEvent({ type: 'input', bubbles: true });
+    expect(parentInputs).not.toHaveBeenCalled();
+    expect(card.textContent).toContain('Сохранить настройки входа');
+    expect(card.textContent).toContain('общая кнопка сохранения');
   });
 
   it('reloads once on 401 from /api/ routes while ignoring /api/auth/status and /api/login', async () => {

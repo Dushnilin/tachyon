@@ -81,6 +81,8 @@ pub struct WatchdogState {
     pub last_applied_desired_digest: String,
     pub last_applied_core_digest: String,
     pub last_drift_reload_key: Option<(String, String)>,
+    pub last_drift_reload_desired_digest: String,
+    pub drift_reload_streak: u32,
 }
 
 impl Default for WatchdogState {
@@ -99,6 +101,8 @@ impl Default for WatchdogState {
             last_applied_desired_digest: String::new(),
             last_applied_core_digest: String::new(),
             last_drift_reload_key: None,
+            last_drift_reload_desired_digest: String::new(),
+            drift_reload_streak: 0,
         }
     }
 }
@@ -108,6 +112,8 @@ impl WatchdogState {
         self.last_applied_desired_digest = desired_digest;
         self.last_applied_core_digest.clear();
         self.last_drift_reload_key = None;
+        self.last_drift_reload_desired_digest.clear();
+        self.drift_reload_streak = 0;
     }
     pub fn prune_restarts(&mut self, now: i64) {
         self.restart_timestamps
@@ -607,15 +613,24 @@ pub(crate) fn detect_config_drift(
         wd.last_applied_desired_digest = desired_digest.to_string();
         wd.last_applied_core_digest = applied_digest.to_string();
         wd.last_drift_reload_key = None;
+        wd.last_drift_reload_desired_digest.clear();
+        wd.drift_reload_streak = 0;
         return false;
     }
     if !wd.last_applied_desired_digest.is_empty() {
         if wd.last_applied_desired_digest == desired_digest {
             if wd.last_applied_core_digest.is_empty() {
                 wd.last_applied_core_digest = applied_digest.to_string();
+                wd.last_drift_reload_desired_digest.clear();
+                wd.drift_reload_streak = 0;
                 return false;
             }
-            return wd.last_applied_core_digest != applied_digest;
+            if wd.last_applied_core_digest == applied_digest {
+                wd.last_drift_reload_desired_digest.clear();
+                wd.drift_reload_streak = 0;
+                return false;
+            }
+            return true;
         }
         return true;
     }
@@ -623,6 +638,8 @@ pub(crate) fn detect_config_drift(
         wd.last_applied_desired_digest = desired_digest.to_string();
         wd.last_applied_core_digest = applied_digest.to_string();
         wd.last_drift_reload_key = None;
+        wd.last_drift_reload_desired_digest.clear();
+        wd.drift_reload_streak = 0;
         return false;
     }
     true
@@ -770,8 +787,16 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         .and_then(|h| h.pointer("/config_state/ready"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let reload_in_progress = match core.reload_lock.try_lock() {
+        Ok(guard) => {
+            drop(guard);
+            false
+        }
+        Err(_) => true,
+    };
     let need_disk_digest = core_alive
         && config_ready
+        && !reload_in_progress
         && !desired_digest.is_empty()
         && !applied_digest.is_empty()
         && desired_digest != applied_digest
@@ -786,7 +811,9 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
     } else {
         None
     };
-    let config_drift = {
+    let config_drift = if reload_in_progress {
+        false
+    } else {
         let mut wd = core.watchdog.lock().await;
         detect_config_drift(
             &mut wd,
@@ -1143,15 +1170,17 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
             }
         }
     } else if core_alive {
-        if should_trigger_drift_reload(config_drift, safe_minimal_active) {
-            let drift_key = (desired_digest_snapshot.clone(), applied_digest.clone());
+        if !reload_in_progress && should_trigger_drift_reload(config_drift, safe_minimal_active) {
             let allow = {
                 let mut wd = core.watchdog.lock().await;
-                wd.last_drift_reload_key.as_ref() != Some(&drift_key)
-                    && wd.cooldown_ready("l2_config_drift_reload", now, 45)
+                should_allow_drift_reload(&mut wd, &desired_digest_snapshot, &applied_digest, now)
             };
             if allow && boxed_core_reload(core).await.is_ok() {
-                core.watchdog.lock().await.last_drift_reload_key = Some(drift_key);
+                {
+                    let mut wd = core.watchdog.lock().await;
+                    mark_drift_reload_executed(&mut wd, &desired_digest_snapshot, &applied_digest);
+                }
+                core.state.live.write().await.config_drift = false;
                 action_taken = Some("L2_config_drift_reload");
             }
         }
@@ -1333,6 +1362,33 @@ pub async fn check_and_repair_nft_drift(
 
 fn should_trigger_drift_reload(config_drift: bool, safe_minimal_active: bool) -> bool {
     config_drift && !safe_minimal_active
+}
+
+pub(crate) fn should_allow_drift_reload(
+    wd: &mut WatchdogState,
+    desired_digest: &str,
+    applied_digest: &str,
+    now: i64,
+) -> bool {
+    if desired_digest.is_empty() || wd.last_drift_reload_desired_digest == desired_digest {
+        return false;
+    }
+    let drift_key = (desired_digest.to_string(), applied_digest.to_string());
+    if wd.last_drift_reload_key.as_ref() == Some(&drift_key) {
+        return false;
+    }
+    let backoff_secs = 300i64.saturating_mul(1i64 << wd.drift_reload_streak.min(2));
+    wd.cooldown_ready("l2_config_drift_reload", now, backoff_secs)
+}
+
+pub(crate) fn mark_drift_reload_executed(
+    wd: &mut WatchdogState,
+    desired_digest: &str,
+    applied_digest: &str,
+) {
+    wd.last_drift_reload_key = Some((desired_digest.to_string(), applied_digest.to_string()));
+    wd.last_drift_reload_desired_digest = desired_digest.to_string();
+    wd.drift_reload_streak = wd.drift_reload_streak.saturating_add(1);
 }
 
 #[cfg(test)]
@@ -1771,6 +1827,58 @@ mod tests {
             FirewallKind::Nftables,
             "tun",
             false
+        ));
+    }
+
+    #[test]
+    fn test_drift_reload_dedup_and_exponential_backoff() {
+        let mut wd = WatchdogState::default();
+        assert!(should_allow_drift_reload(
+            &mut wd,
+            "desired-1",
+            "applied-0",
+            1_000
+        ));
+        mark_drift_reload_executed(&mut wd, "desired-1", "applied-0");
+        assert_eq!(wd.drift_reload_streak, 1);
+
+        // Same desired_digest stays suppressed even after a core-side digest mismatch or past 300s.
+        assert!(!should_allow_drift_reload(
+            &mut wd,
+            "desired-1",
+            "applied-0",
+            1_050
+        ));
+        assert!(!should_allow_drift_reload(
+            &mut wd,
+            "desired-1",
+            "applied-1",
+            2_000
+        ));
+
+        // New desired_digest must wait for 600s backoff (streak == 1 -> 300 * 2).
+        assert!(!should_allow_drift_reload(
+            &mut wd,
+            "desired-2",
+            "applied-1",
+            1_599
+        ));
+        assert!(should_allow_drift_reload(
+            &mut wd,
+            "desired-2",
+            "applied-1",
+            1_600
+        ));
+
+        // Clean apply / calibration clears drift reload suppression and streak.
+        wd.record_applied_config("desired-2".to_string());
+        assert_eq!(wd.drift_reload_streak, 0);
+        assert!(wd.last_drift_reload_desired_digest.is_empty());
+        assert!(should_allow_drift_reload(
+            &mut wd,
+            "desired-3",
+            "applied-2",
+            2_000
         ));
     }
 }

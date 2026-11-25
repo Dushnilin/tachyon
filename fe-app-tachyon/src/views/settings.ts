@@ -572,6 +572,7 @@ function guardFailClosedChange(option, breaks, consequence) {
 function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.default = '';
   option.rmempty = false;
+  option.retain = true;
   option.cfgvalue = function (section_id) {
     return uci.get(UCI_PACKAGE, section_id, sectionOption) || '';
   };
@@ -3885,7 +3886,7 @@ function createSettingsContent(section, capabilities) {
 
   const tabsOrderOpt = section.taboption(
     'navigation',
-    form.Value,
+    form.DummyValue,
     '_tabs_order_widget',
     _tr('Порядок и видимость вкладок меню', 'Tab Order & Visibility'),
     _tr(
@@ -3896,15 +3897,7 @@ function createSettingsContent(section, capabilities) {
   tabsOrderOpt.renderWidget = function (section_id) {
     return createMenuTabsOrderWidget(this, section_id);
   };
-  tabsOrderOpt.formvalue = function (section_id) {
-    const el = document.getElementById('menu-tabs-order-widget-' + section_id);
-    // Return serialized state so LuCI knows something changed
-    return el ? JSON.stringify({ order: el._order, vis: el._vis }) : '';
-  };
-  tabsOrderOpt.write = function (_section_id) {
-    // UCI is written directly by syncToUci() inside the widget on every interaction.
-    // Nothing extra to do here.
-  };
+  tabsOrderOpt.write = function () {};
   tabsOrderOpt.remove = function () {};
 
   const compVisOpt = section.taboption(
@@ -4137,6 +4130,7 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.default = o.disabled;
+  o.rmempty = false;
 
   o = section.taboption(
     'dns',
@@ -4148,6 +4142,7 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.default = o.disabled;
+  o.rmempty = false;
 
   // Timing controls — hidden in parallel mode (auto-configured) and when only one server
   function configureTimingVisibility(opt) {
@@ -5056,6 +5051,7 @@ function createSettingsContent(section, capabilities) {
     ),
   );
   o.default = '0';
+  o.rmempty = false;
 
   o = section.taboption(
     'network',
@@ -5070,7 +5066,10 @@ function createSettingsContent(section, capabilities) {
       'TCP socket parameters (TTL, MSS, receive window) for outbound proxy and adaptive connections in tachyon-core.',
     ),
   );
-  o.value('', _tr('По умолчанию (системный стек)', 'Default (System Stack)'));
+  o.value(
+    'default',
+    _tr('По умолчанию (системный стек)', 'Default (System Stack)'),
+  );
   o.value(
     'auto',
     _tr('Авто (под отпечаток TLS uTLS)', 'Auto (Match TLS uTLS Fingerprint)'),
@@ -5110,8 +5109,12 @@ function createSettingsContent(section, capabilities) {
       'Linux (TTL 64, MSS 1460, RCVBUF 85K)',
     ),
   );
-  o.default = '';
-  o.rmempty = true;
+  o.default = 'default';
+  o.rmempty = false;
+  o.cfgvalue = function (section_id) {
+    const v = uci.get(UCI_PACKAGE, section_id, 'tcp_profile');
+    return v === undefined || v === null || v === '' ? 'default' : v;
+  };
 
   o = section.taboption(
     'network',
@@ -6522,11 +6525,15 @@ function createSettingsContent(section, capabilities) {
       'Prioritizes interactive DNS, VoIP/WebRTC and gaming via DSCP marking in nftables. Works cooperatively with OpenWrt SQM (CAKE/FQ_CoDel) without bufferbloat degradation.',
     ),
   );
-  o.value('', _('Auto (cooperative with SQM/CAKE)'));
+  o.value('auto', _('Auto (cooperative with SQM/CAKE)'));
   o.value('1', _('Enabled (always prioritize)'));
   o.value('0', _('Disabled'));
-  o.default = '';
-  o.rmempty = true;
+  o.default = 'auto';
+  o.rmempty = false;
+  o.cfgvalue = function (section_id) {
+    const v = uci.get(UCI_PACKAGE, section_id, 'qos_priority_engine');
+    return v === undefined || v === null || v === '' ? 'auto' : v;
+  };
 
   // WARP Generator Proxy Section
   o = section.taboption(

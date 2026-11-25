@@ -3236,28 +3236,15 @@ async fn handle_src_exit(
     BotReply::with_kb(msg, kb)
 }
 
-async fn handle_import_subscription_or_uri(
-    input: &str,
-    chat_id: i64,
-    state: &Arc<AppState>,
-    core: &Arc<CoreManager>,
-) -> BotReply {
-    let trimmed = input.trim();
-    let ru = current_is_ru(state).await;
-    if trimmed.is_empty() {
-        set_chat_prompt(chat_id, PendingPromptKind::AddSubscriptionOrUri);
-        return BotReply::text(tr(
-            ru,
-            "[!] Пустой ввод. Отправьте HTTPS-подписку или URI узла, либо /cancel.",
-            "[!] Empty input. Send an HTTPS subscription URL or proxy URI, or /cancel.",
-        ));
-    }
+struct ParsedImportPayload {
+    sub_urls: Vec<String>,
+    uri_lines: Vec<String>,
+    parsed_nodes: Vec<ParsedProxyNode>,
+    fptn_tokens: Vec<(String, Value)>,
+}
 
-    let core_bin = {
-        let d = state.data.read().await;
-        d.settings.core_bin_path.clone()
-    };
-
+#[inline(never)]
+fn parse_import_payload(trimmed: &str, core_bin: &str) -> ParsedImportPayload {
     let mut sub_urls: Vec<String> = Vec::new();
     let mut uri_lines: Vec<String> = Vec::new();
     let mut parsed_nodes: Vec<ParsedProxyNode> = Vec::new();
@@ -3274,7 +3261,7 @@ async fn handle_import_subscription_or_uri(
     });
     let allow_whole_payload = trimmed.starts_with('{') || !has_multiple_uri_lines;
     if allow_whole_payload
-        && let Some(decoded) = decode_fptn_token_json_with_core_bin(trimmed, Some(&core_bin))
+        && let Some(decoded) = decode_fptn_token_json_with_core_bin(trimmed, Some(core_bin))
     {
         let norm = normalize_fptn_token_input(trimmed).unwrap_or_else(|| trimmed.to_string());
         fptn_tokens.push((norm, decoded));
@@ -3295,7 +3282,7 @@ async fn handle_import_subscription_or_uri(
                 || lower_line.starts_with("fptn//")
                 || lower_line.starts_with("fptnb:")
                 || lower_line.starts_with("fptnb//"))
-                && let Some(decoded) = decode_fptn_token_json_with_core_bin(line, Some(&core_bin))
+                && let Some(decoded) = decode_fptn_token_json_with_core_bin(line, Some(core_bin))
             {
                 let norm = normalize_fptn_token_input(line).unwrap_or_else(|| line.to_string());
                 fptn_tokens.push((norm, decoded));
@@ -3322,6 +3309,43 @@ async fn handle_import_subscription_or_uri(
             }
         }
     }
+
+    ParsedImportPayload {
+        sub_urls,
+        uri_lines,
+        parsed_nodes,
+        fptn_tokens,
+    }
+}
+
+async fn handle_import_subscription_or_uri(
+    input: &str,
+    chat_id: i64,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> BotReply {
+    let trimmed = input.trim();
+    let ru = current_is_ru(state).await;
+    if trimmed.is_empty() {
+        set_chat_prompt(chat_id, PendingPromptKind::AddSubscriptionOrUri);
+        return BotReply::text(tr(
+            ru,
+            "[!] Пустой ввод. Отправьте HTTPS-подписку или URI узла, либо /cancel.",
+            "[!] Empty input. Send an HTTPS subscription URL or proxy URI, or /cancel.",
+        ));
+    }
+
+    let core_bin = {
+        let d = state.data.read().await;
+        d.settings.core_bin_path.clone()
+    };
+
+    let ParsedImportPayload {
+        sub_urls,
+        uri_lines,
+        parsed_nodes,
+        fptn_tokens,
+    } = parse_import_payload(trimmed, &core_bin);
 
     if sub_urls.is_empty() && parsed_nodes.is_empty() && fptn_tokens.is_empty() {
         set_chat_prompt(chat_id, PendingPromptKind::AddSubscriptionOrUri);
@@ -3407,7 +3431,7 @@ async fn handle_import_subscription_or_uri(
     }
 
     clear_chat_prompt(chat_id);
-    if let Err(e) = commit_and_sync_tg_tx_boxed(state, candidate).await {
+    if let Err(e) = Box::pin(commit_and_sync_tg_tx_boxed(state, candidate)).await {
         return Box::pin(render_sources_list(
             state,
             0,
@@ -3433,9 +3457,9 @@ async fn handle_import_subscription_or_uri(
             escape_html(&created_ids.join(", ")),
             reload_warn
         );
-        return render_source_view(state, first_id, 0, Some(note)).await;
+        return Box::pin(render_source_view(state, first_id, 0, Some(note))).await;
     }
-    render_sources_list(state, 0, None).await
+    Box::pin(render_sources_list(state, 0, None)).await
 }
 
 // =========================================================================

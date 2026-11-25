@@ -13529,10 +13529,32 @@ fn compile_core_config_with_rt_dir(
         } else {
             boot_host_owned.as_str()
         };
+        let boot_is_ip = crate::store::valid_ip_with_zone(boot_host);
         let boot_scheme = boot_dns.trim().to_ascii_lowercase();
-        if boot_scheme.starts_with("tls://") || boot_scheme.starts_with("dot://") {
+        if boot_scheme.starts_with("https://") || boot_scheme.starts_with("doh://") {
+            let mut o = json!({
+                "type": "https",
+                "tag": tag,
+                "server": boot_host,
+                "server_port": extract_url_port(boot_dns, 443),
+                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false),
+                "detour": "direct"
+            });
+            let path = extract_url_path(boot_dns).unwrap_or_else(|| "/dns-query".to_string());
+            o["path"] = json!(if path == "/" { "/dns-query" } else { &path });
+            o
+        } else if boot_scheme.starts_with("quic://") || boot_scheme.starts_with("doq://") {
             let boot_port = extract_url_port(boot_dns, 853);
-            let boot_is_ip = crate::store::valid_ip_with_zone(boot_host);
+            json!({
+                "type": "quic",
+                "tag": tag,
+                "server": boot_host,
+                "server_port": boot_port,
+                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false),
+                "detour": "direct"
+            })
+        } else if boot_scheme.starts_with("tls://") || boot_scheme.starts_with("dot://") {
+            let boot_port = extract_url_port(boot_dns, 853);
             json!({
                 "type": "tls",
                 "tag": tag,
@@ -13586,10 +13608,21 @@ fn compile_core_config_with_rt_dir(
         }
         dns_servers_vec.push(entry);
     } else {
+        let first_ip_tag = boot_list.iter().enumerate().find_map(|(idx, raw)| {
+            let host = extract_host_only(raw);
+            crate::store::valid_ip_with_zone(&host).then(|| format!("dns-bootstrap-{}", idx + 1))
+        });
         let mut boot_tags = Vec::with_capacity(boot_list.len());
         for (i, boot_dns) in boot_list.iter().enumerate() {
             let tag = format!("dns-bootstrap-{}", i + 1);
-            let entry = build_bootstrap_entry(&tag, boot_dns);
+            let mut entry = build_bootstrap_entry(&tag, boot_dns);
+            let host = extract_host_only(boot_dns);
+            if !host.is_empty()
+                && !crate::store::valid_ip_with_zone(&host)
+                && let Some(ref ip_tag) = first_ip_tag
+            {
+                entry["domain_resolver"] = json!(ip_tag);
+            }
             if entry.get("type").and_then(Value::as_str) == Some("udp")
                 && let (Some(srv), Some(port)) = (
                     entry.get("server").and_then(Value::as_str),
@@ -13604,7 +13637,7 @@ fn compile_core_config_with_rt_dir(
         dns_servers_vec.push(json!({
             "type": "group",
             "tag": "dns-bootstrap",
-            "mode": "stable",
+            "mode": "parallel",
             "error_ttl": "30s",
             "timeout": "3s",
             "servers": boot_tags
@@ -17693,6 +17726,10 @@ fn build_balancer_outbound(
         balancer_opts.insert(
             "sticky_hash".into(),
             json!(normalize_sticky_hash(&bal.sticky_hash)),
+        );
+        balancer_opts.insert(
+            "pool_tolerance".into(),
+            json!(bal.tolerance.max(500).min(u16::MAX as u32)),
         );
     }
     if effective_mode == "quota" && bal.quota_mib > 0 {
@@ -28764,5 +28801,75 @@ proxies:
             .position(|r| r["server"] == "dns-routed-sec_all" && r.get("domain_suffix").is_none())
             .expect("match_all routed DNS rule");
         assert!(idx_dns_bypass < idx_dns_match_all);
+    }
+
+    #[test]
+    fn test_bootstrap_parallel_doh_and_sticky_pool_tolerance() {
+        let mut store = RouterStoreData::default();
+        store.settings.bootstrap_dns_servers = vec![
+            "77.88.8.8".to_string(),
+            "https://dns.google/dns-query".to_string(),
+            "quic://dns.adguard-dns.com".to_string(),
+        ];
+        store.balancers.push(BalancerConfig {
+            id: "bal_sticky_test".to_string(),
+            name: "Sticky Test".to_string(),
+            enabled: true,
+            balancer_type: "urltest".to_string(),
+            mode: "sticky".to_string(),
+            sticky_hash: "source_ip".to_string(),
+            tolerance: 150,
+            ..Default::default()
+        });
+        store.outbound_sources.push(OutboundSource {
+            id: "src_1".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "ss://YWVzLTI1Ni1nY206dGVzdA==@node1.example.com:443#N1".to_string(),
+                "ss://YWVzLTI1Ni1nY206dGVzdA==@node2.example.com:443#N2".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(RoutingSection {
+            id: "sec_s".to_string(),
+            enabled: true,
+            label: "StickySec".to_string(),
+            action: "connection".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_source_refs: vec!["src_1".to_string()],
+            balancer_refs: vec!["bal_sticky_test".to_string()],
+            match_all: true,
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile cfg");
+        let dns_srvs = cfg["dns"]["servers"].as_array().unwrap();
+        let boot_grp = dns_srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-bootstrap")
+            .expect("dns-bootstrap group");
+        assert_eq!(boot_grp["mode"], "parallel");
+        let boot_doh = dns_srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-bootstrap-2")
+            .expect("dns-bootstrap-2 DoH");
+        assert_eq!(boot_doh["type"], "https");
+        assert_eq!(boot_doh["domain_resolver"], "dns-bootstrap-1");
+        let boot_doq = dns_srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-bootstrap-3")
+            .expect("dns-bootstrap-3 DoQ");
+        assert_eq!(boot_doq["type"], "quic");
+        assert_eq!(boot_doq["domain_resolver"], "dns-bootstrap-1");
+
+        let sticky_ob = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "bal-sec_s-bal_sticky_test")
+            .expect("sticky balancer outbound");
+        assert_eq!(sticky_ob["balancer"]["pool_tolerance"], 500);
+        assert!(sticky_ob["balancer"].get("pool").is_none());
     }
 }
