@@ -103,6 +103,152 @@ pub(crate) fn parse_fptn_token_nodes(uri: &str) -> Vec<ParsedProxyNode> {
     out
 }
 
+fn normalize_masque_key_b64(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.contains("-----BEGIN") {
+        trimmed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with("-----"))
+            .collect::<Vec<_>>()
+            .concat()
+    } else {
+        trimmed.split_whitespace().collect::<Vec<_>>().concat()
+    }
+}
+
+fn normalize_masque_vhttp(mode: &str, legacy_bool: bool) -> Option<&'static str> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "auto" | "1" | "true" => Some("auto"),
+        "h3" => Some("h3"),
+        "h2" => Some("h2"),
+        "" if legacy_bool => Some("auto"),
+        _ => None,
+    }
+}
+
+fn convert_usque_config_to_masque_outbound(val: &Value, fallback_tag: &str) -> Option<Value> {
+    let obj = val.as_object()?;
+    if obj
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| !t.trim().is_empty())
+    {
+        return None;
+    }
+    let priv_key = obj
+        .get("private_key")
+        .and_then(Value::as_str)
+        .map(normalize_masque_key_b64)
+        .filter(|s| !s.is_empty())?;
+    let pub_key = obj
+        .get("endpoint_pub_key")
+        .or_else(|| obj.get("public_key"))
+        .and_then(Value::as_str)
+        .map(normalize_masque_key_b64)
+        .unwrap_or_default();
+    let ep_v4 = obj
+        .get("endpoint_v4")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    let ep_v6 = obj
+        .get("endpoint_v6")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    let raw_ep = if !ep_v4.is_empty() { ep_v4 } else { ep_v6 };
+    if raw_ep.is_empty() {
+        return None;
+    }
+    let (server, port) = split_host_port(raw_ep, 443).unwrap_or((raw_ep.to_string(), 443));
+    let tag = obj
+        .get("tag")
+        .or_else(|| obj.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(fallback_tag);
+
+    let mut out = Map::new();
+    out.insert("type".into(), json!("masque"));
+    out.insert("tag".into(), json!(tag));
+    out.insert("server".into(), json!(server));
+    out.insert("server_port".into(), json!(port));
+    out.insert(
+        "profile".into(),
+        json!(
+            obj.get("profile")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| matches!(*s, "cloudflare" | "standard"))
+                .unwrap_or("cloudflare")
+        ),
+    );
+    out.insert("private_key".into(), json!(priv_key));
+    if !pub_key.is_empty() {
+        out.insert("public_key".into(), json!(pub_key));
+    }
+    if let Some(ipv4) = obj
+        .get("ipv4")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let cidr = if ipv4.contains('/') {
+            ipv4.to_string()
+        } else {
+            format!("{ipv4}/32")
+        };
+        out.insert("ip".into(), json!(cidr));
+    }
+    if let Some(ipv6) = obj
+        .get("ipv6")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let cidr = if ipv6.contains('/') {
+            ipv6.to_string()
+        } else {
+            format!("{ipv6}/128")
+        };
+        out.insert("ipv6".into(), json!(cidr));
+    }
+    let mtu = obj
+        .get("mtu")
+        .and_then(Value::as_u64)
+        .filter(|&n| n > 0)
+        .unwrap_or(1280);
+    out.insert("mtu".into(), json!(mtu));
+    if let Some(vhttp) = obj
+        .get("vhttp")
+        .and_then(Value::as_str)
+        .and_then(|s| normalize_masque_vhttp(s, false))
+    {
+        out.insert("vhttp".into(), json!(vhttp));
+    }
+    if let Some(sni) = obj
+        .get("sni")
+        .or_else(|| obj.get("server_name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        out.insert(
+            "tls".into(),
+            json!({
+                "enabled": true,
+                "server_name": sni
+            }),
+        );
+    }
+    Some(Value::Object(out))
+}
+
 pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     let uri = uri.trim();
     if uri.is_empty() || uri.starts_with('#') {
@@ -829,6 +975,109 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
                 .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             {
                 obj.insert("ephemeral".into(), json!(true));
+            }
+            Value::Object(obj)
+        }
+        "masque" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("masque"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+
+            let profile = params
+                .get("profile")
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| matches!(s.as_str(), "cloudflare" | "standard"))
+                .unwrap_or_else(|| "cloudflare".to_string());
+            obj.insert("profile".into(), json!(profile));
+
+            if let Some(priv_key) = params
+                .get("private_key")
+                .or_else(|| params.get("priv_key"))
+                .or_else(|| params.get("privatekey"))
+                .map(|s| normalize_masque_key_b64(s))
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("private_key".into(), json!(priv_key));
+            }
+            if let Some(pub_key) = params
+                .get("public_key")
+                .or_else(|| params.get("pub_key"))
+                .or_else(|| params.get("publickey"))
+                .or_else(|| params.get("pbk"))
+                .or_else(|| params.get("endpoint_pub_key"))
+                .map(|s| normalize_masque_key_b64(s))
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("public_key".into(), json!(pub_key));
+            }
+            if let Some(ipv4) = params
+                .get("ip")
+                .or_else(|| params.get("ipv4"))
+                .or_else(|| params.get("local_address"))
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("ip".into(), json!(ipv4));
+            }
+            if let Some(ipv6) = params
+                .get("ipv6")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("ipv6".into(), json!(ipv6));
+            }
+            if let Some(u) = params
+                .get("uri")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("uri".into(), json!(u));
+            }
+            if let Some(mtu) = params
+                .get("mtu")
+                .and_then(|s| s.trim().parse::<u16>().ok())
+                .filter(|&m| m > 0)
+            {
+                obj.insert("mtu".into(), json!(mtu));
+            }
+            if let Some(vhttp) = params
+                .get("vhttp")
+                .and_then(|s| normalize_masque_vhttp(s, false))
+            {
+                obj.insert("vhttp".into(), json!(vhttp));
+            }
+            let auth_token = params
+                .get("auth_token")
+                .or_else(|| params.get("token"))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    let u = userinfo.trim();
+                    (!u.is_empty()).then(|| u.to_string())
+                });
+            if let Some(token) = auth_token {
+                obj.insert("auth_token".into(), json!(token));
+            }
+            let sni = params
+                .get("sni")
+                .or_else(|| params.get("server_name"))
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+            let insecure = params
+                .get("insecure")
+                .or_else(|| params.get("allowInsecure"))
+                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+            if sni.is_some() || insecure {
+                let mut tls = json!({ "enabled": true });
+                if let Some(s) = sni {
+                    tls["server_name"] = json!(s);
+                }
+                if insecure {
+                    tls["insecure"] = json!(true);
+                }
+                obj.insert("tls".into(), tls);
             }
             Value::Object(obj)
         }
@@ -6629,17 +6878,25 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     }
                 }
                 "masque" => {
-                    obj.insert("profile".into(), json!("cloudflare"));
-                    let priv_key = if !src.wg_private_key.trim().is_empty() {
-                        src.wg_private_key.trim()
+                    let profile = if src.masque_profile.trim().eq_ignore_ascii_case("standard") {
+                        "standard"
                     } else {
-                        src.warp_private_key.trim()
+                        "cloudflare"
+                    };
+                    obj.insert("profile".into(), json!(profile));
+                    let priv_key = if !src.masque_private_key.trim().is_empty() {
+                        normalize_masque_key_b64(&src.masque_private_key)
+                    } else if !src.wg_private_key.trim().is_empty() {
+                        normalize_masque_key_b64(&src.wg_private_key)
+                    } else {
+                        normalize_masque_key_b64(&src.warp_private_key)
                     };
                     if !priv_key.is_empty() {
                         obj.insert("private_key".into(), json!(priv_key));
                     }
-                    if !src.masque_public_key.trim().is_empty() {
-                        obj.insert("public_key".into(), json!(src.masque_public_key.trim()));
+                    let pub_key = normalize_masque_key_b64(&src.masque_public_key);
+                    if !pub_key.is_empty() {
+                        obj.insert("public_key".into(), json!(pub_key));
                     }
                     if !src.masque_local_address.trim().is_empty() {
                         obj.insert("ip".into(), json!(src.masque_local_address.trim()));
@@ -6652,6 +6909,11 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                     }
                     if src.masque_mtu > 0 {
                         obj.insert("mtu".into(), json!(src.masque_mtu));
+                    }
+                    if let Some(vhttp) =
+                        normalize_masque_vhttp(&src.masque_vhttp_mode, src.masque_vhttp)
+                    {
+                        obj.insert("vhttp".into(), json!(vhttp));
                     }
                     let explicit_sni = if !src.tls_sni.trim().is_empty() {
                         src.tls_sni.trim()
@@ -6721,14 +6983,53 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                 }),
             ));
         }
-        "custom_json" => {
-            if let Ok(mut v) = serde_json::from_str::<Value>(&src.custom_json) {
-                let tag = v
+        "custom_json" | "outbound_json" | "json" => {
+            let mut raw_entries: Vec<&str> = src
+                .outbound_jsons
+                .iter()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let custom_trimmed = src.custom_json.trim();
+            if !custom_trimmed.is_empty() && !raw_entries.contains(&custom_trimmed) {
+                raw_entries.push(custom_trimmed);
+            }
+            let mut used_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut push_json_item = |val: Value, idx: usize| {
+                let fallback_tag = if idx == 0 {
+                    format!("custom-{}", src.id)
+                } else {
+                    format!("custom-{}-{idx}", src.id)
+                };
+                let normalized = if let Some(usque) =
+                    convert_usque_config_to_masque_outbound(&val, &fallback_tag)
+                {
+                    usque
+                } else if val
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|t| !t.trim().is_empty())
+                {
+                    val
+                } else {
+                    return;
+                };
+                let mut normalized = normalized;
+                let base_tag = normalized
                     .get("tag")
                     .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
                     .map(String::from)
-                    .unwrap_or_else(|| format!("custom-{}", src.id));
-                if let Some(obj) = v.as_object_mut() {
+                    .unwrap_or(fallback_tag);
+                let tag = if used_tags.insert(base_tag.clone()) {
+                    base_tag
+                } else {
+                    let unique = format!("{base_tag}-{idx}");
+                    used_tags.insert(unique.clone());
+                    unique
+                };
+                if let Some(obj) = normalized.as_object_mut() {
                     obj.insert("tag".into(), json!(tag));
                     if !src.server_ports.is_empty() {
                         obj.insert("server_ports".into(), json!(src.server_ports));
@@ -6740,7 +7041,24 @@ pub(crate) fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value
                         obj.insert("hop_interval_max".into(), json!(src.hop_interval_max));
                     }
                 }
-                out.push((tag, v));
+                out.push((tag, normalized));
+            };
+            let mut item_idx = 0usize;
+            for raw in raw_entries {
+                if let Ok(parsed) = serde_json::from_str::<Value>(raw) {
+                    match parsed {
+                        Value::Array(items) => {
+                            for item in items {
+                                push_json_item(item, item_idx);
+                                item_idx += 1;
+                            }
+                        }
+                        other => {
+                            push_json_item(other, item_idx);
+                            item_idx += 1;
+                        }
+                    }
+                }
             }
         }
         _ => {
@@ -18448,10 +18766,10 @@ fn build_balancer_outbound(
             "interrupt_exist_connections": bal.interrupt_exist_connections
         });
     }
-    let raw_mode = if !bal.mode.trim().is_empty() {
-        bal.mode.trim().to_ascii_lowercase()
-    } else if bal.balancer_type == "priority" {
+    let raw_mode = if bal.balancer_type.trim().eq_ignore_ascii_case("priority") {
         "priority".to_string()
+    } else if !bal.mode.trim().is_empty() {
+        bal.mode.trim().to_ascii_lowercase()
     } else {
         "least_test".to_string()
     };
@@ -29955,5 +30273,146 @@ proxies:
         .to_string();
         let fptn_tok = format!("fptn:{}", B64_STD.encode(fptn_payload.as_bytes()));
         assert_eq!(parse_fptn_token_nodes(&fptn_tok).len(), 2);
+    }
+
+    #[test]
+    fn test_priority_balancer_ignores_stale_least_test_mode_and_emits_tiers() {
+        let store = RouterStoreData {
+            outbound_sources: vec![
+                OutboundSource {
+                    id: "src_a".to_string(),
+                    enabled: true,
+                    name: "SrcA".to_string(),
+                    source_type: "proxy_links".to_string(),
+                    proxy_links: vec![
+                        "vless://11111111-1111-4111-8111-111111111111@a.example.com:443#NodeA"
+                            .to_string(),
+                    ],
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "src_b".to_string(),
+                    enabled: true,
+                    name: "SrcB".to_string(),
+                    source_type: "proxy_links".to_string(),
+                    proxy_links: vec![
+                        "vless://22222222-2222-4222-8222-222222222222@b.example.com:443#NodeB"
+                            .to_string(),
+                    ],
+                    ..Default::default()
+                },
+            ],
+            balancers: vec![BalancerConfig {
+                id: "bal_prio".to_string(),
+                enabled: true,
+                name: "Priority".to_string(),
+                balancer_type: "priority".to_string(),
+                mode: "least_test".to_string(),
+                outbound_group_levels: vec![
+                    "src_a".to_string(),
+                    "src_b".to_string(),
+                    "direct".to_string(),
+                ],
+                pick_fastest: false,
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "Main".to_string(),
+                enabled: true,
+                label: "Main".to_string(),
+                action: "connection".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_a".to_string(), "src_b".to_string()],
+                balancer_refs: vec!["bal_prio".to_string()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let compiled = compile_core_config(&store).expect("compile_core_config");
+        let outbounds = compiled["outbounds"].as_array().expect("outbounds array");
+        let bal = outbounds
+            .iter()
+            .find(|o| o.get("tag").and_then(Value::as_str) == Some("bal-Main-bal_prio"))
+            .expect("priority balancer outbound");
+        assert_eq!(bal["type"], "urltest");
+        assert_eq!(bal["mode"], "priority");
+        assert_eq!(
+            bal["balancer"]["tiers"],
+            json!([["NodeA"], ["NodeB"], ["direct"]])
+        );
+    }
+
+    #[test]
+    fn test_masque_source_uri_and_outbound_jsons_materialization() {
+        let pem_pub = "-----BEGIN PUBLIC KEY-----\nPUBDERDATA==\n-----END PUBLIC KEY-----";
+        let masque_src = OutboundSource {
+            id: "mq_cf".to_string(),
+            enabled: true,
+            name: "CF-MASQUE".to_string(),
+            source_type: "masque".to_string(),
+            server: "162.159.198.1".to_string(),
+            server_port: 443,
+            masque_profile: "cloudflare".to_string(),
+            masque_private_key: "PRIVDERDATA==".to_string(),
+            masque_public_key: pem_pub.to_string(),
+            masque_local_address: "172.16.0.2/32".to_string(),
+            masque_ipv6: "2606:4700:110::2/128".to_string(),
+            masque_uri: "https://cloudflareaccess.com".to_string(),
+            masque_mtu: 1280,
+            masque_vhttp_mode: "auto".to_string(),
+            sni: "www.apple.com".to_string(),
+            ..Default::default()
+        };
+        let built_mq = build_source_outbounds(&masque_src);
+        assert_eq!(built_mq.len(), 1);
+        let mq = &built_mq[0].1;
+        assert_eq!(mq["type"], "masque");
+        assert_eq!(mq["profile"], "cloudflare");
+        assert_eq!(mq["private_key"], "PRIVDERDATA==");
+        assert_eq!(mq["public_key"], "PUBDERDATA==");
+        assert_eq!(mq["vhttp"], "auto");
+        assert_eq!(mq["ip"], "172.16.0.2/32");
+        assert_eq!(mq["ipv6"], "2606:4700:110::2/128");
+        assert_eq!(mq["tls"]["server_name"], "www.apple.com");
+
+        let uri = "masque://162.159.198.1:443?private_key=PRIV_URI%3D%3D&public_key=PUB_URI%3D%3D&ip=172.16.0.2%2F32&ipv6=2606%3A4700%3A110%3A%3A2%2F128&profile=cloudflare&sni=www.apple.com&vhttp=auto&mtu=1280#WARP-MASQUE";
+        let parsed = parse_proxy_uri(uri, 0).expect("parse masque:// URI");
+        assert_eq!(parsed.tag, "WARP-MASQUE");
+        assert_eq!(parsed.outbound_json["type"], "masque");
+        assert_eq!(parsed.outbound_json["private_key"], "PRIV_URI==");
+        assert_eq!(parsed.outbound_json["public_key"], "PUB_URI==");
+        assert_eq!(parsed.outbound_json["vhttp"], "auto");
+        assert_eq!(parsed.outbound_json["tls"]["server_name"], "www.apple.com");
+
+        let usque_cfg = json!({
+            "endpoint_v4": "162.159.198.2:443",
+            "private_key": "USQUE_PRIV==",
+            "endpoint_pub_key": pem_pub,
+            "ipv4": "172.16.0.3",
+            "ipv6": "2606:4700:110::3",
+            "sni": "www.apple.com"
+        })
+        .to_string();
+        let json_src = OutboundSource {
+            id: "oj1".to_string(),
+            enabled: true,
+            name: "OJ1".to_string(),
+            source_type: "outbound_json".to_string(),
+            outbound_jsons: vec![
+                r#"{"type":"socks","tag":"local-socks","server":"127.0.0.1","server_port":1080}"#
+                    .to_string(),
+                usque_cfg,
+            ],
+            ..Default::default()
+        };
+        let built_oj = build_source_outbounds(&json_src);
+        assert_eq!(built_oj.len(), 2);
+        assert_eq!(built_oj[0].0, "local-socks");
+        assert_eq!(built_oj[1].1["type"], "masque");
+        assert_eq!(built_oj[1].1["server"], "162.159.198.2");
+        assert_eq!(built_oj[1].1["private_key"], "USQUE_PRIV==");
+        assert_eq!(built_oj[1].1["public_key"], "PUBDERDATA==");
+        assert_eq!(built_oj[1].1["ip"], "172.16.0.3/32");
     }
 }

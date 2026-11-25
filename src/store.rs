@@ -2214,6 +2214,8 @@ pub struct OutboundSource {
     #[serde(default)]
     pub proxy_links: Vec<String>,
     #[serde(default)]
+    pub outbound_jsons: Vec<String>,
+    #[serde(default)]
     pub custom_json: String,
     #[serde(default)]
     pub interface_name: String,
@@ -2528,6 +2530,12 @@ pub struct OutboundSource {
     /// MASQUE
     #[serde(default)]
     pub masque_vhttp: bool,
+    #[serde(default)]
+    pub masque_vhttp_mode: String,
+    #[serde(default)]
+    pub masque_profile: String,
+    #[serde(default)]
+    pub masque_private_key: String,
     #[serde(default)]
     pub masque_public_key: String,
     #[serde(default)]
@@ -5886,7 +5894,11 @@ impl RouterStoreData {
                     } else {
                         b.name.clone()
                     };
-                    let balancer_mode = b.opt("mode").unwrap_or(default_mode).to_string();
+                    let balancer_mode = if balancer_type.eq_ignore_ascii_case("priority") {
+                        "priority".to_string()
+                    } else {
+                        b.opt("mode").unwrap_or(default_mode).to_string()
+                    };
                     let default_interrupt = default_balancer_interrupt_exist_connections(
                         &balancer_type,
                         &balancer_mode,
@@ -6057,7 +6069,12 @@ impl RouterStoreData {
                             .opt("subscription_insecure")
                             .is_some_and(parse_bool),
                         proxy_links,
-                        custom_json: b.opt("custom_json").unwrap_or("").to_string(),
+                        outbound_jsons: b.raw_list("outbound_jsons"),
+                        custom_json: b
+                            .opt("custom_json")
+                            .or_else(|| b.opt("outbound_json"))
+                            .unwrap_or("")
+                            .to_string(),
                         interface_name: b
                             .opt("interface_name")
                             .or_else(|| b.opt("interface"))
@@ -6266,7 +6283,28 @@ impl RouterStoreData {
                             .opt("sudoku_http_mask_host")
                             .unwrap_or("")
                             .to_string(),
-                        masque_vhttp: b.opt("masque_vhttp").is_some_and(parse_bool),
+                        masque_vhttp: b.opt("masque_vhttp").is_some_and(|v| {
+                            parse_bool(v)
+                                || matches!(
+                                    v.trim().to_ascii_lowercase().as_str(),
+                                    "auto" | "h3" | "h2"
+                                )
+                        }) || b.opt("masque_vhttp_mode").is_some_and(|v| {
+                            matches!(v.trim().to_ascii_lowercase().as_str(), "auto" | "h3" | "h2")
+                        }),
+                        masque_vhttp_mode: b
+                            .opt("masque_vhttp_mode")
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .or_else(|| {
+                                b.opt("masque_vhttp").and_then(|v| {
+                                    let low = v.trim().to_ascii_lowercase();
+                                    matches!(low.as_str(), "auto" | "h3" | "h2").then_some(low)
+                                })
+                            })
+                            .unwrap_or_default(),
+                        masque_profile: b.opt("masque_profile").unwrap_or("").to_string(),
+                        masque_private_key: b.opt("masque_private_key").unwrap_or("").to_string(),
                         masque_public_key: b.opt("masque_public_key").unwrap_or("").to_string(),
                         masque_ipv6: b.opt("masque_ipv6").unwrap_or("").to_string(),
                         masque_uri: b.opt("masque_uri").unwrap_or("").to_string(),
@@ -13438,5 +13476,92 @@ config outbound_source 'awg31_src'
             .expect("deserialize legacy settings without entware fields");
         assert_eq!(restored.entware_dns_mode, "redirect");
         assert_eq!(restored.entware_dns_port, 1053);
+    }
+
+    #[test]
+    fn test_priority_balancer_import_and_outbound_jsons_roundtrip() {
+        let uci = concat!(
+            "config balancer 'bal_prio'\n",
+            "\toption enabled '1'\n",
+            "\toption name 'Priority'\n",
+            "\toption balancer_type 'priority'\n",
+            "\toption mode 'least_test'\n",
+            "\tlist outbound_group_levels 'src_a'\n",
+            "\n",
+            "config outbound_source 'src_oj'\n",
+            "\toption enabled '1'\n",
+            "\toption name 'RawOutbounds'\n",
+            "\toption source_type 'outbound_json'\n",
+            "\tlist outbound_jsons '{\"type\":\"socks\",\"tag\":\"s1\",\"server\":\"127.0.0.1\",\"server_port\":1080}'\n",
+            "\n",
+            "config outbound_source 'src_mq'\n",
+            "\toption enabled '1'\n",
+            "\toption name 'MasqueNode'\n",
+            "\toption source_type 'masque'\n",
+            "\toption server '162.159.198.1'\n",
+            "\toption masque_profile 'cloudflare'\n",
+            "\toption masque_private_key 'PRIV_KEY_VAL'\n",
+            "\toption masque_vhttp_mode 'auto'\n",
+        );
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon_prio_masque_{}", std::process::id()));
+        let sub_dir = tmp_dir.join("subscriptions");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&sub_dir).expect("mkdir sub");
+        let uci_path = tmp_dir.join("tachyon");
+        std::fs::write(&uci_path, uci).expect("write uci");
+
+        let mut data = RouterStoreData::default();
+        let imported = data.import_legacy_router_files_with_cache(&[uci_path.as_path()], &sub_dir);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        assert_eq!(imported, 3);
+        let bal = data
+            .balancers
+            .iter()
+            .find(|b| b.id == "bal_prio")
+            .expect("priority balancer");
+        assert_eq!(bal.balancer_type, "priority");
+        assert_eq!(bal.mode, "priority");
+
+        let oj = data
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_oj")
+            .expect("outbound_json source");
+        assert_eq!(oj.outbound_jsons.len(), 1);
+
+        let mq = data
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_mq")
+            .expect("masque source");
+        assert_eq!(mq.masque_profile, "cloudflare");
+        assert_eq!(mq.masque_private_key, "PRIV_KEY_VAL");
+        assert_eq!(mq.masque_vhttp_mode, "auto");
+        assert!(mq.masque_vhttp);
+
+        let uci_json = sync_store_to_json_sections(&data, None);
+        assert_eq!(
+            uci_json["src_oj"]["outbound_jsons"],
+            json!([r#"{"type":"socks","tag":"s1","server":"127.0.0.1","server_port":1080}"#])
+        );
+        assert_eq!(uci_json["src_mq"]["masque_private_key"], "PRIV_KEY_VAL");
+        assert_eq!(uci_json["src_mq"]["masque_vhttp_mode"], "auto");
+
+        let mut reimported = RouterStoreData::default();
+        reimported.import_from_json_sections(uci_json.as_object().expect("uci_json object"));
+        let oj2 = reimported
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_oj")
+            .expect("reimported oj");
+        assert_eq!(oj2.outbound_jsons.len(), 1);
+        let mq2 = reimported
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "src_mq")
+            .expect("reimported mq");
+        assert_eq!(mq2.masque_private_key, "PRIV_KEY_VAL");
     }
 }

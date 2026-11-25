@@ -46,6 +46,7 @@ export function reasonLabel(reason: string): string {
     case 'recovery':
       return tr('Восстановление', 'Recovery');
     case 'faster_same_tier':
+    case 'better_candidate_selected':
       return tr(
         'Более быстрый узел того же уровня',
         'Faster node in the same tier',
@@ -53,6 +54,7 @@ export function reasonLabel(reason: string): string {
     case 'switch':
       return tr('Переключение', 'Switch');
     case 'active_ineligible':
+    case 'active_member_ineligible':
     case 'active_unhealthy':
       return tr('Активный узел недоступен', 'Active node unavailable');
     case 'higher_priority_eligible':

@@ -431,6 +431,21 @@ function summarizeBalancer(sectionId) {
   if (btype === 'priority') {
     let levelList = [];
     for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+      const rawSettings = uci.get(UCI_PACKAGE, sid, 'balancer_settings');
+      if (typeof rawSettings === 'string' && rawSettings.trim()) {
+        try {
+          const parsed = JSON.parse(rawSettings);
+          const perBal =
+            parsed && typeof parsed === 'object' ? parsed[sectionId] : null;
+          const configuredLevels = parsePriorityLevelsList(
+            perBal && perBal.outbound_group_levels,
+          );
+          if (configuredLevels.length) {
+            levelList = configuredLevels;
+            break;
+          }
+        } catch (_e) {}
+      }
       const secLevels = parsePriorityLevelsList(
         uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
       );
@@ -586,6 +601,21 @@ function createBalancersContent(section) {
   o.default = 'urltest';
   o.value('urltest', _('URLTest (Lowest Latency)'));
   o.value('priority', _('Priority (Ordered Failover Tiers)'));
+  o.write = function (sectionId, value) {
+    const normalized = String(value || 'urltest')
+      .trim()
+      .toLowerCase();
+    uci.set(UCI_PACKAGE, sectionId, 'balancer_type', normalized);
+    if (normalized === 'priority') {
+      uci.set(UCI_PACKAGE, sectionId, 'mode', 'priority');
+    } else if (
+      String(uci.get(UCI_PACKAGE, sectionId, 'mode') || '')
+        .trim()
+        .toLowerCase() === 'priority'
+    ) {
+      uci.set(UCI_PACKAGE, sectionId, 'mode', 'least_test');
+    }
+  };
 
   o = section.option(
     form.ListValue,

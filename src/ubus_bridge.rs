@@ -12526,6 +12526,10 @@ pub(crate) fn format_show_config_value(
                 "amnezia_conf_text",
                 "proxy_links_text",
                 "outbound_json",
+                "masque_private_key",
+                "masque_public_key",
+                "wg_private_key",
+                "warp_private_key",
             ] {
                 redact_non_empty_string_field(src_obj, key);
             }

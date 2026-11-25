@@ -134,10 +134,12 @@ fn parse_known_reason(raw: &str) -> Option<Reason> {
         "initial" => Some(Reason::Initial),
         "failover" => Some(Reason::Failover),
         "recovery" => Some(Reason::Recovery),
-        "faster_same_tier" => Some(Reason::FasterSameTier),
         "switch" => Some(Reason::Switch),
-        "active_ineligible" | "active_unhealthy" => Some(Reason::ActiveIneligible),
+        "active_ineligible" | "active_member_ineligible" | "active_unhealthy" => {
+            Some(Reason::ActiveIneligible)
+        }
         "higher_priority_eligible" => Some(Reason::HigherPriorityEligible),
+        "faster_same_tier" | "better_candidate_selected" => Some(Reason::FasterSameTier),
         "manual_restore" => Some(Reason::ManualRestore),
         _ => None,
     }
@@ -1489,5 +1491,51 @@ mod tests {
             )
             .unwrap();
         assert!(after_restart.is_empty());
+    }
+
+    #[test]
+    fn core_last_switch_accepts_core_69_reason_codes() {
+        let groups = config();
+        let mut observer = Observer::default();
+        observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {"now": "A", "switch_generation": "g9", "switch_sequence": 1}}}),
+        );
+        let evs_ineligible = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "B",
+                "switch_generation": "g9",
+                "switch_sequence": 2,
+                "last_switch": {
+                    "from": "A",
+                    "to": "B",
+                    "reason": "active_member_ineligible",
+                    "timestamp": 1700000010
+                }
+            }}}),
+        );
+        assert_eq!(evs_ineligible.len(), 1);
+        assert!(evs_ineligible[0].reason == Reason::ActiveIneligible);
+
+        let evs_better = observe(
+            &mut observer,
+            &groups,
+            &json!({"proxies": {"priority": {
+                "now": "C",
+                "switch_generation": "g9",
+                "switch_sequence": 3,
+                "last_switch": {
+                    "from": "B",
+                    "to": "C",
+                    "reason": "better_candidate_selected",
+                    "timestamp": 1700000020
+                }
+            }}}),
+        );
+        assert_eq!(evs_better.len(), 1);
+        assert!(evs_better[0].reason == Reason::FasterSameTier);
     }
 }

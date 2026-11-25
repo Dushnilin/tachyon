@@ -15560,13 +15560,35 @@ function createSectionContent(section) {
         label: `[${(bal.balancer_type || 'urltest').toUpperCase()}] ${bal.name || bal.label || bal['.name']}`,
       }));
 
+  const parsePriorityLevelsList = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw))
+      return raw.map((v) => String(v || '').trim()).filter(Boolean);
+    const str = String(raw || '').trim();
+    if (!str) return [];
+    if (str.startsWith('srv:')) return [str];
+    return str
+      .split(/\s+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  };
+
   const summarizeSectionBalancerSettings = (sectionId, balId) => {
     const balSec = uci.get(UCI_PACKAGE, balId) || {};
     const balType = String(balSec.balancer_type || 'urltest').trim();
     const map = readItemSettingsMap(sectionId, 'balancer_settings');
     const st = (map && map[balId]) || {};
     if (balType === 'priority') {
-      const levels = normalizeDynamicListItems(st.outbound_group_levels || []);
+      let levels = normalizeDynamicListItems(st.outbound_group_levels || []);
+      if (!levels.length) {
+        const legacySec = parsePriorityLevelsList(
+          uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
+        );
+        const legacyBal = parsePriorityLevelsList(
+          uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
+        );
+        levels = legacySec.length ? legacySec : legacyBal;
+      }
       if (levels.length > 0) {
         return `${_('Tiers')}: ${levels.length}`;
       }
@@ -15609,22 +15631,20 @@ function createSectionContent(section) {
           (settingsMap && settingsMap[balId]) || {},
         );
 
-        if (balType === 'priority' && existing.outbound_group_levels == null) {
-          const legacySec = normalizeOptionValues(
+        if (
+          balType === 'priority' &&
+          !normalizeDynamicListItems(existing.outbound_group_levels || [])
+            .length
+        ) {
+          const legacySec = parsePriorityLevelsList(
             uci.get(UCI_PACKAGE, targetSectionId, 'outbound_group_levels'),
           );
-          const legacyBal = normalizeOptionValues(
+          const legacyBal = parsePriorityLevelsList(
             uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
           );
-          const validSet = new Set(
-            currentSectionPriorityTierChoices(targetSectionId, []).map(
-              (c) => c.value,
-            ),
-          );
-          const seed = (legacySec.length ? legacySec : legacyBal).filter((v) =>
-            validSet.has(v),
-          );
-          existing.outbound_group_levels = seed;
+          existing.outbound_group_levels = legacySec.length
+            ? legacySec
+            : legacyBal;
         }
 
         const defaults =
@@ -15922,6 +15942,36 @@ function createSectionContent(section) {
             );
             nextMap[balId] = nextSettings || {};
             writeItemSettingsMap(targetSectionId, 'balancer_settings', nextMap);
+            if (balType === 'priority') {
+              const savedLevels = normalizeDynamicListItems(
+                (nextSettings && nextSettings.outbound_group_levels) || [],
+              );
+              if (!savedLevels.length) {
+                const prioRefs = normalizeOptionValues(
+                  uci.get(UCI_PACKAGE, targetSectionId, 'balancer_refs'),
+                ).filter(
+                  (id) =>
+                    String(
+                      uci.get(UCI_PACKAGE, id, 'balancer_type') || 'urltest',
+                    ).toLowerCase() === 'priority',
+                );
+                if (prioRefs.length <= 1) {
+                  unsetIfPresent(targetSectionId, 'outbound_group_levels');
+                }
+                const usingSecs = (
+                  uci.sections(UCI_PACKAGE, 'section') || []
+                ).filter((s) =>
+                  normalizeOptionValues(s && s.balancer_refs).includes(balId),
+                );
+                if (
+                  usingSecs.length <= 1 &&
+                  (!usingSecs.length ||
+                    usingSecs[0]['.name'] === targetSectionId)
+                ) {
+                  unsetIfPresent(balId, 'outbound_group_levels');
+                }
+              }
+            }
             if (itemNode && typeof itemNode.querySelector === 'function') {
               const summaryNode = itemNode.querySelector(
                 '.tachyon-balancer-item-summary',
@@ -16010,63 +16060,6 @@ function createSectionContent(section) {
   };
   outboundNameSourceOptions.set('balancer_refs', o);
 
-  const parsePriorityLevelsList = (raw) => {
-    if (!raw) return [];
-    if (Array.isArray(raw))
-      return raw.map((v) => String(v || '').trim()).filter(Boolean);
-    const str = String(raw || '').trim();
-    if (!str) return [];
-    if (str.startsWith('srv:')) return [str];
-    return str
-      .split(/\s+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
-  };
-
-  const migrateLegacyBalancerLevels = (currentSectionId) => {
-    const balRefs = normalizeOptionValues(
-      uci.get(UCI_PACKAGE, currentSectionId, 'balancer_refs'),
-    );
-    for (const balId of balRefs) {
-      const legacy = parsePriorityLevelsList(
-        uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
-      );
-      if (!legacy.length) continue;
-      (uci.sections(UCI_PACKAGE, 'section') || []).forEach((sec) => {
-        const sid = sec && sec['.name'];
-        if (!sid || sid === currentSectionId) return;
-        const refs = normalizeOptionValues(sec.balancer_refs);
-        if (!refs.includes(balId)) return;
-        const existing = parsePriorityLevelsList(
-          uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
-        );
-        if (!existing.length) {
-          uci.set(UCI_PACKAGE, sid, 'outbound_group_levels', legacy);
-        }
-      });
-    }
-  };
-
-  const syncSinglePriorityBalancerLevels = (sectionId, levels) => {
-    const balRefs = normalizeOptionValues(
-      uci.get(UCI_PACKAGE, sectionId, 'balancer_refs'),
-    );
-    const prioBalIds = balRefs.filter((balId) => {
-      const btype = String(
-        uci.get(UCI_PACKAGE, balId, 'balancer_type') || 'urltest',
-      ).toLowerCase();
-      return btype === 'priority';
-    });
-    if (prioBalIds.length === 1) {
-      const balId = prioBalIds[0];
-      if (levels.length) {
-        uci.set(UCI_PACKAGE, balId, 'outbound_group_levels', levels);
-      } else {
-        unsetIfPresent(balId, 'outbound_group_levels');
-      }
-    }
-  };
-
   o = section.taboption(
     'settings',
     form.DynamicList,
@@ -16077,6 +16070,7 @@ function createSectionContent(section) {
     ),
   );
   o.modalonly = true;
+  o.retain = true;
   o.depends('action', '__legacy_inline__');
   o.cfgvalue = function (sectionId) {
     const own = parsePriorityLevelsList(
@@ -16099,19 +16093,8 @@ function createSectionContent(section) {
     }
     return [];
   };
-  o.write = function (sectionId, value) {
-    migrateLegacyBalancerLevels(sectionId);
-    const levels = parsePriorityLevelsList(value);
-    if (levels.length)
-      uci.set(UCI_PACKAGE, sectionId, 'outbound_group_levels', levels);
-    else unsetIfPresent(sectionId, 'outbound_group_levels');
-    syncSinglePriorityBalancerLevels(sectionId, levels);
-  };
-  o.remove = function (sectionId) {
-    migrateLegacyBalancerLevels(sectionId);
-    unsetIfPresent(sectionId, 'outbound_group_levels');
-    syncSinglePriorityBalancerLevels(sectionId, []);
-  };
+  o.write = function () {};
+  o.remove = function () {};
   configureLiveDynamicListChoices(o, currentSectionPriorityTierChoices);
 
   o = section.taboption(

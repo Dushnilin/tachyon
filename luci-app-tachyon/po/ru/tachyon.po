@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 15:49+0300\n"
-"PO-Revision-Date: 2026-11-25 15:49+0300\n"
+"POT-Creation-Date: 2026-11-25 16:22+0300\n"
+"PO-Revision-Date: 2026-11-25 16:22+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1070,6 +1070,9 @@ msgstr "Авто (клонировать целевой SNI / пул довер�
 msgid "Auto (Default)"
 msgstr "Авто (по умолчанию)"
 
+msgid "Auto (HTTP/3 → HTTP/2 fallback)"
+msgstr ""
+
 msgid "Auto (TCP/UDP)"
 msgstr "Авто (TCP/UDP)"
 
@@ -2062,6 +2065,9 @@ msgstr "Приватный ключ клиента (PrivateKey)"
 
 msgid "Client Private Key (<key>)"
 msgstr "Приватный ключ клиента (<key>)"
+
+msgid "Client Private Key (Base64 DER / PEM)"
+msgstr ""
 
 msgid "Client Private Key (Base64)"
 msgstr "Приватный ключ клиента (Private Key)"
@@ -4292,6 +4298,9 @@ msgstr "Ошибка разбора файла:"
 msgid "Failed to parse target list."
 msgstr "Ошибка обработки списка целей."
 
+msgid "Failed to parse usque config.json"
+msgstr ""
+
 msgid "Failed to read operation log"
 msgstr "Не удалось прочитать лог операции"
 
@@ -4937,6 +4946,9 @@ msgstr "HEDGED • ПАРАЛЛЕЛЬНЫЙ РЕЗЕРВ"
 msgid "HTTP"
 msgstr "HTTP"
 
+msgid "HTTP Carrier (vHTTP)"
+msgstr ""
+
 msgid "HTTP Mask Host"
 msgstr "Хост HTTP-маскировки"
 
@@ -5423,8 +5435,14 @@ msgstr "Импортируйте несколько файлов AmneziaWG .conf
 msgid "Import subscription URLTest groups"
 msgstr "Импортировать группы URLTest подписки"
 
+msgid "Import usque config.json"
+msgstr ""
+
 msgid "Imported URLTest Idle Timeout"
 msgstr "Таймаут простоя импортированных групп URLTest"
+
+msgid "Imported usque config.json"
+msgstr ""
 
 msgid "In Outbound Group"
 msgstr "В группе серверов"
@@ -5839,6 +5857,9 @@ msgstr "Неверный формат IPv4 CIDR (ожидается префик
 
 msgid "Invalid IPv6 CIDR format (expected prefix, e.g. fc00::/18)"
 msgstr "Неверный формат IPv6 CIDR (ожидается префикс, например fc00::/18)"
+
+msgid "Invalid JSON config"
+msgstr ""
 
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
@@ -6425,8 +6446,14 @@ msgstr "Загрузить .ovpn конфиг"
 msgid "Load Current Records"
 msgstr "Загрузить текущие записи"
 
+msgid "Load a Cloudflare WARP / usque config.json file to auto-fill endpoint, client private key, server public key, tunnel IPs, and MTU."
+msgstr ""
+
 msgid "Load an AmneziaWG or WireGuard .conf file to auto-fill all tunnel and obfuscation parameters."
 msgstr "Загрузите файл .conf AmneziaWG или WireGuard для автоматического заполнения всех параметров туннеля и обфускации."
+
+msgid "Load config.json"
+msgstr ""
 
 msgid "Load from File (.json)"
 msgstr "Загрузить из файла (.json)"
@@ -6571,6 +6598,9 @@ msgstr "MTU для MASQUE"
 
 msgid "MASQUE Private Key"
 msgstr "Приватный ключ MASQUE"
+
+msgid "MASQUE Profile"
+msgstr ""
 
 msgid "MASQUE Server Public Key (Base64)"
 msgstr "Публичный ключ сервера MASQUE (Base64 ECDSA)"
@@ -12827,9 +12857,6 @@ msgstr "уникальный идентификатор UCI"
 msgid "unknown"
 msgstr "неизвестно"
 
-msgid "vHTTP Mode"
-msgstr "Режим vHTTP"
-
 msgid "via Proxy (HTTP probe)"
 msgstr "HTTP-проба через прокси"
 
@@ -13045,6 +13072,9 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "vHTTP Mode"
+msgstr "Режим vHTTP"
 
 msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
 msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."

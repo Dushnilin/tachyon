@@ -6078,9 +6078,236 @@ function createOutboundsContent(section) {
   o.depends({ source_type: 'sudoku', sudoku_http_mask: '1' });
 
   // MASQUE extras
-  o = section.taboption('general', form.Flag, 'masque_vhttp', _('vHTTP Mode'));
+  o = section.taboption(
+    'general',
+    form.Button,
+    '_import_usque_json',
+    _('Import usque config.json'),
+    _(
+      'Load a Cloudflare WARP / usque config.json file to auto-fill endpoint, client private key, server public key, tunnel IPs, and MTU.',
+    ),
+  );
   o.modalonly = true;
-  o.default = '0';
+  o.inputtitle = _('Load config.json');
+  o.inputstyle = 'action';
+  o.depends('source_type', 'masque');
+  o.onclick = function (_ev, sectionId) {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json,application/json';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        document.body.removeChild(fileInput);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const raw = String((e.target && e.target.result) || '');
+          const cfg = JSON.parse(raw);
+          if (!cfg || typeof cfg !== 'object') {
+            throw new Error(_('Invalid JSON config'));
+          }
+          const ep = String(
+            cfg.endpoint_v4 || cfg.endpoint_v6 || cfg.server || '',
+          ).trim();
+          if (ep) {
+            const bracketMatch = ep.match(/^\[([^\]]+)\]:(\d+)$/);
+            const hostPortMatch =
+              !ep.includes('[') && ep.split(':').length === 2
+                ? ep.match(/^([^:]+):(\d+)$/)
+                : null;
+            if (bracketMatch) {
+              setModalFieldValue(section, sectionId, 'server', bracketMatch[1]);
+              setModalFieldValue(
+                section,
+                sectionId,
+                'server_port',
+                bracketMatch[2],
+              );
+            } else if (hostPortMatch) {
+              setModalFieldValue(
+                section,
+                sectionId,
+                'server',
+                hostPortMatch[1],
+              );
+              setModalFieldValue(
+                section,
+                sectionId,
+                'server_port',
+                hostPortMatch[2],
+              );
+            } else {
+              setModalFieldValue(section, sectionId, 'server', ep);
+              if (cfg.server_port) {
+                setModalFieldValue(
+                  section,
+                  sectionId,
+                  'server_port',
+                  String(cfg.server_port),
+                );
+              } else {
+                setModalFieldValue(section, sectionId, 'server_port', '443');
+              }
+            }
+          }
+          setModalFieldValue(
+            section,
+            sectionId,
+            'masque_profile',
+            String(cfg.profile || 'cloudflare').trim() || 'cloudflare',
+          );
+          if (cfg.private_key) {
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_private_key',
+              String(cfg.private_key).trim(),
+            );
+          }
+          const rawPub = String(
+            cfg.endpoint_pub_key || cfg.public_key || '',
+          ).trim();
+          if (rawPub) {
+            const cleanPub = rawPub.includes('-----BEGIN')
+              ? rawPub
+                  .split(/\r?\n/)
+                  .map((l) => l.trim())
+                  .filter((l) => l && !l.startsWith('-----'))
+                  .join('')
+              : rawPub;
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_public_key',
+              cleanPub,
+            );
+          }
+          if (cfg.ipv4 || cfg.ip) {
+            const v4 = String(cfg.ipv4 || cfg.ip).trim();
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_local_address',
+              v4.includes('/') ? v4 : `${v4}/32`,
+            );
+          }
+          if (cfg.ipv6) {
+            const v6 = String(cfg.ipv6).trim();
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_ipv6',
+              v6.includes('/') ? v6 : `${v6}/128`,
+            );
+          }
+          if (cfg.mtu) {
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_mtu',
+              String(cfg.mtu),
+            );
+          }
+          if (cfg.uri) {
+            setModalFieldValue(
+              section,
+              sectionId,
+              'masque_uri',
+              String(cfg.uri).trim(),
+            );
+          }
+          const sniVal = String(
+            cfg.sni || (cfg.tls && cfg.tls.server_name) || '',
+          ).trim();
+          if (sniVal) {
+            setModalFieldValue(section, sectionId, 'sni', sniVal);
+          }
+          setModalFieldValue(
+            section,
+            sectionId,
+            'masque_vhttp_mode',
+            String(cfg.vhttp || 'auto').trim() || 'auto',
+          );
+          ui.addNotification(
+            null,
+            E('p', {}, _('Imported usque config.json')),
+            'info',
+          );
+        } catch (err) {
+          ui.addNotification(
+            null,
+            E(
+              'p',
+              {},
+              `${_('Failed to parse usque config.json')}: ${(err && err.message) || err}`,
+            ),
+            'error',
+          );
+        }
+        document.body.removeChild(fileInput);
+      };
+      reader.readAsText(file);
+    });
+    fileInput.click();
+  };
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'masque_profile',
+    _('MASQUE Profile'),
+  );
+  o.modalonly = true;
+  o.default = 'cloudflare';
+  o.value('cloudflare', 'Cloudflare WARP (cf-connect-ip)');
+  o.value('standard', 'Standard RFC 9484 (connect-ip)');
+  o.depends('source_type', 'masque');
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'masque_vhttp_mode',
+    _('HTTP Carrier (vHTTP)'),
+  );
+  o.modalonly = true;
+  o.default = 'auto';
+  o.value('auto', _('Auto (HTTP/3 → HTTP/2 fallback)'));
+  o.value('h3', 'HTTP/3 (QUIC)');
+  o.value('h2', 'HTTP/2 (TCP, Cloudflare)');
+  o.depends('source_type', 'masque');
+  o.load = function (sectionId) {
+    const mode = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_vhttp_mode') || '',
+    ).trim();
+    if (mode) return mode;
+    const legacy = String(
+      uci.get(UCI_PACKAGE, sectionId, 'masque_vhttp') || '',
+    ).trim();
+    if (legacy === 'h3' || legacy === 'h2' || legacy === 'auto') return legacy;
+    return 'auto';
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const norm = String(value || 'auto').trim() || 'auto';
+    uci.set(UCI_PACKAGE, sectionId, 'masque_vhttp_mode', norm);
+    uci.set(UCI_PACKAGE, sectionId, 'masque_vhttp', '1');
+  };
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'masque_private_key',
+    _('Client Private Key (Base64 DER / PEM)'),
+  );
+  o.modalonly = true;
+  o.password = true;
   o.depends('source_type', 'masque');
 
   o = section.taboption(
@@ -6090,6 +6317,7 @@ function createOutboundsContent(section) {
     _('Server Public Key (Base64 / PEM)'),
   );
   o.modalonly = true;
+  o.password = true;
   o.depends('source_type', 'masque');
 
   o = section.taboption(
@@ -6843,6 +7071,8 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.depends('source_type', 'outbound_json');
+  o.depends('source_type', 'json');
+  o.depends('source_type', 'custom_json');
 
   // ── 10. Native Desync Sources
   o = section.taboption(
