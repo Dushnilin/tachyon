@@ -88,15 +88,38 @@ if ucode -L "$TACHYON_LIB" "$VALIDATOR_UC" validate-fixture "$WORK_DIR/invalid_p
   fail "validator should reject direct_bypass_port 99999"
 fi
 
-# 4. Verify TorrServer direct rule recognition
+# 4. Verify TorrServer direct rule recognition (FakeIP-exempted default + missing-FakeIP rejection)
 sample_nft='table inet TachyonTorrServerDirect {
+    chain output {
+        type route hook output priority -151; policy accept;
+        ip daddr != 198.18.0.0/15 socket cgroupv2 level 2 "services/torrserver" meta mark set 0x08000000 counter comment "Tachyon TorrServer Direct"
+        ip6 daddr != fc00::/18 socket cgroupv2 level 2 "services/torrserver" meta mark set 0x08000000 counter comment "Tachyon TorrServer Direct v6"
+    }
+}'
+echo "$sample_nft" | ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" rule-output-active "/services/torrserver" ||
+  fail "TorrServer rule-output-active must match valid FakeIP-exempted rule"
+
+legacy_nft='table inet TachyonTorrServerDirect {
     chain output {
         type route hook output priority -151; policy accept;
         socket cgroupv2 level 2 "services/torrserver" meta mark set 0x08000000 counter comment "Tachyon TorrServer Direct"
     }
 }'
-echo "$sample_nft" | ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" rule-output-active "/services/torrserver" ||
-  fail "TorrServer rule-output-active must match valid rule"
+if echo "$legacy_nft" | ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" rule-output-active "/services/torrserver"; then
+  fail "TorrServer rule-output-active must reject rule without FakeIP exemption when FakeIP is enabled"
+fi
+
+# 4b. Verify NUL-separated cmdline detection matches only TorrServer argv0
+printf '/opt/torrserver/torrserver\0-p\08090\0-d\0/mnt/data\0' |
+  ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" is-torrserver-cmdline ||
+  fail "is-torrserver-cmdline must match NUL-separated torrserver argv0"
+printf 'torrserver-linux-arm64\0--port\08090\0' |
+  ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" is-torrserver-cmdline ||
+  fail "is-torrserver-cmdline must match torrserver-* argv0"
+if printf '/bin/sh\0-c\0pgrep -f torrserver\0' |
+  ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" is-torrserver-cmdline; then
+  fail "is-torrserver-cmdline must ignore non-torrserver argv0 mentioning torrserver in args"
+fi
 
 # 5. Verify TorrServer direct status outputs JSON
 status_output="$(ucode -L "$TACHYON_LIB" "$TORRSERVER_UC" status)"
