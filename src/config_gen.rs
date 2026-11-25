@@ -5734,102 +5734,108 @@ fn build_desync_outbound_json(tag: &str, p: &DesyncParams<'_>, with_defaults: bo
         obj.insert("preset".into(), json!(preset));
     }
 
-    let apply_tcp_defaults = with_defaults
-        && gt_profile.is_none()
-        && !matches!(
-            effective_mode.map(str::to_ascii_lowercase).as_deref(),
-            Some("none" | "off" | "disabled")
-        );
+    let is_adaptive_preset = gt_profile.is_none()
+        && effective_mode.is_none()
+        && (preset_lc.is_empty() || preset_lc == "auto" || preset_lc == "adaptive");
 
-    let pool: Vec<String> = p
-        .sni_pool
-        .iter()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if !p.fake_sni.trim().is_empty() {
-        obj.insert("fake_sni".into(), json!(p.fake_sni.trim()));
-    } else if let Some(first) = pool.first() {
-        obj.insert("fake_sni".into(), json!(first));
-    } else if apply_tcp_defaults {
-        obj.insert("fake_sni".into(), json!("ozon.ru"));
-    }
-    if !pool.is_empty() {
-        obj.insert("sni_pool".into(), json!(pool));
-    }
+    if !is_adaptive_preset {
+        let apply_tcp_defaults = with_defaults
+            && gt_profile.is_none()
+            && !matches!(
+                effective_mode.map(str::to_ascii_lowercase).as_deref(),
+                Some("none" | "off" | "disabled")
+            );
 
-    let sp_raw = if !p.split_pos.trim().is_empty() {
-        p.split_pos.trim()
-    } else if apply_tcp_defaults {
-        "sni"
-    } else {
-        ""
-    };
-    if !sp_raw.is_empty() {
-        if sp_raw.contains(',') {
-            let arr: Vec<Value> = sp_raw
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(|s| {
-                    s.parse::<i64>()
-                        .map(|n| json!(n))
-                        .unwrap_or_else(|_| json!(s))
-                })
-                .collect();
-            obj.insert("split_pos".into(), Value::Array(arr));
-        } else if let Ok(n) = sp_raw.parse::<i64>() {
-            obj.insert("split_pos".into(), json!(n));
-        } else {
-            obj.insert("split_pos".into(), json!(sp_raw));
+        let pool: Vec<String> = p
+            .sni_pool
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !p.fake_sni.trim().is_empty() {
+            obj.insert("fake_sni".into(), json!(p.fake_sni.trim()));
+        } else if let Some(first) = pool.first() {
+            obj.insert("fake_sni".into(), json!(first));
+        } else if apply_tcp_defaults {
+            obj.insert("fake_sni".into(), json!("ozon.ru"));
         }
-    }
+        if !pool.is_empty() {
+            obj.insert("sni_pool".into(), json!(pool));
+        }
 
-    let fooling = if !p.fooling.trim().is_empty() {
-        p.fooling.trim()
-    } else if apply_tcp_defaults {
-        "autottl"
-    } else {
-        ""
-    };
-    if !fooling.is_empty() {
-        obj.insert("fooling".into(), json!(fooling));
-    }
-    if p.fake_ttl > 0 {
-        obj.insert("fake_ttl".into(), json!(p.fake_ttl.min(128)));
-    }
-    if p.repeats > 0 {
-        obj.insert("repeats".into(), json!(p.repeats));
-    }
-    if p.split_delay_ms > 0 {
-        obj.insert("split_delay_ms".into(), json!(p.split_delay_ms));
-    }
-    if p.tlsrec_first {
-        obj.insert("tlsrec_first".into(), json!(true));
-    }
-    if p.seqovl > 0 {
-        obj.insert("seqovl".into(), json!(p.seqovl));
-    }
-    if p.syndata {
-        obj.insert("syndata".into(), json!(true));
-    }
-    if p.wsize > 0 {
-        obj.insert("wsize".into(), json!(p.wsize));
-    }
-    if let Some(ws) = p.wscale {
-        obj.insert("wscale".into(), json!(ws.min(14)));
-    }
-    if p.host_fake {
-        obj.insert("host_fake".into(), json!(true));
-    }
-    if !p.fake_payload.trim().is_empty() {
-        obj.insert("fake_payload".into(), json!(p.fake_payload.trim()));
-    }
-    if !p.fake_tls.trim().is_empty() {
-        obj.insert("fake_tls".into(), json!(p.fake_tls.trim()));
-    }
-    if p.ipfrag {
-        obj.insert("ipfrag".into(), json!(true));
+        let sp_raw = if !p.split_pos.trim().is_empty() {
+            p.split_pos.trim()
+        } else if apply_tcp_defaults {
+            "sni"
+        } else {
+            ""
+        };
+        if !sp_raw.is_empty() {
+            if sp_raw.contains(',') {
+                let arr: Vec<Value> = sp_raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| {
+                        s.parse::<i64>()
+                            .map(|n| json!(n))
+                            .unwrap_or_else(|_| json!(s))
+                    })
+                    .collect();
+                obj.insert("split_pos".into(), Value::Array(arr));
+            } else if let Ok(n) = sp_raw.parse::<i64>() {
+                obj.insert("split_pos".into(), json!(n));
+            } else {
+                obj.insert("split_pos".into(), json!(sp_raw));
+            }
+        }
+
+        let fooling = if !p.fooling.trim().is_empty() {
+            p.fooling.trim()
+        } else if apply_tcp_defaults {
+            "autottl"
+        } else {
+            ""
+        };
+        if !fooling.is_empty() {
+            obj.insert("fooling".into(), json!(fooling));
+        }
+        if p.fake_ttl > 0 {
+            obj.insert("fake_ttl".into(), json!(p.fake_ttl.min(128)));
+        }
+        if p.repeats > 0 {
+            obj.insert("repeats".into(), json!(p.repeats));
+        }
+        if p.split_delay_ms > 0 {
+            obj.insert("split_delay_ms".into(), json!(p.split_delay_ms));
+        }
+        if p.tlsrec_first {
+            obj.insert("tlsrec_first".into(), json!(true));
+        }
+        if p.seqovl > 0 {
+            obj.insert("seqovl".into(), json!(p.seqovl));
+        }
+        if p.syndata {
+            obj.insert("syndata".into(), json!(true));
+        }
+        if p.wsize > 0 {
+            obj.insert("wsize".into(), json!(p.wsize));
+        }
+        if let Some(ws) = p.wscale {
+            obj.insert("wscale".into(), json!(ws.min(14)));
+        }
+        if p.host_fake {
+            obj.insert("host_fake".into(), json!(true));
+        }
+        if !p.fake_payload.trim().is_empty() {
+            obj.insert("fake_payload".into(), json!(p.fake_payload.trim()));
+        }
+        if !p.fake_tls.trim().is_empty() {
+            obj.insert("fake_tls".into(), json!(p.fake_tls.trim()));
+        }
+        if p.ipfrag {
+            obj.insert("ipfrag".into(), json!(true));
+        }
     }
     if let Some((default_repeats, default_range)) = gt_profile {
         obj.insert("udp_fake".into(), json!(true));
@@ -13507,10 +13513,7 @@ fn compile_core_config_with_rt_dir(
         outbounds.push(json!({
             "type": "desync",
             "tag": "adaptive-desync-default",
-            "preset": "auto",
-            "fooling": "autottl",
-            "split_pos": "sni",
-            "fake_sni": "ozon.ru"
+            "preset": "auto"
         }));
     }
 
@@ -32003,5 +32006,81 @@ proxies:
                 && r["server"] == "dns-remote"
                 && r["rule_set"] == json!(["trs-youtube"])
         }));
+    }
+
+    #[test]
+    fn test_adaptive_desync_preset_omits_tcp_override_defaults() {
+        let auto_src = OutboundSource {
+            id: "Desync".to_string(),
+            enabled: true,
+            source_type: "desync".to_string(),
+            desync_preset: "auto".to_string(),
+            desync_fooling: "autottl".to_string(),
+            desync_split_pos: "midsld".to_string(),
+            desync_fake_sni: "max.ru".to_string(),
+            desync_sni_pool: vec!["max.ru".to_string()],
+            desync_repeats: 2,
+            desync_quic_fake: true,
+            ..Default::default()
+        };
+        let auto_out = &build_source_outbounds(&auto_src)[0].1;
+        assert_eq!(auto_out["preset"], "auto");
+        assert_eq!(auto_out["udp_fake"], true);
+        for key in [
+            "fooling",
+            "split_pos",
+            "fake_sni",
+            "sni_pool",
+            "repeats",
+            "fake_ttl",
+            "tlsrec_first",
+            "seqovl",
+            "syndata",
+            "wsize",
+            "wscale",
+            "host_fake",
+            "fake_payload",
+            "fake_tls",
+            "ipfrag",
+        ] {
+            assert!(
+                auto_out.get(key).is_none(),
+                "adaptive auto preset must omit TCP override field {key}: {auto_out}"
+            );
+        }
+
+        let custom_src = OutboundSource {
+            desync_preset: "custom".to_string(),
+            ..auto_src
+        };
+        let custom_out = &build_source_outbounds(&custom_src)[0].1;
+        assert!(custom_out.get("preset").is_none());
+        assert_eq!(custom_out["fooling"], "autottl");
+        assert_eq!(custom_out["split_pos"], "midsld");
+        assert_eq!(custom_out["fake_sni"], "max.ru");
+        assert_eq!(custom_out["sni_pool"], json!(["max.ru"]));
+        assert_eq!(custom_out["repeats"], 2);
+
+        let mut store = RouterStoreData::default();
+        store.sections.push(RoutingSection {
+            id: "sec_desync_def".to_string(),
+            enabled: true,
+            label: "Desync Default".to_string(),
+            action: "connection".to_string(),
+            connection_type: "desync".to_string(),
+            user_domains: vec!["youtube.com".to_string()],
+            ..Default::default()
+        });
+        let cfg = compile_core_config(&store).expect("compile core config");
+        let default_ob = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "adaptive-desync-default")
+            .expect("adaptive-desync-default outbound");
+        assert_eq!(default_ob["preset"], "auto");
+        assert!(default_ob.get("fooling").is_none());
+        assert!(default_ob.get("split_pos").is_none());
+        assert!(default_ob.get("fake_sni").is_none());
     }
 }
