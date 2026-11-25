@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-24 19:17+0300\n"
-"PO-Revision-Date: 2026-11-24 19:17+0300\n"
+"POT-Creation-Date: 2026-11-25 00:57+0300\n"
+"PO-Revision-Date: 2026-11-25 00:57+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -833,7 +833,7 @@ msgstr ""
 msgid "Address type"
 msgstr ""
 
-#: src/views/settings.ts:8021
+#: src/views/settings.ts:8037
 msgid "Admin Chat IDs configured"
 msgstr ""
 
@@ -957,7 +957,7 @@ msgstr ""
 msgid "All URLs must respond (worst latency)"
 msgstr ""
 
-#: src/views/settings.ts:8189
+#: src/views/settings.ts:8205
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr ""
 
@@ -1428,7 +1428,7 @@ msgstr ""
 msgid "At least 4 characters"
 msgstr ""
 
-#: src/views/settings.ts:7487
+#: src/views/settings.ts:7501
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
@@ -1533,7 +1533,7 @@ msgstr ""
 msgid "Auto (first working from test list below)"
 msgstr ""
 
-#: src/views/settings.ts:7830
+#: src/views/settings.ts:7846
 msgid "Auto (follow LuCI)"
 msgstr ""
 
@@ -2195,7 +2195,7 @@ msgstr ""
 msgid "Bootstrap DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:7823
+#: src/views/settings.ts:7839
 msgid "Bot Language"
 msgstr ""
 
@@ -4217,7 +4217,7 @@ msgstr ""
 msgid "Daily Quota"
 msgstr ""
 
-#: src/views/settings.ts:7913
+#: src/views/settings.ts:7929
 msgid "Daily Report Hour (0-23)"
 msgstr ""
 
@@ -4226,7 +4226,7 @@ msgstr ""
 msgid "Daily Screen Time Quota (minutes)"
 msgstr ""
 
-#: src/views/settings.ts:7902
+#: src/views/settings.ts:7918
 msgid "Daily Status Report"
 msgstr ""
 
@@ -4332,8 +4332,8 @@ msgstr ""
 msgid "Default (TCP MD5 / Auto)"
 msgstr ""
 
-#: src/views/settings.ts:7752
-#: src/views/settings.ts:7760
+#: src/views/settings.ts:7768
+#: src/views/settings.ts:7776
 msgid "Default (auto — service mixed proxy)"
 msgstr ""
 
@@ -4627,7 +4627,7 @@ msgstr ""
 msgid "Direct Connectivity Verified"
 msgstr ""
 
-#: src/views/settings.ts:8037
+#: src/views/settings.ts:8053
 msgid "Direct IPv4 to Telegram API works"
 msgstr ""
 
@@ -4651,8 +4651,8 @@ msgstr ""
 msgid "Direct WAN (ISP)"
 msgstr ""
 
-#: src/views/settings.ts:7753
-#: src/views/settings.ts:7761
+#: src/views/settings.ts:7769
+#: src/views/settings.ts:7777
 msgid "Direct WAN (no proxy)"
 msgstr ""
 
@@ -5387,7 +5387,7 @@ msgstr ""
 msgid "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."
 msgstr ""
 
-#: src/views/settings.ts:7981
+#: src/views/settings.ts:7997
 msgid "End time in H or HH:MM format, e.g. 7 or 07:00 (default: 07:00)."
 msgstr ""
 
@@ -5488,8 +5488,8 @@ msgstr ""
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr ""
 
-#: src/views/settings.ts:7872
-#: src/views/settings.ts:7875
+#: src/views/settings.ts:7888
+#: src/views/settings.ts:7891
 msgid "Enter an hour from 0 to 23"
 msgstr ""
 
@@ -5506,7 +5506,7 @@ msgstr ""
 msgid "Enter the subscription URL"
 msgstr ""
 
-#: src/views/settings.ts:7896
+#: src/views/settings.ts:7912
 msgid "Enter time as H or HH:MM (e.g. 23 or 23:00)"
 msgstr ""
 
@@ -6198,8 +6198,8 @@ msgstr ""
 msgid "Failed to rollback config"
 msgstr ""
 
-#: src/views/settings.ts:8125
-#: src/views/settings.ts:8240
+#: src/views/settings.ts:8141
+#: src/views/settings.ts:8256
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
@@ -6493,7 +6493,7 @@ msgstr ""
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr ""
 
-#: src/views/settings.ts:7848
+#: src/views/settings.ts:7864
 msgid "Fallback SOCKS5 Proxy"
 msgstr ""
 
@@ -7376,7 +7376,7 @@ msgstr ""
 msgid "Hits"
 msgstr ""
 
-#: src/views/settings.ts:7515
+#: src/views/settings.ts:7531
 msgid "Home Router / Office / Dacha"
 msgstr ""
 
@@ -7405,7 +7405,7 @@ msgstr ""
 msgid "Hot-reload Tachyon Core"
 msgstr ""
 
-#: src/views/settings.ts:7914
+#: src/views/settings.ts:7930
 msgid "Hour of the day to send the daily report (default: 8)."
 msgstr ""
 
@@ -7441,7 +7441,7 @@ msgstr ""
 msgid "How often to check DNS health in seconds (default 180)."
 msgstr ""
 
-#: src/views/settings.ts:7533
+#: src/views/settings.ts:7549
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
@@ -8950,7 +8950,7 @@ msgstr ""
 msgid "Language for AI Doctor diagnosis responses"
 msgstr ""
 
-#: src/views/settings.ts:7824
+#: src/views/settings.ts:7840
 msgid "Language for Telegram bot replies and notifications."
 msgstr ""
 
@@ -9894,7 +9894,7 @@ msgstr ""
 msgid "Multiplexing Level"
 msgstr ""
 
-#: src/views/settings.ts:7490
+#: src/views/settings.ts:7505
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
@@ -10505,31 +10505,31 @@ msgstr ""
 msgid "Notify in Telegram"
 msgstr ""
 
-#: src/views/settings.ts:7640
+#: src/views/settings.ts:7656
 msgid "Notify on Automatic Updates"
 msgstr ""
 
-#: src/views/settings.ts:7616
+#: src/views/settings.ts:7632
 msgid "Notify on Certificate Warnings"
 msgstr ""
 
-#: src/views/settings.ts:7564
+#: src/views/settings.ts:7580
 msgid "Notify on Core Crashes"
 msgstr ""
 
-#: src/views/settings.ts:7629
+#: src/views/settings.ts:7645
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: src/views/settings.ts:7590
+#: src/views/settings.ts:7606
 msgid "Notify on Server Switches"
 msgstr ""
 
-#: src/views/settings.ts:7577
+#: src/views/settings.ts:7593
 msgid "Notify on Service Restarts"
 msgstr ""
 
-#: src/views/settings.ts:7603
+#: src/views/settings.ts:7619
 msgid "Notify on Subscription Updates"
 msgstr ""
 
@@ -10573,7 +10573,7 @@ msgstr ""
 msgid "Numeric (0-63), hex (0x2e), or class name (ef, cs5, af41)."
 msgstr ""
 
-#: src/views/settings.ts:8015
+#: src/views/settings.ts:8031
 msgid "OK"
 msgstr ""
 
@@ -10862,7 +10862,7 @@ msgstr ""
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr ""
 
-#: src/views/settings.ts:7849
+#: src/views/settings.ts:7865
 msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
 msgstr ""
 
@@ -10898,7 +10898,7 @@ msgstr ""
 msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
 msgstr ""
 
-#: src/views/settings.ts:7511
+#: src/views/settings.ts:7527
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr ""
 
@@ -11535,11 +11535,11 @@ msgstr ""
 msgid "Policy Summary"
 msgstr ""
 
-#: src/views/settings.ts:7532
+#: src/views/settings.ts:7548
 msgid "Polling Interval (seconds)"
 msgstr ""
 
-#: src/views/settings.ts:7545
+#: src/views/settings.ts:7561
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
@@ -12078,7 +12078,7 @@ msgstr ""
 msgid "Proxy Outbound"
 msgstr ""
 
-#: src/views/settings.ts:7743
+#: src/views/settings.ts:7759
 msgid "Proxy Section for Bot"
 msgstr ""
 
@@ -12103,11 +12103,11 @@ msgstr ""
 msgid "Proxy outbound is inactive or not configured for local testing."
 msgstr ""
 
-#: src/views/settings.ts:8025
+#: src/views/settings.ts:8041
 msgid "Proxy port"
 msgstr ""
 
-#: src/views/settings.ts:8031
+#: src/views/settings.ts:8047
 msgid "Proxy route to Telegram API works"
 msgstr ""
 
@@ -12237,15 +12237,15 @@ msgstr ""
 msgid "Quick setup for outbound routing & traffic optimization"
 msgstr ""
 
-#: src/views/settings.ts:7939
+#: src/views/settings.ts:7955
 msgid "Quiet Hours"
 msgstr ""
 
-#: src/views/settings.ts:7980
+#: src/views/settings.ts:7996
 msgid "Quiet Hours End"
 msgstr ""
 
-#: src/views/settings.ts:7952
+#: src/views/settings.ts:7968
 msgid "Quiet Hours Start"
 msgstr ""
 
@@ -13045,7 +13045,7 @@ msgstr ""
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr ""
 
-#: src/views/settings.ts:7744
+#: src/views/settings.ts:7760
 msgid "Route bot API requests through a selected section (e.g. Main), Direct WAN without proxy, or leave Default (auto) to use the internal mixed proxy."
 msgstr ""
 
@@ -13161,7 +13161,7 @@ msgstr ""
 msgid "Router DNS queries were observed by the test service."
 msgstr ""
 
-#: src/views/settings.ts:7510
+#: src/views/settings.ts:7526
 msgid "Router Name"
 msgstr ""
 
@@ -13411,7 +13411,7 @@ msgstr ""
 msgid "Running benchmarks..."
 msgstr ""
 
-#: src/views/settings.ts:8095
+#: src/views/settings.ts:8111
 msgid "Running diagnostics…"
 msgstr ""
 
@@ -14083,19 +14083,19 @@ msgstr ""
 msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
 msgstr ""
 
-#: src/views/settings.ts:7617
+#: src/views/settings.ts:7633
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr ""
 
-#: src/views/settings.ts:7565
+#: src/views/settings.ts:7581
 msgid "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored."
 msgstr ""
 
-#: src/views/settings.ts:7630
+#: src/views/settings.ts:7646
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr ""
 
-#: src/views/settings.ts:7578
+#: src/views/settings.ts:7594
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr ""
 
@@ -14103,19 +14103,19 @@ msgstr ""
 msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
 msgstr ""
 
-#: src/views/settings.ts:7591
+#: src/views/settings.ts:7607
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr ""
 
-#: src/views/settings.ts:7641
+#: src/views/settings.ts:7657
 msgid "Send a Telegram notification when components are automatically updated."
 msgstr ""
 
-#: src/views/settings.ts:7604
+#: src/views/settings.ts:7620
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
-#: src/views/settings.ts:7903
+#: src/views/settings.ts:7919
 msgid "Send a daily summary of system health and proxy status to Telegram."
 msgstr ""
 
@@ -14744,7 +14744,7 @@ msgstr ""
 msgid "Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes."
 msgstr ""
 
-#: src/views/settings.ts:8213
+#: src/views/settings.ts:8229
 msgid "Some checks failed — review the items above"
 msgstr ""
 
@@ -14981,7 +14981,7 @@ msgstr ""
 msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
 msgstr ""
 
-#: src/views/settings.ts:7953
+#: src/views/settings.ts:7969
 msgid "Start time in H or HH:MM format, e.g. 23 or 23:00 (default: 23:00)."
 msgstr ""
 
@@ -15352,7 +15352,7 @@ msgstr ""
 msgid "Support via SBP"
 msgstr ""
 
-#: src/views/settings.ts:7940
+#: src/views/settings.ts:7956
 msgid "Suppress non-critical Telegram notifications during the configured night window."
 msgstr ""
 
@@ -16010,7 +16010,7 @@ msgstr ""
 msgid "Telegram Channel"
 msgstr ""
 
-#: src/views/settings.ts:8058
+#: src/views/settings.ts:8074
 msgid "Test Connection"
 msgstr ""
 
@@ -16023,7 +16023,7 @@ msgstr ""
 msgid "Test DNS speed"
 msgstr ""
 
-#: src/views/settings.ts:8045
+#: src/views/settings.ts:8061
 msgid "Test Telegram Connection"
 msgstr ""
 
@@ -16138,7 +16138,7 @@ msgstr ""
 msgid "Testing:"
 msgstr ""
 
-#: src/views/settings.ts:8058
+#: src/views/settings.ts:8074
 msgid "Testing…"
 msgstr ""
 
@@ -18346,7 +18346,7 @@ msgstr ""
 msgid "ipv6_only warning"
 msgstr ""
 
-#: src/views/settings.ts:8025
+#: src/views/settings.ts:8041
 msgid "is listening"
 msgstr ""
 

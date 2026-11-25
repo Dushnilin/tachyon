@@ -7481,21 +7481,37 @@ function createTelegramContent(section) {
     ),
   );
   o.rmempty = true;
+  o.cfgvalue = function (section_id) {
+    const raw = uci.get(UCI_PACKAGE, section_id, 'admin_ids');
+    if (Array.isArray(raw)) {
+      return raw.join(', ');
+    }
+    if (typeof raw === 'string') {
+      return raw
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .join(', ');
+    }
+    return raw;
+  };
   o.validate = function (section_id, value) {
     if (this.section.formvalue(section_id, 'enabled') === '1') {
-      if (!value) {
+      const trimmed = value ? `${value}`.trim() : '';
+      if (!trimmed) {
         return _('At least one Admin Chat ID is required');
       }
-      if (!/^-?[0-9]+(,-?[0-9]+)*$/.test(value)) {
+      const parts = trimmed.split(/[\s,]+/).filter(Boolean);
+      if (parts.length === 0 || parts.some((p) => !/^-?[0-9]+$/.test(p))) {
         return _('Must be a comma-separated list of numeric IDs');
       }
     }
     return true;
   };
   o.write = function (section_id, value) {
-    const val = value ? `${value}`.trim() : '';
-    if (val) {
-      uci.set(UCI_PACKAGE, section_id, 'admin_ids', val);
+    const trimmed = value ? `${value}`.trim() : '';
+    if (trimmed) {
+      const parts = trimmed.split(/[\s,]+/).filter(Boolean);
+      uci.set(UCI_PACKAGE, section_id, 'admin_ids', parts.join(','));
     } else {
       uci.unset(UCI_PACKAGE, section_id, 'admin_ids');
     }
