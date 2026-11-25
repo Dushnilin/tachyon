@@ -9,7 +9,11 @@ TACHYON_DATA_DIR="${TACHYON_DATA_DIR:-${TACHYON_ROOT}/etc/tachyon}"
 PROG="${TACHYON_ROOT}/bin/tachyon"
 
 RUN_DIR="/tmp/tachyon-rs"
+if [ -r /proc/mounts ] && grep -q ' /var/run tmpfs ' /proc/mounts 2>/dev/null; then
+    RUN_DIR="/var/run/tachyon"
+fi
 PID_FILE="${RUN_DIR}/tachyon.pid"
+DAEMON_PID_FILE="${RUN_DIR}/daemon.pid"
 LOG_FILE="${RUN_DIR}/daemon.log"
 WAIT_NET_SECS="${TACHYON_WAIT_NET_SECS:-10}"
 
@@ -193,7 +197,7 @@ do_start() {
         return 0
     fi
 
-    rm -f "$PID_FILE" "${RUN_DIR}/manual_stop" /var/run/tachyon/manual_stop 2>/dev/null || true
+    rm -f "$PID_FILE" "${DAEMON_PID_FILE}" "${RUN_DIR}/manual_stop" /var/run/tachyon/manual_stop /tmp/tachyon-rs/manual_stop 2>/dev/null || true
     _prepare_kernel
     _wait_for_network
 
@@ -256,8 +260,9 @@ do_stop() {
     fi
     rm -f "$PID_FILE" 2>/dev/null || true
 
-    if [ -r "${RUN_DIR}/daemon.pid" ]; then
-        _dp="$(head -n 1 "${RUN_DIR}/daemon.pid" 2>/dev/null | tr -d ' \t\r\n')"
+    for _dpf in "${DAEMON_PID_FILE}" /var/run/tachyon/daemon.pid /tmp/tachyon-rs/daemon.pid /tmp/tachyon-rs/tachyon.pid; do
+        [ -r "$_dpf" ] || continue
+        _dp="$(head -n 1 "$_dpf" 2>/dev/null | tr -d ' \t\r\n')"
         case "$_dp" in
             ''|*[!0-9]*) ;;
             *)
@@ -268,8 +273,8 @@ do_stop() {
                 fi
                 ;;
         esac
-        rm -f "${RUN_DIR}/daemon.pid" 2>/dev/null || true
-    fi
+        rm -f "$_dpf" 2>/dev/null || true
+    done
 
     _log_info "Stopped tachyon"
     return 0

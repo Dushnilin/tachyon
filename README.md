@@ -142,7 +142,7 @@ Tachyon 2.0 компилирует единую таблицу **nftables** (`ta
 
 | Контур обработки | Механизм в ядре и демоне | Назначение |
 |:---|:---|:---|
-| **1. Direct WAN** | Прямой выход мимо TProxy (байпас-метка `0x40000000`, `0 ms overhead`) | Банковские сервисы, государственные порталы, локальные CDN и доверенные подсети |
+| **1. Direct WAN** | Прямой выход мимо TProxy (байпас-метка `0x40000000`, `0 ms overhead`; при включённом `selective_tproxy` прямой WAN-трафик не заходит в TProxy и сохраняет Flow Offloading ядра) | Банковские сервисы, государственные порталы, локальные CDN и доверенные подсети |
 | **2. Встроенный Outbound Desync** | Интеграция в сетевом стеке `tachyon-core` (TCP/TLS/HTTP и UDP) | Адаптивная фрагментация и десинхронизация пакетов (`fake_disorder`, `fake_split`, `tlsrec`, `disorder`, `split`, `oob`, `seqovl`, `syndata`, `ipfrag`) без внешних демонов |
 | **3. Прокси-протоколы L4/L7** | Клиенты и группы балансировки в `tachyon-core` | Селективное туннелирование по секциям, спискам `.trs`/`.srs`, подсетям и MAC через VLESS (Reality/XHTTP/Vision), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, NaiveProxy, Mieru, Snell, ShadowTLS, MASQUE, TrustTunnel, TewFai, OpenConnect, Tor |
 | **4. Сетевые туннели L3/UDP** | Встроенные клиенты `wireguard`, `awg`, `warp`, `fptn`, `openvpn` | Подключение конфигураций AmneziaWG (`.conf`, `vpn://`, CPS-параметры `i1`–`i5`/`j1`–`j3`), WireGuard, Cloudflare WARP и FPTN (`fwmark 0x00300000`) |

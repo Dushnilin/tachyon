@@ -84,6 +84,8 @@ pub struct WatchdogState {
     pub last_drift_reload_desired_digest: String,
     pub drift_reload_streak: u32,
     pub drift_confirm_ticks: u32,
+    pub cached_store_generation: u64,
+    pub cached_desired_digest: String,
 }
 
 impl Default for WatchdogState {
@@ -105,6 +107,8 @@ impl Default for WatchdogState {
             last_drift_reload_desired_digest: String::new(),
             drift_reload_streak: 0,
             drift_confirm_ticks: 0,
+            cached_store_generation: u64::MAX,
+            cached_desired_digest: String::new(),
         }
     }
 }
@@ -771,13 +775,23 @@ pub(crate) fn watchdog_dns_probe_target_for(
 /// and execute deterministic L0-L5 self-healing actions under hysteresis & circuit-breaker protection.
 pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count: u64) {
     let now = unix_now_secs();
-    let (desired_digest, enable_watchdog, core_config_path, dns_target) = {
+    let store_gen = core.state.store_generation();
+    let cached_digest_opt = {
+        let wd = core.watchdog.lock().await;
+        (wd.cached_store_generation == store_gen && !wd.cached_desired_digest.is_empty())
+            .then(|| wd.cached_desired_digest.clone())
+    };
+    let (desired_digest, enable_watchdog, core_config_path, dns_target, recomputed) = {
         let store_guard = core.state.data.read().await;
         let enable = store_guard.settings.enable_watchdog;
-        let digest = if core_alive && enable {
-            compute_desired_digest(&store_guard)
+        let (digest, did_recompute) = if core_alive && enable {
+            if let Some(hit) = cached_digest_opt {
+                (hit, false)
+            } else {
+                (compute_desired_digest(&store_guard), true)
+            }
         } else {
-            String::new()
+            (String::new(), false)
         };
         let target = watchdog_dns_probe_target_for(
             crate::platform::detect_platform(),
@@ -788,8 +802,14 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
             enable,
             store_guard.settings.core_config_path.clone(),
             target,
+            did_recompute,
         )
     };
+    if recomputed && !desired_digest.is_empty() {
+        let mut wd = core.watchdog.lock().await;
+        wd.cached_store_generation = store_gen;
+        wd.cached_desired_digest = desired_digest.clone();
+    }
     let desired_digest_snapshot = desired_digest.clone();
 
     let bin_path_str = Box::pin(core.resolve_bin_path()).await;
@@ -1319,7 +1339,25 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
                         .cooldown_ready("l3_dns_core_restart", now, 60);
                 if allow {
                     let tripped = core.watchdog.lock().await.record_restart(now);
-                    if !tripped && boxed_core_start(core).await.is_ok() {
+                    if tripped && core.state.lkg_path.exists() {
+                        let (act, lbl) = attempt_l4_lkg_rollback_with(
+                            core,
+                            now,
+                            &desired_digest_snapshot,
+                            |c| boxed_capture_blackbox(c, "dns_circuit_breaker_lkg_rollback"),
+                            |c| {
+                                boxed_rollback_lkg(
+                                    c,
+                                    "Автооткат watchdog: частые перезапуски из-за сбоя DNS",
+                                )
+                            },
+                        )
+                        .await;
+                        action_taken = act;
+                        if let Some(new_lbl) = lbl {
+                            wd_state_label = new_lbl;
+                        }
+                    } else if !tripped && boxed_core_start(core).await.is_ok() {
                         action_taken = Some("L3_dns_core_restart");
                     }
                 }

@@ -2451,9 +2451,11 @@ pub async fn sync_telemetry_from_core_if_needed(
         let live = state.live.read().await;
         (live.core_running, live.recent_logs.clone())
     };
-    let store = { state.data.read().await.clone() };
+    if !core_running && live_logs.is_empty() {
+        return;
+    }
 
-    let (logs_val, flight_val, conns_val) = if core_running {
+    let (logs_val, flight_val, conns_val) = if core_running && !core.is_data_plane_busy().await {
         let (l, f, c) = tokio::join!(
             core.get_core_recent_logs("info", 120),
             core.get_core_flight_recorder(),
@@ -2463,6 +2465,7 @@ pub async fn sync_telemetry_from_core_if_needed(
     } else {
         (None, None, None)
     };
+    let store = { state.data.read().await.clone() };
 
     let _ = ingest_core_telemetry_payloads_in(
         &runtime_state_dir(),
@@ -2505,12 +2508,19 @@ pub fn spawn_adguard_hosts_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
         // Short initial grace delay so core startup and interface bring-up finish first.
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         loop {
-            let (urls, schedule) = {
+            let (urls, schedule, hosts_or_adguard_active) = {
                 let store = state.data.read().await;
-                (
-                    collect_active_hosts_list_urls(&store),
-                    auto_update_schedule(&store),
-                )
+                let active_urls = collect_active_hosts_list_urls(&store);
+                let has_hosts = !active_urls.is_empty()
+                    || !store.settings.static_hosts.is_empty()
+                    || store.sections.iter().any(|s| {
+                        s.enabled
+                            && (s.connection_type == "hosts"
+                                || s.action == "hosts"
+                                || !s.hosts_list_urls.is_empty()
+                                || !s.dns_hosts.is_empty())
+                    });
+                (active_urls, auto_update_schedule(&store), has_hosts)
             };
             let rt_dir = runtime_state_dir();
 
@@ -2524,7 +2534,9 @@ pub fn spawn_adguard_hosts_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 }
             }
 
-            Box::pin(sync_telemetry_from_core_if_needed(&state, &core, 8)).await;
+            if hosts_or_adguard_active || core.is_telemetry_active() {
+                Box::pin(sync_telemetry_from_core_if_needed(&state, &core, 8)).await;
+            }
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });

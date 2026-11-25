@@ -15,10 +15,21 @@ use crate::crypto_gen;
 use crate::snapshots;
 use crate::store;
 
-const ACTION_DIR: &str = "/var/run/tachyon/component-actions";
-const CHECK_CACHE_DIR: &str = "/var/run/tachyon/component-update-checks";
-const RELEASES_CACHE_DIR: &str = "/var/run/tachyon/releases-cache";
-const LIST_STATUS_PATH: &str = "/var/run/tachyon/list-update-status.json";
+fn action_dir() -> PathBuf {
+    store::runtime_state_dir().join("component-actions")
+}
+
+fn check_cache_dir() -> PathBuf {
+    store::runtime_state_dir().join("component-update-checks")
+}
+
+fn releases_cache_dir() -> PathBuf {
+    store::runtime_state_dir().join("releases-cache")
+}
+
+fn list_status_path() -> PathBuf {
+    store::runtime_state_dir().join("list-update-status.json")
+}
 const TACHYON_CORE_REPO: &str = "Dushnilin/tachyon-core";
 const TACHYON_LISTS_REPO: &str = "Dushnilin/tachyon-lists";
 const RELEASES_CACHE_TTL_SECS: i64 = 300;
@@ -1092,17 +1103,17 @@ pub fn read_conntrack_load() -> (u32, u32) {
 }
 
 fn ensure_runtime_dirs() {
-    let _ = std::fs::create_dir_all(ACTION_DIR);
-    let _ = std::fs::create_dir_all(CHECK_CACHE_DIR);
-    let _ = std::fs::create_dir_all(RELEASES_CACHE_DIR);
+    let _ = std::fs::create_dir_all(action_dir());
+    let _ = std::fs::create_dir_all(check_cache_dir());
+    let _ = std::fs::create_dir_all(releases_cache_dir());
 }
 
 fn job_status_path(job_id: &str) -> PathBuf {
-    Path::new(ACTION_DIR).join(format!("{}.json", sanitize_job_id(job_id)))
+    action_dir().join(format!("{}.json", sanitize_job_id(job_id)))
 }
 
 fn job_log_path(job_id: &str) -> PathBuf {
-    Path::new(ACTION_DIR).join(format!("{}.log", sanitize_job_id(job_id)))
+    action_dir().join(format!("{}.log", sanitize_job_id(job_id)))
 }
 
 fn write_job_status(job_id: &str, payload: &Value) {
@@ -1147,7 +1158,7 @@ fn append_job_log(job_id: &str, phase: Option<&str>, line: &str) {
 fn write_component_check_cache(comp: &str, result: &Value) {
     ensure_runtime_dirs();
     let canon = canonical_component(comp);
-    let path = Path::new(CHECK_CACHE_DIR).join(format!("{canon}.json"));
+    let path = check_cache_dir().join(format!("{canon}.json"));
     if let Ok(raw) = serde_json::to_string_pretty(result) {
         let _ = std::fs::write(path, raw);
     }
@@ -1155,8 +1166,9 @@ fn write_component_check_cache(comp: &str, result: &Value) {
 
 pub fn read_component_check_cache() -> Value {
     let mut results = Vec::new();
+    let dir = check_cache_dir();
     for name in ["tachyon", "sing_box"] {
-        let path = Path::new(CHECK_CACHE_DIR).join(format!("{name}.json"));
+        let path = dir.join(format!("{name}.json"));
         if let Ok(raw) = std::fs::read_to_string(&path)
             && let Ok(mut val) = serde_json::from_str::<Value>(&raw)
         {
@@ -1274,7 +1286,7 @@ pub fn read_job_log(raw_job_id: &str, offset: usize) -> Value {
 
 pub fn active_component_job_ids() -> Vec<String> {
     let mut ids = Vec::new();
-    let Ok(rd) = std::fs::read_dir(ACTION_DIR) else {
+    let Ok(rd) = std::fs::read_dir(action_dir()) else {
         return ids;
     };
     for entry in rd.flatten() {
@@ -1424,7 +1436,7 @@ pub async fn list_releases(
     };
     let include_prerelease = resolve_include_prerelease(&channel, &cur_ver);
     let channel_norm = normalize_update_channel(&channel);
-    let cache_path = Path::new(RELEASES_CACHE_DIR).join(format!(
+    let cache_path = releases_cache_dir().join(format!(
         "{canon}_{channel_norm}_{include_prerelease}_{per_page}_{page}.json"
     ));
     let now = store::unix_now_secs();
@@ -3289,7 +3301,7 @@ pub async fn start_component_action(
 }
 
 pub fn read_list_update_status() -> Value {
-    if let Ok(raw) = std::fs::read_to_string(LIST_STATUS_PATH)
+    if let Ok(raw) = std::fs::read_to_string(list_status_path())
         && let Ok(val) = serde_json::from_str::<Value>(&raw)
     {
         return val;
@@ -3307,7 +3319,7 @@ pub fn read_list_update_status() -> Value {
 fn write_list_update_status(val: &Value) {
     ensure_runtime_dirs();
     if let Ok(raw) = serde_json::to_string_pretty(val) {
-        let _ = std::fs::write(LIST_STATUS_PATH, raw);
+        let _ = std::fs::write(list_status_path(), raw);
     }
 }
 
@@ -3423,8 +3435,14 @@ pub(crate) async fn sync_community_subnet_lists(
                 .await
             {
                 Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                _ => {
-                    if !mirror_host.is_empty() {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string();
+                    if !mirror_host.is_empty()
+                        && !msg.contains("HTTP 404")
+                        && !msg.contains("HTTP 400")
+                        && !msg.contains("HTTP 410")
+                    {
                         dead_hosts.insert(mirror_host);
                     }
                 }
@@ -3436,8 +3454,14 @@ pub(crate) async fn sync_community_subnet_lists(
                 .await
             {
                 Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                _ => {
-                    if !base_host.is_empty() {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string();
+                    if !base_host.is_empty()
+                        && !msg.contains("HTTP 404")
+                        && !msg.contains("HTTP 400")
+                        && !msg.contains("HTTP 410")
+                    {
                         dead_hosts.insert(base_host);
                     }
                 }
@@ -3483,6 +3507,24 @@ pub(crate) async fn sync_community_subnet_lists(
 }
 
 async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
+    let low_ram = {
+        #[cfg(target_os = "linux")]
+        {
+            std::fs::read_to_string("/proc/meminfo")
+                .ok()
+                .and_then(|raw| {
+                    raw.lines()
+                        .find_map(|l| l.strip_prefix("MemTotal:"))
+                        .and_then(|rest| rest.split_whitespace().next())
+                        .and_then(|tok| tok.parse::<u64>().ok())
+                })
+                .is_some_and(|kb| kb > 0 && kb < 256 * 1024)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
+    };
     let (rulesets_dir, github_mirror, list_names, subnet_services, proxy_opt) = {
         let d = core.state.data.read().await;
         let (names, subnets) = collect_community_sync_targets(&d);
@@ -3496,6 +3538,20 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
                         && s.mixed_proxy_port > 0
                 })
                 .map(|s| format!("http://127.0.0.1:{}", s.mixed_proxy_port))
+                .or_else(|| {
+                    let cfg_p =
+                        CoreManager::effective_core_config_path_for(&core.state, &d.settings);
+                    let raw = std::fs::read_to_string(cfg_p).ok()?;
+                    let val: Value = serde_json::from_str(&raw).ok()?;
+                    val.get("inbounds")?
+                        .as_array()?
+                        .iter()
+                        .find(|ib| {
+                            ib.get("tag").and_then(Value::as_str) == Some("service-mixed-in")
+                        })
+                        .and_then(|ib| ib.get("listen_port").and_then(Value::as_u64))
+                        .map(|p| format!("http://127.0.0.1:{p}"))
+                })
         } else {
             None
         };
@@ -3513,8 +3569,9 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
     if !list_names.is_empty() {
         let _ = std::fs::create_dir_all(&rulesets_dir);
         for clean in &list_names {
+            let canonical = crate::config_gen::resolve_tachyon_list_canonical_name(clean, low_ram);
             let base_url = format!(
-                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean}.trs"
+                "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             );
             let mirrored = apply_github_mirror(&github_mirror, &base_url);
             let base_host = extract_url_host(&base_url);
@@ -3531,8 +3588,14 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
                     .await
                 {
                     Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                    _ => {
-                        if !mirror_host.is_empty() {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if !mirror_host.is_empty()
+                            && !msg.contains("HTTP 404")
+                            && !msg.contains("HTTP 400")
+                            && !msg.contains("HTTP 410")
+                        {
                             dead_hosts.insert(mirror_host);
                         }
                     }
@@ -3544,8 +3607,14 @@ async fn perform_list_update(core: &Arc<CoreManager>) -> Value {
                     .await
                 {
                     Ok(bytes) if !bytes.is_empty() => fetched = Some(bytes),
-                    _ => {
-                        if !base_host.is_empty() {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if !base_host.is_empty()
+                            && !msg.contains("HTTP 404")
+                            && !msg.contains("HTTP 400")
+                            && !msg.contains("HTTP 410")
+                        {
                             dead_hosts.insert(base_host);
                         }
                     }
@@ -3839,8 +3908,9 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
 
     let now = store::unix_now_secs();
     let check_ttl = interval_to_secs(&check_interval);
-    let core_cache = Path::new(CHECK_CACHE_DIR).join("sing_box.json");
-    let tachyon_cache = Path::new(CHECK_CACHE_DIR).join("tachyon.json");
+    let cdir = check_cache_dir();
+    let core_cache = cdir.join("sing_box.json");
+    let tachyon_cache = cdir.join("tachyon.json");
     let core_stale = is_check_cache_stale(&core_cache, now, check_ttl);
     let tachyon_stale = is_check_cache_stale(&tachyon_cache, now, check_ttl);
 
@@ -3857,7 +3927,7 @@ pub async fn maybe_run_auto_update_tick(core: &Arc<CoreManager>) {
             if !should_notify_update_available(&d_snap, comp) {
                 continue;
             }
-            let cpath = Path::new(CHECK_CACHE_DIR).join(format!("{comp}.json"));
+            let cpath = cdir.join(format!("{comp}.json"));
             if let Ok(raw) = std::fs::read_to_string(&cpath)
                 && let Ok(v) = serde_json::from_str::<Value>(&raw)
                 && let Some(st) = v.get("status").and_then(Value::as_str)

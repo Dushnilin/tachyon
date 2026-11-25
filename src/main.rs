@@ -372,6 +372,32 @@ fn main() -> anyhow::Result<()> {
             "start" => core.start().await,
             "stop" => core.stop().await,
             "stop-shutdown" => core.stop_for_shutdown().await,
+            "stop-and-restore-native" | "stop_and_restore_native" => {
+                core.stop().await?;
+                net_stack::teardown_network_stack_with_mode(false).await;
+                Ok(())
+            }
+            "doctor" => {
+                let do_fix = args.iter().any(|a| a == "--fix");
+                if do_fix {
+                    let initial = diagnostics::run_local_doctor_with_core(&state, &core).await;
+                    let safe_fixes: Vec<String> = initial
+                        .findings
+                        .iter()
+                        .filter(|f| {
+                            !f.quick_fix_id.is_empty()
+                                && diagnostics::quick_fix_risk_tier(&f.quick_fix_id) == "safe"
+                        })
+                        .map(|f| f.quick_fix_id.clone())
+                        .collect();
+                    for fid in safe_fixes {
+                        let _ = diagnostics::apply_quick_fix(&state, &core, &fid).await;
+                    }
+                }
+                let final_rep = diagnostics::run_local_doctor_with_core(&state, &core).await;
+                println!("{}", serde_json::to_string_pretty(&final_rep)?);
+                Ok(())
+            }
             "reload" | "restart" => {
                 {
                     let d_snap = state.data.read().await;

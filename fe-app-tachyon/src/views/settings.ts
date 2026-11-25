@@ -580,7 +580,19 @@ function configureDownloadSectionOption(
   option.rmempty = true;
   option.retain = true;
   option.cfgvalue = function (section_id) {
-    return uci.get(UCI_PACKAGE, section_id, sectionOption) || '';
+    const val =
+      `${uci.get(UCI_PACKAGE, section_id, sectionOption) || ''}`.trim();
+    if (
+      val &&
+      Array.isArray(this.keylist) &&
+      this.keylist.some((k) => `${k || ''}`.trim() === val)
+    ) {
+      return val;
+    }
+    const firstValid = Array.isArray(this.keylist)
+      ? this.keylist.find((k) => `${k || ''}`.trim() !== '')
+      : '';
+    return val || `${firstValid || ''}`.trim();
   };
   option.load = function (section_id) {
     refreshDownloadSectionChoices(this, capabilities);
@@ -611,11 +623,15 @@ function configureDownloadSectionOption(
       const enabled = flagRaw === '1' || flagRaw === true;
       if (!enabled) return true;
     }
-    const hasChoices =
-      Array.isArray(this.keylist) &&
-      this.keylist.some((k) => `${k || ''}`.trim() !== '');
-    if (!hasChoices) return true;
-    return `${value || ''}`.trim() ? true : _('Select a section');
+    const firstValid = Array.isArray(this.keylist)
+      ? `${this.keylist.find((k) => `${k || ''}`.trim() !== '') || ''}`.trim()
+      : '';
+    if (!firstValid) return true;
+    const val = `${value || ''}`.trim();
+    if (!val && !this.form?.querySelector?.(`[data-name="${sectionOption}"]`)) {
+      return true;
+    }
+    return val || firstValid ? true : _('Select a section');
   };
 }
 
@@ -4867,6 +4883,23 @@ function createSettingsContent(section, capabilities) {
     (value) => value === 'socks',
     _('SOCKS mode does not intercept LAN traffic at all.'),
   );
+
+  o = section.taboption(
+    'network',
+    form.Flag,
+    'selective_tproxy',
+    _tr(
+      'Селективный TProxy (сохранять Flow Offloading для прямого трафика)',
+      'Selective TProxy (keep Flow Offloading for direct traffic)',
+    ),
+    _tr(
+      'Перехватывать в TProxy только адреса из FakeIP, Tailscale CGNAT и явно указанные подсети. Прямой WAN-трафик не заходит в userspace-ядро и сохраняет Hardware/Software Flow Offloading. Требует включённого FakeIP и стратегии split.',
+      'Intercept into TProxy only FakeIP addresses, Tailscale CGNAT, and explicit subnets. Direct WAN traffic bypasses the userspace core and keeps Hardware/Software Flow Offloading. Requires FakeIP and split routing strategy.',
+    ),
+  );
+  o.depends('proxy_mode', 'tproxy');
+  o.default = '0';
+  o.rmempty = false;
 
   o = section.taboption(
     'network',

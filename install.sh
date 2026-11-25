@@ -1250,7 +1250,7 @@ migrate_from_v1() {
     rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft /usr/share/nftables.d/ruleset-post/90-tachyon-kill-switch.nft /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft /usr/share/nftables.d/chain-pre/forward/10-tachyon-offload.nft 2>/dev/null || true
 
     if command_exists ip; then
-        for _p in 9499 9500 9501; do
+        for _p in 99 105 9499 9500 9501; do
             for _fam in -4 -6; do
                 while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
             done
@@ -1260,6 +1260,9 @@ migrate_from_v1() {
             ip "$_fam" rule del fwmark 0x04000000 lookup 100 >/dev/null 2>&1 || true
             ip "$_fam" rule del fwmark 0x10000000/0x10000000 lookup 100 >/dev/null 2>&1 || true
             ip "$_fam" rule del fwmark 0x10000000 lookup 100 >/dev/null 2>&1 || true
+            while ip "$_fam" rule del table tachyon >/dev/null 2>&1; do :; done
+            ip "$_fam" route flush table 100 >/dev/null 2>&1 || true
+            ip "$_fam" route flush table tachyon >/dev/null 2>&1 || true
         done
     fi
 
@@ -1849,7 +1852,7 @@ entware_install_deps() {
     _eid_missing=""
     for _pkg in iptables ipset ip-full curl ca-bundle; do
         case "$_pkg" in
-            iptables) command_exists iptables && continue ;;
+            iptables) command_exists iptables-restore && continue ;;
             ipset) command_exists ipset && continue ;;
             ip-full)
                 if entware_opkg_installed ip-full; then
@@ -2095,6 +2098,7 @@ entware_ensure_initial_config() {
     "clash_api_secret": "${_clash_sec}",
     "proxy_mode": "${_init_proxy_mode}",
     "source_network_interfaces": ["${_lan_if}"],
+    "dns_type": "udp",
     "dns_servers": ["77.88.8.8", "77.88.8.1", "9.9.9.9"],
     "bootstrap_dns_servers": ["77.88.8.8", "1.1.1.1"],
     "entware_dns_mode": "redirect",

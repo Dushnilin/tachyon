@@ -808,6 +808,8 @@ fn assemble_doctor_report_with_platform(
         } else {
             "warning"
         };
+        let runtime_quarantined = section_errors.contains_key("_core_runtime");
+        let lkg_available = state.lkg_path.exists();
         findings.push(DoctorFinding {
             id: "config_quarantine".to_string(),
             severity: severity.to_string(),
@@ -823,9 +825,32 @@ fn assemble_doctor_report_with_platform(
                     section_errors.len()
                 )
             },
-            detail: summary_lines.join(" | "),
-            quick_fix_id: "hot_reload_core".to_string(),
-            quick_fix_label: if en {
+            detail: if runtime_quarantined && lkg_available {
+                format!(
+                    "{} ({}: rollback_known_good)",
+                    summary_lines.join(" | "),
+                    if en {
+                        "recommended quick fix"
+                    } else {
+                        "рекомендуемый откат"
+                    }
+                )
+            } else {
+                summary_lines.join(" | ")
+            },
+            quick_fix_id: if runtime_quarantined && lkg_available {
+                "rollback_known_good"
+            } else {
+                "hot_reload_core"
+            }
+            .to_string(),
+            quick_fix_label: if runtime_quarantined && lkg_available {
+                if en {
+                    "Rollback to Last Known Good (rollback_known_good)"
+                } else {
+                    "Откатиться к рабочей конфигурации (rollback_known_good)"
+                }
+            } else if en {
                 "Re-apply configuration"
             } else {
                 "Повторно применить конфигурацию"
@@ -1446,6 +1471,7 @@ fn assemble_doctor_report_with_platform(
             ..Default::default()
         });
     } else if flow_offload_guard_missing {
+        let selective = crate::net_stack::selective_tproxy_active(d);
         findings.push(DoctorFinding {
             id: "flow_offloading_guard_missing".to_string(),
             severity: "warning".to_string(),
@@ -1457,9 +1483,15 @@ fn assemble_doctor_report_with_platform(
             }
             .to_string(),
             detail: if en {
-                "Install 10-tachyon-offload.nft so proxied/DNS flows bypass @ft while direct LAN/WAN traffic stays offloaded."
+                if selective {
+                    "Selective TProxy is active: direct LAN/WAN traffic bypasses TProxy and retains Flow Offloading, but 10-tachyon-offload.nft is still required to keep proxied/FakeIP/DNS flows out of @ft."
+                } else {
+                    "Full TProxy capture routes WAN flows through tachyon-core userspace; install 10-tachyon-offload.nft so proxied/DNS flows bypass @ft (enable Selective TProxy in Settings to offload direct traffic)."
+                }
+            } else if selective {
+                "Включён селективный TProxy: прямой LAN/WAN трафик не заходит в TProxy и ускоряется через Flow Offloading, но файл 10-tachyon-offload.nft необходим для исключения FakeIP/DNS и проксируемых потоков из @ft."
             } else {
-                "Установите 10-tachyon-offload.nft, чтобы трафик Tachyon/DNS исключался из @ft при сохранении ускорения прямого трафика."
+                "Полный перехват TProxy направляет весь WAN-трафик через userspace ядра; установите 10-tachyon-offload.nft (или включите селективный TProxy в настройках для ускорения прямого трафика)."
             }
             .to_string(),
             quick_fix_id: "sync_flow_offload_guard".to_string(),
@@ -2630,13 +2662,6 @@ fn qf_commit_tx(
 }
 
 #[inline(never)]
-fn qf_check_updates(
-    core: &Arc<CoreManager>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Value> + Send + '_>> {
-    Box::pin(core.check_updates())
-}
-
-/// Execute any of the 25 automated Quick Fixes by ID.
 fn is_builtin_non_proxy_outbound(tag: &str) -> bool {
     matches!(
         tag.trim().to_ascii_lowercase().as_str(),
@@ -2645,6 +2670,23 @@ fn is_builtin_non_proxy_outbound(tag: &str) -> bool {
 }
 
 pub async fn apply_quick_fix(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    fix_id: &str,
+) -> anyhow::Result<String> {
+    if fix_id.contains(',') {
+        let mut results = Vec::new();
+        for part in fix_id.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            let msg = Box::pin(apply_quick_fix_single(state, core, part)).await?;
+            results.push(msg);
+        }
+        anyhow::ensure!(!results.is_empty(), "Пустой список действий quick_fix");
+        return Ok(results.join("; "));
+    }
+    apply_quick_fix_single(state, core, fix_id).await
+}
+
+async fn apply_quick_fix_single(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
     fix_id: &str,
@@ -2746,25 +2788,40 @@ pub async fn apply_quick_fix(
                         .to_string(),
                 );
             }
+            let d_snap = state.data.read().await.clone();
             if !cfg!(windows) {
+                if !d_snap.settings.dont_touch_dhcp {
+                    let dropin = "server=127.0.0.42#53\nno-resolv\n";
+                    for dir in
+                        crate::net_stack::collect_dnsmasq_conf_dirs_in(std::path::Path::new("/tmp"))
+                    {
+                        if dir.is_dir() {
+                            let conf_path = dir.join("tachyon.conf");
+                            let _ = crypto_gen::write_file_with_mode_if_changed(
+                                &conf_path, dropin, 0o644,
+                            );
+                        }
+                    }
+                }
                 let _ = Command::new("/etc/init.d/dnsmasq")
                     .arg("restart")
                     .status()
                     .await;
             }
-            Ok("Служба dnsmasq перезапущена".to_string())
+            Ok("Конфигурация dnsmasq (tachyon.conf) проверена и служба перезапущена".to_string())
         }
         "fix_resolv_symlink" => {
             if !cfg!(windows) {
-                let target = if state.data.read().await.settings.dont_touch_dhcp
+                let dont_touch = state.data.read().await.settings.dont_touch_dhcp;
+                let target = if dont_touch
                     && std::path::Path::new("/tmp/resolv.conf.d/resolv.conf.auto").exists()
                 {
                     "/tmp/resolv.conf.d/resolv.conf.auto"
                 } else {
                     let local_resolv = std::path::Path::new("/tmp/resolv.conf");
-                    let needs_local = std::fs::read_to_string(local_resolv)
-                        .map(|s| s.trim().is_empty())
-                        .unwrap_or(true);
+                    let cur = std::fs::read_to_string(local_resolv).unwrap_or_default();
+                    let needs_local =
+                        cur.trim().is_empty() || (!dont_touch && !cur.contains("127.0.0.1"));
                     if needs_local {
                         let _ = crypto_gen::write_file_with_mode_if_changed(
                             local_resolv,
@@ -2827,6 +2884,16 @@ pub async fn apply_quick_fix(
             Ok(format!("Обновлено подписок: {updated}"))
         }
         "fix_wan_interface" | "fix_gateway" | "restart_network" => {
+            if !cfg!(windows) && !crate::platform::is_entware() {
+                if fix_id == "restart_network" {
+                    let _ = Command::new("/etc/init.d/network")
+                        .arg("reload")
+                        .status()
+                        .await;
+                } else {
+                    let _ = Command::new("ifup").arg("wan").status().await;
+                }
+            }
             let (wan_ok, rtt_ms) =
                 watchdog::probe_wan_health(&watchdog::default_wan_targets()).await;
             let snap = Box::new(state.data.read().await.clone());
@@ -2968,13 +3035,13 @@ pub async fn apply_quick_fix(
             Ok("Выполнен откат к снимку Last Known Good".to_string())
         }
         "upgrade_core" => {
-            let info = qf_check_updates(core).await;
-            Ok(format!(
-                "Проверка обновлений завершена: {}",
-                info.get("core_latest")
-                    .and_then(Value::as_str)
-                    .unwrap_or("актуальная версия")
-            ))
+            let res = core.component_action("tachyon-core", "update", None).await;
+            let msg = res
+                .get("message")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Задача обновления tachyon-core запущена");
+            Ok(msg.to_string())
         }
         "sync_flow_offload_guard" => {
             if crate::platform::is_entware() {
@@ -3179,6 +3246,8 @@ pub async fn apply_quick_fix_verified(
         Err(e) => (false, format!("Ошибка выполнения '{fix_id}': {e}")),
     };
 
+    let core_c = core.clone();
+    core_c.poll_telemetry_and_reconcile(0).await;
     let after = run_local_doctor_with_core_boxed(state, core).await;
     let after_count = after
         .findings
@@ -3193,7 +3262,12 @@ pub async fn apply_quick_fix_verified(
     let preserve_bypass_on_ok = exec_ok
         && matches!(
             base_id,
-            "restore_native_internet" | "enable_safe_bypass" | "flush_nftables"
+            "restore_native_internet"
+                | "enable_safe_bypass"
+                | "flush_nftables"
+                | "rollback_known_good"
+                | "fix_uci_config"
+                | "restore_lkg"
         );
     let mut rolled_back = false;
     if let Some(prev) = prev_snapshot
@@ -3549,7 +3623,7 @@ pub fn search_knowledge_docs(query: &str) -> Vec<Value> {
             "17_FLOW_OFFLOADING",
             "Совместимость Hardware/Software Flow Offloading с TProxy и TUN",
             "flow offloading hardware software firewall conflict stall",
-            "Tachyon автоматически исключает перехваченный трафик, FakeIP и DNS из @ft через /usr/share/nftables.d/ruleset-post/10-tachyon-offload.nft, сохраняя ускорение прямого трафика. Конфликт остаётся только при одновременном использовании Flow Offloading и SQM (disable_flow_offloading).",
+            "При обычном полном перехвате TProxy весь трафик LAN проходит через ядро в userspace. При включении селективного TProxy (selective_tproxy) прямой WAN-трафик остаётся в ядерном forward-конвейере и ускоряется Flow Offloading, а файл 10-tachyon-offload.nft исключает перехваченные/FakeIP/DNS потоки из @ft. Конфликт остаётся только при одновременном использовании Flow Offloading и SQM (disable_flow_offloading).",
         ),
         (
             "18_IPV6_LEAK_GUARD",

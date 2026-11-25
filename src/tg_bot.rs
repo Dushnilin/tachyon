@@ -35,11 +35,19 @@ static OUTBOX_SEQ: PortableAtomicU64 = PortableAtomicU64::new(0);
 static CB_TOKEN_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
 static PROMPT_SEQ: PortableAtomicU64 = PortableAtomicU64::new(1);
 
-const TG_OUTBOX_DIR: &str = "/var/run/tachyon/telegram-outbox";
+fn tg_outbox_dir() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("telegram-outbox")
+}
+
+pub(crate) fn tg_heartbeat_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("telegram.heartbeat")
+}
+
+pub(crate) fn tg_route_alert_stamp_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("telegram-route-alert.stamp")
+}
 pub(crate) const TG_OUTBOX_MAX_FILES: usize = 50;
 pub(crate) const TG_POLL_TIMEOUT_SECS: u64 = 25;
-pub(crate) const TG_HEARTBEAT_FILE: &str = "/var/run/tachyon/telegram.heartbeat";
-pub(crate) const TG_ROUTE_ALERT_STAMP_FILE: &str = "/var/run/tachyon/telegram-route-alert.stamp";
 pub(crate) const TG_ROUTE_ALERT_COOLDOWN_SECS: i64 = 21_600;
 #[allow(dead_code)]
 pub(crate) const MAX_CB_TOKENS: usize = 512;
@@ -891,7 +899,8 @@ pub(crate) async fn sleep_with_heartbeat_to(mut remaining_secs: u64, hb_path: &s
 }
 
 async fn sleep_with_heartbeat(secs: u64) {
-    sleep_with_heartbeat_to(secs, std::path::Path::new(TG_HEARTBEAT_FILE)).await;
+    let hb = tg_heartbeat_file();
+    sleep_with_heartbeat_to(secs, &hb).await;
 }
 
 pub(crate) fn route_alert_recent(
@@ -1022,11 +1031,11 @@ pub(crate) fn submit_update_available_notice(
             escape_html(latest)
         )
     };
-    let outbox_dir = std::path::Path::new(TG_OUTBOX_DIR);
+    let outbox_dir = tg_outbox_dir();
     let dedup = format!("upd_{comp}_{latest}");
     let mut queued = false;
     for &cid in &d.telegram.admin_ids {
-        if submit_outbox_notice_in(outbox_dir, token, cid, &text, Some(&dedup)).is_ok() {
+        if submit_outbox_notice_in(&outbox_dir, token, cid, &text, Some(&dedup)).is_ok() {
             queued = true;
         }
     }
@@ -1114,7 +1123,8 @@ pub(crate) fn queue_plain_outbox_notice_in(outbox_dir: &std::path::Path, text: &
 
 pub fn queue_or_send_notification(text: impl Into<String>) {
     let msg = text.into();
-    if queue_plain_outbox_notice_in(std::path::Path::new(TG_OUTBOX_DIR), &msg) {
+    let outbox = tg_outbox_dir();
+    if queue_plain_outbox_notice_in(&outbox, &msg) {
         notify_bot_wakeup();
     }
 }
@@ -1146,7 +1156,8 @@ async fn drain_telegram_outbox(
     direct_fallback: bool,
 ) {
     let current_bot_id = bot_id_from_token(token);
-    let entries = list_outbox_entries(std::path::Path::new(TG_OUTBOX_DIR));
+    let outbox = tg_outbox_dir();
+    let entries = list_outbox_entries(&outbox);
 
     for (name, path) in entries {
         let Ok(raw_text) = std::fs::read_to_string(&path) else {
@@ -2455,8 +2466,8 @@ fn record_poll_failure_alert(
             quiet_end,
             now_utc_secs: unix_now_secs(),
             local_now_secs: local_secs_for_quiet_check(),
-            outbox_dir: std::path::Path::new(TG_OUTBOX_DIR),
-            stamp_path: std::path::Path::new(TG_ROUTE_ALERT_STAMP_FILE),
+            outbox_dir: &tg_outbox_dir(),
+            stamp_path: &tg_route_alert_stamp_file(),
             cooldown_secs: TG_ROUTE_ALERT_COOLDOWN_SECS,
         });
     }
@@ -2521,7 +2532,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 continue;
             }
 
-            write_heartbeat_to(std::path::Path::new(TG_HEARTBEAT_FILE), unix_now_secs());
+            write_heartbeat_to(&tg_heartbeat_file(), unix_now_secs());
 
             if last_commands_key.as_ref() != Some(&(token.clone(), ru))
                 && transport::register_bot_commands(
@@ -2608,7 +2619,7 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                 res = transport::poll_telegram_updates(&poll_req) => res,
             };
 
-            write_heartbeat_to(std::path::Path::new(TG_HEARTBEAT_FILE), unix_now_secs());
+            write_heartbeat_to(&tg_heartbeat_file(), unix_now_secs());
 
             let Ok(val) = poll_res else {
                 record_poll_failure_alert(

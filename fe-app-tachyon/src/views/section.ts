@@ -13935,6 +13935,10 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = 'range(1,64)';
   o.placeholder = '4';
+  o.cfgvalue = function (sectionId) {
+    const v = uci.get(UCI_PACKAGE, sectionId, 'desync_fake_ttl');
+    return v === '0' || v === 0 ? '' : v;
+  };
   o.depends({ action: 'desync', desync_preset: 'auto' });
   o.depends({ action: 'desync', desync_preset: 'custom' });
   o.depends({ action: 'desync', desync_preset: 'fake_split' });
@@ -13993,6 +13997,10 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = 'range(1,20)';
   o.placeholder = '2';
+  o.cfgvalue = function (sectionId) {
+    const v = uci.get(UCI_PACKAGE, sectionId, 'desync_repeats');
+    return v === '0' || v === 0 ? '' : v;
+  };
   o.depends({ action: 'desync', desync_preset: 'auto' });
   o.depends({ action: 'desync', desync_preset: 'custom' });
   o.depends({ action: 'desync', desync_preset: 'fake_split' });
@@ -14118,6 +14126,10 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = 'range(1,20)';
   o.placeholder = '4';
+  o.cfgvalue = function (sectionId) {
+    const v = uci.get(UCI_PACKAGE, sectionId, 'desync_udp_repeats');
+    return v === '0' || v === 0 ? '' : v;
+  };
   o.depends({
     action: 'desync',
     desync_preset: 'auto',
@@ -14186,6 +14198,10 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.datatype = 'range(1,64)';
   o.placeholder = '3';
+  o.cfgvalue = function (sectionId) {
+    const v = uci.get(UCI_PACKAGE, sectionId, 'desync_udp_fake_ttl');
+    return v === '0' || v === 0 ? '' : v;
+  };
   o.depends({
     action: 'desync',
     desync_preset: 'auto',

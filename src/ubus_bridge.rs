@@ -1683,14 +1683,37 @@ async fn dispatch_ubus_call(
     }
 }
 
-fn handle_file_list(args: &Value) -> Value {
-    let Some(path) = args.get("path").and_then(Value::as_str) else {
-        return json!([2]);
+fn resolve_bridge_runtime_path(p: &str) -> std::path::PathBuf {
+    let direct = Path::new(p);
+    if direct.exists() {
+        return direct.to_path_buf();
+    }
+    if let Some(rel) = p.strip_prefix("/var/run/tachyon/") {
+        return crate::store::runtime_state_dir().join(rel);
+    }
+    if p == "/var/run/tachyon" {
+        return crate::store::runtime_state_dir();
+    }
+    direct.to_path_buf()
+}
+
+fn virtual_sub_cache_dir() -> std::path::PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        Path::new("/tmp/tachyon-core/subscriptions").to_path_buf()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        std::env::temp_dir()
+            .join("tachyon-core")
+            .join("subscriptions")
+    }
+}
+
+fn push_dir_entries_into(dir: &Path, map: &mut std::collections::BTreeMap<String, Value>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
     };
-    let Ok(rd) = std::fs::read_dir(path) else {
-        return json!([4]);
-    };
-    let mut entries = Vec::new();
     for entry in rd.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if let Ok(meta) = entry.metadata() {
@@ -1701,14 +1724,56 @@ fn handle_file_list(args: &Value) -> Value {
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            entries.push(json!({
-                "name": name,
-                "type": ftype,
-                "size": meta.len(),
-                "mtime": mtime,
-            }));
+            map.insert(
+                name.clone(),
+                json!({
+                    "name": name,
+                    "type": ftype,
+                    "size": meta.len(),
+                    "mtime": mtime,
+                }),
+            );
         }
     }
+}
+
+fn resolve_virtual_sub_cache_file(path: &str) -> Option<std::path::PathBuf> {
+    let fname = path.strip_prefix("/etc/tachyon/subscription-cache/")?;
+    if fname.is_empty() || fname.contains('/') || fname.contains("..") || fname.contains('\0') {
+        return None;
+    }
+    let direct = Path::new(path);
+    if direct.is_file() {
+        return Some(direct.to_path_buf());
+    }
+    let virt = virtual_sub_cache_dir().join(fname);
+    if virt.is_file() {
+        return Some(virt);
+    }
+    None
+}
+
+fn handle_file_list(args: &Value) -> Value {
+    let Some(path) = args.get("path").and_then(Value::as_str) else {
+        return json!([2]);
+    };
+    let norm = path.trim_end_matches('/');
+    if norm == "/etc/tachyon/subscription-cache" {
+        let mut by_name: std::collections::BTreeMap<String, Value> =
+            std::collections::BTreeMap::new();
+        push_dir_entries_into(Path::new(norm), &mut by_name);
+        push_dir_entries_into(&virtual_sub_cache_dir(), &mut by_name);
+        let entries: Vec<Value> = by_name.into_values().collect();
+        return json!([0, { "entries": entries }]);
+    }
+    let resolved = resolve_bridge_runtime_path(path);
+    let Ok(rd) = std::fs::read_dir(&resolved) else {
+        return json!([4]);
+    };
+    let mut by_name: std::collections::BTreeMap<String, Value> = std::collections::BTreeMap::new();
+    push_dir_entries_into(&resolved, &mut by_name);
+    drop(rd);
+    let entries: Vec<Value> = by_name.into_values().collect();
     json!([0, { "entries": entries }])
 }
 
@@ -1716,7 +1781,9 @@ fn handle_file_stat(args: &Value) -> Value {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json!([2]);
     };
-    let Ok(meta) = std::fs::metadata(path) else {
+    let target =
+        resolve_virtual_sub_cache_file(path).unwrap_or_else(|| resolve_bridge_runtime_path(path));
+    let Ok(meta) = std::fs::metadata(&target) else {
         return json!([4]);
     };
     let ftype = if meta.is_dir() { "directory" } else { "file" };
@@ -1845,6 +1912,17 @@ fn is_allowed_bridge_exec(bin: &str, args: &[String]) -> bool {
                 })
         }
         "/bin/cat" => args.len() == 1 && is_allowed_bridge_read_path(&args[0]),
+        "/sbin/logread" | "/usr/sbin/logread" => {
+            args.len() <= 8
+                && args.iter().all(|a| {
+                    !a.is_empty()
+                        && !a.contains(';')
+                        && !a.contains('|')
+                        && !a.contains('&')
+                        && !a.contains('`')
+                        && !a.contains('$')
+                })
+        }
         "/bin/rm" => {
             args.iter().any(|a| a != "-f")
                 && args
@@ -1862,13 +1940,20 @@ async fn handle_file_read(args: &Value, state: &Arc<AppState>) -> Value {
     if !is_allowed_bridge_read_path(path) {
         return json!([6]);
     }
-    if let Ok(bytes) = std::fs::read(path) {
+    if let Some(sub_path) = resolve_virtual_sub_cache_file(path)
+        && let Ok(bytes) = std::fs::read(&sub_path)
+    {
+        let data = String::from_utf8_lossy(&bytes).into_owned();
+        return json!([0, { "data": data }]);
+    }
+    let resolved = resolve_bridge_runtime_path(path);
+    if let Ok(bytes) = std::fs::read(&resolved) {
         let data = String::from_utf8_lossy(&bytes).into_owned();
         return json!([0, { "data": data }]);
     }
     if path == "/var/run/tachyon/section-errors.json" {
-        let resolved = crate::core_mgr::CoreManager::section_errors_path();
-        if let Ok(bytes) = std::fs::read(&resolved) {
+        let resolved_err = crate::core_mgr::CoreManager::section_errors_path();
+        if let Ok(bytes) = std::fs::read(&resolved_err) {
             let data = String::from_utf8_lossy(&bytes).into_owned();
             return json!([0, { "data": data }]);
         }
@@ -1979,6 +2064,12 @@ async fn handle_file_exec(args: &Value, state: &Arc<AppState>, core: &Arc<CoreMa
 
     if !is_allowed_bridge_exec(command, &params) {
         return json!([6]);
+    }
+
+    if (command == "/sbin/logread" || command == "/usr/sbin/logread")
+        && !Path::new(command).exists()
+    {
+        return json!([0, { "code": 0, "stdout": "", "stderr": "" }]);
     }
 
     let mut cmd = Command::new(command);
@@ -4511,7 +4602,7 @@ fn collect_section_sources_with_owner<'a>(
     let mut seen: std::collections::HashSet<(String, &str)> = std::collections::HashSet::new();
     let mut seen_global: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut result = Vec::new();
-    let include_all = section.is_empty() || section == "all";
+    let include_all = section.is_empty() || section == "all" || section == "_sources";
 
     let source_by_id: std::collections::HashMap<&str, &'a crate::store::OutboundSource> = store
         .outbound_sources
@@ -4523,6 +4614,172 @@ fn collect_section_sources_with_owner<'a>(
         .iter()
         .map(|g| (g.id.as_str(), g))
         .collect();
+    let bal_by_id: std::collections::HashMap<&str, &'a crate::store::BalancerConfig> =
+        store.balancers.iter().map(|b| (b.id.as_str(), b)).collect();
+    let sec_by_id: std::collections::HashMap<&str, &'a crate::store::RoutingSection> =
+        store.sections.iter().map(|s| (s.id.as_str(), s)).collect();
+
+    fn push_source<'a>(
+        owner_sec: &str,
+        src: &'a crate::store::OutboundSource,
+        sec_hidden: bool,
+        seen: &mut std::collections::HashSet<(String, &'a str)>,
+        seen_global: &mut std::collections::HashSet<&'a str>,
+        result: &mut Vec<(String, &'a crate::store::OutboundSource, bool)>,
+    ) {
+        if seen.insert((owner_sec.to_string(), src.id.as_str())) {
+            seen_global.insert(src.id.as_str());
+            result.push((owner_sec.to_string(), src, src.hidden || sec_hidden));
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_group<'a>(
+        owner_sec: &str,
+        gref: &str,
+        sec_hidden: bool,
+        group_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundGroup>,
+        source_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundSource>,
+        seen: &mut std::collections::HashSet<(String, &'a str)>,
+        seen_global: &mut std::collections::HashSet<&'a str>,
+        result: &mut Vec<(String, &'a crate::store::OutboundSource, bool)>,
+    ) {
+        if let Some(grp) = group_by_id.get(gref).copied() {
+            for sref in grp
+                .source_refs
+                .iter()
+                .chain(grp.primary_refs.iter())
+                .chain(grp.backup_refs.iter())
+            {
+                if let Some(src) = source_by_id.get(sref.as_str()).copied() {
+                    push_source(owner_sec, src, sec_hidden, seen, seen_global, result);
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_sec<'a>(
+        owner_sec: &str,
+        sec: &'a crate::store::RoutingSection,
+        depth: usize,
+        visited: &mut std::collections::HashSet<&'a str>,
+        store: &'a crate::store::RouterStoreData,
+        source_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundSource>,
+        group_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundGroup>,
+        bal_by_id: &std::collections::HashMap<&str, &'a crate::store::BalancerConfig>,
+        sec_by_id: &std::collections::HashMap<&str, &'a crate::store::RoutingSection>,
+        seen: &mut std::collections::HashSet<(String, &'a str)>,
+        seen_global: &mut std::collections::HashSet<&'a str>,
+        result: &mut Vec<(String, &'a crate::store::OutboundSource, bool)>,
+    ) {
+        if depth > 8 || !visited.insert(sec.id.as_str()) {
+            return;
+        }
+        let before = result.len();
+        for sref in &sec.outbound_source_refs {
+            if let Some(src) = source_by_id.get(sref.as_str()).copied() {
+                push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+            }
+        }
+        for gref in std::iter::once(&sec.outbound_group_ref)
+            .chain(sec.outbound_group_refs.iter())
+            .chain(sec.outbound_group_levels.iter())
+        {
+            if !gref.is_empty() {
+                collect_group(
+                    owner_sec,
+                    gref.as_str(),
+                    sec.hidden,
+                    group_by_id,
+                    source_by_id,
+                    seen,
+                    seen_global,
+                    result,
+                );
+                if let Some(src) = source_by_id.get(gref.as_str()).copied() {
+                    push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+                }
+            }
+        }
+        for bref in &sec.balancer_refs {
+            if let Some(bal) = bal_by_id.get(bref.as_str()).copied() {
+                for tok in bal
+                    .outbound_group_levels
+                    .iter()
+                    .chain(bal.balancer_pool.iter())
+                {
+                    let t = tok.trim();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    collect_group(
+                        owner_sec,
+                        t,
+                        sec.hidden,
+                        group_by_id,
+                        source_by_id,
+                        seen,
+                        seen_global,
+                        result,
+                    );
+                    if let Some(src) = source_by_id.get(t).copied() {
+                        push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+                    }
+                }
+            }
+        }
+        for sub_ref in &sec.section_refs {
+            let trimmed = sub_ref.trim();
+            if let Some(child_sec) = sec_by_id.get(trimmed).copied() {
+                collect_sec(
+                    owner_sec,
+                    child_sec,
+                    depth + 1,
+                    visited,
+                    store,
+                    source_by_id,
+                    group_by_id,
+                    bal_by_id,
+                    sec_by_id,
+                    seen,
+                    seen_global,
+                    result,
+                );
+            } else if let Some(grp) = group_by_id.get(trimmed).copied() {
+                for sref in grp
+                    .source_refs
+                    .iter()
+                    .chain(grp.primary_refs.iter())
+                    .chain(grp.backup_refs.iter())
+                {
+                    if let Some(src) = source_by_id.get(sref.as_str()).copied() {
+                        push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+                    }
+                }
+            } else if let Some(src) = source_by_id.get(trimmed).copied() {
+                push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+            }
+        }
+        // Proxy/group section with no explicit refs falls back to the enabled source pool
+        if depth == 0
+            && result.len() == before
+            && matches!(
+                sec.connection_type.as_str(),
+                "proxy" | "group" | "auto" | "urltest" | "selector"
+            )
+            && sec.outbound_source_refs.is_empty()
+            && sec.outbound_group_ref.is_empty()
+            && sec.outbound_group_refs.is_empty()
+            && sec.section_refs.is_empty()
+        {
+            for src in &store.outbound_sources {
+                if src.enabled {
+                    push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
+                }
+            }
+        }
+    }
 
     let exact_match = !include_all && store.sections.iter().any(|s| s.id == section);
     for sec in &store.sections {
@@ -4535,29 +4792,21 @@ fn collect_section_sources_with_owner<'a>(
         if !sec_matches {
             continue;
         }
-        for sref in &sec.outbound_source_refs {
-            if let Some(src) = source_by_id.get(sref.as_str()).copied()
-                && seen.insert((sec.id.clone(), src.id.as_str()))
-            {
-                seen_global.insert(src.id.as_str());
-                result.push((sec.id.clone(), src, src.hidden || sec.hidden));
-            }
-        }
-        for gref in std::iter::once(&sec.outbound_group_ref).chain(sec.outbound_group_refs.iter()) {
-            if gref.is_empty() {
-                continue;
-            }
-            if let Some(grp) = group_by_id.get(gref.as_str()).copied() {
-                for sref in &grp.source_refs {
-                    if let Some(src) = source_by_id.get(sref.as_str()).copied()
-                        && seen.insert((sec.id.clone(), src.id.as_str()))
-                    {
-                        seen_global.insert(src.id.as_str());
-                        result.push((sec.id.clone(), src, src.hidden || sec.hidden));
-                    }
-                }
-            }
-        }
+        let mut visited = std::collections::HashSet::new();
+        collect_sec(
+            &sec.id,
+            sec,
+            0,
+            &mut visited,
+            store,
+            &source_by_id,
+            &group_by_id,
+            &bal_by_id,
+            &sec_by_id,
+            &mut seen,
+            &mut seen_global,
+            &mut result,
+        );
     }
 
     if include_all {
@@ -4836,7 +5085,8 @@ fn read_pure_rust_outbound_metadata(store: &crate::store::RouterStoreData, secti
         .and_then(Value::as_object)
         .is_some_and(|m| !m.is_empty());
     if !has_any {
-        let cache_dir = Path::new("/var/run/tachyon/section-cache");
+        let cache_dir_buf = crate::store::runtime_state_dir().join("section-cache");
+        let cache_dir = cache_dir_buf.as_path();
         let mut files = Vec::new();
         if section.is_empty() || section == "all" {
             if let Ok(rd) = std::fs::read_dir(cache_dir) {
@@ -4978,8 +5228,9 @@ fn read_pure_rust_subscription_metadata(
     }
 
     if !section.is_empty() && section != "all" {
-        let cache_path =
-            Path::new("/var/run/tachyon/section-cache").join(format!("{section}.json"));
+        let cache_path = crate::store::runtime_state_dir()
+            .join("section-cache")
+            .join(format!("{section}.json"));
         if let Ok(raw) = std::fs::read_to_string(&cache_path)
             && let Ok(cache) = serde_json::from_str::<Value>(&raw)
             && let Some(arr) = cache.get("subscriptionMetadata").and_then(Value::as_array)
@@ -4991,7 +5242,8 @@ fn read_pure_rust_subscription_metadata(
     json!([])
 }
 
-/// Synchronize per-section runtime cache files in `/var/run/tachyon/section-cache/*.json` (tmpfs).
+/// Synchronize per-section runtime cache files in `<runtime_state_dir>/section-cache/*.json`
+/// and virtual tmpfs subscription cache files in `/tmp/tachyon-core/subscriptions/Pool_<sid>-subscription-1.*`.
 pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
     let cache_dir = crate::store::runtime_state_dir().join("section-cache");
     let _ = std::fs::create_dir_all(&cache_dir);
@@ -5021,12 +5273,194 @@ pub fn sync_section_cache(store: &crate::store::RouterStoreData) {
         let _ = crypto_gen::write_json_if_changed(cache_dir.join(fname), &payload);
     }
 
+    // Aggregate all sources (including unassigned subscriptions/nodes) in `_sources.json`
+    active_files.insert("_sources.json".to_string());
+    let (all_outbound_meta, all_links, all_hidden) =
+        build_outbound_metadata_and_links(store, "_sources");
+    let all_sub_meta = read_pure_rust_subscription_metadata(store, "_sources");
+    let sources_payload = json!({
+        "section": "_sources",
+        "outboundMetadata": all_outbound_meta,
+        "subscriptionMetadata": all_sub_meta,
+        "links": all_links,
+        "hiddenOutboundTags": all_hidden,
+        "urltestGroups": json!({}),
+        "priorityGroups": json!({}),
+    });
+    let _ = crypto_gen::write_json_if_changed(cache_dir.join("_sources.json"), &sources_payload);
+
     if let Ok(rd) = std::fs::read_dir(&cache_dir) {
         for entry in rd.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json")
                 && let Some(name) = path.file_name().and_then(|n| n.to_str())
                 && !active_files.contains(name)
+            {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+
+    // Materialize tmpfs Pool_<sid>-subscription-1.* files for UI views without touching flash
+    let sub_dir = virtual_sub_cache_dir();
+    let _ = std::fs::create_dir_all(&sub_dir);
+    let mut active_pool_files = std::collections::HashSet::new();
+    for src in &store.outbound_sources {
+        if src.source_type != "subscription"
+            || src.id.is_empty()
+            || src.id.contains('/')
+            || src.id.contains("..")
+        {
+            continue;
+        }
+        let base = format!("Pool_{}-subscription-1", src.id);
+        let mut outbounds_arr: Vec<Value> = Vec::new();
+        let mut raw_links: Vec<String> = Vec::new();
+        let mut link_by_tag: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for node in &src.cached_nodes {
+            let trimmed = node.raw_uri.trim();
+            if !trimmed.is_empty() {
+                raw_links.push(trimmed.to_string());
+                link_by_tag.insert(node.tag.clone(), trimmed.to_string());
+                if !src.node_prefix.trim().is_empty() {
+                    link_by_tag.insert(
+                        format!("{}{}", src.node_prefix, node.tag),
+                        trimmed.to_string(),
+                    );
+                }
+            }
+        }
+        for (idx, raw) in src.proxy_links.iter().enumerate() {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            if !raw_links.iter().any(|l| l == trimmed) {
+                raw_links.push(trimmed.to_string());
+            }
+            if let Some(parsed) = crate::config_gen::parse_proxy_uri(trimmed, idx) {
+                link_by_tag
+                    .entry(parsed.tag)
+                    .or_insert_with(|| trimmed.to_string());
+            }
+        }
+        for (tag, mut ob_val, visible) in crate::config_gen::build_source_outbounds(src) {
+            if !visible {
+                continue;
+            }
+            if let Some(obj) = ob_val.as_object_mut() {
+                obj.entry("tag").or_insert_with(|| json!(tag));
+                if let Some(lnk) = link_by_tag.get(&tag) {
+                    obj.insert("share_link".into(), json!(lnk));
+                }
+            }
+            outbounds_arr.push(ob_val);
+        }
+        // Preserve disabled-source preview from cached_nodes if enabled=false produced 0 outbounds
+        if !src.enabled && outbounds_arr.is_empty() {
+            for node in &src.cached_nodes {
+                let mut ob = node.outbound_json.clone();
+                if let Some(obj) = ob.as_object_mut() {
+                    obj.entry("tag").or_insert_with(|| json!(node.tag));
+                    if !node.raw_uri.trim().is_empty() {
+                        obj.insert("share_link".into(), json!(node.raw_uri.trim()));
+                    }
+                }
+                outbounds_arr.push(ob);
+            }
+        }
+        let json_name = format!("{base}.json");
+        let links_name = format!("{base}.links");
+        let meta_name = format!("{base}.metadata.json");
+        let url_name = format!("{base}.url");
+
+        let _ = crypto_gen::write_json_if_changed(
+            sub_dir.join(&json_name),
+            &json!({ "outbounds": outbounds_arr }),
+        );
+        active_pool_files.insert(json_name);
+
+        let links_text = if raw_links.is_empty() {
+            String::new()
+        } else {
+            format!("{}\n", raw_links.join("\n"))
+        };
+        let _ = crypto_gen::write_file_if_changed(sub_dir.join(&links_name), links_text.as_bytes());
+        active_pool_files.insert(links_name);
+
+        if let Some(first_url) = src.subscription_urls.first()
+            && !first_url.trim().is_empty()
+        {
+            let _ = crypto_gen::write_file_if_changed(
+                sub_dir.join(&url_name),
+                first_url.trim().as_bytes(),
+            );
+            active_pool_files.insert(url_name);
+        }
+
+        let used = src.sub_upload_bytes.saturating_add(src.sub_download_bytes);
+        let total = src.sub_total_bytes;
+        let title = if !src.sub_title.trim().is_empty() {
+            crate::store::decode_sub_header_value(&src.sub_title)
+        } else if !src.name.trim().is_empty() {
+            crate::store::decode_sub_header_value(&src.name)
+        } else {
+            src.id.clone()
+        };
+        let mut meta_obj = Map::new();
+        meta_obj.insert("sourceId".into(), json!(src.id));
+        meta_obj.insert("sourceSection".into(), json!(base));
+        meta_obj.insert("title".into(), json!(title));
+        if let Some(u) = src.subscription_urls.first() {
+            meta_obj.insert("url".into(), json!(u));
+        }
+        meta_obj.insert("urls".into(), json!(src.subscription_urls));
+        meta_obj.insert("nodeCount".into(), json!(outbounds_arr.len()));
+        if src.last_updated_unix > 0 {
+            meta_obj.insert("updatedAt".into(), json!(src.last_updated_unix));
+        }
+        if src.sub_expire_unix > 0 {
+            meta_obj.insert("expire".into(), json!(src.sub_expire_unix));
+        }
+        meta_obj.insert(
+            "traffic".into(),
+            json!({
+                "upload": src.sub_upload_bytes,
+                "download": src.sub_download_bytes,
+                "used": used,
+                "total": total,
+                "remaining": total.saturating_sub(used),
+                "isUnlimited": total == 0,
+            }),
+        );
+        if !src.sub_web_page_url.is_empty() {
+            meta_obj.insert("webPageUrl".into(), json!(src.sub_web_page_url));
+        }
+        if !src.sub_support_url.is_empty() {
+            meta_obj.insert("supportUrl".into(), json!(src.sub_support_url));
+        }
+        if !src.sub_announce.is_empty() {
+            meta_obj.insert(
+                "announce".into(),
+                json!(crate::store::decode_sub_header_value(&src.sub_announce)),
+            );
+        }
+        if !src.sub_last_error.is_empty() {
+            meta_obj.insert("lastError".into(), json!(src.sub_last_error));
+        }
+        let _ =
+            crypto_gen::write_json_if_changed(sub_dir.join(&meta_name), &Value::Object(meta_obj));
+        active_pool_files.insert(meta_name);
+    }
+
+    if let Ok(rd) = std::fs::read_dir(&sub_dir) {
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && name.starts_with("Pool_")
+                && name.contains("-subscription-")
+                && !active_pool_files.contains(name)
             {
                 let _ = std::fs::remove_file(&path);
             }
@@ -5146,16 +5580,18 @@ async fn handle_pure_rust_clash_api(
             if let Ok(val) = core.clash_request("GET", "/proxies", None).await
                 && let Ok(raw) = serde_json::to_string(&val)
             {
-                let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
+                let ui_state = crate::store::runtime_state_dir().join("ui-state");
+                let _ = std::fs::create_dir_all(&ui_state);
                 let _ = crypto_gen::write_file_if_changed(
-                    Path::new("/var/run/tachyon/ui-state/clash-proxies.json"),
+                    ui_state.join("clash-proxies.json"),
                     raw.as_bytes(),
                 );
                 return Some((0, format!("{raw}\n"), String::new()));
             }
-            if let Some(cached) =
-                read_cached_clash_proxies(Path::new("/var/run/tachyon/ui-state/clash-proxies.json"))
-            {
+            let cached_proxies_path = crate::store::runtime_state_dir()
+                .join("ui-state")
+                .join("clash-proxies.json");
+            if let Some(cached) = read_cached_clash_proxies(&cached_proxies_path) {
                 return Some((0, cached, String::new()));
             }
             Some((0, "{\"proxies\":{}}\n".to_string(), String::new()))
@@ -5164,8 +5600,10 @@ async fn handle_pure_rust_clash_api(
             state.touch_telemetry_access();
             let conntrack_only = rest.get(1).map(String::as_str) == Some("conntrack");
             if !conntrack_only {
-                let cache_path = Path::new("/var/run/tachyon/ui-state/clash-connections.json");
-                if let Ok(meta) = std::fs::metadata(cache_path)
+                let cache_path = crate::store::runtime_state_dir()
+                    .join("ui-state")
+                    .join("clash-connections.json");
+                if let Ok(meta) = std::fs::metadata(&cache_path)
                     && let Ok(mtime) = meta.modified()
                     && mtime.elapsed().is_ok_and(|age| age.as_secs() < 2)
                     && let Ok(cached) = std::fs::read_to_string(cache_path)
@@ -5335,16 +5773,19 @@ async fn handle_pure_rust_clash_api(
                         conns.truncate(new_len);
                     }
                 }
-                let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
+                let ui_dir = crate::store::runtime_state_dir().join("ui-state");
+                let _ = std::fs::create_dir_all(&ui_dir);
                 let _ = crypto_gen::write_file_if_changed(
-                    Path::new("/var/run/tachyon/ui-state/clash-connections.json"),
+                    ui_dir.join("clash-connections.json"),
                     raw.as_bytes(),
                 );
                 return Some((0, format!("{raw}\n"), String::new()));
             }
-            if let Ok(cached) =
-                std::fs::read_to_string("/var/run/tachyon/ui-state/clash-connections.json")
-                && !cached.trim().is_empty()
+            if let Ok(cached) = std::fs::read_to_string(
+                crate::store::runtime_state_dir()
+                    .join("ui-state")
+                    .join("clash-connections.json"),
+            ) && !cached.trim().is_empty()
             {
                 return Some((0, format!("{}\n", cached.trim()), String::new()));
             }
@@ -8333,7 +8774,10 @@ async fn build_ubus_ai_doctor_payload(
     method: &str,
     rest: &[String],
 ) -> Value {
-    let cache_path = Path::new("/var/run/tachyon/ui-state/ai-doctor-last.json");
+    let cache_path_buf = crate::store::runtime_state_dir()
+        .join("ui-state")
+        .join("ai-doctor-last.json");
+    let cache_path = cache_path_buf.as_path();
     if method == "ai_doctor_last"
         && let Ok(raw) = tokio::fs::read_to_string(cache_path).await
         && let Ok(cached) = serde_json::from_str::<Value>(&raw)
@@ -12761,7 +13205,53 @@ async fn handle_fallback_system_ubus(object: &str, method: &str) -> Value {
                 .collect();
             json!([0, { "dhcp_leases": leases, "dhcp6_leases": [] }])
         }
-        ("luci-rpc", "getNetworkDevices") => json!([0, {}]),
+        ("luci-rpc", "getNetworkDevices") => {
+            let mut devs = Map::new();
+            let mut netdevs = Vec::new();
+            if let Ok(rd) = std::fs::read_dir("/sys/class/net") {
+                for ent in rd.flatten() {
+                    if let Some(n) = ent.file_name().to_str() {
+                        netdevs.push(n.to_string());
+                    }
+                }
+            }
+            for ifname in netdevs {
+                let mac = std::fs::read_to_string(format!("/sys/class/net/{ifname}/address"))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                let oper = std::fs::read_to_string(format!("/sys/class/net/{ifname}/operstate"))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_ascii_lowercase();
+                let up = oper == "up" || oper == "unknown";
+                let mut ipaddrs = Vec::new();
+                if let Ok(out) = std::process::Command::new("ip")
+                    .args(["-o", "-4", "addr", "show", "dev", &ifname])
+                    .output()
+                    && out.status.success()
+                {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines() {
+                        if let Some(inet_pos) = line.find(" inet ")
+                            && let Some(cidr) = line[inet_pos + 6..].split_whitespace().next()
+                        {
+                            ipaddrs.push(json!(cidr));
+                        }
+                    }
+                }
+                devs.insert(
+                    ifname.clone(),
+                    json!({
+                        "name": ifname,
+                        "up": up,
+                        "mac": mac,
+                        "ipaddrs": ipaddrs
+                    }),
+                );
+            }
+            json!([0, Value::Object(devs)])
+        }
         ("luci-rpc", "getWirelessDevices") => json!([0, {}]),
         ("luci-rpc", "getBoardJSON") => {
             let sys = sys_info::collect_host_info();
@@ -12776,7 +13266,78 @@ async fn handle_fallback_system_ubus(object: &str, method: &str) -> Value {
                 }
             ])
         }
-        ("network.interface", "dump") => json!([0, { "interface": [] }]),
+        ("network.interface", "dump") => {
+            let mut ifaces = Vec::new();
+            let mut netdevs = Vec::new();
+            if let Ok(rd) = std::fs::read_dir("/sys/class/net") {
+                for ent in rd.flatten() {
+                    if let Some(n) = ent.file_name().to_str() {
+                        netdevs.push(n.to_string());
+                    }
+                }
+            }
+            for ifname in netdevs {
+                if ifname == "lo" {
+                    continue;
+                }
+                let oper = std::fs::read_to_string(format!("/sys/class/net/{ifname}/operstate"))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_ascii_lowercase();
+                let up = oper == "up" || oper == "unknown";
+                let mut v4_arr = Vec::new();
+                if let Ok(out) = std::process::Command::new("ip")
+                    .args(["-o", "-4", "addr", "show", "dev", &ifname])
+                    .output()
+                    && out.status.success()
+                {
+                    for line in String::from_utf8_lossy(&out.stdout).lines() {
+                        if let Some(inet_pos) = line.find(" inet ")
+                            && let Some(cidr) = line[inet_pos + 6..].split_whitespace().next()
+                            && let Some((ip, mask)) = cidr.split_once('/')
+                        {
+                            v4_arr.push(json!({
+                                "address": ip,
+                                "mask": mask.parse::<u8>().unwrap_or(24)
+                            }));
+                        }
+                    }
+                }
+                let mut v6_arr = Vec::new();
+                if let Ok(out) = std::process::Command::new("ip")
+                    .args(["-o", "-6", "addr", "show", "dev", &ifname])
+                    .output()
+                    && out.status.success()
+                {
+                    for line in String::from_utf8_lossy(&out.stdout).lines() {
+                        if let Some(inet_pos) = line.find(" inet6 ")
+                            && let Some(cidr) = line[inet_pos + 7..].split_whitespace().next()
+                            && let Some((ip, mask)) = cidr.split_once('/')
+                        {
+                            v6_arr.push(json!({
+                                "address": ip,
+                                "mask": mask.parse::<u8>().unwrap_or(64)
+                            }));
+                        }
+                    }
+                }
+                let logic_name = if ifname == "br0" || ifname == "br-lan" {
+                    "lan"
+                } else {
+                    ifname.as_str()
+                };
+                ifaces.push(json!({
+                    "interface": logic_name,
+                    "l3_device": ifname,
+                    "device": ifname,
+                    "up": up,
+                    "proto": "static",
+                    "ipv4-address": v4_arr,
+                    "ipv6-address": v6_arr
+                }));
+            }
+            json!([0, { "interface": ifaces }])
+        }
         ("network", "get_proto_handlers") => json!([0, {}]),
         _ => json!([0, {}]),
     }
@@ -12912,6 +13473,21 @@ async fn handle_pure_rust_uci(
                         expected.push((b.id.trim(), "balancer"));
                     }
                 }
+                for g in &d.outbound_groups {
+                    if !g.id.trim().is_empty() {
+                        expected.push((g.id.trim(), "outbound_group"));
+                    }
+                }
+                for s in &d.servers {
+                    if !s.id.trim().is_empty() {
+                        expected.push((s.id.trim(), "inbound_server"));
+                    }
+                }
+                for p in &d.profiles {
+                    if !p.id.trim().is_empty() {
+                        expected.push((p.id.trim(), "profile"));
+                    }
+                }
                 for c in &d.conditions {
                     if !c.id.trim().is_empty() {
                         expected.push((c.id.trim(), "condition"));
@@ -12926,6 +13502,10 @@ async fn handle_pure_rust_uci(
                     .read()
                     .map(|g| {
                         g.is_empty()
+                            || g.get("settings")
+                                .and_then(|v| v.get(".type"))
+                                .and_then(Value::as_str)
+                                != Some("settings")
                             || expected.iter().any(|(id, ty)| {
                                 g.get(*id)
                                     .and_then(|v| v.get(".type"))
@@ -13220,7 +13800,9 @@ pub async fn handle_cgi_direct(
         if !is_allowed_bridge_read_path(filepath) {
             return (403, "text/plain; charset=utf-8", b"Forbidden".to_vec());
         }
-        if let Ok(bytes) = std::fs::read(filepath) {
+        let target_path = resolve_virtual_sub_cache_file(filepath)
+            .unwrap_or_else(|| resolve_bridge_runtime_path(filepath));
+        if let Ok(bytes) = std::fs::read(&target_path) {
             return (200, "application/octet-stream", bytes);
         }
         if filepath == "/var/run/tachyon/ui-state/snapshot-export.json"
@@ -16769,6 +17351,81 @@ tls=TLSv1.3
         assert_eq!(parsed["ok"], true);
         assert_eq!(parsed["mode"], "exact");
         assert_eq!(parsed["winning_section"]["id"], "bypass_sec");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn virtual_sub_cache_and_sources_json_work_without_flash_writes() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_virtual_sub_cache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = AppState::load_or_create(dir.join("store.json")).unwrap();
+        {
+            let mut d = state.data.write().await;
+            d.sections.clear();
+            d.outbound_sources = vec![crate::store::OutboundSource {
+                id: "sub_unassigned".to_string(),
+                enabled: true,
+                name: "Unassigned Sub".to_string(),
+                source_type: "subscription".to_string(),
+                subscription_urls: vec!["https://example.com/sub".to_string()],
+                sub_title: "My Provider".to_string(),
+                sub_upload_bytes: 1024,
+                sub_download_bytes: 2048,
+                sub_total_bytes: 10240,
+                cached_nodes: vec![
+                    config_gen::parse_proxy_uri(
+                        "vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443#FI%20Node",
+                        0,
+                    )
+                    .unwrap(),
+                ],
+                ..Default::default()
+            }];
+            sync_section_cache(&d);
+        }
+
+        let listed = handle_file_list(&json!({ "path": "/etc/tachyon/subscription-cache" }));
+        let entries = listed[1]["entries"].as_array().expect("entries array");
+        assert!(
+            entries
+                .iter()
+                .any(|e| e["name"] == "Pool_sub_unassigned-subscription-1.json"),
+            "virtual list must expose Pool_sub_unassigned-subscription-1.json: {entries:?}"
+        );
+
+        let read_json = handle_file_read(
+            &json!({ "path": "/etc/tachyon/subscription-cache/Pool_sub_unassigned-subscription-1.json" }),
+            &state,
+        )
+        .await;
+        assert_eq!(read_json[0], 0);
+        let parsed: Value = serde_json::from_str(read_json[1]["data"].as_str().unwrap()).unwrap();
+        assert_eq!(parsed["outbounds"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed["outbounds"][0]["tag"], "FI Node");
+
+        let read_meta = handle_file_read(
+            &json!({ "path": "/etc/tachyon/subscription-cache/Pool_sub_unassigned-subscription-1.metadata.json" }),
+            &state,
+        )
+        .await;
+        let meta: Value = serde_json::from_str(read_meta[1]["data"].as_str().unwrap()).unwrap();
+        assert_eq!(meta["nodeCount"], 1);
+        assert_eq!(meta["title"], "My Provider");
+
+        let sources_path =
+            resolve_bridge_runtime_path("/var/run/tachyon/section-cache/_sources.json");
+        assert!(
+            sources_path.is_file(),
+            "_sources.json must exist at {sources_path:?}"
+        );
+        assert!(is_allowed_bridge_exec(
+            "/sbin/logread",
+            &["-l".into(), "50".into()]
+        ));
+        assert!(!is_allowed_bridge_exec("/sbin/logread", &["-l;id".into()]));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

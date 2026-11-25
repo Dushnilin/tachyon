@@ -2234,6 +2234,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     const secObjs = uci.sections(UCI_PACKAGE, 'section') || [];
     const secNames = Array.from(
       new Set([
+        '_sources',
         'Main',
         ...secObjs.map((sec: any) => String(sec?.name || sec?.['.name'] || '')),
         ...secObjs.map((sec: any) => String(sec?.['.name'] || '')),

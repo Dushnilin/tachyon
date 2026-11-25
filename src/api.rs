@@ -218,7 +218,7 @@ pub async fn run_server_on_listener(
         tokio::spawn(async move {
             let _permit = permit;
             let _ = tokio::time::timeout(
-                Duration::from_secs(20),
+                Duration::from_secs(120),
                 handle_conn(stream, &state, &core, &peer_ip, local_ip),
             )
             .await;
@@ -1988,6 +1988,14 @@ async fn dispatch_api(
         | ("GET", "/api/releases") => {
             let info = core.check_updates().await;
             send_json(stream, 200, &info).await
+        }
+        ("GET", "/api/updates/status") => {
+            let st = crate::updater::read_list_update_status();
+            send_json(stream, 200, &st).await
+        }
+        ("POST", "/api/updates/lists") => {
+            let res = core.run_update_job("lists").await;
+            send_json(stream, 200, &res).await
         }
         ("POST", "/api/updates/run") => {
             let target = serde_json::from_slice::<Value>(body)

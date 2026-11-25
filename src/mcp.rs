@@ -183,18 +183,67 @@ pub async fn handle_mcp_rpc(state: &Arc<AppState>, core: &Arc<CoreManager>, req:
                     "version": crate::store::TACHYON_VERSION
                 },
                 "capabilities": {
-                    "tools": {}
+                    "tools": {},
+                    "resources": {}
                 }
             }
         }),
+        "resources/list" => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "resources": [
+                    { "uri": "tachyon://status", "name": "Router & Tachyon Status", "mimeType": "application/json" },
+                    { "uri": "tachyon://config-plan", "name": "Compiled Configuration Plan", "mimeType": "application/json" },
+                    { "uri": "tachyon://doctor", "name": "Local Diagnostics Report", "mimeType": "application/json" },
+                    { "uri": "tachyon://health", "name": "Live tachyon-core Health", "mimeType": "application/json" },
+                    { "uri": "tachyon://anomalies", "name": "Active Connection Anomalies", "mimeType": "application/json" }
+                ]
+            }
+        }),
+        "resources/read" => {
+            let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
+            let res_val = match uri {
+                "tachyon://status" => mcp_build_support_bundle(state).await,
+                "tachyon://config-plan" => {
+                    let d = state.data.read().await;
+                    json!(transaction::analyze_config_plan(&d))
+                }
+                "tachyon://doctor" => {
+                    json!(diagnostics::run_local_doctor_with_core(state, core).await)
+                }
+                "tachyon://health" => core
+                    .get_core_health()
+                    .await
+                    .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
+                "tachyon://anomalies" => core
+                    .get_core_anomalies()
+                    .await
+                    .unwrap_or_else(|e| json!({ "ok": false, "error": e.to_string() })),
+                _ => json!({ "error": format!("Unknown resource URI: {uri}") }),
+            };
+            let redacted = crypto_gen::redact_json_value(&res_val);
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "contents": [{
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                    }]
+                }
+            })
+        }
         "tools/list" => mcp_tools_list_response(id),
         "tools/call" => {
             let tool_name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            let canonical_tool = tool_name.strip_prefix("tachyon_").unwrap_or(tool_name);
             let args = params
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            let output = match tool_name {
+            let output = match canonical_tool {
                 "get_status" => mcp_build_support_bundle(state).await,
                 "route_explain" => {
                     let d = Box::new(state.data.read().await.clone());

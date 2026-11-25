@@ -10,6 +10,7 @@
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE || 'tachyon';
 const SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
 const SUB_CACHE_DIR = '/etc/tachyon/subscription-cache';
+const TMP_SUB_CACHE_DIR = '/tmp/tachyon-core/subscriptions';
 
 const COMMON_COUNTRIES = [
   ['NL', '🇳🇱 Netherlands (NL)'],
@@ -125,6 +126,7 @@ function loadGlobalPoolChoices() {
     .map((s) => s['.name'])
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes('Main')) secNames.unshift('Main');
+  if (!secNames.includes('_sources')) secNames.unshift('_sources');
 
   const isNotFoundErr = (err) => {
     const msg = `${String((err && err.name) || '')} ${String((err && err.message) || err || '')}`;
@@ -175,21 +177,32 @@ function loadGlobalPoolChoices() {
     });
 
   const readSubCaches = () =>
-    fs
-      .list(SUB_CACHE_DIR)
-      .catch(() => [])
-      .then((entries) => {
-        const list = Array.isArray(entries) ? entries : [];
-        const jsonFiles = list
-          .map((e) => String((e && e.name) || ''))
-          .filter(
-            (n) =>
-              n.endsWith('.json') &&
-              !n.endsWith('.metadata.json') &&
-              n.includes('-subscription-'),
-          );
+    Promise.all([
+      fs.list(SUB_CACHE_DIR).catch(() => []),
+      fs.list(TMP_SUB_CACHE_DIR).catch(() => []),
+    ])
+      .then(([etcEntries, tmpEntries]) => {
+        const merged = [
+          ...(Array.isArray(etcEntries)
+            ? etcEntries.map((e) => ({ dir: SUB_CACHE_DIR, ent: e }))
+            : []),
+          ...(Array.isArray(tmpEntries)
+            ? tmpEntries.map((e) => ({ dir: TMP_SUB_CACHE_DIR, ent: e }))
+            : []),
+        ];
+        const byName = new Map();
+        merged.forEach(({ dir, ent }) => {
+          const n = String((ent && ent.name) || '');
+          if (
+            n.endsWith('.json') &&
+            !n.endsWith('.metadata.json') &&
+            n.includes('-subscription-')
+          ) {
+            byName.set(n, `${dir}/${n}`);
+          }
+        });
         return Promise.all(
-          jsonFiles.map((fname) => readJsonFile(`${SUB_CACHE_DIR}/${fname}`)),
+          Array.from(byName.values()).map((fpath) => readJsonFile(fpath)),
         );
       })
       .catch(() => []);

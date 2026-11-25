@@ -22,10 +22,22 @@ use crate::crypto_gen;
 use crate::store::{PortableAtomicU64, unix_now_secs};
 
 const SANDBOX_ROUTING_MARK: u32 = 0x4000_0000; // 1_073_741_824 — matches net_stack::BYPASS_FWMARK
-const STATE_FILE: &str = "/var/run/tachyon/fuzzer-state.json";
-const PATTERNS_FILE: &str = "/var/run/tachyon/ui-state/fuzzer-patterns.json";
-const HISTORY_FILE: &str = "/var/run/tachyon/ui-state/fuzzer-history.json";
-const AI_STRATEGIES_FILE: &str = "/var/run/tachyon/fuzzer_ai_strategies.json";
+fn state_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("fuzzer-state.json")
+}
+fn patterns_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir()
+        .join("ui-state")
+        .join("fuzzer-patterns.json")
+}
+fn history_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir()
+        .join("ui-state")
+        .join("fuzzer-history.json")
+}
+fn ai_strategies_file() -> std::path::PathBuf {
+    crate::store::runtime_state_dir().join("fuzzer_ai_strategies.json")
+}
 const MAX_FUZZER_STATE_BYTES: usize = 48_000;
 const MAX_FUZZER_ENDPOINTS: usize = 12;
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -198,7 +210,7 @@ fn idle_state_json() -> Value {
 
 fn state_lock() -> &'static Mutex<Value> {
     FUZZER_STATE.get_or_init(|| {
-        if let Ok(raw) = std::fs::read_to_string(STATE_FILE)
+        if let Ok(raw) = std::fs::read_to_string(state_file())
             && let Ok(mut parsed) = serde_json::from_str::<Value>(&raw)
             && parsed.is_object()
         {
@@ -321,9 +333,10 @@ fn save_state(val: &Value) {
         *guard = capped.clone();
     }
     if cfg!(target_os = "linux") {
-        let _ = std::fs::create_dir_all("/var/run/tachyon");
+        let rt_dir = crate::store::runtime_state_dir();
+        let _ = std::fs::create_dir_all(&rt_dir);
         if let Ok(raw) = serde_json::to_string(&capped) {
-            let _ = std::fs::write(STATE_FILE, raw.as_bytes());
+            let _ = std::fs::write(state_file(), raw.as_bytes());
         }
     }
 }
@@ -374,7 +387,7 @@ pub fn default_patterns_config() -> Value {
 }
 
 pub fn get_patterns() -> Value {
-    if let Ok(raw) = std::fs::read_to_string(PATTERNS_FILE)
+    if let Ok(raw) = std::fs::read_to_string(patterns_file())
         && let Ok(val) = serde_json::from_str::<Value>(&raw)
         && val.get("patterns").and_then(|p| p.get("desync")).is_some()
     {
@@ -402,16 +415,17 @@ pub fn save_patterns(raw_arg: &str) -> Value {
         "patterns": patterns
     });
     if cfg!(target_os = "linux") {
-        let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
+        let ui_dir = crate::store::runtime_state_dir().join("ui-state");
+        let _ = std::fs::create_dir_all(&ui_dir);
         if let Ok(s) = serde_json::to_string(&payload) {
-            let _ = crypto_gen::write_file_if_changed(Path::new(PATTERNS_FILE), s.as_bytes());
+            let _ = crypto_gen::write_file_if_changed(patterns_file(), s.as_bytes());
         }
     }
     payload
 }
 
 pub fn reset_patterns() -> Value {
-    let _ = std::fs::remove_file(PATTERNS_FILE);
+    let _ = std::fs::remove_file(patterns_file());
     json!({
         "success": true,
         "message": "Паттерны сброшены к заводским значениям",
@@ -2544,11 +2558,15 @@ async fn probe_outbound_in_sandbox(
     }
 
     let port = pick_sandbox_port();
-    let cfg_path = format!("/var/run/tachyon/fuzzer_sandbox_{port}.json");
+    let rt_dir = crate::store::runtime_state_dir();
+    let cfg_path = rt_dir
+        .join(format!("fuzzer_sandbox_{port}.json"))
+        .to_string_lossy()
+        .into_owned();
     let _cfg_guard = SandboxFileGuard(cfg_path.clone());
     let sandbox_cfg = build_fuzzer_sandbox_config(port, outbound_obj);
 
-    let _ = std::fs::create_dir_all("/var/run/tachyon");
+    let _ = std::fs::create_dir_all(&rt_dir);
     if let Ok(raw) = serde_json::to_string(&sandbox_cfg) {
         let _ = std::fs::write(&cfg_path, raw.as_bytes());
     }
@@ -2885,7 +2903,7 @@ fn rank_and_badge_results(results: &mut [Value]) -> Option<Value> {
 }
 
 fn append_history_entry(entry: Value) {
-    let mut entries: Vec<Value> = std::fs::read_to_string(HISTORY_FILE)
+    let mut entries: Vec<Value> = std::fs::read_to_string(history_file())
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|v| v.get("entries").and_then(Value::as_array).cloned())
@@ -2912,15 +2930,16 @@ fn append_history_entry(entry: Value) {
         "best_by_key": best_by_key
     });
     if cfg!(target_os = "linux") {
-        let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
+        let ui_dir = crate::store::runtime_state_dir().join("ui-state");
+        let _ = std::fs::create_dir_all(&ui_dir);
         if let Ok(raw) = serde_json::to_string(&payload) {
-            let _ = crypto_gen::write_file_if_changed(Path::new(HISTORY_FILE), raw.as_bytes());
+            let _ = crypto_gen::write_file_if_changed(history_file(), raw.as_bytes());
         }
     }
 }
 
 pub fn get_history() -> Value {
-    if let Ok(raw) = std::fs::read_to_string(HISTORY_FILE)
+    if let Ok(raw) = std::fs::read_to_string(history_file())
         && let Ok(val) = serde_json::from_str::<Value>(&raw)
         && val.get("entries").is_some()
     {
@@ -2934,7 +2953,7 @@ pub fn get_history() -> Value {
 }
 
 pub fn clear_history() -> Value {
-    let _ = std::fs::remove_file(HISTORY_FILE);
+    let _ = std::fs::remove_file(history_file());
     json!({ "success": true })
 }
 
@@ -2999,10 +3018,11 @@ pub fn synthesize_ai_strategies(target: &str, user_prompt: &str) -> Value {
         );
     }
 
+    let ai_file = ai_strategies_file();
     if cfg!(target_os = "linux") {
-        let _ = std::fs::create_dir_all("/var/run/tachyon");
+        let _ = std::fs::create_dir_all(crate::store::runtime_state_dir());
         if let Ok(raw) = serde_json::to_string(&strategies) {
-            let _ = std::fs::write(AI_STRATEGIES_FILE, raw.as_bytes());
+            let _ = std::fs::write(&ai_file, raw.as_bytes());
         }
     }
 
@@ -3013,7 +3033,7 @@ pub fn synthesize_ai_strategies(target: &str, user_prompt: &str) -> Value {
         "engine": "desync",
         "target": target,
         "count": strategies.len(),
-        "custom_file": AI_STRATEGIES_FILE,
+        "custom_file": ai_file.to_string_lossy().into_owned(),
         "analysis": "Синтезирован набор профилей нативного движка десинхронизации tachyon-core с учётом целевых протоколов (TLS SNI / MidSLD + UDP).",
         "strategies": strategies
     })
@@ -3051,8 +3071,10 @@ fn is_allowed_fuzzer_custom_file(path: &Path) -> bool {
     {
         return false;
     }
+    let rt_dir = crate::store::runtime_state_dir();
     let allowed = path.starts_with("/tmp")
         || path.starts_with("/var/run/tachyon")
+        || path.starts_with(&rt_dir)
         || path.starts_with("/etc/tachyon");
     #[cfg(test)]
     {

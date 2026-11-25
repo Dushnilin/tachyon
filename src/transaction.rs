@@ -625,6 +625,8 @@ pub fn commit_transaction_boxed_in_history_dir<'a>(
         if let Err(e) = state.save().await {
             let mut d = state.data.write().await;
             std::mem::swap(&mut *d, &mut *previous);
+            drop(d);
+            state.bump_generation();
             anyhow::bail!("Transaction commit failed, rolled back in-memory state: {e}");
         }
 

@@ -21,6 +21,7 @@ start_service() {
     procd_open_instance "tachyon"
     procd_set_param command "$PROG" daemon
     procd_set_param env TACHYON_DATA_DIR="$DATA_DIR"
+    procd_set_param limits nofile="65535 65535"
     procd_set_param respawn 3600 5 5
     procd_set_param stdout 1
     procd_set_param stderr 1

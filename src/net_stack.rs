@@ -40,6 +40,165 @@ const FLOW_OFFLOAD_INCLUDE_FILE: &str = "10-tachyon-offload.nft";
 const DEFAULT_SYSCTL_BBR_CONF: &str = "/etc/sysctl.d/99-tachyon-bbr.conf";
 const DEFAULT_PROC_TCP_AVAIL_CC: &str = "/proc/sys/net/ipv4/tcp_available_congestion_control";
 
+pub(crate) fn effective_disable_quic_global(store: &RouterStoreData) -> bool {
+    let mode = store.settings.disable_quic_mode.trim().to_ascii_lowercase();
+    mode == "all" || (store.settings.disable_quic && (mode.is_empty() || mode == "off"))
+}
+
+pub(crate) fn effective_disable_quic_tunneled(store: &RouterStoreData) -> bool {
+    let mode = store.settings.disable_quic_mode.trim().to_ascii_lowercase();
+    matches!(mode.as_str(), "tunneled" | "proxied")
+        || (store.settings.disable_quic && !effective_disable_quic_global(store))
+}
+
+/// True when selective TProxy bypass is active: only FakeIP destinations, embedded Tailscale,
+/// explicit routed subnets, and `fully_routed_ips`/MACs enter TProxy `:1602`; direct WAN
+/// connections traverse `inet fw4 forward` and keep Hardware/Software Flow Offloading.
+pub fn selective_tproxy_active(store: &RouterStoreData) -> bool {
+    if !store.settings.selective_tproxy
+        || store.settings.proxy_mode != "tproxy"
+        || !store.settings.fakeip_enabled
+        || store
+            .settings
+            .routing_strategy
+            .trim()
+            .eq_ignore_ascii_case("full_tunnel")
+    {
+        return false;
+    }
+    !store.sections.iter().any(|sec| {
+        sec.enabled
+            && sec.match_all
+            && !matches!(
+                sec.action.trim().to_ascii_lowercase().as_str(),
+                "direct" | "bypass" | "hosts"
+            )
+            && !matches!(
+                sec.connection_type.trim().to_ascii_lowercase().as_str(),
+                "direct" | "bypass" | "hosts"
+            )
+    })
+}
+
+#[derive(Default)]
+pub(crate) struct SelectiveTproxyTargets {
+    pub dst_v4: Vec<String>,
+    pub dst_v6: Vec<String>,
+    pub src_v4: Vec<String>,
+    pub src_v6: Vec<String>,
+    pub src_macs: Vec<String>,
+}
+
+pub(crate) fn collect_selective_tproxy_targets(store: &RouterStoreData) -> SelectiveTproxyTargets {
+    let mut out = SelectiveTproxyTargets::default();
+    let cond_map: HashMap<&str, &crate::store::TrafficCondition> = store
+        .conditions
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect();
+
+    let push_ip =
+        |v4: &mut Vec<String>, v6: &mut Vec<String>, macs: Option<&mut Vec<String>>, raw: &str| {
+            let t = raw.trim();
+            if t.is_empty() {
+                return;
+            }
+            if crate::store::is_mac_address(t) {
+                if let Some(m) = macs {
+                    let low = t.to_ascii_lowercase();
+                    if !m.contains(&low) {
+                        m.push(low);
+                    }
+                }
+                return;
+            }
+            if let Some((ip_part, _)) = t.split_once('/') {
+                if ip_part.parse::<std::net::Ipv4Addr>().is_ok() {
+                    if !v4.contains(&t.to_string()) {
+                        v4.push(t.to_string());
+                    }
+                } else if ip_part.parse::<std::net::Ipv6Addr>().is_ok()
+                    && !v6.contains(&t.to_string())
+                {
+                    v6.push(t.to_string());
+                }
+            } else if t.parse::<std::net::Ipv4Addr>().is_ok() {
+                if !v4.contains(&t.to_string()) {
+                    v4.push(t.to_string());
+                }
+            } else if t.parse::<std::net::Ipv6Addr>().is_ok() && !v6.contains(&t.to_string()) {
+                v6.push(t.to_string());
+            }
+        };
+
+    let mut stack_conds: Vec<&str> = Vec::new();
+    let mut seen_conds: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+    for sec in store.sections.iter().filter(|s| s.enabled) {
+        let act = sec.action.trim().to_ascii_lowercase();
+        let ctype = sec.connection_type.trim().to_ascii_lowercase();
+        if matches!(
+            act.as_str(),
+            "direct" | "bypass" | "hosts" | "block" | "reject" | "dns"
+        ) || matches!(
+            ctype.as_str(),
+            "direct" | "bypass" | "hosts" | "block" | "reject" | "dns"
+        ) {
+            continue;
+        }
+        for tok in &sec.user_subnets {
+            push_ip(&mut out.dst_v4, &mut out.dst_v6, None, tok);
+        }
+        for tok in &sec.fully_routed_ips {
+            push_ip(
+                &mut out.src_v4,
+                &mut out.src_v6,
+                Some(&mut out.src_macs),
+                tok,
+            );
+        }
+        for tok in &sec.source_ip_cidr {
+            push_ip(
+                &mut out.src_v4,
+                &mut out.src_v6,
+                Some(&mut out.src_macs),
+                tok,
+            );
+        }
+        for cref in &sec.condition_refs {
+            stack_conds.push(cref.as_str());
+        }
+    }
+
+    while let Some(cid) = stack_conds.pop() {
+        if !seen_conds.insert(cid) {
+            continue;
+        }
+        let Some(cond) = cond_map.get(cid) else {
+            continue;
+        };
+        if !cond.enabled {
+            continue;
+        }
+        for tok in &cond.user_subnets {
+            push_ip(&mut out.dst_v4, &mut out.dst_v6, None, tok);
+        }
+        for tok in &cond.client_ips {
+            push_ip(
+                &mut out.src_v4,
+                &mut out.src_v6,
+                Some(&mut out.src_macs),
+                tok,
+            );
+        }
+        for child in &cond.children {
+            stack_conds.push(child.as_str());
+        }
+    }
+
+    out
+}
+
 fn append_source_iface_guard(out: &mut String, store: &RouterStoreData) {
     append_source_iface_guard_with_extra(out, store, &[]);
 }
@@ -1373,10 +1532,6 @@ fn append_selected_guest_rules(
                 out,
                 "        ip saddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
             );
-            let _ = writeln!(
-                out,
-                "        ip daddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-            );
         }
         if include_allow_proxy_return && !store.guest_mode.allow_proxy {
             let _ = writeln!(out, "        ip saddr {{ {guest_set} }} return");
@@ -1412,10 +1567,6 @@ fn append_selected_guest_rules(
                 let _ = writeln!(
                     out,
                     "        ip6 saddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
-                );
-                let _ = writeln!(
-                    out,
-                    "        ip6 daddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
                 );
             }
         }
@@ -1729,12 +1880,25 @@ fn compile_nftables_ruleset_full(
         let _ = writeln!(out, "        ether saddr {mac} return");
     }
 
-    // Preserve OpenWrt fw4 port-forwarding / NAT reflection (`priority -100` dstnat)
-    // and direct connections to any local router IP (WAN/LAN/PPPoE) before interception.
+    // Preserve OpenWrt fw4 port-forwarding / NAT reflection (`priority -100` dstnat).
     let _ = writeln!(
         out,
         "        ct status dnat return comment \"tachyon-dnat-bypass\""
     );
+
+    // Fast-path return for RFC1918/loopback/link-local/multicast/broadcast BEFORE `fib daddr type local`
+    // so local LAN/multicast traffic never triggers FIB lookups (preserving 100.64.0.0/10 for Tailscale CGNAT).
+    if store.settings.fakeip_enabled {
+        let _ = writeln!(
+            out,
+            "        ip daddr != {fakeip_v4} ip daddr {{ 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 }} return comment \"tachyon-lan-bypass\""
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "        ip daddr {{ 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 }} return comment \"tachyon-lan-bypass\""
+        );
+    }
     let _ = writeln!(
         out,
         "        fib daddr type local return comment \"tachyon-local-bypass\""
@@ -1781,7 +1945,7 @@ fn compile_nftables_ruleset_full(
         let _ = writeln!(out, "        jump webrtc_filter");
     }
 
-    if store.settings.disable_quic {
+    if effective_disable_quic_global(store) {
         let _ = writeln!(out, "        udp dport 443 reject");
     }
 
@@ -1830,8 +1994,15 @@ fn compile_nftables_ruleset_full(
         }
     }
 
-    // Intercept DNS queries (`:53`) to `tachyon-core` FakeIP/DNS listener (`127.0.0.42:53`)
-    let _ = writeln!(out, "        ip daddr @localv4 return");
+    if store.settings.fakeip_enabled {
+        let _ = writeln!(
+            out,
+            "        ip daddr != {fakeip_v4} ip daddr @localv4 return"
+        );
+    } else {
+        let _ = writeln!(out, "        ip daddr @localv4 return");
+    }
+
     if ipv6_active {
         if store.settings.fakeip_enabled && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
             let _ = writeln!(
@@ -1866,15 +2037,67 @@ fn compile_nftables_ruleset_full(
         let _ = writeln!(out, "        meta nfproto ipv6 return");
     }
 
-    let _ = writeln!(
-        out,
-        "        meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
-    );
-    if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
+    if selective_tproxy_active(store) {
+        let targets = collect_selective_tproxy_targets(store);
+        if store.settings.fakeip_enabled {
+            let _ = writeln!(
+                out,
+                "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
+        if !targets.dst_v4.is_empty() {
+            let _ = writeln!(
+                out,
+                "        ip daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                targets.dst_v4.join(", ")
+            );
+        }
+        if !targets.src_v4.is_empty() {
+            let _ = writeln!(
+                out,
+                "        ip saddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                targets.src_v4.join(", ")
+            );
+        }
+        for mac in &targets.src_macs {
+            let _ = writeln!(
+                out,
+                "        ether saddr {mac} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
+        if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
+            if !targets.dst_v6.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "        ip6 daddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                    targets.dst_v6.join(", ")
+                );
+            }
+            if !targets.src_v6.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "        ip6 saddr {{ {} }} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept",
+                    targets.src_v6.join(", ")
+                );
+            }
+        }
+    } else {
+        if store.settings.fakeip_enabled {
+            let _ = writeln!(
+                out,
+                "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
         let _ = writeln!(
             out,
-            "        meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            "        meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
         );
+        if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
+            let _ = writeln!(
+                out,
+                "        meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} counter accept"
+            );
+        }
     }
 
     let _ = writeln!(out, "    }}");
@@ -1886,6 +2109,7 @@ fn compile_nftables_ruleset_full(
         out,
         "    chain mangle_output {{
         type route hook output priority mangle; policy accept;
+        oifname \"lo\" return
         oifname {{ {bypass_ifaces_literal} }} return
         meta skgid {DIRECT_PROBE_SKGID} return
         meta mark & {BYPASS_FWMARK} == {BYPASS_FWMARK} return
@@ -1932,7 +2156,7 @@ fn compile_nftables_ruleset_full(
         }
         let _ = writeln!(out, "        udp dport {{ 3478, 5349, 19302 }} reject");
     }
-    if store.settings.disable_quic {
+    if effective_disable_quic_global(store) {
         let _ = writeln!(out, "        udp dport 443 reject");
     }
     if eff_dns_intercept {
@@ -1950,13 +2174,13 @@ fn compile_nftables_ruleset_full(
             "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
-    let _ = writeln!(out, "        ip daddr @localv4 return");
     if store.settings.fakeip_enabled {
         let _ = writeln!(
             out,
             "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} counter accept"
         );
     }
+    let _ = writeln!(out, "        ip daddr @localv4 return");
     if ipv6_active {
         if store.settings.fakeip_enabled {
             let _ = writeln!(
@@ -2009,10 +2233,78 @@ fn compile_nftables_ruleset_full(
     }}"
         );
     }
+    append_guest_download_postrouting_chain(&mut out, store, &lan_ifaces_literal, ipv6_active);
     append_lan_ipv6_isolation_chains(&mut out, &lan_ifaces, ipv6_active, forward_guard);
 
     let _ = writeln!(out, "}}");
     out
+}
+
+fn append_guest_download_postrouting_chain(
+    out: &mut String,
+    store: &RouterStoreData,
+    lan_ifaces_literal: &str,
+    ipv6_active: bool,
+) {
+    if !store.guest_mode.enabled || store.guest_mode.bandwidth_limit_mbps == 0 {
+        return;
+    }
+    let (guests_v4, guests_v6, _) = parse_guest_device_buckets(&store.guest_mode.guest_devices);
+    let zero_trust = is_guest_mode_zero_trust(&store.guest_mode);
+    if !zero_trust && guests_v4.is_empty() && (!ipv6_active || guests_v6.is_empty()) {
+        return;
+    }
+    let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+    let _ = writeln!(
+        out,
+        "    chain guest_download {{\n        type filter hook postrouting priority filter; policy accept;\n        oifname != {lan_ifaces_literal} return"
+    );
+    if zero_trust {
+        let (trusted_v4, trusted_v6, _) =
+            parse_guest_device_buckets(&store.guest_mode.trusted_devices);
+        if trusted_v4.is_empty() {
+            let _ = writeln!(
+                out,
+                "        meta nfproto ipv4 limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        } else {
+            let t4 = trusted_v4.join(", ");
+            let _ = writeln!(
+                out,
+                "        ip daddr != {{ {t4} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        }
+        if ipv6_active {
+            if trusted_v6.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "        meta nfproto ipv6 limit rate over {rate_kbytes} kbytes/second drop"
+                );
+            } else {
+                let t6 = trusted_v6.join(", ");
+                let _ = writeln!(
+                    out,
+                    "        ip6 daddr != {{ {t6} }} limit rate over {rate_kbytes} kbytes/second drop"
+                );
+            }
+        }
+    } else {
+        if !guests_v4.is_empty() {
+            let guest_set = guests_v4.join(", ");
+            let _ = writeln!(
+                out,
+                "        ip daddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        }
+        if ipv6_active && !guests_v6.is_empty() {
+            let guest6_set = guests_v6.join(", ");
+            let _ = writeln!(
+                out,
+                "        ip6 daddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+            );
+        }
+    }
+    let _ = writeln!(out, "    }}");
 }
 
 pub fn compile_tun_guard_ruleset_with_wan6(
@@ -2254,6 +2546,7 @@ fn compile_tun_guard_ruleset_full(
     }}"
         );
     }
+    append_guest_download_postrouting_chain(&mut out, store, &lan_ifaces_literal, ipv6_active);
     append_lan_ipv6_isolation_chains(&mut out, &lan_ifaces, ipv6_active, forward_guard);
     let _ = writeln!(out, "}}");
     Some(out)
@@ -2730,10 +3023,13 @@ async fn run_dnsmasq_init(action: &str) {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DnsmasqSnapshot {
     pub exists: bool,
+    pub port: Option<String>,
     pub rebind_protection: Option<String>,
     pub cachesize: Option<String>,
+    pub servers: Vec<String>,
     pub backup_rebind_protection: Option<String>,
     pub backup_cachesize: Option<String>,
+    pub backup_prev_servers: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -2748,6 +3044,7 @@ pub struct DnsmasqRestorePlan {
     pub changed: bool,
     pub set_opts: Vec<(&'static str, String)>,
     pub del_opts: Vec<&'static str>,
+    pub add_list_opts: Vec<(&'static str, Vec<String>)>,
 }
 
 pub fn parse_uci_dnsmasq_snapshot(uci_show_out: &str) -> DnsmasqSnapshot {
@@ -2768,10 +3065,13 @@ pub fn parse_uci_dnsmasq_snapshot(uci_show_out: &str) -> DnsmasqSnapshot {
             continue;
         }
         match lhs.rsplit_once('.').map(|(_, k)| k) {
+            Some("port") => snap.port = Some(val),
             Some("rebind_protection") => snap.rebind_protection = Some(val),
             Some("cachesize") => snap.cachesize = Some(val),
+            Some("server") => snap.servers = parse_uci_quoted_tokens(rhs),
             Some("tachyon_rebind_protection") => snap.backup_rebind_protection = Some(val),
             Some("tachyon_cachesize") => snap.backup_cachesize = Some(val),
+            Some("tachyon_prev_server") => snap.backup_prev_servers = Some(val),
             _ => {}
         }
     }
@@ -2804,8 +3104,36 @@ fn plan_restore_backup_option(
     del_opts.push(backup_key);
 }
 
+pub fn is_dnsmasq_adguard_mode(cur: &DnsmasqSnapshot) -> bool {
+    cur.port.as_deref().is_some_and(|p| p.trim() == "0")
+}
+
+#[cfg(test)]
 pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) -> DnsmasqSyncPlan {
-    if !cur.exists {
+    compute_dnsmasq_sync_plan_detailed(cur, fakeip_enabled, true, 0, false)
+}
+
+pub fn compute_dnsmasq_sync_plan_with_settings(
+    cur: &DnsmasqSnapshot,
+    settings: &GlobalSettings,
+) -> DnsmasqSyncPlan {
+    compute_dnsmasq_sync_plan_detailed(
+        cur,
+        settings.fakeip_enabled,
+        settings.dns_local_cache,
+        settings.dns_cache_size,
+        true,
+    )
+}
+
+fn compute_dnsmasq_sync_plan_detailed(
+    cur: &DnsmasqSnapshot,
+    fakeip_enabled: bool,
+    dns_local_cache: bool,
+    dns_cache_size: u32,
+    manage_servers: bool,
+) -> DnsmasqSyncPlan {
+    if !cur.exists || (manage_servers && is_dnsmasq_adguard_mode(cur)) {
         return DnsmasqSyncPlan::default();
     }
     let mut set_opts: Vec<(&'static str, String)> = Vec::new();
@@ -2820,13 +3148,22 @@ pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) ->
         }
         set_opts.push(("rebind_protection", "0".to_string()));
     }
-    if fakeip_enabled {
+    if fakeip_enabled || !dns_local_cache {
         if cur.cachesize.as_deref() != Some("0") {
             if cur.backup_cachesize.is_none() {
                 let orig = cur.cachesize.clone().unwrap_or_else(|| "150".to_string());
                 set_opts.push(("tachyon_cachesize", orig));
             }
             set_opts.push(("cachesize", "0".to_string()));
+        }
+    } else if manage_servers && dns_cache_size > 0 {
+        let target_cs = dns_cache_size.to_string();
+        if cur.cachesize.as_deref() != Some(target_cs.as_str()) {
+            if cur.backup_cachesize.is_none() {
+                let orig = cur.cachesize.clone().unwrap_or_else(|| "150".to_string());
+                set_opts.push(("tachyon_cachesize", orig));
+            }
+            set_opts.push(("cachesize", target_cs));
         }
     } else {
         plan_restore_backup_option(
@@ -2838,6 +3175,25 @@ pub fn compute_dnsmasq_sync_plan(cur: &DnsmasqSnapshot, fakeip_enabled: bool) ->
             &mut del_opts,
         );
     }
+
+    if manage_servers {
+        let non_tachyon_servers: Vec<String> = cur
+            .servers
+            .iter()
+            .filter(|s| {
+                let clean = s.trim();
+                !clean.is_empty() && clean != "127.0.0.42#53" && clean != "127.0.0.42"
+            })
+            .cloned()
+            .collect();
+        if !cur.servers.is_empty() {
+            if cur.backup_prev_servers.is_none() && !non_tachyon_servers.is_empty() {
+                set_opts.push(("tachyon_prev_server", non_tachyon_servers.join(" ")));
+            }
+            del_opts.push("server");
+        }
+    }
+
     DnsmasqSyncPlan {
         changed: !set_opts.is_empty() || !del_opts.is_empty(),
         set_opts,
@@ -2851,6 +3207,7 @@ pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan
     }
     let mut set_opts: Vec<(&'static str, String)> = Vec::new();
     let mut del_opts: Vec<&'static str> = Vec::new();
+    let mut add_list_opts: Vec<(&'static str, Vec<String>)> = Vec::new();
     plan_restore_backup_option(
         cur.rebind_protection.as_ref(),
         cur.backup_rebind_protection.as_ref(),
@@ -2867,24 +3224,37 @@ pub fn compute_dnsmasq_restore_plan(cur: &DnsmasqSnapshot) -> DnsmasqRestorePlan
         &mut set_opts,
         &mut del_opts,
     );
+    if let Some(prev) = cur.backup_prev_servers.as_deref() {
+        let restored: Vec<String> = prev
+            .split_whitespace()
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        if !restored.is_empty() {
+            add_list_opts.push(("server", restored));
+        }
+        del_opts.push("tachyon_prev_server");
+    }
     DnsmasqRestorePlan {
-        changed: !set_opts.is_empty() || !del_opts.is_empty(),
+        changed: !set_opts.is_empty() || !del_opts.is_empty() || !add_list_opts.is_empty(),
         set_opts,
         del_opts,
+        add_list_opts,
     }
 }
 
-async fn sync_dnsmasq_uci_for_fakeip(fakeip_enabled: bool) -> bool {
+async fn sync_dnsmasq_uci_for_settings(settings: &GlobalSettings) -> Option<(bool, bool)> {
     if cfg!(not(target_os = "linux")) {
-        return false;
+        return Some((false, false));
     }
-    let Some(show_out) = uci_query(&["-q", "show", "dhcp.@dnsmasq[0]"]).await else {
-        return false;
-    };
+    let show_out = uci_query(&["-q", "show", "dhcp.@dnsmasq[0]"]).await?;
     let snap = parse_uci_dnsmasq_snapshot(&show_out);
-    let plan = compute_dnsmasq_sync_plan(&snap, fakeip_enabled);
+    if is_dnsmasq_adguard_mode(&snap) {
+        return Some((false, true));
+    }
+    let plan = compute_dnsmasq_sync_plan_with_settings(&snap, settings);
     if !plan.changed {
-        return false;
+        return Some((false, false));
     }
     for (k, v) in &plan.set_opts {
         uci_run(&["set", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
@@ -2893,7 +3263,7 @@ async fn sync_dnsmasq_uci_for_fakeip(fakeip_enabled: bool) -> bool {
         uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
     }
     uci_run(&["commit", "dhcp"]).await;
-    true
+    Some((true, false))
 }
 
 async fn restore_dnsmasq_uci() -> bool {
@@ -2913,6 +3283,12 @@ async fn restore_dnsmasq_uci() -> bool {
     }
     for k in &plan.del_opts {
         uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
+    }
+    for (k, vals) in &plan.add_list_opts {
+        uci_run(&["-q", "delete", &format!("dhcp.@dnsmasq[0].{k}")]).await;
+        for v in vals {
+            uci_run(&["add_list", &format!("dhcp.@dnsmasq[0].{k}={v}")]).await;
+        }
     }
     uci_run(&["commit", "dhcp"]).await;
     true
@@ -3612,6 +3988,21 @@ pub(crate) async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
     }
     let _ = Command::new("ip")
         .args([
+            "route",
+            "del",
+            "local",
+            "0.0.0.0/0",
+            "dev",
+            "lo",
+            "table",
+            TPROXY_ROUTE_TABLE,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+    let _ = Command::new("ip")
+        .args([
             "-6",
             "route",
             "del",
@@ -3636,6 +4027,28 @@ pub(crate) async fn cleanup_policy_rules_for(fakeip_v6_cidr_opt: Option<&str>) {
     for cidr in del_cidrs {
         let _ = Command::new("ip")
             .args(["-6", "route", "del", cidr, "dev", "lo"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+    for fam in ["", "-6"] {
+        let mut r_100 = Vec::new();
+        let mut r_tachyon = Vec::new();
+        if !fam.is_empty() {
+            r_100.push(fam);
+            r_tachyon.push(fam);
+        }
+        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
+        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
+        let _ = Command::new("ip")
+            .args(&r_100)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        let _ = Command::new("ip")
+            .args(&r_tachyon)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -4083,6 +4496,28 @@ pub async fn remove_kill_switch() {
         crate::net_stack_iptables::remove_iptables_kill_switch().await;
         return;
     }
+    for fam in ["", "-6"] {
+        let mut r_100 = Vec::new();
+        let mut r_tachyon = Vec::new();
+        if !fam.is_empty() {
+            r_100.push(fam);
+            r_tachyon.push(fam);
+        }
+        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
+        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
+        let _ = Command::new("ip")
+            .args(&r_100)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        let _ = Command::new("ip")
+            .args(&r_tachyon)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
     tun_guard_clear().await;
     let (_, fw4_file) = fw4_include_paths();
     let _ = std::fs::remove_file(fw4_file);
@@ -4104,7 +4539,67 @@ async fn tun_guard_clear() {
     }
 }
 
-async fn tun_guard_sync(store: &RouterStoreData) {
+pub(crate) async fn wait_local_dns_ready(store: &RouterStoreData, max_wait: Duration) -> bool {
+    if cfg!(not(target_os = "linux")) {
+        return true;
+    }
+    let addr = if crate::platform::is_entware() {
+        let port = if store
+            .settings
+            .entware_dns_mode
+            .trim()
+            .eq_ignore_ascii_case("override")
+        {
+            53
+        } else if store.settings.entware_dns_port > 0 {
+            store.settings.entware_dns_port
+        } else {
+            1053
+        };
+        format!("127.0.0.1:{port}")
+    } else {
+        "127.0.0.42:53".to_string()
+    };
+    let deadline = tokio::time::Instant::now() + max_wait;
+    loop {
+        if let Ok(Ok(_stream)) = tokio::time::timeout(
+            Duration::from_millis(200),
+            tokio::net::TcpStream::connect(&addr),
+        )
+        .await
+        {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(120)).await;
+    }
+}
+
+pub(crate) async fn tun_guard_sync(store: &RouterStoreData) {
+    for fam in ["", "-6"] {
+        let mut r_100 = Vec::new();
+        let mut r_tachyon = Vec::new();
+        if !fam.is_empty() {
+            r_100.push(fam);
+            r_tachyon.push(fam);
+        }
+        r_100.extend(["route", "flush", "table", TPROXY_ROUTE_TABLE]);
+        r_tachyon.extend(["route", "flush", "table", "tachyon"]);
+        let _ = Command::new("ip")
+            .args(&r_100)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        let _ = Command::new("ip")
+            .args(&r_tachyon)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
     tun_guard_clear().await;
     if cfg!(not(target_os = "linux"))
         || store.settings.proxy_mode != "tun"
@@ -4171,11 +4666,12 @@ pub async fn hold_kill_switch(store: &RouterStoreData) -> Option<String> {
 }
 
 pub async fn release_kill_switch(store: &RouterStoreData) {
-    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
-        crate::net_stack_iptables::release_iptables_kill_switch(store).await;
+    if cfg!(not(target_os = "linux")) {
         return;
     }
-    if cfg!(not(target_os = "linux")) {
+    let _ = wait_local_dns_ready(store, Duration::from_secs(2)).await;
+    if crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables {
+        crate::net_stack_iptables::release_iptables_kill_switch(store).await;
         return;
     }
     if !run_nft_quiet(&["list", "table", "inet", KILL_SWITCH_TABLE], None).await {
@@ -4437,20 +4933,29 @@ async fn apply_network_stack_inner(
         }
 
         if !store.settings.dont_touch_dhcp {
-            let dnsmasq_conf = build_dnsmasq_dropin_config(store);
-            let mut dnsmasq_changed = false;
-            for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
-                let conf_path = dir.join("tachyon.conf");
-                if crypto_gen::write_file_with_mode_if_changed(&conf_path, &dnsmasq_conf, 0o644)
-                    .unwrap_or(false)
-                {
-                    dnsmasq_changed = true;
+            let (dnsmasq_uci_changed, is_adguard_mode) =
+                sync_dnsmasq_uci_for_settings(&store.settings)
+                    .await
+                    .unwrap_or((false, false));
+            if !is_adguard_mode {
+                let dnsmasq_conf = build_dnsmasq_dropin_config(store);
+                let mut dnsmasq_changed = false;
+                for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
+                    let conf_path = dir.join("tachyon.conf");
+                    if crypto_gen::write_file_with_mode_if_changed(&conf_path, &dnsmasq_conf, 0o644)
+                        .unwrap_or(false)
+                    {
+                        dnsmasq_changed = true;
+                    }
                 }
-            }
-            let dnsmasq_uci_changed =
-                sync_dnsmasq_uci_for_fakeip(store.settings.fakeip_enabled).await;
-            if dnsmasq_changed || dnsmasq_uci_changed {
-                run_dnsmasq_init("restart").await;
+                if dnsmasq_changed || dnsmasq_uci_changed {
+                    let _ = wait_local_dns_ready(store, Duration::from_secs(3)).await;
+                    run_dnsmasq_init("restart").await;
+                }
+            } else {
+                for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
+                    let _ = std::fs::remove_file(dir.join("tachyon.conf"));
+                }
             }
             if intercept_embedded_ts {
                 let _ = std::fs::remove_file("/tmp/resolv.conf.d/resolv.conf.tailscale");
@@ -4470,8 +4975,7 @@ async fn apply_network_stack_inner(
             let _ = std::os::unix::fs::symlink("/etc/tachyon-core/ui", "/www/yacd");
         }
 
-        sync_openwrt_firewall_rules(store).await;
-        sync_fw4_flow_offload_guard(store).await;
+        sync_openwrt_firewall_rules_and_guard(store).await;
         Ok(())
     }
     .await;
@@ -4821,7 +5325,14 @@ async fn sync_openwrt_firewall_rules(store: &RouterStoreData) {
             Command::new("/etc/init.d/firewall").arg("reload").status(),
         )
         .await;
+        // Re-apply fw4 flow-offload guard after firewall reload flushes runtime chains
+        sync_fw4_flow_offload_guard(store).await;
     }
+}
+
+async fn sync_openwrt_firewall_rules_and_guard(store: &RouterStoreData) {
+    sync_openwrt_firewall_rules(store).await;
+    sync_fw4_flow_offload_guard(store).await;
 }
 
 fn tcp_available_cc_has(content: &str, algo: &str) -> bool {
@@ -4978,15 +5489,21 @@ async fn apply_tcp_tuning_with_paths(
     if settings.tcp_bbr || normalized == "bbr" {
         let _ = apply_sysctl_kv("net.ipv4.tcp_fastopen", "3").await;
     }
+    let buf_max = if system_total_ram_mb().is_some_and(|mb| mb < 256) {
+        "2097152"
+    } else {
+        "4194304"
+    };
     let pairs: &[(&str, &str)] = match normalized.as_str() {
         "low_latency" => &[
             ("net.ipv4.tcp_fastopen", "3"),
             ("net.ipv4.tcp_slow_start_after_idle", "0"),
             ("net.ipv4.tcp_notsent_lowat", "16384"),
         ],
-        "throughput" => &[
-            ("net.core.rmem_max", "4194304"),
-            ("net.core.wmem_max", "4194304"),
+        "throughput" | "default" | "" | "auto" | "windows" | "macos" | "ios" | "android"
+        | "linux" => &[
+            ("net.core.rmem_max", buf_max),
+            ("net.core.wmem_max", buf_max),
             ("net.ipv4.tcp_fastopen", "3"),
         ],
         _ => return,
@@ -5027,6 +5544,60 @@ pub(crate) fn sanitize_iface_name(raw: &str) -> Option<String> {
     }
 }
 
+fn system_total_ram_mb() -> Option<u64> {
+    let raw = std::fs::read_to_string("/proc/meminfo").ok()?;
+    for line in raw.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+            return Some(kb / 1024);
+        }
+    }
+    None
+}
+
+async fn resolve_sqm_netdev(raw_iface: &str) -> Option<String> {
+    let iface = sanitize_iface_name(raw_iface)?;
+    if Path::new("/sys/class/net").join(&iface).exists() {
+        return Some(iface);
+    }
+    if (Path::new("/sbin/ubus").exists() || Path::new("/bin/ubus").exists())
+        && let Ok(Ok(out)) = tokio::time::timeout(
+            Duration::from_secs(2),
+            Command::new("ubus")
+                .args(["call", &format!("network.interface.{iface}"), "status"])
+                .output(),
+        )
+        .await
+        && out.status.success()
+        && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
+    {
+        for key in ["l3_device", "device"] {
+            if let Some(dev) = val.get(key).and_then(|v| v.as_str())
+                && let Some(clean) = sanitize_iface_name(dev)
+                && Path::new("/sys/class/net").join(&clean).exists()
+            {
+                return Some(clean);
+            }
+        }
+    }
+    if iface == "wan"
+        && let Ok(route_txt) = std::fs::read_to_string("/proc/net/route")
+    {
+        for line in route_txt.lines().skip(1) {
+            let mut cols = line.split_whitespace();
+            let dev = cols.next().unwrap_or("");
+            let dest = cols.next().unwrap_or("");
+            if dest == "00000000"
+                && let Some(clean) = sanitize_iface_name(dev)
+                && Path::new("/sys/class/net").join(&clean).exists()
+            {
+                return Some(clean);
+            }
+        }
+    }
+    Some(iface)
+}
+
 async fn apply_sqm_qdisc(store: &RouterStoreData) {
     if cfg!(not(target_os = "linux")) {
         return;
@@ -5035,7 +5606,7 @@ async fn apply_sqm_qdisc(store: &RouterStoreData) {
         teardown_sqm_qdisc().await;
         return;
     }
-    let Some(iface) = sanitize_iface_name(&store.settings.sqm_interface) else {
+    let Some(iface) = resolve_sqm_netdev(&store.settings.sqm_interface).await else {
         return;
     };
     if let Ok(prev) = std::fs::read_to_string(SQM_MARKER_PATH)
@@ -5044,6 +5615,12 @@ async fn apply_sqm_qdisc(store: &RouterStoreData) {
     {
         let _ = Command::new("tc")
             .args(["qdisc", "del", "dev", &prev_iface, "root"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        let _ = Command::new("tc")
+            .args(["qdisc", "del", "dev", &prev_iface, "ingress"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -5081,6 +5658,39 @@ async fn apply_sqm_qdisc(store: &RouterStoreData) {
             .await
             .is_ok_and(|s| s.success());
     }
+    if store.settings.sqm_download_kbps > 0 {
+        let dl_rate = format!("{}kbit", store.settings.sqm_download_kbps);
+        let burst_bytes = (u64::from(store.settings.sqm_download_kbps) * 16).max(16384);
+        let burst = format!("{burst_bytes}");
+        let ingress_ok = Command::new("tc")
+            .args([
+                "qdisc", "replace", "dev", &iface, "handle", "ffff:", "ingress",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .is_ok_and(|s| s.success());
+        if ingress_ok {
+            let _ = Command::new("tc")
+                .args([
+                    "filter", "replace", "dev", &iface, "parent", "ffff:", "protocol", "all",
+                    "u32", "match", "u32", "0", "0", "police", "rate", &dl_rate, "burst", &burst,
+                    "drop",
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await;
+        }
+    } else {
+        let _ = Command::new("tc")
+            .args(["qdisc", "del", "dev", &iface, "ingress"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
     if applied {
         let _ = crypto_gen::write_file_if_changed(SQM_MARKER_PATH, iface.as_bytes());
     }
@@ -5094,6 +5704,12 @@ async fn teardown_sqm_qdisc() {
         if let Some(iface) = sanitize_iface_name(&prev) {
             let _ = Command::new("tc")
                 .args(["qdisc", "del", "dev", &iface, "root"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await;
+            let _ = Command::new("tc")
+                .args(["qdisc", "del", "dev", &iface, "ingress"])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
@@ -6211,6 +6827,60 @@ dhcp.cfg01411c.tachyon_cachesize='unset'
             restore.del_opts,
             vec!["tachyon_rebind_protection", "tachyon_cachesize"]
         );
+
+        // AdGuard Home mode (`port='0'`) skips dnsmasq mutation altogether.
+        let adg = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.port='0'
+dhcp.cfg01411c.server='1.1.1.1' '8.8.8.8'
+",
+        );
+        assert!(is_dnsmasq_adguard_mode(&adg));
+        let mut settings = GlobalSettings::default();
+        assert!(!compute_dnsmasq_sync_plan_with_settings(&adg, &settings).changed);
+
+        // Normal mode backs up and removes `dhcp.@dnsmasq[0].server` so dnsmasq does not query ISP DNS in parallel.
+        let with_srv = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.server='1.1.1.1' '8.8.8.8'
+dhcp.cfg01411c.cachesize='150'
+",
+        );
+        settings.fakeip_enabled = false;
+        settings.dns_local_cache = true;
+        settings.dns_cache_size = 500;
+        let srv_plan = compute_dnsmasq_sync_plan_with_settings(&with_srv, &settings);
+        assert!(srv_plan.changed);
+        assert!(
+            srv_plan
+                .set_opts
+                .contains(&("tachyon_prev_server", "1.1.1.1 8.8.8.8".to_string()))
+        );
+        assert!(srv_plan.del_opts.contains(&"server"));
+        assert!(
+            srv_plan
+                .set_opts
+                .contains(&("cachesize", "500".to_string()))
+        );
+
+        let backed_up = parse_uci_dnsmasq_snapshot(
+            "\
+dhcp.cfg01411c=dnsmasq
+dhcp.cfg01411c.rebind_protection='0'
+dhcp.cfg01411c.cachesize='500'
+dhcp.cfg01411c.tachyon_rebind_protection='1'
+dhcp.cfg01411c.tachyon_cachesize='150'
+dhcp.cfg01411c.tachyon_prev_server='1.1.1.1 8.8.8.8'
+",
+        );
+        let srv_restore = compute_dnsmasq_restore_plan(&backed_up);
+        assert_eq!(
+            srv_restore.add_list_opts,
+            vec![("server", vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()])]
+        );
+        assert!(srv_restore.del_opts.contains(&"tachyon_prev_server"));
     }
 
     #[test]
@@ -6684,9 +7354,9 @@ config redirect 'restricted_src_ip'
         assert!(out_dnat < out_quic);
         assert!(out_fib < out_quic);
         assert!(out_fib < out_ts);
-        assert!(out_ts < out_localv4);
-        assert!(out_localv4 < out_fakeip);
-        assert!(out_fakeip < out_router_all);
+        assert!(out_ts < out_fakeip);
+        assert!(out_fakeip < out_localv4);
+        assert!(out_localv4 < out_router_all);
     }
 
     #[test]
@@ -7069,5 +7739,67 @@ config host
         assert!(conf.contains("server=127.0.0.42#53"));
         assert!(conf.contains("address=/nas.example.com/192.168.1.50"));
         assert!(conf.contains("address=/home.local/192.168.1.60"));
+    }
+
+    #[test]
+    fn test_selective_tproxy_hotpath_and_guest_download_postrouting() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "10.99.0.0/16".to_string();
+        store.settings.selective_tproxy = true;
+        store.sections.clear();
+        store.sections.push(crate::store::RoutingSection {
+            id: "Proxy".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            user_subnets: vec!["203.0.113.0/24".to_string()],
+            fully_routed_ips: vec!["192.168.1.77".to_string()],
+            ..Default::default()
+        });
+        store.guest_mode.enabled = true;
+        store.guest_mode.guest_devices = vec!["192.168.4.10".to_string()];
+        store.guest_mode.bandwidth_limit_mbps = 8;
+
+        assert!(selective_tproxy_active(&store));
+        let nft = compile_nftables_ruleset(&store);
+        let pre_start = nft.find("chain prerouting {").expect("prerouting");
+        let out_start = nft.find("chain mangle_output {").expect("mangle_output");
+        let pre = &nft[pre_start..out_start];
+
+        let idx_lan_fast = pre
+            .find("tachyon-lan-bypass")
+            .expect("LAN fastpath return before FIB");
+        let idx_fib = pre
+            .find("fib daddr type local return")
+            .expect("fib daddr type local return");
+        assert!(
+            idx_lan_fast < idx_fib,
+            "LAN fastpath must precede fib daddr type local"
+        );
+        assert!(pre.contains(
+            "ip daddr 10.99.0.0/16 meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(pre.contains(
+            "ip daddr { 203.0.113.0/24 } meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(pre.contains(
+            "ip saddr { 192.168.1.77 } meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"
+        ));
+        assert!(
+            !pre.contains("\n        meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:1602"),
+            "selective_tproxy must not emit catch-all tproxy rule"
+        );
+
+        let guest_dl_start = nft
+            .find("chain guest_download {")
+            .expect("guest_download chain");
+        let guest_dl = &nft[guest_dl_start..];
+        assert!(guest_dl.contains("type filter hook postrouting priority filter; policy accept;"));
+        assert!(
+            guest_dl.contains("ip daddr { 192.168.4.10 } limit rate over 1000 kbytes/second drop")
+        );
     }
 }

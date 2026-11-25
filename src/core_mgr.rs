@@ -80,7 +80,23 @@ pub struct CoreManager {
     switch_history: std::sync::OnceLock<SwitchRecorder>,
 }
 
+static CLASH_CRED_EPOCH: crate::store::PortableAtomicU64 = crate::store::PortableAtomicU64::new(0);
+
 impl CoreManager {
+    pub fn invalidate_clash_cred_cache() {
+        CLASH_CRED_EPOCH.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub fn is_telemetry_active(&self) -> bool {
+        self.state
+            .is_telemetry_active(crate::store::unix_now_u64(), TELEMETRY_ACTIVE_WINDOW_SECS)
+    }
+
+    pub async fn is_data_plane_busy(&self) -> bool {
+        let lite_mode = { self.state.data.read().await.settings.lite_mode };
+        sys_info::is_lite_data_plane_busy(lite_mode)
+    }
+
     pub fn new(state: Arc<AppState>) -> Arc<Self> {
         Arc::new(Self {
             state,
@@ -1539,8 +1555,11 @@ impl CoreManager {
         }
     }
 
-    fn configure_core_spawn_command(cmd: &mut Command, daemon_mode: bool) {
+    fn configure_core_spawn_command(cmd: &mut Command, daemon_mode: bool, memory_limit_mb: u32) {
         cmd.stdin(Stdio::null());
+        if memory_limit_mb > 0 {
+            cmd.env("GOMEMLIMIT", format!("{memory_limit_mb}MiB"));
+        }
         if daemon_mode {
             cmd.stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1555,10 +1574,18 @@ impl CoreManager {
         }
     }
 
-    async fn spawn_and_verify_core(bin_path: &str, cfg_path: &Path) -> Result<Child, String> {
+    async fn spawn_and_verify_core(
+        bin_path: &str,
+        cfg_path: &Path,
+        memory_limit_mb: u32,
+    ) -> Result<Child, String> {
         let mut cmd = Command::new(bin_path);
         cmd.args(["run", "-c", &cfg_path.to_string_lossy()]);
-        Self::configure_core_spawn_command(&mut cmd, crate::ubus_bridge::is_daemon_mode());
+        Self::configure_core_spawn_command(
+            &mut cmd,
+            crate::ubus_bridge::is_daemon_mode(),
+            memory_limit_mb,
+        );
 
         let mut child = cmd
             .spawn()
@@ -1819,7 +1846,7 @@ impl CoreManager {
 
     async fn start_inner(&self) -> anyhow::Result<()> {
         self.set_manual_stop(false);
-        let _guard = self.reload_lock.lock().await;
+        let guard = self.reload_lock.lock().await;
         let store_snapshot = Box::new(self.state.data.read().await.clone());
         let veto = Box::pin(net_stack::hold_kill_switch(&store_snapshot)).await;
         Box::pin(self.stop_locked()).await;
@@ -1858,6 +1885,22 @@ impl CoreManager {
             }
         };
         let mut safe_minimal_active = quarantined.contains_key("_core_runtime");
+        if safe_minimal_active
+            && self.state.live.read().await.lkg_observing
+            && !self.auto_rollback_in_flight.load(Ordering::Acquire)
+        {
+            drop(guard);
+            if let Ok(true) = Box::pin(self.auto_rollback_to_working_config(
+                "Конфиг приведён к минимальному режиму при старте; выполнен автооткат на рабочий конфиг",
+                None,
+            ))
+            .await
+            {
+                return Ok(());
+            }
+            anyhow::bail!("config downgraded to safe_minimal and rollback was declined");
+        }
+        Self::invalidate_clash_cred_cache();
 
         let bin_path = self.resolve_bin_path().await;
         if !Path::new(&bin_path).exists() {
@@ -1876,7 +1919,10 @@ impl CoreManager {
                 .join("logs")
         };
         let core_log_path = Self::rotate_core_log_on_start(&core_log_dir);
-        let mut child = match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path)).await {
+        let mem_limit = store_snapshot.settings.memory_limit_mb;
+        let mut child = match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path, mem_limit))
+            .await
+        {
             Ok(c) => c,
             Err(first_err) if !quarantined.contains_key("_core_runtime") => {
                 safe_minimal_active = true;
@@ -1897,6 +1943,20 @@ impl CoreManager {
                         )
                     });
                 Self::write_section_errors(&quarantined);
+                if self.state.live.read().await.lkg_observing
+                    && !self.auto_rollback_in_flight.load(Ordering::Acquire)
+                {
+                    drop(guard);
+                    if let Ok(true) = Box::pin(self.auto_rollback_to_working_config(
+                        &format!("Ранний сбой запуска tachyon-core ({pretty}); выполнен автооткат"),
+                        None,
+                    ))
+                    .await
+                    {
+                        return Ok(());
+                    }
+                    anyhow::bail!("early core exit ({pretty}) and rollback declined");
+                }
                 self.state.live.write().await.push_event(
                     "warn",
                     "core_mgr",
@@ -1913,7 +1973,7 @@ impl CoreManager {
                     .await;
                     return Err(e);
                 }
-                match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path)).await {
+                match Box::pin(Self::spawn_and_verify_core(&bin_path, &cfg_path, mem_limit)).await {
                     Ok(c) => c,
                     Err(second_err) => {
                         cleanup_failed_start(veto.is_some(), second_err.clone()).await;
@@ -2256,6 +2316,7 @@ impl CoreManager {
             }
         }
         *self.prev_totals.lock().await = None;
+        Self::invalidate_clash_cred_cache();
         let mut live = self.state.live.write().await;
         live.core_running = false;
         live.core_pid = None;
@@ -2307,6 +2368,13 @@ impl CoreManager {
         )
         .await?;
         let safe_minimal_active = quarantined.contains_key("_core_runtime");
+        if safe_minimal_active
+            && self.state.live.read().await.lkg_observing
+            && !self.auto_rollback_in_flight.load(Ordering::Acquire)
+        {
+            anyhow::bail!("config downgraded to safe_minimal during reload");
+        }
+        Self::invalidate_clash_cred_cache();
         self.state.live.write().await.safe_minimal_active = safe_minimal_active;
         let cfg_path = cfg_path_buf.to_string_lossy().to_string();
         let net_res = if safe_minimal_active {
@@ -2351,7 +2419,8 @@ impl CoreManager {
             let missing_binary = err_text.contains("tachyon-core binary not found");
             let config_rejected = err_text.contains("tachyon-core check failed")
                 || err_text.contains("tachyon-core check timed out")
-                || err_text.contains("config compile failed");
+                || err_text.contains("config compile failed")
+                || err_text.contains("safe_minimal");
             let observing = { self.state.live.read().await.lkg_observing };
             if observing
                 && !self.is_manually_stopped()
@@ -3115,12 +3184,14 @@ impl CoreManager {
         struct ClashConfig {
             path: String,
             mtime: u128,
+            epoch: u64,
             addr: String,
             secret: String,
             groups: Arc<SwitchGroups>,
         }
         static CACHED_CLASH_CRED: std::sync::Mutex<Option<ClashConfig>> =
             std::sync::Mutex::new(None);
+        let cur_epoch = CLASH_CRED_EPOCH.load(Ordering::Acquire);
 
         let observer = self.switch_history.get();
         let source = match (method, path) {
@@ -3160,6 +3231,7 @@ impl CoreManager {
                     .unwrap_or(0);
                 if let Ok(guard) = CACHED_CLASH_CRED.lock()
                     && let Some(cached) = guard.as_ref()
+                    && cached.epoch == cur_epoch
                     && cached.path == candidate_cfg
                     && cached.mtime == mtime
                     && !cached.addr.is_empty()
@@ -3210,6 +3282,7 @@ impl CoreManager {
                         *guard = Some(ClashConfig {
                             path: candidate_cfg.to_owned(),
                             mtime,
+                            epoch: cur_epoch,
                             addr: found_addr,
                             secret: found_sec,
                             groups,
@@ -3327,6 +3400,8 @@ impl CoreManager {
             } else {
                 Duration::from_millis(query_ms.saturating_add(6000).clamp(5000, 35_000))
             }
+        } else if method == "PUT" && path.starts_with("/configs") {
+            Duration::from_secs(20)
         } else {
             Duration::from_secs(2)
         };
@@ -4199,8 +4274,9 @@ impl CoreManager {
             .filter(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0)
             .map(|s| (s.id.clone(), s.mixed_proxy_port))
             .collect();
+        let eff_core_cfg = Self::effective_core_config_path_for(&self.state, &snapshot.settings);
         let service_mixed_port =
-            read_service_mixed_port_from_config(&snapshot.settings.core_config_path);
+            read_service_mixed_port_from_config(&eff_core_cfg.to_string_lossy());
         let global_sub_proxy = if snapshot.settings.download_lists_via_proxy {
             sec_proxy_ports
                 .get(&snapshot.settings.download_lists_via_proxy_section)
@@ -4229,12 +4305,20 @@ impl CoreManager {
             }
             let mut src = orig_src.clone();
             let enc_src_id = crate::store::url_encode_component(&src.id);
-            let _ = self
+            let put_ok = self
                 .clash_request("PUT", &format!("/providers/proxies/{enc_src_id}"), None)
-                .await;
+                .await
+                .is_ok();
+            let fresh_providers = if put_ok {
+                self.clash_request("GET", "/providers/proxies", None)
+                    .await
+                    .ok()
+            } else {
+                None
+            };
 
             // Check if `tachyon-core` `/providers/proxies` has `subscriptionInfo` for this source
-            if let Some(ref pmap) = providers_map
+            if let Some(pmap) = fresh_providers.as_ref().or(providers_map.as_ref())
                 && let Some(prov) = pmap.pointer(&format!("/providers/{}", src.id))
                 && let Some(sub_info) = prov.get("subscriptionInfo")
             {
@@ -4777,9 +4861,12 @@ impl CoreManager {
         }
 
         if persist_needed {
-            if let Err(e) =
-                transaction::commit_transaction_with_source(&self.state, candidate, "subscription")
-                    .await
+            if let Err(e) = transaction::commit_transaction_with_source(
+                &self.state,
+                candidate.clone(),
+                "subscription",
+            )
+            .await
             {
                 self.state.live.write().await.push_event(
                     "warn",
@@ -4788,6 +4875,7 @@ impl CoreManager {
                 );
                 return Err(e);
             }
+            crate::ubus_bridge::sync_from_store_to_json_and_cache(&candidate);
             if core_reload_needed && !self.is_manually_stopped() {
                 let _ = self.apply_or_reload().await;
             }
@@ -4806,7 +4894,8 @@ impl CoreManager {
                     src.sub_preferred_user_agent = pref_ua;
                 }
             }
-            crate::ubus_bridge::sync_section_cache(&d);
+            self.state.bump_generation();
+            crate::ubus_bridge::sync_from_store_to_json_and_cache(&d);
         }
         Ok(updated_sources)
     }

@@ -1095,9 +1095,10 @@ fn to_ascii_safe_json(val: &Value) -> String {
 
 fn cache_export_json(ascii_json: &str) {
     if cfg!(target_os = "linux") {
-        let _ = std::fs::create_dir_all("/var/run/tachyon/ui-state");
+        let ui_dir = crate::store::runtime_state_dir().join("ui-state");
+        let _ = std::fs::create_dir_all(&ui_dir);
         let _ = crypto_gen::write_file_if_changed(
-            Path::new("/var/run/tachyon/ui-state/snapshot-export.json"),
+            ui_dir.join("snapshot-export.json"),
             ascii_json.as_bytes(),
         );
         let _ = crypto_gen::write_file_if_changed(
@@ -1176,14 +1177,34 @@ pub fn decode_transfer_payload(raw_input: &str) -> anyhow::Result<TachyonProfile
     }
 
     if let Some(rest) = text.strip_prefix("tachyon://cfg1/") {
-        // Support plain base64 JSON `tachyon://cfg1/<scope>/<b64>` if uncompressed
         let payload_part = rest.rsplit('/').next().unwrap_or(rest).trim();
         if let Ok(bytes) = B64_URL
             .decode(payload_part)
             .or_else(|_| B64_STD.decode(payload_part))
-            && let Ok(val) = serde_json::from_slice::<Value>(&bytes)
         {
-            return parse_profile_value(val, "transfer-cfg1", unix_now_secs());
+            if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
+                return parse_profile_value(val, "transfer-cfg1", unix_now_secs());
+            }
+            // Also support gzip-compressed payload in legacy `tachyon://cfg1/` links via `gzip -dc`
+            if let Ok(mut child) = std::process::Command::new("gzip")
+                .arg("-dc")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+            {
+                if let Some(mut sin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = sin.write_all(&bytes);
+                }
+                if let Ok(out) = child.wait_with_output()
+                    && out.status.success()
+                    && out.stdout.len() <= MAX_IMPORT_BYTES
+                    && let Ok(val) = serde_json::from_slice::<Value>(&out.stdout)
+                {
+                    return parse_profile_value(val, "transfer-cfg1", unix_now_secs());
+                }
+            }
         }
         anyhow::bail!(
             "Устаревший формат кода tachyon://cfg1; сгенерируйте новый код tachyon://rs2"
@@ -1346,9 +1367,11 @@ fn is_allowed_snapshot_import_path(path: &Path) -> bool {
     {
         return false;
     }
+    let rt_dir = crate::store::runtime_state_dir();
     let allowed = path == Path::new("/tmp/tachyon-snapshot-import.json")
         || path.starts_with("/tmp/tachyon-snapshots")
         || path.starts_with("/var/run/tachyon")
+        || path.starts_with(&rt_dir)
         || path.starts_with("/etc/tachyon/snapshots");
     #[cfg(test)]
     {
@@ -1373,7 +1396,49 @@ fn looks_like_import_file_path(trimmed: &str) -> bool {
         || trimmed.starts_with("./")
         || trimmed.starts_with("../")
         || trimmed.contains('\\')
-        || (!trimmed.starts_with('{') && !trimmed.contains("://") && trimmed.ends_with(".json"))
+        || (!trimmed.starts_with('{')
+            && !trimmed.contains("://")
+            && (trimmed.ends_with(".json")
+                || trimmed.ends_with(".tar.gz")
+                || trimmed.ends_with(".tgz")))
+}
+
+fn read_import_tar_gz_json(path: &Path) -> anyhow::Result<String> {
+    let list_out = std::process::Command::new("tar")
+        .arg("-tzf")
+        .arg(path)
+        .output()
+        .map_err(|e| anyhow::anyhow!("Не удалось запустить tar для чтения архива: {e}"))?;
+    anyhow::ensure!(
+        list_out.status.success(),
+        "Повреждённый .tar.gz архив снапшота"
+    );
+    let listing = String::from_utf8_lossy(&list_out.stdout);
+    let target_entry = listing
+        .lines()
+        .map(str::trim)
+        .find(|entry| {
+            !entry.is_empty()
+                && !entry.contains("..")
+                && !entry.starts_with('/')
+                && entry.ends_with(".json")
+        })
+        .ok_or_else(|| anyhow::anyhow!("В архиве .tar.gz не найден JSON-файл снапшота"))?;
+
+    let extract_out = std::process::Command::new("tar")
+        .arg("-xzOf")
+        .arg(path)
+        .arg(target_entry)
+        .output()
+        .map_err(|e| anyhow::anyhow!("Не удалось извлечь JSON из архива: {e}"))?;
+    anyhow::ensure!(
+        extract_out.status.success(),
+        "Ошибка извлечения JSON из архива .tar.gz"
+    );
+    if extract_out.stdout.len() > MAX_IMPORT_BYTES {
+        anyhow::bail!("Распакованный снапшот превышает максимальный размер 4 МБ");
+    }
+    Ok(String::from_utf8(extract_out.stdout)?)
 }
 
 fn read_import_target_text(target: &str) -> anyhow::Result<String> {
@@ -1401,6 +1466,10 @@ fn read_import_target_text(target: &str) -> anyhow::Result<String> {
         let meta = std::fs::metadata(p)?;
         if meta.len() as usize > MAX_IMPORT_BYTES {
             anyhow::bail!("Файл превышает максимальный размер 4 МБ");
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
+            return read_import_tar_gz_json(p);
         }
         return Ok(std::fs::read_to_string(p)?);
     }

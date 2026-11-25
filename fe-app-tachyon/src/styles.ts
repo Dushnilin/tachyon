@@ -1260,7 +1260,7 @@ input.cbi-button-action:hover:not(:disabled),
 .cbi-dynlist .cbi-dropdown[open] > ul {
     width: 100% !important;
     max-width: min(100%, calc(100vw - 40px)) !important;
-    max-height: min(320px, 45vh) !important;
+    max-height: min(320px, 45vh);
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
@@ -5659,7 +5659,7 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     margin: 12px auto 24px auto !important;
     max-width: min(880px, 95vw) !important;
     width: 100% !important;
-    overflow-x: hidden !important;
+    overflow-x: clip !important;
     box-sizing: border-box !important;
     animation: tachyonModalEnter 0.14s cubic-bezier(0.22, 1, 0.36, 1);
 }

@@ -5585,6 +5585,30 @@ pub fn detect_country_code(label: &str) -> String {
                 | "EE"
                 | "LV"
                 | "LT"
+                | "IE"
+                | "BE"
+                | "NO"
+                | "DK"
+                | "IT"
+                | "ES"
+                | "CZ"
+                | "AE"
+                | "CA"
+                | "BR"
+                | "IN"
+                | "AU"
+                | "UA"
+                | "MD"
+                | "RO"
+                | "BG"
+                | "GR"
+                | "PT"
+                | "HU"
+                | "SK"
+                | "SI"
+                | "HR"
+                | "RS"
+                | "IL"
         ) {
             return if up == "UK" { "GB".to_string() } else { up };
         }
@@ -11367,6 +11391,54 @@ pub fn strip_dynamic_server_telemetry(name: &str) -> String {
     }
 }
 
+fn strip_server_filter_type_suffix(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    for (open, close) in [('(', ')'), ('[', ']')] {
+        if let Some(after) = trimmed.strip_suffix(close)
+            && let Some(idx) = after.rfind(open)
+        {
+            let suffix = after[idx + 1..].trim();
+            let looks_like_proto = matches!(
+                suffix.to_ascii_lowercase().as_str(),
+                "vless"
+                    | "vmess"
+                    | "trojan"
+                    | "ss"
+                    | "shadowsocks"
+                    | "hy2"
+                    | "hysteria2"
+                    | "hysteria"
+                    | "tuic"
+                    | "wg"
+                    | "wireguard"
+                    | "awg"
+                    | "warp"
+                    | "anytls"
+                    | "naive"
+                    | "mieru"
+                    | "snell"
+                    | "sudoku"
+                    | "masque"
+                    | "trusttunnel"
+                    | "tewfai"
+                    | "shadowtls"
+                    | "openconnect"
+                    | "openvpn"
+                    | "fptn"
+                    | "tor"
+                    | "tailscale"
+                    | "socks"
+                    | "http"
+                    | "ssh"
+            );
+            if looks_like_proto {
+                return after[..idx].trim();
+            }
+        }
+    }
+    trimmed
+}
+
 /// Compare a live server `tag` against a saved `filter` string, tolerating source prefix
 /// variations and dynamic telemetry segments without collapsing numbered or protocol labels.
 pub fn server_filter_name_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> bool {
@@ -11391,7 +11463,13 @@ pub fn server_filter_name_matches(tag: &str, filter: &str, known_prefixes: &[Str
     }
     let tag_unp_canon = strip_dynamic_server_telemetry(tag_unp);
     let flt_unp_canon = strip_dynamic_server_telemetry(flt_unp);
-    !tag_unp_canon.is_empty() && (tag_unp_canon == flt_unp || tag_unp_canon == flt_unp_canon)
+    if !tag_unp_canon.is_empty() && (tag_unp_canon == flt_unp || tag_unp_canon == flt_unp_canon) {
+        return true;
+    }
+
+    let tag_notype = strip_server_filter_type_suffix(tag_unp);
+    let flt_notype = strip_server_filter_type_suffix(flt_unp);
+    !tag_notype.is_empty() && !flt_notype.is_empty() && tag_notype == flt_notype
 }
 
 fn tag_matches_keyword_or_telemetry(tag: &str, pattern: &str, known_prefixes: &[String]) -> bool {
@@ -11551,17 +11629,58 @@ fn server_tag_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> boo
     server_filter_name_matches(tag, filter, known_prefixes)
 }
 
+fn is_low_ram_device() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+            for line in meminfo.lines() {
+                if let Some(rest) = line.strip_prefix("MemTotal:") {
+                    let kb: u64 = rest
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
+                    return kb > 0 && kb < 256 * 1024;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn resolve_tachyon_list_canonical_name(raw: &str, low_ram: bool) -> String {
+    let lc = raw.trim().to_ascii_lowercase();
+    match lc.as_str() {
+        "russia_inside" | "roscomvpn_ru" => "ru_domains".to_string(),
+        "russia_outside" | "runetfreedom_blocked" => "ru_blocked".to_string(),
+        "runetfreedom_blocked_all" => {
+            if low_ram {
+                "ru_blocked".to_string()
+            } else {
+                "ru_blocked_all".to_string()
+            }
+        }
+        "ru_blocked_all" if low_ram => "ru_blocked".to_string(),
+        "antifilter_community" => "antifilter".to_string(),
+        "roscomvpn_whitelist" => "ru_whitelist".to_string(),
+        _ => lc,
+    }
+}
+
 pub fn canonical_community_subnet_service(service: &str) -> &str {
     let key = service.trim();
     if key.eq_ignore_ascii_case("antifilter_community") {
         "antifilter"
-    } else if key.eq_ignore_ascii_case("runetfreedom_blocked") {
+    } else if key.eq_ignore_ascii_case("runetfreedom_blocked")
+        || key.eq_ignore_ascii_case("russia_outside")
+    {
         "ru_blocked"
     } else if key.eq_ignore_ascii_case("runetfreedom_blocked_all") {
         "ru_blocked_all"
     } else if key.eq_ignore_ascii_case("roscomvpn_whitelist") {
         "ru_whitelist"
-    } else if key.eq_ignore_ascii_case("roscomvpn_ru") {
+    } else if key.eq_ignore_ascii_case("roscomvpn_ru") || key.eq_ignore_ascii_case("russia_inside")
+    {
         "ru_domains"
     } else {
         key
@@ -13169,16 +13288,36 @@ fn compile_core_config_with_rt_dir(
             if let Some(tun_v6) = crate::store::effective_tun_inet6(&store.settings, ipv6_state) {
                 tun_addrs.push(json!(tun_v6));
             }
-            inbounds.push(json!({
+            let mut tun_obj = json!({
                 "type": "tun",
                 "tag": "tun-in",
                 "interface_name": store.settings.tun_interface,
                 "address": tun_addrs,
                 "mtu": store.settings.tun_mtu,
-                "auto_route": true,
-                "strict_route": true,
+                "auto_route": store.settings.tun_auto_route,
+                "strict_route": store.settings.tun_auto_route,
+                "gso": store.settings.tun_gso,
+                "endpoint_independent_nat": store.settings.tun_endpoint_independent_nat,
                 "stack": store.settings.tun_stack
-            }));
+            });
+            if !store.settings.tun_udp_timeout.trim().is_empty() {
+                tun_obj["udp_timeout"] = json!(store.settings.tun_udp_timeout.trim());
+            }
+            if !store.settings.excluded_ips.is_empty() {
+                let mut excl: Vec<String> = Vec::new();
+                for tok in &store.settings.excluded_ips {
+                    if let Some(cidr) = parse_valid_cidr_token(tok)
+                        && (ipv6_active || !cidr.contains(':'))
+                        && !excl.contains(&cidr)
+                    {
+                        excl.push(cidr);
+                    }
+                }
+                if !excl.is_empty() {
+                    tun_obj["route_exclude_address"] = json!(excl);
+                }
+            }
+            inbounds.push(tun_obj);
         }
         "socks" => {
             inbounds.push(json!({
@@ -13192,7 +13331,7 @@ fn compile_core_config_with_rt_dir(
             inbounds.push(json!({
                 "type": "tproxy",
                 "tag": "tproxy-in",
-                "listen": "::",
+                "listen": if ipv6_active { "::" } else { "0.0.0.0" },
                 "listen_port": 1602,
                 "tcp_fast_open": true,
                 "udp_fragment": true
@@ -13620,13 +13759,94 @@ fn compile_core_config_with_rt_dir(
             return;
         }
         *emitted = true;
-        if store.settings.isolate_p2p {
+        if store.settings.wifi_calling_direct {
             rules.push(json!({
-                "protocol": ["bittorrent"],
+                "network": "udp",
+                "port": [500, 4500],
+                "outbound": "direct"
+            }));
+            rules.push(json!({
+                "domain_suffix": ["pub.3gppnetwork.org"],
+                "domain_keyword": ["epdg.epc."],
                 "outbound": "direct"
             }));
         }
-        if store.settings.disable_quic {
+        if store.settings.game_console_optimizer && !store.settings.game_console_ips.is_empty() {
+            let mut console_cidrs =
+                resolve_device_targets_to_cidrs(&store.settings.game_console_ips);
+            if !ipv6_active {
+                console_cidrs.retain(|c| !c.contains(':'));
+            }
+            if !console_cidrs.is_empty() {
+                rules.push(json!({
+                    "source_ip_cidr": console_cidrs,
+                    "network": "udp",
+                    "outbound": "direct"
+                }));
+            }
+        }
+        let bt_policy = store.settings.bittorrent_policy.trim().to_ascii_lowercase();
+        let bt_target = if bt_policy == "block" {
+            Some("block")
+        } else if store.settings.isolate_p2p || bt_policy == "direct" {
+            Some("direct")
+        } else {
+            None
+        };
+        if let Some(bt_out) = bt_target {
+            if bt_out == "block" {
+                rules.push(json!({
+                    "protocol": ["bittorrent"],
+                    "action": "reject"
+                }));
+            } else {
+                rules.push(json!({
+                    "protocol": ["bittorrent"],
+                    "outbound": "direct"
+                }));
+            }
+            let p2p_raw = store.settings.p2p_ports.trim();
+            if !p2p_raw.is_empty() {
+                let mut tcp_ports = Vec::new();
+                let mut udp_ports = Vec::new();
+                for tok in p2p_raw
+                    .split([',', ';', ' '])
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    if let Some(p) = tok
+                        .strip_prefix("tcp:")
+                        .or_else(|| tok.strip_prefix("TCP:"))
+                    {
+                        tcp_ports.push(p.trim().to_string());
+                    } else if let Some(p) = tok
+                        .strip_prefix("udp:")
+                        .or_else(|| tok.strip_prefix("UDP:"))
+                    {
+                        udp_ports.push(p.trim().to_string());
+                    } else {
+                        tcp_ports.push(tok.to_string());
+                        udp_ports.push(tok.to_string());
+                    }
+                }
+                for (net, plist) in [("tcp", tcp_ports), ("udp", udp_ports)] {
+                    if !plist.is_empty() {
+                        let mut m = Map::new();
+                        m.insert("network".into(), json!(net));
+                        insert_port_matchers(&mut m, &plist, "port", "port_range");
+                        if m.contains_key("port") || m.contains_key("port_range") {
+                            if bt_out == "block" {
+                                m.insert("action".into(), json!("reject"));
+                            } else {
+                                m.insert("outbound".into(), json!("direct"));
+                            }
+                            rules.push(Value::Object(m));
+                        }
+                    }
+                }
+            }
+        }
+        if crate::net_stack::effective_disable_quic_global(store) {
             rules.push(json!({
                 "network": "udp",
                 "port": [443],
@@ -13663,7 +13883,26 @@ fn compile_core_config_with_rt_dir(
     if clash_port_check > 0 {
         emitted_mixed_ports.insert(clash_port_check);
     }
+    let mut ordered_sections: Vec<&RoutingSection> = Vec::new();
+    let mut pass2_sections: Vec<&RoutingSection> = Vec::new();
     for sec in store.sections.iter().filter(|s| s.enabled) {
+        if sec.action == "hosts" || sec.connection_type == "hosts" {
+            continue;
+        }
+        if is_section_bypass_or_direct(sec)
+            || sec.action == "block"
+            || sec.connection_type == "block"
+        {
+            ordered_sections.push(sec);
+        } else {
+            pass2_sections.push(sec);
+        }
+    }
+    ordered_sections.extend(pass2_sections);
+    let quic_tunneled_only = crate::net_stack::effective_disable_quic_tunneled(store)
+        && !crate::net_stack::effective_disable_quic_global(store);
+
+    for sec in ordered_sections {
         if sec.action == "dns" || sec.connection_type == "dns" {
             section_dns_plans.push(SectionDnsPlan::CustomDns(sec));
             continue;
@@ -13776,17 +14015,24 @@ fn compile_core_config_with_rt_dir(
         // Pinned Server-to-Domain rules (`ServerName=domain1.com, domain2.com`)
         for pin in &sec.server_domain_rules {
             if let Some((srv_tag, doms_str)) = pin.split_once('=') {
-                let st = srv_tag.trim();
+                let st_raw = srv_tag.trim();
+                let resolved_tag = outbounds
+                    .iter()
+                    .chain(endpoints.iter())
+                    .filter_map(|v| v.get("tag").and_then(Value::as_str))
+                    .find(|t| *t == st_raw || server_filter_name_matches(t, st_raw, &[]))
+                    .map(String::from);
                 let doms: Vec<String> = doms_str
                     .split([',', ' '])
                     .map(|d| d.trim().to_string())
                     .filter(|d| !d.is_empty())
                     .collect();
-                if !st.is_empty() && !doms.is_empty() {
+                let final_st = resolved_tag.unwrap_or_else(|| st_raw.to_string());
+                if !final_st.is_empty() && !doms.is_empty() {
                     rules.push(wrap_rule_with_inverted_subrules(
                         json!({
                             "domain_suffix": doms,
-                            "outbound": st
+                            "outbound": final_st
                         }),
                         &sec_exc_dom_and_src_subs,
                         &sec_exc_route_only_subs,
@@ -13813,6 +14059,39 @@ fn compile_core_config_with_rt_dir(
         }
 
         let pre_resolve_ip = sec.connection_type == "desync" || sec.resolve_real_ip_for_routing;
+        let sec_eff_geoip_mode = {
+            let gm = sec.geoip_mode.trim();
+            if gm.is_empty() {
+                if is_section_bypass_or_direct(sec)
+                    || sec.action == "block"
+                    || sec.connection_type == "block"
+                {
+                    "include".to_string()
+                } else {
+                    "exclude".to_string()
+                }
+            } else {
+                gm.to_string()
+            }
+        };
+        let sec_is_proxy_route = target_outbound_tag != "direct"
+            && target_outbound_tag != "block"
+            && !target_outbound_tag.starts_with("desync-")
+            && sec.connection_type != "desync"
+            && sec.action != "desync";
+        let emit_tunneled_quic_reject = |rules: &mut Vec<Value>, base_rule: &Value| {
+            if !quic_tunneled_only || !sec_is_proxy_route {
+                return;
+            }
+            let mut cloned = base_rule.clone();
+            if let Some(m) = cloned.as_object_mut() {
+                m.remove("outbound");
+                m.insert("network".into(), json!("udp"));
+                m.insert("port".into(), json!([443]));
+                m.insert("action".into(), json!("reject"));
+                rules.push(Value::Object(m.clone()));
+            }
+        };
         let sec_routed_dns_enabled = sec.routed_dns_enabled
             && !matches!(sec.action.as_str(), "hosts" | "block")
             && !matches!(sec.connection_type.as_str(), "hosts" | "block")
@@ -13823,7 +14102,9 @@ fn compile_core_config_with_rt_dir(
         let mut section_matched_any = false;
         let mut section_emitted_rules: Vec<Value> = Vec::new();
         if !sec.geoip_codes.is_empty()
-            && sec.geoip_mode.trim().eq_ignore_ascii_case("exclude_direct")
+            && sec_eff_geoip_mode
+                .trim()
+                .eq_ignore_ascii_case("exclude_direct")
             && target_outbound_tag != "direct"
         {
             let mut direct_geo_tags = Vec::new();
@@ -13890,59 +14171,144 @@ fn compile_core_config_with_rt_dir(
                 }
             }
         }
-        for cref in &sec.condition_refs {
-            let Some(cond) = cond_map.get(cref.as_str()).copied() else {
-                continue;
-            };
-            if !cond.enabled {
-                continue;
-            }
-            let cond_rules = build_condition_rules(
-                cond,
-                &cond_map,
-                &target_outbound_tag,
-                &store.settings.rulesets_dir,
-                &store.settings.github_mirror,
-                &mut rule_sets,
-                &mut seen_rule_sets,
-                ipv6_active,
-                pre_resolve_ip,
-                resolve_dns_server,
-                &mut outbounds,
-            );
-            if !cond_rules.is_empty() {
-                for rule in cond_rules {
-                    let wrapped = wrap_rule_with_inverted_subrules(
-                        rule,
-                        &sec_exc_dom_and_src_subs,
-                        &sec_exc_route_only_subs,
-                    );
-                    if !section_emitted_rules.contains(&wrapped) {
-                        if store.settings.fakeip_enabled
-                            && target_outbound_tag == "direct"
-                            && rule_matches_ip_criteria(&wrapped, &rule_sets)
-                        {
-                            let src_scope = extract_rule_source_ip_cidr(&wrapped);
-                            let rkey = format!(
-                                "{resolve_dns_server}|{}",
-                                src_scope.as_ref().map(Value::to_string).unwrap_or_default()
-                            );
-                            if emitted_ip_resolve_keys.insert(rkey) {
-                                let mut res_rule = json!({
-                                    "action": "resolve",
-                                    "server": resolve_dns_server
-                                });
-                                if let Some(src) = src_scope {
-                                    res_rule["source_ip_cidr"] = src;
-                                }
-                                rules.push(res_rule);
-                            }
-                        }
-                        section_emitted_rules.push(wrapped.clone());
-                        rules.push(wrapped);
+        let combine_and_conditions = (sec.condition_operator.trim().eq_ignore_ascii_case("and")
+            || !sec.condition_expression.trim().is_empty())
+            && sec
+                .condition_refs
+                .iter()
+                .filter(|cid| cond_map.get(cid.as_str()).is_some_and(|c| c.enabled))
+                .count()
+                >= 2;
+        if combine_and_conditions {
+            let mut and_branches = Vec::new();
+            let mut active_cnt = 0usize;
+            for cref in &sec.condition_refs {
+                let Some(cond) = cond_map.get(cref.as_str()).copied() else {
+                    continue;
+                };
+                if !cond.enabled {
+                    continue;
+                }
+                active_cnt += 1;
+                let mut cond_eff = cond.clone();
+                if cond_eff.geoip_mode.trim().is_empty() && !cond_eff.geoip_codes.is_empty() {
+                    cond_eff.geoip_mode = sec_eff_geoip_mode.clone();
+                }
+                let mut sub_rules = build_condition_rules(
+                    &cond_eff,
+                    &cond_map,
+                    &target_outbound_tag,
+                    &store.settings.rulesets_dir,
+                    &store.settings.github_mirror,
+                    &mut rule_sets,
+                    &mut seen_rule_sets,
+                    ipv6_active,
+                    false,
+                    resolve_dns_server,
+                    &mut outbounds,
+                );
+                for r in &mut sub_rules {
+                    if let Some(m) = r.as_object_mut() {
+                        m.remove("outbound");
                     }
                 }
-                section_matched_any = true;
+                if sub_rules.len() == 1 {
+                    and_branches.push(sub_rules.remove(0));
+                } else if !sub_rules.is_empty() {
+                    and_branches.push(json!({
+                        "type": "logical",
+                        "mode": "or",
+                        "rules": sub_rules
+                    }));
+                }
+            }
+            if active_cnt >= 2 && and_branches.len() == active_cnt {
+                let combined = json!({
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": and_branches,
+                    "outbound": target_outbound_tag
+                });
+                let wrapped = wrap_rule_with_inverted_subrules(
+                    combined,
+                    &sec_exc_dom_and_src_subs,
+                    &sec_exc_route_only_subs,
+                );
+                if !section_emitted_rules.contains(&wrapped) {
+                    emit_tunneled_quic_reject(&mut rules, &wrapped);
+                    section_emitted_rules.push(wrapped.clone());
+                    rules.push(wrapped);
+                    section_matched_any = true;
+                }
+            }
+        } else {
+            for cref in &sec.condition_refs {
+                let Some(cond) = cond_map.get(cref.as_str()).copied() else {
+                    continue;
+                };
+                if !cond.enabled {
+                    continue;
+                }
+                let cond_owned;
+                let eff_cond = if cond.geoip_mode.trim().is_empty() && !cond.geoip_codes.is_empty()
+                {
+                    let mut c = cond.clone();
+                    c.geoip_mode = sec_eff_geoip_mode.clone();
+                    cond_owned = c;
+                    &cond_owned
+                } else {
+                    cond
+                };
+                let cond_rules = build_condition_rules(
+                    eff_cond,
+                    &cond_map,
+                    &target_outbound_tag,
+                    &store.settings.rulesets_dir,
+                    &store.settings.github_mirror,
+                    &mut rule_sets,
+                    &mut seen_rule_sets,
+                    ipv6_active,
+                    pre_resolve_ip,
+                    resolve_dns_server,
+                    &mut outbounds,
+                );
+                if !cond_rules.is_empty() {
+                    for rule in cond_rules {
+                        let wrapped = wrap_rule_with_inverted_subrules(
+                            rule,
+                            &sec_exc_dom_and_src_subs,
+                            &sec_exc_route_only_subs,
+                        );
+                        if !section_emitted_rules.contains(&wrapped) {
+                            if store.settings.fakeip_enabled
+                                && target_outbound_tag == "direct"
+                                && rule_matches_ip_criteria(&wrapped, &rule_sets)
+                            {
+                                let src_scope = extract_rule_source_ip_cidr(&wrapped);
+                                let rkey = format!(
+                                    "{resolve_dns_server}|{}",
+                                    src_scope.as_ref().map(Value::to_string).unwrap_or_default()
+                                );
+                                if emitted_ip_resolve_keys.insert(rkey) {
+                                    let mut res_rule = json!({
+                                        "action": "resolve",
+                                        "server": resolve_dns_server
+                                    });
+                                    if let Some(src) = src_scope {
+                                        res_rule["source_ip_cidr"] = src;
+                                    }
+                                    rules.push(res_rule);
+                                }
+                            }
+                            if wrapped.get("action").and_then(Value::as_str) != Some("resolve") {
+                                emit_tunneled_quic_reject(&mut rules, &wrapped);
+                            }
+                            section_emitted_rules.push(wrapped.clone());
+                            rules.push(wrapped);
+                        }
+                    }
+                    section_matched_any = true;
+                }
             }
         }
 
@@ -13976,7 +14342,7 @@ fn compile_core_config_with_rt_dir(
                 user_domains: sec.user_domains.clone(),
                 user_subnets: sec.user_subnets.clone(),
                 geoip_codes: sec.geoip_codes.clone(),
-                geoip_mode: sec.geoip_mode.clone(),
+                geoip_mode: sec_eff_geoip_mode.clone(),
                 geosite_codes: sec.geosite_codes.clone(),
                 client_ips: sec.source_ip_cidr.clone(),
                 ports: sec.ports.clone(),
@@ -14026,6 +14392,9 @@ fn compile_core_config_with_rt_dir(
                                 rules.push(res_rule);
                             }
                         }
+                        if wrapped.get("action").and_then(Value::as_str) != Some("resolve") {
+                            emit_tunneled_quic_reject(&mut rules, &wrapped);
+                        }
                         section_emitted_rules.push(wrapped.clone());
                         rules.push(wrapped);
                     }
@@ -14039,11 +14408,11 @@ fn compile_core_config_with_rt_dir(
             || !sec.fully_routed_ips.is_empty()
             || !sec.source_inbounds.is_empty()
             || !sec.server_domain_rules.is_empty();
-        if (!section_has_route_matchers && sec.condition_refs.is_empty()) || sec.match_all {
+        if sec.match_all {
+            let base_catchall = json!({ "outbound": target_outbound_tag });
+            emit_tunneled_quic_reject(&mut rules, &base_catchall);
             rules.push(wrap_rule_with_inverted_subrules(
-                json!({
-                    "outbound": target_outbound_tag
-                }),
+                base_catchall,
                 &sec_exc_dom_and_src_subs,
                 &sec_exc_route_only_subs,
             ));
@@ -14437,6 +14806,16 @@ fn compile_core_config_with_rt_dir(
         }
     }
 
+    // Resolve any `detour` referencing a RoutingSection ID to its compiled outbound tag.
+    for item in outbounds.iter_mut().chain(endpoints.iter_mut()) {
+        if let Some(obj) = item.as_object_mut()
+            && let Some(det) = obj.get("detour").and_then(Value::as_str).map(str::trim)
+            && let Some(resolved_tag) = section_outbound_tags.get(det)
+        {
+            obj.insert("detour".into(), json!(resolved_tag));
+        }
+    }
+
     // Built-in `direct` and `block` outbounds
     outbounds.push(json!({
         "type": "direct",
@@ -14491,21 +14870,19 @@ fn compile_core_config_with_rt_dir(
                 "tag": tag,
                 "server": boot_host,
                 "server_port": extract_url_port(boot_dns, 443),
-                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false),
-                "detour": "direct"
+                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false)
             });
             let path = extract_url_path(boot_dns).unwrap_or_else(|| "/dns-query".to_string());
             o["path"] = json!(if path == "/" { "/dns-query" } else { &path });
             o
         } else if boot_scheme.starts_with("quic://") || boot_scheme.starts_with("doq://") {
-            let boot_port = extract_url_port(boot_dns, 853);
+            let boot_port = extract_url_port(boot_dns, 784);
             json!({
                 "type": "quic",
                 "tag": tag,
                 "server": boot_host,
                 "server_port": boot_port,
-                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false),
-                "detour": "direct"
+                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false)
             })
         } else if boot_scheme.starts_with("tls://") || boot_scheme.starts_with("dot://") {
             let boot_port = extract_url_port(boot_dns, 853);
@@ -14514,8 +14891,7 @@ fn compile_core_config_with_rt_dir(
                 "tag": tag,
                 "server": boot_host,
                 "server_port": boot_port,
-                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false),
-                "detour": "direct"
+                "tls": build_tls_obj_for_host(boot_host, boot_is_ip, false)
             })
         } else {
             let boot_port = extract_url_port(boot_dns, 53);
@@ -14523,13 +14899,15 @@ fn compile_core_config_with_rt_dir(
                 "type": "udp",
                 "tag": tag,
                 "server": boot_host,
-                "server_port": boot_port,
-                "detour": "direct"
+                "server_port": boot_port
             })
         }
     };
 
     let mut boot_list = split_dns_tokens(&store.settings.bootstrap_dns_servers);
+    if !ipv6_active {
+        boot_list.retain(|x| !extract_host_only(x).contains(':'));
+    }
     if store.settings.fallback_wan_bootstrap {
         for wan_ip in get_wan_dns_servers() {
             if !ipv6_active && wan_ip.contains(':') {
@@ -14598,17 +14976,20 @@ fn compile_core_config_with_rt_dir(
         }));
     }
 
-    let primary_detour = if store.settings.dns_detour_enabled {
+    let primary_detour: Option<&str> = if store.settings.dns_detour_enabled {
         let target = store.settings.dns_detour_section.trim();
         section_outbound_tags
             .get(target)
             .map(String::as_str)
-            .unwrap_or("direct")
+            .filter(|t| !t.is_empty() && *t != "direct")
     } else {
-        "direct"
+        None
     };
 
     let mut main_list = split_dns_tokens(&store.settings.dns_servers);
+    if !ipv6_active {
+        main_list.retain(|x| !extract_host_only(x).contains(':'));
+    }
     if main_list.is_empty() {
         main_list.push("1.1.1.1".to_string());
     }
@@ -14626,57 +15007,85 @@ fn compile_core_config_with_rt_dir(
         };
         let main_is_ip = crate::store::valid_ip_with_zone(main_host);
         let lower_dns = main_dns.trim().to_ascii_lowercase();
-        let mut obj = if lower_dns.starts_with("https://") || store.settings.dns_type == "doh" {
-            let mut o = json!({
-                "type": "https",
-                "tag": tag,
-                "server": main_host,
-                "server_port": extract_url_port(main_dns, 443),
-                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech),
-                "detour": primary_detour
-            });
-            if let Some(path) = extract_url_path(main_dns)
-                && !path.is_empty()
-                && path != "/"
-            {
-                o["path"] = json!(path);
-            }
-            o
-        } else if lower_dns.starts_with("tls://")
-            || lower_dns.starts_with("dot://")
-            || store.settings.dns_type == "dot"
-        {
+        let has_explicit_scheme = lower_dns.contains("://");
+        let mut obj = if lower_dns.starts_with("tls://") || lower_dns.starts_with("dot://") {
             json!({
                 "type": "tls",
                 "tag": tag,
                 "server": main_host,
                 "server_port": extract_url_port(main_dns, 853),
-                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech),
-                "detour": primary_detour
+                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech)
             })
-        } else if lower_dns.starts_with("quic://")
-            || lower_dns.starts_with("doq://")
-            || store.settings.dns_type == "doq"
-        {
+        } else if lower_dns.starts_with("quic://") || lower_dns.starts_with("doq://") {
             json!({
                 "type": "quic",
                 "tag": tag,
                 "server": main_host,
+                "server_port": extract_url_port(main_dns, 784),
+                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech)
+            })
+        } else if lower_dns.starts_with("udp://") || lower_dns.starts_with("tcp://") {
+            json!({
+                "type": "udp",
+                "tag": tag,
+                "server": main_host,
+                "server_port": extract_url_port(main_dns, 53)
+            })
+        } else if lower_dns.starts_with("https://")
+            || lower_dns.starts_with("doh://")
+            || (!has_explicit_scheme && store.settings.dns_type == "doh")
+        {
+            let mut o = json!({
+                "type": "https",
+                "tag": tag,
+                "server": main_host,
+                "server_port": extract_url_port(main_dns, 443),
+                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech)
+            });
+            let path = extract_url_path(main_dns).unwrap_or_else(|| "/dns-query".to_string());
+            o["path"] = json!(if path.is_empty() || path == "/" {
+                "/dns-query"
+            } else {
+                &path
+            });
+            o
+        } else if store.settings.dns_type == "dot" {
+            json!({
+                "type": "tls",
+                "tag": tag,
+                "server": main_host,
                 "server_port": extract_url_port(main_dns, 853),
-                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech),
-                "detour": primary_detour
+                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech)
+            })
+        } else if store.settings.dns_type == "doq" {
+            json!({
+                "type": "quic",
+                "tag": tag,
+                "server": main_host,
+                "server_port": extract_url_port(main_dns, 784),
+                "tls": build_tls_obj_for_host(main_host, main_is_ip, store.settings.dns_doq_ech)
             })
         } else {
             json!({
                 "type": "udp",
                 "tag": tag,
                 "server": main_host,
-                "server_port": extract_url_port(main_dns, 53),
-                "detour": primary_detour
+                "server_port": extract_url_port(main_dns, 53)
             })
         };
+        if let Some(det) = primary_detour {
+            obj["detour"] = json!(det);
+        }
         if !main_is_ip {
             obj["domain_resolver"] = json!("dns-bootstrap");
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("udp")
+            && let (Some(srv), Some(port)) = (
+                obj.get("server").and_then(Value::as_str),
+                obj.get("server_port").and_then(Value::as_u64),
+            )
+        {
+            bootstrap_udp_endpoints.insert(format!("{srv}:{port}"));
         }
         if matches!(
             obj.get("type").and_then(Value::as_str),
@@ -14697,7 +15106,7 @@ fn compile_core_config_with_rt_dir(
         remote_group_members.push(tag);
     }
 
-    let fail_closed_detour_dns = primary_detour != "direct"
+    let fail_closed_detour_dns = primary_detour.is_some()
         && crate::net_stack::direct_fallback_veto(store).is_some()
         && !remote_group_members.is_empty();
 
@@ -14713,6 +15122,7 @@ fn compile_core_config_with_rt_dir(
                 }
             }
         }
+        fallback_candidates.retain(|tok| !main_list.iter().any(|m| m.eq_ignore_ascii_case(tok)));
         if has_encrypted_primary {
             // Keep encrypted primary DNS strictly isolated from plain UDP resolvers:
             // tachyon-core's `group[mode=stable]` picks randomly among clean members
@@ -14734,7 +15144,7 @@ fn compile_core_config_with_rt_dir(
                 }
                 fb_idx += 1;
                 let fb_tag = format!("dns-fallback-{fb_idx}");
-                let mut fb_obj = build_dns_server_entry(&fb_tag, enc_type, raw_fb, Some("direct"));
+                let mut fb_obj = build_dns_server_entry(&fb_tag, enc_type, raw_fb, None);
                 if store.settings.dns_doq_ech
                     && let Some(tls_obj) = fb_obj.get_mut("tls").and_then(Value::as_object_mut)
                 {
@@ -14768,6 +15178,7 @@ fn compile_core_config_with_rt_dir(
                     if !fallback_candidates
                         .iter()
                         .any(|x| x.eq_ignore_ascii_case(&wan_ip))
+                        && !main_list.iter().any(|m| m.eq_ignore_ascii_case(&wan_ip))
                     {
                         fallback_candidates.push(wan_ip);
                     }
@@ -14795,8 +15206,7 @@ fn compile_core_config_with_rt_dir(
                     "type": "udp",
                     "tag": fb_tag,
                     "server": fb_host,
-                    "server_port": fb_port,
-                    "detour": "direct"
+                    "server_port": fb_port
                 });
                 if !crate::store::valid_ip_with_zone(fb_host) {
                     fb_obj["domain_resolver"] = json!("dns-bootstrap");
@@ -15029,8 +15439,9 @@ fn compile_core_config_with_rt_dir(
                                 .get(target)
                                 .map(String::as_str)
                                 .or((!target.is_empty()).then_some(target))
+                                .filter(|d| !d.is_empty() && *d != "direct")
                         } else {
-                            Some("direct")
+                            None
                         };
                         let base_tag = format!("dns-sec-{}", sec.id);
                         if servers.len() == 1 {
@@ -15325,15 +15736,49 @@ fn compile_core_config_with_rt_dir(
                 "server": "dns-remote"
             }));
         }
-        dns_rules_vec.push(json!({
-            "query_type": if ipv6_active {
-                json!(["A", "AAAA"])
-            } else {
-                json!(["A"])
-            },
-            "server": "dns-fakeip",
-            "rewrite_ttl": store.settings.dns_rewrite_ttl
-        }));
+        if crate::net_stack::selective_tproxy_active(store) {
+            let expand_v4_mapped = has_source_dns && ipv6_active;
+            for sec in store.sections.iter().filter(|s| s.enabled) {
+                if sec.disable_fakeip
+                    || sec.routed_dns_enabled
+                    || is_section_bypass_or_direct(sec)
+                    || matches!(
+                        sec.action.trim().to_ascii_lowercase().as_str(),
+                        "block" | "reject" | "hosts" | "dns"
+                    )
+                    || matches!(
+                        sec.connection_type.trim().to_ascii_lowercase().as_str(),
+                        "block" | "reject" | "hosts" | "dns"
+                    )
+                {
+                    continue;
+                }
+                collect_custom_dns_section_rules(
+                    sec,
+                    "dns-fakeip",
+                    store.settings.dns_rewrite_ttl,
+                    &cond_map,
+                    &store.settings.rulesets_dir,
+                    &store.settings.github_mirror,
+                    &mut rule_sets,
+                    &mut seen_rule_sets,
+                    ipv6_active,
+                    true,
+                    expand_v4_mapped,
+                    &mut dns_rules_vec,
+                );
+            }
+        } else {
+            dns_rules_vec.push(json!({
+                "query_type": if ipv6_active {
+                    json!(["A", "AAAA"])
+                } else {
+                    json!(["A"])
+                },
+                "server": "dns-fakeip",
+                "rewrite_ttl": store.settings.dns_rewrite_ttl
+            }));
+        }
     }
 
     let has_bootstrap_dns = dns_servers_vec
@@ -15365,14 +15810,25 @@ fn compile_core_config_with_rt_dir(
                 .is_some_and(|s| !s.is_empty())
     });
 
+    let default_mark: u32 = if store.settings.proxy_mode == "tun" {
+        8226
+    } else {
+        1073741824
+    };
+    let out_iface = store.settings.output_network_interface.trim();
+    let bind_default_iface =
+        store.settings.enable_output_network_interface && !out_iface.is_empty();
     let mut route_obj = json!({
         "rules": rules,
         "rule_set": rule_sets,
         "final": "direct",
-        "auto_detect_interface": true,
-        "default_mark": 1073741824,
+        "auto_detect_interface": !bind_default_iface,
+        "default_mark": default_mark,
         "default_domain_resolver": "dns-remote"
     });
+    if bind_default_iface {
+        route_obj["default_interface"] = json!(out_iface);
+    }
     if has_remote_rule_set {
         route_obj["default_http_client"] = json!(DIRECT_DOWNLOAD_HTTP_CLIENT_TAG);
     }
@@ -15397,9 +15853,19 @@ fn compile_core_config_with_rt_dir(
         }
     });
     if has_remote_rule_set {
+        let http_detour = if store.settings.download_lists_via_proxy {
+            let target = store.settings.download_lists_via_proxy_section.trim();
+            section_outbound_tags
+                .get(target)
+                .map(String::as_str)
+                .filter(|t| !t.is_empty() && *t != "direct" && *t != "block")
+                .unwrap_or("direct")
+        } else {
+            "direct"
+        };
         root_cfg["http_clients"] = json!([{
             "tag": DIRECT_DOWNLOAD_HTTP_CLIENT_TAG,
-            "detour": "direct"
+            "detour": http_detour
         }]);
     }
     Ok(root_cfg)
@@ -15481,6 +15947,8 @@ fn build_clash_api_object(store: &RouterStoreData, ipv6_active: bool) -> Map<Str
 
 /// Build an emergency direct+DNS-only `tachyon-core` config when user config fails check/start.
 pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, false);
+    let ipv6_active = ipv6_state.is_active();
     let primary_inbound = match store.settings.proxy_mode.as_str() {
         "tun" => {
             let iface = store.settings.tun_interface.trim();
@@ -15504,7 +15972,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
         _ => json!({
             "type": "tproxy",
             "tag": "tproxy-in",
-            "listen": "::",
+            "listen": if ipv6_active { "::" } else { "0.0.0.0" },
             "listen_port": 1602,
             "tcp_fast_open": true,
             "udp_fragment": true
@@ -15524,6 +15992,11 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
     } else {
         "direct"
     };
+    let safe_default_mark: u32 = if store.settings.proxy_mode == "tun" {
+        8226
+    } else {
+        1073741824
+    };
     json!({
         "log": {
             "level": crate::store::normalize_core_log_level(&store.settings.log_level),
@@ -15535,15 +16008,13 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
                     "type": "udp",
                     "tag": "dns-bootstrap",
                     "server": "77.88.8.8",
-                    "server_port": 53,
-                    "detour": "direct"
+                    "server_port": 53
                 },
                 {
                     "type": "udp",
                     "tag": "dns-remote-1",
                     "server": "1.1.1.1",
-                    "server_port": 53,
-                    "detour": "direct"
+                    "server_port": 53
                 },
                 {
                     "type": "group",
@@ -15556,7 +16027,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
             ],
             "rules": [],
             "final": "dns-remote",
-            "strategy": "prefer_ipv4",
+            "strategy": if ipv6_active { "prefer_ipv4" } else { "ipv4_only" },
             "reverse_mapping": true
         },
         "endpoints": [],
@@ -15573,7 +16044,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
             "rule_set": [],
             "final": final_outbound,
             "auto_detect_interface": true,
-            "default_mark": 1073741824,
+            "default_mark": safe_default_mark,
             "default_domain_resolver": "dns-remote"
         },
         "experimental": {
@@ -16246,11 +16717,9 @@ fn collect_section_aaaa_noerror_dns_rules(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
-    section_matched_any: bool,
+    _section_matched_any: bool,
     out: &mut Vec<Value>,
 ) {
-    let before_len = out.len();
-
     if !sec.fully_routed_ips.is_empty() {
         let mut cidrs = resolve_device_targets_to_cidrs(&sec.fully_routed_ips);
         if !enable_ipv6 {
@@ -16288,9 +16757,22 @@ fn collect_section_aaaa_noerror_dns_rules(
         || !sec.domain_ip_lists.is_empty()
         || !sec.domains.is_empty()
         || !sec.user_domains.is_empty()
+        || !sec.geoip_codes.is_empty()
         || !sec.geosite_codes.is_empty()
         || !sec.source_ip_cidr.is_empty()
     {
+        let sec_eff_geoip_mode = if sec.geoip_mode.trim().is_empty() {
+            if is_section_bypass_or_direct(sec)
+                || sec.action == "block"
+                || sec.connection_type == "block"
+            {
+                "include".to_string()
+            } else {
+                "exclude".to_string()
+            }
+        } else {
+            sec.geoip_mode.clone()
+        };
         let synthetic = TrafficCondition {
             id: format!("inline-dns-{}", sec.id),
             enabled: true,
@@ -16304,7 +16786,7 @@ fn collect_section_aaaa_noerror_dns_rules(
             domains: sec.domains.clone(),
             user_domains: sec.user_domains.clone(),
             geoip_codes: sec.geoip_codes.clone(),
-            geoip_mode: sec.geoip_mode.clone(),
+            geoip_mode: sec_eff_geoip_mode,
             geosite_codes: sec.geosite_codes.clone(),
             client_ips: sec.source_ip_cidr.clone(),
             ..Default::default()
@@ -16322,9 +16804,7 @@ fn collect_section_aaaa_noerror_dns_rules(
         );
     }
 
-    if (out.len() == before_len && sec.condition_refs.is_empty() && !section_matched_any)
-        || sec.match_all
-    {
+    if sec.match_all {
         out.push(json!({
             "query_type": ["AAAA"],
             "action": "predefined",
@@ -17013,11 +17493,10 @@ fn collect_custom_dns_section_rules(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
-    section_matched_any: bool,
+    _section_matched_any: bool,
     expand_v4_mapped: bool,
     out: &mut Vec<Value>,
 ) {
-    let before = out.len();
     let mut tmp = Vec::new();
     collect_section_aaaa_noerror_dns_rules(
         sec,
@@ -17079,9 +17558,7 @@ fn collect_custom_dns_section_rules(
             out.push(wrapped);
         }
     }
-    if (out.len() == before && sec.condition_refs.is_empty() && !section_matched_any)
-        || sec.match_all
-    {
+    if sec.match_all {
         let mut fallback = json!({
             "action": "route",
             "server": server_tag
@@ -17745,12 +18222,29 @@ fn resolve_priority_tier_levels(sec: &RoutingSection, bal: &BalancerConfig) -> V
             return lvls;
         }
     }
-    bal.outbound_group_levels
+    let bal_lvls: Vec<String> = bal
+        .outbound_group_levels
         .iter()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(String::from)
-        .collect()
+        .collect();
+    if !bal_lvls.is_empty() {
+        return bal_lvls;
+    }
+    if !sec.outbound_group_refs.is_empty() {
+        return sec
+            .outbound_group_refs
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+    }
+    if !sec.outbound_group_ref.trim().is_empty() {
+        return vec![sec.outbound_group_ref.trim().to_string()];
+    }
+    Vec::new()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -17938,7 +18432,7 @@ fn resolve_balancer_filter_spec(
         } else {
             bal_mode
         },
-        detect_server_country: String::new(),
+        detect_server_country: bal.detect_server_country.clone(),
         include_prefixes: bal.include_prefixes.clone(),
         include_countries: bal.include_country_flags.clone(),
         include_outbounds: bal.include_servers.clone(),
@@ -18030,8 +18524,8 @@ fn filter_section_subscription_keywords(
 }
 
 fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec> {
-    let mode = sec.section_filter_mode.trim().to_ascii_lowercase();
-    if mode.is_empty() || matches!(mode.as_str(), "disabled" | "all") {
+    let raw_mode = sec.section_filter_mode.trim().to_ascii_lowercase();
+    if matches!(raw_mode.as_str(), "disabled" | "all") {
         return None;
     }
 
@@ -18050,34 +18544,62 @@ fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec>
     let mut exclude_regex = sec.section_exclude_regex.clone();
     push_legacy_pipe_or_regex(&mut exclude_regex, &sec.node_filter_deny);
 
-    let inc_params = !sec.include_protocols.is_empty()
-        || !sec.include_transports.is_empty()
-        || !sec.include_securities.is_empty();
-    let exc_params = !sec.exclude_protocols.is_empty()
-        || !sec.exclude_transports.is_empty()
-        || !sec.exclude_securities.is_empty();
+    let mut include_protocols = sec.section_include_protocols.clone();
+    push_unique_trimmed(&mut include_protocols, &sec.include_protocols);
+    let mut exclude_protocols = sec.section_exclude_protocols.clone();
+    push_unique_trimmed(&mut exclude_protocols, &sec.exclude_protocols);
+
+    let mut include_transports = sec.section_include_transports.clone();
+    push_unique_trimmed(&mut include_transports, &sec.include_transports);
+    let mut exclude_transports = sec.section_exclude_transports.clone();
+    push_unique_trimmed(&mut exclude_transports, &sec.exclude_transports);
+
+    let mut include_securities = sec.section_include_securities.clone();
+    push_unique_trimmed(&mut include_securities, &sec.include_securities);
+    let mut exclude_securities = sec.section_exclude_securities.clone();
+    push_unique_trimmed(&mut exclude_securities, &sec.exclude_securities);
+
+    let include_ports = sec.section_include_ports.clone();
+    let exclude_ports = sec.section_exclude_ports.clone();
+
+    let inc_params = sec.section_include_proxy_parameters
+        || !include_protocols.is_empty()
+        || !include_transports.is_empty()
+        || !include_securities.is_empty()
+        || !include_ports.is_empty();
+    let exc_params = sec.section_exclude_proxy_parameters
+        || !exclude_protocols.is_empty()
+        || !exclude_transports.is_empty()
+        || !exclude_securities.is_empty()
+        || !exclude_ports.is_empty();
+
+    let eff_mode = if raw_mode.is_empty() {
+        "mixed".to_string()
+    } else {
+        raw_mode
+    };
 
     let spec = ServerFilterSpec {
-        filter_mode: mode,
-        detect_server_country: String::new(),
+        filter_mode: eff_mode,
+        detect_server_country: sec.section_detect_server_country.clone(),
         include_prefixes,
         include_countries,
         include_outbounds: sec.section_include_outbounds.clone(),
         include_regex,
         include_proxy_parameters: inc_params,
-        include_protocols: sec.include_protocols.clone(),
-        include_transports: sec.include_transports.clone(),
-        include_securities: sec.include_securities.clone(),
-        include_ports: Vec::new(),
+        include_protocols,
+        include_transports,
+        include_securities,
+        include_ports,
         exclude_prefixes,
         exclude_countries,
         exclude_outbounds: sec.section_exclude_outbounds.clone(),
         exclude_regex,
         exclude_proxy_parameters: exc_params,
-        exclude_protocols: sec.exclude_protocols.clone(),
-        exclude_transports: sec.exclude_transports.clone(),
-        exclude_securities: sec.exclude_securities.clone(),
-        exclude_ports: Vec::new(),
+        exclude_protocols,
+        exclude_transports,
+        exclude_securities,
+        exclude_ports,
     };
 
     spec.has_any_rule().then_some(spec)
@@ -18199,7 +18721,7 @@ fn build_outbound_group_map_with_outbounds(
             } else {
                 raw_mode
             },
-            detect_server_country: String::new(),
+            detect_server_country: grp.detect_server_country.clone(),
             include_prefixes: grp.include_prefixes.clone(),
             include_countries: grp.include_country_flags.clone(),
             include_outbounds: grp.include_servers.clone(),
@@ -18324,16 +18846,13 @@ fn resolve_section_outbound(
         );
     }
     if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
-        let narrowed = apply_server_filter_spec(
+        candidate_tags = apply_server_filter_spec(
             &candidate_tags,
             &dash_spec,
             sources,
             source_tag_map,
             outbounds,
         );
-        if !narrowed.is_empty() {
-            candidate_tags = narrowed;
-        }
     }
 
     if candidate_tags.is_empty()
@@ -18586,7 +19105,7 @@ fn resolve_section_outbound(
             if !seen_outbound_tags.contains_key(&bal_tag) {
                 seen_outbound_tags.insert(bal_tag.clone(), true);
                 let bal_spec = resolve_balancer_filter_spec(sec, bal);
-                let bal_candidates = if let Some(ref spec) = bal_spec {
+                let mut bal_candidates = if let Some(ref spec) = bal_spec {
                     let filtered = apply_server_filter_spec(
                         &candidate_tags,
                         spec,
@@ -18602,7 +19121,21 @@ fn resolve_section_outbound(
                 } else {
                     candidate_tags.clone()
                 };
-                let (final_candidates, priority_tiers) = if pass_priority {
+                if !bal.balancer_pool.is_empty() {
+                    let pool_filtered: Vec<String> = bal_candidates
+                        .iter()
+                        .filter(|t| {
+                            bal.balancer_pool.iter().any(|p| {
+                                t.as_str() == p.trim() || server_filter_name_matches(t, p, &[])
+                            })
+                        })
+                        .cloned()
+                        .collect();
+                    if !pool_filtered.is_empty() {
+                        bal_candidates = pool_filtered;
+                    }
+                }
+                let (mut final_candidates, mut priority_tiers) = if pass_priority {
                     let levels = resolve_priority_tier_levels(sec, bal);
                     resolve_priority_balancer_outbounds(
                         &levels,
@@ -18617,9 +19150,48 @@ fn resolve_section_outbound(
                 } else {
                     (bal_candidates, Vec::new())
                 };
+                if crate::store::is_fail_closed_section(sec) {
+                    final_candidates.retain(|t| t != "direct");
+                    for tier in &mut priority_tiers {
+                        tier.retain(|t| t != "direct");
+                    }
+                    priority_tiers.retain(|tier| !tier.is_empty());
+                }
+                let mut bal_clone = bal.clone();
+                if crate::store::is_fail_closed_section(sec)
+                    && bal_clone
+                        .fallback_section
+                        .trim()
+                        .eq_ignore_ascii_case("direct")
+                {
+                    bal_clone.fallback_section.clear();
+                } else if !bal_clone.fallback_section.trim().is_empty() {
+                    let fb_key = bal_clone.fallback_section.trim().to_string();
+                    if let Some(child_sec) = sec_map.get(fb_key.as_str()).copied()
+                        && child_sec.enabled
+                        && !visited.contains(&child_sec.id)
+                    {
+                        let resolved_fb = resolve_section_outbound(
+                            child_sec,
+                            sources,
+                            source_tag_map,
+                            group_tag_map,
+                            sec_map,
+                            bal_map,
+                            outbounds,
+                            endpoints,
+                            ts_dns_metas,
+                            seen_outbound_tags,
+                            visited,
+                        );
+                        if !resolved_fb.is_empty() {
+                            bal_clone.fallback_section = resolved_fb;
+                        }
+                    }
+                }
                 outbounds.push(build_balancer_outbound(
                     &bal_tag,
-                    bal,
+                    &bal_clone,
                     final_candidates,
                     &priority_tiers,
                 ));
@@ -18834,7 +19406,19 @@ fn build_balancer_outbound(
             &bal.idle_timeout
         }),
     );
+    if !bal.passive_check {
+        obj.insert("passive_check".into(), json!(false));
+    }
+    if bal.check_interval_jitter > 0 {
+        obj.insert(
+            "interval_jitter".into(),
+            json!(format!("{}%", bal.check_interval_jitter)),
+        );
+    }
     let mut balancer_opts = Map::new();
+    if !bal.balancer_pool.is_empty() {
+        balancer_opts.insert("balancer_pool".into(), json!(bal.balancer_pool));
+    }
     if effective_mode == "sticky" {
         balancer_opts.insert(
             "sticky_hash".into(),
@@ -19046,16 +19630,13 @@ pub fn build_all_section_balancer_caches(
             );
         }
         if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
-            let narrowed = apply_server_filter_spec(
+            candidate_tags = apply_server_filter_spec(
                 &candidate_tags,
                 &dash_spec,
                 &store.outbound_sources,
                 &source_tag_map,
                 &outbounds,
             );
-            if !narrowed.is_empty() {
-                candidate_tags = narrowed;
-            }
         }
 
         let active_balancers: Vec<&BalancerConfig> = sec
@@ -19077,7 +19658,7 @@ pub fn build_all_section_balancer_caches(
                 let bal_tag = format!("bal-{}-{}", sec.id, bal.id);
                 built_tags_by_id.insert(bal.id.as_str(), bal_tag.clone());
                 let bal_spec = resolve_balancer_filter_spec(sec, bal);
-                let bal_candidates = if let Some(ref spec) = bal_spec {
+                let mut bal_candidates = if let Some(ref spec) = bal_spec {
                     let filtered = apply_server_filter_spec(
                         &candidate_tags,
                         spec,
@@ -19093,6 +19674,20 @@ pub fn build_all_section_balancer_caches(
                 } else {
                     candidate_tags.clone()
                 };
+                if !bal.balancer_pool.is_empty() {
+                    let pool_filtered: Vec<String> = bal_candidates
+                        .iter()
+                        .filter(|t| {
+                            bal.balancer_pool.iter().any(|p| {
+                                t.as_str() == p.trim() || server_filter_name_matches(t, p, &[])
+                            })
+                        })
+                        .cloned()
+                        .collect();
+                    if !pool_filtered.is_empty() {
+                        bal_candidates = pool_filtered;
+                    }
+                }
 
                 let bal_display_name = if bal.name.trim().is_empty() {
                     bal.id.clone()
@@ -19582,17 +20177,18 @@ fn register_ruleset_reference(
     }
     if is_community_list_token(clean) {
         let clean_lc = clean.to_ascii_lowercase();
-        if clean_lc == "telegram" {
+        let canonical = resolve_tachyon_list_canonical_name(&clean_lc, is_low_ram_device());
+        if canonical == "telegram" {
             *has_telegram = true;
         }
-        if clean_lc == "discord" {
+        if canonical == "discord" {
             *has_discord = true;
         }
         register_remote_ruleset(
             rs_tags,
             format!("trs-{clean_lc}"),
             format!(
-                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_lc}.trs"
+                "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             ),
             "6h",
             github_mirror,
@@ -19600,13 +20196,13 @@ fn register_ruleset_reference(
             seen_rule_sets,
         );
         if with_subnets
-            && clean_lc != "telegram"
-            && clean_lc != "discord"
-            && community_service_has_subnet_list(&clean_lc)
+            && canonical != "telegram"
+            && canonical != "discord"
+            && community_service_has_subnet_list(&canonical)
         {
             ensure_community_subnet_ruleset(
                 rs_tags,
-                &clean_lc,
+                &canonical,
                 rulesets_dir,
                 rule_sets,
                 seen_rule_sets,
@@ -19790,6 +20386,8 @@ fn collect_atomic_condition_parts_with_tables(
     }
 
     let mut rs_tags = Vec::new();
+    let mut ru_domain_tags = Vec::new();
+    let mut extra_ru_suffixes: Vec<&'static str> = Vec::new();
     let mut excluded_geoip_rule_sets = Vec::new();
     let geoip_inverted = geoip_mode_inverts(&cond.geoip_mode);
     let mut has_telegram = false;
@@ -19797,23 +20395,25 @@ fn collect_atomic_condition_parts_with_tables(
     let mut has_telegram_with_subnets = false;
     let mut has_discord_with_subnets = false;
     let mut unresolved_ruleset_refs = false;
+    let low_ram = is_low_ram_device();
     for list_name in &cond.community_lists {
         let clean = list_name.trim();
         if clean.is_empty() {
             continue;
         }
         let clean_lc = clean.to_ascii_lowercase();
-        if clean_lc == "telegram" {
+        let canonical = resolve_tachyon_list_canonical_name(&clean_lc, low_ram);
+        if canonical == "telegram" {
             has_telegram = true;
         }
-        if clean_lc == "discord" {
+        if canonical == "discord" {
             has_discord = true;
         }
         register_remote_ruleset(
             &mut rs_tags,
             format!("trs-{clean_lc}"),
             format!(
-                "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/{clean_lc}.trs"
+                "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/{canonical}.trs"
             ),
             "6h",
             github_mirror,
@@ -19821,13 +20421,13 @@ fn collect_atomic_condition_parts_with_tables(
             seen_rule_sets,
         );
         if cond.community_subnets
-            && clean_lc != "telegram"
-            && clean_lc != "discord"
-            && community_service_has_subnet_list(&clean_lc)
+            && canonical != "telegram"
+            && canonical != "discord"
+            && community_service_has_subnet_list(&canonical)
         {
             ensure_community_subnet_ruleset(
                 &mut rs_tags,
-                &clean_lc,
+                &canonical,
                 rulesets_dir,
                 rule_sets,
                 seen_rule_sets,
@@ -19835,7 +20435,7 @@ fn collect_atomic_condition_parts_with_tables(
             );
         }
     }
-    for rset in &cond.rule_set {
+    for rset in cond.rule_set.iter().chain(cond.remote_domain_lists.iter()) {
         if !register_ruleset_reference(
             rset,
             false,
@@ -19867,7 +20467,11 @@ fn collect_atomic_condition_parts_with_tables(
             unresolved_ruleset_refs = true;
         }
     }
-    for dlist in &cond.domain_ip_lists {
+    for dlist in cond
+        .domain_ip_lists
+        .iter()
+        .chain(cond.remote_subnet_lists.iter())
+    {
         if !register_ruleset_reference(
             dlist,
             false,
@@ -19888,22 +20492,39 @@ fn collect_atomic_condition_parts_with_tables(
         if clean.is_empty() {
             continue;
         }
-        let target_tags = if geoip_inverted {
+        let (norm_code, eff_inverted) = if clean == "non-ru" {
+            ("ru", !geoip_inverted)
+        } else {
+            (clean.as_str(), geoip_inverted)
+        };
+        let target_tags = if eff_inverted {
             &mut excluded_geoip_rule_sets
         } else {
             &mut rs_tags
         };
         register_remote_ruleset(
             target_tags,
-            format!("geoip-{clean}"),
+            format!("geoip-{norm_code}"),
             format!(
-                "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{clean}.srs"
+                "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/{norm_code}.srs"
             ),
             "24h",
             github_mirror,
             rule_sets,
             seen_rule_sets,
         );
+        if !eff_inverted && norm_code == "ru" {
+            register_remote_ruleset(
+                &mut ru_domain_tags,
+                "trs-ru_domains".to_string(),
+                "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_domains.trs".to_string(),
+                "6h",
+                github_mirror,
+                rule_sets,
+                seen_rule_sets,
+            );
+            extra_ru_suffixes.extend(["ru", "su", "xn--p1ai"]);
+        }
     }
     for code in &cond.geosite_codes {
         let clean = code.trim().to_ascii_lowercase();
@@ -19922,6 +20543,11 @@ fn collect_atomic_condition_parts_with_tables(
             seen_rule_sets,
         );
     }
+    if !ru_domain_tags.is_empty() {
+        let mut b = Map::new();
+        b.insert("rule_set".into(), json!(ru_domain_tags));
+        branches.push(b);
+    }
     if !rs_tags.is_empty() {
         let mut b = Map::new();
         b.insert("rule_set".into(), json!(rs_tags));
@@ -19930,6 +20556,9 @@ fn collect_atomic_condition_parts_with_tables(
 
     let mut exact_domains = Vec::new();
     let mut suffix_domains = Vec::new();
+    for sfx in extra_ru_suffixes {
+        push_unique_str(&mut suffix_domains, sfx);
+    }
     let mut keyword_domains = Vec::new();
     let mut regex_domains = Vec::new();
     for raw in cond.domains.iter().chain(cond.user_domains.iter()) {
@@ -30414,5 +31043,208 @@ proxies:
         assert_eq!(built_oj[1].1["private_key"], "USQUE_PRIV==");
         assert_eq!(built_oj[1].1["public_key"], "PUBDERDATA==");
         assert_eq!(built_oj[1].1["ip"], "172.16.0.3/32");
+    }
+
+    #[test]
+    fn test_rc4_config_gen_dns_no_detour_and_ru_bypass_before_proxy() {
+        let mut store = make_bypass_before_match_all_store(true);
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec!["1.1.1.1/dns-query".to_string()];
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string()];
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_all".to_string(),
+                enabled: true,
+                label: "All Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                match_all: true,
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_ru_bypass".to_string(),
+                enabled: true,
+                label: "RU Direct".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "bypass".to_string(),
+                geoip_codes: vec!["ru".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile");
+        for srv in cfg["dns"]["servers"].as_array().unwrap() {
+            assert!(
+                srv.get("detour").is_none(),
+                "DNS server {} must not hardcode detour:direct: {:?}",
+                srv["tag"],
+                srv
+            );
+        }
+
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let idx_ru_suffix = rules
+            .iter()
+            .position(|r| {
+                r["domain_suffix"] == json!(["ru", "su", "xn--p1ai"]) && r["outbound"] == "direct"
+            })
+            .expect("RU TLD domain_suffix direct rule");
+        let idx_ru_trs = rules
+            .iter()
+            .position(|r| r["rule_set"] == json!(["trs-ru_domains"]) && r["outbound"] == "direct")
+            .expect("trs-ru_domains direct rule");
+        let idx_geoip = rules
+            .iter()
+            .position(|r| r["rule_set"] == json!(["geoip-ru"]) && r["outbound"] == "direct")
+            .expect("geoip-ru direct rule");
+        let idx_proxy = rules
+            .iter()
+            .position(|r| r["outbound"] == "ProxyNode" && r.get("inbound").is_none())
+            .expect("match_all proxy rule");
+        assert!(idx_ru_suffix < idx_proxy);
+        assert!(idx_ru_trs < idx_proxy);
+        assert!(idx_geoip < idx_proxy);
+
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+        let ru_dom_rs = rule_sets
+            .iter()
+            .find(|rs| rs["tag"] == "trs-ru_domains")
+            .expect("trs-ru_domains rule_set");
+        assert_eq!(
+            ru_dom_rs["url"],
+            "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon/ru_domains.trs"
+        );
+    }
+
+    #[test]
+    fn test_rc4_empty_section_no_catchall_selective_tproxy_tun_quic_bittorrent_and_filters() {
+        let mut store = make_bypass_before_match_all_store(true);
+        store.settings.selective_tproxy = true;
+        store.settings.routing_strategy = "split".to_string();
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.tun_auto_route = false;
+        store.settings.tun_gso = true;
+        store.settings.tun_endpoint_independent_nat = true;
+        store.settings.tun_udp_timeout = "120s".to_string();
+        store.settings.disable_quic_mode = "tunneled".to_string();
+        store.settings.bittorrent_policy = "block".to_string();
+        store.settings.p2p_ports = "6881-6889".to_string();
+        store.settings.wifi_calling_direct = true;
+        store.outbound_sources = vec![
+            OutboundSource {
+                id: "s_de".to_string(),
+                enabled: true,
+                name: "DE Source".to_string(),
+                source_type: "urls".to_string(),
+                proxy_links: vec![
+                    "vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443#%F0%9F%87%A9%F0%9F%87%AA%20%D0%93%D0%B5%D1%80%D0%BC%D0%B0%D0%BD%D0%B8%D1%8F%20Node%201".to_string(),
+                ],
+                ..Default::default()
+            },
+            OutboundSource {
+                id: "s_nl".to_string(),
+                enabled: true,
+                name: "NL Source".to_string(),
+                source_type: "urls".to_string(),
+                proxy_links: vec![
+                    "trojan://secret@198.51.100.2:443#%F0%9F%87%B3%F0%9F%87%B1%20%D0%9D%D0%B8%D0%B4%D0%B5%D1%80%D0%BB%D0%B0%D0%BD%D0%B4%D1%8B%20Node%202".to_string(),
+                ],
+                ..Default::default()
+            },
+        ];
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_empty".to_string(),
+                enabled: true,
+                label: "Empty Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["s_de".to_string()],
+                match_all: false,
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_filtered".to_string(),
+                enabled: true,
+                label: "Filtered".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["s_de".to_string(), "s_nl".to_string()],
+                community_lists: vec!["russia_outside".to_string()],
+                section_filter_mode: "only".to_string(),
+                section_include_countries: vec!["NL".to_string()],
+                section_include_proxy_parameters: true,
+                section_include_protocols: vec!["trojan".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg_tun = compile_core_config_with_wan6(&store, false).expect("compile tun");
+        let inbounds = cfg_tun["inbounds"].as_array().unwrap();
+        let tun_in = inbounds
+            .iter()
+            .find(|i| i["type"] == "tun")
+            .expect("tun-in");
+        assert_eq!(tun_in["auto_route"], false);
+        assert_eq!(tun_in["strict_route"], false);
+        assert_eq!(tun_in["gso"], true);
+        assert_eq!(tun_in["endpoint_independent_nat"], true);
+        assert_eq!(tun_in["udp_timeout"], "120s");
+
+        store.settings.proxy_mode = "tproxy".to_string();
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile tproxy");
+
+        let route_rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(!route_rules.iter().any(|r| {
+            r["outbound"] == "🇳🇱 Нидерланды Node 2"
+                && r.get("rule_set").is_none()
+                && r.get("domain").is_none()
+                && r.get("domain_suffix").is_none()
+                && r.get("ip_cidr").is_none()
+                && r.get("inbound").is_none()
+        }));
+        assert!(
+            route_rules
+                .iter()
+                .any(|r| { r["protocol"] == json!(["bittorrent"]) && r["action"] == "reject" })
+        );
+        assert!(
+            route_rules
+                .iter()
+                .any(|r| { r["port"] == json!([500, 4500]) && r["outbound"] == "direct" })
+        );
+        assert!(route_rules.iter().any(|r| {
+            r["network"] == "udp"
+                && r["port"] == json!([443])
+                && r["action"] == "reject"
+                && r["rule_set"] == json!(["trs-russia_outside"])
+        }));
+        assert!(route_rules.iter().any(|r| {
+            r["rule_set"] == json!(["trs-russia_outside"])
+                && r["outbound"] == "🇳🇱 Нидерланды Node 2"
+        }));
+
+        let dns_rules = cfg["dns"]["rules"].as_array().unwrap();
+        let fake_idx = dns_rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("scoped dns-fakeip rule");
+        assert!(dns_rules[fake_idx].get("rule_set").is_some());
+        assert_eq!(cfg["dns"]["final"], "dns-remote");
+
+        assert!(server_filter_name_matches(
+            "Frankfurt [VLESS]",
+            "Frankfurt",
+            &[]
+        ));
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("russia_outside", true),
+            "ru_blocked"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("ru_blocked_all", true),
+            "ru_blocked"
+        );
     }
 }

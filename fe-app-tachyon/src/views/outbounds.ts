@@ -11,6 +11,7 @@
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE || 'tachyon';
 const SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+const TMP_SUB_CACHE_DIR = '/tmp/tachyon-core/subscriptions';
 
 function _tr(ru, en) {
   const envLang =
@@ -248,6 +249,7 @@ function loadGlobalPoolChoices() {
     .map((s) => s['.name'])
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes('Main')) secNames.unshift('Main');
+  if (!secNames.includes('_sources')) secNames.unshift('_sources');
 
   const readSectionCaches = () =>
     (typeof fs.list === 'function'
@@ -278,41 +280,59 @@ function loadGlobalPoolChoices() {
     });
 
   const readSubCaches = () =>
-    fs
-      .list(SUB_CACHE_DIR)
-      .catch(() => [])
-      .then((entries) => {
-        const list = Array.isArray(entries) ? entries : [];
-        const jsonBases = [];
-        const urlFileSet = new Set();
-        const mtimeMap = new Map();
+    Promise.all([
+      fs.list(SUB_CACHE_DIR).catch(() => []),
+      fs.list(TMP_SUB_CACHE_DIR).catch(() => []),
+    ])
+      .then(([etcEntries, tmpEntries]) => {
+        const mergedEntries = [
+          ...(Array.isArray(etcEntries)
+            ? etcEntries.map((e) => ({ dir: SUB_CACHE_DIR, ent: e }))
+            : []),
+          ...(Array.isArray(tmpEntries)
+            ? tmpEntries.map((e) => ({ dir: TMP_SUB_CACHE_DIR, ent: e }))
+            : []),
+        ];
+        const jsonBaseMap = new Map();
+        const urlDirByBase = new Map();
+        const linkDirByBase = new Map();
 
-        list.forEach((ent) => {
+        mergedEntries.forEach(({ dir, ent }) => {
           const fname = String((ent && ent.name) || '');
           if (fname.endsWith('.url')) {
-            urlFileSet.add(fname.slice(0, -4));
+            urlDirByBase.set(fname.slice(0, -4), dir);
+          } else if (fname.endsWith('.links')) {
+            linkDirByBase.set(fname.slice(0, -6), dir);
           } else if (
             fname.endsWith('.json') &&
             !fname.endsWith('.metadata.json') &&
             fname.includes('-subscription-')
           ) {
             const base = fname.slice(0, -5);
-            jsonBases.push(base);
-            mtimeMap.set(base, Number(ent.mtime || 0));
+            const mtime = Number(ent.mtime || 0);
+            const prev = jsonBaseMap.get(base);
+            if (!prev || mtime >= prev.mtime) {
+              jsonBaseMap.set(base, { base, dir, mtime });
+            }
           }
         });
 
+        const jsonInfos = Array.from(jsonBaseMap.values());
         return Promise.all(
-          jsonBases.map((base) =>
-            (urlFileSet.has(base)
-              ? readTextSafe(`${SUB_CACHE_DIR}/${base}.url`)
-              : Promise.resolve('')
+          jsonInfos.map((ji) => {
+            const uDir = urlDirByBase.get(ji.base);
+            return (
+              uDir
+                ? readTextSafe(`${uDir}/${ji.base}.url`)
+                : Promise.resolve('')
             ).then((u) => ({
-              base,
+              base: ji.base,
+              dir: ji.dir,
+              linksDir: linkDirByBase.get(ji.base) || ji.dir,
               url: u.trim(),
-              mtime: mtimeMap.get(base) || 0,
-            })),
-          ),
+              mtime: ji.mtime,
+            }));
+          }),
         ).then((baseInfos) => {
           // Deduplicate by URL (keep newest mtime) so we don't read duplicate section copies
           const chosenByKey = new Map();
@@ -327,8 +347,8 @@ function loadGlobalPoolChoices() {
           return Promise.all(
             chosen.map((info) =>
               Promise.all([
-                readJsonSafe(`${SUB_CACHE_DIR}/${info.base}.json`),
-                readTextSafe(`${SUB_CACHE_DIR}/${info.base}.links`),
+                readJsonSafe(`${info.dir}/${info.base}.json`),
+                readTextSafe(`${info.linksDir}/${info.base}.links`),
               ]).then(([data, linksText]) => ({
                 base: info.base,
                 url: info.url,
@@ -5717,7 +5737,7 @@ function createOutboundsContent(section) {
       );
     }
     const stored = uci.get(UCI_PACKAGE, sectionId, 'server_port');
-    return stored != null && stored !== ''
+    return stored != null && stored !== '' && String(stored) !== '0'
       ? String(stored)
       : String(this.default || '443');
   };
