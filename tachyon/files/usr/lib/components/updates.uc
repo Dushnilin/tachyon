@@ -96,6 +96,7 @@ const BUILTIN_SUBNET_URLS = {
     callofduty: [ getenv("SUBNETS_CALLOFDUTY") || TACHYON_LISTS_SUBNETS_BASE + "/callofduty.lst" ],
     game_backends: [ getenv("SUBNETS_GAME_BACKENDS") || TACHYON_LISTS_SUBNETS_BASE + "/game_backends.lst" ],
     cs2_dota2: [ getenv("SUBNETS_CS2_DOTA2") || TACHYON_LISTS_SUBNETS_BASE + "/cs2_dota2.lst" ],
+    playstation: [ getenv("SUBNETS_PLAYSTATION") || TACHYON_LISTS_SUBNETS_BASE + "/playstation.lst" ],
     doh_dot_dns: [ getenv("SUBNETS_DOH_DOT_DNS") || TACHYON_LISTS_SUBNETS_BASE + "/doh_dot_dns.lst" ],
     vps_clouds: [ getenv("SUBNETS_VPS_CLOUDS") || TACHYON_LISTS_SUBNETS_BASE + "/vps_clouds.lst" ],
     et_spamhaus_block: [ getenv("SUBNETS_ET_SPAMHAUS_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/et_spamhaus_block.lst" ],

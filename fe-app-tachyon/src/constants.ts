@@ -28,6 +28,8 @@ export const DOMAIN_LIST_OPTIONS = {
   ru_only_inside: 'Только из РФ (Direct)',
   push: 'Push-уведомления (Direct)',
   steam_cdn: 'Steam CDN и загрузка игр (Direct)',
+  consoles_cdn:
+    'CDN загрузок приставок: Xbox, PSN, Nintendo, Quest, SteamOS (Direct)',
   captive_ntp_stun: 'Captive Portal, NTP и STUN (Direct)',
   ai_all: 'Нейросети и ИИ (все)',
   openai: 'OpenAI (ChatGPT / Sora)',
@@ -76,6 +78,7 @@ export const DOMAIN_LIST_OPTIONS = {
   google_meet: 'Google Meet',
   linkedin: 'LinkedIn, Glassdoor и Indeed',
   games_all: 'Игры и лаунчеры (все)',
+  consoles_all: 'Игровые приставки (все: Xbox, PSN, Nintendo, VR)',
   steam: 'Steam',
   cs2_dota2: 'Valve Matchmaking (CS2, Dota 2, Deadlock и SDR)',
   epicgames: 'Epic Games (Fortnite / Unreal)',
@@ -85,10 +88,14 @@ export const DOMAIN_LIST_OPTIONS = {
   callofduty: 'Call of Duty и Demonware (Warzone / Black Ops 6)',
   riot: 'Riot Games (Valorant / LoL)',
   origin: 'EA / Origin (EA App / Apex / BF)',
-  xbox: 'Xbox Live, Game Pass и Bethesda',
-  playstation: 'PlayStation Network (PSN / PS5 / PS4)',
-  nintendo: 'Nintendo Switch (eShop / Switch Online)',
-  meta_quest: 'Meta Quest (Oculus) и Pico VR',
+  xbox: 'Xbox Live, Game Pass, вход Microsoft и Bethesda',
+  playstation: 'PlayStation Network (PSN / PS5 / PS4 / Portal + AS33353)',
+  nintendo: 'Nintendo Switch / Switch 2 (eShop / Switch Online / NPLN)',
+  handheld_consoles:
+    'Портативные приставки и эмуляторы (Steam Deck, ROG Ally, RetroArch)',
+  console_homebrew:
+    'Ретро-сети и Homebrew приставок (Pretendo, Wiimmfi, Insignia, CFW)',
+  meta_quest: 'VR-гарнитуры (Meta Quest, Pico VR, HTC Vive, Pimax)',
   gog: 'GOG и CD Projekt RED (Cyberpunk / Ведьмак)',
   wargaming: 'Wargaming (World of Tanks / Warships EU)',
   hoyoverse: 'HoYoverse и Kuro Games (Genshin / HSR / ZZZ)',
@@ -135,6 +142,8 @@ export const DOMAIN_LIST_OPTIONS = {
   smarthome_iot:
     'Умный дом и 3D-печать (Home Assistant, Bambu Lab, Tuya, Aqara)',
   smarttv_apps: 'Smart TV: Samsung Tizen и LG webOS (Smart Hub и магазины ТВ)',
+  tv_boxes:
+    'ТВ-приставки и медиаплееры (Apple TV, Android TV, Shield, Fire TV, Roku)',
   smart_cars:
     'Умные автомобили и электрокары (LiXiang, Zeekr, BYD, Voyah, Tesla)',
   hodca: 'Центры сертификации SSL/TLS (CA)',
@@ -209,6 +218,8 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   push: '[Маршрут: Напрямую (Direct)] Серверы мобильных и системных push-уведомлений: Apple APNs, Google FCM, Huawei, Xiaomi, Samsung, Windows WNS',
   steam_cdn:
     '[Маршрут: Напрямую (Direct) — ставить ВЫШЕ правила Steam!] Контент-серверы скачивания игр и обновлений Steam (steamcontent.com, steampipe.akamaized.net, dl.steam.ksyna.com, steamserver.net) и других игровых лаунчеров. Поставьте этот список в Direct выше основного списка Steam (Proxy): магазин, смена региона, инвентарь и торговая площадка будут работать через VPN, а 100-гигабайтные игры будут качаться напрямую на полной скорости вашего провайдера!',
+  consoles_cdn:
+    '[Маршрут: Напрямую (Direct) — ставить выше правил приставок] Выделенные серверы загрузки дистрибутивов игр, патчей и прошивок для консолей: Xbox (assets1/2.xboxlive.com, xvcf1/2.xboxlive.com), PlayStation (dl.playstation.net, update.playstation.net), Nintendo (ctest.cdn.nintendo.net, d4c.nintendo.net), Meta Quest (oculuscdn.com) и Steam Deck (steamos.cloud)',
   captive_ntp_stun:
     '[Маршрут: Напрямую (Direct)] Системные домены проверки наличия интернета на iOS, Android, Windows и macOS (captive.apple.com, connectivitycheck.gstatic.com, msftconnecttest.com), серверы синхронизации точного времени NTP (pool.ntp.org, time.cloudflare.com — критично для запуска VLESS/Reality и WireGuard на роутерах без RTC!) и публичные STUN-серверы',
   ai_all:
@@ -300,6 +311,8 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: В Прокси / VPN] Профессиональная соцсеть LinkedIn (linkedin.com, licdn.com, lnkd.in, slideshare.net), заблокированная в РФ, а также международные карьерные порталы Glassdoor, Indeed, Wellfound и Levels.fyi',
   games_all:
     '[Маршрут: В Прокси / VPN или Direct] Единый сводный список всех популярных игровых лаунчеров, магазинов, античитов (BattlEye, EasyAntiCheat) и серверов: Steam, Epic Games, Ubisoft Connect, War Thunder / Gaijin, Battle.net / Blizzard, EA App / Origin, Riot Games, Xbox Live, PlayStation Network, Nintendo, GOG, Wargaming, HoYoverse, Minecraft, Rockstar, Roblox, Supercell, Escape from Tarkov, FACEIT и PUBG',
+  consoles_all:
+    '[Маршрут: В Прокси / VPN] Единый сводный список доменов всех основных игровых консолей и VR-шлемов без ПК-лаунчеров: Xbox Live и Game Pass (включая вход Microsoft), PlayStation Network (PSN / Sony Account / Remote Play), Nintendo Switch и Switch 2 (eShop, Switch Online, NPLN) и VR-экосистемы (Meta Quest, Pico VR, HTC Vive, Pimax)',
   steam:
     '[Маршрут: Напрямую (Direct) или в Прокси для смены региона магазина] Магазин, сообщество, инвентарь, чат и CDN загрузок Valve (steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com)',
   cs2_dota2:
@@ -317,13 +330,17 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   riot: '[Маршрут: В Прокси / VPN или Direct] Valorant, League of Legends, TFT, Riot Client и Vanguard (riotgames.com, playvalorant.com, leagueoflegends.com, pvp.net)',
   origin:
     '[Маршрут: В Прокси / VPN] EA App, Origin, Apex Legends, Battlefield, EA Sports FC и Sims (ea.com, origin.com, tnt-ea.com, apexlegends.com)',
-  xbox: '[Маршрут: В Прокси / VPN] Экосистема Xbox и игровых студий Microsoft / Bethesda: xbox.com, xboxlive.com, gamepass.com, xboxservices.com, forzamotorsport.net, halowaypoint.com, seaofthieves.com, flightsimulator.com, bethesda.net',
+  xbox: '[Маршрут: В Прокси / VPN] Экосистема Xbox и игровых студий Microsoft / Bethesda: xbox.com, xboxlive.com, xboxlive.net, gamepass.com, xboxservices.com, xboxcloudgaming.com, домены входа Microsoft для консоли (login.live.com, account.live.com, account.microsoft.com, login.microsoftonline.com, msauth.net), Forza, Halo, Sea of Thieves, Flight Simulator и Bethesda',
   playstation:
-    '[Маршрут: В Прокси / VPN] Сетевые сервисы Sony PlayStation: playstation.com, playstation.net, playstationnetwork.com, sonyentertainmentnetwork.com, CDN загрузок dl.playstation.net, а также Bungie / Helldivers 2',
+    '[Маршрут: В Прокси / VPN] Сетевые сервисы и подсети Sony Interactive Entertainment (AS33353): playstation.com, playstation.net, playstationnetwork.com, sonyentertainmentnetwork.com, авторизация ca.account.sony.com / my.account.sony.com, Remote Play и Cloud Streaming (gaikai.com, playstation-cloud.com), CDN dl.playstation.net и студии PSN',
   nintendo:
-    '[Маршрут: В Прокси / VPN] Все домены консолей Nintendo Switch, магазина eShop, подписки Nintendo Switch Online и игр Pokémon / Zelda / Mario / Splatoon (nintendo.com, nintendo.net, nintendowifi.net, pokemon.com)',
+    '[Маршрут: В Прокси / VPN] Все домены консолей Nintendo Switch, Switch 2, Wii U и 3DS: магазин eShop, подписка Nintendo Switch Online, серверы мультиплеера NPLN/NEX (nintendo.net, nintendowifi.net, nintendonetwork.net), аккаунты accounts.nintendo.com и серии Pokémon, Zelda, Mario, Splatoon, Metroid и Xenoblade',
+  handheld_consoles:
+    '[Маршрут: В Прокси / VPN] Портативные консоли и эмуляция: образы и репозитории Steam Deck / SteamOS (steamos.cloud, flathub.org, decky.xyz, protondb.com), ASUS ROG Ally, Lenovo Legion Go, Ayaneo, GPD, Anbernic, Retroid, AYN, ОС Bazzite / Batocera / ROCKNIX / muOS / OnionOS и эмуляторы (RetroArch, EmuDeck, RPCS3, Ryujinx, Dolphin, PCSX2, Cemu, PPSSPP, RetroAchievements)',
+  console_homebrew:
+    '[Маршрут: В Прокси / VPN] Альтернативные онлайн-серверы и сообщества энтузиастов для классических и модифицированных приставок: Pretendo Network (Wii U / 3DS), Wiimmfi и RiiConnect24 (Wii / DS), Insignia (Xbox Live), PSone / PSRewired, руководства hacks.guide, Switch/WiiU/3DS homebrew (switchbrew.org, hshop.erista.me, tinfoil.io, fortheusers.org) и PlayStation HEN/патчи (ps3xploit.me, nopaystation.com, orbispatches.com)',
   meta_quest:
-    '[Маршрут: Только в Прокси / VPN — обязательно для работы Meta Quest в РФ] Выделенный список доменов VR-экосистемы Meta Quest 2 / 3 / 3S / Pro (oculus.com, oculuscdn.com, meta.com, graph.oculus.com, securecdn.oculus.com), Pico VR (picoxr.com) и SideQuest. Позволяет активировать шлем, обновлять прошивку Horizon OS и скачивать игры на полной скорости, не проксируя весь остальной трафик Instagram/Facebook',
+    '[Маршрут: В Прокси / VPN — требуется для активации и магазина VR] Домены VR-шлемов и сопутствующего ПО: Meta Quest 2 / 3 / 3S / Pro (oculus.com, oculuscdn.com, meta.com), Pico VR (picoxr.com, pico-interactive.com), HTC Vive и Viveport (vive.com, viveport.com), Pimax, DPVR, Varjo, SideQuest, Bigscreen, Virtual Desktop, ALVR и трекеры SlimeVR',
   gog: '[Маршрут: В Прокси / VPN] Домены магазина без DRM GOG.com, клиента GOG Galaxy и студий CD Projekt RED (gog.com, gogalaxy.com, gog-statics.com, cdprojektred.com, cyberpunk.net, thewitcher.com)',
   wargaming:
     '[Маршрут: В Прокси / VPN] Европейские и глобальные серверы Wargaming.net, лаунчер Wargaming Game Center, World of Tanks, World of Warships и WoT Blitz (wargaming.net, worldoftanks.eu, worldofwarships.eu, wotblitz.com)',
@@ -398,6 +415,8 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: В Прокси / VPN] Облачные сервисы и репозитории умного дома и 3D-принтеров: облако 3D-печати Bambu Lab / MakerWorld (bambulab.com, bblmw.com, makerworld.com — отправка печати из Bambu Studio и видео с камеры через AWS часто фильтруются на транзитных узлах!), Creality Cloud, Prusa; экосистема Home Assistant и Nabu Casa (home-assistant.io, nabu.casa, esphome.io, zigbee2mqtt.io); глобальные облака Tuya / Smart Life, eWeLink (Sonoff), Aqara, Roborock, Dreame и Philips Hue',
   smarttv_apps:
     '[Маршрут: Только в Прокси / VPN (на нужный регион при настройке/активации ТВ)] Серверы проверки геолокации, активации Smart Hub и каталогов приложений телевизоров Samsung Smart TV (Tizen OS: samsungcloudsolution.com, samsungotn.net, samsungqbe.com, samsungosp.com) и LG Smart TV (webOS / LG Content Store: lgappstv.com, lgtvsdp.com, lgtvcommon.com). Незаменимо для разблокировки «серых» телевизоров параллельного импорта',
+  tv_boxes:
+    '[Маршрут: В Прокси / VPN или Direct] Серверы лаунчеров, прошивок и системных приложений ТВ-приставок и медиаплееров: Apple TV / tvOS (tv.apple.com, firecore.com Infuse), Android TV / Google TV / Chromecast (androidtvlauncherx-pa.googleapis.com, chromecast.com), NVIDIA Shield TV (shield.nvidia.com, ota.nvidia.com), Amazon Fire TV, Roku (roku.com, rokutime.com), а также медиаплееры Plex, Kodi, Dune HD, Zidoo, Ugoos, Homatics, Formuler и TiviMate',
   smart_cars:
     '[Маршрут: Напрямую (Direct) или в китайский/целевой прокси] Серверы телематики, OTA-обновлений, мастер-аккаунтов и штатной навигации современных автомобилей: китайские электрокары и гибриды LiXiang / Li Auto (lixiang.com, chj.com), Zeekr (zeekrlife.com, zeekr.com), BYD, Voyah, Geely, Changan, Xiaomi SU7, NIO, XPeng, а также приложения и облака Tesla (tesla.com), BMW (MyBMW / ConnectedDrive) и Mercedes me. Позволяет на роутере в авто не пускать китайскую телематику в европейский VPN во избежание гео-блокировки экранов!',
   hodca:

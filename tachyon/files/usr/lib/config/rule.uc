@@ -330,6 +330,7 @@ let community_subnet_lists = {
     callofduty: true,
     game_backends: true,
     cs2_dota2: true,
+    playstation: true,
     doh_dot_dns: true,
     vps_clouds: true,
     et_spamhaus_block: true,

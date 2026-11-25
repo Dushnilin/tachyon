@@ -1017,8 +1017,10 @@ export function renderCommunityListServiceIcon(
   if (
     [
       'games_all',
+      'consoles_all',
       'steam',
       'steam_cdn',
+      'consoles_cdn',
       'cs2_dota2',
       'epicgames',
       'ubisoft',
@@ -1030,6 +1032,8 @@ export function renderCommunityListServiceIcon(
       'xbox',
       'playstation',
       'nintendo',
+      'handheld_consoles',
+      'console_homebrew',
       'meta_quest',
       'gog',
       'wargaming',
@@ -1080,6 +1084,7 @@ export function renderCommunityListServiceIcon(
       'cloud_gaming_remote',
       'smarthome_iot',
       'smarttv_apps',
+      'tv_boxes',
       'smart_cars',
       'doh_dot_dns',
       'speedtest',
