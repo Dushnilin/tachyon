@@ -85,6 +85,7 @@ pub struct WatchdogState {
     pub drift_reload_streak: u32,
     pub drift_confirm_ticks: u32,
     pub cached_store_generation: u64,
+    pub cached_wan6_available: bool,
     pub cached_desired_digest: String,
 }
 
@@ -108,12 +109,20 @@ impl Default for WatchdogState {
             drift_reload_streak: 0,
             drift_confirm_ticks: 0,
             cached_store_generation: u64::MAX,
+            cached_wan6_available: false,
             cached_desired_digest: String::new(),
         }
     }
 }
 
 impl WatchdogState {
+    pub fn cached_digest_if_valid(&self, store_gen: u64, wan6_available: bool) -> Option<String> {
+        (self.cached_store_generation == store_gen
+            && self.cached_wan6_available == wan6_available
+            && !self.cached_desired_digest.is_empty())
+        .then(|| self.cached_desired_digest.clone())
+    }
+
     pub fn record_applied_config(&mut self, desired_digest: String) {
         self.last_applied_desired_digest = desired_digest;
         self.last_applied_core_digest.clear();
@@ -776,10 +785,10 @@ pub(crate) fn watchdog_dns_probe_target_for(
 pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count: u64) {
     let now = unix_now_secs();
     let store_gen = core.state.store_generation();
+    let wan6_available = crate::store::detect_wan6_runtime_available();
     let cached_digest_opt = {
         let wd = core.watchdog.lock().await;
-        (wd.cached_store_generation == store_gen && !wd.cached_desired_digest.is_empty())
-            .then(|| wd.cached_desired_digest.clone())
+        wd.cached_digest_if_valid(store_gen, wan6_available)
     };
     let (desired_digest, enable_watchdog, core_config_path, dns_target, recomputed) = {
         let store_guard = core.state.data.read().await;
@@ -808,6 +817,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
     if recomputed && !desired_digest.is_empty() {
         let mut wd = core.watchdog.lock().await;
         wd.cached_store_generation = store_gen;
+        wd.cached_wan6_available = wan6_available;
         wd.cached_desired_digest = desired_digest.clone();
     }
     let desired_digest_snapshot = desired_digest.clone();
@@ -2010,5 +2020,22 @@ mod tests {
             watchdog_dns_probe_target_for(crate::platform::PlatformKind::OpenWrt, &settings),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 42)), 53)
         );
+    }
+
+    #[test]
+    fn watchdog_digest_cache_invalidates_on_wan6_change() {
+        let mut wd = WatchdogState::default();
+        assert_eq!(wd.cached_digest_if_valid(7, false), None);
+
+        wd.cached_store_generation = 7;
+        wd.cached_wan6_available = false;
+        wd.cached_desired_digest = "digest-v4".to_string();
+
+        assert_eq!(
+            wd.cached_digest_if_valid(7, false).as_deref(),
+            Some("digest-v4")
+        );
+        assert_eq!(wd.cached_digest_if_valid(7, true), None);
+        assert_eq!(wd.cached_digest_if_valid(8, false), None);
     }
 }

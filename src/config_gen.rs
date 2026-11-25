@@ -11651,8 +11651,10 @@ fn is_low_ram_device() -> bool {
 pub fn resolve_tachyon_list_canonical_name(raw: &str, low_ram: bool) -> String {
     let lc = raw.trim().to_ascii_lowercase();
     match lc.as_str() {
-        "russia_inside" | "roscomvpn_ru" => "ru_domains".to_string(),
-        "russia_outside" | "runetfreedom_blocked" => "ru_blocked".to_string(),
+        "russia_inside" => "russia_inside".to_string(),
+        "russia_outside" => "russia_outside".to_string(),
+        "roscomvpn_ru" => "ru_domains".to_string(),
+        "runetfreedom_blocked" => "ru_blocked".to_string(),
         "runetfreedom_blocked_all" => {
             if low_ram {
                 "ru_blocked".to_string()
@@ -11671,16 +11673,17 @@ pub fn canonical_community_subnet_service(service: &str) -> &str {
     let key = service.trim();
     if key.eq_ignore_ascii_case("antifilter_community") {
         "antifilter"
-    } else if key.eq_ignore_ascii_case("runetfreedom_blocked")
-        || key.eq_ignore_ascii_case("russia_outside")
-    {
+    } else if key.eq_ignore_ascii_case("russia_inside") {
+        "russia_inside"
+    } else if key.eq_ignore_ascii_case("russia_outside") {
+        "russia_outside"
+    } else if key.eq_ignore_ascii_case("runetfreedom_blocked") {
         "ru_blocked"
     } else if key.eq_ignore_ascii_case("runetfreedom_blocked_all") {
         "ru_blocked_all"
     } else if key.eq_ignore_ascii_case("roscomvpn_whitelist") {
         "ru_whitelist"
-    } else if key.eq_ignore_ascii_case("roscomvpn_ru") || key.eq_ignore_ascii_case("russia_inside")
-    {
+    } else if key.eq_ignore_ascii_case("roscomvpn_ru") {
         "ru_domains"
     } else {
         key
@@ -13883,22 +13886,35 @@ fn compile_core_config_with_rt_dir(
     if clash_port_check > 0 {
         emitted_mixed_ports.insert(clash_port_check);
     }
-    let mut ordered_sections: Vec<&RoutingSection> = Vec::new();
-    let mut pass2_sections: Vec<&RoutingSection> = Vec::new();
-    for sec in store.sections.iter().filter(|s| s.enabled) {
-        if sec.action == "hosts" || sec.connection_type == "hosts" {
-            continue;
+    let enabled_sections: Vec<&RoutingSection> = store
+        .sections
+        .iter()
+        .filter(|s| s.enabled && s.action != "hosts" && s.connection_type != "hosts")
+        .collect();
+    let is_bypass_or_block = |s: &RoutingSection| {
+        is_section_bypass_or_direct(s) || s.action == "block" || s.connection_type == "block"
+    };
+    let first_catchall_idx = enabled_sections.iter().position(|s| {
+        !is_bypass_or_block(s) && s.action != "dns" && s.connection_type != "dns" && s.match_all
+    });
+    let ordered_sections: Vec<&RoutingSection> = if let Some(catchall_idx) = first_catchall_idx {
+        let mut reordered = Vec::with_capacity(enabled_sections.len());
+        reordered.extend_from_slice(&enabled_sections[..catchall_idx]);
+        for s in &enabled_sections[catchall_idx + 1..] {
+            if is_bypass_or_block(s) {
+                reordered.push(*s);
+            }
         }
-        if is_section_bypass_or_direct(sec)
-            || sec.action == "block"
-            || sec.connection_type == "block"
-        {
-            ordered_sections.push(sec);
-        } else {
-            pass2_sections.push(sec);
+        reordered.push(enabled_sections[catchall_idx]);
+        for s in &enabled_sections[catchall_idx + 1..] {
+            if !is_bypass_or_block(s) {
+                reordered.push(*s);
+            }
         }
-    }
-    ordered_sections.extend(pass2_sections);
+        reordered
+    } else {
+        enabled_sections
+    };
     let quic_tunneled_only = crate::net_stack::effective_disable_quic_tunneled(store)
         && !crate::net_stack::effective_disable_quic_global(store);
 
@@ -14079,17 +14095,92 @@ fn compile_core_config_with_rt_dir(
             && !target_outbound_tag.starts_with("desync-")
             && sec.connection_type != "desync"
             && sec.action != "desync";
+        let rule_allows_udp_443 = |base_rule: &Value| -> bool {
+            let Some(obj) = base_rule.as_object() else {
+                return false;
+            };
+            if obj.get("action").and_then(Value::as_str) == Some("resolve") {
+                return false;
+            }
+            if let Some(net) = obj.get("network") {
+                let udp_ok = match net {
+                    Value::String(s) => s.trim().eq_ignore_ascii_case("udp"),
+                    Value::Array(arr) => arr
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|s| s.trim().eq_ignore_ascii_case("udp")),
+                    _ => true,
+                };
+                if !udp_ok {
+                    return false;
+                }
+            }
+            if let Some(port) = obj.get("port") {
+                let port_ok = match port {
+                    Value::Number(n) => n.as_u64() == Some(443),
+                    Value::Array(arr) => arr.iter().any(|v| v.as_u64() == Some(443)),
+                    _ => true,
+                };
+                if !port_ok {
+                    return false;
+                }
+            }
+            if let Some(pr) = obj.get("port_range") {
+                let range_item_allows_443 = |raw: &str| -> Option<bool> {
+                    let t = raw.trim();
+                    if let Some((a, b)) = t.split_once(':') {
+                        let start = a.trim().parse::<u16>().ok()?;
+                        let end = b.trim().parse::<u16>().ok()?;
+                        Some(start <= 443 && 443 <= end)
+                    } else if let Ok(p) = t.parse::<u16>() {
+                        Some(p == 443)
+                    } else {
+                        None
+                    }
+                };
+                let parsed_results: Vec<Option<bool>> = match pr {
+                    Value::String(s) => vec![range_item_allows_443(s)],
+                    Value::Array(arr) => arr
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(range_item_allows_443)
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                if !parsed_results.is_empty()
+                    && parsed_results.iter().all(Option::is_some)
+                    && !parsed_results.into_iter().flatten().any(|ok| ok)
+                {
+                    return false;
+                }
+            }
+            true
+        };
         let emit_tunneled_quic_reject = |rules: &mut Vec<Value>, base_rule: &Value| {
-            if !quic_tunneled_only || !sec_is_proxy_route {
+            if !quic_tunneled_only || !sec_is_proxy_route || !rule_allows_udp_443(base_rule) {
                 return;
             }
-            let mut cloned = base_rule.clone();
-            if let Some(m) = cloned.as_object_mut() {
-                m.remove("outbound");
-                m.insert("network".into(), json!("udp"));
-                m.insert("port".into(), json!([443]));
-                m.insert("action".into(), json!("reject"));
-                rules.push(Value::Object(m.clone()));
+            let Some(mut stripped) = base_rule.as_object().cloned() else {
+                return;
+            };
+            stripped.remove("outbound");
+            stripped.remove("action");
+            if stripped.is_empty() {
+                rules.push(json!({
+                    "network": "udp",
+                    "port": [443],
+                    "action": "reject"
+                }));
+            } else {
+                rules.push(json!({
+                    "type": "logical",
+                    "mode": "and",
+                    "rules": [
+                        Value::Object(stripped),
+                        { "network": "udp", "port": [443] }
+                    ],
+                    "action": "reject"
+                }));
             }
         };
         let sec_routed_dns_enabled = sec.routed_dns_enabled
@@ -14192,7 +14283,7 @@ fn compile_core_config_with_rt_dir(
                 active_cnt += 1;
                 let mut cond_eff = cond.clone();
                 if cond_eff.geoip_mode.trim().is_empty() && !cond_eff.geoip_codes.is_empty() {
-                    cond_eff.geoip_mode = sec_eff_geoip_mode.clone();
+                    cond_eff.geoip_mode = "include".to_string();
                 }
                 let mut sub_rules = build_condition_rules(
                     &cond_eff,
@@ -14205,6 +14296,7 @@ fn compile_core_config_with_rt_dir(
                     ipv6_active,
                     false,
                     resolve_dns_server,
+                    is_section_bypass_or_direct(sec),
                     &mut outbounds,
                 );
                 for r in &mut sub_rules {
@@ -14253,7 +14345,7 @@ fn compile_core_config_with_rt_dir(
                 let eff_cond = if cond.geoip_mode.trim().is_empty() && !cond.geoip_codes.is_empty()
                 {
                     let mut c = cond.clone();
-                    c.geoip_mode = sec_eff_geoip_mode.clone();
+                    c.geoip_mode = "include".to_string();
                     cond_owned = c;
                     &cond_owned
                 } else {
@@ -14270,6 +14362,7 @@ fn compile_core_config_with_rt_dir(
                     ipv6_active,
                     pre_resolve_ip,
                     resolve_dns_server,
+                    is_section_bypass_or_direct(sec),
                     &mut outbounds,
                 );
                 if !cond_rules.is_empty() {
@@ -14362,6 +14455,7 @@ fn compile_core_config_with_rt_dir(
                 ipv6_active,
                 pre_resolve_ip,
                 resolve_dns_server,
+                is_section_bypass_or_direct(sec),
                 &mut outbounds,
             );
             if !cond_rules.is_empty() {
@@ -14408,14 +14502,21 @@ fn compile_core_config_with_rt_dir(
             || !sec.fully_routed_ips.is_empty()
             || !sec.source_inbounds.is_empty()
             || !sec.server_domain_rules.is_empty();
-        if sec.match_all {
+        let has_section_exclusions =
+            !sec_exc_dom_and_src_subs.is_empty() || !sec_exc_route_only_subs.is_empty();
+        if sec.match_all
+            || (!section_has_route_matchers
+                && sec.condition_refs.is_empty()
+                && has_section_exclusions)
+        {
             let base_catchall = json!({ "outbound": target_outbound_tag });
-            emit_tunneled_quic_reject(&mut rules, &base_catchall);
-            rules.push(wrap_rule_with_inverted_subrules(
+            let wrapped = wrap_rule_with_inverted_subrules(
                 base_catchall,
                 &sec_exc_dom_and_src_subs,
                 &sec_exc_route_only_subs,
-            ));
+            );
+            emit_tunneled_quic_reject(&mut rules, &wrapped);
+            rules.push(wrapped);
         }
 
         if sec_routed_dns_enabled {
@@ -15946,8 +16047,17 @@ fn build_clash_api_object(store: &RouterStoreData, ipv6_active: bool) -> Map<Str
 }
 
 /// Build an emergency direct+DNS-only `tachyon-core` config when user config fails check/start.
+#[cfg(test)]
 pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
-    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, false);
+    compile_safe_minimal_core_config_with_wan6(store, false)
+}
+
+/// Build an emergency direct+DNS-only `tachyon-core` config aware of runtime `wan6_available`.
+pub fn compile_safe_minimal_core_config_with_wan6(
+    store: &RouterStoreData,
+    wan6_available: bool,
+) -> Value {
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
     let ipv6_active = ipv6_state.is_active();
     let primary_inbound = match store.settings.proxy_mode.as_str() {
         "tun" => {
@@ -15986,7 +16096,7 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
         "listen": dns_in_listen,
         "listen_port": dns_in_port
     });
-    let clash_api_obj = build_clash_api_object(store, false);
+    let clash_api_obj = build_clash_api_object(store, ipv6_active);
     let final_outbound = if crate::net_stack::direct_fallback_veto(store).is_some() {
         "block"
     } else {
@@ -15997,35 +16107,163 @@ pub fn compile_safe_minimal_core_config(store: &RouterStoreData) -> Value {
     } else {
         1073741824
     };
+
+    let split_tokens = |raw_list: &[String]| -> Vec<String> {
+        let mut out = Vec::new();
+        for item in raw_list {
+            for part in item.split([',', '\n', ';']) {
+                let t = part.trim();
+                if !t.is_empty() && !out.iter().any(|x: &String| x.eq_ignore_ascii_case(t)) {
+                    out.push(t.to_string());
+                }
+            }
+        }
+        out
+    };
+
+    let mut safe_boot_ips: Vec<(String, u16)> = Vec::new();
+    for tok in split_tokens(&store.settings.bootstrap_dns_servers) {
+        let host = extract_host_only(&tok);
+        if host.is_empty()
+            || (!ipv6_active && host.contains(':'))
+            || !crate::store::valid_ip_with_zone(&host)
+        {
+            continue;
+        }
+        let port = extract_url_port(&tok, 53);
+        if !safe_boot_ips.iter().any(|(h, p)| h == &host && *p == port) {
+            safe_boot_ips.push((host, port));
+        }
+    }
+    if safe_boot_ips.is_empty() {
+        safe_boot_ips.push(("77.88.8.8".to_string(), 53));
+    }
+
+    let mut dns_servers_vec: Vec<Value> = Vec::new();
+    if safe_boot_ips.len() == 1 {
+        let (host, port) = &safe_boot_ips[0];
+        dns_servers_vec.push(json!({
+            "type": "udp",
+            "tag": "dns-bootstrap",
+            "server": host,
+            "server_port": port
+        }));
+    } else {
+        let mut boot_tags = Vec::with_capacity(safe_boot_ips.len());
+        for (i, (host, port)) in safe_boot_ips.iter().enumerate() {
+            let tag = format!("dns-bootstrap-{}", i + 1);
+            dns_servers_vec.push(json!({
+                "type": "udp",
+                "tag": tag,
+                "server": host,
+                "server_port": port
+            }));
+            boot_tags.push(tag);
+        }
+        dns_servers_vec.push(json!({
+            "type": "group",
+            "tag": "dns-bootstrap",
+            "mode": "parallel",
+            "error_ttl": "30s",
+            "timeout": "3s",
+            "servers": boot_tags
+        }));
+    }
+
+    let mut remote_group_members: Vec<String> = Vec::new();
+    let mut configured_enc_hosts: Vec<String> = Vec::new();
+    let configured_primary = split_tokens(&store.settings.dns_servers);
+    let mut enc_idx = 0usize;
+    for raw in &configured_primary {
+        let eff_type = infer_dns_entry_type(raw, &store.settings.dns_type);
+        if !matches!(eff_type, "doh" | "dot" | "doq") {
+            continue;
+        }
+        let host = extract_host_only(raw);
+        if host.is_empty() || (!ipv6_active && host.contains(':')) {
+            continue;
+        }
+        enc_idx += 1;
+        let tag = format!("dns-remote-{enc_idx}");
+        let mut entry = build_dns_server_entry(&tag, eff_type, raw, None);
+        if store.settings.dns_doq_ech
+            && let Some(tls_obj) = entry.get_mut("tls").and_then(Value::as_object_mut)
+        {
+            tls_obj.insert("ech".into(), json!({ "enabled": true }));
+        }
+        if !crate::store::valid_ip_with_zone(&host)
+            && !configured_enc_hosts
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(&host))
+        {
+            configured_enc_hosts.push(host);
+        }
+        dns_servers_vec.push(entry);
+        remote_group_members.push(tag);
+    }
+
+    if remote_group_members.is_empty() {
+        let mut udp_idx = 0usize;
+        for raw in &configured_primary {
+            let host = extract_host_only(raw);
+            if host.is_empty()
+                || (!ipv6_active && host.contains(':'))
+                || !crate::store::valid_ip_with_zone(&host)
+            {
+                continue;
+            }
+            udp_idx += 1;
+            let tag = format!("dns-remote-{udp_idx}");
+            dns_servers_vec.push(json!({
+                "type": "udp",
+                "tag": tag,
+                "server": host,
+                "server_port": extract_url_port(raw, 53)
+            }));
+            remote_group_members.push(tag);
+        }
+        if remote_group_members.is_empty() {
+            dns_servers_vec.push(json!({
+                "type": "udp",
+                "tag": "dns-remote-1",
+                "server": "1.1.1.1",
+                "server_port": 53
+            }));
+            remote_group_members.push("dns-remote-1".to_string());
+        }
+        remote_group_members.push("dns-bootstrap".to_string());
+    }
+
+    dns_servers_vec.push(json!({
+        "type": "group",
+        "tag": "dns-remote",
+        "mode": "stable",
+        "error_ttl": "30s",
+        "timeout": "4s",
+        "servers": remote_group_members
+    }));
+
+    let mut dns_rules_vec: Vec<Value> = Vec::new();
+    if !configured_enc_hosts.is_empty() {
+        let mut boot_rule = json!({
+            "domain": configured_enc_hosts,
+            "action": "route",
+            "server": "dns-bootstrap"
+        });
+        if !ipv6_active {
+            boot_rule["query_type"] = json!(["A"]);
+        }
+        dns_rules_vec.push(boot_rule);
+    }
+
     json!({
         "log": {
             "level": crate::store::normalize_core_log_level(&store.settings.log_level),
             "timestamp": true
         },
         "dns": {
-            "servers": [
-                {
-                    "type": "udp",
-                    "tag": "dns-bootstrap",
-                    "server": "77.88.8.8",
-                    "server_port": 53
-                },
-                {
-                    "type": "udp",
-                    "tag": "dns-remote-1",
-                    "server": "1.1.1.1",
-                    "server_port": 53
-                },
-                {
-                    "type": "group",
-                    "tag": "dns-remote",
-                    "mode": "stable",
-                    "error_ttl": "30s",
-                    "timeout": "4s",
-                    "servers": ["dns-remote-1", "dns-bootstrap"]
-                }
-            ],
-            "rules": [],
+            "servers": dns_servers_vec,
+            "rules": dns_rules_vec,
             "final": "dns-remote",
             "strategy": if ipv6_active { "prefer_ipv4" } else { "ipv4_only" },
             "reverse_mapping": true
@@ -16542,6 +16780,7 @@ fn collect_condition_aaaa_dns_rules(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
+    inject_ru_domains: bool,
     depth: usize,
     out: &mut Vec<Value>,
 ) {
@@ -16561,6 +16800,7 @@ fn collect_condition_aaaa_dns_rules(
                     rule_sets,
                     seen_rule_sets,
                     enable_ipv6,
+                    inject_ru_domains,
                     depth + 1,
                     &mut child_matchers,
                 );
@@ -16576,6 +16816,7 @@ fn collect_condition_aaaa_dns_rules(
             rule_sets,
             seen_rule_sets,
             enable_ipv6,
+            inject_ru_domains,
         );
         if parent_parts.blocked_unresolved_clients || parent_parts.blocked_unresolved_criteria {
             return;
@@ -16637,6 +16878,7 @@ fn collect_condition_aaaa_dns_rules(
         rule_sets,
         seen_rule_sets,
         enable_ipv6,
+        inject_ru_domains,
     );
     if parts.blocked_unresolved_clients || parts.blocked_unresolved_criteria {
         return;
@@ -16735,6 +16977,7 @@ fn collect_section_aaaa_noerror_dns_rules(
         }
     }
 
+    let inject_ru_domains = is_section_bypass_or_direct(sec);
     for cref in &sec.condition_refs {
         if let Some(cond) = cond_map.get(cref.as_str()).copied() {
             collect_condition_aaaa_dns_rules(
@@ -16745,6 +16988,7 @@ fn collect_section_aaaa_noerror_dns_rules(
                 rule_sets,
                 seen_rule_sets,
                 enable_ipv6,
+                inject_ru_domains,
                 0,
                 out,
             );
@@ -16799,6 +17043,7 @@ fn collect_section_aaaa_noerror_dns_rules(
             rule_sets,
             seen_rule_sets,
             enable_ipv6,
+            inject_ru_domains,
             0,
             out,
         );
@@ -17652,7 +17897,7 @@ fn parental_category_domains(cat: &str) -> &'static [&'static str] {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ServerFilterSpec {
     filter_mode: String,
     detect_server_country: String,
@@ -18115,9 +18360,12 @@ fn apply_server_filter_spec(
     };
 
     let has_inc = spec.has_include_rules();
-    let use_flag_only = spec
-        .detect_server_country
-        .eq_ignore_ascii_case("flag_emoji");
+    let detect_mode_lc = spec.detect_server_country.trim().to_ascii_lowercase();
+    let disable_country_detect = matches!(
+        detect_mode_lc.as_str(),
+        "none" | "0" | "false" | "off" | "disabled"
+    );
+    let use_flag_only = detect_mode_lc == "flag_emoji";
     let eff_mode = if mode.is_empty() {
         "mixed"
     } else {
@@ -18131,7 +18379,9 @@ fn apply_server_filter_spec(
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             let display_name = display_name_for_filter(tag, tag_srcs, &known_prefixes);
-            let cc = if use_flag_only {
+            let cc = if disable_country_detect {
+                String::new()
+            } else if use_flag_only {
                 extract_flag_emoji_country_code(display_name)
                     .if_empty_then(|| extract_flag_emoji_country_code(tag))
             } else {
@@ -18432,7 +18682,7 @@ fn resolve_balancer_filter_spec(
         } else {
             bal_mode
         },
-        detect_server_country: bal.detect_server_country.clone(),
+        detect_server_country: bal.effective_detect_server_country(),
         include_prefixes: bal.include_prefixes.clone(),
         include_countries: bal.include_country_flags.clone(),
         include_outbounds: bal.include_servers.clone(),
@@ -18525,7 +18775,7 @@ fn filter_section_subscription_keywords(
 
 fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec> {
     let raw_mode = sec.section_filter_mode.trim().to_ascii_lowercase();
-    if matches!(raw_mode.as_str(), "disabled" | "all") {
+    if raw_mode.is_empty() || matches!(raw_mode.as_str(), "disabled" | "all") {
         return None;
     }
 
@@ -18573,14 +18823,8 @@ fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec>
         || !exclude_securities.is_empty()
         || !exclude_ports.is_empty();
 
-    let eff_mode = if raw_mode.is_empty() {
-        "mixed".to_string()
-    } else {
-        raw_mode
-    };
-
     let spec = ServerFilterSpec {
-        filter_mode: eff_mode,
+        filter_mode: raw_mode,
         detect_server_country: sec.section_detect_server_country.clone(),
         include_prefixes,
         include_countries,
@@ -18721,7 +18965,7 @@ fn build_outbound_group_map_with_outbounds(
             } else {
                 raw_mode
             },
-            detect_server_country: grp.detect_server_country.clone(),
+            detect_server_country: grp.effective_detect_server_country(),
             include_prefixes: grp.include_prefixes.clone(),
             include_countries: grp.include_country_flags.clone(),
             include_outbounds: grp.include_servers.clone(),
@@ -18846,13 +19090,16 @@ fn resolve_section_outbound(
         );
     }
     if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
-        candidate_tags = apply_server_filter_spec(
+        let narrowed = apply_server_filter_spec(
             &candidate_tags,
             &dash_spec,
             sources,
             source_tag_map,
             outbounds,
         );
+        if !narrowed.is_empty() {
+            candidate_tags = narrowed;
+        }
     }
 
     if candidate_tags.is_empty()
@@ -19362,17 +19609,22 @@ fn build_balancer_outbound(
     };
     let is_priority = mode == "priority";
     let (effective_mode, effective_tolerance) = if is_priority {
-        if bal.switch_to_faster_same_priority {
-            // Tiered fastest with periodic re-selection inside the active tier.
-            ("least_test", bal.tolerance)
+        let tol = if bal.switch_to_faster_same_priority {
+            bal.tolerance
         } else if bal.pick_fastest {
-            // Pick fastest node initially / on failover / on upper-tier recovery,
-            // sticking to the active healthy node inside the tier via max tolerance.
-            ("least_test", u16::MAX as u32)
+            u16::MAX as u32
         } else {
-            // Strict list order inside the active tier.
-            ("priority", bal.tolerance)
-        }
+            bal.tolerance
+        };
+        let eff_mode = if !tiers.is_empty() {
+            // tachyon-core rejects `balancer.tiers` unless `mode` is `"priority"`.
+            "priority"
+        } else if bal.switch_to_faster_same_priority || bal.pick_fastest {
+            "least_test"
+        } else {
+            "priority"
+        };
+        (eff_mode, tol)
     } else {
         (mode, bal.tolerance)
     };
@@ -19406,19 +19658,7 @@ fn build_balancer_outbound(
             &bal.idle_timeout
         }),
     );
-    if !bal.passive_check {
-        obj.insert("passive_check".into(), json!(false));
-    }
-    if bal.check_interval_jitter > 0 {
-        obj.insert(
-            "interval_jitter".into(),
-            json!(format!("{}%", bal.check_interval_jitter)),
-        );
-    }
     let mut balancer_opts = Map::new();
-    if !bal.balancer_pool.is_empty() {
-        balancer_opts.insert("balancer_pool".into(), json!(bal.balancer_pool));
-    }
     if effective_mode == "sticky" {
         balancer_opts.insert(
             "sticky_hash".into(),
@@ -19630,13 +19870,16 @@ pub fn build_all_section_balancer_caches(
             );
         }
         if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
-            candidate_tags = apply_server_filter_spec(
+            let narrowed = apply_server_filter_spec(
                 &candidate_tags,
                 &dash_spec,
                 &store.outbound_sources,
                 &source_tag_map,
                 &outbounds,
             );
+            if !narrowed.is_empty() {
+                candidate_tags = narrowed;
+            }
         }
 
         let active_balancers: Vec<&BalancerConfig> = sec
@@ -20297,6 +20540,12 @@ fn enable_desync_udp_fake(outbounds: &mut [Value], outbound_tag: &str) {
     }
 }
 
+struct AtomicConditionTablesOpts<'a> {
+    enable_ipv6: bool,
+    inject_ru_domains: bool,
+    tables: Option<(&'a str, &'a str)>,
+}
+
 fn collect_atomic_condition_parts(
     cond: &TrafficCondition,
     rulesets_dir: &str,
@@ -20304,6 +20553,7 @@ fn collect_atomic_condition_parts(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
+    inject_ru_domains: bool,
 ) -> AtomicConditionParts {
     collect_atomic_condition_parts_with_tables(
         cond,
@@ -20311,8 +20561,11 @@ fn collect_atomic_condition_parts(
         github_mirror,
         rule_sets,
         seen_rule_sets,
-        enable_ipv6,
-        None,
+        AtomicConditionTablesOpts {
+            enable_ipv6,
+            inject_ru_domains,
+            tables: None,
+        },
     )
 }
 
@@ -20322,9 +20575,13 @@ fn collect_atomic_condition_parts_with_tables(
     github_mirror: &str,
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
-    enable_ipv6: bool,
-    tables: Option<(&str, &str)>,
+    opts: AtomicConditionTablesOpts<'_>,
 ) -> AtomicConditionParts {
+    let AtomicConditionTablesOpts {
+        enable_ipv6,
+        inject_ru_domains,
+        tables,
+    } = opts;
     let mut scope = Map::new();
     let mut branches = Vec::new();
     let mut discord_udp_voice_fired = false;
@@ -20513,7 +20770,7 @@ fn collect_atomic_condition_parts_with_tables(
             rule_sets,
             seen_rule_sets,
         );
-        if !eff_inverted && norm_code == "ru" {
+        if inject_ru_domains && !eff_inverted && norm_code == "ru" {
             register_remote_ruleset(
                 &mut ru_domain_tags,
                 "trs-ru_domains".to_string(),
@@ -20826,6 +21083,7 @@ fn build_condition_rule(
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
+    inject_ru_domains: bool,
     outbounds: &mut [Value],
     depth: usize,
     in_negation: bool,
@@ -20859,6 +21117,7 @@ fn build_condition_rule(
                     rule_sets,
                     seen_rule_sets,
                     enable_ipv6,
+                    inject_ru_domains,
                     outbounds,
                     depth + 1,
                     effective_negation,
@@ -20890,6 +21149,7 @@ fn build_condition_rule(
                 rule_sets,
                 seen_rule_sets,
                 enable_ipv6,
+                inject_ru_domains,
             );
             if parent_parts.blocked_unresolved_clients
                 || parent_parts.blocked_unresolved_criteria
@@ -20942,6 +21202,7 @@ fn build_condition_rule(
         rule_sets,
         seen_rule_sets,
         enable_ipv6,
+        inject_ru_domains,
     );
     if effective_negation && parts.has_unresolved_ruleset {
         return None;
@@ -20964,6 +21225,7 @@ fn build_condition_rules(
     enable_ipv6: bool,
     pre_resolve_ip: bool,
     resolve_dns_server: &str,
+    inject_ru_domains: bool,
     outbounds: &mut [Value],
 ) -> Vec<Value> {
     let (cond_exc_dom_subs, cond_exc_subs) =
@@ -20979,6 +21241,7 @@ fn build_condition_rules(
             rule_sets,
             seen_rule_sets,
             enable_ipv6,
+            inject_ru_domains,
             outbounds,
             0,
             false,
@@ -20995,6 +21258,7 @@ fn build_condition_rules(
         rule_sets,
         seen_rule_sets,
         enable_ipv6,
+        inject_ru_domains,
     );
     if parts.blocked_unresolved_clients || parts.blocked_unresolved_criteria {
         return Vec::new();
@@ -24915,8 +25179,11 @@ config timeserver 'ntp'
             "",
             &mut rule_sets,
             &mut seen_rs,
-            false,
-            Some((arp, leases)),
+            AtomicConditionTablesOpts {
+                enable_ipv6: false,
+                inject_ru_domains: false,
+                tables: Some((arp, leases)),
+            },
         );
         assert!(!parts_ok.blocked_unresolved_clients);
         assert_eq!(
@@ -24937,8 +25204,11 @@ config timeserver 'ntp'
             "",
             &mut rule_sets,
             &mut seen_rs,
-            false,
-            Some((arp, leases)),
+            AtomicConditionTablesOpts {
+                enable_ipv6: false,
+                inject_ru_domains: false,
+                tables: Some((arp, leases)),
+            },
         );
         assert!(parts_miss.blocked_unresolved_clients);
 
@@ -24955,6 +25225,7 @@ config timeserver 'ntp'
             false,
             false,
             "dns-remote",
+            false,
             &mut outbounds,
         );
         assert!(
@@ -26530,7 +26801,7 @@ AllowedIPs = 0.0.0.0/0
         );
 
         let initial_fastest = build_with(true, false);
-        assert_eq!(initial_fastest["mode"], json!("least_test"));
+        assert_eq!(initial_fastest["mode"], json!("priority"));
         assert_eq!(initial_fastest["tolerance"], json!(65535));
         assert_eq!(
             initial_fastest["balancer"]["tiers"],
@@ -26538,7 +26809,7 @@ AllowedIPs = 0.0.0.0/0
         );
 
         let adaptive_fastest = build_with(true, true);
-        assert_eq!(adaptive_fastest["mode"], json!("least_test"));
+        assert_eq!(adaptive_fastest["mode"], json!("priority"));
         assert_eq!(adaptive_fastest["tolerance"], json!(50));
         assert_eq!(
             adaptive_fastest["balancer"]["tiers"],
@@ -26825,8 +27096,8 @@ PersistentKeepalive = 25
         // Priority policies with tolerance = 30
         for (pick_fastest, switch_faster, expected_mode, expected_tol) in [
             (false, false, "priority", 30u32),
-            (true, false, "least_test", 65535u32),
-            (true, true, "least_test", 30u32),
+            (true, false, "priority", 65535u32),
+            (true, true, "priority", 30u32),
         ] {
             let bal = BalancerConfig {
                 id: "bal_prio_tol".to_string(),
@@ -30707,6 +30978,7 @@ proxies:
             &mut rule_sets,
             &mut seen,
             false,
+            false,
             0,
             &mut out,
         );
@@ -31215,10 +31487,14 @@ proxies:
                 .any(|r| { r["port"] == json!([500, 4500]) && r["outbound"] == "direct" })
         );
         assert!(route_rules.iter().any(|r| {
-            r["network"] == "udp"
-                && r["port"] == json!([443])
+            r["type"] == "logical"
+                && r["mode"] == "and"
                 && r["action"] == "reject"
-                && r["rule_set"] == json!(["trs-russia_outside"])
+                && r["rules"]
+                    == json!([
+                        { "rule_set": ["trs-russia_outside"] },
+                        { "network": "udp", "port": [443] }
+                    ])
         }));
         assert!(route_rules.iter().any(|r| {
             r["rule_set"] == json!(["trs-russia_outside"])
@@ -31240,11 +31516,407 @@ proxies:
         ));
         assert_eq!(
             resolve_tachyon_list_canonical_name("russia_outside", true),
+            "russia_outside"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("russia_inside", true),
+            "russia_inside"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("runetfreedom_blocked", true),
             "ru_blocked"
         );
         assert_eq!(
             resolve_tachyon_list_canonical_name("ru_blocked_all", true),
             "ru_blocked"
         );
+    }
+
+    #[test]
+    fn test_russia_inside_outside_lists_preserve_canonical_names_and_subnets() {
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("russia_inside", false),
+            "russia_inside"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("russia_outside", false),
+            "russia_outside"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("roscomvpn_ru", false),
+            "ru_domains"
+        );
+        assert_eq!(
+            resolve_tachyon_list_canonical_name("runetfreedom_blocked", false),
+            "ru_blocked"
+        );
+        assert_eq!(
+            canonical_community_subnet_service("russia_inside"),
+            "russia_inside"
+        );
+        assert_eq!(
+            canonical_community_subnet_service("russia_outside"),
+            "russia_outside"
+        );
+        assert_eq!(
+            canonical_community_subnet_service("roscomvpn_ru"),
+            "ru_domains"
+        );
+        assert_eq!(
+            canonical_community_subnet_service("runetfreedom_blocked"),
+            "ru_blocked"
+        );
+
+        let mut store = make_bypass_before_match_all_store(false);
+        store.sections = vec![
+            RoutingSection {
+                id: "ByPass".to_string(),
+                enabled: true,
+                label: "ByPass".to_string(),
+                action: "direct".to_string(),
+                connection_type: "direct".to_string(),
+                community_lists: vec!["russia_outside".to_string()],
+                community_subnets: true,
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "Proxy".to_string(),
+                enabled: true,
+                label: "Proxy".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                community_lists: vec!["russia_inside".to_string()],
+                ..Default::default()
+            },
+        ];
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile");
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+        assert!(rule_sets.iter().any(|rs| {
+            rs["tag"] == "trs-russia_outside"
+                && rs["url"]
+                    .as_str()
+                    .is_some_and(|u| u.ends_with("/russia_outside.trs"))
+        }));
+        assert!(rule_sets.iter().any(|rs| {
+            rs["tag"] == "trs-russia_inside"
+                && rs["url"]
+                    .as_str()
+                    .is_some_and(|u| u.ends_with("/russia_inside.trs"))
+        }));
+        assert!(
+            !rule_sets.iter().any(|rs| {
+                let tag = rs["tag"].as_str().unwrap_or("");
+                tag == "trs-ru_blocked" || tag == "trs-ru_domains" || tag == "trs-ip-ru_blocked"
+            }),
+            "russia_inside/outside must never invert into ru_domains/ru_blocked"
+        );
+    }
+
+    #[test]
+    fn test_tunneled_quic_reject_wraps_logical_rules_and_skips_tcp_or_non443() {
+        let mut store = make_bypass_before_match_all_store(false);
+        store.settings.disable_quic_mode = "tunneled".to_string();
+        store.conditions = vec![
+            TrafficCondition {
+                id: "c_tcp_only".to_string(),
+                enabled: true,
+                name: "TCP Only".to_string(),
+                condition_type: "atomic".to_string(),
+                domains: vec!["tcp.example.com".to_string()],
+                l4_proto: "tcp".to_string(),
+                ..Default::default()
+            },
+            TrafficCondition {
+                id: "c_port_80".to_string(),
+                enabled: true,
+                name: "HTTP 80".to_string(),
+                condition_type: "atomic".to_string(),
+                domains: vec!["http80.example.com".to_string()],
+                ports: vec!["80".to_string()],
+                ..Default::default()
+            },
+        ];
+        store.sections = vec![
+            RoutingSection {
+                id: "ProxyFiltered".to_string(),
+                enabled: true,
+                label: "ProxyFiltered".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                condition_refs: vec!["c_tcp_only".to_string(), "c_port_80".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "ProxyAll".to_string(),
+                enabled: true,
+                label: "ProxyAll".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["src_proxy".to_string()],
+                match_all: true,
+                exclude_domains: vec!["excluded.example.com".to_string()],
+                ..Default::default()
+            },
+        ];
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+
+        // Logical rules must NEVER have top-level `network` or `port` alongside `type: "logical"`.
+        for r in rules {
+            if r.get("type").and_then(Value::as_str) == Some("logical") {
+                assert!(
+                    r.get("network").is_none() && r.get("port").is_none(),
+                    "logical rule must nest udp/443 inside `rules`, never at top level: {r}"
+                );
+            }
+        }
+
+        // TCP-only and port-80 conditions must not emit QUIC UDP/443 reject rules.
+        assert!(
+            !rules
+                .iter()
+                .any(|r| { r["action"] == "reject" && r.to_string().contains("tcp.example.com") })
+        );
+        assert!(
+            !rules.iter().any(|r| {
+                r["action"] == "reject" && r.to_string().contains("http80.example.com")
+            })
+        );
+
+        // match_all with exclude_domains must wrap QUIC reject with the inverted exclusion and udp/443 nested.
+        assert!(rules.iter().any(|r| {
+            r["type"] == "logical"
+                && r["mode"] == "and"
+                && r["action"] == "reject"
+                && r["rules"].as_array().is_some_and(|arr| {
+                    arr.contains(&json!({ "network": "udp", "port": [443] }))
+                        && arr
+                            .iter()
+                            .any(|sub| sub.to_string().contains("excluded.example.com"))
+                })
+        }));
+    }
+
+    #[test]
+    fn test_balancer_schema_compatible_with_tachyon_core_0_6_5() {
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(OutboundSource {
+            id: "src_pool".to_string(),
+            enabled: true,
+            source_type: "links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#Alpha".to_string(),
+                "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#Beta".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.outbound_groups = vec![crate::store::OutboundGroup {
+            id: "tier_1".to_string(),
+            enabled: true,
+            name: "Tier1".to_string(),
+            source_refs: vec!["src_pool".to_string()],
+            ..Default::default()
+        }];
+        store.balancers = vec![crate::store::BalancerConfig {
+            id: "bal_prio".to_string(),
+            enabled: true,
+            name: "Priority".to_string(),
+            balancer_type: "priority".to_string(),
+            mode: "priority".to_string(),
+            passive_check: false,
+            check_interval_jitter: 15,
+            balancer_pool: vec!["Alpha".to_string(), "Beta".to_string()],
+            outbound_group_levels: vec!["tier_1".to_string()],
+            pick_fastest: true,
+            ..Default::default()
+        }];
+        store.sections.push(RoutingSection {
+            id: "Main".to_string(),
+            enabled: true,
+            label: "Main".to_string(),
+            action: "proxy".to_string(),
+            connection_type: "proxy".to_string(),
+            outbound_group_refs: vec!["tier_1".to_string()],
+            balancer_refs: vec!["bal_prio".to_string()],
+            domains: vec!["example.com".to_string()],
+            ..Default::default()
+        });
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile");
+        let bal = cfg["outbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["tag"] == "bal-Main-bal_prio")
+            .expect("balancer outbound");
+        assert!(bal.get("passive_check").is_none());
+        assert!(bal.get("interval_jitter").is_none());
+        assert!(bal["balancer"].get("balancer_pool").is_none());
+        assert_eq!(bal["mode"], "priority");
+        assert!(bal["balancer"].get("tiers").is_some());
+    }
+
+    #[test]
+    fn test_routing_regressions_order_filter_empty_geoip_ru_and_country_disable() {
+        let mut store = make_bypass_before_match_all_store(false);
+        store.settings.ipv6_mode = "off".to_string();
+        store.outbound_sources = vec![OutboundSource {
+            id: "s_de".to_string(),
+            enabled: true,
+            source_type: "links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#%F0%9F%87%A9%F0%9F%87%AA%20DE-1"
+                    .to_string(),
+                "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#NL-Plain"
+                    .to_string(),
+            ],
+            ..Default::default()
+        }];
+        store.conditions = vec![TrafficCondition {
+            id: "c_empty_geoip_mode".to_string(),
+            enabled: true,
+            name: "RU IP Condition".to_string(),
+            condition_type: "atomic".to_string(),
+            geoip_codes: vec!["ru".to_string()],
+            geoip_mode: String::new(),
+            ..Default::default()
+        }];
+        // Order: Proxy_First (match_all=false) -> ByPass_RU -> Exclusions_Only
+        store.sections = vec![
+            RoutingSection {
+                id: "Proxy_First".to_string(),
+                enabled: true,
+                label: "Proxy First".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["s_de".to_string()],
+                domains: vec!["twitch.tv".to_string()],
+                condition_refs: vec!["c_empty_geoip_mode".to_string()],
+                // Empty section_filter_mode must ignore leftover include_countries;
+                // stale dashboard filter matching nothing must keep candidate pool.
+                section_filter_mode: String::new(),
+                section_include_countries: vec!["US".to_string()],
+                dashboard_filter_mode: "only".to_string(),
+                dashboard_include_countries: vec!["ZZ".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "ByPass_Mid".to_string(),
+                enabled: true,
+                label: "ByPass Mid".to_string(),
+                action: "direct".to_string(),
+                connection_type: "direct".to_string(),
+                domains: vec!["yandex.ru".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "CountryDisabled".to_string(),
+                enabled: true,
+                label: "Country Disabled".to_string(),
+                action: "proxy".to_string(),
+                connection_type: "proxy".to_string(),
+                outbound_source_refs: vec!["s_de".to_string()],
+                section_filter_mode: "only".to_string(),
+                section_detect_server_country: "none".to_string(),
+                section_include_countries: vec!["DE".to_string()],
+                match_all: false,
+                exclude_domains: vec!["vk.com".to_string()],
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let rule_sets = cfg["route"]["rule_set"].as_array().unwrap();
+
+        // 1. User order preserved when no earlier proxy section has match_all=true.
+        let idx_twitch = rules
+            .iter()
+            .position(|r| r["domain_suffix"] == json!(["twitch.tv"]))
+            .expect("Proxy_First twitch.tv rule");
+        let idx_yandex = rules
+            .iter()
+            .position(|r| r["domain_suffix"] == json!(["yandex.ru"]) && r["outbound"] == "direct")
+            .expect("ByPass_Mid yandex.ru rule");
+        assert!(idx_twitch < idx_yandex);
+
+        // 2. Proxy_First kept candidate outbounds (neither wiped by empty section_filter_mode nor stale dash_spec).
+        assert_ne!(rules[idx_twitch]["outbound"], "direct");
+        assert_ne!(rules[idx_twitch]["outbound"], "block");
+
+        // 3. Condition with empty geoip_mode inside proxy section stays "include" (not inverted) and does NOT inject ru_domains.
+        assert!(
+            rules
+                .iter()
+                .any(|r| { r["rule_set"] == json!(["geoip-ru"]) && r.get("invert").is_none() })
+        );
+        assert!(
+            !rule_sets.iter().any(|rs| rs["tag"] == "trs-ru_domains"),
+            "proxy section geoip=ru must not inject trs-ru_domains"
+        );
+
+        // 4. Exclusions-only section emits wrapped catch-all with vk.com inverted.
+        assert!(rules.iter().any(|r| {
+            r["type"] == "logical"
+                && r["mode"] == "and"
+                && r["rules"].to_string().contains("vk.com")
+                && r.get("outbound").is_some()
+        }));
+
+        // 5. detect_server_country="none" ignores country detection so section_include_countries=["DE"] matches nothing.
+        assert_eq!(resolve_section_filter_spec(&store.sections[0]), None);
+        let disabled_spec =
+            resolve_section_filter_spec(&store.sections[2]).expect("only mode spec");
+        assert_eq!(disabled_spec.detect_server_country, "none");
+    }
+
+    #[test]
+    fn test_safe_minimal_wan6_and_encrypted_dns_issue_489_502() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "tunnel_over_v4".to_string();
+        store.settings.proxy_mode = "tproxy".to_string();
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers = vec![
+            "https://common.dot.dns.yandex.net/dns-query".to_string(),
+            "https://freedns.controld.com/p0".to_string(),
+        ];
+        store.settings.bootstrap_dns_servers =
+            vec!["208.67.222.222".to_string(), "77.88.8.1".to_string()];
+
+        let cfg_v4 = compile_safe_minimal_core_config_with_wan6(&store, false);
+        assert_eq!(cfg_v4["inbounds"][0]["listen"], "::");
+        assert_eq!(cfg_v4["dns"]["strategy"], "prefer_ipv4");
+
+        let srvs = cfg_v4["dns"]["servers"].as_array().unwrap();
+        let rem_group = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote");
+        assert_eq!(
+            rem_group["servers"],
+            json!(["dns-remote-1", "dns-remote-2"])
+        );
+        let r1 = srvs.iter().find(|s| s["tag"] == "dns-remote-1").unwrap();
+        assert_eq!(r1["type"], "https");
+        assert_eq!(r1["domain_resolver"], "dns-bootstrap");
+        assert!(r1.get("detour").is_none());
+
+        let dns_rules = cfg_v4["dns"]["rules"].as_array().unwrap();
+        assert!(dns_rules.iter().any(|r| {
+            r["server"] == "dns-bootstrap"
+                && r["domain"]
+                    .as_array()
+                    .is_some_and(|a| a.contains(&json!("common.dot.dns.yandex.net")))
+        }));
+
+        // In auto mode, safe_minimal switches bind/strategy based on runtime wan6_available.
+        store.settings.ipv6_mode = "auto".to_string();
+        let cfg_auto_no6 = compile_safe_minimal_core_config_with_wan6(&store, false);
+        assert_eq!(cfg_auto_no6["inbounds"][0]["listen"], "0.0.0.0");
+        assert_eq!(cfg_auto_no6["dns"]["strategy"], "ipv4_only");
+        let cfg_auto_v6 = compile_safe_minimal_core_config_with_wan6(&store, true);
+        assert_eq!(cfg_auto_v6["inbounds"][0]["listen"], "::");
+        assert_eq!(cfg_auto_v6["dns"]["strategy"], "prefer_ipv4");
     }
 }

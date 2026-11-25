@@ -1449,7 +1449,10 @@ impl CoreManager {
                 "Основная конфигурация не прошла проверку ядра ({pretty}). Запущен минимальный режим (DNS + direct), чтобы сохранить сеть."
             )
         });
-        config_gen::compile_safe_minimal_core_config(store_snapshot)
+        config_gen::compile_safe_minimal_core_config_with_wan6(
+            store_snapshot,
+            crate::store::detect_wan6_runtime_available(),
+        )
     }
 
     pub fn quarantine_with_checker<F>(
@@ -1548,17 +1551,49 @@ impl CoreManager {
                     .push_event("warn", "core_mgr", &msg);
                 seed_errors.insert("_core_runtime".to_string(), msg);
                 (
-                    config_gen::compile_safe_minimal_core_config(store_snapshot),
+                    config_gen::compile_safe_minimal_core_config_with_wan6(
+                        store_snapshot,
+                        crate::store::detect_wan6_runtime_available(),
+                    ),
                     seed_errors,
                 )
             }
         }
     }
 
+    fn read_total_ram_kb() -> Option<u64> {
+        let content = std::fs::read_to_string("/proc/meminfo").ok()?;
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("MemTotal:") {
+                let kb = rest.split_whitespace().next()?.parse::<u64>().ok()?;
+                if kb > 0 {
+                    return Some(kb);
+                }
+            }
+        }
+        None
+    }
+
+    /// Resolve effective `GOMEMLIMIT` (MiB): explicit setting wins; otherwise auto-cap low-RAM routers (< 320 MiB).
+    pub(crate) fn effective_core_memory_limit_mb(
+        configured_mb: u32,
+        total_ram_kb: Option<u64>,
+    ) -> u32 {
+        if configured_mb > 0 {
+            return configured_mb;
+        }
+        match total_ram_kb {
+            Some(kb) if kb > 0 && kb < 320 * 1024 => ((kb / 1024) / 2).clamp(64, 160) as u32,
+            _ => 0,
+        }
+    }
+
     fn configure_core_spawn_command(cmd: &mut Command, daemon_mode: bool, memory_limit_mb: u32) {
         cmd.stdin(Stdio::null());
-        if memory_limit_mb > 0 {
-            cmd.env("GOMEMLIMIT", format!("{memory_limit_mb}MiB"));
+        let effective_limit_mb =
+            Self::effective_core_memory_limit_mb(memory_limit_mb, Self::read_total_ram_kb());
+        if effective_limit_mb > 0 {
+            cmd.env("GOMEMLIMIT", format!("{effective_limit_mb}MiB"));
         }
         if daemon_mode {
             cmd.stdout(Stdio::piped())
@@ -1884,21 +1919,38 @@ impl CoreManager {
                 return Err(e);
             }
         };
+        let mut reload_guard_opt = Some(guard);
         let mut safe_minimal_active = quarantined.contains_key("_core_runtime");
         if safe_minimal_active
             && self.state.live.read().await.lkg_observing
             && !self.auto_rollback_in_flight.load(Ordering::Acquire)
         {
-            drop(guard);
-            if let Ok(true) = Box::pin(self.auto_rollback_to_working_config(
+            drop(reload_guard_opt.take());
+            match Box::pin(self.auto_rollback_to_working_config(
                 "Конфиг приведён к минимальному режиму при старте; выполнен автооткат на рабочий конфиг",
                 None,
             ))
             .await
             {
-                return Ok(());
+                Ok(true) => return Ok(()),
+                Ok(false) => {
+                    self.state.live.write().await.push_event(
+                        "warn",
+                        "core_mgr",
+                        "Конфиг приведён к минимальному режиму при старте, автооткат не применился; продолжается запуск в безопасном режиме",
+                    );
+                }
+                Err(rb_err) => {
+                    self.state.live.write().await.push_event(
+                        "warn",
+                        "core_mgr",
+                        &format!(
+                            "Ошибка автоотката из безопасного режима ({rb_err:#}); продолжается запуск в безопасном режиме"
+                        ),
+                    );
+                }
             }
-            anyhow::bail!("config downgraded to safe_minimal and rollback was declined");
+            reload_guard_opt = Some(self.reload_lock.lock().await);
         }
         Self::invalidate_clash_cred_cache();
 
@@ -1946,16 +1998,34 @@ impl CoreManager {
                 if self.state.live.read().await.lkg_observing
                     && !self.auto_rollback_in_flight.load(Ordering::Acquire)
                 {
-                    drop(guard);
-                    if let Ok(true) = Box::pin(self.auto_rollback_to_working_config(
+                    drop(reload_guard_opt.take());
+                    match Box::pin(self.auto_rollback_to_working_config(
                         &format!("Ранний сбой запуска tachyon-core ({pretty}); выполнен автооткат"),
                         None,
                     ))
                     .await
                     {
-                        return Ok(());
+                        Ok(true) => return Ok(()),
+                        Ok(false) => {
+                            self.state.live.write().await.push_event(
+                                "warn",
+                                "core_mgr",
+                                &format!(
+                                    "Ранний сбой запуска tachyon-core ({pretty}); автооткат не применился, запуск в безопасном минимальном режиме"
+                                ),
+                            );
+                        }
+                        Err(rb_err) => {
+                            self.state.live.write().await.push_event(
+                                "warn",
+                                "core_mgr",
+                                &format!(
+                                    "Ранний сбой запуска tachyon-core ({pretty}); ошибка автоотката ({rb_err:#}), запуск в безопасном минимальном режиме"
+                                ),
+                            );
+                        }
                     }
-                    anyhow::bail!("early core exit ({pretty}) and rollback declined");
+                    reload_guard_opt = Some(self.reload_lock.lock().await);
                 }
                 self.state.live.write().await.push_event(
                     "warn",
@@ -1964,7 +2034,10 @@ impl CoreManager {
                         "Ранний сбой запуска tachyon-core ({pretty}); повторный запуск в безопасном минимальном режиме"
                     ),
                 );
-                let safe_cfg = config_gen::compile_safe_minimal_core_config(&store_snapshot);
+                let safe_cfg = config_gen::compile_safe_minimal_core_config_with_wan6(
+                    &store_snapshot,
+                    startup_wan6.wan6_available,
+                );
                 if let Err(e) = crypto_gen::write_json_if_changed(&cfg_path, &safe_cfg) {
                     cleanup_failed_start(
                         veto.is_some(),
@@ -1986,6 +2059,7 @@ impl CoreManager {
                 anyhow::bail!("{msg}");
             }
         };
+        let _keep_reload_guard = reload_guard_opt;
         let pid = child.id().unwrap_or(0);
         let identity = sys_info::capture_process_identity(pid);
 
@@ -2590,43 +2664,55 @@ impl CoreManager {
         let mut validated = Vec::with_capacity(sel_map.len());
         for (group, tag) in &sel_map {
             let mut chosen = tag.clone();
-            if let Some(ref body) = proxies_resp
-                && let Some(all_arr) = body
-                    .pointer(&format!("/proxies/{group}/all"))
-                    .and_then(Value::as_array)
-            {
-                let in_pool = all_arr
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .any(|cand| cand == chosen);
-                if !in_pool {
-                    let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
-                    let telemetry_match = (!wanted_canon.is_empty()).then(|| {
-                        all_arr.iter().filter_map(Value::as_str).find(|cand| {
-                            config_gen::strip_dynamic_server_telemetry(cand)
-                                .eq_ignore_ascii_case(&wanted_canon)
-                        })
-                    });
-                    if let Some(Some(matched)) = telemetry_match {
-                        chosen = matched.to_string();
-                        pruned_dirty = true;
-                    } else {
-                        let default_cand = body
-                            .pointer(&format!("/proxies/{group}/default"))
-                            .and_then(Value::as_str)
-                            .filter(|def_tag| {
-                                all_arr
-                                    .iter()
-                                    .filter_map(Value::as_str)
-                                    .any(|cand| cand == *def_tag)
-                            });
-                        if let Some(fallback) =
-                            default_cand.or_else(|| all_arr.iter().filter_map(Value::as_str).next())
-                        {
-                            chosen = fallback.to_string();
+            if let Some(ref body) = proxies_resp {
+                let Some(group_obj) = body
+                    .get("proxies")
+                    .and_then(Value::as_object)
+                    .and_then(|m| m.get(group))
+                else {
+                    continue;
+                };
+                if !group_obj
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|t| t.eq_ignore_ascii_case("selector"))
+                {
+                    continue;
+                }
+                if let Some(all_arr) = group_obj.get("all").and_then(Value::as_array) {
+                    let in_pool = all_arr
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|cand| cand == chosen);
+                    if !in_pool {
+                        let wanted_canon = config_gen::strip_dynamic_server_telemetry(&chosen);
+                        let telemetry_match = (!wanted_canon.is_empty()).then(|| {
+                            all_arr.iter().filter_map(Value::as_str).find(|cand| {
+                                config_gen::strip_dynamic_server_telemetry(cand)
+                                    .eq_ignore_ascii_case(&wanted_canon)
+                            })
+                        });
+                        if let Some(Some(matched)) = telemetry_match {
+                            chosen = matched.to_string();
                             pruned_dirty = true;
                         } else {
-                            continue;
+                            let default_cand = group_obj
+                                .get("default")
+                                .and_then(Value::as_str)
+                                .filter(|def_tag| {
+                                    all_arr
+                                        .iter()
+                                        .filter_map(Value::as_str)
+                                        .any(|cand| cand == *def_tag)
+                                });
+                            if let Some(fallback) = default_cand
+                                .or_else(|| all_arr.iter().filter_map(Value::as_str).next())
+                            {
+                                chosen = fallback.to_string();
+                                pruned_dirty = true;
+                            } else {
+                                continue;
+                            }
                         }
                     }
                 }
@@ -3639,48 +3725,7 @@ impl CoreManager {
             }
         }
 
-        // Apply 50ms hysteresis switching on URLTest / balancer groups in Clash API
-        if let Ok(proxies_resp) = self.clash_request("GET", "/proxies", None).await
-            && let Some(proxies_obj) = proxies_resp.get("proxies").and_then(Value::as_object)
-        {
-            for (group_name, group_val) in proxies_obj {
-                let gtype = group_val
-                    .get("type")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
-                if gtype != "urltest" && gtype != "fallback" {
-                    continue;
-                }
-                let Some(all_members) = group_val.get("all").and_then(Value::as_array) else {
-                    continue;
-                };
-                let cur_now = group_val.get("now").and_then(Value::as_str).unwrap_or("");
-                let cur_delay = results.get(cur_now).copied().unwrap_or(0);
-                let mut best_tag = String::new();
-                let mut best_delay = u32::MAX;
-                for m in all_members.iter().filter_map(Value::as_str) {
-                    if let Some(&d) = results.get(m)
-                        && d > 0
-                        && d < best_delay
-                    {
-                        best_delay = d;
-                        best_tag = m.to_string();
-                    }
-                }
-                if !best_tag.is_empty()
-                    && best_tag != cur_now
-                    && (cur_delay == 0 || best_delay.saturating_add(50) < cur_delay)
-                {
-                    let encoded = crate::store::url_encode_component(group_name);
-                    let body = json!({ "name": best_tag }).to_string();
-                    let _ = self
-                        .clash_request("PUT", &format!("/proxies/{encoded}"), Some(&body))
-                        .await;
-                }
-            }
-        }
-
+        // URLTest / Fallback groups in tachyon-core manage outbound selection internally and reject PUT /proxies/{name}.
         results
     }
 
@@ -4955,7 +5000,45 @@ impl CoreManager {
         Ok(total_updated)
     }
 
-    /// Switch the active node on a `RoutingSection` selector (`PUT /proxies/sel-{id}` or `bal-{id}-{bal}`).
+    pub(crate) fn clash_selector_candidates(
+        section_id: &str,
+        balancer_refs: &[String],
+        proxies_resp: Option<&Value>,
+    ) -> Vec<String> {
+        let mut raw_candidates = vec![format!("sel-{section_id}")];
+        for bal_ref in balancer_refs {
+            let b = bal_ref.trim();
+            if !b.is_empty() {
+                raw_candidates.push(format!("bal-{section_id}-{b}"));
+            }
+        }
+        raw_candidates.push(section_id.to_string());
+        raw_candidates.push(format!("{section_id}-out"));
+
+        if let Some(proxies_obj) = proxies_resp
+            .and_then(|v| v.get("proxies"))
+            .and_then(Value::as_object)
+        {
+            raw_candidates
+                .into_iter()
+                .filter(|name| {
+                    proxies_obj
+                        .get(name)
+                        .and_then(|entry| entry.get("type"))
+                        .and_then(Value::as_str)
+                        .is_some_and(|t| t.eq_ignore_ascii_case("selector"))
+                })
+                .collect()
+        } else {
+            // When /proxies could not be queried, avoid sending PUT to bal-* (URLTest/Fallback).
+            raw_candidates
+                .into_iter()
+                .filter(|name| !name.starts_with("bal-"))
+                .collect()
+        }
+    }
+
+    /// Switch the active node on a `RoutingSection` selector (`PUT /proxies/sel-{id}`).
     pub async fn select_section_node(
         &self,
         section_id: &str,
@@ -4971,15 +5054,9 @@ impl CoreManager {
         };
         transaction::commit_transaction(&self.state, candidate).await?;
 
-        let mut selector_names = vec![format!("sel-{section_id}")];
-        for bal_ref in balancer_refs {
-            let b = bal_ref.trim();
-            if !b.is_empty() {
-                selector_names.push(format!("bal-{section_id}-{b}"));
-            }
-        }
-        selector_names.push(section_id.to_string());
-        selector_names.push(format!("{section_id}-out"));
+        let proxies_resp = self.clash_request("GET", "/proxies", None).await.ok();
+        let selector_names =
+            Self::clash_selector_candidates(section_id, &balancer_refs, proxies_resp.as_ref());
 
         let payload = json!({ "name": node_tag }).to_string();
         let mut saved_key = None;
@@ -9102,5 +9179,57 @@ mod core_mgr_tests {
             CoreManager::parse_subscription_payload_with_stats(dummy_host_app_stub);
         assert!(kept_dummy_stub.is_empty());
         assert_eq!(dropped_dummy_stub, 1);
+    }
+
+    #[test]
+    fn test_effective_core_memory_limit_mb_issue_487() {
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(200, Some(128 * 1024)),
+            200
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(64 * 1024)),
+            64
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(128 * 1024)),
+            64
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(256 * 1024)),
+            128
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(319 * 1024)),
+            159
+        );
+        assert_eq!(
+            CoreManager::effective_core_memory_limit_mb(0, Some(512 * 1024)),
+            0
+        );
+        assert_eq!(CoreManager::effective_core_memory_limit_mb(0, None), 0);
+    }
+
+    #[test]
+    fn test_clash_selector_candidates_skips_urltest_and_fallback_pr_510() {
+        let proxies = json!({
+            "proxies": {
+                "sel-Main": { "type": "Selector", "all": ["bal-Main-auto", "NodeA"] },
+                "bal-Main-auto": { "type": "URLTest", "all": ["NodeA", "NodeB"] },
+                "Main": { "type": "Fallback", "all": ["NodeA", "NodeB"] }
+            }
+        });
+        assert_eq!(
+            CoreManager::clash_selector_candidates("Main", &["auto".to_string()], Some(&proxies)),
+            vec!["sel-Main".to_string()]
+        );
+        assert_eq!(
+            CoreManager::clash_selector_candidates("Main", &["auto".to_string()], None),
+            vec![
+                "sel-Main".to_string(),
+                "Main".to_string(),
+                "Main-out".to_string(),
+            ]
+        );
     }
 }
