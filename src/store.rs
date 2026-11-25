@@ -262,17 +262,44 @@ fn default_dns_type() -> String {
     "udp".to_string()
 }
 
-fn deserialize_string_or_bool<'de, D>(de: D) -> Result<String, D::Error>
+fn deserialize_bool_from_str_or_bool<'de, D>(de: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     match serde_json::Value::deserialize(de)? {
-        Value::String(s) => Ok(s),
-        Value::Bool(true) => Ok(String::new()),
-        Value::Bool(false) => Ok("none".to_string()),
-        Value::Number(n) => Ok(n.to_string()),
-        Value::Null => Ok(String::new()),
-        other => Ok(other.to_string()),
+        Value::Bool(b) => Ok(b),
+        Value::Number(n) => Ok(n.as_f64().is_some_and(|v| v != 0.0)),
+        Value::String(s) => {
+            let norm = s.trim().to_ascii_lowercase();
+            Ok(!matches!(
+                norm.as_str(),
+                "none" | "0" | "false" | "off" | "disabled" | "no"
+            ))
+        }
+        Value::Null => Ok(true),
+        _ => Ok(true),
+    }
+}
+
+fn parse_detect_server_country_uci(raw: Option<&str>) -> (bool, String) {
+    let Some(val) = raw else {
+        return (true, String::new());
+    };
+    let norm = val.trim().to_ascii_lowercase();
+    match norm.as_str() {
+        "none" | "0" | "false" | "off" | "disabled" | "no" => (false, String::new()),
+        "flag_emoji" | "country_is" => (true, norm),
+        "" | "1" | "true" | "on" | "yes" => (true, String::new()),
+        _ => (true, String::new()),
+    }
+}
+
+fn format_detect_server_country_uci(enabled: bool, mode: &str) -> &str {
+    if !enabled {
+        "none"
+    } else {
+        let trimmed = mode.trim();
+        if trimmed.is_empty() { "1" } else { trimmed }
     }
 }
 
@@ -2908,7 +2935,7 @@ pub struct BalancerConfig {
     pub fallback_section: String,
     #[serde(default)]
     pub balancer_pool: Vec<String>,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub passive_check: bool,
     #[serde(default)]
     pub interrupt_exist_connections: bool,
@@ -2932,8 +2959,13 @@ pub struct BalancerConfig {
     pub priority_levels: Vec<PriorityLevelConfig>,
     #[serde(default)]
     pub filter_mode: String,
-    #[serde(default, deserialize_with = "deserialize_string_or_bool")]
-    pub detect_server_country: String,
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_from_str_or_bool"
+    )]
+    pub detect_server_country: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detect_server_country_mode: String,
     #[serde(default)]
     pub pin_dashboard: bool,
     #[serde(default)]
@@ -2978,6 +3010,16 @@ pub struct BalancerConfig {
     pub exclude_ports: Vec<String>,
 }
 
+impl BalancerConfig {
+    pub fn effective_detect_server_country(&self) -> String {
+        if !self.detect_server_country {
+            "none".to_string()
+        } else {
+            self.detect_server_country_mode.trim().to_string()
+        }
+    }
+}
+
 impl Default for BalancerConfig {
     fn default() -> Self {
         Self {
@@ -3010,7 +3052,8 @@ impl Default for BalancerConfig {
             outbound_group_levels: Vec::new(),
             priority_levels: Vec::new(),
             filter_mode: String::new(),
-            detect_server_country: String::new(),
+            detect_server_country: true,
+            detect_server_country_mode: String::new(),
             pin_dashboard: false,
             include_proxy_parameters: false,
             exclude_proxy_parameters: false,
@@ -3036,7 +3079,7 @@ impl Default for BalancerConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboundGroup {
     pub id: String,
     #[serde(default = "default_true")]
@@ -3055,8 +3098,13 @@ pub struct OutboundGroup {
     pub source_refs: Vec<String>,
     #[serde(default)]
     pub filter_mode: String,
-    #[serde(default, deserialize_with = "deserialize_string_or_bool")]
-    pub detect_server_country: String,
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_from_str_or_bool"
+    )]
+    pub detect_server_country: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detect_server_country_mode: String,
     #[serde(default)]
     pub include_proxy_parameters: bool,
     #[serde(default)]
@@ -3097,6 +3145,53 @@ pub struct OutboundGroup {
     pub exclude_security_types: Vec<String>,
     #[serde(default)]
     pub exclude_ports: Vec<String>,
+}
+
+impl OutboundGroup {
+    pub fn effective_detect_server_country(&self) -> String {
+        if !self.detect_server_country {
+            "none".to_string()
+        } else {
+            self.detect_server_country_mode.trim().to_string()
+        }
+    }
+}
+
+impl Default for OutboundGroup {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            enabled: false,
+            name: String::new(),
+            primary_refs: Vec::new(),
+            backup_refs: Vec::new(),
+            fail_policy: String::new(),
+            source_refs: Vec::new(),
+            filter_mode: String::new(),
+            detect_server_country: true,
+            detect_server_country_mode: String::new(),
+            include_proxy_parameters: false,
+            exclude_proxy_parameters: false,
+            include_prefixes: Vec::new(),
+            include_country_flags: Vec::new(),
+            include_servers: Vec::new(),
+            include_regex: Vec::new(),
+            include_name_regex: String::new(),
+            include_protocols: Vec::new(),
+            include_transports: Vec::new(),
+            include_security_types: Vec::new(),
+            include_ports: Vec::new(),
+            exclude_prefixes: Vec::new(),
+            exclude_country_flags: Vec::new(),
+            exclude_servers: Vec::new(),
+            exclude_regex: Vec::new(),
+            exclude_name_regex: String::new(),
+            exclude_protocols: Vec::new(),
+            exclude_transports: Vec::new(),
+            exclude_security_types: Vec::new(),
+            exclude_ports: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -5214,15 +5309,12 @@ impl RouterStoreData {
                         self.settings.bootstrap_dns_servers = boot_srvs;
                     }
                     let fb_srvs = b.list("dns_fallback_server");
-                    if !fb_srvs.is_empty()
-                        || reset_omitted_fields
-                        || !has_key("dns_fallback_server")
-                    {
+                    if !fb_srvs.is_empty() || reset_omitted_fields {
                         self.settings.dns_fallback_servers = fb_srvs;
                     }
                     if let Some(v) = b.opt("fallback_dns_server") {
                         self.settings.fallback_dns_server = v.to_string();
-                    } else if reset_omitted_fields || !has_key("fallback_dns_server") {
+                    } else if reset_omitted_fields {
                         self.settings.fallback_dns_server.clear();
                     }
                     if let Some(v) = b.opt("fallback_wan_main") {
@@ -5230,10 +5322,6 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("fallback_wan_bootstrap") {
                         self.settings.fallback_wan_bootstrap = parse_bool(v);
-                    }
-                    if !reset_omitted_fields && !has_key("download_lists_via_proxy") {
-                        self.settings.download_lists_via_proxy = false;
-                        self.settings.download_lists_via_proxy_section.clear();
                     }
                     if let Some(v) = b.opt("dns_strategy") {
                         self.settings.dns_strategy = normalize_dns_strategy(v);
@@ -5393,6 +5481,26 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("show_tab_telegram") {
                         self.settings.show_tab_telegram = parse_bool(v);
                     }
+                    if let Some(v) = b.opt("disable_quic_mode") {
+                        let m = v.trim().to_ascii_lowercase();
+                        match m.as_str() {
+                            "all" => {
+                                self.settings.disable_quic = true;
+                                self.settings.disable_quic_mode = "all".to_string();
+                            }
+                            "tunneled" | "proxied" => {
+                                self.settings.disable_quic = true;
+                                self.settings.disable_quic_mode = "tunneled".to_string();
+                            }
+                            "off" => {
+                                self.settings.disable_quic = false;
+                                self.settings.disable_quic_mode = "off".to_string();
+                            }
+                            _ => {
+                                self.settings.disable_quic_mode = m;
+                            }
+                        }
+                    }
                     if let Some(v) = b.opt("disable_quic") {
                         let norm = v.trim().to_ascii_lowercase();
                         match norm.as_str() {
@@ -5411,18 +5519,9 @@ impl RouterStoreData {
                             _ => {
                                 self.settings.disable_quic = true;
                                 if matches!(self.settings.disable_quic_mode.as_str(), "" | "off") {
-                                    self.settings.disable_quic_mode = "tunneled".to_string();
+                                    self.settings.disable_quic_mode = "all".to_string();
                                 }
                             }
-                        }
-                    }
-                    if let Some(v) = b.opt("disable_quic_mode") {
-                        let m = v.trim().to_ascii_lowercase();
-                        self.settings.disable_quic_mode = m.clone();
-                        if m == "all" || m == "tunneled" || m == "proxied" {
-                            self.settings.disable_quic = true;
-                        } else if m == "off" {
-                            self.settings.disable_quic = false;
                         }
                     }
                     if let Some(v) = b.opt("block_doh") {
@@ -5899,7 +5998,7 @@ impl RouterStoreData {
                         domain_ip_lists: b
                             .clean_tokens(&["domain_ip_lists", "remote_subnet_lists"]),
                         geoip_codes: b.clean_tokens(&["geoip_country", "geoip_codes"]),
-                        geoip_mode: b.opt("geoip_mode").unwrap_or("").to_string(),
+                        geoip_mode: b.opt("geoip_mode").unwrap_or("include").to_string(),
                         geosite_codes: b.clean_tokens(&["geosite_codes"]),
                         client_ips: b
                             .clean_tokens(&["client_ips", "source_ip_cidr"])
@@ -5994,6 +6093,8 @@ impl RouterStoreData {
                         &balancer_mode,
                     );
                     let default_pick_fastest = balancer_type.eq_ignore_ascii_case("priority");
+                    let (detect_server_country, detect_server_country_mode) =
+                        parse_detect_server_country_uci(b.opt("detect_server_country"));
                     balancer_section_links.push((bal_id.clone(), b.list("section")));
                     self.balancers.push(BalancerConfig {
                         id: bal_id,
@@ -6068,11 +6169,8 @@ impl RouterStoreData {
                             .unwrap_or("10m")
                             .to_string(),
                         filter_mode: b.opt("filter_mode").unwrap_or("").to_string(),
-                        detect_server_country: b
-                            .opt("detect_server_country")
-                            .unwrap_or("")
-                            .trim()
-                            .to_string(),
+                        detect_server_country,
+                        detect_server_country_mode,
                         pin_dashboard: b.opt("pin_dashboard").is_some_and(parse_bool),
                         include_proxy_parameters: b
                             .opt("include_proxy_parameters")
@@ -6674,6 +6772,8 @@ impl RouterStoreData {
                     imported += 1;
                 }
                 "outbound_group" => {
+                    let (detect_server_country, detect_server_country_mode) =
+                        parse_detect_server_country_uci(b.opt("detect_server_country"));
                     self.outbound_groups.push(OutboundGroup {
                         id: b.name.clone(),
                         enabled: b.opt("enabled").is_none_or(parse_bool),
@@ -6683,11 +6783,8 @@ impl RouterStoreData {
                         fail_policy: b.opt("fail_policy").unwrap_or("last_alive").to_string(),
                         source_refs: b.list("source_refs"),
                         filter_mode: b.opt("filter_mode").unwrap_or("include").to_string(),
-                        detect_server_country: b
-                            .opt("detect_server_country")
-                            .unwrap_or("")
-                            .trim()
-                            .to_string(),
+                        detect_server_country,
+                        detect_server_country_mode,
                         include_proxy_parameters: b
                             .opt("include_proxy_parameters")
                             .is_some_and(parse_bool),
@@ -6856,7 +6953,10 @@ impl RouterStoreData {
                         output_interface: b.opt("output_interface").unwrap_or("").to_string(),
                         server_domain_rules: b.list("server_domain_rules"),
                         balancer_settings: b.opt("balancer_settings").unwrap_or("").to_string(),
-                        section_filter_mode: b.opt("section_filter_mode").unwrap_or("").to_string(),
+                        section_filter_mode: b
+                            .opt("section_filter_mode")
+                            .unwrap_or("disabled")
+                            .to_string(),
                         section_include_prefixes: b.list("section_include_prefixes"),
                         section_exclude_prefixes: b.list("section_exclude_prefixes"),
                         section_include_countries: b.list("section_include_countries"),
@@ -8186,11 +8286,8 @@ impl RouterStoreData {
             let exclude_proxy_parameters = b
                 .opt("exclude_proxy_parameters")
                 .is_some_and(parse_uci_bool);
-            let detect_server_country = b
-                .opt("detect_server_country")
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let (detect_server_country, detect_server_country_mode) =
+                parse_detect_server_country_uci(b.opt("detect_server_country"));
 
             let has_inc = !include_countries.is_empty()
                 || !include_servers.is_empty()
@@ -8257,6 +8354,7 @@ impl RouterStoreData {
                 source_refs: linked_source_refs,
                 filter_mode,
                 detect_server_country,
+                detect_server_country_mode,
                 include_proxy_parameters,
                 exclude_proxy_parameters,
                 include_prefixes,
@@ -8451,16 +8549,10 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
     if !store.applied_migrations.is_empty() {
         settings_extra.push(("applied_migrations", json!(store.applied_migrations)));
     }
-    let eff_disable_quic = match store
-        .settings
-        .disable_quic_mode
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "all" => "all",
+    let quic_mode = store.settings.disable_quic_mode.trim().to_ascii_lowercase();
+    let eff_disable_quic = match quic_mode.as_str() {
         "tunneled" | "proxied" => "tunneled",
-        "off" => "off",
+        "all" => "all",
         _ if store.settings.disable_quic => "all",
         _ => "off",
     };
@@ -8751,6 +8843,13 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 json!(format!("{}%", bal.check_interval_jitter)),
             ));
         }
+        bal_extra.push((
+            "detect_server_country",
+            json!(format_detect_server_country_uci(
+                bal.detect_server_country,
+                &bal.detect_server_country_mode
+            )),
+        ));
         out.insert(
             bal.id.clone(),
             struct_to_json_section(
@@ -8759,7 +8858,12 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 idx,
                 bal,
                 &filter_rename_keys,
-                &["check_interval", "check_interval_jitter"],
+                &[
+                    "check_interval",
+                    "check_interval_jitter",
+                    "detect_server_country",
+                    "detect_server_country_mode",
+                ],
                 &[],
                 existing_obj(&bal.id),
                 &bal_extra,
@@ -8772,6 +8876,13 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
         if grp.id.trim().is_empty() {
             continue;
         }
+        let grp_extra = [(
+            "detect_server_country",
+            json!(format_detect_server_country_uci(
+                grp.detect_server_country,
+                &grp.detect_server_country_mode
+            )),
+        )];
         out.insert(
             grp.id.clone(),
             struct_to_json_section(
@@ -8780,10 +8891,10 @@ pub fn sync_store_to_json_sections(store: &RouterStoreData, existing: Option<&Va
                 idx,
                 grp,
                 &filter_rename_keys,
-                &[],
+                &["detect_server_country", "detect_server_country_mode"],
                 &[],
                 existing_obj(&grp.id),
-                &[],
+                &grp_extra,
             ),
         );
         idx += 1;
@@ -12713,7 +12824,7 @@ config priority_level 'pl_direct'
             .find(|o| o["tag"] == "bal-proxy-pg_main")
             .expect("bal-proxy-pg_main outbound");
         assert_eq!(bal["type"], "urltest");
-        assert_eq!(bal["mode"], "least_test");
+        assert_eq!(bal["mode"], "priority");
         assert_eq!(bal["tolerance"], 50);
         let tiers = bal["balancer"]["tiers"].as_array().expect("priority tiers");
         assert_eq!(tiers.len(), 3);
@@ -13932,5 +14043,191 @@ config outbound_source 'awg31_src'
             .find(|s| s.id == "src_mq")
             .expect("reimported mq");
         assert_eq!(mq2.masque_private_key, "PRIV_KEY_VAL");
+    }
+
+    #[test]
+    fn test_detect_server_country_rc3_bool_rollback_and_mode_roundtrip() {
+        let rc3_bal: BalancerConfig = serde_json::from_value(json!({
+            "id": "b1",
+            "detect_server_country": false
+        }))
+        .expect("rc3 false");
+        assert!(!rc3_bal.detect_server_country);
+        assert_eq!(rc3_bal.effective_detect_server_country(), "none");
+        assert!(
+            rc3_bal.passive_check,
+            "omitted passive_check must default true"
+        );
+
+        let rc4_grp: OutboundGroup = serde_json::from_value(json!({
+            "id": "g1",
+            "detect_server_country": "flag_emoji"
+        }))
+        .expect("rc4 string");
+        assert!(rc4_grp.detect_server_country);
+        assert_eq!(rc4_grp.effective_detect_server_country(), "");
+
+        let rc4_none: BalancerConfig = serde_json::from_value(json!({
+            "id": "b2",
+            "detect_server_country": "none"
+        }))
+        .expect("rc4 none string");
+        assert!(!rc4_none.detect_server_country);
+        assert_eq!(rc4_none.effective_detect_server_country(), "none");
+
+        let serialized = serde_json::to_value(&rc4_grp).expect("serialize rc3-compat");
+        assert_eq!(serialized["detect_server_country"], json!(true));
+        assert!(serialized.get("detect_server_country_mode").is_none());
+
+        assert!(BalancerConfig::default().detect_server_country);
+        assert!(OutboundGroup::default().detect_server_country);
+
+        let uci = json!({
+            "b_flag": {
+                ".type": "balancer",
+                ".name": "b_flag",
+                "detect_server_country": "flag_emoji"
+            },
+            "g_off": {
+                ".type": "outbound_group",
+                ".name": "g_off",
+                "detect_server_country": "none"
+            },
+            "g_cis": {
+                ".type": "outbound_group",
+                ".name": "g_cis",
+                "detect_server_country": "country_is"
+            }
+        });
+        let mut store = RouterStoreData::default();
+        store.import_from_json_sections(uci.as_object().unwrap());
+
+        let b_flag = store.balancers.iter().find(|b| b.id == "b_flag").unwrap();
+        assert!(b_flag.detect_server_country);
+        assert_eq!(b_flag.detect_server_country_mode, "flag_emoji");
+        assert_eq!(b_flag.effective_detect_server_country(), "flag_emoji");
+
+        let g_off = store
+            .outbound_groups
+            .iter()
+            .find(|g| g.id == "g_off")
+            .unwrap();
+        assert!(!g_off.detect_server_country);
+        assert_eq!(g_off.effective_detect_server_country(), "none");
+
+        let g_cis = store
+            .outbound_groups
+            .iter()
+            .find(|g| g.id == "g_cis")
+            .unwrap();
+        assert!(g_cis.detect_server_country);
+        assert_eq!(g_cis.effective_detect_server_country(), "country_is");
+
+        let exported = sync_store_to_json_sections(&store, None);
+        assert_eq!(exported["b_flag"]["detect_server_country"], "flag_emoji");
+        assert_eq!(exported["g_off"]["detect_server_country"], "none");
+        assert_eq!(exported["g_cis"]["detect_server_country"], "country_is");
+        assert!(
+            exported["b_flag"]
+                .get("detect_server_country_mode")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_partial_uci_preserves_omitted_fallback_dns_and_list_proxy_and_defaults() {
+        let mut store = RouterStoreData::default();
+        store.settings.dns_fallback_servers = vec!["9.9.9.9".to_string()];
+        store.settings.fallback_dns_server = "1.0.0.1".to_string();
+        store.settings.download_lists_via_proxy = true;
+        store.settings.download_lists_via_proxy_section = "Main".to_string();
+
+        let partial_blocks = vec![
+            LegacyUciBlock {
+                kind: "settings".to_string(),
+                name: "settings".to_string(),
+                options: HashMap::from([("disable_quic".to_string(), "1".to_string())]),
+                lists: HashMap::new(),
+            },
+            LegacyUciBlock {
+                kind: "condition".to_string(),
+                name: "cond_default".to_string(),
+                options: HashMap::from([("name".to_string(), "Geo".to_string())]),
+                lists: HashMap::from([("geoip_country".to_string(), vec!["ru".to_string()])]),
+            },
+            LegacyUciBlock {
+                kind: "section".to_string(),
+                name: "sec_default".to_string(),
+                options: HashMap::from([("action".to_string(), "proxy".to_string())]),
+                lists: HashMap::new(),
+            },
+        ];
+        store.import_from_blocks_with_cache(&partial_blocks, Path::new("/nonexistent"));
+
+        assert_eq!(
+            store.settings.dns_fallback_servers,
+            vec!["9.9.9.9".to_string()]
+        );
+        assert_eq!(store.settings.fallback_dns_server, "1.0.0.1");
+        assert!(store.settings.download_lists_via_proxy);
+        assert_eq!(store.settings.download_lists_via_proxy_section, "Main");
+        assert!(store.settings.disable_quic);
+        assert_eq!(store.settings.disable_quic_mode, "all");
+
+        let cond = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_default")
+            .unwrap();
+        assert_eq!(cond.geoip_mode, "include");
+        let sec = store
+            .sections
+            .iter()
+            .find(|s| s.id == "sec_default")
+            .unwrap();
+        assert_eq!(sec.section_filter_mode, "disabled");
+    }
+
+    #[test]
+    fn test_sync_store_to_json_sections_disable_quic_rc3_upgrade_consistency() {
+        let mut store = RouterStoreData::default();
+        store.settings.disable_quic = true;
+        store.settings.disable_quic_mode = "off".to_string();
+        let exported = sync_store_to_json_sections(&store, None);
+        assert_eq!(exported["settings"]["disable_quic"], "all");
+
+        store.settings.disable_quic_mode = "tunneled".to_string();
+        let exported_tunneled = sync_store_to_json_sections(&store, None);
+        assert_eq!(exported_tunneled["settings"]["disable_quic"], "tunneled");
+    }
+
+    #[test]
+    fn test_uci_disable_quic_overrides_stale_disable_quic_mode() {
+        for (quic_val, mode_val, exp_flag, exp_mode) in [
+            ("tunneled", "off", true, "tunneled"),
+            ("all", "off", true, "all"),
+            ("1", "off", true, "all"),
+            ("1", "tunneled", true, "tunneled"),
+            ("0", "tunneled", false, "off"),
+        ] {
+            let mut store = RouterStoreData::default();
+            let uci = json!({
+                "settings": {
+                    ".type": "settings",
+                    ".name": "settings",
+                    "disable_quic": quic_val,
+                    "disable_quic_mode": mode_val
+                }
+            });
+            store.import_from_json_sections(uci.as_object().unwrap());
+            assert_eq!(
+                store.settings.disable_quic, exp_flag,
+                "case ({quic_val}, {mode_val})"
+            );
+            assert_eq!(
+                store.settings.disable_quic_mode, exp_mode,
+                "case ({quic_val}, {mode_val})"
+            );
+        }
     }
 }

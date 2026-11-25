@@ -2685,6 +2685,26 @@ fn is_builtin_non_proxy_outbound(tag: &str) -> bool {
     )
 }
 
+fn apply_fix_dnsmasq_dropins(
+    store: &RouterStoreData,
+    conf_dirs: &[std::path::PathBuf],
+    adguard_mode: bool,
+) {
+    if adguard_mode {
+        for dir in conf_dirs {
+            let _ = std::fs::remove_file(dir.join("tachyon.conf"));
+        }
+        return;
+    }
+    let dropin = crate::net_stack::build_dnsmasq_dropin_config(store);
+    for dir in conf_dirs {
+        if dir.is_dir() {
+            let conf_path = dir.join("tachyon.conf");
+            let _ = crypto_gen::write_file_with_mode_if_changed(&conf_path, &dropin, 0o644);
+        }
+    }
+}
+
 pub async fn apply_quick_fix(
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
@@ -2804,20 +2824,20 @@ async fn apply_quick_fix_single(
                         .to_string(),
                 );
             }
-            let dont_touch = state.data.read().await.settings.dont_touch_dhcp;
+            let snap = Box::new(state.data.read().await.clone());
             if !cfg!(windows) {
-                if !dont_touch {
-                    let dropin = "server=127.0.0.42#53\nno-resolv\n";
-                    for dir in
-                        crate::net_stack::collect_dnsmasq_conf_dirs_in(std::path::Path::new("/tmp"))
-                    {
-                        if dir.is_dir() {
-                            let conf_path = dir.join("tachyon.conf");
-                            let _ = crypto_gen::write_file_with_mode_if_changed(
-                                &conf_path, dropin, 0o644,
-                            );
-                        }
-                    }
+                if !snap.settings.dont_touch_dhcp {
+                    let adguard_mode = Command::new("uci")
+                        .args(["-q", "get", "dhcp.@dnsmasq[0].port"])
+                        .output()
+                        .await
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "0");
+                    let dirs = crate::net_stack::collect_dnsmasq_conf_dirs_in(
+                        std::path::Path::new("/tmp"),
+                    );
+                    apply_fix_dnsmasq_dropins(&snap, &dirs, adguard_mode);
                 }
                 let _ = Command::new("/etc/init.d/dnsmasq")
                     .arg("restart")
@@ -9100,5 +9120,28 @@ IP address       HW type     Flags       HW address            Mask     Device
         let exact_secs = exact["exact_sections"].as_array().unwrap();
         assert_eq!(exact_secs[0]["id"], "sec_bypass");
         assert_eq!(exact_secs[1]["id"], "sec_all");
+    }
+
+    #[test]
+    fn fix_dnsmasq_dropin_writes_static_hosts_and_removes_on_adguard_mode() {
+        let dir = std::env::temp_dir().join(format!("tachyon_diag_dnsmasq_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut store = RouterStoreData::default();
+        store.settings.static_hosts = vec!["192.168.1.1 router.lan".to_string()];
+
+        apply_fix_dnsmasq_dropins(&store, std::slice::from_ref(&dir), false);
+        let written = std::fs::read_to_string(dir.join("tachyon.conf")).unwrap();
+        assert!(written.contains("server=127.0.0.42#53"));
+        assert!(written.contains("address=/router.lan/192.168.1.1"));
+
+        apply_fix_dnsmasq_dropins(&store, std::slice::from_ref(&dir), true);
+        assert!(
+            !dir.join("tachyon.conf").exists(),
+            "AdGuard Home mode must remove tachyon.conf"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

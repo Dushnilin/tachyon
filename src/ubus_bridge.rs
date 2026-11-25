@@ -1737,20 +1737,32 @@ fn push_dir_entries_into(dir: &Path, map: &mut std::collections::BTreeMap<String
     }
 }
 
-fn resolve_virtual_sub_cache_file(path: &str) -> Option<std::path::PathBuf> {
+fn resolve_virtual_sub_cache_file_in(
+    path: &str,
+    virt_dir: &Path,
+    direct_dir: &Path,
+) -> Option<std::path::PathBuf> {
     let fname = path.strip_prefix("/etc/tachyon/subscription-cache/")?;
     if fname.is_empty() || fname.contains('/') || fname.contains("..") || fname.contains('\0') {
         return None;
     }
-    let direct = Path::new(path);
-    if direct.is_file() {
-        return Some(direct.to_path_buf());
-    }
-    let virt = virtual_sub_cache_dir().join(fname);
+    let virt = virt_dir.join(fname);
     if virt.is_file() {
         return Some(virt);
     }
+    let direct = direct_dir.join(fname);
+    if direct.is_file() {
+        return Some(direct);
+    }
     None
+}
+
+fn resolve_virtual_sub_cache_file(path: &str) -> Option<std::path::PathBuf> {
+    resolve_virtual_sub_cache_file_in(
+        path,
+        &virtual_sub_cache_dir(),
+        Path::new("/etc/tachyon/subscription-cache"),
+    )
 }
 
 fn handle_file_list(args: &Value) -> Value {
@@ -1916,6 +1928,9 @@ fn is_allowed_bridge_exec(bin: &str, args: &[String]) -> bool {
             args.len() <= 8
                 && args.iter().all(|a| {
                     !a.is_empty()
+                        && a != "-f"
+                        && a != "--follow"
+                        && !(a.starts_with('-') && !a.starts_with("--") && a[1..].contains('f'))
                         && !a.contains(';')
                         && !a.contains('|')
                         && !a.contains('&')
@@ -4638,22 +4653,36 @@ fn collect_section_sources_with_owner<'a>(
         owner_sec: &str,
         gref: &str,
         sec_hidden: bool,
+        store: &'a crate::store::RouterStoreData,
         group_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundGroup>,
         source_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundSource>,
         seen: &mut std::collections::HashSet<(String, &'a str)>,
         seen_global: &mut std::collections::HashSet<&'a str>,
         result: &mut Vec<(String, &'a crate::store::OutboundSource, bool)>,
     ) {
-        if let Some(grp) = group_by_id.get(gref).copied() {
-            for sref in grp
-                .source_refs
-                .iter()
-                .chain(grp.primary_refs.iter())
-                .chain(grp.backup_refs.iter())
-            {
-                if let Some(src) = source_by_id.get(sref.as_str()).copied() {
-                    push_source(owner_sec, src, sec_hidden, seen, seen_global, result);
-                }
+        let Some(grp) = group_by_id.get(gref).copied() else {
+            return;
+        };
+        if !grp.enabled {
+            return;
+        }
+        let is_wildcard = grp.source_refs.iter().any(|r| r.trim() == "*")
+            || (grp.source_refs.is_empty()
+                && grp.primary_refs.is_empty()
+                && grp.backup_refs.is_empty());
+        if is_wildcard {
+            for src in store.outbound_sources.iter().filter(|src| src.enabled) {
+                push_source(owner_sec, src, sec_hidden, seen, seen_global, result);
+            }
+        }
+        for sref in grp
+            .source_refs
+            .iter()
+            .chain(grp.primary_refs.iter())
+            .chain(grp.backup_refs.iter())
+        {
+            if let Some(src) = source_by_id.get(sref.as_str()).copied() {
+                push_source(owner_sec, src, sec_hidden, seen, seen_global, result);
             }
         }
     }
@@ -4691,6 +4720,7 @@ fn collect_section_sources_with_owner<'a>(
                     owner_sec,
                     gref.as_str(),
                     sec.hidden,
+                    store,
                     group_by_id,
                     source_by_id,
                     seen,
@@ -4717,6 +4747,7 @@ fn collect_section_sources_with_owner<'a>(
                         owner_sec,
                         t,
                         sec.hidden,
+                        store,
                         group_by_id,
                         source_by_id,
                         seen,
@@ -4746,17 +4777,18 @@ fn collect_section_sources_with_owner<'a>(
                     seen_global,
                     result,
                 );
-            } else if let Some(grp) = group_by_id.get(trimmed).copied() {
-                for sref in grp
-                    .source_refs
-                    .iter()
-                    .chain(grp.primary_refs.iter())
-                    .chain(grp.backup_refs.iter())
-                {
-                    if let Some(src) = source_by_id.get(sref.as_str()).copied() {
-                        push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
-                    }
-                }
+            } else if group_by_id.contains_key(trimmed) {
+                collect_group(
+                    owner_sec,
+                    trimmed,
+                    sec.hidden,
+                    store,
+                    group_by_id,
+                    source_by_id,
+                    seen,
+                    seen_global,
+                    result,
+                );
             } else if let Some(src) = source_by_id.get(trimmed).copied() {
                 push_source(owner_sec, src, sec.hidden, seen, seen_global, result);
             }
@@ -13420,6 +13452,75 @@ fn is_safe_uci_config_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
 }
 
+fn uci_json_sections_need_resync(
+    d: &crate::store::RouterStoreData,
+    sections: &Map<String, Value>,
+) -> bool {
+    if sections.is_empty()
+        || sections
+            .get("settings")
+            .and_then(|v| v.get(".type"))
+            .and_then(Value::as_str)
+            != Some("settings")
+    {
+        return true;
+    }
+    let check_all = |items: &[(&str, &str)]| {
+        items.iter().any(|(id, ty)| {
+            sections
+                .get(*id)
+                .and_then(|v| v.get(".type"))
+                .and_then(Value::as_str)
+                != Some(*ty)
+        })
+    };
+    let mut expected: Vec<(&str, &str)> = Vec::with_capacity(
+        d.sections.len()
+            + d.balancers.len()
+            + d.outbound_groups.len()
+            + d.servers.len()
+            + d.profiles.len()
+            + d.conditions.len()
+            + d.outbound_sources.len(),
+    );
+    for s in &d.sections {
+        if !s.id.trim().is_empty() {
+            expected.push((s.id.trim(), "section"));
+        }
+    }
+    for b in &d.balancers {
+        if !b.id.trim().is_empty() {
+            expected.push((b.id.trim(), "balancer"));
+        }
+    }
+    for g in &d.outbound_groups {
+        if !g.id.trim().is_empty() {
+            expected.push((g.id.trim(), "outbound_group"));
+        }
+    }
+    for s in &d.servers {
+        if !s.id.trim().is_empty() {
+            expected.push((s.id.trim(), "server"));
+        }
+    }
+    for p in &d.profiles {
+        if !p.id.trim().is_empty() {
+            expected.push((p.id.trim(), "profile"));
+        }
+    }
+    for c in &d.conditions {
+        if !c.id.trim().is_empty() {
+            expected.push((c.id.trim(), "condition"));
+        }
+    }
+    for src in &d.outbound_sources {
+        if !src.id.trim().is_empty() {
+            expected.push((src.id.trim(), "outbound_source"));
+        }
+    }
+    check_all(&expected)
+}
+
 async fn handle_pure_rust_uci(
     uci_method: &str,
     args: &Value,
@@ -13457,62 +13558,9 @@ async fn handle_pure_rust_uci(
         "get" => {
             let need_resync = {
                 let d = state.data.read().await;
-                let mut expected: Vec<(&str, &str)> = Vec::with_capacity(
-                    d.sections.len()
-                        + d.balancers.len()
-                        + d.conditions.len()
-                        + d.outbound_sources.len(),
-                );
-                for s in &d.sections {
-                    if !s.id.trim().is_empty() {
-                        expected.push((s.id.trim(), "section"));
-                    }
-                }
-                for b in &d.balancers {
-                    if !b.id.trim().is_empty() {
-                        expected.push((b.id.trim(), "balancer"));
-                    }
-                }
-                for g in &d.outbound_groups {
-                    if !g.id.trim().is_empty() {
-                        expected.push((g.id.trim(), "outbound_group"));
-                    }
-                }
-                for s in &d.servers {
-                    if !s.id.trim().is_empty() {
-                        expected.push((s.id.trim(), "inbound_server"));
-                    }
-                }
-                for p in &d.profiles {
-                    if !p.id.trim().is_empty() {
-                        expected.push((p.id.trim(), "profile"));
-                    }
-                }
-                for c in &d.conditions {
-                    if !c.id.trim().is_empty() {
-                        expected.push((c.id.trim(), "condition"));
-                    }
-                }
-                for src in &d.outbound_sources {
-                    if !src.id.trim().is_empty() {
-                        expected.push((src.id.trim(), "outbound_source"));
-                    }
-                }
                 json_sections_store()
                     .read()
-                    .map(|g| {
-                        g.is_empty()
-                            || g.get("settings")
-                                .and_then(|v| v.get(".type"))
-                                .and_then(Value::as_str)
-                                != Some("settings")
-                            || expected.iter().any(|(id, ty)| {
-                                g.get(*id)
-                                    .and_then(|v| v.get(".type"))
-                                    .and_then(Value::as_str)
-                                    != Some(*ty)
-                            })
-                    })
+                    .map(|g| uci_json_sections_need_resync(&d, &g))
                     .unwrap_or(false)
             };
             if need_resync {
@@ -17425,7 +17473,166 @@ tls=TLSv1.3
             &["-l".into(), "50".into()]
         ));
         assert!(!is_allowed_bridge_exec("/sbin/logread", &["-l;id".into()]));
+        assert!(!is_allowed_bridge_exec("/sbin/logread", &["-f".into()]));
+        assert!(!is_allowed_bridge_exec(
+            "/sbin/logread",
+            &["--follow".into()]
+        ));
+        assert!(!is_allowed_bridge_exec("/sbin/logread", &["-lf".into()]));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn group_without_source_refs_preserves_enabled_sources_in_metadata() {
+        use crate::store::{OutboundGroup, OutboundSource, RouterStoreData, RoutingSection};
+        let store = RouterStoreData {
+            outbound_sources: vec![
+                OutboundSource {
+                    id: "sn".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "PS".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "disabled".into(),
+                    enabled: false,
+                    ..Default::default()
+                },
+            ],
+            outbound_groups: vec![OutboundGroup {
+                id: "all_sources".into(),
+                enabled: true,
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "Main".into(),
+                outbound_source_refs: vec!["sn".into()],
+                outbound_group_refs: vec!["all_sources".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let sources: Vec<_> = collect_section_sources_with_owner(&store, "Main")
+            .into_iter()
+            .map(|(_, src, _)| src.id.as_str())
+            .collect();
+        assert_eq!(sources, ["sn", "PS"]);
+    }
+
+    #[test]
+    fn collect_group_skips_disabled_and_supports_star_wildcard_in_section_refs() {
+        use crate::store::{OutboundGroup, OutboundSource, RouterStoreData, RoutingSection};
+        let store = RouterStoreData {
+            outbound_sources: vec![
+                OutboundSource {
+                    id: "s1".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "s2".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "s_off".into(),
+                    enabled: false,
+                    ..Default::default()
+                },
+            ],
+            outbound_groups: vec![
+                OutboundGroup {
+                    id: "grp_off".into(),
+                    enabled: false,
+                    source_refs: vec!["s1".into()],
+                    ..Default::default()
+                },
+                OutboundGroup {
+                    id: "grp_star".into(),
+                    enabled: true,
+                    source_refs: vec!["*".into()],
+                    ..Default::default()
+                },
+            ],
+            sections: vec![
+                RoutingSection {
+                    id: "SecDisabled".into(),
+                    outbound_group_refs: vec!["grp_off".into()],
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "SecStar".into(),
+                    section_refs: vec!["grp_star".into()],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let off_sources: Vec<_> = collect_section_sources_with_owner(&store, "SecDisabled")
+            .into_iter()
+            .map(|(_, src, _)| src.id.as_str())
+            .collect();
+        assert!(off_sources.is_empty(), "disabled group must emit nothing");
+
+        let star_sources: Vec<_> = collect_section_sources_with_owner(&store, "SecStar")
+            .into_iter()
+            .map(|(_, src, _)| src.id.as_str())
+            .collect();
+        assert_eq!(star_sources, ["s1", "s2"]);
+    }
+
+    #[test]
+    fn virtual_sub_cache_prefers_tmpfs_over_stale_flash_and_server_type_no_resync() {
+        let dir = std::env::temp_dir().join(format!("tachyon_virt_pref_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let virt = dir.join("tmpfs");
+        let flash = dir.join("flash");
+        std::fs::create_dir_all(&virt).unwrap();
+        std::fs::create_dir_all(&flash).unwrap();
+
+        std::fs::write(flash.join("Pool_s1-subscription-1.json"), "stale").unwrap();
+        std::fs::write(virt.join("Pool_s1-subscription-1.json"), "fresh").unwrap();
+        std::fs::write(flash.join("Pool_only_flash-subscription-1.json"), "old").unwrap();
+
+        let p_fresh = resolve_virtual_sub_cache_file_in(
+            "/etc/tachyon/subscription-cache/Pool_s1-subscription-1.json",
+            &virt,
+            &flash,
+        )
+        .unwrap();
+        assert_eq!(p_fresh, virt.join("Pool_s1-subscription-1.json"));
+
+        let p_fallback = resolve_virtual_sub_cache_file_in(
+            "/etc/tachyon/subscription-cache/Pool_only_flash-subscription-1.json",
+            &virt,
+            &flash,
+        )
+        .unwrap();
+        assert_eq!(
+            p_fallback,
+            flash.join("Pool_only_flash-subscription-1.json")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.servers.push(crate::store::InboundServer {
+            id: "srv_vless".into(),
+            ..Default::default()
+        });
+        let Value::Object(sections) = crate::store::sync_store_to_json_sections(&store, None)
+        else {
+            panic!("expected object");
+        };
+        assert_eq!(sections["srv_vless"][".type"], "server");
+        assert!(
+            !uci_json_sections_need_resync(&store, &sections),
+            "non-empty servers must not trigger resync on every uci.get"
+        );
     }
 }
