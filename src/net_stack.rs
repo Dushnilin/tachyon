@@ -794,6 +794,179 @@ fn read_runtime_dnat_context() -> (Vec<FirewallDnatRedirect>, Vec<String>) {
     (redirects, lan_v4_ips)
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DhcpSplitDnsContext {
+    pub local_domain_suffixes: Vec<String>,
+    pub address_records: Vec<(String, String)>,
+}
+
+pub fn parse_dhcp_split_dns_context(raw: &str) -> DhcpSplitDnsContext {
+    let mut ctx = DhcpSplitDnsContext::default();
+    let mut current_section_type = "";
+    let mut domain_name = String::new();
+    let mut domain_ip = String::new();
+
+    let flush_domain = |ctx: &mut DhcpSplitDnsContext, name: &mut String, ip: &mut String| {
+        let clean_name = name
+            .trim()
+            .trim_matches('/')
+            .trim_start_matches('.')
+            .to_ascii_lowercase();
+        let clean_ip = ip.trim();
+        if !clean_name.is_empty()
+            && (clean_ip.parse::<std::net::Ipv4Addr>().is_ok()
+                || clean_ip.parse::<std::net::Ipv6Addr>().is_ok())
+        {
+            if !ctx
+                .local_domain_suffixes
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&clean_name))
+            {
+                ctx.local_domain_suffixes.push(clean_name.clone());
+            }
+            if !ctx
+                .address_records
+                .iter()
+                .any(|(d, i)| d.eq_ignore_ascii_case(&clean_name) && i == clean_ip)
+            {
+                ctx.address_records.push((clean_name, clean_ip.to_string()));
+            }
+        }
+        name.clear();
+        ip.clear();
+    };
+
+    for raw_line in raw.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("config")
+            && rest.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            if current_section_type == "domain" {
+                flush_domain(&mut ctx, &mut domain_name, &mut domain_ip);
+            }
+            let stype = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches('\'')
+                .trim_matches('"');
+            current_section_type = stype;
+            continue;
+        }
+
+        let rest = if let Some(r) = line.strip_prefix("option")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else if let Some(r) = line.strip_prefix("list")
+            && r.chars().next().is_some_and(|c| c.is_ascii_whitespace())
+        {
+            r.trim_start()
+        } else {
+            continue;
+        };
+
+        let Some((key_raw, val_raw)) = rest.split_once(|c: char| c.is_ascii_whitespace()) else {
+            continue;
+        };
+        let key = key_raw.trim().trim_matches('\'').trim_matches('"');
+        let val = unquote_uci_value(val_raw);
+
+        match current_section_type {
+            "dnsmasq" => match key {
+                "domain" | "local" => {
+                    let dom = val
+                        .trim()
+                        .trim_matches('/')
+                        .trim_start_matches('.')
+                        .to_ascii_lowercase();
+                    if !dom.is_empty()
+                        && !ctx
+                            .local_domain_suffixes
+                            .iter()
+                            .any(|d| d.eq_ignore_ascii_case(&dom))
+                    {
+                        ctx.local_domain_suffixes.push(dom);
+                    }
+                }
+                "address" => {
+                    let parts: Vec<&str> =
+                        val.split('/').filter(|s| !s.trim().is_empty()).collect();
+                    if parts.len() >= 2 {
+                        let dom = parts[0].trim().trim_start_matches('.').to_ascii_lowercase();
+                        if !dom.is_empty() {
+                            if !ctx
+                                .local_domain_suffixes
+                                .iter()
+                                .any(|d| d.eq_ignore_ascii_case(&dom))
+                            {
+                                ctx.local_domain_suffixes.push(dom.clone());
+                            }
+                            for ip_part in &parts[1..] {
+                                let ip = ip_part.trim();
+                                if (ip.parse::<std::net::Ipv4Addr>().is_ok()
+                                    || ip.parse::<std::net::Ipv6Addr>().is_ok())
+                                    && !ctx
+                                        .address_records
+                                        .iter()
+                                        .any(|(d, i)| d.eq_ignore_ascii_case(&dom) && i == ip)
+                                {
+                                    ctx.address_records.push((dom.clone(), ip.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
+            "domain" => match key {
+                "name" => domain_name = val,
+                "ip" => domain_ip = val,
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    if current_section_type == "domain" {
+        flush_domain(&mut ctx, &mut domain_name, &mut domain_ip);
+    }
+
+    ctx
+}
+
+pub fn read_runtime_dhcp_split_dns_context() -> DhcpSplitDnsContext {
+    std::fs::read_to_string("/etc/config/dhcp")
+        .map(|raw| parse_dhcp_split_dns_context(&raw))
+        .unwrap_or_default()
+}
+
+pub fn build_dnsmasq_dropin_config(store: &RouterStoreData) -> String {
+    use std::fmt::Write;
+    let mut out = String::from("no-resolv\nserver=127.0.0.42#53\n");
+    let inline = crate::adguard_hosts::collect_inline_rules(store);
+    let mut written = std::collections::HashSet::new();
+    for (dom, ips) in &inline.static_hosts {
+        let clean_dom = dom.trim().trim_start_matches('.').to_ascii_lowercase();
+        if clean_dom.is_empty() {
+            continue;
+        }
+        for ip in ips {
+            let clean_ip = ip.trim();
+            if (clean_ip.parse::<std::net::Ipv4Addr>().is_ok()
+                || clean_ip.parse::<std::net::Ipv6Addr>().is_ok())
+                && written.insert(format!("{clean_dom}:{clean_ip}"))
+            {
+                let _ = writeln!(out, "address=/{clean_dom}/{clean_ip}");
+            }
+        }
+    }
+    out
+}
+
 fn append_dnat_output_chains(
     out: &mut String,
     redirects: &[FirewallDnatRedirect],
@@ -4203,11 +4376,11 @@ async fn apply_network_stack_inner(
     }
 
     if !store.settings.dont_touch_dhcp {
-        let dnsmasq_conf = "no-resolv\nserver=127.0.0.42#53\n";
+        let dnsmasq_conf = build_dnsmasq_dropin_config(store);
         let mut dnsmasq_changed = false;
         for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
             let conf_path = dir.join("tachyon.conf");
-            if crypto_gen::write_file_with_mode_if_changed(&conf_path, dnsmasq_conf, 0o644)
+            if crypto_gen::write_file_with_mode_if_changed(&conf_path, &dnsmasq_conf, 0o644)
                 .unwrap_or(false)
             {
                 dnsmasq_changed = true;
@@ -6688,5 +6861,80 @@ table inet fw4 {
             .find("tcp dport 53 redirect to :53 comment \"tachyon-dns-intercept\"")
             .expect("global redirect");
         assert!(pos_src < pos_global);
+    }
+
+    #[test]
+    fn test_parse_dhcp_split_dns_context() {
+        let dhcp_raw = "\
+# DHCP configuration
+config dnsmasq
+\toption domain 'lan'
+\toption local '/lan/'
+\tlist address '/example.org/192.168.1.100'
+\tlist address '/multi.local/10.0.0.10/10.0.0.11'
+\toption cachesize '150'
+
+config domain
+\toption name 'nas.lan'
+\toption ip '192.168.1.200'
+
+config domain
+\toption name 'router.home'
+\toption ip '192.168.1.1'
+
+config host
+\toption name 'test-pc'
+\toption ip '192.168.1.55'
+";
+        let ctx = parse_dhcp_split_dns_context(dhcp_raw);
+        assert!(ctx.local_domain_suffixes.contains(&"lan".to_string()));
+        assert!(
+            ctx.local_domain_suffixes
+                .contains(&"example.org".to_string())
+        );
+        assert!(
+            ctx.local_domain_suffixes
+                .contains(&"multi.local".to_string())
+        );
+        assert!(ctx.local_domain_suffixes.contains(&"nas.lan".to_string()));
+        assert!(
+            ctx.local_domain_suffixes
+                .contains(&"router.home".to_string())
+        );
+
+        assert!(
+            ctx.address_records
+                .contains(&("example.org".to_string(), "192.168.1.100".to_string()))
+        );
+        assert!(
+            ctx.address_records
+                .contains(&("multi.local".to_string(), "10.0.0.10".to_string()))
+        );
+        assert!(
+            ctx.address_records
+                .contains(&("multi.local".to_string(), "10.0.0.11".to_string()))
+        );
+        assert!(
+            ctx.address_records
+                .contains(&("nas.lan".to_string(), "192.168.1.200".to_string()))
+        );
+        assert!(
+            ctx.address_records
+                .contains(&("router.home".to_string(), "192.168.1.1".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_build_dnsmasq_dropin_config() {
+        let mut store = RouterStoreData::default();
+        store.settings.static_hosts = vec![
+            "192.168.1.50 nas.example.com".to_string(),
+            "||home.local^$dnsrewrite=192.168.1.60".to_string(),
+        ];
+        let conf = build_dnsmasq_dropin_config(&store);
+        assert!(conf.contains("no-resolv"));
+        assert!(conf.contains("server=127.0.0.42#53"));
+        assert!(conf.contains("address=/nas.example.com/192.168.1.50"));
+        assert!(conf.contains("address=/home.local/192.168.1.60"));
     }
 }

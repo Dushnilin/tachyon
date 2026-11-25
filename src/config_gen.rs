@@ -13944,11 +13944,40 @@ fn compile_core_config_with_rt_dir(
             }
         }
     }
-    let mut local_dns_inbounds = lan_accessible_inbounds;
+    let mut local_dns_inbounds = lan_accessible_inbounds.clone();
     if has_source_dns && !local_dns_inbounds.iter().any(|s| s == "source-dns-in") {
         local_dns_inbounds.push("source-dns-in".to_string());
     }
-    if !local_dns_inbounds.is_empty() {
+    let mut local_domain_suffixes = vec![
+        "lan".to_string(),
+        "local".to_string(),
+        "internal".to_string(),
+        "home.arpa".to_string(),
+        "localdomain".to_string(),
+    ];
+    let dhcp_ctx = crate::net_stack::read_runtime_dhcp_split_dns_context();
+    for dom in dhcp_ctx.local_domain_suffixes {
+        if !local_domain_suffixes
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(&dom))
+        {
+            local_domain_suffixes.push(dom);
+        }
+    }
+    let inline = crate::adguard_hosts::collect_inline_rules(store);
+    for dom in inline.static_hosts.keys() {
+        let clean = dom.trim().trim_start_matches('.').to_ascii_lowercase();
+        if !clean.is_empty()
+            && !local_domain_suffixes
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&clean))
+        {
+            local_domain_suffixes.push(clean);
+        }
+    }
+
+    let servers_isolated = !all_server_inbounds.is_empty() && lan_accessible_inbounds.is_empty();
+    if !servers_isolated {
         if !dns_servers_vec
             .iter()
             .any(|s| s.get("tag").and_then(Value::as_str) == Some("dnsmasq-server"))
@@ -13960,15 +13989,38 @@ fn compile_core_config_with_rt_dir(
                 "server_port": 53
             }));
         }
-        dns_rules_vec.insert(
-            0,
-            json!({
-                "action": "route",
-                "inbound": local_dns_inbounds,
-                "domain_suffix": ["lan", "local", "internal", "home.arpa", "localdomain"],
-                "server": "dnsmasq-server"
-            }),
-        );
+        if !local_dns_inbounds.is_empty() {
+            dns_rules_vec.insert(
+                0,
+                json!({
+                    "action": "route",
+                    "inbound": local_dns_inbounds,
+                    "domain_suffix": local_domain_suffixes.clone(),
+                    "server": "dnsmasq-server"
+                }),
+            );
+            dns_rules_vec.insert(
+                1,
+                json!({
+                    "action": "route",
+                    "inbound": ["dns-in"],
+                    "invert": true,
+                    "domain_suffix": local_domain_suffixes,
+                    "server": "dnsmasq-server"
+                }),
+            );
+        } else {
+            dns_rules_vec.insert(
+                0,
+                json!({
+                    "action": "route",
+                    "inbound": ["dns-in"],
+                    "invert": true,
+                    "domain_suffix": local_domain_suffixes,
+                    "server": "dnsmasq-server"
+                }),
+            );
+        }
     }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
@@ -28139,5 +28191,35 @@ proxies:
                 .any(|r| r["outbound"] == "sel-General"),
             "parent section routing rules must remain intact"
         );
+    }
+
+    #[test]
+    fn test_split_dns_and_static_hosts_routed_to_dnsmasq_server() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.static_hosts = vec![
+            "192.168.1.100 myhome.example.net".to_string(),
+            "||custom.lan^$dnsrewrite=192.168.1.101".to_string(),
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false)
+            .expect("compile core config with split dns");
+        let dns_servers = cfg["dns"]["servers"].as_array().expect("dns servers");
+        assert!(
+            dns_servers.iter().any(|s| s["tag"] == "dnsmasq-server"),
+            "dnsmasq-server must be present"
+        );
+        let dns_rules = cfg["dns"]["rules"].as_array().expect("dns rules");
+        let rule_dnsmasq = dns_rules
+            .iter()
+            .find(|r| r["server"] == "dnsmasq-server")
+            .expect("dnsmasq-server rule must exist");
+        let suffixes = rule_dnsmasq["domain_suffix"]
+            .as_array()
+            .expect("domain_suffix array");
+        assert!(suffixes.contains(&json!("lan")));
+        assert!(suffixes.contains(&json!("myhome.example.net")));
+        assert!(suffixes.contains(&json!("custom.lan")));
     }
 }
