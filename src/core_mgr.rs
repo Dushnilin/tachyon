@@ -1574,7 +1574,7 @@ impl CoreManager {
         None
     }
 
-    /// Resolve effective `GOMEMLIMIT` (MiB): explicit setting wins; otherwise auto-cap low-RAM routers (< 320 MiB).
+    /// Resolve effective `TACHYON_MEMLIMIT_MB` (MiB): explicit setting wins; otherwise auto-cap low-RAM routers (< 320 MiB).
     pub(crate) fn effective_core_memory_limit_mb(
         configured_mb: u32,
         total_ram_kb: Option<u64>,
@@ -1593,7 +1593,7 @@ impl CoreManager {
         let effective_limit_mb =
             Self::effective_core_memory_limit_mb(memory_limit_mb, Self::read_total_ram_kb());
         if effective_limit_mb > 0 {
-            cmd.env("GOMEMLIMIT", format!("{effective_limit_mb}MiB"));
+            cmd.env("TACHYON_MEMLIMIT_MB", effective_limit_mb.to_string());
         }
         if daemon_mode {
             cmd.stdout(Stdio::piped())
@@ -9208,6 +9208,21 @@ mod core_mgr_tests {
             0
         );
         assert_eq!(CoreManager::effective_core_memory_limit_mb(0, None), 0);
+
+        let mut cmd = tokio::process::Command::new("tachyon-core");
+        CoreManager::configure_core_spawn_command(&mut cmd, true, 128);
+        let envs: Vec<(String, Option<String>)> = cmd
+            .as_std()
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|val| val.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+        assert!(envs.contains(&("TACHYON_MEMLIMIT_MB".to_string(), Some("128".to_string()))));
+        assert!(!envs.iter().any(|(k, _)| k == "GOMEMLIMIT"));
     }
 
     #[test]

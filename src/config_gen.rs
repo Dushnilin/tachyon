@@ -13918,7 +13918,18 @@ fn compile_core_config_with_rt_dir(
     let quic_tunneled_only = crate::net_stack::effective_disable_quic_tunneled(store)
         && !crate::net_stack::effective_disable_quic_global(store);
 
-    for sec in ordered_sections {
+    for (sec_idx, sec) in ordered_sections.iter().copied().enumerate() {
+        let has_following_catchall = store
+            .settings
+            .routing_strategy
+            .trim()
+            .eq_ignore_ascii_case("full_tunnel")
+            || ordered_sections[sec_idx + 1..].iter().any(|later| {
+                !is_bypass_or_block(later)
+                    && later.action != "dns"
+                    && later.connection_type != "dns"
+                    && later.match_all
+            });
         if sec.action == "dns" || sec.connection_type == "dns" {
             section_dns_plans.push(SectionDnsPlan::CustomDns(sec));
             continue;
@@ -14375,6 +14386,7 @@ fn compile_core_config_with_rt_dir(
                         if !section_emitted_rules.contains(&wrapped) {
                             if store.settings.fakeip_enabled
                                 && target_outbound_tag == "direct"
+                                && (has_following_catchall || sec.resolve_real_ip_for_routing)
                                 && rule_matches_ip_criteria(&wrapped, &rule_sets)
                             {
                                 let src_scope = extract_rule_source_ip_cidr(&wrapped);
@@ -14468,6 +14480,7 @@ fn compile_core_config_with_rt_dir(
                     if !section_emitted_rules.contains(&wrapped) {
                         if store.settings.fakeip_enabled
                             && target_outbound_tag == "direct"
+                            && (has_following_catchall || sec.resolve_real_ip_for_routing)
                             && rule_matches_ip_criteria(&wrapped, &rule_sets)
                         {
                             let src_scope = extract_rule_source_ip_cidr(&wrapped);
@@ -31918,5 +31931,77 @@ proxies:
         let cfg_auto_v6 = compile_safe_minimal_core_config_with_wan6(&store, true);
         assert_eq!(cfg_auto_v6["inbounds"][0]["listen"], "::");
         assert_eq!(cfg_auto_v6["dns"]["strategy"], "prefer_ipv4");
+    }
+
+    #[test]
+    fn test_split_bypass_subnets_do_not_pre_resolve_before_desync_youtube() {
+        let mut store = make_bypass_before_match_all_store(true);
+        store.settings.routing_strategy = "split".to_string();
+        store.outbound_sources.push(OutboundSource {
+            id: "Desync".to_string(),
+            enabled: true,
+            name: "Youtube".to_string(),
+            source_type: "desync".to_string(),
+            desync_preset: "auto".to_string(),
+            desync_fake_sni: "max.ru".to_string(),
+            desync_split_pos: "midsld".to_string(),
+            desync_fooling: "autottl".to_string(),
+            ..Default::default()
+        });
+        store.sections = vec![
+            RoutingSection {
+                id: "ByPass".to_string(),
+                enabled: true,
+                label: "ByPass".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "direct".to_string(),
+                community_lists: vec!["ru_domains".to_string()],
+                community_subnets: true,
+                source_ip_cidr: vec!["192.168.1.0/24".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "Zapret2".to_string(),
+                enabled: true,
+                label: "Youtube".to_string(),
+                action: "connection".to_string(),
+                connection_type: "desync".to_string(),
+                outbound_source_refs: vec!["Desync".to_string()],
+                community_lists: vec!["youtube".to_string()],
+                community_subnets: true,
+                ..Default::default()
+            },
+        ];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile split config");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+
+        let idx_bypass = rules
+            .iter()
+            .position(|r| r["outbound"] == "direct" && r.get("rule_set").is_some())
+            .expect("ByPass direct rule");
+        let idx_desync = rules
+            .iter()
+            .position(|r| r["outbound"] == "desync-Desync")
+            .expect("desync-Desync rule");
+        assert!(idx_bypass < idx_desync);
+
+        // No unconditional ByPass resolve before desync-Desync in split mode without match_all.
+        assert!(
+            !rules[..idx_bypass].iter().any(|r| {
+                r["action"] == "resolve"
+                    && r["server"] == "dns-remote"
+                    && r.get("rule_set").is_none()
+                    && r["source_ip_cidr"] == json!(["192.168.1.0/24"])
+            }),
+            "split ByPass without following match_all must not emit global pre-resolve: {rules:?}"
+        );
+
+        // Scoped resolve before desync-Desync remains intact.
+        assert!(rules[idx_bypass + 1..idx_desync].iter().any(|r| {
+            r["action"] == "resolve"
+                && r["server"] == "dns-remote"
+                && r["rule_set"] == json!(["trs-youtube"])
+        }));
     }
 }
