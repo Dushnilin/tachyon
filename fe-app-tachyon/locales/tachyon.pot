@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 00:57+0300\n"
-"PO-Revision-Date: 2026-11-25 00:57+0300\n"
+"POT-Creation-Date: 2026-11-24 23:22+0300\n"
+"PO-Revision-Date: 2026-11-24 23:22+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -61,7 +61,7 @@ msgstr ""
 msgid "+ Add priority"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:682
+#: src/tachyon/themes/themeControls.ts:706
 msgid "+ Create custom theme..."
 msgstr ""
 
@@ -69,7 +69,7 @@ msgstr ""
 msgid "+ Create new routing section"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:781
+#: src/tachyon/themes/themeControls.ts:830
 msgid "+ Custom Theme"
 msgstr ""
 
@@ -400,7 +400,7 @@ msgstr ""
 msgid "AWG Fake Packets / MTU"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:321
+#: src/tachyon/themes/themeControls.ts:324
 msgid "Accent"
 msgstr ""
 
@@ -490,7 +490,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:127
 #: src/tachyon/tabs/monitoring/initController.ts:938
 #: src/tachyon/tabs/monitoring/render.ts:24
-#: src/tachyon/themes/themeControls.ts:891
+#: src/tachyon/themes/themeControls.ts:940
 #: src/views/parental.ts:520
 #: src/views/parental.ts:526
 msgid "Active"
@@ -605,7 +605,7 @@ msgstr ""
 msgid "Active sessions re-evaluated against routing rules"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:760
+#: src/tachyon/themes/themeControls.ts:793
 msgid "Active theme:"
 msgstr ""
 
@@ -648,7 +648,7 @@ msgstr ""
 msgid "Add Condition"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2519
+#: src/tachyon/appShell.ts:2530
 msgid "Add Connection (Setup Wizard)"
 msgstr ""
 
@@ -833,7 +833,7 @@ msgstr ""
 msgid "Address type"
 msgstr ""
 
-#: src/views/settings.ts:8037
+#: src/views/settings.ts:8021
 msgid "Admin Chat IDs configured"
 msgstr ""
 
@@ -849,7 +849,7 @@ msgstr ""
 msgid "Adult content"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2626
+#: src/tachyon/appShell.ts:2637
 msgid "Advanced"
 msgstr ""
 
@@ -861,16 +861,16 @@ msgstr ""
 msgid "Advanced Boolean Expression"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2762
+#: src/tachyon/appShell.ts:2863
 msgid "Advanced Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3128
+#: src/tachyon/appShell.ts:3231
 #: src/views/settings.ts:3782
 msgid "Advanced System"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2615
+#: src/tachyon/appShell.ts:2626
 msgid "Advanced mode: all tabs, conditions, balancers and expert settings"
 msgstr ""
 
@@ -957,7 +957,7 @@ msgstr ""
 msgid "All URLs must respond (worst latency)"
 msgstr ""
 
-#: src/views/settings.ts:8205
+#: src/views/settings.ts:8189
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr ""
 
@@ -1309,6 +1309,10 @@ msgstr ""
 msgid "Analyzing transit route behavior..."
 msgstr ""
 
+#: src/tachyon/appShell.ts:2802
+msgid "Animation"
+msgstr ""
+
 #: src/tachyon/studioDeck.ts:4914
 msgid "Announcement:"
 msgstr ""
@@ -1359,7 +1363,7 @@ msgstr ""
 msgid "Apply Configuration"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:433
+#: src/tachyon/themes/themeControls.ts:436
 msgid "Apply JSON"
 msgstr ""
 
@@ -1428,7 +1432,7 @@ msgstr ""
 msgid "At least 4 characters"
 msgstr ""
 
-#: src/views/settings.ts:7501
+#: src/views/settings.ts:7487
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
@@ -1533,7 +1537,7 @@ msgstr ""
 msgid "Auto (first working from test list below)"
 msgstr ""
 
-#: src/views/settings.ts:7846
+#: src/views/settings.ts:7830
 msgid "Auto (follow LuCI)"
 msgstr ""
 
@@ -1873,6 +1877,30 @@ msgstr ""
 msgid "BYPASS"
 msgstr ""
 
+#: src/tachyon/appShell.ts:2738
+msgid "Background animation: Disabled"
+msgstr ""
+
+#: src/tachyon/appShell.ts:2732
+msgid "Background animation: Disabled (click to enable)"
+msgstr ""
+
+#: src/tachyon/appShell.ts:2737
+msgid "Background animation: Enabled"
+msgstr ""
+
+#: src/tachyon/appShell.ts:2728
+msgid "Background animation: Enabled (click to disable)"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:811
+msgid "Background animation: Off"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:810
+msgid "Background animation: On"
+msgstr ""
+
 #: src/helpers/formatOutboundType.ts:231
 msgid "Background color presets:"
 msgstr ""
@@ -1947,7 +1975,7 @@ msgstr ""
 msgid "Balancers (URLTest / Priority)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:513
+#: src/tachyon/themes/themeControls.ts:516
 msgid "Base preset"
 msgstr ""
 
@@ -2195,7 +2223,7 @@ msgstr ""
 msgid "Bootstrap DNS Servers"
 msgstr ""
 
-#: src/views/settings.ts:7839
+#: src/views/settings.ts:7823
 msgid "Bot Language"
 msgstr ""
 
@@ -2383,7 +2411,7 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:1973
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1796
 #: src/tachyon/tabs/diagnostic/initController.ts:1298
-#: src/tachyon/themes/themeControls.ts:560
+#: src/tachyon/themes/themeControls.ts:563
 #: src/views/dns_speed_test.ts:355
 #: src/views/outbounds.ts:1918
 #: src/views/section.ts:11964
@@ -2471,7 +2499,7 @@ msgstr ""
 msgid "Change History & Rollback"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1205
+#: src/tachyon/appShell.ts:1216
 msgid "Change history and quick rollback"
 msgstr ""
 
@@ -2487,7 +2515,7 @@ msgstr ""
 msgid "Changed nodes within a tier"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1251
+#: src/tachyon/appShell.ts:1262
 msgid "Changes"
 msgstr ""
 
@@ -3003,8 +3031,8 @@ msgid "Clone Source"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:277
-#: src/tachyon/appShell.ts:958
-#: src/tachyon/appShell.ts:959
+#: src/tachyon/appShell.ts:963
+#: src/tachyon/appShell.ts:964
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1229
 #: src/tachyon/tabs/dashboard/initController.ts:3041
 #: src/tachyon/tabs/dashboard/initController.ts:4694
@@ -3024,7 +3052,7 @@ msgstr ""
 #: src/tachyon/tabs/updates/initController.ts:1318
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:496
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:560
-#: src/tachyon/themes/themeControls.ts:497
+#: src/tachyon/themes/themeControls.ts:500
 #: src/views/dns_speed_test.ts:140
 #: src/views/section.ts:20156
 #: src/views/section.ts:6370
@@ -3054,8 +3082,8 @@ msgstr ""
 msgid "Close connection"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2773
-#: src/tachyon/appShell.ts:2776
+#: src/tachyon/appShell.ts:2874
+#: src/tachyon/appShell.ts:2877
 msgid "Close menu"
 msgstr ""
 
@@ -3097,7 +3125,7 @@ msgstr ""
 msgid "Code type"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2833
+#: src/tachyon/appShell.ts:2934
 msgid "Collapse menu to icons"
 msgstr ""
 
@@ -3105,7 +3133,7 @@ msgstr ""
 msgid "Collapse non-errors"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3073
+#: src/tachyon/appShell.ts:3176
 msgid "Collapse top toolbar"
 msgstr ""
 
@@ -3129,9 +3157,9 @@ msgstr ""
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1385
-#: src/tachyon/appShell.ts:1392
-#: src/tachyon/appShell.ts:1398
+#: src/tachyon/appShell.ts:1396
+#: src/tachyon/appShell.ts:1403
+#: src/tachyon/appShell.ts:1409
 msgid "Command failed"
 msgstr ""
 
@@ -3396,7 +3424,7 @@ msgstr ""
 msgid "Connected clients and active connections"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2540
+#: src/tachyon/appShell.ts:2551
 #: src/tachyon/connectionWizard.ts:1774
 #: src/tachyon/studioDeck.ts:556
 #: src/tachyon/tabs/diagnostic/initController.ts:1209
@@ -3505,7 +3533,7 @@ msgstr ""
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:519
+#: src/tachyon/themes/themeControls.ts:522
 msgid "Contrast scheme"
 msgstr ""
 
@@ -3549,7 +3577,7 @@ msgstr ""
 msgid "Copy Address"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:458
+#: src/tachyon/themes/themeControls.ts:461
 msgid "Copy JSON"
 msgstr ""
 
@@ -3835,12 +3863,12 @@ msgstr ""
 msgid "Custom Target URL(s)..."
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:111
-#: src/tachyon/themes/themeControls.ts:569
+#: src/tachyon/themes/themeControls.ts:114
+#: src/tachyon/themes/themeControls.ts:572
 msgid "Custom Theme"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:490
+#: src/tachyon/themes/themeControls.ts:493
 msgid "Custom Theme Builder"
 msgstr ""
 
@@ -4217,7 +4245,7 @@ msgstr ""
 msgid "Daily Quota"
 msgstr ""
 
-#: src/views/settings.ts:7929
+#: src/views/settings.ts:7913
 msgid "Daily Report Hour (0-23)"
 msgstr ""
 
@@ -4226,7 +4254,7 @@ msgstr ""
 msgid "Daily Screen Time Quota (minutes)"
 msgstr ""
 
-#: src/views/settings.ts:7918
+#: src/views/settings.ts:7902
 msgid "Daily Status Report"
 msgstr ""
 
@@ -4243,12 +4271,12 @@ msgid "Daily quota applies only when Target Scope is All Internet"
 msgstr ""
 
 #: src/helpers/formatOutboundType.ts:139
-#: src/tachyon/themes/themeControls.ts:855
+#: src/tachyon/themes/themeControls.ts:904
 #: src/views/outbounds.ts:3355
 msgid "Dark"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:241
+#: src/tachyon/themes/themeControls.ts:244
 msgid "Dark base"
 msgstr ""
 
@@ -4332,8 +4360,8 @@ msgstr ""
 msgid "Default (TCP MD5 / Auto)"
 msgstr ""
 
-#: src/views/settings.ts:7768
-#: src/views/settings.ts:7776
+#: src/views/settings.ts:7752
+#: src/views/settings.ts:7760
 msgid "Default (auto — service mixed proxy)"
 msgstr ""
 
@@ -4417,7 +4445,7 @@ msgstr ""
 msgid "Delete the snapshot"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:878
+#: src/tachyon/themes/themeControls.ts:927
 msgid "Delete theme"
 msgstr ""
 
@@ -4627,7 +4655,7 @@ msgstr ""
 msgid "Direct Connectivity Verified"
 msgstr ""
 
-#: src/views/settings.ts:8053
+#: src/views/settings.ts:8037
 msgid "Direct IPv4 to Telegram API works"
 msgstr ""
 
@@ -4651,8 +4679,8 @@ msgstr ""
 msgid "Direct WAN (ISP)"
 msgstr ""
 
-#: src/views/settings.ts:7769
-#: src/views/settings.ts:7777
+#: src/views/settings.ts:7753
+#: src/views/settings.ts:7761
 msgid "Direct WAN (no proxy)"
 msgstr ""
 
@@ -4764,8 +4792,8 @@ msgstr ""
 msgid "Discord (Gateway + Voice + CDN)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3406
-#: src/tachyon/appShell.ts:3407
+#: src/tachyon/appShell.ts:3509
+#: src/tachyon/appShell.ts:3510
 msgid "Dismiss notice"
 msgstr ""
 
@@ -4974,7 +5002,7 @@ msgstr ""
 msgid "Download .conf"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:479
+#: src/tachyon/themes/themeControls.ts:482
 msgid "Download .json"
 msgstr ""
 
@@ -5114,25 +5142,25 @@ msgstr ""
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3052
-#: src/tachyon/appShell.ts:3548
+#: src/tachyon/appShell.ts:3154
+#: src/tachyon/appShell.ts:3651
 msgid "Eco Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3051
-#: src/tachyon/appShell.ts:3547
+#: src/tachyon/appShell.ts:3153
+#: src/tachyon/appShell.ts:3650
 msgid "Eco Mode: On"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:4485
-#: src/tachyon/themes/themeControls.ts:871
+#: src/tachyon/themes/themeControls.ts:920
 #: src/views/outbounds.ts:2746
 #: src/views/server.ts:3930
 #: src/views/tachyon.ts:233
 msgid "Edit"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:489
+#: src/tachyon/themes/themeControls.ts:492
 msgid "Edit Custom Theme"
 msgstr ""
 
@@ -5140,7 +5168,7 @@ msgstr ""
 msgid "Edit Outbound Group"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:865
+#: src/tachyon/themes/themeControls.ts:914
 msgid "Edit theme"
 msgstr ""
 
@@ -5387,7 +5415,7 @@ msgstr ""
 msgid "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."
 msgstr ""
 
-#: src/views/settings.ts:7997
+#: src/views/settings.ts:7981
 msgid "End time in H or HH:MM format, e.g. 7 or 07:00 (default: 07:00)."
 msgstr ""
 
@@ -5413,7 +5441,7 @@ msgstr ""
 msgid "Engine crashes:"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1111
+#: src/tachyon/appShell.ts:1116
 msgid "Engine: Tachyon Core"
 msgstr ""
 
@@ -5488,8 +5516,8 @@ msgstr ""
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr ""
 
-#: src/views/settings.ts:7888
-#: src/views/settings.ts:7891
+#: src/views/settings.ts:7872
+#: src/views/settings.ts:7875
 msgid "Enter an hour from 0 to 23"
 msgstr ""
 
@@ -5506,7 +5534,7 @@ msgstr ""
 msgid "Enter the subscription URL"
 msgstr ""
 
-#: src/views/settings.ts:7912
+#: src/views/settings.ts:7896
 msgid "Enter time as H or HH:MM (e.g. 23 or 23:00)"
 msgstr ""
 
@@ -5531,7 +5559,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1392
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3468
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3470
-#: src/tachyon/themes/themeControls.ts:330
+#: src/tachyon/themes/themeControls.ts:333
 #: src/views/section.ts:12647
 #: src/views/section.ts:12650
 #: src/views/section.ts:12662
@@ -5746,15 +5774,15 @@ msgstr ""
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2832
+#: src/tachyon/appShell.ts:2933
 msgid "Expand menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2740
+#: src/tachyon/appShell.ts:2841
 msgid "Expand sidebar"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3072
+#: src/tachyon/appShell.ts:3175
 msgid "Expand top toolbar"
 msgstr ""
 
@@ -6108,7 +6136,7 @@ msgstr ""
 msgid "Failed to import snapshot profile"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:744
+#: src/tachyon/themes/themeControls.ts:777
 msgid "Failed to import theme file"
 msgstr ""
 
@@ -6140,7 +6168,7 @@ msgstr ""
 msgid "Failed to load versions"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:425
+#: src/tachyon/themes/themeControls.ts:428
 msgid "Failed to parse JSON/JSONC"
 msgstr ""
 
@@ -6198,8 +6226,8 @@ msgstr ""
 msgid "Failed to rollback config"
 msgstr ""
 
-#: src/views/settings.ts:8141
-#: src/views/settings.ts:8256
+#: src/views/settings.ts:8125
+#: src/views/settings.ts:8240
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr ""
 
@@ -6223,7 +6251,7 @@ msgstr ""
 msgid "Failed to save patterns"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1340
+#: src/tachyon/appShell.ts:1351
 msgid "Failed to save settings"
 msgstr ""
 
@@ -6285,8 +6313,8 @@ msgstr ""
 msgid "Failed to synthesize AI strategies"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3024
-#: src/tachyon/appShell.ts:3034
+#: src/tachyon/appShell.ts:3126
+#: src/tachyon/appShell.ts:3136
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
@@ -6493,7 +6521,7 @@ msgstr ""
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr ""
 
-#: src/views/settings.ts:7864
+#: src/views/settings.ts:7848
 msgid "Fallback SOCKS5 Proxy"
 msgstr ""
 
@@ -6513,7 +6541,7 @@ msgstr ""
 msgid "Family Profile"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2086
+#: src/tachyon/appShell.ts:2097
 #: src/tachyon/studioDeck.ts:2128
 #: src/views/tachyon.ts:3133
 msgid "Family Profiles"
@@ -7042,7 +7070,7 @@ msgstr ""
 msgid "Guest Devices (MAC / IP)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2094
+#: src/tachyon/appShell.ts:2105
 #: src/views/tachyon.ts:3171
 msgid "Guest Mode"
 msgstr ""
@@ -7228,7 +7256,7 @@ msgstr ""
 msgid "Hide Intermediate Detour Outbounds"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:539
+#: src/tachyon/themes/themeControls.ts:542
 msgid "Hide JSON Import / Export"
 msgstr ""
 
@@ -7376,7 +7404,7 @@ msgstr ""
 msgid "Hits"
 msgstr ""
 
-#: src/views/settings.ts:7531
+#: src/views/settings.ts:7515
 msgid "Home Router / Office / Dacha"
 msgstr ""
 
@@ -7405,7 +7433,7 @@ msgstr ""
 msgid "Hot-reload Tachyon Core"
 msgstr ""
 
-#: src/views/settings.ts:7930
+#: src/views/settings.ts:7914
 msgid "Hour of the day to send the daily report (default: 8)."
 msgstr ""
 
@@ -7441,7 +7469,7 @@ msgstr ""
 msgid "How often to check DNS health in seconds (default 180)."
 msgstr ""
 
-#: src/views/settings.ts:7549
+#: src/views/settings.ts:7533
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
@@ -7724,7 +7752,7 @@ msgstr ""
 msgid "Import .ovpn File"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:543
+#: src/tachyon/themes/themeControls.ts:546
 msgid "Import / Export JSON / JSONC"
 msgstr ""
 
@@ -7737,7 +7765,7 @@ msgstr ""
 msgid "Import Hosts File"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:772
+#: src/tachyon/themes/themeControls.ts:821
 msgid "Import JSON"
 msgstr ""
 
@@ -7806,7 +7834,7 @@ msgstr ""
 msgid "Inbound Server on Router (Host)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2098
+#: src/tachyon/appShell.ts:2109
 #: src/tachyon/studioDeck.ts:2110
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1552
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:3881
@@ -8110,7 +8138,7 @@ msgstr ""
 msgid "Interface"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:757
+#: src/tachyon/themes/themeControls.ts:790
 msgid "Interface Color Theme"
 msgstr ""
 
@@ -8118,7 +8146,7 @@ msgstr ""
 msgid "Interface IPv4/IPv6 addresses (e.g. 10.8.1.2/32)."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2589
+#: src/tachyon/appShell.ts:2600
 msgid "Interface Mode"
 msgstr ""
 
@@ -8134,7 +8162,7 @@ msgstr ""
 msgid "Interface Subnet Match (iface=CIDR)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:608
+#: src/tachyon/themes/themeControls.ts:611
 msgid "Interface Theme"
 msgstr ""
 
@@ -8652,7 +8680,7 @@ msgstr ""
 msgid "Invalid target domain or URL"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:370
+#: src/tachyon/themes/themeControls.ts:373
 msgid "Invalid theme JSON/JSONC"
 msgstr ""
 
@@ -8950,7 +8978,7 @@ msgstr ""
 msgid "Language for AI Doctor diagnosis responses"
 msgstr ""
 
-#: src/views/settings.ts:7840
+#: src/views/settings.ts:7824
 msgid "Language for Telegram bot replies and notifications."
 msgstr ""
 
@@ -9065,7 +9093,7 @@ msgstr ""
 msgid "Level name"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:854
+#: src/tachyon/themes/themeControls.ts:903
 msgid "Light"
 msgstr ""
 
@@ -9085,7 +9113,7 @@ msgstr ""
 msgid "Light Yellow"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:254
+#: src/tachyon/themes/themeControls.ts:257
 msgid "Light base"
 msgstr ""
 
@@ -9163,7 +9191,7 @@ msgstr ""
 msgid "Live filter preview"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:317
+#: src/tachyon/themes/themeControls.ts:320
 msgid "Live palette preview"
 msgstr ""
 
@@ -9186,7 +9214,7 @@ msgstr ""
 msgid "Load .conf config"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:401
+#: src/tachyon/themes/themeControls.ts:404
 msgid "Load .json file"
 msgstr ""
 
@@ -9894,7 +9922,7 @@ msgstr ""
 msgid "Multiplexing Level"
 msgstr ""
 
-#: src/views/settings.ts:7505
+#: src/views/settings.ts:7490
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
@@ -9977,7 +10005,7 @@ msgstr ""
 msgid "Native packet desynchronization inside Tachyon Core"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3214
+#: src/tachyon/appShell.ts:3317
 msgid "Need expert knobs? Advanced Mode →"
 msgstr ""
 
@@ -10113,6 +10141,10 @@ msgstr ""
 
 #: src/views/settings.ts:2577
 msgid "No active routing sections found."
+msgstr ""
+
+#: src/tachyon/appShell.ts:2803
+msgid "No animation"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:323
@@ -10505,31 +10537,31 @@ msgstr ""
 msgid "Notify in Telegram"
 msgstr ""
 
-#: src/views/settings.ts:7656
+#: src/views/settings.ts:7640
 msgid "Notify on Automatic Updates"
 msgstr ""
 
-#: src/views/settings.ts:7632
+#: src/views/settings.ts:7616
 msgid "Notify on Certificate Warnings"
 msgstr ""
 
-#: src/views/settings.ts:7580
+#: src/views/settings.ts:7564
 msgid "Notify on Core Crashes"
 msgstr ""
 
-#: src/views/settings.ts:7645
+#: src/views/settings.ts:7629
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: src/views/settings.ts:7606
+#: src/views/settings.ts:7590
 msgid "Notify on Server Switches"
 msgstr ""
 
-#: src/views/settings.ts:7593
+#: src/views/settings.ts:7577
 msgid "Notify on Service Restarts"
 msgstr ""
 
-#: src/views/settings.ts:7619
+#: src/views/settings.ts:7603
 msgid "Notify on Subscription Updates"
 msgstr ""
 
@@ -10573,7 +10605,7 @@ msgstr ""
 msgid "Numeric (0-63), hex (0x2e), or class name (ef, cs5, af41)."
 msgstr ""
 
-#: src/views/settings.ts:8031
+#: src/views/settings.ts:8015
 msgid "OK"
 msgstr ""
 
@@ -10691,7 +10723,7 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1092
 #: src/tachyon/tabs/dashboard/initController.ts:7295
-#: src/tachyon/themes/themeControls.ts:324
+#: src/tachyon/themes/themeControls.ts:327
 msgid "Online"
 msgstr ""
 
@@ -10749,7 +10781,7 @@ msgstr ""
 msgid "Open Project Page"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3398
+#: src/tachyon/appShell.ts:3501
 msgid "Open Updates"
 msgstr ""
 
@@ -10766,8 +10798,8 @@ msgstr ""
 msgid "Open inbound settings"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2774
-#: src/tachyon/appShell.ts:2777
+#: src/tachyon/appShell.ts:2875
+#: src/tachyon/appShell.ts:2878
 msgid "Open navigation menu"
 msgstr ""
 
@@ -10862,7 +10894,7 @@ msgstr ""
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr ""
 
-#: src/views/settings.ts:7865
+#: src/views/settings.ts:7849
 msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
 msgstr ""
 
@@ -10898,7 +10930,7 @@ msgstr ""
 msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
 msgstr ""
 
-#: src/views/settings.ts:7527
+#: src/views/settings.ts:7511
 msgid "Optional name displayed at the top of all Telegram bot messages to identify this router when multiple routers share the same bot token."
 msgstr ""
 
@@ -11141,7 +11173,7 @@ msgstr ""
 msgid "Page"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:415
+#: src/tachyon/themes/themeControls.ts:418
 msgid "Palette applied to editor."
 msgstr ""
 
@@ -11161,7 +11193,7 @@ msgstr ""
 msgid "Parallel (fast failover, ≤3 s)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2090
+#: src/tachyon/appShell.ts:2101
 #: src/tachyon/studioDeck.ts:2142
 #: src/views/tachyon.ts:3152
 msgid "Parental Control"
@@ -11273,7 +11305,7 @@ msgstr ""
 msgid "Paste subscription URL (https://...) or proxy links (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:339
+#: src/tachyon/themes/themeControls.ts:342
 msgid "Paste theme JSON / JSONC (supports colors map, // comments and #hex)..."
 msgstr ""
 
@@ -11535,11 +11567,11 @@ msgstr ""
 msgid "Policy Summary"
 msgstr ""
 
-#: src/views/settings.ts:7548
+#: src/views/settings.ts:7532
 msgid "Polling Interval (seconds)"
 msgstr ""
 
-#: src/views/settings.ts:7561
+#: src/views/settings.ts:7545
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
@@ -12078,7 +12110,7 @@ msgstr ""
 msgid "Proxy Outbound"
 msgstr ""
 
-#: src/views/settings.ts:7759
+#: src/views/settings.ts:7743
 msgid "Proxy Section for Bot"
 msgstr ""
 
@@ -12103,11 +12135,11 @@ msgstr ""
 msgid "Proxy outbound is inactive or not configured for local testing."
 msgstr ""
 
-#: src/views/settings.ts:8041
+#: src/views/settings.ts:8025
 msgid "Proxy port"
 msgstr ""
 
-#: src/views/settings.ts:8047
+#: src/views/settings.ts:8031
 msgid "Proxy route to Telegram API works"
 msgstr ""
 
@@ -12209,7 +12241,7 @@ msgstr ""
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3253
+#: src/tachyon/appShell.ts:3356
 msgid "Quick Setup Wizard"
 msgstr ""
 
@@ -12225,7 +12257,7 @@ msgstr ""
 msgid "Quick presets:"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2479
+#: src/tachyon/appShell.ts:2490
 msgid "Quick search and commands (Ctrl+K)"
 msgstr ""
 
@@ -12237,15 +12269,15 @@ msgstr ""
 msgid "Quick setup for outbound routing & traffic optimization"
 msgstr ""
 
-#: src/views/settings.ts:7955
+#: src/views/settings.ts:7939
 msgid "Quiet Hours"
 msgstr ""
 
-#: src/views/settings.ts:7996
+#: src/views/settings.ts:7980
 msgid "Quiet Hours End"
 msgstr ""
 
-#: src/views/settings.ts:7968
+#: src/views/settings.ts:7952
 msgid "Quiet Hours Start"
 msgstr ""
 
@@ -12601,8 +12633,8 @@ msgstr ""
 msgid "Reload now"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2388
-#: src/tachyon/appShell.ts:3527
+#: src/tachyon/appShell.ts:2399
+#: src/tachyon/appShell.ts:3630
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:456
 msgid "Reloading..."
 msgstr ""
@@ -12799,7 +12831,7 @@ msgstr ""
 msgid "Response payload (I2)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1551
+#: src/tachyon/appShell.ts:1562
 msgid "Restart"
 msgstr ""
 
@@ -12815,7 +12847,7 @@ msgstr ""
 msgid "Restart Tachyon Service"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1522
+#: src/tachyon/appShell.ts:1533
 msgid "Restart Tachyon service"
 msgstr ""
 
@@ -12851,7 +12883,7 @@ msgstr ""
 msgid "Restarting service"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1458
+#: src/tachyon/appShell.ts:1469
 msgid "Restarting..."
 msgstr ""
 
@@ -13045,7 +13077,7 @@ msgstr ""
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr ""
 
-#: src/views/settings.ts:7760
+#: src/views/settings.ts:7744
 msgid "Route bot API requests through a selected section (e.g. Main), Direct WAN without proxy, or leave Default (auto) to use the internal mixed proxy."
 msgstr ""
 
@@ -13161,7 +13193,7 @@ msgstr ""
 msgid "Router DNS queries were observed by the test service."
 msgstr ""
 
-#: src/views/settings.ts:7526
+#: src/views/settings.ts:7510
 msgid "Router Name"
 msgstr ""
 
@@ -13382,8 +13414,8 @@ msgstr ""
 msgid "Run the DNS speed test to see results."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2391
-#: src/tachyon/appShell.ts:3530
+#: src/tachyon/appShell.ts:2402
+#: src/tachyon/appShell.ts:3633
 #: src/tachyon/methods/custom/getDashboardSections.ts:3853
 #: src/tachyon/methods/custom/getDashboardSections.ts:3870
 #: src/tachyon/methods/custom/getDashboardSections.ts:4274
@@ -13411,7 +13443,7 @@ msgstr ""
 msgid "Running benchmarks..."
 msgstr ""
 
-#: src/views/settings.ts:8111
+#: src/views/settings.ts:8095
 msgid "Running diagnostics…"
 msgstr ""
 
@@ -13538,8 +13570,8 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1363
-#: src/tachyon/themes/themeControls.ts:584
+#: src/tachyon/appShell.ts:1374
+#: src/tachyon/themes/themeControls.ts:587
 msgid "Save & Apply"
 msgstr ""
 
@@ -13613,8 +13645,8 @@ msgstr ""
 msgid "Score"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2483
-#: src/tachyon/appShell.ts:2508
+#: src/tachyon/appShell.ts:2494
+#: src/tachyon/appShell.ts:2519
 #: src/tachyon/tabs/monitoring/render.ts:206
 msgid "Search"
 msgstr ""
@@ -14083,19 +14115,19 @@ msgstr ""
 msgid "Send UDP fakes before the first N packets or within an inclusive range. Requires tachyon-core 0.5.9 or newer."
 msgstr ""
 
-#: src/views/settings.ts:7633
+#: src/views/settings.ts:7617
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr ""
 
-#: src/views/settings.ts:7581
+#: src/views/settings.ts:7565
 msgid "Send a Telegram notification if Tachyon Core or nftables rules crash and get auto-restored."
 msgstr ""
 
-#: src/views/settings.ts:7646
+#: src/views/settings.ts:7630
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr ""
 
-#: src/views/settings.ts:7594
+#: src/views/settings.ts:7578
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr ""
 
@@ -14103,19 +14135,19 @@ msgstr ""
 msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
 msgstr ""
 
-#: src/views/settings.ts:7607
+#: src/views/settings.ts:7591
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr ""
 
-#: src/views/settings.ts:7657
+#: src/views/settings.ts:7641
 msgid "Send a Telegram notification when components are automatically updated."
 msgstr ""
 
-#: src/views/settings.ts:7620
+#: src/views/settings.ts:7604
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
-#: src/views/settings.ts:7919
+#: src/views/settings.ts:7903
 msgid "Send a daily summary of system health and proxy status to Telegram."
 msgstr ""
 
@@ -14389,7 +14421,7 @@ msgstr ""
 msgid "Service Presets"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1415
+#: src/tachyon/appShell.ts:1426
 #: src/tachyon/methods/shell/index.ts:603
 #: src/tachyon/methods/shell/index.ts:624
 #: src/tachyon/tabs/diagnostic/initController.ts:755
@@ -14405,8 +14437,8 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2395
-#: src/tachyon/appShell.ts:3534
+#: src/tachyon/appShell.ts:2406
+#: src/tachyon/appShell.ts:3637
 msgid "Service stopped"
 msgstr ""
 
@@ -14467,7 +14499,7 @@ msgstr ""
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1331
+#: src/tachyon/appShell.ts:1342
 msgid "Settings saved and applied"
 msgstr ""
 
@@ -14615,25 +14647,25 @@ msgstr ""
 msgid "Showing a cached proxy snapshot. The current state may differ."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2702
+#: src/tachyon/appShell.ts:2713
 msgid "Sidebar"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2550
-#: src/tachyon/appShell.ts:2551
+#: src/tachyon/appShell.ts:2561
+#: src/tachyon/appShell.ts:2562
 #: src/tachyon/panelAuthCard.ts:614
 msgid "Sign out"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2608
+#: src/tachyon/appShell.ts:2619
 msgid "Simple"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2761
+#: src/tachyon/appShell.ts:2862
 msgid "Simple Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2597
+#: src/tachyon/appShell.ts:2608
 msgid "Simple mode: basic settings and quick connection wizard"
 msgstr ""
 
@@ -14744,7 +14776,7 @@ msgstr ""
 msgid "Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes."
 msgstr ""
 
-#: src/views/settings.ts:8229
+#: src/views/settings.ts:8213
 msgid "Some checks failed — review the items above"
 msgstr ""
 
@@ -14937,7 +14969,7 @@ msgstr ""
 msgid "Standby / Direct"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1582
+#: src/tachyon/appShell.ts:1593
 #: src/views/settings.ts:875
 msgid "Start"
 msgstr ""
@@ -14957,7 +14989,7 @@ msgstr ""
 msgid "Start Tachyon Core"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1564
+#: src/tachyon/appShell.ts:1575
 msgid "Start Tachyon service"
 msgstr ""
 
@@ -14981,7 +15013,7 @@ msgstr ""
 msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
 msgstr ""
 
-#: src/views/settings.ts:7969
+#: src/views/settings.ts:7953
 msgid "Start time in H or HH:MM format, e.g. 23 or 23:00 (default: 23:00)."
 msgstr ""
 
@@ -14997,7 +15029,7 @@ msgstr ""
 msgid "Starting lists update..."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1455
+#: src/tachyon/appShell.ts:1466
 msgid "Starting..."
 msgstr ""
 
@@ -15058,7 +15090,7 @@ msgstr ""
 msgid "Sticky Hash Components"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1513
+#: src/tachyon/appShell.ts:1524
 #: src/views/settings.ts:882
 msgid "Stop"
 msgstr ""
@@ -15073,7 +15105,7 @@ msgstr ""
 msgid "Stop Tachyon"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1487
+#: src/tachyon/appShell.ts:1498
 msgid "Stop Tachyon service"
 msgstr ""
 
@@ -15091,8 +15123,8 @@ msgstr ""
 msgid "Stop checking when URLTest group is not used. Use duration format like 1d, 12h or 30m."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2394
-#: src/tachyon/appShell.ts:3533
+#: src/tachyon/appShell.ts:2405
+#: src/tachyon/appShell.ts:3636
 #: src/tachyon/methods/custom/getDashboardSections.ts:3853
 #: src/tachyon/methods/custom/getDashboardSections.ts:4278
 #: src/tachyon/studioDeck.ts:6061
@@ -15112,7 +15144,7 @@ msgstr ""
 msgid "Stopped"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1457
+#: src/tachyon/appShell.ts:1468
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2472
 msgid "Stopping..."
 msgstr ""
@@ -15352,7 +15384,7 @@ msgstr ""
 msgid "Support via SBP"
 msgstr ""
 
-#: src/views/settings.ts:7956
+#: src/views/settings.ts:7940
 msgid "Suppress non-critical Telegram notifications during the configured night window."
 msgstr ""
 
@@ -15391,11 +15423,11 @@ msgstr ""
 msgid "Switch to auto-selection"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2639
+#: src/tachyon/appShell.ts:2650
 msgid "Switch to left sidebar menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2643
+#: src/tachyon/appShell.ts:2654
 msgid "Switch to top horizontal menu"
 msgstr ""
 
@@ -15437,8 +15469,8 @@ msgstr ""
 msgid "Synthesizing..."
 msgstr ""
 
-#: src/tachyon/appShell.ts:2922
-#: src/tachyon/appShell.ts:3126
+#: src/tachyon/appShell.ts:3024
+#: src/tachyon/appShell.ts:3229
 msgid "System & Backup"
 msgstr ""
 
@@ -15478,8 +15510,8 @@ msgstr ""
 msgid "System information"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2392
-#: src/tachyon/appShell.ts:3531
+#: src/tachyon/appShell.ts:2403
+#: src/tachyon/appShell.ts:3634
 msgid "System running"
 msgstr ""
 
@@ -15814,12 +15846,12 @@ msgstr ""
 msgid "Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3015
+#: src/tachyon/appShell.ts:3117
 #: src/tachyon/tabs/dashboard/initController.ts:6262
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3011
+#: src/tachyon/appShell.ts:3113
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
@@ -15827,7 +15859,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2468
+#: src/tachyon/appShell.ts:2479
 msgid "Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load"
 msgstr ""
 
@@ -15844,7 +15876,7 @@ msgstr ""
 msgid "Tachyon has been installed"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1408
+#: src/tachyon/appShell.ts:1419
 msgid "Tachyon restarted"
 msgstr ""
 
@@ -15856,11 +15888,11 @@ msgstr ""
 msgid "Tachyon service is stopped. Start the service to display the dashboard."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1405
+#: src/tachyon/appShell.ts:1416
 msgid "Tachyon started"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1407
+#: src/tachyon/appShell.ts:1418
 msgid "Tachyon stopped"
 msgstr ""
 
@@ -16010,7 +16042,7 @@ msgstr ""
 msgid "Telegram Channel"
 msgstr ""
 
-#: src/views/settings.ts:8074
+#: src/views/settings.ts:8058
 msgid "Test Connection"
 msgstr ""
 
@@ -16023,7 +16055,7 @@ msgstr ""
 msgid "Test DNS speed"
 msgstr ""
 
-#: src/views/settings.ts:8061
+#: src/views/settings.ts:8045
 msgid "Test Telegram Connection"
 msgstr ""
 
@@ -16138,7 +16170,7 @@ msgstr ""
 msgid "Testing:"
 msgstr ""
 
-#: src/views/settings.ts:8074
+#: src/views/settings.ts:8058
 msgid "Testing…"
 msgstr ""
 
@@ -16194,15 +16226,15 @@ msgstr ""
 msgid "Theme"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:450
+#: src/tachyon/themes/themeControls.ts:453
 msgid "Theme JSON copied"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:507
+#: src/tachyon/themes/themeControls.ts:510
 msgid "Theme name"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:578
+#: src/tachyon/themes/themeControls.ts:581
 msgid "Theme saved:"
 msgstr ""
 
@@ -16390,7 +16422,7 @@ msgstr ""
 msgid "Top Blocked Domains & IPs"
 msgstr ""
 
-#: src/tachyon/appShell.ts:2703
+#: src/tachyon/appShell.ts:2714
 msgid "Top bar"
 msgstr ""
 
@@ -17058,7 +17090,7 @@ msgstr ""
 msgid "Update Lists Now"
 msgstr ""
 
-#: src/tachyon/appShell.ts:3380
+#: src/tachyon/appShell.ts:3483
 msgid "Update available:"
 msgstr ""
 
@@ -17821,7 +17853,7 @@ msgstr ""
 msgid "Waiting for router services to restart..."
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:327
+#: src/tachyon/themes/themeControls.ts:330
 msgid "Warning"
 msgstr ""
 
@@ -18206,7 +18238,7 @@ msgstr ""
 msgid "e.g. Main Subscription, YouTube Desync, EU AWG"
 msgstr ""
 
-#: src/tachyon/themes/themeControls.ts:220
+#: src/tachyon/themes/themeControls.ts:223
 msgid "e.g. Midnight Slate"
 msgstr ""
 
@@ -18346,7 +18378,7 @@ msgstr ""
 msgid "ipv6_only warning"
 msgstr ""
 
-#: src/views/settings.ts:8041
+#: src/views/settings.ts:8025
 msgid "is listening"
 msgstr ""
 
@@ -18855,6 +18887,10 @@ msgstr ""
 msgid "▲ Hide full catalog"
 msgstr ""
 
+#: src/tachyon/themes/themeControls.ts:689
+msgid "○ Background animation: Off"
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:186
 msgid "● Excellent response"
 msgstr ""
@@ -18865,6 +18901,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:189
 msgid "● High latency"
+msgstr ""
+
+#: src/tachyon/themes/themeControls.ts:688
+msgid "✓ Background animation: On"
 msgstr ""
 
 #: src/tachyon/connectionWizard.ts:1845

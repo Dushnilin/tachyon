@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 03:57+0300\n"
-"PO-Revision-Date: 2026-11-25 03:57+0300\n"
+"POT-Creation-Date: 2026-11-24 02:22+0300\n"
+"PO-Revision-Date: 2026-11-24 02:22+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -917,6 +917,9 @@ msgstr "Анализ не дал однозначного результата."
 msgid "Analyzing transit route behavior..."
 msgstr "Анализ поведения транзитного маршрута..."
 
+msgid "Animation"
+msgstr "Анимация"
+
 msgid "Announcement:"
 msgstr "Объявление:"
 
@@ -1315,6 +1318,24 @@ msgstr "БЛОКИРОВКА"
 
 msgid "BYPASS"
 msgstr "ОБХОД"
+
+msgid "Background animation: Disabled"
+msgstr "Фоновая анимация: отключена"
+
+msgid "Background animation: Disabled (click to enable)"
+msgstr "Фоновая анимация: отключена (нажмите, чтобы включить)"
+
+msgid "Background animation: Enabled"
+msgstr "Фоновая анимация: включена"
+
+msgid "Background animation: Enabled (click to disable)"
+msgstr "Фоновая анимация: включена (нажмите, чтобы отключить)"
+
+msgid "Background animation: Off"
+msgstr "Анимация фона: Выкл"
+
+msgid "Background animation: On"
+msgstr "Анимация фона: Вкл"
 
 msgid "Background color presets:"
 msgstr "Пресеты цвета фона:"
@@ -6991,6 +7012,9 @@ msgstr "Нет активных записей"
 
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
+
+msgid "No animation"
+msgstr "Без анимации"
 
 msgid "No applicable rule sections found"
 msgstr "Подходящие секции правил не найдены"
@@ -12896,6 +12920,9 @@ msgstr "← Назад"
 msgid "▲ Hide full catalog"
 msgstr "▲ Скрыть полный каталог списков"
 
+msgid "○ Background animation: Off"
+msgstr "○ Анимация фона: Выкл"
+
 msgid "● Excellent response"
 msgstr "● Отличный отклик"
 
@@ -12904,6 +12931,9 @@ msgstr "● Нормальный отклик"
 
 msgid "● High latency"
 msgstr "● Высокий пинг"
+
+msgid "✓ Background animation: On"
+msgstr "✓ Анимация фона: Вкл"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"

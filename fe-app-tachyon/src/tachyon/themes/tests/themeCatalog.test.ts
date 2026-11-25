@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BUILTIN_THEMES,
+  BG_ANIMATION_STORAGE_KEY,
   CUSTOM_THEMES_STORAGE_KEY,
   THEME_ID_STORAGE_KEY,
   applyThemeToDocument,
@@ -10,9 +11,11 @@ import {
   exportThemeJson,
   getActiveTheme,
   getAllThemes,
+  isBgAnimationEnabled,
   parseThemeImportText,
   saveCustomTheme,
   setActiveTheme,
+  setBgAnimationEnabled,
 } from '../themeCatalog';
 
 describe('themeCatalog', () => {
@@ -136,5 +139,22 @@ describe('themeCatalog', () => {
     expect(attrs['data-tachyon-theme-scheme']).toBe('light');
     expect(attrs['data-darkmode']).toBe('false');
     expect(exportThemeJson(applied)).toContain('"scheme": "light"');
+  });
+
+  it('toggles background animation state and persists to localStorage and document attributes', () => {
+    expect(isBgAnimationEnabled()).toBe(true);
+
+    setBgAnimationEnabled(false);
+    expect(storage.get(BG_ANIMATION_STORAGE_KEY)).toBe('false');
+    expect(attrs['data-tachyon-bg-animation']).toBe('false');
+    expect(isBgAnimationEnabled()).toBe(false);
+
+    applyThemeToDocument(getActiveTheme());
+    expect(attrs['data-tachyon-bg-animation']).toBe('false');
+
+    setBgAnimationEnabled(true);
+    expect(storage.get(BG_ANIMATION_STORAGE_KEY)).toBe('true');
+    expect(attrs['data-tachyon-bg-animation']).toBe('true');
+    expect(isBgAnimationEnabled()).toBe(true);
   });
 });

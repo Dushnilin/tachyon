@@ -2,6 +2,8 @@
 export const THEME_ID_STORAGE_KEY = 'tachyon_ui_theme_id';
 export const CUSTOM_THEMES_STORAGE_KEY = 'tachyon_ui_custom_themes';
 export const THEME_CHANGED_EVENT = 'tachyon:theme-changed';
+export const BG_ANIMATION_STORAGE_KEY = 'tachyon_ui_bg_animation';
+export const BG_ANIMATION_CHANGED_EVENT = 'tachyon:bg-animation-changed';
 
 export type ThemeScheme = 'dark' | 'light';
 
@@ -506,6 +508,48 @@ export function getActiveTheme(): TachyonThemeDefinition {
   return getThemeById(getSavedThemeId());
 }
 
+export function isBgAnimationEnabled(): boolean {
+  if (typeof localStorage === 'undefined') return true;
+  try {
+    return localStorage.getItem(BG_ANIMATION_STORAGE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function setBgAnimationEnabled(enabled: boolean): boolean {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(
+        BG_ANIMATION_STORAGE_KEY,
+        enabled ? 'true' : 'false',
+      );
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.setAttribute(
+      'data-tachyon-bg-animation',
+      enabled ? 'true' : 'false',
+    );
+  }
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.dispatchEvent === 'function' &&
+    typeof CustomEvent === 'function'
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(BG_ANIMATION_CHANGED_EVENT, { detail: { enabled } }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+  return enabled;
+}
+
 export function applyThemeToDocument(
   themeOrId?: TachyonThemeDefinition | string | null,
   notify = false,
@@ -529,6 +573,10 @@ export function applyThemeToDocument(
     root.setAttribute?.(
       'data-darkmode',
       theme.scheme === 'light' ? 'false' : 'true',
+    );
+    root.setAttribute?.(
+      'data-tachyon-bg-animation',
+      isBgAnimationEnabled() ? 'true' : 'false',
     );
   }
 
