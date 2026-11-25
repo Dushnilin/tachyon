@@ -96,6 +96,7 @@ for pair in $TACHYON_TARGETS; do
     --arch "$arch" \
     --version "$RELEASE_VERSION" \
     --views-dir "$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon" \
+    --luci-base-dir "$ROOT_DIR/entware/www/luci-static" \
     --init "$ROOT_DIR/entware/S99tachyon" \
     --hooks-dir "$ROOT_DIR/entware" \
     --out-tgz "$OUTPUT_DIR/${entware_name}.tar.gz"

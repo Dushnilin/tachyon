@@ -1789,25 +1789,42 @@ detect_entware_arch() {
     esac
 }
 
+entware_try_load_kmod() {
+    _mod="$1"
+    [ "$DRY_RUN" -eq 0 ] || return 1
+    if command_exists modprobe && modprobe "$_mod" >/dev/null 2>&1; then
+        return 0
+    fi
+    if command_exists insmod; then
+        _kver="$(uname -r 2>/dev/null || true)"
+        for _base in "/lib/modules/${_kver}" "/lib/modules"; do
+            [ -n "$_base" ] && [ -d "$_base" ] || continue
+            _ko="$(find "$_base" -name "${_mod}.ko*" 2>/dev/null | head -n 1)"
+            if [ -n "$_ko" ] && insmod "$_ko" >/dev/null 2>&1; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
 entware_probe_kernel_caps() {
     ENTWARE_HAS_TPROXY=0
     ENTWARE_HAS_TUN=0
 
+    if [ ! -r /proc/net/ip_tables_targets ] || ! grep -qw TPROXY /proc/net/ip_tables_targets 2>/dev/null; then
+        entware_try_load_kmod xt_socket >/dev/null 2>&1 || true
+        entware_try_load_kmod xt_mark >/dev/null 2>&1 || true
+        entware_try_load_kmod xt_TPROXY >/dev/null 2>&1 || true
+    fi
     if [ -r /proc/net/ip_tables_targets ] && grep -qw TPROXY /proc/net/ip_tables_targets 2>/dev/null; then
-        ENTWARE_HAS_TPROXY=1
-    elif [ -d /sys/module/xt_TPROXY ]; then
-        ENTWARE_HAS_TPROXY=1
-    elif command_exists modprobe && [ "$DRY_RUN" -eq 0 ] && modprobe xt_TPROXY >/dev/null 2>&1; then
-        ENTWARE_HAS_TPROXY=1
-    elif [ -d /lib/modules ] && find /lib/modules -name 'xt_TPROXY.ko*' 2>/dev/null | grep -q .; then
         ENTWARE_HAS_TPROXY=1
     fi
 
+    if [ ! -c /dev/net/tun ]; then
+        entware_try_load_kmod tun >/dev/null 2>&1 || true
+    fi
     if [ -c /dev/net/tun ] || [ -d /sys/module/tun ]; then
-        ENTWARE_HAS_TUN=1
-    elif command_exists modprobe && [ "$DRY_RUN" -eq 0 ] && modprobe tun >/dev/null 2>&1; then
-        ENTWARE_HAS_TUN=1
-    elif [ -d /lib/modules ] && find /lib/modules -name 'tun.ko*' 2>/dev/null | grep -q .; then
         ENTWARE_HAS_TUN=1
     fi
 

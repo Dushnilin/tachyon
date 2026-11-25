@@ -21,6 +21,88 @@ const DIRECT_DOWNLOAD_HTTP_CLIENT_TAG: &str = "tachyon-download-direct";
 pub(crate) const SOURCE_DNS_INBOUND_PORT: u16 = 1603;
 
 /// Universal URI parser converting a proxy link into a `ParsedProxyNode` with native `tachyon-core` JSON.
+/// Decode all servers from an FPTN token (`fptn:`, `fptn://`, `fptnb:`, `fptnb://`, or raw JSON)
+/// into individual `ParsedProxyNode` entries.
+pub(crate) fn parse_fptn_token_nodes(uri: &str) -> Vec<ParsedProxyNode> {
+    let uri_trimmed = uri.trim();
+    let lower_uri = uri_trimmed.to_ascii_lowercase();
+    let is_fptn = lower_uri.starts_with("fptn:")
+        || lower_uri.starts_with("fptnb:")
+        || lower_uri.starts_with("fptn//")
+        || lower_uri.starts_with("fptnb//");
+    if !is_fptn {
+        return Vec::new();
+    }
+    let Some(decoded) = decode_fptn_token_json(uri_trimmed) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut seen_hosts = HashSet::new();
+    for key in [
+        "servers",
+        "censorship_zone_servers",
+        "censored_zone_servers",
+    ] {
+        let Some(arr) = decoded.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        for srv in arr {
+            let Some(host) = srv
+                .get("host")
+                .or_else(|| srv.get("ip"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            let port = srv.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
+            if port == 0 {
+                continue;
+            }
+            if !seen_hosts.insert((host.to_string(), port)) {
+                continue;
+            }
+            let srv_name = srv
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(host);
+            let tag = format!("fptn-{srv_name}");
+            let country = detect_country_code(&tag);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("fptn"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            if let Some(u) = decoded.get("username").and_then(Value::as_str) {
+                obj.insert("username".into(), json!(u));
+            }
+            if let Some(p) = decoded.get("password").and_then(Value::as_str) {
+                obj.insert("password".into(), json!(p));
+            }
+            if let Some(fp) = srv
+                .get("md5_fingerprint")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("md5_fingerprint".into(), json!(fp));
+            }
+            out.push(ParsedProxyNode {
+                tag,
+                protocol: "fptn".to_string(),
+                server: host.to_string(),
+                server_port: port,
+                country,
+                raw_uri: uri_trimmed.to_string(),
+                outbound_json: Value::Object(obj),
+            });
+        }
+    }
+    out
+}
+
 pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     let uri = uri.trim();
     if uri.is_empty() || uri.starts_with('#') {
@@ -30,63 +112,9 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     if (lower_uri.starts_with("fptn:") || lower_uri.starts_with("fptnb:"))
         && !lower_uri.starts_with("fptn://")
         && !lower_uri.starts_with("fptnb://")
-        && let Some(decoded) = decode_fptn_token_json(uri)
-        && let Some(first_srv) = [
-            "servers",
-            "censorship_zone_servers",
-            "censored_zone_servers",
-        ]
-        .into_iter()
-        .filter_map(|key| decoded.get(key).and_then(Value::as_array))
-        .flat_map(|arr| arr.iter())
-        .find(|srv| {
-            srv.get("host")
-                .or_else(|| srv.get("ip"))
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.trim().is_empty())
-        })
+        && let Some(first) = parse_fptn_token_nodes(uri).into_iter().next()
     {
-        let host = first_srv
-            .get("host")
-            .or_else(|| first_srv.get("ip"))
-            .and_then(Value::as_str)
-            .unwrap_or("127.0.0.1")
-            .trim()
-            .to_string();
-        let port = first_srv.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
-        let srv_name = first_srv
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&host);
-        let tag = format!("fptn-{srv_name}");
-        let country = detect_country_code(&tag);
-        let mut obj = Map::new();
-        obj.insert("type".into(), json!("fptn"));
-        obj.insert("tag".into(), json!(tag));
-        obj.insert("server".into(), json!(host));
-        obj.insert("server_port".into(), json!(port));
-        if let Some(u) = decoded.get("username").and_then(Value::as_str) {
-            obj.insert("username".into(), json!(u));
-        }
-        if let Some(p) = decoded.get("password").and_then(Value::as_str) {
-            obj.insert("password".into(), json!(p));
-        }
-        if let Some(fp) = first_srv
-            .get("md5_fingerprint")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        {
-            obj.insert("md5_fingerprint".into(), json!(fp));
-        }
-        return Some(ParsedProxyNode {
-            tag,
-            protocol: "fptn".to_string(),
-            server: host,
-            server_port: port,
-            country,
-            raw_uri: uri.to_string(),
-            outbound_json: Value::Object(obj),
-        });
+        return Some(first);
     }
 
     let (scheme, rest) = uri.split_once("://")?;
@@ -105,67 +133,13 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
         return parse_vpn_uri(uri, rest, idx);
     }
     if (scheme_lower == "fptn" || scheme_lower == "fptnb")
-        && let Some(decoded) = decode_fptn_token_json(uri)
-        && let Some(first_srv) = [
-            "servers",
-            "censorship_zone_servers",
-            "censored_zone_servers",
-        ]
-        .into_iter()
-        .filter_map(|key| decoded.get(key).and_then(Value::as_array))
-        .flat_map(|arr| arr.iter())
-        .find(|srv| {
-            srv.get("host")
-                .or_else(|| srv.get("ip"))
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.trim().is_empty())
-        })
+        && let Some(first) = parse_fptn_token_nodes(uri).into_iter().next()
     {
-        let host = first_srv
-            .get("host")
-            .or_else(|| first_srv.get("ip"))
-            .and_then(Value::as_str)
-            .unwrap_or("127.0.0.1")
-            .trim()
-            .to_string();
-        let port = first_srv.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
-        let srv_name = first_srv
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(&host);
-        let tag = format!("fptn-{srv_name}");
-        let country = detect_country_code(&tag);
-        let mut obj = Map::new();
-        obj.insert("type".into(), json!("fptn"));
-        obj.insert("tag".into(), json!(tag));
-        obj.insert("server".into(), json!(host));
-        obj.insert("server_port".into(), json!(port));
-        if let Some(u) = decoded.get("username").and_then(Value::as_str) {
-            obj.insert("username".into(), json!(u));
-        }
-        if let Some(p) = decoded.get("password").and_then(Value::as_str) {
-            obj.insert("password".into(), json!(p));
-        }
-        if let Some(fp) = first_srv
-            .get("md5_fingerprint")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        {
-            obj.insert("md5_fingerprint".into(), json!(fp));
-        }
-        return Some(ParsedProxyNode {
-            tag,
-            protocol: "fptn".to_string(),
-            server: host,
-            server_port: port,
-            country,
-            raw_uri: uri.to_string(),
-            outbound_json: Value::Object(obj),
-        });
+        return Some(first);
     }
 
     let (before_hash, raw_tag) = match rest.split_once('#') {
-        Some((b, t)) => (b, url_decode(t)),
+        Some((b, t)) => (b, url_decode_percent(t)),
         None => (rest, String::new()),
     };
     let (authority_and_path, query_str) = match before_hash.split_once('?') {
@@ -175,7 +149,7 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     let params = parse_query_params(query_str);
 
     let (userinfo, host_port_path) = match authority_and_path.rsplit_once('@') {
-        Some((u, hp)) => (url_decode(u), hp.to_string()),
+        Some((u, hp)) => (url_decode_percent(u), hp.to_string()),
         None if scheme_lower == "ss" || scheme_lower == "shadowsocks" => {
             if let Some(decoded) = decode_b64_flex(authority_and_path.trim_end_matches('/'))
                 .and_then(|b| String::from_utf8(b).ok())
@@ -188,8 +162,16 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
         }
         None => (String::new(), authority_and_path.to_string()),
     };
+    let default_port = match scheme_lower.as_str() {
+        "ss" | "shadowsocks" => 8388,
+        "socks" | "socks5" | "socks4" => 1080,
+        "http" => 80,
+        "wg" | "wireguard" | "awg" | "amneziawg" => 51820,
+        "ssh" => 22,
+        _ => 443,
+    };
     let host_port = host_port_path.split('/').next().unwrap_or(&host_port_path);
-    let (host, port) = split_host_port(host_port, 443)?;
+    let (host, port) = split_host_port(host_port, default_port)?;
 
     let tag = if !raw_tag.trim().is_empty() {
         raw_tag.trim().to_string()
@@ -206,8 +188,17 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             obj.insert("server".into(), json!(host));
             obj.insert("server_port".into(), json!(port));
             obj.insert("uuid".into(), json!(userinfo));
-            if let Some(flow) = params.get("flow").filter(|s| !s.is_empty()) {
-                obj.insert("flow".into(), json!(flow));
+            if let Some(flow) = params
+                .get("flow")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                let norm_flow = if flow.eq_ignore_ascii_case("xtls-rprx-vision-udp443") {
+                    "xtls-rprx-vision"
+                } else {
+                    flow
+                };
+                obj.insert("flow".into(), json!(norm_flow));
             }
             if let Some(enc) = params
                 .get("encryption")
@@ -266,25 +257,63 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             Value::Object(obj)
         }
         "hysteria2" | "hy2" => {
-            let sni = params.get("sni").cloned().unwrap_or_else(|| host.clone());
+            let sni = params
+                .get("sni")
+                .or_else(|| params.get("peer"))
+                .map(String::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(&host)
+                .to_string();
             let insecure = params
                 .get("insecure")
-                .is_some_and(|v| v == "1" || v == "true");
+                .or_else(|| params.get("allowinsecure"))
+                .or_else(|| params.get("allow_insecure"))
+                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+            let alpn: Vec<String> = params
+                .get("alpn")
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .map(String::from)
+                        .collect()
+                })
+                .filter(|v: &Vec<String>| !v.is_empty())
+                .unwrap_or_else(|| vec!["h3".to_string()]);
             let mut obj = Map::new();
             obj.insert("type".into(), json!("hysteria2"));
             obj.insert("tag".into(), json!(tag));
             obj.insert("server".into(), json!(host));
             obj.insert("server_port".into(), json!(port));
+            if let Some(mport) = params
+                .get("mport")
+                .or_else(|| params.get("ports"))
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                let ports: Vec<String> = mport
+                    .split(',')
+                    .map(|p| p.trim().replace('-', ":"))
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                if !ports.is_empty() {
+                    obj.insert("server_ports".into(), json!(ports));
+                }
+            }
             obj.insert("password".into(), json!(userinfo));
-            obj.insert(
-                "tls".into(),
-                json!({
-                    "enabled": true,
-                    "server_name": sni,
-                    "insecure": insecure,
-                    "alpn": ["h3"]
-                }),
-            );
+            let mut tls = Map::new();
+            tls.insert("enabled".into(), json!(true));
+            tls.insert("server_name".into(), json!(sni));
+            tls.insert("insecure".into(), json!(insecure));
+            tls.insert("alpn".into(), json!(alpn));
+            if let Some(pin) = params
+                .get("pinsha256")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                tls.insert("certificate_public_key_sha256".into(), json!([pin]));
+            }
+            obj.insert("tls".into(), Value::Object(tls));
             if let Some(obfs) = params.get("obfs").filter(|s| !s.is_empty() && *s != "none") {
                 obj.insert(
                     "obfs".into(),
@@ -304,7 +333,7 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
                 .filter(|s| !s.is_empty())
                 .unwrap_or(&host);
             let insecure = params
-                .get("allowInsecure")
+                .get("allowinsecure")
                 .or_else(|| params.get("allow_insecure"))
                 .or_else(|| params.get("insecure"))
                 .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
@@ -353,20 +382,53 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
             Value::Object(obj)
         }
         "anytls" => {
-            let sni = params.get("sni").cloned().unwrap_or_else(|| host.clone());
+            let sni = params
+                .get("sni")
+                .map(String::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(&host)
+                .to_string();
+            let insecure = params
+                .get("insecure")
+                .or_else(|| params.get("allowinsecure"))
+                .or_else(|| params.get("allow_insecure"))
+                .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+            let mut tls = Map::new();
+            tls.insert("enabled".into(), json!(true));
+            tls.insert("server_name".into(), json!(sni));
+            if insecure {
+                tls.insert("insecure".into(), json!(true));
+            }
+            if let Some(alpn_raw) = params.get("alpn").filter(|s| !s.trim().is_empty()) {
+                let alpn: Vec<&str> = alpn_raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !alpn.is_empty() {
+                    tls.insert("alpn".into(), json!(alpn));
+                }
+            }
+            if let Some(fp_raw) = params
+                .get("fp")
+                .or_else(|| params.get("fingerprint"))
+                .filter(|s| !s.trim().is_empty())
+            {
+                let fp = normalize_utls_fingerprint(fp_raw);
+                if !fp.is_empty() {
+                    tls.insert("utls".into(), json!({ "enabled": true, "fingerprint": fp }));
+                }
+            }
             json!({
                 "type": "anytls",
                 "tag": tag,
                 "server": host,
                 "server_port": port,
                 "password": userinfo,
-                "tls": {
-                    "enabled": true,
-                    "server_name": sni
-                }
+                "tls": Value::Object(tls)
             })
         }
-        "wg" | "wireguard" | "awg" => {
+        "wg" | "wireguard" | "awg" | "amneziawg" => {
             let mut obj = Map::new();
             obj.insert("type".into(), json!("wireguard"));
             obj.insert("tag".into(), json!(tag));
@@ -556,7 +618,8 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
                     .filter(|s| !s.is_empty())
                     .unwrap_or(&host);
                 let insecure = params
-                    .get("allowInsecure")
+                    .get("allowinsecure")
+                    .or_else(|| params.get("allow_insecure"))
                     .or_else(|| params.get("insecure"))
                     .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
                 let mut tls = Map::new();
@@ -566,6 +629,172 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
                     tls.insert("insecure".into(), json!(true));
                 }
                 obj.insert("tls".into(), Value::Object(tls));
+            }
+            Value::Object(obj)
+        }
+        "naive" | "naive+https" | "naive+quic" | "naive+h2" | "naive+http2" | "naive+h3" => {
+            let (u, p) = userinfo.split_once(':').unwrap_or((userinfo.as_str(), ""));
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("naive"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            if !u.is_empty() {
+                obj.insert("username".into(), json!(u));
+            }
+            if !p.is_empty() {
+                obj.insert("password".into(), json!(p));
+            }
+            if matches!(scheme_lower.as_str(), "naive+quic" | "naive+h3")
+                || params
+                    .get("quic")
+                    .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            {
+                obj.insert("quic".into(), json!(true));
+            }
+            if let Some(tls) = build_tls_object_with_default(&params, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            Value::Object(obj)
+        }
+        "hysteria" | "hy" => {
+            let auth = if !userinfo.is_empty() {
+                userinfo.clone()
+            } else {
+                params
+                    .get("auth")
+                    .or_else(|| params.get("auth_str"))
+                    .or_else(|| params.get("password"))
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("hysteria"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            if !auth.is_empty() {
+                obj.insert("auth_str".into(), json!(auth));
+            }
+            if let Some(obfs) = params
+                .get("obfs")
+                .or_else(|| params.get("obfsparam"))
+                .filter(|s| !s.trim().is_empty())
+            {
+                obj.insert("obfs".into(), json!(obfs.trim()));
+            }
+            let up = params
+                .get("upmbps")
+                .or_else(|| params.get("up_mbps"))
+                .or_else(|| params.get("up"))
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(100);
+            let down = params
+                .get("downmbps")
+                .or_else(|| params.get("down_mbps"))
+                .or_else(|| params.get("down"))
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(100);
+            obj.insert("up_mbps".into(), json!(up));
+            obj.insert("down_mbps".into(), json!(down));
+            if let Some(tls) = build_tls_object_with_default(&params, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            Value::Object(obj)
+        }
+        "snell" => {
+            if userinfo.is_empty() {
+                return None;
+            }
+            let version = params
+                .get("version")
+                .or_else(|| params.get("v"))
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .filter(|v| (1..=6).contains(v))
+                .unwrap_or(5);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("snell"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("psk".into(), json!(userinfo));
+            obj.insert("version".into(), json!(version));
+            if let Some(obfs) = params
+                .get("obfs")
+                .or_else(|| params.get("plugin"))
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| matches!(s.as_str(), "http" | "tls"))
+            {
+                let mut om = Map::new();
+                om.insert("mode".into(), json!(obfs));
+                if let Some(h) = params
+                    .get("obfs-host")
+                    .or_else(|| params.get("obfs_host"))
+                    .or_else(|| params.get("host"))
+                    .filter(|s| !s.trim().is_empty())
+                {
+                    om.insert("host".into(), json!(h.trim()));
+                }
+                obj.insert("obfs".into(), Value::Object(om));
+            }
+            Value::Object(obj)
+        }
+        "shadowtls" | "stls" => {
+            let pw = if !userinfo.is_empty() {
+                userinfo.clone()
+            } else {
+                params
+                    .get("password")
+                    .or_else(|| params.get("pass"))
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let version = params
+                .get("version")
+                .or_else(|| params.get("v"))
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .unwrap_or(3);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("shadowtls"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("version".into(), json!(version));
+            if !pw.is_empty() {
+                obj.insert("password".into(), json!(pw));
+            }
+            if let Some(tls) = build_tls_object_with_default(&params, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            Value::Object(obj)
+        }
+        "ssh" => {
+            let (u, p) = userinfo.split_once(':').unwrap_or((userinfo.as_str(), ""));
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("ssh"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            if !u.is_empty() {
+                obj.insert("user".into(), json!(u));
+            }
+            if !p.is_empty() {
+                obj.insert("password".into(), json!(p));
+            } else if let Some(pw) = params
+                .get("password")
+                .or_else(|| params.get("pass"))
+                .filter(|s| !s.is_empty())
+            {
+                obj.insert("password".into(), json!(pw));
+            }
+            if let Some(pk) = params
+                .get("pk")
+                .or_else(|| params.get("private_key"))
+                .filter(|s| !s.trim().is_empty())
+            {
+                obj.insert("private_key".into(), json!(pk));
             }
             Value::Object(obj)
         }
@@ -617,7 +846,7 @@ pub fn parse_proxy_uri(uri: &str, idx: usize) -> Option<ParsedProxyNode> {
     })
 }
 
-fn url_decode_percent(s: &str) -> String {
+pub(crate) fn url_decode_percent(s: &str) -> String {
     let mut bytes = Vec::with_capacity(s.len());
     let raw = s.as_bytes();
     let mut i = 0;
@@ -1631,7 +1860,57 @@ fn parse_wdtt_uri(
 }
 
 fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedProxyNode> {
-    let decoded = decode_b64_flex(b64_part)?;
+    let (body, raw_frag) = match b64_part.split_once('#') {
+        Some((b, f)) => (b.trim(), url_decode_percent(f)),
+        None => (b64_part.trim(), String::new()),
+    };
+    if body.contains('@') {
+        let (before_query, query_raw) = body.split_once('?').unwrap_or((body, ""));
+        let (uuid_raw, host_port_path) = before_query.rsplit_once('@')?;
+        let uuid = url_decode_percent(uuid_raw).trim().to_string();
+        if uuid.is_empty() {
+            return None;
+        }
+        let host_port = host_port_path.split('/').next().unwrap_or(host_port_path);
+        let (host, port) = split_host_port(host_port, 443)?;
+        let params = parse_query_params(query_raw);
+        let tag = if !raw_frag.trim().is_empty() {
+            raw_frag.trim().to_string()
+        } else {
+            format!("vmess-{host}:{port}-{idx}")
+        };
+        let country = detect_country_code(&tag);
+        let mut obj = Map::new();
+        obj.insert("type".into(), json!("vmess"));
+        obj.insert("tag".into(), json!(tag));
+        obj.insert("server".into(), json!(host));
+        obj.insert("server_port".into(), json!(port));
+        obj.insert("uuid".into(), json!(uuid));
+        let scy = params
+            .get("encryption")
+            .or_else(|| params.get("security"))
+            .filter(|s| !s.trim().is_empty() && *s != "tls" && *s != "none")
+            .cloned()
+            .unwrap_or_else(|| "auto".to_string());
+        obj.insert("security".into(), json!(scy));
+        if let Some(tls) = build_tls_object(&params, &host) {
+            obj.insert("tls".into(), tls);
+        }
+        if let Some(tr) = build_transport_object(&params) {
+            obj.insert("transport".into(), tr);
+        }
+        return Some(ParsedProxyNode {
+            tag,
+            protocol: "vmess".to_string(),
+            server: host,
+            server_port: port,
+            country,
+            raw_uri: full_uri.to_string(),
+            outbound_json: Value::Object(obj),
+        });
+    }
+
+    let decoded = decode_b64_flex(body)?;
     let v: Value = serde_json::from_slice(&decoded).ok()?;
     let host = v.get("add")?.as_str()?.to_string();
     let port = v.get("port").and_then(|p| {
@@ -1642,6 +1921,8 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
     let ps = v.get("ps").and_then(Value::as_str).unwrap_or("");
     let tag = if !ps.trim().is_empty() {
         ps.trim().to_string()
+    } else if !raw_frag.trim().is_empty() {
+        raw_frag.trim().to_string()
     } else {
         format!("vmess-{host}:{port}-{idx}")
     };
@@ -1652,10 +1933,14 @@ fn parse_vmess_uri(full_uri: &str, b64_part: &str, idx: usize) -> Option<ParsedP
         .unwrap_or("tcp")
         .trim()
         .to_ascii_lowercase();
-    let tls_on = v
-        .get("tls")
-        .and_then(Value::as_str)
-        .is_some_and(|s| s.eq_ignore_ascii_case("tls"));
+    let tls_on = v.get("tls").is_some_and(|tv| {
+        tv.as_bool() == Some(true)
+            || tv.as_u64() == Some(1)
+            || tv.as_str().is_some_and(|s| {
+                let lc = s.trim().to_ascii_lowercase();
+                lc == "tls" || lc == "1" || lc == "true"
+            })
+    });
     let sni = v
         .get("sni")
         .and_then(Value::as_str)
@@ -4097,19 +4382,33 @@ fn build_tls_object_with_default(
     default_host: &str,
     default_tls: bool,
 ) -> Option<Value> {
-    let default_sec = if default_tls { "tls" } else { "none" };
-    let sec = params
+    let has_pbk = params.get("pbk").is_some_and(|s| !s.trim().is_empty());
+    let default_sec = if has_pbk {
+        "reality"
+    } else if default_tls {
+        "tls"
+    } else {
+        "none"
+    };
+    let sec_lc = params
         .get("security")
-        .map(String::as_str)
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or(default_sec);
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default_sec.to_string());
+    let sec = if sec_lc == "xtls" {
+        "tls"
+    } else if sec_lc == "none" && has_pbk {
+        "reality"
+    } else {
+        sec_lc.as_str()
+    };
     if sec != "tls" && sec != "reality" {
         return None;
     }
     let explicit_sni = params
         .get("sni")
-        .or_else(|| params.get("serverName"))
         .or_else(|| params.get("servername"))
+        .or_else(|| params.get("serverName"))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let sni = if sec == "reality" {
@@ -4157,7 +4456,9 @@ fn build_tls_object_with_default(
         tls.insert("alpn".into(), json!(["h2", "http/1.1"]));
     }
     if params
-        .get("allowInsecure")
+        .get("allowinsecure")
+        .or_else(|| params.get("allowInsecure"))
+        .or_else(|| params.get("allow_insecure"))
         .or_else(|| params.get("insecure"))
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
     {
@@ -4794,7 +5095,13 @@ fn build_transport_object(params: &HashMap<String, String>) -> Option<Value> {
         }
         "grpc" => Some(json!({
             "type": "grpc",
-            "service_name": params.get("serviceName").or_else(|| params.get("path")).cloned().unwrap_or_default(),
+            "service_name": params
+                .get("servicename")
+                .or_else(|| params.get("serviceName"))
+                .or_else(|| params.get("service_name"))
+                .or_else(|| params.get("path"))
+                .cloned()
+                .unwrap_or_default(),
         })),
         "xhttp" | "splithttp" => {
             let mut primary = Map::new();
@@ -4830,17 +5137,26 @@ fn build_transport_object(params: &HashMap<String, String>) -> Option<Value> {
     }
 }
 
+fn parse_first_port_str(raw: &str) -> Option<u16> {
+    raw.split([',', '-'])
+        .next()
+        .map(str::trim)
+        .and_then(|s| s.parse::<u16>().ok())
+        .filter(|&p| p >= 1)
+}
+
 fn split_host_port(hp: &str, default_port: u16) -> Option<(String, u16)> {
     if let Some(rest) = hp.strip_prefix('[') {
         let (ipv6, after) = rest.split_once(']')?;
         let port = after
             .strip_prefix(':')
-            .and_then(|p| p.parse::<u16>().ok())
+            .and_then(parse_first_port_str)
             .unwrap_or(default_port);
         return Some((ipv6.to_string(), port));
     }
     if let Some((h, p)) = hp.rsplit_once(':')
-        && let Ok(port) = p.parse::<u16>()
+        && !h.contains(':')
+        && let Some(port) = parse_first_port_str(p)
     {
         return Some((h.to_string(), port));
     }
@@ -4851,13 +5167,24 @@ fn split_host_port(hp: &str, default_port: u16) -> Option<(String, u16)> {
 }
 
 fn parse_query_params(q: &str) -> HashMap<String, String> {
+    let normalized = if q.contains("&amp;") {
+        std::borrow::Cow::Owned(q.replace("&amp;", "&"))
+    } else {
+        std::borrow::Cow::Borrowed(q)
+    };
     let mut map = HashMap::new();
-    for pair in q.split('&') {
+    for pair in normalized.split('&') {
         if pair.is_empty() {
             continue;
         }
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-        map.insert(url_decode(k), url_decode(v));
+        let key_orig = url_decode_percent(k);
+        let val = url_decode_percent(v);
+        let key_lc = key_orig.to_ascii_lowercase();
+        if !key_orig.is_empty() && key_orig != key_lc {
+            map.insert(key_orig, val.clone());
+        }
+        map.insert(key_lc, val);
     }
     map
 }
@@ -7731,7 +8058,12 @@ fn normalize_xray_json_configs(configs: &[Value]) -> Vec<ParsedProxyNode> {
                 .iter()
                 .position(|p| p.orig_tag == "proxy")
                 .unwrap_or(0);
-            if !display_name.is_empty() {
+            let non_detour_count = planned
+                .iter()
+                .enumerate()
+                .filter(|(idx, p)| *idx == primary_idx || !detour_deps.contains(&p.orig_tag))
+                .count();
+            if !display_name.is_empty() && non_detour_count == 1 {
                 let old_unique = planned[primary_idx].unique_tag.clone();
                 taken.remove(&old_unique);
                 let new_unique = make_unique_tag(&display_name, &mut taken);
@@ -7740,10 +8072,7 @@ fn normalize_xray_json_configs(configs: &[Value]) -> Vec<ParsedProxyNode> {
                 tag_map.insert(orig, new_unique);
             }
             for (idx, item) in planned.iter().enumerate() {
-                let is_primary = idx == primary_idx;
-                if !is_primary && !detour_deps.contains(&item.orig_tag) {
-                    continue;
-                }
+                let is_detour_only = idx != primary_idx && detour_deps.contains(&item.orig_tag);
                 if let Some(mut ob_val) =
                     convert_xray_outbound_to_singbox(&item.outbound, &item.unique_tag)
                 {
@@ -7773,10 +8102,10 @@ fn normalize_xray_json_configs(configs: &[Value]) -> Vec<ParsedProxyNode> {
                         server,
                         server_port,
                         country: cc,
-                        raw_uri: if is_primary {
-                            "json:standalone".to_string()
-                        } else {
+                        raw_uri: if is_detour_only {
                             "json:hidden|detour".to_string()
+                        } else {
+                            "json:standalone".to_string()
                         },
                         outbound_json: ob_val,
                     });
@@ -7787,7 +8116,7 @@ fn normalize_xray_json_configs(configs: &[Value]) -> Vec<ParsedProxyNode> {
     nodes
 }
 
-fn normalize_singbox_json_outbounds(items: &[Value]) -> Vec<ParsedProxyNode> {
+pub(crate) fn normalize_singbox_json_outbounds(items: &[Value]) -> Vec<ParsedProxyNode> {
     let mut urltest_labels: HashMap<String, String> = HashMap::new();
     for item in items {
         if item.get("type").and_then(Value::as_str) == Some("urltest") {
@@ -7853,10 +8182,26 @@ fn normalize_singbox_json_outbounds(items: &[Value]) -> Vec<ParsedProxyNode> {
             let server = item
                 .get("server")
                 .and_then(Value::as_str)
+                .or_else(|| {
+                    item.get("peers")
+                        .and_then(Value::as_array)
+                        .and_then(|a| a.first())
+                        .and_then(|p| p.get("address").or_else(|| p.get("server")))
+                        .and_then(Value::as_str)
+                })
                 .unwrap_or("")
                 .to_string();
-            let mut server_port =
-                item.get("server_port").and_then(Value::as_u64).unwrap_or(0) as u16;
+            let mut server_port = item
+                .get("server_port")
+                .and_then(Value::as_u64)
+                .or_else(|| {
+                    item.get("peers")
+                        .and_then(Value::as_array)
+                        .and_then(|a| a.first())
+                        .and_then(|p| p.get("port"))
+                        .and_then(Value::as_u64)
+                })
+                .unwrap_or(0) as u16;
             if server_port == 0
                 && let Some(arr) = item.get("server_ports").and_then(Value::as_array)
             {
@@ -7885,13 +8230,80 @@ fn normalize_singbox_json_outbounds(items: &[Value]) -> Vec<ParsedProxyNode> {
     nodes
 }
 
-/// Parse an Xray JSON or sing-box/tachyon-core JSON subscription payload into `ParsedProxyNode` items.
-pub fn parse_json_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyNode>> {
-    let trimmed = decoded.trim_start_matches('\u{feff}').trim();
-    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+fn parse_sip008_server_object(obj: &Map<String, Value>, idx: usize) -> Option<ParsedProxyNode> {
+    let server = obj
+        .get("server")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let port = parse_json_u16(obj.get("server_port").unwrap_or(&Value::Null))
+        .or_else(|| parse_json_u16(obj.get("port").unwrap_or(&Value::Null)))
+        .unwrap_or(0);
+    let method = obj
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let password = obj
+        .get("password")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if server.is_empty() || port == 0 || method.is_empty() {
         return None;
     }
-    let val: Value = serde_json::from_str(trimmed).ok()?;
+    let raw_tag = obj
+        .get("remarks")
+        .or_else(|| obj.get("tag"))
+        .or_else(|| obj.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let tag = if raw_tag.is_empty() {
+        format!("ss-{server}:{port}-{idx}")
+    } else {
+        raw_tag.to_string()
+    };
+    let mut out = Map::new();
+    out.insert("type".into(), json!("shadowsocks"));
+    out.insert("tag".into(), json!(tag));
+    out.insert("server".into(), json!(server));
+    out.insert("server_port".into(), json!(port));
+    out.insert("method".into(), json!(method));
+    out.insert("password".into(), json!(password));
+    if let Some(plugin) = obj
+        .get("plugin")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        out.insert("plugin".into(), json!(plugin));
+    }
+    if let Some(plugin_opts) = obj
+        .get("plugin_opts")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        out.insert("plugin_opts".into(), json!(plugin_opts));
+    }
+    Some(ParsedProxyNode {
+        country: detect_country_code(&tag),
+        tag,
+        protocol: "ss".to_string(),
+        server,
+        server_port: port,
+        raw_uri: String::new(),
+        outbound_json: Value::Object(out),
+    })
+}
+
+fn parse_json_subscription_value(val: &Value, depth: usize) -> Option<Vec<ParsedProxyNode>> {
+    if depth > 4 {
+        return None;
+    }
     let is_xray = |v: &Value| {
         v.get("outbounds")
             .and_then(Value::as_array)
@@ -7900,111 +8312,178 @@ pub fn parse_json_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyN
                     .any(|o| o.get("protocol").and_then(Value::as_str).is_some())
             })
     };
-    let nodes = match &val {
+    let nodes = match val {
         Value::Array(arr) if arr.iter().any(is_xray) => normalize_xray_json_configs(arr),
-        Value::Object(_) if is_xray(&val) => {
-            normalize_xray_json_configs(std::slice::from_ref(&val))
+        Value::Object(_) if is_xray(val) => normalize_xray_json_configs(std::slice::from_ref(val)),
+        Value::Array(arr) if arr.iter().all(Value::is_string) => {
+            let mut str_nodes = Vec::new();
+            for (idx, item) in arr.iter().enumerate() {
+                if let Some(s) = item.as_str() {
+                    let fptn_nodes = parse_fptn_token_nodes(s);
+                    if !fptn_nodes.is_empty() {
+                        str_nodes.extend(fptn_nodes);
+                    } else if let Some(n) = parse_proxy_uri(s, idx) {
+                        str_nodes.push(n);
+                    }
+                }
+            }
+            str_nodes
         }
         Value::Object(m) => {
             let obs = m.get("outbounds").and_then(Value::as_array);
             let eps = m.get("endpoints").and_then(Value::as_array);
-            if obs.is_none() && eps.is_none() {
-                if let Some(servers) = m.get("servers").and_then(Value::as_array) {
-                    let mut sip_nodes = Vec::new();
-                    let mut taken_tags = HashSet::new();
-                    for (idx, srv) in servers.iter().enumerate() {
-                        let Some(obj) = srv.as_object() else {
-                            continue;
-                        };
-                        let server = obj
-                            .get("server")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .trim()
-                            .to_string();
-                        let port = parse_json_u16(obj.get("server_port").unwrap_or(&Value::Null))
-                            .or_else(|| parse_json_u16(obj.get("port").unwrap_or(&Value::Null)))
-                            .unwrap_or(0);
-                        let method = obj
-                            .get("method")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .trim()
-                            .to_string();
-                        let password = obj
-                            .get("password")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string();
-                        if server.is_empty() || port == 0 || method.is_empty() {
-                            continue;
-                        }
-                        let raw_tag = obj
-                            .get("remarks")
-                            .or_else(|| obj.get("tag"))
-                            .or_else(|| obj.get("name"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .trim();
-                        let tag = if raw_tag.is_empty() {
-                            format!("ss-{server}:{port}-{idx}")
-                        } else {
-                            raw_tag.to_string()
-                        };
-                        let mut out = Map::new();
-                        out.insert("type".into(), json!("shadowsocks"));
-                        out.insert("tag".into(), json!(tag));
-                        out.insert("server".into(), json!(server));
-                        out.insert("server_port".into(), json!(port));
-                        out.insert("method".into(), json!(method));
-                        out.insert("password".into(), json!(password));
-                        if let Some(plugin) = obj
-                            .get("plugin")
-                            .and_then(Value::as_str)
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                        {
-                            out.insert("plugin".into(), json!(plugin));
-                        }
-                        if let Some(plugin_opts) = obj
-                            .get("plugin_opts")
-                            .and_then(Value::as_str)
-                            .map(str::trim)
-                            .filter(|s| !s.is_empty())
-                        {
-                            out.insert("plugin_opts".into(), json!(plugin_opts));
-                        }
-                        let mut node = ParsedProxyNode {
-                            country: detect_country_code(&tag),
-                            tag,
-                            protocol: "ss".to_string(),
-                            server,
-                            server_port: port,
-                            raw_uri: String::new(),
-                            outbound_json: Value::Object(out),
-                        };
+            if obs.is_some() || eps.is_some() {
+                let mut combined = Vec::new();
+                if let Some(arr) = obs {
+                    combined.extend(arr.iter().cloned());
+                }
+                if let Some(arr) = eps {
+                    combined.extend(arr.iter().cloned());
+                }
+                let sb_nodes = normalize_singbox_json_outbounds(&combined);
+                if !sb_nodes.is_empty() {
+                    return Some(sb_nodes);
+                }
+            }
+            if let Some(servers) = m.get("servers").and_then(Value::as_array) {
+                let mut sip_nodes = Vec::new();
+                let mut taken_tags = HashSet::new();
+                for (idx, srv) in servers.iter().enumerate() {
+                    if let Some(obj) = srv.as_object()
+                        && let Some(mut node) = parse_sip008_server_object(obj, idx)
+                    {
                         assign_unique_node_tag(&mut node, &mut taken_tags);
                         sip_nodes.push(node);
                     }
-                    if !sip_nodes.is_empty() {
-                        return Some(sip_nodes);
+                }
+                if !sip_nodes.is_empty() {
+                    return Some(sip_nodes);
+                }
+            }
+            // Single Outline / Shadowsocks server JSON object
+            if !m.contains_key("type")
+                && !m.contains_key("protocol")
+                && m.contains_key("server")
+                && m.contains_key("method")
+                && let Some(node) = parse_sip008_server_object(m, 0)
+            {
+                return Some(vec![node]);
+            }
+            if (m.contains_key("containers")
+                || m.contains_key("awg_config")
+                || m.contains_key("wg_config"))
+                && let Ok(raw_json) = serde_json::to_string(val)
+                && let Ok(amz_nodes) = extract_amnezia_vpn_nodes_inner(&raw_json, 0, "amnezia", 0)
+                && !amz_nodes.is_empty()
+            {
+                return Some(amz_nodes);
+            }
+            // Single sing-box outbound or Xray outbound object
+            if let Some(proto) = m.get("protocol").and_then(Value::as_str)
+                && !proto.trim().is_empty()
+            {
+                let wrapped = json!({ "outbounds": [val] });
+                let xray_nodes = normalize_xray_json_configs(std::slice::from_ref(&wrapped));
+                if !xray_nodes.is_empty() {
+                    return Some(xray_nodes);
+                }
+            }
+            if let Some(ty) = m.get("type").and_then(Value::as_str)
+                && !matches!(
+                    ty.to_ascii_lowercase().as_str(),
+                    "" | "direct" | "block" | "dns" | "selector"
+                )
+            {
+                let sb_nodes = normalize_singbox_json_outbounds(std::slice::from_ref(val));
+                if !sb_nodes.is_empty() {
+                    return Some(sb_nodes);
+                }
+            }
+            // Panel JSON envelope wrappers (`data`, `result`, `response`, `payload`, `subscription`, `proxies`, `links`, `nodes`, `configs`)
+            for env_key in [
+                "data",
+                "result",
+                "response",
+                "payload",
+                "configs",
+                "nodes",
+                "proxies",
+                "items",
+                "subscription",
+                "links",
+            ] {
+                if let Some(inner_val) = m.get(env_key) {
+                    match inner_val {
+                        Value::Array(_) | Value::Object(_) => {
+                            if let Some(sub_nodes) =
+                                parse_json_subscription_value(inner_val, depth + 1)
+                                && !sub_nodes.is_empty()
+                            {
+                                return Some(sub_nodes);
+                            }
+                        }
+                        Value::String(s) => {
+                            let decoded_nodes =
+                                crate::core_mgr::CoreManager::parse_subscription_payload(s);
+                            if !decoded_nodes.is_empty() {
+                                return Some(decoded_nodes);
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                return None;
             }
-            let mut combined = Vec::new();
-            if let Some(arr) = obs {
-                combined.extend(arr.iter().cloned());
-            }
-            if let Some(arr) = eps {
-                combined.extend(arr.iter().cloned());
-            }
-            normalize_singbox_json_outbounds(&combined)
+            return None;
         }
         Value::Array(arr) => normalize_singbox_json_outbounds(arr),
         _ => return None,
     };
     if nodes.is_empty() { None } else { Some(nodes) }
+}
+
+/// Parse an Xray JSON or sing-box/tachyon-core JSON subscription payload into `ParsedProxyNode` items.
+pub fn parse_json_subscription_payload(decoded: &str) -> Option<Vec<ParsedProxyNode>> {
+    let trimmed = decoded.trim_start_matches('\u{feff}').trim();
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return None;
+    }
+    let val: Value = serde_json::from_str(trimmed).ok()?;
+    parse_json_subscription_value(&val, 0)
+}
+
+fn strip_yaml_trailing_comment(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    let mut prev_ws = false;
+    for (idx, ch) in trimmed.char_indices() {
+        if escape {
+            escape = false;
+            prev_ws = false;
+            continue;
+        }
+        if in_double && ch == '\\' {
+            escape = true;
+            prev_ws = false;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            prev_ws = false;
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            prev_ws = false;
+            continue;
+        }
+        if !in_single && !in_double && ch == '#' && prev_ws {
+            return trimmed[..idx].trim();
+        }
+        prev_ws = ch.is_whitespace();
+    }
+    trimmed
 }
 
 fn strip_yaml_scalar(raw: &str) -> String {
@@ -8591,7 +9070,7 @@ fn normalize_clash_proxy(
             obj.insert("tls".into(), Value::Object(tls));
             ("tuic".to_string(), Value::Object(obj))
         }
-        "wireguard" | "wg" => {
+        "wireguard" | "wg" | "awg" | "amneziawg" => {
             let priv_key = clash_first_scalar(fields, &["private-key", "private_key"]);
             let pub_key = clash_first_scalar(fields, &["public-key", "public_key"]);
             if priv_key.is_empty() || pub_key.is_empty() {
@@ -8645,7 +9124,149 @@ fn normalize_clash_proxy(
                     obj.insert("reserved".into(), json!(bytes));
                 }
             }
+            for awg_num_key in ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4"] {
+                let raw = clash_first_scalar(
+                    fields,
+                    &[awg_num_key, &format!("amnezia-wg-option.{awg_num_key}")],
+                );
+                if let Ok(v) = raw.parse::<i64>()
+                    && v > 0
+                {
+                    obj.insert(awg_num_key.into(), json!(v));
+                }
+            }
+            for h_key in ["h1", "h2", "h3", "h4"] {
+                let raw =
+                    clash_first_scalar(fields, &[h_key, &format!("amnezia-wg-option.{h_key}")]);
+                if !raw.is_empty()
+                    && raw != "0"
+                    && let Some(v) = parse_awg_h_value(&raw)
+                {
+                    obj.insert(h_key.into(), v);
+                }
+            }
+            for cps_key in ["i1", "i2", "i3", "i4", "i5", "j1", "j2", "j3"] {
+                let raw =
+                    clash_first_scalar(fields, &[cps_key, &format!("amnezia-wg-option.{cps_key}")]);
+                if let Some(norm) = normalize_awg_tag_chain(&raw) {
+                    obj.insert(cps_key.into(), json!(norm));
+                }
+            }
             ("wireguard".to_string(), Value::Object(obj))
+        }
+        "anytls" => {
+            let password = clash_first_scalar(fields, &["password"]);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("anytls"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("password".into(), json!(password));
+            if let Some(tls) = build_clash_tls(fields, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            ("anytls".to_string(), Value::Object(obj))
+        }
+        "hysteria" | "hy" => {
+            let auth = clash_first_scalar(fields, &["auth-str", "auth_str", "auth", "password"]);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("hysteria"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            if !auth.is_empty() {
+                obj.insert("auth_str".into(), json!(auth));
+            }
+            let obfs = clash_first_scalar(fields, &["obfs", "obfs-str"]);
+            if !obfs.is_empty() && obfs != "none" {
+                obj.insert("obfs".into(), json!(obfs));
+            }
+            let up = clash_first_scalar(fields, &["up", "up-mbps", "up_mbps"])
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse::<u64>()
+                .ok()
+                .filter(|&n| n > 0)
+                .unwrap_or(100);
+            let down = clash_first_scalar(fields, &["down", "down-mbps", "down_mbps"])
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse::<u64>()
+                .ok()
+                .filter(|&n| n > 0)
+                .unwrap_or(100);
+            obj.insert("up_mbps".into(), json!(up));
+            obj.insert("down_mbps".into(), json!(down));
+            if let Some(tls) = build_clash_tls(fields, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            ("hysteria".to_string(), Value::Object(obj))
+        }
+        "snell" => {
+            let psk = clash_first_scalar(fields, &["psk", "password"]);
+            if psk.is_empty() {
+                return None;
+            }
+            let version = clash_first_scalar(fields, &["version"])
+                .parse::<u64>()
+                .ok()
+                .filter(|v| (1..=6).contains(v))
+                .unwrap_or(5);
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("snell"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            obj.insert("psk".into(), json!(psk));
+            obj.insert("version".into(), json!(version));
+            let obfs_mode = clash_first_scalar(fields, &["obfs-opts.mode", "obfs"]);
+            if matches!(obfs_mode.to_ascii_lowercase().as_str(), "http" | "tls") {
+                let mut om = Map::new();
+                om.insert("mode".into(), json!(obfs_mode.to_ascii_lowercase()));
+                let oh = clash_first_scalar(fields, &["obfs-opts.host", "host"]);
+                if !oh.is_empty() {
+                    om.insert("host".into(), json!(oh));
+                }
+                obj.insert("obfs".into(), Value::Object(om));
+            }
+            ("snell".to_string(), Value::Object(obj))
+        }
+        "ssh" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("ssh"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            let u = clash_first_scalar(fields, &["username", "user"]);
+            let p = clash_first_scalar(fields, &["password", "pass"]);
+            if !u.is_empty() {
+                obj.insert("user".into(), json!(u));
+            }
+            if !p.is_empty() {
+                obj.insert("password".into(), json!(p));
+            }
+            let pk = clash_first_scalar(fields, &["private-key", "private_key"]);
+            if !pk.is_empty() {
+                obj.insert("private_key".into(), json!(pk));
+            }
+            ("ssh".to_string(), Value::Object(obj))
+        }
+        "naive" => {
+            let mut obj = Map::new();
+            obj.insert("type".into(), json!("naive"));
+            obj.insert("tag".into(), json!(tag));
+            obj.insert("server".into(), json!(host));
+            obj.insert("server_port".into(), json!(port));
+            let u = clash_first_scalar(fields, &["username", "user"]);
+            let p = clash_first_scalar(fields, &["password", "pass"]);
+            if !u.is_empty() {
+                obj.insert("username".into(), json!(u));
+            }
+            if !p.is_empty() {
+                obj.insert("password".into(), json!(p));
+            }
+            if let Some(tls) = build_clash_tls(fields, &host, true) {
+                obj.insert("tls".into(), tls);
+            }
+            ("naive".to_string(), Value::Object(obj))
         }
         "socks5" | "socks" | "http" => {
             let mut obj = Map::new();
@@ -8732,7 +9353,15 @@ pub(crate) fn parse_clash_yaml_subscription_payload(decoded: &str) -> Option<Vec
             .count();
 
         if !in_proxies {
-            if indent == 0 && trimmed.starts_with("proxies:") {
+            let trimmed_lc = trimmed.to_ascii_lowercase();
+            if indent == 0
+                && (trimmed_lc == "proxies:"
+                    || trimmed_lc.starts_with("proxies: ")
+                    || trimmed_lc.starts_with("proxies:#")
+                    || trimmed_lc == "proxy:"
+                    || trimmed_lc.starts_with("proxy: ")
+                    || trimmed_lc.starts_with("proxy:#"))
+            {
                 in_proxies = true;
             }
             continue;
@@ -8756,7 +9385,7 @@ pub(crate) fn parse_clash_yaml_subscription_payload(decoded: &str) -> Option<Vec
             pending_parent = None;
             current_list_key = None;
             let mut fields: HashMap<String, Vec<String>> = HashMap::new();
-            let after_dash = trimmed.strip_prefix('-').unwrap_or("").trim();
+            let after_dash = strip_yaml_trailing_comment(trimmed.strip_prefix('-').unwrap_or(""));
             if after_dash.starts_with('{') && after_dash.ends_with('}') {
                 let inner = &after_dash[1..after_dash.len() - 1];
                 for pair in split_yaml_top_level(inner, ',') {
@@ -8766,12 +9395,10 @@ pub(crate) fn parse_clash_yaml_subscription_payload(decoded: &str) -> Option<Vec
                 }
             } else if !after_dash.is_empty()
                 && let Some((k, v)) = split_yaml_kv(after_dash)
+                && let Some(list_k) = insert_clash_yaml_kv(&mut fields, "", &k, &v)
             {
-                base_key_indent = Some(indent + 2);
-                if let Some(list_k) = insert_clash_yaml_kv(&mut fields, "", &k, &v) {
-                    current_list_key = Some(list_k.clone());
-                    pending_parent = Some((indent + 2, list_k));
-                }
+                current_list_key = Some(list_k.clone());
+                pending_parent = Some((indent + 2, list_k));
             }
             current = Some(fields);
             continue;
@@ -9550,7 +10177,10 @@ struct WgPeerDraft {
     keepalive: Option<Value>,
 }
 
-fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Vec<(String, Value)> {
+pub(crate) fn parse_amnezia_conf_outbounds_with_prefix(
+    base_prefix: &str,
+    conf: &str,
+) -> Vec<(String, Value)> {
     let mut priv_key = String::new();
     let mut addresses: Vec<String> = Vec::new();
     let mut mtu: u16 = 0;
@@ -10025,6 +10655,9 @@ fn matches_iso_or_eu_telemetry_date(s: &str, had_date_prefix: bool) -> bool {
         }
     }
     let db = date_part.as_bytes();
+    if !date_part.is_ascii() {
+        return false;
+    }
     if db.len() == 10 && db[4] == b'-' && db[7] == b'-' {
         return &date_part[0..2] == "20"
             && is_ascii_digits(&date_part[2..4], 2)
@@ -10637,6 +11270,7 @@ pub fn community_service_has_subnet_list(service: &str) -> bool {
             | "callofduty"
             | "game_backends"
             | "cs2_dota2"
+            | "playstation"
             | "doh_dot_dns"
             | "vps_clouds"
             | "et_spamhaus_block"
@@ -10831,6 +11465,8 @@ fn resolve_device_targets_with_tables(
             out.push(cidr);
         }
     }
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -13888,7 +14524,11 @@ fn compile_core_config_with_rt_dir(
         dns_servers_vec.push(fakeip_srv);
     }
     let mut dns_rules_vec: Vec<Value> = Vec::new();
-    let endpoint_domains = collect_proxy_endpoint_domains(&outbounds, &endpoints, store);
+    let configured_dns_hosts = collect_configured_dns_hostnames(&dns_servers_vec, store);
+    let mut endpoint_domains = collect_proxy_endpoint_domains(&outbounds, &endpoints, store);
+    for host in &configured_dns_hosts {
+        push_unique_str(&mut endpoint_domains, host);
+    }
     if !endpoint_domains.is_empty() {
         let mut ep_rule = json!({
             "domain": endpoint_domains,
@@ -13918,29 +14558,64 @@ fn compile_core_config_with_rt_dir(
         "action": "reject"
     }));
     if crate::store::effective_dns_intercept_all(store) {
-        dns_rules_vec.push(json!({
-            "action": "predefined",
-            "domain_suffix": [
-                "dns.google", "dns.google.com",
-                "cloudflare-dns.com", "one.one.one.one", "cloudflare-gateway.com",
-                "dns.quad9.net", "quad9.net",
-                "doh.opendns.com", "dns.umbrella.com",
-                "dns.adguard.com", "dns.adguard-dns.com", "adguard-dns.com",
-                "dns.nextdns.io", "doh.cleanbrowsing.org",
-                "doh.mullvad.net", "dns.mullvad.net",
-                "dns.controld.com", "freedns.controld.com",
-                "dot.dns.yandex.net", "doh.libredns.gr",
-                "dns1.nextdns.io", "dns2.nextdns.io",
-                "dns.comss.one", "router.comss.one",
-                "dns.sb", "doh.sb", "dns0.eu",
-                "dns.alidns.com", "doh.pub", "dot.pub", "doh.360.cn",
-                "doh.applied-privacy.net", "dns.digitale-gesellschaft.ch", "dns.switch.ch",
-                "doh.ffmuc.net", "dns.njal.la", "doh.xfinity.com", "dns.twnic.tw",
-                "use-application-dns.net",
-                "mask.icloud.com", "mask-h2.icloud.com"
-            ],
-            "rcode": "NXDOMAIN"
-        }));
+        let filtered_doh_suffixes: Vec<&str> = [
+            "dns.google",
+            "dns.google.com",
+            "cloudflare-dns.com",
+            "one.one.one.one",
+            "cloudflare-gateway.com",
+            "dns.quad9.net",
+            "quad9.net",
+            "doh.opendns.com",
+            "dns.umbrella.com",
+            "dns.adguard.com",
+            "dns.adguard-dns.com",
+            "adguard-dns.com",
+            "dns.nextdns.io",
+            "doh.cleanbrowsing.org",
+            "doh.mullvad.net",
+            "dns.mullvad.net",
+            "dns.controld.com",
+            "freedns.controld.com",
+            "dot.dns.yandex.net",
+            "doh.libredns.gr",
+            "dns1.nextdns.io",
+            "dns2.nextdns.io",
+            "dns.comss.one",
+            "router.comss.one",
+            "dns.sb",
+            "doh.sb",
+            "dns0.eu",
+            "dns.alidns.com",
+            "doh.pub",
+            "dot.pub",
+            "doh.360.cn",
+            "doh.applied-privacy.net",
+            "dns.digitale-gesellschaft.ch",
+            "dns.switch.ch",
+            "doh.ffmuc.net",
+            "dns.njal.la",
+            "doh.xfinity.com",
+            "dns.twnic.tw",
+            "use-application-dns.net",
+            "mask.icloud.com",
+            "mask-h2.icloud.com",
+        ]
+        .into_iter()
+        .filter(|suffix| {
+            let dot_suffix = format!(".{suffix}");
+            !configured_dns_hosts
+                .iter()
+                .any(|h| h == suffix || h.ends_with(&dot_suffix))
+        })
+        .collect();
+        if !filtered_doh_suffixes.is_empty() {
+            dns_rules_vec.push(json!({
+                "action": "predefined",
+                "domain_suffix": filtered_doh_suffixes,
+                "rcode": "NXDOMAIN"
+            }));
+        }
     }
     if !safe_search_ips.is_empty() {
         dns_servers_vec.push(json!({
@@ -14219,37 +14894,34 @@ fn compile_core_config_with_rt_dir(
                 "server_port": 53
             }));
         }
+        let non_dns_in_local_rule = json!({
+            "type": "logical",
+            "mode": "and",
+            "rules": [
+                {
+                    "inbound": ["dns-in"],
+                    "invert": true
+                },
+                {
+                    "domain_suffix": local_domain_suffixes
+                }
+            ],
+            "action": "route",
+            "server": "dnsmasq-server"
+        });
         if !local_dns_inbounds.is_empty() {
             dns_rules_vec.insert(
                 0,
                 json!({
                     "action": "route",
                     "inbound": local_dns_inbounds,
-                    "domain_suffix": local_domain_suffixes.clone(),
+                    "domain_suffix": non_dns_in_local_rule["rules"][1]["domain_suffix"].clone(),
                     "server": "dnsmasq-server"
                 }),
             );
-            dns_rules_vec.insert(
-                1,
-                json!({
-                    "action": "route",
-                    "inbound": ["dns-in"],
-                    "invert": true,
-                    "domain_suffix": local_domain_suffixes,
-                    "server": "dnsmasq-server"
-                }),
-            );
+            dns_rules_vec.insert(1, non_dns_in_local_rule);
         } else {
-            dns_rules_vec.insert(
-                0,
-                json!({
-                    "action": "route",
-                    "inbound": ["dns-in"],
-                    "invert": true,
-                    "domain_suffix": local_domain_suffixes,
-                    "server": "dnsmasq-server"
-                }),
-            );
+            dns_rules_vec.insert(0, non_dns_in_local_rule);
         }
     } else if !servers_isolated && store.settings.fakeip_enabled {
         // Without managed dnsmasq (e.g. dont_touch_dhcp=true with AdGuard Home on :53, or Entware),
@@ -15196,16 +15868,28 @@ fn collect_condition_aaaa_dns_rules(
         if r.is_empty() {
             continue;
         }
-        if let Some(ref src) = src_cidr {
-            r.insert("source_ip_cidr".into(), src.clone());
-        }
         if cond.invert {
             r.insert("invert".into(), json!(true));
+            let mut and_rules = vec![json!({ "query_type": ["AAAA"] }), Value::Object(r)];
+            if let Some(ref src) = src_cidr {
+                and_rules.push(json!({ "source_ip_cidr": src.clone() }));
+            }
+            out.push(json!({
+                "type": "logical",
+                "mode": "and",
+                "rules": and_rules,
+                "action": "predefined",
+                "rcode": "NOERROR"
+            }));
+        } else {
+            if let Some(ref src) = src_cidr {
+                r.insert("source_ip_cidr".into(), src.clone());
+            }
+            r.insert("query_type".into(), json!(["AAAA"]));
+            r.insert("action".into(), json!("predefined"));
+            r.insert("rcode".into(), json!("NOERROR"));
+            out.push(Value::Object(r));
         }
-        r.insert("query_type".into(), json!(["AAAA"]));
-        r.insert("action".into(), json!("predefined"));
-        r.insert("rcode".into(), json!("NOERROR"));
-        out.push(Value::Object(r));
         emitted_branch = true;
     }
 
@@ -15213,16 +15897,25 @@ fn collect_condition_aaaa_dns_rules(
         && parts.branches.is_empty()
         && let Some(src) = src_cidr
     {
-        let mut r = json!({
-            "source_ip_cidr": src,
-            "query_type": ["AAAA"],
-            "action": "predefined",
-            "rcode": "NOERROR"
-        });
         if cond.invert {
-            r["invert"] = json!(true);
+            out.push(json!({
+                "type": "logical",
+                "mode": "and",
+                "rules": [
+                    { "query_type": ["AAAA"] },
+                    { "source_ip_cidr": src, "invert": true }
+                ],
+                "action": "predefined",
+                "rcode": "NOERROR"
+            }));
+        } else {
+            out.push(json!({
+                "source_ip_cidr": src,
+                "query_type": ["AAAA"],
+                "action": "predefined",
+                "rcode": "NOERROR"
+            }));
         }
-        out.push(r);
     }
 }
 
@@ -15901,6 +16594,56 @@ fn collect_proxy_endpoint_domains(
         }
     }
     domains
+}
+
+fn collect_configured_dns_hostnames(
+    dns_servers_vec: &[Value],
+    store: &RouterStoreData,
+) -> Vec<String> {
+    let mut hosts = Vec::new();
+    let mut seen = HashSet::new();
+    let mut add_host = |raw: &str| {
+        for tok in collect_dns_tokens(&[raw.to_string()]) {
+            let host = extract_host_only(&tok);
+            let key = host.trim().trim_end_matches('.').to_ascii_lowercase();
+            if key.is_empty()
+                || key == "localhost"
+                || !key.contains('.')
+                || crate::store::valid_ip_with_zone(&key)
+            {
+                continue;
+            }
+            if seen.insert(key.clone()) {
+                hosts.push(key);
+            }
+        }
+    };
+
+    for srv in dns_servers_vec {
+        if let Some(host) = srv.get("server").and_then(Value::as_str) {
+            add_host(host);
+        }
+    }
+    for tok in &store.settings.dns_servers {
+        add_host(tok);
+    }
+    for tok in &store.settings.dns_fallback_servers {
+        add_host(tok);
+    }
+    for tok in &store.settings.bootstrap_dns_servers {
+        add_host(tok);
+    }
+    add_host(&store.settings.fallback_dns_server);
+
+    for sec in store.sections.iter().filter(|s| s.enabled) {
+        for tok in &sec.dns_servers {
+            add_host(tok);
+        }
+        for tok in &sec.routed_dns_servers {
+            add_host(tok);
+        }
+    }
+    hosts
 }
 
 fn dns_rule_has_matcher(obj: &Map<String, Value>) -> bool {
@@ -17022,6 +17765,46 @@ fn resolve_section_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec>
     spec.has_any_rule().then_some(spec)
 }
 
+fn resolve_section_dashboard_filter_spec(sec: &RoutingSection) -> Option<ServerFilterSpec> {
+    let mode = sec.dashboard_filter_mode.trim().to_ascii_lowercase();
+    if mode.is_empty() || matches!(mode.as_str(), "disabled" | "all") {
+        return None;
+    }
+    let inc_params = sec.dashboard_include_proxy_parameters
+        || !sec.dashboard_include_protocols.is_empty()
+        || !sec.dashboard_include_transports.is_empty()
+        || !sec.dashboard_include_securities.is_empty()
+        || !sec.dashboard_include_ports.is_empty();
+    let exc_params = sec.dashboard_exclude_proxy_parameters
+        || !sec.dashboard_exclude_protocols.is_empty()
+        || !sec.dashboard_exclude_transports.is_empty()
+        || !sec.dashboard_exclude_securities.is_empty()
+        || !sec.dashboard_exclude_ports.is_empty();
+    let spec = ServerFilterSpec {
+        filter_mode: mode,
+        detect_server_country: sec.dashboard_detect_server_country.clone(),
+        include_prefixes: Vec::new(),
+        include_countries: sec.dashboard_include_countries.clone(),
+        include_outbounds: sec.dashboard_include_outbounds.clone(),
+        include_regex: sec.dashboard_include_regex.clone(),
+        include_proxy_parameters: inc_params,
+        include_protocols: sec.dashboard_include_protocols.clone(),
+        include_transports: sec.dashboard_include_transports.clone(),
+        include_securities: sec.dashboard_include_securities.clone(),
+        include_ports: sec.dashboard_include_ports.clone(),
+        exclude_prefixes: Vec::new(),
+        exclude_countries: sec.dashboard_exclude_countries.clone(),
+        exclude_outbounds: sec.dashboard_exclude_outbounds.clone(),
+        exclude_regex: sec.dashboard_exclude_regex.clone(),
+        exclude_proxy_parameters: exc_params,
+        exclude_protocols: sec.dashboard_exclude_protocols.clone(),
+        exclude_transports: sec.dashboard_exclude_transports.clone(),
+        exclude_securities: sec.dashboard_exclude_securities.clone(),
+        exclude_ports: sec.dashboard_exclude_ports.clone(),
+    };
+    spec.has_any_rule().then_some(spec)
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 fn build_outbound_group_map(
     groups: &[OutboundGroup],
@@ -17221,6 +18004,18 @@ fn resolve_section_outbound(
             source_tag_map,
             outbounds,
         );
+    }
+    if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
+        let narrowed = apply_server_filter_spec(
+            &candidate_tags,
+            &dash_spec,
+            sources,
+            source_tag_map,
+            outbounds,
+        );
+        if !narrowed.is_empty() {
+            candidate_tags = narrowed;
+        }
     }
 
     if candidate_tags.is_empty()
@@ -17931,6 +18726,18 @@ pub fn build_all_section_balancer_caches(
                 &source_tag_map,
                 &outbounds,
             );
+        }
+        if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
+            let narrowed = apply_server_filter_spec(
+                &candidate_tags,
+                &dash_spec,
+                &store.outbound_sources,
+                &source_tag_map,
+                &outbounds,
+            );
+            if !narrowed.is_empty() {
+                candidate_tags = narrowed;
+            }
         }
 
         let active_balancers: Vec<&BalancerConfig> = sec
@@ -28493,7 +29300,14 @@ proxies:
             .iter()
             .find(|r| r["server"] == "dnsmasq-server")
             .expect("dnsmasq-server rule must exist");
-        let suffixes = rule_dnsmasq["domain_suffix"]
+        assert_eq!(rule_dnsmasq["type"], "logical");
+        assert_eq!(rule_dnsmasq["mode"], "and");
+        let sub_rules = rule_dnsmasq["rules"].as_array().expect("logical sub-rules");
+        assert_eq!(
+            sub_rules[0],
+            json!({ "inbound": ["dns-in"], "invert": true })
+        );
+        let suffixes = sub_rules[1]["domain_suffix"]
             .as_array()
             .expect("domain_suffix array");
         assert!(suffixes.contains(&json!("lan")));
@@ -28871,5 +29685,275 @@ proxies:
             .expect("sticky balancer outbound");
         assert_eq!(sticky_ob["balancer"]["pool_tolerance"], 500);
         assert!(sticky_ob["balancer"].get("pool").is_none());
+    }
+
+    #[test]
+    fn test_dns_loop_aaaa_invert_and_configured_doh_upstream_regressions() {
+        // 1. OpenWrt dnsmasq-server non-dns-in rule uses logical AND instead of flat invert+domain_suffix,
+        //    and configured Yandex DoH upstream is bootstrapped and excluded from NXDOMAIN intercept rule.
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.dns_intercept_all = true;
+        store.settings.dns_type = "doh".to_string();
+        store.settings.dns_servers =
+            vec!["https://common.dot.dns.yandex.net/dns-query".to_string()];
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string()];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile cfg");
+        let dns_rules = cfg["dns"]["rules"].as_array().expect("dns.rules");
+        assert!(
+            !dns_rules.iter().any(|r| {
+                r.get("type").is_none()
+                    && r.get("invert").and_then(Value::as_bool) == Some(true)
+                    && r.get("domain_suffix").is_some()
+            }),
+            "flat invert+domain_suffix rule causes external domain DNS loops"
+        );
+        assert!(
+            dns_rules.iter().any(|r| {
+                r["server"] == "dnsmasq-server"
+                    && r["type"] == "logical"
+                    && r["mode"] == "and"
+                    && r["rules"][0] == json!({ "inbound": ["dns-in"], "invert": true })
+            }),
+            "logical AND dnsmasq-server rule missing"
+        );
+        assert!(
+            dns_rules.iter().any(|r| {
+                r["server"] == "dns-bootstrap"
+                    && r["domain"]
+                        .as_array()
+                        .is_some_and(|a| a.contains(&json!("common.dot.dns.yandex.net")))
+            }),
+            "configured DoH hostname must be routed to dns-bootstrap"
+        );
+        let nx_rule = dns_rules
+            .iter()
+            .find(|r| r["rcode"] == "NXDOMAIN")
+            .expect("effective_dns_intercept_all NXDOMAIN rule");
+        let nx_suffixes = nx_rule["domain_suffix"].as_array().unwrap();
+        assert!(
+            !nx_suffixes.contains(&json!("dot.dns.yandex.net")),
+            "configured DoH upstream suffix must not be self-blocked with NXDOMAIN"
+        );
+
+        // 2. Inverted AAAA suppression rule must isolate invert from query_type: ["AAAA"].
+        let inv_cond = TrafficCondition {
+            id: "inv_ru".to_string(),
+            enabled: true,
+            condition_type: "domain".to_string(),
+            domains: vec!["ru".to_string()],
+            invert: true,
+            ..Default::default()
+        };
+        let mut cond_map = HashMap::new();
+        cond_map.insert(inv_cond.id.as_str(), &inv_cond);
+        let mut rule_sets = Vec::new();
+        let mut seen = HashMap::new();
+        let mut out = Vec::new();
+        collect_condition_aaaa_dns_rules(
+            &inv_cond,
+            &cond_map,
+            "/tmp",
+            "",
+            &mut rule_sets,
+            &mut seen,
+            false,
+            0,
+            &mut out,
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["type"], "logical");
+        assert_eq!(out[0]["mode"], "and");
+        assert_eq!(out[0]["rcode"], "NOERROR");
+        let and_rules = out[0]["rules"].as_array().unwrap();
+        assert_eq!(and_rules[0], json!({ "query_type": ["AAAA"] }));
+        assert_eq!(and_rules[1]["invert"], json!(true));
+        assert!(and_rules[1].get("query_type").is_none());
+    }
+
+    #[test]
+    fn test_section_dashboard_exclude_filters_propagate_to_default_urltest_balancer() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        let src = OutboundSource {
+            id: "src_multi".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-4111-8111-111111111111@good.example.com:443?security=none#GoodNode"
+                    .to_string(),
+                "vless://22222222-2222-4222-8222-222222222222@bad.example.com:443?security=none#BadNode"
+                    .to_string(),
+            ],
+            ..Default::default()
+        };
+        store.outbound_sources.push(src);
+
+        let sec = &mut store.sections[0];
+        let sec_id = sec.id.clone();
+        sec.enabled = true;
+        sec.action = "connection".to_string();
+        sec.connection_type = "proxy".to_string();
+        sec.outbound_source_refs = vec!["src_multi".to_string()];
+        sec.balancer_refs = vec!["bal_fastest".to_string()];
+        sec.dashboard_filter_mode = "exclude".to_string();
+        sec.dashboard_exclude_outbounds = vec!["BadNode".to_string()];
+
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile cfg");
+        let obs = cfg["outbounds"].as_array().unwrap();
+        let bal_tag = format!("bal-{sec_id}-bal_fastest");
+        let bal_ob = obs
+            .iter()
+            .find(|o| o["tag"] == bal_tag)
+            .expect("urltest balancer outbound");
+        let bal_members = bal_ob["outbounds"].as_array().unwrap();
+        assert!(bal_members.contains(&json!("GoodNode")));
+        assert!(!bal_members.contains(&json!("BadNode")));
+
+        let sel_tag = format!("sel-{sec_id}");
+        let sel_ob = obs
+            .iter()
+            .find(|o| o["tag"] == sel_tag)
+            .expect("section selector outbound");
+        let sel_members = sel_ob["outbounds"].as_array().unwrap();
+        assert!(sel_members.contains(&json!("GoodNode")));
+        assert!(!sel_members.contains(&json!("BadNode")));
+
+        let caches = build_all_section_balancer_caches(&store);
+        let (ug, _) = caches.get(&sec_id).expect("balancer cache for section");
+        let ug_members = ug[&bal_tag]["outbounds"].as_array().unwrap();
+        assert!(ug_members.contains(&json!("GoodNode")));
+        assert!(!ug_members.contains(&json!("BadNode")));
+    }
+
+    #[test]
+    fn test_all_subscription_formats_and_utf8_safety() {
+        // 1. UTF-8 emoji in telemetry date segment must NEVER panic
+        assert!(!matches_iso_or_eu_telemetry_date("(🌍-01-01)", false));
+        assert!(!matches_iso_or_eu_telemetry_date("(01.01.🌍)", false));
+        let cleaned = strip_dynamic_server_telemetry("Node (🌍-01-01) (01.01.🌍)");
+        assert!(cleaned.contains("Node"));
+
+        // 2. '+' preserved in wg/awg keys, query values, fragments, vmess#tag & boolean tls, hy2 mport
+        let wg_uri = parse_proxy_uri(
+            "awg://priv+Key/==@203.0.113.5:51820?publicKey=pub+Key/==&psk=pre+Key/==#AWG+Node",
+            0,
+        )
+        .expect("awg uri with +");
+        assert_eq!(wg_uri.tag, "AWG+Node");
+        assert_eq!(wg_uri.outbound_json["private_key"], "priv+Key/==");
+        assert_eq!(wg_uri.outbound_json["peer_public_key"], "pub+Key/==");
+        assert_eq!(wg_uri.outbound_json["pre_shared_key"], "pre+Key/==");
+
+        let vmess_b64 = B64_STD.encode(
+            r#"{"v":"2","ps":"","add":"vm.example.com","port":"443","id":"11111111-1111-4111-8111-111111111111","net":"ws","tls":true,"host":"ws.example.com","path":"/v"}"#,
+        );
+        let vmess_frag = parse_proxy_uri(&format!("vmess://{vmess_b64}#VM%20Frag"), 0)
+            .expect("vmess with fragment and bool tls");
+        assert_eq!(vmess_frag.tag, "VM Frag");
+        assert_eq!(vmess_frag.outbound_json["tls"]["enabled"], true);
+
+        let vmess_uri = parse_proxy_uri(
+            "vmess://11111111-1111-4111-8111-111111111111@vm2.example.com:443?security=tls&type=ws#VM-URI",
+            1,
+        )
+        .expect("vmess uri syntax");
+        assert_eq!(vmess_uri.server, "vm2.example.com");
+
+        let hy2 = parse_proxy_uri(
+            "hy2://pw+1@hy.example.com:443,1000-2000?mport=1000-2000&allowInsecure=1&alpn=h3#HY2",
+            2,
+        )
+        .expect("hy2 port hopping");
+        assert_eq!(hy2.server, "hy.example.com");
+        assert_eq!(hy2.server_port, 443);
+        assert_eq!(hy2.outbound_json["tls"]["insecure"], true);
+        assert_eq!(hy2.outbound_json["server_ports"], json!(["1000:2000"]));
+
+        let anytls = parse_proxy_uri("anytls://pw@any.example.com:443?insecure=1&alpn=h2#ANY", 3)
+            .expect("anytls");
+        assert_eq!(anytls.outbound_json["tls"]["insecure"], true);
+        assert_eq!(anytls.outbound_json["tls"]["alpn"], json!(["h2"]));
+
+        assert!(parse_proxy_uri("naive+https://u:p@n.example.com:443#N", 4).is_some());
+        assert!(parse_proxy_uri("snell://psk123@s.example.com:4000?version=5#SN", 5).is_some());
+
+        // 3. Multi-outbound Xray JSON without balancers keeps all nodes
+        let multi_xray = json!({
+            "outbounds": [
+                {
+                    "protocol": "vless",
+                    "tag": "node-a",
+                    "settings": { "vnext": [{ "address": "a.example.org", "port": 443, "users": [{ "id": "11111111-1111-4111-8111-111111111111" }] }] },
+                    "streamSettings": { "security": "tls" }
+                },
+                {
+                    "protocol": "trojan",
+                    "tag": "node-b",
+                    "settings": { "servers": [{ "address": "b.example.org", "port": 443, "password": "pw" }] }
+                }
+            ]
+        })
+        .to_string();
+        let xray_nodes = parse_json_subscription_payload(&multi_xray).expect("multi xray");
+        assert_eq!(xray_nodes.len(), 2);
+
+        // 4. Outline single SS JSON, single outbound, URI array, panel wrapper, WG peers
+        let outline_ss = r#"{"server":"198.51.100.10","server_port":8388,"method":"chacha20-ietf-poly1305","password":"pw","remarks":"Outline"}"#;
+        assert_eq!(
+            parse_json_subscription_payload(outline_ss).unwrap().len(),
+            1
+        );
+
+        let uri_arr = json!(["vless://11111111-1111-4111-8111-111111111111@u1.example.com:443#U1"])
+            .to_string();
+        assert_eq!(parse_json_subscription_payload(&uri_arr).unwrap().len(), 1);
+
+        let wrapped_panel = json!({
+            "result": {
+                "proxies": [{
+                    "type": "wireguard",
+                    "tag": "wg-ep",
+                    "peers": [{ "address": "198.51.100.20", "port": 51820 }]
+                }]
+            }
+        })
+        .to_string();
+        let wrapped_nodes = parse_json_subscription_payload(&wrapped_panel).unwrap();
+        assert_eq!(wrapped_nodes.len(), 1);
+        assert_eq!(wrapped_nodes[0].server, "198.51.100.20");
+        assert_eq!(wrapped_nodes[0].server_port, 51820);
+
+        // 5. Clash/Mihomo YAML: Proxy: (capital P), 4-space indent, trailing #comment on flow, anytls & awg
+        let clash_yaml = concat!(
+            "Proxy: # panel header\n",
+            "  - {name: FlowNode, type: anytls, server: flow.example.com, port: 443, password: p1, skip-cert-verify: true} # inline comment\n",
+            "  - name: FourSpaceWG\n",
+            "      type: awg\n",
+            "      server: wg.example.com\n",
+            "      port: 51820\n",
+            "      private-key: privK\n",
+            "      public-key: pubK\n",
+            "      jc: 3\n",
+        );
+        let yaml_nodes = parse_clash_yaml_subscription_payload(clash_yaml).expect("clash yaml");
+        assert_eq!(yaml_nodes.len(), 2);
+        assert_eq!(yaml_nodes[0].protocol, "anytls");
+        assert_eq!(yaml_nodes[1].outbound_json["jc"], 3);
+
+        // 6. Multi-server FPTN token extracts ALL servers
+        let fptn_payload = json!({
+            "username": "u1",
+            "password": "p1",
+            "servers": [
+                { "name": "FI", "host": "fi.example.com", "port": 443 },
+                { "name": "DE", "host": "de.example.com", "port": 443 }
+            ]
+        })
+        .to_string();
+        let fptn_tok = format!("fptn:{}", B64_STD.encode(fptn_payload.as_bytes()));
+        assert_eq!(parse_fptn_token_nodes(&fptn_tok).len(), 2);
     }
 }

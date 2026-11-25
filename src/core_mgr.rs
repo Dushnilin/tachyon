@@ -9,10 +9,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
-use base64::engine::general_purpose::{
-    STANDARD as B64_STD, STANDARD_NO_PAD as B64_STD_NO_PAD, URL_SAFE as B64_URL_PAD,
-    URL_SAFE_NO_PAD as B64_URL,
-};
+use base64::engine::general_purpose::STANDARD as B64_STD;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -263,16 +260,31 @@ impl CoreManager {
         Ok(out)
     }
 
-    async fn run_command_output_with_timeout(
+    async fn run_command_stdin_output_with_timeout(
         cmd: &mut Command,
+        stdin_bytes: Option<&[u8]>,
         timeout: Duration,
     ) -> std::io::Result<std::process::Output> {
         const MAX_STDOUT_BYTES: usize = 16 * 1024 * 1024;
         const MAX_STDERR_BYTES: usize = 1024 * 1024;
-        cmd.stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        cmd.stdin(if stdin_bytes.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
         let mut child = cmd.spawn()?;
+        if let Some(input) = stdin_bytes
+            && let Some(mut stdin_pipe) = child.stdin.take()
+        {
+            let data = input.to_vec();
+            tokio::spawn(async move {
+                let _ = stdin_pipe.write_all(&data).await;
+                let _ = stdin_pipe.shutdown().await;
+            });
+        }
         let stdout_pipe = child.stdout.take();
         let stderr_pipe = child.stderr.take();
         let fut = async {
@@ -312,6 +324,13 @@ impl CoreManager {
                 ))
             }
         }
+    }
+
+    async fn run_command_output_with_timeout(
+        cmd: &mut Command,
+        timeout: Duration,
+    ) -> std::io::Result<std::process::Output> {
+        Self::run_command_stdin_output_with_timeout(cmd, None, timeout).await
     }
 
     async fn run_curl_args(
@@ -2638,7 +2657,12 @@ impl CoreManager {
                     && !ip.is_empty()
                     && ip.parse::<std::net::IpAddr>().is_ok()
                 {
-                    return Some(format!("{host}:{port}:{ip}"));
+                    let formatted_ip = if ip.contains(':') && !ip.starts_with('[') {
+                        format!("[{ip}]")
+                    } else {
+                        ip
+                    };
+                    return Some(format!("{host}:{port}:{formatted_ip}"));
                 }
             }
         }
@@ -2646,7 +2670,7 @@ impl CoreManager {
     }
 
     /// Fetch URL via `curl` with optional HTTP/SOCKS proxy, bootstrap non-FakeIP `--resolve`,
-    /// and multi-resolver DoH fallback (`1.1.1.1`, `dns.google`, `common.dot.dns.yandex.net`).
+    /// and multi-resolver DoH fallback (`1.1.1.1`, `8.8.8.8`, `dns.google`, `common.dot.dns.yandex.net`).
     pub async fn curl_fetch_with_doh_fallback(
         &self,
         url: &str,
@@ -2659,13 +2683,19 @@ impl CoreManager {
     }
 
     pub(crate) const SUBSCRIPTION_AUTO_USER_AGENTS: &[&str] = &[
-        "tachyon-core/2.0",
+        "tachyon-core/2.0 (compatible; sing-box 1.14.3)",
         "Happ/4.6.2",
+        "Happ",
+        "v2rayNG/1.8.29",
         "v2rayNG/2.3.15",
         "v2rayN/7.12",
+        "Clash.Meta/v1.19.10",
         "Mihomo/1.19.16",
         "FlClash/v0.8.72",
         "HiddifyNext/2.5.7",
+        "sing-box 1.14.3",
+        "tachyon-core/2.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     ];
 
     pub(crate) fn is_happ_versioned_user_agent(ua: &str) -> bool {
@@ -2822,27 +2852,67 @@ impl CoreManager {
         user_agent: Option<&str>,
         extra_headers: &[(String, String)],
     ) -> anyhow::Result<Vec<u8>> {
+        let detailed = self
+            .curl_fetch_detailed(
+                url,
+                include_headers,
+                timeout_secs,
+                proxy_url,
+                None,
+                user_agent,
+                extra_headers,
+                false,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e.message))?;
+        if detailed.status_code >= 400 {
+            anyhow::bail!(
+                "curl HTTP error (status 22, HTTP {}) for {url}",
+                detailed.status_code
+            );
+        }
+        Ok(detailed.raw)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn curl_fetch_detailed(
+        &self,
+        url: &str,
+        include_headers: bool,
+        timeout_secs: u64,
+        proxy_url: Option<&str>,
+        fallback_proxy_url: Option<&str>,
+        user_agent: Option<&str>,
+        extra_headers: &[(String, String)],
+        insecure: bool,
+    ) -> Result<CurlFetchResult, CurlFetchError> {
         let max_t = timeout_secs.max(4).to_string();
         let ua = user_agent
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .unwrap_or("tachyon-core/2.0");
-        let build_base_args = |inc_hdr: bool| -> Vec<String> {
-            let mut a = Vec::with_capacity(14 + extra_headers.len() * 2);
+        let build_base_args = |inc_hdr: bool, use_compressed: bool| -> Vec<String> {
+            let mut a = Vec::with_capacity(18 + extra_headers.len() * 2);
             if inc_hdr {
                 a.push("-i".to_string());
             }
             a.extend([
-                "-fsSL".to_string(),
+                "-sSL".to_string(),
                 "--max-filesize".to_string(),
                 "16777216".to_string(),
                 "--connect-timeout".to_string(),
-                "3".to_string(),
+                "8".to_string(),
                 "--max-time".to_string(),
                 max_t.clone(),
                 "-A".to_string(),
                 ua.to_string(),
             ]);
+            if use_compressed {
+                a.push("--compressed".to_string());
+            }
+            if insecure {
+                a.push("-k".to_string());
+            }
             for (k, v) in extra_headers {
                 a.push("-H".to_string());
                 a.push(format!("{k}: {v}"));
@@ -2850,63 +2920,170 @@ impl CoreManager {
             a
         };
 
-        let mut saw_http_error = false;
-        let cmd_timeout = Duration::from_secs(timeout_secs.max(4).saturating_add(3));
+        let mut last_http_err: Option<(u16, Vec<u8>)> = None;
+        let mut last_exit_code: Option<i32> = None;
+        let cmd_timeout = Duration::from_secs(timeout_secs.max(4).saturating_add(4));
+
+        let run_curl_with_compressed_fallback =
+            |args_comp: Vec<String>, args_plain: Vec<String>| async move {
+                let out = Self::run_curl_args(&args_comp, cmd_timeout).await;
+                if let Ok(ref res) = out
+                    && res.status.code() == Some(2)
+                {
+                    return Self::run_curl_args(&args_plain, cmd_timeout).await;
+                }
+                out
+            };
+
+        let evaluate_curl_out = |stdout: Vec<u8>,
+                                 status: std::process::ExitStatus,
+                                 last_http_err: &mut Option<(u16, Vec<u8>)>,
+                                 last_exit_code: &mut Option<i32>|
+         -> Option<CurlFetchResult> {
+            if let Some(code) = status.code()
+                && code != 0
+            {
+                *last_exit_code = Some(code);
+            }
+            if status.success() && !stdout.is_empty() {
+                if include_headers {
+                    let (_, _, http_code) = split_http_response_bytes(&stdout);
+                    if http_code >= 400 {
+                        *last_http_err = Some((http_code, stdout));
+                        return None;
+                    }
+                    return Some(CurlFetchResult {
+                        status_code: if http_code == 0 { 200 } else { http_code },
+                        raw: stdout,
+                    });
+                }
+                return Some(CurlFetchResult {
+                    status_code: 200,
+                    raw: stdout,
+                });
+            }
+            None
+        };
+
         if let Some(px) = proxy_url.filter(|s| !s.trim().is_empty()) {
-            let mut args = build_base_args(include_headers);
-            args.push("-x".to_string());
-            args.push(px.trim().to_string());
-            args.push(url.to_string());
-            if let Ok(out) = Self::run_curl_args(&args, cmd_timeout).await {
-                if out.status.success() && !out.stdout.is_empty() {
-                    return Ok(out.stdout);
-                }
-                if out.status.code() == Some(22) {
-                    saw_http_error = true;
-                }
+            let mut args_c = build_base_args(include_headers, true);
+            let mut args_p = build_base_args(include_headers, false);
+            for a in [&mut args_c, &mut args_p] {
+                a.push("-x".to_string());
+                a.push(px.trim().to_string());
+                a.push(url.to_string());
+            }
+            if let Ok(out) = run_curl_with_compressed_fallback(args_c, args_p).await
+                && let Some(res) = evaluate_curl_out(
+                    out.stdout,
+                    out.status,
+                    &mut last_http_err,
+                    &mut last_exit_code,
+                )
+            {
+                return Ok(res);
             }
         }
 
-        let mut direct_args = build_base_args(include_headers);
-        if let Some(resolve_spec) = self.resolve_url_host_via_bootstrap_dns(url).await {
-            direct_args.push("--resolve".to_string());
-            direct_args.push(resolve_spec);
+        let resolve_spec_opt = self.resolve_url_host_via_bootstrap_dns(url).await;
+        let mut direct_c = build_base_args(include_headers, true);
+        let mut direct_p = build_base_args(include_headers, false);
+        for a in [&mut direct_c, &mut direct_p] {
+            if let Some(ref spec) = resolve_spec_opt {
+                a.push("--resolve".to_string());
+                a.push(spec.clone());
+            }
+            a.push(url.to_string());
         }
-        direct_args.push(url.to_string());
-        if let Ok(out) = Self::run_curl_args(&direct_args, cmd_timeout).await {
-            if out.status.success() && !out.stdout.is_empty() {
-                return Ok(out.stdout);
-            }
-            if out.status.code() == Some(22) {
-                saw_http_error = true;
-            }
+        if let Ok(out) = run_curl_with_compressed_fallback(direct_c, direct_p).await
+            && let Some(res) = evaluate_curl_out(
+                out.stdout,
+                out.status,
+                &mut last_http_err,
+                &mut last_exit_code,
+            )
+        {
+            return Ok(res);
         }
 
-        for doh in [
-            "https://1.1.1.1/dns-query",
-            "https://dns.google/dns-query",
-            "https://common.dot.dns.yandex.net/dns-query",
-        ] {
-            let mut doh_args = build_base_args(include_headers);
-            doh_args.push("--doh-url".to_string());
-            doh_args.push(doh.to_string());
-            doh_args.push(url.to_string());
-            if let Ok(out) = Self::run_curl_args(&doh_args, cmd_timeout).await {
-                if out.status.success() && !out.stdout.is_empty() {
-                    return Ok(out.stdout);
+        if last_http_err.is_none() {
+            for (doh, pin) in [
+                ("https://1.1.1.1/dns-query", None),
+                ("https://8.8.8.8/dns-query", None),
+                (
+                    "https://dns.google/dns-query",
+                    Some("dns.google:443:8.8.8.8"),
+                ),
+                (
+                    "https://common.dot.dns.yandex.net/dns-query",
+                    Some("common.dot.dns.yandex.net:443:77.88.8.8"),
+                ),
+            ] {
+                let mut doh_c = build_base_args(include_headers, true);
+                let mut doh_p = build_base_args(include_headers, false);
+                for a in [&mut doh_c, &mut doh_p] {
+                    if let Some(p) = pin {
+                        a.push("--resolve".to_string());
+                        a.push(p.to_string());
+                    }
+                    a.push("--doh-url".to_string());
+                    a.push(doh.to_string());
+                    a.push(url.to_string());
                 }
-                if out.status.code() == Some(22) {
-                    // Remote returned HTTP 4xx/5xx — DNS/TLS already succeeded, skip remaining DoH retries.
-                    saw_http_error = true;
+                if let Ok(out) = run_curl_with_compressed_fallback(doh_c, doh_p).await
+                    && let Some(res) = evaluate_curl_out(
+                        out.stdout,
+                        out.status,
+                        &mut last_http_err,
+                        &mut last_exit_code,
+                    )
+                {
+                    return Ok(res);
+                }
+                if last_http_err.is_some() {
                     break;
                 }
             }
         }
 
-        if saw_http_error {
-            anyhow::bail!("curl HTTP error (status 22) for {url}");
+        if last_http_err.is_none()
+            && proxy_url.is_none()
+            && let Some(fb_px) = fallback_proxy_url.filter(|s| !s.trim().is_empty())
+        {
+            let mut px_c = build_base_args(include_headers, true);
+            let mut px_p = build_base_args(include_headers, false);
+            for a in [&mut px_c, &mut px_p] {
+                a.push("-x".to_string());
+                a.push(fb_px.trim().to_string());
+                a.push(url.to_string());
+            }
+            if let Ok(out) = run_curl_with_compressed_fallback(px_c, px_p).await
+                && let Some(res) = evaluate_curl_out(
+                    out.stdout,
+                    out.status,
+                    &mut last_http_err,
+                    &mut last_exit_code,
+                )
+            {
+                return Ok(res);
+            }
         }
-        anyhow::bail!("curl fetch failed for {url}")
+
+        if let Some((http_code, raw)) = last_http_err {
+            return Ok(CurlFetchResult {
+                status_code: http_code,
+                raw,
+            });
+        }
+        let ua_retryable = matches!(last_exit_code, Some(52 | 56 | 35 | 18 | 22));
+        let exit_desc = last_exit_code
+            .map(|c| format!(" (curl exit {c})"))
+            .unwrap_or_default();
+        Err(CurlFetchError {
+            exit_code: last_exit_code,
+            ua_retryable,
+            message: format!("curl fetch failed{exit_desc} for {url}"),
+        })
     }
 
     pub async fn has_spawned_child(&self) -> bool {
@@ -3507,71 +3684,270 @@ impl CoreManager {
         Self::parse_subscription_payload_with_stats(raw).0
     }
 
-    /// Parse raw subscription content into usable nodes and return the count of dropped `.invalid` stubs.
+    /// Unwrap deep-link subscription wrappers (`happ://add/`, `v2raytun://import/`, `incy://add/`,
+    /// `hiddify://import/`, `clash://install-config?url=`, `sing-box://import-remote-profile?url=`,
+    /// `ssconf://`, `sub://`, and trailing `" | label"` suffixes).
+    pub(crate) fn unwrap_subscription_entry(raw: &str) -> String {
+        let mut cur = raw.trim_start_matches('\u{feff}').trim().to_string();
+        if let Some((left, _)) = cur.split_once(" | ") {
+            let l = left.trim();
+            if l.contains("://") || l.starts_with("fptn:") || l.starts_with("fptnb:") {
+                cur = l.to_string();
+            }
+        }
+        for _ in 0..4 {
+            let trimmed = cur.trim();
+            let lc = trimmed.to_ascii_lowercase();
+            let mut next: Option<String> = None;
+            for prefix in [
+                "happ://add/",
+                "happ://import/",
+                "v2raytun://import/",
+                "v2raytun://add/",
+                "incy://add/",
+                "incy://import/",
+                "hiddify://import/",
+                "hiddify://add/",
+            ] {
+                if lc.starts_with(prefix) {
+                    let rest = trimmed[prefix.len()..].trim();
+                    let decoded = if rest.contains('%') && !rest.contains("://") {
+                        config_gen::url_decode_percent(rest)
+                    } else {
+                        rest.to_string()
+                    };
+                    if !decoded.is_empty() {
+                        next = Some(decoded);
+                    }
+                    break;
+                }
+            }
+            if next.is_none()
+                && (lc.starts_with("clash://install-config")
+                    || lc.starts_with("clashmeta://install-config")
+                    || lc.starts_with("sing-box://import-remote-profile"))
+                && let Some((_, q)) = trimmed.split_once('?')
+            {
+                for pair in q.split('&') {
+                    if let Some((k, v)) = pair.split_once('=')
+                        && k.trim().eq_ignore_ascii_case("url")
+                    {
+                        let decoded = config_gen::url_decode_percent(v.trim());
+                        if !decoded.is_empty() {
+                            next = Some(decoded);
+                        }
+                        break;
+                    }
+                }
+            }
+            if next.is_none() && lc.starts_with("ssconf://") {
+                let rest = trimmed["ssconf://".len()..].trim();
+                if rest.starts_with("http://") || rest.starts_with("https://") {
+                    next = Some(rest.to_string());
+                } else if !rest.is_empty() {
+                    next = Some(format!("https://{rest}"));
+                }
+            }
+            if next.is_none() && lc.starts_with("sub://") {
+                let rest = trimmed["sub://".len()..].trim();
+                let (b64_part, _) = rest.split_once('#').unwrap_or((rest, ""));
+                if let Some(decoded) = decode_base64_flex_bytes(b64_part)
+                    && let Ok(url_str) = String::from_utf8(decoded)
+                    && !url_str.trim().is_empty()
+                {
+                    next = Some(url_str.trim().to_string());
+                }
+            }
+            match next {
+                Some(n) if n != cur => cur = n,
+                _ => break,
+            }
+        }
+        cur
+    }
+
+    /// Parse raw subscription content into usable nodes and return the count of dropped `.invalid` / unsupported-client stubs.
     pub(crate) fn parse_subscription_payload_with_stats(
         raw: &str,
     ) -> (Vec<ParsedProxyNode>, usize) {
-        let trimmed = raw.trim();
-        let looks_plain = trimmed.contains("://")
-            || trimmed.starts_with('{')
-            || trimmed.starts_with('[')
-            || trimmed.lines().any(|l| l.trim() == "proxies:");
-        let decoded = if looks_plain {
-            raw.to_string()
+        Self::parse_subscription_payload_depth(raw, 0)
+    }
+
+    fn parse_subscription_payload_depth(raw: &str, depth: usize) -> (Vec<ParsedProxyNode>, usize) {
+        if depth > 4 {
+            return (Vec::new(), 0);
+        }
+        let cleaned_bom = raw.trim_start_matches('\u{feff}').trim();
+        if cleaned_bom.is_empty() {
+            return (Vec::new(), 0);
+        }
+
+        let unwrapped = Self::unwrap_subscription_entry(cleaned_bom);
+        if unwrapped != cleaned_bom {
+            return Self::parse_subscription_payload_depth(&unwrapped, depth + 1);
+        }
+
+        let stripped_body = strip_subscription_comment_wrapper(cleaned_bom);
+        let candidate_str = if !stripped_body.is_empty() {
+            stripped_body
         } else {
-            let compact: String = trimmed
-                .chars()
-                .filter(|c| !c.is_ascii_whitespace())
-                .collect();
-            B64_STD
-                .decode(&compact)
-                .or_else(|_| B64_STD_NO_PAD.decode(&compact))
-                .or_else(|_| B64_URL_PAD.decode(&compact))
-                .or_else(|_| B64_URL.decode(&compact))
-                .ok()
-                .and_then(|b| String::from_utf8(b).ok())
-                .unwrap_or_else(|| raw.to_string())
+            cleaned_bom
         };
 
-        let mut out =
-            if let Some(json_nodes) = config_gen::parse_json_subscription_payload(&decoded) {
-                json_nodes
-            } else if let Some(clash_nodes) =
-                config_gen::parse_clash_yaml_subscription_payload(&decoded)
-            {
-                clash_nodes
-            } else {
-                let mut line_nodes = Vec::new();
-                for (idx, line) in decoded.lines().enumerate() {
-                    if let Some(node) = config_gen::parse_proxy_uri(line, idx) {
-                        line_nodes.push(node);
+        let mut out: Vec<ParsedProxyNode> = Vec::new();
+        let candidate_lc = candidate_str.to_ascii_lowercase();
+        if candidate_lc.starts_with("fptn:")
+            || candidate_lc.starts_with("fptnb:")
+            || candidate_lc.starts_with("fptn://")
+            || candidate_lc.starts_with("fptnb://")
+        {
+            out = config_gen::parse_fptn_token_nodes(candidate_str);
+        }
+
+        if out.is_empty() && looks_like_wireguard_ini_payload(candidate_str) {
+            let wg_pairs =
+                config_gen::parse_amnezia_conf_outbounds_with_prefix("wg", candidate_str);
+            for (tag, val) in wg_pairs {
+                let server = val
+                    .get("server")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let server_port = val
+                    .get("server_port")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(51820) as u16;
+                out.push(ParsedProxyNode {
+                    country: config_gen::detect_country_code(&tag),
+                    tag,
+                    protocol: "wireguard".to_string(),
+                    server,
+                    server_port,
+                    raw_uri: "wgconf:inline".to_string(),
+                    outbound_json: val,
+                });
+            }
+        }
+
+        if out.is_empty()
+            && let Some(json_nodes) = config_gen::parse_json_subscription_payload(candidate_str)
+        {
+            out = json_nodes;
+        }
+
+        if out.is_empty()
+            && let Some(clash_nodes) =
+                config_gen::parse_clash_yaml_subscription_payload(candidate_str)
+        {
+            out = clash_nodes;
+        }
+
+        if out.is_empty() {
+            let mut line_nodes = Vec::new();
+            for (idx, line) in candidate_str.lines().enumerate() {
+                let t = line.trim();
+                if t.is_empty() || t.starts_with('#') || t.starts_with("//") {
+                    continue;
+                }
+                let fptn_nodes = config_gen::parse_fptn_token_nodes(t);
+                if !fptn_nodes.is_empty() {
+                    line_nodes.extend(fptn_nodes);
+                    continue;
+                }
+                if let Some(node) = config_gen::parse_proxy_uri(t, idx) {
+                    line_nodes.push(node);
+                }
+            }
+            if !line_nodes.is_empty() {
+                out = line_nodes;
+            }
+        }
+
+        if out.is_empty() && depth < 4 {
+            let mut b64_candidates: Vec<String> = vec![candidate_str.to_string()];
+            if candidate_str.contains('%') {
+                b64_candidates.push(config_gen::url_decode_percent(candidate_str));
+            }
+            for cand in b64_candidates {
+                if let Some(decoded_bytes) = decode_base64_flex_bytes(&cand) {
+                    let decoded_str = decode_text_lossy_with_bom(&decoded_bytes);
+                    let decoded_trim = decoded_str.trim_start_matches('\u{feff}').trim();
+                    if !decoded_trim.is_empty() && decoded_trim != candidate_str {
+                        let (sub_nodes, sub_stubs) =
+                            Self::parse_subscription_payload_depth(decoded_trim, depth + 1);
+                        if !sub_nodes.is_empty() || sub_stubs > 0 {
+                            return (sub_nodes, sub_stubs);
+                        }
                     }
                 }
-                line_nodes
-            };
+            }
+        }
 
         // Drop informational/banner pseudo-nodes pointing to loopback/unspecified addresses
         // (e.g. `127.0.0.1:443#Remaining: 15GB`, `0.0.0.0:1#Лимит устройств исчерпан`) that cause
-        // immediate failures after reload. Track `.invalid`, unspecified hosts, and port-1 stub
-        // banners separately so auto-UA discovery promotes past degraded feeds (while keeping
-        // `127.0.0.1:443` traffic banners distinct for legacy behavior/tests).
+        // immediate failures after reload. Track `.invalid`, unspecified hosts, port-1 stub
+        // banners, and explicit client-warning tags separately so auto-UA discovery promotes past
+        // degraded feeds (while keeping `127.0.0.1:443` traffic banners distinct for legacy behavior/tests).
         let mut dropped_invalid_stubs = 0usize;
         out.retain(|node| {
             let srv = node.server.trim();
-            let keep = srv.is_empty() || config_gen::is_usable_external_sub_host(srv);
-            if !keep {
-                let bare = srv
-                    .trim_start_matches('[')
-                    .trim_end_matches(']')
-                    .trim_end_matches('.')
-                    .to_ascii_lowercase();
-                if bare == "invalid"
+            let bare = srv
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+            let tag_lc = node.tag.to_lowercase();
+            let is_client_stub_tag = [
+                "клиент не поддерживается",
+                "не поддерживается",
+                "unsupported client",
+                "client not supported",
+                "client is not supported",
+                "update client",
+                "update your client",
+                "обновите клиент",
+                "обновите приложение",
+                "скачать happ",
+                "скачайте happ",
+                "используйте happ",
+                "только в happ",
+                "app not supported",
+                "app is not supported",
+                "unsupported app",
+                "подписка истекла",
+                "subscription expired",
+            ]
+            .iter()
+            .any(|p| tag_lc.contains(p));
+            let is_bad_reality_or_flow = node.outbound_json.get("type").and_then(Value::as_str)
+                == Some("vless")
+                && (node
+                    .outbound_json
+                    .get("flow")
+                    .and_then(Value::as_str)
+                    .is_some_and(|f| !f.trim().is_empty() && f.trim() != "xtls-rprx-vision")
+                    || node
+                        .outbound_json
+                        .pointer("/tls/reality")
+                        .and_then(Value::as_object)
+                        .is_some_and(|r| {
+                            r.get("enabled").and_then(Value::as_bool) != Some(false)
+                                && r.get("public_key").and_then(Value::as_str).is_none_or(|p| {
+                                    decode_base64_flex_bytes(p.trim()).is_none_or(|b| b.len() != 32)
+                                })
+                        }));
+            let keep = !is_client_stub_tag
+                && !is_bad_reality_or_flow
+                && (srv.is_empty() || config_gen::is_usable_external_sub_host(srv));
+            if !keep
+                && (is_client_stub_tag
+                    || is_bad_reality_or_flow
+                    || bare == "invalid"
                     || bare.ends_with(".invalid")
                     || matches!(bare.as_str(), "0.0.0.0" | "::" | "0:0:0:0:0:0:0:0")
-                    || node.server_port == 1
-                {
-                    dropped_invalid_stubs += 1;
-                }
+                    || node.server_port == 1)
+            {
+                dropped_invalid_stubs += 1;
             }
             keep
         });
@@ -3581,6 +3957,225 @@ impl CoreManager {
             config_gen::assign_unique_node_tag(node, &mut taken_tags);
         }
         (out, dropped_invalid_stubs)
+    }
+
+    async fn try_core_subscription_cli(
+        &self,
+        args: &[String],
+        stdin_bytes: Option<&[u8]>,
+        timeout: Duration,
+    ) -> Option<(
+        Vec<ParsedProxyNode>,
+        usize,
+        crate::store::OutboundSource,
+        String,
+    )> {
+        let core_bin = self.resolve_bin_path().await;
+        if core_bin.trim().is_empty() || !Path::new(core_bin.trim()).is_file() {
+            return None;
+        }
+        let mut cmd = Command::new(core_bin.trim());
+        cmd.args(args);
+        let out = Self::run_command_stdin_output_with_timeout(&mut cmd, stdin_bytes, timeout)
+            .await
+            .ok()?;
+        if !out.status.success() || out.stdout.is_empty() {
+            return None;
+        }
+        let parsed_json: Value = serde_json::from_slice(&out.stdout).ok()?;
+        let outbounds = parsed_json.get("outbounds").and_then(Value::as_array)?;
+        let raw_nodes = config_gen::normalize_singbox_json_outbounds(outbounds);
+        let mut meta_src = crate::store::OutboundSource::default();
+        if let Some(ui) = parsed_json.get("user_info").and_then(Value::as_object) {
+            if let Some(u) = ui.get("Upload").and_then(Value::as_u64) {
+                meta_src.sub_upload_bytes = u;
+            }
+            if let Some(d) = ui.get("Download").and_then(Value::as_u64) {
+                meta_src.sub_download_bytes = d;
+            }
+            if let Some(t) = ui.get("Total").and_then(Value::as_u64) {
+                meta_src.sub_total_bytes = t;
+            }
+            if let Some(e) = ui.get("Expire").and_then(Value::as_i64) {
+                meta_src.sub_expire_unix = e;
+            }
+        }
+        if let Some(md) = parsed_json.get("metadata").and_then(Value::as_object) {
+            if let Some(t) = md.get("profile_title").and_then(Value::as_str)
+                && !t.trim().is_empty()
+            {
+                meta_src.sub_title = crate::store::decode_sub_header_value(t.trim());
+            }
+            if let Some(s) = md.get("support_url").and_then(Value::as_str)
+                && !s.trim().is_empty()
+            {
+                meta_src.sub_support_url = s.trim().to_string();
+            }
+            if let Some(w) = md.get("web_page_url").and_then(Value::as_str)
+                && !w.trim().is_empty()
+            {
+                meta_src.sub_web_page_url = w.trim().to_string();
+            }
+            if let Some(a) = md.get("announce").and_then(Value::as_str)
+                && !a.trim().is_empty()
+            {
+                meta_src.sub_announce = crate::store::decode_sub_header_value(a.trim());
+            }
+            if let Some(h) = md.get("update_interval_hours").and_then(Value::as_u64)
+                && h >= 1
+            {
+                meta_src.subscription_update_interval = format!("{}h", h.min(24 * 30));
+            }
+        }
+        let ua_used = parsed_json
+            .get("user_agent")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        let mut kept = Vec::new();
+        let mut stubs = 0usize;
+        let mut taken_tags = HashSet::new();
+        for mut node in raw_nodes {
+            let srv = node.server.trim().to_string();
+            let bare = srv
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+            let keep = srv.is_empty() || config_gen::is_usable_external_sub_host(&srv);
+            if !keep {
+                if bare == "invalid"
+                    || bare.ends_with(".invalid")
+                    || matches!(bare.as_str(), "0.0.0.0" | "::" | "0:0:0:0:0:0:0:0")
+                    || node.server_port == 1
+                {
+                    stubs += 1;
+                }
+                continue;
+            }
+            config_gen::assign_unique_node_tag(&mut node, &mut taken_tags);
+            kept.push(node);
+        }
+        (!kept.is_empty()).then_some((kept, stubs, meta_src, ua_used))
+    }
+
+    async fn try_core_subscription_parse(
+        &self,
+        raw_bytes: &[u8],
+        headers_part: &str,
+        hwid: Option<&str>,
+        source_url: Option<&str>,
+    ) -> Option<(Vec<ParsedProxyNode>, usize, crate::store::OutboundSource)> {
+        let core_bin = self.resolve_bin_path().await;
+        if core_bin.trim().is_empty() || !Path::new(core_bin.trim()).is_file() {
+            return None;
+        }
+        let encrypt_tag = extract_http_header_value(headers_part, "encrypt-tag");
+        let payload_bytes: Vec<u8> = if encrypt_tag.is_some() {
+            let mut dec_args = vec![
+                "subscription".to_string(),
+                "decrypt".to_string(),
+                "-".to_string(),
+            ];
+            if let Some(u) = source_url.map(str::trim).filter(|s| !s.is_empty()) {
+                dec_args.push(format!("--url={u}"));
+            }
+            if let Some(et) = encrypt_tag.as_deref() {
+                dec_args.push(format!("--encrypt-tag={et}"));
+            }
+            if let Some(hw) = hwid.map(str::trim).filter(|s| !s.is_empty()) {
+                dec_args.push(format!("--hwid={hw}"));
+            }
+            let mut dec_cmd = Command::new(core_bin.trim());
+            dec_cmd.args(&dec_args);
+            match Self::run_command_stdin_output_with_timeout(
+                &mut dec_cmd,
+                Some(raw_bytes),
+                Duration::from_secs(12),
+            )
+            .await
+            {
+                Ok(out) if out.status.success() && !out.stdout.is_empty() => out.stdout,
+                _ => raw_bytes.to_vec(),
+            }
+        } else {
+            raw_bytes.to_vec()
+        };
+
+        let normalized_utf8 = decode_text_lossy_with_bom(&payload_bytes);
+        let mut parse_args = vec![
+            "subscription".to_string(),
+            "parse".to_string(),
+            "-".to_string(),
+            "--format=full".to_string(),
+        ];
+        if let Some(hw) = hwid.map(str::trim).filter(|s| !s.is_empty()) {
+            parse_args.push(format!("--hwid={hw}"));
+        }
+        for line in headers_part.lines() {
+            if let Some((k, v)) = line.split_once(':') {
+                let kt = k.trim();
+                let vt = v.trim();
+                if kt.to_ascii_lowercase().starts_with("x-") && !vt.is_empty() {
+                    parse_args.push("-H".to_string());
+                    parse_args.push(format!("{kt}: {vt}"));
+                }
+            }
+        }
+        let (nodes, stubs, meta, _) = self
+            .try_core_subscription_cli(
+                &parse_args,
+                Some(normalized_utf8.as_bytes()),
+                Duration::from_secs(15),
+            )
+            .await?;
+        Some((nodes, stubs, meta))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn try_core_subscription_fetch(
+        &self,
+        url: &str,
+        ua_opt: Option<&str>,
+        send_hwid: bool,
+        custom_hwid: Option<&str>,
+        insecure: bool,
+        proxy_url: Option<&str>,
+        extra_headers: &[(String, String)],
+    ) -> Option<(
+        Vec<ParsedProxyNode>,
+        usize,
+        crate::store::OutboundSource,
+        String,
+    )> {
+        let mut args = vec![
+            "subscription".to_string(),
+            "fetch".to_string(),
+            url.to_string(),
+            "--format=full".to_string(),
+        ];
+        if let Some(ua) = ua_opt.map(str::trim).filter(|s| !s.is_empty()) {
+            args.push(format!("--ua={ua}"));
+        }
+        if !send_hwid {
+            args.push("--no-hwid".to_string());
+        } else if let Some(hw) = custom_hwid.map(str::trim).filter(|s| !s.is_empty()) {
+            args.push(format!("--hwid={hw}"));
+        }
+        if insecure {
+            args.push("-k".to_string());
+        }
+        if let Some(px) = proxy_url.map(str::trim).filter(|s| !s.is_empty()) {
+            args.push(format!("--proxy={px}"));
+        }
+        for (k, v) in extra_headers {
+            args.push("-H".to_string());
+            args.push(format!("{k}: {v}"));
+        }
+        self.try_core_subscription_cli(&args, None, Duration::from_secs(30))
+            .await
     }
 
     /// Refresh a single subscription `OutboundSource` (or all sources in a `RoutingSection`, or all if `source_id` is empty).
@@ -3657,7 +4252,7 @@ impl CoreManager {
                 }
             }
 
-            let proxy_opt = if src.download_via_proxy_enabled {
+            let explicit_proxy_opt = if src.download_via_proxy_enabled {
                 sec_proxy_ports
                     .get(&src.download_via_proxy_section)
                     .copied()
@@ -3667,52 +4262,162 @@ impl CoreManager {
                 global_sub_proxy
             }
             .map(|p| format!("http://127.0.0.1:{p}"));
+            let auto_fallback_proxy_opt = if explicit_proxy_opt.is_none() {
+                service_mixed_port
+                    .or_else(|| sec_proxy_ports.values().copied().min())
+                    .map(|p| format!("http://127.0.0.1:{p}"))
+            } else {
+                None
+            };
 
             let extra_headers = Self::build_subscription_request_headers(&src);
             let hwid_free_headers = Self::build_subscription_request_headers_inner(&src, false);
-            let urls = src.subscription_urls.clone();
+            let urls: Vec<String> = src
+                .subscription_urls
+                .iter()
+                .map(|raw_u| Self::unwrap_subscription_entry(raw_u))
+                .filter(|u| !u.is_empty())
+                .collect();
+            let src_hwid_val = {
+                let explicit = src.hwid.trim();
+                if !explicit.is_empty() {
+                    Some(explicit.to_string())
+                } else if src.auto_hwid {
+                    Some(Self::compute_deterministic_router_hwid())
+                } else {
+                    None
+                }
+            };
+            let allow_insecure_tls = src.subscription_insecure;
 
             let probe_with_ua_headers =
-                |base_src: &crate::store::OutboundSource, ua: &str, hdrs: &[(String, String)]| {
+                |base_src: &crate::store::OutboundSource,
+                 ua: &str,
+                 hdrs: &[(String, String)],
+                 use_hwid_cli: bool| {
                     let mut trial_src = base_src.clone();
                     let hdrs_owned = hdrs.to_vec();
                     let urls_ref = &urls;
-                    let proxy_ref = proxy_opt.as_deref();
+                    let proxy_ref = explicit_proxy_opt.as_deref();
+                    let fb_proxy_ref = auto_fallback_proxy_opt.as_deref();
                     let ua_owned = ua.to_string();
+                    let hwid_cli_opt = use_hwid_cli.then(|| src_hwid_val.clone()).flatten();
                     async move {
                         let mut out_nodes: Vec<ParsedProxyNode> = Vec::new();
                         let mut dropped_invalid_stubs = 0usize;
                         let mut err_msg: Option<String> = None;
                         let mut got_http_reply = false;
-                        for url in urls_ref {
+                        let mut retryable_transport_err = false;
+                        for entry in urls_ref {
+                            let lc_entry = entry.to_ascii_lowercase();
+                            let is_http =
+                                lc_entry.starts_with("http://") || lc_entry.starts_with("https://");
+                            if !is_http {
+                                let (mut parsed_inline, stubs_inline) =
+                                    Self::parse_subscription_payload_with_stats(entry);
+                                dropped_invalid_stubs += stubs_inline;
+                                if parsed_inline.is_empty()
+                                    && let Some((core_nodes, core_stubs, core_meta)) = self
+                                        .try_core_subscription_parse(
+                                            entry.as_bytes(),
+                                            "",
+                                            hwid_cli_opt.as_deref(),
+                                            None,
+                                        )
+                                        .await
+                                {
+                                    parsed_inline = core_nodes;
+                                    dropped_invalid_stubs += core_stubs;
+                                    merge_sub_source_metadata(&mut trial_src, &core_meta);
+                                }
+                                got_http_reply = true;
+                                for n in parsed_inline {
+                                    if !out_nodes
+                                        .iter()
+                                        .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                                    {
+                                        out_nodes.push(n);
+                                    }
+                                }
+                                continue;
+                            }
                             match self
-                                .curl_fetch_with_headers(
-                                    url,
+                                .curl_fetch_detailed(
+                                    entry,
                                     true,
-                                    12,
+                                    15,
                                     proxy_ref,
+                                    fb_proxy_ref,
                                     Some(&ua_owned),
                                     &hdrs_owned,
+                                    allow_insecure_tls,
                                 )
                                 .await
                             {
-                                Ok(stdout) => {
+                                Ok(fetch_res) => {
                                     got_http_reply = true;
-                                    let raw_resp = String::from_utf8_lossy(&stdout);
-                                    let (headers_part, body_part) = split_http_response(&raw_resp);
-                                    parse_subscription_headers(headers_part, &mut trial_src);
-                                    let (parsed_for_url, stubs_for_url) =
-                                        Self::parse_subscription_payload_with_stats(body_part);
+                                    let (headers_part, body_bytes, http_status) =
+                                        split_http_response_bytes(&fetch_res.raw);
+                                    if http_status >= 400 {
+                                        retryable_transport_err = true;
+                                        if err_msg.is_none() {
+                                            err_msg = Some(
+                                                if headers_indicate_hwid_not_supported(
+                                                    &headers_part,
+                                                ) {
+                                                    format!(
+                                                        "Провайдер подписки ({entry}) отклонил параметры устройства (X-Hwid-Not-Supported)"
+                                                    )
+                                                } else {
+                                                    format!("{entry}: HTTP {http_status}")
+                                                },
+                                            );
+                                        }
+                                        continue;
+                                    }
+                                    parse_subscription_headers(&headers_part, &mut trial_src);
+                                    let body_text = decode_text_lossy_with_bom(body_bytes);
+                                    parse_subscription_body_metadata(&body_text, &mut trial_src);
+                                    let body_trim_lc = body_text
+                                        .trim_start_matches('\u{feff}')
+                                        .trim()
+                                        .to_ascii_lowercase();
+                                    let needs_core_decrypt =
+                                        extract_http_header_value(&headers_part, "encrypt-tag")
+                                            .is_some()
+                                            || body_trim_lc.starts_with("happ://crypt")
+                                            || body_trim_lc.starts_with("v2raytun://crypt");
+
+                                    let (mut parsed_for_url, mut stubs_for_url) =
+                                        if needs_core_decrypt {
+                                            (Vec::new(), 0)
+                                        } else {
+                                            Self::parse_subscription_payload_with_stats(&body_text)
+                                        };
+                                    if parsed_for_url.is_empty()
+                                        && let Some((core_nodes, core_stubs, core_meta)) = self
+                                            .try_core_subscription_parse(
+                                                body_bytes,
+                                                &headers_part,
+                                                hwid_cli_opt.as_deref(),
+                                                Some(entry),
+                                            )
+                                            .await
+                                    {
+                                        parsed_for_url = core_nodes;
+                                        stubs_for_url = core_stubs.max(stubs_for_url);
+                                        merge_sub_source_metadata(&mut trial_src, &core_meta);
+                                    }
                                     dropped_invalid_stubs += stubs_for_url;
                                     if parsed_for_url.is_empty() && err_msg.is_none() {
                                         err_msg = Some(
-                                            if headers_indicate_hwid_not_supported(headers_part) {
+                                            if headers_indicate_hwid_not_supported(&headers_part) {
                                                 format!(
-                                                    "Провайдер подписки ({url}) отклонил параметры устройства (X-Hwid-Not-Supported)"
+                                                    "Провайдер подписки ({entry}) отклонил параметры устройства (X-Hwid-Not-Supported)"
                                                 )
                                             } else {
                                                 format!(
-                                                    "Ответ подписки ({url}) не содержит поддерживаемых узлов"
+                                                    "Ответ подписки ({entry}) не содержит поддерживаемых узлов"
                                                 )
                                             },
                                         );
@@ -3727,12 +4432,12 @@ impl CoreManager {
                                     }
                                 }
                                 Err(e) => {
-                                    let es = e.to_string();
-                                    if es.contains("status 22") {
+                                    if e.ua_retryable {
                                         got_http_reply = true;
+                                        retryable_transport_err = true;
                                     }
                                     if err_msg.is_none() {
-                                        err_msg = Some(format!("{url}: {es}"));
+                                        err_msg = Some(format!("{entry}: {}", e.message));
                                     }
                                 }
                             }
@@ -3742,6 +4447,7 @@ impl CoreManager {
                             dropped_invalid_stubs,
                             err_msg,
                             got_http_reply,
+                            retryable_transport_err,
                             trial_src,
                         )
                     }
@@ -3752,12 +4458,17 @@ impl CoreManager {
             {
                 let explicit_ua = Self::normalize_subscription_user_agent(&src.user_agent);
                 let effective_ua = if explicit_ua.is_empty() {
-                    "tachyon-core/2.0".to_string()
+                    "tachyon-core/2.0 (compatible; sing-box 1.14.3)".to_string()
                 } else {
                     explicit_ua
                 };
-                let (n, _stubs, e, got_http, mut next_src) =
-                    probe_with_ua_headers(&src, &effective_ua, &extra_headers).await;
+                let (n, _stubs, e, got_http, _retried, mut next_src) = probe_with_ua_headers(
+                    &src,
+                    &effective_ua,
+                    &extra_headers,
+                    src_hwid_val.is_some(),
+                )
+                .await;
                 if !n.is_empty() {
                     next_src.sub_preferred_user_agent = effective_ua;
                 }
@@ -3783,8 +4494,14 @@ impl CoreManager {
                 let mut saw_http = false;
                 if !preferred.is_empty() {
                     already_tried_preferred = true;
-                    let (n, dropped_stubs, e, got_http, mut next_src) =
-                        probe_with_ua_headers(&src, &preferred, &extra_headers).await;
+                    let (n, dropped_stubs, e, got_http, _retried, mut next_src) =
+                        probe_with_ua_headers(
+                            &src,
+                            &preferred,
+                            &extra_headers,
+                            src_hwid_val.is_some(),
+                        )
+                        .await;
                     saw_http |= got_http;
                     if !n.is_empty()
                         && (dropped_stubs == 0 || Self::is_happ_versioned_user_agent(&preferred))
@@ -3811,10 +4528,11 @@ impl CoreManager {
                             continue;
                         }
                         if idx > 0 {
-                            tokio::time::sleep(Duration::from_millis(120)).await;
+                            tokio::time::sleep(Duration::from_millis(100)).await;
                         }
-                        let (n, dropped_stubs, e, got_http, next_src) =
-                            probe_with_ua_headers(&src, ua, &extra_headers).await;
+                        let (n, dropped_stubs, e, got_http, ua_retryable, next_src) =
+                            probe_with_ua_headers(&src, ua, &extra_headers, src_hwid_val.is_some())
+                                .await;
                         saw_http |= got_http;
                         if first_err.is_none() && e.is_some() {
                             first_err = e.clone();
@@ -3828,8 +4546,8 @@ impl CoreManager {
                             err: e,
                             src: next_src,
                         });
-                        if !got_http && count == 0 && idx == 0 {
-                            // Network/DNS transport unreachable on first probe — skip redundant UA retries.
+                        if !got_http && !ua_retryable && count == 0 && idx >= 1 {
+                            // Network/DNS transport unreachable across distinct client UAs — skip remaining retries.
                             break;
                         }
                     }
@@ -3848,9 +4566,7 @@ impl CoreManager {
                             .next()
                             .map(|c| c.src)
                             .unwrap_or_else(|| src.clone());
-                        if !fallback_src.sub_preferred_user_agent.is_empty() {
-                            fallback_src.sub_preferred_user_agent.clear();
-                        }
+                        fallback_src.sub_preferred_user_agent.clear();
                         (Vec::new(), first_err, fallback_src, saw_http)
                     }
                 }
@@ -3860,20 +4576,59 @@ impl CoreManager {
                 && final_src.auto_hwid
                 && final_src.hwid.trim().is_empty()
             {
-                let retry_uas: Vec<&str> = if final_src.auto_user_agent {
-                    vec!["Happ/4.6.2", "tachyon-core/2.0"]
+                let retry_uas: Vec<String> = if final_src.auto_user_agent {
+                    vec![
+                        "Happ/4.6.2".to_string(),
+                        "v2rayNG/1.8.29".to_string(),
+                        "Mihomo/1.19.16".to_string(),
+                        "HiddifyNext/2.5.7".to_string(),
+                        "tachyon-core/2.0 (compatible; sing-box 1.14.3)".to_string(),
+                    ]
                 } else {
                     let explicit_ua =
                         Self::normalize_subscription_user_agent(&final_src.user_agent);
-                    if explicit_ua.is_empty() || explicit_ua == "Happ/4.6.2" {
-                        vec!["Happ/4.6.2"]
+                    if explicit_ua.is_empty() {
+                        vec![
+                            "Happ/4.6.2".to_string(),
+                            "v2rayNG/1.8.29".to_string(),
+                            "tachyon-core/2.0 (compatible; sing-box 1.14.3)".to_string(),
+                        ]
                     } else {
-                        vec!["Happ/4.6.2", "tachyon-core/2.0"]
+                        vec![
+                            explicit_ua,
+                            "Happ/4.6.2".to_string(),
+                            "v2rayNG/1.8.29".to_string(),
+                        ]
                     }
                 };
                 for retry_ua in retry_uas {
-                    let (n, _stubs, e, _, mut next_src) =
-                        probe_with_ua_headers(&src, retry_ua, &hwid_free_headers).await;
+                    let (n, _stubs, e, _, _, mut next_src) =
+                        probe_with_ua_headers(&src, &retry_ua, &hwid_free_headers, false).await;
+                    if !n.is_empty() {
+                        next_src.sub_preferred_user_agent = retry_ua;
+                        nodes = n;
+                        last_fetch_err = e;
+                        final_src = next_src;
+                        break;
+                    }
+                }
+            } else if nodes.is_empty()
+                && any_http_reply
+                && !final_src.auto_hwid
+                && final_src.hwid.trim().is_empty()
+            {
+                let mut with_router_hwid = final_src.clone();
+                with_router_hwid.auto_hwid = true;
+                let router_hwid_headers =
+                    Self::build_subscription_request_headers(&with_router_hwid);
+                for retry_ua in [
+                    "tachyon-core/2.0 (compatible; sing-box 1.14.3)",
+                    "Happ/4.6.2",
+                    "Clash.Meta/v1.19.10",
+                    "v2rayNG/1.8.29",
+                ] {
+                    let (n, _stubs, e, _, _, mut next_src) =
+                        probe_with_ua_headers(&src, retry_ua, &router_hwid_headers, true).await;
                     if !n.is_empty() {
                         next_src.sub_preferred_user_agent = retry_ua.to_string();
                         nodes = n;
@@ -3881,6 +4636,48 @@ impl CoreManager {
                         final_src = next_src;
                         break;
                     }
+                }
+            }
+            if nodes.is_empty() {
+                let core_ua = if !final_src.auto_user_agent {
+                    let u = Self::normalize_subscription_user_agent(&final_src.user_agent);
+                    (!u.is_empty()).then_some(u)
+                } else {
+                    None
+                };
+                let effective_proxy = explicit_proxy_opt
+                    .as_deref()
+                    .or(auto_fallback_proxy_opt.as_deref());
+                for entry in &urls {
+                    let lc = entry.to_ascii_lowercase();
+                    if !(lc.starts_with("http://") || lc.starts_with("https://")) {
+                        continue;
+                    }
+                    if let Some((core_nodes, _core_stubs, core_meta, ua_used)) = self
+                        .try_core_subscription_fetch(
+                            entry,
+                            core_ua.as_deref(),
+                            final_src.auto_hwid || !final_src.hwid.trim().is_empty(),
+                            (!final_src.hwid.trim().is_empty()).then_some(final_src.hwid.trim()),
+                            allow_insecure_tls,
+                            effective_proxy,
+                            &extra_headers,
+                        )
+                        .await
+                    {
+                        merge_sub_source_metadata(&mut final_src, &core_meta);
+                        if !ua_used.is_empty() {
+                            final_src.sub_preferred_user_agent = ua_used;
+                        }
+                        for n in core_nodes {
+                            if !nodes.iter().any(|ex: &ParsedProxyNode| ex.tag == n.tag) {
+                                nodes.push(n);
+                            }
+                        }
+                    }
+                }
+                if !nodes.is_empty() {
+                    last_fetch_err = None;
                 }
             }
             src = final_src;
@@ -3904,7 +4701,7 @@ impl CoreManager {
         let mut updated_sources = 0usize;
         let mut persist_needed = false;
         let mut core_reload_needed = false;
-        let mut mem_updates: Vec<(String, i64, String, u64, u64)> = Vec::new();
+        let mut mem_updates: Vec<(String, i64, String, u64, u64, String)> = Vec::new();
 
         for res in fetched_results {
             let Some(src) = candidate
@@ -3962,13 +4759,12 @@ impl CoreManager {
                 src.sub_last_error.clear();
                 updated_sources += 1;
             } else {
+                if static_meta_changed {
+                    persist_needed = true;
+                }
                 src.sub_last_error = res.last_fetch_err.unwrap_or_else(|| {
                     "Не удалось загрузить или разобрать узлы подписки".to_string()
                 });
-                src.last_updated_unix = finish_ts;
-                if !src.cached_nodes.is_empty() {
-                    updated_sources += 1;
-                }
             }
             mem_updates.push((
                 src.id.clone(),
@@ -3976,6 +4772,7 @@ impl CoreManager {
                 src.sub_last_error.clone(),
                 src.sub_upload_bytes,
                 src.sub_download_bytes,
+                src.sub_preferred_user_agent.clone(),
             ));
         }
 
@@ -3996,7 +4793,7 @@ impl CoreManager {
             }
         } else if !mem_updates.is_empty() {
             let mut d = self.state.data.write().await;
-            for (id, ts, err, up, down) in mem_updates {
+            for (id, ts, err, up, down, pref_ua) in mem_updates {
                 if let Some(src) = d
                     .outbound_sources
                     .iter_mut()
@@ -4006,6 +4803,7 @@ impl CoreManager {
                     src.sub_last_error = err;
                     src.sub_upload_bytes = up;
                     src.sub_download_bytes = down;
+                    src.sub_preferred_user_agent = pref_ua;
                 }
             }
             crate::ubus_bridge::sync_section_cache(&d);
@@ -5144,30 +5942,134 @@ impl CoreManager {
     /// Parse or fetch a subscription URL, `happ://` link, proxy URI list, or WireGuard/AmneziaWG `.conf`
     /// and return a rich preview (parsed nodes, country distribution, protocol distribution) for the Connection Wizard.
     pub async fn preview_wizard_input(&self, raw_input: &str) -> Value {
-        let trimmed = raw_input.trim();
+        let trimmed = raw_input.trim_start_matches('\u{feff}').trim();
         if trimmed.is_empty() {
             return json!({ "ok": false, "error": "Пустой ввод", "nodes": [], "countries": [], "protocols": [] });
         }
         let mut nodes = Vec::new();
         let mut sub_meta = crate::store::OutboundSource::default();
-
-        for line in trimmed.lines() {
-            let l = line.trim();
-            if l.is_empty() {
-                continue;
-            }
-            if (l.starts_with("http://") || l.starts_with("https://"))
-                && let Ok(stdout) = self.curl_fetch_with_doh_fallback(l, true, 10, None).await
-            {
-                let raw_resp = String::from_utf8_lossy(&stdout);
-                let (hdr, body) = split_http_response(&raw_resp);
-                parse_subscription_headers(hdr, &mut sub_meta);
-                for n in Self::parse_subscription_payload(body) {
-                    if !nodes
+        let (fallback_proxy_opt, router_hwid) = {
+            let d = self.state.data.read().await;
+            let px = read_service_mixed_port_from_config(&d.settings.core_config_path)
+                .or_else(|| {
+                    d.sections
                         .iter()
-                        .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                        .filter(|s| s.enabled && s.mixed_proxy_enabled && s.mixed_proxy_port > 0)
+                        .map(|s| s.mixed_proxy_port)
+                        .min()
+                })
+                .map(|p| format!("http://127.0.0.1:{p}"));
+            (px, Self::compute_deterministic_router_hwid())
+        };
+
+        let unwrapped_whole = Self::unwrap_subscription_entry(trimmed);
+        let is_single_http_entry = {
+            let lc = unwrapped_whole.to_ascii_lowercase();
+            (lc.starts_with("http://") || lc.starts_with("https://"))
+                && !unwrapped_whole.contains('\n')
+        };
+
+        if !trimmed.contains('\n') && !is_single_http_entry {
+            let (parsed, _) = Self::parse_subscription_payload_with_stats(&unwrapped_whole);
+            nodes = parsed;
+            if nodes.is_empty()
+                && let Some((core_nodes, _, core_meta)) = self
+                    .try_core_subscription_parse(
+                        unwrapped_whole.as_bytes(),
+                        "",
+                        Some(&router_hwid),
+                        None,
+                    )
+                    .await
+            {
+                nodes = core_nodes;
+                merge_sub_source_metadata(&mut sub_meta, &core_meta);
+            }
+        }
+
+        if nodes.is_empty() {
+            for line in trimmed.lines() {
+                let entry = Self::unwrap_subscription_entry(line);
+                if entry.is_empty() {
+                    continue;
+                }
+                let lc = entry.to_ascii_lowercase();
+                if lc.starts_with("http://") || lc.starts_with("https://") {
+                    let mut fetched_nodes = Vec::new();
+                    let hwid_headers =
+                        Self::build_subscription_request_headers(&crate::store::OutboundSource {
+                            auto_hwid: true,
+                            ..Default::default()
+                        });
+                    for ua in [
+                        "tachyon-core/2.0 (compatible; sing-box 1.14.3)",
+                        "Happ/4.6.2",
+                        "Clash.Meta/v1.19.10",
+                        "v2rayNG/1.8.29",
+                        "Mihomo/1.19.16",
+                    ] {
+                        if let Ok(res) = self
+                            .curl_fetch_detailed(
+                                &entry,
+                                true,
+                                12,
+                                None,
+                                fallback_proxy_opt.as_deref(),
+                                Some(ua),
+                                &hwid_headers,
+                                false,
+                            )
+                            .await
+                            && res.status_code < 400
+                        {
+                            let (hdr, body_bytes, _) = split_http_response_bytes(&res.raw);
+                            parse_subscription_headers(&hdr, &mut sub_meta);
+                            let body_text = decode_text_lossy_with_bom(body_bytes);
+                            parse_subscription_body_metadata(&body_text, &mut sub_meta);
+                            let (mut parsed, _) =
+                                Self::parse_subscription_payload_with_stats(&body_text);
+                            if parsed.is_empty()
+                                && let Some((core_nodes, _, core_meta)) = self
+                                    .try_core_subscription_parse(
+                                        body_bytes,
+                                        &hdr,
+                                        Some(&router_hwid),
+                                        Some(&entry),
+                                    )
+                                    .await
+                            {
+                                parsed = core_nodes;
+                                merge_sub_source_metadata(&mut sub_meta, &core_meta);
+                            }
+                            if !parsed.is_empty() {
+                                fetched_nodes = parsed;
+                                break;
+                            }
+                        }
+                    }
+                    if fetched_nodes.is_empty()
+                        && let Some((core_nodes, _, core_meta, _)) = self
+                            .try_core_subscription_fetch(
+                                &entry,
+                                None,
+                                true,
+                                Some(&router_hwid),
+                                false,
+                                fallback_proxy_opt.as_deref(),
+                                &[],
+                            )
+                            .await
                     {
-                        nodes.push(n);
+                        fetched_nodes = core_nodes;
+                        merge_sub_source_metadata(&mut sub_meta, &core_meta);
+                    }
+                    for n in fetched_nodes {
+                        if !nodes
+                            .iter()
+                            .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                        {
+                            nodes.push(n);
+                        }
                     }
                 }
             }
@@ -5175,6 +6077,14 @@ impl CoreManager {
 
         if nodes.is_empty() {
             nodes = Self::parse_subscription_payload(trimmed);
+            if nodes.is_empty()
+                && let Some((core_nodes, _, core_meta)) = self
+                    .try_core_subscription_parse(trimmed.as_bytes(), "", Some(&router_hwid), None)
+                    .await
+            {
+                nodes = core_nodes;
+                merge_sub_source_metadata(&mut sub_meta, &core_meta);
+            }
         }
 
         let mut country_counts: HashMap<String, usize> = HashMap::new();
@@ -5768,6 +6678,212 @@ fn encode_query_component(raw: &str) -> String {
     out
 }
 
+fn merge_sub_source_metadata(
+    dst: &mut crate::store::OutboundSource,
+    meta: &crate::store::OutboundSource,
+) {
+    if dst.sub_title.trim().is_empty() && !meta.sub_title.trim().is_empty() {
+        dst.sub_title = meta.sub_title.clone();
+    }
+    if dst.sub_support_url.trim().is_empty() && !meta.sub_support_url.trim().is_empty() {
+        dst.sub_support_url = meta.sub_support_url.clone();
+    }
+    if dst.sub_web_page_url.trim().is_empty() && !meta.sub_web_page_url.trim().is_empty() {
+        dst.sub_web_page_url = meta.sub_web_page_url.clone();
+    }
+    if dst.sub_announce.trim().is_empty() && !meta.sub_announce.trim().is_empty() {
+        dst.sub_announce = meta.sub_announce.clone();
+    }
+    if dst.sub_upload_bytes == 0 && meta.sub_upload_bytes > 0 {
+        dst.sub_upload_bytes = meta.sub_upload_bytes;
+    }
+    if dst.sub_download_bytes == 0 && meta.sub_download_bytes > 0 {
+        dst.sub_download_bytes = meta.sub_download_bytes;
+    }
+    if dst.sub_total_bytes == 0 && meta.sub_total_bytes > 0 {
+        dst.sub_total_bytes = meta.sub_total_bytes;
+    }
+    if dst.sub_expire_unix == 0 && meta.sub_expire_unix > 0 {
+        dst.sub_expire_unix = meta.sub_expire_unix;
+    }
+    if dst.subscription_update_interval.trim().is_empty()
+        && !meta.subscription_update_interval.trim().is_empty()
+    {
+        dst.subscription_update_interval = meta.subscription_update_interval.clone();
+    }
+}
+
+pub(crate) struct CurlFetchResult {
+    pub status_code: u16,
+    pub raw: Vec<u8>,
+}
+
+pub(crate) struct CurlFetchError {
+    #[allow(dead_code)]
+    pub exit_code: Option<i32>,
+    pub ua_retryable: bool,
+    pub message: String,
+}
+
+fn decode_base64_flex_bytes(input: &str) -> Option<Vec<u8>> {
+    let mut normalized = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch.is_ascii_whitespace() || ch == '=' {
+            continue;
+        }
+        match ch {
+            '-' => normalized.push('+'),
+            '_' => normalized.push('/'),
+            c if c.is_ascii_alphanumeric() || c == '+' || c == '/' => normalized.push(c),
+            _ => return None,
+        }
+    }
+    if normalized.is_empty() || normalized.len() % 4 == 1 {
+        return None;
+    }
+    while !normalized.len().is_multiple_of(4) {
+        normalized.push('=');
+    }
+    B64_STD.decode(&normalized).ok()
+}
+
+fn decode_text_lossy_with_bom(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        let u16s: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
+        return String::from_utf16_lossy(&u16s);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        let u16s: Vec<u16> = bytes[2..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_be_bytes(*c))
+            .collect();
+        return String::from_utf16_lossy(&u16s);
+    }
+    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    String::from_utf8_lossy(body).into_owned()
+}
+
+fn strip_subscription_comment_wrapper(raw: &str) -> &str {
+    let mut s = raw.trim_start_matches('\u{feff}').trim();
+    for _ in 0..64 {
+        if let Some(nl) = s.find('\n') {
+            let line = s[..nl].trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+                s = s[nl + 1..].trim_start();
+                continue;
+            }
+        }
+        break;
+    }
+    for _ in 0..32 {
+        if let Some(nl) = s.rfind('\n') {
+            let line = s[nl + 1..].trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+                s = s[..nl].trim_end();
+                continue;
+            }
+        }
+        break;
+    }
+    s.trim()
+}
+
+fn looks_like_wireguard_ini_payload(raw: &str) -> bool {
+    let mut has_iface = false;
+    let mut has_peer = false;
+    for line in raw.lines().take(200) {
+        let t = line.trim();
+        if t.eq_ignore_ascii_case("[interface]") {
+            has_iface = true;
+        } else if t.eq_ignore_ascii_case("[peer]") {
+            has_peer = true;
+        }
+        if has_iface && has_peer {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_http_header_value(headers: &str, name: &str) -> Option<String> {
+    for line in headers.lines() {
+        if let Some((k, v)) = line.split_once(':')
+            && k.trim().eq_ignore_ascii_case(name)
+        {
+            let val = v.trim();
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn parse_subscription_body_metadata(raw: &str, src: &mut crate::store::OutboundSource) {
+    let mut header_lines = Vec::new();
+    for line in raw.trim_start_matches('\u{feff}').lines().take(32) {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix('#').or_else(|| t.strip_prefix("//")) {
+            let r = rest.trim();
+            if r.contains(':') {
+                header_lines.push(r.to_string());
+            }
+        } else {
+            break;
+        }
+    }
+    if !header_lines.is_empty() {
+        parse_subscription_headers(&header_lines.join("\n"), src);
+    }
+}
+
+fn split_http_response_bytes(raw: &[u8]) -> (String, &[u8], u16) {
+    let mut rest = raw;
+    let mut last_headers: &[u8] = &[];
+    let find_subslice = |hay: &[u8], needle: &[u8]| -> Option<usize> {
+        hay.windows(needle.len()).position(|w| w == needle)
+    };
+    while let Some(pos) = find_subslice(rest, b"\r\n\r\n") {
+        let hdr = &rest[..pos];
+        if hdr.starts_with(b"HTTP/") {
+            last_headers = hdr;
+            rest = &rest[pos + 4..];
+        } else {
+            break;
+        }
+    }
+    if last_headers.is_empty() {
+        while let Some(pos) = find_subslice(rest, b"\n\n") {
+            let hdr = &rest[..pos];
+            if hdr.starts_with(b"HTTP/") {
+                last_headers = hdr;
+                rest = &rest[pos + 2..];
+            } else {
+                break;
+            }
+        }
+    }
+    let hdr_str = String::from_utf8_lossy(last_headers).into_owned();
+    let status_code = hdr_str
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .unwrap_or(0);
+    (hdr_str, rest, status_code)
+}
+
+#[cfg(test)]
 fn split_http_response(raw: &str) -> (&str, &str) {
     let mut rest = raw;
     let mut last_headers = "";
@@ -5779,11 +6895,15 @@ fn split_http_response(raw: &str) -> (&str, &str) {
             break;
         }
     }
-    if last_headers.is_empty()
-        && let Some((hdr, after)) = raw.split_once("\n\n")
-        && hdr.starts_with("HTTP/")
-    {
-        return (hdr, after);
+    if last_headers.is_empty() {
+        while let Some((hdr, after)) = rest.split_once("\n\n") {
+            if hdr.starts_with("HTTP/") {
+                last_headers = hdr;
+                rest = after;
+            } else {
+                break;
+            }
+        }
     }
     (last_headers, rest)
 }
@@ -6709,6 +7829,7 @@ mod core_mgr_tests {
 
     #[test]
     fn test_parse_subscription_payload_mieru_base64_and_clash_yaml() {
+        use base64::engine::general_purpose::STANDARD_NO_PAD as B64_STD_NO_PAD;
         let raw_links = concat!(
             "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.47?profile=default&port=2012-2022&protocol=TCP&multiplexing=MULTIPLEXING_HIGH&traffic-pattern=GgQIARAK#Mieru\n",
             "mierus://default:dGVzdFBhc3NNaWVydTEyMzQ1Njc4OQ%3D@198.51.100.48?port=2030-2040&protocol=UDP#Mieru\n"
@@ -7753,5 +8874,144 @@ mod core_mgr_tests {
         ));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_subscription_bom_comments_double_b64_utf16_wg_and_unwrap() {
+        use base64::engine::general_purpose::{
+            STANDARD_NO_PAD as B64_STD_NO_PAD, URL_SAFE_NO_PAD as B64_URL,
+        };
+        // 1. UTF-8 BOM + metadata comments with `://` before Base64 payload
+        let inner_uris = "vless://11111111-1111-4111-8111-111111111111@de.example.org:443?security=REALITY&pbk=YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU=&flow=xtls-rprx-vision-udp443#DE%2BNode\n\
+                          ss://YWVzLTI1Ni1nY206dGVzdCt4eXo=@198.51.100.7:8388#SS+2022";
+        let b64_inner = B64_STD.encode(inner_uris.as_bytes());
+        let with_bom_and_comments = format!(
+            "\u{feff}#profile-title: base64:{}\n#support-url: https://t.me/test\n#subscription-userinfo: upload=10; download=20; total=100; expire=1900000000\n\n{}\n# footer comment",
+            B64_STD.encode("TestSub".as_bytes()),
+            b64_inner
+        );
+        let parsed = CoreManager::parse_subscription_payload(&with_bom_and_comments);
+        assert_eq!(
+            parsed.len(),
+            2,
+            "BOM + comment headers must not break Base64"
+        );
+        assert_eq!(parsed[0].tag, "DE+Node");
+        assert_eq!(parsed[0].outbound_json["flow"], "xtls-rprx-vision");
+        assert_eq!(parsed[0].outbound_json["tls"]["reality"]["enabled"], true);
+        assert_eq!(parsed[1].outbound_json["password"], "test+xyz");
+
+        let mut meta_src = crate::store::OutboundSource::default();
+        parse_subscription_body_metadata(&with_bom_and_comments, &mut meta_src);
+        assert_eq!(meta_src.sub_title, "TestSub");
+        assert_eq!(meta_src.sub_support_url, "https://t.me/test");
+        assert_eq!(meta_src.sub_total_bytes, 100);
+
+        // 2. URL-safe Base64 without padding, double Base64, percent-encoded Base64
+        let urlsafe_nopad = B64_URL.encode(inner_uris.as_bytes());
+        assert_eq!(
+            CoreManager::parse_subscription_payload(&urlsafe_nopad).len(),
+            2
+        );
+        let double_b64 = B64_STD_NO_PAD.encode(urlsafe_nopad.as_bytes());
+        assert_eq!(
+            CoreManager::parse_subscription_payload(&double_b64).len(),
+            2
+        );
+        let pct_b64 = b64_inner
+            .replace('+', "%2B")
+            .replace('/', "%2F")
+            .replace('=', "%3D");
+        assert_eq!(CoreManager::parse_subscription_payload(&pct_b64).len(), 2);
+
+        // 3. UTF-16 LE BOM
+        let mut utf16_bytes = vec![0xFFu8, 0xFEu8];
+        for unit in inner_uris.encode_utf16() {
+            utf16_bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        let utf16_text = decode_text_lossy_with_bom(&utf16_bytes);
+        assert_eq!(
+            CoreManager::parse_subscription_payload(&utf16_text).len(),
+            2
+        );
+
+        // 4. WireGuard / AmneziaWG .conf INI
+        let wg_conf = "[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.0.2/32\nJc = 4\n[Peer]\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\nEndpoint = wg.example.org:51820\n";
+        let wg_nodes = CoreManager::parse_subscription_payload(wg_conf);
+        assert_eq!(wg_nodes.len(), 1);
+        assert_eq!(wg_nodes[0].protocol, "wireguard");
+        assert_eq!(wg_nodes[0].outbound_json["jc"], 4);
+
+        // 5. Deep-link unwrap formats
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("happ://add/https%3A%2F%2Fsub.example.com%2Fx"),
+            "https://sub.example.com/x"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("v2raytun://import/https://sub.example.com/v"),
+            "https://sub.example.com/v"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("incy://add/https://sub.example.com/i"),
+            "https://sub.example.com/i"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("hiddify://import/https://sub.example.com/h"),
+            "https://sub.example.com/h"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry(
+                "clash://install-config?url=https%3A%2F%2Fsub.example.com%2Fc"
+            ),
+            "https://sub.example.com/c"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry(
+                "sing-box://import-remote-profile?url=https%3A%2F%2Fsub.example.com%2Fsb"
+            ),
+            "https://sub.example.com/sb"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("ssconf://outline.example.com/key"),
+            "https://outline.example.com/key"
+        );
+        let sub_b64 = format!("sub://{}", B64_URL.encode(b"https://sub.example.com/s"));
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry(&sub_b64),
+            "https://sub.example.com/s"
+        );
+        assert_eq!(
+            CoreManager::unwrap_subscription_entry("https://sub.example.com/m | My Sub"),
+            "https://sub.example.com/m"
+        );
+
+        // 6. Chained LF HTTP response headers + 403 X-Hwid-Not-Supported
+        let chained = b"HTTP/1.1 200 Connection established\n\nHTTP/1.1 302 Found\nLocation: https://b\n\nHTTP/1.1 403 Forbidden\nX-Hwid-Not-Supported: true\n\nblocked";
+        let (hdrs, body, code) = split_http_response_bytes(chained);
+        assert_eq!(code, 403);
+        assert_eq!(body, b"blocked");
+        assert!(headers_indicate_hwid_not_supported(&hdrs));
+        let (hdr_s, body_s) = split_http_response(std::str::from_utf8(chained).unwrap());
+        assert!(headers_indicate_hwid_not_supported(hdr_s));
+        assert_eq!(body_s, "blocked");
+
+        // 7. Unsupported client banner stubs counted
+        let stub_sub = "vless://11111111-1111-4111-8111-111111111111@stub.example.org:443#%D0%9A%D0%BB%D0%B8%D0%B5%D0%BD%D1%82%20%D0%BD%D0%B5%20%D0%BF%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%B8%D0%B2%D0%B0%D0%B5%D1%82%D1%81%D1%8F\nvless://11111111-1111-4111-8111-111111111111@127.0.0.1:443#%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D0%B9%D1%82%D0%B5%20Happ";
+        let (kept, dropped) = CoreManager::parse_subscription_payload_with_stats(stub_sub);
+        assert!(kept.is_empty());
+        assert_eq!(dropped, 2);
+
+        // 8. Selectel/Remnawave `#App not supported` stub on both 0.0.0.0:1 and dummy host
+        let app_stub_b64 = "dmxlc3M6Ly8wMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDBAMC4wLjAuMDoxP2VuY3J5cHRpb249bm9uZSZ0eXBlPXRjcCZzZWN1cml0eT1ub25lI0FwcCUyMG5vdCUyMHN1cHBvcnRlZA==";
+        let (kept_app_stub, dropped_app_stub) =
+            CoreManager::parse_subscription_payload_with_stats(app_stub_b64);
+        assert!(kept_app_stub.is_empty());
+        assert_eq!(dropped_app_stub, 1);
+
+        let dummy_host_app_stub = "vless://00000000-0000-0000-0000-000000000000@stub.example.org:443?encryption=none&type=tcp&security=none#App%20not%20supported";
+        let (kept_dummy_stub, dropped_dummy_stub) =
+            CoreManager::parse_subscription_payload_with_stats(dummy_host_app_stub);
+        assert!(kept_dummy_stub.is_empty());
+        assert_eq!(dropped_dummy_stub, 1);
     }
 }

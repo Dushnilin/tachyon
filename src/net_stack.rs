@@ -4267,7 +4267,12 @@ async fn apply_network_stack_inner(
             return Ok(());
         }
         let _ = hold_kill_switch(store).await;
-        crate::net_stack_iptables::apply_iptables_network_stack(store).await?;
+        if let Err(err) = crate::net_stack_iptables::apply_iptables_network_stack(store).await {
+            if direct_fallback_veto(store).is_none() {
+                remove_kill_switch().await;
+            }
+            return Err(err);
+        }
         if direct_fallback_veto(store).is_none() {
             remove_kill_switch().await;
         } else if keep_kill_switch_held {
@@ -4295,82 +4300,49 @@ async fn apply_network_stack_inner(
 
     ensure_bridge_netfilter_disabled().await;
     let _ = hold_kill_switch(store).await;
-    let wan6_cache = tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state).await?;
-    let ipv6_state =
-        crate::store::resolve_effective_ipv6_state(&store.settings, wan6_cache.wan6_available);
-    let intercept_embedded_ts =
-        embedded_tailscale_enabled(store) && !native_tailscale_enabled(store);
+    let apply_res: anyhow::Result<()> = async {
+        let wan6_cache =
+            tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state).await?;
+        let ipv6_state =
+            crate::store::resolve_effective_ipv6_state(&store.settings, wan6_cache.wan6_available);
+        let intercept_embedded_ts =
+            embedded_tailscale_enabled(store) && !native_tailscale_enabled(store);
 
-    let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
-        "fc00::/18"
-    } else {
-        store.settings.fakeip_inet6_range.trim()
-    };
-    if store.settings.proxy_mode == "tproxy" {
-        if intercept_embedded_ts {
-            neutralize_standalone_tailscale_service().await;
-        }
-        let ruleset = compile_nftables_ruleset_with_wan6(
-            store,
-            wan6_cache.wan6_available,
-            &wan6_cache.wan6_prefixes,
-        );
-        apply_nft_stdin_with_fib_fallback(&ruleset).await?;
+        let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
+            "fc00::/18"
+        } else {
+            store.settings.fakeip_inet6_range.trim()
+        };
+        if store.settings.proxy_mode == "tproxy" {
+            if intercept_embedded_ts {
+                neutralize_standalone_tailscale_service().await;
+            }
+            let ruleset = compile_nftables_ruleset_with_wan6(
+                store,
+                wan6_cache.wan6_available,
+                &wan6_cache.wan6_prefixes,
+            );
+            apply_nft_stdin_with_fib_fallback(&ruleset).await?;
 
-        // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
-        cleanup_policy_rules_for(Some(fakeip_v6)).await;
+            // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
+            cleanup_policy_rules_for(Some(fakeip_v6)).await;
 
-        // Rule pref 99 answers reverse-path `iif lo` checks for LAN packets (`0x04000000`)
-        // from `main` when `net.ipv4.conf.all.src_valid_mark=1` (e.g. Tailscale netfilter mode).
-        run_checked_ip(&[
-            "rule",
-            "add",
-            "iif",
-            "lo",
-            "fwmark",
-            TPROXY_FWMARK_MASKED,
-            "table",
-            "main",
-            "pref",
-            "99",
-        ])
-        .await?;
-        run_checked_ip(&[
-            "rule",
-            "add",
-            "fwmark",
-            TPROXY_FWMARK_MASKED,
-            "table",
-            TPROXY_ROUTE_TABLE,
-            "pref",
-            "100",
-        ])
-        .await?;
-        run_checked_ip(&[
-            "rule",
-            "add",
-            "fwmark",
-            ROUTER_TPROXY_FWMARK_MASKED,
-            "table",
-            TPROXY_ROUTE_TABLE,
-            "pref",
-            "101",
-        ])
-        .await?;
-        run_checked_ip(&[
-            "route",
-            "replace",
-            "local",
-            "0.0.0.0/0",
-            "dev",
-            "lo",
-            "table",
-            TPROXY_ROUTE_TABLE,
-        ])
-        .await?;
-        if ipv6_state.is_active() {
+            // Rule pref 99 answers reverse-path `iif lo` checks for LAN packets (`0x04000000`)
+            // from `main` when `net.ipv4.conf.all.src_valid_mark=1` (e.g. Tailscale netfilter mode).
             run_checked_ip(&[
-                "-6",
+                "rule",
+                "add",
+                "iif",
+                "lo",
+                "fwmark",
+                TPROXY_FWMARK_MASKED,
+                "table",
+                "main",
+                "pref",
+                "99",
+            ])
+            .await?;
+            run_checked_ip(&[
                 "rule",
                 "add",
                 "fwmark",
@@ -4382,7 +4354,6 @@ async fn apply_network_stack_inner(
             ])
             .await?;
             run_checked_ip(&[
-                "-6",
                 "rule",
                 "add",
                 "fwmark",
@@ -4394,75 +4365,124 @@ async fn apply_network_stack_inner(
             ])
             .await?;
             run_checked_ip(&[
-                "-6",
                 "route",
                 "replace",
                 "local",
-                "::/0",
+                "0.0.0.0/0",
                 "dev",
                 "lo",
                 "table",
                 TPROXY_ROUTE_TABLE,
             ])
             .await?;
-            if store.settings.fakeip_enabled {
-                // Ensure kernel initial `OUTPUT` route lookup succeeds for FakeIPv6 when no WAN6 default route exists (`tunnel_over_v4` / offline WAN6) before `mangle_output` sets fwmark.
-                let _ = run_checked_ip(&["-6", "route", "replace", fakeip_v6, "dev", "lo"]).await;
+            if ipv6_state.is_active() {
+                run_checked_ip(&[
+                    "-6",
+                    "rule",
+                    "add",
+                    "fwmark",
+                    TPROXY_FWMARK_MASKED,
+                    "table",
+                    TPROXY_ROUTE_TABLE,
+                    "pref",
+                    "100",
+                ])
+                .await?;
+                run_checked_ip(&[
+                    "-6",
+                    "rule",
+                    "add",
+                    "fwmark",
+                    ROUTER_TPROXY_FWMARK_MASKED,
+                    "table",
+                    TPROXY_ROUTE_TABLE,
+                    "pref",
+                    "101",
+                ])
+                .await?;
+                run_checked_ip(&[
+                    "-6",
+                    "route",
+                    "replace",
+                    "local",
+                    "::/0",
+                    "dev",
+                    "lo",
+                    "table",
+                    TPROXY_ROUTE_TABLE,
+                ])
+                .await?;
+                if store.settings.fakeip_enabled {
+                    // Ensure kernel initial `OUTPUT` route lookup succeeds for FakeIPv6 when no WAN6 default route exists (`tunnel_over_v4` / offline WAN6) before `mangle_output` sets fwmark.
+                    let _ =
+                        run_checked_ip(&["-6", "route", "replace", fakeip_v6, "dev", "lo"]).await;
+                }
+            }
+        } else if store.settings.proxy_mode == "tun" {
+            cleanup_policy_rules_for(Some(fakeip_v6)).await;
+            if let Some(guard_nft) = compile_tun_guard_ruleset_with_wan6(
+                store,
+                wan6_cache.wan6_available,
+                &wan6_cache.wan6_prefixes,
+            ) {
+                apply_nft_stdin_with_fib_fallback(&guard_nft).await?;
+            } else {
+                let _ = Command::new("nft")
+                    .args(["delete", "table", "inet", "TachyonTable"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .await;
             }
         }
-    } else if store.settings.proxy_mode == "tun" {
-        cleanup_policy_rules_for(Some(fakeip_v6)).await;
-        if let Some(guard_nft) = compile_tun_guard_ruleset_with_wan6(
-            store,
-            wan6_cache.wan6_available,
-            &wan6_cache.wan6_prefixes,
-        ) {
-            apply_nft_stdin_with_fib_fallback(&guard_nft).await?;
-        } else {
-            let _ = Command::new("nft")
-                .args(["delete", "table", "inet", "TachyonTable"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .await;
-        }
-    }
 
-    if !store.settings.dont_touch_dhcp {
-        let dnsmasq_conf = build_dnsmasq_dropin_config(store);
-        let mut dnsmasq_changed = false;
-        for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
-            let conf_path = dir.join("tachyon.conf");
-            if crypto_gen::write_file_with_mode_if_changed(&conf_path, &dnsmasq_conf, 0o644)
-                .unwrap_or(false)
-            {
-                dnsmasq_changed = true;
+        if !store.settings.dont_touch_dhcp {
+            let dnsmasq_conf = build_dnsmasq_dropin_config(store);
+            let mut dnsmasq_changed = false;
+            for dir in collect_dnsmasq_conf_dirs_in(Path::new("/tmp")) {
+                let conf_path = dir.join("tachyon.conf");
+                if crypto_gen::write_file_with_mode_if_changed(&conf_path, &dnsmasq_conf, 0o644)
+                    .unwrap_or(false)
+                {
+                    dnsmasq_changed = true;
+                }
             }
+            let dnsmasq_uci_changed =
+                sync_dnsmasq_uci_for_fakeip(store.settings.fakeip_enabled).await;
+            if dnsmasq_changed || dnsmasq_uci_changed {
+                run_dnsmasq_init("restart").await;
+            }
+            if intercept_embedded_ts {
+                let _ = std::fs::remove_file("/tmp/resolv.conf.d/resolv.conf.tailscale");
+                sync_tailscale_magicdns(false, true).await;
+            } else {
+                let ts_dns = native_tailscale_magicdns_enabled(store);
+                sync_tailscale_magicdns(ts_dns, !ts_dns).await;
+            }
+            sync_odhcpd_lan_ipv6(store, ipv6_state).await;
         }
-        let dnsmasq_uci_changed = sync_dnsmasq_uci_for_fakeip(store.settings.fakeip_enabled).await;
-        if dnsmasq_changed || dnsmasq_uci_changed {
-            run_dnsmasq_init("restart").await;
+
+        #[cfg(unix)]
+        if store.settings.enable_yacd
+            && std::path::Path::new("/etc/tachyon-core/ui").exists()
+            && !std::path::Path::new("/www/yacd").exists()
+        {
+            let _ = std::os::unix::fs::symlink("/etc/tachyon-core/ui", "/www/yacd");
         }
-        if intercept_embedded_ts {
-            let _ = std::fs::remove_file("/tmp/resolv.conf.d/resolv.conf.tailscale");
-            sync_tailscale_magicdns(false, true).await;
-        } else {
-            let ts_dns = native_tailscale_magicdns_enabled(store);
-            sync_tailscale_magicdns(ts_dns, !ts_dns).await;
+
+        sync_openwrt_firewall_rules(store).await;
+        sync_fw4_flow_offload_guard(store).await;
+        Ok(())
+    }
+    .await;
+
+    if let Err(err) = apply_res {
+        if direct_fallback_veto(store).is_none() {
+            remove_kill_switch().await;
         }
-        sync_odhcpd_lan_ipv6(store, ipv6_state).await;
+        return Err(err);
     }
 
-    #[cfg(unix)]
-    if store.settings.enable_yacd
-        && std::path::Path::new("/etc/tachyon-core/ui").exists()
-        && !std::path::Path::new("/www/yacd").exists()
-    {
-        let _ = std::os::unix::fs::symlink("/etc/tachyon-core/ui", "/www/yacd");
-    }
-
-    sync_openwrt_firewall_rules(store).await;
-    sync_fw4_flow_offload_guard(store).await;
     if direct_fallback_veto(store).is_none() {
         remove_kill_switch().await;
     } else {
@@ -4826,13 +4846,65 @@ async fn read_sysctl_fast(key: &str) -> String {
         .unwrap_or_default()
 }
 
+fn find_kernel_module_file(base_dir: &Path, module: &str, depth: usize) -> Option<PathBuf> {
+    if depth > 4 {
+        return None;
+    }
+    let rd = std::fs::read_dir(base_dir).ok()?;
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_kernel_module_file(&path, module, depth + 1) {
+                return Some(found);
+            }
+        } else if let Some(fname) = path.file_name().and_then(|n| n.to_str())
+            && (fname == format!("{module}.ko")
+                || fname == format!("{module}.ko.gz")
+                || fname == format!("{module}.ko.xz"))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
 pub(crate) async fn try_modprobe_quiet(module: &str) {
-    let _ = Command::new("modprobe")
+    let ok = Command::new("modprobe")
         .arg(module)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .await;
+        .await
+        .is_ok_and(|s| s.success());
+    if ok {
+        return;
+    }
+    let mod_name = module.to_string();
+    let ko_opt = tokio::task::spawn_blocking(move || {
+        let mut bases = Vec::new();
+        if let Ok(osrel) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
+            let rel = osrel.trim();
+            if !rel.is_empty() {
+                bases.push(PathBuf::from("/lib/modules").join(rel));
+            }
+        }
+        bases.push(PathBuf::from("/lib/modules"));
+        bases
+            .into_iter()
+            .filter(|b| b.is_dir())
+            .find_map(|b| find_kernel_module_file(&b, &mod_name, 0))
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(ko_path) = ko_opt {
+        let _ = Command::new("insmod")
+            .arg(ko_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
 }
 
 async fn apply_tcp_tuning_with_paths(

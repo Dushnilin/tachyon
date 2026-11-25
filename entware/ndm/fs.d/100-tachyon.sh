@@ -73,5 +73,5 @@ fi
 PATH="${TACHYON_ROOT}/sbin:${TACHYON_ROOT}/bin:/opt/sbin:/opt/bin:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
 export PATH TACHYON_ROOT
 
-"$INIT_SCRIPT" stop >/dev/null 2>&1 || true
+TACHYON_CLEAN_SHUTDOWN=1 "$INIT_SCRIPT" stop >/dev/null 2>&1 || true
 exit 0

@@ -569,9 +569,15 @@ function guardFailClosedChange(option, breaks, consequence) {
   };
 }
 
-function configureDownloadSectionOption(option, sectionOption, capabilities) {
+function configureDownloadSectionOption(
+  option,
+  sectionOption,
+  capabilities,
+  flagOption = '',
+) {
   option.default = '';
-  option.rmempty = false;
+  option.optional = true;
+  option.rmempty = true;
   option.retain = true;
   option.cfgvalue = function (section_id) {
     return uci.get(UCI_PACKAGE, section_id, sectionOption) || '';
@@ -592,8 +598,24 @@ function configureDownloadSectionOption(option, sectionOption, capabilities) {
   option.remove = function (section_id) {
     uci.unset(UCI_PACKAGE, section_id, sectionOption);
   };
-  option.validate = function (_section_id, value) {
-    return value ? true : _('Select a section');
+  option.validate = function (section_id, value) {
+    if (flagOption) {
+      const flagOpt =
+        typeof this.section?.getOption === 'function'
+          ? this.section.getOption(flagOption)
+          : null;
+      const flagRaw =
+        flagOpt && typeof flagOpt.formvalue === 'function'
+          ? flagOpt.formvalue(section_id)
+          : uci.get(UCI_PACKAGE, section_id, flagOption);
+      const enabled = flagRaw === '1' || flagRaw === true;
+      if (!enabled) return true;
+    }
+    const hasChoices =
+      Array.isArray(this.keylist) &&
+      this.keylist.some((k) => `${k || ''}`.trim() !== '');
+    if (!hasChoices) return true;
+    return `${value || ''}`.trim() ? true : _('Select a section');
   };
 }
 
@@ -4670,7 +4692,12 @@ function createSettingsContent(section, capabilities) {
     _('DNS requests through section'),
   );
   o.depends('dns_detour_enabled', '1');
-  configureDownloadSectionOption(o, 'dns_detour_section', capabilities);
+  configureDownloadSectionOption(
+    o,
+    'dns_detour_section',
+    capabilities,
+    'dns_detour_enabled',
+  );
 
   o = section.taboption(
     'network',
@@ -5356,6 +5383,7 @@ function createSettingsContent(section, capabilities) {
     o,
     'route_router_traffic_section',
     capabilities,
+    'route_router_traffic',
   );
 
   o = section.taboption(
@@ -6312,6 +6340,7 @@ function createSettingsContent(section, capabilities) {
     o,
     'download_lists_via_proxy_section',
     capabilities,
+    'download_lists_via_proxy',
   );
 
   o = section.taboption(
@@ -6334,6 +6363,7 @@ function createSettingsContent(section, capabilities) {
     o,
     'download_components_via_proxy_section',
     capabilities,
+    'download_components_via_proxy',
   );
 
   o = section.taboption(

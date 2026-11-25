@@ -83,6 +83,7 @@ pub struct WatchdogState {
     pub last_drift_reload_key: Option<(String, String)>,
     pub last_drift_reload_desired_digest: String,
     pub drift_reload_streak: u32,
+    pub drift_confirm_ticks: u32,
 }
 
 impl Default for WatchdogState {
@@ -103,6 +104,7 @@ impl Default for WatchdogState {
             last_drift_reload_key: None,
             last_drift_reload_desired_digest: String::new(),
             drift_reload_streak: 0,
+            drift_confirm_ticks: 0,
         }
     }
 }
@@ -114,6 +116,7 @@ impl WatchdogState {
         self.last_drift_reload_key = None;
         self.last_drift_reload_desired_digest.clear();
         self.drift_reload_streak = 0;
+        self.drift_confirm_ticks = 0;
     }
     pub fn prune_restarts(&mut self, now: i64) {
         self.restart_timestamps
@@ -607,6 +610,7 @@ pub(crate) fn detect_config_drift(
     disk_config_digest: Option<&str>,
 ) -> bool {
     if !core_alive || !config_ready || desired_digest.is_empty() || applied_digest.is_empty() {
+        wd.drift_confirm_ticks = 0;
         return false;
     }
     if desired_digest == applied_digest {
@@ -615,6 +619,7 @@ pub(crate) fn detect_config_drift(
         wd.last_drift_reload_key = None;
         wd.last_drift_reload_desired_digest.clear();
         wd.drift_reload_streak = 0;
+        wd.drift_confirm_ticks = 0;
         return false;
     }
     if !wd.last_applied_desired_digest.is_empty() {
@@ -623,15 +628,27 @@ pub(crate) fn detect_config_drift(
                 wd.last_applied_core_digest = applied_digest.to_string();
                 wd.last_drift_reload_desired_digest.clear();
                 wd.drift_reload_streak = 0;
+                wd.drift_confirm_ticks = 0;
                 return false;
             }
             if wd.last_applied_core_digest == applied_digest {
                 wd.last_drift_reload_desired_digest.clear();
                 wd.drift_reload_streak = 0;
+                wd.drift_confirm_ticks = 0;
                 return false;
             }
+            if disk_config_digest == Some(desired_digest) {
+                wd.last_applied_core_digest = applied_digest.to_string();
+                wd.last_drift_reload_key = None;
+                wd.last_drift_reload_desired_digest.clear();
+                wd.drift_reload_streak = 0;
+                wd.drift_confirm_ticks = 0;
+                return false;
+            }
+            wd.drift_confirm_ticks = wd.drift_confirm_ticks.saturating_add(1);
             return true;
         }
+        wd.drift_confirm_ticks = wd.drift_confirm_ticks.saturating_add(1);
         return true;
     }
     if disk_config_digest == Some(desired_digest) {
@@ -640,8 +657,10 @@ pub(crate) fn detect_config_drift(
         wd.last_drift_reload_key = None;
         wd.last_drift_reload_desired_digest.clear();
         wd.drift_reload_streak = 0;
+        wd.drift_confirm_ticks = 0;
         return false;
     }
+    wd.drift_confirm_ticks = wd.drift_confirm_ticks.saturating_add(1);
     true
 }
 
@@ -726,11 +745,33 @@ where
     }
 }
 
+pub(crate) fn watchdog_dns_probe_target_for(
+    platform: crate::platform::PlatformKind,
+    settings: &crate::store::GlobalSettings,
+) -> SocketAddr {
+    if platform.is_entware() {
+        let port = if settings
+            .entware_dns_mode
+            .trim()
+            .eq_ignore_ascii_case("override")
+        {
+            53
+        } else if settings.entware_dns_port > 0 {
+            settings.entware_dns_port
+        } else {
+            1053
+        };
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
+    } else {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 42)), 53)
+    }
+}
+
 /// Evaluate live probes + `/tachyon/health` + `/tachyon/anomalies` + Flight Recorder failures
 /// and execute deterministic L0-L5 self-healing actions under hysteresis & circuit-breaker protection.
 pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count: u64) {
     let now = unix_now_secs();
-    let (desired_digest, enable_watchdog, core_config_path) = {
+    let (desired_digest, enable_watchdog, core_config_path, dns_target) = {
         let store_guard = core.state.data.read().await;
         let enable = store_guard.settings.enable_watchdog;
         let digest = if core_alive && enable {
@@ -738,10 +779,15 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         } else {
             String::new()
         };
+        let target = watchdog_dns_probe_target_for(
+            crate::platform::detect_platform(),
+            &store_guard.settings,
+        );
         (
             digest,
             enable,
             store_guard.settings.core_config_path.clone(),
+            target,
         )
     };
     let desired_digest_snapshot = desired_digest.clone();
@@ -754,11 +800,13 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
     };
 
     // Real WAN TCP connect + local DNS UDP A probes (parallel, short timeout, zero shell)
-    let dns_target = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 42)), 53);
     let wan_targets = default_wan_targets();
     let ((wan_ok, wan_ms), (dns_probe_ok, dns_ms)) = tokio::join!(
         Box::pin(probe_wan_health(&wan_targets)),
-        Box::pin(probe_local_dns_health(dns_target, "one.one.one.one"))
+        Box::pin(probe_local_dns_health(
+            dns_target,
+            "connectivitycheck.gstatic.com"
+        ))
     );
 
     let (health_res, anomalies_res, flight_res) = if core_alive {
@@ -799,13 +847,7 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         && !reload_in_progress
         && !desired_digest.is_empty()
         && !applied_digest.is_empty()
-        && desired_digest != applied_digest
-        && core
-            .watchdog
-            .lock()
-            .await
-            .last_applied_desired_digest
-            .is_empty();
+        && desired_digest != applied_digest;
     let disk_digest = if need_disk_digest {
         read_disk_config_digest(&core_config_path)
     } else {
@@ -1171,13 +1213,27 @@ pub async fn run_watchdog_tick(core: &CoreManager, core_alive: bool, _tick_count
         }
     } else if core_alive {
         if !reload_in_progress && should_trigger_drift_reload(config_drift, safe_minimal_active) {
-            let allow = {
+            let (allow, prev_streak) = {
                 let mut wd = core.watchdog.lock().await;
-                should_allow_drift_reload(&mut wd, &desired_digest_snapshot, &applied_digest, now)
+                if wd.drift_confirm_ticks < 2 {
+                    (false, wd.drift_reload_streak)
+                } else {
+                    let prev = wd.drift_reload_streak;
+                    (
+                        should_allow_drift_reload(
+                            &mut wd,
+                            &desired_digest_snapshot,
+                            &applied_digest,
+                            now,
+                        ),
+                        prev,
+                    )
+                }
             };
             if allow && boxed_core_reload(core).await.is_ok() {
                 {
                     let mut wd = core.watchdog.lock().await;
+                    wd.drift_reload_streak = prev_streak;
                     mark_drift_reload_executed(&mut wd, &desired_digest_snapshot, &applied_digest);
                 }
                 core.state.live.write().await.config_drift = false;
@@ -1880,5 +1936,41 @@ mod tests {
             "applied-2",
             2_000
         ));
+    }
+
+    #[test]
+    fn post_reload_digest_transition_and_entware_dns_target() {
+        let mut wd = WatchdogState::default();
+        wd.record_applied_config("desired-1".to_string());
+        wd.last_applied_core_digest = "applied-0".to_string();
+
+        // When applied_digest transitions after hot-reload while disk matches desired_digest, no drift occurs.
+        assert!(!detect_config_drift(
+            &mut wd,
+            true,
+            true,
+            "desired-1",
+            "applied-1",
+            Some("desired-1"),
+        ));
+        assert_eq!(wd.last_applied_core_digest, "applied-1");
+        assert_eq!(wd.drift_confirm_ticks, 0);
+
+        let settings = crate::store::GlobalSettings {
+            entware_dns_mode: "redirect".to_string(),
+            entware_dns_port: 1053,
+            ..Default::default()
+        };
+        assert_eq!(
+            watchdog_dns_probe_target_for(
+                crate::platform::PlatformKind::KeeneticEntware,
+                &settings
+            ),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1053)
+        );
+        assert_eq!(
+            watchdog_dns_probe_target_for(crate::platform::PlatformKind::OpenWrt, &settings),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 42)), 53)
+        );
     }
 }

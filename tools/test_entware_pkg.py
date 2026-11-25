@@ -44,6 +44,17 @@ EXPECTED_MODES = {
     "share/tachyon/hooks/ndm/fs.d/100-tachyon.sh": 0o755,
     "share/tachyon/hooks/merlin/firewall-start.snippet": 0o644,
     "share/tachyon/entware-manifest.json": 0o644,
+    "share/tachyon/www/luci-static/bootstrap/cascade.css": 0o644,
+    "share/tachyon/www/luci-static/bootstrap/mobile.css": 0o644,
+    "share/tachyon/www/luci-static/resources/cbi.js": 0o644,
+    "share/tachyon/www/luci-static/resources/luci.js": 0o644,
+    "share/tachyon/www/luci-static/resources/ui.js": 0o644,
+    "share/tachyon/www/luci-static/resources/form.js": 0o644,
+    "share/tachyon/www/luci-static/resources/uci.js": 0o644,
+    "share/tachyon/www/luci-static/resources/rpc.js": 0o644,
+    "share/tachyon/www/luci-static/resources/fs.js": 0o644,
+    "share/tachyon/www/luci-static/resources/network.js": 0o644,
+    "share/tachyon/www/luci-static/resources/tools/widgets.js": 0o644,
     "share/tachyon/www/luci-static/resources/view/tachyon/app.js": 0o644,
     "share/tachyon/www/luci-static/resources/view/tachyon/style.css": 0o644,
     "share/tachyon/www/luci-static/resources/view/tachyon/logo.svg": 0o644,
@@ -97,6 +108,14 @@ def check_entware_tarball() -> None:
         env = dict(os.environ)
         env["SOURCE_DATE_EPOCH"] = "1700000000"
 
+        luci_base_dir = os.path.join(REPO_ROOT, "entware", "www", "luci-static")
+        expected_modes = dict(EXPECTED_MODES)
+        for root_dir, _dirs, filenames in os.walk(luci_base_dir):
+            for fname in filenames:
+                full_p = os.path.join(root_dir, fname)
+                rel_p = os.path.relpath(full_p, luci_base_dir).replace(os.sep, "/")
+                expected_modes[f"share/tachyon/www/luci-static/{rel_p}"] = 0o644
+
         for out_path in (out1, out2):
             cmd = [
                 sys.executable,
@@ -109,6 +128,8 @@ def check_entware_tarball() -> None:
                 "v2.0.0-rc.1",
                 "--views-dir",
                 views_dir,
+                "--luci-base-dir",
+                luci_base_dir,
                 "--init",
                 os.path.join(REPO_ROOT, "entware", "S99tachyon"),
                 "--hooks-dir",
@@ -136,13 +157,13 @@ def check_entware_tarball() -> None:
             "Non-asset .map file must not be packaged"
         )
 
-        for expected_path, expected_mode in EXPECTED_MODES.items():
+        for expected_path, expected_mode in expected_modes.items():
             assert expected_path in archived_files, f"Missing archived file: {expected_path}"
             actual_mode, data = archived_files[expected_path]
             assert actual_mode == expected_mode, (
                 f"Wrong mode for {expected_path}: got {oct(actual_mode)}, expected {oct(expected_mode)}"
             )
-            if expected_path != "bin/tachyon":
+            if expected_path != "bin/tachyon" and not expected_path.endswith((".png", ".gif", ".woff2")):
                 assert b"\r\n" not in data, f"CRLF found inside archived text file {expected_path}"
 
         manifest_raw = archived_files["share/tachyon/entware-manifest.json"][1]
@@ -151,7 +172,7 @@ def check_entware_tarball() -> None:
         assert manifest["version"] == "2.0.0-rc.1"
         assert manifest["arch"] == "mipsel"
         assert manifest["format"] == "entware-tar.gz"
-        assert isinstance(manifest["files"], list) and len(manifest["files"]) == len(EXPECTED_MODES) - 1
+        assert isinstance(manifest["files"], list) and len(manifest["files"]) == len(expected_modes) - 1
 
         manifest_paths = set()
         for entry in manifest["files"]:
@@ -164,7 +185,7 @@ def check_entware_tarball() -> None:
             actual_sha = hashlib.sha256(data).hexdigest()
             assert entry["sha256"] == actual_sha, f"Manifest sha256 mismatch for {path}"
 
-        expected_manifest_paths = set(EXPECTED_MODES.keys()) - {"share/tachyon/entware-manifest.json"}
+        expected_manifest_paths = set(expected_modes.keys()) - {"share/tachyon/entware-manifest.json"}
         assert manifest_paths == expected_manifest_paths, (
             f"Manifest path set mismatch: {manifest_paths ^ expected_manifest_paths}"
         )

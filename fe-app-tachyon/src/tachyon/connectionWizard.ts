@@ -505,6 +505,7 @@ const TACHYON_LIST_CATEGORIES: Array<{
     titleEn: 'Games & Launchers',
     keys: [
       'games_all',
+      'consoles_all',
       'steam',
       'steam_cdn',
       'cs2_dota2',
@@ -518,6 +519,8 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'xbox',
       'playstation',
       'nintendo',
+      'handheld_consoles',
+      'console_homebrew',
       'meta_quest',
       'gog',
       'wargaming',
@@ -564,6 +567,7 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'cloud_gaming_remote',
       'smarthome_iot',
       'smarttv_apps',
+      'tv_boxes',
       'smart_cars',
       'doh_dot_dns',
       'hodca',
@@ -621,6 +625,13 @@ const DIRECT_BYPASS_PRESETS: Array<{
     key: 'steam_cdn',
     labelRu: 'Steam CDN (только серверы скачивания игр в обход VPN)',
     labelEn: 'Steam CDN (game download servers only, direct bypass)',
+  },
+  {
+    key: 'consoles_cdn',
+    labelRu:
+      'CDN приставок (скачивание игр Xbox, PSN, Nintendo, Quest, SteamOS напрямую)',
+    labelEn:
+      'Consoles CDN (Xbox, PSN, Nintendo, Quest, SteamOS game downloads direct)',
   },
   {
     key: 'cs2_dota2',

@@ -1598,7 +1598,7 @@ fn assemble_doctor_report_with_platform(
             .into_iter()
             .any(|dir| dir.join("tachyon.conf").exists());
         let dnsmasq_running = sys_info::find_running_process_by_name("dnsmasq").is_some();
-        live.dns_healthy && dropin_present && dnsmasq_running
+        dropin_present && dnsmasq_running
     };
     if !dnsmasq_cascade_ok && !cfg!(windows) && !is_entware {
         findings.push(DoctorFinding {
@@ -6629,12 +6629,15 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
     } else {
         d.settings.fakeip_inet6_range.trim().to_string()
     };
-    let dns_port_open = tokio::time::timeout(
-        Duration::from_millis(600),
-        TcpStream::connect("127.0.0.42:53"),
-    )
-    .await
-    .is_ok();
+    let dns_probe_addr = local_dns_probe_addr(&d.settings);
+    let dns_port_open = matches!(
+        tokio::time::timeout(
+            Duration::from_millis(600),
+            TcpStream::connect(dns_probe_addr),
+        )
+        .await,
+        Ok(Ok(_))
+    );
 
     let engine_leak = if let Some(c) = core {
         c.clash_request("POST", "/tachyon/leak", Some("{}"))
@@ -7022,16 +7025,34 @@ pub(crate) fn build_dns_query_packet(domain: &str, qtype: u16) -> Option<Vec<u8>
     Some(pkt)
 }
 
-async fn send_dns_probe(qtype_low: u8) -> Option<Vec<u8>> {
+pub(crate) fn local_dns_probe_addr(
+    settings: &crate::store::GlobalSettings,
+) -> std::net::SocketAddr {
+    if crate::platform::detect_platform().is_entware() {
+        let port = if settings
+            .entware_dns_mode
+            .trim()
+            .eq_ignore_ascii_case("override")
+        {
+            53
+        } else if settings.entware_dns_port > 0 {
+            settings.entware_dns_port
+        } else {
+            1053
+        };
+        std::net::SocketAddr::from(([127, 0, 0, 1], port))
+    } else {
+        std::net::SocketAddr::from(([127, 0, 0, 42], 53))
+    }
+}
+
+async fn send_dns_probe(addr: std::net::SocketAddr, qtype_low: u8) -> Option<Vec<u8>> {
     let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.ok()?;
     let query = build_dns_query_packet("probe.example.com", u16::from(qtype_low))?;
-    tokio::time::timeout(
-        Duration::from_millis(800),
-        sock.send_to(&query, "127.0.0.42:53"),
-    )
-    .await
-    .ok()?
-    .ok()?;
+    tokio::time::timeout(Duration::from_millis(800), sock.send_to(&query, addr))
+        .await
+        .ok()?
+        .ok()?;
     let mut resp = [0u8; 512];
     let (n, _) = tokio::time::timeout(Duration::from_millis(800), sock.recv_from(&mut resp))
         .await
@@ -7040,9 +7061,11 @@ async fn send_dns_probe(qtype_low: u8) -> Option<Vec<u8>> {
     Some(resp[..n].to_vec())
 }
 
-/// Probe the local FakeIP DNS listener (`127.0.0.42:53`) with A and AAAA queries
-/// against configured FakeIP ranges. Returns `(v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed_noerror)`.
-pub async fn probe_local_fakeip_dns_with(
+/// Probe the local FakeIP DNS listener (`127.0.0.42:53` on OpenWrt or `127.0.0.1:<port>` on Entware)
+/// with A and AAAA queries against configured FakeIP ranges.
+/// Returns `(v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed_noerror)`.
+pub async fn probe_local_fakeip_dns_at(
+    dns_addr: std::net::SocketAddr,
     expected_v4_cidr: &str,
     expected_v6_cidr: &str,
     ipv6_active: bool,
@@ -7058,14 +7081,14 @@ pub async fn probe_local_fakeip_dns_with(
         expected_v6_cidr.trim()
     };
 
-    let (v4_ok, v4_ip) = if let Some(resp) = send_dns_probe(0x01).await {
+    let (v4_ok, v4_ip) = if let Some(resp) = send_dns_probe(dns_addr, 0x01).await {
         let (ok, ip, _) = parse_dns_fakeip_response(&resp, v4_cidr, v6_cidr);
         (ok, ip)
     } else {
         (false, String::new())
     };
 
-    let (v6_ok, v6_ip, aaaa_suppressed) = if let Some(resp) = send_dns_probe(0x1c).await {
+    let (v6_ok, v6_ip, aaaa_suppressed) = if let Some(resp) = send_dns_probe(dns_addr, 0x1c).await {
         let (ok, ip, rcode) = parse_dns_fakeip_response(&resp, v4_cidr, v6_cidr);
         let suppressed = !ipv6_active && rcode == 0 && ip.is_empty();
         (ipv6_active && ok, ip, suppressed)
@@ -7074,6 +7097,22 @@ pub async fn probe_local_fakeip_dns_with(
     };
 
     (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed)
+}
+
+/// Probe the default OpenWrt FakeIP DNS listener (`127.0.0.42:53`) with A and AAAA queries
+/// against configured FakeIP ranges. Returns `(v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed_noerror)`.
+pub async fn probe_local_fakeip_dns_with(
+    expected_v4_cidr: &str,
+    expected_v6_cidr: &str,
+    ipv6_active: bool,
+) -> (bool, String, bool, String, bool) {
+    probe_local_fakeip_dns_at(
+        std::net::SocketAddr::from(([127, 0, 0, 42], 53)),
+        expected_v4_cidr,
+        expected_v6_cidr,
+        ipv6_active,
+    )
+    .await
 }
 
 fn resolve_check_proxy_inbound_url(cfg_path: &str) -> Option<String> {
@@ -7512,7 +7551,8 @@ pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
         .unwrap_or_default();
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
     if via_proxy {
-        let (v4_ok, _dns_ip, v6_ok, v6_ip, aaaa_suppressed) = probe_local_fakeip_dns_with(
+        let (v4_ok, _dns_ip, v6_ok, v6_ip, aaaa_suppressed) = probe_local_fakeip_dns_at(
+            local_dns_probe_addr(&d.settings),
             &d.settings.fakeip_inet4_range,
             &d.settings.fakeip_inet6_range,
             ipv6_state.is_active(),

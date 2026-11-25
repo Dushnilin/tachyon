@@ -16,6 +16,8 @@ import time
 
 
 VIEW_EXTENSIONS = (".js", ".css", ".svg", ".json")
+LUCI_BASE_EXTENSIONS = (".js", ".css", ".svg", ".png", ".gif", ".woff2", ".json")
+LUCI_TEXT_EXTENSIONS = (".js", ".css", ".svg", ".json")
 
 HOOK_SPECS = (
     ("ndm/netfilter.d/100-tachyon.sh", "share/tachyon/hooks/ndm/netfilter.d/100-tachyon.sh", 0o755),
@@ -75,6 +77,30 @@ def _collect_view_assets(views_dir: str) -> list[tuple[str, bytes]]:
     return sorted(assets, key=lambda item: item[0])
 
 
+def _collect_luci_base_assets(luci_base_dir: str | None) -> list[tuple[str, bytes]]:
+    assets: list[tuple[str, bytes]] = []
+    if not luci_base_dir or not os.path.isdir(luci_base_dir):
+        return assets
+    for root, dirs, files in os.walk(luci_base_dir):
+        dirs.sort()
+        for entry in sorted(files):
+            lower = entry.lower()
+            if not lower.endswith(LUCI_BASE_EXTENSIONS):
+                continue
+            full = os.path.join(root, entry)
+            if not os.path.isfile(full):
+                continue
+            rel = os.path.relpath(full, luci_base_dir).replace(os.sep, "/")
+            if rel.startswith("resources/view/tachyon/"):
+                continue
+            with open(full, "rb") as f:
+                raw = f.read()
+            if lower.endswith(LUCI_TEXT_EXTENSIONS):
+                raw = raw.replace(b"\r\n", b"\n")
+            assets.append((rel, raw))
+    return sorted(assets, key=lambda item: item[0])
+
+
 def _collect_parent_dirs(paths: list[str]) -> list[str]:
     dirs: set[str] = set()
     for path in paths:
@@ -95,6 +121,7 @@ def build_entware_tarball(
     hooks_dir: str,
     out_tgz: str,
     mtime: int | None = None,
+    luci_base_dir: str | None = None,
 ) -> dict:
     ver_clean = version.lstrip("vV")
     if mtime is None:
@@ -117,6 +144,10 @@ def build_entware_tarball(
         with open(src_full, "rb") as f:
             hook_bytes = f.read().replace(b"\r\n", b"\n")
         files.append((dst_rel, hook_bytes, mode))
+
+    for rel_name, content in _collect_luci_base_assets(luci_base_dir):
+        dst_rel = f"share/tachyon/www/luci-static/{rel_name}"
+        files.append((dst_rel, content, 0o644))
 
     for rel_name, content in _collect_view_assets(views_dir):
         dst_rel = f"share/tachyon/www/luci-static/resources/view/tachyon/{rel_name}"
@@ -172,6 +203,11 @@ def main() -> None:
         default="luci-app-tachyon/htdocs/luci-static/resources/view/tachyon",
         help="Path to compiled web UI assets directory",
     )
+    ap.add_argument(
+        "--luci-base-dir",
+        default="entware/www/luci-static",
+        help="Path to standalone LuCI base runtime static assets directory",
+    )
     ap.add_argument("--init", default="entware/S99tachyon", help="Path to Entware init script")
     ap.add_argument("--hooks-dir", default="entware", help="Root directory containing ndm/ and merlin/ hooks")
     ap.add_argument("--out-tgz", required=True, help="Output .tar.gz path")
@@ -185,6 +221,7 @@ def main() -> None:
         init_path=args.init,
         hooks_dir=args.hooks_dir,
         out_tgz=args.out_tgz,
+        luci_base_dir=args.luci_base_dir,
     )
     print(f"Built {args.out_tgz} ({os.path.getsize(args.out_tgz)} bytes)")
 

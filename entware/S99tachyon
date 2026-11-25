@@ -71,6 +71,24 @@ _check_runtime_tmpfs() {
     return 0
 }
 
+_load_kmod_quiet() {
+    _mod="$1"
+    if command -v modprobe >/dev/null 2>&1 && modprobe "$_mod" >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v insmod >/dev/null 2>&1; then
+        _kver="$(uname -r 2>/dev/null || true)"
+        for _base in "/lib/modules/${_kver}" "/lib/modules"; do
+            [ -n "$_base" ] && [ -d "$_base" ] || continue
+            _ko="$(find "$_base" -name "${_mod}.ko*" 2>/dev/null | head -n 1)"
+            if [ -n "$_ko" ] && insmod "$_ko" >/dev/null 2>&1; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
 _prepare_kernel() {
     if [ ! -d /dev/net ]; then
         mkdir -p /dev/net 2>/dev/null || true
@@ -79,11 +97,9 @@ _prepare_kernel() {
         mknod /dev/net/tun c 10 200 2>/dev/null || true
         chmod 666 /dev/net/tun 2>/dev/null || true
     fi
-    if command -v modprobe >/dev/null 2>&1; then
-        for _mod in tun xt_TPROXY xt_socket xt_mark; do
-            modprobe "$_mod" >/dev/null 2>&1 || true
-        done
-    fi
+    for _mod in tun ip_set ip_set_hash_net ip_set_hash_mac xt_set xt_TPROXY xt_socket xt_mark; do
+        _load_kmod_quiet "$_mod" || true
+    done
 }
 
 _has_default_route() {
@@ -202,14 +218,27 @@ do_start() {
 }
 
 do_stop() {
+    _subcmd="stop"
+    if [ "${TACHYON_CLEAN_SHUTDOWN:-0}" = "1" ]; then
+        _subcmd="stop-shutdown"
+    fi
     _to="$(_timeout_prefix)"
     if [ -x "$PROG" ]; then
         if [ -n "$_to" ]; then
             # shellcheck disable=SC2086
-            $_to "$PROG" stop >/dev/null 2>&1 || true
+            $_to "$PROG" "$_subcmd" >/dev/null 2>&1 || true
         else
-            "$PROG" stop >/dev/null 2>&1 || true
+            "$PROG" "$_subcmd" >/dev/null 2>&1 || true
         fi
+    fi
+    if [ "${TACHYON_CLEAN_SHUTDOWN:-0}" = "1" ]; then
+        for _ipt in iptables ip6tables; do
+            command -v "$_ipt" >/dev/null 2>&1 || continue
+            while "$_ipt" -w 2 -D INPUT -j TACHYON_KILLSWITCH >/dev/null 2>&1; do :; done
+            while "$_ipt" -w 2 -D FORWARD -j TACHYON_KILLSWITCH >/dev/null 2>&1; do :; done
+            "$_ipt" -w 2 -F TACHYON_KILLSWITCH >/dev/null 2>&1 || true
+            "$_ipt" -w 2 -X TACHYON_KILLSWITCH >/dev/null 2>&1 || true
+        done
     fi
 
     _p="$(_read_pid 2>/dev/null || true)"

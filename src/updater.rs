@@ -4890,10 +4890,21 @@ arch mipsel-3.4_kn 20
         let root = base.join("opt");
         std::fs::create_dir_all(stage.join("share/tachyon/www/luci-static/resources/view/tachyon"))
             .unwrap();
+        std::fs::create_dir_all(stage.join("share/tachyon/www/luci-static/bootstrap")).unwrap();
         std::fs::create_dir_all(stage.join("etc/init.d")).unwrap();
         std::fs::write(
             stage.join("share/tachyon/www/luci-static/resources/view/tachyon/main.js"),
             b"console.log('tachyon');",
+        )
+        .unwrap();
+        std::fs::write(
+            stage.join("share/tachyon/www/luci-static/resources/luci.js"),
+            b"window.LuCI = function(){};",
+        )
+        .unwrap();
+        std::fs::write(
+            stage.join("share/tachyon/www/luci-static/bootstrap/cascade.css"),
+            b"body { color: #111; }",
         )
         .unwrap();
         std::fs::write(stage.join("etc/init.d/S99tachyon"), b"#!/bin/sh\nexit 0\n").unwrap();
@@ -4906,11 +4917,23 @@ arch mipsel-3.4_kn 20
         );
 
         let first = sync_staged_entware_assets(&stage, &paths);
-        assert_eq!(first, 2);
+        assert_eq!(first, 4);
         assert!(
             paths
                 .share_dir
                 .join("www/luci-static/resources/view/tachyon/main.js")
+                .is_file()
+        );
+        assert!(
+            paths
+                .share_dir
+                .join("www/luci-static/resources/luci.js")
+                .is_file()
+        );
+        assert!(
+            paths
+                .share_dir
+                .join("www/luci-static/bootstrap/cascade.css")
                 .is_file()
         );
         assert!(paths.init_script.is_file());
