@@ -561,6 +561,61 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     };
   }
 
+  const origAddModalOptions = Object.prototype.hasOwnProperty.call(
+    sectionRef,
+    'addModalOptions',
+  )
+    ? sectionRef.addModalOptions
+    : null;
+  sectionRef.addModalOptions = function (modalSection, section_id, ev) {
+    if (modalSection) {
+      const origLoadChildren = modalSection.loadChildren;
+      if (typeof origLoadChildren === 'function') {
+        modalSection.loadChildren = function (...args) {
+          const tasks = [];
+          if (Array.isArray(this.children)) {
+            for (let i = 0; i < this.children.length; i += 1) {
+              const child = this.children[i];
+              if (!child || child.disable) continue;
+              tasks.push(
+                Promise.resolve(child.load(...args)).catch((loadErr) => {
+                  console.warn(
+                    '[tachyon] option load fallback for ' +
+                      (child.option || i) +
+                      ':',
+                    loadErr,
+                  );
+                  return typeof child.cfgvalue === 'function'
+                    ? child.cfgvalue(args[0])
+                    : null;
+                }),
+              );
+            }
+          }
+          return Promise.all(tasks);
+        };
+      }
+
+      const modalMap = modalSection.map;
+      if (modalMap && typeof modalMap.load === 'function') {
+        const origMapLoad = modalMap.load;
+        modalMap.load = function () {
+          return origMapLoad.call(this).catch((mapErr) => {
+            console.warn('[tachyon] modal map load fallback:', mapErr);
+            return typeof this.loadChildren === 'function'
+              ? this.loadChildren()
+              : Promise.resolve();
+          });
+        };
+      }
+    }
+
+    if (origAddModalOptions) {
+      return origAddModalOptions.apply(this, arguments);
+    }
+    return form.GridSection.prototype.addModalOptions.apply(this, arguments);
+  };
+
   const origMoreModal = Object.prototype.hasOwnProperty.call(
     sectionRef,
     'renderMoreOptionsModal',

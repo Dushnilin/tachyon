@@ -3891,14 +3891,20 @@ function refreshNetworkInterfaceOptionValues(option) {
 
 const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
   load(section_id) {
-    return network.getDevices().then(
-      L.bind(function (devices) {
-        this.devices = devices || [];
-        refreshNetworkInterfaceOptionValues(this);
+    return Promise.resolve(
+      network && typeof network.getDevices === 'function'
+        ? network.getDevices().catch(() => [])
+        : [],
+    )
+      .then(
+        L.bind(function (devices) {
+          this.devices = devices || [];
+          refreshNetworkInterfaceOptionValues(this);
 
-        return this.super('load', section_id);
-      }, this),
-    );
+          return this.super('load', section_id);
+        }, this),
+      )
+      .catch(() => this.super('load', section_id));
   },
 
   renderWidget(section_id, option_index, cfgvalue) {
