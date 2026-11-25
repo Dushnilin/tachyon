@@ -2189,8 +2189,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     };
   }
 
-  const subCacheByUrl = new Map<string, SubCacheEntryInfo>();
-  const subCacheBySid = new Map<string, SubCacheEntryInfo>();
+  let subCacheByUrl = new Map<string, SubCacheEntryInfo>();
+  let subCacheBySid = new Map<string, SubCacheEntryInfo>();
+  let subCacheLoadSequence = 0;
   const expandedSourceIds = new Set<string>();
   const updatingSubTargets = new Set<string>();
 
@@ -2221,7 +2222,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       .catch(() => '');
   };
 
-  const populateSubCacheFromSectionCaches = (): Promise<void> => {
+  const populateSubCacheFromSectionCaches = (
+    cacheByUrl: Map<string, SubCacheEntryInfo>,
+    cacheBySid: Map<string, SubCacheEntryInfo>,
+  ): Promise<void> => {
     const subSources = (
       uci.sections(UCI_PACKAGE, 'outbound_source') || []
     ).filter((s: any) => {
@@ -2300,7 +2304,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           const subUrl = subUrls[0] || '';
           const existingByUrl =
             srcStype === 'subscription' && subUrl
-              ? subCacheByUrl.get(subUrl)
+              ? cacheByUrl.get(subUrl)
               : undefined;
           const alreadyHasServers = (existingByUrl?.servers.length || 0) > 0;
           const prefix =
@@ -2515,17 +2519,17 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 ),
               };
             }
-            subCacheBySid.set(sid, existingByUrl);
+            cacheBySid.set(sid, existingByUrl);
             return;
           }
 
           const servers = Array.from(serverMap.values());
-          const prevSid = subCacheBySid.get(sid);
+          const prevSid = cacheBySid.get(sid);
           const mergedServers =
             servers.length > 0 ? servers : prevSid?.servers || [];
           if (mergedServers.length > 0 || foundMeta) {
             const existingMtime = Math.max(
-              (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
+              (subUrl ? cacheByUrl.get(subUrl)?.mtime : 0) || 0,
               prevSid?.mtime || 0,
               foundUpdatedAt,
             );
@@ -2535,9 +2539,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               servers: mergedServers,
               metadata: mergedMeta,
             };
-            subCacheBySid.set(sid, entry);
-            if (subUrl && !subCacheByUrl.has(subUrl)) {
-              subCacheByUrl.set(subUrl, entry);
+            cacheBySid.set(sid, entry);
+            if (subUrl && !cacheByUrl.has(subUrl)) {
+              cacheByUrl.set(subUrl, entry);
             }
           }
         });
@@ -2552,6 +2556,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     ) {
       return Promise.resolve();
     }
+    const loadSequence = ++subCacheLoadSequence;
+    const cacheByUrl = new Map<string, SubCacheEntryInfo>();
+    const cacheBySid = new Map<string, SubCacheEntryInfo>();
     const dir = '/etc/tachyon/subscription-cache';
     const runtimeDir = '/tmp/tachyon-core/subscriptions';
     const tsDir = '/var/run/tachyon/subscription-update';
@@ -2780,20 +2787,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   metadata: parsedMeta,
                 };
                 if (inf.url) {
-                  subCacheByUrl.set(inf.url, entry);
+                  cacheByUrl.set(inf.url, entry);
                 }
                 const poolMatch = inf.base.match(
                   /^Pool_(.+)-subscription-\d+$/,
                 );
                 if (poolMatch && poolMatch[1]) {
-                  subCacheBySid.set(poolMatch[1], entry);
+                  cacheBySid.set(poolMatch[1], entry);
                 }
               }),
             ),
           );
         });
       })
-      .then(() => populateSubCacheFromSectionCaches())
+      .then(() => populateSubCacheFromSectionCaches(cacheByUrl, cacheBySid))
       .then(async () => {
         if (typeof fs === 'undefined') return;
         const fptnSources = (
@@ -2851,6 +2858,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         }
       })
       .then(() => {
+        if (loadSequence !== subCacheLoadSequence) return;
+        subCacheByUrl = cacheByUrl;
+        subCacheBySid = cacheBySid;
         renderDeck();
       })
       .catch(() => {});
