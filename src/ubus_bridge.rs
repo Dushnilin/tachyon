@@ -3674,17 +3674,11 @@ async fn try_fast_diag_and_ruleset(
         }
         "doctor" => Some(Box::pin(handle_fast_diag_doctor(rest, state, core)).await),
         "route_explain" => {
-            let client_ip = rest.first().map(String::as_str).unwrap_or("192.168.1.100");
-            let target = rest.get(1).map(String::as_str).unwrap_or("www.youtube.com");
-            let port = rest
-                .get(2)
-                .and_then(|p| p.parse::<u16>().ok())
-                .unwrap_or(443);
-            let proto = rest.get(3).map(String::as_str).unwrap_or("tcp");
-            let nft_active = crate::net_stack::check_nft_table_active().await;
+            let (client_ip, target, port, proto) =
+                parse_route_explain_cli_args("route_explain", rest);
             let d = Box::new(state.data.read().await.clone());
-            let val = Box::pin(crate::diagnostics::build_route_trace_json_async(
-                &d, client_ip, target, "", port, proto, nft_active,
+            let val = Box::pin(crate::diagnostics::explain_route_with_engine(
+                core, &d, &client_ip, &target, port, &proto,
             ))
             .await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
@@ -10886,6 +10880,80 @@ async fn execute_cli_part_dns_fuzzer(
     Some((0, format!("{s}\n"), String::new()))
 }
 
+fn parse_route_explain_cli_args(method: &str, rest: &[String]) -> (String, String, u16, String) {
+    let mut domain = String::new();
+    let mut dest_ip = String::new();
+    let mut source_ip = String::new();
+    let mut port = 443u16;
+    let mut protocol = "tcp".to_string();
+    if method == "route_explain" && !rest.is_empty() && !rest[0].starts_with('-') {
+        source_ip = rest.first().cloned().unwrap_or_default();
+        domain = rest.get(1).cloned().unwrap_or_default();
+        port = rest
+            .get(2)
+            .and_then(|p| p.parse::<u16>().ok())
+            .filter(|&p| p > 0)
+            .unwrap_or(443);
+        protocol = rest
+            .get(3)
+            .filter(|p| !p.starts_with('-'))
+            .cloned()
+            .unwrap_or_else(|| "tcp".to_string());
+    } else {
+        let mut idx = 0usize;
+        while idx < rest.len() {
+            match rest[idx].as_str() {
+                "--domain" => {
+                    domain = rest.get(idx + 1).cloned().unwrap_or_default();
+                    idx += 2;
+                }
+                "--dest-ip" | "--ip" => {
+                    dest_ip = rest.get(idx + 1).cloned().unwrap_or_default();
+                    idx += 2;
+                }
+                "--source-ip" | "--src-ip" => {
+                    source_ip = rest.get(idx + 1).cloned().unwrap_or_default();
+                    idx += 2;
+                }
+                "--port" | "--dport" => {
+                    port = rest
+                        .get(idx + 1)
+                        .and_then(|p| p.parse::<u16>().ok())
+                        .filter(|&p| p > 0)
+                        .unwrap_or(443);
+                    idx += 2;
+                }
+                "--protocol" | "--proto" => {
+                    protocol = rest
+                        .get(idx + 1)
+                        .cloned()
+                        .unwrap_or_else(|| "tcp".to_string());
+                    idx += 2;
+                }
+                other => {
+                    if domain.is_empty() && !other.starts_with('-') {
+                        domain = other.to_string();
+                    }
+                    idx += 1;
+                }
+            }
+        }
+    }
+    let target = if !domain.trim().is_empty() {
+        domain.trim().to_string()
+    } else if !dest_ip.trim().is_empty() {
+        dest_ip.trim().to_string()
+    } else {
+        "example.com".to_string()
+    };
+    let client_ip = if source_ip.trim().is_empty() || source_ip.trim() == "0.0.0.0" {
+        "192.168.1.100".to_string()
+    } else {
+        source_ip.trim().to_string()
+    };
+    (client_ip, target, port, protocol)
+}
+
 async fn execute_cli_part_routes_state(
     method: &str,
     rest: &[String],
@@ -10896,79 +10964,20 @@ async fn execute_cli_part_routes_state(
 ) -> CliExecOutput {
     let out_val = match method {
         "trace_rules" | "route_explain" => {
-            let mut domain = String::new();
-            let mut dest_ip = String::new();
-            let mut source_ip = String::new();
-            let mut port = 443u16;
-            let mut protocol = "tcp".to_string();
-            if method == "route_explain" && !rest.is_empty() && !rest[0].starts_with('-') {
-                source_ip = rest.first().cloned().unwrap_or_default();
-                domain = rest.get(1).cloned().unwrap_or_default();
-                port = rest
-                    .get(2)
-                    .and_then(|p| p.parse::<u16>().ok())
-                    .unwrap_or(443);
-                protocol = rest
-                    .get(3)
-                    .filter(|p| !p.starts_with('-'))
-                    .cloned()
-                    .unwrap_or_else(|| "tcp".to_string());
+            if method == "trace_rules"
+                && let Some(first) = rest.first().map(String::as_str)
+                && first.trim_start().starts_with('{')
+                && let Ok(payload) = serde_json::from_str::<Value>(first)
+            {
+                crate::diagnostics::trace_rules_two_mode(d, &payload)
             } else {
-                let mut idx = 0usize;
-                while idx < rest.len() {
-                    match rest[idx].as_str() {
-                        "--domain" => {
-                            domain = rest.get(idx + 1).cloned().unwrap_or_default();
-                            idx += 2;
-                        }
-                        "--dest-ip" | "--ip" => {
-                            dest_ip = rest.get(idx + 1).cloned().unwrap_or_default();
-                            idx += 2;
-                        }
-                        "--source-ip" | "--src-ip" => {
-                            source_ip = rest.get(idx + 1).cloned().unwrap_or_default();
-                            idx += 2;
-                        }
-                        "--port" | "--dport" => {
-                            port = rest
-                                .get(idx + 1)
-                                .and_then(|p| p.parse::<u16>().ok())
-                                .unwrap_or(443);
-                            idx += 2;
-                        }
-                        "--protocol" | "--proto" => {
-                            protocol = rest
-                                .get(idx + 1)
-                                .cloned()
-                                .unwrap_or_else(|| "tcp".to_string());
-                            idx += 2;
-                        }
-                        other => {
-                            if domain.is_empty() && !other.starts_with('-') {
-                                domain = other.to_string();
-                            }
-                            idx += 1;
-                        }
-                    }
-                }
+                let (client_ip, target, port, protocol) =
+                    parse_route_explain_cli_args(method, rest);
+                Box::pin(crate::diagnostics::explain_route_with_engine(
+                    core, d, &client_ip, &target, port, &protocol,
+                ))
+                .await
             }
-            let target = if !domain.is_empty() {
-                domain.clone()
-            } else if !dest_ip.is_empty() {
-                dest_ip.clone()
-            } else {
-                "example.com".to_string()
-            };
-            let client_ip = if source_ip.is_empty() || source_ip == "0.0.0.0" {
-                "192.168.1.100"
-            } else {
-                source_ip.as_str()
-            };
-            let nft_active = crate::net_stack::check_nft_table_active().await;
-            Box::pin(crate::diagnostics::build_route_trace_json_async(
-                d, client_ip, &domain, &target, port, &protocol, nft_active,
-            ))
-            .await
         }
         "probe_outbound_url" => {
             let first = rest.first().map(|s| s.trim()).unwrap_or("");
@@ -16719,5 +16728,43 @@ tls=TLSv1.3
         assert_eq!(ids2, vec!["bypass_ru", "match_all_proxy"]);
         assert_eq!(store2.settings.entware_dns_mode, "override");
         assert_eq!(store2.settings.entware_dns_port, 1153);
+    }
+
+    #[tokio::test]
+    async fn trace_rules_json_dispatch_uses_two_mode_analyzer() {
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_trace_rules_two_mode_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.sections = vec![crate::store::RoutingSection {
+                id: "bypass_sec".to_string(),
+                enabled: true,
+                label: "Bypass".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "bypass".to_string(),
+                user_domains: vec!["example.ru".to_string()],
+                ..Default::default()
+            }];
+        }
+        let core = CoreManager::new(Arc::clone(&state));
+        let payload = json!({
+            "mode": "exact",
+            "search": "sub.example.ru",
+            "source_ip": "192.168.1.50"
+        })
+        .to_string();
+        let (code, stdout, stderr) =
+            execute_tachyon_cli(&["trace_rules".to_string(), payload], &state, &core).await;
+        assert_eq!(code, 0, "stderr={stderr}");
+        let parsed: Value = serde_json::from_str(stdout.trim()).expect("valid json");
+        assert_eq!(parsed["ok"], true);
+        assert_eq!(parsed["mode"], "exact");
+        assert_eq!(parsed["winning_section"]["id"], "bypass_sec");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -120,5 +120,11 @@ export async function fetchServicesInfo() {
     },
   });
 
+  if (tachyon.success && tachyon.data.platform_info) {
+    (globalThis as Record<string, unknown>).__tachyonIsEntware = Boolean(
+      tachyon.data.platform_info.is_entware,
+    );
+  }
+
   return undefined;
 }

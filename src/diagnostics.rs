@@ -3817,6 +3817,174 @@ fn domain_matches_excluded_token(target_lower: &str, raw_rule: &str) -> bool {
     }
 }
 
+/// Normalize a user-supplied target (`https://example.com:8443/path`, `[2001:4860::8888]:443`, `host:port`)
+/// into `(host_or_ip, effective_port)`.
+pub fn normalize_route_target(raw: &str, default_port: u16) -> (String, u16) {
+    let mut s = raw.trim();
+    if s.is_empty() {
+        return (String::new(), default_port);
+    }
+    for scheme in [
+        "https://",
+        "http://",
+        "wss://",
+        "ws://",
+        "socks5://",
+        "socks://",
+    ] {
+        if s.len() >= scheme.len() && s[..scheme.len()].eq_ignore_ascii_case(scheme) {
+            s = &s[scheme.len()..];
+            break;
+        }
+    }
+    s = s.split(['/', '?', '#']).next().unwrap_or("").trim();
+    if let Some(at_pos) = s.rfind('@') {
+        s = &s[at_pos + 1..];
+    }
+    if let Some(after_open) = s.strip_prefix('[')
+        && let Some(close_idx) = after_open.find(']')
+    {
+        let host = after_open[..close_idx].trim();
+        let rest = after_open[close_idx + 1..].trim();
+        let port = rest
+            .strip_prefix(':')
+            .and_then(|p| p.parse::<u16>().ok())
+            .filter(|&p| p > 0)
+            .unwrap_or(default_port);
+        return (host.to_string(), port);
+    }
+    if s.matches(':').count() == 1
+        && let Some((host, port_str)) = s.split_once(':')
+        && let Ok(p) = port_str.trim().parse::<u16>()
+        && p > 0
+    {
+        return (host.trim().to_string(), p);
+    }
+    (s.trim_matches(['[', ']']).to_string(), default_port)
+}
+
+fn is_private_or_local_target_ip(target: &str, settings: &crate::store::GlobalSettings) -> bool {
+    let Ok(ip) = target.trim().parse::<std::net::IpAddr>() else {
+        return false;
+    };
+    let fakeip_v4 = if settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        settings.fakeip_inet4_range.trim()
+    };
+    let fakeip_v6 = if settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        settings.fakeip_inet6_range.trim()
+    };
+    if crate::store::ip_in_cidr(&ip.to_string(), fakeip_v4)
+        || crate::store::ip_in_cidr(&ip.to_string(), fakeip_v6)
+        || crate::store::ip_in_cidr(&ip.to_string(), "100.64.0.0/10")
+        || crate::store::ip_in_cidr(&ip.to_string(), "fd7a:115c:a1e0::/48")
+    {
+        return false;
+    }
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || v6.is_unicast_link_local()
+                || v6.is_unique_local()
+        }
+    }
+}
+
+fn section_has_inline_route_matchers(sec: &crate::store::RoutingSection) -> bool {
+    !sec.fully_routed_ips.is_empty()
+        || !sec.community_lists.is_empty()
+        || !sec.rule_set_urls.is_empty()
+        || !sec.rule_set_with_subnets.is_empty()
+        || !sec.domain_ip_lists.is_empty()
+        || !sec.domains.is_empty()
+        || !sec.user_domains.is_empty()
+        || !sec.user_subnets.is_empty()
+        || !sec.geoip_codes.is_empty()
+        || !sec.geosite_codes.is_empty()
+        || !sec.ports.is_empty()
+        || !sec.source_ip_cidr.is_empty()
+        || !sec.source_ports.is_empty()
+        || !sec.protocol.is_empty()
+        || !sec.dscp.is_empty()
+}
+
+fn resolve_section_explain_outbound(
+    sec: &crate::store::RoutingSection,
+    store: &RouterStoreData,
+) -> String {
+    if sec.action == "block" || sec.connection_type == "block" {
+        "block".to_string()
+    } else if matches!(sec.action.as_str(), "direct" | "bypass")
+        || matches!(sec.connection_type.as_str(), "direct" | "bypass" | "hosts")
+    {
+        "direct".to_string()
+    } else if !sec.balancer_refs.is_empty() {
+        let bal_id = &sec.balancer_refs[0];
+        if let Some(b) = store.balancers.iter().find(|b| &b.id == bal_id) {
+            format!("bal-{}-{}", sec.id, b.id)
+        } else {
+            format!("bal-{}-{}", sec.id, bal_id)
+        }
+    } else {
+        sec.outbound_source_refs
+            .first()
+            .cloned()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| sec.connection_type.clone())
+    }
+}
+
+fn build_local_lan_route_result(
+    client_ip: &str,
+    target: &str,
+    port: u16,
+    proto_lower: &str,
+    mut steps: Vec<String>,
+    en: bool,
+) -> RouteExplainResult {
+    let reason = if en {
+        format!("Target {target} is a local/private address -> direct LAN bypass")
+    } else {
+        format!("Назначение {target} является локальным/частным адресом -> прямой LAN-маршрут")
+    };
+    steps.push(format!("3. {reason}"));
+    let sec_label = if en {
+        "Local Network (LAN)".to_string()
+    } else {
+        "Локальная сеть (LAN)".to_string()
+    };
+    RouteExplainResult {
+        client_ip: client_ip.to_string(),
+        target: target.to_string(),
+        port,
+        protocol: proto_lower.to_string(),
+        matched_section_id: "local_lan".to_string(),
+        matched_section_label: sec_label.clone(),
+        matched_section: sec_label,
+        matched_condition_id: "local_lan".to_string(),
+        matched_reason: reason,
+        resolved_outbound: "direct".to_string(),
+        selected_outbound: "direct".to_string(),
+        dns_strategy: "local".to_string(),
+        connection_type: "local".to_string(),
+        trace_steps: steps.clone(),
+        steps,
+    }
+}
+
 fn explain_route_with_mac_table(
     store: &RouterStoreData,
     client_ip: &str,
@@ -3826,36 +3994,91 @@ fn explain_route_with_mac_table(
     mac_table: &MacIpTable,
 ) -> RouteExplainResult {
     let en = is_en_lang(&store.settings.lang);
-    let target_lower = target.trim().to_ascii_lowercase();
+    let (norm_target, eff_port) = normalize_route_target(target, port);
+    let effective_target = if norm_target.is_empty() {
+        target.trim().to_string()
+    } else {
+        norm_target
+    };
+    let target_lower = effective_target.to_ascii_lowercase();
     let proto_lower = protocol.trim().to_ascii_lowercase();
     let resolved_client_mac = mac_table.resolve_client_mac(client_ip);
+    let is_local_ip = is_private_or_local_target_ip(&effective_target, &store.settings);
     let match_ctx = RouteMatchTarget {
         client_ip,
         client_mac: resolved_client_mac.as_deref(),
         mac_table,
         target_lower: &target_lower,
-        port,
+        port: eff_port,
         proto_lower: &proto_lower,
         en,
     };
+    let dns_label =
+        if crate::platform::is_entware() && store.settings.entware_dns_mode != "override" {
+            format!("0.0.0.0:{}", store.settings.entware_dns_port)
+        } else {
+            "127.0.0.42:53".to_string()
+        };
     let mut steps = vec![
         if en {
-            format!("1. Incoming packet from {client_ip} -> {target}:{port} ({proto_lower})")
+            format!(
+                "1. Incoming packet from {client_ip} -> {effective_target}:{eff_port} ({proto_lower})"
+            )
         } else {
-            format!("1. Входящий пакет от {client_ip} -> {target}:{port} ({proto_lower})")
+            format!(
+                "1. Входящий пакет от {client_ip} -> {effective_target}:{eff_port} ({proto_lower})"
+            )
         },
         if en {
             format!(
-                "2. DNS FakeIP pipeline (127.0.0.42:53, strategy: {})",
+                "2. DNS FakeIP pipeline ({dns_label}, strategy: {})",
                 store.settings.dns_strategy
             )
         } else {
             format!(
-                "2. DNS FakeIP конвейер (127.0.0.42:53, стратегия: {})",
+                "2. DNS FakeIP конвейер ({dns_label}, стратегия: {})",
                 store.settings.dns_strategy
             )
         },
     ];
+
+    if store
+        .settings
+        .excluded_ips
+        .iter()
+        .any(|ip| client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table))
+    {
+        let reason = if en {
+            format!("Client {client_ip} is listed in global excluded_ips -> direct")
+        } else {
+            format!(
+                "Клиент {client_ip} входит в глобальные исключения (excluded_ips) -> прямой маршрут"
+            )
+        };
+        steps.push(format!("3. {reason}"));
+        let sec_label = if en {
+            "Global Client Exclusion (Direct)".to_string()
+        } else {
+            "Глобальное исключение клиента (Direct)".to_string()
+        };
+        return RouteExplainResult {
+            client_ip: client_ip.to_string(),
+            target: effective_target,
+            port: eff_port,
+            protocol: proto_lower,
+            matched_section_id: "excluded_client".to_string(),
+            matched_section_label: sec_label.clone(),
+            matched_section: sec_label,
+            matched_condition_id: "excluded_ips".to_string(),
+            matched_reason: reason,
+            resolved_outbound: "direct".to_string(),
+            selected_outbound: "direct".to_string(),
+            dns_strategy: "system (direct)".to_string(),
+            connection_type: "direct".to_string(),
+            trace_steps: steps.clone(),
+            steps,
+        };
+    }
 
     // Check parental profiles first
     for prof in store.profiles.iter().filter(|p| p.enabled) {
@@ -3880,24 +4103,24 @@ fn explain_route_with_mac_table(
             };
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
-                target: target.to_string(),
-                port,
-                protocol: proto_lower,
-                matched_section_id: prof.id.clone(),
-                matched_section_label: sec_label.clone(),
-                matched_section: sec_label,
-                matched_condition_id: "blocked_domains".to_string(),
-                matched_reason: if en {
-                    format!("Domain '{target}' is blocked by parental profile")
-                } else {
-                    format!("Домен '{}' заблокирован семейным профилем", target)
-                },
                 resolved_outbound: "block".to_string(),
                 selected_outbound: "block".to_string(),
                 dns_strategy: "reject".to_string(),
                 connection_type: "block".to_string(),
                 trace_steps: steps.clone(),
                 steps,
+                target: effective_target.clone(),
+                port: eff_port,
+                protocol: proto_lower,
+                matched_section_id: prof.id.clone(),
+                matched_section_label: sec_label.clone(),
+                matched_section: sec_label,
+                matched_condition_id: "blocked_domains".to_string(),
+                matched_reason: if en {
+                    format!("Domain '{effective_target}' is blocked by parental profile")
+                } else {
+                    format!("Домен '{effective_target}' заблокирован семейным профилем")
+                },
             };
         }
     }
@@ -3906,26 +4129,15 @@ fn explain_route_with_mac_table(
         if sec.action == "dns" || sec.connection_type == "dns" {
             continue;
         }
-        let resolved_out = if sec.action == "block" || sec.connection_type == "block" {
-            "block".to_string()
-        } else if matches!(sec.action.as_str(), "direct" | "bypass")
-            || matches!(sec.connection_type.as_str(), "direct" | "bypass" | "hosts")
-        {
-            "direct".to_string()
-        } else if !sec.balancer_refs.is_empty() {
-            format!("bal-{}-{}", sec.id, sec.balancer_refs[0])
-        } else {
-            sec.outbound_source_refs
-                .first()
-                .cloned()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| sec.connection_type.clone())
-        };
+        let resolved_out = resolve_section_explain_outbound(sec, store);
 
         let is_excluded_client = sec.excluded_ips.iter().any(|ip| {
             client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
         });
-        let is_excluded_port = sec.exclude_ports.iter().any(|p| p == &port.to_string());
+        let is_excluded_port = sec
+            .exclude_ports
+            .iter()
+            .any(|p| p.trim() == eff_port.to_string());
         let is_excluded_domain = sec
             .exclude_domains
             .iter()
@@ -3934,7 +4146,7 @@ fn explain_route_with_mac_table(
             let clean = s.trim();
             !clean.is_empty()
                 && (clean.eq_ignore_ascii_case(&target_lower)
-                    || crate::store::ip_in_cidr(target.trim(), clean))
+                    || crate::store::ip_in_cidr(effective_target.trim(), clean))
         });
         if is_excluded_client || is_excluded_port || is_excluded_domain || is_excluded_subnet {
             continue;
@@ -3954,9 +4166,11 @@ fn explain_route_with_mac_table(
             "system (77.88.8.8)".to_string()
         };
 
-        if sec.fully_routed_ips.iter().any(|ip| {
-            client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
-        }) {
+        if !is_local_ip
+            && sec.fully_routed_ips.iter().any(|ip| {
+                client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
+            })
+        {
             steps.push(if en {
                 format!(
                     "3. Client {client_ip} is in full-routing list of section \"{}\" -> {resolved_out}",
@@ -3970,8 +4184,8 @@ fn explain_route_with_mac_table(
             });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
-                target: target.to_string(),
-                port,
+                target: effective_target,
+                port: eff_port,
                 protocol: proto_lower,
                 matched_section_id: sec.id.clone(),
                 matched_section_label: sec.label.clone(),
@@ -4023,8 +4237,8 @@ fn explain_route_with_mac_table(
                 });
                 return RouteExplainResult {
                     client_ip: client_ip.to_string(),
-                    target: target.to_string(),
-                    port,
+                    target: effective_target,
+                    port: eff_port,
                     protocol: proto_lower,
                     matched_section_id: sec.id.clone(),
                     matched_section_label: sec.label.clone(),
@@ -4038,6 +4252,55 @@ fn explain_route_with_mac_table(
                     trace_steps: steps.clone(),
                     steps,
                 };
+            }
+        }
+
+        // Handle GeoIP exclude_direct before inline matcher evaluation
+        if !sec.geoip_codes.is_empty()
+            && sec.geoip_mode.trim().eq_ignore_ascii_case("exclude_direct")
+            && resolved_out != "direct"
+        {
+            let comm_dirs = default_community_subnet_dirs();
+            for code in &sec.geoip_codes {
+                let code_lc = code.trim().to_ascii_lowercase();
+                if !code_lc.is_empty()
+                    && (check_community_ip_match_in_dirs(&target_lower, &code_lc, &comm_dirs)
+                        || check_community_ip_match_in_dirs(
+                            &target_lower,
+                            &format!("geoip-{code_lc}"),
+                            &comm_dirs,
+                        ))
+                {
+                    let reason = if en {
+                        format!(
+                            "GeoIP exclude_direct ({code}) matched in section \"{}\"",
+                            sec.label
+                        )
+                    } else {
+                        format!(
+                            "GeoIP exclude_direct ({code}) сработал в секции «{}»",
+                            sec.label
+                        )
+                    };
+                    steps.push(format!("3. {reason}"));
+                    return RouteExplainResult {
+                        client_ip: client_ip.to_string(),
+                        target: effective_target,
+                        port: eff_port,
+                        protocol: proto_lower,
+                        matched_section_id: sec.id.clone(),
+                        matched_section_label: sec.label.clone(),
+                        matched_section: sec.label.clone(),
+                        matched_condition_id: format!("geoip-exclude-{code_lc}"),
+                        matched_reason: reason,
+                        resolved_outbound: "direct".to_string(),
+                        selected_outbound: "direct".to_string(),
+                        dns_strategy: "fakeip / realip".to_string(),
+                        connection_type: "direct".to_string(),
+                        trace_steps: steps.clone(),
+                        steps,
+                    };
+                }
             }
         }
 
@@ -4059,15 +4322,19 @@ fn explain_route_with_mac_table(
             community_subnets: sec.community_subnets,
             rule_set: sec.rule_set_urls.clone(),
             rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
+            domain_ip_lists: sec.domain_ip_lists.clone(),
             domains: sec.domains.clone(),
             user_domains: sec.user_domains.clone(),
             exclude_domains: sec.exclude_domains.clone(),
             user_subnets: sec.user_subnets.clone(),
             exclude_subnets: sec.exclude_subnets.clone(),
             geoip_codes: sec.geoip_codes.clone(),
+            geoip_mode: sec.geoip_mode.clone(),
             geosite_codes: sec.geosite_codes.clone(),
             client_ips: sec.source_ip_cidr.clone(),
             ports: sec.ports.clone(),
+            source_ports: sec.source_ports.clone(),
+            dscp: sec.dscp.clone(),
             l4_proto: inline_l4_proto,
             ..Default::default()
         };
@@ -4095,8 +4362,8 @@ fn explain_route_with_mac_table(
             });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
-                target: target.to_string(),
-                port,
+                target: effective_target,
+                port: eff_port,
                 protocol: proto_lower,
                 matched_section_id: sec.id.clone(),
                 matched_section_label: sec.label.clone(),
@@ -4112,15 +4379,32 @@ fn explain_route_with_mac_table(
             };
         }
 
-        if sec.match_all {
+        let is_empty_catch_all =
+            sec.condition_refs.is_empty() && !section_has_inline_route_matchers(sec);
+        if sec.match_all || is_empty_catch_all {
+            if is_local_ip {
+                return build_local_lan_route_result(
+                    client_ip,
+                    &effective_target,
+                    eff_port,
+                    &proto_lower,
+                    steps,
+                    en,
+                );
+            }
+            let cond_id = if sec.match_all {
+                "match_all"
+            } else {
+                "section_catch_all"
+            };
             let reason = if en {
                 format!(
-                    "Section \"{}\" is configured to route all traffic (match_all)",
+                    "Section \"{}\" is configured to route all traffic ({cond_id})",
                     sec.label
                 )
             } else {
                 format!(
-                    "Секция «{}» настроена на перехват всего трафика (match_all)",
+                    "Секция «{}» настроена на перехват всего трафика ({cond_id})",
                     sec.label
                 )
             };
@@ -4138,18 +4422,123 @@ fn explain_route_with_mac_table(
             });
             return RouteExplainResult {
                 client_ip: client_ip.to_string(),
-                target: target.to_string(),
-                port,
+                target: effective_target,
+                port: eff_port,
                 protocol: proto_lower,
                 matched_section_id: sec.id.clone(),
                 matched_section_label: sec.label.clone(),
                 matched_section: sec.label.clone(),
-                matched_condition_id: "match_all".to_string(),
+                matched_condition_id: cond_id.to_string(),
                 matched_reason: reason,
                 resolved_outbound: resolved_out.clone(),
                 selected_outbound: resolved_out,
                 dns_strategy,
                 connection_type: sec.connection_type.clone(),
+                trace_steps: steps.clone(),
+                steps,
+            };
+        }
+    }
+
+    if store
+        .settings
+        .routing_strategy
+        .trim()
+        .eq_ignore_ascii_case("full_tunnel")
+    {
+        if is_local_ip {
+            return build_local_lan_route_result(
+                client_ip,
+                &effective_target,
+                eff_port,
+                &proto_lower,
+                steps,
+                en,
+            );
+        }
+        let def_sec_id = store.settings.default_tunnel_section.trim();
+        let target_sec = store
+            .sections
+            .iter()
+            .find(|s| s.enabled && s.id == def_sec_id)
+            .or_else(|| {
+                store.sections.iter().find(|s| {
+                    s.enabled
+                        && !matches!(s.action.as_str(), "dns" | "direct" | "bypass" | "block")
+                        && !matches!(
+                            s.connection_type.as_str(),
+                            "dns" | "direct" | "bypass" | "hosts" | "block" | "desync"
+                        )
+                })
+            })
+            .or_else(|| {
+                store.sections.iter().find(|s| {
+                    s.enabled
+                        && !matches!(s.action.as_str(), "dns" | "direct" | "bypass" | "block")
+                        && !matches!(
+                            s.connection_type.as_str(),
+                            "dns" | "direct" | "bypass" | "hosts" | "block"
+                        )
+                })
+            });
+        if let Some(sec) = target_sec {
+            let resolved_out = resolve_section_explain_outbound(sec, store);
+            let reason = if en {
+                format!(
+                    "Full Tunnel mode routes remaining traffic via \"{}\"",
+                    sec.label
+                )
+            } else {
+                format!(
+                    "Режим полного туннелирования (Full Tunnel) направляет трафик через «{}»",
+                    sec.label
+                )
+            };
+            steps.push(format!("3. {reason}"));
+            return RouteExplainResult {
+                client_ip: client_ip.to_string(),
+                target: effective_target,
+                port: eff_port,
+                protocol: proto_lower,
+                matched_section_id: sec.id.clone(),
+                matched_section_label: sec.label.clone(),
+                matched_section: sec.label.clone(),
+                matched_condition_id: "full_tunnel".to_string(),
+                matched_reason: reason,
+                resolved_outbound: resolved_out.clone(),
+                selected_outbound: resolved_out,
+                dns_strategy: if store.settings.fakeip_enabled {
+                    "fakeip".to_string()
+                } else {
+                    "system".to_string()
+                },
+                connection_type: sec.connection_type.clone(),
+                trace_steps: steps.clone(),
+                steps,
+            };
+        } else if crate::store::has_fail_closed_section(store)
+            || !store.settings.emergency_direct_bypass
+        {
+            let reason = if en {
+                "Full Tunnel fail-closed reject (no active tunnel outbound)".to_string()
+            } else {
+                "Блокировка Full Tunnel fail-closed (нет активного туннельного узла)".to_string()
+            };
+            steps.push(format!("3. {reason}"));
+            return RouteExplainResult {
+                client_ip: client_ip.to_string(),
+                target: effective_target,
+                port: eff_port,
+                protocol: proto_lower,
+                matched_section_id: "full_tunnel_reject".to_string(),
+                matched_section_label: "Full Tunnel (Reject)".to_string(),
+                matched_section: "Full Tunnel (Reject)".to_string(),
+                matched_condition_id: "full_tunnel_reject".to_string(),
+                matched_reason: reason,
+                resolved_outbound: "block".to_string(),
+                selected_outbound: "block".to_string(),
+                dns_strategy: "reject".to_string(),
+                connection_type: "block".to_string(),
                 trace_steps: steps.clone(),
                 steps,
             };
@@ -4169,8 +4558,8 @@ fn explain_route_with_mac_table(
     };
     RouteExplainResult {
         client_ip: client_ip.to_string(),
-        target: target.to_string(),
-        port,
+        target: effective_target,
+        port: eff_port,
         protocol: proto_lower,
         matched_section_id: "final".to_string(),
         matched_section_label: final_section.to_string(),
@@ -4387,14 +4776,16 @@ fn default_community_subnet_dirs() -> Vec<std::path::PathBuf> {
             }
         }
     }
-    for fallback in [
-        "/tmp/tachyon-core/rulesets",
-        "/etc/tachyon/rulesets",
-        "/usr/share/tachyon/rulesets",
+    let ppaths = crate::platform::paths();
+    for candidate in [
+        PathBuf::from("/tmp/tachyon-core/rulesets"),
+        ppaths.rulesets_dir.clone(),
+        ppaths.share_dir.join("rulesets"),
+        PathBuf::from("/etc/tachyon/rulesets"),
+        PathBuf::from("/usr/share/tachyon/rulesets"),
     ] {
-        let p = std::path::PathBuf::from(fallback);
-        if !dirs.contains(&p) {
-            dirs.push(p);
+        if !dirs.contains(&candidate) {
+            dirs.push(candidate);
         }
     }
     dirs
@@ -4434,6 +4825,7 @@ fn match_condition_community_lists_in_dirs_lang(
         .rule_set
         .iter()
         .chain(cond.rule_set_with_subnets.iter())
+        .chain(cond.domain_ip_lists.iter())
     {
         let clean = rset.trim();
         if crate::config_gen::is_community_list_token(clean) {
@@ -4596,7 +4988,9 @@ fn match_condition_against_target_with_table(
         && cond.ports.is_empty()
         && cond.user_subnets.is_empty()
         && cond.community_lists.is_empty()
+        && cond.rule_set.is_empty()
         && cond.rule_set_with_subnets.is_empty()
+        && cond.domain_ip_lists.is_empty()
         && cond.geosite_codes.is_empty()
     {
         return Some(if ctx.en {
@@ -5114,23 +5508,43 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
         wan6_available,
         mac_table,
     } = *input;
-    let effective_target = if !domain.trim().is_empty() {
+    let raw_target = if !domain.trim().is_empty() {
         domain.trim()
     } else if !target_or_ip.trim().is_empty() {
         target_or_ip.trim()
     } else {
         "example.com"
     };
+    let (norm_target, eff_port) = normalize_route_target(raw_target, port);
+    let effective_target = if norm_target.is_empty() {
+        raw_target
+    } else {
+        norm_target.as_str()
+    };
     let client_mac = mac_table.resolve_client_mac(client_ip);
-    let tr =
-        explain_route_with_mac_table(d, client_ip, effective_target, port, protocol, mac_table);
+    let tr = explain_route_with_mac_table(
+        d,
+        client_ip,
+        effective_target,
+        eff_port,
+        protocol,
+        mac_table,
+    );
     let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, wan6_available);
     let runtime_dns_strategy = crate::store::effective_dns_strategy(&d.settings, ipv6_state);
-    let is_direct = tr.selected_outbound.eq_ignore_ascii_case("direct");
+    let is_local =
+        tr.connection_type.eq_ignore_ascii_case("local") || tr.matched_section_id == "local_lan";
+    let is_excluded_client = tr.matched_section_id == "excluded_client";
+    let is_direct = tr.selected_outbound.eq_ignore_ascii_case("direct") || is_local;
     let is_block = tr.selected_outbound.eq_ignore_ascii_case("block")
         || tr.connection_type.eq_ignore_ascii_case("block");
-    let verdict = if is_block {
+    let is_desync = tr.connection_type.eq_ignore_ascii_case("desync") && !is_direct && !is_block;
+    let verdict = if is_local {
+        "local"
+    } else if is_block {
         "block"
+    } else if is_desync {
+        "desync"
     } else if is_direct {
         "direct"
     } else {
@@ -5149,9 +5563,10 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
         .and_then(|s| s.outbound_source_refs.first())
         .and_then(|ref_id| d.outbound_sources.iter().find(|o| &o.id == ref_id));
     let fallback_src = sec_src.or_else(|| d.outbound_sources.first());
-    let is_desync = tr.connection_type.eq_ignore_ascii_case("desync");
     let srv_addr = if is_desync {
         effective_target
+    } else if is_direct || is_block {
+        ""
     } else {
         fallback_src
             .map(|s| s.server.as_str())
@@ -5160,11 +5575,15 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
     };
     let srv_port = if is_desync {
         tr.port
+    } else if is_direct || is_block {
+        0
     } else {
         fallback_src.map(|s| s.server_port).unwrap_or(443)
     };
     let srv_proto = if is_desync {
         "desync"
+    } else if is_local {
+        "local"
     } else if is_direct {
         "direct"
     } else if is_block {
@@ -5176,46 +5595,118 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
             .unwrap_or(&tr.connection_type)
     };
 
-    let is_tproxy = d.settings.proxy_mode == "tproxy";
-    let intercepted = is_tproxy && nft_active && !is_direct;
-    let nft_action = if d.settings.proxy_mode == "socks" {
+    let fw_kind = crate::platform::firewall_kind();
+    let is_iptables = fw_kind == crate::platform::FirewallKind::Iptables;
+    let proxy_mode = d.settings.proxy_mode.as_str();
+    let is_tproxy = proxy_mode == "tproxy";
+    let is_tun = proxy_mode == "tun";
+    let is_socks = proxy_mode == "socks";
+    let intercepted = !is_socks && nft_active && !is_direct && !is_local && !is_excluded_client;
+    let nft_action = if is_socks {
         "socks"
     } else if !nft_active {
-        "nft_inactive"
+        if is_iptables {
+            "iptables_inactive"
+        } else {
+            "nft_inactive"
+        }
+    } else if is_local || is_excluded_client {
+        "return"
     } else if is_direct {
         "accept"
     } else if is_block {
         "reject"
+    } else if is_tun {
+        "tun"
     } else {
         "tproxy"
     };
     let en = is_en_lang(&d.settings.lang);
-    let nft_details = if d.settings.proxy_mode == "socks" {
+    let fw_stage_name = if is_iptables {
         if en {
-            "SOCKS/Mixed mode active; nftables table is not used"
+            "iptables Interception"
         } else {
-            "Активен режим SOCKS/Mixed; таблица nftables не используется"
+            "Перехват iptables"
+        }
+    } else if en {
+        "nftables Interception"
+    } else {
+        "Перехват nftables"
+    };
+    let fw_table_name = if is_iptables {
+        if is_tun {
+            "iptables (filter/nat)"
+        } else {
+            "iptables (mangle/nat)"
+        }
+    } else {
+        "inet TachyonTable"
+    };
+    let fw_chain_name = if is_iptables {
+        if is_tun {
+            "TACHYON_FORWARD"
+        } else {
+            "TACHYON_PREROUTING"
+        }
+    } else if is_tun {
+        "forward"
+    } else {
+        "prerouting"
+    };
+    let nft_details = if is_socks {
+        if en {
+            "SOCKS/Mixed mode active; packet interception table is not used"
+        } else {
+            "Активен режим SOCKS/Mixed; перехват фаерволом не используется"
         }
     } else if !nft_active {
-        if en {
+        if is_iptables {
+            if en {
+                "iptables chains TACHYON_* are not loaded (traffic goes directly via WAN)"
+            } else {
+                "Цепочки iptables TACHYON_* не загружены (трафик идёт напрямую через WAN)"
+            }
+        } else if en {
             "Table inet TachyonTable is not loaded in kernel (traffic goes directly via WAN)"
         } else {
             "Таблица inet TachyonTable не загружена в ядро (трафик идёт напрямую через WAN)"
         }
+    } else if is_local {
+        if en {
+            "Local/private IP matched local network bypass"
+        } else {
+            "Локальный/частный IP прошёл напрямую мимо перехвата"
+        }
+    } else if is_excluded_client {
+        if en {
+            "Client is in excluded_ips; packet bypassed interception"
+        } else {
+            "Клиент в excluded_ips; пакет пропущен в обход перехвата"
+        }
     } else if is_direct {
         if en {
-            "Direct/bypass section; packet bypassed TProxy"
+            "Direct/bypass section; packet bypassed proxy interception"
         } else {
-            "Секция direct/bypass; пакет пропущен в обход TProxy"
+            "Секция direct/bypass; пакет направлен напрямую"
+        }
+    } else if is_tun {
+        if en {
+            "Packet routed into TUN interface of tachyon-core"
+        } else {
+            "Пакет направлен в TUN-интерфейс tachyon-core"
         }
     } else if en {
         "Packet redirected to tproxy :1602 with fwmark 0x04000000"
     } else {
         "Пакет направлен в tproxy :1602 с меткой 0x04000000"
     };
-    let is_ip_target = tr.target.chars().all(|c| c.is_ascii_digit() || c == '.');
-    let inbound_tag = if d.settings.proxy_mode == "socks" {
+
+    let is_ip_target = tr.target.parse::<std::net::IpAddr>().is_ok();
+    let is_private_target = is_private_or_local_target_ip(&tr.target, &d.settings);
+    let inbound_tag = if is_socks {
         "mixed-in"
+    } else if is_tun {
+        "tun-in"
     } else {
         "tproxy-in"
     };
@@ -5223,6 +5714,111 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
         "198.18.0.0/15"
     } else {
         d.settings.fakeip_inet4_range.trim()
+    };
+    let dns_stage_fakeip = d.settings.fakeip_enabled
+        && !is_direct
+        && !is_local
+        && !is_excluded_client
+        && !is_ip_target;
+    let dns_stage_mode = if is_local {
+        "local"
+    } else if is_direct || is_excluded_client {
+        "realip"
+    } else if d.settings.fakeip_enabled {
+        "fakeip"
+    } else {
+        "realip"
+    };
+    let dns_resolver_label =
+        if crate::platform::is_entware() && d.settings.entware_dns_mode != "override" {
+            format!(
+                "{} (0.0.0.0:{})",
+                d.settings.dns_type, d.settings.entware_dns_port
+            )
+        } else {
+            d.settings.dns_type.clone()
+        };
+    let dns_stage_details = if is_local {
+        if en {
+            "Local destination does not require remote DNS resolution".to_string()
+        } else {
+            "Локальное назначение не требует удалённого DNS-резолва".to_string()
+        }
+    } else if dns_stage_fakeip {
+        if en {
+            format!("Domain matched through FakeIP table ({fakeip_range_trace})")
+        } else {
+            format!("Домен сопоставлен через таблицу FakeIP ({fakeip_range_trace})")
+        }
+    } else if d.settings.fakeip_enabled && (is_direct || is_excluded_client) {
+        if en {
+            "Bypass/direct route uses real IP resolution (BypassRealIp)".to_string()
+        } else {
+            "Прямой маршрут использует реальный IP без подмены FakeIP (BypassRealIp)".to_string()
+        }
+    } else if en {
+        "Real IP name resolution without FakeIP substitution".to_string()
+    } else {
+        "Используется реальное разрешение имён без подмены FakeIP".to_string()
+    };
+
+    let pbr_table = if is_socks || is_local || is_excluded_client {
+        "main".to_string()
+    } else if is_tun {
+        format!("tun ({})", d.settings.tun_interface)
+    } else {
+        crate::net_stack::TPROXY_ROUTE_TABLE.to_string()
+    };
+    let pbr_ip_rule = if is_socks || is_local || is_excluded_client {
+        "main (direct)".to_string()
+    } else if is_tun {
+        format!("dev {}", d.settings.tun_interface)
+    } else {
+        format!(
+            "fwmark {} table {}",
+            crate::net_stack::TPROXY_FWMARK,
+            crate::net_stack::TPROXY_ROUTE_TABLE
+        )
+    };
+    let pbr_route = if is_socks || is_local || is_excluded_client {
+        "default via WAN".to_string()
+    } else if is_tun {
+        format!("default dev {}", d.settings.tun_interface)
+    } else {
+        "local 0.0.0.0/0 dev lo".to_string()
+    };
+    let pbr_details = if is_socks || is_local || is_excluded_client {
+        if en {
+            "Standard main routing table (no TProxy policy routing)"
+        } else {
+            "Используется основная таблица маршрутизации (без TProxy PBR)"
+        }
+    } else if is_tun {
+        if en {
+            "Traffic forwarded into TUN virtual interface"
+        } else {
+            "Трафик направляется в виртуальный интерфейс TUN"
+        }
+    } else if nft_active {
+        if en {
+            "Routing table 100 delivers the packet to Tachyon Core socket (:1602)"
+        } else {
+            "Таблица маршрутизации 100 доставляет пакет в сокет Tachyon Core (:1602)"
+        }
+    } else if en {
+        "PBR policy inactive — firewall rules are not loaded"
+    } else {
+        "Политика PBR неактивна — правила фаервола не загружены"
+    };
+
+    let group_type = if is_local {
+        "local"
+    } else if is_direct {
+        "direct"
+    } else if is_block {
+        "block"
+    } else {
+        "selector"
     };
 
     json!({
@@ -5275,9 +5871,16 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
                 "name": if en { "Client Classification" } else { "Классификация клиента" },
                 "client": client_ip,
                 "ip": client_ip,
+                "mac": client_mac,
                 "client_type": "lan",
-                "is_excluded": false,
-                "details": if en {
+                "is_excluded": is_excluded_client,
+                "details": if is_excluded_client {
+                    if en {
+                        format!("LAN client {client_ip} is excluded globally (direct)")
+                    } else {
+                        format!("Клиент {client_ip} находится в глобальных исключениях (direct)")
+                    }
+                } else if en {
                     format!("LAN client {client_ip} is included in routing")
                 } else {
                     format!("Клиент локальной сети {client_ip} включен в обработку")
@@ -5290,8 +5893,8 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
                 "target_type": if is_ip_target { "ip" } else { "domain" },
                 "port": tr.port,
                 "proto": tr.protocol,
-                "is_private_ip": false,
-                "is_fakeip": d.settings.fakeip_enabled && !is_ip_target,
+                "is_private_ip": is_private_target,
+                "is_fakeip": dns_stage_fakeip,
                 "details": if en {
                     format!("Target {}:{} ({})", tr.target, tr.port, tr.protocol.to_uppercase())
                 } else {
@@ -5311,28 +5914,18 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
             "4_dns_decision": {
                 "stage": 4,
                 "name": if en { "DNS / FakeIP Decision" } else { "Решение DNS / FakeIP" },
-                "mode": if d.settings.fakeip_enabled { "fakeip" } else { "realip" },
-                "resolver": d.settings.dns_type,
-                "fakeip_active": d.settings.fakeip_enabled,
+                "mode": dns_stage_mode,
+                "resolver": dns_resolver_label,
+                "fakeip_active": dns_stage_fakeip,
                 "ipv6_effective_state": ipv6_state.as_str(),
                 "runtime_dns_strategy": runtime_dns_strategy,
-                "details": if d.settings.fakeip_enabled {
-                    if en {
-                        format!("Domain matched through FakeIP table ({fakeip_range_trace})")
-                    } else {
-                        format!("Домен сопоставлен через таблицу FakeIP ({fakeip_range_trace})")
-                    }
-                } else if en {
-                    "Real IP name resolution without FakeIP substitution".to_string()
-                } else {
-                    "Используется реальное разрешение имён без подмены FakeIP".to_string()
-                }
+                "details": dns_stage_details
             },
             "5_nftables_interception": {
                 "stage": 5,
-                "name": if en { "nftables Interception" } else { "Перехват nftables" },
-                "table": "inet TachyonTable",
-                "chain": "prerouting",
+                "name": fw_stage_name,
+                "table": fw_table_name,
+                "chain": fw_chain_name,
                 "hook": "prerouting",
                 "intercepted": intercepted,
                 "fwmark": crate::net_stack::TPROXY_FWMARK,
@@ -5342,20 +5935,10 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
             "6_policy_routing": {
                 "stage": 6,
                 "name": if en { "Policy Routing (PBR)" } else { "Политика маршрутизации (PBR)" },
-                "table": crate::net_stack::TPROXY_ROUTE_TABLE,
-                "ip_rule": format!("fwmark {} table {}", crate::net_stack::TPROXY_FWMARK, crate::net_stack::TPROXY_ROUTE_TABLE),
-                "route": "local 0.0.0.0/0 dev lo",
-                "details": if nft_active {
-                    if en {
-                        "Routing table 100 delivers the packet to Tachyon Core socket (:1602)"
-                    } else {
-                        "Таблица маршрутизации 100 доставляет пакет в сокет Tachyon Core (:1602)"
-                    }
-                } else if en {
-                    "PBR policy inactive — TachyonTable is not loaded"
-                } else {
-                    "Политика PBR неактивна — таблица TachyonTable не загружена"
-                }
+                "table": pbr_table,
+                "ip_rule": pbr_ip_rule,
+                "route": pbr_route,
+                "details": pbr_details
             },
             "7_engine_outbound": {
                 "stage": 7,
@@ -5364,7 +5947,7 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
                 "engaged": nft_active || !is_tproxy,
                 "inbound_tag": inbound_tag,
                 "group_tag": tr.matched_section,
-                "group_type": "selector",
+                "group_type": group_type,
                 "outbound_tag": tr.selected_outbound,
                 "selected_node": tr.selected_outbound,
                 "node_type": srv_proto,
@@ -5397,7 +5980,7 @@ fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
     })
 }
 
-/// Explain packet route + live `tachyon-core` `/tachyon/route-check` dual probe (`outbound_probe` vs `direct_probe`).
+/// Explain packet route + live `tachyon-core` `/tachyon/route-check` dual probe (`routed` vs `direct`).
 pub async fn explain_route_with_engine(
     core: &Arc<CoreManager>,
     store: &RouterStoreData,
@@ -5406,13 +5989,26 @@ pub async fn explain_route_with_engine(
     port: u16,
     protocol: &str,
 ) -> Value {
+    let (norm_target, eff_port) = normalize_route_target(target, port);
+    let clean_target = if norm_target.is_empty() {
+        target.trim()
+    } else {
+        norm_target.as_str()
+    };
     let nft_active = crate::net_stack::check_nft_table_active().await;
-    let mut out =
-        build_route_trace_json_async(store, client_ip, target, target, port, protocol, nft_active)
-            .await;
+    let mut out = build_route_trace_json_async(
+        store,
+        client_ip,
+        clean_target,
+        clean_target,
+        eff_port,
+        protocol,
+        nft_active,
+    )
+    .await;
     let req_body = json!({
-        "target": target,
-        "port": port,
+        "target": clean_target,
+        "port": eff_port,
         "network": protocol,
         "source_ip": client_ip,
         "probe": true,
@@ -5422,11 +6018,487 @@ pub async fn explain_route_with_engine(
     if let Ok(engine_res) = core
         .clash_request("POST", "/tachyon/route-check", Some(&req_body))
         .await
-        && engine_res.get("ok").is_some()
+        && (engine_res.get("outbound").is_some()
+            || engine_res.get("action").is_some()
+            || engine_res.get("ok").is_some())
     {
         out["engine_route_check"] = engine_res;
     }
     out
+}
+
+struct TraceRulesEvalResult {
+    exact: bool,
+    presence: bool,
+    hits: Vec<String>,
+    unmatched_leaves: Vec<String>,
+}
+
+struct TraceRulesQuery<'a> {
+    search_raw: &'a str,
+    search_lower: &'a str,
+    is_ip: bool,
+    source_ip: &'a str,
+    source_mac: Option<String>,
+    port_num: Option<u16>,
+    mac_table: &'a MacIpTable,
+    comm_dirs: &'a [PathBuf],
+}
+
+fn eval_atomic_condition_trace(
+    cond: &crate::store::TrafficCondition,
+    q: &TraceRulesQuery<'_>,
+) -> TraceRulesEvalResult {
+    let mut hits = Vec::new();
+    let mut unmatched_leaves = Vec::new();
+
+    if cond
+        .exclude_domains
+        .iter()
+        .any(|d| !q.search_lower.is_empty() && domain_matches_excluded_token(q.search_lower, d))
+    {
+        return TraceRulesEvalResult {
+            exact: false,
+            presence: false,
+            hits,
+            unmatched_leaves: vec![format!("excluded:{}", q.search_lower)],
+        };
+    }
+
+    let has_client_filter = !cond.client_ips.is_empty() || !cond.source_macs.is_empty();
+    let client_ok = if has_client_filter {
+        let matched = (!q.source_ip.is_empty() || q.source_mac.is_some())
+            && cond
+                .client_ips
+                .iter()
+                .chain(cond.source_macs.iter())
+                .any(|e| {
+                    client_matches_entry(e, q.source_ip, q.source_mac.as_deref(), q.mac_table)
+                });
+        if matched {
+            hits.push(format!(
+                "source({})",
+                q.source_mac.as_deref().unwrap_or(q.source_ip)
+            ));
+        } else {
+            unmatched_leaves.push("source_ip/mac".to_string());
+        }
+        matched
+    } else {
+        true
+    };
+
+    let port_ok = if !cond.ports.is_empty() {
+        let matched = q
+            .port_num
+            .is_some_and(|p| cond.ports.iter().any(|tok| tok.trim() == p.to_string()));
+        if matched {
+            hits.push(format!("port({})", q.port_num.unwrap_or_default()));
+        } else {
+            unmatched_leaves.push(format!("port({})", cond.ports.join(",")));
+        }
+        matched
+    } else {
+        true
+    };
+
+    let has_target_filter = !cond.domains.is_empty()
+        || !cond.user_domains.is_empty()
+        || !cond.user_subnets.is_empty()
+        || !cond.community_lists.is_empty()
+        || !cond.rule_set.is_empty()
+        || !cond.rule_set_with_subnets.is_empty()
+        || !cond.domain_ip_lists.is_empty()
+        || !cond.geosite_codes.is_empty();
+
+    let target_ok = if has_target_filter {
+        let mut matched = false;
+        if !q.search_lower.is_empty() {
+            if !q.is_ip
+                && cond
+                    .domains
+                    .iter()
+                    .chain(cond.user_domains.iter())
+                    .any(|d| {
+                        let dl = d.trim().to_ascii_lowercase();
+                        !dl.is_empty()
+                            && (q.search_lower == dl || q.search_lower.ends_with(&format!(".{dl}")))
+                    })
+            {
+                hits.push(format!("domain({})", q.search_lower));
+                matched = true;
+            }
+            if !matched
+                && q.is_ip
+                && cond.user_subnets.iter().any(|s| {
+                    let clean = s.trim();
+                    !clean.is_empty()
+                        && (clean.eq_ignore_ascii_case(q.search_raw)
+                            || crate::store::ip_in_cidr(q.search_raw, clean))
+                })
+            {
+                hits.push(format!("subnet({})", q.search_raw));
+                matched = true;
+            }
+            if !matched
+                && let Some(reason) = match_condition_community_lists_in_dirs_lang(
+                    cond,
+                    q.search_lower,
+                    q.comm_dirs,
+                    true,
+                )
+            {
+                hits.push(reason);
+                matched = true;
+            }
+            if !matched && !q.is_ip {
+                for gs in &cond.geosite_codes {
+                    let gl = gs.trim().to_ascii_lowercase();
+                    if !gl.is_empty() && match_list_tag_against_domain(&gl, q.search_lower) {
+                        hits.push(format!("geosite-{gs}"));
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if !matched {
+            unmatched_leaves.push("target".to_string());
+        }
+        matched
+    } else {
+        true
+    };
+
+    let exact = (has_client_filter || !cond.ports.is_empty() || has_target_filter)
+        && client_ok
+        && port_ok
+        && target_ok;
+    let presence = !hits.is_empty();
+    TraceRulesEvalResult {
+        exact,
+        presence,
+        hits,
+        unmatched_leaves,
+    }
+}
+
+fn eval_condition_trace_node(
+    cond: &crate::store::TrafficCondition,
+    all_conditions: &[crate::store::TrafficCondition],
+    q: &TraceRulesQuery<'_>,
+    depth: u8,
+) -> TraceRulesEvalResult {
+    if depth >= 16 {
+        return TraceRulesEvalResult {
+            exact: false,
+            presence: false,
+            hits: Vec::new(),
+            unmatched_leaves: vec!["max_depth".to_string()],
+        };
+    }
+    match cond.condition_type.as_str() {
+        "all" if !cond.children.is_empty() => {
+            let mut all_exact = true;
+            let mut any_presence = false;
+            let mut hits = Vec::new();
+            let mut unmatched_leaves = Vec::new();
+            for cid in &cond.children {
+                let Some(child) = all_conditions.iter().find(|c| c.id == *cid && c.enabled) else {
+                    all_exact = false;
+                    unmatched_leaves.push(cid.clone());
+                    continue;
+                };
+                let res = eval_condition_trace_node(child, all_conditions, q, depth + 1);
+                if !res.exact {
+                    all_exact = false;
+                    if res.unmatched_leaves.is_empty() {
+                        unmatched_leaves.push(child.name.clone());
+                    } else {
+                        unmatched_leaves.extend(res.unmatched_leaves);
+                    }
+                }
+                if res.presence {
+                    any_presence = true;
+                    hits.extend(res.hits);
+                }
+            }
+            TraceRulesEvalResult {
+                exact: all_exact,
+                presence: any_presence,
+                hits,
+                unmatched_leaves,
+            }
+        }
+        "any" if !cond.children.is_empty() => {
+            let mut any_exact = false;
+            let mut any_presence = false;
+            let mut hits = Vec::new();
+            let mut unmatched_leaves = Vec::new();
+            for cid in &cond.children {
+                if let Some(child) = all_conditions.iter().find(|c| c.id == *cid && c.enabled) {
+                    let res = eval_condition_trace_node(child, all_conditions, q, depth + 1);
+                    if res.exact {
+                        any_exact = true;
+                    }
+                    if res.presence {
+                        any_presence = true;
+                        hits.extend(res.hits);
+                    } else {
+                        unmatched_leaves.extend(res.unmatched_leaves);
+                    }
+                }
+            }
+            TraceRulesEvalResult {
+                exact: any_exact,
+                presence: any_presence,
+                hits,
+                unmatched_leaves: if any_exact {
+                    Vec::new()
+                } else {
+                    unmatched_leaves
+                },
+            }
+        }
+        "not" if !cond.children.is_empty() => {
+            let cid = &cond.children[0];
+            let child_res = all_conditions
+                .iter()
+                .find(|c| c.id == *cid && c.enabled)
+                .map(|c| eval_condition_trace_node(c, all_conditions, q, depth + 1));
+            let exact = child_res.as_ref().is_some_and(|r| !r.exact);
+            let mut hits = Vec::new();
+            if exact {
+                hits.push(format!("not({cid})"));
+            }
+            TraceRulesEvalResult {
+                exact,
+                presence: exact,
+                hits,
+                unmatched_leaves: if exact { Vec::new() } else { vec![cid.clone()] },
+            }
+        }
+        _ => eval_atomic_condition_trace(cond, q),
+    }
+}
+
+/// 2-mode rule tracer (`exact` vs `presence`) backing the Conditions & Sections rule analyzer UI.
+pub fn trace_rules_two_mode(store: &RouterStoreData, payload: &Value) -> Value {
+    let mode = match payload.get("mode").and_then(Value::as_str).map(str::trim) {
+        Some("presence") => "presence",
+        _ => "exact",
+    };
+    let raw_search = payload
+        .get("search")
+        .or_else(|| payload.get("domain"))
+        .or_else(|| payload.get("target"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let raw_port = payload
+        .get("port")
+        .and_then(|v| {
+            v.as_str()
+                .map(str::to_string)
+                .or_else(|| v.as_u64().map(|n| n.to_string()))
+        })
+        .unwrap_or_default();
+    let explicit_port = raw_port.trim().parse::<u16>().ok().filter(|&p| p > 0);
+    let (norm_search, norm_port) = normalize_route_target(raw_search, explicit_port.unwrap_or(0));
+    let search_clean = if norm_search.is_empty() {
+        raw_search.to_string()
+    } else {
+        norm_search
+    };
+    let search_lower = search_clean.to_ascii_lowercase();
+    let is_ip = search_clean.parse::<std::net::IpAddr>().is_ok();
+    let source_ip = payload
+        .get("source_ip")
+        .or_else(|| payload.get("client_ip"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let source_mac_raw = payload
+        .get("source_mac")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let mac_table = load_system_mac_ip_table();
+    let resolved_mac =
+        parse_normalized_mac(source_mac_raw).or_else(|| mac_table.resolve_client_mac(source_ip));
+    let comm_dirs = default_community_subnet_dirs();
+    let port_num = explicit_port.or((norm_port > 0).then_some(norm_port));
+
+    let q = TraceRulesQuery {
+        search_raw: &search_clean,
+        search_lower: &search_lower,
+        is_ip,
+        source_ip,
+        source_mac: resolved_mac.clone(),
+        port_num,
+        mac_table: &mac_table,
+        comm_dirs: &comm_dirs,
+    };
+
+    let mut exact_conditions = Vec::new();
+    let mut presence_conditions = Vec::new();
+    let mut cond_evals: std::collections::HashMap<String, TraceRulesEvalResult> =
+        std::collections::HashMap::new();
+
+    for cond in store.conditions.iter().filter(|c| c.enabled) {
+        let ev = eval_condition_trace_node(cond, &store.conditions, &q, 0);
+        let entry = json!({
+            "id": cond.id,
+            "name": cond.name,
+            "condition_type": cond.condition_type,
+            "exact_match": ev.exact,
+            "presence_match": ev.presence,
+            "hits": ev.hits,
+            "unmatched_leaves": ev.unmatched_leaves,
+        });
+        if ev.exact {
+            exact_conditions.push(entry.clone());
+        }
+        if ev.presence {
+            presence_conditions.push(entry);
+        }
+        cond_evals.insert(cond.id.clone(), ev);
+    }
+
+    let mut exact_sections = Vec::new();
+    let mut presence_sections = Vec::new();
+    let mut winning_section: Value = Value::Null;
+
+    for sec in store.sections.iter().filter(|s| s.enabled) {
+        if sec.action == "dns" || sec.connection_type == "dns" {
+            continue;
+        }
+        let sec_excluded_client = (!source_ip.is_empty() || resolved_mac.is_some())
+            && sec
+                .excluded_ips
+                .iter()
+                .any(|e| client_matches_entry(e, source_ip, resolved_mac.as_deref(), &mac_table));
+        let sec_excluded_port = port_num.is_some_and(|p| {
+            sec.exclude_ports
+                .iter()
+                .any(|tok| tok.trim() == p.to_string())
+        });
+        let sec_excluded_domain = !search_lower.is_empty()
+            && sec
+                .exclude_domains
+                .iter()
+                .any(|d| domain_matches_excluded_token(&search_lower, d));
+        let sec_excluded_subnet = !search_clean.is_empty()
+            && sec.exclude_subnets.iter().any(|s| {
+                let c = s.trim();
+                !c.is_empty()
+                    && (c.eq_ignore_ascii_case(&search_clean)
+                        || crate::store::ip_in_cidr(&search_clean, c))
+            });
+        if sec_excluded_client || sec_excluded_port || sec_excluded_domain || sec_excluded_subnet {
+            continue;
+        }
+
+        let mut sec_hits = Vec::new();
+        let mut sec_exact = false;
+        let mut sec_presence = false;
+
+        if (!source_ip.is_empty() || resolved_mac.is_some())
+            && sec
+                .fully_routed_ips
+                .iter()
+                .any(|e| client_matches_entry(e, source_ip, resolved_mac.as_deref(), &mac_table))
+        {
+            sec_exact = true;
+            sec_presence = true;
+            sec_hits.push("fully_routed_ips".to_string());
+        }
+
+        for cref in &sec.condition_refs {
+            if let Some(ev) = cond_evals.get(cref.as_str()) {
+                if ev.exact {
+                    sec_exact = true;
+                }
+                if ev.presence {
+                    sec_presence = true;
+                    sec_hits.extend(ev.hits.clone());
+                }
+            }
+        }
+
+        let inline_cond = crate::store::TrafficCondition {
+            id: sec.id.clone(),
+            enabled: true,
+            name: sec.label.clone(),
+            condition_type: "atomic".to_string(),
+            community_lists: sec.community_lists.clone(),
+            community_subnets: sec.community_subnets,
+            rule_set: sec.rule_set_urls.clone(),
+            rule_set_with_subnets: sec.rule_set_with_subnets.clone(),
+            domain_ip_lists: sec.domain_ip_lists.clone(),
+            domains: sec.domains.clone(),
+            user_domains: sec.user_domains.clone(),
+            exclude_domains: sec.exclude_domains.clone(),
+            user_subnets: sec.user_subnets.clone(),
+            exclude_subnets: sec.exclude_subnets.clone(),
+            geoip_codes: sec.geoip_codes.clone(),
+            geosite_codes: sec.geosite_codes.clone(),
+            client_ips: sec.source_ip_cidr.clone(),
+            ports: sec.ports.clone(),
+            ..Default::default()
+        };
+        let inline_eval = eval_atomic_condition_trace(&inline_cond, &q);
+        if inline_eval.exact {
+            sec_exact = true;
+        }
+        if inline_eval.presence {
+            sec_presence = true;
+            sec_hits.extend(inline_eval.hits);
+        }
+
+        if sec.match_all {
+            sec_exact = true;
+            sec_presence = true;
+            sec_hits.push("match_all".to_string());
+        }
+
+        let action_label = resolve_section_explain_outbound(sec, store);
+        let sec_entry = json!({
+            "id": sec.id,
+            "name": sec.label,
+            "action": if sec.action.is_empty() { action_label.as_str() } else { sec.action.as_str() },
+            "outbound": action_label,
+            "exact_match": sec_exact,
+            "presence_match": sec_presence,
+            "hits": sec_hits,
+        });
+
+        if sec_exact {
+            if winning_section.is_null() {
+                winning_section = sec_entry.clone();
+            }
+            exact_sections.push(sec_entry.clone());
+        }
+        if sec_presence {
+            presence_sections.push(sec_entry);
+        }
+    }
+
+    json!({
+        "ok": true,
+        "mode": mode,
+        "query": {
+            "search": search_clean,
+            "source_ip": source_ip,
+            "source_mac": resolved_mac,
+            "port": port_num,
+        },
+        "winning_section": winning_section,
+        "exact_conditions": exact_conditions,
+        "presence_conditions": presence_conditions,
+        "exact_sections": exact_sections,
+        "presence_sections": presence_sections,
+    })
 }
 
 /// DNS spoofing/bogon check via `tachyon-core` `POST /tachyon/dns-check`.
@@ -7648,5 +8720,248 @@ IP address       HW type     Flags       HW address            Mask     Device
         assert_eq!(quick_fix_risk_tier("reconcile_firewall"), "disruptive");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_normalize_route_target_urls_ports_and_ipv6() {
+        assert_eq!(
+            normalize_route_target("https://Example.COM:8443/path?a=1", 443),
+            ("Example.COM".to_string(), 8443)
+        );
+        assert_eq!(
+            normalize_route_target("http://example.org/hello", 443),
+            ("example.org".to_string(), 443)
+        );
+        assert_eq!(
+            normalize_route_target("[2001:4860:4860::8888]:853", 443),
+            ("2001:4860:4860::8888".to_string(), 853)
+        );
+        assert_eq!(
+            normalize_route_target("2001:4860:4860::8888", 443),
+            ("2001:4860:4860::8888".to_string(), 443)
+        );
+        assert_eq!(
+            normalize_route_target("1.1.1.1:8080", 443),
+            ("1.1.1.1".to_string(), 8080)
+        );
+    }
+
+    #[test]
+    fn test_explain_route_global_excluded_ips_private_ip_full_tunnel_and_bypass_before_match_all() {
+        let mut store = RouterStoreData::default();
+        store.settings.excluded_ips = vec!["192.168.1.250".to_string()];
+        store.settings.routing_strategy = "full_tunnel".to_string();
+        store.settings.default_tunnel_section = "sec_proxy".to_string();
+        store.sections = vec![
+            RoutingSection {
+                id: "sec_bypass".to_string(),
+                enabled: true,
+                label: "Bypass RU".to_string(),
+                action: "bypass".to_string(),
+                connection_type: "bypass".to_string(),
+                user_domains: vec!["example.ru".to_string()],
+                outbound_source_refs: vec!["stale-proxy".to_string()],
+                ..Default::default()
+            },
+            RoutingSection {
+                id: "sec_proxy".to_string(),
+                enabled: true,
+                label: "Main Proxy".to_string(),
+                action: "connection".to_string(),
+                connection_type: "proxy".to_string(),
+                user_domains: vec!["proxy-only.example".to_string()],
+                outbound_source_refs: vec!["vless-nl".to_string()],
+                match_all: true,
+                ..Default::default()
+            },
+        ];
+
+        // 1. Global excluded client always gets direct.
+        let excl = explain_route(&store, "192.168.1.250", "youtube.com", 443, "tcp");
+        assert_eq!(excl.matched_section_id, "excluded_client");
+        assert_eq!(excl.selected_outbound, "direct");
+        let excl_json =
+            build_route_trace_json(&store, "192.168.1.250", "youtube.com", "", 443, "tcp", true);
+        assert_eq!(
+            excl_json["stages"]["1_client_classification"]["is_excluded"],
+            true
+        );
+        assert_eq!(
+            excl_json["stages"]["7_engine_outbound"]["server_address"],
+            ""
+        );
+
+        // 2. Private/LAN destination never gets hijacked by match_all.
+        let lan = explain_route(&store, "192.168.1.50", "192.168.1.1", 80, "tcp");
+        assert_eq!(lan.matched_section_id, "local_lan");
+        assert_eq!(lan.selected_outbound, "direct");
+        let lan_json =
+            build_route_trace_json(&store, "192.168.1.50", "192.168.1.1", "", 80, "tcp", true);
+        assert_eq!(lan_json["verdict"], "local");
+        assert_eq!(
+            lan_json["stages"]["2_target_classification"]["is_private_ip"],
+            true
+        );
+        assert_eq!(
+            lan_json["stages"]["5_nftables_interception"]["intercepted"],
+            false
+        );
+
+        // 3. Bypass section before match_all resolves to direct even with stale outbound_source_refs.
+        let byp = explain_route(
+            &store,
+            "192.168.1.50",
+            "https://sub.example.ru/test",
+            443,
+            "tcp",
+        );
+        assert_eq!(byp.matched_section_id, "sec_bypass");
+        assert_eq!(byp.selected_outbound, "direct");
+        let byp_json = build_route_trace_json(
+            &store,
+            "192.168.1.50",
+            "https://sub.example.ru/test",
+            "",
+            443,
+            "tcp",
+            true,
+        );
+        assert_eq!(byp_json["verdict"], "direct");
+        assert_eq!(byp_json["stages"]["4_dns_decision"]["mode"], "realip");
+        assert_eq!(
+            byp_json["stages"]["7_engine_outbound"]["server_address"],
+            ""
+        );
+
+        // 4. Non-bypass traffic hits match_all proxy.
+        let prx = explain_route(&store, "192.168.1.50", "example.com", 443, "tcp");
+        assert_eq!(prx.matched_section_id, "sec_proxy");
+        assert_eq!(prx.selected_outbound, "vless-nl");
+
+        // 5. Full tunnel fallback when match_all is off.
+        store.sections[1].match_all = false;
+        let ft = explain_route(&store, "192.168.1.50", "unknown.example.org", 443, "tcp");
+        assert_eq!(ft.matched_section_id, "sec_proxy");
+        assert_eq!(ft.matched_condition_id, "full_tunnel");
+        assert_eq!(ft.selected_outbound, "vless-nl");
+    }
+
+    #[test]
+    fn test_build_route_trace_json_desync_and_tun_mode() {
+        let mut store = RouterStoreData::default();
+        store.settings.proxy_mode = "tun".to_string();
+        store.settings.tun_interface = "tun7".to_string();
+        store.sections = vec![RoutingSection {
+            id: "sec_desync".to_string(),
+            enabled: true,
+            label: "Desync".to_string(),
+            action: "connection".to_string(),
+            connection_type: "desync".to_string(),
+            user_domains: vec!["video.example.com".to_string()],
+            ..Default::default()
+        }];
+
+        let trace = build_route_trace_json(
+            &store,
+            "192.168.1.100",
+            "video.example.com",
+            "",
+            443,
+            "tcp",
+            true,
+        );
+        assert_eq!(trace["verdict"], "desync");
+        assert_eq!(trace["stages"]["5_nftables_interception"]["action"], "tun");
+        assert_eq!(trace["stages"]["6_policy_routing"]["table"], "tun (tun7)");
+        assert_eq!(
+            trace["stages"]["7_engine_outbound"]["inbound_tag"],
+            "tun-in"
+        );
+    }
+
+    #[test]
+    fn test_trace_rules_two_mode_exact_presence_and_unmatched_leaves() {
+        let store = RouterStoreData {
+            conditions: vec![
+                TrafficCondition {
+                    id: "c_dom".to_string(),
+                    enabled: true,
+                    name: "Example Domain".to_string(),
+                    condition_type: "atomic".to_string(),
+                    user_domains: vec!["example.com".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_port".to_string(),
+                    enabled: true,
+                    name: "HTTPS Port".to_string(),
+                    condition_type: "atomic".to_string(),
+                    ports: vec!["443".to_string()],
+                    ..Default::default()
+                },
+                TrafficCondition {
+                    id: "c_and".to_string(),
+                    enabled: true,
+                    name: "Domain AND Port".to_string(),
+                    condition_type: "all".to_string(),
+                    children: vec!["c_dom".to_string(), "c_port".to_string()],
+                    ..Default::default()
+                },
+            ],
+            sections: vec![
+                RoutingSection {
+                    id: "sec_bypass".to_string(),
+                    enabled: true,
+                    label: "Bypass".to_string(),
+                    action: "bypass".to_string(),
+                    connection_type: "bypass".to_string(),
+                    condition_refs: vec!["c_and".to_string()],
+                    ..Default::default()
+                },
+                RoutingSection {
+                    id: "sec_all".to_string(),
+                    enabled: true,
+                    label: "Catch All".to_string(),
+                    action: "connection".to_string(),
+                    connection_type: "proxy".to_string(),
+                    match_all: true,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        // Partial input (no port): c_and fails exact_match with unmatched_leaves=["port(443)"],
+        // but matches in presence_conditions; winning_section falls through to sec_all.
+        let partial = trace_rules_two_mode(
+            &store,
+            &json!({
+                "mode": "presence",
+                "search": "sub.example.com",
+                "source_ip": "192.168.1.50"
+            }),
+        );
+        assert_eq!(partial["ok"], true);
+        assert_eq!(partial["mode"], "presence");
+        let pres_conds = partial["presence_conditions"].as_array().unwrap();
+        let and_pres = pres_conds.iter().find(|c| c["id"] == "c_and").unwrap();
+        assert_eq!(and_pres["exact_match"], false);
+        assert_eq!(and_pres["presence_match"], true);
+        assert!(!and_pres["unmatched_leaves"].as_array().unwrap().is_empty());
+
+        // Exact input with port=443: sec_bypass wins ahead of sec_all.
+        let exact = trace_rules_two_mode(
+            &store,
+            &json!({
+                "mode": "exact",
+                "search": "sub.example.com",
+                "source_ip": "192.168.1.50",
+                "port": "443"
+            }),
+        );
+        assert_eq!(exact["winning_section"]["id"], "sec_bypass");
+        let exact_secs = exact["exact_sections"].as_array().unwrap();
+        assert_eq!(exact_secs[0]["id"], "sec_bypass");
+        assert_eq!(exact_secs[1]["id"], "sec_all");
     }
 }

@@ -18303,6 +18303,16 @@ async function readSubnetListFile(service, snapshots) {
   for (const name of names) {
     paths.push(`/etc/tachyon/rulesets/community-subnets-${name}.lst`);
     paths.push(`/usr/share/tachyon/rulesets/community-subnets-${name}.lst`);
+    if (
+      Boolean(
+        (globalThis as Record<string, unknown>).__tachyonIsEntware ||
+          (typeof window !== 'undefined' &&
+            (window as unknown as Record<string, unknown>).__tachyonIsEntware),
+      )
+    ) {
+      paths.push(`/opt/etc/tachyon/rulesets/community-subnets-${name}.lst`);
+      paths.push(`/opt/share/tachyon/rulesets/community-subnets-${name}.lst`);
+    }
   }
 
   for (const p of paths) {
@@ -18516,6 +18526,11 @@ async function findCachedRulesetFile(
   skipped = [],
   snapshots,
 ) {
+  const isEntwareEnv = Boolean(
+    (globalThis as Record<string, unknown>).__tachyonIsEntware ||
+      (typeof window !== 'undefined' &&
+        (window as unknown as Record<string, unknown>).__tachyonIsEntware),
+  );
   const candidates = [
     `/tmp/tachyon-core/rulesets/${community}.trs`,
     `/etc/tachyon/rulesets/${community}.trs`,
@@ -18526,6 +18541,16 @@ async function findCachedRulesetFile(
     `/tmp/tachyon-core/rulesets/community-${community}.srs`,
     `/etc/tachyon/rulesets/community-${community}.srs`,
   ];
+  if (isEntwareEnv) {
+    candidates.push(
+      `/opt/etc/tachyon/rulesets/${community}.trs`,
+      `/opt/etc/tachyon/rulesets/community-${community}.trs`,
+      `/opt/share/tachyon/rulesets/${community}.trs`,
+      `/opt/share/tachyon/rulesets/community-${community}.trs`,
+      `/opt/etc/tachyon/rulesets/${community}.srs`,
+      `/opt/etc/tachyon/rulesets/community-${community}.srs`,
+    );
+  }
 
   for (const rulesetPath of candidates) {
     if (skipped.includes(rulesetPath)) continue;
@@ -18582,7 +18607,11 @@ async function matchCommunityList(secName, community, query, type, snapshots) {
           ? ['--ip', query]
           : ['--domain', (query || '').toLowerCase()]),
       ];
-      for (const bin of ['/usr/bin/tachyon-core', '/usr/sbin/tachyon-core']) {
+      for (const bin of [
+        '/usr/bin/tachyon-core',
+        '/usr/sbin/tachyon-core',
+        '/opt/bin/tachyon-core',
+      ]) {
         const res = await fs.exec(bin, matchArgs).catch(() => null);
         if (!res || res.code !== 0) continue;
         return checkMatch(res);
@@ -19060,6 +19089,258 @@ async function performTraceRules(query, rulesetSnapshots) {
     }
   }
 
+  let cachedResolvedIps;
+  let didResolveDomain = false;
+  const getResolvedIps = async () => {
+    if (!didResolveDomain) {
+      didResolveDomain = true;
+      cachedResolvedIps = await resolveDomainToIps(queryForMatching);
+    }
+    return cachedResolvedIps;
+  };
+  const domainIpPendingSections = [];
+
+  async function evaluatePendingIpSections(pendingList) {
+    if (!pendingList.length) return null;
+    const resolvedIps = await getResolvedIps();
+    if (!resolvedIps || resolvedIps.length === 0) return null;
+
+    for (const entry of pendingList) {
+      const {
+        i: secIdx,
+        secName: pSecName,
+        label: pLabel,
+        action: pAction,
+        communityLists: pCommunityLists,
+        listsRuleset: pListsRuleset,
+      } = entry;
+      const ipCidr = getSectionEffectiveOptionValues(pSecName, 'ip_cidr');
+      const communitySubnetsEnabled =
+        getSectionEffectiveScalar(pSecName, 'community_subnets') !== '0';
+      const secCommunityForIp = communitySubnetsEnabled ? pCommunityLists : [];
+      const geoCountries = getSectionGeoCountries(pSecName);
+      const excludedSubnets = [
+        ...getSectionEffectiveOptionValues(pSecName, 'exclude_subnets'),
+        ...getSectionEffectiveOptionValues(pSecName, 'excluded_subnets'),
+      ];
+      const listsIpRuleset =
+        pListsRuleset ||
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${pSecName}-lists-ruleset-subnets.json`,
+          rulesetSnapshots,
+        ));
+      const remoteSubnetRuleset = await readRulesetFile(
+        `/tmp/tachyon-core/rulesets/${pSecName}-remote-subnet-ruleset.json`,
+        rulesetSnapshots,
+      );
+
+      for (const ip of resolvedIps) {
+        if (excludedSubnets.length > 0 && matchIpInCidrs(ip, excludedSubnets)) {
+          continue;
+        }
+        const configuredIpMatch = await matchConfiguredRulesets(
+          pSecName,
+          ip,
+          'ip',
+          rulesetSnapshots,
+        );
+        if (configuredIpMatch) {
+          return {
+            matched: true,
+            sectionName: pSecName,
+            label: pLabel,
+            action: pAction,
+            ruleType: 'Resolved IP -> Rule Set',
+            pattern: `${ip} (resolved: ${ip})`,
+            sourceUrls: [configuredIpMatch],
+            resolvedDomain: queryForMatching,
+            resolvedIps,
+            matchedIp: ip,
+            priority: secIdx + 1,
+            totalSections,
+            sharedCdnWarning: getSharedCdnWarning(ip),
+          };
+        }
+
+        const matchedCidr = matchIpInCidrs(ip, ipCidr);
+        if (matchedCidr) {
+          return {
+            matched: true,
+            sectionName: pSecName,
+            label: pLabel,
+            action: pAction,
+            ruleType: 'Resolved IP -> IPs (UCI)',
+            pattern: `${matchedCidr} (resolved: ${ip})`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: ip,
+            priority: secIdx + 1,
+            totalSections: totalSections,
+            sharedCdnWarning: getSharedCdnWarning(matchedCidr),
+          };
+        }
+
+        if (listsIpRuleset) {
+          const matchedListIp = matchIpInRuleset(ip, listsIpRuleset);
+          if (matchedListIp) {
+            const domainIpLists = getSectionEffectiveOptionValues(
+              pSecName,
+              'domain_ip_lists',
+            );
+            return {
+              matched: true,
+              sectionName: pSecName,
+              label: pLabel,
+              action: pAction,
+              ruleType: 'Resolved IP -> IP/Subnet List (community/plain)',
+              pattern: `${matchedListIp} (resolved: ${ip})`,
+              sourceUrls: domainIpLists,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: secIdx + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedListIp),
+            };
+          }
+        }
+
+        if (remoteSubnetRuleset) {
+          const matchedRemoteIp = matchIpInRuleset(ip, remoteSubnetRuleset);
+          if (matchedRemoteIp) {
+            const domainIpLists = getSectionEffectiveOptionValues(
+              pSecName,
+              'domain_ip_lists',
+            );
+            return {
+              matched: true,
+              sectionName: pSecName,
+              label: pLabel,
+              action: pAction,
+              ruleType: 'Resolved IP -> Remote Subnet List',
+              pattern: `${matchedRemoteIp} (resolved: ${ip})`,
+              sourceUrls: domainIpLists,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: secIdx + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedRemoteIp),
+            };
+          }
+        }
+
+        for (const community of secCommunityForIp) {
+          const subnets = await readSubnetListFile(community, rulesetSnapshots);
+          const matchedCommunityCidr = matchIpInCidrs(ip, subnets);
+          if (matchedCommunityCidr) {
+            return {
+              matched: true,
+              sectionName: pSecName,
+              label: pLabel,
+              action: pAction,
+              ruleType: `Resolved IP -> Community Subnets (${community})`,
+              pattern: `${matchedCommunityCidr} (resolved: ${ip})`,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: secIdx + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
+            };
+          }
+          if (
+            await matchCommunityList(
+              pSecName,
+              community,
+              ip,
+              'ip',
+              rulesetSnapshots,
+            )
+          ) {
+            return {
+              matched: true,
+              sectionName: pSecName,
+              label: pLabel,
+              action: pAction,
+              ruleType: `Resolved IP -> Community List (${community})`,
+              pattern: `${ip} (resolved: ${ip})`,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: secIdx + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(ip),
+            };
+          }
+        }
+      }
+
+      if (geoCountries.length > 0) {
+        const geoMode = getSectionGeoMode(pSecName);
+        const geoCheck = await matchesGeoCountrySet(
+          pSecName,
+          geoCountries,
+          queryForMatching,
+          resolvedIps || [],
+          rulesetSnapshots,
+        );
+        const inverts = geoMode === 'exclude' || geoMode === 'exclude_direct';
+        const resolvedSuffix =
+          resolvedIps && resolvedIps.length > 0
+            ? ` (resolved: ${resolvedIps.join(', ')})`
+            : '';
+        if (inverts ? !geoCheck.matched : geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: pSecName,
+            label: pLabel,
+            action: pAction,
+            ruleType: inverts
+              ? `GeoIP Exclude (!${geoCountries.join(',')})`
+              : `GeoIP Include (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: secIdx + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'exclude_direct' && geoCheck.matched) {
+          return {
+            matched: true,
+            sectionName: pSecName,
+            label: pLabel,
+            action: 'bypass',
+            ruleType: `GeoIP Exclude Direct (${geoCountries.join(',')})`,
+            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
+            priority: secIdx + 1,
+            totalSections: totalSections,
+          };
+        } else if (geoMode === 'include_all') {
+          return {
+            matched: true,
+            sectionName: pSecName,
+            label: pLabel,
+            action: pAction,
+            ruleType: `GeoIP Include All (${geoCountries.join(',')})`,
+            pattern: `${queryForMatching}${resolvedSuffix}`,
+            resolvedDomain: queryForMatching,
+            resolvedIps: resolvedIps,
+            matchedIp: resolvedIps && resolvedIps[0],
+            priority: secIdx + 1,
+            totalSections: totalSections,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
   for (let i = 0; i < sections.length; i++) {
     const sec = sections[i];
     const secName = sec['.name'];
@@ -19092,6 +19373,17 @@ async function performTraceRules(query, rulesetSnapshots) {
     }
 
     if (type === 'ip') {
+      const excludedSubnets = [
+        ...getSectionEffectiveOptionValues(secName, 'exclude_subnets'),
+        ...getSectionEffectiveOptionValues(secName, 'excluded_subnets'),
+      ];
+      if (
+        excludedSubnets.length > 0 &&
+        matchIpInCidrs(queryForMatching, excludedSubnets)
+      ) {
+        continue;
+      }
+
       const ipCidr = getSectionEffectiveOptionValues(secName, 'ip_cidr');
       const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
       if (matchedCidr) {
@@ -19217,6 +19509,26 @@ async function performTraceRules(query, rulesetSnapshots) {
         }
       }
 
+      const configuredIpMatch = await matchConfiguredRulesets(
+        secName,
+        queryForMatching,
+        type,
+        rulesetSnapshots,
+      );
+      if (configuredIpMatch) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label,
+          action,
+          ruleType: 'Rule Set',
+          pattern: queryForMatching,
+          sourceUrls: [configuredIpMatch],
+          priority: i + 1,
+          totalSections,
+        };
+      }
+
       const geoCountries = getSectionGeoCountries(secName);
       if (geoCountries.length > 0) {
         const geoMode = getSectionGeoMode(secName);
@@ -19285,10 +19597,10 @@ async function performTraceRules(query, rulesetSnapshots) {
     }
 
     if (type === 'domain') {
-      const excludedDomains = getSectionEffectiveOptionValues(
-        secName,
-        'excluded_domains',
-      );
+      const excludedDomains = [
+        ...getSectionEffectiveOptionValues(secName, 'excluded_domains'),
+        ...getSectionEffectiveOptionValues(secName, 'exclude_domains'),
+      ];
       if (
         excludedDomains.length > 0 &&
         matchDomainInList(queryForMatching, excludedDomains)
@@ -19425,277 +19737,34 @@ async function performTraceRules(query, rulesetSnapshots) {
           };
         }
       }
-    }
-    const configuredMatch = await matchConfiguredRulesets(
-      secName,
-      queryForMatching,
-      type,
-      rulesetSnapshots,
-    );
-    if (configuredMatch) {
-      return {
-        matched: true,
-        sectionName: secName,
-        label,
-        action,
-        ruleType: 'Rule Set',
-        pattern: queryForMatching,
-        sourceUrls: [configuredMatch],
-        priority: i + 1,
-        totalSections,
-      };
-    }
-  }
 
-  if (type === 'domain') {
-    // No direct domain rule matched. Resolve domain to IP addresses and check IP / GeoIP routing rules
-    const resolvedIps = await resolveDomainToIps(queryForMatching);
-    for (let i = 0; i < sections.length; i++) {
-      const sec = sections[i];
-      const secName = sec['.name'];
-      if (uci.get(UCI_PACKAGE, secName, 'enabled') === '0') continue;
-
-      const excludedDomains = getSectionEffectiveOptionValues(
+      const configuredMatch = await matchConfiguredRulesets(
         secName,
-        'excluded_domains',
+        queryForMatching,
+        type,
+        rulesetSnapshots,
       );
-      if (
-        excludedDomains.length > 0 &&
-        matchDomainInList(queryForMatching, excludedDomains)
-      ) {
-        continue;
-      }
-
-      const label =
-        uci.get(UCI_PACKAGE, secName, 'label') ||
-        uci.get(UCI_PACKAGE, secName, 'name') ||
-        secName;
-      const action = uci.get(UCI_PACKAGE, secName, 'action') || 'connection';
-
-      if (resolvedIps && resolvedIps.length > 0) {
-        const ipCidr = getSectionEffectiveOptionValues(secName, 'ip_cidr');
-        const listsRuleset =
-          (await readRulesetFile(
-            `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-            rulesetSnapshots,
-          )) ||
-          (await readRulesetFile(
-            `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset-subnets.json`,
-            rulesetSnapshots,
-          ));
-        const remoteSubnetRuleset = await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
-          rulesetSnapshots,
-        );
-        const communitySubnetsEnabled =
-          getSectionEffectiveScalar(secName, 'community_subnets') !== '0';
-        const communityLists = communitySubnetsEnabled
-          ? getSectionEffectiveOptionValues(secName, 'community_lists')
-          : [];
-
-        for (const ip of resolvedIps) {
-          const configuredMatch = await matchConfiguredRulesets(
-            secName,
-            ip,
-            'ip',
-            rulesetSnapshots,
-          );
-          if (configuredMatch) {
-            return {
-              matched: true,
-              sectionName: secName,
-              label,
-              action,
-              ruleType: 'Resolved IP -> Rule Set',
-              pattern: `${ip} (resolved: ${ip})`,
-              sourceUrls: [configuredMatch],
-              resolvedDomain: queryForMatching,
-              resolvedIps,
-              matchedIp: ip,
-              priority: i + 1,
-              totalSections,
-              sharedCdnWarning: getSharedCdnWarning(ip),
-            };
-          }
-
-          const matchedCidr = matchIpInCidrs(ip, ipCidr);
-          if (matchedCidr) {
-            return {
-              matched: true,
-              sectionName: secName,
-              label: label,
-              action: action,
-              ruleType: 'Resolved IP -> IPs (UCI)',
-              pattern: `${matchedCidr} (resolved: ${ip})`,
-              resolvedDomain: queryForMatching,
-              resolvedIps: resolvedIps,
-              matchedIp: ip,
-              priority: i + 1,
-              totalSections: totalSections,
-              sharedCdnWarning: getSharedCdnWarning(matchedCidr),
-            };
-          }
-
-          if (listsRuleset) {
-            const matchedListIp = matchIpInRuleset(ip, listsRuleset);
-            if (matchedListIp) {
-              const domainIpLists = getSectionEffectiveOptionValues(
-                secName,
-                'domain_ip_lists',
-              );
-              return {
-                matched: true,
-                sectionName: secName,
-                label: label,
-                action: action,
-                ruleType: 'Resolved IP -> IP/Subnet List (community/plain)',
-                pattern: `${matchedListIp} (resolved: ${ip})`,
-                sourceUrls: domainIpLists,
-                resolvedDomain: queryForMatching,
-                resolvedIps: resolvedIps,
-                matchedIp: ip,
-                priority: i + 1,
-                totalSections: totalSections,
-                sharedCdnWarning: getSharedCdnWarning(matchedListIp),
-              };
-            }
-          }
-
-          if (remoteSubnetRuleset) {
-            const matchedRemoteIp = matchIpInRuleset(ip, remoteSubnetRuleset);
-            if (matchedRemoteIp) {
-              const domainIpLists = getSectionEffectiveOptionValues(
-                secName,
-                'domain_ip_lists',
-              );
-              return {
-                matched: true,
-                sectionName: secName,
-                label: label,
-                action: action,
-                ruleType: 'Resolved IP -> Remote Subnet List',
-                pattern: `${matchedRemoteIp} (resolved: ${ip})`,
-                sourceUrls: domainIpLists,
-                resolvedDomain: queryForMatching,
-                resolvedIps: resolvedIps,
-                matchedIp: ip,
-                priority: i + 1,
-                totalSections: totalSections,
-                sharedCdnWarning: getSharedCdnWarning(matchedRemoteIp),
-              };
-            }
-          }
-
-          for (const community of communityLists) {
-            let subnets = await readSubnetListFile(community, rulesetSnapshots);
-            const matchedCommunityCidr = matchIpInCidrs(ip, subnets);
-            if (matchedCommunityCidr) {
-              return {
-                matched: true,
-                sectionName: secName,
-                label: label,
-                action: action,
-                ruleType: `Resolved IP -> Community Subnets (${community})`,
-                pattern: `${matchedCommunityCidr} (resolved: ${ip})`,
-                resolvedDomain: queryForMatching,
-                resolvedIps: resolvedIps,
-                matchedIp: ip,
-                priority: i + 1,
-                totalSections: totalSections,
-                sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
-              };
-            }
-            if (
-              await matchCommunityList(
-                secName,
-                community,
-                ip,
-                'ip',
-                rulesetSnapshots,
-              )
-            ) {
-              return {
-                matched: true,
-                sectionName: secName,
-                label: label,
-                action: action,
-                ruleType: `Resolved IP -> Community List (${community})`,
-                pattern: `${ip} (resolved: ${ip})`,
-                resolvedDomain: queryForMatching,
-                resolvedIps: resolvedIps,
-                matchedIp: ip,
-                priority: i + 1,
-                totalSections: totalSections,
-                sharedCdnWarning: getSharedCdnWarning(ip),
-              };
-            }
-          }
-        }
-      }
-
-      const geoCountries = getSectionGeoCountries(secName);
-      if (geoCountries.length > 0) {
-        const geoMode = getSectionGeoMode(secName);
-        const geoCheck = await matchesGeoCountrySet(
-          secName,
-          geoCountries,
-          queryForMatching,
-          resolvedIps,
-          rulesetSnapshots,
-        );
-        const inverts = geoMode === 'exclude' || geoMode === 'exclude_direct';
-        const resolvedSuffix =
-          resolvedIps && resolvedIps.length > 0
-            ? ` (resolved: ${resolvedIps.join(', ')})`
-            : '';
-        if (inverts ? !geoCheck.matched : geoCheck.matched) {
-          return {
-            matched: true,
-            sectionName: secName,
-            label: label,
-            action: action,
-            ruleType: inverts
-              ? `GeoIP Exclude (!${geoCountries.join(',')})`
-              : `GeoIP Include (${geoCountries.join(',')})`,
-            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
-            resolvedDomain: queryForMatching,
-            resolvedIps: resolvedIps,
-            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
-            priority: i + 1,
-            totalSections: totalSections,
-          };
-        } else if (geoMode === 'exclude_direct' && geoCheck.matched) {
-          return {
-            matched: true,
-            sectionName: secName,
-            label: label,
-            action: 'bypass',
-            ruleType: `GeoIP Exclude Direct (${geoCountries.join(',')})`,
-            pattern: geoCheck.pattern || `${queryForMatching}${resolvedSuffix}`,
-            resolvedDomain: queryForMatching,
-            resolvedIps: resolvedIps,
-            matchedIp: geoCheck.ip || (resolvedIps && resolvedIps[0]),
-            priority: i + 1,
-            totalSections: totalSections,
-          };
-        } else if (geoMode === 'include_all') {
-          return {
-            matched: true,
-            sectionName: secName,
-            label: label,
-            action: action,
-            ruleType: `GeoIP Include All (${geoCountries.join(',')})`,
-            pattern: `${queryForMatching}${resolvedSuffix}`,
-            resolvedDomain: queryForMatching,
-            resolvedIps: resolvedIps,
-            matchedIp: resolvedIps && resolvedIps[0],
-            priority: i + 1,
-            totalSections: totalSections,
-          };
-        }
+      if (configuredMatch) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label,
+          action,
+          ruleType: 'Rule Set',
+          pattern: queryForMatching,
+          sourceUrls: [configuredMatch],
+          priority: i + 1,
+          totalSections,
+        };
       }
 
       if (getSectionEffectiveScalar(secName, 'match_all') === '1') {
+        if (domainIpPendingSections.length > 0) {
+          const priorIpMatch = await evaluatePendingIpSections(
+            domainIpPendingSections,
+          );
+          if (priorIpMatch) return priorIpMatch;
+        }
         return {
           matched: true,
           sectionName: secName,
@@ -19704,21 +19773,35 @@ async function performTraceRules(query, rulesetSnapshots) {
           ruleType: 'Match All',
           pattern: queryForMatching,
           resolvedDomain: queryForMatching,
-          resolvedIps: resolvedIps,
-          matchedIp: resolvedIps && resolvedIps[0],
+          resolvedIps: cachedResolvedIps,
+          matchedIp: cachedResolvedIps && cachedResolvedIps[0],
           priority: i + 1,
           totalSections: totalSections,
         };
       }
-    }
 
-    if (resolvedIps && resolvedIps.length > 0) {
-      return {
-        matched: false,
-        resolvedDomain: queryForMatching,
-        resolvedIps: resolvedIps,
-      };
+      domainIpPendingSections.push({
+        i,
+        secName,
+        label,
+        action,
+        communityLists,
+        listsRuleset,
+      });
     }
+  }
+
+  if (type === 'domain' && domainIpPendingSections.length > 0) {
+    const ipMatch = await evaluatePendingIpSections(domainIpPendingSections);
+    if (ipMatch) return ipMatch;
+  }
+
+  if (type === 'domain' && cachedResolvedIps && cachedResolvedIps.length > 0) {
+    return {
+      matched: false,
+      resolvedDomain: queryForMatching,
+      resolvedIps: cachedResolvedIps,
+    };
   }
 
   return { matched: false };

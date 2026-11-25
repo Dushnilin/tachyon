@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 06:34+0300\n"
-"PO-Revision-Date: 2026-11-25 06:34+0300\n"
+"POT-Creation-Date: 2026-11-25 07:15+0300\n"
+"PO-Revision-Date: 2026-11-25 07:15+0300\n"
 "Last-Translator: Tachyon <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -113,7 +113,7 @@ msgstr ""
 msgid "-60s"
 msgstr ""
 
-#: src/views/section.ts:20127
+#: src/views/section.ts:20216
 msgid ".lst Lists"
 msgstr ""
 
@@ -615,6 +615,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/exitCountry.ts:154
 msgid "Actual exit"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:503
+msgid "Actual outbound"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:912
@@ -1305,7 +1309,7 @@ msgstr ""
 msgid "An unexpected error occurred during test"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:491
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:577
 msgid "An unexpected error occurred."
 msgstr ""
 
@@ -1881,7 +1885,7 @@ msgstr ""
 msgid "BLOCKED"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:368
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:376
 msgid "BYPASS"
 msgstr ""
 
@@ -2437,7 +2441,7 @@ msgstr ""
 msgid "Cannot apply"
 msgstr ""
 
-#: src/views/section.ts:18681
+#: src/views/section.ts:18710
 msgid "Cannot match the loaded rule-set: %s"
 msgstr ""
 
@@ -2446,7 +2450,7 @@ msgstr ""
 msgid "Cannot read the Amnezia .conf file"
 msgstr ""
 
-#: src/views/section.ts:18632
+#: src/views/section.ts:18661
 msgid "Cannot read the loaded rule-set: %s"
 msgstr ""
 
@@ -2796,7 +2800,7 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderCoreTelemetry.ts:729
 #: src/tachyon/tabs/monitoring/dnsBlockStatsPanel.ts:582
-#: src/views/section.ts:19739
+#: src/views/section.ts:19828
 msgid "Clear"
 msgstr ""
 
@@ -2937,7 +2941,7 @@ msgstr ""
 msgid "Client DNS (optional)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:570
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:656
 msgid "Client IP / MAC"
 msgstr ""
 
@@ -3062,7 +3066,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderDiagnosticsModal.ts:261
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:302
 #: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:776
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:646
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:732
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:176
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:913
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:294
@@ -3075,7 +3079,7 @@ msgstr ""
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:560
 #: src/tachyon/themes/themeControls.ts:500
 #: src/views/dns_speed_test.ts:140
-#: src/views/section.ts:20156
+#: src/views/section.ts:20245
 #: src/views/section.ts:6370
 #: src/views/server.ts:3909
 #: src/views/settings.ts:1217
@@ -3184,7 +3188,7 @@ msgstr ""
 msgid "Command failed"
 msgstr ""
 
-#: src/views/section.ts:20120
+#: src/views/section.ts:20209
 msgid "Community Lists"
 msgstr ""
 
@@ -3678,7 +3682,7 @@ msgstr ""
 msgid "Could not contact leak test endpoints. Please ensure router has internet access."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:480
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:566
 msgid "Could not execute route explain command. Ensure Tachyon backend is installed properly."
 msgstr ""
 
@@ -4239,11 +4243,11 @@ msgstr ""
 msgid "DNS · TPROXY · Nftables · FakeIP · Outbounds"
 msgstr ""
 
-#: src/views/section.ts:19885
+#: src/views/section.ts:19974
 msgid "DNS: Resolved %s to %s"
 msgstr ""
 
-#: src/views/section.ts:19940
+#: src/views/section.ts:20029
 msgid "DNS: Resolved to %s (no subnet rules matched)"
 msgstr ""
 
@@ -4261,7 +4265,7 @@ msgstr ""
 
 #: src/views/section.ts:10135
 #: src/views/section.ts:17869
-#: src/views/section.ts:20133
+#: src/views/section.ts:20222
 msgid "DSCP marks (QoS)"
 msgstr ""
 
@@ -4345,7 +4349,7 @@ msgstr ""
 msgid "Days of Week"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:419
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:434
 msgid "Decision & Details"
 msgstr ""
 
@@ -4729,6 +4733,10 @@ msgstr ""
 msgid "Direct connection via ISP"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:478
+msgid "Direct probe"
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2505
 msgid "Direct routing bypassing proxy (WAN)"
 msgstr ""
@@ -4967,7 +4975,7 @@ msgstr ""
 #: src/views/conditions.ts:183
 #: src/views/section.ts:10136
 #: src/views/section.ts:17251
-#: src/views/section.ts:20121
+#: src/views/section.ts:20210
 msgid "Domains"
 msgstr ""
 
@@ -5458,7 +5466,7 @@ msgstr ""
 msgid "Engine"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:398
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:413
 msgid "Engine Outbound"
 msgstr ""
 
@@ -5615,7 +5623,7 @@ msgstr ""
 msgid "Error running generator:"
 msgstr ""
 
-#: src/views/section.ts:19972
+#: src/views/section.ts:20061
 msgid "Error running trace:"
 msgstr ""
 
@@ -5771,7 +5779,7 @@ msgid "Excluded Destination IPs / Subnets"
 msgstr ""
 
 #: src/views/section.ts:17779
-#: src/views/section.ts:20123
+#: src/views/section.ts:20212
 msgid "Excluded Domains"
 msgstr ""
 
@@ -6366,7 +6374,7 @@ msgstr ""
 msgid "Failed to toggle Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:471
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:557
 msgid "Failed to trace route."
 msgstr ""
 
@@ -6683,7 +6691,11 @@ msgstr ""
 msgid "Firewall"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:365
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:368
+msgid "Firewall (iptables)"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:369
 msgid "Firewall (nftables)"
 msgstr ""
 
@@ -7028,7 +7040,7 @@ msgstr ""
 msgid "GeoIP routing mode"
 msgstr ""
 
-#: src/views/section.ts:20129
+#: src/views/section.ts:20218
 msgid "GeoSite / GeoIP"
 msgstr ""
 
@@ -7565,7 +7577,7 @@ msgstr ""
 msgid "INACTIVE"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:368
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:376
 msgid "INTERCEPTED"
 msgstr ""
 
@@ -7577,7 +7589,7 @@ msgstr ""
 msgid "IP Address"
 msgstr ""
 
-#: src/views/section.ts:20125
+#: src/views/section.ts:20214
 msgid "IP Addresses (IP CIDR)"
 msgstr ""
 
@@ -9234,6 +9246,10 @@ msgstr ""
 msgid "Live check"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:495
+msgid "Live core check (tachyon-core)"
+msgstr ""
+
 #: src/views/section.ts:3978
 msgid "Live filter preview"
 msgstr ""
@@ -9464,7 +9480,7 @@ msgstr ""
 msgid "LuCI Web UI"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:383
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:387
 msgid "MAIN WAN"
 msgstr ""
 
@@ -9590,7 +9606,7 @@ msgstr ""
 msgid "Master and family devices with full LAN and router access. Any device NOT in this list will be treated as a guest."
 msgstr ""
 
-#: src/views/section.ts:19807
+#: src/views/section.ts:19896
 msgid "Match Found"
 msgstr ""
 
@@ -10132,7 +10148,7 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: src/views/section.ts:19930
+#: src/views/section.ts:20019
 msgid "No Custom Rules Matched"
 msgstr ""
 
@@ -10563,12 +10579,16 @@ msgstr ""
 #: src/views/outbounds.ts:1329
 #: src/views/outbounds.ts:1360
 #: src/views/outbounds.ts:1389
-#: src/views/section.ts:20067
+#: src/views/section.ts:20156
 msgid "Not set"
 msgstr ""
 
 #: src/views/outbounds.ts:2227
 msgid "Not used"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:512
+msgid "Note: static simulation and live core outbound differ; verify active rule order and DNS cache."
 msgstr ""
 
 #: src/views/section.ts:12736
@@ -11549,7 +11569,7 @@ msgstr ""
 msgid "Please enter a name."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:445
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:531
 msgid "Please enter a target domain, URL, or IP address."
 msgstr ""
 
@@ -11610,7 +11630,7 @@ msgstr ""
 msgid "Policy Mode"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:378
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:397
 msgid "Policy Routing"
 msgstr ""
 
@@ -11650,7 +11670,7 @@ msgstr ""
 #: src/tachyon/connectionWizard.ts:4556
 #: src/tachyon/connectionWizard.ts:4769
 #: src/tachyon/studioDeck.ts:6072
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:581
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:667
 #: src/views/section.ts:3869
 #: src/views/server.ts:7927
 msgid "Port"
@@ -11709,7 +11729,7 @@ msgstr ""
 #: src/views/outbounds.ts:1480
 #: src/views/section.ts:10134
 #: src/views/section.ts:17861
-#: src/views/section.ts:20132
+#: src/views/section.ts:20221
 msgid "Ports"
 msgstr ""
 
@@ -11924,7 +11944,7 @@ msgid "Prioritizes interactive DNS, VoIP/WebRTC and gaming via DSCP marking in n
 msgstr ""
 
 #: src/views/section.ts:16594
-#: src/views/section.ts:19872
+#: src/views/section.ts:19961
 msgid "Priority"
 msgstr ""
 
@@ -12076,7 +12096,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2341
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2694
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:51
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:592
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:678
 #: src/views/outbounds.ts:2528
 #: src/views/section.ts:15240
 #: src/views/section.ts:3848
@@ -12198,6 +12218,10 @@ msgstr ""
 msgid "Proxy port"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:479
+msgid "Proxy probe"
+msgstr ""
+
 #: src/views/settings.ts:8134
 msgid "Proxy route to Telegram API works"
 msgstr ""
@@ -12316,7 +12340,7 @@ msgstr ""
 msgid "Quick donation via Russian bank cards or SBP"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:612
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:698
 msgid "Quick presets:"
 msgstr ""
 
@@ -12457,7 +12481,7 @@ msgstr ""
 msgid "Re-run Leak Test"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:641
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:727
 msgid "Re-run Trace"
 msgstr ""
 
@@ -13108,7 +13132,7 @@ msgid "Route DNS queries through this tunnel (DNS Detour)"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:180
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:654
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:740
 msgid "Route Decision Explainer"
 msgstr ""
 
@@ -13148,7 +13172,7 @@ msgstr ""
 msgid "Route community list subnets (IP/CIDR)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:487
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:573
 msgid "Route decision trace completed."
 msgstr ""
 
@@ -13219,6 +13243,10 @@ msgstr ""
 
 #: src/views/section.ts:17849
 msgid "Routed DNS Servers"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:477
+msgid "Routed probe"
 msgstr ""
 
 #: src/tachyon/fetchers/fetchHostnames.ts:36
@@ -13328,7 +13356,7 @@ msgstr ""
 msgid "Routing Conditions & Traffic Rules"
 msgstr ""
 
-#: src/views/section.ts:19734
+#: src/views/section.ts:19823
 msgid "Routing Rule Tracer"
 msgstr ""
 
@@ -13382,7 +13410,7 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/dnsBlockStatsPanel.ts:352
 #: src/tachyon/tabs/monitoring/dnsBlockStatsPanel.ts:386
 #: src/tachyon/tabs/monitoring/filters.ts:837
-#: src/views/section.ts:19825
+#: src/views/section.ts:19914
 msgid "Rule"
 msgstr ""
 
@@ -13394,7 +13422,7 @@ msgstr ""
 msgid "Rule Sets (.trs / .srs / .json / URL)"
 msgstr ""
 
-#: src/views/section.ts:20126
+#: src/views/section.ts:20215
 msgid "Rule Sets (.trs / .srs / .json)"
 msgstr ""
 
@@ -13813,7 +13841,7 @@ msgstr ""
 msgid "Section Pool Narrowing Filter"
 msgstr ""
 
-#: src/views/section.ts:20138
+#: src/views/section.ts:20227
 msgid "Section Rules Content"
 msgstr ""
 
@@ -13821,7 +13849,7 @@ msgstr ""
 msgid "Section Types"
 msgstr ""
 
-#: src/views/section.ts:20109
+#: src/views/section.ts:20198
 msgid "Section action"
 msgstr ""
 
@@ -14596,7 +14624,7 @@ msgstr ""
 msgid "Shaper Profile"
 msgstr ""
 
-#: src/views/section.ts:19914
+#: src/views/section.ts:20003
 msgid "Shared CDN / Anycast Warning"
 msgstr ""
 
@@ -14869,7 +14897,7 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:688
 #: src/views/conditions.ts:193
 #: src/views/outbounds.ts:2901
-#: src/views/section.ts:19837
+#: src/views/section.ts:19926
 #: src/views/section.ts:3297
 #: src/views/section.ts:3329
 msgid "Source"
@@ -14883,7 +14911,7 @@ msgstr ""
 msgid "Source Device MAC Addresses"
 msgstr ""
 
-#: src/views/section.ts:20131
+#: src/views/section.ts:20220
 msgid "Source Devices"
 msgstr ""
 
@@ -14987,7 +15015,7 @@ msgstr ""
 msgid "Stable releases only"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:418
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:433
 msgid "Stage"
 msgstr ""
 
@@ -15103,7 +15131,7 @@ msgid "Starting…"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:7415
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:423
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:438
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:508
 msgid "State"
 msgstr ""
@@ -15290,7 +15318,7 @@ msgstr ""
 msgid "Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
 msgstr ""
 
-#: src/views/section.ts:19191
+#: src/views/section.ts:19489
 msgid "Subnet %s is a Cloudflare Anycast range used by Discord Voice. Only UDP voice traffic (ports 50000-65535, 3478, 19294-19344, 5000-5020) is routed through this section; web traffic (TCP 80/443) goes direct."
 msgstr ""
 
@@ -15789,7 +15817,7 @@ msgstr ""
 msgid "TLS-Crypt Key (<tls-crypt>)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:382
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:386
 msgid "TPROXY LO"
 msgstr ""
 
@@ -15807,6 +15835,10 @@ msgstr ""
 
 #: src/views/settings.ts:4251
 msgid "TTL value cannot be empty"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:384
+msgid "TUN"
 msgstr ""
 
 #: src/tachyon/connectionWizard.ts:4289
@@ -15848,7 +15880,7 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:4487
 #: src/tachyon/tabs/dashboard/initController.ts:4782
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:379
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:398
 msgid "Table"
 msgstr ""
 
@@ -16032,7 +16064,7 @@ msgstr ""
 msgid "Target"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:559
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:645
 msgid "Target (Domain / IP / URL)"
 msgstr ""
 
@@ -16333,7 +16365,7 @@ msgstr ""
 
 #: src/views/section.ts:13551
 #: src/views/section.ts:13555
-#: src/views/section.ts:20627
+#: src/views/section.ts:20716
 #: src/views/server.ts:4059
 #: src/views/server.ts:4078
 #: src/views/server.ts:4083
@@ -16556,11 +16588,11 @@ msgid "Total targets"
 msgstr ""
 
 #: src/views/conditions.ts:452
-#: src/views/section.ts:19738
+#: src/views/section.ts:19827
 msgid "Trace"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:520
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:606
 msgid "Trace Route"
 msgstr ""
 
@@ -16568,11 +16600,11 @@ msgstr ""
 msgid "Tracer error"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:453
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:539
 msgid "Tracing routing decision pipeline..."
 msgstr ""
 
-#: src/views/section.ts:19782
+#: src/views/section.ts:19871
 msgid "Tracing routing rules..."
 msgstr ""
 
@@ -16639,7 +16671,7 @@ msgstr ""
 msgid "Traffic type filter"
 msgstr ""
 
-#: src/views/section.ts:19931
+#: src/views/section.ts:20020
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr ""
 
@@ -17679,7 +17711,7 @@ msgstr ""
 msgid "Value must be a positive integer"
 msgstr ""
 
-#: src/views/section.ts:20630
+#: src/views/section.ts:20719
 #: src/views/server.ts:4087
 msgid "Value must not contain control characters"
 msgstr ""
@@ -18350,7 +18382,7 @@ msgstr ""
 msgid "e.g. \\|WL\\|, Bypass"
 msgstr ""
 
-#: src/views/section.ts:19737
+#: src/views/section.ts:19826
 msgid "e.g. google.com, 1.1.1.1, 443"
 msgstr ""
 

@@ -139,6 +139,35 @@ export interface RouteExplainStages {
   };
 }
 
+export interface EngineRouteProbeEntry {
+  outbound?: string;
+  ok?: boolean;
+  delay?: number;
+  error?: string;
+}
+
+export interface EngineRouteCheckResult {
+  target?: string;
+  host?: string;
+  port?: number;
+  network?: string;
+  action?: string;
+  matched_rule?: string;
+  rule_evidence?: string;
+  outbound?: string;
+  effective_outbound?: string;
+  outbound_type?: string;
+  is_direct?: boolean;
+  fakeip?: boolean;
+  destination_addresses?: string[];
+  probe?: {
+    routed?: EngineRouteProbeEntry;
+    direct?: EngineRouteProbeEntry;
+    proxy?: EngineRouteProbeEntry;
+    advice?: string;
+  } | null;
+}
+
 export interface RouteExplainResult {
   success?: boolean;
   error?: string;
@@ -173,6 +202,8 @@ export interface RouteExplainResult {
   engine?: string;
   rule_matched?: string;
   outbound?: string;
+  selected_outbound?: string;
+  engine_route_check?: EngineRouteCheckResult | null;
 }
 
 function parseJsonStdout<T>(stdout: string, fallback: T): T {

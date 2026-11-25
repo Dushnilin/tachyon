@@ -283,4 +283,56 @@ describe('renderRouteExplainModal', () => {
       expect(text).toContain('Could not execute route explain command');
     });
   });
+
+  it('renders live engine_route_check block, iptables label, and TUN policy badge', async () => {
+    vi.spyOn(runtimeClient, 'explainRoute').mockResolvedValueOnce(
+      makeMockRouteReport({
+        verdict: 'proxied',
+        selected_outbound: 'vless-nl',
+        stages: {
+          ...makeMockRouteReport().stages,
+          '5_nftables_interception': {
+            stage: 5,
+            name: 'iptables Interception',
+            table: 'iptables (filter/nat)',
+            chain: 'TACHYON_FORWARD',
+            intercepted: true,
+            fwmark: '0x04000000',
+            action: 'tun',
+            details: 'Packet routed into TUN interface of tachyon-core',
+          },
+          '6_policy_routing': {
+            stage: 6,
+            name: 'Policy Routing (PBR)',
+            table: 'tun (tun0)',
+            ip_rule: 'dev tun0',
+            route: 'default dev tun0',
+            details: 'Traffic forwarded into TUN virtual interface',
+          },
+        },
+        engine_route_check: {
+          outbound: 'vless-nl',
+          effective_outbound: 'vless-nl',
+          outbound_type: 'vless',
+          matched_rule: 'rule_set=youtube => vless-nl',
+          probe: {
+            routed: { outbound: 'vless-nl', ok: true, delay: 42 },
+            direct: { outbound: 'direct', ok: false, error: 'timed out' },
+            advice: 'ok',
+          },
+        },
+      }),
+    );
+
+    renderRouteExplainModal('youtube.com');
+
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain('iptables Interception');
+      expect(text).toContain('TUN');
+      expect(text).toContain('Live core check (tachyon-core)');
+      expect(text).toContain('vless-nl');
+      expect(text).toContain('42 ms');
+    });
+  });
 });

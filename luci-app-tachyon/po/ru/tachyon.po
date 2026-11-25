@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-25 09:34+0300\n"
-"PO-Revision-Date: 2026-11-25 09:34+0300\n"
+"POT-Creation-Date: 2026-11-25 10:15+0300\n"
+"PO-Revision-Date: 2026-11-25 10:15+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -430,6 +430,9 @@ msgstr "Активная тема:"
 
 msgid "Actual exit"
 msgstr "Фактический выход"
+
+msgid "Actual outbound"
+msgstr ""
 
 msgid "Ad & Telemetry Blocker (Block)"
 msgstr "Блокировка рекламы (Block)"
@@ -3257,6 +3260,9 @@ msgstr "Прямое подключение (WAN): внешний IP совпа�
 msgid "Direct connection via ISP"
 msgstr "Прямое подключение через провайдера"
 
+msgid "Direct probe"
+msgstr ""
+
 msgid "Direct routing bypassing proxy (WAN)"
 msgstr "Прямой выход мимо прокси (WAN)"
 
@@ -4594,6 +4600,9 @@ msgstr "При задержке установки соединения запу
 
 msgid "Firewall"
 msgstr "Фаервол"
+
+msgid "Firewall (iptables)"
+msgstr ""
 
 msgid "Firewall (nftables)"
 msgstr "Межсетевой экран (nftables)"
@@ -6380,6 +6389,9 @@ msgstr "Живая телеметрия потока данных за 60 сек
 msgid "Live check"
 msgstr "Live-проверка"
 
+msgid "Live core check (tachyon-core)"
+msgstr ""
+
 msgid "Live filter preview"
 msgstr "Предпросмотр фильтра в реальном времени"
 
@@ -7285,6 +7297,9 @@ msgstr "Не задано"
 
 msgid "Not used"
 msgstr "Не используется"
+
+msgid "Note: static simulation and live core outbound differ; verify active rule order and DNS cache."
+msgstr ""
 
 msgid "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'."
 msgstr "Примечание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (WireGuard). Профиль автоматически переключен на версию 2.0 для корректной работы. Для версий 3.0 и 3.1 используйте свой сервер AmneziaWG через кнопку «Импорт .conf»."
@@ -8420,6 +8435,9 @@ msgstr "Исходящий прокси неактивен или не наст�
 msgid "Proxy port"
 msgstr "Порт прокси"
 
+msgid "Proxy probe"
+msgstr ""
+
 msgid "Proxy route to Telegram API works"
 msgstr "Маршрут через прокси к Telegram API работает"
 
@@ -9151,6 +9169,9 @@ msgstr "Протокол маршрутизированного DNS"
 
 msgid "Routed DNS Servers"
 msgstr "Серверы маршрутизированного DNS"
+
+msgid "Routed probe"
+msgstr ""
 
 msgid "Router"
 msgstr "Роутер"
@@ -10876,6 +10897,9 @@ msgstr "TTL должен быть положительным числом"
 
 msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
+
+msgid "TUN"
+msgstr ""
 
 msgid "TURN Password (optional)"
 msgstr "Пароль TURN (необязательно)"

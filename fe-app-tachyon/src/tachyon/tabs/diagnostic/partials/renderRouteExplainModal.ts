@@ -359,10 +359,18 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
       }
 
       if (s5) {
+        const fwLabel =
+          s5.name &&
+          s5.name !== 'nftables_interception' &&
+          s5.name !== 'iptables_interception'
+            ? s5.name
+            : s5.table?.toLowerCase().includes('iptables')
+              ? _('Firewall (iptables)')
+              : _('Firewall (nftables)');
         rows.push(
           renderStageRow(
             5,
-            _('Firewall (nftables)'),
+            fwLabel,
             `${s5.table} / ${s5.chain} → ${s5.action}`,
             s5.details,
             s5.intercepted ? _('INTERCEPTED') : _('BYPASS'),
@@ -372,18 +380,25 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
       }
 
       if (s6) {
+        const pbrBadge = s6.table.includes('tun')
+          ? _('TUN')
+          : s6.table.includes('100') || s6.table.includes('tachyon')
+            ? _('TPROXY LO')
+            : _('MAIN WAN');
+        const pbrColor =
+          s6.table.includes('tun') ||
+          s6.table.includes('100') ||
+          s6.table.includes('tachyon')
+            ? '#17a2b8'
+            : '#6c757d';
         rows.push(
           renderStageRow(
             6,
             _('Policy Routing'),
             `${_('Table')}: ${s6.table} (${s6.route})`,
             s6.details,
-            s6.table.includes('100') || s6.table.includes('tachyon')
-              ? _('TPROXY LO')
-              : _('MAIN WAN'),
-            s6.table.includes('100') || s6.table.includes('tachyon')
-              ? '#17a2b8'
-              : '#6c757d',
+            pbrBadge,
+            pbrColor,
           ),
         );
       }
@@ -430,6 +445,77 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
 
       resultsContainer.appendChild(
         E('div', { style: 'width: 100%; overflow-x: hidden;' }, [stageTable]),
+      );
+    }
+
+    const eng = data.engine_route_check;
+    if (eng && (eng.outbound || eng.action)) {
+      const staticOut = String(
+        data.selected_outbound ||
+          data.outbound ||
+          stages?.['7_engine_outbound']?.selected_node ||
+          '',
+      );
+      const engOut = String(eng.effective_outbound || eng.outbound || '');
+      const probe = eng.probe || undefined;
+      const formatProbe = (
+        label: string,
+        entry?: {
+          ok?: boolean;
+          delay?: number;
+          error?: string;
+          outbound?: string;
+        },
+      ) => {
+        if (!entry) return null;
+        if (entry.ok) {
+          return `${label}: OK (${entry.delay ?? 0} ms)`;
+        }
+        return `${label}: FAIL (${entry.error || 'error'})`;
+      };
+      const probeParts = [
+        formatProbe(_('Routed probe'), probe?.routed),
+        formatProbe(_('Direct probe'), probe?.direct),
+        formatProbe(_('Proxy probe'), probe?.proxy),
+      ].filter(Boolean) as string[];
+      const mismatch =
+        Boolean(staticOut && engOut) &&
+        staticOut.toLowerCase() !== engOut.toLowerCase() &&
+        engOut.toLowerCase() !== 'direct';
+
+      resultsContainer.appendChild(
+        E(
+          'div',
+          {
+            class: mismatch ? 'alert-message warning' : 'alert-message info',
+            style: 'margin-top: 8px; font-size: 12px;',
+          },
+          [
+            E('div', { style: 'font-weight: 600; margin-bottom: 4px;' }, [
+              _('Live core check (tachyon-core)'),
+              eng.matched_rule
+                ? ` — ${eng.matched_rule}${eng.rule_evidence ? ` (${eng.rule_evidence})` : ''}`
+                : '',
+            ]),
+            E(
+              'div',
+              {},
+              `${_('Actual outbound')}: ${engOut || eng.action || '—'}${eng.outbound_type ? ` (${eng.outbound_type})` : ''}`,
+            ),
+            probeParts.length > 0
+              ? E('div', { style: 'margin-top: 2px;' }, probeParts.join(' · '))
+              : E('span'),
+            mismatch
+              ? E(
+                  'div',
+                  { style: 'margin-top: 4px; font-weight: 600;' },
+                  _(
+                    'Note: static simulation and live core outbound differ; verify active rule order and DNS cache.',
+                  ),
+                )
+              : E('span'),
+          ],
+        ),
       );
     }
 

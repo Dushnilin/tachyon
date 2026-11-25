@@ -623,4 +623,139 @@ describe('routing section tracer configured rule sets', () => {
       ],
     });
   });
+
+  it('respects section priority: IP bypass before match_all and match_all before lower sections', async () => {
+    globalThis.__tachyonIsEntware = true;
+    try {
+      const tracer = setup(
+        ['/opt/etc/tachyon/rulesets/community-youtube.trs'],
+        async (bin) =>
+          bin === '/opt/bin/tachyon-core'
+            ? { code: 0, stdout: '[0] match\n' }
+            : { code: 1 },
+        {},
+      );
+      await expect(tracer.performTrace('youtube.com')).resolves.toMatchObject({
+        matched: true,
+        sectionName: 'desync',
+        ruleType: 'Community List (youtube)',
+      });
+    } finally {
+      delete globalThis.__tachyonIsEntware;
+    }
+
+    const customSource = fs.readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../../../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js',
+      ),
+      'utf8',
+    );
+    const customAst = parse(customSource, {
+      allowReturnOutsideFunction: true,
+      sourceType: 'script',
+    });
+    const customFns = names.map((name) => {
+      const node = customAst.program.body.find(
+        (item) => item.type === 'FunctionDeclaration' && item.id.name === name,
+      );
+      return customSource.slice(node.start, node.end);
+    });
+
+    const runScenario = async (sectionsList, target, resolvedIps = []) => {
+      const getVal = (_pkg, id, key) =>
+        sectionsList.find((s) => s['.name'] === id)?.[key];
+      const ipMatchesCidr = (ip, cidr) =>
+        ip === '77.88.8.8' && cidr === '77.88.8.0/24';
+      const deps = {
+        fs: {
+          list: vi.fn(async () => []),
+          stat: vi.fn(async () => null),
+          read: vi.fn(async () => null),
+          exec: vi.fn(async (bin) =>
+            bin === '/opt/bin/tachyon-core'
+              ? { code: 0, stdout: '[0] match\n' }
+              : { code: 1 },
+          ),
+        },
+        _: (t) => ({ format: (v) => t.replace('%s', v) }),
+        uci: {
+          sections: () => sectionsList,
+          get: getVal,
+        },
+        UCI_PACKAGE: 'tachyon',
+        normalizeOptionValues: (v) => (Array.isArray(v) ? v : v ? [v] : []),
+        matchPort: () => null,
+        ipMatchesCidr,
+        matchIpInCidrs: (ip, cidrs) =>
+          (cidrs || []).find((c) => ipMatchesCidr(ip, c)) || null,
+        matchIpInRuleset: () => null,
+        isCloudflareSharedCidr: () => false,
+        getSharedCdnWarning: () => null,
+        getSectionEffectiveOptionValues: (id, key) =>
+          getVal('tachyon', id, key) || [],
+        getSectionEffectiveScalar: (id, key) => getVal('tachyon', id, key),
+        getSectionGeoCountries: () => [],
+        getSectionGeoMode: () => 'include',
+        matchesGeoCountrySet: async () => ({ matched: false }),
+        resolveDomainToIps: vi.fn(async () => resolvedIps),
+      };
+      const api = new Function(
+        ...Object.keys(deps),
+        `let _subnetListCache = {};\n${customFns.join('\n')}\nreturn { performTrace };`,
+      )(...Object.values(deps));
+      return api.performTrace(target);
+    };
+
+    // Case 1: IP-based bypass section above match_all proxy must match resolved IP before match_all!
+    const resBypass = await runScenario(
+      [
+        {
+          '.name': 'bypass_ip',
+          enabled: '1',
+          action: 'bypass',
+          ip_cidr: ['77.88.8.0/24'],
+        },
+        {
+          '.name': 'proxy_all',
+          enabled: '1',
+          action: 'connection',
+          match_all: '1',
+        },
+      ],
+      'ya.ru',
+      ['77.88.8.8'],
+    );
+    expect(resBypass).toMatchObject({
+      matched: true,
+      sectionName: 'bypass_ip',
+      action: 'bypass',
+      ruleType: 'Resolved IP -> IPs (UCI)',
+    });
+
+    // Case 2: match_all section above a lower domain section must win first.
+    const resMatchAllFirst = await runScenario(
+      [
+        {
+          '.name': 'proxy_all',
+          enabled: '1',
+          action: 'connection',
+          match_all: '1',
+        },
+        {
+          '.name': 'lower_bypass',
+          enabled: '1',
+          action: 'bypass',
+          user_domains: ['ya.ru'],
+        },
+      ],
+      'ya.ru',
+      [],
+    );
+    expect(resMatchAllFirst).toMatchObject({
+      matched: true,
+      sectionName: 'proxy_all',
+      ruleType: 'Match All',
+    });
+  });
 });
