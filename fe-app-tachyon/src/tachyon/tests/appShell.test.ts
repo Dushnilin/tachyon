@@ -1169,4 +1169,180 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(dynDropdownLiBlock).toContain('white-space: normal !important;');
     expect(dynDropdownLiBlock).toContain('overflow-wrap: anywhere !important;');
   });
+
+  it('always displays the exact clicked submenu item even when LuCI tabLink.click() synchronously dispatches cbi-tab-active', () => {
+    setUiMode('advanced');
+    setSidebarPos('top');
+    const E = (globalThis as any).E;
+
+    const sectionSec = E('div', {
+      id: 'cbi-tachyon-section',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+    const dashboardSec = E('div', {
+      id: 'cbi-tachyon-dashboard',
+      class: 'cbi-section cbi-tab',
+    });
+    const updatesSec = E('div', {
+      id: 'cbi-tachyon-updates',
+      class: 'cbi-section cbi-tab-disabled',
+    });
+
+    const settingsSubKeys = [
+      'navigation',
+      'dns',
+      'network',
+      'services',
+      'updates',
+      'ai',
+      'advanced',
+    ];
+    const settingsPanes = settingsSubKeys.map((k, idx) =>
+      E('div', {
+        'data-tab': k,
+        class: idx === 0 ? 'cbi-tab' : 'cbi-tab-disabled',
+      }),
+    );
+    const settingsSec = E(
+      'div',
+      { id: 'cbi-tachyon-settings', class: 'cbi-section cbi-tab-disabled' },
+      [
+        E(
+          'ul',
+          { class: 'cbi-tabmenu' },
+          settingsSubKeys.map((k, idx) =>
+            E(
+              'li',
+              {
+                class: idx === 0 ? 'cbi-tab' : 'cbi-tab-disabled',
+                'data-tab': k,
+              },
+              [E('a', { href: '#' }, k)],
+            ),
+          ),
+        ),
+        E('div', { class: 'cbi-section-node' }, settingsPanes),
+      ],
+    );
+
+    const makeTopTabLi = (tabId: string, secEl: any, active = false): any =>
+      E(
+        'li',
+        {
+          class: active ? 'cbi-tab' : 'cbi-tab-disabled',
+          'data-tab': tabId,
+        },
+        [
+          E(
+            'a',
+            {
+              href: '#',
+              // Simulate real OpenWrt LuCI ui.tabs.switchTab: synchronously
+              // dispatches non-bubbling cbi-tab-active on the target section.
+              click: () => {
+                secEl.dispatchEvent({
+                  type: 'cbi-tab-active',
+                  detail: { tab: tabId },
+                  bubbles: false,
+                });
+              },
+            },
+            tabId,
+          ),
+        ],
+      );
+
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        makeTopTabLi('dashboard', dashboardSec, true),
+        makeTopTabLi('section', sectionSec, false),
+        makeTopTabLi('updates', updatesSec, false),
+        makeTopTabLi('settings', settingsSec, false),
+      ]),
+      dashboardSec,
+      sectionSec,
+      updatesSec,
+      settingsSec,
+    ]);
+    (globalThis as any).document.body.appendChild(mapEl);
+
+    let activeSubTab = 'sections';
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+      onSelectSectionSubTab: (sub) => {
+        activeSubTab = sub;
+      },
+      getActiveSectionSubTab: () => activeSubTab,
+    });
+
+    const topbarEl = mapEl.querySelector('.tachyon-topbar');
+    const routingParent = mapEl
+      .querySelectorAll('.tachyon-sidebar__nav-parent')
+      .find((b: any) => b.getAttribute('data-parent-menu') === 'routing');
+    routingParent.click();
+
+    // Switch through every routing submenu item sequentially: each click MUST
+    // immediately highlight the newly clicked item (not the previous one).
+    const routingOrder = [
+      'section:outbounds',
+      'section:conditions',
+      'section:balancers',
+      'section:sections',
+    ];
+    for (const targetKey of routingOrder) {
+      const subLi = topbarEl
+        .querySelectorAll('.tachyon-global-subtabs > li')
+        .find((li: any) => li.getAttribute('data-nav-key') === targetKey);
+      expect(subLi).toBeTruthy();
+      subLi.querySelector('a').click();
+
+      const activeSubLi = topbarEl
+        .querySelectorAll('.tachyon-global-subtabs > li')
+        .find((li: any) => li.classList.contains('cbi-tab'));
+      expect(activeSubLi?.getAttribute('data-nav-key')).toBe(targetKey);
+      expect(activeSubTab).toBe(targetKey.replace('section:', ''));
+      expect(sectionSec.getAttribute('data-tab-active')).toBe('true');
+    }
+
+    // Switch to Settings parent and step through every settings:* sub-tab + updates
+    const systemParent = mapEl
+      .querySelectorAll('.tachyon-sidebar__nav-parent')
+      .find((b: any) => b.getAttribute('data-parent-menu') === 'system');
+    systemParent.click();
+
+    const systemSequence = [
+      'settings:dns',
+      'settings:network',
+      'settings:services',
+      'updates',
+      'settings:ai',
+      'settings:advanced',
+      'settings:navigation',
+    ];
+    for (const targetKey of systemSequence) {
+      const subLi = topbarEl
+        .querySelectorAll('.tachyon-global-subtabs > li')
+        .find((li: any) => li.getAttribute('data-nav-key') === targetKey);
+      expect(subLi).toBeTruthy();
+      subLi.querySelector('a').click();
+
+      const activeSubLi = topbarEl
+        .querySelectorAll('.tachyon-global-subtabs > li')
+        .find((li: any) => li.classList.contains('cbi-tab'));
+      expect(activeSubLi?.getAttribute('data-nav-key')).toBe(targetKey);
+
+      if (targetKey.startsWith('settings:')) {
+        const expectedPane = targetKey.replace('settings:', '');
+        expect(settingsSec.getAttribute('data-tab-active')).toBe('true');
+        const activePane = settingsPanes.find(
+          (p) => p.getAttribute('data-tab-active') === 'true',
+        );
+        expect(activePane?.getAttribute('data-tab')).toBe(expectedPane);
+      } else {
+        expect(updatesSec.getAttribute('data-tab-active')).toBe('true');
+        expect(settingsSec.getAttribute('data-tab-active')).toBe('false');
+      }
+    }
+  });
 });

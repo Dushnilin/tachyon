@@ -1040,6 +1040,9 @@ const activeShellState: {
   activeNavKey: string;
   initialized?: boolean;
   restoringTab?: boolean;
+  activatingProgrammatically?: boolean;
+  navActivationSeq?: number;
+  lastChildByParent?: Record<string, string>;
   mountedMapEl?: HTMLElement | null;
   options?: MountAppShellOptions;
   renderFn?: () => void;
@@ -1047,6 +1050,9 @@ const activeShellState: {
   activeNavKey: 'dashboard',
   initialized: false,
   restoringTab: false,
+  activatingProgrammatically: false,
+  navActivationSeq: 0,
+  lastChildByParent: {},
   mountedMapEl: null,
 };
 
@@ -1056,8 +1062,20 @@ export function setShellRestoringTab(restoring: boolean): void {
 
 export function setActiveShellNavKey(key: string): void {
   if (!key) return;
+  activeShellState.navActivationSeq =
+    (activeShellState.navActivationSeq || 0) + 1;
   activeShellState.activeNavKey = key;
+  const item = NAV_ITEMS.find((i) => i.key === key);
+  if (item?.parentMenu) {
+    if (!activeShellState.lastChildByParent) {
+      activeShellState.lastChildByParent = {};
+    }
+    activeShellState.lastChildByParent[item.parentMenu] = item.key;
+  }
   saveActiveNavKey(key);
+  if (typeof activeShellState.renderFn === 'function') {
+    activeShellState.renderFn();
+  }
 }
 
 export function refreshTachyonAppShell(): void {
@@ -1164,7 +1182,9 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   let topbarCollapsed = getTopbarCollapsed();
   let topbarServiceActionInFlight: 'start' | 'stop' | 'restart' | null = null;
   const expandedMenus = getExpandedMenus();
-  const lastChildByParent: Record<string, string> = {};
+  if (!activeShellState.lastChildByParent) {
+    activeShellState.lastChildByParent = {};
+  }
   let shellLayoutRef: HTMLElement | null = null;
 
   captureFormBaseline(true);
@@ -1791,7 +1811,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   syncShellAttributes();
 
   // Detect active LuCI tab from DOM
-  const detectCurrentNavKey = (): string => {
+  const detectCurrentNavKey = (hintTabName?: string): string => {
     const activeSection = workspaceBodyEl.querySelector<HTMLElement>(
       '.cbi-map-tabbed > .cbi-section[data-tab-active="true"], ' +
         ':scope > .cbi-section[data-tab-active="true"], ' +
@@ -1803,6 +1823,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         '.tachyon-workspace-body > .cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled)',
     );
     const rawTab =
+      hintTabName ||
       activeSection?.getAttribute('data-tab') ||
       activeSection?.id ||
       activeTabLi?.getAttribute('data-tab') ||
@@ -1819,7 +1840,13 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       const activeSubLi = settingsSec?.querySelector<HTMLElement>(
         '.cbi-tabmenu > li.cbi-tab:not(.cbi-tab-disabled)',
       );
-      const subKey = activeSubLi?.getAttribute('data-tab') || 'dns';
+      const activeSubPane = settingsSec?.querySelector<HTMLElement>(
+        '.cbi-section-node > [data-tab-active="true"], .cbi-tabcontainer > [data-tab-active="true"]',
+      );
+      const subKey =
+        activeSubLi?.getAttribute('data-tab') ||
+        activeSubPane?.getAttribute('data-tab') ||
+        'dns';
       const matched = NAV_ITEMS.find(
         (i) => i.luciTab === 'settings' && i.settingsSubTab === subKey,
       );
@@ -1847,6 +1874,10 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   };
 
   const wasSameMapEl = activeShellState.mountedMapEl === mapEl;
+  if (!wasSameMapEl) {
+    activeShellState.lastChildByParent = {};
+  }
+  const lastChildByParent = activeShellState.lastChildByParent!;
   activeShellState.mountedMapEl = mapEl;
   const savedNavKey = getSavedActiveNavKey();
   const hadSavedMenus = hasSavedExpandedMenus();
@@ -1917,6 +1948,8 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   };
 
   const activateNavItem = (item: NavItemDef) => {
+    const mySeq = (activeShellState.navActivationSeq || 0) + 1;
+    activeShellState.navActivationSeq = mySeq;
     activeShellState.activeNavKey = item.key;
     saveActiveNavKey(item.key);
     if (item.parentMenu) {
@@ -1932,6 +1965,21 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       saveExpandedMenus(expandedMenus);
     }
 
+    // Apply sub-tab state BEFORE clicking the native LuCI top-level tab link:
+    // LuCI ui.tabs.switchTab dispatches `cbi-tab-active` synchronously inside
+    // tabLink.click(), so any listener inspecting DOM/sub-tab state must already
+    // see the newly selected sub-tab rather than the previous one.
+    if (item.luciTab === 'section' && item.subTab) {
+      options.onSelectSectionSubTab?.(item.subTab);
+    }
+
+    if (item.luciTab === 'settings' && item.settingsSubTab) {
+      const settingsSec = mapEl.querySelector<HTMLElement>(
+        '#cbi-tachyon-settings',
+      );
+      switchSettingsInternalSubTab(settingsSec, item.settingsSubTab, true);
+    }
+
     const tabLi = workspaceBodyEl.querySelector<HTMLElement>(
       `:scope > .cbi-tabmenu > li[data-tab="cbi-tachyon-${item.luciTab}"], ` +
         `:scope > .cbi-tabmenu > li[data-tab="${item.luciTab}"], ` +
@@ -1940,9 +1988,18 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     );
     const tabLink = tabLi?.querySelector<HTMLAnchorElement>('a');
     if (tabLi && tabLink) {
-      // LuCI ui.tabs.switchTab returns early if li does not have .cbi-tab-disabled
-      tabLi.classList.add('cbi-tab-disabled');
-      tabLink.click();
+      // Guard against synchronous cbi-tab-active re-entrancy clobbering activeNavKey
+      const prevActivating = Boolean(
+        activeShellState.activatingProgrammatically,
+      );
+      activeShellState.activatingProgrammatically = true;
+      try {
+        // LuCI ui.tabs.switchTab returns early if li does not have .cbi-tab-disabled
+        tabLi.classList.add('cbi-tab-disabled');
+        tabLink.click();
+      } finally {
+        activeShellState.activatingProgrammatically = prevActivating;
+      }
     }
 
     syncTopLevelTabsDom(item.luciTab);
@@ -1958,23 +2015,25 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
       });
     }
 
-    if (item.luciTab === 'section' && item.subTab) {
-      options.onSelectSectionSubTab?.(item.subTab);
-    }
-
     if (item.luciTab === 'settings' && item.settingsSubTab) {
       const subTab = item.settingsSubTab;
       const settingsSec = mapEl.querySelector<HTMLElement>(
         '#cbi-tachyon-settings',
       );
-      switchSettingsInternalSubTab(settingsSec, subTab);
+      switchSettingsInternalSubTab(settingsSec, subTab, true);
       if (
         typeof window !== 'undefined' &&
         typeof window.setTimeout === 'function'
       ) {
         window.setTimeout(() => {
+          if (
+            activeShellState.navActivationSeq !== mySeq ||
+            activeShellState.activeNavKey !== item.key
+          ) {
+            return;
+          }
           const sec = mapEl.querySelector<HTMLElement>('#cbi-tachyon-settings');
-          switchSettingsInternalSubTab(sec, subTab);
+          switchSettingsInternalSubTab(sec, subTab, true);
         }, 0);
       }
     }
@@ -1994,7 +2053,10 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     workspaceBodyEl.addEventListener(
       'cbi-tab-active',
       (ev: Event) => {
-        if (activeShellState.restoringTab) {
+        if (
+          activeShellState.restoringTab ||
+          activeShellState.activatingProgrammatically
+        ) {
           return;
         }
         const targetSec = ev.target as HTMLElement | null;
@@ -2005,7 +2067,18 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         ) {
           const tabName = targetSec.id.replace(/^cbi-tachyon-/, '');
           syncTopLevelTabsDom(tabName);
-          activeShellState.activeNavKey = detectCurrentNavKey();
+          const currentDef = NAV_ITEMS.find(
+            (i) => i.key === activeShellState.activeNavKey,
+          );
+          const nextNavKey =
+            currentDef && currentDef.luciTab === tabName
+              ? currentDef.key
+              : detectCurrentNavKey(tabName);
+          activeShellState.activeNavKey = nextNavKey;
+          const nextDef = NAV_ITEMS.find((i) => i.key === nextNavKey);
+          if (nextDef?.parentMenu) {
+            lastChildByParent[nextDef.parentMenu] = nextDef.key;
+          }
           saveActiveNavKey(activeShellState.activeNavKey);
           renderSidebarAndTopbar();
         } else if (
@@ -2022,7 +2095,12 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             (i) => i.luciTab === 'settings' && i.settingsSubTab === subKey,
           );
           if (matched) {
+            activeShellState.navActivationSeq =
+              (activeShellState.navActivationSeq || 0) + 1;
             activeShellState.activeNavKey = matched.key;
+            if (matched.parentMenu) {
+              lastChildByParent[matched.parentMenu] = matched.key;
+            }
             saveActiveNavKey(matched.key);
             renderSidebarAndTopbar();
           }
@@ -3250,7 +3328,12 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
               (i) => i.luciTab === 'settings' && i.settingsSubTab === subKey,
             );
             if (matched) {
+              activeShellState.navActivationSeq =
+                (activeShellState.navActivationSeq || 0) + 1;
               activeShellState.activeNavKey = matched.key;
+              if (matched.parentMenu) {
+                lastChildByParent[matched.parentMenu] = matched.key;
+              }
               saveActiveNavKey(matched.key);
               renderSidebarAndTopbar();
             }
@@ -3591,12 +3674,15 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   ) {
     activeShellState.restoringTab = true;
     activateNavItem(targetItem);
+    const restoreSeq = activeShellState.navActivationSeq;
     if (
       typeof window !== 'undefined' &&
       typeof window.requestAnimationFrame === 'function'
     ) {
       window.requestAnimationFrame(() => {
-        activateNavItem(targetItem);
+        if (activeShellState.navActivationSeq === restoreSeq) {
+          activateNavItem(targetItem);
+        }
         activeShellState.restoringTab = false;
       });
     } else {

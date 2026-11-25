@@ -84,7 +84,17 @@ import {
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
 import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
+import {
+  formatPlatformBadge,
+  getPlatformInfo,
+} from '../../helpers/platformInfo';
 import { getRouterUiPrefs, setRouterUiPrefs } from '../../helpers/uiPrefs';
+import {
+  createExitCountryController,
+  installPrivacyModeHotkey,
+  PRIVACY_MODE_CHANGED_EVENT,
+  renderExitCountryIndicator,
+} from './exitCountry';
 import {
   computeConnectionRates,
   computeTrafficRates,
@@ -422,6 +432,34 @@ let selectedDashboardSectionCode = '';
 let activeSectionModalTab: 'nodes' | 'conditions' = 'nodes';
 
 let dashboardVisibilityPaused = false;
+let privacyListenerBound = false;
+
+function getPrimaryActiveOutboundTag(
+  sections: Tachyon.OutboundGroup[],
+): string {
+  for (const sec of sections) {
+    if (isServiceGroup(sec)) continue;
+    const selected = sec.outbounds?.find((o) => o.selected);
+    const code =
+      selected?.priorityInfo?.selectedCode ||
+      selected?.urlTestInfo?.selectedCode ||
+      selected?.code;
+    if (code && code !== 'direct-out') {
+      return code;
+    }
+  }
+  const activeRoutes = getAllActiveRoutes(sections);
+  const proxyRoute = activeRoutes.find((r) => r.name && r.name !== 'Direct');
+  return proxyRoute?.name || '';
+}
+
+const exitCountryController = createExitCountryController({
+  fetcher: (opts) => TachyonShellMethods.getExitCountry(opts),
+  onUpdate: () => {
+    scheduleSystemServicesWidgetRender();
+  },
+  isActive: () => dashboardMounted,
+});
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -1459,6 +1497,7 @@ async function handleChooseOutbound(
       );
     }
     await fetchDashboardSections({ force: true });
+    void exitCountryController.fetchExitCountry({ refresh: true, node: tag });
   } catch (error: any) {
     showToast(formatGroupSwitchError(error), 'error');
   } finally {
@@ -6211,6 +6250,19 @@ export async function renderSystemServicesWidget() {
     onClick?: (e: MouseEvent) => void;
   }> = [
     {
+      key: tr('Страна выхода', 'Exit Country'),
+      value: renderExitCountryIndicator(
+        exitCountryController.getState(),
+        () => {
+          const activeNode = getPrimaryActiveOutboundTag(sections);
+          void exitCountryController.fetchExitCountry({
+            refresh: true,
+            node: activeNode || undefined,
+          });
+        },
+      ),
+    },
+    {
       key: tr('Режим работы', 'Mode'),
       value: E(
         'span',
@@ -6432,6 +6484,32 @@ export async function renderSystemServicesWidget() {
         title: tooltipParts.join(' | '),
       },
     });
+  }
+
+  {
+    const platformInfo = getPlatformInfo(srvData?.platformInfo);
+    if (platformInfo?.is_entware) {
+      const badge = formatPlatformBadge(platformInfo);
+      const badgeStyle = badge.warning
+        ? 'border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: #f59e0b;'
+        : '';
+      routingItems.push({
+        key: tr('Среда', 'Environment'),
+        value: E(
+          'span',
+          {
+            class: `tachyon-stat-pill tachyon-stat-pill--conns tachyon-platform-badge${badge.warning ? ' is-warning' : ''}`,
+            style: badgeStyle,
+            'data-platform-badge': platformInfo.platform,
+            'data-platform-warning': badge.warning ? 'true' : 'false',
+          } as any,
+          badge.warning ? `${badge.label} (!)` : badge.label,
+        ),
+        attributes: {
+          title: badge.tooltip,
+        },
+      });
+    }
   }
 
   const srvItems: Array<{
@@ -7412,6 +7490,12 @@ export async function onStoreUpdate(
         scheduleSectionsWidgetRender();
         if (dataChanged) {
           renderTrafficTotalWidget();
+          const activeNode = getPrimaryActiveOutboundTag(
+            next.sectionsWidget.data || [],
+          );
+          if (activeNode) {
+            exitCountryController.syncActiveNode(activeNode);
+          }
         }
       }
     }
@@ -7448,6 +7532,27 @@ async function onPageMount() {
   dashboardMountId += 1;
   const mountId = dashboardMountId;
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+
+  installPrivacyModeHotkey();
+  if (
+    !privacyListenerBound &&
+    typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function'
+  ) {
+    privacyListenerBound = true;
+    window.addEventListener(PRIVACY_MODE_CHANGED_EVENT, () => {
+      if (dashboardMounted) {
+        scheduleSystemServicesWidgetRender();
+      }
+    });
+  }
+  const initialActiveNode = getPrimaryActiveOutboundTag(
+    store.get().sectionsWidget.data || [],
+  );
+  void exitCountryController.fetchExitCountry({
+    refresh: false,
+    node: initialActiveNode || undefined,
+  });
 
   applyDashboardLayoutToDom();
   if (!layoutChangesUnsubscribe) {
@@ -7500,6 +7605,7 @@ function onPageUnmount() {
   dashboardMountId += 1;
   dashboardVisibilityPaused = false;
   movingPolicySections = false;
+  exitCountryController.reset();
 
   directSocketsFailed = false;
   trafficRatesState = createInitialTrafficRatesState();

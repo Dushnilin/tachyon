@@ -12243,4 +12243,34 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
     color: var(--text3);
     flex-wrap: wrap;
 }
+
+.tachyon-ruleset-picker__chip-recommended {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--accent, #0a84ff);
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.tachyon-exit-country-pill {
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.tachyon-exit-country-pill:hover {
+    border-color: var(--border-strong, rgba(255, 255, 255, 0.22));
+}
+
+.tachyon-exit-country-pill__icon {
+    opacity: 0.65;
+    flex-shrink: 0;
+}
+
+.tachyon-exit-country-pill__icon.is-spinning {
+    animation: tachyon-spin 0.9s linear infinite;
+}
+
+@keyframes tachyon-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
 `;

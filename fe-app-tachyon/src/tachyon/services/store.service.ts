@@ -187,6 +187,7 @@ export interface StoreType {
       dnsmasqPid?: number;
       dnsmasqUptimeSeconds?: number;
       dnsmasqUptimePretty?: string;
+      platformInfo?: Tachyon.PlatformInfo;
     };
   };
   sectionsWidget: {
@@ -297,6 +298,7 @@ export interface StoreType {
       | 'tunnel_over_v4'
       | 'full'
       | string;
+    platform_info?: Tachyon.PlatformInfo;
   };
   updatesActions: {
     tachyonCheck: { loading: boolean };

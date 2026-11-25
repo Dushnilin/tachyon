@@ -17,6 +17,7 @@ import {
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods';
 import { logger } from '../../../services';
+import { isOpenWrtOnlyFixCode } from '../../../helpers/platformInfo';
 import { Tachyon } from '../../../types';
 
 export interface AiDoctorHistoryEntry {
@@ -156,7 +157,9 @@ export function getDeviceIcon(hostname: string, size = 16): SVGElement {
 
 export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
   const report = options.report;
-  const quickFixes = options.quickFixes || [];
+  const quickFixes = (options.quickFixes || []).filter(
+    (code) => !isOpenWrtOnlyFixCode(code),
+  );
   const repLower = report.toLowerCase();
 
   const nodes = options.backendNodes ?? [

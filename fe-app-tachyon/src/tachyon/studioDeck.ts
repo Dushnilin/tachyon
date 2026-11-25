@@ -761,7 +761,9 @@ function moveUciSectionOrder(
   const targetSid = all[targetIdx];
   try {
     if (typeof (uci as any).move === 'function') {
-      (uci as any).move(UCI_PACKAGE, sid, targetSid);
+      // LuCI uci.move(conf, sid1, sid2, after): after=false inserts before sid2,
+      // after=true inserts after sid2 (required when moving a section downward).
+      (uci as any).move(UCI_PACKAGE, sid, targetSid, direction > 0);
       notifyUciChanged();
       onDone();
     }
@@ -3591,7 +3593,16 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         if (!draggedSid || draggedSid === sid) return;
         try {
           if (typeof (uci as any).move === 'function') {
-            (uci as any).move(UCI_PACKAGE, draggedSid, sid);
+            const allIds = (
+              uci.sections(UCI_PACKAGE, sectionRef.sectiontype || type) || []
+            )
+              .map((s: any) => s['.name'])
+              .filter(Boolean);
+            const draggedIdx = allIds.indexOf(draggedSid);
+            const targetIdx = allIds.indexOf(sid);
+            const after =
+              draggedIdx >= 0 && targetIdx >= 0 && draggedIdx < targetIdx;
+            (uci as any).move(UCI_PACKAGE, draggedSid, sid, after);
             notifyUciChanged();
             renderDeck();
           }

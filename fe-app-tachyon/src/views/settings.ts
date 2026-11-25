@@ -4271,6 +4271,13 @@ function createSettingsContent(section, capabilities) {
   o.default = '0';
   o.rmempty = false;
 
+  const isEntwareRuntime = () =>
+    Boolean(
+      capabilities?.platform_info?.is_entware ||
+        (typeof main.isEntwarePlatform === 'function' &&
+          main.isEntwarePlatform(capabilities?.platform_info)),
+    );
+
   o = section.taboption(
     'dns',
     form.Flag,
@@ -4282,6 +4289,10 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = '0';
   o.rmempty = false;
+  o.retain = true;
+  o.checkDepends = function () {
+    return !isEntwareRuntime();
+  };
 
   o = section.taboption(
     'dns',
@@ -4297,6 +4308,14 @@ function createSettingsContent(section, capabilities) {
   o.datatype = 'uinteger';
   o.placeholder = '10000';
   o.rmempty = true;
+  o.retain = true;
+  const origDnsCacheCheckDepends = o.checkDepends;
+  o.checkDepends = function (section_id) {
+    if (isEntwareRuntime()) return false;
+    return typeof origDnsCacheCheckDepends === 'function'
+      ? origDnsCacheCheckDepends.call(this, section_id)
+      : true;
+  };
 
   const originalDnsCacheRenderWidget = o.renderWidget;
   o.renderWidget = function (section_id, option_index, cfgvalue) {
@@ -4352,6 +4371,70 @@ function createSettingsContent(section, capabilities) {
       node.appendChild(calcNode);
     }
     return node;
+  };
+
+  // ─── Entware / Keenetic DNS Interception ─────────────────────────────────
+
+  o = section.taboption(
+    'dns',
+    form.ListValue,
+    'entware_dns_mode',
+    _tr('Режим перехвата DNS (Entware)', 'Entware DNS Interception Mode'),
+    _tr(
+      'redirect — перехват DNS-запросов LAN через iptables без отключения штатного DNS роутера; override — прямой перехват на порту 53.',
+      'redirect — intercepts LAN DNS queries via iptables without disabling the router built-in DNS; override — binds directly on port 53.',
+    ),
+  );
+  o.value(
+    'redirect',
+    _tr(
+      'redirect — перехват через iptables (без отключения штатного DNS)',
+      'redirect — iptables redirect (keeps built-in router DNS)',
+    ),
+  );
+  o.value(
+    'override',
+    _tr(
+      'override — прямой перехват на порту 53',
+      'override — direct listener on port 53',
+    ),
+  );
+  o.default = 'redirect';
+  o.rmempty = false;
+  o.retain = true;
+  o.checkDepends = function () {
+    return isEntwareRuntime();
+  };
+
+  o = section.taboption(
+    'dns',
+    form.Value,
+    'entware_dns_port',
+    _tr('Локальный порт DNS (Entware)', 'Entware Local DNS Port'),
+    _tr(
+      'Порт, на котором ядро принимает перенаправленные DNS-запросы в режиме redirect (по умолчанию: 1053, диапазон 1..65535).',
+      'Port where Tachyon Core receives redirected DNS queries in redirect mode (default: 1053, range 1..65535).',
+    ),
+  );
+  o.default = '1053';
+  o.placeholder = '1053';
+  o.datatype = 'port';
+  o.rmempty = false;
+  o.retain = true;
+  o.validate = function (_section_id, value) {
+    if (typeof main.validateEntwareDnsPort === 'function') {
+      return main.validateEntwareDnsPort(value);
+    }
+    const n = Number(String(value || '').trim());
+    return Number.isInteger(n) && n >= 1 && n <= 65535
+      ? true
+      : _tr(
+          'Порт должен быть в диапазоне 1..65535',
+          'Port must be in range 1..65535',
+        );
+  };
+  o.checkDepends = function () {
+    return isEntwareRuntime();
   };
 
   // ─── DNS Strategy & FakeIP ───────────────────────────────────────────────
@@ -7076,8 +7159,9 @@ function createSettingsContent(section, capabilities) {
     form.DynamicList,
     'smart_detect_exclude_lists',
     _('Preset exclusions for Smart Detect'),
-    _(
-      'Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated.',
+    _tr(
+      'Выбранные пресеты исключают свои домены и поддомены из автоматического добавления Smart Detect. Для исключения российских сайтов из автодетекта выбирайте «Россия (внутри)», чтобы они не попадали в прокси-маршрут при временных сбоях; список «Россия (снаружи)» предназначен для зарубежных ресурсов с региональными ограничениями. Ручные правила и ранее добавленные домены сохраняются.',
+      'Selected presets exclude their domains and subdomains from automatic Smart Detect additions. To exclude Russian websites from auto-detection, choose "Russia (inside)" so they are not routed through a proxy during temporary outages; "Russia (outside)" is intended for foreign resources with regional restrictions. Manual routing rules and previously added domains are kept.',
     ),
   );
   sdExcludeListsOpt.placeholder = _('Service list');
@@ -7092,9 +7176,12 @@ function createSettingsContent(section, capabilities) {
   const sdPresetChoices = Object.entries(main.DOMAIN_LIST_OPTIONS).filter(
     ([name]) => !sdIpOnlyPresets.has(name),
   );
-  sdPresetChoices.forEach(([name, label]) =>
-    sdExcludeListsOpt.value(name, label),
-  );
+  const sdRecommendedLabel = _tr('Рекомендуется', 'Recommended');
+  sdPresetChoices.forEach(([name, label]) => {
+    const displayLabel =
+      name === 'russia_inside' ? `${label} (${sdRecommendedLabel})` : label;
+    sdExcludeListsOpt.value(name, displayLabel);
+  });
   sdExcludeListsOpt.validate = function (_section_id, value) {
     const names = Array.isArray(value) ? value : value ? [value] : [];
     return names.every((name) => sdPresetChoices.some(([key]) => key === name))

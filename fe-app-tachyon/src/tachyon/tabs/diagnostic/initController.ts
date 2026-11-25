@@ -76,6 +76,10 @@ import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { tr } from '../../helpers/i18n';
 import { formatCoreVersion } from '../../helpers/coreVersion';
 import {
+  formatPlatformBadge,
+  getPlatformInfo,
+} from '../../helpers/platformInfo';
+import {
   clearPersistedDiagnosticRun,
   PersistedDiagnosticRun,
   readPersistedDiagnosticRun,
@@ -1732,6 +1736,11 @@ function renderDiagnosticSystemInfoWidget() {
       ? normalizeCompiledVersion(diagnosticsSystemInfo.tachyon_version)
       : luciAppVerRaw;
 
+  const platformInfo = getPlatformInfo(
+    diagnosticsSystemInfo.platform_info || svcData.platformInfo,
+  );
+  const isEntware = Boolean(platformInfo?.is_entware);
+
   const items: Array<IRenderSystemInfoRow> = [
     {
       key: 'Tachyon',
@@ -1745,14 +1754,36 @@ function renderDiagnosticSystemInfoWidget() {
       },
       subvalue: tachyonSubParts.join(' · '),
     },
-    {
-      key: 'Luci App',
-      value: luciAppVer,
-      subvalue: svcData.watchdogRunning
-        ? tr('Watchdog: активен', 'Watchdog: active')
-        : tr('Watchdog: выкл', 'Watchdog: off'),
-    },
+    ...(!isEntware
+      ? [
+          {
+            key: 'Luci App',
+            value: luciAppVer,
+            subvalue: svcData.watchdogRunning
+              ? tr('Watchdog: активен', 'Watchdog: active')
+              : tr('Watchdog: выкл', 'Watchdog: off'),
+          },
+        ]
+      : []),
   ];
+
+  if (platformInfo?.is_entware) {
+    const badge = formatPlatformBadge(platformInfo);
+    items.push({
+      key: tr('Среда', 'Environment'),
+      value: badge.label,
+      tag: badge.warning
+        ? {
+            label: tr('внимание', 'warning'),
+            kind: 'warning',
+          }
+        : {
+            label: platformInfo.firewall || 'iptables',
+            kind: 'neutral',
+          },
+      subvalue: badge.warning || platformInfo.storage_mount || undefined,
+    });
+  }
 
   const coreRunning = Boolean(svcData.tachyonCore || svcData.tachyonRunning);
   const coreSubParts: string[] = [];

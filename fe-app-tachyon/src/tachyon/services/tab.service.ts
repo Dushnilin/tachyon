@@ -85,10 +85,27 @@ class TabService {
     return tab.replace(/^(?:cbi-tachyon-|tab-)/, '');
   }
 
+  private isTopLevelTabElement(el: HTMLElement): boolean {
+    if (
+      el.closest?.(
+        '.tachyon-global-subtabs, .tachyon-section-subtabs, .tachyon-clients-subtabs, #cbi-tachyon-settings .cbi-tabmenu, #cbi-tachyon-settings .cbi-section-node, #cbi-tachyon-settings .cbi-tabcontainer',
+      )
+    ) {
+      return false;
+    }
+    const rawTab = el.dataset?.tab || '';
+    if (rawTab.includes(':')) {
+      return false;
+    }
+    return true;
+  }
+
   private getTabsInfo(): TabInfo[] {
-    const tabs = Array.from(
+    const allTabs = Array.from(
       document.querySelectorAll<HTMLElement>('.cbi-tab, .cbi-tab-disabled'),
     );
+    const topTabs = allTabs.filter((el) => this.isTopLevelTabElement(el));
+    const tabs = topTabs.length > 0 ? topTabs : allTabs;
     return tabs.map((el) => ({
       el,
       id: this.cleanTabId(el.dataset.tab) || '',
@@ -99,9 +116,12 @@ class TabService {
   }
 
   private getActiveTabId(): string | null {
-    const active = document.querySelector<HTMLElement>(
-      '.cbi-tab:not(.cbi-tab-disabled)',
+    const activeCandidates = Array.from(
+      document.querySelectorAll<HTMLElement>('.cbi-tab:not(.cbi-tab-disabled)'),
     );
+    const active =
+      activeCandidates.find((el) => this.isTopLevelTabElement(el)) ||
+      activeCandidates[0];
     return this.cleanTabId(active?.dataset.tab);
   }
 

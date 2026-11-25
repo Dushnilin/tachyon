@@ -72,6 +72,13 @@ function applyServiceState(uiState: Tachyon.UiState) {
     uiState.capabilities.tachyon_core_tailscale;
   nextSystemInfo.tachyon_core_cert_pin =
     uiState.capabilities.tachyon_core_cert_pin ?? 0;
+  const resolvedPlatformInfo =
+    uiState.service.tachyon.platform_info ||
+    uiState.capabilities.platform_info ||
+    currentSystemInfo.platform_info;
+  if (resolvedPlatformInfo) {
+    nextSystemInfo.platform_info = resolvedPlatformInfo;
+  }
 
   store.set({
     servicesInfoWidget: {
@@ -112,6 +119,9 @@ function applyServiceState(uiState: Tachyon.UiState) {
         dnsmasqPid: uiState.service.dnsmasq?.pid,
         dnsmasqUptimeSeconds: uiState.service.dnsmasq?.uptime_seconds,
         dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty,
+        platformInfo:
+          resolvedPlatformInfo ||
+          store.get().servicesInfoWidget.data.platformInfo,
       },
     },
     diagnosticsSystemInfo: nextSystemInfo,

@@ -2126,7 +2126,13 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 
   function moveGroup(fromId, toId) {
     if (!fromId || !toId || fromId === toId) return;
-    uci.move(UCI_PACKAGE, fromId, toId);
+    const allIds = (uci.sections(UCI_PACKAGE, 'outbound_group') || [])
+      .map((g) => g['.name'])
+      .filter(Boolean);
+    const fromIdx = allIds.indexOf(fromId);
+    const toIdx = allIds.indexOf(toId);
+    const after = fromIdx >= 0 && toIdx >= 0 && fromIdx < toIdx;
+    uci.move(UCI_PACKAGE, fromId, toId, after);
     renderGroupsRows();
     Promise.resolve(uci.save())
       .then(() => {

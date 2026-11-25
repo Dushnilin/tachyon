@@ -113,6 +113,9 @@ export async function fetchServicesInfo() {
         dnsmasqPid: previousData.dnsmasqPid,
         dnsmasqUptimeSeconds: previousData.dnsmasqUptimeSeconds,
         dnsmasqUptimePretty: previousData.dnsmasqUptimePretty,
+        platformInfo:
+          (tachyon.success && tachyon.data.platform_info) ||
+          previousData.platformInfo,
       },
     },
   });

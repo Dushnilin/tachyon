@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-24 02:22+0300\n"
-"PO-Revision-Date: 2026-11-24 02:22+0300\n"
+"POT-Creation-Date: 2026-11-25 09:34+0300\n"
+"PO-Revision-Date: 2026-11-25 09:34+0300\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -410,6 +410,9 @@ msgstr "На транзитном маршруте зафиксирован сб
 msgid "Active WAN Subnet Match"
 msgstr "Подсеть активного WAN-интерфейса"
 
+msgid "Active node"
+msgstr "Активный узел"
+
 msgid "Active node transport"
 msgstr "Активный транспорт узла"
 
@@ -424,6 +427,9 @@ msgstr "Активные сессии перепроверены по текущ
 
 msgid "Active theme:"
 msgstr "Активная тема:"
+
+msgid "Actual exit"
+msgstr "Фактический выход"
 
 msgid "Ad & Telemetry Blocker (Block)"
 msgstr "Блокировка рекламы (Block)"
@@ -1826,6 +1832,9 @@ msgstr "Проверяется"
 msgid "Checking Connection..."
 msgstr "Проверка соединения..."
 
+msgid "Checking actual exit country..."
+msgstr "Определение страны фактического выхода..."
+
 msgid "Checking authentication settings..."
 msgstr "Проверка параметров авторизации..."
 
@@ -1991,8 +2000,14 @@ msgstr "Нажмите, чтобы выделить в поле ввода"
 msgid "Click to inspect auto-selection details"
 msgstr "Нажмите для просмотра деталей автовыбора"
 
+msgid "Click to refresh"
+msgstr "Нажмите для обновления"
+
 msgid "Click to remove server from selection"
 msgstr "Нажмите, чтобы убрать сервер из выбранных"
+
+msgid "Click to retry"
+msgstr "Нажмите, чтобы проверить снова"
 
 msgid "Click to show"
 msgstr "Нажмите, чтобы показать"
@@ -2785,6 +2800,9 @@ msgstr "Приоритет DNS (IPv4 / IPv6)"
 
 msgid "DNS Intercept"
 msgstr "Перехват DNS"
+
+msgid "DNS Mode"
+msgstr "Режим DNS"
 
 msgid "DNS Protocol"
 msgstr "Протокол DNS"
@@ -3770,6 +3788,9 @@ msgstr "Введите имя уровня"
 msgid "Enter a number or range, e.g. 25 or 25-35"
 msgstr "Введите число или диапазон, например 25 или 25-35"
 
+msgid "Enter a port between 1 and 65535"
+msgstr "Укажите порт от 1 до 65535"
+
 msgid "Enter a positive whole number in megabytes"
 msgstr "Введите положительное целое число в мегабайтах"
 
@@ -3814,6 +3835,9 @@ msgstr "Введите корректные домены, по одному на
 
 msgid "Enter your current password to confirm the change."
 msgstr "Введите текущий пароль для подтверждения изменения."
+
+msgid "Environment"
+msgstr "Среда"
 
 msgid "Ephemeral node"
 msgstr "Эфемерный узел"
@@ -3943,6 +3967,9 @@ msgstr "Исключенные из Smart Detect домены"
 
 msgid "Excluded servers"
 msgstr "Исключённые серверы"
+
+msgid "Exit Country"
+msgstr "Страна выхода"
 
 msgid "Exit Node (optional)"
 msgstr "Выходной узел (Exit node, необязательно)"
@@ -4168,6 +4195,9 @@ msgstr "Не удалось удалить снапшот"
 
 msgid "Failed to detect DPI type"
 msgstr "Не удалось определить тип DPI"
+
+msgid "Failed to detect actual exit country"
+msgstr "Не удалось определить фактическую страну выхода"
 
 msgid "Failed to execute"
 msgstr "Не удалось выполнить"
@@ -4561,6 +4591,9 @@ msgstr "Финляндия (fi)"
 
 msgid "Fires a parallel backup dial if primary handshake stalls and uses whichever connects first"
 msgstr "При задержке установки соединения запускает параллельное подключение ко второму серверу и выбирает первый ответивший"
+
+msgid "Firewall"
+msgstr "Фаервол"
 
 msgid "Firewall (nftables)"
 msgstr "Межсетевой экран (nftables)"
@@ -7934,6 +7967,9 @@ msgstr "Обычный TLS"
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы."
 
+msgid "Platform"
+msgstr "Платформа"
+
 msgid "Please enter Subscription URL"
 msgstr "Укажите ссылку на подписку (URL)"
 
@@ -8024,8 +8060,14 @@ msgstr "Конфликт порта"
 msgid "Port for the local mixed proxy of this section"
 msgstr "Порт локального смешанного прокси для этой секции"
 
+msgid "Port must be an integer between 1 and 65535"
+msgstr "Порт должен быть целым числом от 1 до 65535"
+
 msgid "Port must be between 1 and 65535"
 msgstr "Порт должен быть от 1 до 65535"
+
+msgid "Port must be in range 1..65535"
+msgstr "Порт должен быть в диапазоне 1..65535"
 
 msgid "Port or Range"
 msgstr "Порт или диапазон (напр. 2012-2022)"
@@ -8383,6 +8425,9 @@ msgstr "Маршрут через прокси к Telegram API работает"
 
 msgid "Proxy to use for WARP API registration (api.cloudflareclient.com)"
 msgstr "Прокси для регистрации WARP API (api.cloudflareclient.com)"
+
+msgid "Public IP"
+msgstr "Публичный IP"
 
 msgid "Public IP Address Isolation"
 msgstr "Изоляция публичного IP-адреса"
@@ -9296,6 +9341,9 @@ msgstr "Выполняется диагностика…"
 msgid "Running subsystem diagnostics"
 msgstr "Выполняется диагностика подсистем"
 
+msgid "Runtime state is not on RAM tmpfs — increased USB/flash wear possible"
+msgstr "Временные файлы размещены не в RAM tmpfs — возможен повышенный износ USB/флеш"
+
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
 
@@ -9718,9 +9766,6 @@ msgstr "Выбранные устройства — гости (явный сп�
 
 msgid "Selected node"
 msgstr "Выбранный узел"
-
-msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
-msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."
 
 msgid "Selected section"
 msgstr "Выбранная секция"
@@ -10426,6 +10471,12 @@ msgstr "Остановка..."
 
 msgid "Stopping…"
 msgstr "Остановка…"
+
+msgid "Storage"
+msgstr "Хранилище"
+
+msgid "Storage filesystem is not POSIX-compliant (ext2/ext3/ext4 required)"
+msgstr "ФС хранилища не поддерживает POSIX-права (требуется ext2/ext3/ext4)"
 
 msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
 msgstr "Хранить автоопределённые домены в /etc вместо /tmp для сохранения после перезагрузки."
@@ -12590,6 +12641,9 @@ msgstr "недоступно"
 msgid "m"
 msgstr "м"
 
+msgid "masked Alt+P"
+msgstr "скрыт Alt+P"
+
 msgid "midsld (Middle of SLD domain)"
 msgstr "midsld (середина домена второго уровня)"
 
@@ -12766,6 +12820,9 @@ msgstr "Ссылки vpn:// доступны только с Tachyon Core"
 
 msgid "vpn:// link or .conf file content"
 msgstr "Ключ vpn:// или содержимое файла .conf"
+
+msgid "warning"
+msgstr "внимание"
 
 msgid "working strategies"
 msgstr "рабочих стратегий"
@@ -12961,6 +13018,9 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Selected presets exclude their domains and subdomains from automatic Smart Detect additions. Manual routing rules and previously added domains are kept. Presets follow regular list updates; if a selected preset has no cached copy, detection waits until lists are updated."
+msgstr "Домены и поддомены из выбранных списков не добавляются автоматически через Smart Detect. Ручные правила маршрутизации и ранее добавленные домены сохраняются. Списки обновляются штатным механизмом; если кэш выбранного списка отсутствует, обнаружение ожидает обновления списков."
 
 msgid "Blocked Domains & Rules"
 msgstr "Заблокированные домены и правила"

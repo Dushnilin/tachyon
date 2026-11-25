@@ -253,6 +253,42 @@ export const TachyonShellMethods = {
     ),
   getStatus: async () =>
     callBaseMethod<Tachyon.GetStatus>(Tachyon.AvailableMethods.GET_STATUS),
+  getExitCountry: async (opts?: { refresh?: boolean; node?: string }) => {
+    const args: string[] = [];
+    if (opts?.refresh) {
+      args.push('refresh=1');
+    }
+    if (opts?.node) {
+      args.push(`node=${opts.node}`);
+    }
+    const res = await callBaseMethod<Tachyon.ExitCountryResult>(
+      Tachyon.AvailableMethods.GET_EXIT_COUNTRY,
+      args,
+      { timeout: 10000 },
+    );
+    if (res.success && res.data && typeof res.data === 'object') {
+      return res;
+    }
+    if (typeof fetch === 'function' && typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams();
+        if (opts?.refresh) params.set('refresh', '1');
+        if (opts?.node) params.set('node', opts.node);
+        const qs = params.toString();
+        const url = qs ? `/api/exit-country?${qs}` : '/api/exit-country';
+        const httpRes = await fetch(url, { credentials: 'same-origin' });
+        if (httpRes.ok) {
+          const parsed = (await httpRes.json()) as Tachyon.ExitCountryResult;
+          if (parsed && typeof parsed === 'object') {
+            return { success: true as const, data: parsed };
+          }
+        }
+      } catch (_err) {
+        // Fallback HTTP endpoint unavailable (e.g. OpenWrt LuCI)
+      }
+    }
+    return res;
+  },
   getOutboundMetadata: async (section: string) =>
     callBaseMethod<Tachyon.GetOutboundMetadata>(
       Tachyon.AvailableMethods.GET_OUTBOUND_METADATA,

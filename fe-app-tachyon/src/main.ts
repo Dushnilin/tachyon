@@ -129,6 +129,14 @@ export {
 } from './tachyon/appShell';
 export { openConnectionWizardModal } from './tachyon/connectionWizard';
 export { detectOutboundCountry } from './tachyon/helpers/country';
+export {
+  formatPlatformBadge,
+  getPlatformInfo,
+  isEntwarePlatform,
+  isOpenWrtOnlyFixCode,
+  isOpenWrtOnlyNotice,
+  validateEntwareDnsPort,
+} from './tachyon/helpers/platformInfo';
 export { mountTachyonStudioDeck } from './tachyon/studioDeck';
 export {
   renderTachyonLogoSvg,

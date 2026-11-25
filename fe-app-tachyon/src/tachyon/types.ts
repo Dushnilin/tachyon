@@ -178,6 +178,7 @@ export namespace Tachyon {
     GENERATE_WG_KEYPAIR = 'generate_wg_keypair',
     // get
     GET_ENGINE_STATUS = 'get_engine_status',
+    GET_EXIT_COUNTRY = 'get_exit_country',
     GET_FPTN_STATUS = 'get_fptn_status',
     GET_LITE_MODE = 'get_lite_mode',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
@@ -832,6 +833,8 @@ export namespace Tachyon {
     tun_inet6?: string;
     tun_kill_switch?: '0' | '1';
     webrtc_leak_protect?: '0' | '1' | 'auto';
+    entware_dns_mode?: 'redirect' | 'override';
+    entware_dns_port?: string;
   }
 
   export interface MethodSuccessResponse<T> {
@@ -952,6 +955,43 @@ export namespace Tachyon {
     fakeip_inet6_range?: string;
   }
 
+  export interface PlatformInfo {
+    platform:
+      | 'openwrt'
+      | 'keenetic_entware'
+      | 'merlin_entware'
+      | 'padavan_entware'
+      | 'generic_entware'
+      | string;
+    display_name: string;
+    is_entware: boolean;
+    is_keenetic: boolean;
+    firewall: 'nftables' | 'iptables' | string;
+    storage_kind:
+      | 'internal_flash'
+      | 'usb_external'
+      | 'tmpfs_only'
+      | 'unknown'
+      | string;
+    storage_fs: string;
+    storage_mount: string;
+    storage_posix: boolean;
+    runtime_tmpfs_ok: boolean;
+    entware_dns_mode?: 'redirect' | 'override' | string;
+    entware_dns_port?: number;
+  }
+
+  export interface ExitCountryResult {
+    ok: boolean;
+    country_code: string;
+    ip: string;
+    active_node: string;
+    source: string;
+    checked_at: number;
+    cached: boolean;
+    error?: string;
+  }
+
   export interface GetStatus {
     running: number;
     enabled: number;
@@ -980,6 +1020,7 @@ export namespace Tachyon {
     uptime_pretty?: string;
     cpu_load_percent?: number | null;
     cpu_temp_c?: number | null;
+    platform_info?: PlatformInfo;
   }
 
   export interface GetOutboundMetadata {
@@ -1109,6 +1150,7 @@ export namespace Tachyon {
     quarantined_sections_count?: number;
     deferred_sections_count?: number;
     generated_at?: number;
+    platform_info?: PlatformInfo;
   }
 
   export interface GetServerCapabilities {
@@ -1123,6 +1165,7 @@ export namespace Tachyon {
     i18n_ru_installed?: 0 | 1;
     luci_lang?: string;
     server_inbounds_enabled_count: number;
+    platform_info?: PlatformInfo;
   }
 
   export type ServiceAction = 'start' | 'stop' | 'restart' | 'reload';

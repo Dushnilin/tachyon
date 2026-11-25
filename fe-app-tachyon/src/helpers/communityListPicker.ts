@@ -613,6 +613,7 @@ export function attachCommunityListPicker(
   option: any,
   opts: {
     getBlockedKeys?: (sectionId: string) => Set<string>;
+    recommendedKeys?: Iterable<string>;
   } = {},
 ): void {
   if (!option || option.__tachyonPickerAttached) {
@@ -657,6 +658,9 @@ export function attachCommunityListPicker(
       const blocked = opts.getBlockedKeys
         ? opts.getBlockedKeys(section_id)
         : new Set<string>();
+      const recommendedSet = new Set(
+        Array.from(opts.recommendedKeys || [], String),
+      );
 
       let activeCategory = 'popular';
       let syncingFromPicker = false;
@@ -1034,6 +1038,16 @@ export function attachCommunityListPicker(
                     : [renderPlusIcon(10)],
               ),
               E('span', { class: 'tachyon-ruleset-picker__chip-label' }, label),
+              recommendedSet.has(key)
+                ? E(
+                    'span',
+                    {
+                      class: 'tachyon-ruleset-picker__chip-recommended',
+                      'data-recommended': 'true',
+                    } as any,
+                    ru ? '(Рекомендуется)' : '(Recommended)',
+                  )
+                : '',
               isSubsumed
                 ? E(
                     'span',
