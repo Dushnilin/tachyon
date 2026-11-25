@@ -4638,6 +4638,7 @@ fn collect_section_sources_with_owner<'a>(
         owner_sec: &str,
         gref: &str,
         sec_hidden: bool,
+        sources: &'a [crate::store::OutboundSource],
         group_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundGroup>,
         source_by_id: &std::collections::HashMap<&str, &'a crate::store::OutboundSource>,
         seen: &mut std::collections::HashSet<(String, &'a str)>,
@@ -4645,6 +4646,15 @@ fn collect_section_sources_with_owner<'a>(
         result: &mut Vec<(String, &'a crate::store::OutboundSource, bool)>,
     ) {
         if let Some(grp) = group_by_id.get(gref).copied() {
+            if grp.enabled
+                && grp.source_refs.is_empty()
+                && grp.primary_refs.is_empty()
+                && grp.backup_refs.is_empty()
+            {
+                for src in sources.iter().filter(|src| src.enabled) {
+                    push_source(owner_sec, src, sec_hidden, seen, seen_global, result);
+                }
+            }
             for sref in grp
                 .source_refs
                 .iter()
@@ -4691,6 +4701,7 @@ fn collect_section_sources_with_owner<'a>(
                     owner_sec,
                     gref.as_str(),
                     sec.hidden,
+                    &store.outbound_sources,
                     group_by_id,
                     source_by_id,
                     seen,
@@ -4717,6 +4728,7 @@ fn collect_section_sources_with_owner<'a>(
                         owner_sec,
                         t,
                         sec.hidden,
+                        &store.outbound_sources,
                         group_by_id,
                         source_by_id,
                         seen,
@@ -15351,6 +15363,47 @@ async fn run_full_ubus_leak_check(state: &Arc<AppState>, core: &Arc<CoreManager>
 mod tests {
     use super::*;
     use crate::store::{OutboundSource, RoutingSection};
+
+    #[test]
+    fn group_without_source_refs_preserves_enabled_sources_in_metadata() {
+        use crate::store::{OutboundGroup, OutboundSource, RouterStoreData, RoutingSection};
+        let store = RouterStoreData {
+            outbound_sources: vec![
+                OutboundSource {
+                    id: "sn".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "PS".into(),
+                    enabled: true,
+                    ..Default::default()
+                },
+                OutboundSource {
+                    id: "disabled".into(),
+                    enabled: false,
+                    ..Default::default()
+                },
+            ],
+            outbound_groups: vec![OutboundGroup {
+                id: "all_sources".into(),
+                enabled: true,
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "Main".into(),
+                outbound_source_refs: vec!["sn".into()],
+                outbound_group_refs: vec!["all_sources".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let sources: Vec<_> = collect_section_sources_with_owner(&store, "Main")
+            .into_iter()
+            .map(|(_, src, _)| src.id.as_str())
+            .collect();
+        assert_eq!(sources, ["sn", "PS"]);
+    }
 
     #[test]
     fn service_health_targets_skip_block_sections_and_detect_desync() {
