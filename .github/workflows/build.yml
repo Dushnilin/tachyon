@@ -263,6 +263,7 @@ jobs:
           path: |
             dist/release-final/tachyon-*.ipk
             dist/release-final/tachyon-*.apk
+            dist/release-final/tachyon-entware-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -287,7 +288,7 @@ jobs:
           cp -f install.sh uninstall.sh release-assets/
           cd release-assets
           rm -f SHA256SUMS
-          sha256sum tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh > SHA256SUMS
+          sha256sum tachyon-*.ipk tachyon-*.apk tachyon-entware-*.tar.gz install.sh uninstall.sh > SHA256SUMS
           ls -lh
 
       - name: Check existing GitHub release notes

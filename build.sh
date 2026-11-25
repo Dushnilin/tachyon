@@ -89,6 +89,16 @@ for pair in $TACHYON_TARGETS; do
     --launcher-acl "$ROOT_DIR/openwrt/tachyon-launcher.acl.json" \
     --out-ipk "$OUTPUT_DIR/${base_name}.ipk" \
     --out-apk "$OUTPUT_DIR/${base_name}.apk"
+
+  entware_name="tachyon-entware-${arch}-v${RELEASE_VERSION}"
+  python3 "$ROOT_DIR/tools/build_entware_pkg.py" \
+    --bin "$bin_path" \
+    --arch "$arch" \
+    --version "$RELEASE_VERSION" \
+    --views-dir "$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon" \
+    --init "$ROOT_DIR/entware/S99tachyon" \
+    --hooks-dir "$ROOT_DIR/entware" \
+    --out-tgz "$OUTPUT_DIR/${entware_name}.tar.gz"
 done
 
 echo "Copying installer scripts and generating SHA256SUMS..."
@@ -97,7 +107,7 @@ cp -f "$ROOT_DIR/install.sh" "$ROOT_DIR/uninstall.sh" "$OUTPUT_DIR/"
   cd "$OUTPUT_DIR"
   rm -f SHA256SUMS
   sha256_files=()
-  for f in tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh; do
+  for f in tachyon-*.ipk tachyon-*.apk tachyon-entware-*.tar.gz install.sh uninstall.sh; do
     [[ -e "$f" ]] && sha256_files+=("$f")
   done
   if [[ ${#sha256_files[@]} -gt 0 ]]; then

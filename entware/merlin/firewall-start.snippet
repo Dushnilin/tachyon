@@ -1,0 +1,7 @@
+# >>> tachyon-entware >>>
+if [ -x /opt/bin/tachyon ]; then
+    if [ -f /tmp/tachyon-rs/tachyon.pid ] || [ -f /var/run/tachyon/daemon.pid ]; then
+        TACHYON_ROOT=/opt TACHYON_DATA_DIR=/opt/etc/tachyon /opt/bin/tachyon reconcile-net >/dev/null 2>&1 &
+    fi
+fi
+# <<< tachyon-entware <<<

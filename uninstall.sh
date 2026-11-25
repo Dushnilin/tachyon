@@ -1,6 +1,6 @@
 #!/bin/sh
 # shellcheck shell=dash
-# Tachyon Clean Uninstaller for OpenWrt
+# Tachyon Clean Uninstaller for OpenWrt and Entware
 
 set -u
 
@@ -9,37 +9,241 @@ UNINSTALLER_VERSION="2.0.0"
 OPT_PURGE=0
 OPT_YES=0
 OPT_KEEP_BINARIES=0
+OPT_PLATFORM="auto"
+ENTWARE_ROOT="/opt"
 
-for _arg in "$@"; do
-    case "$_arg" in
+_normalize_root_dir() {
+    _r="$1"
+    while [ "$_r" != "/" ]; do
+        case "$_r" in
+            */) _r="${_r%/}" ;;
+            *) break ;;
+        esac
+    done
+    [ -n "$_r" ] || _r="/"
+    printf '%s' "$_r"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
         --purge|-p) OPT_PURGE=1 ;;
         --yes|-y) OPT_YES=1 ;;
         --keep-binaries) OPT_KEEP_BINARIES=1 ;;
+        --platform)
+            shift
+            if [ "$#" -eq 0 ]; then
+                printf '[ERR] --platform requires auto, openwrt, or entware\n' >&2
+                exit 2
+            fi
+            case "$1" in
+                auto|openwrt|entware) OPT_PLATFORM="$1" ;;
+                *)
+                    printf '[ERR] Invalid --platform value: %s (expected auto, openwrt, or entware)\n' "$1" >&2
+                    exit 2
+                    ;;
+            esac
+            ;;
+        --root)
+            shift
+            if [ "$#" -eq 0 ] || [ -z "$1" ]; then
+                printf '[ERR] --root requires a directory path\n' >&2
+                exit 2
+            fi
+            ENTWARE_ROOT="$(_normalize_root_dir "$1")"
+            ;;
         --help|-h)
             printf 'Tachyon Uninstaller v%s\n\n' "$UNINSTALLER_VERSION"
             printf 'Usage: %s [options]\n' "$0"
-            printf '  -y, --yes            Uninstall without confirmation\n'
-            printf '  -p, --purge          Remove all configs, state files, and backups\n'
-            printf '      --keep-binaries  Keep /usr/bin/tachyon-core\n'
-            printf '  -h, --help           Show this help\n'
+            printf '  -y, --yes             Uninstall without confirmation\n'
+            printf '  -p, --purge           Remove all configs, state files, and backups\n'
+            printf '      --keep-binaries   Keep tachyon-core binary\n'
+            printf '      --platform MODE   Target platform: auto, openwrt, entware (default: auto)\n'
+            printf '      --root DIR        Entware root directory (default: /opt)\n'
+            printf '  -h, --help            Show this help\n'
             exit 0
             ;;
         *) ;;
     esac
+    shift
 done
+
+detect_uninstall_platform() {
+    case "$OPT_PLATFORM" in
+        openwrt) printf 'openwrt'; return 0 ;;
+        entware) printf 'entware'; return 0 ;;
+    esac
+    if [ -r /etc/openwrt_release ]; then
+        printf 'openwrt'
+        return 0
+    fi
+    if [ -r "${ENTWARE_ROOT}/etc/entware_release" ] || \
+       [ -x "${ENTWARE_ROOT}/bin/opkg" ] || \
+       [ -x "${ENTWARE_ROOT}/etc/init.d/S99tachyon" ] || \
+       [ -e /proc/ndm ] || \
+       command -v ndmc >/dev/null 2>&1; then
+        printf 'entware'
+        return 0
+    fi
+    printf 'openwrt'
+}
+
+_clean_iptables_family() {
+    _ipt_bin="$1"
+    command -v "$_ipt_bin" >/dev/null 2>&1 || return 0
+    for _tbl in mangle nat filter; do
+        # Remove jump rules pointing to any TACHYON_* chain first.
+        _rules="$("$_ipt_bin" -t "$_tbl" -S 2>/dev/null || true)"
+        [ -n "$_rules" ] || continue
+        printf '%s\n' "$_rules" | grep -E '^-A[[:space:]].*[[:space:]]-j[[:space:]]+TACHYON_[A-Za-z0-9_-]+' | while IFS= read -r _rline; do
+            _del_spec="${_rline#-A }"
+            # shellcheck disable=SC2086
+            "$_ipt_bin" -t "$_tbl" -D $_del_spec >/dev/null 2>&1 || true
+        done
+        _chains="$(printf '%s\n' "$_rules" | sed -n 's/^-N[[:space:]]\+\(TACHYON_[A-Za-z0-9_-]*\).*/\1/p')"
+        for _ch in $_chains; do
+            "$_ipt_bin" -t "$_tbl" -F "$_ch" >/dev/null 2>&1 || true
+        done
+        for _ch in $_chains; do
+            "$_ipt_bin" -t "$_tbl" -X "$_ch" >/dev/null 2>&1 || true
+        done
+    done
+}
+
+_strip_merlin_firewall_block() {
+    _fw_file="/jffs/scripts/firewall-start"
+    [ -f "$_fw_file" ] || return 0
+    grep -q '# >>> tachyon-entware >>>' "$_fw_file" 2>/dev/null || return 0
+    _tmp="${_fw_file}.tachyon-tmp.$$"
+    awk '
+        /^# >>> tachyon-entware >>>/ { skip = 1; next }
+        /^# <<< tachyon-entware <<</ { skip = 0; next }
+        !skip { print }
+    ' "$_fw_file" >"$_tmp" 2>/dev/null || { rm -f "$_tmp" 2>/dev/null || true; return 0; }
+    mv -f "$_tmp" "$_fw_file" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
+    chmod 755 "$_fw_file" 2>/dev/null || true
+    printf '[OK] Removed Tachyon hook block from %s\n' "$_fw_file"
+}
+
+uninstall_entware() {
+    PATH="${ENTWARE_ROOT}/sbin:${ENTWARE_ROOT}/bin:/opt/sbin:/opt/bin:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
+    export PATH
+
+    # Step 1: Backup tachyon.json unless --purge
+    if [ "$OPT_PURGE" -eq 0 ] && [ -f "${ENTWARE_ROOT}/etc/tachyon/tachyon.json" ]; then
+        _ts="$(date +%Y%m%d_%H%M%S 2>/dev/null || date +%s)"
+        _bak="${ENTWARE_ROOT}/etc/tachyon/tachyon.json.backup-${_ts}"
+        cp -af "${ENTWARE_ROOT}/etc/tachyon/tachyon.json" "$_bak" 2>/dev/null || true
+        chmod 600 "$_bak" 2>/dev/null || true
+        printf '[OK] Backup saved to %s\n' "$_bak"
+    fi
+
+    # Step 2: Stop Entware service and daemon processes
+    if [ -x "${ENTWARE_ROOT}/etc/init.d/S99tachyon" ]; then
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 10 "${ENTWARE_ROOT}/etc/init.d/S99tachyon" stop >/dev/null 2>&1 || true
+        else
+            "${ENTWARE_ROOT}/etc/init.d/S99tachyon" stop >/dev/null 2>&1 || true
+        fi
+    fi
+    killall -9 tachyon >/dev/null 2>&1 || true
+    killall -9 tachyon-core >/dev/null 2>&1 || true
+    printf '[OK] Entware service and daemon processes stopped\n'
+
+    # Step 3: Remove NDM and Merlin hooks
+    rm -f \
+        "${ENTWARE_ROOT}/etc/ndm/netfilter.d/100-tachyon.sh" \
+        "${ENTWARE_ROOT}/etc/ndm/ifstatechanged.d/100-tachyon.sh" \
+        "${ENTWARE_ROOT}/etc/ndm/fs.d/100-tachyon.sh" \
+        2>/dev/null || true
+    _strip_merlin_firewall_block
+    printf '[OK] Platform hooks removed\n'
+
+    # Step 4: Clean iptables/ip6tables TACHYON_* chains, ipset, and ip rule table 100
+    _clean_iptables_family iptables
+    _clean_iptables_family ip6tables
+    printf '[OK] iptables/ip6tables TACHYON_* chains cleaned\n'
+
+    if command -v ipset >/dev/null 2>&1; then
+        for _set in $(ipset list -n 2>/dev/null | grep -E '^(tachyon|TACHYON_)' || true); do
+            ipset flush "$_set" >/dev/null 2>&1 || true
+            ipset destroy "$_set" >/dev/null 2>&1 || true
+        done
+        printf '[OK] ipset tables cleaned\n'
+    fi
+
+    if command -v ip >/dev/null 2>&1; then
+        for _p in 9499 9500 9501; do
+            for _fam in -4 -6; do
+                while ip "$_fam" rule del pref "$_p" >/dev/null 2>&1; do :; done
+            done
+        done
+        for _fam in -4 -6; do
+            while ip "$_fam" rule del lookup 100 >/dev/null 2>&1; do :; done
+            ip "$_fam" rule del fwmark 0x04000000/0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x04000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000/0x10000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x10000000 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x1/0x1 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x1 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x2/0x2 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x2 lookup 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x100/0xff00 table 100 >/dev/null 2>&1 || true
+            ip "$_fam" rule del fwmark 0x200/0xff00 table 100 >/dev/null 2>&1 || true
+        done
+        ip route flush table 100 >/dev/null 2>&1 || true
+        ip route flush table 105 >/dev/null 2>&1 || true
+        ip route flush table tachyon >/dev/null 2>&1 || true
+        ip -6 route flush table 100 >/dev/null 2>&1 || true
+        ip -6 route flush table 105 >/dev/null 2>&1 || true
+        ip -6 route flush table tachyon >/dev/null 2>&1 || true
+        printf '[OK] Policy routing table 100 rules restored\n'
+    fi
+
+    # Step 5: Remove Tachyon files from Entware root
+    rm -f \
+        "${ENTWARE_ROOT}/bin/tachyon" \
+        "${ENTWARE_ROOT}/bin/tachyon.new" \
+        "${ENTWARE_ROOT}/etc/init.d/S99tachyon" \
+        2>/dev/null || true
+    rm -rf "${ENTWARE_ROOT}/share/tachyon" 2>/dev/null || true
+
+    if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
+        rm -f "${ENTWARE_ROOT}/bin/tachyon-core" "${ENTWARE_ROOT}/bin/tachyon-core.new" 2>/dev/null || true
+    fi
+
+    rm -rf /tmp/tachyon-rs /tmp/tachyon* /var/run/tachyon* /var/log/tachyon* 2>/dev/null || true
+
+    if [ "$OPT_PURGE" -eq 1 ]; then
+        rm -rf "${ENTWARE_ROOT}/etc/tachyon" "${ENTWARE_ROOT}/etc/tachyon-core" 2>/dev/null || true
+        printf '[OK] All Entware configs and backups removed (--purge)\n'
+    fi
+
+    printf '[OK] Tachyon removed from Entware (%s).\n' "$ENTWARE_ROOT"
+    exit 0
+}
 
 if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
     printf '[ERR] Run this uninstaller as root.\n' >&2
     exit 1
 fi
 
+TARGET_PLATFORM="$(detect_uninstall_platform)"
+
 if [ "$OPT_YES" -eq 0 ] && [ -t 0 ] 2>/dev/null; then
-    printf 'Remove Tachyon from this router? [y/N]: '
+    if [ "$TARGET_PLATFORM" = "entware" ]; then
+        printf 'Remove Tachyon from Entware (%s)? [y/N]: ' "$ENTWARE_ROOT"
+    else
+        printf 'Remove Tachyon from this router? [y/N]: '
+    fi
     read -r _answer
     case "$_answer" in
         y|Y|yes|Yes|YES) ;;
         *) printf '[INFO] Uninstall cancelled.\n'; exit 0 ;;
     esac
+fi
+
+if [ "$TARGET_PLATFORM" = "entware" ]; then
+    uninstall_entware
 fi
 
 # Step 1: Backup configuration unless --purge

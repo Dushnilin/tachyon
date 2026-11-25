@@ -1,0 +1,300 @@
+#!/bin/sh
+# shellcheck shell=dash
+# Tachyon Entware init script (Keenetic / Asuswrt-Merlin / Padavan / Generic Entware)
+
+set -u
+
+TACHYON_ROOT="${TACHYON_ROOT:-/opt}"
+TACHYON_DATA_DIR="${TACHYON_DATA_DIR:-${TACHYON_ROOT}/etc/tachyon}"
+PROG="${TACHYON_ROOT}/bin/tachyon"
+
+RUN_DIR="/tmp/tachyon-rs"
+PID_FILE="${RUN_DIR}/tachyon.pid"
+LOG_FILE="${RUN_DIR}/daemon.log"
+WAIT_NET_SECS="${TACHYON_WAIT_NET_SECS:-10}"
+
+_prepend_path() {
+    case ":${PATH:-}:" in
+        *":$1:"*) ;;
+        *) PATH="$1:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}" ;;
+    esac
+}
+
+_prepend_path "/opt/bin"
+_prepend_path "/opt/sbin"
+if [ "$TACHYON_ROOT" != "/opt" ]; then
+    _prepend_path "${TACHYON_ROOT}/bin"
+    _prepend_path "${TACHYON_ROOT}/sbin"
+fi
+export PATH TACHYON_ROOT TACHYON_DATA_DIR
+
+_log_warn() {
+    printf '[WARN] S99tachyon: %s\n' "$1" >&2
+    if command -v logger >/dev/null 2>&1; then
+        logger -t tachyon -p user.warn "$1" 2>/dev/null || true
+    fi
+}
+
+_log_info() {
+    printf '[INFO] S99tachyon: %s\n' "$1"
+    if command -v logger >/dev/null 2>&1; then
+        logger -t tachyon -p user.info "$1" 2>/dev/null || true
+    fi
+}
+
+_mount_is_tmpfs() {
+    _target="$1"
+    [ -r /proc/mounts ] || return 1
+    awk -v tgt="$_target" '
+        {
+            mp = $2
+            fs = $3
+            if (mp == "/" || mp == tgt || index(tgt, mp "/") == 1) {
+                if (length(mp) >= best_len) {
+                    best_len = length(mp)
+                    best_fs = fs
+                }
+            }
+        }
+        END {
+            if (best_fs == "tmpfs" || best_fs == "ramfs") exit 0
+            exit 1
+        }
+    ' /proc/mounts 2>/dev/null
+}
+
+_check_runtime_tmpfs() {
+    if _mount_is_tmpfs "/tmp" || _mount_is_tmpfs "/var/run"; then
+        return 0
+    fi
+    _log_warn "Neither /tmp nor /var/run appears to be mounted on tmpfs; runtime PID stays in ${RUN_DIR} (never on ${TACHYON_ROOT}/var)"
+    return 0
+}
+
+_prepare_kernel() {
+    if [ ! -d /dev/net ]; then
+        mkdir -p /dev/net 2>/dev/null || true
+    fi
+    if [ ! -c /dev/net/tun ]; then
+        mknod /dev/net/tun c 10 200 2>/dev/null || true
+        chmod 666 /dev/net/tun 2>/dev/null || true
+    fi
+    if command -v modprobe >/dev/null 2>&1; then
+        for _mod in tun xt_TPROXY xt_socket xt_mark; do
+            modprobe "$_mod" >/dev/null 2>&1 || true
+        done
+    fi
+}
+
+_has_default_route() {
+    if command -v ip >/dev/null 2>&1; then
+        if ip -4 route show default 2>/dev/null | grep -q 'default'; then
+            return 0
+        fi
+        if ip -6 route show default 2>/dev/null | grep -q 'default'; then
+            return 0
+        fi
+    fi
+    if [ -r /proc/net/route ]; then
+        if awk 'NR > 1 && $2 == "00000000" { found = 1; exit } END { exit(found ? 0 : 1) }' /proc/net/route 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+_wait_for_network() {
+    case "$WAIT_NET_SECS" in
+        ''|*[!0-9]*) WAIT_NET_SECS=0 ;;
+    esac
+    [ "$WAIT_NET_SECS" -gt 0 ] 2>/dev/null || return 0
+    _waited=0
+    while [ "$_waited" -lt "$WAIT_NET_SECS" ]; do
+        _has_default_route && return 0
+        sleep 1
+        _waited=$((_waited + 1))
+    done
+    return 0
+}
+
+_read_pid() {
+    [ -r "$PID_FILE" ] || return 1
+    _p="$(head -n 1 "$PID_FILE" 2>/dev/null | tr -d ' \t\r\n')"
+    case "$_p" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$_p" -gt 1 ] 2>/dev/null || return 1
+    printf '%s' "$_p"
+    return 0
+}
+
+_pid_is_tachyon() {
+    _p="$1"
+    [ -d "/proc/${_p}" ] || return 1
+    if [ -r "/proc/${_p}/comm" ]; then
+        _comm="$(cat "/proc/${_p}/comm" 2>/dev/null || true)"
+        [ "$_comm" = "tachyon" ] && return 0
+    fi
+    if [ -r "/proc/${_p}/cmdline" ]; then
+        _cmd="$(tr '\0' ' ' < "/proc/${_p}/cmdline" 2>/dev/null || true)"
+        case "$_cmd" in
+            *"${PROG}"*|*"/tachyon daemon"*) return 0 ;;
+        esac
+    fi
+    return 1
+}
+
+_is_running() {
+    _p="$(_read_pid 2>/dev/null || true)"
+    [ -n "$_p" ] && _pid_is_tachyon "$_p"
+}
+
+_timeout_prefix() {
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 1 /bin/true >/dev/null 2>&1; then
+            printf 'timeout 10'
+            return 0
+        elif timeout -t 1 /bin/true >/dev/null 2>&1; then
+            printf 'timeout -t 10'
+            return 0
+        fi
+    fi
+    printf ''
+}
+
+do_start() {
+    if [ ! -x "$PROG" ]; then
+        _log_warn "Binary not found or not executable: ${PROG}"
+        return 1
+    fi
+
+    _check_runtime_tmpfs
+    mkdir -p "$RUN_DIR" "$TACHYON_DATA_DIR" "${TACHYON_ROOT}/etc/tachyon-core" 2>/dev/null || true
+
+    if _is_running; then
+        _p="$(_read_pid 2>/dev/null || true)"
+        _log_info "Already running (PID ${_p})"
+        return 0
+    fi
+
+    rm -f "$PID_FILE" "${RUN_DIR}/manual_stop" /var/run/tachyon/manual_stop 2>/dev/null || true
+    _prepare_kernel
+    _wait_for_network
+
+    if command -v nohup >/dev/null 2>&1; then
+        nohup "$PROG" daemon >>"$LOG_FILE" 2>&1 </dev/null &
+        _new_pid=$!
+    else
+        "$PROG" daemon >>"$LOG_FILE" 2>&1 </dev/null &
+        _new_pid=$!
+    fi
+
+    printf '%s\n' "$_new_pid" >"$PID_FILE"
+    sleep 1
+    if _pid_is_tachyon "$_new_pid"; then
+        _log_info "Started tachyon daemon (PID ${_new_pid})"
+        return 0
+    fi
+
+    rm -f "$PID_FILE" 2>/dev/null || true
+    _log_warn "Daemon exited immediately after launch (check ${LOG_FILE})"
+    return 1
+}
+
+do_stop() {
+    _to="$(_timeout_prefix)"
+    if [ -x "$PROG" ]; then
+        if [ -n "$_to" ]; then
+            # shellcheck disable=SC2086
+            $_to "$PROG" stop >/dev/null 2>&1 || true
+        else
+            "$PROG" stop >/dev/null 2>&1 || true
+        fi
+    fi
+
+    _p="$(_read_pid 2>/dev/null || true)"
+    if [ -n "$_p" ] && _pid_is_tachyon "$_p"; then
+        kill -TERM "$_p" >/dev/null 2>&1 || true
+        _i=0
+        while [ "$_i" -lt 10 ]; do
+            _pid_is_tachyon "$_p" || break
+            sleep 1
+            _i=$((_i + 1))
+        done
+        if _pid_is_tachyon "$_p"; then
+            kill -KILL "$_p" >/dev/null 2>&1 || true
+        fi
+    fi
+    rm -f "$PID_FILE" 2>/dev/null || true
+
+    if [ -r "${RUN_DIR}/daemon.pid" ]; then
+        _dp="$(head -n 1 "${RUN_DIR}/daemon.pid" 2>/dev/null | tr -d ' \t\r\n')"
+        case "$_dp" in
+            ''|*[!0-9]*) ;;
+            *)
+                if _pid_is_tachyon "$_dp"; then
+                    kill -TERM "$_dp" >/dev/null 2>&1 || true
+                    sleep 1
+                    _pid_is_tachyon "$_dp" && kill -KILL "$_dp" >/dev/null 2>&1 || true
+                fi
+                ;;
+        esac
+        rm -f "${RUN_DIR}/daemon.pid" 2>/dev/null || true
+    fi
+
+    _log_info "Stopped tachyon"
+    return 0
+}
+
+do_reload() {
+    if [ ! -x "$PROG" ]; then
+        _log_warn "Binary not found or not executable: ${PROG}"
+        return 1
+    fi
+    "$PROG" reload
+}
+
+do_reconcile() {
+    if [ ! -x "$PROG" ]; then
+        _log_warn "Binary not found or not executable: ${PROG}"
+        return 1
+    fi
+    "$PROG" reconcile-net
+}
+
+do_status() {
+    if _is_running; then
+        _p="$(_read_pid 2>/dev/null || true)"
+        printf 'tachyon is running (PID %s)\n' "$_p"
+        return 0
+    fi
+    printf 'tachyon is stopped\n'
+    return 3
+}
+
+case "${1:-}" in
+    start)
+        do_start
+        ;;
+    stop|kill)
+        do_stop
+        ;;
+    restart)
+        do_stop
+        sleep 1
+        do_start
+        ;;
+    reload)
+        do_reload
+        ;;
+    reconcile)
+        do_reconcile
+        ;;
+    status|check)
+        do_status
+        ;;
+    *)
+        printf 'Usage: %s {start|stop|restart|reload|reconcile|status}\n' "$0" >&2
+        exit 2
+        ;;
+esac

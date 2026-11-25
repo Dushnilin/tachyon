@@ -1,6 +1,6 @@
 #!/bin/sh
 # shellcheck shell=dash
-# Tachyon 2.0 OpenWrt Installer & 1.x -> 2.0 Migration Script
+# Tachyon 2.0 OpenWrt & Entware Installer (with OpenWrt 1.x -> 2.0 Migration)
 
 set -u
 
@@ -28,6 +28,14 @@ TAG_REQUESTED=""
 CHANNEL="auto"
 PKG_FORMAT="auto"
 ARCH_OVERRIDE=""
+PLATFORM_OVERRIDE="auto"
+ENTWARE_ROOT="/opt"
+ENTWARE_ENV=""
+ENTWARE_STORAGE_FS=""
+ENTWARE_STORAGE_MOUNT=""
+ENTWARE_FREE_MB=0
+ENTWARE_HAS_TPROXY=0
+ENTWARE_HAS_TUN=0
 FORCE_REINSTALL=0
 SKIP_CORE=0
 PREPARED_CORE_BIN=""
@@ -69,13 +77,15 @@ trap cleanup EXIT INT TERM
 
 usage() {
     cat <<EOF
-Tachyon 2.0 OpenWrt Installer
+Tachyon 2.0 OpenWrt & Entware Installer
 
 Usage: $0 [options]
 
   -y, --yes             Install without interactive prompts
   -n, --dry-run         Resolve release and print plan without modifying router
   -q, --quiet           Suppress informational messages
+      --platform MODE   Target platform: auto, openwrt, entware (default: auto)
+      --root DIR        Entware root directory (default: /opt)
       --channel CH      Release channel: auto, stable, beta (default: auto)
       --prerelease      Include beta/rc releases (alias for --channel beta)
       --tag VERSION     Install exact tag (e.g. v2.0.0-beta.1 or v2.0.0)
@@ -95,6 +105,18 @@ Log file: ${LOG_FILE}
 EOF
 }
 
+_normalize_root_dir() {
+    _nrd_val="$1"
+    while [ "$_nrd_val" != "/" ]; do
+        case "$_nrd_val" in
+            */) _nrd_val="${_nrd_val%/}" ;;
+            *) break ;;
+        esac
+    done
+    [ -n "$_nrd_val" ] || _nrd_val="/"
+    printf '%s' "$_nrd_val"
+}
+
 parse_args() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -105,6 +127,19 @@ parse_args() {
             --tachyon-core) ;;
             --reinstall|--repair) FORCE_REINSTALL=1 ;;
             --prerelease) CHANNEL="beta" ;;
+            --platform)
+                shift
+                [ "$#" -gt 0 ] || { err "--platform requires auto, openwrt, or entware"; return 2; }
+                case "$1" in
+                    auto|openwrt|entware) PLATFORM_OVERRIDE="$1" ;;
+                    *) err "Invalid --platform value: $1 (expected auto, openwrt, or entware)"; return 2 ;;
+                esac
+                ;;
+            --root)
+                shift
+                [ "$#" -gt 0 ] && [ -n "$1" ] || { err "--root requires a directory path"; return 2; }
+                ENTWARE_ROOT="$(_normalize_root_dir "$1")"
+                ;;
             --channel)
                 shift
                 [ "$#" -gt 0 ] || { err "--channel requires auto, stable, or beta"; return 2; }
@@ -1579,6 +1614,594 @@ install_local_ipk_package() {
     return 1
 }
 
+detect_platform() {
+    case "$PLATFORM_OVERRIDE" in
+        openwrt) echo "openwrt"; return 0 ;;
+        entware) echo "entware"; return 0 ;;
+    esac
+    if [ -r /etc/openwrt_release ]; then
+        echo "openwrt"
+        return 0
+    fi
+    if [ -r "${ENTWARE_ROOT}/etc/entware_release" ] || \
+       [ -x "${ENTWARE_ROOT}/bin/opkg" ] || \
+       [ -e /proc/ndm ] || \
+       command_exists ndmc; then
+        echo "entware"
+        return 0
+    fi
+    echo "openwrt"
+}
+
+detect_entware_env() {
+    if [ -e /proc/ndm ] || command_exists ndmc; then
+        echo "keenetic"
+    elif [ -d /jffs/scripts ]; then
+        echo "merlin"
+    elif [ -d /etc/storage ]; then
+        echo "padavan"
+    else
+        echo "generic"
+    fi
+}
+
+_entware_mount_info() {
+    _emi_target="$1"
+    [ -r /proc/mounts ] || return 1
+    awk -v tgt="$_emi_target" '
+        {
+            mp = $2
+            fs = $3
+            opts = $4
+            if (mp == "/" || mp == tgt || index(tgt, mp "/") == 1) {
+                if (length(mp) >= best_len) {
+                    best_len = length(mp)
+                    best_mp = mp
+                    best_fs = fs
+                    best_opts = opts
+                }
+            }
+        }
+        END {
+            if (best_mp != "") {
+                printf "%s\t%s\t%s\n", best_fs, best_mp, best_opts
+            }
+        }
+    ' /proc/mounts 2>/dev/null
+}
+
+_entware_mount_is_tmpfs() {
+    _emit_info="$(_entware_mount_info "$1" || true)"
+    _emit_fs="$(printf '%s' "$_emit_info" | awk -F'\t' '{print $1}')"
+    [ "$_emit_fs" = "tmpfs" ] || [ "$_emit_fs" = "ramfs" ]
+}
+
+entware_preflight_storage() {
+    if [ ! -d "$ENTWARE_ROOT" ]; then
+        err "Entware root directory not found: ${ENTWARE_ROOT} (install Entware first or pass --root DIR)"
+        return 1
+    fi
+
+    _minfo="$(_entware_mount_info "$ENTWARE_ROOT" || true)"
+    ENTWARE_STORAGE_FS="$(printf '%s' "$_minfo" | awk -F'\t' '{print $1}')"
+    ENTWARE_STORAGE_MOUNT="$(printf '%s' "$_minfo" | awk -F'\t' '{print $2}')"
+    _mopts="$(printf '%s' "$_minfo" | awk -F'\t' '{print $3}')"
+
+    case "$ENTWARE_STORAGE_FS" in
+        vfat|fat|msdos|exfat|ntfs|ntfs3|fuseblk)
+            err "${ENTWARE_ROOT} is mounted on non-POSIX filesystem '${ENTWARE_STORAGE_FS}' (${ENTWARE_STORAGE_MOUNT}). Entware requires a POSIX Linux filesystem (ext2, ext3, or ext4) for permissions, symlinks, and atomic updates."
+            return 1
+            ;;
+    esac
+
+    case ",${_mopts}," in
+        *,noexec,*)
+            err "${ENTWARE_ROOT} is mounted with 'noexec' (${ENTWARE_STORAGE_MOUNT}); binaries cannot be executed from this storage."
+            return 1
+            ;;
+    esac
+
+    _df_kb="$(df -kP "$ENTWARE_ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -z "$_df_kb" ]; then
+        _df_kb="$(df -k "$ENTWARE_ROOT" 2>/dev/null | awk 'NR>1 {val=$4} END {print val}')"
+    fi
+    case "$_df_kb" in
+        ''|*[!0-9]*) _df_kb=0 ;;
+    esac
+    ENTWARE_FREE_MB=$((_df_kb / 1024))
+    if [ "$_df_kb" -lt 25600 ] 2>/dev/null; then
+        err "Insufficient free space on ${ENTWARE_ROOT}: ${ENTWARE_FREE_MB} MB available, at least 25 MB required."
+        return 1
+    fi
+
+    if ! _entware_mount_is_tmpfs "/tmp" && ! _entware_mount_is_tmpfs "/var/run"; then
+        warn "Neither /tmp nor /var/run is mounted as RAM tmpfs; runtime state will still stay in /tmp/tachyon-rs (never on ${ENTWARE_ROOT}/var)."
+    fi
+
+    ok "Entware storage OK: ${ENTWARE_ROOT} (${ENTWARE_STORAGE_FS:-unknown} on ${ENTWARE_STORAGE_MOUNT:-/}, ${ENTWARE_FREE_MB} MB free)"
+    return 0
+}
+
+_entware_elf_endianness() {
+    for _elf in "${ENTWARE_ROOT}/bin/opkg" "${ENTWARE_ROOT}/bin/sh" /bin/sh /bin/busybox; do
+        [ -r "$_elf" ] || continue
+        _byte=""
+        if command_exists od; then
+            _byte="$(od -An -tx1 -j5 -N1 "$_elf" 2>/dev/null | tr -d ' \t\r\n' | tr 'A-F' 'a-f')"
+        elif command_exists hexdump; then
+            _byte="$(hexdump -v -s 5 -n 1 -e '1/1 "%02x"' "$_elf" 2>/dev/null | tr -d ' \t\r\n' | tr 'A-F' 'a-f')"
+        fi
+        case "$_byte" in
+            01) echo "le"; return 0 ;;
+            02) echo "be"; return 0 ;;
+        esac
+    done
+    echo ""
+}
+
+detect_entware_arch() {
+    if [ -n "$ARCH_OVERRIDE" ]; then
+        case "$ARCH_OVERRIDE" in
+            aarch64|x86_64|i386_pentium4|armv7|armv6|riscv64|mipsel|mips)
+                echo "$ARCH_OVERRIDE"
+                return 0
+                ;;
+            *)
+                err "Unsupported --arch '${ARCH_OVERRIDE}'. Supported: x86_64, i386_pentium4, aarch64, armv7, armv6, riscv64, mipsel, mips"
+                return 1
+                ;;
+        esac
+    fi
+
+    _opkg_arch=""
+    if [ -x "${ENTWARE_ROOT}/bin/opkg" ]; then
+        _opkg_arch="$("${ENTWARE_ROOT}/bin/opkg" print-architecture 2>/dev/null | awk '$1 == "arch" && $2 != "all" && $2 != "noarch" {printf "%s ", $2}' || true)"
+    elif command_exists opkg; then
+        _opkg_arch="$(opkg print-architecture 2>/dev/null | awk '$1 == "arch" && $2 != "all" && $2 != "noarch" {printf "%s ", $2}' || true)"
+    fi
+    _uname="$(uname -m 2>/dev/null || echo unknown)"
+    _raw="${_opkg_arch} ${_uname}"
+
+    case "$_raw" in
+        *aarch64*|*arm64*) echo "aarch64" ;;
+        *x86_64*|*x64-*|*amd64*) echo "x86_64" ;;
+        *riscv64*) echo "riscv64" ;;
+        *mips64*)
+            err "64-bit MIPS (${_raw}) is not supported; supported targets: x86_64, i386_pentium4, aarch64, armv7, armv6, riscv64, mipsel, mips"
+            return 1
+            ;;
+        *mipsel*|*mips32el*) echo "mipsel" ;;
+        *mips*)
+            _end="$(_entware_elf_endianness)"
+            if [ "$_end" = "le" ]; then
+                echo "mipsel"
+            else
+                echo "mips"
+            fi
+            ;;
+        *armv7*|*arm_cortex*) echo "armv7" ;;
+        *armv6*|*armv5*|*arm*) echo "armv6" ;;
+        *i386*|*i686*|*i586*|*x86-32*) echo "i386_pentium4" ;;
+        *)
+            err "Unsupported Entware architecture: ${_raw}"
+            return 1
+            ;;
+    esac
+}
+
+entware_probe_kernel_caps() {
+    ENTWARE_HAS_TPROXY=0
+    ENTWARE_HAS_TUN=0
+
+    if [ -r /proc/net/ip_tables_targets ] && grep -qw TPROXY /proc/net/ip_tables_targets 2>/dev/null; then
+        ENTWARE_HAS_TPROXY=1
+    elif [ -d /sys/module/xt_TPROXY ]; then
+        ENTWARE_HAS_TPROXY=1
+    elif command_exists modprobe && [ "$DRY_RUN" -eq 0 ] && modprobe xt_TPROXY >/dev/null 2>&1; then
+        ENTWARE_HAS_TPROXY=1
+    elif [ -d /lib/modules ] && find /lib/modules -name 'xt_TPROXY.ko*' 2>/dev/null | grep -q .; then
+        ENTWARE_HAS_TPROXY=1
+    fi
+
+    if [ -c /dev/net/tun ] || [ -d /sys/module/tun ]; then
+        ENTWARE_HAS_TUN=1
+    elif command_exists modprobe && [ "$DRY_RUN" -eq 0 ] && modprobe tun >/dev/null 2>&1; then
+        ENTWARE_HAS_TUN=1
+    elif [ -d /lib/modules ] && find /lib/modules -name 'tun.ko*' 2>/dev/null | grep -q .; then
+        ENTWARE_HAS_TUN=1
+    fi
+
+    msg "Kernel capabilities : xt_TPROXY=$([ "$ENTWARE_HAS_TPROXY" -eq 1 ] && echo yes || echo no), /dev/net/tun=$([ "$ENTWARE_HAS_TUN" -eq 1 ] && echo yes || echo no)"
+    for _tool in iptables ipset ip; do
+        if ! command_exists "$_tool"; then
+            warn "Tool '${_tool}' is currently missing from PATH"
+        fi
+    done
+}
+
+entware_opkg_installed() {
+    _eoi_opkg="${ENTWARE_ROOT}/bin/opkg"
+    [ -x "$_eoi_opkg" ] || return 1
+    "$_eoi_opkg" status "$1" 2>/dev/null | grep -q '^Status: .* installed'
+}
+
+entware_install_deps() {
+    _eid_opkg="${ENTWARE_ROOT}/bin/opkg"
+    [ -x "$_eid_opkg" ] || { warn "Entware opkg not found at ${_eid_opkg}; skipping package installation"; return 0; }
+
+    _eid_missing=""
+    for _pkg in iptables ipset ip-full curl ca-bundle; do
+        case "$_pkg" in
+            iptables) command_exists iptables && continue ;;
+            ipset) command_exists ipset && continue ;;
+            ip-full)
+                if entware_opkg_installed ip-full; then
+                    continue
+                fi
+                ;;
+            curl) command_exists curl && entware_opkg_installed curl && continue ;;
+            ca-bundle) entware_opkg_installed ca-bundle && continue ;;
+        esac
+        if ! entware_opkg_installed "$_pkg"; then
+            _eid_missing="${_eid_missing} ${_pkg}"
+        fi
+    done
+
+    if [ -z "$_eid_missing" ]; then
+        ok "Entware base packages already present"
+        return 0
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would install via ${_eid_opkg}:${_eid_missing}"
+        return 0
+    fi
+
+    msg "Installing missing Entware packages:${_eid_missing}"
+    "$_eid_opkg" update >>"$LOG_FILE" 2>&1 || true
+    for _pkg in $_eid_missing; do
+        "$_eid_opkg" install "$_pkg" >>"$LOG_FILE" 2>&1 || warn "Entware package '${_pkg}' failed to install (see ${LOG_FILE})"
+    done
+    detect_fetcher || true
+}
+
+entware_prepare_tachyon_core() {
+    _arch="$1"
+    PREPARED_CORE_BIN=""
+    PREPARED_CORE_VER=""
+    PREPARED_CORE_PKG=""
+    [ "$SKIP_CORE" -eq 1 ] && return 0
+
+    msg "Resolving latest tachyon-core release from ${CORE_REPO}..."
+    _core_tag="$(resolve_core_release_tag "$CORE_REPO" || true)"
+    if [ -z "$_core_tag" ]; then
+        if [ -x "${ENTWARE_ROOT}/bin/tachyon-core" ]; then
+            warn "Could not resolve latest tachyon-core release; keeping existing ${ENTWARE_ROOT}/bin/tachyon-core"
+            return 0
+        fi
+        err "Failed to resolve tachyon-core release from ${CORE_REPO}"
+        return 1
+    fi
+
+    _core_ver="${_core_tag#v}"
+    if [ "$FORCE_REINSTALL" -eq 0 ] && [ -x "${ENTWARE_ROOT}/bin/tachyon-core" ]; then
+        _cur_core="$("${ENTWARE_ROOT}/bin/tachyon-core" version 2>/dev/null | awk 'NR==1 {print $NF}' | tr -d 'vV')"
+        if [ "$_cur_core" = "$_core_ver" ]; then
+            ok "tachyon-core ${_core_ver} is already up to date"
+            return 0
+        fi
+    fi
+
+    _sums_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/SHA256SUMS"
+    _has_sums=0
+    if download_file "$_sums_url" "$TMP_DIR/core.SHA256SUMS" "tachyon-core SHA256SUMS"; then
+        _has_sums=1
+    fi
+
+    _musl_asset="tachyon-core-${_arch}-musl.tar.gz"
+    _tag_asset="tachyon-core-${_arch}-${_core_tag}.tar.gz"
+    if [ "$_has_sums" -eq 1 ] && has_sha256_entry "$TMP_DIR/core.SHA256SUMS" "$_musl_asset"; then
+        _core_candidates="${_musl_asset} ${_tag_asset}"
+    elif [ "$_has_sums" -eq 1 ] && has_sha256_entry "$TMP_DIR/core.SHA256SUMS" "$_tag_asset"; then
+        _core_candidates="${_tag_asset} ${_musl_asset}"
+    else
+        _core_candidates="${_musl_asset} ${_tag_asset}"
+    fi
+
+    _core_asset=""
+    for _cand in $_core_candidates; do
+        _cand_url="https://github.com/${CORE_REPO}/releases/download/${_core_tag}/${_cand}"
+        if download_file "$_cand_url" "$TMP_DIR/$_cand" "tachyon-core ${_core_tag} (${_cand})"; then
+            _core_asset="$_cand"
+            break
+        fi
+    done
+
+    if [ -z "$_core_asset" ]; then
+        err "Failed to download tachyon-core archive (${_musl_asset} / ${_tag_asset})"
+        return 1
+    fi
+
+    _verified_archive=0
+    if [ "$_has_sums" -eq 1 ] && has_sha256_entry "$TMP_DIR/core.SHA256SUMS" "$_core_asset"; then
+        verify_sha256_file "$TMP_DIR/$_core_asset" "$TMP_DIR/core.SHA256SUMS" "$_core_asset" || return 1
+        _verified_archive=1
+    fi
+
+    rm -rf "$TMP_DIR/core_extract"
+    mkdir -p "$TMP_DIR/core_extract"
+    tar -xzf "$TMP_DIR/$_core_asset" -C "$TMP_DIR/core_extract" || return 1
+
+    if [ -f "$TMP_DIR/core_extract/usr/bin/tachyon-core" ]; then
+        _core_bin="$TMP_DIR/core_extract/usr/bin/tachyon-core"
+    elif [ -f "$TMP_DIR/core_extract/bin/tachyon-core" ]; then
+        _core_bin="$TMP_DIR/core_extract/bin/tachyon-core"
+    else
+        _core_bin="$(find "$TMP_DIR/core_extract" -type f -name 'tachyon-core*' ! -path '*/etc/*' | head -n 1)"
+    fi
+    if [ -z "$_core_bin" ] || [ ! -f "$_core_bin" ]; then
+        err "tachyon-core binary not found in ${_core_asset}"
+        return 1
+    fi
+
+    if [ "$_has_sums" -eq 1 ] && [ "$_verified_archive" -eq 0 ]; then
+        _core_base="${_core_asset%.tar.gz}"
+        if has_sha256_entry "$TMP_DIR/core.SHA256SUMS" "$_core_base"; then
+            verify_sha256_file "$_core_bin" "$TMP_DIR/core.SHA256SUMS" "$_core_base" || return 1
+        fi
+    fi
+
+    chmod 755 "$_core_bin"
+    if ! "$_core_bin" version >/dev/null 2>&1; then
+        err "Downloaded tachyon-core failed smoke test"
+        return 1
+    fi
+
+    PREPARED_CORE_BIN="$_core_bin"
+    PREPARED_CORE_VER="$_core_ver"
+}
+
+entware_install_hooks() {
+    _hooks_src="${ENTWARE_ROOT}/share/tachyon/hooks"
+    case "$ENTWARE_ENV" in
+        keenetic)
+            for _sub in netfilter.d ifstatechanged.d fs.d; do
+                _src="${_hooks_src}/ndm/${_sub}/100-tachyon.sh"
+                _dst_dir="${ENTWARE_ROOT}/etc/ndm/${_sub}"
+                _dst="${_dst_dir}/100-tachyon.sh"
+                [ -f "$_src" ] || continue
+                mkdir -p "$_dst_dir"
+                if [ "$ENTWARE_ROOT" = "/opt" ]; then
+                    cp -f "$_src" "$_dst"
+                else
+                    sed "s|/opt|${ENTWARE_ROOT}|g" "$_src" >"$_dst"
+                fi
+                chmod 755 "$_dst"
+            done
+            ok "Installed Keenetic NDM hooks in ${ENTWARE_ROOT}/etc/ndm/{netfilter.d,ifstatechanged.d,fs.d}/"
+            ;;
+        merlin)
+            _snippet="${_hooks_src}/merlin/firewall-start.snippet"
+            _fw_file="/jffs/scripts/firewall-start"
+            if [ -f "$_snippet" ]; then
+                mkdir -p /jffs/scripts
+                if [ ! -f "$_fw_file" ]; then
+                    printf '#!/bin/sh\n' >"$_fw_file"
+                fi
+                _clean_tmp="${TMP_DIR}/firewall-start.clean"
+                awk '
+                    /^# >>> tachyon-entware >>>/ { skip = 1; next }
+                    /^# <<< tachyon-entware <<</ { skip = 0; next }
+                    !skip { print }
+                ' "$_fw_file" >"$_clean_tmp"
+                if [ "$ENTWARE_ROOT" = "/opt" ]; then
+                    cat "$_snippet" >>"$_clean_tmp"
+                else
+                    sed "s|/opt|${ENTWARE_ROOT}|g" "$_snippet" >>"$_clean_tmp"
+                fi
+                mv -f "$_clean_tmp" "$_fw_file"
+                chmod 755 "$_fw_file"
+                ok "Updated Asuswrt-Merlin hook in ${_fw_file}"
+            fi
+            ;;
+        *)
+            msg "Environment '${ENTWARE_ENV}': hooks stored in ${_hooks_src}"
+            ;;
+    esac
+}
+
+_entware_rand_hex() {
+    _erh_bytes="$1"
+    if [ -r /dev/urandom ] && command_exists od; then
+        od -An -tx1 -N "$_erh_bytes" /dev/urandom 2>/dev/null | tr -d ' \t\r\n'
+        return 0
+    fi
+    date +%s | awk '{printf "%016x%016x", $1, $1 * 2654435761}'
+}
+
+entware_ensure_initial_config() {
+    _cfg_dir="${ENTWARE_ROOT}/etc/tachyon"
+    _cfg_file="${_cfg_dir}/tachyon.json"
+    mkdir -p "$_cfg_dir" "${ENTWARE_ROOT}/etc/tachyon-core" "${_cfg_dir}/rulesets"
+
+    if [ -s "$_cfg_file" ]; then
+        ok "Existing configuration preserved: ${_cfg_file}"
+        return 0
+    fi
+
+    _init_proxy_mode="tun"
+    if [ "$ENTWARE_HAS_TPROXY" -eq 1 ]; then
+        _init_proxy_mode="tproxy"
+    fi
+
+    # Prefer letting the tachyon binary generate its complete factory-default store first.
+    if [ -x "${ENTWARE_ROOT}/bin/tachyon" ]; then
+        TACHYON_ROOT="$ENTWARE_ROOT" TACHYON_DATA_DIR="$_cfg_dir" "${ENTWARE_ROOT}/bin/tachyon" config_plan >/dev/null 2>&1 || true
+    fi
+
+    if [ -s "$_cfg_file" ]; then
+        if [ "$_init_proxy_mode" != "tproxy" ]; then
+            sed -i "s/\"proxy_mode\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"proxy_mode\": \"${_init_proxy_mode}\"/" "$_cfg_file" 2>/dev/null || true
+        fi
+        sed -i 's/"entware_dns_mode"[[:space:]]*:[[:space:]]*"[^"]*"/"entware_dns_mode": "redirect"/' "$_cfg_file" 2>/dev/null || true
+        sed -i 's/"entware_dns_port"[[:space:]]*:[[:space:]]*[0-9][0-9]*/"entware_dns_port": 1053/' "$_cfg_file" 2>/dev/null || true
+        chmod 600 "$_cfg_file" 2>/dev/null || true
+        ok "Initialized ${_cfg_file} (proxy_mode=${_init_proxy_mode}, entware_dns_mode=redirect, entware_dns_port=1053)"
+        return 0
+    fi
+
+    _lan_if="br0"
+    if [ -d /sys/class/net/br-lan ]; then
+        _lan_if="br-lan"
+    fi
+    _sec="$(_entware_rand_hex 32)"
+    _clash_sec="$(_entware_rand_hex 12)"
+
+    cat >"$_cfg_file" <<EOF
+{
+  "settings": {
+    "config_version": "2.0.0",
+    "listen_addr": "0.0.0.0",
+    "listen_port": 1680,
+    "web_base_path": "/",
+    "admin_user": "admin",
+    "admin_pass_hash": "",
+    "admin_pass_salt": "",
+    "session_secret": "${_sec}",
+    "panel_auth_enabled": true,
+    "panel_auth_mode": "custom",
+    "core_bin_path": "${ENTWARE_ROOT}/bin/tachyon-core",
+    "core_config_path": "${ENTWARE_ROOT}/etc/tachyon-core/config.json",
+    "cache_path": "/tmp/tachyon-core/cache.db",
+    "rulesets_dir": "${ENTWARE_ROOT}/etc/tachyon/rulesets",
+    "clash_api_addr": "127.0.0.1:9090",
+    "clash_api_secret": "${_clash_sec}",
+    "proxy_mode": "${_init_proxy_mode}",
+    "source_network_interfaces": ["${_lan_if}"],
+    "dns_servers": ["77.88.8.8", "77.88.8.1", "9.9.9.9"],
+    "bootstrap_dns_servers": ["77.88.8.8", "1.1.1.1"],
+    "entware_dns_mode": "redirect",
+    "entware_dns_port": 1053
+  }
+}
+EOF
+    chmod 600 "$_cfg_file" 2>/dev/null || true
+    ok "Created initial Entware config: ${_cfg_file} (proxy_mode=${_init_proxy_mode}, entware_dns_mode=redirect, entware_dns_port=1053)"
+}
+
+entware_detect_lan_ip() {
+    _ip=""
+    if command_exists ip; then
+        for _iface in br0 br-lan lan0; do
+            _ip="$(ip -4 -o addr show dev "$_iface" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1)"
+            [ -n "$_ip" ] && break
+        done
+    fi
+    if [ -z "$_ip" ] && command_exists ndmc; then
+        _ip="$(ndmc -c "show interface Bridge0" 2>/dev/null | awk '/address:/ {print $2; exit}')"
+    fi
+    [ -n "$_ip" ] || _ip="192.168.1.1"
+    printf '%s' "$_ip"
+}
+
+run_entware_install() {
+    PATH="${ENTWARE_ROOT}/sbin:${ENTWARE_ROOT}/bin:/opt/sbin:/opt/bin:${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}"
+    export PATH
+
+    ENTWARE_ENV="$(detect_entware_env)"
+    entware_preflight_storage || exit 1
+    detect_fetcher || exit 1
+
+    ARCH="$(detect_entware_arch)" || exit 1
+    if [ -z "$ARCH" ]; then
+        err "Failed to detect Entware target architecture"
+        exit 1
+    fi
+
+    entware_probe_kernel_caps
+
+    REPO="${REPO_OWNER}/${REPO_NAME}"
+    TAG="$(resolve_tachyon_release_tag "$REPO" "$TAG_REQUESTED" || true)"
+    if [ -z "$TAG" ]; then
+        err "Failed to resolve Tachyon 2.x release tag for ${REPO}"
+        exit 1
+    fi
+    VER="${TAG#[vV]}"
+    BUNDLE="tachyon-entware-${ARCH}-v${VER}.tar.gz"
+    BUNDLE_URL="https://github.com/${REPO}/releases/download/${TAG}/${BUNDLE}"
+    SUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS"
+    _planned_mode="tun"
+    [ "$ENTWARE_HAS_TPROXY" -eq 1 ] && _planned_mode="tproxy"
+
+    msg "Target platform     : entware (${ENTWARE_ENV})"
+    msg "Entware root        : ${ENTWARE_ROOT}"
+    msg "Storage             : ${ENTWARE_STORAGE_FS:-unknown} (${ENTWARE_STORAGE_MOUNT:-/}, ${ENTWARE_FREE_MB} MB free)"
+    msg "Target architecture : ${ARCH}"
+    msg "Initial proxy mode  : ${_planned_mode}"
+    msg "Release channel     : ${CHANNEL}"
+    msg "Repository          : ${REPO}"
+    msg "Release version     : ${TAG}"
+    msg "Package asset       : ${BUNDLE}"
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        entware_install_deps
+        msg "[dry-run] would download ${BUNDLE_URL} and verify SHA256SUMS"
+        if [ "$SKIP_CORE" -eq 0 ]; then
+            msg "[dry-run] would download tachyon-core (${ARCH}) from ${CORE_REPO} into ${ENTWARE_ROOT}/bin/tachyon-core"
+        fi
+        msg "[dry-run] would unpack bundle into ${ENTWARE_ROOT} and configure ${ENTWARE_ENV} hooks"
+        msg "[dry-run] would initialize ${ENTWARE_ROOT}/etc/tachyon/tachyon.json if absent and run ${ENTWARE_ROOT}/etc/init.d/S99tachyon restart"
+        ok "Dry-run complete; no changes made."
+        exit 0
+    fi
+
+    if [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
+        printf 'Proceed with Tachyon %s Entware installation into %s (%s)? [Y/n]: ' "$TAG" "$ENTWARE_ROOT" "$ARCH"
+        read -r _ans
+        case "$_ans" in
+            ""|y|Y|yes|Yes|YES) ;;
+            *) msg "Installation cancelled."; exit 0 ;;
+        esac
+    fi
+
+    entware_install_deps
+
+    download_tachyon_package "$BUNDLE" "$BUNDLE_URL" "$SUMS_URL" "$TAG" "tar.gz" || { err "Failed to download ${BUNDLE} (see ${LOG_FILE})"; exit 1; }
+    entware_prepare_tachyon_core "$ARCH" || exit 1
+
+    if [ -x "${ENTWARE_ROOT}/etc/init.d/S99tachyon" ]; then
+        TACHYON_ROOT="$ENTWARE_ROOT" "${ENTWARE_ROOT}/etc/init.d/S99tachyon" stop >/dev/null 2>&1 || true
+    fi
+
+    tar -xzf "$TMP_DIR/$BUNDLE" -C "$ENTWARE_ROOT" || { err "Failed to extract ${BUNDLE} into ${ENTWARE_ROOT}"; exit 1; }
+    chmod 755 "${ENTWARE_ROOT}/bin/tachyon" "${ENTWARE_ROOT}/etc/init.d/S99tachyon" 2>/dev/null || true
+
+    if [ -n "$PREPARED_CORE_BIN" ] && [ -f "$PREPARED_CORE_BIN" ]; then
+        mkdir -p "${ENTWARE_ROOT}/bin" "${ENTWARE_ROOT}/etc/tachyon-core"
+        mv -f "$PREPARED_CORE_BIN" "${ENTWARE_ROOT}/bin/tachyon-core.new" && \
+            mv -f "${ENTWARE_ROOT}/bin/tachyon-core.new" "${ENTWARE_ROOT}/bin/tachyon-core"
+        chmod 755 "${ENTWARE_ROOT}/bin/tachyon-core"
+        ok "Installed tachyon-core ${PREPARED_CORE_VER} -> ${ENTWARE_ROOT}/bin/tachyon-core"
+    fi
+
+    if [ ! -x "${ENTWARE_ROOT}/bin/tachyon" ] || ! "${ENTWARE_ROOT}/bin/tachyon" --version >/dev/null 2>&1; then
+        err "Installed ${ENTWARE_ROOT}/bin/tachyon failed --version verification"
+        exit 1
+    fi
+
+    entware_install_hooks
+    entware_ensure_initial_config
+
+    TACHYON_ROOT="$ENTWARE_ROOT" TACHYON_DATA_DIR="${ENTWARE_ROOT}/etc/tachyon" \
+        "${ENTWARE_ROOT}/etc/init.d/S99tachyon" restart || { err "Failed to start ${ENTWARE_ROOT}/etc/init.d/S99tachyon"; exit 1; }
+
+    sleep 1
+    ok "Installed $("${ENTWARE_ROOT}/bin/tachyon" --version 2>/dev/null || echo "tachyon $VER")"
+    _lan_ip="$(entware_detect_lan_ip)"
+    ok "Tachyon panel: http://${_lan_ip}:1680/"
+    return 0
+}
+
 main() {
     parse_args "$@" || exit $?
     _export_proxy_env
@@ -1590,6 +2213,12 @@ main() {
 
     TMP_DIR="$(mktemp -d /tmp/tachyon-install.XXXXXX 2>/dev/null || echo "/tmp/tachyon-install.$$")"
     mkdir -p "$TMP_DIR" || { err "Cannot create temporary directory"; exit 1; }
+
+    TARGET_PLATFORM="$(detect_platform)"
+    if [ "$TARGET_PLATFORM" = "entware" ]; then
+        run_entware_install
+        return $?
+    fi
 
     detect_fetcher || exit 1
     ARCH="$(detect_arch)" || exit 1
