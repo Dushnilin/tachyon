@@ -320,11 +320,13 @@ import { renderTachyonDuckMascotSvg } from '../../icons/duckMascot';
 import { GlobalStyles } from '../../styles';
 import {
   collectAvailableComponentUpdates,
+  getSavedActiveNavKey,
   getSidebarCollapsed,
   getSidebarPos,
   getTopbarCollapsed,
   getUiMode,
   mountTachyonAppShell,
+  setShellRestoringTab,
   setSidebarCollapsed,
   setSidebarPos,
   setTopbarCollapsed,
@@ -1343,6 +1345,132 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
         expect(updatesSec.getAttribute('data-tab-active')).toBe('true');
         expect(settingsSec.getAttribute('data-tab-active')).toBe('false');
       }
+    }
+  });
+
+  it('preserves settings:updates sub-tab after renderContents when LuCI initTabGroup fires deferred rAF cbi-tab-active on navigation', async () => {
+    setUiMode('advanced');
+    setSidebarPos('top');
+    const E = (globalThis as any).E;
+
+    const rafQueue: Array<() => void> = [];
+    const origRaf = (globalThis as any).window.requestAnimationFrame;
+    (globalThis as any).window.requestAnimationFrame = (cb: () => void) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    };
+
+    try {
+      const buildDom = () => {
+        const dashboardSec = E('div', {
+          id: 'cbi-tachyon-dashboard',
+          class: 'cbi-section cbi-tab',
+        });
+        const settingsSubKeys = [
+          'navigation',
+          'dns',
+          'network',
+          'services',
+          'updates',
+          'ai',
+          'advanced',
+        ];
+        const panes = settingsSubKeys.map((k, idx) =>
+          E('div', {
+            'data-tab': k,
+            class: idx === 0 ? 'cbi-tab' : 'cbi-tab-disabled',
+            'data-tab-active': idx === 0 ? 'true' : 'false',
+          }),
+        );
+        const secSettings = E(
+          'div',
+          { id: 'cbi-tachyon-settings', class: 'cbi-section cbi-tab-disabled' },
+          [
+            E(
+              'ul',
+              { class: 'cbi-tabmenu' },
+              settingsSubKeys.map((k, idx) =>
+                E(
+                  'li',
+                  {
+                    class: idx === 0 ? 'cbi-tab' : 'cbi-tab-disabled',
+                    'data-tab': k,
+                  },
+                  [E('a', { href: '#' }, k)],
+                ),
+              ),
+            ),
+            E('div', { class: 'cbi-section-node' }, panes),
+          ],
+        );
+        const makeTopTabLi = (tabId: string, active = false): any =>
+          E(
+            'li',
+            {
+              class: active ? 'cbi-tab' : 'cbi-tab-disabled',
+              'data-tab': tabId,
+            },
+            [E('a', { href: '#' }, tabId)],
+          );
+        const el = E('div', { id: 'cbi-tachyon' }, [
+          E('ul', { class: 'cbi-tabmenu' }, [
+            makeTopTabLi('dashboard', true),
+            makeTopTabLi('settings', false),
+          ]),
+          dashboardSec,
+          secSettings,
+        ]);
+        return { mapEl: el, settingsSec: secSettings, settingsPanes: panes };
+      };
+
+      const first = buildDom();
+      (globalThis as any).document.body.appendChild(first.mapEl);
+      mountTachyonAppShell({ mapEl: first.mapEl, defaultNavKey: 'dashboard' });
+
+      // Navigate to Settings -> Lists Updates (`settings:updates`) and flush mount rAFs
+      const topbarEl = first.mapEl.querySelector('.tachyon-topbar');
+      const systemParent = first.mapEl
+        .querySelectorAll('.tachyon-sidebar__nav-parent')
+        .find((b: any) => b.getAttribute('data-parent-menu') === 'system');
+      systemParent.click();
+      const updatesSubLi = topbarEl
+        .querySelectorAll('.tachyon-global-subtabs > li')
+        .find(
+          (li: any) => li.getAttribute('data-nav-key') === 'settings:updates',
+        );
+      updatesSubLi.querySelector('a').click();
+      while (rafQueue.length > 0) rafQueue.shift()!();
+      expect(getSavedActiveNavKey()).toBe('settings:updates');
+
+      // Simulate map.renderContents() after Save & Apply:
+      // LuCI re-creates DOM with navigation selected by default and queues an async rAF
+      // dispatching `cbi-tab-active` on `navigation` pane BEFORE mountTachyonAppShell runs.
+      const rerendered = buildDom();
+      first.mapEl.replaceChildren(
+        ...Array.from(rerendered.mapEl.children || []),
+      );
+      (globalThis as any).window.requestAnimationFrame(() => {
+        rerendered.settingsPanes[0].dispatchEvent({
+          type: 'cbi-tab-active',
+          detail: { tab: 'navigation' },
+          bubbles: false,
+        });
+      });
+
+      setShellRestoringTab(true);
+      mountTachyonAppShell({
+        mapEl: first.mapEl,
+        defaultNavKey: 'dashboard',
+      });
+      while (rafQueue.length > 0) rafQueue.shift()!();
+
+      expect(getSavedActiveNavKey()).toBe('settings:updates');
+      const activePane = rerendered.settingsPanes.find(
+        (p: any) => p.getAttribute('data-tab-active') === 'true',
+      );
+      expect(activePane?.getAttribute('data-tab')).toBe('updates');
+    } finally {
+      (globalThis as any).window.requestAnimationFrame = origRaf;
     }
   });
 });

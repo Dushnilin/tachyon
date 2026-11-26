@@ -24,6 +24,7 @@ impl Drop for RuntimeOverrideReset {
 }
 
 struct TempTestEnv {
+    _uci_guard: tokio::sync::OwnedMutexGuard<()>,
     dir: PathBuf,
     state: Arc<AppState>,
     core: Arc<CoreManager>,
@@ -31,6 +32,9 @@ struct TempTestEnv {
 
 impl TempTestEnv {
     async fn new(tag: &str, admin_id: i64) -> Self {
+        let _uci_guard = Arc::clone(crate::ubus_bridge::test_uci_snapshot_lock())
+            .lock_owned()
+            .await;
         let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
             "tachyon_tg_test_{tag}_{}_{}_{seq}",
@@ -81,7 +85,12 @@ impl TempTestEnv {
         }
 
         let core = CoreManager::new(Arc::clone(&state));
-        Self { dir, state, core }
+        Self {
+            _uci_guard,
+            dir,
+            state,
+            core,
+        }
     }
 }
 

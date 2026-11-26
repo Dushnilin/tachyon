@@ -83,6 +83,12 @@ fn uci_mutex() -> &'static tokio::sync::Mutex<()> {
     PURE_UCI_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
+#[cfg(test)]
+pub(crate) fn test_uci_snapshot_lock() -> &'static Arc<tokio::sync::Mutex<()>> {
+    static TEST_UCI_SNAPSHOT_LOCK: OnceLock<Arc<tokio::sync::Mutex<()>>> = OnceLock::new();
+    TEST_UCI_SNAPSHOT_LOCK.get_or_init(|| Arc::new(tokio::sync::Mutex::new(())))
+}
+
 fn next_section_index(store: &Map<String, Value>) -> usize {
     store
         .values()
@@ -1513,12 +1519,61 @@ pub async fn handle_ubus_post(
         }
     };
 
+    let is_deferrable_tachyon_uci_mutation = |item: &Value| -> bool {
+        if item.get("method").and_then(Value::as_str) != Some("call") {
+            return false;
+        }
+        let Some(params) = item.get("params").and_then(Value::as_array) else {
+            return false;
+        };
+        let obj = params.get(1).and_then(Value::as_str).unwrap_or("");
+        let meth = params.get(2).and_then(Value::as_str).unwrap_or("");
+        if obj != "uci" || !matches!(meth, "add" | "set" | "delete" | "order") {
+            return false;
+        }
+        params
+            .get(3)
+            .and_then(|a| a.get("config"))
+            .and_then(Value::as_str)
+            .unwrap_or("tachyon")
+            == "tachyon"
+    };
+
     match parsed {
         Value::Array(mut items) => {
             if items.len() <= 1 || items.iter().any(is_mutating_ubus_rpc) {
+                let can_defer = items.len() > 1;
                 let mut out = Vec::with_capacity(items.len());
+                let mut pending_tachyon_uci_sync = false;
                 for item in &items {
-                    out.push(handle_single_ubus_rpc(item, state, core).await);
+                    let defer = can_defer && is_deferrable_tachyon_uci_mutation(item);
+                    if !defer && pending_tachyon_uci_sync {
+                        let is_explicit_uci_apply_or_revert = item
+                            .get("params")
+                            .and_then(Value::as_array)
+                            .is_some_and(|p| {
+                                p.get(1).and_then(Value::as_str) == Some("uci")
+                                    && matches!(
+                                        p.get(2).and_then(Value::as_str),
+                                        Some("apply" | "commit" | "confirm" | "revert")
+                                    )
+                            });
+                        if !is_explicit_uci_apply_or_revert {
+                            let _guard = uci_mutex().lock().await;
+                            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+                        }
+                        pending_tachyon_uci_sync = false;
+                    }
+                    out.push(
+                        Box::pin(handle_single_ubus_rpc_with_sync(item, state, core, !defer)).await,
+                    );
+                    if defer {
+                        pending_tachyon_uci_sync = true;
+                    }
+                }
+                if pending_tachyon_uci_sync {
+                    let _guard = uci_mutex().lock().await;
+                    let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
                 }
                 return Value::Array(out);
             }
@@ -1549,6 +1604,15 @@ async fn handle_single_ubus_rpc(
     req: &Value,
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
+) -> Value {
+    handle_single_ubus_rpc_with_sync(req, state, core, true).await
+}
+
+async fn handle_single_ubus_rpc_with_sync(
+    req: &Value,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    sync_after_uci_mutation: bool,
 ) -> Value {
     let id = req.get("id").cloned().unwrap_or(json!(1));
     let method = req.get("method").and_then(Value::as_str).unwrap_or("");
@@ -1582,7 +1646,15 @@ async fn handle_single_ubus_rpc(
     let empty_args = json!({});
     let args = params.get(3).unwrap_or(&empty_args);
 
-    let result = dispatch_ubus_call(object, rpc_method, args, state, core).await;
+    let result = dispatch_ubus_call_with_sync(
+        object,
+        rpc_method,
+        args,
+        state,
+        core,
+        sync_after_uci_mutation,
+    )
+    .await;
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -1590,12 +1662,13 @@ async fn handle_single_ubus_rpc(
     })
 }
 
-async fn dispatch_ubus_call(
+async fn dispatch_ubus_call_with_sync(
     object: &str,
     method: &str,
     args: &Value,
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
+    sync_after_uci_mutation: bool,
 ) -> Value {
     match (object, method) {
         ("session", "access") => json!([0, { "access": true }]),
@@ -1659,7 +1732,9 @@ async fn dispatch_ubus_call(
         ("file", "write") => handle_file_write(args),
         ("file", "remove") => handle_file_remove(args),
         ("file", "exec") => handle_file_exec(args, state, core).await,
-        ("uci", uci_method) => handle_uci_call(uci_method, args, state, core).await,
+        ("uci", uci_method) => {
+            handle_uci_call_with_sync(uci_method, args, state, core, sync_after_uci_mutation).await
+        }
         ("luci-rpc", _) | ("network.interface", _) | ("network", _) => {
             if matches!(
                 (object, method),
@@ -12652,14 +12727,15 @@ async fn execute_cli_part_routes_state(
     (0, format!("{s}\n"), String::new())
 }
 
-async fn handle_uci_call(
+async fn handle_uci_call_with_sync(
     uci_method: &str,
     args: &Value,
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
+    sync_after_mutation: bool,
 ) -> Value {
     let _guard = uci_mutex().lock().await;
-    handle_pure_rust_uci(uci_method, args, state, core).await
+    handle_pure_rust_uci_with_sync(uci_method, args, state, core, sync_after_mutation).await
 }
 
 async fn capture_uci_rollback_baseline(state: &Arc<AppState>) {
@@ -13096,52 +13172,68 @@ async fn sync_uci_to_rust_store_inner(
     trigger_reload: bool,
     log_on_err: bool,
 ) -> Result<(), String> {
-    let snapshot = get_json_sections_snapshot();
-    let mut candidate = state.data.read().await.clone();
-    let old_telegram = candidate.telegram.clone();
-    let imported = candidate.import_from_json_sections(&snapshot);
-    apply_entware_dns_from_json_sections(&snapshot, &mut candidate);
-    if imported > 0 {
-        let tg_changed = candidate.telegram != old_telegram;
-        let has_empty_sub = candidate.outbound_sources.iter().any(|s| {
-            s.enabled
-                && s.source_type == "subscription"
-                && !s.subscription_urls.is_empty()
-                && s.cached_nodes.is_empty()
-        });
-        if let Err(e) = transaction::commit_transaction(state, candidate.clone()).await {
-            let msg = format!("{e:#}");
-            if log_on_err {
-                eprintln!("[tachyon] sync_uci_to_rust_store failed: {msg}");
-                let mut live = state.live.write().await;
-                live.push_event(
-                    "error",
-                    "uci",
-                    &format!("Ошибка синхронизации конфигурации: {msg}"),
-                );
+    Box::pin(async move {
+        let snapshot = get_json_sections_snapshot();
+        let (current_val, mut candidate) = {
+            let d = state.data.read().await;
+            (serde_json::to_value(&*d).ok(), d.clone())
+        };
+        let old_telegram = candidate.telegram.clone();
+        let imported = candidate.import_from_json_sections(&snapshot);
+        apply_entware_dns_from_json_sections(&snapshot, &mut candidate);
+        drop(snapshot);
+        if imported > 0 {
+            let unchanged = current_val
+                .as_ref()
+                .zip(serde_json::to_value(&candidate).ok())
+                .is_some_and(|(cur, next)| cur == &next);
+            drop(current_val);
+            if unchanged {
+                return Ok(());
             }
-            return Err(msg);
-        }
-        sync_section_cache(&candidate);
-        if tg_changed {
-            crate::tg_bot::set_runtime_override(None);
-            crate::tg_bot::notify_bot_wakeup();
-        }
-        if trigger_reload && !core.is_manually_stopped() {
-            let core_clone = Arc::clone(core);
-            tokio::spawn(async move {
-                if !core_clone.is_manually_stopped()
-                    && let Err(e) = core_clone.apply_or_reload().await
-                {
-                    eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
-                }
-                if has_empty_sub && !core_clone.is_manually_stopped() {
-                    let _ = core_clone.refresh_all_subscriptions().await;
-                }
+            let tg_changed = candidate.telegram != old_telegram;
+            drop(old_telegram);
+            let has_empty_sub = candidate.outbound_sources.iter().any(|s| {
+                s.enabled
+                    && s.source_type == "subscription"
+                    && !s.subscription_urls.is_empty()
+                    && s.cached_nodes.is_empty()
             });
+            if let Err(e) = transaction::commit_transaction(state, candidate.clone()).await {
+                let msg = format!("{e:#}");
+                if log_on_err {
+                    eprintln!("[tachyon] sync_uci_to_rust_store failed: {msg}");
+                    let mut live = state.live.write().await;
+                    live.push_event(
+                        "error",
+                        "uci",
+                        &format!("Ошибка синхронизации конфигурации: {msg}"),
+                    );
+                }
+                return Err(msg);
+            }
+            sync_section_cache(&candidate);
+            if tg_changed {
+                crate::tg_bot::set_runtime_override(None);
+                crate::tg_bot::notify_bot_wakeup();
+            }
+            if trigger_reload && !core.is_manually_stopped() {
+                let core_clone = Arc::clone(core);
+                tokio::spawn(async move {
+                    if !core_clone.is_manually_stopped()
+                        && let Err(e) = core_clone.apply_or_reload().await
+                    {
+                        eprintln!("[tachyon] apply_or_reload after uci sync failed: {e:#}");
+                    }
+                    if has_empty_sub && !core_clone.is_manually_stopped() {
+                        let _ = core_clone.refresh_all_subscriptions().await;
+                    }
+                });
+            }
         }
-    }
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 fn is_allowed_router_ubus_call(object: &str, method: &str) -> bool {
@@ -13521,11 +13613,12 @@ fn uci_json_sections_need_resync(
     check_all(&expected)
 }
 
-async fn handle_pure_rust_uci(
+async fn handle_pure_rust_uci_with_sync(
     uci_method: &str,
     args: &Value,
     state: &Arc<AppState>,
     core: &Arc<CoreManager>,
+    sync_after_mutation: bool,
 ) -> Value {
     let config = args
         .get("config")
@@ -13633,7 +13726,9 @@ async fn handle_pure_rust_uci(
                 persist_json_sections(&store);
                 name
             };
-            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            if sync_after_mutation {
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            }
             json!([0, { "section": sname }])
         }
         "set" => {
@@ -13672,7 +13767,9 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            if sync_after_mutation {
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            }
             json!([0])
         }
         "delete" => {
@@ -13720,7 +13817,9 @@ async fn handle_pure_rust_uci(
                 }
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            if sync_after_mutation {
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            }
             json!([0])
         }
         "order" => {
@@ -13744,7 +13843,9 @@ async fn handle_pure_rust_uci(
                 apply_uci_sections_order(&mut store, &requested);
                 persist_json_sections(&store);
             }
-            let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            if sync_after_mutation {
+                let _ = sync_uci_to_rust_store_inner(state, core, false, false).await;
+            }
             json!([0])
         }
         "changes" => json!([0, { "changes": {} }]),
@@ -17634,5 +17735,132 @@ tls=TLSv1.3
             !uci_json_sections_need_resync(&store, &sections),
             "non-empty servers must not trigger resync on every uci.get"
         );
+    }
+
+    #[tokio::test]
+    async fn ubus_batch_uci_set_coalesces_sync_and_skips_noop_transactions() {
+        let _test_uci_guard = test_uci_snapshot_lock().lock().await;
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_ubus_batch_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let state = AppState::load_or_create(dir.join("tachyon.json")).expect("load state");
+        let core = CoreManager::new(Arc::clone(&state));
+        {
+            let d = state.data.read().await.clone();
+            set_json_sections_snapshot(Map::new());
+            sync_from_store_to_json_and_cache(&d);
+        }
+        // Complete initial store/uci baseline sync (marks legacy_uci_imported), then clear events.
+        sync_uci_to_rust_store_inner(&state, &core, false, false)
+            .await
+            .expect("initial uci baseline sync");
+        state.live.write().await.events.clear();
+
+        // 1. No-op uci.set batch setting values equal to existing store must commit 0 transactions.
+        let cur_interval = {
+            let d = state.data.read().await;
+            d.settings.update_interval.clone()
+        };
+        let noop_batch = serde_json::to_vec(&json!([
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "call",
+                "params": [
+                    "00000000000000000000000000000000",
+                    "uci",
+                    "set",
+                    { "config": "tachyon", "section": "settings", "values": { "update_interval": cur_interval } }
+                ]
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "call",
+                "params": [
+                    "00000000000000000000000000000000",
+                    "uci",
+                    "set",
+                    { "config": "tachyon", "section": "telegram", "values": { "enabled": "0" } }
+                ]
+            }
+        ]))
+        .unwrap();
+        let noop_resp = handle_ubus_post(&noop_batch, &state, &core).await;
+        assert!(noop_resp.as_array().is_some_and(|a| a.len() == 2));
+        let noop_tx_count = {
+            let live = state.live.read().await;
+            live.events
+                .iter()
+                .filter(|e| e.subsystem == "transaction")
+                .count()
+        };
+        assert_eq!(
+            noop_tx_count, 0,
+            "no-op uci.set batch must not commit redundant transactions"
+        );
+
+        // 2. Real multi-section uci.set batch followed by uci.get must coalesce into at most 1 transaction
+        // and expose updated values to subsequent uci.get in the same batch.
+        let mut_batch = serde_json::to_vec(&json!([
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "call",
+                "params": [
+                    "00000000000000000000000000000000",
+                    "uci",
+                    "set",
+                    { "config": "tachyon", "section": "settings", "values": { "update_interval": "12h" } }
+                ]
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "call",
+                "params": [
+                    "00000000000000000000000000000000",
+                    "uci",
+                    "set",
+                    { "config": "tachyon", "section": "guest_mode", "values": { "enabled": "1" } }
+                ]
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "call",
+                "params": [
+                    "00000000000000000000000000000000",
+                    "uci",
+                    "get",
+                    { "config": "tachyon", "section": "settings", "option": "update_interval" }
+                ]
+            }
+        ]))
+        .unwrap();
+        let mut_resp = handle_ubus_post(&mut_batch, &state, &core).await;
+        let arr = mut_resp.as_array().expect("batch array response");
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[2]["result"][1]["value"], "12h");
+
+        let mut_tx_count = {
+            let live = state.live.read().await;
+            live.events
+                .iter()
+                .filter(|e| e.subsystem == "transaction")
+                .count()
+        };
+        assert_eq!(
+            mut_tx_count, 1,
+            "multi-section uci.set batch must coalesce into a single transaction"
+        );
+        {
+            let d = state.data.read().await;
+            assert_eq!(d.settings.update_interval, "12h");
+            assert!(d.guest_mode.enabled);
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

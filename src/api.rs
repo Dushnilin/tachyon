@@ -4597,6 +4597,7 @@ mod tests {
         }
 
         Box::pin(async move {
+            let _test_uci_guard = crate::ubus_bridge::test_uci_snapshot_lock().lock().await;
             let dir = std::env::temp_dir().join(format!("tachyon-api-hist-{}", std::process::id()));
             let hist_dir = dir.join("history");
             let _ = std::fs::remove_dir_all(&dir);
