@@ -864,6 +864,8 @@ export namespace Tachyon {
     bootstrap_dns_status: 0 | 1;
     dhcp_config_status: 0 | 1;
     dont_touch_dhcp: 0 | 1;
+    dns_router_label?: string;
+    dhcp_config_label?: string;
   }
 
   export interface NftRulesCheckResult {

@@ -75,16 +75,16 @@ export async function runDnsCheck() {
         state: data.dns_on_router ? 'success' : 'error',
         key: _('DNS on router'),
         value: data.dns_on_router
-          ? '127.0.0.1:53 → 127.0.0.42:53'
+          ? data.dns_router_label || '127.0.0.1:53 → 127.0.0.42:53'
           : tr('Не отвечает', 'Not responding'),
       },
       {
         state: dhcpItemState,
         key: dhcpItemKey,
         value: data.dont_touch_dhcp
-          ? 'dont_touch_dhcp=1'
+          ? data.dhcp_config_label || 'dont_touch_dhcp=1'
           : data.dhcp_config_status
-            ? 'dnsmasq → 127.0.0.42#53'
+            ? data.dhcp_config_label || 'dnsmasq → 127.0.0.42#53'
             : tr('Требует настройки', 'Misconfigured'),
       },
     ],

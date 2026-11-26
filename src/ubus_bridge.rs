@@ -3997,6 +3997,19 @@ fn build_capabilities_json(d: &crate::store::RouterStoreData, ui_prefs: Value) -
     })
 }
 
+fn entware_has_conflicting_core_init(init_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(init_dir) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with('S') || name == "S99tachyon" {
+            return false;
+        }
+        name.contains("tachyon-core") || name.contains("sing-box")
+    })
+}
+
 fn build_core_health_check_payload(
     d: &crate::store::RouterStoreData,
     live: &crate::store::LiveTelemetry,
@@ -4120,7 +4133,10 @@ fn build_core_health_check_payload(
         listen_ports_str.push_str(&format!(" (missing: {})", missing_ports.join(", ")));
     }
     let autostart_disabled = if crate::platform::is_entware() {
-        !plat.init_script.is_file()
+        !plat
+            .init_script
+            .parent()
+            .is_some_and(entware_has_conflicting_core_init)
     } else {
         !std::fs::read_dir("/etc/rc.d")
             .ok()
@@ -9180,11 +9196,45 @@ async fn execute_cli_part_early(
             .await
             .is_ok_and(|r| r.is_ok())
                 || boot_srv.parse::<std::net::IpAddr>().is_ok() && dns_ok;
-            let dnsmasq = sys_info::collect_dnsmasq_status();
-            let dns_on_router = dnsmasq.running
-                || check_proc_port_listening("0.0.0.0", 53, "udp") == 1
-                || live.core_running;
-            json!({
+            let is_entware = crate::platform::is_entware();
+            let (dns_on_router, dhcp_config_status, dns_router_label, dhcp_config_label) =
+                if is_entware {
+                    let mode = normalize_entware_dns_mode(&d.settings.entware_dns_mode);
+                    let dns_port = if mode == "override" {
+                        53
+                    } else if d.settings.entware_dns_port > 0 {
+                        d.settings.entware_dns_port
+                    } else {
+                        1053
+                    };
+                    let core_listening = check_proc_port_listening("0.0.0.0", dns_port, "udp") == 1
+                        || check_proc_port_listening("127.0.0.1", dns_port, "udp") == 1
+                        || check_proc_port_listening("127.0.0.42", dns_port, "udp") == 1
+                        || live.core_running;
+                    let dhcp_ok = match mode {
+                        "override" => core_listening,
+                        "manual" => true,
+                        _ => crate::net_stack_iptables::check_entware_dns_redirect_active().await,
+                    };
+                    let router_lbl = if mode == "override" {
+                        "127.0.0.1:53 (override)".to_string()
+                    } else {
+                        format!("DNS :53 → 127.0.0.1:{dns_port}")
+                    };
+                    let dhcp_lbl = match mode {
+                        "override" => "opkg dns-override → :53".to_string(),
+                        "manual" => "manual (dont_touch_dhcp)".to_string(),
+                        _ => format!("iptables TACHYON_DNS_NAT → :{dns_port}"),
+                    };
+                    (core_listening, dhcp_ok, Some(router_lbl), Some(dhcp_lbl))
+                } else {
+                    let dnsmasq = sys_info::collect_dnsmasq_status();
+                    let dns_on_router = dnsmasq.running
+                        || check_proc_port_listening("0.0.0.0", 53, "udp") == 1
+                        || live.core_running;
+                    (dns_on_router, dnsmasq.running, None, None)
+                };
+            let mut payload = json!({
                 "dns_type": d.settings.dns_type,
                 "dns_server": dns_srv,
                 "dns_status": i32::from(dns_ok),
@@ -9195,10 +9245,19 @@ async fn execute_cli_part_early(
                 "bootstrap_dns_server_count": d.settings.bootstrap_dns_servers.len().max(1),
                 "bootstrap_dns_server_index": 0,
                 "dns_on_router": i32::from(dns_on_router),
-                "dhcp_config_status": i32::from(dnsmasq.running),
-                "dont_touch_dhcp": i32::from(d.settings.dont_touch_dhcp),
+                "dhcp_config_status": i32::from(dhcp_config_status),
+                "dont_touch_dhcp": i32::from(d.settings.dont_touch_dhcp || (is_entware && normalize_entware_dns_mode(&d.settings.entware_dns_mode) == "manual")),
                 "probe": dns_probe,
-            })
+            });
+            if let Some(obj) = payload.as_object_mut() {
+                if let Some(lbl) = dns_router_label {
+                    obj.insert("dns_router_label".into(), json!(lbl));
+                }
+                if let Some(lbl) = dhcp_config_label {
+                    obj.insert("dhcp_config_label".into(), json!(lbl));
+                }
+            }
+            payload
         }
         "check_fakeip" => {
             let f4 = d.settings.fakeip_inet4_range.clone();
@@ -9209,8 +9268,10 @@ async fn execute_cli_part_early(
                     .unwrap_or_default();
             let ipv6_state =
                 crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
+            let dns_addr = diagnostics::local_dns_probe_addr(&d.settings);
             let (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed) =
-                diagnostics::probe_local_fakeip_dns_with(&f4, &f6, ipv6_state.is_active()).await;
+                diagnostics::probe_local_fakeip_dns_at(dns_addr, &f4, &f6, ipv6_state.is_active())
+                    .await;
             diagnostics::format_fakeip_probe_payload(diagnostics::FakeIpProbePayloadInput {
                 d,
                 ipv6_state,
@@ -9224,15 +9285,50 @@ async fn execute_cli_part_early(
         }
         "check_nft" | "check_nft_rules" => {
             let table_active = net_stack::check_nft_table_active().await;
+            let use_iptables =
+                crate::platform::firewall_kind() == crate::platform::FirewallKind::Iptables;
             let nft_installed =
                 Path::new("/usr/sbin/nft").exists() || Path::new("/sbin/nft").exists();
             if d.settings.proxy_mode == "tun" || d.settings.proxy_mode == "socks" {
                 json!({
                     "not_applicable": 1,
-                    "installed": nft_installed || table_active,
+                    "installed": if use_iptables { true } else { nft_installed || table_active },
                     "table_present": table_active,
                     "table_exist": i32::from(table_active),
-                    "table_name": "inet TachyonTable",
+                    "table_name": if use_iptables { "iptables (TACHYON_*)" } else { "inet TachyonTable" },
+                })
+            } else if use_iptables {
+                let ipt = crate::net_stack_iptables::inspect_iptables_summary().await;
+                let rules_mangle_exist =
+                    table_active && ipt.has_mangle && ipt.mangle_rules_count > 0;
+                let rules_mangle_counters = rules_mangle_exist;
+                let rules_mangle_output_exist =
+                    table_active && ipt.has_output && ipt.mangle_output_rules_count > 0;
+                let output_has_marking =
+                    d.settings.fakeip_enabled || d.settings.route_router_traffic;
+                let rules_mangle_output_counters =
+                    rules_mangle_output_exist || (!output_has_marking && rules_mangle_exist);
+                let rules_proxy_exist = table_active && ipt.has_proxy && ipt.proxy_rules_count > 0;
+                let rules_proxy_counters = rules_proxy_exist;
+                json!({
+                    "installed": table_active || ipt.has_mangle,
+                    "table_present": table_active,
+                    "table_exist": i32::from(table_active),
+                    "table_name": "iptables (TACHYON_*)",
+                    "rules_mangle_exist": i32::from(rules_mangle_exist),
+                    "rules_mangle_counters": i32::from(rules_mangle_counters),
+                    "mangle_rules_count": ipt.mangle_rules_count,
+                    "mangle_packets": ipt.mangle_packets,
+                    "rules_mangle_output_exist": i32::from(rules_mangle_output_exist),
+                    "rules_mangle_output_counters": i32::from(rules_mangle_output_counters),
+                    "mangle_output_rules_count": ipt.mangle_output_rules_count,
+                    "mangle_output_packets": ipt.mangle_output_packets,
+                    "rules_proxy_exist": i32::from(rules_proxy_exist),
+                    "rules_proxy_counters": i32::from(rules_proxy_counters),
+                    "proxy_rules_count": ipt.proxy_rules_count,
+                    "proxy_packets": ipt.proxy_packets,
+                    "rules_other_mark_exist": 0,
+                    "rules": crate::net_stack_iptables::compile_iptables_preview(d),
                 })
             } else {
                 let mut summary = NftTableSummary::default();
@@ -16258,6 +16354,8 @@ mod tests {
 
     #[tokio::test]
     async fn service_action_async_stop_pauses_watchdog_and_blocks_background_reload() {
+        let _test_uci_guard = test_uci_snapshot_lock().lock().await;
+        PENDING_CORE_RELOAD.store(false, std::sync::atomic::Ordering::Release);
         let dir =
             std::env::temp_dir().join(format!("tachyon_svc_stop_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -16285,6 +16383,23 @@ mod tests {
             .await
             .expect("sync without reload");
         assert!(core.is_manually_stopped());
+        PENDING_CORE_RELOAD.store(false, std::sync::atomic::Ordering::Release);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn entware_conflicting_core_init_ignores_s99tachyon_and_detects_conflicts() {
+        let dir =
+            std::env::temp_dir().join(format!("tachyon_entware_init_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        std::fs::write(dir.join("S99tachyon"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.join("S50nginx"), "#!/bin/sh\n").unwrap();
+        assert!(!entware_has_conflicting_core_init(&dir));
+
+        std::fs::write(dir.join("S98tachyon-core"), "#!/bin/sh\n").unwrap();
+        assert!(entware_has_conflicting_core_init(&dir));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

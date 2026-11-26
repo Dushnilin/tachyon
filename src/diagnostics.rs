@@ -6656,7 +6656,14 @@ pub async fn run_network_tool(tool: &str, target: &str) -> Value {
                 ("traceroute", vec!["-n", "-m", "12", "-w", "1", &host])
             }
         }
-        "nslookup" => ("nslookup", vec![&host, "127.0.0.42"]),
+        "nslookup" => {
+            let dns_srv = if crate::platform::is_entware() {
+                "127.0.0.1"
+            } else {
+                "127.0.0.42"
+            };
+            ("nslookup", vec![&host, dns_srv])
+        }
         "pcap" | "tcpdump" => {
             if cfg!(windows) {
                 ("netstat", vec!["-an"])
@@ -7217,22 +7224,6 @@ pub async fn probe_local_fakeip_dns_at(
     };
 
     (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed)
-}
-
-/// Probe the default OpenWrt FakeIP DNS listener (`127.0.0.42:53`) with A and AAAA queries
-/// against configured FakeIP ranges. Returns `(v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed_noerror)`.
-pub async fn probe_local_fakeip_dns_with(
-    expected_v4_cidr: &str,
-    expected_v6_cidr: &str,
-    ipv6_active: bool,
-) -> (bool, String, bool, String, bool) {
-    probe_local_fakeip_dns_at(
-        std::net::SocketAddr::from(([127, 0, 0, 42], 53)),
-        expected_v4_cidr,
-        expected_v6_cidr,
-        ipv6_active,
-    )
-    .await
 }
 
 fn resolve_check_proxy_inbound_url(cfg_path: &str) -> Option<String> {

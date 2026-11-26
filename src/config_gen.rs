@@ -15115,6 +15115,7 @@ fn compile_core_config_with_rt_dir(
 
     let mut remote_group_members: Vec<String> = Vec::new();
     let mut has_encrypted_primary = false;
+    let mut seen_non_loopback_primary = false;
     let mut seen_encrypted_fb: HashSet<String> = HashSet::new();
     for (i, main_dns) in main_list.iter().enumerate() {
         let tag = format!("dns-remote-{}", i + 1);
@@ -15125,6 +15126,12 @@ fn compile_core_config_with_rt_dir(
             main_host_owned.as_str()
         };
         let main_is_ip = crate::store::valid_ip_with_zone(main_host);
+        if !main_host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+        {
+            seen_non_loopback_primary = true;
+        }
         let lower_dns = main_dns.trim().to_ascii_lowercase();
         let has_explicit_scheme = lower_dns.contains("://");
         let mut obj = if lower_dns.starts_with("tls://") || lower_dns.starts_with("dot://") {
@@ -15225,11 +15232,12 @@ fn compile_core_config_with_rt_dir(
         remote_group_members.push(tag);
     }
 
+    let all_loopback_primary = !remote_group_members.is_empty() && !seen_non_loopback_primary;
     let fail_closed_detour_dns = primary_detour.is_some()
         && crate::net_stack::direct_fallback_veto(store).is_some()
         && !remote_group_members.is_empty();
 
-    if !fail_closed_detour_dns {
+    if !fail_closed_detour_dns && !all_loopback_primary {
         let mut fallback_candidates = split_dns_tokens(&store.settings.dns_fallback_servers);
         if !store.settings.fallback_dns_server.trim().is_empty() {
             for tok in split_dns_tokens(std::slice::from_ref(&store.settings.fallback_dns_server)) {
@@ -32376,5 +32384,35 @@ proxies:
             .find(|o| o["tag"] == "sel-sec_failover")
             .expect("sel-sec_failover");
         assert_eq!(sel_fo["default"], "bal-sec_failover-auto-failover");
+    }
+
+    #[test]
+    fn loopback_primary_dns_never_mixes_external_fallback_or_bootstrap_into_dns_remote() {
+        let mut store = RouterStoreData::default();
+        store.settings.dns_type = "udp".to_string();
+        store.settings.dns_servers = vec!["127.0.0.10".to_string()];
+        store.settings.dns_fallback_servers = vec!["1.0.0.1".to_string(), "77.88.8.1".to_string()];
+        store.settings.fallback_dns_server = "1.0.0.1".to_string();
+        store.settings.bootstrap_dns_servers = vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()];
+        store.settings.fallback_wan_main = true;
+
+        let cfg = compile_core_config(&store).expect("compile loopback primary DNS config");
+        let srvs = cfg["dns"]["servers"].as_array().expect("dns servers");
+        let remote = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote group");
+        assert_eq!(remote["servers"], json!(["dns-remote-1"]));
+        let primary = srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote-1")
+            .expect("dns-remote-1");
+        assert_eq!(primary["server"], "127.0.0.10");
+        assert_eq!(primary["server_port"], 53);
+        assert!(
+            srvs.iter()
+                .all(|s| !s["tag"].as_str().unwrap_or("").starts_with("dns-fallback-")),
+            "external fallback DNS must not be emitted for loopback primary DNS"
+        );
     }
 }

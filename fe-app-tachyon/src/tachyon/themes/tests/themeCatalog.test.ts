@@ -50,7 +50,7 @@ describe('themeCatalog', () => {
     delete (globalThis as any).document;
   });
 
-  it('defines the exact 13 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
+  it('defines the exact 16 built-in themes with complete normalized hex palettes and no banned third-party strings', () => {
     expect(BUILTIN_THEMES.map((t) => t.name)).toEqual([
       'Default Dark',
       'Default Light',
@@ -65,6 +65,9 @@ describe('themeCatalog', () => {
       'Tokyo Night',
       'Solarized Dark',
       'Vesper',
+      'Material Light',
+      'Apple Light',
+      'Gruvbox Light',
     ]);
 
     const banned = /antigravity|vscode|vs code|github|openvsx|argon/i;
@@ -183,5 +186,18 @@ describe('themeCatalog', () => {
     expect(attrs['data-darkmode']).toBe('true');
     expect(removedProps).toContain('--background-color-high');
     expect(styleProps.has('--background-color-high')).toBe(false);
+
+    for (const [id, bg, surface] of [
+      ['material-light', '#f1f3f6', '#ffffff'],
+      ['apple-light', '#f5f5f7', '#ffffff'],
+      ['gruvbox-light', '#f2e5bc', '#fbf1c7'],
+    ]) {
+      setActiveTheme(id);
+      expect(attrs['data-tachyon-theme']).toBe(id);
+      expect(attrs['data-tachyon-theme-scheme']).toBe('light');
+      expect(attrs['data-darkmode']).toBe('false');
+      expect(styleProps.get('--bg')).toBe(bg);
+      expect(styleProps.get('--surface')).toBe(surface);
+    }
   });
 });

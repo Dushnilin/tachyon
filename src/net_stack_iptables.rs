@@ -312,6 +312,38 @@ pub fn parse_entware_net_caps_from_signals(
     }
 }
 
+#[cfg(target_os = "linux")]
+fn probe_xtables_feature(bin: &str, table: &str, rule_args: &[&str]) -> bool {
+    let chain = "__TACHYON_CAP_PROBE";
+    let _ = std::process::Command::new(bin)
+        .args(["-t", table, "-N", chain])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let ok = std::process::Command::new(bin)
+        .args(["-t", table, "-A", chain])
+        .args(rule_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    let _ = std::process::Command::new(bin)
+        .args(["-t", table, "-F", chain])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = std::process::Command::new(bin)
+        .args(["-t", table, "-X", chain])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    ok
+}
+
 /// Probe kernel netfilter modules, `/dev/net/tun`, and `iptables`/`ipset` binaries.
 pub fn probe_entware_net_caps() -> EntwareNetCaps {
     #[cfg(target_os = "linux")]
@@ -334,6 +366,49 @@ pub fn probe_entware_net_caps() -> EntwareNetCaps {
             &matches_raw,
             has_tun,
         );
+        // When `iptables` uses the nft backend (`xtables-nft-multi`) or modules load lazily on first
+        // rule insertion, `/proc/net/ip_tables_{targets,matches}` omits `TPROXY`/`REDIRECT`/`socket`.
+        if let Some(ref ipt_bin) = caps.iptables_bin {
+            if !caps.has_tproxy {
+                caps.has_tproxy = probe_xtables_feature(
+                    ipt_bin,
+                    "mangle",
+                    &[
+                        "-p",
+                        "tcp",
+                        "-j",
+                        "TPROXY",
+                        "--on-port",
+                        "1602",
+                        "--tproxy-mark",
+                        "0x4000000",
+                    ],
+                );
+            }
+            if !caps.has_socket_match {
+                caps.has_socket_match = probe_xtables_feature(
+                    ipt_bin,
+                    "mangle",
+                    &["-p", "tcp", "-m", "socket", "-j", "RETURN"],
+                );
+            }
+            if !caps.has_redirect {
+                caps.has_redirect = probe_xtables_feature(
+                    ipt_bin,
+                    "nat",
+                    &[
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "53",
+                        "-j",
+                        "REDIRECT",
+                        "--to-ports",
+                        "1053",
+                    ],
+                );
+            }
+        }
         caps.iptables_restore_bin = iptables_restore_bin;
         caps.ip6tables_restore_bin = ip6tables_restore_bin;
         caps
@@ -2333,7 +2408,7 @@ pub async fn check_iptables_active(proxy_mode: &str) -> bool {
     if cfg!(not(target_os = "linux")) {
         return true;
     }
-    let Some(ipt_bin) = find_bin_with_path_fallback(IPTABLES_BIN_CANDIDATES, "iptables") else {
+    let Some(ipt_bin) = select_iptables_pair(false).0 else {
         return false;
     };
     match proxy_mode.trim().to_ascii_lowercase().as_str() {
@@ -2388,6 +2463,148 @@ pub async fn check_iptables_active(proxy_mode: &str) -> bool {
                 .await
         }
     }
+}
+
+/// Runtime summary of active `TACHYON_*` chains in iptables `mangle` and `nat` tables.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct IptablesDiagSummary {
+    pub has_mangle: bool,
+    pub mangle_rules_count: usize,
+    pub mangle_packets: u64,
+    pub has_output: bool,
+    pub mangle_output_rules_count: usize,
+    pub mangle_output_packets: u64,
+    pub has_proxy: bool,
+    pub proxy_rules_count: usize,
+    pub proxy_packets: u64,
+    pub has_dns_nat: bool,
+    pub dns_nat_rules_count: usize,
+    pub dns_nat_packets: u64,
+}
+
+fn parse_iptables_counter_line(line: &str) -> Option<(u64, &str)> {
+    let mut parts = line.split_whitespace();
+    let pkts = parts.next()?.parse::<u64>().ok()?;
+    let _bytes = parts.next()?.parse::<u64>().ok()?;
+    let target = parts.next()?;
+    Some((pkts, target))
+}
+
+/// Parse `iptables -t mangle -L -v -n -x` output for `TACHYON_*` chains and packet counters.
+pub fn parse_iptables_mangle_summary(mangle_vnx: &str) -> IptablesDiagSummary {
+    let mut out = IptablesDiagSummary::default();
+    let mut current_chain: &str = "";
+
+    for raw in mangle_vnx.lines() {
+        let trimmed = raw.trim();
+        if let Some(rest) = trimmed.strip_prefix("Chain ") {
+            let name = rest.split_whitespace().next().unwrap_or("");
+            current_chain = match name {
+                "TACHYON_PREROUTING" => {
+                    out.has_mangle = true;
+                    "TACHYON_PREROUTING"
+                }
+                "TACHYON_DIVERT" => {
+                    out.has_mangle = true;
+                    "TACHYON_DIVERT"
+                }
+                "TACHYON_TPROXY" => {
+                    out.has_proxy = true;
+                    "TACHYON_TPROXY"
+                }
+                "TACHYON_OUTPUT" => {
+                    out.has_output = true;
+                    "TACHYON_OUTPUT"
+                }
+                _ => "",
+            };
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with("pkts ") {
+            continue;
+        }
+        let Some((pkts, target)) = parse_iptables_counter_line(trimmed) else {
+            continue;
+        };
+        match current_chain {
+            "TACHYON_PREROUTING" | "TACHYON_DIVERT" => {
+                out.mangle_rules_count += 1;
+                out.mangle_packets = out.mangle_packets.saturating_add(pkts);
+                if matches!(target, "TPROXY" | "TACHYON_TPROXY") {
+                    out.has_proxy = true;
+                    out.proxy_rules_count += 1;
+                    out.proxy_packets = out.proxy_packets.saturating_add(pkts);
+                }
+            }
+            "TACHYON_TPROXY" => {
+                out.proxy_rules_count += 1;
+                out.proxy_packets = out.proxy_packets.saturating_add(pkts);
+            }
+            "TACHYON_OUTPUT" => {
+                out.mangle_output_rules_count += 1;
+                out.mangle_output_packets = out.mangle_output_packets.saturating_add(pkts);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Inspect active `TACHYON_*` iptables mangle and NAT DNS redirect chains.
+pub async fn inspect_iptables_summary() -> IptablesDiagSummary {
+    let mut summary = IptablesDiagSummary::default();
+    if cfg!(not(target_os = "linux")) {
+        return summary;
+    }
+    let Some(ipt_bin) = select_iptables_pair(false).0 else {
+        return summary;
+    };
+    if let Ok(Ok(out)) = tokio::time::timeout(
+        Duration::from_secs(3),
+        Command::new(&ipt_bin)
+            .args(["-t", "mangle", "-L", "-v", "-n", "-x"])
+            .output(),
+    )
+    .await
+        && out.status.success()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        summary = parse_iptables_mangle_summary(&text);
+    }
+    if let Ok(Ok(out)) = tokio::time::timeout(
+        Duration::from_secs(3),
+        Command::new(&ipt_bin)
+            .args(["-t", "nat", "-L", "TACHYON_DNS_NAT", "-v", "-n", "-x"])
+            .output(),
+    )
+    .await
+        && out.status.success()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        summary.has_dns_nat = true;
+        for line in text.lines() {
+            if let Some((pkts, _)) = parse_iptables_counter_line(line.trim()) {
+                summary.dns_nat_rules_count += 1;
+                summary.dns_nat_packets = summary.dns_nat_packets.saturating_add(pkts);
+            }
+        }
+    }
+    summary
+}
+
+/// Check whether `PREROUTING -> TACHYON_DNS_NAT` redirect jump is active on Entware/iptables.
+pub async fn check_entware_dns_redirect_active() -> bool {
+    if cfg!(not(target_os = "linux")) {
+        return true;
+    }
+    let Some(ipt_bin) = select_iptables_pair(false).0 else {
+        return false;
+    };
+    run_iptables_status(
+        &ipt_bin,
+        &["-t", "nat", "-C", "PREROUTING", "-j", "TACHYON_DNS_NAT"],
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -2646,5 +2863,43 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_parse_iptables_mangle_summary() {
+        let sample = "\
+Chain PREROUTING (policy ACCEPT 1200 packets, 90000 bytes)
+    pkts      bytes target     prot opt in     out     source               destination
+     150    12000 TACHYON_PREROUTING  all  --  *      *       0.0.0.0/0            0.0.0.0/0
+
+Chain TACHYON_DIVERT (1 references)
+    pkts      bytes target     prot opt in     out     source               destination
+      10      800 MARK       all  --  *      *       0.0.0.0/0            0.0.0.0/0            MARK xset 0x4000000/0x4000000
+      10      800 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0
+
+Chain TACHYON_PREROUTING (1 references)
+    pkts      bytes target     prot opt in     out     source               destination
+      42     3500 TACHYON_TPROXY  all  --  br0    *       0.0.0.0/0            0.0.0.0/0
+       0        0 RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0
+
+Chain TACHYON_TPROXY (1 references)
+    pkts      bytes target     prot opt in     out     source               destination
+      35     2900 TPROXY     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            TPROXY redirect 127.0.0.1:1602 mark 0x4000000/0x4000000
+       7      600 TPROXY     udp  --  *      *       0.0.0.0/0            0.0.0.0/0            TPROXY redirect 127.0.0.1:1602 mark 0x4000000/0x4000000
+
+Chain TACHYON_OUTPUT (1 references)
+    pkts      bytes target     prot opt in     out     source               destination
+      25     1800 MARK       tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            MARK xset 0x10000000/0x10000000
+";
+        let summary = parse_iptables_mangle_summary(sample);
+        assert!(summary.has_mangle);
+        assert_eq!(summary.mangle_rules_count, 4);
+        assert_eq!(summary.mangle_packets, 62);
+        assert!(summary.has_output);
+        assert_eq!(summary.mangle_output_rules_count, 1);
+        assert_eq!(summary.mangle_output_packets, 25);
+        assert!(summary.has_proxy);
+        assert_eq!(summary.proxy_rules_count, 3);
+        assert_eq!(summary.proxy_packets, 84);
     }
 }
