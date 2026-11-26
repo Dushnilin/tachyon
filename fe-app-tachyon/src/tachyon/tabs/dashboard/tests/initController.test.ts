@@ -188,6 +188,108 @@ describe('dashboard initController', () => {
     expect(container.replaceChildren).toHaveBeenCalled();
   });
 
+  it('hides Dnsmasq (DNS) row on Entware even when dnsmasqRunning is 0, but keeps it on OpenWrt', async () => {
+    const { renderSystemServicesWidget } = await import('../initController');
+    const { store } = await import('../../../services/store.service');
+
+    const serializeNode = (node: any): string => {
+      if (node == null) return '';
+      if (typeof node === 'string' || typeof node === 'number') {
+        return String(node);
+      }
+      if (Array.isArray(node)) {
+        return node.map(serializeNode).join('');
+      }
+      if (typeof node === 'object') {
+        const text = node.textContent ? String(node.textContent) : '';
+        const children = Array.isArray(node.children)
+          ? node.children.map(serializeNode).join('')
+          : '';
+        return `${text}${children}`;
+      }
+      return '';
+    };
+
+    const makeBox = () => ({
+      childElementCount: 0,
+      getAttribute: () => null,
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      replaceChildren: vi.fn(),
+    });
+    const sysContainer = makeBox();
+    const stripContainer = makeBox();
+    (globalThis.document as any).getElementById = vi.fn((id: string) => {
+      if (id === 'dashboard-widget-system-services') return sysContainer;
+      if (id === 'dashboard-router-services-strip') return stripContainer;
+      return null;
+    });
+
+    store.set({
+      servicesInfoWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          tachyonRunning: 1,
+          tachyonCore: 1,
+          dnsmasqRunning: 0,
+          platformInfo: {
+            platform: 'keenetic_entware',
+            display_name: 'Keenetic Entware',
+            is_entware: true,
+            is_keenetic: true,
+            firewall: 'iptables',
+            storage_kind: 'usb_external',
+            storage_fs: 'ext4',
+            storage_mount: '/opt',
+            storage_posix: true,
+            runtime_tmpfs_ok: true,
+          },
+        } as any,
+      },
+    });
+
+    vi.mocked((globalThis as any).E).mockClear();
+    await renderSystemServicesWidget();
+    const entwareText = (globalThis as any).E.mock.calls
+      .map((c: any[]) => serializeNode(c[2]))
+      .join(' ');
+    expect(entwareText).toContain('Tachyon Core');
+    expect(entwareText).not.toContain('Dnsmasq (DNS)');
+
+    vi.mocked((globalThis as any).E).mockClear();
+    stripContainer.replaceChildren.mockClear();
+    store.set({
+      servicesInfoWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          tachyonRunning: 1,
+          tachyonCore: 1,
+          dnsmasqRunning: 1,
+          platformInfo: {
+            platform: 'openwrt',
+            display_name: 'OpenWrt',
+            is_entware: false,
+            is_keenetic: false,
+            firewall: 'nftables',
+            storage_kind: 'internal_flash',
+            storage_fs: 'overlay',
+            storage_mount: '/',
+            storage_posix: true,
+            runtime_tmpfs_ok: true,
+          },
+        } as any,
+      },
+    });
+
+    await renderSystemServicesWidget();
+    const openwrtText = (globalThis as any).E.mock.calls
+      .map((c: any[]) => serializeNode(c[2]))
+      .join(' ');
+    expect(openwrtText).toContain('Dnsmasq (DNS)');
+  });
+
   it('extractTestedTags extracts codes from proxy_list, group, and proxy', async () => {
     const { extractTestedTags } = await import('../initController');
 

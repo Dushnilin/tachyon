@@ -4273,7 +4273,21 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
     }
     let daemon_uptime = sys_info::daemon_uptime_secs();
     let cpu_pct = sys_info::sample_cpu_load_percent();
-    let dnsmasq = sys_info::collect_dnsmasq_status();
+    let is_entware = crate::platform::is_entware();
+    let dnsmasq_json = if is_entware {
+        Value::Null
+    } else {
+        let dnsmasq = sys_info::collect_dnsmasq_status();
+        json!({
+            "running": i32::from(dnsmasq.running),
+            "pid": dnsmasq.pid,
+            "memory_rss_mb": dnsmasq.memory_rss_mb,
+            "uptime_seconds": dnsmasq.uptime_secs,
+            "uptime_pretty": if dnsmasq.running { format_uptime_pretty(dnsmasq.uptime_secs) } else { String::new() },
+            "local_cache_enabled": i32::from(dnsmasq.local_cache_enabled),
+            "cache_size": dnsmasq.cache_size
+        })
+    };
     let panel_mb = ((sys.panel_rss_bytes + 512 * 1024) / (1024 * 1024)).max(1);
     let core_service = build_core_service_json(&live);
 
@@ -4295,15 +4309,7 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
             },
             "tachyon_core": core_service.clone(),
             "sing_box": core_service,
-            "dnsmasq": {
-                "running": i32::from(dnsmasq.running),
-                "pid": dnsmasq.pid,
-                "memory_rss_mb": dnsmasq.memory_rss_mb,
-                "uptime_seconds": dnsmasq.uptime_secs,
-                "uptime_pretty": if dnsmasq.running { format_uptime_pretty(dnsmasq.uptime_secs) } else { String::new() },
-                "local_cache_enabled": i32::from(dnsmasq.local_cache_enabled),
-                "cache_size": dnsmasq.cache_size
-            },
+            "dnsmasq": dnsmasq_json,
             "watchdog": {
                 "running": i32::from(
                     d.settings.enable_watchdog && !crate::core_mgr::CoreManager::is_manual_stop_active(state)
@@ -12597,7 +12603,12 @@ async fn execute_cli_part_routes_state(
         "stability_report" | "stability_status" => {
             let now = crate::store::unix_now_secs();
             let sys = sys_info::collect_host_info();
-            let dnsmasq = sys_info::collect_dnsmasq_status();
+            let is_entware = crate::platform::is_entware();
+            let dnsmasq = if is_entware {
+                None
+            } else {
+                Some(sys_info::collect_dnsmasq_status())
+            };
             let daemon_up = sys_info::daemon_uptime_secs();
             let total_srv = d.outbound_sources.len();
             let healthy_srv = live.node_latencies_ms.values().filter(|&&v| v > 0).count();
@@ -12724,6 +12735,38 @@ async fn execute_cli_part_routes_state(
                     })
                     .collect();
 
+                let mut daemons_map = serde_json::Map::new();
+                daemons_map.insert(
+                    "tachyon-core".to_string(),
+                    json!({
+                        "running": live.core_running,
+                        "pid": live.core_pid,
+                        "uptime_seconds": live.core_uptime_secs,
+                        "pretty": format_uptime_pretty(live.core_uptime_secs)
+                    }),
+                );
+                let wd_running = core.is_watchdog_effectively_running().await;
+                daemons_map.insert(
+                    "watchdog".to_string(),
+                    json!({
+                        "running": wd_running,
+                        "pid": wd_running.then(std::process::id),
+                        "uptime_seconds": daemon_up,
+                        "pretty": format_uptime_pretty(daemon_up)
+                    }),
+                );
+                if let Some(ref dm) = dnsmasq {
+                    daemons_map.insert(
+                        "dnsmasq".to_string(),
+                        json!({
+                            "running": dm.running,
+                            "pid": dm.pid,
+                            "uptime_seconds": dm.uptime_secs,
+                            "pretty": if dm.running { format_uptime_pretty(dm.uptime_secs) } else { String::new() }
+                        }),
+                    );
+                }
+
                 json!({
                     "timestamp": now,
                     "health": {
@@ -12736,26 +12779,7 @@ async fn execute_cli_part_routes_state(
                             "seconds": sys.host_uptime_secs,
                             "pretty": uptime_pretty
                         },
-                        "daemons": {
-                            "tachyon-core": {
-                                "running": live.core_running,
-                                "pid": live.core_pid,
-                                "uptime_seconds": live.core_uptime_secs,
-                                "pretty": format_uptime_pretty(live.core_uptime_secs)
-                            },
-                            "watchdog": {
-                                "running": core.is_watchdog_effectively_running().await,
-                                "pid": core.is_watchdog_effectively_running().await.then(std::process::id),
-                                "uptime_seconds": daemon_up,
-                                "pretty": format_uptime_pretty(daemon_up)
-                            },
-                            "dnsmasq": {
-                                "running": dnsmasq.running,
-                                "pid": dnsmasq.pid,
-                                "uptime_seconds": dnsmasq.uptime_secs,
-                                "pretty": if dnsmasq.running { format_uptime_pretty(dnsmasq.uptime_secs) } else { String::new() }
-                            }
-                        }
+                        "daemons": Value::Object(daemons_map)
                     },
                     "restarts_and_flaps": {
                         "wan_flaps": 0,

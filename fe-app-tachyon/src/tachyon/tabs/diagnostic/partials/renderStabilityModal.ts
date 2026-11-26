@@ -18,6 +18,7 @@ import {
   ServerStatsSummary,
 } from '../../../services/serverStatsClient';
 import { renderFlagEmojis } from '../../dashboard/partials/renderFlagEmojis';
+import { isEntwarePlatform } from '../../../helpers/platformInfo';
 
 type StabilityModalTab = 'overview' | 'fleet' | 'incidents';
 
@@ -371,102 +372,107 @@ export async function renderStabilityModal(): Promise<void> {
       'text-align: right !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1)); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap;';
 
     // Daemons Table
-    const daemonRows = Object.keys(daemons).map((daemonName) => {
-      const info = daemons[daemonName];
-      const isRunning = info.running;
-      const displayInfo = getDaemonDisplayInfo(daemonName);
+    const daemonRows = Object.keys(daemons)
+      .filter(
+        (daemonName) => !(isEntwarePlatform() && daemonName === 'dnsmasq'),
+      )
+      .map((daemonName) => {
+        const info = daemons[daemonName];
+        const isRunning = info.running;
+        const displayInfo = getDaemonDisplayInfo(daemonName);
 
-      let pidStr = '—';
-      if (info.pids && info.pids.length > 0) {
-        pidStr =
-          info.pids.length <= 2
-            ? info.pids.join(', ')
-            : `${info.pids.slice(0, 2).join(', ')} (+${info.pids.length - 2})`;
-      } else if (info.pid) {
-        pidStr = String(info.pid);
-      }
+        let pidStr = '—';
+        if (info.pids && info.pids.length > 0) {
+          pidStr =
+            info.pids.length <= 2
+              ? info.pids.join(', ')
+              : `${info.pids.slice(0, 2).join(', ')} (+${info.pids.length - 2})`;
+        } else if (info.pid) {
+          pidStr = String(info.pid);
+        }
 
-      const uptimeStr = isRunning ? info.pretty || '0s' : '—';
-      const rssKb = mem?.daemons_rss_kb?.[daemonName];
-      const rssStr = rssKb ? prettyBytes(rssKb * 1024) : '—';
-      const daemonFd = fds?.daemons?.[daemonName];
-      const fdStr = daemonFd !== undefined ? String(daemonFd) : '—';
+        const uptimeStr = isRunning ? info.pretty || '0s' : '—';
+        const rssKb = mem?.daemons_rss_kb?.[daemonName];
+        const rssStr = rssKb ? prettyBytes(rssKb * 1024) : '—';
+        const daemonFd = fds?.daemons?.[daemonName];
+        const fdStr = daemonFd !== undefined ? String(daemonFd) : '—';
 
-      return E('tr', { class: 'cbi-section-table-row' }, [
-        E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
+        return E('tr', { class: 'cbi-section-table-row' }, [
+          E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
+            E(
+              'div',
+              {
+                style:
+                  'display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;',
+              },
+              [
+                E(
+                  'span',
+                  { style: 'font-weight: 600; font-size: 13px;' },
+                  displayInfo.title,
+                ),
+                displayInfo.subtitle &&
+                displayInfo.subtitle !== displayInfo.title
+                  ? E(
+                      'span',
+                      {
+                        style:
+                          'font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-color-medium, #888);',
+                      },
+                      displayInfo.subtitle,
+                    )
+                  : '',
+              ],
+            ),
+          ]),
+          E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
+            E(
+              'span',
+              {
+                class: `label ${isRunning ? 'label-success' : 'label-default'}`,
+                style:
+                  'font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;',
+              },
+              [
+                E('span', { style: 'font-size: 8px; line-height: 1;' }, '●'),
+                E('span', {}, isRunning ? _('Running') : _('Stopped')),
+              ],
+            ),
+          ]),
           E(
-            'div',
+            'td',
             {
-              style:
-                'display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;',
+              class: 'cbi-section-table-cell',
+              style: `${tdLeftStyle} font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: var(--text-color-medium, #666); white-space: nowrap;`,
             },
-            [
-              E(
-                'span',
-                { style: 'font-weight: 600; font-size: 13px;' },
-                displayInfo.title,
-              ),
-              displayInfo.subtitle && displayInfo.subtitle !== displayInfo.title
-                ? E(
-                    'span',
-                    {
-                      style:
-                        'font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-color-medium, #888);',
-                    },
-                    displayInfo.subtitle,
-                  )
-                : '',
-            ],
+            pidStr,
           ),
-        ]),
-        E('td', { class: 'cbi-section-table-cell', style: tdLeftStyle }, [
           E(
-            'span',
+            'td',
             {
-              class: `label ${isRunning ? 'label-success' : 'label-default'}`,
-              style:
-                'font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;',
+              class: 'cbi-section-table-cell',
+              style: `${tdRightStyle} font-weight: 500;`,
             },
-            [
-              E('span', { style: 'font-size: 8px; line-height: 1;' }, '●'),
-              E('span', {}, isRunning ? _('Running') : _('Stopped')),
-            ],
+            uptimeStr,
           ),
-        ]),
-        E(
-          'td',
-          {
-            class: 'cbi-section-table-cell',
-            style: `${tdLeftStyle} font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; color: var(--text-color-medium, #666); white-space: nowrap;`,
-          },
-          pidStr,
-        ),
-        E(
-          'td',
-          {
-            class: 'cbi-section-table-cell',
-            style: `${tdRightStyle} font-weight: 500;`,
-          },
-          uptimeStr,
-        ),
-        E(
-          'td',
-          {
-            class: 'cbi-section-table-cell',
-            style: `${tdRightStyle} font-weight: 600;`,
-          },
-          rssStr,
-        ),
-        E(
-          'td',
-          {
-            class: 'cbi-section-table-cell',
-            style: `${tdRightStyle} color: var(--text-color-medium, #666);`,
-          },
-          fdStr,
-        ),
-      ]);
-    });
+          E(
+            'td',
+            {
+              class: 'cbi-section-table-cell',
+              style: `${tdRightStyle} font-weight: 600;`,
+            },
+            rssStr,
+          ),
+          E(
+            'td',
+            {
+              class: 'cbi-section-table-cell',
+              style: `${tdRightStyle} color: var(--text-color-medium, #666);`,
+            },
+            fdStr,
+          ),
+        ]);
+      });
 
     const daemonsTable = E(
       'div',

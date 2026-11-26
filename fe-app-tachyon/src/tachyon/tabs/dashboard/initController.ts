@@ -93,6 +93,7 @@ import { resolvePriorityLevelBadge } from './priorityLevelBadge';
 import {
   formatPlatformBadge,
   getPlatformInfo,
+  isEntwarePlatform,
 } from '../../helpers/platformInfo';
 import { getRouterUiPrefs, setRouterUiPrefs } from '../../helpers/uiPrefs';
 import {
@@ -6564,7 +6565,10 @@ export async function renderSystemServicesWidget() {
       }),
     );
 
-    if (srvData.dnsmasqRunning != null) {
+    if (
+      !isEntwarePlatform(srvData.platformInfo) &&
+      srvData.dnsmasqRunning != null
+    ) {
       const dnsmasqUptime = formatLocalizedUptime(
         srvData.dnsmasqUptimePretty,
         srvData.dnsmasqUptimeSeconds,
