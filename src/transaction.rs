@@ -389,11 +389,96 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
             )
             && sec.outbound_source_refs.is_empty()
             && sec.outbound_group_ref.is_empty()
+            && sec.outbound_group_refs.is_empty()
         {
             warnings.push(format!(
                 "Section '{}' ({}) has no outbound sources assigned; will fallback to built-in default",
                 sec.label, sec.connection_type
             ));
+        }
+    }
+
+    let group_tag_map = crate::config_gen::resolve_outbound_group_member_tags(candidate);
+    let src_by_id: std::collections::HashMap<&str, &crate::store::OutboundSource> = candidate
+        .outbound_sources
+        .iter()
+        .map(|s| (s.id.as_str(), s))
+        .collect();
+    for sec in candidate.sections.iter().filter(|s| s.enabled) {
+        if !matches!(
+            sec.connection_type.as_str(),
+            "proxy"
+                | "connection"
+                | "desync"
+                | "wdtt"
+                | "fptn"
+                | "tailscale"
+                | "outbound"
+                | "vpn"
+                | "awg"
+        ) {
+            continue;
+        }
+        let mut has_refs = false;
+        let mut total_candidates = 0usize;
+        for sref in &sec.outbound_source_refs {
+            has_refs = true;
+            if let Some(src) = src_by_id.get(sref.as_str()).copied() {
+                if !src.enabled {
+                    continue;
+                }
+                let stype = src.source_type.trim().to_ascii_lowercase();
+                if matches!(stype.as_str(), "desync" | "interface" | "tailscale") {
+                    total_candidates += 1;
+                    continue;
+                }
+                let cnt = crate::config_gen::build_source_outbounds(src).len();
+                if cnt == 0 {
+                    warnings.push(format!(
+                        "Section '{}': source '{}' contributes 0 candidates",
+                        sec.id, sref
+                    ));
+                } else {
+                    total_candidates += cnt;
+                }
+            }
+        }
+        let mut grefs: Vec<&str> = Vec::new();
+        if !sec.outbound_group_ref.trim().is_empty() {
+            grefs.push(sec.outbound_group_ref.trim());
+        }
+        for gref in &sec.outbound_group_refs {
+            let trimmed = gref.trim();
+            if !trimmed.is_empty() && !grefs.contains(&trimmed) {
+                grefs.push(trimmed);
+            }
+        }
+        for gref in grefs {
+            has_refs = true;
+            if let Some(grp) = candidate.outbound_groups.iter().find(|g| g.id == gref)
+                && grp.enabled
+            {
+                let cnt = group_tag_map.get(gref).map_or(0, Vec::len);
+                if cnt == 0 {
+                    warnings.push(format!(
+                        "Section '{}': outbound_group '{}' contributes 0 candidates",
+                        sec.id, gref
+                    ));
+                } else {
+                    total_candidates += cnt;
+                }
+            }
+        }
+        if has_refs {
+            let effective_empty =
+                crate::config_gen::resolve_section_allowed_member_tags(candidate, sec)
+                    .map_or(total_candidates == 0, |set| set.is_empty());
+            if effective_empty {
+                warnings.push(format!(
+                    "Section '{}': effective outbound pool is empty (0 candidates)",
+                    sec.id
+                ));
+            }
         }
     }
 
@@ -1316,5 +1401,70 @@ mod tests {
         });
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_analyze_config_plan_warns_on_empty_source_and_group() {
+        use crate::store::{OutboundGroup, OutboundSource, RoutingSection};
+
+        let candidate = RouterStoreData {
+            outbound_sources: vec![OutboundSource {
+                id: "src_empty".into(),
+                name: "Empty Sub".into(),
+                source_type: "subscription".into(),
+                enabled: true,
+                ..Default::default()
+            }],
+            outbound_groups: vec![OutboundGroup {
+                id: "grp_empty".into(),
+                enabled: true,
+                name: "Empty Group".into(),
+                source_refs: vec!["src_empty".into()],
+                filter_mode: "include".into(),
+                include_servers: vec!["NonExistent".into()],
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "ai".into(),
+                label: "AI".into(),
+                enabled: true,
+                connection_type: "proxy".into(),
+                outbound_source_refs: vec!["src_empty".into()],
+                outbound_group_refs: vec!["grp_empty".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let report = analyze_config_plan(&candidate);
+        assert!(
+            report.valid,
+            "warnings must not invalidate plan: {:?}",
+            report.errors
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("src_empty") && w.contains("0 candidates")),
+            "expected empty source warning, got {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("grp_empty") && w.contains("0 candidates")),
+            "expected empty group warning, got {:?}",
+            report.warnings
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("effective outbound pool is empty")),
+            "expected empty pool warning, got {:?}",
+            report.warnings
+        );
     }
 }

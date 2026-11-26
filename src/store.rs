@@ -6183,7 +6183,7 @@ impl RouterStoreData {
                         include_prefixes: b.list("include_prefixes"),
                         include_country_flags: b
                             .merge_lists("include_countries", "include_country_flags"),
-                        include_servers: b.merge_lists("include_outbounds", "include_servers"),
+                        include_servers: b.merge_raw_lists("include_outbounds", "include_servers"),
                         include_regex: b.raw_list("include_regex"),
                         include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
                         include_protocols: b.list("include_protocols"),
@@ -6194,7 +6194,7 @@ impl RouterStoreData {
                         exclude_prefixes: b.list("exclude_prefixes"),
                         exclude_country_flags: b
                             .merge_lists("exclude_countries", "exclude_country_flags"),
-                        exclude_servers: b.merge_lists("exclude_outbounds", "exclude_servers"),
+                        exclude_servers: b.merge_raw_lists("exclude_outbounds", "exclude_servers"),
                         exclude_regex: b.raw_list("exclude_regex"),
                         exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
                         exclude_protocols: b.list("exclude_protocols"),
@@ -6797,7 +6797,7 @@ impl RouterStoreData {
                         include_prefixes: b.list("include_prefixes"),
                         include_country_flags: b
                             .merge_lists("include_countries", "include_country_flags"),
-                        include_servers: b.merge_lists("include_outbounds", "include_servers"),
+                        include_servers: b.merge_raw_lists("include_outbounds", "include_servers"),
                         include_regex: b.raw_list("include_regex"),
                         include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
                         include_protocols: b.list("include_protocols"),
@@ -6808,7 +6808,7 @@ impl RouterStoreData {
                         exclude_prefixes: b.list("exclude_prefixes"),
                         exclude_country_flags: b
                             .merge_lists("exclude_countries", "exclude_country_flags"),
-                        exclude_servers: b.merge_lists("exclude_outbounds", "exclude_servers"),
+                        exclude_servers: b.merge_raw_lists("exclude_outbounds", "exclude_servers"),
                         exclude_regex: b.raw_list("exclude_regex"),
                         exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
                         exclude_protocols: b.list("exclude_protocols"),
@@ -9883,6 +9883,15 @@ impl LegacyUciBlock {
     fn merge_lists(&self, primary: &str, legacy: &str) -> Vec<String> {
         let mut out = self.list(primary);
         for item in self.list(legacy) {
+            if !out.contains(&item) {
+                out.push(item);
+            }
+        }
+        out
+    }
+    fn merge_raw_lists(&self, primary: &str, legacy: &str) -> Vec<String> {
+        let mut out = self.raw_list(primary);
+        for item in self.raw_list(legacy) {
             if !out.contains(&item) {
                 out.push(item);
             }
@@ -14236,5 +14245,27 @@ config outbound_source 'awg31_src'
                 "case ({quic_val}, {mode_val})"
             );
         }
+    }
+
+    #[test]
+    fn test_outbound_group_include_outbounds_preserves_spaces() {
+        let mut store = RouterStoreData::default();
+        let uci = json!({
+            "Ai_eu": {
+                ".type": "outbound_group",
+                ".name": "Ai_eu",
+                "name": "Ai EU",
+                "source_refs": ["sub_main"],
+                "filter_mode": "include",
+                "include_outbounds": "🇩🇪 Germany #1"
+            }
+        });
+        store.import_from_json_sections(uci.as_object().unwrap());
+        let grp = store
+            .outbound_groups
+            .iter()
+            .find(|g| g.id == "Ai_eu")
+            .expect("Ai_eu group");
+        assert_eq!(grp.include_servers, vec!["🇩🇪 Germany #1".to_string()]);
     }
 }

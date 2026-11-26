@@ -7107,6 +7107,328 @@ pub async fn build_support_bundle(state: &Arc<AppState>) -> Value {
     })
 }
 
+pub async fn build_nodes_status_report(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let (sources, events, recent_logs, core_running) = {
+        let d = state.data.read().await;
+        let live = state.live.read().await;
+        (
+            d.outbound_sources.clone(),
+            live.events.clone(),
+            live.recent_logs.clone(),
+            live.core_running,
+        )
+    };
+    let proxies_map = core
+        .clash_request("GET", "/proxies", None)
+        .await
+        .ok()
+        .and_then(|v| v.get("proxies").cloned())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+    let flight_entries = core
+        .clash_request("GET", "/tachyon/flight", None)
+        .await
+        .ok()
+        .and_then(|v| {
+            v.get("records")
+                .or_else(|| v.get("failures"))
+                .or_else(|| v.get("items"))
+                .and_then(Value::as_array)
+                .cloned()
+        })
+        .unwrap_or_default();
+
+    let mut items = Vec::new();
+    for src in sources.iter().filter(|s| s.enabled) {
+        let mut nodes_out = Vec::new();
+        for (tag, _, visible) in crate::config_gen::build_source_outbounds(src) {
+            if !visible {
+                continue;
+            }
+            let proxy_entry = proxies_map.get(&tag);
+            let alive_opt = proxy_entry
+                .and_then(|p| p.get("alive"))
+                .and_then(Value::as_bool);
+            let last_delay = proxy_entry
+                .and_then(|p| p.get("history"))
+                .and_then(Value::as_array)
+                .and_then(|arr| arr.last())
+                .and_then(|h| h.get("delay"))
+                .and_then(Value::as_u64);
+            let status = match alive_opt {
+                Some(true) => "alive",
+                Some(false) => "dead",
+                None => "unknown",
+            };
+
+            let tag_lc = tag.to_ascii_lowercase();
+            let src_lc = src.id.to_ascii_lowercase();
+            let mut last_error: Option<String> = None;
+            let mut last_error_ts: Option<u64> = None;
+            for rec in flight_entries.iter().rev() {
+                let rec_tag = rec
+                    .get("outbound")
+                    .or_else(|| rec.get("tag"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if rec_tag == tag
+                    || (!src_lc.is_empty() && rec_tag.to_ascii_lowercase().contains(&src_lc))
+                {
+                    last_error = rec
+                        .get("error")
+                        .or_else(|| rec.get("reason"))
+                        .or_else(|| rec.get("message"))
+                        .and_then(Value::as_str)
+                        .map(crypto_gen::redact_string);
+                    last_error_ts = rec
+                        .get("ts")
+                        .or_else(|| rec.get("timestamp"))
+                        .and_then(Value::as_u64);
+                    if last_error.is_some() {
+                        break;
+                    }
+                }
+            }
+            if last_error.is_none() {
+                for ev in events.iter().rev() {
+                    if (ev.level == "error" || ev.level == "warn")
+                        && (ev.message.to_ascii_lowercase().contains(&tag_lc)
+                            || ev.message.to_ascii_lowercase().contains(&src_lc))
+                    {
+                        last_error = Some(crypto_gen::redact_string(&ev.message));
+                        last_error_ts = u64::try_from(ev.timestamp.max(0)).ok();
+                        break;
+                    }
+                }
+            }
+            if last_error.is_none() {
+                for line in recent_logs.iter().rev() {
+                    let ll = line.to_ascii_lowercase();
+                    if (ll.contains("error")
+                        || ll.contains("fail")
+                        || ll.contains("expired")
+                        || ll.contains("tls"))
+                        && (ll.contains(&tag_lc) || ll.contains(&src_lc))
+                    {
+                        last_error = Some(crypto_gen::redact_string(line));
+                        break;
+                    }
+                }
+            }
+
+            nodes_out.push(json!({
+                "tag": tag,
+                "status": status,
+                "delay_ms": last_delay,
+                "last_error": last_error,
+                "last_error_ts": last_error_ts,
+            }));
+        }
+        items.push(json!({
+            "source_id": src.id,
+            "name": src.name,
+            "source_type": src.source_type,
+            "last_updated_unix": src.last_updated_unix,
+            "nodes": nodes_out,
+        }));
+    }
+
+    json!({
+        "core_running": core_running,
+        "generated_at": unix_now_secs(),
+        "sources": items,
+    })
+}
+
+pub(crate) async fn run_dns_selftest_against(
+    addr: std::net::SocketAddr,
+    seconds: u64,
+    domain: &str,
+    interval: Duration,
+) -> Value {
+    let target_domain = if domain.trim().is_empty() {
+        "example.com"
+    } else {
+        domain.trim()
+    };
+    let steps = seconds.clamp(1, 120);
+    let mut total = 0u64;
+    let mut ok = 0u64;
+    let mut errors = 0u64;
+    let mut nxdomain = 0u64;
+    let mut timeouts = 0u64;
+    let mut latencies_ms: Vec<u64> = Vec::with_capacity(steps as usize);
+
+    for i in 0..steps {
+        total += 1;
+        let t0 = std::time::Instant::now();
+        let res = tokio::net::UdpSocket::bind("127.0.0.1:0").await;
+        match res {
+            Ok(sock) => {
+                if let Some(pkt) = build_dns_query_packet(target_domain, 1) {
+                    let send_ok =
+                        tokio::time::timeout(Duration::from_millis(900), sock.send_to(&pkt, addr))
+                            .await
+                            .ok()
+                            .and_then(|r| r.ok())
+                            .is_some();
+                    if send_ok {
+                        let mut buf = [0u8; 512];
+                        match tokio::time::timeout(
+                            Duration::from_millis(900),
+                            sock.recv_from(&mut buf),
+                        )
+                        .await
+                        {
+                            Ok(Ok((n, _))) if n >= 12 => {
+                                let rcode = buf[3] & 0x0f;
+                                let ms = t0.elapsed().as_millis() as u64;
+                                latencies_ms.push(ms.max(1));
+                                if rcode == 0 {
+                                    ok += 1;
+                                } else if rcode == 3 {
+                                    nxdomain += 1;
+                                    errors += 1;
+                                } else {
+                                    errors += 1;
+                                }
+                            }
+                            Ok(_) => errors += 1,
+                            Err(_) => {
+                                timeouts += 1;
+                                errors += 1;
+                            }
+                        }
+                    } else {
+                        errors += 1;
+                    }
+                } else {
+                    errors += 1;
+                }
+            }
+            Err(_) => errors += 1,
+        }
+        if i + 1 < steps && !interval.is_zero() {
+            tokio::time::sleep(interval).await;
+        }
+    }
+
+    let min_ms = latencies_ms.iter().copied().min();
+    let max_ms = latencies_ms.iter().copied().max();
+    let avg_ms = if latencies_ms.is_empty() {
+        None
+    } else {
+        Some(latencies_ms.iter().sum::<u64>() / (latencies_ms.len() as u64))
+    };
+
+    json!({
+        "resolver": addr.to_string(),
+        "domain": target_domain,
+        "seconds": steps,
+        "total": total,
+        "ok": ok,
+        "errors": errors,
+        "nxdomain": nxdomain,
+        "timeouts": timeouts,
+        "min_ms": min_ms,
+        "avg_ms": avg_ms,
+        "max_ms": max_ms,
+    })
+}
+
+pub async fn run_dns_selftest(state: &Arc<AppState>, seconds: u64, domain: &str) -> Value {
+    let (addr, pid_start) = {
+        let d = state.data.read().await;
+        let live = state.live.read().await;
+        (local_dns_probe_addr(&d.settings), live.core_pid)
+    };
+    let mut result = run_dns_selftest_against(addr, seconds, domain, Duration::from_secs(1)).await;
+    let (pid_end, https_dns_proxy_running) = {
+        let live = state.live.read().await;
+        let hdp = sys_info::find_running_process_by_name("https-dns-proxy").is_some();
+        (live.core_pid, hdp)
+    };
+    let core_restarts = u64::from(pid_start != pid_end);
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("core_pid_start".into(), json!(pid_start));
+        obj.insert("core_pid_end".into(), json!(pid_end));
+        obj.insert("core_restarts".into(), json!(core_restarts));
+        obj.insert(
+            "https_dns_proxy_running".into(),
+            json!(https_dns_proxy_running),
+        );
+    }
+    result
+}
+
+pub async fn build_diag_report(
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+    redacted: bool,
+) -> Value {
+    let (raw_store, config_plan, platform_info) = {
+        let d = state.data.read().await;
+        (
+            serde_json::to_value(&*d).unwrap_or_else(|_| json!({})),
+            crate::transaction::analyze_config_plan(&d),
+            crate::ubus_bridge::build_platform_info_json(&d),
+        )
+    };
+    let doctor = run_local_doctor_with_core(state, core).await;
+    let nodes_status = build_nodes_status_report(state, core).await;
+    let (
+        core_running,
+        core_pid,
+        core_version,
+        core_uptime_secs,
+        core_rss_bytes,
+        events,
+        recent_logs,
+    ) = {
+        let live = state.live.read().await;
+        (
+            live.core_running,
+            live.core_pid,
+            live.core_version.clone(),
+            live.core_uptime_secs,
+            live.core_rss_bytes,
+            live.events.clone(),
+            live.recent_logs.clone(),
+        )
+    };
+
+    let report = json!({
+        "generated_at": unix_now_secs(),
+        "redacted": redacted,
+        "versions": {
+            "tachyon": env!("CARGO_PKG_VERSION"),
+            "tachyon_core": core_version,
+        },
+        "platform": platform_info,
+        "config_plan": config_plan,
+        "doctor": doctor,
+        "nodes_status": nodes_status,
+        "telemetry": {
+            "core_running": core_running,
+            "core_pid": core_pid,
+            "core_uptime_secs": core_uptime_secs,
+            "core_rss_bytes": core_rss_bytes,
+            "events": events,
+            "recent_logs": recent_logs,
+        },
+        "config": if redacted {
+            crypto_gen::redact_json_value(&raw_store)
+        } else {
+            raw_store
+        },
+    });
+    if redacted {
+        crypto_gen::redact_json_value(&report)
+    } else {
+        report
+    }
+}
+
 fn skip_dns_name(buf: &[u8], mut pos: usize) -> Option<usize> {
     for _ in 0..128 {
         let &len = buf.get(pos)?;
@@ -9355,6 +9677,58 @@ IP address       HW type     Flags       HW address            Mask     Device
             !dir.join("tachyon.conf").exists(),
             "AdGuard Home mode must remove tachyon.conf"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_dns_selftest_and_redacted_diag_report() {
+        let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = sock.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            for _ in 0..2 {
+                let (n, peer) = sock.recv_from(&mut buf).await.unwrap();
+                let mut resp = buf[..n].to_vec();
+                resp[2] = 0x81;
+                resp[3] = 0x80; // NOERROR
+                resp[6] = 0x00;
+                resp[7] = 0x01;
+                resp.extend_from_slice(&[
+                    0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 93,
+                    184, 216, 34,
+                ]);
+                let _ = sock.send_to(&resp, peer).await;
+            }
+        });
+
+        let selftest =
+            run_dns_selftest_against(addr, 2, "example.com", std::time::Duration::from_millis(5))
+                .await;
+        server.await.unwrap();
+        assert_eq!(selftest["total"], 2);
+        assert_eq!(selftest["ok"], 2);
+        assert_eq!(selftest["errors"], 0);
+
+        let dir = std::env::temp_dir().join(format!(
+            "tachyon_diag_redacted_{}_{}",
+            std::process::id(),
+            crate::crypto_gen::generate_hex(4)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = AppState::load_or_create(dir.join("store.json")).unwrap();
+        {
+            let mut w = state.data.write().await;
+            w.telegram.bot_token = "123456:SECRET_TELEGRAM_TOKEN".to_string();
+        }
+        let core = crate::core_mgr::CoreManager::new(Arc::clone(&state));
+        let diag = build_diag_report(&state, &core, true).await;
+        let rendered = serde_json::to_string(&diag).unwrap();
+        assert!(!rendered.contains("SECRET_TELEGRAM_TOKEN"));
+        assert!(diag.get("config_plan").is_some());
+        assert!(diag.get("doctor").is_some());
+        assert!(diag.get("nodes_status").is_some());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

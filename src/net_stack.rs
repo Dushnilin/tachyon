@@ -41,6 +41,12 @@ const DEFAULT_SYSCTL_BBR_CONF: &str = "/etc/sysctl.d/99-tachyon-bbr.conf";
 const DEFAULT_PROC_TCP_AVAIL_CC: &str = "/proc/sys/net/ipv4/tcp_available_congestion_control";
 
 static DNSMASQ_INIT_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+static LAST_APPLIED_NFT_SKELETON: std::sync::OnceLock<tokio::sync::Mutex<Option<String>>> =
+    std::sync::OnceLock::new();
+
+fn nft_skeleton_lock() -> &'static tokio::sync::Mutex<Option<String>> {
+    LAST_APPLIED_NFT_SKELETON.get_or_init(|| tokio::sync::Mutex::new(None))
+}
 
 #[derive(Default, Clone, Debug)]
 pub(crate) struct NftCompileOpts {
@@ -5103,6 +5109,198 @@ async fn apply_nft_stdin(ruleset: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn parse_ipv4_range_token(tok: &str) -> Option<(u32, u32)> {
+    let s = tok.trim().trim_end_matches(',').trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Some((ip_str, pfx_str)) = s.split_once('/') {
+        let ip: std::net::Ipv4Addr = ip_str.trim().parse().ok()?;
+        let pfx: u32 = pfx_str.trim().parse().ok()?;
+        if pfx > 32 {
+            return None;
+        }
+        if pfx == 0 {
+            return Some((0, u32::MAX));
+        }
+        let mask = !0u32 << (32 - pfx);
+        let lo = u32::from(ip) & mask;
+        let hi = lo | !mask;
+        return Some((lo, hi));
+    }
+    if let Some((a_str, b_str)) = s.split_once('-') {
+        let a: std::net::Ipv4Addr = a_str.trim().parse().ok()?;
+        let b: std::net::Ipv4Addr = b_str.trim().parse().ok()?;
+        let (au, bu) = (u32::from(a), u32::from(b));
+        return Some(if au <= bu { (au, bu) } else { (bu, au) });
+    }
+    let ip: std::net::Ipv4Addr = s.parse().ok()?;
+    let u = u32::from(ip);
+    Some((u, u))
+}
+
+fn canonicalize_ipv4_intervals(items: &[String]) -> Vec<(u32, u32)> {
+    let mut intervals: Vec<(u32, u32)> = items
+        .iter()
+        .filter_map(|t| parse_ipv4_range_token(t))
+        .collect();
+    if intervals.is_empty() {
+        return intervals;
+    }
+    intervals.sort_unstable();
+    let mut merged: Vec<(u32, u32)> = Vec::with_capacity(intervals.len());
+    for (a, b) in intervals {
+        if let Some(last) = merged.last_mut()
+            && last.1.saturating_add(1) >= a
+        {
+            if b > last.1 {
+                last.1 = b;
+            }
+            continue;
+        }
+        merged.push((a, b));
+    }
+    merged
+}
+
+pub(crate) fn compute_ipv4_set_delta(
+    current: &[String],
+    desired: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let cur = canonicalize_ipv4_intervals(current);
+    let des = canonicalize_ipv4_intervals(desired);
+    let mut to_delete = Vec::new();
+    let mut to_add = Vec::new();
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < cur.len() && j < des.len() {
+        match cur[i].cmp(&des[j]) {
+            std::cmp::Ordering::Equal => {
+                i += 1;
+                j += 1;
+            }
+            std::cmp::Ordering::Less => {
+                to_delete.push(format_ipv4_interval_or_cidr(cur[i].0, cur[i].1));
+                i += 1;
+            }
+            std::cmp::Ordering::Greater => {
+                to_add.push(format_ipv4_interval_or_cidr(des[j].0, des[j].1));
+                j += 1;
+            }
+        }
+    }
+    while i < cur.len() {
+        to_delete.push(format_ipv4_interval_or_cidr(cur[i].0, cur[i].1));
+        i += 1;
+    }
+    while j < des.len() {
+        to_add.push(format_ipv4_interval_or_cidr(des[j].0, des[j].1));
+        j += 1;
+    }
+    (to_delete, to_add)
+}
+
+pub(crate) fn compile_nft_set_delta_script(
+    table: &str,
+    set_name: &str,
+    to_delete: &[String],
+    to_add: &[String],
+    chunk_size: usize,
+) -> Option<String> {
+    if to_delete.is_empty() && to_add.is_empty() {
+        return None;
+    }
+    let step = chunk_size.max(1);
+    let mut script = String::new();
+    for chunk in to_delete.chunks(step) {
+        let _ = writeln!(
+            script,
+            "delete element inet {table} {set_name} {{ {} }}",
+            chunk.join(", ")
+        );
+    }
+    for chunk in to_add.chunks(step) {
+        let _ = writeln!(
+            script,
+            "add element inet {table} {set_name} {{ {} }}",
+            chunk.join(", ")
+        );
+    }
+    Some(script)
+}
+
+pub(crate) fn extract_nft_set_elements_from_listing(listing: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(elem_idx) = listing.find("elements") else {
+        return out;
+    };
+    let rest = &listing[elem_idx..];
+    let Some(open_rel) = rest.find('{') else {
+        return out;
+    };
+    let after_open = &rest[open_rel + 1..];
+    let Some(close_rel) = after_open.find('}') else {
+        return out;
+    };
+    let inner = &after_open[..close_rel];
+    for raw in inner.split(',') {
+        let tok = raw.trim();
+        if !tok.is_empty() {
+            out.push(tok.to_string());
+        }
+    }
+    out
+}
+
+fn find_selective_v4_elements_span(ruleset: &str) -> Option<(usize, usize)> {
+    let set_start = ruleset.find("set selective_dst_v4 {")?;
+    let set_body = &ruleset[set_start..];
+    let elem_rel = set_body.find("elements = {")?;
+    let open_brace = set_start + elem_rel + "elements = {".len();
+    let close_rel = ruleset[open_brace..].find('}')?;
+    Some((open_brace, open_brace + close_rel))
+}
+
+pub(crate) fn nft_ruleset_skeleton_without_selective_v4(ruleset: &str) -> String {
+    if let Some((start, end)) = find_selective_v4_elements_span(ruleset) {
+        format!(
+            "{}__SELECTIVE_DST_V4_ELEMENTS__{}",
+            &ruleset[..start],
+            &ruleset[end..]
+        )
+    } else {
+        ruleset.to_string()
+    }
+}
+
+pub(crate) fn extract_selective_v4_elements_from_ruleset(ruleset: &str) -> Option<Vec<String>> {
+    let (start, end) = find_selective_v4_elements_span(ruleset)?;
+    let inner = &ruleset[start..end];
+    Some(
+        inner
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
+    )
+}
+
+async fn read_live_nft_set_elements(table: &str, set_name: &str) -> Option<Vec<String>> {
+    let mut cmd = Command::new("nft");
+    cmd.args(["list", "set", "inet", table, set_name])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let out = tokio::time::timeout(Duration::from_secs(5), cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let listing = String::from_utf8_lossy(&out.stdout);
+    Some(extract_nft_set_elements_from_listing(&listing))
+}
+
 fn format_ifname_set_literal(interfaces: &[String]) -> String {
     let quoted: Vec<String> = interfaces.iter().map(|i| format!("\"{i}\"")).collect();
     format!("{{ {} }}", quoted.join(", "))
@@ -5903,7 +6101,40 @@ async fn apply_network_stack_inner(
                 &wan6_cache.wan6_prefixes,
                 &NftCompileOpts { torrserver_cgroup },
             );
-            apply_nft_stdin_with_fib_fallback(&ruleset).await?;
+            let new_skeleton = nft_ruleset_skeleton_without_selective_v4(&ruleset);
+            let mut applied_via_delta = false;
+            let skeleton_matches = {
+                let guard = nft_skeleton_lock().lock().await;
+                guard.as_deref() == Some(new_skeleton.as_str())
+            };
+            if skeleton_matches
+                && let Some(desired_v4) = extract_selective_v4_elements_from_ruleset(&ruleset)
+                && check_nft_table_active().await
+                && let Some(current_v4) =
+                    read_live_nft_set_elements("TachyonTable", "selective_dst_v4").await
+            {
+                let (to_delete, to_add) = compute_ipv4_set_delta(&current_v4, &desired_v4);
+                match compile_nft_set_delta_script(
+                    "TachyonTable",
+                    "selective_dst_v4",
+                    &to_delete,
+                    &to_add,
+                    512,
+                ) {
+                    None => {
+                        applied_via_delta = true;
+                    }
+                    Some(delta_script) => {
+                        if apply_nft_stdin(&delta_script).await.is_ok() {
+                            applied_via_delta = true;
+                        }
+                    }
+                }
+            }
+            if !applied_via_delta {
+                apply_nft_stdin_with_fib_fallback(&ruleset).await?;
+                *nft_skeleton_lock().lock().await = Some(new_skeleton);
+            }
 
             // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
             cleanup_policy_rules_for(Some(fakeip_v6)).await;
@@ -6740,6 +6971,7 @@ pub async fn teardown_network_stack_with_mode(preserve_fail_closed_dns: bool) {
         teardown_sqm_qdisc().await;
         return;
     }
+    *nft_skeleton_lock().lock().await = None;
     let _ = Command::new("nft")
         .args(["delete", "table", "inet", "TachyonTable"])
         .stdout(Stdio::null())
@@ -9184,5 +9416,61 @@ dhcp.cfg01411c.tachyon_prev_server='1.1.1.1 8.8.8.8'
             "ip saddr { 192.168.1.5 } udp dport { 3074, 27015-27030 } tproxy ip to 127.0.0.1:1602"
         ));
         assert!(pre.contains("udp dport { 19294-19344, 50000-50100 } tproxy ip to 127.0.0.1:1602"));
+    }
+
+    #[test]
+    fn test_ipv4_set_delta_and_skeleton_helpers() {
+        let cur = vec![
+            "1.1.1.0/24".to_string(),
+            "8.8.8.8".to_string(),
+            "10.0.0.0/8".to_string(),
+        ];
+        let des = vec![
+            "1.1.1.0/24".to_string(),
+            "9.9.9.9".to_string(),
+            "10.0.0.0/8".to_string(),
+        ];
+        let (to_del, to_add) = compute_ipv4_set_delta(&cur, &des);
+        assert_eq!(to_del, vec!["8.8.8.8".to_string()]);
+        assert_eq!(to_add, vec!["9.9.9.9".to_string()]);
+
+        let (no_del, no_add) = compute_ipv4_set_delta(&cur, &cur);
+        assert!(
+            compile_nft_set_delta_script("TachyonTable", "selective_dst_v4", &no_del, &no_add, 512)
+                .is_none()
+        );
+
+        let script =
+            compile_nft_set_delta_script("TachyonTable", "selective_dst_v4", &to_del, &to_add, 1)
+                .expect("delta script");
+        assert!(script.contains("delete element inet TachyonTable selective_dst_v4 { 8.8.8.8 }"));
+        assert!(script.contains("add element inet TachyonTable selective_dst_v4 { 9.9.9.9 }"));
+
+        let listing = r#"
+table inet TachyonTable {
+    set selective_dst_v4 {
+        type ipv4_addr
+        flags interval
+        auto-merge
+        elements = { 1.1.1.0/24, 8.8.8.8,
+                     10.0.0.0/8 }
+    }
+}
+"#;
+        assert_eq!(
+            extract_nft_set_elements_from_listing(listing),
+            vec!["1.1.1.0/24", "8.8.8.8", "10.0.0.0/8"]
+        );
+
+        let rs_a = "table inet TachyonTable {\n    set selective_dst_v4 {\n        type ipv4_addr\n        elements = {\n            1.1.1.0/24, 8.8.8.8\n        }\n    }\n    chain prerouting {}\n}\n";
+        let rs_b = "table inet TachyonTable {\n    set selective_dst_v4 {\n        type ipv4_addr\n        elements = {\n            1.1.1.0/24, 9.9.9.9\n        }\n    }\n    chain prerouting {}\n}\n";
+        assert_eq!(
+            nft_ruleset_skeleton_without_selective_v4(rs_a),
+            nft_ruleset_skeleton_without_selective_v4(rs_b)
+        );
+        assert_eq!(
+            extract_selective_v4_elements_from_ruleset(rs_a).unwrap(),
+            vec!["1.1.1.0/24", "8.8.8.8"]
+        );
     }
 }

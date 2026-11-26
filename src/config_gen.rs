@@ -13117,6 +13117,110 @@ pub fn resolve_outbound_group_member_tags(store: &RouterStoreData) -> HashMap<St
     )
 }
 
+pub fn resolve_section_allowed_member_tags(
+    store: &RouterStoreData,
+    sec: &RoutingSection,
+) -> Option<std::collections::HashSet<String>> {
+    let sec_filter = matches!(
+        sec.section_filter_mode.trim().to_ascii_lowercase().as_str(),
+        "include" | "exclude" | "mixed"
+    );
+    let dash_filter = matches!(
+        sec.dashboard_filter_mode
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "include" | "exclude" | "mixed"
+    );
+    if sec.outbound_group_ref.trim().is_empty()
+        && sec.outbound_group_refs.is_empty()
+        && !sec_filter
+        && !dash_filter
+    {
+        return None;
+    }
+
+    let mut source_tag_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut outbounds: Vec<Value> = Vec::new();
+    for src in &store.outbound_sources {
+        let pairs = build_source_outbounds(src);
+        let mut tags = Vec::new();
+        for (tag, obj, visible) in pairs {
+            if visible {
+                tags.push(tag.clone());
+                outbounds.push(obj);
+            }
+        }
+        source_tag_map.insert(src.id.clone(), tags);
+    }
+    let group_tag_map = build_outbound_group_map_with_outbounds(
+        &store.outbound_groups,
+        &store.outbound_sources,
+        &source_tag_map,
+        &outbounds,
+    );
+
+    let mut candidate_tags: Vec<String> = Vec::new();
+    for sref in &sec.outbound_source_refs {
+        if let Some(tags) = source_tag_map.get(sref) {
+            for t in tags {
+                if !candidate_tags.contains(t) {
+                    candidate_tags.push(t.clone());
+                }
+            }
+        }
+    }
+    if !sec.outbound_group_ref.is_empty()
+        && let Some(tags) = group_tag_map.get(&sec.outbound_group_ref)
+    {
+        for t in tags {
+            if !candidate_tags.contains(t) {
+                candidate_tags.push(t.clone());
+            }
+        }
+    }
+    for gref in &sec.outbound_group_refs {
+        if let Some(tags) = group_tag_map.get(gref) {
+            for t in tags {
+                if !candidate_tags.contains(t) {
+                    candidate_tags.push(t.clone());
+                }
+            }
+        }
+    }
+
+    candidate_tags = filter_section_subscription_keywords(
+        &candidate_tags,
+        sec,
+        &store.outbound_sources,
+        &source_tag_map,
+        &outbounds,
+    );
+    if let Some(sec_spec) = resolve_section_filter_spec(sec) {
+        candidate_tags = apply_server_filter_spec(
+            &candidate_tags,
+            &sec_spec,
+            &store.outbound_sources,
+            &source_tag_map,
+            &outbounds,
+        );
+    }
+    if let Some(dash_spec) = resolve_section_dashboard_filter_spec(sec) {
+        let narrowed = apply_server_filter_spec(
+            &candidate_tags,
+            &dash_spec,
+            &store.outbound_sources,
+            &source_tag_map,
+            &outbounds,
+        );
+        if !narrowed.is_empty() {
+            candidate_tags = narrowed;
+        }
+    }
+
+    Some(candidate_tags.into_iter().collect())
+}
+
 pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     compile_core_config_with_wan6(store, crate::store::detect_wan6_runtime_available())
 }

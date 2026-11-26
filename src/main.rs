@@ -235,6 +235,13 @@ fn main() -> anyhow::Result<()> {
             | "reconcile-net"
             | "reconcile_net"
             | "support_bundle"
+            | "dns-selftest"
+            | "dns_selftest"
+            | "dns"
+            | "diag"
+            | "nodes-status"
+            | "nodes_status"
+            | "outbound-status"
     ) && let Some((code, stdout, stderr)) = try_forward_cli_to_daemon(&args)
     {
         if !stdout.is_empty() {
@@ -366,6 +373,59 @@ fn main() -> anyhow::Result<()> {
             "support_bundle" => {
                 let bundle = diagnostics::build_support_bundle(&state).await;
                 println!("{}", serde_json::to_string_pretty(&bundle)?);
+                Ok(())
+            }
+            "dns-selftest" | "dns_selftest" => {
+                let mut seconds = 10u64;
+                let mut domain = "example.com".to_string();
+                let mut i = 2usize;
+                while i < args.len() {
+                    if args[i] == "--seconds" && let Some(v) = args.get(i + 1) {
+                        seconds = v.parse::<u64>().unwrap_or(10);
+                        i += 2;
+                        continue;
+                    }
+                    if args[i] == "--domain" && let Some(v) = args.get(i + 1) {
+                        domain = v.clone();
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                }
+                let res = diagnostics::run_dns_selftest(&state, seconds, &domain).await;
+                println!("{}", serde_json::to_string_pretty(&res)?);
+                Ok(())
+            }
+            "dns" if args.get(2).map(String::as_str) == Some("selftest") => {
+                let mut seconds = 10u64;
+                let mut domain = "example.com".to_string();
+                let mut i = 3usize;
+                while i < args.len() {
+                    if args[i] == "--seconds" && let Some(v) = args.get(i + 1) {
+                        seconds = v.parse::<u64>().unwrap_or(10);
+                        i += 2;
+                        continue;
+                    }
+                    if args[i] == "--domain" && let Some(v) = args.get(i + 1) {
+                        domain = v.clone();
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                }
+                let res = diagnostics::run_dns_selftest(&state, seconds, &domain).await;
+                println!("{}", serde_json::to_string_pretty(&res)?);
+                Ok(())
+            }
+            "diag" => {
+                let redacted = !args.iter().any(|a| a == "--raw");
+                let rep = diagnostics::build_diag_report(&state, &core, redacted).await;
+                println!("{}", serde_json::to_string_pretty(&rep)?);
+                Ok(())
+            }
+            "nodes-status" | "nodes_status" | "outbound-status" => {
+                let rep = diagnostics::build_nodes_status_report(&state, &core).await;
+                println!("{}", serde_json::to_string_pretty(&rep)?);
                 Ok(())
             }
             "mcp" => mcp::run_stdio_mcp(state, core).await,

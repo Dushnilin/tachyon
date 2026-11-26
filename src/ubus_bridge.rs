@@ -5082,6 +5082,15 @@ fn build_outbound_metadata_and_links(
 
     let mut sub_idx_by_sec: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+    let allowed_tags = if !section.is_empty() && section != "all" && section != "_sources" {
+        store
+            .sections
+            .iter()
+            .find(|s| s.id == section)
+            .and_then(|sec| crate::config_gen::resolve_section_allowed_member_tags(store, sec))
+    } else {
+        None
+    };
 
     for (owner_sec, src, is_hidden) in collect_section_sources_with_owner(store, section) {
         let src_label = if src.name.trim().is_empty() {
@@ -5130,6 +5139,11 @@ fn build_outbound_metadata_and_links(
         }
 
         for (tag, out_val, _) in crate::config_gen::build_source_outbounds(src) {
+            if let Some(ref allowed) = allowed_tags
+                && !allowed.contains(&tag)
+            {
+                continue;
+            }
             if src.source_type == "interface" {
                 let sname = src.name.trim();
                 let friendly = if !sname.is_empty() && !sname.starts_with("iface-") {
@@ -17856,6 +17870,84 @@ tls=TLSv1.3
             .map(|(_, src, _)| src.id.as_str())
             .collect();
         assert_eq!(star_sources, ["s1", "s2"]);
+    }
+
+    #[test]
+    fn section_metadata_respects_outbound_group_include_servers() {
+        use crate::store::{
+            OutboundGroup, OutboundSource, ParsedProxyNode, RouterStoreData, RoutingSection,
+        };
+
+        let store = RouterStoreData {
+            outbound_sources: vec![OutboundSource {
+                id: "sub_main".into(),
+                name: "Main Sub".into(),
+                source_type: "subscription".into(),
+                enabled: true,
+                cached_nodes: vec![
+                    ParsedProxyNode {
+                        tag: "EU Node 1".into(),
+                        raw_uri:
+                            "vless://11111111-1111-1111-1111-111111111111@1.1.1.1:443#EU%20Node%201"
+                                .into(),
+                        ..Default::default()
+                    },
+                    ParsedProxyNode {
+                        tag: "EU Node 2".into(),
+                        raw_uri:
+                            "vless://22222222-2222-2222-2222-222222222222@2.2.2.2:443#EU%20Node%202"
+                                .into(),
+                        ..Default::default()
+                    },
+                    ParsedProxyNode {
+                        tag: "US Node 3".into(),
+                        raw_uri:
+                            "vless://33333333-3333-3333-3333-333333333333@3.3.3.3:443#US%20Node%203"
+                                .into(),
+                        ..Default::default()
+                    },
+                    ParsedProxyNode {
+                        tag: "JP Node 4".into(),
+                        raw_uri:
+                            "vless://44444444-4444-4444-4444-444444444444@4.4.4.4:443#JP%20Node%204"
+                                .into(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            outbound_groups: vec![OutboundGroup {
+                id: "Ai_eu".into(),
+                enabled: true,
+                name: "Ai_eu".into(),
+                source_refs: vec!["sub_main".into()],
+                filter_mode: "include".into(),
+                include_servers: vec!["EU Node 1".into(), "EU Node 2".into()],
+                ..Default::default()
+            }],
+            sections: vec![RoutingSection {
+                id: "Ai".into(),
+                enabled: true,
+                outbound_group_refs: vec!["Ai_eu".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let meta = read_pure_rust_outbound_metadata(&store, "Ai");
+        let names = meta
+            .get("names")
+            .and_then(Value::as_object)
+            .expect("names map");
+        assert_eq!(
+            names.len(),
+            2,
+            "expected only 2 filtered servers, got {names:?}"
+        );
+        assert!(names.contains_key("EU Node 1"));
+        assert!(names.contains_key("EU Node 2"));
+        assert!(!names.contains_key("US Node 3"));
+        assert!(!names.contains_key("JP Node 4"));
     }
 
     #[test]
